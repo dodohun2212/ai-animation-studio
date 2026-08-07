@@ -1,0 +1,386 @@
+[
+  {
+    "timestamp": "2026-07-28T13:56:44.762338+00:00",
+    "job_id": "JOB-4D192BD4D0CB42D9",
+    "project_id": "project_0ee811d6dcea",
+    "call_type": "story"
+  },
+  {
+    "timestamp": "2026-07-28T14:17:48.296716+00:00",
+    "job_id": "JOB-7820E94FD7AC46F6",
+    "project_id": "project_0ee811d6dcea",
+    "call_type": "story"
+  },
+  {
+    "timestamp": "2026-07-28T14:18:10.375288+00:00",
+    "job_id": "JOB-809D5D6C862D4503",
+    "project_id": "project_0ee811d6dcea",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-07-28T14:27:39.758752+00:00",
+    "job_id": "JOB-38EC2129159A40A1",
+    "project_id": "project_0ee811d6dcea",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-07-28T14:28:54.198164+00:00",
+    "job_id": "JOB-38EC2129159A40A1",
+    "project_id": "project_0ee811d6dcea",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-07-28T14:30:14.945329+00:00",
+    "job_id": "JOB-38EC2129159A40A1",
+    "project_id": "project_0ee811d6dcea",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-07-28T14:31:28.845719+00:00",
+    "job_id": "JOB-38EC2129159A40A1",
+    "project_id": "project_0ee811d6dcea",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-07-28T14:32:38.604767+00:00",
+    "job_id": "JOB-38EC2129159A40A1",
+    "project_id": "project_0ee811d6dcea",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-07-28T14:34:07.586353+00:00",
+    "job_id": "JOB-38EC2129159A40A1",
+    "project_id": "project_0ee811d6dcea",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-07-30T05:56:26.252725+00:00",
+    "job_id": "JOB-D0096FCE55CC4DFF",
+    "project_id": "project_8b96c3cc1f71",
+    "call_type": "story"
+  },
+  {
+    "timestamp": "2026-07-30T06:20:56.765999+00:00",
+    "job_id": "JOB-D40C25616AA94E90",
+    "project_id": "project_8b96c3cc1f71",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-07-30T06:22:14.577261+00:00",
+    "job_id": "JOB-D40C25616AA94E90",
+    "project_id": "project_8b96c3cc1f71",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-07-30T06:23:34.384060+00:00",
+    "job_id": "JOB-D40C25616AA94E90",
+    "project_id": "project_8b96c3cc1f71",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-07-30T06:24:50.982515+00:00",
+    "job_id": "JOB-D40C25616AA94E90",
+    "project_id": "project_8b96c3cc1f71",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-07-30T06:26:08.795965+00:00",
+    "job_id": "JOB-D40C25616AA94E90",
+    "project_id": "project_8b96c3cc1f71",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-07-30T06:27:24.861500+00:00",
+    "job_id": "JOB-D40C25616AA94E90",
+    "project_id": "project_8b96c3cc1f71",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-07-30T11:07:30.612968+00:00",
+    "job_id": "JOB-2536B709DB7B4AF5",
+    "project_id": "long_8b96f5818f9c",
+    "call_type": "episode_plan"
+  },
+  {
+    "timestamp": "2026-08-01T05:55:02.723474+00:00",
+    "job_id": "JOB-055BAB835B2F48DD",
+    "project_id": "project_1b546b0f2083",
+    "call_type": "story"
+  },
+  {
+    "timestamp": "2026-08-01T05:56:14.201331+00:00",
+    "job_id": "JOB-7FB3C8EA574C4B3B",
+    "project_id": "project_1b546b0f2083",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T05:57:19.916868+00:00",
+    "job_id": "JOB-7FB3C8EA574C4B3B",
+    "project_id": "project_1b546b0f2083",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T05:58:37.156723+00:00",
+    "job_id": "JOB-7FB3C8EA574C4B3B",
+    "project_id": "project_1b546b0f2083",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T05:59:43.280519+00:00",
+    "job_id": "JOB-7FB3C8EA574C4B3B",
+    "project_id": "project_1b546b0f2083",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T06:01:03.977340+00:00",
+    "job_id": "JOB-7FB3C8EA574C4B3B",
+    "project_id": "project_1b546b0f2083",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T06:02:21.404842+00:00",
+    "job_id": "JOB-7FB3C8EA574C4B3B",
+    "project_id": "project_1b546b0f2083",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T07:04:16.444942+00:00",
+    "job_id": "JOB-060304981F5D4993",
+    "project_id": "project_7070f3a453d3",
+    "call_type": "story"
+  },
+  {
+    "timestamp": "2026-08-01T07:04:35.282989+00:00",
+    "job_id": "JOB-B2D41672D7D54EEF",
+    "project_id": "project_7070f3a453d3",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T07:05:41.548954+00:00",
+    "job_id": "JOB-B2D41672D7D54EEF",
+    "project_id": "project_7070f3a453d3",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T07:06:41.990678+00:00",
+    "job_id": "JOB-B2D41672D7D54EEF",
+    "project_id": "project_7070f3a453d3",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T07:07:50.703440+00:00",
+    "job_id": "JOB-B2D41672D7D54EEF",
+    "project_id": "project_7070f3a453d3",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T07:08:50.065234+00:00",
+    "job_id": "JOB-B2D41672D7D54EEF",
+    "project_id": "project_7070f3a453d3",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T07:09:50.570580+00:00",
+    "job_id": "JOB-B2D41672D7D54EEF",
+    "project_id": "project_7070f3a453d3",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T14:45:36.810469+00:00",
+    "job_id": "JOB-7D05F6EE80884B8F",
+    "project_id": "project_01da9b6b1891",
+    "call_type": "story"
+  },
+  {
+    "timestamp": "2026-08-01T14:46:06.865967+00:00",
+    "job_id": "JOB-F7A33900B52549FD",
+    "project_id": "project_01da9b6b1891",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T14:47:06.578003+00:00",
+    "job_id": "JOB-F7A33900B52549FD",
+    "project_id": "project_01da9b6b1891",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T14:48:04.270029+00:00",
+    "job_id": "JOB-F7A33900B52549FD",
+    "project_id": "project_01da9b6b1891",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T14:49:04.479425+00:00",
+    "job_id": "JOB-F7A33900B52549FD",
+    "project_id": "project_01da9b6b1891",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T14:49:59.136933+00:00",
+    "job_id": "JOB-F7A33900B52549FD",
+    "project_id": "project_01da9b6b1891",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T14:50:53.637338+00:00",
+    "job_id": "JOB-F7A33900B52549FD",
+    "project_id": "project_01da9b6b1891",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T15:09:08.155503+00:00",
+    "job_id": "JOB-1240961485654378",
+    "project_id": "project_1d161b60b6d7",
+    "call_type": "story"
+  },
+  {
+    "timestamp": "2026-08-01T15:10:30.869732+00:00",
+    "job_id": "JOB-D32DFFE2CD404F4B",
+    "project_id": "project_1d161b60b6d7",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T15:11:34.417608+00:00",
+    "job_id": "JOB-D32DFFE2CD404F4B",
+    "project_id": "project_1d161b60b6d7",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T15:12:41.842713+00:00",
+    "job_id": "JOB-D32DFFE2CD404F4B",
+    "project_id": "project_1d161b60b6d7",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T15:13:46.032731+00:00",
+    "job_id": "JOB-D32DFFE2CD404F4B",
+    "project_id": "project_1d161b60b6d7",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T15:14:46.934150+00:00",
+    "job_id": "JOB-D32DFFE2CD404F4B",
+    "project_id": "project_1d161b60b6d7",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T15:15:48.833763+00:00",
+    "job_id": "JOB-D32DFFE2CD404F4B",
+    "project_id": "project_1d161b60b6d7",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-01T15:37:49.720990+00:00",
+    "job_id": "JOB-6AD6517B50334EF0",
+    "project_id": "project_7070f3a453d3",
+    "call_type": "image_regeneration"
+  },
+  {
+    "timestamp": "2026-08-02T07:09:52.957708+00:00",
+    "job_id": "JOB-E192F6BFD8494075",
+    "project_id": "project_5f11f561bf62",
+    "call_type": "story"
+  },
+  {
+    "timestamp": "2026-08-02T07:10:31.640023+00:00",
+    "job_id": "JOB-148D775AC44145AD",
+    "project_id": "project_5f11f561bf62",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-02T07:11:40.965192+00:00",
+    "job_id": "JOB-148D775AC44145AD",
+    "project_id": "project_5f11f561bf62",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-02T07:12:50.072350+00:00",
+    "job_id": "JOB-148D775AC44145AD",
+    "project_id": "project_5f11f561bf62",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-02T07:14:00.681387+00:00",
+    "job_id": "JOB-148D775AC44145AD",
+    "project_id": "project_5f11f561bf62",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-02T07:14:58.516269+00:00",
+    "job_id": "JOB-148D775AC44145AD",
+    "project_id": "project_5f11f561bf62",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-02T07:15:58.243656+00:00",
+    "job_id": "JOB-148D775AC44145AD",
+    "project_id": "project_5f11f561bf62",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-02T14:20:07.410218+00:00",
+    "job_id": "JOB-1164A6DBFBF14700",
+    "project_id": "project_a1caeff11733",
+    "call_type": "story"
+  },
+  {
+    "timestamp": "2026-08-02T14:21:25.083859+00:00",
+    "job_id": "JOB-E2145583748E467F",
+    "project_id": "project_a1caeff11733",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-02T14:22:34.125285+00:00",
+    "job_id": "JOB-E2145583748E467F",
+    "project_id": "project_a1caeff11733",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-02T14:23:37.417866+00:00",
+    "job_id": "JOB-E2145583748E467F",
+    "project_id": "project_a1caeff11733",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-02T14:24:51.257298+00:00",
+    "job_id": "JOB-E2145583748E467F",
+    "project_id": "project_a1caeff11733",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-02T14:25:57.324510+00:00",
+    "job_id": "JOB-E2145583748E467F",
+    "project_id": "project_a1caeff11733",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-02T14:27:01.032082+00:00",
+    "job_id": "JOB-E2145583748E467F",
+    "project_id": "project_a1caeff11733",
+    "call_type": "image"
+  },
+  {
+    "timestamp": "2026-08-02T14:47:29.351375+00:00",
+    "job_id": "JOB-75F7D389E23C4984",
+    "project_id": "project_a1caeff11733",
+    "call_type": "image_regeneration"
+  },
+  {
+    "timestamp": "2026-08-02T14:54:16.939949+00:00",
+    "job_id": "JOB-F190E39CFDDB43ED",
+    "project_id": "project_a1caeff11733",
+    "call_type": "image_regeneration"
+  },
+  {
+    "timestamp": "2026-08-02T15:16:48.827239+00:00",
+    "job_id": "JOB-812E20F29A8B4520",
+    "project_id": "project_a1caeff11733",
+    "call_type": "image_regeneration"
+  },
+  {
+    "timestamp": "2026-08-02T15:36:55.860338+00:00",
+    "job_id": "JOB-BE0E75CDB12A4256",
+    "project_id": "project_a1caeff11733",
+    "call_type": "image_regeneration"
+  }
+]

@@ -1,0 +1,156 @@
+[
+  {
+    "mapping_id": "MAP-DFC64F7E9DF6",
+    "project_id": "project_a1caeff11733",
+    "asset_id": "FOLDER-3BF0062C30AD",
+    "enabled": true,
+    "usage_role": "candidate",
+    "episode_scope": {
+      "mode": "all",
+      "episode": null,
+      "start": null,
+      "end": null,
+      "episodes": []
+    },
+    "scene_scope": {
+      "mode": "all",
+      "scene": null,
+      "start": null,
+      "end": null,
+      "scenes": []
+    },
+    "assignment_source": "manual",
+    "confidence": null,
+    "match_reason": "",
+    "status": "suggested",
+    "user_confirmed": false,
+    "version_policy": "pinned_version",
+    "pinned_version": 1,
+    "candidate_only": true,
+    "created_at": "2026-08-02T14:20:07.389173+00:00",
+    "updated_at": "2026-08-02T14:20:07.389173+00:00",
+    "snapshot_path": null,
+    "snapshot_sha256": null,
+    "snapshot_source_version": null,
+    "selected_child_asset_ids": [
+      "ASSET-CHAR-E425A38D3742",
+      "ASSET-CHAR-009ED7988542",
+      "ASSET-CHAR-16CCC5DED796",
+      "ASSET-CHAR-6066B46398A9"
+    ]
+  },
+  {
+    "mapping_id": "MAP-AB47A73A2A84",
+    "project_id": "project_a1caeff11733",
+    "asset_id": "FOLDER-CE436BACBF8E",
+    "enabled": true,
+    "usage_role": "candidate",
+    "episode_scope": {
+      "mode": "all",
+      "episode": null,
+      "start": null,
+      "end": null,
+      "episodes": []
+    },
+    "scene_scope": {
+      "mode": "all",
+      "scene": null,
+      "start": null,
+      "end": null,
+      "scenes": []
+    },
+    "assignment_source": "manual",
+    "confidence": null,
+    "match_reason": "",
+    "status": "suggested",
+    "user_confirmed": false,
+    "version_policy": "pinned_version",
+    "pinned_version": 1,
+    "candidate_only": true,
+    "created_at": "2026-08-02T14:20:07.396813+00:00",
+    "updated_at": "2026-08-02T14:20:07.396813+00:00",
+    "snapshot_path": null,
+    "snapshot_sha256": null,
+    "snapshot_source_version": null,
+    "selected_child_asset_ids": [
+      "ASSET-GENERAL-39A672656DC1"
+    ]
+  },
+  {
+    "mapping_id": "MAP-D5B4E1510E72",
+    "project_id": "project_a1caeff11733",
+    "asset_id": "FOLDER-3BF0062C30AD",
+    "enabled": true,
+    "usage_role": "candidate",
+    "episode_scope": {
+      "mode": "all",
+      "episode": null,
+      "start": null,
+      "end": null,
+      "episodes": []
+    },
+    "scene_scope": {
+      "mode": "all",
+      "scene": null,
+      "start": null,
+      "end": null,
+      "scenes": []
+    },
+    "assignment_source": "auto",
+    "confidence": null,
+    "match_reason": "candidate_collection",
+    "status": "confirmed",
+    "user_confirmed": true,
+    "version_policy": "pinned_version",
+    "pinned_version": 1,
+    "candidate_only": false,
+    "created_at": "2026-08-02T15:29:51.863443+00:00",
+    "updated_at": "2026-08-02T15:29:51.863443+00:00",
+    "snapshot_path": null,
+    "snapshot_sha256": null,
+    "snapshot_source_version": null,
+    "selected_child_asset_ids": [
+      "ASSET-CHAR-E425A38D3742",
+      "ASSET-CHAR-009ED7988542",
+      "ASSET-CHAR-16CCC5DED796",
+      "ASSET-CHAR-6066B46398A9"
+    ]
+  },
+  {
+    "mapping_id": "MAP-A97D7010F822",
+    "project_id": "project_a1caeff11733",
+    "asset_id": "FOLDER-CE436BACBF8E",
+    "enabled": true,
+    "usage_role": "candidate",
+    "episode_scope": {
+      "mode": "all",
+      "episode": null,
+      "start": null,
+      "end": null,
+      "episodes": []
+    },
+    "scene_scope": {
+      "mode": "all",
+      "scene": null,
+      "start": null,
+      "end": null,
+      "scenes": []
+    },
+    "assignment_source": "auto",
+    "confidence": null,
+    "match_reason": "candidate_collection",
+    "status": "confirmed",
+    "user_confirmed": true,
+    "version_policy": "pinned_version",
+    "pinned_version": 1,
+    "candidate_only": false,
+    "created_at": "2026-08-02T15:29:51.863443+00:00",
+    "updated_at": "2026-08-02T15:29:51.863443+00:00",
+    "snapshot_path": null,
+    "snapshot_sha256": null,
+    "snapshot_source_version": null,
+    "selected_child_asset_ids": [
+      "ASSET-GENERAL-39A672656DC1"
+    ]
+  }
+]

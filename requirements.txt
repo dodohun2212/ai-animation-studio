@@ -1,0 +1,8 @@
+openai==2.48.0
+runwayml==5.13.0
+
+# Optional local face consistency feature (install only after reviewing the
+# selected model and package licenses):
+# insightface
+# onnxruntime
+# opencv-python

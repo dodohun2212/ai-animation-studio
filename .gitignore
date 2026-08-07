@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Environment and secrets
+.env
+
+# IDE and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Runtime data
+cache/*
+logs/*
+images/generated/*
+images/temp/*
+videos/rendered/*
+videos/final/*
+videos/temp/*
+output/reels/*
+output/shorts/*
+output/thumbnails/*
+output/archive/*
+
+# Keep empty runtime directories
+!.gitkeep

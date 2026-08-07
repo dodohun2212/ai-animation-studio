@@ -1,0 +1,9 @@
+시작 움직임: $start_motion
+주요 움직임: $main_motion
+종료 움직임: $end_motion
+카메라 움직임: $camera_motion
+환경 움직임: $environment_motion
+움직임 속도: $motion_speed
+움직임 강도: $motion_intensity
+표정 변화: $expression_change
+다음 장면 연결: $continuity_hint

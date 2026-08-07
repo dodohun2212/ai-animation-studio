@@ -1,0 +1,128 @@
+[
+  {
+    "scene_number": 1,
+    "image_path": "C:\\Users\\lg\\OneDrive - koreatech.ac.kr\\바탕 화면\\AI-Animation-Studio\\learning_data\\projects\\project_a1caeff11733\\images\\scene1.png",
+    "status": "pending",
+    "regeneration_count": 0,
+    "history": [
+      {
+        "event": "pending",
+        "timestamp": "2026-08-02T14:28:09.486888+00:00"
+      }
+    ],
+    "updated_at": "2026-08-02T14:28:09.486888+00:00"
+  },
+  {
+    "scene_number": 2,
+    "image_path": "C:\\Users\\lg\\OneDrive - koreatech.ac.kr\\바탕 화면\\AI-Animation-Studio\\learning_data\\projects\\project_a1caeff11733\\images\\scene2.png",
+    "status": "pending",
+    "regeneration_count": 0,
+    "history": [
+      {
+        "event": "pending",
+        "timestamp": "2026-08-02T14:28:09.513009+00:00"
+      }
+    ],
+    "updated_at": "2026-08-02T14:28:09.513009+00:00"
+  },
+  {
+    "scene_number": 3,
+    "image_path": "C:\\Users\\lg\\OneDrive - koreatech.ac.kr\\바탕 화면\\AI-Animation-Studio\\learning_data\\projects\\project_a1caeff11733\\images\\scene3.png",
+    "status": "pending",
+    "regeneration_count": 6,
+    "history": [
+      {
+        "event": "pending",
+        "timestamp": "2026-08-02T14:28:09.549343+00:00"
+      },
+      {
+        "event": "pending",
+        "timestamp": "2026-08-02T14:48:45.494790+00:00"
+      },
+      {
+        "event": "regenerated",
+        "timestamp": "2026-08-02T14:48:45.494790+00:00"
+      },
+      {
+        "event": "pending",
+        "timestamp": "2026-08-02T14:48:46.203803+00:00"
+      },
+      {
+        "event": "regenerated",
+        "timestamp": "2026-08-02T14:48:46.203803+00:00"
+      },
+      {
+        "event": "pending",
+        "timestamp": "2026-08-02T14:55:33.874276+00:00"
+      },
+      {
+        "event": "regenerated",
+        "timestamp": "2026-08-02T14:55:33.874276+00:00"
+      },
+      {
+        "event": "pending",
+        "timestamp": "2026-08-02T14:55:34.525756+00:00"
+      },
+      {
+        "event": "regenerated",
+        "timestamp": "2026-08-02T14:55:34.525756+00:00"
+      },
+      {
+        "event": "pending",
+        "timestamp": "2026-08-02T15:18:06.111879+00:00"
+      },
+      {
+        "event": "regenerated",
+        "timestamp": "2026-08-02T15:18:06.111879+00:00"
+      },
+      {
+        "event": "pending",
+        "timestamp": "2026-08-02T15:38:02.154597+00:00"
+      },
+      {
+        "event": "regenerated",
+        "timestamp": "2026-08-02T15:38:02.154597+00:00"
+      }
+    ],
+    "updated_at": "2026-08-02T15:38:02.154597+00:00"
+  },
+  {
+    "scene_number": 4,
+    "image_path": "C:\\Users\\lg\\OneDrive - koreatech.ac.kr\\바탕 화면\\AI-Animation-Studio\\learning_data\\projects\\project_a1caeff11733\\images\\scene4.png",
+    "status": "pending",
+    "regeneration_count": 0,
+    "history": [
+      {
+        "event": "pending",
+        "timestamp": "2026-08-02T14:28:09.571450+00:00"
+      }
+    ],
+    "updated_at": "2026-08-02T14:28:09.571450+00:00"
+  },
+  {
+    "scene_number": 5,
+    "image_path": "C:\\Users\\lg\\OneDrive - koreatech.ac.kr\\바탕 화면\\AI-Animation-Studio\\learning_data\\projects\\project_a1caeff11733\\images\\scene5.png",
+    "status": "pending",
+    "regeneration_count": 0,
+    "history": [
+      {
+        "event": "pending",
+        "timestamp": "2026-08-02T14:28:09.606981+00:00"
+      }
+    ],
+    "updated_at": "2026-08-02T14:28:09.606981+00:00"
+  },
+  {
+    "scene_number": 6,
+    "image_path": "C:\\Users\\lg\\OneDrive - koreatech.ac.kr\\바탕 화면\\AI-Animation-Studio\\learning_data\\projects\\project_a1caeff11733\\images\\scene6.png",
+    "status": "pending",
+    "regeneration_count": 0,
+    "history": [
+      {
+        "event": "pending",
+        "timestamp": "2026-08-02T14:28:09.634542+00:00"
+      }
+    ],
+    "updated_at": "2026-08-02T14:28:09.634542+00:00"
+  }
+]

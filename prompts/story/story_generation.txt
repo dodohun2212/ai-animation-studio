@@ -1,0 +1,84 @@
+[1. 프로젝트]
+프로젝트 이름: $project_name
+영상 주제: $topic
+전체 줄거리: $full_story
+장르: $genre
+전체 분위기: $mood
+
+[2. 이야기 설정]
+세계관: $lore
+대표 캐릭터: $character
+대표 캐릭터 Asset 및 프로젝트 등장 캐릭터 정보:
+$character_cast_metadata
+
+대표 캐릭터는 대본 전체의 중심으로 유지하십시오.
+위 대표 캐릭터 설정을 대본 전체에서 일관되게 유지하십시오.
+서브 캐릭터는 각자의 이야기 역할에 맞게 필요한 장면에만 등장시키십시오.
+서로 다른 Character Asset의 이름, 외형과 역할을 섞지 마십시오.
+
+[3. 영상·장면 전체 분위기 Reference Asset]
+$atmosphere_asset_metadata
+
+위 Asset의 이름·유형·설명은 작품 전체의 분위기, 장소 감각과 시각 방향을 정하는 참고자료입니다.
+Reference 이미지 자체는 Story API에 첨부되지 않으므로 텍스트 설명만 대본에 자연스럽게 반영하십시오.
+
+[4. 장면 참고 Asset]
+$scene_reference_asset_metadata
+
+위 Asset은 특정 배경·소품·스타일·일반 참고자료입니다.
+각 Asset의 사용 목적과 장면 내용이 맞을 때만 대본에 반영하고, 필요하지 않은 장면에 억지로 등장시키지 마십시오.
+
+[5. 선택한 프로젝트 Asset 설정]
+$project_asset_metadata
+
+선택한 추가 Asset이 있으면 해당 이름·유형·설명을 대본에 일관되게 반영하십시오.
+
+[6. 이전 이야기 연결]
+$previous_scene_context
+
+이전 장면이 연결된 경우 마지막 상황에서 자연스럽게 이어서 시작하십시오.
+장소·시간대·등장인물 상태는 유지하되 새로운 행동과 카메라 구성은 허용하십시오.
+
+[7. 시각·연출 설정]
+시각적 스타일: $visual_style
+색감: $color
+조명: $lighting
+카메라 느낌: $camera
+대사 스타일: $dialogue
+피해야 할 요소: $avoid
+화면 비율: $aspect
+
+[8. 영상 구조]
+영상 길이: 약 $duration_seconds초
+장면 수: 정확히 $scene_count개
+
+[9. 사용자 추가 지시사항]
+$additional_notes
+
+[10. 출력 요구사항]
+위 설정을 반영한 한국어 애니메이션 대본만 작성하십시오.
+이미지 프롬프트, Reference 선택, 이미지 생성 지시 또는 편집 프로그램 지시는 생성하지 마십시오.
+응답에는 작품 제목(title), 전체 대본 요약(synopsis), 정확히 $scene_count개의 장면(scenes), 결말(ending)을 포함하십시오.
+각 장면에는 다음 정보를 모두 작성하십시오.
+- number: 순번
+- description: 배경·행동·감정 흐름·필요한 대사를 담은 대본
+- visual_action: 대사를 제외하고 화면에서 실제로 보일 핵심 행동
+- start_motion: 장면 시작 순간의 자세·시선·이동 상태
+- main_motion: 장면의 주요 신체·소품 움직임
+- end_motion: 마지막 1초에 도달해야 할 자세·시선·이동 방향
+- shot_size: 이미지 한 장의 샷 크기. 예: 초광각 롱숏, 미디엄 와이드, 클로즈업
+- camera_angle: 이미지 한 장의 정적인 카메라 앵글. 예: 아이레벨, 로우앵글, 하이앵글
+- composition: 인물·배경·핵심 사물의 화면 내 위치와 여백을 구체적으로 명시
+- lens_feel: 원근감과 렌즈 느낌. 예: 초광각의 깊은 공간감, 자연스러운 표준 렌즈
+- focus_subject: 이미지에서 가장 먼저 보여야 할 핵심 초점 대상
+- camera_motion: 영상 생성용 카메라 움직임. 정적인 이미지 구도와 분리하여 작성하고, 필요 없으면 안정적인 고정 카메라라고 명시
+- environment_motion: 바람·빛·연기·물·입자·배경 물체 움직임
+- motion_speed: 느림·보통·빠름 중 하나인 움직임 속도
+- motion_intensity: 약함·보통·강함 중 하나인 움직임 강도
+- expression_change: 시작 표정에서 종료 표정까지의 변화
+- continuity_hint: 다음 장면이 이어받아야 할 종료 상태. 마지막 장면도 안정된 종료 상태를 작성
+움직임 항목은 영상 생성 AI가 그대로 이해할 수 있는 구체적인 현재형 문장으로 작성하고, 지시문을 작성하라는 메타 문장은 넣지 마십시오.
+장면별 shot_size, camera_angle, composition, lens_feel, focus_subject는 프로젝트의 전체 카메라 느낌을 바탕으로 정하되, 현재 장면의 서사와 감정을 우선하십시오.
+시작·전개·결말이 영상 길이 안에서 자연스럽게 이어지도록 구성하십시오.
+지정된 JSON 형식 이외의 설명이나 Markdown은 반환하지 마십시오.
+

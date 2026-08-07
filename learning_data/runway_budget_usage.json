@@ -1,0 +1,156 @@
+[
+    {
+        "timestamp": "2026-08-02T05:49:45.343787+00:00",
+        "project_id": "project_1d161b60b6d7",
+        "api_type": "video",
+        "estimated_cost_usd": 0.25,
+        "actual_cost_usd": 0.25,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "response_seconds": 4.612513,
+        "succeeded": true
+    },
+    {
+        "timestamp": "2026-08-02T05:50:14.070914+00:00",
+        "project_id": "project_1d161b60b6d7",
+        "api_type": "video",
+        "estimated_cost_usd": 0.25,
+        "actual_cost_usd": 0.25,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "response_seconds": 2.90281,
+        "succeeded": true
+    },
+    {
+        "timestamp": "2026-08-02T05:51:23.191949+00:00",
+        "project_id": "project_1d161b60b6d7",
+        "api_type": "video",
+        "estimated_cost_usd": 0.25,
+        "actual_cost_usd": 0.25,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "response_seconds": 43.215926,
+        "succeeded": true
+    },
+    {
+        "timestamp": "2026-08-02T05:52:49.399103+00:00",
+        "project_id": "project_1d161b60b6d7",
+        "api_type": "video",
+        "estimated_cost_usd": 0.25,
+        "actual_cost_usd": 0.25,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "response_seconds": 49.00879,
+        "succeeded": true
+    },
+    {
+        "timestamp": "2026-08-02T05:53:18.960046+00:00",
+        "project_id": "project_1d161b60b6d7",
+        "api_type": "video",
+        "estimated_cost_usd": 0.25,
+        "actual_cost_usd": 0.25,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "response_seconds": 3.513056,
+        "succeeded": true
+    },
+    {
+        "timestamp": "2026-08-02T05:54:38.366243+00:00",
+        "project_id": "project_1d161b60b6d7",
+        "api_type": "video",
+        "estimated_cost_usd": 0.25,
+        "actual_cost_usd": 0.25,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "response_seconds": 53.966704,
+        "succeeded": true
+    },
+    {
+        "timestamp": "2026-08-02T07:38:23.296716+00:00",
+        "project_id": "project_5f11f561bf62",
+        "api_type": "video",
+        "estimated_cost_usd": 0.25,
+        "actual_cost_usd": 0.25,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "response_seconds": 22.052102,
+        "succeeded": true
+    },
+    {
+        "timestamp": "2026-08-02T07:38:52.590473+00:00",
+        "project_id": "project_5f11f561bf62",
+        "api_type": "video",
+        "estimated_cost_usd": 0.25,
+        "actual_cost_usd": 0.25,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "response_seconds": 3.63002,
+        "succeeded": true
+    },
+    {
+        "timestamp": "2026-08-02T07:40:14.123863+00:00",
+        "project_id": "project_5f11f561bf62",
+        "api_type": "video",
+        "estimated_cost_usd": 0.25,
+        "actual_cost_usd": 0.25,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "response_seconds": 54.879001,
+        "succeeded": true
+    },
+    {
+        "timestamp": "2026-08-02T07:41:16.155200+00:00",
+        "project_id": "project_5f11f561bf62",
+        "api_type": "video",
+        "estimated_cost_usd": 0.25,
+        "actual_cost_usd": 0.25,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "response_seconds": 36.436661,
+        "succeeded": true
+    },
+    {
+        "timestamp": "2026-08-02T07:42:41.863697+00:00",
+        "project_id": "project_5f11f561bf62",
+        "api_type": "video",
+        "estimated_cost_usd": 0.25,
+        "actual_cost_usd": 0.25,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "response_seconds": 60.812663,
+        "succeeded": true
+    },
+    {
+        "timestamp": "2026-08-02T07:44:05.423013+00:00",
+        "project_id": "project_5f11f561bf62",
+        "api_type": "video",
+        "estimated_cost_usd": 0.25,
+        "actual_cost_usd": 0.25,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "response_seconds": 59.052503,
+        "succeeded": true
+    },
+    {
+        "timestamp": "2026-08-02T12:51:27.445071+00:00",
+        "project_id": "project_5f11f561bf62",
+        "api_type": "video",
+        "estimated_cost_usd": 0.25,
+        "actual_cost_usd": 0.25,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "response_seconds": 3.960303,
+        "succeeded": true
+    },
+    {
+        "timestamp": "2026-08-02T13:56:20.814946+00:00",
+        "project_id": "project_5f11f561bf62",
+        "api_type": "video",
+        "estimated_cost_usd": 0.25,
+        "actual_cost_usd": 0.25,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "response_seconds": 3.219311,
+        "succeeded": true
+    }
+]

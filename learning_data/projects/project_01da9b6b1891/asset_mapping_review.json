@@ -1,0 +1,19 @@
+{
+  "project_id": "project_01da9b6b1891",
+  "mapping_revision": 2,
+  "script_revision": 1,
+  "script_fingerprint": "2f6691f25f273f9411c5cc5ace20a553ed77696344c4fc534554e9c70996b453",
+  "status": "approved",
+  "approved_at": "2026-08-01T14:46:05.471949+00:00",
+  "approved_by": "user_confirmed_candidate_collection",
+  "text_only_confirmed": false,
+  "legacy_confirmed": false,
+  "reviewed_scenes": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ]
+}
