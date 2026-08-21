@@ -11,6 +11,20 @@ export interface CreateProjectResponse { project: Project; }
 export interface ListProjectsResponse { projects: ProjectSummary[]; }
 export interface GetProjectResponse { project: Project; }
 
+export type ProviderCredentialKind = "openai" | "runway";
+
+export interface ProviderCredentialStatus {
+  provider: ProviderCredentialKind;
+  configured: boolean;
+  connected: boolean;
+  maskedValue: string | null;
+}
+
+export interface GetProviderSettingsResponse { providers: ProviderCredentialStatus[]; }
+export interface SaveProviderCredentialRequest { value: string; }
+export interface SaveProviderCredentialResponse { provider: ProviderCredentialStatus; }
+export interface SetProviderConnectionResponse { provider: ProviderCredentialStatus; }
+
 export interface VideoScenePreview {
   sceneNumber: SceneNumber;
   prompt: string;
@@ -64,6 +78,13 @@ export const API_ROUTES = {
   health: "/health",
   projects: "/projects",
   project: (projectId: string) => `/projects/${projectId}`,
+  providerSettings: "/settings/providers",
+  providerCredential: (provider: ProviderCredentialKind) =>
+    `/settings/providers/${provider}/credential`,
+  providerDisconnect: (provider: ProviderCredentialKind) =>
+    `/settings/providers/${provider}/disconnect`,
+  providerReconnect: (provider: ProviderCredentialKind) =>
+    `/settings/providers/${provider}/reconnect`,
   videoPreview: (projectId: string) => `/projects/${projectId}/videos/preview`,
   videoGeneration: (projectId: string) => `/projects/${projectId}/videos/generations`,
   videoProgress: (projectId: string, jobId: string) => `/projects/${projectId}/videos/generations/${jobId}`,
