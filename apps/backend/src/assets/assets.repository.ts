@@ -158,6 +158,20 @@ export class LocalAssetsRepository {
     } catch { return null; }
   }
 
+  /** Resolve a version recorded in the trusted Asset Library index for a local snapshot. */
+  resolveVersionContentPath(asset: StoredAsset, version: number): string | null {
+    const record = asset.versions.find((item) => item.version === version);
+    if (!record) return null;
+    const candidate = path.isAbsolute(record.stored_path) ? path.resolve(record.stored_path) : path.resolve(this.libraryRoot, record.stored_path);
+    try {
+      const safeRoot = fs.realpathSync(path.resolve(this.learningDataRoot));
+      const realCandidate = fs.realpathSync.native(candidate);
+      const relative = path.relative(safeRoot, realCandidate);
+      if (relative.startsWith("..") || path.isAbsolute(relative)) return null;
+      return fs.statSync(realCandidate).isFile() ? realCandidate : null;
+    } catch { return null; }
+  }
+
   async canDeleteOwnedFile(asset: StoredAsset): Promise<boolean> {
     if (asset.source_project_id !== "_asset_library_manual" || asset.is_folder) return false;
     const contentPath = this.resolveContentPath(asset);

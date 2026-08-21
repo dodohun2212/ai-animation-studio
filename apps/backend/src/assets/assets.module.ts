@@ -14,5 +14,6 @@ const defaultRoot = () => process.env.LEARNING_DATA_ROOT ?? path.join(process.cw
     { provide: LocalAssetsRepository, useFactory: (root: string) => new LocalAssetsRepository(root), inject: [LEARNING_DATA_ROOT] },
     AssetsService,
   ],
+  exports: [LocalAssetsRepository, LEARNING_DATA_ROOT],
 })
 export class AssetsModule {}

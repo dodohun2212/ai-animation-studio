@@ -112,6 +112,18 @@ describe("LocalAssetsRepository", () => {
     expect(repository.resolveContentPath({ ...asset, stored_path: outside, versions: [{ ...asset.versions[0]!, stored_path: outside }] })).toBeNull();
   });
 
+  it("never resolves an unsafe version path or a link that escapes learning_data", async () => {
+    const root = await makeRoot(); const outside = await makeRoot(); const repository = new LocalAssetsRepository(root);
+    const asset = await repository.create({ buffer: image, originalname: "version.png", mimetype: "image/png" }, metadata);
+    const outsideFile = path.join(outside, "outside.png"); await fs.writeFile(outsideFile, image);
+    asset.versions[0]!.stored_path = outsideFile;
+    expect(repository.resolveVersionContentPath(asset, 1)).toBeNull();
+    const linked = path.join(root, "linked-outside");
+    await fs.symlink(outside, linked, "junction");
+    asset.versions[0]!.stored_path = path.join(linked, "outside.png");
+    expect(repository.resolveVersionContentPath(asset, 1)).toBeNull();
+  });
+
   it("conservatively recovers a stale cross-process lock", async () => {
     const root = await makeRoot(); const lockDirectory = path.join(root, "asset_library"); await fs.mkdir(lockDirectory, { recursive: true });
     const lockPath = path.join(lockDirectory, ".assets-json.lock"); await fs.writeFile(lockPath, "stale-owner", "ascii");
