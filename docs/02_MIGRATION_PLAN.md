@@ -12,9 +12,9 @@
 | 영역 | 구현됨 | 미구현 |
 |---|---|---|
 | 기반 | strict TypeScript workspace, React/Vite, NestJS, Electron | 배포와 Python 동등성 검증 |
-| Shared | 1~6 SceneNumber, 기본 Project/Scene/usage/task, Python과 같은 WorkflowState/전이, 단기 프로젝트 create/list/get, Provider credential 상태 및 Runway preview/approval/progress 계약과 테스트 | 전체 ProjectContext, Wizard/Story motion, Asset/Mapping/Review, 장기 프로젝트 DTO |
-| Frontend | 단기 프로젝트 생성·목록·재열기, OpenAI·Runway credential 저장 상태·마스킹·세션 연결 관리와 안전한 API 오류 UI | Story·Asset·이미지·영상 등 이후 사용자 흐름 |
-| Backend | `GET /health`, 단기 프로젝트 create/list/get, Python 호환 JSON 저장·재열기, 로컬 `.env` credential 원자 저장·redaction·세션 연결 관리 | Story·Asset·workflow/provider/media endpoint |
+| Shared | 1~6 SceneNumber, 기본 Project/Scene/usage/task, Python과 같은 WorkflowState/전이, 단기 프로젝트 create/list/get, Provider credential 상태, Asset Library 조회·가져오기·편집·목록 삭제 계약 및 Runway preview/approval/progress 계약과 테스트 | 전체 ProjectContext, Wizard/Story motion, Asset mapping/review, 장기 프로젝트 DTO |
+| Frontend | 단기 프로젝트 생성·목록·재열기, OpenAI·Runway credential 관리, Asset Library 목록·검색·유형 필터·이미지 가져오기·상세·metadata 편집·안전한 목록 삭제와 안전한 API 오류 UI | Story·project Asset mapping·이미지·영상 등 이후 사용자 흐름 |
+| Backend | `GET /health`, 단기 프로젝트 create/list/get, Python 호환 JSON 저장·재열기, 로컬 `.env` credential 관리, Python 호환 Asset index·multipart 이미지 가져오기·검색·metadata 편집·사용 중 삭제 차단·안전한 content 제공 | Story·Asset mapping·workflow/provider/media endpoint |
 | Desktop | 격리된 BrowserWindow에서 frontend 로드 | backend 생명주기, file dialog/path open, packaging/recovery |
 
 Shared의 `/projects` route는 NestJS에 구현되었으며 video route는 아직 구현되지 않았다.
@@ -207,7 +207,7 @@ learning_data/api_calls.json  learning_data/api_jobs.json  learning_data/api_bud
 
 1. [x] 단기 프로젝트 생성·목록·재열기와 Python JSON fixture
 2. [x] 설정·secret 저장/가림/log redaction; Provider 미연결
-3. [ ] Asset Library 최소 CRUD·검색·소유권과 legacy index
+3. [x] Asset Library 최소 CRUD·검색·소유권과 legacy index
 4. [ ] project Asset scope·mapping review/snapshot/fingerprint Gate
 5. [ ] Story schema/prompt preview/edit/restore/explicit submit; fake adapter
 6. [ ] Story 저장, 6장면 검증·복구
@@ -266,6 +266,22 @@ Frontend 및 통합 완료 근거(2026-08-21): `feature/frontend`의 `48065b0`�
 - [x] 실제 Provider·네트워크·FFmpeg 호출 없이 새 Backend instance 재로딩 검증
 
 완료 근거(2026-08-22): Backend/shared `8eba07e`, Frontend `881f387`, Nest DI 부팅 수정 `d938db5`를 Main에 통합했다. Main에서 Backend 88개, Frontend 114개, Shared 12개 테스트와 전체 typecheck/build를 통과했다. 실제 Chrome에서 임시 저장 root를 사용하는 로컬 NestJS와 Vite를 연결해 OpenAI·Runway 테스트 credential 저장, 마스킹, OpenAI session 연결 해제·재연결, Backend 재시작 뒤 두 provider의 저장 상태 복원을 확인했다. 실제 API key와 유료 Provider는 사용하지 않았다.
+
+## 세 번째 이전 기능: Asset Library 최소 CRUD·검색·소유권과 legacy index
+
+- [x] Shared에 Asset 공개 DTO, 검색·유형 필터, multipart metadata, 상세·편집·목록 삭제 및 안전한 content route 정의
+- [x] `learning_data/asset_library/assets.json` 루트 배열과 전체 known snake_case 필드, 누락 legacy 기본값 및 읽기 시 비수정 호환
+- [x] `character`·`style`·`background`·`object`·`general_reference` 목록, casefold 부분 검색, 정확한 유형 필터와 Python 정렬 순서
+- [x] 브라우저 이미지 multipart 가져오기, SHA-256 중복 ID 재사용, 수동 소유 이미지 경로와 한글 파일명 UTF-8 보존
+- [x] 공개 API에서 절대경로를 제거하고 `learning_data` realpath 내부의 일반 파일만 안전한 content route로 제공
+- [x] metadata 편집과 사용 프로젝트가 있는 Asset·Folder·Folder 하위 Asset의 삭제 차단; 현재 DELETE는 index만 제거하고 이미지 bytes는 삭제하지 않음
+- [x] UTF-8 원자 index 저장, 고유 temp, Windows/OneDrive 제한 재시도, in-process 및 cross-process 잠금·stale lock 복구·실패 cleanup
+- [x] 손상·unknown JSON, unsafe ID/path·symlink 탈출, 잘린 이미지, multipart 제한·unknown part와 고정 ApiError/redaction 검증
+- [x] Frontend loading/empty/error/success, 목록 보존, 상세 재열기, 편집, 삭제 확인, 중복 submit 및 stale request/mutation 경합 차단
+- [x] Folder·version/Character 다각도 mutation·relink·project mapping/review·physical file 삭제는 다음 단계로 유지
+- [x] Provider·외부 네트워크·FFmpeg 호출 없음
+
+완료 근거(2026-08-22): Shared 계약 `0d1a731` 이후 Backend와 Frontend 구현을 Main에서 통합 검증했다. Backend 142개 통과·cross-process worker 1개 의도적 skip, Frontend 201개, Shared 17개 테스트와 전체 typecheck/build 및 `git diff --check`를 통과했다. 실제 임시 `LEARNING_DATA_ROOT`를 사용하는 AppModule HTTP에서 빈 목록, multipart 등록, 상세, image content, 한글 filename raw UTF-8 저장, 새 Backend instance 재열기와 unsafe encoded ID 차단을 확인했다. Chrome과 Vite/NestJS를 연결해 목록, 실제 이미지 로드, 상세, metadata 편집, 새로고침 뒤 재열기 및 삭제 확인창을 검증했다. Chrome 확장의 파일 URL 접근 권한이 꺼져 있어 브라우저 자동 파일 선택은 실행하지 못했지만 동일 multipart endpoint의 실제 HTTP 검증과 Frontend mock event 테스트를 통과했다. 실제 API key·유료 Provider·FFmpeg는 사용하지 않았다.
 
 ## 공통 완료 조건
 
