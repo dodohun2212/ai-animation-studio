@@ -9,19 +9,28 @@ interface State { statuses: StatusMap | null; error: { code: string; message: st
 
 export function ProviderSettingsScreen({ onBack }: Props) {
   const [state, setState] = useState<State>({ statuses: null, error: null, loading: true });
-  const operation = useRef<"refresh" | "mutation" | null>("refresh");
+  const refreshInFlight = useRef(true);
+  const activeMutations = useRef(new Set<ProviderCredentialKind>());
   async function load(acquired = false) {
-    if (!acquired) { if (operation.current) return; operation.current = "refresh"; setState((old) => ({ ...old, loading: true })); }
+    if (!acquired) {
+      if (refreshInFlight.current || activeMutations.current.size > 0) return;
+      refreshInFlight.current = true;
+      setState((old) => ({ ...old, loading: true }));
+    }
     try {
       const response = await getProviderSettings(); const statuses = {} as StatusMap;
       response.providers.forEach((item) => { statuses[item.provider] = item; });
       setState({ statuses, error: null, loading: false });
     } catch (error) { setState((old) => ({ ...old, error: toDisplayError(error), loading: false })); }
-    finally { if (operation.current === "refresh") operation.current = null; }
+    finally { refreshInFlight.current = false; }
   }
   useEffect(() => { void load(true); }, []);
-  const acquireMutation = () => { if (operation.current) return false; operation.current = "mutation"; return true; };
-  const releaseMutation = () => { if (operation.current === "mutation") operation.current = null; };
+  const acquireMutation = (provider: ProviderCredentialKind) => {
+    if (refreshInFlight.current || activeMutations.current.has(provider)) return false;
+    activeMutations.current.add(provider);
+    return true;
+  };
+  const releaseMutation = (provider: ProviderCredentialKind) => { activeMutations.current.delete(provider); };
   const update = (status: ProviderCredentialStatus) => setState((old) => old.statuses ? { ...old, statuses: { ...old.statuses, [status.provider]: status } } : old);
   return <section className="mt-8">
     <div className="flex items-center justify-between">
@@ -31,8 +40,8 @@ export function ProviderSettingsScreen({ onBack }: Props) {
     {!state.statuses && state.loading && <p className="mt-4 text-slate-400">불러오는 중...</p>}
     {state.error && <div className="mt-4 space-y-2"><p role="alert" data-error-code={state.error.code}>{state.error.message}</p><button type="button" onClick={() => void load()} disabled={state.loading}>다시 시도</button></div>}
     {state.statuses && <div>
-      <ProviderCredentialCard label="OpenAI" status={state.statuses.openai} onStatusChange={update} acquireMutation={acquireMutation} releaseMutation={releaseMutation}/>
-      <ProviderCredentialCard label="Runway" status={state.statuses.runway} onStatusChange={update} acquireMutation={acquireMutation} releaseMutation={releaseMutation}/>
+      <ProviderCredentialCard label="OpenAI" status={state.statuses.openai} onStatusChange={update} acquireMutation={() => acquireMutation("openai")} releaseMutation={() => releaseMutation("openai")}/>
+      <ProviderCredentialCard label="Runway" status={state.statuses.runway} onStatusChange={update} acquireMutation={() => acquireMutation("runway")} releaseMutation={() => releaseMutation("runway")}/>
     </div>}
   </section>;
 }

@@ -112,6 +112,44 @@ describe("ProviderSettingsScreen", () => {
     expect(fetchMock.mock.calls.every(([url]) => String(url) !== "/settings/providers/runway/disconnect")).toBe(true);
   });
 
+  it("allows OpenAI and Runway mutations to run concurrently without mixing their statuses", async () => {
+    const initial = [
+      makeProviderStatus({ provider: "openai", configured: true, connected: true, maskedValue: "sk-********7890" }),
+      makeProviderStatus({ provider: "runway", configured: true, connected: true, maskedValue: "rw-********7890" }),
+    ];
+    const disconnectedOpenAi = { ...initial[0], connected: false };
+    const disconnectedRunway = { ...initial[1], connected: false };
+    let resolveOpenAi: (response: Response) => void = () => {};
+    let resolveRunway: (response: Response) => void = () => {};
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { providers: initial }))
+      .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveOpenAi = resolve; }))
+      .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveRunway = resolve; }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ProviderSettingsScreen onBack={() => {}} />);
+
+    const openAiCard = (await screen.findByText("OpenAI")).closest("div") as HTMLElement;
+    const runwayCard = screen.getByText("Runway").closest("div") as HTMLElement;
+    const openAiButtons = openAiCard.querySelectorAll<HTMLButtonElement>('button[type="button"]');
+    const runwayButtons = runwayCard.querySelectorAll<HTMLButtonElement>('button[type="button"]');
+
+    fireEvent.click(openAiButtons[0] as HTMLButtonElement);
+    fireEvent.click(runwayButtons[0] as HTMLButtonElement);
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls.slice(1).map(([url]) => String(url))).toEqual([
+      "/settings/providers/openai/disconnect",
+      "/settings/providers/runway/disconnect",
+    ]);
+
+    resolveOpenAi(jsonResponse(200, { provider: disconnectedOpenAi }));
+    await waitFor(() => expect(openAiButtons[1]).not.toBeDisabled());
+    expect(runwayButtons[1]).toBeDisabled();
+
+    resolveRunway(jsonResponse(200, { provider: disconnectedRunway }));
+    await waitFor(() => expect(runwayButtons[1]).not.toBeDisabled());
+  });
+
   it("does not start a card mutation while a deferred refresh GET is in flight", async () => {
     const providers = [
       makeProviderStatus({ provider: "openai", configured: true, connected: true, maskedValue: "sk-********7890" }),
