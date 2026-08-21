@@ -12,12 +12,12 @@
 | 영역 | 구현됨 | 미구현 |
 |---|---|---|
 | 기반 | strict TypeScript workspace, React/Vite, NestJS, Electron | 배포와 Python 동등성 검증 |
-| Shared | 1~6 SceneNumber, 기본 Project/Scene/usage/task, Python과 같은 WorkflowState/전이, Runway preview/approval/progress 계약과 테스트 | 전체 ProjectContext, Wizard/Story motion, Asset/Mapping/Review, 장기 프로젝트 DTO |
-| Frontend | 제품명과 `INIT` placeholder 및 테스트 1개 | 실제 화면·입력·검토·진행·오류 UI와 API 연결 전부 |
-| Backend | `GET /health`와 단위 테스트 | 프로젝트 저장과 workflow/provider/media endpoint 전부 |
+| Shared | 1~6 SceneNumber, 기본 Project/Scene/usage/task, Python과 같은 WorkflowState/전이, 단기 프로젝트 create/list/get 및 Runway preview/approval/progress 계약과 테스트 | 전체 ProjectContext, Wizard/Story motion, Asset/Mapping/Review, 장기 프로젝트 DTO |
+| Frontend | 단기 프로젝트 ID·주제 입력, 생성·목록·재열기 화면, loading/empty/error 상태와 API 응답 검증 | Story·Asset·이미지·영상·설정 등 이후 사용자 흐름 |
+| Backend | `GET /health`, 단기 프로젝트 create/list/get, Python 호환 JSON 저장·재열기와 오류 처리 | Story·Asset·workflow/provider/media endpoint |
 | Desktop | 격리된 BrowserWindow에서 frontend 로드 | backend 생명주기, file dialog/path open, packaging/recovery |
 
-Shared의 `/projects` 및 video route는 아직 NestJS 구현이 아니다.
+Shared의 `/projects` route는 NestJS에 구현되었으며 video route는 아직 구현되지 않았다.
 
 ### 사용자 계약 결정
 
@@ -205,7 +205,7 @@ learning_data/api_calls.json  learning_data/api_jobs.json  learning_data/api_bud
 
 ### 10. 안전한 기능 이전 순서
 
-1. [ ] 단기 프로젝트 생성·목록·재열기와 Python JSON fixture
+1. [x] 단기 프로젝트 생성·목록·재열기와 Python JSON fixture
 2. [ ] 설정·secret 저장/가림/log redaction; Provider 미연결
 3. [ ] Asset Library 최소 CRUD·검색·소유권과 legacy index
 4. [ ] project Asset scope·mapping review/snapshot/fingerprint Gate
@@ -234,14 +234,14 @@ learning_data/api_calls.json  learning_data/api_jobs.json  learning_data/api_bud
 - [x] `POST /projects`, `GET /projects`, `GET /projects/:projectId`와 `{ code, message, details? }` fixture 정의
 - [x] snake_case 저장 JSON↔camelCase API, unknown field와 legacy state fixture 정의
 - [x] root typecheck/test/build와 Python baseline 무변경 확인
-- [ ] 완료: 앱 재시작 뒤 같은 project의 topic/state/timestamps가 보존되고 빈·중복·위험 ID와 손상 JSON 오류가 표시됨
+- [x] 완료: 앱 재시작 뒤 같은 project의 topic/state/timestamps가 보존되고 빈·중복·위험 ID와 손상 JSON 오류가 표시됨
 
 ### Frontend 범위와 완료 조건
 
-- [ ] 이름/ID와 영상 주제 최소 폼, submit 상태와 field 오류
-- [ ] 목록 loading/empty/error/success와 프로젝트 열기 화면
-- [ ] shared DTO/route만 사용하고 저장 구조를 UI에서 추정하지 않음
-- [ ] 이벤트 테스트로 필수값, 성공 생성, backend 오류, 목록 갱신, 재열기 검증
+- [x] 프로젝트 ID와 영상 주제 최소 폼, submit 상태와 field 오류
+- [x] 목록 loading/empty/error/success와 프로젝트 열기 화면
+- [x] shared DTO/route만 사용하고 저장 구조를 UI에서 추정하지 않음
+- [x] 이벤트 테스트로 필수값, 성공 생성, backend 오류, 목록 갱신, 재열기 검증
 
 ### Backend 범위와 완료 조건
 
@@ -251,7 +251,9 @@ learning_data/api_calls.json  learning_data/api_jobs.json  learning_data/api_bud
 - [x] Provider·FFmpeg·외부 프로그램 호출 없음
 - [x] repository/controller test로 round-trip, 새 instance reload, empty, duplicate/unsafe/corrupt JSON, atomic write failure와 유료 호출 0회 보장
 
-Backend 완료 근거(2026-08-21): `feature/backend`의 `2bbf81f`에서 shared 계약과 세 endpoint, Python 호환 저장소 및 오류 처리를 구현했다. Main 통합 후 Backend 71개, Shared 10개, Frontend 1개 테스트와 root typecheck/build를 통과했다. 첫 기능 전체는 Frontend 사용자 흐름과 통합 완료 조건이 남아 있으므로 아직 완료로 표시하지 않는다.
+Backend 완료 근거(2026-08-21): `feature/backend`의 `2bbf81f`에서 shared 계약과 세 endpoint, Python 호환 저장소 및 오류 처리를 구현했다. Backend 통합 시점에 Backend 71개, Shared 10개, 당시 Frontend 1개 테스트와 root typecheck/build를 통과했으며, 이 시점에는 Frontend 사용자 흐름이 남아 있어 Backend 범위만 완료 처리했다.
+
+Frontend 및 통합 완료 근거(2026-08-21): `feature/frontend`의 `48065b0`에서 ID·주제 폼, 목록 상태, 상세 재열기, 안전한 API 오류 처리를 구현했다. Main에서 Backend 71개, Frontend 56개, Shared 10개 테스트와 전체 typecheck/build를 통과했다. 실제 Chrome에서 로컬 NestJS와 Vite를 연결해 `통합검증_20260821_2253` 프로젝트 생성, 목록 반영, 페이지 새로고침 뒤 목록 복원과 상세 재열기까지 확인했으며 Provider·FFmpeg는 호출하지 않았다.
 
 ## 공통 완료 조건
 
