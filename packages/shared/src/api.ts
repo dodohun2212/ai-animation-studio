@@ -6,9 +6,10 @@ export interface ApiError {
   details?: Record<string, unknown>;
 }
 
-export interface CreateProjectRequest { topic: string; }
+export interface CreateProjectRequest { projectId: string; topic: string; }
 export interface CreateProjectResponse { project: Project; }
 export interface ListProjectsResponse { projects: ProjectSummary[]; }
+export interface GetProjectResponse { project: Project; }
 
 export interface VideoScenePreview {
   sceneNumber: SceneNumber;

@@ -25,7 +25,6 @@ export interface Scene {
 
 export interface ProjectSummary {
   id: string;
-  userId: string;
   topic: string;
   projectType: ProjectType;
   workflowState: WorkflowState;
