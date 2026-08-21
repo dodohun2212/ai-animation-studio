@@ -1,79 +1,76 @@
-# PRISM FORGE
+# AI Animation Studio
 
-OpenAI로 대본과 이미지 6장을 생성하고, Runway로 장면 영상을 만든 뒤
-FFmpeg로 Instagram Reels용 최종 영상을 병합하는 제작 도구입니다.
+대본과 장면 이미지를 생성하고, 사용자가 승인한 Runway 영상들을 FFmpeg로
+병합하여 Instagram Reels용 MP4를 만드는 애플리케이션입니다.
 
-## 기준 Workflow
+현재는 기존 Python/Tkinter 프로그램의 기능을 TypeScript 애플리케이션으로
+이전하는 단계입니다. Python 버전은 비교 기준으로 보존되며 새 기능 개발보다
+기존 기능의 동등한 재구현을 우선합니다.
 
-```text
-사용자 프로젝트 설정
-→ OpenAI Story API: 대본과 장면 6개
-→ OpenAI Image API: 이미지 6장
-→ 사용자 이미지 검토
-→ Runway 프롬프트·예상 비용 확인 및 수정
-→ 사용자의 명시적 요청 승인
-→ Runway Image-to-Video 순차 생성
-→ 장면별 영상 검토와 사용 확정
-→ FFmpeg 순서 병합
-→ Instagram Reels용 최종 MP4
-```
-
-## Provider 역할
-
-- OpenAI Story API: 대본, 장면 구성과 구조화된 움직임 정보
-- OpenAI Image API: 장면별 이미지 생성과 개별 재생성
-- Runway Video API: 검토된 이미지 1장당 약 5초의 세로 영상 생성
-- FFmpeg: 확정된 Scene 1~6 영상 검사와 순서 병합
-
-## 영상 기본값
-
-- 모델: Runway `gen4_turbo`
-- 장면 수: 6개
-- 장면 길이: 5초
-- 화면: `720×1280`, 9:16
-- 오디오: 없음
-- 실행: Scene 1부터 순차 생성
-- 장면 연결: 이전 Scene 종료 움직임을 다음 Scene 프롬프트에 자동 반영
-
-## 영상 저장 구조
+## 현재 구조
 
 ```text
-videos/
-├─ runway/
-│  ├─ scene1.mp4
-│  ├─ scene2.mp4
-│  ├─ scene3.mp4
-│  ├─ scene4.mp4
-│  ├─ scene5.mp4
-│  └─ scene6.mp4
-├─ continuity/
-│  └─ scene1_last.png ... scene6_last.png
-└─ final/
-   └─ instagram_reel.mp4
+app/                 기존 Python 기준 구현
+tests/               기존 Python 테스트
+prompts/             기존 프롬프트
+apps/frontend/       React + Vite
+apps/backend/        NestJS
+apps/desktop/        Electron
+packages/shared/     공통 TypeScript 계약
+docs/                현재 명세와 마이그레이션 문서
 ```
 
-생성 영상은 Asset Library에 등록하지 않으며 프로젝트 결과물로 별도 관리합니다.
+## 개발 환경
 
-## 비용 보호
+- Node.js 22+
+- npm workspaces
+- TypeScript strict mode
+- Python 3.12+는 기존 기준 구현을 검증할 때만 필요
+- FFmpeg는 영상 기능 구현과 검증 단계에서 필요
 
-- OpenAI와 Runway 예산을 분리합니다.
-- 실제 유료 요청 전 프롬프트, 호출 수와 예상 비용을 표시합니다.
-- 사용자의 명시적 승인 전에는 유료 요청을 보내지 않습니다.
-- 완료된 Scene은 재개 시 건너뜁니다.
-- 자동 무한 재시도는 금지합니다.
-- 실패한 Scene만 사용자 승인 후 재생성합니다.
+## 명령어
 
-## 기술 스택
+```text
+npm install
+npm run typecheck
+npm run build
+npm test
+npm run dev:frontend
+npm run dev:backend
+npm run dev:desktop
+```
 
-- Python 3.12+
-- Tkinter
-- OpenAI API
-- Runway API
-- FFmpeg
-- JSON 기반 로컬 저장
+PowerShell 실행 정책 때문에 `npm.ps1`이 차단되면 `npm.cmd`를 사용합니다.
 
-## 현재 전환 상태
+## 현재 구현 상태
 
-기존 CapCut UI와 실행 경로는 제거되었습니다. 기존 프로젝트 JSON의 CapCut 상태와
-경로 필드는 사용자 데이터를 잃지 않도록 불러올 때 새 영상 상태로 변환됩니다.
-Runway 네트워크 Adapter와 영상 생성 UI는 다음 구현 단계에서 연결합니다.
+구현됨:
+
+- TypeScript monorepo 기반
+- React 프론트엔드 기반
+- NestJS 백엔드와 로컬 `GET /health`
+- Electron 데스크톱 셸
+- 초기 공유 타입과 내부 API 계약
+
+아직 구현되지 않음:
+
+- 기존 Python 기능의 실제 마이그레이션
+- 프로젝트 저장과 기존 데이터 변환
+- OpenAI와 Runway Provider 연결
+- 승인·예산 Gate 및 작업 복구
+- 영상 검토와 FFmpeg 자동 병합
+- 설치 프로그램과 서버 배포
+
+자세한 현재 요구사항과 순서는 `docs/`를 확인합니다.
+
+## 작업공간
+
+```text
+AI-Animation-Studio-Workspace/
+├─ main/       통합과 검증
+├─ frontend/   feature/frontend
+└─ backend/    feature/backend
+```
+
+세 폴더에는 저장소 전체가 보이는 것이 정상입니다. 역할은 폴더에 들어 있는
+파일이 아니라 체크아웃된 브랜치와 담당 작업으로 구분합니다.
