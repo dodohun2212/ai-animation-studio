@@ -1,4 +1,5 @@
 import type { Project, ProjectSummary, SceneNumber } from "./domain.js";
+import type { Asset, AssetOwnership, AssetType } from "./asset.js";
 
 export interface ApiError {
   code: string;
@@ -10,6 +11,56 @@ export interface CreateProjectRequest { projectId: string; topic: string; }
 export interface CreateProjectResponse { project: Project; }
 export interface ListProjectsResponse { projects: ProjectSummary[]; }
 export interface GetProjectResponse { project: Project; }
+
+export interface ListAssetsQuery {
+  query?: string;
+  assetType?: AssetType;
+}
+
+export interface ListAssetsResponse { assets: Asset[]; }
+
+export interface GetAssetResponse {
+  asset: Asset;
+  usageProjectIds: string[];
+  ownership: AssetOwnership;
+  canDeleteOwnedFile: boolean;
+}
+
+/** Metadata part submitted alongside the image file in multipart/form-data. */
+export interface CreateAssetMetadata {
+  assetType: AssetType;
+  displayName: string;
+  description?: string;
+  tags?: string[];
+  aliases?: string[];
+  approved?: boolean;
+  faceBaseline?: boolean;
+  characterKey?: string | null;
+  notes?: string;
+}
+
+export interface CreateAssetResponse { asset: Asset; }
+
+/** Fields supported by Python's update_metadata operation. */
+export interface UpdateAssetMetadataRequest {
+  assetType?: AssetType;
+  displayName?: string;
+  description?: string;
+  tags?: string[];
+  aliases?: string[];
+  approved?: boolean;
+  faceBaseline?: boolean;
+  characterKey?: string | null;
+  notes?: string;
+  role?: string;
+}
+
+export interface UpdateAssetResponse { asset: Asset; }
+
+export interface DeleteAssetResponse {
+  assetId: string;
+  deletedOwnedFile: boolean;
+}
 
 export type ProviderCredentialKind = "openai" | "runway";
 
@@ -78,6 +129,9 @@ export const API_ROUTES = {
   health: "/health",
   projects: "/projects",
   project: (projectId: string) => `/projects/${projectId}`,
+  assets: "/assets",
+  asset: (assetId: string) => `/assets/${encodeURIComponent(assetId)}`,
+  assetContent: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/content`,
   providerSettings: "/settings/providers",
   providerCredential: (provider: ProviderCredentialKind) =>
     `/settings/providers/${provider}/credential`,
