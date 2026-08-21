@@ -1,0 +1,15 @@
+{
+  "name": "ai-animation-studio",
+  "version": "2.0.0",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "build": "npm run build --workspace @ai-animation-studio/shared && npm run build --workspace @ai-animation-studio/backend && npm run build --workspace @ai-animation-studio/frontend && npm run build --workspace @ai-animation-studio/desktop",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run build --workspace @ai-animation-studio/shared && npm run typecheck --workspaces --if-present",
+    "dev:frontend": "npm run dev --workspace @ai-animation-studio/frontend",
+    "dev:backend": "npm run dev --workspace @ai-animation-studio/backend",
+    "dev:desktop": "npm run dev --workspace @ai-animation-studio/desktop"
+  },
+  "engines": { "node": ">=22" }
+}

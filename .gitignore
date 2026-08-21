@@ -5,6 +5,12 @@ __pycache__/
 .venv/
 venv/
 
+# Node.js / TypeScript
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
 # Environment and secrets
 .env
 

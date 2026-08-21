@@ -1,0 +1,18 @@
+{
+  "name": "@ai-animation-studio/desktop",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "npm run build && electron .",
+    "build": "tsc",
+    "test": "node --test",
+    "typecheck": "tsc --noEmit --pretty false"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "electron": "^43.4.1",
+    "typescript": "^6.0.3"
+  }
+}

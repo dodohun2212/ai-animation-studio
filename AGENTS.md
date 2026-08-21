@@ -1,5 +1,25 @@
 # AGENTS.md
 
+## Shared AI Guidelines
+
+All coding agents must read and follow `AI_GUIDELINES.md` before changing this
+repository. If that file conflicts with this project-specific document, this
+document takes precedence.
+
+## TypeScript Migration Scope
+
+- The existing `app/`, `tests/`, and `prompts/` directories are the preserved
+  Python baseline. Do not move, rewrite, or delete them unless explicitly asked.
+- New application code belongs in `apps/` and shared TypeScript contracts belong
+  in `packages/shared/`.
+- Python-specific coding rules apply to the preserved Python code only.
+- New code uses TypeScript strict mode, npm workspaces, React with Vite for the
+  frontend, NestJS for the backend, and Electron for the Windows desktop shell.
+- Do not connect paid OpenAI or Runway requests until their approval and budget
+  gates have tests using fake adapters.
+- A worktree does not imply file ownership. The user must explicitly assign the
+  frontend, backend, or integration role for each session.
+
 ## 프로젝트 목적
 
 사용자가 주제를 입력하면 OpenAI API가 대본, 장면 6개와 이미지 6장을 생성한다.
