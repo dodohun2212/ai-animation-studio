@@ -44,11 +44,9 @@ export function maskCredential(value: string): string {
 @Injectable()
 export class ProviderSettingsService {
   private readonly disconnected = new Set<ProviderCredentialKind>();
+  private readonly logger = new ProviderSettingsLogger();
 
-  constructor(
-    private readonly repository: ProviderSettingsRepository,
-    private readonly logger = new ProviderSettingsLogger(),
-  ) {}
+  constructor(private readonly repository: ProviderSettingsRepository) {}
 
   async getSettings(): Promise<GetProviderSettingsResponse> {
     return { providers: await Promise.all(PROVIDERS.map((provider) => this.status(provider))) };
