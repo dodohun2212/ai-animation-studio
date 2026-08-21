@@ -35,4 +35,6 @@ start "GPT-5.6 SOL - MAIN" powershell.exe -NoLogo -NoExit -ExecutionPolicy Bypas
 start "CLAUDE - FRONTEND" powershell.exe -NoLogo -NoExit -ExecutionPolicy Bypass -Command "Set-Location -LiteralPath '%FRONT_DIR%'; & '%CLAUDE_CMD%'"
 start "GPT-5.6 TERRA - BACKEND" powershell.exe -NoLogo -NoExit -ExecutionPolicy Bypass -Command "Set-Location -LiteralPath '%BACKEND_DIR%'; & '%CODEX_CMD%' -m 'gpt-5.6-terra'"
 
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\arrange-ai-windows.ps1"
+
 endlocal
