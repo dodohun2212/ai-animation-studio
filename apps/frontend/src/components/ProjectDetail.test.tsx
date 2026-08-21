@@ -19,7 +19,7 @@ describe("ProjectDetail", () => {
     });
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { project }));
     vi.stubGlobal("fetch", fetchMock);
-    render(<ProjectDetail projectId="sample_project" onBack={() => {}} />);
+    render(<ProjectDetail projectId="sample_project" onBack={() => {}} onOpenMappingReview={() => {}} />);
 
     expect(screen.getByText("불러오는 중...")).toBeTruthy();
     expect(await screen.findByText("sample_project")).toBeTruthy();
@@ -34,7 +34,7 @@ describe("ProjectDetail", () => {
   it("shows warnings and errors counts", async () => {
     const project = makeProject({ warnings: ["a", "b"], errors: ["c"] });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
-    render(<ProjectDetail projectId={project.id} onBack={() => {}} />);
+    render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} />);
 
     expect(await screen.findByText("2건")).toBeTruthy();
     expect(screen.getByText("1건")).toBeTruthy();
@@ -45,7 +45,7 @@ describe("ProjectDetail", () => {
       "fetch",
       vi.fn().mockResolvedValue(jsonResponse(404, { code: "PROJECT_NOT_FOUND", message: "프로젝트를 찾을 수 없습니다." })),
     );
-    render(<ProjectDetail projectId="missing" onBack={() => {}} />);
+    render(<ProjectDetail projectId="missing" onBack={() => {}} onOpenMappingReview={() => {}} />);
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toBe("프로젝트를 찾을 수 없습니다.");
@@ -54,7 +54,7 @@ describe("ProjectDetail", () => {
 
   it("shows a safe error instead of crashing on a network failure", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
-    render(<ProjectDetail projectId="sample_project" onBack={() => {}} />);
+    render(<ProjectDetail projectId="sample_project" onBack={() => {}} onOpenMappingReview={() => {}} />);
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toBeTruthy();
@@ -64,10 +64,22 @@ describe("ProjectDetail", () => {
     const project = makeProject();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
     const onBack = vi.fn();
-    render(<ProjectDetail projectId={project.id} onBack={onBack} />);
+    render(<ProjectDetail projectId={project.id} onBack={onBack} onOpenMappingReview={() => {}} />);
 
     fireEvent.click(screen.getByRole("button", { name: "목록으로" }));
 
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onOpenMappingReview with the project ID when the Asset Mapping button is clicked", async () => {
+    const project = makeProject({ id: "sample_project" });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    const onOpenMappingReview = vi.fn();
+    render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={onOpenMappingReview} />);
+
+    await screen.findByText("sample_project");
+    fireEvent.click(screen.getByRole("button", { name: "Asset Mapping 검토" }));
+
+    expect(onOpenMappingReview).toHaveBeenCalledWith("sample_project");
   });
 });
