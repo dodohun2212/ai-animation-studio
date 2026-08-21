@@ -1,4 +1,4 @@
-import { WorkflowState, type Project } from "@ai-animation-studio/shared";
+import { WorkflowState, type Project, type ProviderCredentialStatus } from "@ai-animation-studio/shared";
 
 /** Minimal fake `Response` for mocking `fetch` in tests — no real network involved. */
 export function jsonResponse(status: number, body: unknown): Response {
@@ -31,6 +31,16 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     scenes: [],
     warnings: [],
     errors: [],
+    ...overrides,
+  };
+}
+
+export function makeProviderStatus(overrides: Partial<ProviderCredentialStatus> = {}): ProviderCredentialStatus {
+  return {
+    provider: "openai",
+    configured: false,
+    connected: false,
+    maskedValue: null,
     ...overrides,
   };
 }

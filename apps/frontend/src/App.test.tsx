@@ -109,4 +109,34 @@ describe("App", () => {
     expect(fetchMock).toHaveBeenCalledWith("/projects");
     expect(await screen.findByRole("button", { name: /existing_project/ })).toBeTruthy();
   });
+
+  it("navigates to API 설정 and back without breaking the project list screen", async () => {
+    const fetchMock = vi.fn<FakeFetch>(async (input) => {
+      const requestUrl = String(input);
+      if (requestUrl === "/projects") {
+        return jsonResponse(200, { projects: [] });
+      }
+      if (requestUrl === "/settings/providers") {
+        return jsonResponse(200, {
+          providers: [
+            { provider: "openai", configured: false, connected: false, maskedValue: null },
+            { provider: "runway", configured: false, connected: false, maskedValue: null },
+          ],
+        });
+      }
+      throw new Error(`Unexpected fetch call in test: ${requestUrl}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    await screen.findByText("아직 생성된 프로젝트가 없습니다.");
+    fireEvent.click(screen.getByRole("button", { name: "API 설정" }));
+
+    expect(await screen.findByText("OpenAI")).toBeTruthy();
+    expect(screen.getByText("Runway")).toBeTruthy();
+    expect(screen.queryByText("userId")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "목록으로" }));
+    expect(await screen.findByText("아직 생성된 프로젝트가 없습니다.")).toBeTruthy();
+  });
 });

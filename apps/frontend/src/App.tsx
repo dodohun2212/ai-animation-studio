@@ -4,8 +4,13 @@ import type { Project } from "@ai-animation-studio/shared";
 import { CreateProjectForm } from "./components/CreateProjectForm.js";
 import { ProjectDetail } from "./components/ProjectDetail.js";
 import { ProjectList } from "./components/ProjectList.js";
+import { ProviderSettingsScreen } from "./components/ProviderSettingsScreen.js";
 
-type Screen = { name: "list" } | { name: "create" } | { name: "detail"; projectId: string };
+type Screen =
+  | { name: "list" }
+  | { name: "create" }
+  | { name: "detail"; projectId: string }
+  | { name: "providerSettings" };
 
 export function App() {
   const [screen, setScreen] = useState<Screen>({ name: "list" });
@@ -29,17 +34,31 @@ export function App() {
         </p>
 
         {screen.name === "list" && (
-          <ProjectList
-            refreshToken={listRefreshToken}
-            onOpenProject={(projectId) => setScreen({ name: "detail", projectId })}
-            onCreateNew={() => setScreen({ name: "create" })}
-          />
+          <>
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                className="text-sm text-violet-300 underline"
+                onClick={() => setScreen({ name: "providerSettings" })}
+              >
+                API 설정
+              </button>
+            </div>
+            <ProjectList
+              refreshToken={listRefreshToken}
+              onOpenProject={(projectId) => setScreen({ name: "detail", projectId })}
+              onCreateNew={() => setScreen({ name: "create" })}
+            />
+          </>
         )}
         {screen.name === "create" && (
           <CreateProjectForm onCreated={handleCreated} onCancel={() => setScreen({ name: "list" })} />
         )}
         {screen.name === "detail" && (
           <ProjectDetail projectId={screen.projectId} onBack={() => setScreen({ name: "list" })} />
+        )}
+        {screen.name === "providerSettings" && (
+          <ProviderSettingsScreen onBack={() => setScreen({ name: "list" })} />
         )}
       </section>
     </main>
