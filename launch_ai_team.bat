@@ -2,8 +2,8 @@
 setlocal
 
 set "MAIN_DIR=%~dp0"
-set "FRONT_DIR=%~dp0..\AI-Animation-Studio-front"
-set "BACKEND_DIR=%~dp0..\AI-Animation-Studio-backend"
+set "FRONT_DIR=%~dp0..\frontend"
+set "BACKEND_DIR=%~dp0..\backend"
 set "CODEX_CMD=%APPDATA%\npm\codex.cmd"
 set "CLAUDE_CMD=%USERPROFILE%\.local\bin\claude.exe"
 
