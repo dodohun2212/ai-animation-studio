@@ -229,11 +229,11 @@ learning_data/api_calls.json  learning_data/api_jobs.json  learning_data/api_bud
 
 ### Main 범위와 완료 조건
 
-- [ ] Python `ProjectContext` 최소 호환 필드와 `INIT -> READY`를 shared camelCase API로 확정
+- [x] Python `ProjectContext` 최소 호환 필드와 `INIT -> READY`를 shared camelCase API로 확정
 - [x] Python에 없는 `userId`는 현재 필수 계약에서 제외하기로 결정; 계정 기능은 서버 확장 단계까지 구현하지 않음
-- [ ] `POST /projects`, `GET /projects`, `GET /projects/:projectId`와 `{ code, message, details? }` fixture 정의
-- [ ] snake_case 저장 JSON↔camelCase API, unknown field와 legacy state fixture 정의
-- [ ] root typecheck/test/build와 Python baseline 무변경 확인
+- [x] `POST /projects`, `GET /projects`, `GET /projects/:projectId`와 `{ code, message, details? }` fixture 정의
+- [x] snake_case 저장 JSON↔camelCase API, unknown field와 legacy state fixture 정의
+- [x] root typecheck/test/build와 Python baseline 무변경 확인
 - [ ] 완료: 앱 재시작 뒤 같은 project의 topic/state/timestamps가 보존되고 빈·중복·위험 ID와 손상 JSON 오류가 표시됨
 
 ### Frontend 범위와 완료 조건
@@ -245,11 +245,13 @@ learning_data/api_calls.json  learning_data/api_jobs.json  learning_data/api_bud
 
 ### Backend 범위와 완료 조건
 
-- [ ] `learning_data/projects/<safe_project_id>/project.json` UTF-8 원자 저장 repository와 create/list/get controller
-- [ ] path 안전성, required topic, duplicate ID, corrupt JSON, unknown field를 API 오류로 변환
-- [ ] 목록에서 손상 project를 정상 데이터처럼 무시하지 않도록 정책을 테스트로 고정
-- [ ] Provider·FFmpeg·외부 프로그램 호출 없음
-- [ ] repository/controller test로 round-trip, 새 instance reload, empty, duplicate/unsafe/corrupt JSON, atomic write failure와 유료 호출 0회 보장
+- [x] `learning_data/projects/<safe_project_id>/project.json` UTF-8 원자 저장 repository와 create/list/get controller
+- [x] path 안전성, required topic, duplicate ID, corrupt JSON, unknown field를 API 오류로 변환
+- [x] Python `MemoryManager.list_projects()`와 같이 목록에서 손상 project를 제외하는 정책을 테스트로 고정
+- [x] Provider·FFmpeg·외부 프로그램 호출 없음
+- [x] repository/controller test로 round-trip, 새 instance reload, empty, duplicate/unsafe/corrupt JSON, atomic write failure와 유료 호출 0회 보장
+
+Backend 완료 근거(2026-08-21): `feature/backend`의 `2bbf81f`에서 shared 계약과 세 endpoint, Python 호환 저장소 및 오류 처리를 구현했다. Main 통합 후 Backend 71개, Shared 10개, Frontend 1개 테스트와 root typecheck/build를 통과했다. 첫 기능 전체는 Frontend 사용자 흐름과 통합 완료 조건이 남아 있으므로 아직 완료로 표시하지 않는다.
 
 ## 공통 완료 조건
 
