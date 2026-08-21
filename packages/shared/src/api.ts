@@ -1,5 +1,11 @@
 import type { Project, ProjectSummary, SceneNumber } from "./domain.js";
 import type { Asset, AssetOwnership, AssetType } from "./asset.js";
+import type {
+  ApproveProjectAssetMappingReviewRequest,
+  BeginProjectAssetMappingReviewRequest,
+  CreateProjectAssetMappingRequest,
+  UpdateProjectAssetMappingRequest,
+} from "./mapping.js";
 
 export interface ApiError {
   code: string;
@@ -142,7 +148,23 @@ export const API_ROUTES = {
   videoPreview: (projectId: string) => `/projects/${projectId}/videos/preview`,
   videoGeneration: (projectId: string) => `/projects/${projectId}/videos/generations`,
   videoProgress: (projectId: string, jobId: string) => `/projects/${projectId}/videos/generations/${jobId}`,
+  projectAssetMappings: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/assets/mappings`,
+  projectAssetMapping: (projectId: string, mappingId: string) =>
+    `/projects/${encodeURIComponent(projectId)}/assets/mappings/${encodeURIComponent(mappingId)}`,
+  projectAssetMappingReview: (projectId: string) =>
+    `/projects/${encodeURIComponent(projectId)}/assets/mapping-review`,
+  projectAssetMappingReviewApprove: (projectId: string) =>
+    `/projects/${encodeURIComponent(projectId)}/assets/mapping-review/approve`,
+  projectAssetMappingSnapshot: (projectId: string, mappingId: string) =>
+    `/projects/${encodeURIComponent(projectId)}/assets/mappings/${encodeURIComponent(mappingId)}/snapshot`,
 } as const;
+
+export type {
+  ApproveProjectAssetMappingReviewRequest,
+  BeginProjectAssetMappingReviewRequest,
+  CreateProjectAssetMappingRequest,
+  UpdateProjectAssetMappingRequest,
+};
 
 export function assertVideoGenerationApproval(request: StartVideoGenerationRequest): void {
   if (request.approved !== true) {
