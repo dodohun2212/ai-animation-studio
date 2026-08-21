@@ -12,9 +12,9 @@
 | 영역 | 구현됨 | 미구현 |
 |---|---|---|
 | 기반 | strict TypeScript workspace, React/Vite, NestJS, Electron | 배포와 Python 동등성 검증 |
-| Shared | 1~6 SceneNumber, 기본 Project/Scene/usage/task, Python과 같은 WorkflowState/전이, 단기 프로젝트 create/list/get 및 Runway preview/approval/progress 계약과 테스트 | 전체 ProjectContext, Wizard/Story motion, Asset/Mapping/Review, 장기 프로젝트 DTO |
-| Frontend | 단기 프로젝트 ID·주제 입력, 생성·목록·재열기 화면, loading/empty/error 상태와 API 응답 검증 | Story·Asset·이미지·영상·설정 등 이후 사용자 흐름 |
-| Backend | `GET /health`, 단기 프로젝트 create/list/get, Python 호환 JSON 저장·재열기와 오류 처리 | Story·Asset·workflow/provider/media endpoint |
+| Shared | 1~6 SceneNumber, 기본 Project/Scene/usage/task, Python과 같은 WorkflowState/전이, 단기 프로젝트 create/list/get, Provider credential 상태 및 Runway preview/approval/progress 계약과 테스트 | 전체 ProjectContext, Wizard/Story motion, Asset/Mapping/Review, 장기 프로젝트 DTO |
+| Frontend | 단기 프로젝트 생성·목록·재열기, OpenAI·Runway credential 저장 상태·마스킹·세션 연결 관리와 안전한 API 오류 UI | Story·Asset·이미지·영상 등 이후 사용자 흐름 |
+| Backend | `GET /health`, 단기 프로젝트 create/list/get, Python 호환 JSON 저장·재열기, 로컬 `.env` credential 원자 저장·redaction·세션 연결 관리 | Story·Asset·workflow/provider/media endpoint |
 | Desktop | 격리된 BrowserWindow에서 frontend 로드 | backend 생명주기, file dialog/path open, packaging/recovery |
 
 Shared의 `/projects` route는 NestJS에 구현되었으며 video route는 아직 구현되지 않았다.
@@ -42,7 +42,7 @@ Shared의 `/projects` route는 NestJS에 구현되었으며 video route는 아�
 
 - [ ] 최근 단기 프로젝트, 진행률·현재 단계, 영상 확인 대기 수 표시
 - [ ] 새 단기/장기 프로젝트, 단기 목록, 이미지 검토, 영상 생성, 생성 이미지/영상 모음, Asset Library, 설정·환경 탐색
-- [ ] OpenAI key와 Runway secret 연결·가림·저장·해제
+- [x] OpenAI key와 Runway secret 연결·가림·저장·해제
 - [ ] 현재 프로젝트 계속하기, 프로젝트 열기와 archive
 
 #### 단기 프로젝트
@@ -206,7 +206,7 @@ learning_data/api_calls.json  learning_data/api_jobs.json  learning_data/api_bud
 ### 10. 안전한 기능 이전 순서
 
 1. [x] 단기 프로젝트 생성·목록·재열기와 Python JSON fixture
-2. [ ] 설정·secret 저장/가림/log redaction; Provider 미연결
+2. [x] 설정·secret 저장/가림/log redaction; Provider 미연결
 3. [ ] Asset Library 최소 CRUD·검색·소유권과 legacy index
 4. [ ] project Asset scope·mapping review/snapshot/fingerprint Gate
 5. [ ] Story schema/prompt preview/edit/restore/explicit submit; fake adapter
@@ -254,6 +254,18 @@ learning_data/api_calls.json  learning_data/api_jobs.json  learning_data/api_bud
 Backend 완료 근거(2026-08-21): `feature/backend`의 `2bbf81f`에서 shared 계약과 세 endpoint, Python 호환 저장소 및 오류 처리를 구현했다. Backend 통합 시점에 Backend 71개, Shared 10개, 당시 Frontend 1개 테스트와 root typecheck/build를 통과했으며, 이 시점에는 Frontend 사용자 흐름이 남아 있어 Backend 범위만 완료 처리했다.
 
 Frontend 및 통합 완료 근거(2026-08-21): `feature/frontend`의 `48065b0`에서 ID·주제 폼, 목록 상태, 상세 재열기, 안전한 API 오류 처리를 구현했다. Main에서 Backend 71개, Frontend 56개, Shared 10개 테스트와 전체 typecheck/build를 통과했다. 실제 Chrome에서 로컬 NestJS와 Vite를 연결해 `통합검증_20260821_2253` 프로젝트 생성, 목록 반영, 페이지 새로고침 뒤 목록 복원과 상세 재열기까지 확인했으며 Provider·FFmpeg는 호출하지 않았다.
+
+## 두 번째 이전 기능: 로컬 Provider credential 설정
+
+- [x] Shared에 OpenAI·Runway 상태, 저장, 연결 해제·재연결 DTO와 중앙 route 정의
+- [x] Backend에 `GET /settings/providers`, credential 저장, session disconnect/reconnect 구현
+- [x] Python 기준 `.env` UTF-8 원자 저장, 다른 설정 보존, Runway legacy 이름 정규화
+- [x] 원문 credential·절대경로·stack을 API와 로그에 노출하지 않고 고정 마스킹만 반환
+- [x] Frontend password 입력, 저장 상태, 마스킹, 연결 해제·재연결과 provider별 오류 UI 구현
+- [x] malformed mask/error/provider 응답, 중복 submit, refresh/mutation 경합과 DOM 속성 누출 차단 테스트
+- [x] 실제 Provider·네트워크·FFmpeg 호출 없이 새 Backend instance 재로딩 검증
+
+완료 근거(2026-08-22): Backend/shared `8eba07e`, Frontend `881f387`, Nest DI 부팅 수정 `d938db5`를 Main에 통합했다. Main에서 Backend 88개, Frontend 114개, Shared 12개 테스트와 전체 typecheck/build를 통과했다. 실제 Chrome에서 임시 저장 root를 사용하는 로컬 NestJS와 Vite를 연결해 OpenAI·Runway 테스트 credential 저장, 마스킹, OpenAI session 연결 해제·재연결, Backend 재시작 뒤 두 provider의 저장 상태 복원을 확인했다. 실제 API key와 유료 Provider는 사용하지 않았다.
 
 ## 공통 완료 조건
 
