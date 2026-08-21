@@ -1,0 +1,177 @@
+import {
+  API_ROUTES,
+  type Asset,
+  type AssetOwnership,
+  type AssetReferenceImage,
+  type AssetStatus,
+  type AssetType,
+  type AssetVersion,
+  type CreateAssetMetadata,
+  type CreateAssetResponse,
+  type DeleteAssetResponse,
+  type GetAssetResponse,
+  type ListAssetsQuery,
+  type ListAssetsResponse,
+  type UpdateAssetMetadataRequest,
+  type UpdateAssetResponse,
+} from "@ai-animation-studio/shared";
+
+export class AssetsApiError extends Error {
+  readonly code: string;
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "AssetsApiError";
+    this.code = code;
+  }
+}
+
+const SAFE_ERRORS: Record<string, string> = {
+  INVALID_REQUEST: "입력 내용을 확인해 주세요.",
+  UNSAFE_ASSET_ID: "에셋 ID가 올바르지 않습니다.",
+  ASSET_NOT_FOUND: "에셋을 찾을 수 없습니다.",
+  ASSET_ALREADY_EXISTS: "같은 이미지가 이미 등록되어 있습니다.",
+  ASSET_IN_USE: "프로젝트에서 사용 중인 에셋은 삭제할 수 없습니다.",
+  ASSET_MUTATION_UNSUPPORTED: "이 에셋은 현재 수정할 수 없습니다.",
+  ASSET_JSON_MALFORMED: "에셋 목록 파일을 읽을 수 없습니다.",
+  ASSET_DATA_INVALID: "에셋 목록 데이터가 올바르지 않습니다.",
+  ASSET_FILE_INVALID: "지원되는 이미지 파일을 선택해 주세요.",
+  ASSET_STORAGE_ERROR: "에셋을 저장하거나 읽지 못했습니다.",
+};
+const UNKNOWN = { code: "CLIENT_UNKNOWN_ERROR", message: "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요." };
+const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };
+const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };
+
+export function toAssetDisplayError(error: unknown): { code: string; message: string } {
+  if (!(error instanceof AssetsApiError)) return UNKNOWN;
+  if (Object.prototype.hasOwnProperty.call(SAFE_ERRORS, error.code)) {
+    return { code: error.code, message: SAFE_ERRORS[error.code]! };
+  }
+  if (error.code === NETWORK.code) return NETWORK;
+  if (error.code === MALFORMED.code) return MALFORMED;
+  return UNKNOWN;
+}
+
+const ASSET_TYPES: readonly AssetType[] = ["character", "style", "background", "object", "general_reference"];
+const ASSET_STATUSES: readonly AssetStatus[] = ["generated", "approved", "rejected", "replaced", "missing", "manual"];
+const OWNERSHIPS: readonly AssetOwnership[] = ["library_manual", "project_owned", "external"];
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+const isString = (value: unknown): value is string => typeof value === "string";
+const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every(isString);
+const DIGEST_PATTERN = /^[a-f0-9]{64}$/;
+/** A full SHA-256 hex digest. The backend's mapper always emits one for a known content byte range. */
+const isDigest = (value: unknown): value is string => isString(value) && DIGEST_PATTERN.test(value);
+/** Reference-image digests may be an explicitly documented legacy empty string alongside a full digest (see asset-storage.ts). */
+const isLegacyOptionalDigest = (value: unknown): value is string => value === "" || isDigest(value);
+const UTC_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]00:00)$/;
+const isUtcIsoTimestamp = (value: unknown): value is string =>
+  isString(value) && UTC_TIMESTAMP_PATTERN.test(value) && Number.isFinite(Date.parse(value));
+const isVersionNumber = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= 1;
+const isSceneNumber = (value: unknown): value is number | null =>
+  value === null || (typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 6);
+const isSortOrder = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value);
+/** Only the backend's own /assets/:id/content route for this exact asset may ever reach an <img src>. */
+const isBoundContentUrl = (assetId: string, imageAvailable: boolean, contentUrl: unknown): contentUrl is string | null =>
+  imageAvailable ? contentUrl === API_ROUTES.assetContent(assetId) : contentUrl === null;
+const isAssetVersion = (value: unknown): value is AssetVersion =>
+  isRecord(value) && isVersionNumber(value.version) && isDigest(value.contentSha256) && isUtcIsoTimestamp(value.createdAt) && isString(value.notes);
+const isAssetVersionArray = (value: unknown): value is AssetVersion[] => Array.isArray(value) && value.every(isAssetVersion);
+const isAssetReferenceImage = (value: unknown): value is AssetReferenceImage =>
+  isRecord(value) && isString(value.role) && isLegacyOptionalDigest(value.contentSha256) && isString(value.originalFilename);
+const isAssetReferenceImageArray = (value: unknown): value is AssetReferenceImage[] => Array.isArray(value) && value.every(isAssetReferenceImage);
+
+function isAsset(value: unknown): value is Asset {
+  if (!isRecord(value)) return false;
+  if (!(isString(value.assetId) && value.assetId.length > 0)) return false;
+  if (!ASSET_TYPES.includes(value.assetType as AssetType)) return false;
+  if (!(isString(value.displayName) && isString(value.description) && isString(value.originalFilename))) return false;
+  if (typeof value.isFolder !== "boolean") return false;
+  if (typeof value.imageAvailable !== "boolean") return false;
+  if (value.isFolder) {
+    // A folder never carries image bytes (see asset-storage.ts's parseAssetIndex "folder file" invariant) —
+    // the backend mapper always emits these exact no-content values, never a real digest or content route.
+    if (value.contentSha256 !== "") return false;
+    if (value.imageAvailable !== false) return false;
+    if (value.contentUrl !== null) return false;
+    if (!(Array.isArray(value.versions) && value.versions.length === 0)) return false;
+    if (!(Array.isArray(value.referenceImages) && value.referenceImages.length === 0)) return false;
+  } else {
+    if (!isDigest(value.contentSha256)) return false;
+    if (!isBoundContentUrl(value.assetId, value.imageAvailable, value.contentUrl)) return false;
+    if (!isAssetVersionArray(value.versions)) return false;
+    if (!isAssetReferenceImageArray(value.referenceImages)) return false;
+  }
+  if (!(isStringArray(value.tags) && isStringArray(value.aliases))) return false;
+  if (!(typeof value.enabled === "boolean" && typeof value.approved === "boolean" && typeof value.faceBaseline === "boolean")) return false;
+  if (!(value.characterKey === null || isString(value.characterKey))) return false;
+  if (!isVersionNumber(value.version)) return false;
+  if (!(isUtcIsoTimestamp(value.createdAt) && isUtcIsoTimestamp(value.updatedAt))) return false;
+  if (!isString(value.notes)) return false;
+  if (!isStringArray(value.legacyAssetIds)) return false;
+  if (!ASSET_STATUSES.includes(value.status as AssetStatus)) return false;
+  if (!isString(value.sourceProjectId)) return false;
+  if (!isSceneNumber(value.sourceSceneNumber)) return false;
+  if (!isStringArray(value.referenceRoles)) return false;
+  if (!isString(value.parentFolderId)) return false;
+  if (!isStringArray(value.childAssetIds)) return false;
+  if (!isString(value.thumbnailAssetId)) return false;
+  if (!isString(value.role)) return false;
+  if (!isSortOrder(value.sortOrder)) return false;
+  return true;
+}
+
+const isListResponse = (value: unknown): value is ListAssetsResponse => isRecord(value) && Array.isArray(value.assets) && value.assets.every(isAsset);
+const isCreateResponse = (value: unknown): value is CreateAssetResponse => isRecord(value) && isAsset(value.asset);
+const isUpdateResponse = (value: unknown): value is UpdateAssetResponse => isRecord(value) && isAsset(value.asset);
+const isGetResponse = (value: unknown): value is GetAssetResponse => isRecord(value) && isAsset(value.asset)
+  && isStringArray(value.usageProjectIds) && OWNERSHIPS.includes(value.ownership as AssetOwnership)
+  && typeof value.canDeleteOwnedFile === "boolean";
+const isDeleteResponse = (value: unknown): value is DeleteAssetResponse => isRecord(value) && isString(value.assetId) && typeof value.deletedOwnedFile === "boolean";
+
+async function request<T>(url: string, init: RequestInit | undefined, guard: (value: unknown) => value is T): Promise<T> {
+  let response: Response;
+  try { response = init ? await fetch(url, init) : await fetch(url); }
+  catch { throw new AssetsApiError(NETWORK.code, NETWORK.message); }
+  let body: unknown;
+  try { body = await response.json(); } catch { body = undefined; }
+  if (!response.ok) {
+    const code = isRecord(body) && typeof body.code === "string" && body.code.trim() ? body.code : MALFORMED.code;
+    throw new AssetsApiError(code, SAFE_ERRORS[code] ?? UNKNOWN.message);
+  }
+  if (!guard(body)) throw new AssetsApiError(MALFORMED.code, MALFORMED.message);
+  return body;
+}
+
+export function listAssets(query: ListAssetsQuery = {}): Promise<ListAssetsResponse> {
+  const params = new URLSearchParams();
+  if (query.query?.trim()) params.set("query", query.query.trim());
+  if (query.assetType) params.set("assetType", query.assetType);
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return request(`${API_ROUTES.assets}${suffix}`, undefined, isListResponse);
+}
+
+export async function getAsset(assetId: string): Promise<GetAssetResponse> {
+  const response = await request(API_ROUTES.asset(assetId), undefined, isGetResponse);
+  if (response.asset.assetId !== assetId) throw new AssetsApiError(MALFORMED.code, MALFORMED.message);
+  return response;
+}
+
+export function createAsset(file: File, metadata: CreateAssetMetadata): Promise<CreateAssetResponse> {
+  const body = new FormData();
+  body.append("image", file);
+  body.append("metadata", JSON.stringify(metadata));
+  return request(API_ROUTES.assets, { method: "POST", body }, isCreateResponse);
+}
+
+export async function updateAsset(assetId: string, metadata: UpdateAssetMetadataRequest): Promise<UpdateAssetResponse> {
+  const response = await request(API_ROUTES.asset(assetId), {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(metadata),
+  }, isUpdateResponse);
+  if (response.asset.assetId !== assetId) throw new AssetsApiError(MALFORMED.code, MALFORMED.message);
+  return response;
+}
+
+export async function deleteAsset(assetId: string): Promise<DeleteAssetResponse> {
+  const response = await request(API_ROUTES.asset(assetId), { method: "DELETE" }, isDeleteResponse);
+  if (response.assetId !== assetId) throw new AssetsApiError(MALFORMED.code, MALFORMED.message);
+  return response;
+}

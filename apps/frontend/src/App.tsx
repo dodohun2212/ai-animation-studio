@@ -5,12 +5,14 @@ import { CreateProjectForm } from "./components/CreateProjectForm.js";
 import { ProjectDetail } from "./components/ProjectDetail.js";
 import { ProjectList } from "./components/ProjectList.js";
 import { ProviderSettingsScreen } from "./components/ProviderSettingsScreen.js";
+import { AssetLibraryScreen } from "./components/AssetLibraryScreen.js";
 
 type Screen =
   | { name: "list" }
   | { name: "create" }
   | { name: "detail"; projectId: string }
-  | { name: "providerSettings" };
+  | { name: "providerSettings" }
+  | { name: "assets" };
 
 export function App() {
   const [screen, setScreen] = useState<Screen>({ name: "list" });
@@ -35,7 +37,8 @@ export function App() {
 
         {screen.name === "list" && (
           <>
-            <div className="mt-6 flex justify-end">
+            <div className="mt-6 flex justify-end gap-4">
+              <button type="button" className="text-sm text-violet-300 underline" onClick={() => setScreen({ name: "assets" })}>Asset Library</button>
               <button
                 type="button"
                 className="text-sm text-violet-300 underline"
@@ -60,6 +63,7 @@ export function App() {
         {screen.name === "providerSettings" && (
           <ProviderSettingsScreen onBack={() => setScreen({ name: "list" })} />
         )}
+        {screen.name === "assets" && <AssetLibraryScreen onBack={() => setScreen({ name: "list" })} />}
       </section>
     </main>
   );

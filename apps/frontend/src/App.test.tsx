@@ -139,4 +139,28 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "목록으로" }));
     expect(await screen.findByText("아직 생성된 프로젝트가 없습니다.")).toBeTruthy();
   });
+
+  it("entering Asset Library issues only /assets, and back restores the project list without any provider route call", async () => {
+    const fetchMock = vi.fn<FakeFetch>(async (input) => {
+      const requestUrl = String(input);
+      if (requestUrl === "/projects") return jsonResponse(200, { projects: [] });
+      if (requestUrl === "/assets") return jsonResponse(200, { assets: [] });
+      throw new Error(`Unexpected fetch call in test: ${requestUrl}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    await screen.findByText("아직 생성된 프로젝트가 없습니다.");
+    fetchMock.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Asset Library" }));
+    await screen.findByText("등록된 에셋이 없습니다.");
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(["/assets"]);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/settings/providers"))).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "프로젝트 목록으로" }));
+    expect(await screen.findByText("아직 생성된 프로젝트가 없습니다.")).toBeTruthy();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/settings/providers"))).toBe(false);
+  });
 });
