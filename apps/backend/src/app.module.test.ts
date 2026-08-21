@@ -35,6 +35,12 @@ describe("AppModule", () => {
       "PUT /settings/providers/:provider/credential",
       "POST /settings/providers/:provider/disconnect",
       "POST /settings/providers/:provider/reconnect",
+      "GET /assets",
+      "POST /assets",
+      "GET /assets/:assetId",
+      "GET /assets/:assetId/content",
+      "PATCH /assets/:assetId",
+      "DELETE /assets/:assetId",
     ]));
   });
 });
