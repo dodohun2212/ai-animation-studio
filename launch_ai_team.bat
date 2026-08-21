@@ -31,8 +31,8 @@ if not exist "%BACKEND_DIR%\.git" (
     exit /b 1
 )
 
-start "GPT-5.6 SOL - MAIN" powershell.exe -NoLogo -NoExit -ExecutionPolicy Bypass -Command "Set-Location -LiteralPath '%MAIN_DIR%'; & '%CODEX_CMD%' -m 'gpt-5.6-sol' -C '%MAIN_DIR%'"
+start "GPT-5.6 SOL - MAIN" powershell.exe -NoLogo -NoExit -ExecutionPolicy Bypass -Command "Set-Location -LiteralPath '%MAIN_DIR%'; & '%CODEX_CMD%' -m 'gpt-5.6-sol'"
 start "CLAUDE - FRONTEND" powershell.exe -NoLogo -NoExit -ExecutionPolicy Bypass -Command "Set-Location -LiteralPath '%FRONT_DIR%'; & '%CLAUDE_CMD%'"
-start "CODEX - BACKEND" powershell.exe -NoLogo -NoExit -ExecutionPolicy Bypass -Command "Set-Location -LiteralPath '%BACKEND_DIR%'; & '%CODEX_CMD%' -C '%BACKEND_DIR%'"
+start "CODEX - BACKEND" powershell.exe -NoLogo -NoExit -ExecutionPolicy Bypass -Command "Set-Location -LiteralPath '%BACKEND_DIR%'; & '%CODEX_CMD%'"
 
 endlocal
