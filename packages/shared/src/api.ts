@@ -50,6 +50,33 @@ export interface GetProjectSettingsResponse { settings: ShortProjectSettings; }
 export interface UpdateProjectSettingsRequest { settings: ShortProjectSettings; }
 export interface UpdateProjectSettingsResponse { project: Project; settings: ShortProjectSettings; }
 
+/** Exact local Story request text shown before any provider submission. */
+export interface StoryPromptPreview {
+  projectId: string;
+  originalPrompt: string;
+  originalPromptSha256: string;
+  characterCount: number;
+  sceneCount: 6;
+}
+
+export interface CreateStoryPromptPreviewResponse { preview: StoryPromptPreview; }
+
+/** The user-authored final text must be explicitly approved before fake submission. */
+export interface ApproveStoryPromptRequest {
+  originalPromptSha256: string;
+  prompt: string;
+  approved: true;
+}
+
+export interface ApproveStoryPromptResponse {
+  project: Project;
+  originalPrompt: string;
+  prompt: string;
+  promptSha256: string;
+  modified: boolean;
+  approvedAt: string;
+}
+
 export interface ListAssetsQuery {
   query?: string;
   assetType?: AssetType;
@@ -169,6 +196,10 @@ export const API_ROUTES = {
   project: (projectId: string) => `/projects/${projectId}`,
   projectSettings: (projectId: string) =>
     `/projects/${encodeURIComponent(projectId)}/settings`,
+  storyPromptPreview: (projectId: string) =>
+    `/projects/${encodeURIComponent(projectId)}/story/preview`,
+  storyPromptApproval: (projectId: string) =>
+    `/projects/${encodeURIComponent(projectId)}/story/approval`,
   assets: "/assets",
   asset: (assetId: string) => `/assets/${encodeURIComponent(assetId)}`,
   assetContent: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/content`,

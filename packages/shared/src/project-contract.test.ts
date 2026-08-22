@@ -9,6 +9,8 @@ import {
   type GetProjectSettingsResponse,
   type ListProjectsResponse,
   type UpdateProjectSettingsRequest,
+  type ApproveStoryPromptRequest,
+  type CreateStoryPromptPreviewResponse,
 } from "./api.js";
 
 describe("project summary contract", () => {
@@ -84,5 +86,15 @@ describe("project routes and DTO shape", () => {
     );
     expect(response.settings.sceneCount).toBe(6);
     expect("assetIds" in response.settings).toBe(false);
+  });
+
+  it("requires an explicit approval payload for a provider-free Story prompt preview", () => {
+    const preview: CreateStoryPromptPreviewResponse = {
+      preview: { projectId: "sample_project", originalPrompt: "exact prompt", originalPromptSha256: "a".repeat(64), characterCount: 12, sceneCount: 6 },
+    };
+    const approval: ApproveStoryPromptRequest = { originalPromptSha256: preview.preview.originalPromptSha256, prompt: "edited exact prompt", approved: true };
+    expect(API_ROUTES.storyPromptPreview("sample project")).toBe("/projects/sample%20project/story/preview");
+    expect(API_ROUTES.storyPromptApproval("sample project")).toBe("/projects/sample%20project/story/approval");
+    expect(approval.approved).toBe(true);
   });
 });
