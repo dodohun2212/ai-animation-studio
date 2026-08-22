@@ -5,6 +5,7 @@ import { ProjectsModule } from "./projects/projects.module.js";
 import { ProviderSettingsModule } from "./settings/provider-settings.module.js";
 import { AssetsModule } from "./assets/assets.module.js";
 import { ProjectAssetMappingsModule } from "./mappings/mappings.module.js";
+import { StoryModule } from "./story/story.module.js";
 
-@Module({ imports: [ProjectsModule, ProviderSettingsModule, AssetsModule, ProjectAssetMappingsModule], controllers: [HealthController] })
+@Module({ imports: [ProjectsModule, ProviderSettingsModule, AssetsModule, ProjectAssetMappingsModule, StoryModule], controllers: [HealthController] })
 export class AppModule {}

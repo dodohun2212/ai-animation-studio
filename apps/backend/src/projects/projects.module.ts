@@ -23,5 +23,6 @@ function defaultProjectsRoot(): string {
     },
     ProjectsService,
   ],
+  exports: [LocalProjectRepository],
 })
 export class ProjectsModule {}

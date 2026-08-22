@@ -8,5 +8,5 @@ import { ProjectAssetMappingsService } from "./mappings.service.js";
 @Module({ imports: [AssetsModule], controllers: [ProjectAssetMappingsController], providers: [
   { provide: LocalProjectAssetMappingsRepository, useFactory: (root: string) => new LocalProjectAssetMappingsRepository(path.join(root, "projects")), inject: [LEARNING_DATA_ROOT] },
   ProjectAssetMappingsService,
-] })
+] , exports: [LocalProjectAssetMappingsRepository] })
 export class ProjectAssetMappingsModule {}
