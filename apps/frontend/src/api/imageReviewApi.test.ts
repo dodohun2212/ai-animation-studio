@@ -1,8 +1,18 @@
-import type { ApproveImageReviewResponse, GetImageReviewResponse } from "@ai-animation-studio/shared";
+import type {
+  ApproveImageReviewResponse,
+  GetImageReviewResponse,
+  RegenerateImageReviewResponse,
+} from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { approveImageReview, getImageReview, ImageReviewApiError, toImageReviewDisplayError } from "./imageReviewApi.js";
+import {
+  approveImageReview,
+  getImageReview,
+  ImageReviewApiError,
+  regenerateImageReview,
+  toImageReviewDisplayError,
+} from "./imageReviewApi.js";
 import { jsonResponse, makeProject, nonJsonResponse } from "./testUtils.js";
 
 describe("imageReviewApi", () => {
@@ -88,5 +98,65 @@ describe("imageReviewApi", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
 
     await expect(getImageReview("sample_project")).rejects.toMatchObject({ code: "CLIENT_NETWORK_ERROR" });
+  });
+
+  it("regenerates a single scene via POST /images/review/:sceneNumber/regenerate with { approved: true }", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview });
+    const response: RegenerateImageReviewResponse = {
+      project,
+      reviews: [
+        { sceneNumber: 1, status: "pending", updatedAt: "2026-08-22T00:00:00.000Z" },
+        { sceneNumber: 2, status: "approved", updatedAt: "2026-08-22T00:00:00.000Z" },
+        { sceneNumber: 3, status: "approved", updatedAt: "2026-08-22T00:00:00.000Z" },
+        { sceneNumber: 4, status: "approved", updatedAt: "2026-08-22T00:00:00.000Z" },
+        { sceneNumber: 5, status: "approved", updatedAt: "2026-08-22T00:00:00.000Z" },
+        { sceneNumber: 6, status: "approved", updatedAt: "2026-08-22T00:00:00.000Z" },
+      ],
+      sceneNumber: 1,
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, response));
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await regenerateImageReview("sample_project", 1)).toEqual(response);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/projects/sample_project/images/review/1/regenerate");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ approved: true });
+  });
+
+  it("rejects regeneration with a malformed-response error when sceneNumber is missing from the body", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse(200, {
+          project,
+          reviews: [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({
+            sceneNumber,
+            status: "pending",
+            updatedAt: "2026-08-22T00:00:00.000Z",
+          })),
+        }),
+      ),
+    );
+
+    await expect(regenerateImageReview("sample_project", 1)).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+  });
+
+  it("never surfaces the backend's raw error message for a failed regeneration", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse(409, { code: "IMAGE_REVIEW_NOT_ALLOWED", message: "raw backend detail" })),
+    );
+
+    let caught: unknown;
+    try {
+      await regenerateImageReview("sample_project", 1);
+    } catch (error) {
+      caught = error;
+    }
+    const displayError = toImageReviewDisplayError(caught);
+    expect(displayError.code).toBe("IMAGE_REVIEW_NOT_ALLOWED");
+    expect(displayError.message).not.toContain("raw backend detail");
   });
 });

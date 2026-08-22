@@ -5,6 +5,8 @@ import {
   type GetImageReviewResponse,
   type ImageReview,
   type Project,
+  type RegenerateImageReviewRequest,
+  type RegenerateImageReviewResponse,
   type SceneNumber,
 } from "@ai-animation-studio/shared";
 
@@ -91,6 +93,15 @@ function isApproveImageReviewResponse(value: unknown): value is ApproveImageRevi
   return isRecord(value) && isProject(value.project) && isImageReviewList(value.reviews);
 }
 
+function isRegenerateImageReviewResponse(value: unknown): value is RegenerateImageReviewResponse {
+  return (
+    isRecord(value) &&
+    isProject(value.project) &&
+    isImageReviewList(value.reviews) &&
+    isSceneNumber(value.sceneNumber)
+  );
+}
+
 async function readJsonBody(response: Response): Promise<unknown> {
   try {
     return await response.json();
@@ -134,5 +145,18 @@ export function approveImageReview(projectId: string, sceneNumber: SceneNumber):
     API_ROUTES.imageReviewApproval(projectId, sceneNumber),
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) },
     isApproveImageReviewResponse,
+  );
+}
+
+/**
+ * Replaces one scene's generated image via the local fake adapter only. Never sends a paid
+ * provider request. Must only be called after an explicit second user confirmation.
+ */
+export function regenerateImageReview(projectId: string, sceneNumber: SceneNumber): Promise<RegenerateImageReviewResponse> {
+  const requestBody: RegenerateImageReviewRequest = { approved: true };
+  return request(
+    API_ROUTES.imageReviewRegeneration(projectId, sceneNumber),
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) },
+    isRegenerateImageReviewResponse,
   );
 }

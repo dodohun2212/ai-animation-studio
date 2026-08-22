@@ -4,7 +4,12 @@ import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { getProject, toDisplayError } from "../api/projectsApi.js";
 import { startImageGeneration, toImageGenerationDisplayError } from "../api/imageGenerationApi.js";
-import { approveImageReview, getImageReview, toImageReviewDisplayError } from "../api/imageReviewApi.js";
+import {
+  approveImageReview,
+  getImageReview,
+  regenerateImageReview,
+  toImageReviewDisplayError,
+} from "../api/imageReviewApi.js";
 
 interface Props {
   projectId: string;
@@ -36,8 +41,12 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
   const [reviewState, setReviewState] = useState<ReviewLoadState>({ status: "idle" });
   const [approvePendingScenes, setApprovePendingScenes] = useState<Set<SceneNumber>>(new Set());
   const [approveErrors, setApproveErrors] = useState<Partial<Record<SceneNumber, DisplayError>>>({});
+  const [regenerateConfirmScene, setRegenerateConfirmScene] = useState<SceneNumber | null>(null);
+  const [regeneratePendingScenes, setRegeneratePendingScenes] = useState<Set<SceneNumber>>(new Set());
+  const [regenerateErrors, setRegenerateErrors] = useState<Partial<Record<SceneNumber, DisplayError>>>({});
   const generateBusy = useRef(false);
   const approveBusy = useRef<Set<SceneNumber>>(new Set());
+  const regenerateBusy = useRef<Set<SceneNumber>>(new Set());
   const reviewLoadRequest = useRef(0);
 
   useEffect(() => {
@@ -49,6 +58,8 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
     setConfirmOpen(false);
     setReviewState({ status: "idle" });
     setApproveErrors({});
+    setRegenerateConfirmScene(null);
+    setRegenerateErrors({});
     getProject(projectId)
       .then((response) => {
         if (!cancelled) setState({ status: "success", project: response.project });
@@ -67,7 +78,10 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
   const videoConfirmationReached = currentProject?.workflowState === WorkflowState.WaitingForVideoConfirmation;
 
   useEffect(() => {
-    if (!reviewable) return;
+    if (!reviewable && !videoConfirmationReached) return;
+    // Skip once review data is already loaded (e.g. after an in-place approve/regenerate
+    // response) so a workflow-state change alone never triggers a redundant refetch.
+    if (reviewState.status !== "idle") return;
     const requestId = ++reviewLoadRequest.current;
     setReviewState({ status: "loading" });
     getImageReview(projectId)
@@ -79,7 +93,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
         if (requestId !== reviewLoadRequest.current) return;
         setReviewState({ status: "error", error: toImageReviewDisplayError(error) });
       });
-  }, [projectId, reviewable]);
+  }, [projectId, reviewable, videoConfirmationReached, reviewState.status]);
 
   async function approveScene(sceneNumber: SceneNumber): Promise<void> {
     if (approveBusy.current.has(sceneNumber)) return;
@@ -100,6 +114,40 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
     } finally {
       approveBusy.current.delete(sceneNumber);
       setApprovePendingScenes(new Set(approveBusy.current));
+    }
+  }
+
+  /** Opens the explicit per-scene confirmation panel. Never calls the network by itself. */
+  function openRegenerateConfirmation(sceneNumber: SceneNumber): void {
+    if (regenerateBusy.current.has(sceneNumber)) return;
+    setRegenerateConfirmScene(sceneNumber);
+  }
+
+  function cancelRegenerateConfirmation(sceneNumber: SceneNumber): void {
+    if (regenerateBusy.current.has(sceneNumber)) return;
+    setRegenerateConfirmScene((current) => (current === sceneNumber ? null : current));
+  }
+
+  async function confirmRegenerate(sceneNumber: SceneNumber): Promise<void> {
+    if (regenerateBusy.current.has(sceneNumber)) return;
+    regenerateBusy.current.add(sceneNumber);
+    setRegeneratePendingScenes(new Set(regenerateBusy.current));
+    try {
+      const response = await regenerateImageReview(projectId, sceneNumber);
+      setReviewState({ status: "ready", reviews: response.reviews });
+      setProjectOverride(response.project);
+      setRegenerateConfirmScene(null);
+      setRegenerateErrors((current) => {
+        if (!(sceneNumber in current)) return current;
+        const next = { ...current };
+        delete next[sceneNumber];
+        return next;
+      });
+    } catch (caught) {
+      setRegenerateErrors((current) => ({ ...current, [sceneNumber]: toImageReviewDisplayError(caught) }));
+    } finally {
+      regenerateBusy.current.delete(sceneNumber);
+      setRegeneratePendingScenes(new Set(regenerateBusy.current));
     }
   }
 
@@ -229,10 +277,14 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
             </p>
           )}
 
-          {reviewable && (
+          {(reviewable || videoConfirmationReached) && (
             <div className="space-y-3 rounded-lg border border-white/10 p-4" data-testid="image-review-section">
               <h3 className="text-lg font-semibold">이미지 검토</h3>
               <p className="text-sm text-slate-300">각 장면의 이미지를 확인하고 개별적으로 승인해 주세요.</p>
+              <p className="text-xs text-amber-300" data-testid="no-paid-regenerate-notice">
+                재생성은 실제 유료 Provider를 호출하지 않는 로컬 가짜 어댑터만 사용하며, 이전 이미지는 버전 기록으로
+                보존됩니다.
+              </p>
 
               {reviewState.status === "loading" && <p className="text-slate-400">검토 상태를 불러오는 중...</p>}
               {reviewState.status === "error" && (
@@ -246,6 +298,9 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                   {reviewState.reviews.map((review) => {
                     const pending = approvePendingScenes.has(review.sceneNumber);
                     const approveError = approveErrors[review.sceneNumber];
+                    const regeneratePending = regeneratePendingScenes.has(review.sceneNumber);
+                    const regenerateError = regenerateErrors[review.sceneNumber];
+                    const regenerateConfirmOpen = regenerateConfirmScene === review.sceneNumber;
                     return (
                       <li
                         key={review.sceneNumber}
@@ -274,6 +329,64 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                             className="text-sm text-rose-400"
                           >
                             {approveError.message}
+                          </p>
+                        )}
+
+                        <div className="flex items-center justify-end gap-3">
+                          <button
+                            type="button"
+                            data-testid={`review-regenerate-${review.sceneNumber}`}
+                            className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-200 disabled:opacity-50"
+                            onClick={() => openRegenerateConfirmation(review.sceneNumber)}
+                            disabled={regeneratePending || regenerateConfirmOpen}
+                          >
+                            {regeneratePending ? "재생성 중..." : "재생성"}
+                          </button>
+                        </div>
+
+                        {regenerateConfirmOpen && (
+                          <div
+                            role="alertdialog"
+                            aria-label={`${review.sceneNumber}번 장면 재생성 확인`}
+                            data-testid={`regenerate-confirm-panel-${review.sceneNumber}`}
+                            className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900 p-3"
+                          >
+                            <p className="text-sm font-semibold text-amber-300">
+                              {review.sceneNumber}번 장면 이미지를 다시 생성할까요?
+                            </p>
+                            <p className="text-xs text-slate-300">
+                              아직 재생성이 시작되지 않았습니다. 확인을 누르면 로컬 가짜 어댑터가 이 장면 이미지만 다시
+                              생성하며, 실제 유료 요청은 전송되지 않습니다.
+                            </p>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 disabled:opacity-50"
+                                onClick={() => cancelRegenerateConfirmation(review.sceneNumber)}
+                                disabled={regeneratePending}
+                              >
+                                취소
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                                onClick={() => void confirmRegenerate(review.sceneNumber)}
+                                disabled={regeneratePending}
+                              >
+                                {regeneratePending ? "재생성 중..." : "예, 로컬로 재생성합니다"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {regenerateError && (
+                          <p
+                            role="alert"
+                            data-testid={`review-regenerate-error-${review.sceneNumber}`}
+                            data-error-code={regenerateError.code}
+                            className="text-sm text-rose-400"
+                          >
+                            {regenerateError.message}
                           </p>
                         )}
                       </li>

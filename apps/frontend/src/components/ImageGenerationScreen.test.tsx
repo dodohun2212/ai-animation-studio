@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ImageReview, Scene } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
@@ -258,8 +258,7 @@ describe("ImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews([2]) }));
     renderScreen(fetchMock);
 
-    await screen.findByTestId("image-review-section");
-    const sceneTwoRow = screen.getByTestId("review-2");
+    const sceneTwoRow = await screen.findByTestId("review-2");
     fireEvent.click(sceneTwoRow.querySelector("button")!);
 
     await waitFor(() => expect(screen.getByTestId("review-2")).toHaveAttribute("data-status", "approved"));
@@ -283,8 +282,8 @@ describe("ImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews([1, 3]) }));
     renderScreen(fetchMock);
 
-    await screen.findByTestId("image-review-section");
-    fireEvent.click(screen.getByTestId("review-3").querySelector("button")!);
+    const sceneThreeRow = await screen.findByTestId("review-3");
+    fireEvent.click(sceneThreeRow.querySelector("button")!);
 
     const alert = await screen.findByTestId("review-approve-error-3");
     expect(alert.textContent).not.toContain("raw disk failure detail");
@@ -312,12 +311,177 @@ describe("ImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { project: waitingProject, reviews: sixReviews([1, 2, 3, 4, 5, 6]) }));
     renderScreen(fetchMock);
 
-    await screen.findByTestId("image-review-section");
-    fireEvent.click(screen.getByTestId("review-6").querySelector("button")!);
+    const sceneSixRow = await screen.findByTestId("review-6");
+    fireEvent.click(sceneSixRow.querySelector("button")!);
 
     const transition = await screen.findByTestId("video-confirmation-transition");
     expect(transition.textContent).toContain("영상 생성 확인");
-    // The review-in-progress section is no longer shown once the workflow has moved on.
-    expect(screen.queryByTestId("image-review-section")).toBeNull();
+    // The review section stays available at WAITING_FOR_VIDEO_CONFIRMATION so a scene can
+    // still be regenerated after all six scenes were approved.
+    expect(screen.getByTestId("image-review-section")).toBeTruthy();
+    for (const number of [1, 2, 3, 4, 5, 6]) {
+      expect(screen.getByTestId(`review-${number}`)).toHaveAttribute("data-status", "approved");
+    }
+  });
+
+  it("does not call the regenerate endpoint on the first click — it only opens an explicit per-scene confirmation panel", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews([1]) }));
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByTestId("review-regenerate-2"));
+
+    const panel = await screen.findByTestId("regenerate-confirm-panel-2");
+    expect(panel.textContent).toContain("실제 유료 요청은 전송되지 않습니다");
+    // Only the two GETs happened — opening the panel never sent a regenerate request.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("cancels the regenerate confirmation without sending anything", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews([1]) }));
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByTestId("review-regenerate-2"));
+    const panel = await screen.findByTestId("regenerate-confirm-panel-2");
+    fireEvent.click(within(panel).getByRole("button", { name: "취소" }));
+
+    expect(screen.queryByTestId("regenerate-confirm-panel-2")).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("calls POST /images/review/:sceneNumber/regenerate with { approved: true } only after the final confirmation click, resets the scene to pending, and preserves the other scenes' approvals", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const regeneratedProject = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews([1, 2, 3, 4, 5, 6]) }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          project: regeneratedProject,
+          reviews: sixReviews([1, 3, 4, 5, 6]),
+          sceneNumber: 2,
+        }),
+      );
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByTestId("review-regenerate-2"));
+    const panel = await screen.findByTestId("regenerate-confirm-panel-2");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(within(panel).getByRole("button", { name: "예, 로컬로 재생성합니다" }));
+
+    await waitFor(() => expect(screen.getByTestId("review-2")).toHaveAttribute("data-status", "pending"));
+    const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit];
+    expect(url).toBe("/projects/sample_project/images/review/2/regenerate");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ approved: true });
+
+    expect(screen.queryByTestId("regenerate-confirm-panel-2")).toBeNull();
+    for (const number of [1, 3, 4, 5, 6]) {
+      expect(screen.getByTestId(`review-${number}`)).toHaveAttribute("data-status", "approved");
+    }
+    // No absolute or relative file path is ever rendered on screen.
+    expect(document.body.textContent).not.toContain("images/scene2.png");
+  });
+
+  it("shows a safe error and keeps the panel open for retry when regeneration fails, without affecting other scenes", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews([1, 2, 3, 4, 5, 6]) }))
+      .mockResolvedValueOnce(jsonResponse(500, { code: "IMAGE_REVIEW_STORAGE_ERROR", message: "raw disk failure detail" }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { project, reviews: sixReviews([1, 3, 4, 5, 6]), sceneNumber: 2 }),
+      );
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByTestId("review-regenerate-2"));
+    const panel = await screen.findByTestId("regenerate-confirm-panel-2");
+    fireEvent.click(within(panel).getByRole("button", { name: "예, 로컬로 재생성합니다" }));
+
+    const alert = await screen.findByTestId("review-regenerate-error-2");
+    expect(alert.textContent).not.toContain("raw disk failure detail");
+    expect(alert).toHaveAttribute("data-error-code", "IMAGE_REVIEW_STORAGE_ERROR");
+    // The panel stays open so the user can retry, and other scenes are unaffected.
+    expect(screen.getByTestId("regenerate-confirm-panel-2")).toBeTruthy();
+    for (const number of [1, 3, 4, 5, 6]) {
+      expect(screen.getByTestId(`review-${number}`)).toHaveAttribute("data-status", "approved");
+    }
+
+    fireEvent.click(within(screen.getByTestId("regenerate-confirm-panel-2")).getByRole("button", { name: "예, 로컬로 재생성합니다" }));
+    await waitFor(() => expect(screen.getByTestId("review-2")).toHaveAttribute("data-status", "pending"));
+    expect(screen.queryByTestId("review-regenerate-error-2")).toBeNull();
+  });
+
+  it("prevents a duplicate regenerate POST for the same scene while one is already in flight", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    let resolveRegenerate: (response: Response) => void = () => {};
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews([1, 2, 3, 4, 5, 6]) }))
+      .mockReturnValueOnce(
+        new Promise<Response>((resolve) => {
+          resolveRegenerate = resolve;
+        }),
+      );
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByTestId("review-regenerate-2"));
+    const panel = await screen.findByTestId("regenerate-confirm-panel-2");
+    const confirmButton = within(panel).getByRole("button", { name: "예, 로컬로 재생성합니다" });
+    fireEvent.click(confirmButton);
+    expect(confirmButton).toBeDisabled();
+    fireEvent.click(confirmButton);
+
+    expect(fetchMock).toHaveBeenCalledTimes(3); // 2 GETs + exactly one regenerate POST
+    resolveRegenerate(
+      jsonResponse(200, { project, reviews: sixReviews([1, 3, 4, 5, 6]), sceneNumber: 2 }),
+    );
+    await waitFor(() => expect(screen.queryByTestId("regenerate-confirm-panel-2")).toBeNull());
+  });
+
+  it("allows regenerating a scene from WAITING_FOR_VIDEO_CONFIRMATION, moving the project back to IMAGES_REVIEW while other approvals are preserved", async () => {
+    const waitingProject = makeProject({
+      workflowState: WorkflowState.WaitingForVideoConfirmation,
+      scenes: sixScenes([1, 2, 3, 4, 5, 6]),
+    });
+    const regeneratedProject = makeProject({
+      workflowState: WorkflowState.ImagesReview,
+      scenes: sixScenes([1, 2, 3, 4, 5, 6]),
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project: waitingProject }))
+      .mockResolvedValueOnce(jsonResponse(200, { project: waitingProject, reviews: sixReviews([1, 2, 3, 4, 5, 6]) }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          project: regeneratedProject,
+          reviews: sixReviews([2, 3, 4, 5, 6]),
+          sceneNumber: 1,
+        }),
+      );
+    renderScreen(fetchMock);
+
+    const transition = await screen.findByTestId("video-confirmation-transition");
+    expect(transition).toBeTruthy();
+    fireEvent.click(await screen.findByTestId("review-regenerate-1"));
+    const panel = await screen.findByTestId("regenerate-confirm-panel-1");
+    fireEvent.click(within(panel).getByRole("button", { name: "예, 로컬로 재생성합니다" }));
+
+    await waitFor(() => expect(screen.getByTestId("review-1")).toHaveAttribute("data-status", "pending"));
+    expect(screen.queryByTestId("video-confirmation-transition")).toBeNull();
+    for (const number of [2, 3, 4, 5, 6]) {
+      expect(screen.getByTestId(`review-${number}`)).toHaveAttribute("data-status", "approved");
+    }
   });
 });
