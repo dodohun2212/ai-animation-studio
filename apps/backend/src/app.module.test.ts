@@ -41,6 +41,10 @@ describe("AppModule", () => {
       "GET /assets/:assetId/content",
       "PATCH /assets/:assetId",
       "DELETE /assets/:assetId",
+      "GET /long-projects/:projectId/story-bible",
+      "POST /long-projects/:projectId/story-bible/:collection",
+      "PATCH /long-projects/:projectId/story-bible/:collection/:itemId",
+      "DELETE /long-projects/:projectId/story-bible/:collection/:itemId",
     ]));
   });
 });

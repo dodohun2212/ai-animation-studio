@@ -77,6 +77,53 @@ export interface CreateLongProjectOutlinePreviewResponse { preview: LongProjectO
 export interface ApproveLongProjectOutlineRequest { promptSha256: string; prompt: string; approved: true; }
 export interface ApproveLongProjectOutlineResponse { project: LongProject; approvedAt: string; promptSha256: string; modified: boolean; }
 
+/** Provider-free editable records stored in a long project's Story Bible. */
+export type LongStoryBibleCollection = "characters" | "locations" | "props" | "secrets" | "foreshadowing";
+
+export interface LongStoryBibleItem {
+  id: string;
+  name?: string;
+  status?: string;
+  description?: string;
+  alive?: boolean;
+  injured?: boolean;
+  referenceId?: string;
+  lastAppearance?: string;
+  emotionalState?: string;
+  locationId?: string;
+  ownerId?: string;
+  ownedItemIds?: string[];
+  characterIds?: string[];
+  locationIds?: string[];
+  episodeIds?: string[];
+  eventIds?: string[];
+  plannedRevealEpisode?: number;
+  actualRevealEpisode?: number;
+  truth?: string;
+  revealAvailableEpisode?: number;
+  content?: string;
+}
+
+export type LongStoryBibleItemInput = Omit<LongStoryBibleItem, "id"> & { id?: string };
+
+export interface LongStoryBible {
+  basic: Record<string, unknown>;
+  world: Record<string, unknown>;
+  characters: LongStoryBibleItem[];
+  locations: LongStoryBibleItem[];
+  props: LongStoryBibleItem[];
+  secrets: LongStoryBibleItem[];
+  foreshadowing: LongStoryBibleItem[];
+  updatedAt: string;
+}
+
+export interface GetLongProjectStoryBibleResponse { storyBible: LongStoryBible; }
+export interface CreateLongStoryBibleItemRequest { item: LongStoryBibleItemInput; }
+export interface CreateLongStoryBibleItemResponse { item: LongStoryBibleItem; storyBible: LongStoryBible; }
+export interface UpdateLongStoryBibleItemRequest { item: LongStoryBibleItemInput; }
+export interface UpdateLongStoryBibleItemResponse { item: LongStoryBibleItem; storyBible: LongStoryBible; }
+export interface DeleteLongStoryBibleItemResponse { storyBible: LongStoryBible; }
+
 /**
  * The editable, non-provider portion of Python's short-project Wizard.
  * Asset selections remain in the project asset-mapping contract.
@@ -334,6 +381,12 @@ export const API_ROUTES = {
   health: "/health",
   projects: "/projects",
   longProjects: "/long-projects",
+  longProjectStoryBible: (projectId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/story-bible`,
+  longProjectStoryBibleCollection: (projectId: string, collection: LongStoryBibleCollection) =>
+    `/long-projects/${encodeURIComponent(projectId)}/story-bible/${collection}`,
+  longProjectStoryBibleItem: (projectId: string, collection: LongStoryBibleCollection, itemId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/story-bible/${collection}/${encodeURIComponent(itemId)}`,
   longProject: (projectId: string) => `/long-projects/${encodeURIComponent(projectId)}`,
   longProjectSettings: (projectId: string) => `/long-projects/${encodeURIComponent(projectId)}/settings`,
   longProjectOutlinePreview: (projectId: string) => `/long-projects/${encodeURIComponent(projectId)}/outline/preview`,
