@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { createHash } from "node:crypto";
 
 import { Injectable } from "@nestjs/common";
 import { WorkflowState, type GetVideoPromptPreviewResponse, type SceneNumber, type VideoPromptPreview } from "@ai-animation-studio/shared";
@@ -21,6 +22,8 @@ const SCENE_FIELDS = [
   "environment_motion", "motion_speed", "motion_intensity", "expression_change", "continuity_hint",
 ] as const;
 const UTF16_PROMPT_LIMIT = 1_000;
+const ESTIMATED_REQUEST_COST_USD = 1.5;
+const LOCAL_MONTHLY_BUDGET_USD = 10;
 
 type StoredScene = Record<(typeof SCENE_FIELDS)[number], string | number>;
 
@@ -119,6 +122,29 @@ export class LocalVideoPreviewService {
       durationSeconds: 5,
       estimatedCostUsd: 0.25,
     }));
-    return { previews };
+    // This is an opaque, deterministic snapshot of the reviewed images and
+    // preflight settings. It is deliberately not persisted: generating a
+    // preview must remain provider-free and side-effect-free.
+    const digest = createHash("sha256");
+    digest.update(project.project_id, "utf8");
+    for (const preview of previews) {
+      digest.update(await fs.readFile(this.imagePath(project.project_id, preview.sceneNumber)));
+      digest.update(preview.prompt, "utf8");
+      digest.update(preview.model, "ascii");
+      digest.update(preview.ratio, "ascii");
+      digest.update(String(preview.durationSeconds), "ascii");
+    }
+    return {
+      previews,
+      confirmationId: digest.digest("hex"),
+      maximumProviderCalls: 6,
+      budget: {
+        monthlyLimitUsd: LOCAL_MONTHLY_BUDGET_USD,
+        spentUsd: 0,
+        remainingUsd: LOCAL_MONTHLY_BUDGET_USD,
+        estimatedRequestCostUsd: ESTIMATED_REQUEST_COST_USD,
+        canSpend: ESTIMATED_REQUEST_COST_USD <= LOCAL_MONTHLY_BUDGET_USD,
+      },
+    };
   }
 }

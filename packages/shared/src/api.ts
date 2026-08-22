@@ -128,6 +128,11 @@ export interface VideoPromptPreview {
 /** Previewing prompts and cost never creates a provider task or writes project data. */
 export interface GetVideoPromptPreviewResponse {
   previews: VideoPromptPreview[];
+  /** Opaque preflight fingerprint required by a later explicit submission. */
+  confirmationId?: string;
+  /** Local guard information only; previewing never reserves budget or calls a provider. */
+  maximumProviderCalls?: number;
+  budget?: BudgetPreview;
 }
 
 export interface ListAssetsQuery {

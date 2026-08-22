@@ -23,7 +23,7 @@ afterEach(async () => {
   if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined;
 });
 
-it("serves a restart-safe local video preview without paths or provider work", async () => {
+it("serves a restart-safe local video preview and explicit fake submission without paths or provider work", async () => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "video-preview-http-"));
   const projectsRoot = path.join(root, "projects");
   const projects = new LocalProjectRepository(projectsRoot);
@@ -39,9 +39,20 @@ it("serves a restart-safe local video preview without paths or provider work", a
   const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
   const response = await fetch(`${base}/projects/video_http/videos/preview`, { method: "POST" });
   expect(response.status).toBe(201);
-  const body = await response.json() as { previews: Array<Record<string, unknown>> };
+  const body = await response.json() as { confirmationId: string; previews: Array<{ sceneNumber: number; prompt: string }> };
   expect(body.previews).toHaveLength(6);
   expect(body.previews[0]).toMatchObject({ sceneNumber: 1, model: "gen4_turbo", ratio: "720:1280", durationSeconds: 5, estimatedCostUsd: 0.25 });
   expect(JSON.stringify(body)).not.toContain(projectsRoot);
   expect((await new LocalProjectRepository(projectsRoot).findById("video_http")).workflow_state).toBe(WorkflowState.WaitingForVideoConfirmation);
+  const accepted = await fetch(`${base}/projects/video_http/videos/generations`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ confirmationId: body.confirmationId, userRequestId: "http_request_1", approved: true, prompts: body.previews.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) }),
+  });
+  expect(accepted.status).toBe(201);
+  expect(await accepted.json()).toMatchObject({ acceptedSceneNumbers: [1, 2, 3, 4, 5, 6], jobId: expect.any(String) });
+  const reloaded = await new LocalProjectRepository(projectsRoot).findById("video_http");
+  expect(reloaded.workflow_state).toBe(WorkflowState.GeneratingVideos);
+  expect(reloaded.video_generation_records).toHaveLength(6);
+  expect(JSON.stringify(reloaded)).not.toContain(projectsRoot);
 });
