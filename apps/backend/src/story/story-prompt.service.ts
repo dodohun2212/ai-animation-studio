@@ -2,12 +2,15 @@ import * as crypto from "node:crypto";
 import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
+import { WorkflowState } from "@ai-animation-studio/shared";
 import type { ApproveStoryPromptRequest, ApproveStoryPromptResponse, CreateStoryPromptPreviewResponse, StoryPromptPreview } from "@ai-animation-studio/shared";
 import { toApiProject } from "../projects/project.mapper.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
+import { ProjectAssetMappingsService } from "../mappings/mappings.service.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
-import { invalidStoryRequest, storyPromptStale, storyStorageError } from "./story-api.error.js";
+import { generateLocalStory } from "./story-generation.service.js";
+import { invalidStoryRequest, storyGenerationFailed, storyGenerationNotAllowed, storyPromptStale, storyStorageError } from "./story-api.error.js";
 
 const sha256 = (value: string) => crypto.createHash("sha256").update(value, "utf8").digest("hex");
 const object = (value: unknown): Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -67,7 +70,11 @@ function characterCount(stored: StoredProject): number {
 
 @Injectable()
 export class StoryPromptService {
-  constructor(private readonly projects: LocalProjectRepository, private readonly templateRoot = promptsRoot()) {}
+  constructor(
+    private readonly projects: LocalProjectRepository,
+    private readonly templateRoot = promptsRoot(),
+    private readonly mappings?: ProjectAssetMappingsService,
+  ) {}
 
   private async original(stored: StoredProject): Promise<string> {
     let template: string;
@@ -97,10 +104,12 @@ export class StoryPromptService {
     const stored = await this.projects.findById(projectId.trim());
     const originalPrompt = await this.original(stored);
     if (body.originalPromptSha256 !== sha256(originalPrompt)) throw storyPromptStale();
+    if (stored.workflow_state !== WorkflowState.Ready) throw storyGenerationNotAllowed();
     const prompt = body.prompt.trim();
     const approvedAt = new Date().toISOString();
-    const updated: StoredProject = {
+    const generating: StoredProject = {
       ...stored,
+      workflow_state: WorkflowState.GeneratingStory,
       updated_at: approvedAt,
       lore_context: {
         ...stored.lore_context,
@@ -115,7 +124,28 @@ export class StoryPromptService {
         },
       },
     };
-    try { await this.projects.save(updated); } catch { throw storyStorageError(); }
+    try { await this.projects.save(generating); } catch { throw storyStorageError(); }
+
+    let story;
+    try { story = generateLocalStory(generating, prompt); } catch { throw storyGenerationFailed(); }
+    const completedAt = new Date().toISOString();
+    const updated: StoredProject = {
+      ...generating,
+      story,
+      scenes: story.scenes,
+      script_revision: generating.script_revision + 1,
+      workflow_state: WorkflowState.WaitingForAssetMappingReview,
+      updated_at: completedAt,
+    };
+    try {
+      await this.projects.save(updated);
+      if (this.mappings) {
+        const review = await this.mappings.beginReview(updated.project_id, { scriptRevision: updated.script_revision });
+        updated.mapping_revision = review.review.mappingRevision;
+        updated.updated_at = new Date().toISOString();
+        await this.projects.save(updated);
+      }
+    } catch { throw storyStorageError(); }
     return { project: toApiProject(updated), originalPrompt, prompt, promptSha256: sha256(prompt), modified: prompt !== originalPrompt, approvedAt };
   }
 }
