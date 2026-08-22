@@ -1,4 +1,4 @@
-import type { CreateProjectRequest, Project } from "@ai-animation-studio/shared";
+import type { CreateLongProjectRequest, CreateProjectRequest, LongProject, Project } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -351,5 +351,133 @@ describe("App", () => {
     const [url, mergeInit] = fetchMock.mock.calls.find(([callUrl]) => String(callUrl) === "/projects/sample_project/videos/merge") as [string, RequestInit];
     expect(url).toBe("/projects/sample_project/videos/merge");
     expect(mergeInit.method).toBe("POST");
+  });
+
+  it("navigates to 장기 프로젝트, creates one, reopens it from the list, and completes the two-step outline approval", async () => {
+    const longProjects = new Map<string, LongProject>();
+    const seed = {
+      title: "우주 방랑자",
+      logline: "떠도는 항해사가 고향 별을 되찾는다.",
+    };
+    const fetchMock = vi.fn<FakeFetch>(async (input, init) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+
+      if (url === "/projects" && method === "GET") return jsonResponse(200, { projects: [] });
+
+      if (url === "/long-projects" && method === "POST") {
+        const request = JSON.parse(String(init?.body)) as CreateLongProjectRequest;
+        if (longProjects.has(request.projectId)) {
+          return jsonResponse(409, { code: "LONG_PROJECT_ALREADY_EXISTS", message: "이미 존재하는 프로젝트입니다." });
+        }
+        const project: LongProject = {
+          id: request.projectId,
+          title: request.settings.title,
+          logline: request.settings.logline,
+          episodeCount: request.settings.episodeCount,
+          outlineStatus: "planned",
+          createdAt: "2026-08-23T00:00:00.000Z",
+          updatedAt: "2026-08-23T00:00:00.000Z",
+          settings: request.settings,
+          storyBible: { basic: {}, world: {} },
+          episodes: Array.from({ length: request.settings.episodeCount }, (_, index) => ({
+            episodeNumber: index + 1,
+            title: `Episode ${index + 1}`,
+            summary: "",
+            mainEvent: "",
+            conflict: "",
+            cliffhanger: "",
+            nextEpisodeHook: "",
+            status: "planned" as const,
+          })),
+        };
+        longProjects.set(project.id, project);
+        return jsonResponse(201, { project });
+      }
+
+      if (url === "/long-projects" && method === "GET") {
+        return jsonResponse(200, {
+          projects: Array.from(longProjects.values()).map((project) => ({
+            id: project.id,
+            title: project.title,
+            logline: project.logline,
+            episodeCount: project.episodeCount,
+            outlineStatus: project.outlineStatus,
+            createdAt: project.createdAt,
+            updatedAt: project.updatedAt,
+          })),
+        });
+      }
+
+      const getMatch = /^\/long-projects\/([^/]+)$/.exec(url);
+      if (getMatch && method === "GET") {
+        const project = longProjects.get(getMatch[1] as string);
+        if (!project) return jsonResponse(404, { code: "LONG_PROJECT_NOT_FOUND", message: "찾을 수 없습니다." });
+        return jsonResponse(200, { project });
+      }
+
+      const previewMatch = /^\/long-projects\/([^/]+)\/outline\/preview$/.exec(url);
+      if (previewMatch && method === "POST") {
+        const project = longProjects.get(previewMatch[1] as string);
+        if (!project) return jsonResponse(404, { code: "LONG_PROJECT_NOT_FOUND", message: "찾을 수 없습니다." });
+        const prompt = `[Long project outline]\nTitle: ${project.title}`;
+        return jsonResponse(200, {
+          preview: { projectId: project.id, prompt, promptSha256: "a".repeat(64), episodeCount: project.episodeCount },
+        });
+      }
+
+      const approveMatch = /^\/long-projects\/([^/]+)\/outline\/approval$/.exec(url);
+      if (approveMatch && method === "POST") {
+        const project = longProjects.get(approveMatch[1] as string);
+        if (!project) return jsonResponse(404, { code: "LONG_PROJECT_NOT_FOUND", message: "찾을 수 없습니다." });
+        const updated: LongProject = {
+          ...project,
+          outlineStatus: "outline_ready",
+          episodes: project.episodes.map((episode) => ({ ...episode, status: "outline_ready" as const })),
+        };
+        longProjects.set(project.id, updated);
+        return jsonResponse(200, {
+          project: updated,
+          approvedAt: "2026-08-23T01:00:00.000Z",
+          promptSha256: "a".repeat(64),
+          modified: false,
+        });
+      }
+
+      throw new Error(`Unexpected fetch call in test: ${method} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    await screen.findByText("아직 생성된 프로젝트가 없습니다.");
+    fireEvent.click(screen.getByRole("button", { name: "장기 프로젝트" }));
+    await screen.findByText("아직 생성된 장기 프로젝트가 없습니다.");
+
+    fireEvent.click(screen.getByRole("button", { name: "새 장기 프로젝트" }));
+    fireEvent.change(screen.getByLabelText("프로젝트 ID"), { target: { value: "long_test" } });
+    fireEvent.change(screen.getByLabelText("제목"), { target: { value: seed.title } });
+    fireEvent.change(screen.getByLabelText("로그라인"), { target: { value: seed.logline } });
+    fireEvent.click(screen.getByRole("button", { name: "장기 프로젝트 생성" }));
+
+    await screen.findByText(seed.title);
+    expect(screen.getByText(seed.logline)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "목록으로" }));
+    const projectButton = await screen.findByRole("button", { name: new RegExp(seed.title) });
+    fireEvent.click(projectButton);
+    await screen.findByText(seed.title);
+    expect(fetchMock.mock.calls.filter(([callUrl]) => String(callUrl) === "/long-projects/long_test")).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "아웃라인 확인" }));
+    await screen.findByDisplayValue(/Title: 우주 방랑자/);
+
+    fireEvent.click(screen.getByRole("button", { name: "이 프롬프트로 승인" }));
+    await screen.findByTestId("approve-confirm-panel");
+    fireEvent.click(screen.getByRole("button", { name: "네, 승인합니다" }));
+
+    await screen.findByTestId("approved-message");
+    for (const number of [1, 2, 3]) {
+      expect(screen.getByTestId(`episode-outline-${number}`)).toHaveAttribute("data-status", "outline_ready");
+    }
   });
 });

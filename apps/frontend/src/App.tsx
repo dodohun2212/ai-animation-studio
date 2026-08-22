@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Project } from "@ai-animation-studio/shared";
+import type { LongProject, Project } from "@ai-animation-studio/shared";
 
 import { CreateProjectForm } from "./components/CreateProjectForm.js";
 import { ProjectDetail } from "./components/ProjectDetail.js";
@@ -13,6 +13,11 @@ import { ImageGenerationScreen } from "./components/ImageGenerationScreen.js";
 import { VideoPromptPreviewScreen } from "./components/VideoPromptPreviewScreen.js";
 import { VideoWorkflowScreen } from "./components/VideoWorkflowScreen.js";
 import { VideoMergeScreen } from "./components/VideoMergeScreen.js";
+import { CreateLongProjectForm } from "./components/CreateLongProjectForm.js";
+import { LongProjectDetail } from "./components/LongProjectDetail.js";
+import { LongProjectList } from "./components/LongProjectList.js";
+import { LongProjectSettingsScreen } from "./components/LongProjectSettingsScreen.js";
+import { LongProjectOutlineScreen } from "./components/LongProjectOutlineScreen.js";
 
 type Screen =
   | { name: "list" }
@@ -26,15 +31,26 @@ type Screen =
   | { name: "videoWorkflow"; projectId: string; jobId: string }
   | { name: "videoMerge"; projectId: string }
   | { name: "providerSettings" }
-  | { name: "assets" };
+  | { name: "assets" }
+  | { name: "longList" }
+  | { name: "longCreate" }
+  | { name: "longDetail"; projectId: string }
+  | { name: "longSettings"; projectId: string }
+  | { name: "longOutline"; projectId: string };
 
 export function App() {
   const [screen, setScreen] = useState<Screen>({ name: "list" });
   const [listRefreshToken, setListRefreshToken] = useState(0);
+  const [longListRefreshToken, setLongListRefreshToken] = useState(0);
 
   function handleCreated(project: Project): void {
     setListRefreshToken((token) => token + 1);
     setScreen({ name: "detail", projectId: project.id });
+  }
+
+  function handleLongCreated(project: LongProject): void {
+    setLongListRefreshToken((token) => token + 1);
+    setScreen({ name: "longDetail", projectId: project.id });
   }
 
   return (
@@ -52,6 +68,7 @@ export function App() {
         {screen.name === "list" && (
           <>
             <div className="mt-6 flex justify-end gap-4">
+              <button type="button" className="text-sm text-violet-300 underline" onClick={() => setScreen({ name: "longList" })}>장기 프로젝트</button>
               <button type="button" className="text-sm text-violet-300 underline" onClick={() => setScreen({ name: "assets" })}>Asset Library</button>
               <button
                 type="button"
@@ -67,6 +84,41 @@ export function App() {
               onCreateNew={() => setScreen({ name: "create" })}
             />
           </>
+        )}
+        {screen.name === "longList" && (
+          <>
+            <div className="mt-6 flex justify-end">
+              <button type="button" className="text-sm text-violet-300 underline" onClick={() => setScreen({ name: "list" })}>단기 프로젝트로</button>
+            </div>
+            <LongProjectList
+              refreshToken={longListRefreshToken}
+              onOpenProject={(projectId) => setScreen({ name: "longDetail", projectId })}
+              onCreateNew={() => setScreen({ name: "longCreate" })}
+            />
+          </>
+        )}
+        {screen.name === "longCreate" && (
+          <CreateLongProjectForm onCreated={handleLongCreated} onCancel={() => setScreen({ name: "longList" })} />
+        )}
+        {screen.name === "longDetail" && (
+          <LongProjectDetail
+            projectId={screen.projectId}
+            onBack={() => setScreen({ name: "longList" })}
+            onOpenSettings={(projectId) => setScreen({ name: "longSettings", projectId })}
+            onOpenOutline={(projectId) => setScreen({ name: "longOutline", projectId })}
+          />
+        )}
+        {screen.name === "longSettings" && (
+          <LongProjectSettingsScreen
+            projectId={screen.projectId}
+            onBack={() => setScreen({ name: "longDetail", projectId: screen.projectId })}
+          />
+        )}
+        {screen.name === "longOutline" && (
+          <LongProjectOutlineScreen
+            projectId={screen.projectId}
+            onBack={() => setScreen({ name: "longDetail", projectId: screen.projectId })}
+          />
         )}
         {screen.name === "create" && (
           <CreateProjectForm onCreated={handleCreated} onCancel={() => setScreen({ name: "list" })} />

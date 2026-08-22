@@ -2,6 +2,10 @@ import {
   API_ROUTES,
   WorkflowState,
   type Asset,
+  type LongEpisodeOutline,
+  type LongProject,
+  type LongProjectSettings,
+  type LongProjectSummary,
   type Project,
   type ProjectAssetMapping,
   type ProjectAssetMappingReview,
@@ -112,6 +116,71 @@ export function makeMapping(overrides: Partial<ProjectAssetMapping> = {}): Proje
     updatedAt: "2026-08-22T00:00:00.000Z",
     snapshot: null,
     selectedChildAssetIds: [],
+    ...overrides,
+  };
+}
+
+export function makeLongProjectSettings(overrides: Partial<LongProjectSettings> = {}): LongProjectSettings {
+  return {
+    title: "우주 방랑자",
+    logline: "떠도는 항해사가 고향 별을 되찾는다.",
+    overview: "",
+    genre: "SF",
+    tone: "진지함",
+    theme: "귀환",
+    episodeCount: 3,
+    episodeDurationSeconds: 30,
+    platform: "YouTube Shorts",
+    aspectRatio: "9:16",
+    audience: "",
+    notes: "",
+    startingState: "",
+    midpoint: "",
+    endingDirection: "",
+    storyFlowSummary: "",
+    ...overrides,
+  };
+}
+
+export function makeLongProjectSummary(overrides: Partial<LongProjectSummary> = {}): LongProjectSummary {
+  return {
+    id: "long_sample",
+    title: "우주 방랑자",
+    logline: "떠도는 항해사가 고향 별을 되찾는다.",
+    episodeCount: 3,
+    outlineStatus: "planned",
+    createdAt: "2026-08-21T00:00:00.000Z",
+    updatedAt: "2026-08-21T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function makeLongEpisodeOutline(overrides: Partial<LongEpisodeOutline> = {}): LongEpisodeOutline {
+  const episodeNumber = overrides.episodeNumber ?? 1;
+  return {
+    episodeNumber,
+    title: `Episode ${episodeNumber}`,
+    summary: "",
+    mainEvent: "",
+    conflict: "",
+    cliffhanger: "",
+    nextEpisodeHook: "",
+    status: "planned",
+    ...overrides,
+  };
+}
+
+export function makeLongProject(overrides: Partial<LongProject> = {}): LongProject {
+  const summary = makeLongProjectSummary(overrides);
+  return {
+    ...summary,
+    settings: makeLongProjectSettings({
+      title: summary.title,
+      logline: summary.logline,
+      episodeCount: summary.episodeCount,
+    }),
+    storyBible: { basic: {}, world: {} },
+    episodes: Array.from({ length: summary.episodeCount }, (_, index) => makeLongEpisodeOutline({ episodeNumber: index + 1 })),
     ...overrides,
   };
 }
