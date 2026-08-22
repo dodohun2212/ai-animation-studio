@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { StoryPromptPreview } from "@ai-animation-studio/shared";
+import type { Project, StoryPromptPreview } from "@ai-animation-studio/shared";
 
 import { approveStoryPrompt, createStoryPromptPreview, toStoryDisplayError } from "../api/storyPromptApi.js";
 
@@ -15,6 +15,7 @@ interface ApprovedState {
   promptSha256: string;
   modified: boolean;
   approvedAt: string;
+  project: Project;
 }
 
 export function StoryPromptScreen({ projectId, onBack }: Props) {
@@ -104,6 +105,7 @@ export function StoryPromptScreen({ projectId, onBack }: Props) {
         promptSha256: response.promptSha256,
         modified: response.modified,
         approvedAt: response.approvedAt,
+        project: response.project,
       });
       setConfirmOpen(false);
     } catch (caught) {
@@ -214,9 +216,15 @@ export function StoryPromptScreen({ projectId, onBack }: Props) {
             </p>
           )}
           {approved && (
-            <p data-testid="approved-message" className="text-sm text-emerald-400">
+            <div data-testid="approved-message" className="text-sm text-emerald-400">
+              <p data-testid="generated-scene-count">{approved.project.scenes.length} scenes generated.</p>
+              <ol data-testid="generated-scene-numbers" className="list-decimal pl-5 text-slate-300">
+                {approved.project.scenes.map((scene) => <li key={scene.number}>Scene {scene.number}</li>)}
+              </ol>
+              <p>
               승인되었습니다. ({approved.approvedAt})
-            </p>
+              </p>
+            </div>
           )}
         </>
       )}
