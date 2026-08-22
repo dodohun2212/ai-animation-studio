@@ -205,4 +205,70 @@ describe("App", () => {
     expect(await screen.findByText("sample_project")).toBeTruthy();
     expect(screen.getByText("우주를 여행하는 고양이")).toBeTruthy();
   });
+
+  it("opens the video workflow screen from a successful local video submission and shows live local fake progress", async () => {
+    const project: Project = {
+      id: "sample_project",
+      topic: "우주를 여행하는 고양이",
+      projectType: "short_project",
+      workflowState: WorkflowState.WaitingForVideoConfirmation,
+      createdAt: "2026-08-21T00:00:00.000Z",
+      updatedAt: "2026-08-21T00:00:00.000Z",
+      scenes: [],
+      warnings: [],
+      errors: [],
+    };
+    const previews = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({
+      sceneNumber,
+      prompt: `Scene ${sceneNumber} prompt`,
+      model: "gen4_turbo",
+      ratio: "720:1280",
+      durationSeconds: 5,
+      estimatedCostUsd: 0.25,
+    }));
+    const fetchMock = vi.fn<FakeFetch>(async (input, init) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      if (url === "/projects" && method === "GET") return jsonResponse(200, { projects: [project] });
+      if (url === "/projects/sample_project" && method === "GET") return jsonResponse(200, { project });
+      if (url === "/projects/sample_project/videos/preview" && method === "POST") {
+        return jsonResponse(200, { previews, confirmationId: "confirmation_1" });
+      }
+      if (url === "/projects/sample_project/videos/generations" && method === "POST") {
+        return jsonResponse(200, { jobId: "job_42", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+      }
+      if (url === "/projects/sample_project/videos/generations/job_42") {
+        return jsonResponse(200, {
+          jobId: "job_42",
+          status: "succeeded",
+          completedSceneNumbers: [1, 2, 3, 4, 5, 6],
+          failedSceneNumbers: [],
+        });
+      }
+      if (url === "/projects/sample_project/videos/generations/job_42/review") {
+        return jsonResponse(200, {
+          project,
+          reviews: [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" })),
+        });
+      }
+      throw new Error(`Unexpected fetch call in test: ${method} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /sample_project/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "영상 프롬프트 및 비용 확인" }));
+    await screen.findByTestId("preview-list");
+
+    fireEvent.click(screen.getByTestId("open-confirm-button"));
+    fireEvent.click(screen.getByTestId("confirm-submit-button"));
+    fireEvent.click(await screen.findByTestId("view-progress-button"));
+
+    expect(await screen.findByTestId("scene-progress-list")).toBeTruthy();
+    expect(screen.getByTestId("workflow-status").textContent).toBe("상태: 완료");
+    for (const number of [1, 2, 3, 4, 5, 6]) {
+      expect(screen.getByTestId(`scene-progress-${number}`)).toHaveAttribute("data-status", "completed");
+    }
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/ffmpeg"))).toBe(false);
+  });
 });

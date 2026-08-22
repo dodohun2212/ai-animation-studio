@@ -11,6 +11,7 @@ import { ShortProjectSettingsScreen } from "./components/ShortProjectSettingsScr
 import { StoryPromptScreen } from "./components/StoryPromptScreen.js";
 import { ImageGenerationScreen } from "./components/ImageGenerationScreen.js";
 import { VideoPromptPreviewScreen } from "./components/VideoPromptPreviewScreen.js";
+import { VideoWorkflowScreen } from "./components/VideoWorkflowScreen.js";
 
 type Screen =
   | { name: "list" }
@@ -21,6 +22,7 @@ type Screen =
   | { name: "storyPrompt"; projectId: string }
   | { name: "imageGeneration"; projectId: string }
   | { name: "videoPreview"; projectId: string }
+  | { name: "videoWorkflow"; projectId: string; jobId: string }
   | { name: "providerSettings" }
   | { name: "assets" };
 
@@ -105,6 +107,14 @@ export function App() {
         {screen.name === "videoPreview" && (
           <VideoPromptPreviewScreen
             projectId={screen.projectId}
+            onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
+            onSubmitted={(projectId, jobId) => setScreen({ name: "videoWorkflow", projectId, jobId })}
+          />
+        )}
+        {screen.name === "videoWorkflow" && (
+          <VideoWorkflowScreen
+            projectId={screen.projectId}
+            jobId={screen.jobId}
             onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
           />
         )}

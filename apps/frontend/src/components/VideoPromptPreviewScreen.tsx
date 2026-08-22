@@ -7,6 +7,7 @@ import { startVideoSubmission, toVideoSubmissionDisplayError } from "../api/vide
 interface Props {
   projectId: string;
   onBack: () => void;
+  onSubmitted?: (projectId: string, jobId: string) => void;
 }
 
 type DisplayError = { code: string; message: string };
@@ -23,7 +24,7 @@ function utf16Length(value: string): number {
   return value.length;
 }
 
-export function VideoPromptPreviewScreen({ projectId, onBack }: Props) {
+export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () => {} }: Props) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [editedPrompts, setEditedPrompts] = useState<Partial<Record<SceneNumber, string>>>({});
 
@@ -269,6 +270,14 @@ export function VideoPromptPreviewScreen({ projectId, onBack }: Props) {
               <p className="text-sm text-slate-300" data-testid="accepted-scenes">
                 접수된 장면: {submitted.acceptedSceneNumbers.join(", ")}
               </p>
+              <button
+                type="button"
+                className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white"
+                data-testid="view-progress-button"
+                onClick={() => onSubmitted(projectId, submitted.jobId)}
+              >
+                진행 상황 보기
+              </button>
             </div>
           )}
         </>
