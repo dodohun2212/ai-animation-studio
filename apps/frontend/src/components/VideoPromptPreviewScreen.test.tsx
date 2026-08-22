@@ -1,4 +1,4 @@
-import type { GetVideoPromptPreviewResponse, VideoPromptPreview } from "@ai-animation-studio/shared";
+import type { GetVideoPromptPreviewResponse, StartVideoGenerationResponse, VideoPromptPreview } from "@ai-animation-studio/shared";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -14,6 +14,10 @@ function makePreviews(): VideoPromptPreview[] {
     durationSeconds: 5,
     estimatedCostUsd: 0.25,
   }));
+}
+
+function makePreviewResponse(confirmationId = "confirmation_1"): GetVideoPromptPreviewResponse {
+  return { previews: makePreviews(), confirmationId };
 }
 
 function renderScreen(fetchMock: ReturnType<typeof vi.fn>) {
@@ -151,5 +155,179 @@ describe("VideoPromptPreviewScreen", () => {
     const calledUrls = fetchMock.mock.calls.map(([url]) => String(url));
     expect(calledUrls).toEqual(["/projects/sample_project/videos/preview"]);
     expect(calledUrls.some((url) => url.includes("/videos/generations"))).toBe(false);
+  });
+
+  describe("two-step explicit submission confirmation", () => {
+    it("opens a confirmation panel without sending any request — only the final confirm button submits", async () => {
+      const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, makePreviewResponse()));
+      renderScreen(fetchMock);
+      await screen.findByTestId("preview-list");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(screen.getByTestId("open-confirm-button"));
+      expect(screen.getByTestId("submit-confirm-panel")).toBeTruthy();
+      expect(screen.getByTestId("submit-confirm-panel").textContent).toContain("실제 유료 Runway 요청은 전송되지 않으며");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("cancelling the confirmation panel closes it and never submits", async () => {
+      const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, makePreviewResponse()));
+      renderScreen(fetchMock);
+      await screen.findByTestId("preview-list");
+
+      fireEvent.click(screen.getByTestId("open-confirm-button"));
+      fireEvent.click(screen.getByTestId("cancel-submit-button"));
+
+      expect(screen.queryByTestId("submit-confirm-panel")).toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("sends the exact submission contract with the current edited prompts only on final confirmation", async () => {
+      const submissionResponse: StartVideoGenerationResponse = { jobId: "job_1", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6] };
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(200, makePreviewResponse("confirmation_1")))
+        .mockResolvedValueOnce(jsonResponse(200, submissionResponse));
+      renderScreen(fetchMock);
+      await screen.findByTestId("preview-list");
+
+      const textarea = screen.getByLabelText("Runway 프롬프트", { selector: "#prompt-1" }) as HTMLTextAreaElement;
+      fireEvent.change(textarea, { target: { value: "수정된 1번 장면 프롬프트" } });
+
+      fireEvent.click(screen.getByTestId("open-confirm-button"));
+      fireEvent.click(screen.getByTestId("confirm-submit-button"));
+      await screen.findByTestId("submit-success");
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+      expect(url).toBe("/projects/sample_project/videos/generations");
+      expect(init.method).toBe("POST");
+
+      const body = JSON.parse(String(init.body));
+      expect(Object.keys(body).sort()).toEqual(["approved", "confirmationId", "prompts", "userRequestId"]);
+      expect(body.approved).toBe(true);
+      expect(body.confirmationId).toBe("confirmation_1");
+      expect(typeof body.userRequestId).toBe("string");
+      expect(body.userRequestId.length).toBeGreaterThan(0);
+      expect(body.prompts).toEqual([
+        { sceneNumber: 1, prompt: "수정된 1번 장면 프롬프트" },
+        { sceneNumber: 2, prompt: "Scene 2 prompt" },
+        { sceneNumber: 3, prompt: "Scene 3 prompt" },
+        { sceneNumber: 4, prompt: "Scene 4 prompt" },
+        { sceneNumber: 5, prompt: "Scene 5 prompt" },
+        { sceneNumber: 6, prompt: "Scene 6 prompt" },
+      ]);
+    });
+
+    it("prevents duplicate submissions from rapid repeated clicks on the confirm button", async () => {
+      const submissionResponse: StartVideoGenerationResponse = { jobId: "job_1", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6] };
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(200, makePreviewResponse()))
+        .mockResolvedValueOnce(jsonResponse(200, submissionResponse));
+      renderScreen(fetchMock);
+      await screen.findByTestId("preview-list");
+
+      fireEvent.click(screen.getByTestId("open-confirm-button"));
+      const confirmButton = screen.getByTestId("confirm-submit-button");
+      fireEvent.click(confirmButton);
+      fireEvent.click(confirmButton);
+      fireEvent.click(confirmButton);
+
+      await screen.findByTestId("submit-success");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("shows a local fake job status on success — framed as local-only, with no provider or video file claim", async () => {
+      const submissionResponse: StartVideoGenerationResponse = { jobId: "job_42", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6] };
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(200, makePreviewResponse()))
+        .mockResolvedValueOnce(jsonResponse(200, submissionResponse));
+      renderScreen(fetchMock);
+      await screen.findByTestId("preview-list");
+
+      fireEvent.click(screen.getByTestId("open-confirm-button"));
+      fireEvent.click(screen.getByTestId("confirm-submit-button"));
+
+      const success = await screen.findByTestId("submit-success");
+      expect(success.textContent).toContain("실제 유료 Runway 요청은 전송되지 않았습니다");
+      expect(screen.getByTestId("job-id").textContent).toBe("작업 ID: job_42");
+      expect(screen.getByTestId("accepted-scenes").textContent).toBe("접수된 장면: 1, 2, 3, 4, 5, 6");
+      expect(screen.queryByTestId("open-confirm-button")).toBeNull();
+      expect(screen.queryByTestId("submit-confirm-panel")).toBeNull();
+    });
+
+    it.each([
+      ["VIDEO_CONFIRMATION_STALE", "미리보기 내용이 그 사이에 변경되었습니다. 새로고침 후 다시 확인해 주세요."],
+      ["VIDEO_BUDGET_EXCEEDED", "설정된 예산을 초과하여 전송할 수 없습니다."],
+      ["VIDEO_CALL_LIMIT_EXCEEDED", "허용된 Provider 호출 횟수를 초과했습니다."],
+      ["VIDEO_REQUEST_ID_CONFLICT", "이전 요청과 내용이 달라 처리할 수 없습니다. 새로고침 후 다시 시도해 주세요."],
+      ["VIDEO_SUBMISSION_NOT_ALLOWED", "영상 생성 요청은 이미지 6장 승인과 영상 확인 대기 상태에서만 보낼 수 있습니다."],
+    ])("shows a safe fixed error message for %s instead of the raw backend detail", async (code, expectedMessage) => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(200, makePreviewResponse()))
+        .mockResolvedValueOnce(jsonResponse(409, { code, message: "raw backend detail" }));
+      renderScreen(fetchMock);
+      await screen.findByTestId("preview-list");
+
+      fireEvent.click(screen.getByTestId("open-confirm-button"));
+      fireEvent.click(screen.getByTestId("confirm-submit-button"));
+
+      const alert = await screen.findByTestId("submit-error");
+      expect(alert.textContent).toBe(expectedMessage);
+      expect(alert).toHaveAttribute("data-error-code", code);
+      expect(alert.textContent).not.toContain("raw backend detail");
+      expect(screen.queryByTestId("submit-success")).toBeNull();
+    });
+
+    it("offers a refresh action for a stale confirmation and reloads the preview to clear the error", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(200, makePreviewResponse("confirmation_1")))
+        .mockResolvedValueOnce(jsonResponse(409, { code: "VIDEO_CONFIRMATION_STALE", message: "raw" }))
+        .mockResolvedValueOnce(jsonResponse(200, makePreviewResponse("confirmation_2")));
+      renderScreen(fetchMock);
+      await screen.findByTestId("preview-list");
+
+      fireEvent.click(screen.getByTestId("open-confirm-button"));
+      fireEvent.click(screen.getByTestId("confirm-submit-button"));
+      await screen.findByTestId("submit-error");
+
+      fireEvent.click(screen.getByRole("button", { name: "새로고침" }));
+      await screen.findByTestId("preview-list");
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(screen.queryByTestId("submit-error")).toBeNull();
+    });
+
+    it("maps a network failure during submission to a safe network error without submitting twice", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(200, makePreviewResponse()))
+        .mockRejectedValueOnce(new Error("network down"));
+      renderScreen(fetchMock);
+      await screen.findByTestId("preview-list");
+
+      fireEvent.click(screen.getByTestId("open-confirm-button"));
+      fireEvent.click(screen.getByTestId("confirm-submit-button"));
+
+      const alert = await screen.findByTestId("submit-error");
+      expect(alert).toHaveAttribute("data-error-code", "CLIENT_NETWORK_ERROR");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("disables the confirm-open button while any prompt is empty or exceeds the length limit", async () => {
+      const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, makePreviewResponse()));
+      renderScreen(fetchMock);
+      await screen.findByTestId("preview-list");
+
+      const textarea = screen.getByLabelText("Runway 프롬프트", { selector: "#prompt-1" }) as HTMLTextAreaElement;
+      fireEvent.change(textarea, { target: { value: "" } });
+
+      expect(screen.getByTestId("open-confirm-button")).toBeDisabled();
+      fireEvent.click(screen.getByTestId("open-confirm-button"));
+      expect(screen.queryByTestId("submit-confirm-panel")).toBeNull();
+    });
   });
 });
