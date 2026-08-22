@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { jsonResponse, makeProject } from "../api/testUtils.js";
 import { ProjectDetail } from "./ProjectDetail.js";
@@ -93,5 +94,33 @@ describe("ProjectDetail", () => {
     fireEvent.click(screen.getByRole("button", { name: "Story 프롬프트 확인" }));
 
     expect(onOpenStoryPrompt).toHaveBeenCalledWith("sample_project");
+  });
+
+  it("does not show the 장면 이미지 생성 button when the project is not Asset-Mapping-approved", async () => {
+    const project = makeProject({ id: "sample_project", workflowState: WorkflowState.Ready });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} />);
+
+    await screen.findByText("sample_project");
+    expect(screen.queryByRole("button", { name: "장면 이미지 생성" })).toBeNull();
+  });
+
+  it("shows and wires the 장면 이미지 생성 button when the project is Asset-Mapping-approved", async () => {
+    const project = makeProject({ id: "sample_project", workflowState: WorkflowState.AssetMappingApproved });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    const onOpenImageGeneration = vi.fn();
+    render(
+      <ProjectDetail
+        projectId={project.id}
+        onBack={() => {}}
+        onOpenMappingReview={() => {}}
+        onOpenImageGeneration={onOpenImageGeneration}
+      />,
+    );
+
+    await screen.findByText("sample_project");
+    fireEvent.click(screen.getByRole("button", { name: "장면 이미지 생성" }));
+
+    expect(onOpenImageGeneration).toHaveBeenCalledWith("sample_project");
   });
 });

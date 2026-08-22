@@ -9,6 +9,7 @@ import { AssetLibraryScreen } from "./components/AssetLibraryScreen.js";
 import { MappingReviewScreen } from "./components/MappingReviewScreen.js";
 import { ShortProjectSettingsScreen } from "./components/ShortProjectSettingsScreen.js";
 import { StoryPromptScreen } from "./components/StoryPromptScreen.js";
+import { ImageGenerationScreen } from "./components/ImageGenerationScreen.js";
 
 type Screen =
   | { name: "list" }
@@ -17,6 +18,7 @@ type Screen =
   | { name: "mappingReview"; projectId: string }
   | { name: "settings"; projectId: string }
   | { name: "storyPrompt"; projectId: string }
+  | { name: "imageGeneration"; projectId: string }
   | { name: "providerSettings" }
   | { name: "assets" };
 
@@ -70,6 +72,7 @@ export function App() {
             onOpenMappingReview={(projectId) => setScreen({ name: "mappingReview", projectId })}
             onOpenSettings={(projectId) => setScreen({ name: "settings", projectId })}
             onOpenStoryPrompt={(projectId) => setScreen({ name: "storyPrompt", projectId })}
+            onOpenImageGeneration={(projectId) => setScreen({ name: "imageGeneration", projectId })}
           />
         )}
         {screen.name === "mappingReview" && (
@@ -86,6 +89,12 @@ export function App() {
         )}
         {screen.name === "storyPrompt" && (
           <StoryPromptScreen
+            projectId={screen.projectId}
+            onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
+          />
+        )}
+        {screen.name === "imageGeneration" && (
+          <ImageGenerationScreen
             projectId={screen.projectId}
             onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
           />

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Project } from "@ai-animation-studio/shared";
+import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { getProject, toDisplayError } from "../api/projectsApi.js";
 
@@ -9,6 +10,7 @@ interface ProjectDetailProps {
   onOpenMappingReview: (projectId: string) => void;
   onOpenSettings?: (projectId: string) => void;
   onOpenStoryPrompt?: (projectId: string) => void;
+  onOpenImageGeneration?: (projectId: string) => void;
 }
 
 type DetailState =
@@ -22,6 +24,7 @@ export function ProjectDetail({
   onOpenMappingReview,
   onOpenSettings = () => {},
   onOpenStoryPrompt = () => {},
+  onOpenImageGeneration = () => {},
 }: ProjectDetailProps) {
   const [state, setState] = useState<DetailState>({ status: "loading" });
 
@@ -83,6 +86,15 @@ export function ProjectDetail({
         >
           Story 프롬프트 확인
         </button>
+        {state.project.workflowState === WorkflowState.AssetMappingApproved && (
+          <button
+            type="button"
+            className="ml-3 mt-4 rounded-full border border-violet-400/40 px-4 py-2 text-sm text-violet-300"
+            onClick={() => onOpenImageGeneration(projectId)}
+          >
+            장면 이미지 생성
+          </button>
+        )}
         <dl className="mt-4 space-y-2 text-slate-100">
           <div>
             <dt className="text-xs uppercase tracking-wide text-slate-400">ID</dt>
