@@ -106,6 +106,15 @@ export interface ApproveImageReviewResponse {
   reviews: ImageReview[];
 }
 
+/** Explicit, provider-free replacement of one already generated image. */
+export interface RegenerateImageReviewRequest { approved: true; }
+
+export interface RegenerateImageReviewResponse {
+  project: Project;
+  reviews: ImageReview[];
+  sceneNumber: SceneNumber;
+}
+
 export interface ListAssetsQuery {
   query?: string;
   assetType?: AssetType;
@@ -235,6 +244,8 @@ export const API_ROUTES = {
     `/projects/${encodeURIComponent(projectId)}/images/review`,
   imageReviewApproval: (projectId: string, sceneNumber: SceneNumber) =>
     `/projects/${encodeURIComponent(projectId)}/images/review/${sceneNumber}/approve`,
+  imageReviewRegeneration: (projectId: string, sceneNumber: SceneNumber) =>
+    `/projects/${encodeURIComponent(projectId)}/images/review/${sceneNumber}/regenerate`,
   assets: "/assets",
   asset: (assetId: string) => `/assets/${encodeURIComponent(assetId)}`,
   assetContent: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/content`,

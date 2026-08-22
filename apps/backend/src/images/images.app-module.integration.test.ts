@@ -43,5 +43,9 @@ describe.sequential("local image generation HTTP route", () => {
     expect(response.status).toBe(201);
     expect(await response.json()).toMatchObject({ generatedSceneNumbers: [1, 2, 3, 4, 5, 6], reusedSceneNumbers: [], project: { workflowState: WorkflowState.ImagesReview } });
     await expect(fs.readFile(path.join(projectsRoot, "image_http", "images", "scene6.png"))).resolves.toEqual(expect.any(Buffer));
+    const regenerated = await fetch(`${base}/projects/image_http/images/review/1/regenerate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ approved: true }) });
+    expect(regenerated.status).toBe(201);
+    expect(await regenerated.json()).toMatchObject({ sceneNumber: 1, project: { workflowState: WorkflowState.ImagesReview } });
+    await expect(fs.readFile(path.join(projectsRoot, "image_http", "images", "originals", "scene1_v001.png"))).resolves.toEqual(expect.any(Buffer));
   });
 });

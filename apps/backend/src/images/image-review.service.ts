@@ -7,6 +7,7 @@ import {
   type ApproveImageReviewResponse,
   type GetImageReviewResponse,
   type ImageReview,
+  type RegenerateImageReviewResponse,
   type SceneNumber,
 } from "@ai-animation-studio/shared";
 
@@ -24,6 +25,7 @@ import {
 } from "./image-review-api.error.js";
 
 const SCENES = [1, 2, 3, 4, 5, 6] as const;
+const LOCAL_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -81,6 +83,22 @@ export class ImageReviewService {
     return path.join(this.projectsRoot, projectId, "generated_image_reviews.json");
   }
 
+  private imagePath(projectId: string, number: SceneNumber): string {
+    return path.join(this.projectsRoot, projectId, "images", `scene${number}.png`);
+  }
+
+  private async writeBinary(finalPath: string, bytes: Buffer): Promise<void> {
+    const temporary = path.join(path.dirname(finalPath), `.${path.basename(finalPath)}.${crypto.randomUUID()}.tmp`);
+    let renamed = false;
+    try {
+      await fs.writeFile(temporary, bytes);
+      await fs.rename(temporary, finalPath);
+      renamed = true;
+    } finally {
+      if (!renamed) await fs.unlink(temporary).catch(() => undefined);
+    }
+  }
+
   private async load(projectId: string): Promise<StoredImageReview[]> {
     try {
       const raw = await fs.readFile(this.reviewFile(projectId), "utf8");
@@ -95,10 +113,12 @@ export class ImageReviewService {
     }
   }
 
-  private async assertReviewable(project: StoredProject): Promise<void> {
-    if (project.workflow_state !== WorkflowState.ImagesReview) throw imageReviewNotAllowed();
+  private async assertReviewable(project: StoredProject, allowVideoConfirmation = false): Promise<void> {
+    if (project.workflow_state !== WorkflowState.ImagesReview
+      && (!allowVideoConfirmation || project.workflow_state !== WorkflowState.WaitingForVideoConfirmation)) throw imageReviewNotAllowed();
     if (project.generated_images.length !== 6) throw imageReviewImageInvalid();
-    for (const file of project.generated_images) {
+    for (const [index, file] of project.generated_images.entries()) {
+      if (file !== this.imagePath(project.project_id, SCENES[index]!)) throw imageReviewImageInvalid();
       try {
         const bytes = await fs.readFile(file);
         if (validateImage(bytes, "scene.png", "image/png").extension !== ".png") throw imageReviewImageInvalid();
@@ -140,5 +160,75 @@ export class ImageReviewService {
       : { ...project, updated_at: timestamp };
     try { await this.projects.save(updated); } catch { throw imageReviewStorageError(); }
     return { project: toApiProject(updated), reviews: toApiReviews(reviews, timestamp) };
+  }
+
+  async regenerate(projectId: string, rawSceneNumber: string, body: unknown): Promise<RegenerateImageReviewResponse> {
+    if (!isObject(body) || Object.keys(body).length !== 1 || body.approved !== true) throw invalidImageReviewRequest();
+    const number = sceneNumber(Number(rawSceneNumber));
+    if (!number || String(number) !== rawSceneNumber) throw invalidImageReviewRequest();
+    const project = await this.projects.findById(projectId.trim());
+    await this.assertReviewable(project, true);
+    // Parse persisted review state before changing image bytes. A damaged JSON
+    // file is a read error, never a reason to replace an otherwise valid image.
+    const reviews = await this.load(project.project_id);
+    const currentPath = this.imagePath(project.project_id, number);
+    let previous: Buffer;
+    try { previous = await fs.readFile(currentPath); validateImage(previous, "scene.png", "image/png"); }
+    catch { throw imageReviewImageInvalid(); }
+
+    const originals = path.join(path.dirname(currentPath), "originals");
+    let archive: string | undefined;
+    try {
+      await fs.mkdir(originals, { recursive: true });
+      const entries = await fs.readdir(originals);
+      const revisions = entries
+        .map((name) => new RegExp(`^scene${number}_v(\\d{3})\\.png$`).exec(name))
+        .filter((match): match is RegExpExecArray => match !== null)
+        .map((match) => Number(match[1]));
+      archive = path.join(originals, `scene${number}_v${String((revisions.length ? Math.max(...revisions) : 0) + 1).padStart(3, "0")}.png`);
+      await this.writeBinary(archive, previous);
+      await this.writeBinary(currentPath, LOCAL_PNG);
+      validateImage(await fs.readFile(currentPath), "scene.png", "image/png");
+    } catch {
+      if (archive) await fs.unlink(archive).catch(() => undefined);
+      throw imageReviewStorageError();
+    }
+
+    const timestamp = new Date().toISOString();
+    const index = reviews.findIndex((item) => item.scene_number === number);
+    const prior = index < 0
+      ? { scene_number: number, image_path: currentPath, status: "pending" as const, regeneration_count: 0, history: [], updated_at: timestamp }
+      : reviews[index]!;
+    const replacement: StoredImageReview = {
+      ...prior,
+      image_path: currentPath,
+      status: "pending",
+      regeneration_count: prior.regeneration_count + 1,
+      history: [...prior.history, { event: "pending", timestamp }, { event: "regenerated", timestamp }],
+      updated_at: timestamp,
+    };
+    if (index < 0) reviews.push(replacement); else reviews[index] = replacement;
+    const record = {
+      scene_number: number,
+      prompt: project.image_prompts[number - 1] ?? "",
+      checkpoint: "completed",
+      adapter: "local-fake-image-adapter",
+      image_api_calls: 0,
+      regenerated: true,
+      archived_previous_path: archive,
+    };
+    const records = [...project.image_generation_records];
+    records[number - 1] = record;
+    const updated: StoredProject = {
+      ...project,
+      image_generation_records: records,
+      workflow_state: WorkflowState.ImagesReview,
+      updated_at: timestamp,
+    };
+    try {
+      await atomicWriteUtf8File(this.reviewFile(project.project_id), JSON.stringify(reviews, null, 2));
+      await this.projects.save(updated);
+    } catch { throw imageReviewStorageError(); }
+    return { project: toApiProject(updated), reviews: toApiReviews(reviews, timestamp), sceneNumber: number };
   }
 }

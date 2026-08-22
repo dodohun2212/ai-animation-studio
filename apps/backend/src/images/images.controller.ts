@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post } from "@nestjs/common";
-import { API_ROUTES, type ApproveImageReviewResponse, type GetImageReviewResponse, type StartImageGenerationResponse } from "@ai-animation-studio/shared";
+import { API_ROUTES, type ApproveImageReviewResponse, type GetImageReviewResponse, type RegenerateImageReviewResponse, type StartImageGenerationResponse } from "@ai-animation-studio/shared";
 import { ImageReviewService } from "./image-review.service.js";
 import { LocalImageGenerationService } from "./local-image-generation.service.js";
 
@@ -20,5 +20,10 @@ export class ImagesController {
   @Post(`${API_ROUTES.projects}/:projectId/images/review/:sceneNumber/approve`)
   approveReview(@Param("projectId") projectId: string, @Param("sceneNumber") sceneNumber: string, @Body() body: unknown): Promise<ApproveImageReviewResponse> {
     return this.reviews.approve(projectId, sceneNumber, body);
+  }
+
+  @Post(`${API_ROUTES.projects}/:projectId/images/review/:sceneNumber/regenerate`)
+  regenerateReview(@Param("projectId") projectId: string, @Param("sceneNumber") sceneNumber: string, @Body() body: unknown): Promise<RegenerateImageReviewResponse> {
+    return this.reviews.regenerate(projectId, sceneNumber, body);
   }
 }

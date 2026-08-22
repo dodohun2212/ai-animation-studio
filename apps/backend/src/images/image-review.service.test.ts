@@ -68,4 +68,44 @@ describe("provider-free generated image review", () => {
     await fs.writeFile(path.join(projectsRoot, "review", "generated_image_reviews.json"), "{bad", "utf8");
     await expect(service.getStatus("review")).rejects.toMatchObject({ response: { code: "IMAGE_REVIEW_DATA_INVALID" } });
   });
+
+  it("archives only the regenerated scene, resets its approval, and survives a new service instance", async () => {
+    const { projectsRoot, projects, service } = await setup();
+    for (const scene of [1, 2, 3, 4, 5, 6]) await service.approve("review", String(scene), { approved: true });
+    const before = await fs.readFile(path.join(projectsRoot, "review", "images", "scene3.png"));
+    const result = await service.regenerate("review", "3", { approved: true });
+    expect(result.project.workflowState).toBe(WorkflowState.ImagesReview);
+    expect(result.reviews.find((review) => review.sceneNumber === 3)?.status).toBe("pending");
+    expect(result.reviews.filter((review) => review.sceneNumber !== 3).every((review) => review.status === "approved")).toBe(true);
+    const archive = path.join(projectsRoot, "review", "images", "originals", "scene3_v001.png");
+    await expect(fs.readFile(archive)).resolves.toEqual(before);
+    const raw = JSON.parse(await fs.readFile(path.join(projectsRoot, "review", "generated_image_reviews.json"), "utf8"));
+    expect(raw.find((item: { scene_number: number }) => item.scene_number === 3)).toEqual(expect.objectContaining({
+      status: "pending", regeneration_count: 1,
+      history: expect.arrayContaining([expect.objectContaining({ event: "pending" }), expect.objectContaining({ event: "regenerated" })]),
+    }));
+    const restarted = new ImageReviewService(new LocalProjectRepository(projectsRoot), projectsRoot);
+    await restarted.approve("review", "3", { approved: true });
+    expect((await projects.findById("review")).workflow_state).toBe(WorkflowState.WaitingForVideoConfirmation);
+  });
+
+  it("rejects unknown or unsafe regeneration input and never permits a stored path outside the project images folder", async () => {
+    const { projects, service } = await setup();
+    await expect(service.regenerate("review", "01", { approved: true })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(service.regenerate("review", "1", { approved: true, extra: true })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    const project = await projects.findById("review");
+    project.generated_images[0] = path.join(path.dirname(project.generated_images[0]!), "..", "outside.png");
+    await projects.save(project);
+    await expect(service.regenerate("review", "1", { approved: true })).rejects.toMatchObject({ response: { code: "IMAGE_REVIEW_IMAGE_INVALID" } });
+  });
+
+  it("does not replace image bytes when existing review metadata is malformed", async () => {
+    const { projectsRoot, service } = await setup();
+    const current = path.join(projectsRoot, "review", "images", "scene1.png");
+    const before = await fs.readFile(current);
+    await fs.writeFile(path.join(projectsRoot, "review", "generated_image_reviews.json"), "{bad", "utf8");
+    await expect(service.regenerate("review", "1", { approved: true })).rejects.toMatchObject({ response: { code: "IMAGE_REVIEW_DATA_INVALID" } });
+    await expect(fs.readFile(current)).resolves.toEqual(before);
+    await expect(fs.stat(path.join(projectsRoot, "review", "images", "originals"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
 });
