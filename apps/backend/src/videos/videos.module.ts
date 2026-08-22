@@ -5,6 +5,7 @@ import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { VideosController } from "./videos.controller.js";
 import { LocalVideoPreviewService } from "./video-preview.service.js";
 import { LocalVideoSubmissionService } from "./local-video-submission.service.js";
+import { LocalVideoWorkflowService } from "./local-video-workflow.service.js";
 
 @Module({
   imports: [ProjectsModule],
@@ -17,6 +18,10 @@ import { LocalVideoSubmissionService } from "./local-video-submission.service.js
     provide: LocalVideoSubmissionService,
     useFactory: (projects: LocalProjectRepository, previews: LocalVideoPreviewService) => new LocalVideoSubmissionService(projects, previews),
     inject: [LocalProjectRepository, LocalVideoPreviewService],
+  }, {
+    provide: LocalVideoWorkflowService,
+    useFactory: (projects: LocalProjectRepository, projectsRoot: string) => new LocalVideoWorkflowService(projects, projectsRoot),
+    inject: [LocalProjectRepository, PROJECTS_ROOT],
   }],
 })
 export class VideosModule {}

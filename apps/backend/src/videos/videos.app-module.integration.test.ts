@@ -20,7 +20,7 @@ afterEach(async () => {
   await app?.close(); app = undefined;
   if (previousLearningRoot === undefined) delete process.env.LEARNING_DATA_ROOT; else process.env.LEARNING_DATA_ROOT = previousLearningRoot;
   previousLearningRoot = undefined;
-  if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined;
+  if (root) await fs.rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 }); root = undefined;
 });
 
 it("serves a restart-safe local video preview and explicit fake submission without paths or provider work", async () => {

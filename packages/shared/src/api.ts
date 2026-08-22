@@ -248,6 +248,23 @@ export interface GenerationProgressResponse {
   failedSceneNumbers: SceneNumber[];
 }
 
+export interface VideoReview {
+  sceneNumber: SceneNumber;
+  status: "pending" | "approved";
+  updatedAt: string;
+}
+
+export interface GetVideoReviewResponse {
+  project: Project;
+  reviews: VideoReview[];
+}
+
+export interface ApproveVideoReviewResponse extends GetVideoReviewResponse {}
+
+export interface RegenerateVideoResponse extends GenerationProgressResponse {
+  regeneratedSceneNumbers: SceneNumber[];
+}
+
 export const API_ROUTES = {
   health: "/health",
   projects: "/projects",
@@ -279,6 +296,12 @@ export const API_ROUTES = {
   videoPreview: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/videos/preview`,
   videoGeneration: (projectId: string) => `/projects/${projectId}/videos/generations`,
   videoProgress: (projectId: string, jobId: string) => `/projects/${projectId}/videos/generations/${jobId}`,
+  videoStop: (projectId: string, jobId: string) => `/projects/${encodeURIComponent(projectId)}/videos/generations/${encodeURIComponent(jobId)}/stop`,
+  videoRestart: (projectId: string, jobId: string) => `/projects/${encodeURIComponent(projectId)}/videos/generations/${encodeURIComponent(jobId)}/restart`,
+  videoRegenerate: (projectId: string, jobId: string, sceneNumber: SceneNumber) => `/projects/${encodeURIComponent(projectId)}/videos/generations/${encodeURIComponent(jobId)}/scenes/${sceneNumber}/regenerate`,
+  videoRegenerateAll: (projectId: string, jobId: string) => `/projects/${encodeURIComponent(projectId)}/videos/generations/${encodeURIComponent(jobId)}/regenerate-all`,
+  videoReview: (projectId: string, jobId: string) => `/projects/${encodeURIComponent(projectId)}/videos/generations/${encodeURIComponent(jobId)}/review`,
+  videoReviewApproval: (projectId: string, jobId: string, sceneNumber: SceneNumber) => `/projects/${encodeURIComponent(projectId)}/videos/generations/${encodeURIComponent(jobId)}/review/${sceneNumber}/approve`,
   projectAssetMappings: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/assets/mappings`,
   projectAssetMapping: (projectId: string, mappingId: string) =>
     `/projects/${encodeURIComponent(projectId)}/assets/mappings/${encodeURIComponent(mappingId)}`,
