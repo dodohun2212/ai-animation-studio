@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import type { ProjectSummary } from "./domain.js";
 import { WorkflowState } from "./workflow.js";
-import { API_ROUTES, type CreateProjectRequest, type GetProjectResponse, type ListProjectsResponse } from "./api.js";
+import {
+  API_ROUTES,
+  type CreateProjectRequest,
+  type GetProjectResponse,
+  type GetProjectSettingsResponse,
+  type ListProjectsResponse,
+  type UpdateProjectSettingsRequest,
+} from "./api.js";
 
 describe("project summary contract", () => {
   it("does not require userId for a local single-user project", () => {
@@ -52,5 +59,30 @@ describe("project routes and DTO shape", () => {
     };
     expect(list.projects).toEqual([]);
     expect(single.project.id).toBe("sample_project");
+  });
+
+  it("keeps the short-project Wizard settings explicit and separate from asset mappings", () => {
+    const settings: UpdateProjectSettingsRequest = {
+      settings: {
+        projectName: "별의 지도",
+        topic: "별을 찾는 아이",
+        genre: "판타지",
+        mood: "따뜻함",
+        character: "아이",
+        lore: "별이 사라진 세계",
+        fullStory: "아이가 별을 되찾는다.",
+        durationSeconds: 30,
+        sceneCount: 6,
+        additionalNotes: "무서운 장면 제외",
+        styleNotes: { aspect: "16:9", lighting: "달빛" },
+      },
+    };
+    const response: GetProjectSettingsResponse = { settings: settings.settings };
+
+    expect(API_ROUTES.projectSettings("한글 id")).toBe(
+      "/projects/%ED%95%9C%EA%B8%80%20id/settings",
+    );
+    expect(response.settings.sceneCount).toBe(6);
+    expect("assetIds" in response.settings).toBe(false);
   });
 });

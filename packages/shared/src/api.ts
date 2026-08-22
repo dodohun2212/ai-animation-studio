@@ -18,6 +18,38 @@ export interface CreateProjectResponse { project: Project; }
 export interface ListProjectsResponse { projects: ProjectSummary[]; }
 export interface GetProjectResponse { project: Project; }
 
+/**
+ * The editable, non-provider portion of Python's short-project Wizard.
+ * Asset selections remain in the project asset-mapping contract.
+ */
+export interface ShortProjectStyleNotes {
+  visualStyle?: string;
+  color?: string;
+  lighting?: string;
+  camera?: string;
+  dialogue?: string;
+  avoid?: string;
+  aspect?: string;
+}
+
+export interface ShortProjectSettings {
+  projectName: string;
+  topic: string;
+  genre: string;
+  mood: string;
+  character: string;
+  lore: string;
+  fullStory: string;
+  durationSeconds: number;
+  sceneCount: 6;
+  additionalNotes: string;
+  styleNotes: ShortProjectStyleNotes;
+}
+
+export interface GetProjectSettingsResponse { settings: ShortProjectSettings; }
+export interface UpdateProjectSettingsRequest { settings: ShortProjectSettings; }
+export interface UpdateProjectSettingsResponse { project: Project; settings: ShortProjectSettings; }
+
 export interface ListAssetsQuery {
   query?: string;
   assetType?: AssetType;
@@ -135,6 +167,8 @@ export const API_ROUTES = {
   health: "/health",
   projects: "/projects",
   project: (projectId: string) => `/projects/${projectId}`,
+  projectSettings: (projectId: string) =>
+    `/projects/${encodeURIComponent(projectId)}/settings`,
   assets: "/assets",
   asset: (assetId: string) => `/assets/${encodeURIComponent(assetId)}`,
   assetContent: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/content`,
