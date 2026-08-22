@@ -9,13 +9,13 @@ import { ProjectsService } from "./projects.service.js";
 export const PROJECTS_ROOT = "PROJECTS_ROOT";
 
 function defaultProjectsRoot(): string {
-  return process.env.PROJECTS_ROOT ?? path.join(process.cwd(), "learning_data", "projects");
+  return process.env.PROJECTS_ROOT ?? path.join(process.env.LEARNING_DATA_ROOT ?? path.join(process.cwd(), "learning_data"), "projects");
 }
 
 @Module({
   controllers: [ProjectsController],
   providers: [
-    { provide: PROJECTS_ROOT, useValue: defaultProjectsRoot() },
+    { provide: PROJECTS_ROOT, useFactory: defaultProjectsRoot },
     {
       provide: LocalProjectRepository,
       useFactory: (projectsRoot: string) => new LocalProjectRepository(projectsRoot),
@@ -23,6 +23,6 @@ function defaultProjectsRoot(): string {
     },
     ProjectsService,
   ],
-  exports: [LocalProjectRepository],
+  exports: [LocalProjectRepository, PROJECTS_ROOT],
 })
 export class ProjectsModule {}

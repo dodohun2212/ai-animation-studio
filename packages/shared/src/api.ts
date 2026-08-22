@@ -77,6 +77,15 @@ export interface ApproveStoryPromptResponse {
   approvedAt: string;
 }
 
+/** Explicit approval for the provider-free local image-generation adapter. */
+export interface StartImageGenerationRequest { approved: true; }
+
+export interface StartImageGenerationResponse {
+  project: Project;
+  generatedSceneNumbers: SceneNumber[];
+  reusedSceneNumbers: SceneNumber[];
+}
+
 export interface ListAssetsQuery {
   query?: string;
   assetType?: AssetType;
@@ -200,6 +209,8 @@ export const API_ROUTES = {
     `/projects/${encodeURIComponent(projectId)}/story/preview`,
   storyPromptApproval: (projectId: string) =>
     `/projects/${encodeURIComponent(projectId)}/story/approval`,
+  imageGeneration: (projectId: string) =>
+    `/projects/${encodeURIComponent(projectId)}/images/generations`,
   assets: "/assets",
   asset: (assetId: string) => `/assets/${encodeURIComponent(assetId)}`,
   assetContent: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/content`,

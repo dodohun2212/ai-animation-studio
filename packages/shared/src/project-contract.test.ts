@@ -11,6 +11,7 @@ import {
   type UpdateProjectSettingsRequest,
   type ApproveStoryPromptRequest,
   type CreateStoryPromptPreviewResponse,
+  type StartImageGenerationRequest,
 } from "./api.js";
 
 describe("project summary contract", () => {
@@ -96,5 +97,11 @@ describe("project routes and DTO shape", () => {
     expect(API_ROUTES.storyPromptPreview("sample project")).toBe("/projects/sample%20project/story/preview");
     expect(API_ROUTES.storyPromptApproval("sample project")).toBe("/projects/sample%20project/story/approval");
     expect(approval.approved).toBe(true);
+  });
+
+  it("requires explicit approval for local image generation", () => {
+    const request: StartImageGenerationRequest = { approved: true };
+    expect(request.approved).toBe(true);
+    expect(API_ROUTES.imageGeneration("sample project")).toBe("/projects/sample%20project/images/generations");
   });
 });

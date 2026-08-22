@@ -1,12 +1,15 @@
 import * as path from "node:path";
 import { Module } from "@nestjs/common";
 import { AssetsModule, LEARNING_DATA_ROOT } from "../assets/assets.module.js";
+import { LocalAssetsRepository } from "../assets/assets.repository.js";
+import { ProjectsModule } from "../projects/projects.module.js";
+import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { ProjectAssetMappingsController } from "./mappings.controller.js";
 import { LocalProjectAssetMappingsRepository } from "./mappings.repository.js";
 import { ProjectAssetMappingsService } from "./mappings.service.js";
 
-@Module({ imports: [AssetsModule], controllers: [ProjectAssetMappingsController], providers: [
+@Module({ imports: [AssetsModule, ProjectsModule], controllers: [ProjectAssetMappingsController], providers: [
   { provide: LocalProjectAssetMappingsRepository, useFactory: (root: string) => new LocalProjectAssetMappingsRepository(path.join(root, "projects")), inject: [LEARNING_DATA_ROOT] },
-  ProjectAssetMappingsService,
+  { provide: ProjectAssetMappingsService, useFactory: (repository: LocalProjectAssetMappingsRepository, assets: LocalAssetsRepository, projects: LocalProjectRepository) => new ProjectAssetMappingsService(repository, assets, projects), inject: [LocalProjectAssetMappingsRepository, LocalAssetsRepository, LocalProjectRepository] },
 ] , exports: [LocalProjectAssetMappingsRepository, ProjectAssetMappingsService] })
 export class ProjectAssetMappingsModule {}

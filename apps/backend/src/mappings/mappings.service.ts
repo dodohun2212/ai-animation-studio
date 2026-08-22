@@ -1,5 +1,6 @@
 import * as crypto from "node:crypto";
 import { Injectable } from "@nestjs/common";
+import { WorkflowState } from "@ai-animation-studio/shared";
 import type {
   ApproveProjectAssetMappingReviewRequest, BeginProjectAssetMappingReviewRequest, CreateProjectAssetMappingRequest,
   CreateProjectAssetMappingResponse, BeginProjectAssetMappingReviewResponse, GetProjectAssetMappingReviewResponse, ApproveProjectAssetMappingReviewResponse,
@@ -7,6 +8,7 @@ import type {
   UpdateProjectAssetMappingResponse, AssetMappingVersionPolicy, SceneNumber,
 } from "@ai-animation-studio/shared";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
+import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { invalidMappingRequest, mappingAssetNotFound, approvalBlocked, fingerprintMismatch, snapshotInvalid } from "./mapping-api.error.js";
 import { scriptFingerprint, LocalProjectAssetMappingsRepository } from "./mappings.repository.js";
 import { parseScope, scopeIncludes, toPublicMapping, toPublicReview, toStoredScope, type StoredAssetMapping, type StoredMappingReview } from "./mapping-storage.js";
@@ -31,7 +33,7 @@ const mappingsScenes = (project: { scenes: unknown[] }) => {
 
 @Injectable()
 export class ProjectAssetMappingsService {
-  constructor(private readonly repository: LocalProjectAssetMappingsRepository, private readonly assets: LocalAssetsRepository) {}
+  constructor(private readonly repository: LocalProjectAssetMappingsRepository, private readonly assets: LocalAssetsRepository, private readonly projects?: LocalProjectRepository) {}
 
   async list(projectId: string): Promise<ListProjectAssetMappingsResponse> {
     return { mappings: (await this.repository.load(projectId)).map(toPublicMapping) };
@@ -97,7 +99,12 @@ export class ProjectAssetMappingsService {
       const covered = sceneNumbers.filter((number) => mappings.some((mapping) => scopeIncludes(mapping.scene_scope, number) && (mapping.status === "confirmed" || mapping.status === "excluded" || (mapping.status === "unmatched" && mapping.user_confirmed))));
       if (covered.length !== 6) throw approvalBlocked("Every scene requires a confirmed, excluded, or explicitly unmatched mapping.", { missingSceneNumbers: sceneNumbers.filter((number) => !covered.includes(number)) });
     }
-    const approved: StoredMappingReview = { ...review, status: "approved", approved_at: new Date().toISOString(), approved_by: request.approvedBy?.trim() || "user", reviewed_scenes: [...sceneNumbers] }; await this.repository.saveReview(projectId, approved); return { review: toPublicReview(approved) };
+    const approved: StoredMappingReview = { ...review, status: "approved", approved_at: new Date().toISOString(), approved_by: request.approvedBy?.trim() || "user", reviewed_scenes: [...sceneNumbers] };
+    await this.repository.saveReview(projectId, approved);
+    if (this.projects && project.workflow_state === WorkflowState.WaitingForAssetMappingReview) {
+      await this.projects.save({ ...project, workflow_state: WorkflowState.AssetMappingApproved, mapping_revision: approved.mapping_revision, updated_at: new Date().toISOString() });
+    }
+    return { review: toPublicReview(approved) };
   }
   async snapshot(projectId: string, mappingId: string): Promise<SnapshotProjectAssetMappingResponse> {
     const mappings = await this.repository.load(projectId); const mapping = mappings.find((item) => item.mapping_id === mappingId);
