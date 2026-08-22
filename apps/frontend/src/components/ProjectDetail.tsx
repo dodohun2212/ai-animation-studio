@@ -8,6 +8,7 @@ interface ProjectDetailProps {
   onBack: () => void;
   onOpenMappingReview: (projectId: string) => void;
   onOpenSettings?: (projectId: string) => void;
+  onOpenStoryPrompt?: (projectId: string) => void;
 }
 
 type DetailState =
@@ -15,7 +16,13 @@ type DetailState =
   | { status: "error"; error: { code: string; message: string } }
   | { status: "success"; project: Project };
 
-export function ProjectDetail({ projectId, onBack, onOpenMappingReview, onOpenSettings = () => {} }: ProjectDetailProps) {
+export function ProjectDetail({
+  projectId,
+  onBack,
+  onOpenMappingReview,
+  onOpenSettings = () => {},
+  onOpenStoryPrompt = () => {},
+}: ProjectDetailProps) {
   const [state, setState] = useState<DetailState>({ status: "loading" });
 
   useEffect(() => {
@@ -68,6 +75,13 @@ export function ProjectDetail({ projectId, onBack, onOpenMappingReview, onOpenSe
           onClick={() => onOpenSettings(projectId)}
         >
           프로젝트 설정
+        </button>
+        <button
+          type="button"
+          className="ml-3 mt-4 rounded-full border border-violet-400/40 px-4 py-2 text-sm text-violet-300"
+          onClick={() => onOpenStoryPrompt(projectId)}
+        >
+          Story 프롬프트 확인
         </button>
         <dl className="mt-4 space-y-2 text-slate-100">
           <div>

@@ -82,4 +82,16 @@ describe("ProjectDetail", () => {
 
     expect(onOpenMappingReview).toHaveBeenCalledWith("sample_project");
   });
+
+  it("calls onOpenStoryPrompt with the project ID when the Story 프롬프트 확인 button is clicked", async () => {
+    const project = makeProject({ id: "sample_project" });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    const onOpenStoryPrompt = vi.fn();
+    render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} onOpenStoryPrompt={onOpenStoryPrompt} />);
+
+    await screen.findByText("sample_project");
+    fireEvent.click(screen.getByRole("button", { name: "Story 프롬프트 확인" }));
+
+    expect(onOpenStoryPrompt).toHaveBeenCalledWith("sample_project");
+  });
 });
