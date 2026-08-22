@@ -163,4 +163,46 @@ describe("App", () => {
     expect(await screen.findByText("아직 생성된 프로젝트가 없습니다.")).toBeTruthy();
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/settings/providers"))).toBe(false);
   });
+
+  it("opens Asset Mapping 검토 from a project's detail view and returns to that same detail on back", async () => {
+    const project: Project = {
+      id: "sample_project",
+      topic: "우주를 여행하는 고양이",
+      projectType: "short_project",
+      workflowState: WorkflowState.Ready,
+      createdAt: "2026-08-21T00:00:00.000Z",
+      updatedAt: "2026-08-21T00:00:00.000Z",
+      scenes: [],
+      warnings: [],
+      errors: [],
+    };
+    const fetchMock = vi.fn<FakeFetch>(async (input) => {
+      const url = String(input);
+      if (url === "/projects") return jsonResponse(200, { projects: [project] });
+      if (url === "/projects/sample_project") return jsonResponse(200, { project });
+      if (url === "/projects/sample_project/assets/mappings") return jsonResponse(200, { mappings: [] });
+      if (url === "/projects/sample_project/assets/mapping-review") {
+        return jsonResponse(200, {
+          review: {
+            projectId: "sample_project", mappingRevision: 0, scriptRevision: 0, scriptFingerprint: "",
+            status: "waiting", approvedAt: null, approvedBy: null, textOnlyConfirmed: false, legacyConfirmed: false, reviewedScenes: [],
+          },
+        });
+      }
+      throw new Error(`Unexpected fetch call in test: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /sample_project/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Asset Mapping 검토" }));
+
+    expect(await screen.findByText("등록된 Asset Mapping이 없습니다.")).toBeTruthy();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/videos/"))).toBe(false);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/settings/providers"))).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "프로젝트로 돌아가기" }));
+    expect(await screen.findByText("sample_project")).toBeTruthy();
+    expect(screen.getByText("우주를 여행하는 고양이")).toBeTruthy();
+  });
 });
