@@ -86,6 +86,26 @@ export interface StartImageGenerationResponse {
   reusedSceneNumbers: SceneNumber[];
 }
 
+/** Provider-free persisted decision for one generated short-project image. */
+export interface ImageReview {
+  sceneNumber: SceneNumber;
+  status: "pending" | "approved";
+  updatedAt: string;
+}
+
+export interface GetImageReviewResponse {
+  project: Project;
+  reviews: ImageReview[];
+}
+
+/** A review action is deliberately explicit and cannot be inferred from navigation. */
+export interface ApproveImageReviewRequest { approved: true; }
+
+export interface ApproveImageReviewResponse {
+  project: Project;
+  reviews: ImageReview[];
+}
+
 export interface ListAssetsQuery {
   query?: string;
   assetType?: AssetType;
@@ -211,6 +231,10 @@ export const API_ROUTES = {
     `/projects/${encodeURIComponent(projectId)}/story/approval`,
   imageGeneration: (projectId: string) =>
     `/projects/${encodeURIComponent(projectId)}/images/generations`,
+  imageReview: (projectId: string) =>
+    `/projects/${encodeURIComponent(projectId)}/images/review`,
+  imageReviewApproval: (projectId: string, sceneNumber: SceneNumber) =>
+    `/projects/${encodeURIComponent(projectId)}/images/review/${sceneNumber}/approve`,
   assets: "/assets",
   asset: (assetId: string) => `/assets/${encodeURIComponent(assetId)}`,
   assetContent: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/content`,

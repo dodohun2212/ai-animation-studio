@@ -5,6 +5,7 @@ import { ProjectsModule, PROJECTS_ROOT } from "../projects/projects.module.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { ImagesController } from "./images.controller.js";
 import { LocalImageGenerationService } from "./local-image-generation.service.js";
+import { ImageReviewService } from "./image-review.service.js";
 
 @Module({
   imports: [ProjectsModule, ProjectAssetMappingsModule],
@@ -14,6 +15,10 @@ import { LocalImageGenerationService } from "./local-image-generation.service.js
     useFactory: (projects: LocalProjectRepository, mappings: LocalProjectAssetMappingsRepository, projectsRoot: string) =>
       new LocalImageGenerationService(projects, mappings, projectsRoot),
     inject: [LocalProjectRepository, LocalProjectAssetMappingsRepository, PROJECTS_ROOT],
+  }, {
+    provide: ImageReviewService,
+    useFactory: (projects: LocalProjectRepository, projectsRoot: string) => new ImageReviewService(projects, projectsRoot),
+    inject: [LocalProjectRepository, PROJECTS_ROOT],
   }],
 })
 export class ImagesModule {}

@@ -12,6 +12,7 @@ import {
   type ApproveStoryPromptRequest,
   type CreateStoryPromptPreviewResponse,
   type StartImageGenerationRequest,
+  type ApproveImageReviewRequest,
 } from "./api.js";
 
 describe("project summary contract", () => {
@@ -103,5 +104,12 @@ describe("project routes and DTO shape", () => {
     const request: StartImageGenerationRequest = { approved: true };
     expect(request.approved).toBe(true);
     expect(API_ROUTES.imageGeneration("sample project")).toBe("/projects/sample%20project/images/generations");
+  });
+
+  it("keeps generated-image review decisions explicit and scene-scoped", () => {
+    const request: ApproveImageReviewRequest = { approved: true };
+    expect(request.approved).toBe(true);
+    expect(API_ROUTES.imageReview("sample project")).toBe("/projects/sample%20project/images/review");
+    expect(API_ROUTES.imageReviewApproval("sample project", 6)).toBe("/projects/sample%20project/images/review/6/approve");
   });
 });
