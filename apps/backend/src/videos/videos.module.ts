@@ -6,6 +6,7 @@ import { VideosController } from "./videos.controller.js";
 import { LocalVideoPreviewService } from "./video-preview.service.js";
 import { LocalVideoSubmissionService } from "./local-video-submission.service.js";
 import { LocalVideoWorkflowService } from "./local-video-workflow.service.js";
+import { LocalVideoMergeService } from "./video-merge.service.js";
 
 @Module({
   imports: [ProjectsModule],
@@ -21,6 +22,10 @@ import { LocalVideoWorkflowService } from "./local-video-workflow.service.js";
   }, {
     provide: LocalVideoWorkflowService,
     useFactory: (projects: LocalProjectRepository, projectsRoot: string) => new LocalVideoWorkflowService(projects, projectsRoot),
+    inject: [LocalProjectRepository, PROJECTS_ROOT],
+  }, {
+    provide: LocalVideoMergeService,
+    useFactory: (projects: LocalProjectRepository, projectsRoot: string) => new LocalVideoMergeService(projects, projectsRoot),
     inject: [LocalProjectRepository, PROJECTS_ROOT],
   }],
 })

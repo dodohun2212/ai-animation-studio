@@ -1,13 +1,14 @@
 import { Body, Controller, Get, Param, Post } from "@nestjs/common";
-import { API_ROUTES, type ApproveVideoReviewResponse, type GenerationProgressResponse, type GetVideoPromptPreviewResponse, type GetVideoReviewResponse, type RegenerateVideoResponse, type StartVideoGenerationResponse } from "@ai-animation-studio/shared";
+import { API_ROUTES, type ApproveVideoReviewResponse, type GenerationProgressResponse, type GetVideoPromptPreviewResponse, type GetVideoReviewResponse, type MergeVideosResponse, type RegenerateVideoResponse, type StartVideoGenerationResponse } from "@ai-animation-studio/shared";
 
 import { LocalVideoPreviewService } from "./video-preview.service.js";
 import { LocalVideoSubmissionService } from "./local-video-submission.service.js";
 import { LocalVideoWorkflowService } from "./local-video-workflow.service.js";
+import { LocalVideoMergeService } from "./video-merge.service.js";
 
 @Controller()
 export class VideosController {
-  constructor(private readonly previews: LocalVideoPreviewService, private readonly submissions: LocalVideoSubmissionService, private readonly workflow: LocalVideoWorkflowService) {}
+  constructor(private readonly previews: LocalVideoPreviewService, private readonly submissions: LocalVideoSubmissionService, private readonly workflow: LocalVideoWorkflowService, private readonly mergeService: LocalVideoMergeService) {}
 
   @Post(`${API_ROUTES.projects}/:projectId/videos/preview`)
   preview(@Param("projectId") projectId: string, @Body() body: unknown): Promise<GetVideoPromptPreviewResponse> {
@@ -47,4 +48,7 @@ export class VideosController {
 
   @Post(`${API_ROUTES.projects}/:projectId/videos/generations/:jobId/review/:sceneNumber/approve`)
   approveReview(@Param("projectId") projectId: string, @Param("jobId") jobId: string, @Param("sceneNumber") sceneNumber: string, @Body() body: unknown): Promise<ApproveVideoReviewResponse> { return this.workflow.approveReview(projectId, jobId, sceneNumber, body); }
+
+  @Post(`${API_ROUTES.projects}/:projectId/videos/merge`)
+  merge(@Param("projectId") projectId: string): Promise<MergeVideosResponse> { return this.mergeService.merge(projectId); }
 }

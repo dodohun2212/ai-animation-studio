@@ -265,6 +265,12 @@ export interface RegenerateVideoResponse extends GenerationProgressResponse {
   regeneratedSceneNumbers: SceneNumber[];
 }
 
+/** The local FFmpeg render result never exposes an absolute filesystem path. */
+export interface MergeVideosResponse {
+  project: Project;
+  finalVideoPath: "videos/final/instagram_reel.mp4";
+}
+
 export const API_ROUTES = {
   health: "/health",
   projects: "/projects",
@@ -302,6 +308,7 @@ export const API_ROUTES = {
   videoRegenerateAll: (projectId: string, jobId: string) => `/projects/${encodeURIComponent(projectId)}/videos/generations/${encodeURIComponent(jobId)}/regenerate-all`,
   videoReview: (projectId: string, jobId: string) => `/projects/${encodeURIComponent(projectId)}/videos/generations/${encodeURIComponent(jobId)}/review`,
   videoReviewApproval: (projectId: string, jobId: string, sceneNumber: SceneNumber) => `/projects/${encodeURIComponent(projectId)}/videos/generations/${encodeURIComponent(jobId)}/review/${sceneNumber}/approve`,
+  videoMerge: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/videos/merge`,
   projectAssetMappings: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/assets/mappings`,
   projectAssetMapping: (projectId: string, mappingId: string) =>
     `/projects/${encodeURIComponent(projectId)}/assets/mappings/${encodeURIComponent(mappingId)}`,
