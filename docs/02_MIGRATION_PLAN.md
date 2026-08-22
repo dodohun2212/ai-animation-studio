@@ -12,9 +12,9 @@
 | 영역 | 구현됨 | 미구현 |
 |---|---|---|
 | 기반 | strict TypeScript workspace, React/Vite, NestJS, Electron | 배포와 Python 동등성 검증 |
-| Shared | 1~6 SceneNumber, 기본 Project/Scene/usage/task, Python과 같은 WorkflowState/전이, 단기 프로젝트 create/list/get, Provider credential 상태, Asset Library와 project Asset mapping/review 계약, 단기 프로젝트 Wizard 설정 계약 및 Runway preview/approval/progress 계약과 테스트 | 전체 ProjectContext, Story motion, 장기 프로젝트 DTO |
-| Frontend | 단기 프로젝트 생성·목록·재열기, 프로젝트 설정 저장·재열기, OpenAI·Runway credential 관리, Asset Library, project Asset mapping review와 안전한 API 오류 UI | Story·이미지·영상 등 이후 사용자 흐름 |
-| Backend | `GET /health`, 단기 프로젝트 create/list/get/settings, Python 호환 JSON 저장·재열기, 로컬 `.env` credential 관리, Asset Library, project Asset mapping 저장·검토·snapshot | Story·workflow/provider/media endpoint |
+| Shared | 1~6 SceneNumber, 기본 Project/Scene/usage/task, Python과 같은 WorkflowState/전이, 단기 프로젝트 create/list/get, Provider credential 상태, Asset Library와 project Asset mapping/review 계약, 단기 프로젝트 Wizard 설정 및 Story prompt preview/approval 계약과 테스트 | 전체 ProjectContext, Story motion, 장기 프로젝트 DTO |
+| Frontend | 단기 프로젝트 생성·목록·재열기, 프로젝트 설정 저장·재열기, OpenAI·Runway credential 관리, Asset Library, project Asset mapping review, Story prompt preview/edit/restore/별도 승인과 안전한 API 오류 UI | Story 6장면·이미지·영상 등 이후 사용자 흐름 |
+| Backend | `GET /health`, 단기 프로젝트 create/list/get/settings, Python 호환 JSON 저장·재열기, 로컬 `.env` credential 관리, Asset Library, project Asset mapping 저장·검토·snapshot, Story prompt 렌더·승인 audit 저장 | Story 6장면·workflow/provider/media endpoint |
 | Desktop | 격리된 BrowserWindow에서 frontend 로드 | backend 생명주기, file dialog/path open, packaging/recovery |
 
 Shared의 `/projects` route는 NestJS에 구현되었으며 video route는 아직 구현되지 않았다.
@@ -52,7 +52,7 @@ Shared의 `/projects` route는 NestJS에 구현되었으며 video route는 아�
 - [ ] 전체 분위기 Asset과 장면용 background/object/style/general Reference 및 사용 목적 선택
 - [ ] 명시적으로 고른 이전 프로젝트의 승인된 Scene 6을 Story와 Scene 1 연속성 자료로 연결
 - [ ] API key 없이도 설정을 프로젝트로 저장·관리
-- [ ] 정확한 Story prompt 미리보기·복사·편집·복원 후 별도 확인으로 OpenAI 전송; Preview는 무호출
+- [x] 정확한 Story prompt 미리보기·편집·복원 후 별도 확인으로 local fake adapter 승인 audit 저장; Preview와 승인 모두 유료 Provider 무호출. 실제 OpenAI 전송과 Story 생성은 다음 단계
 - [ ] title/synopsis/ending과 정확히 6 scenes 검증. 각 scene은 description, visual action, 정적 구도, 시작·주요·종료 동작, camera/environment motion, 속도·강도, 표정 변화와 continuity hint를 가짐
 - [ ] 자동 Asset 후보 검토와 명시 승인. suggested/ambiguous/invalid/unconfirmed unmatched는 차단하고 text-only도 사용자 확인
 - [ ] 승인 mapping으로 이미지 6장 순차 생성; 부분 성공 저장, 완료 scene 보존, 누락 scene만 재개
@@ -209,7 +209,7 @@ learning_data/api_calls.json  learning_data/api_jobs.json  learning_data/api_bud
 2. [x] 설정·secret 저장/가림/log redaction; Provider 미연결
 3. [x] Asset Library 최소 CRUD·검색·소유권과 legacy index
 4. [ ] project Asset scope·mapping review/snapshot/fingerprint Gate
-5. [ ] Story schema/prompt preview/edit/restore/explicit submit; fake adapter
+5. [x] Story prompt preview/edit/restore/별도 explicit approval audit; local fake adapter, Provider 무호출
 6. [ ] Story 저장, 6장면 검증·복구
 7. [ ] image prompt/reference preview와 fake 생성, cache/partial resume
 8. [ ] image review/regen/version/Library 등록과 6승인 Gate
@@ -303,7 +303,17 @@ Frontend 및 통합 완료 근거(2026-08-21): `feature/frontend`의 `48065b0`�
 - [x] 이름·주제·양수 길이·정확히 6장면과 unknown field를 검증하며, UTF-8 atomic write 실패는 기존 `PROJECT_STORAGE_ERROR`로 처리한다.
 - [x] Frontend 프로젝트 상세에서 설정 화면을 열어 저장하고, 새 Backend instance에서도 다시 열리는 흐름을 테스트했다.
 - [x] Shared 20개, Backend 158개(+1 intentional skip), Frontend 233개 테스트와 root typecheck/test/build, `git diff --check`를 통과했다. Provider·FFmpeg·실제 유료 네트워크 호출은 없었다.
-- [ ] Story prompt preview/edit/restore와 명시적 fake-provider submit은 다음 기능으로 분리한다.
+- [x] Story prompt preview/edit/restore와 명시적 fake-provider approval audit은 다음 기능에서 완료했다.
+
+## 여섯 번째 이전 기능: Story prompt 미리보기·편집·복원·명시 승인
+
+- [x] `prompts/story/story_generation.txt`를 UTF-8로 읽어 Python `Template.safe_substitute`의 `$name`, `$$`, 미해결 placeholder 보존 동작으로 local prompt를 렌더하고 SHA-256을 계산한다.
+- [x] `POST /projects/:projectId/story/preview`가 원문, SHA-256, 캐릭터 수와 정확히 6이라는 scene count를 반환하며 Provider·네트워크·FFmpeg를 호출하지 않는다.
+- [x] Frontend는 Project Detail에서 Story Prompt 화면으로 진입해 원문을 textarea에 표시하고, 수정·복원·빈 값 차단·stale preview 새로고침과 안전한 오류 UI를 제공한다.
+- [x] 첫 번째 확인은 전송하지 않고 별도 확인 패널만 열며, 두 번째 명시 확인만 `approved: true`, 원문 SHA-256, 편집한 텍스트를 `POST /projects/:projectId/story/approval`로 보낸다.
+- [x] Backend는 approval 시 최신 원문 SHA-256을 다시 검증하고, 정확한 원문/승인 텍스트/수정 여부/승인 시각/SHA-256/캐릭터 수를 기존 `project.json`의 snake_case `story.story_prompt_request` audit으로 UTF-8 atomic 저장한다. 변경된 Wizard 설정으로 preview가 stale하면 `STORY_PROMPT_STALE`(409), 빈·unknown field·승인 누락은 `INVALID_REQUEST`(400)로 처리한다.
+- [x] Backend unit, Frontend event/API mock, app module 및 root typecheck/test/build를 통과했다. Backend 162개(+1 intentional skip), Frontend 243개, Shared 21개 테스트이며 실제 유료 Provider·실제 API key·FFmpeg 호출은 0회다.
+- [ ] 이 단계의 fake adapter는 승인 audit만 저장한다. Python처럼 `READY -> GENERATING_STORY` 전이, 실제/가짜 구조화 Story 생성, title/synopsis/ending 및 정확한 6 scenes 검증·저장은 다음 기능으로 분리한다.
 
 ## 공통 완료 조건
 
