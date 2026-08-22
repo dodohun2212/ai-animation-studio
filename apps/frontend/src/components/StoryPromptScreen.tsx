@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { Project, StoryPromptPreview } from "@ai-animation-studio/shared";
+import type { Scene, StoryPromptPreview } from "@ai-animation-studio/shared";
+import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { approveStoryPrompt, createStoryPromptPreview, toStoryDisplayError } from "../api/storyPromptApi.js";
 
@@ -15,7 +16,8 @@ interface ApprovedState {
   promptSha256: string;
   modified: boolean;
   approvedAt: string;
-  project: Project;
+  workflowState: WorkflowState;
+  scenes: Scene[];
 }
 
 export function StoryPromptScreen({ projectId, onBack }: Props) {
@@ -105,7 +107,8 @@ export function StoryPromptScreen({ projectId, onBack }: Props) {
         promptSha256: response.promptSha256,
         modified: response.modified,
         approvedAt: response.approvedAt,
-        project: response.project,
+        workflowState: response.project.workflowState,
+        scenes: response.project.scenes,
       });
       setConfirmOpen(false);
     } catch (caught) {
@@ -216,14 +219,20 @@ export function StoryPromptScreen({ projectId, onBack }: Props) {
             </p>
           )}
           {approved && (
-            <div data-testid="approved-message" className="text-sm text-emerald-400">
-              <p data-testid="generated-scene-count">{approved.project.scenes.length} scenes generated.</p>
-              <ol data-testid="generated-scene-numbers" className="list-decimal pl-5 text-slate-300">
-                {approved.project.scenes.map((scene) => <li key={scene.number}>Scene {scene.number}</li>)}
-              </ol>
-              <p>
+            <p data-testid="approved-message" className="text-sm text-emerald-400">
               승인되었습니다. ({approved.approvedAt})
-              </p>
+            </p>
+          )}
+          {approved && approved.workflowState === WorkflowState.WaitingForAssetMappingReview && approved.scenes.length === 6 && (
+            <div data-testid="generated-scenes" className="space-y-2 rounded-lg border border-white/10 bg-slate-900 p-4">
+              <p className="text-sm font-semibold text-slate-200">대본에서 6개 장면이 생성되었습니다.</p>
+              <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-300">
+                {approved.scenes.map((scene) => (
+                  <li key={scene.number} data-testid={`generated-scene-${scene.number}`}>
+                    {scene.number}번 장면
+                  </li>
+                ))}
+              </ol>
             </div>
           )}
         </>

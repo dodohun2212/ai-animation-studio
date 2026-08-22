@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { Scene } from "@ai-animation-studio/shared";
+import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { jsonResponse, makeProject } from "../api/testUtils.js";
 import { StoryPromptScreen } from "./StoryPromptScreen.js";
@@ -19,6 +21,25 @@ const APPROVAL_RESPONSE = {
   promptSha256: "b".repeat(64),
   modified: true,
   approvedAt: "2026-08-22T00:00:00.000Z",
+};
+
+function sixScenes(): Scene[] {
+  return [1, 2, 3, 4, 5, 6].map((number) => ({
+    number: number as Scene["number"],
+    script: `Scene ${number}`,
+    imagePrompt: `Image ${number}`,
+    motionPrompt: `Motion ${number}`,
+    imageReview: "pending",
+    videoReview: "pending",
+  }));
+}
+
+const GENERATED_APPROVAL_RESPONSE = {
+  ...APPROVAL_RESPONSE,
+  project: makeProject({
+    workflowState: WorkflowState.WaitingForAssetMappingReview,
+    scenes: sixScenes(),
+  }),
 };
 
 function renderScreen(fetchMock: ReturnType<typeof vi.fn>) {
@@ -139,6 +160,44 @@ describe("StoryPromptScreen", () => {
       prompt: "수정된 프롬프트",
       approved: true,
     });
+  });
+
+  it("shows the generated six scene numbers after final approval produces WAITING_FOR_ASSET_MAPPING_REVIEW", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { preview: PREVIEW }))
+      .mockResolvedValueOnce(jsonResponse(200, GENERATED_APPROVAL_RESPONSE));
+    renderScreen(fetchMock);
+
+    await screen.findByDisplayValue(PREVIEW.originalPrompt);
+    fireEvent.change(textarea(), { target: { value: "수정된 프롬프트" } });
+    fireEvent.click(screen.getByRole("button", { name: "이 프롬프트로 승인" }));
+    await screen.findByTestId("approve-confirm-panel");
+    fireEvent.click(screen.getByRole("button", { name: "네, 승인을 전송합니다" }));
+
+    await screen.findByTestId("approved-message");
+    const scenesPanel = await screen.findByTestId("generated-scenes");
+    expect(scenesPanel).toBeTruthy();
+    for (const number of [1, 2, 3, 4, 5, 6]) {
+      expect(screen.getByTestId(`generated-scene-${number}`)).toBeTruthy();
+    }
+  });
+
+  it("does not show a generated-scenes panel when the approval response has no six-scene workflow state", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { preview: PREVIEW }))
+      .mockResolvedValueOnce(jsonResponse(200, APPROVAL_RESPONSE));
+    renderScreen(fetchMock);
+
+    await screen.findByDisplayValue(PREVIEW.originalPrompt);
+    fireEvent.change(textarea(), { target: { value: "수정된 프롬프트" } });
+    fireEvent.click(screen.getByRole("button", { name: "이 프롬프트로 승인" }));
+    await screen.findByTestId("approve-confirm-panel");
+    fireEvent.click(screen.getByRole("button", { name: "네, 승인을 전송합니다" }));
+
+    await screen.findByTestId("approved-message");
+    expect(screen.queryByTestId("generated-scenes")).toBeNull();
   });
 
   it("shows a stale-hash error with a refresh action and never leaks the raw backend message", async () => {
