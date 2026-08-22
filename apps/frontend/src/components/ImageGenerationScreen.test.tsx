@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Scene } from "@ai-animation-studio/shared";
+import type { ImageReview, Scene } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { jsonResponse, makeProject } from "../api/testUtils.js";
@@ -15,6 +15,14 @@ function sixScenes(withImages: readonly number[] = []): Scene[] {
     imageReview: "pending",
     videoReview: "pending",
     ...(withImages.includes(number) ? { generatedImagePath: `images/scene${number}.png` } : {}),
+  }));
+}
+
+function sixReviews(approved: readonly number[] = []): ImageReview[] {
+  return [1, 2, 3, 4, 5, 6].map((number) => ({
+    sceneNumber: number as ImageReview["sceneNumber"],
+    status: approved.includes(number) ? "approved" : "pending",
+    updatedAt: "2026-08-22T00:00:00.000Z",
   }));
 }
 
@@ -112,7 +120,7 @@ describe("ImageGenerationScreen", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("calls POST /projects/:projectId/images/generations with { approved: true } only after the final confirmation click", async () => {
+  it("calls POST /projects/:projectId/images/generations with { approved: true } only after the final confirmation click, then loads review status", async () => {
     const project = makeProject({ workflowState: WorkflowState.AssetMappingApproved, scenes: sixScenes() });
     const generatedProject = makeProject({
       workflowState: WorkflowState.ImagesReview,
@@ -123,7 +131,8 @@ describe("ImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { project }))
       .mockResolvedValueOnce(
         jsonResponse(200, { project: generatedProject, generatedSceneNumbers: [1, 2, 3, 4, 5, 6], reusedSceneNumbers: [] }),
-      );
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { project: generatedProject, reviews: sixReviews() }));
     renderScreen(fetchMock);
 
     await screen.findByTestId("no-paid-notice");
@@ -136,7 +145,6 @@ describe("ImageGenerationScreen", () => {
     const summary = await screen.findByTestId("generation-summary");
     expect(summary.textContent).toContain("새로 생성 6장");
     expect(summary.textContent).toContain("기존 이미지 재사용 0장");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
     const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
     expect(url).toBe("/projects/sample_project/images/generations");
     expect(init.method).toBe("POST");
@@ -146,6 +154,12 @@ describe("ImageGenerationScreen", () => {
       expect(screen.getByTestId(`scene-${number}`)).toHaveAttribute("data-status", "completed");
     }
     expect(screen.queryByRole("button", { name: "이미지 생성 시작" })).toBeNull();
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock.mock.calls[2]![0]).toBe("/projects/sample_project/images/review");
+    for (const number of [1, 2, 3, 4, 5, 6]) {
+      expect(await screen.findByTestId(`review-${number}`)).toHaveAttribute("data-status", "pending");
+    }
   });
 
   it("shows a safe error and keeps the confirmation panel open for retry when generation fails", async () => {
@@ -178,7 +192,8 @@ describe("ImageGenerationScreen", () => {
         new Promise<Response>((resolve) => {
           resolveGeneration = resolve;
         }),
-      );
+      )
+      .mockResolvedValue(jsonResponse(200, { project: makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) }), reviews: sixReviews() }));
     renderScreen(fetchMock);
 
     await screen.findByTestId("no-paid-notice");
@@ -199,5 +214,110 @@ describe("ImageGenerationScreen", () => {
       }),
     );
     await waitFor(() => expect(screen.queryByTestId("generate-confirm-panel")).toBeNull());
+  });
+
+  it("loads image review status via GET when a reloaded project is already in IMAGES_REVIEW state", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews([1, 2]) }));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("no-paid-notice");
+    expect(fetchMock).toHaveBeenCalledWith("/projects/sample_project/images/review");
+
+    expect(await screen.findByTestId("review-1")).toHaveAttribute("data-status", "approved");
+    expect(screen.getByTestId("review-2")).toHaveAttribute("data-status", "approved");
+    expect(screen.getByTestId("review-3")).toHaveAttribute("data-status", "pending");
+    // Already-approved scenes cannot be re-submitted.
+    const approvedRow = screen.getByTestId("review-1");
+    expect(approvedRow.querySelector("button")).toBeDisabled();
+    // No absolute or relative file path is ever rendered on screen.
+    expect(document.body.textContent).not.toContain("images/scene1.png");
+  });
+
+  it("shows no not-allowed message once the project has reached IMAGES_REVIEW or later", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews() }));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("image-review-section");
+    expect(screen.queryByTestId("not-allowed")).toBeNull();
+  });
+
+  it("sends an explicit POST /images/review/:sceneNumber/approve for a single scene and preserves the others as pending", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews() }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews([2]) }));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("image-review-section");
+    const sceneTwoRow = screen.getByTestId("review-2");
+    fireEvent.click(sceneTwoRow.querySelector("button")!);
+
+    await waitFor(() => expect(screen.getByTestId("review-2")).toHaveAttribute("data-status", "approved"));
+    const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit];
+    expect(url).toBe("/projects/sample_project/images/review/2/approve");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ approved: true });
+
+    for (const number of [1, 3, 4, 5, 6]) {
+      expect(screen.getByTestId(`review-${number}`)).toHaveAttribute("data-status", "pending");
+    }
+  });
+
+  it("shows a safe per-scene approval error without losing the other scenes' state, and allows retry", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews([1]) }))
+      .mockResolvedValueOnce(jsonResponse(500, { code: "IMAGE_REVIEW_STORAGE_ERROR", message: "raw disk failure detail" }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews([1, 3]) }));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("image-review-section");
+    fireEvent.click(screen.getByTestId("review-3").querySelector("button")!);
+
+    const alert = await screen.findByTestId("review-approve-error-3");
+    expect(alert.textContent).not.toContain("raw disk failure detail");
+    expect(alert).toHaveAttribute("data-error-code", "IMAGE_REVIEW_STORAGE_ERROR");
+    // Scene 1 (already approved) and other pending scenes are unaffected by scene 3's failure.
+    expect(screen.getByTestId("review-1")).toHaveAttribute("data-status", "approved");
+    expect(screen.getByTestId("review-3")).toHaveAttribute("data-status", "pending");
+
+    // Retry succeeds and clears the error.
+    fireEvent.click(screen.getByTestId("review-3").querySelector("button")!);
+    await waitFor(() => expect(screen.getByTestId("review-3")).toHaveAttribute("data-status", "approved"));
+    expect(screen.queryByTestId("review-approve-error-3")).toBeNull();
+  });
+
+  it("shows the transition to WAITING_FOR_VIDEO_CONFIRMATION once the sixth scene is approved", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const waitingProject = makeProject({
+      workflowState: WorkflowState.WaitingForVideoConfirmation,
+      scenes: sixScenes([1, 2, 3, 4, 5, 6]),
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews([1, 2, 3, 4, 5]) }))
+      .mockResolvedValueOnce(jsonResponse(200, { project: waitingProject, reviews: sixReviews([1, 2, 3, 4, 5, 6]) }));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("image-review-section");
+    fireEvent.click(screen.getByTestId("review-6").querySelector("button")!);
+
+    const transition = await screen.findByTestId("video-confirmation-transition");
+    expect(transition.textContent).toContain("영상 생성 확인");
+    // The review-in-progress section is no longer shown once the workflow has moved on.
+    expect(screen.queryByTestId("image-review-section")).toBeNull();
   });
 });
