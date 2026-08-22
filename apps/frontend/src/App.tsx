@@ -12,6 +12,7 @@ import { StoryPromptScreen } from "./components/StoryPromptScreen.js";
 import { ImageGenerationScreen } from "./components/ImageGenerationScreen.js";
 import { VideoPromptPreviewScreen } from "./components/VideoPromptPreviewScreen.js";
 import { VideoWorkflowScreen } from "./components/VideoWorkflowScreen.js";
+import { VideoMergeScreen } from "./components/VideoMergeScreen.js";
 
 type Screen =
   | { name: "list" }
@@ -23,6 +24,7 @@ type Screen =
   | { name: "imageGeneration"; projectId: string }
   | { name: "videoPreview"; projectId: string }
   | { name: "videoWorkflow"; projectId: string; jobId: string }
+  | { name: "videoMerge"; projectId: string }
   | { name: "providerSettings" }
   | { name: "assets" };
 
@@ -115,6 +117,13 @@ export function App() {
           <VideoWorkflowScreen
             projectId={screen.projectId}
             jobId={screen.jobId}
+            onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
+            onOpenMerge={(projectId) => setScreen({ name: "videoMerge", projectId })}
+          />
+        )}
+        {screen.name === "videoMerge" && (
+          <VideoMergeScreen
+            projectId={screen.projectId}
             onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
           />
         )}

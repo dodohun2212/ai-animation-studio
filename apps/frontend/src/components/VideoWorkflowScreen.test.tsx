@@ -178,6 +178,31 @@ describe("VideoWorkflowScreen", () => {
     expect(banner.textContent).toContain("모두 승인되었습니다");
   });
 
+  it("offers the final-merge entry point only once all six scenes are approved, and routes back to the caller with the project ID", async () => {
+    const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, succeeded))
+      .mockResolvedValueOnce(jsonResponse(200, reviewResponse(sixReviews([1, 2, 3, 4, 5]))));
+    vi.stubGlobal("fetch", fetchMock);
+    const { rerender } = render(<VideoWorkflowScreen projectId="sample_project" jobId="job_1" onBack={() => {}} />);
+
+    await screen.findByTestId("video-review-list");
+    expect(screen.queryByTestId("open-video-merge-button")).toBeNull();
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, reviewResponse(sixReviews([1, 2, 3, 4, 5, 6]))));
+    const row = screen.getByTestId("video-review-6");
+    fireEvent.click(within(row).getByRole("button", { name: "승인" }));
+    await screen.findByTestId("all-scenes-approved");
+
+    const onOpenMerge = vi.fn();
+    rerender(<VideoWorkflowScreen projectId="sample_project" jobId="job_1" onBack={() => {}} onOpenMerge={onOpenMerge} />);
+    fireEvent.click(screen.getByTestId("open-video-merge-button"));
+
+    expect(onOpenMerge).toHaveBeenCalledWith("sample_project");
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/videos/merge"))).toBe(false);
+  });
+
   it("does not call the regenerate endpoint on the first click — only an explicit per-scene confirmation does", async () => {
     const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
     const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, succeeded)).mockResolvedValueOnce(jsonResponse(200, reviewResponse(sixReviews())));

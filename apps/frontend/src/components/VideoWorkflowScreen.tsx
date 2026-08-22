@@ -16,6 +16,7 @@ interface Props {
   projectId: string;
   jobId: string;
   onBack: () => void;
+  onOpenMerge?: (projectId: string) => void;
 }
 
 type DisplayError = { code: string; message: string };
@@ -52,7 +53,7 @@ function sceneStatus(
   return "pending";
 }
 
-export function VideoWorkflowScreen({ projectId, jobId, onBack }: Props) {
+export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: Props) {
   const [progressState, setProgressState] = useState<ProgressLoadState>({ status: "loading" });
   const [reviewState, setReviewState] = useState<ReviewLoadState>({ status: "idle" });
 
@@ -518,9 +519,19 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack }: Props) {
                   </ul>
 
                   {allApproved && (
-                    <p data-testid="all-scenes-approved" className="text-sm font-semibold text-emerald-400">
-                      6개 장면 영상이 모두 승인되었습니다.
-                    </p>
+                    <div className="space-y-3">
+                      <p data-testid="all-scenes-approved" className="text-sm font-semibold text-emerald-400">
+                        6개 장면 영상이 모두 승인되었습니다.
+                      </p>
+                      <button
+                        type="button"
+                        className="rounded-full bg-violet-500 px-4 py-2 text-sm font-semibold text-white"
+                        data-testid="open-video-merge-button"
+                        onClick={() => onOpenMerge?.(projectId)}
+                      >
+                        최종 영상으로 병합하기
+                      </button>
+                    </div>
                   )}
                 </>
               )}

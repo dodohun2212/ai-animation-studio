@@ -1,6 +1,6 @@
 import type { CreateProjectRequest, Project } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App.js";
@@ -270,5 +270,86 @@ describe("App", () => {
       expect(screen.getByTestId(`scene-progress-${number}`)).toHaveAttribute("data-status", "completed");
     }
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/ffmpeg"))).toBe(false);
+  });
+
+  it("reaches the final merge screen only after all six video reviews are approved, and completes it via POST .../videos/merge", async () => {
+    let project: Project = {
+      id: "sample_project",
+      topic: "우주를 여행하는 고양이",
+      projectType: "short_project",
+      workflowState: WorkflowState.WaitingForVideoConfirmation,
+      createdAt: "2026-08-21T00:00:00.000Z",
+      updatedAt: "2026-08-21T00:00:00.000Z",
+      scenes: [],
+      warnings: [],
+      errors: [],
+    };
+    const previews = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({
+      sceneNumber,
+      prompt: `Scene ${sceneNumber} prompt`,
+      model: "gen4_turbo",
+      ratio: "720:1280",
+      durationSeconds: 5,
+      estimatedCostUsd: 0.25,
+    }));
+    const reviews = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" }));
+    const fetchMock = vi.fn<FakeFetch>(async (input, init) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      if (url === "/projects" && method === "GET") return jsonResponse(200, { projects: [project] });
+      if (url === "/projects/sample_project" && method === "GET") return jsonResponse(200, { project });
+      if (url === "/projects/sample_project/videos/preview" && method === "POST") {
+        return jsonResponse(200, { previews, confirmationId: "confirmation_1" });
+      }
+      if (url === "/projects/sample_project/videos/generations" && method === "POST") {
+        return jsonResponse(200, { jobId: "job_42", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+      }
+      if (url === "/projects/sample_project/videos/generations/job_42" && method === "GET") {
+        return jsonResponse(200, { jobId: "job_42", status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6], failedSceneNumbers: [] });
+      }
+      if (url === "/projects/sample_project/videos/generations/job_42/review" && method === "GET") {
+        return jsonResponse(200, { project, reviews });
+      }
+      const approveMatch = /^\/projects\/sample_project\/videos\/generations\/job_42\/review\/(\d)\/approve$/.exec(url);
+      if (approveMatch && method === "POST") {
+        const sceneNumber = Number(approveMatch[1]);
+        const index = reviews.findIndex((review) => review.sceneNumber === sceneNumber);
+        reviews[index] = { ...reviews[index]!, status: "approved" };
+        if (reviews.every((review) => review.status === "approved")) project = { ...project, workflowState: WorkflowState.VideosApproved };
+        return jsonResponse(200, { project, reviews: [...reviews] });
+      }
+      if (url === "/projects/sample_project/videos/merge" && method === "POST") {
+        project = { ...project, workflowState: WorkflowState.Completed };
+        return jsonResponse(200, { project, finalVideoPath: "videos/final/instagram_reel.mp4" });
+      }
+      throw new Error(`Unexpected fetch call in test: ${method} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /sample_project/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "영상 프롬프트 및 비용 확인" }));
+    await screen.findByTestId("preview-list");
+    fireEvent.click(screen.getByTestId("open-confirm-button"));
+    fireEvent.click(screen.getByTestId("confirm-submit-button"));
+    fireEvent.click(await screen.findByTestId("view-progress-button"));
+
+    await screen.findByTestId("video-review-list");
+    expect(screen.queryByTestId("open-video-merge-button")).toBeNull();
+    for (const sceneNumber of [1, 2, 3, 4, 5, 6]) {
+      const row = screen.getByTestId(`video-review-${sceneNumber}`);
+      fireEvent.click(within(row).getByRole("button", { name: "승인" }));
+      await vi.waitFor(() => expect(row).toHaveAttribute("data-status", "approved"));
+    }
+
+    fireEvent.click(await screen.findByTestId("open-video-merge-button"));
+    fireEvent.click(await screen.findByTestId("open-merge-confirm-button"));
+    fireEvent.click(screen.getByTestId("confirm-merge-button"));
+
+    await screen.findByTestId("merge-success");
+    expect(screen.getByTestId("final-video-path").textContent).toBe("저장 위치: videos/final/instagram_reel.mp4");
+    const [url, mergeInit] = fetchMock.mock.calls.find(([callUrl]) => String(callUrl) === "/projects/sample_project/videos/merge") as [string, RequestInit];
+    expect(url).toBe("/projects/sample_project/videos/merge");
+    expect(mergeInit.method).toBe("POST");
   });
 });
