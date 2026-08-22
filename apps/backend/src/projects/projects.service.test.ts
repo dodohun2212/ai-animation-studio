@@ -83,4 +83,20 @@ describe("ProjectsService", () => {
   it("throws a not-found error for a missing project", async () => {
     await expect(service.getProject("missing_project")).rejects.toThrow();
   });
+
+  it("saves Wizard settings and reopens them from a new backend instance", async () => {
+    await service.createProject({ projectId: "wizard_project", topic: "old topic" });
+    const settings = {
+      projectName: "별의 지도", topic: "별을 찾는 아이", genre: "판타지", mood: "따뜻함",
+      character: "아이", lore: "별의 세계", fullStory: "별을 찾는다.", durationSeconds: 30,
+      sceneCount: 6 as const, additionalNotes: "무서운 장면 제외",
+      styleNotes: { lighting: "달빛", aspect: "16:9" },
+    };
+
+    const saved = await service.updateProjectSettings("wizard_project", { settings });
+    const restarted = new ProjectsService(new LocalProjectRepository(root));
+
+    expect(saved.project.topic).toBe("별을 찾는 아이");
+    expect(await restarted.getProjectSettings("wizard_project")).toEqual({ settings });
+  });
 });

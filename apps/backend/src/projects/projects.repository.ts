@@ -90,6 +90,15 @@ export class LocalProjectRepository {
     return stored;
   }
 
+  async save(stored: StoredProject): Promise<void> {
+    const { file } = this.projectFile(stored.project_id);
+    try {
+      await this.writeProjectFile(file, JSON.stringify(stored, null, 2));
+    } catch {
+      throw storageError(`Failed to save project "${stored.project_id}".`);
+    }
+  }
+
   /**
    * Returns every readable, valid short project. Matches
    * MemoryManager.list_projects(): entries that fail to load (corrupt JSON,

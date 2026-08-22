@@ -12,9 +12,9 @@
 | 영역 | 구현됨 | 미구현 |
 |---|---|---|
 | 기반 | strict TypeScript workspace, React/Vite, NestJS, Electron | 배포와 Python 동등성 검증 |
-| Shared | 1~6 SceneNumber, 기본 Project/Scene/usage/task, Python과 같은 WorkflowState/전이, 단기 프로젝트 create/list/get, Provider credential 상태, Asset Library 조회·가져오기·편집·목록 삭제 계약 및 Runway preview/approval/progress 계약과 테스트 | 전체 ProjectContext, Wizard/Story motion, Asset mapping/review, 장기 프로젝트 DTO |
-| Frontend | 단기 프로젝트 생성·목록·재열기, OpenAI·Runway credential 관리, Asset Library 목록·검색·유형 필터·이미지 가져오기·상세·metadata 편집·안전한 목록 삭제와 안전한 API 오류 UI | Story·project Asset mapping·이미지·영상 등 이후 사용자 흐름 |
-| Backend | `GET /health`, 단기 프로젝트 create/list/get, Python 호환 JSON 저장·재열기, 로컬 `.env` credential 관리, Python 호환 Asset index·multipart 이미지 가져오기·검색·metadata 편집·사용 중 삭제 차단·안전한 content 제공 | Story·Asset mapping·workflow/provider/media endpoint |
+| Shared | 1~6 SceneNumber, 기본 Project/Scene/usage/task, Python과 같은 WorkflowState/전이, 단기 프로젝트 create/list/get, Provider credential 상태, Asset Library와 project Asset mapping/review 계약, 단기 프로젝트 Wizard 설정 계약 및 Runway preview/approval/progress 계약과 테스트 | 전체 ProjectContext, Story motion, 장기 프로젝트 DTO |
+| Frontend | 단기 프로젝트 생성·목록·재열기, 프로젝트 설정 저장·재열기, OpenAI·Runway credential 관리, Asset Library, project Asset mapping review와 안전한 API 오류 UI | Story·이미지·영상 등 이후 사용자 흐름 |
+| Backend | `GET /health`, 단기 프로젝트 create/list/get/settings, Python 호환 JSON 저장·재열기, 로컬 `.env` credential 관리, Asset Library, project Asset mapping 저장·검토·snapshot | Story·workflow/provider/media endpoint |
 | Desktop | 격리된 BrowserWindow에서 frontend 로드 | backend 생명주기, file dialog/path open, packaging/recovery |
 
 Shared의 `/projects` route는 NestJS에 구현되었으며 video route는 아직 구현되지 않았다.
@@ -294,6 +294,16 @@ Frontend 및 통합 완료 근거(2026-08-21): `feature/frontend`의 `48065b0`�
 - [ ] Story 6 scenes 생성 및 실제 image-generation Gate 연결은 다음 기능에서 구현·통합 검증한다.
 
 완료 근거(2026-08-22): Shared contract `7f009f1`, Backend `a90962b`, Frontend `35ff9d7`을 main에 fast-forward했다. Mapping은 Python `project_asset_mapping.py`의 project-level mapping/review/snapshot 동작만 이전했으며 auto-match, add/replace, long-story Episode, Story/image generation은 범위 밖으로 유지했다.
+
+## 다섯 번째 이전 기능: 단기 프로젝트 Wizard 설정 저장·재열기
+
+- [x] Python Wizard의 이름·주제 필수 검증과 장르·분위기·대표 캐릭터·세계관·전체 줄거리·길이·추가 지시·스타일 필드를 `ShortProjectSettings` 계약으로 명시했다. 현재 로컬 단일 사용자 계약대로 `userId`는 추가하지 않았다.
+- [x] Asset 선택/캐릭터 cast/scene reference는 이미 별도 Asset mapping 기능이 소유하므로 이번 설정 저장 범위에서 중복 변경하지 않았다.
+- [x] `GET /projects/:projectId/settings`, `PATCH /projects/:projectId/settings`가 Python `project.json`의 snake_case `style_profile`, `character_profile`, `lore_context`와 camelCase API를 변환한다. 기존 알려진 JSON 필드는 보존하고 `updated_at`만 갱신한다.
+- [x] 이름·주제·양수 길이·정확히 6장면과 unknown field를 검증하며, UTF-8 atomic write 실패는 기존 `PROJECT_STORAGE_ERROR`로 처리한다.
+- [x] Frontend 프로젝트 상세에서 설정 화면을 열어 저장하고, 새 Backend instance에서도 다시 열리는 흐름을 테스트했다.
+- [x] Shared 20개, Backend 158개(+1 intentional skip), Frontend 233개 테스트와 root typecheck/test/build, `git diff --check`를 통과했다. Provider·FFmpeg·실제 유료 네트워크 호출은 없었다.
+- [ ] Story prompt preview/edit/restore와 명시적 fake-provider submit은 다음 기능으로 분리한다.
 
 ## 공통 완료 조건
 

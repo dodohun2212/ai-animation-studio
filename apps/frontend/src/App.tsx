@@ -7,12 +7,14 @@ import { ProjectList } from "./components/ProjectList.js";
 import { ProviderSettingsScreen } from "./components/ProviderSettingsScreen.js";
 import { AssetLibraryScreen } from "./components/AssetLibraryScreen.js";
 import { MappingReviewScreen } from "./components/MappingReviewScreen.js";
+import { ShortProjectSettingsScreen } from "./components/ShortProjectSettingsScreen.js";
 
 type Screen =
   | { name: "list" }
   | { name: "create" }
   | { name: "detail"; projectId: string }
   | { name: "mappingReview"; projectId: string }
+  | { name: "settings"; projectId: string }
   | { name: "providerSettings" }
   | { name: "assets" };
 
@@ -64,10 +66,17 @@ export function App() {
             projectId={screen.projectId}
             onBack={() => setScreen({ name: "list" })}
             onOpenMappingReview={(projectId) => setScreen({ name: "mappingReview", projectId })}
+            onOpenSettings={(projectId) => setScreen({ name: "settings", projectId })}
           />
         )}
         {screen.name === "mappingReview" && (
           <MappingReviewScreen
+            projectId={screen.projectId}
+            onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
+          />
+        )}
+        {screen.name === "settings" && (
+          <ShortProjectSettingsScreen
             projectId={screen.projectId}
             onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
           />

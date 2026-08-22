@@ -3,11 +3,15 @@ import type {
   CreateProjectRequest,
   CreateProjectResponse,
   GetProjectResponse,
+  GetProjectSettingsResponse,
   ListProjectsResponse,
+  UpdateProjectSettingsRequest,
+  UpdateProjectSettingsResponse,
 } from "@ai-animation-studio/shared";
 
 import { invalidRequest } from "./project-api.error.js";
 import { createStoredProject, toApiProject, toApiSummary } from "./project.mapper.js";
+import { applyShortProjectSettings, parseShortProjectSettings, toShortProjectSettings } from "./project-settings.js";
 import { LocalProjectRepository } from "./projects.repository.js";
 
 function requireNonEmptyTrimmed(value: unknown, field: string): string {
@@ -46,5 +50,21 @@ export class ProjectsService {
     const trimmed = typeof projectId === "string" ? projectId.trim() : "";
     const stored = await this.repository.findById(trimmed);
     return { project: toApiProject(stored) };
+  }
+
+  async getProjectSettings(projectId: string): Promise<GetProjectSettingsResponse> {
+    const stored = await this.repository.findById(projectId.trim());
+    return { settings: toShortProjectSettings(stored) };
+  }
+
+  async updateProjectSettings(
+    projectId: string,
+    request: UpdateProjectSettingsRequest,
+  ): Promise<UpdateProjectSettingsResponse> {
+    const stored = await this.repository.findById(projectId.trim());
+    const settings = parseShortProjectSettings(request?.settings);
+    const updated = applyShortProjectSettings(stored, settings, new Date().toISOString());
+    await this.repository.save(updated);
+    return { project: toApiProject(updated), settings };
   }
 }

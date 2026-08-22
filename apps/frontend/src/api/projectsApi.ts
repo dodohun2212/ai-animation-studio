@@ -3,9 +3,13 @@ import {
   type CreateProjectRequest,
   type CreateProjectResponse,
   type GetProjectResponse,
+  type GetProjectSettingsResponse,
   type ListProjectsResponse,
   type Project,
   type ProjectSummary,
+  type ShortProjectSettings,
+  type UpdateProjectSettingsRequest,
+  type UpdateProjectSettingsResponse,
 } from "@ai-animation-studio/shared";
 
 export class ProjectsApiError extends Error {
@@ -82,6 +86,24 @@ function isGetProjectResponse(value: unknown): value is GetProjectResponse {
   return isRecord(value) && isProject(value.project);
 }
 
+function isShortProjectSettings(value: unknown): value is ShortProjectSettings {
+  if (!isRecord(value) || value.sceneCount !== 6 || !Number.isInteger(value.durationSeconds) || (value.durationSeconds as number) <= 0) {
+    return false;
+  }
+  const stringKeys = ["projectName", "topic", "genre", "mood", "character", "lore", "fullStory", "additionalNotes"];
+  if (!stringKeys.every((key) => typeof value[key] === "string") || !isRecord(value.styleNotes)) return false;
+  const allowedStyleKeys = ["visualStyle", "color", "lighting", "camera", "dialogue", "avoid", "aspect"];
+  return Object.entries(value.styleNotes).every(([key, item]) => allowedStyleKeys.includes(key) && typeof item === "string");
+}
+
+function isGetProjectSettingsResponse(value: unknown): value is GetProjectSettingsResponse {
+  return isRecord(value) && isShortProjectSettings(value.settings);
+}
+
+function isUpdateProjectSettingsResponse(value: unknown): value is UpdateProjectSettingsResponse {
+  return isRecord(value) && isProject(value.project) && isShortProjectSettings(value.settings);
+}
+
 async function readJsonBody(response: Response): Promise<unknown> {
   try {
     return await response.json();
@@ -130,4 +152,19 @@ export async function listProjects(): Promise<ListProjectsResponse> {
 
 export async function getProject(projectId: string): Promise<GetProjectResponse> {
   return requestJson(API_ROUTES.project(projectId), undefined, isGetProjectResponse);
+}
+
+export async function getProjectSettings(projectId: string): Promise<GetProjectSettingsResponse> {
+  return requestJson(API_ROUTES.projectSettings(projectId), undefined, isGetProjectSettingsResponse);
+}
+
+export async function updateProjectSettings(
+  projectId: string,
+  request: UpdateProjectSettingsRequest,
+): Promise<UpdateProjectSettingsResponse> {
+  return requestJson(
+    API_ROUTES.projectSettings(projectId),
+    { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request) },
+    isUpdateProjectSettingsResponse,
+  );
 }

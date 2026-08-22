@@ -87,6 +87,30 @@ describe("ProjectsController", () => {
     );
   });
 
+  it("gets and updates the short-project Wizard settings", async () => {
+    await controller.create({ projectId: "wizard_project", topic: "topic" });
+    expect((await controller.getSettings("wizard_project")).settings.durationSeconds).toBe(30);
+
+    const response = await controller.updateSettings("wizard_project", {
+      settings: {
+        projectName: "별의 지도", topic: "별을 찾는 아이", genre: "판타지", mood: "따뜻함",
+        character: "아이", lore: "별의 세계", fullStory: "별을 찾는다.", durationSeconds: 30,
+        sceneCount: 6, additionalNotes: "", styleNotes: { aspect: "16:9" },
+      },
+    });
+    expect(response.project.topic).toBe("별을 찾는 아이");
+    expect(response.settings.projectName).toBe("별의 지도");
+  });
+
+  it("maps invalid Wizard settings to 400 INVALID_REQUEST", async () => {
+    await controller.create({ projectId: "wizard_project", topic: "topic" });
+    await expectApiError(
+      controller.updateSettings("wizard_project", { settings: { unexpected: true } } as never),
+      HttpStatus.BAD_REQUEST,
+      "INVALID_REQUEST",
+    );
+  });
+
   it("maps corrupt JSON to a 500 PROJECT_JSON_MALFORMED API error", async () => {
     await fsPromises.mkdir(path.join(root, "broken"), { recursive: true });
     await fsPromises.writeFile(path.join(root, "broken", "project.json"), "{not valid", "utf8");

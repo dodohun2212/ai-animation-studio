@@ -1,7 +1,7 @@
 import type { ListProjectsResponse } from "@ai-animation-studio/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createProject, getProject, listProjects, ProjectsApiError, toDisplayError } from "./projectsApi.js";
+import { createProject, getProject, getProjectSettings, listProjects, ProjectsApiError, toDisplayError, updateProjectSettings } from "./projectsApi.js";
 import { jsonResponse, makeProject, nonJsonResponse } from "./testUtils.js";
 
 describe("projectsApi", () => {
@@ -42,6 +42,33 @@ describe("projectsApi", () => {
 
     expect(await getProject("reopen_me")).toEqual({ project });
     expect(fetchMock).toHaveBeenCalledWith("/projects/reopen_me");
+  });
+
+  it("gets and updates only the documented short-project Wizard settings routes", async () => {
+    const settings = {
+      projectName: "별의 지도", topic: "별을 찾는 아이", genre: "판타지", mood: "따뜻함", character: "아이",
+      lore: "별의 세계", fullStory: "별을 찾는다.", durationSeconds: 30, sceneCount: 6 as const,
+      additionalNotes: "", styleNotes: { aspect: "16:9" },
+    };
+    const project = makeProject({ topic: settings.topic });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { settings }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, settings }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getProjectSettings("reopen_me")).resolves.toEqual({ settings });
+    await expect(updateProjectSettings("reopen_me", { settings })).resolves.toEqual({ project, settings });
+    expect(fetchMock.mock.calls[0]).toEqual(["/projects/reopen_me/settings"]);
+    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(url).toBe("/projects/reopen_me/settings");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(String(init.body))).toEqual({ settings });
+    expect(JSON.stringify(init.body)).not.toContain("userId");
+  });
+
+  it("rejects malformed Wizard settings responses", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { settings: { sceneCount: 5 } })));
+    await expect(getProjectSettings("sample_project")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
   });
 
   describe.each([
