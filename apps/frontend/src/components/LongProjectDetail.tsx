@@ -8,6 +8,7 @@ interface LongProjectDetailProps {
   onBack: () => void;
   onOpenSettings: (projectId: string) => void;
   onOpenOutline: (projectId: string) => void;
+  onOpenStoryBible?: (projectId: string) => void;
 }
 
 type DetailState =
@@ -15,7 +16,7 @@ type DetailState =
   | { status: "error"; error: { code: string; message: string } }
   | { status: "success"; project: LongProject };
 
-export function LongProjectDetail({ projectId, onBack, onOpenSettings, onOpenOutline }: LongProjectDetailProps) {
+export function LongProjectDetail({ projectId, onBack, onOpenSettings, onOpenOutline, onOpenStoryBible }: LongProjectDetailProps) {
   const [state, setState] = useState<DetailState>({ status: "loading" });
 
   useEffect(() => {
@@ -65,6 +66,13 @@ export function LongProjectDetail({ projectId, onBack, onOpenSettings, onOpenOut
           >
             아웃라인 확인
           </button>
+          {onOpenStoryBible && <button
+            type="button"
+            className="ml-3 mt-4 rounded-full border border-violet-400/40 px-4 py-2 text-sm text-violet-300"
+            onClick={() => onOpenStoryBible(projectId)}
+          >
+            Story Bible
+          </button>}
           <dl className="mt-4 space-y-2 text-slate-100">
             <div>
               <dt className="text-xs uppercase tracking-wide text-slate-400">ID</dt>

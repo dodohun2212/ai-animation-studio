@@ -18,6 +18,7 @@ import { LongProjectDetail } from "./components/LongProjectDetail.js";
 import { LongProjectList } from "./components/LongProjectList.js";
 import { LongProjectSettingsScreen } from "./components/LongProjectSettingsScreen.js";
 import { LongProjectOutlineScreen } from "./components/LongProjectOutlineScreen.js";
+import { LongStoryBibleScreen } from "./components/LongStoryBibleScreen.js";
 
 type Screen =
   | { name: "list" }
@@ -36,7 +37,8 @@ type Screen =
   | { name: "longCreate" }
   | { name: "longDetail"; projectId: string }
   | { name: "longSettings"; projectId: string }
-  | { name: "longOutline"; projectId: string };
+  | { name: "longOutline"; projectId: string }
+  | { name: "longStoryBible"; projectId: string };
 
 export function App() {
   const [screen, setScreen] = useState<Screen>({ name: "list" });
@@ -106,6 +108,7 @@ export function App() {
             onBack={() => setScreen({ name: "longList" })}
             onOpenSettings={(projectId) => setScreen({ name: "longSettings", projectId })}
             onOpenOutline={(projectId) => setScreen({ name: "longOutline", projectId })}
+            onOpenStoryBible={(projectId) => setScreen({ name: "longStoryBible", projectId })}
           />
         )}
         {screen.name === "longSettings" && (
@@ -116,6 +119,12 @@ export function App() {
         )}
         {screen.name === "longOutline" && (
           <LongProjectOutlineScreen
+            projectId={screen.projectId}
+            onBack={() => setScreen({ name: "longDetail", projectId: screen.projectId })}
+          />
+        )}
+        {screen.name === "longStoryBible" && (
+          <LongStoryBibleScreen
             projectId={screen.projectId}
             onBack={() => setScreen({ name: "longDetail", projectId: screen.projectId })}
           />
