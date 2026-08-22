@@ -31,7 +31,7 @@ describe("StoryPromptService", () => {
     const { repository, service } = await setup(); const preview = await service.preview("sample");
     const approved = await service.approve("sample", { originalPromptSha256: preview.preview.originalPromptSha256, prompt: "  edited prompt  ", approved: true });
     expect(approved).toMatchObject({ prompt: "edited prompt", modified: true });
-    expect((await repository.findById("sample")).story).toMatchObject({ story_prompt_request: { actual_prompt: "edited prompt", original_prompt: preview.preview.originalPrompt, modified: true, model: "local-fake-story-adapter" } });
+    expect((await repository.findById("sample")).lore_context).toMatchObject({ story_prompt_request: { actual_prompt: "edited prompt", original_prompt: preview.preview.originalPrompt, modified: true, model: "local-fake-story-adapter" } });
     await expect(service.approve("sample", { originalPromptSha256: "a".repeat(64), prompt: "x", approved: true })).rejects.toMatchObject({ response: { code: "STORY_PROMPT_STALE" } });
   });
   it("rejects blank, unapproved, and unknown approval fields", async () => {

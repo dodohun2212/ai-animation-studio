@@ -102,8 +102,8 @@ export class StoryPromptService {
     const updated: StoredProject = {
       ...stored,
       updated_at: approvedAt,
-      story: {
-        ...stored.story,
+      lore_context: {
+        ...stored.lore_context,
         story_prompt_request: {
           actual_prompt: prompt,
           original_prompt: originalPrompt,
