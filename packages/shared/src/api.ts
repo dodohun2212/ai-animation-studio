@@ -18,6 +18,65 @@ export interface CreateProjectResponse { project: Project; }
 export interface ListProjectsResponse { projects: ProjectSummary[]; }
 export interface GetProjectResponse { project: Project; }
 
+/** Provider-free, outline-first long-story project contract. */
+export interface LongProjectSettings {
+  title: string;
+  logline: string;
+  overview: string;
+  genre: string;
+  tone: string;
+  theme: string;
+  episodeCount: number;
+  episodeDurationSeconds: number;
+  platform: "YouTube Shorts" | "YouTube";
+  aspectRatio: "9:16" | "16:9";
+  audience: string;
+  notes: string;
+  startingState: string;
+  midpoint: string;
+  endingDirection: string;
+  storyFlowSummary: string;
+}
+
+export interface LongEpisodeOutline {
+  episodeNumber: number;
+  title: string;
+  summary: string;
+  mainEvent: string;
+  conflict: string;
+  cliffhanger: string;
+  nextEpisodeHook: string;
+  status: "planned" | "outline_ready";
+}
+
+export interface LongProjectSummary {
+  id: string;
+  title: string;
+  logline: string;
+  episodeCount: number;
+  outlineStatus: "planned" | "outline_ready";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LongProject extends LongProjectSummary {
+  settings: LongProjectSettings;
+  storyBible: { basic: Record<string, unknown>; world: Record<string, unknown> };
+  episodes: LongEpisodeOutline[];
+}
+
+export interface CreateLongProjectRequest { projectId: string; settings: LongProjectSettings; }
+export interface CreateLongProjectResponse { project: LongProject; }
+export interface ListLongProjectsResponse { projects: LongProjectSummary[]; }
+export interface GetLongProjectResponse { project: LongProject; }
+export interface GetLongProjectSettingsResponse { settings: LongProjectSettings; }
+export interface UpdateLongProjectSettingsRequest { settings: LongProjectSettings; }
+export interface UpdateLongProjectSettingsResponse { project: LongProject; }
+export interface LongProjectOutlinePromptPreview { projectId: string; prompt: string; promptSha256: string; episodeCount: number; }
+export interface CreateLongProjectOutlinePreviewResponse { preview: LongProjectOutlinePromptPreview; }
+export interface ApproveLongProjectOutlineRequest { promptSha256: string; prompt: string; approved: true; }
+export interface ApproveLongProjectOutlineResponse { project: LongProject; approvedAt: string; promptSha256: string; modified: boolean; }
+
 /**
  * The editable, non-provider portion of Python's short-project Wizard.
  * Asset selections remain in the project asset-mapping contract.
@@ -274,6 +333,11 @@ export interface MergeVideosResponse {
 export const API_ROUTES = {
   health: "/health",
   projects: "/projects",
+  longProjects: "/long-projects",
+  longProject: (projectId: string) => `/long-projects/${encodeURIComponent(projectId)}`,
+  longProjectSettings: (projectId: string) => `/long-projects/${encodeURIComponent(projectId)}/settings`,
+  longProjectOutlinePreview: (projectId: string) => `/long-projects/${encodeURIComponent(projectId)}/outline/preview`,
+  longProjectOutlineApproval: (projectId: string) => `/long-projects/${encodeURIComponent(projectId)}/outline/approval`,
   project: (projectId: string) => `/projects/${projectId}`,
   projectSettings: (projectId: string) =>
     `/projects/${encodeURIComponent(projectId)}/settings`,
