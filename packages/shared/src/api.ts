@@ -115,6 +115,21 @@ export interface RegenerateImageReviewResponse {
   sceneNumber: SceneNumber;
 }
 
+/** A local, non-submitting Runway preflight row for one approved image. */
+export interface VideoPromptPreview {
+  sceneNumber: SceneNumber;
+  prompt: string;
+  model: "gen4_turbo";
+  ratio: "720:1280" | "1280:720";
+  durationSeconds: 5;
+  estimatedCostUsd: number;
+}
+
+/** Previewing prompts and cost never creates a provider task or writes project data. */
+export interface GetVideoPromptPreviewResponse {
+  previews: VideoPromptPreview[];
+}
+
 export interface ListAssetsQuery {
   query?: string;
   assetType?: AssetType;
@@ -256,7 +271,7 @@ export const API_ROUTES = {
     `/settings/providers/${provider}/disconnect`,
   providerReconnect: (provider: ProviderCredentialKind) =>
     `/settings/providers/${provider}/reconnect`,
-  videoPreview: (projectId: string) => `/projects/${projectId}/videos/preview`,
+  videoPreview: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/videos/preview`,
   videoGeneration: (projectId: string) => `/projects/${projectId}/videos/generations`,
   videoProgress: (projectId: string, jobId: string) => `/projects/${projectId}/videos/generations/${jobId}`,
   projectAssetMappings: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/assets/mappings`,
