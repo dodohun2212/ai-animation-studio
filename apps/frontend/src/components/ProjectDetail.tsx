@@ -11,6 +11,7 @@ interface ProjectDetailProps {
   onOpenSettings?: (projectId: string) => void;
   onOpenStoryPrompt?: (projectId: string) => void;
   onOpenImageGeneration?: (projectId: string) => void;
+  onOpenVideoPreview?: (projectId: string) => void;
 }
 
 type DetailState =
@@ -25,6 +26,7 @@ export function ProjectDetail({
   onOpenSettings = () => {},
   onOpenStoryPrompt = () => {},
   onOpenImageGeneration = () => {},
+  onOpenVideoPreview = () => {},
 }: ProjectDetailProps) {
   const [state, setState] = useState<DetailState>({ status: "loading" });
 
@@ -93,6 +95,15 @@ export function ProjectDetail({
             onClick={() => onOpenImageGeneration(projectId)}
           >
             장면 이미지 생성
+          </button>
+        )}
+        {state.project.workflowState === WorkflowState.WaitingForVideoConfirmation && (
+          <button
+            type="button"
+            className="ml-3 mt-4 rounded-full border border-violet-400/40 px-4 py-2 text-sm text-violet-300"
+            onClick={() => onOpenVideoPreview(projectId)}
+          >
+            영상 프롬프트 및 비용 확인
           </button>
         )}
         <dl className="mt-4 space-y-2 text-slate-100">
