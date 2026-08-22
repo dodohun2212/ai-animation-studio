@@ -8,6 +8,7 @@ import { LocalProjectRepository } from "../projects/projects.repository.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
 import { LocalProjectAssetMappingsRepository, scriptFingerprint } from "../mappings/mappings.repository.js";
 import { validateImage } from "../assets/image-validation.js";
+import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { imageGenerationFailed, imageGenerationNotAllowed, imageStorageError, invalidImageRequest, mappingReviewRequired } from "./image-api.error.js";
 
 const SCENES = [1, 2, 3, 4, 5, 6] as const;
@@ -56,6 +57,7 @@ export class LocalImageGenerationService {
     private readonly mappings: LocalProjectAssetMappingsRepository,
     private readonly projectsRoot: string,
     private readonly writeImage: WriteImage = atomicWriteImage,
+    private readonly assets: LocalAssetsRepository = new LocalAssetsRepository(path.dirname(projectsRoot)),
   ) {}
 
   private imagePath(projectId: string, scene: SceneNumber): string {
@@ -105,6 +107,11 @@ export class LocalImageGenerationService {
         generated.push(number);
       }
       if (current.generated_images.length !== 6 || !(await Promise.all(SCENES.map((number) => validPng(this.imagePath(current.project_id, number))))).every(Boolean)) throw new Error("incomplete");
+      await this.assets.indexGeneratedProjectImages(
+        current.project_id,
+        current.topic,
+        current.scenes.map((scene) => sceneValue(scene, "description")),
+      );
       current = { ...current, workflow_state: WorkflowState.ImagesReady, updated_at: new Date().toISOString() };
       await this.projects.save(current);
       current = { ...current, workflow_state: WorkflowState.ImagesReview, updated_at: new Date().toISOString() };

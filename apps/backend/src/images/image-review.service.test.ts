@@ -7,6 +7,7 @@ import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
+import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { ImageReviewService } from "./image-review.service.js";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
@@ -26,7 +27,9 @@ async function setup() {
     const file = path.join(images, `scene${number}.png`); await fs.writeFile(file, PNG); return file;
   }));
   await projects.save(project);
-  return { projectsRoot, projects, service: new ImageReviewService(projects, projectsRoot) };
+  const assets = new LocalAssetsRepository(path.dirname(projectsRoot));
+  await assets.indexGeneratedProjectImages("review", project.topic, []);
+  return { projectsRoot, projects, assets, service: new ImageReviewService(projects, projectsRoot, assets) };
 }
 
 describe("provider-free generated image review", () => {
@@ -49,7 +52,7 @@ describe("provider-free generated image review", () => {
   });
 
   it("persists per-scene approval history, survives a new service instance, and advances only after all six", async () => {
-    const { projectsRoot, projects, service } = await setup();
+    const { projectsRoot, projects, assets, service } = await setup();
     const first = await service.approve("review", "1", { approved: true });
     expect(first.project.workflowState).toBe(WorkflowState.ImagesReview);
     expect(first.reviews.find((review) => review.sceneNumber === 1)?.status).toBe("approved");
@@ -70,7 +73,7 @@ describe("provider-free generated image review", () => {
   });
 
   it("archives only the regenerated scene, resets its approval, and survives a new service instance", async () => {
-    const { projectsRoot, projects, service } = await setup();
+    const { projectsRoot, projects, assets, service } = await setup();
     for (const scene of [1, 2, 3, 4, 5, 6]) await service.approve("review", String(scene), { approved: true });
     const before = await fs.readFile(path.join(projectsRoot, "review", "images", "scene3.png"));
     const result = await service.regenerate("review", "3", { approved: true });

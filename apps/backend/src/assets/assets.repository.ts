@@ -14,6 +14,9 @@ const CHARACTER_ROLES = ["back", "expression", "front", "left45", "other", "righ
 const RETRYABLE = new Set(["EPERM", "EBUSY", "EACCES"]);
 const errorCode = (error: unknown) => typeof error === "object" && error !== null && "code" in error ? String((error as { code?: unknown }).code) : "";
 const terms = (values: string[] | undefined) => [...new Set((values ?? []).flatMap((value) => value.replaceAll(",", " ").split(/\s+/u)).map((value) => value.trim().toLocaleLowerCase()).filter(Boolean))].sort();
+const GENERATED_IMAGE_NOTE = "Automatically indexed project image";
+const GENERATED_FOLDER_NOTE = "Automatically grouped generated project images";
+const SCENES = [1, 2, 3, 4, 5, 6] as const;
 
 export class LocalAssetsRepository {
   private static readonly indexLocks = new Map<string, Promise<void>>();
@@ -185,6 +188,116 @@ export class LocalAssetsRepository {
         || (other.stored_path && other.stored_path === asset.stored_path)
       ));
     } catch { return false; }
+  }
+
+  /**
+   * Index the six canonical project images without copying them.  This is an
+   * internal migration hook; public Asset mutations intentionally remain
+   * unchanged.  Reopening or resuming a project updates the same records.
+   */
+  async indexGeneratedProjectImages(projectId: string, topic: string, descriptions: string[]): Promise<void> {
+    await this.serialized(async () => {
+      const assets = await this.load();
+      const now = new Date().toISOString();
+      const childIds: string[] = [];
+      for (const scene of SCENES) {
+        const storedPath = path.join(this.projectsRoot, projectId, "images", `scene${scene}.png`);
+        const bytes = await fsPromises.readFile(storedPath).catch(() => { throw assetStorageError(); });
+        let validated: ReturnType<typeof validateImage>;
+        try { validated = validateImage(bytes, `scene${scene}.png`, "image/png"); } catch { throw assetStorageError(); }
+        let asset = assets.find((item) => !item.is_folder && item.source_project_id === projectId
+          && item.source_scene_number === scene && item.notes === GENERATED_IMAGE_NOTE);
+        if (!asset) {
+          asset = {
+            asset_id: `ASSET-GENERAL-${crypto.randomBytes(6).toString("hex").toUpperCase()}`,
+            asset_type: "general_reference", display_name: `${projectId} Scene ${scene}`,
+            description: descriptions[scene - 1]?.trim() || topic.trim(), stored_path: storedPath,
+            original_filename: `scene${scene}.png`, content_sha256: validated.digest,
+            tags: terms(["generated image", "short project", projectId, `scene ${scene}`]), aliases: [], enabled: true,
+            approved: false, face_baseline: false, character_key: null, version: 1,
+            versions: [{ version: 1, stored_path: storedPath, content_sha256: validated.digest, created_at: now, notes: "" }],
+            created_at: now, updated_at: now, notes: GENERATED_IMAGE_NOTE, legacy_asset_ids: [], status: "generated",
+            source_project_id: projectId, source_scene_number: scene, reference_images: [], reference_roles: [],
+            is_folder: false, parent_folder_id: "", child_asset_ids: [], thumbnail_asset_id: "", role: "", sort_order: scene - 1,
+          };
+          assets.push(asset);
+        } else {
+          // Generation resume must never create another Asset for a scene. A
+          // regenerated image goes through replaceGeneratedProjectSceneImage.
+          asset.display_name = `${projectId} Scene ${scene}`;
+          asset.description = descriptions[scene - 1]?.trim() || topic.trim();
+          asset.updated_at = now;
+        }
+        childIds.push(asset.asset_id);
+      }
+      let folder = assets.find((item) => item.is_folder && item.source_project_id === projectId && item.notes === GENERATED_FOLDER_NOTE);
+      if (!folder) {
+        folder = {
+          asset_id: `FOLDER-${crypto.randomBytes(6).toString("hex").toUpperCase()}`,
+          asset_type: "general_reference", display_name: `${projectId} generated images`, description: topic.trim(),
+          stored_path: "", original_filename: "", content_sha256: "", tags: terms(["generated image", "short project", projectId]),
+          aliases: [], enabled: true, approved: false, face_baseline: false, character_key: null, version: 1, versions: [],
+          created_at: now, updated_at: now, notes: GENERATED_FOLDER_NOTE, legacy_asset_ids: [], status: "generated",
+          source_project_id: projectId, source_scene_number: null, reference_images: [], reference_roles: [], is_folder: true,
+          parent_folder_id: "", child_asset_ids: childIds, thumbnail_asset_id: childIds[0]!, role: "", sort_order: 0,
+        };
+        assets.push(folder);
+      } else {
+        folder.child_asset_ids = childIds;
+        folder.thumbnail_asset_id = childIds[0]!;
+        folder.display_name = `${projectId} generated images`;
+        folder.description = topic.trim();
+        folder.approved = false;
+        folder.updated_at = now;
+      }
+      for (const [index, assetId] of childIds.entries()) {
+        const child = assets.find((item) => item.asset_id === assetId)!;
+        child.parent_folder_id = folder.asset_id;
+        child.sort_order = index;
+      }
+      await this.save(assets);
+    });
+  }
+
+  async approveGeneratedProjectImage(projectId: string, scene: number, allApproved: boolean): Promise<void> {
+    await this.serialized(async () => {
+      const assets = await this.load();
+      const child = assets.find((item) => !item.is_folder && item.source_project_id === projectId
+        && item.source_scene_number === scene && item.notes === GENERATED_IMAGE_NOTE);
+      const folder = assets.find((item) => item.is_folder && item.source_project_id === projectId && item.notes === GENERATED_FOLDER_NOTE);
+      if (!child || !folder) throw assetStorageError();
+      child.status = "approved"; child.approved = true; child.updated_at = new Date().toISOString();
+      folder.approved = allApproved; folder.updated_at = child.updated_at;
+      await this.save(assets);
+    });
+  }
+
+  async replaceGeneratedProjectSceneImage(projectId: string, scene: number, currentPath: string, archivedPath: string): Promise<void> {
+    await this.serialized(async () => {
+      const assets = await this.load();
+      const child = assets.find((item) => !item.is_folder && item.source_project_id === projectId
+        && item.source_scene_number === scene && item.notes === GENERATED_IMAGE_NOTE);
+      if (!child) throw assetStorageError();
+      const [currentBytes, archivedBytes] = await Promise.all([
+        fsPromises.readFile(currentPath), fsPromises.readFile(archivedPath),
+      ]).catch(() => { throw assetStorageError(); });
+      let current: ReturnType<typeof validateImage>; let archived: ReturnType<typeof validateImage>;
+      try {
+        current = validateImage(currentBytes, `scene${scene}.png`, "image/png");
+        archived = validateImage(archivedBytes, path.basename(archivedPath), "image/png");
+      } catch { throw assetStorageError(); }
+      const active = child.versions.find((version) => version.version === child.version);
+      if (!active) throw assetStorageError();
+      active.stored_path = archivedPath;
+      active.content_sha256 = archived.digest;
+      const next = Math.max(...child.versions.map((version) => version.version)) + 1;
+      child.versions.push({ version: next, stored_path: currentPath, content_sha256: current.digest, created_at: new Date().toISOString(), notes: "Regenerated scene image" });
+      child.version = next; child.stored_path = currentPath; child.original_filename = path.basename(currentPath);
+      child.content_sha256 = current.digest; child.status = "generated"; child.approved = false; child.updated_at = new Date().toISOString();
+      const folder = assets.find((item) => item.is_folder && item.source_project_id === projectId && item.notes === GENERATED_FOLDER_NOTE);
+      if (folder) { folder.approved = false; folder.updated_at = child.updated_at; }
+      await this.save(assets);
+    });
   }
 
   private async load(): Promise<StoredAsset[]> {

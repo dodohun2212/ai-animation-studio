@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import * as crypto from "node:crypto";
 
 import { Injectable } from "@nestjs/common";
 import {
@@ -12,6 +13,7 @@ import {
 } from "@ai-animation-studio/shared";
 
 import { validateImage } from "../assets/image-validation.js";
+import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
@@ -77,7 +79,11 @@ function toApiReviews(reviews: StoredImageReview[], timestamp: string): ImageRev
 
 @Injectable()
 export class ImageReviewService {
-  constructor(private readonly projects: LocalProjectRepository, private readonly projectsRoot: string) {}
+  constructor(
+    private readonly projects: LocalProjectRepository,
+    private readonly projectsRoot: string,
+    private readonly assets: LocalAssetsRepository = new LocalAssetsRepository(path.dirname(projectsRoot)),
+  ) {}
 
   private reviewFile(projectId: string): string {
     return path.join(this.projectsRoot, projectId, "generated_image_reviews.json");
@@ -155,6 +161,8 @@ export class ImageReviewService {
     } catch { throw imageReviewStorageError(); }
 
     const allApproved = SCENES.every((scene) => reviews.some((item) => item.scene_number === scene && item.status === "approved"));
+    try { await this.assets.approveGeneratedProjectImage(project.project_id, number, allApproved); }
+    catch { throw imageReviewStorageError(); }
     const updated = allApproved
       ? { ...project, workflow_state: WorkflowState.WaitingForVideoConfirmation, updated_at: timestamp }
       : { ...project, updated_at: timestamp };
@@ -226,6 +234,7 @@ export class ImageReviewService {
       updated_at: timestamp,
     };
     try {
+      await this.assets.replaceGeneratedProjectSceneImage(project.project_id, number, currentPath, archive!);
       await atomicWriteUtf8File(this.reviewFile(project.project_id), JSON.stringify(reviews, null, 2));
       await this.projects.save(updated);
     } catch { throw imageReviewStorageError(); }

@@ -6,6 +6,7 @@ import { WorkflowState } from "@ai-animation-studio/shared";
 import { LocalProjectAssetMappingsRepository, scriptFingerprint } from "../mappings/mappings.repository.js";
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
+import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { LocalImageGenerationService } from "./local-image-generation.service.js";
 
 const roots: string[] = [];
@@ -54,6 +55,11 @@ describe("provider-free local image generation", () => {
       expect(file).toBe(path.join(projectsRoot, "images", "images", `scene${index + 1}.png`));
       expect((await fs.readFile(file)).subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
     }));
+    const assets = await new LocalAssetsRepository(path.dirname(projectsRoot)).list();
+    const folder = assets.find((asset) => asset.is_folder && asset.source_project_id === "images");
+    expect(folder?.child_asset_ids).toHaveLength(6);
+    expect(folder?.approved).toBe(false);
+    expect(assets.filter((asset) => !asset.is_folder && asset.source_project_id === "images")).toHaveLength(6);
   });
 
   it("preserves checkpoints on failure and a new instance generates only missing images", async () => {
@@ -73,5 +79,19 @@ describe("provider-free local image generation", () => {
     expect(resumed.reusedSceneNumbers).toEqual([1, 2]);
     expect(resumed.generatedSceneNumbers).toEqual([3, 4, 5, 6]);
     expect((await new LocalProjectRepository(projectsRoot).findById("images")).workflow_state).toBe(WorkflowState.ImagesReview);
+  });
+
+  it("does not duplicate generated Asset IDs after restart and full reuse", async () => {
+    const { projectsRoot, projects, mappings } = await setup();
+    await new LocalImageGenerationService(projects, mappings, projectsRoot).generate("images", { approved: true });
+    const assets = new LocalAssetsRepository(path.dirname(projectsRoot));
+    const before = (await assets.list()).map((asset) => asset.asset_id).sort();
+    const project = await projects.findById("images");
+    project.workflow_state = WorkflowState.AssetMappingApproved;
+    await projects.save(project);
+    const resumed = await new LocalImageGenerationService(new LocalProjectRepository(projectsRoot), new LocalProjectAssetMappingsRepository(projectsRoot), projectsRoot)
+      .generate("images", { approved: true });
+    expect(resumed.reusedSceneNumbers).toEqual([1, 2, 3, 4, 5, 6]);
+    expect((await assets.list()).map((asset) => asset.asset_id).sort()).toEqual(before);
   });
 });
