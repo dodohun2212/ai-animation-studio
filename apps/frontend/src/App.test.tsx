@@ -206,6 +206,30 @@ describe("App", () => {
     expect(screen.getByText("우주를 여행하는 고양이")).toBeTruthy();
   });
 
+  it("opens Asset Library pre-searched with the project ID from a project's 생성 이미지 모음 button", async () => {
+    const project: Project = {
+      id: "sample_project", topic: "우주를 여행하는 고양이", projectType: "short_project", workflowState: WorkflowState.Ready,
+      createdAt: "2026-08-21T00:00:00.000Z", updatedAt: "2026-08-21T00:00:00.000Z", scenes: [], warnings: [], errors: [],
+    };
+    const fetchMock = vi.fn<FakeFetch>(async (input) => {
+      const url = String(input);
+      if (url === "/projects") return jsonResponse(200, { projects: [project] });
+      if (url === "/projects/sample_project") return jsonResponse(200, { project });
+      if (url.startsWith("/assets")) return jsonResponse(200, { assets: [] });
+      throw new Error(`Unexpected fetch call in test: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /sample_project/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "생성 이미지 모음" }));
+
+    await screen.findByText("등록된 에셋이 없습니다.");
+    const assetsCall = fetchMock.mock.calls.map(([url]) => String(url)).find((url) => url.startsWith("/assets"));
+    expect(new URL(assetsCall!, "http://localhost").searchParams.get("query")).toBe("sample_project");
+    expect((screen.getByLabelText("검색") as HTMLInputElement).value).toBe("sample_project");
+  });
+
   it("opens the video workflow screen from a successful local video submission and shows live local fake progress", async () => {
     const project: Project = {
       id: "sample_project",

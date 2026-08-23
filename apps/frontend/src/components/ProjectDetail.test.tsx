@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
@@ -96,6 +96,18 @@ describe("ProjectDetail", () => {
     expect(onOpenStoryPrompt).toHaveBeenCalledWith("sample_project");
   });
 
+  it("calls onOpenGallery with the project ID when the 생성 이미지 모음 button is clicked", async () => {
+    const project = makeProject({ id: "sample_project" });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    const onOpenGallery = vi.fn();
+    render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} onOpenGallery={onOpenGallery} />);
+
+    await screen.findByText("sample_project");
+    fireEvent.click(screen.getByRole("button", { name: "생성 이미지 모음" }));
+
+    expect(onOpenGallery).toHaveBeenCalledWith("sample_project");
+  });
+
   it("does not show the 장면 이미지 생성 button when the project is not Asset-Mapping-approved", async () => {
     const project = makeProject({ id: "sample_project", workflowState: WorkflowState.Ready });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
@@ -122,5 +134,79 @@ describe("ProjectDetail", () => {
     fireEvent.click(screen.getByRole("button", { name: "장면 이미지 생성" }));
 
     expect(onOpenImageGeneration).toHaveBeenCalledWith("sample_project");
+  });
+
+  it("resumes into the screen matching each workflow state, and shows no resume button once the project is terminal", async () => {
+    const cases: Array<{ workflowState: WorkflowState; currentVideoJobId?: string; label: string; button: "onOpenStoryPrompt" | "onOpenMappingReview" | "onOpenImageGeneration" | "onOpenVideoPreview" | "onOpenVideoWorkflow" | "onOpenVideoMerge"; args: unknown[] }> = [
+      { workflowState: WorkflowState.Ready, label: "이어서 진행하기 · Story 프롬프트 확인", button: "onOpenStoryPrompt", args: ["sample_project"] },
+      { workflowState: WorkflowState.GeneratingStory, label: "이어서 진행하기 · Story 프롬프트 확인", button: "onOpenStoryPrompt", args: ["sample_project"] },
+      { workflowState: WorkflowState.WaitingForAssetMappingReview, label: "이어서 진행하기 · Asset Mapping 검토", button: "onOpenMappingReview", args: ["sample_project"] },
+      { workflowState: WorkflowState.AssetMappingApproved, label: "이어서 진행하기 · 장면 이미지 생성/검토", button: "onOpenImageGeneration", args: ["sample_project"] },
+      { workflowState: WorkflowState.ImagesReview, label: "이어서 진행하기 · 장면 이미지 생성/검토", button: "onOpenImageGeneration", args: ["sample_project"] },
+      { workflowState: WorkflowState.WaitingForVideoConfirmation, label: "이어서 진행하기 · 영상 프롬프트 및 비용 확인", button: "onOpenVideoPreview", args: ["sample_project"] },
+      { workflowState: WorkflowState.GeneratingVideos, currentVideoJobId: "job-123", label: "이어서 진행하기 · 영상 생성/검토", button: "onOpenVideoWorkflow", args: ["sample_project", "job-123"] },
+      { workflowState: WorkflowState.GeneratingVideos, label: "이어서 진행하기 · 영상 프롬프트 및 비용 확인", button: "onOpenVideoPreview", args: ["sample_project"] },
+      { workflowState: WorkflowState.VideosApproved, label: "이어서 진행하기 · 최종 영상 병합", button: "onOpenVideoMerge", args: ["sample_project"] },
+    ];
+    for (const testCase of cases) {
+      const project = makeProject({ id: "sample_project", workflowState: testCase.workflowState, ...(testCase.currentVideoJobId ? { currentVideoJobId: testCase.currentVideoJobId } : {}) });
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+      const handlers = { onOpenStoryPrompt: vi.fn(), onOpenMappingReview: vi.fn(), onOpenImageGeneration: vi.fn(), onOpenVideoPreview: vi.fn(), onOpenVideoWorkflow: vi.fn(), onOpenVideoMerge: vi.fn() };
+      render(<ProjectDetail projectId={project.id} onBack={() => {}} {...handlers} />);
+      await screen.findByText("sample_project");
+      fireEvent.click(screen.getByRole("button", { name: testCase.label }));
+      expect(handlers[testCase.button]).toHaveBeenCalledWith(...testCase.args);
+      cleanup();
+      vi.unstubAllGlobals();
+    }
+
+    for (const terminal of [WorkflowState.Completed, WorkflowState.Failed, WorkflowState.Cancelled]) {
+      const project = makeProject({ id: "sample_project", workflowState: terminal });
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+      render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} />);
+      await screen.findByText("sample_project");
+      expect(screen.queryByText(/^이어서 진행하기/)).toBeNull();
+      cleanup();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("archives only after the exact topic is entered, then returns to the list", async () => {
+    const project = makeProject({ id: "sample_project", topic: "Exact project topic" });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(jsonResponse(200, { archivedProjectId: project.id }));
+    vi.stubGlobal("fetch", fetchMock);
+    const onArchived = vi.fn();
+    render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} onArchived={onArchived} />);
+
+    await screen.findByText(project.id);
+    fireEvent.click(screen.getByRole("button", { name: "Archive project" }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const input = screen.getByLabelText("Exact confirmation");
+    fireEvent.change(input, { target: { value: "wrong" } });
+    expect(screen.getByRole("button", { name: "Confirm archive" })).toBeDisabled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fireEvent.change(input, { target: { value: project.topic } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm archive" }));
+    await waitFor(() => expect(onArchived).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenLastCalledWith("/projects/sample_project/archive", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirmation: project.topic }),
+    });
+  });
+
+  it("keeps the archive dialog open with a safe error when archiving fails", async () => {
+    const project = makeProject({ id: "sample_project", topic: "Exact project topic" });
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(jsonResponse(409, { code: "PROJECT_ARCHIVE_NOT_ALLOWED", message: "raw local path C:\\private" })));
+    render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} />);
+    await screen.findByText(project.id);
+    fireEvent.click(screen.getByRole("button", { name: "Archive project" }));
+    fireEvent.change(screen.getByLabelText("Exact confirmation"), { target: { value: project.topic } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm archive" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveAttribute("data-error-code", "PROJECT_ARCHIVE_NOT_ALLOWED");
+    expect(alert.textContent).not.toContain("private");
   });
 });

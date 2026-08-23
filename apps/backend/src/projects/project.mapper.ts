@@ -55,7 +55,19 @@ export function toApiSummary(stored: StoredProject): ProjectSummary {
   };
 }
 
+/** The most recently appended video generation record's job_id, if any — records are always appended in submission order. */
+function latestVideoJobId(records: unknown[]): string | undefined {
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    const record = records[index];
+    if (record && typeof record === "object" && !Array.isArray(record) && typeof (record as Record<string, unknown>).job_id === "string") {
+      return (record as Record<string, unknown>).job_id as string;
+    }
+  }
+  return undefined;
+}
+
 export function toApiProject(stored: StoredProject): Project {
+  const jobId = latestVideoJobId(stored.video_generation_records);
   return {
     ...toApiSummary(stored),
     // Story/scene generation is out of this feature's scope: a freshly
@@ -64,6 +76,7 @@ export function toApiProject(stored: StoredProject): Project {
     // validate and map when it is implemented.
     scenes: stored.scenes as unknown as Scene[],
     ...(stored.final_video_path !== null ? { finalVideoPath: stored.final_video_path } : {}),
+    ...(jobId !== undefined ? { currentVideoJobId: jobId } : {}),
     warnings: [...stored.warnings],
     errors: [...stored.errors],
   };

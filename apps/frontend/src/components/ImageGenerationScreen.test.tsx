@@ -225,7 +225,10 @@ describe("ImageGenerationScreen", () => {
     renderScreen(fetchMock);
 
     await screen.findByTestId("no-paid-notice");
-    expect(fetchMock).toHaveBeenCalledWith("/projects/sample_project/images/review");
+    // The review request is scheduled by the post-project-load effect, so wait
+    // for that dependent effect instead of treating the first rendered notice
+    // as proof that it has already run.
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/projects/sample_project/images/review"));
 
     expect(await screen.findByTestId("review-1")).toHaveAttribute("data-status", "approved");
     expect(screen.getByTestId("review-2")).toHaveAttribute("data-status", "approved");

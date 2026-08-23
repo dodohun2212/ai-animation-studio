@@ -50,6 +50,19 @@ describe("AssetLibraryScreen", () => {
     expect(fetchMock).toHaveBeenCalledWith("/assets");
   });
 
+  it("pre-fills the search box and searches with initialQuery on mount, e.g. when opened as a project's gallery", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { assets: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AssetLibraryScreen onBack={() => {}} initialQuery="my_project" />);
+
+    await screen.findByText("등록된 에셋이 없습니다.");
+    const [url] = fetchMock.mock.calls[0] as [string];
+    const parsed = new URL(url, "http://localhost");
+    expect(parsed.searchParams.get("query")).toBe("my_project");
+    expect((screen.getByLabelText("검색") as HTMLInputElement).value).toBe("my_project");
+  });
+
   it("shows the empty state when the backend returns no assets", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { assets: [] })));
     render(<AssetLibraryScreen onBack={() => {}} />);
@@ -219,6 +232,48 @@ describe("AssetLibraryScreen", () => {
     const detail = await screen.findByRole("region", { name: "에셋 상세" });
     expect(within(detail).getByText("소유권: project_owned")).toBeTruthy();
     expect(within(detail).getByText("사용 프로젝트: project_a, project_b")).toBeTruthy();
+  });
+
+  it("reorders character-folder reference children and can change the representative without any provider request", async () => {
+    const first = makeAsset({ assetId: "CHAR-1", assetType: "character", displayName: "Front", parentFolderId: "FOLDER-CHAR", sortOrder: 0 });
+    const second = makeAsset({ assetId: "CHAR-2", assetType: "character", displayName: "Side", parentFolderId: "FOLDER-CHAR", sortOrder: 1 });
+    const folder = makeAsset({ assetId: "FOLDER-CHAR", assetType: "character", displayName: "Hero references", isFolder: true, imageAvailable: false, contentSha256: "", versions: [], referenceImages: [], childAssetIds: ["CHAR-1", "CHAR-2"], thumbnailAssetId: "CHAR-1" });
+    const updatedFolder = { ...folder, childAssetIds: ["CHAR-2", "CHAR-1"], thumbnailAssetId: "CHAR-1" };
+    const representativeFolder = { ...updatedFolder, thumbnailAssetId: "CHAR-2" };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [folder, first, second] }))
+      .mockResolvedValueOnce(jsonResponse(200, { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }))
+      .mockResolvedValueOnce(jsonResponse(200, { folder: updatedFolder, children: [second, first] }))
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [updatedFolder, second, first] }))
+      .mockResolvedValueOnce(jsonResponse(200, { folder: representativeFolder, children: [second, first] }))
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [representativeFolder, second, first] }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    const list = await screen.findByRole("list", { name: "에셋 목록" });
+    fireEvent.click(within(list).getByText("Hero references"));
+    const detail = await screen.findByRole("region", { name: "에셋 상세" });
+    const set = within(detail).getByRole("region", { name: "Character reference set" });
+    expect(within(set).getByRole("list", { name: "Ordered character reference images" }).textContent).toContain("1. Front");
+
+    fireEvent.click(within(set).getAllByRole("button", { name: "Move down" })[0]!);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit];
+    expect(url).toBe("/assets/FOLDER-CHAR/character-reference-set");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(String(init.body))).toEqual({ childAssetIds: ["CHAR-2", "CHAR-1"], thumbnailAssetId: "CHAR-1" });
+    expect(within(set).getByRole("list", { name: "Ordered character reference images" }).textContent).toContain("1. Side");
+    fireEvent.click(within(set).getAllByRole("button", { name: "Set representative" })[0]!);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(6));
+    const [representativeUrl, representativeInit] = fetchMock.mock.calls[4] as [string, RequestInit];
+    expect(representativeUrl).toBe("/assets/FOLDER-CHAR/character-reference-set");
+    expect(JSON.parse(String(representativeInit.body))).toEqual({ childAssetIds: ["CHAR-2", "CHAR-1"], thumbnailAssetId: "CHAR-2" });
+    expect(within(set).getByText(/Side \(representative\)/)).toBeTruthy();
+    for (const [calledUrl] of fetchMock.mock.calls as Array<[string]>) {
+      expect(calledUrl).toMatch(/^\/assets/);
+      expect(calledUrl).not.toContain("/videos/");
+      expect(calledUrl).not.toContain("providers");
+    }
   });
 
   it("edits metadata for the selected asset and refreshes the list without losing the detail view", async () => {
@@ -588,6 +643,280 @@ describe("AssetLibraryScreen", () => {
       expect(url).not.toContain("/settings/providers");
       expect(url).not.toContain("/videos/");
     }
+  });
+
+  it("adds a new version to the selected asset via multipart upload, refreshing its detail and version list", async () => {
+    const asset = makeAsset({ assetId: "ASSET-VER", displayName: "버전 관리 대상", versions: [{ version: 1, contentSha256: "a".repeat(64), createdAt: "2026-08-21T00:00:00.000Z", notes: "" }] });
+    const versioned = { ...asset, version: 2, versions: [...asset.versions, { version: 2, contentSha256: "b".repeat(64), createdAt: "2026-08-22T00:00:00.000Z", notes: "재촬영" }] };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [asset] }))
+      .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }))
+      .mockResolvedValueOnce(jsonResponse(200, { asset: versioned }))
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [versioned] }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    const list = await screen.findByRole("list", { name: "에셋 목록" });
+    fireEvent.click(within(list).getByText("버전 관리 대상"));
+    const detail = await screen.findByRole("region", { name: "에셋 상세" });
+    const versionRegion = within(detail).getByRole("region", { name: "버전 기록" });
+    const form = within(versionRegion).getByRole("form", { name: "새 버전 추가" });
+
+    const file = new File(["v2-bytes"], "v2.png", { type: "image/png" });
+    fireEvent.change(within(form).getByLabelText("새 버전 이미지"), { target: { files: [file] } });
+    fireEvent.change(within(form).getByLabelText("메모"), { target: { value: "재촬영" } });
+    fireEvent.click(within(form).getByRole("button", { name: "새 버전 추가" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit];
+    expect(url).toBe("/assets/ASSET-VER/versions");
+    expect(init.method).toBe("POST");
+    const body = init.body as FormData;
+    expect(body.get("image")).toBe(file);
+    expect(body.get("notes")).toBe("재촬영");
+    expect(within(versionRegion).getByText(/v2 \(현재\)/)).toBeTruthy();
+  });
+
+  it("relinks the current version's file only after explicit confirmation", async () => {
+    const asset = makeAsset({ assetId: "ASSET-RELINK", displayName: "재연결 대상" });
+    const relinked = { ...asset, contentSha256: "c".repeat(64) };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [asset] }))
+      .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }))
+      .mockResolvedValueOnce(jsonResponse(200, { asset: relinked }))
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [relinked] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    const list = await screen.findByRole("list", { name: "에셋 목록" });
+    fireEvent.click(within(list).getByText("재연결 대상"));
+    const detail = await screen.findByRole("region", { name: "에셋 상세" });
+    const versionRegion = within(detail).getByRole("region", { name: "버전 기록" });
+    const form = within(versionRegion).getByRole("form", { name: "파일 재연결" });
+
+    const file = new File(["replacement-bytes"], "replacement.png", { type: "image/png" });
+    fireEvent.change(within(form).getByLabelText("교체 이미지"), { target: { files: [file] } });
+    fireEvent.click(within(form).getByRole("button", { name: "현재 버전 재연결" }));
+
+    expect(confirmSpy.mock.calls.at(-1)?.[0]).toContain("재연결 대상");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit];
+    expect(url).toBe("/assets/ASSET-RELINK/relink");
+    expect(init.method).toBe("POST");
+    expect((init.body as FormData).get("image")).toBe(file);
+  });
+
+  it("does not relink when the confirmation dialog is cancelled", async () => {
+    const asset = makeAsset({ assetId: "ASSET-RELINK", displayName: "재연결 대상" });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [asset] }))
+      .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    const list = await screen.findByRole("list", { name: "에셋 목록" });
+    fireEvent.click(within(list).getByText("재연결 대상"));
+    const detail = await screen.findByRole("region", { name: "에셋 상세" });
+    const form = within(within(detail).getByRole("region", { name: "버전 기록" })).getByRole("form", { name: "파일 재연결" });
+    fireEvent.change(within(form).getByLabelText("교체 이미지"), { target: { files: [new File(["x"], "x.png", { type: "image/png" })] } });
+    fireEvent.click(within(form).getByRole("button", { name: "현재 버전 재연결" }));
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("runs a file audit and shows classification results", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, {
+        entries: [
+          { assetId: "ASSET-1", displayName: "정상 에셋", classification: "healthy", sourceKind: "manual", message: "" },
+          { assetId: "ASSET-2", displayName: "누락 에셋", classification: "missing", sourceKind: "project", message: "파일이 존재하지 않습니다" },
+        ],
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AssetLibraryScreen onBack={() => {}} />);
+    await screen.findByText("등록된 에셋이 없습니다.");
+
+    fireEvent.click(screen.getByRole("button", { name: "점검 실행" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/assets/audit");
+    const auditList = await screen.findByRole("list", { name: "파일 상태 목록" });
+    expect(within(auditList).getByText(/정상 에셋/).textContent).toContain("정상");
+    expect(within(auditList).getByText(/누락 에셋/).textContent).toContain("파일 없음");
+  });
+
+  it("deletes an Asset's owned file only via the explicit owned-file action, distinct from the index-only delete", async () => {
+    const asset = makeAsset({ assetId: "ASSET-OWNED", displayName: "원본 삭제 대상" });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [asset] }))
+      .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }))
+      .mockResolvedValueOnce(jsonResponse(200, { assetId: "ASSET-OWNED", deletedOwnedFile: true }))
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    const list = await screen.findByRole("list", { name: "에셋 목록" });
+    fireEvent.click(within(list).getByText("원본 삭제 대상"));
+    const detail = await screen.findByRole("region", { name: "에셋 상세" });
+    fireEvent.click(within(detail).getByRole("button", { name: "에셋과 원본 파일 함께 삭제" }));
+
+    expect(confirmSpy.mock.calls.at(-1)?.[0]).toContain("원본 삭제 대상");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit];
+    expect(url).toBe("/assets/ASSET-OWNED/owned-file");
+    expect(init.method).toBe("DELETE");
+    await waitFor(() => expect(screen.queryByRole("region", { name: "에셋 상세" })).toBeNull());
+  });
+
+  it("does not offer owned-file deletion when the backend reports it is unsafe", async () => {
+    const asset = makeAsset({ assetId: "ASSET-SHARED", displayName: "공유된 원본" });
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [asset] }))
+      .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false })));
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    const list = await screen.findByRole("list", { name: "에셋 목록" });
+    fireEvent.click(within(list).getByText("공유된 원본"));
+    const detail = await screen.findByRole("region", { name: "에셋 상세" });
+    expect(within(detail).queryByRole("button", { name: "에셋과 원본 파일 함께 삭제" })).toBeNull();
+  });
+
+  it("runs the legacy reference migration and reports its result, refreshing the list only when something migrated", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { projectsScanned: 3, migratedAssets: 2, deduplicatedAssets: 1, failedAssets: 0 }))
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [makeAsset({ assetId: "ASSET-LEGACY", displayName: "이전된 에셋" })] }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AssetLibraryScreen onBack={() => {}} />);
+    await screen.findByText("등록된 에셋이 없습니다.");
+
+    fireEvent.click(screen.getByRole("button", { name: "가져오기 실행" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(url).toBe("/assets/legacy-migration");
+    expect(init.method).toBe("POST");
+    const result = await screen.findByTestId("legacy-migration-result");
+    expect(result.textContent).toContain("프로젝트 3개 확인");
+    expect(result.textContent).toContain("2개 이전");
+    expect(await screen.findByText("이전된 에셋")).toBeTruthy();
+  });
+
+  it("does not refresh the list when the legacy reference migration finds nothing to migrate", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { projectsScanned: 1, migratedAssets: 0, deduplicatedAssets: 0, failedAssets: 0 }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AssetLibraryScreen onBack={() => {}} />);
+    await screen.findByText("등록된 에셋이 없습니다.");
+
+    fireEvent.click(screen.getByRole("button", { name: "가져오기 실행" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await screen.findByTestId("legacy-migration-result");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows a fixed, safe error when the legacy reference migration request fails", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
+      .mockResolvedValueOnce(jsonResponse(500, { code: "ASSET_STORAGE_ERROR", message: "internal detail" }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AssetLibraryScreen onBack={() => {}} />);
+    await screen.findByText("등록된 에셋이 없습니다.");
+
+    fireEvent.click(screen.getByRole("button", { name: "가져오기 실행" }));
+
+    const alert = await screen.findByTestId("legacy-migration-error");
+    expect(alert.textContent).toBe("에셋을 저장하거나 읽지 못했습니다.");
+  });
+
+  it("deletes a Folder with the default (index-only) option, distinct from the deletion UI shown for a regular asset", async () => {
+    const first = makeAsset({ assetId: "CHAR-1", assetType: "character", displayName: "Front", parentFolderId: "FOLDER-CHAR", sortOrder: 0 });
+    const folder = makeAsset({ assetId: "FOLDER-CHAR", assetType: "character", displayName: "Hero references", isFolder: true, imageAvailable: false, contentSha256: "", versions: [], referenceImages: [], childAssetIds: ["CHAR-1"], thumbnailAssetId: "CHAR-1" });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [folder, first] }))
+      .mockResolvedValueOnce(jsonResponse(200, { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false }))
+      .mockResolvedValueOnce(jsonResponse(200, { assetId: "FOLDER-CHAR", removedChildAssetIds: [], deletedFiles: 0 }))
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [first] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    const list = await screen.findByRole("list", { name: "에셋 목록" });
+    fireEvent.click(within(list).getByText("Hero references"));
+    const detail = await screen.findByRole("region", { name: "에셋 상세" });
+    expect(within(detail).queryByRole("button", { name: "목록에서 삭제" })).toBeNull();
+    const folderDeleteSection = within(detail).getByRole("region", { name: "Folder 삭제" });
+
+    fireEvent.click(within(folderDeleteSection).getByRole("button", { name: "Folder 삭제" }));
+
+    expect(confirmSpy.mock.calls.at(-1)?.[0]).toContain("Hero references");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit];
+    expect(url).toBe("/assets/FOLDER-CHAR/folder");
+    expect(init.method).toBe("DELETE");
+    await waitFor(() => expect(screen.queryByRole("region", { name: "에셋 상세" })).toBeNull());
+  });
+
+  it("deletes a Folder together with its child indexes and owned files when both options are selected", async () => {
+    const first = makeAsset({ assetId: "CHAR-1", assetType: "character", displayName: "Front", parentFolderId: "FOLDER-CHAR", sortOrder: 0 });
+    const folder = makeAsset({ assetId: "FOLDER-CHAR", assetType: "character", displayName: "Hero references", isFolder: true, imageAvailable: false, contentSha256: "", versions: [], referenceImages: [], childAssetIds: ["CHAR-1"], thumbnailAssetId: "CHAR-1" });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [folder, first] }))
+      .mockResolvedValueOnce(jsonResponse(200, { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false }))
+      .mockResolvedValueOnce(jsonResponse(200, { assetId: "FOLDER-CHAR", removedChildAssetIds: ["CHAR-1"], deletedFiles: 1 }))
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    const list = await screen.findByRole("list", { name: "에셋 목록" });
+    fireEvent.click(within(list).getByText("Hero references"));
+    const detail = await screen.findByRole("region", { name: "에셋 상세" });
+    const folderDeleteSection = within(detail).getByRole("region", { name: "Folder 삭제" });
+    fireEvent.click(within(folderDeleteSection).getByLabelText("하위 항목의 원본 파일도 함께 삭제(수동 등록 항목만 가능)"));
+    expect((within(folderDeleteSection).getByLabelText("하위 항목 색인도 함께 삭제") as HTMLInputElement).checked).toBe(true);
+
+    fireEvent.click(within(folderDeleteSection).getByRole("button", { name: "Folder 삭제" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    const [url] = fetchMock.mock.calls[2] as [string];
+    const parsed = new URL(url, "http://localhost");
+    expect(parsed.searchParams.get("removeChildIndexes")).toBe("true");
+    expect(parsed.searchParams.get("deleteManualFiles")).toBe("true");
+  });
+
+  it("does not delete a Folder when the confirmation dialog is cancelled", async () => {
+    const folder = makeAsset({ assetId: "FOLDER-CHAR", assetType: "character", displayName: "Hero references", isFolder: true, imageAvailable: false, contentSha256: "", versions: [], referenceImages: [], childAssetIds: [], thumbnailAssetId: "" });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [folder] }))
+      .mockResolvedValueOnce(jsonResponse(200, { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false }));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    const list = await screen.findByRole("list", { name: "에셋 목록" });
+    fireEvent.click(within(list).getByText("Hero references"));
+    const detail = await screen.findByRole("region", { name: "에셋 상세" });
+    fireEvent.click(within(within(detail).getByRole("region", { name: "Folder 삭제" })).getByRole("button", { name: "Folder 삭제" }));
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("calls onBack when the back button is clicked", async () => {

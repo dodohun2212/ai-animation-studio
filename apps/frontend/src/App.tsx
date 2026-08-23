@@ -19,6 +19,12 @@ import { LongProjectList } from "./components/LongProjectList.js";
 import { LongProjectSettingsScreen } from "./components/LongProjectSettingsScreen.js";
 import { LongProjectOutlineScreen } from "./components/LongProjectOutlineScreen.js";
 import { LongStoryBibleScreen } from "./components/LongStoryBibleScreen.js";
+import { LongEpisodeScriptScreen } from "./components/LongEpisodeScriptScreen.js";
+import { LongEpisodeMappingReviewScreen } from "./components/LongEpisodeMappingReviewScreen.js";
+import { LongEpisodeImageGenerationScreen } from "./components/LongEpisodeImageGenerationScreen.js";
+import { LongEpisodeVideoWorkflowScreen } from "./components/LongEpisodeVideoWorkflowScreen.js";
+import { LongEpisodeVideoMergeScreen } from "./components/LongEpisodeVideoMergeScreen.js";
+import { LongEpisodeContinuityScreen } from "./components/LongEpisodeContinuityScreen.js";
 
 type Screen =
   | { name: "list" }
@@ -32,13 +38,19 @@ type Screen =
   | { name: "videoWorkflow"; projectId: string; jobId: string }
   | { name: "videoMerge"; projectId: string }
   | { name: "providerSettings" }
-  | { name: "assets" }
+  | { name: "assets"; initialQuery?: string }
   | { name: "longList" }
   | { name: "longCreate" }
   | { name: "longDetail"; projectId: string }
   | { name: "longSettings"; projectId: string }
   | { name: "longOutline"; projectId: string }
-  | { name: "longStoryBible"; projectId: string };
+  | { name: "longStoryBible"; projectId: string }
+  | { name: "longEpisodeScript"; projectId: string; episodeNumber: number }
+  | { name: "longEpisodeMappingReview"; projectId: string; episodeNumber: number }
+  | { name: "longEpisodeImageGeneration"; projectId: string; episodeNumber: number }
+  | { name: "longEpisodeVideoWorkflow"; projectId: string; episodeNumber: number }
+  | { name: "longEpisodeVideoMerge"; projectId: string; episodeNumber: number }
+  | { name: "longEpisodeContinuity"; projectId: string; episodeNumber: number };
 
 export function App() {
   const [screen, setScreen] = useState<Screen>({ name: "list" });
@@ -109,6 +121,14 @@ export function App() {
             onOpenSettings={(projectId) => setScreen({ name: "longSettings", projectId })}
             onOpenOutline={(projectId) => setScreen({ name: "longOutline", projectId })}
             onOpenStoryBible={(projectId) => setScreen({ name: "longStoryBible", projectId })}
+            onOpenEpisodeScript={(projectId, episodeNumber) => setScreen({ name: "longEpisodeScript", projectId, episodeNumber })}
+            onOpenMappingReview={(projectId, episodeNumber) => setScreen({ name: "longEpisodeMappingReview", projectId, episodeNumber })}
+            onOpenImageGeneration={(projectId, episodeNumber) => setScreen({ name: "longEpisodeImageGeneration", projectId, episodeNumber })}
+            onOpenVideoWorkflow={(projectId, episodeNumber) => setScreen({ name: "longEpisodeVideoWorkflow", projectId, episodeNumber })}
+            onOpenVideoMerge={(projectId, episodeNumber) => setScreen({ name: "longEpisodeVideoMerge", projectId, episodeNumber })}
+            onOpenContinuity={(projectId, episodeNumber) => setScreen({ name: "longEpisodeContinuity", projectId, episodeNumber })}
+            onOpenGallery={(projectId) => setScreen({ name: "assets", initialQuery: projectId })}
+            onArchived={() => { setLongListRefreshToken((token) => token + 1); setScreen({ name: "longList" }); }}
           />
         )}
         {screen.name === "longSettings" && (
@@ -129,6 +149,12 @@ export function App() {
             onBack={() => setScreen({ name: "longDetail", projectId: screen.projectId })}
           />
         )}
+        {screen.name === "longEpisodeScript" && <LongEpisodeScriptScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longDetail", projectId: screen.projectId })} onOpenMappingReview={(projectId, episodeNumber) => setScreen({ name: "longEpisodeMappingReview", projectId, episodeNumber })} />}
+        {screen.name === "longEpisodeMappingReview" && <LongEpisodeMappingReviewScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longEpisodeScript", projectId: screen.projectId, episodeNumber: screen.episodeNumber })} onOpenImageGeneration={(projectId, episodeNumber) => setScreen({ name: "longEpisodeImageGeneration", projectId, episodeNumber })} />}
+        {screen.name === "longEpisodeImageGeneration" && <LongEpisodeImageGenerationScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longEpisodeMappingReview", projectId: screen.projectId, episodeNumber: screen.episodeNumber })} onOpenVideoWorkflow={(projectId, episodeNumber) => setScreen({ name: "longEpisodeVideoWorkflow", projectId, episodeNumber })} />}
+        {screen.name === "longEpisodeVideoWorkflow" && <LongEpisodeVideoWorkflowScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longEpisodeImageGeneration", projectId: screen.projectId, episodeNumber: screen.episodeNumber })} onOpenMerge={(projectId, episodeNumber) => setScreen({ name: "longEpisodeVideoMerge", projectId, episodeNumber })} />}
+        {screen.name === "longEpisodeVideoMerge" && <LongEpisodeVideoMergeScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longEpisodeVideoWorkflow", projectId: screen.projectId, episodeNumber: screen.episodeNumber })} onOpenContinuity={(projectId, episodeNumber) => setScreen({ name: "longEpisodeContinuity", projectId, episodeNumber })} />}
+        {screen.name === "longEpisodeContinuity" && <LongEpisodeContinuityScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longEpisodeVideoMerge", projectId: screen.projectId, episodeNumber: screen.episodeNumber })} onOpenNextEpisode={(projectId, episodeNumber) => setScreen({ name: "longEpisodeScript", projectId, episodeNumber })} />}
         {screen.name === "create" && (
           <CreateProjectForm onCreated={handleCreated} onCancel={() => setScreen({ name: "list" })} />
         )}
@@ -141,6 +167,10 @@ export function App() {
             onOpenStoryPrompt={(projectId) => setScreen({ name: "storyPrompt", projectId })}
             onOpenImageGeneration={(projectId) => setScreen({ name: "imageGeneration", projectId })}
             onOpenVideoPreview={(projectId) => setScreen({ name: "videoPreview", projectId })}
+            onOpenVideoWorkflow={(projectId, jobId) => setScreen({ name: "videoWorkflow", projectId, jobId })}
+            onOpenVideoMerge={(projectId) => setScreen({ name: "videoMerge", projectId })}
+            onOpenGallery={(projectId) => setScreen({ name: "assets", initialQuery: projectId })}
+            onArchived={() => { setListRefreshToken((token) => token + 1); setScreen({ name: "list" }); }}
           />
         )}
         {screen.name === "mappingReview" && (
@@ -191,7 +221,7 @@ export function App() {
         {screen.name === "providerSettings" && (
           <ProviderSettingsScreen onBack={() => setScreen({ name: "list" })} />
         )}
-        {screen.name === "assets" && <AssetLibraryScreen onBack={() => setScreen({ name: "list" })} />}
+        {screen.name === "assets" && <AssetLibraryScreen onBack={() => setScreen({ name: "list" })} initialQuery={screen.initialQuery} />}
       </section>
     </main>
   );

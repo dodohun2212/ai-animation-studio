@@ -1,15 +1,30 @@
 import {
   API_ROUTES,
+  type ArchiveProjectRequest,
+  type ArchiveProjectResponse,
   type CreateProjectRequest,
   type CreateProjectResponse,
   type GetProjectResponse,
   type GetProjectSettingsResponse,
+  type GetShortProjectAssetReferencesResponse,
+  type GetShortProjectCastResponse,
+  type GetShortProjectContinuityResponse,
   type ListProjectsResponse,
+  type ListShortProjectContinuityOptionsResponse,
   type Project,
   type ProjectSummary,
+  type SetShortProjectContinuityRequest,
+  type SetShortProjectContinuityResponse,
+  type ShortProjectCastMember,
+  type ShortProjectContinuityOption,
+  type ShortProjectSceneReferenceAsset,
   type ShortProjectSettings,
   type UpdateProjectSettingsRequest,
   type UpdateProjectSettingsResponse,
+  type UpdateShortProjectAssetReferencesRequest,
+  type UpdateShortProjectAssetReferencesResponse,
+  type UpdateShortProjectCastRequest,
+  type UpdateShortProjectCastResponse,
 } from "@ai-animation-studio/shared";
 
 export class ProjectsApiError extends Error {
@@ -70,7 +85,8 @@ function isProject(value: unknown): value is Project {
     isProjectSummary(value) &&
     Array.isArray((value as { scenes?: unknown }).scenes) &&
     Array.isArray((value as { warnings?: unknown }).warnings) &&
-    Array.isArray((value as { errors?: unknown }).errors)
+    Array.isArray((value as { errors?: unknown }).errors) &&
+    ((value as { currentVideoJobId?: unknown }).currentVideoJobId === undefined || typeof (value as { currentVideoJobId?: unknown }).currentVideoJobId === "string")
   );
 }
 
@@ -102,6 +118,52 @@ function isGetProjectSettingsResponse(value: unknown): value is GetProjectSettin
 
 function isUpdateProjectSettingsResponse(value: unknown): value is UpdateProjectSettingsResponse {
   return isRecord(value) && isProject(value.project) && isShortProjectSettings(value.settings);
+}
+
+function isArchiveProjectResponse(value: unknown): value is ArchiveProjectResponse {
+  return isRecord(value) && isNonEmptyString(value.archivedProjectId);
+}
+
+function isShortProjectCastMember(value: unknown): value is ShortProjectCastMember {
+  return isRecord(value) && isNonEmptyString(value.assetId) && isNonEmptyString(value.castRole) && isNonEmptyString(value.storyRole);
+}
+
+function isGetShortProjectCastResponse(value: unknown): value is GetShortProjectCastResponse {
+  return isRecord(value) && Array.isArray(value.cast) && value.cast.every(isShortProjectCastMember);
+}
+
+function isUpdateShortProjectCastResponse(value: unknown): value is UpdateShortProjectCastResponse {
+  return isRecord(value) && Array.isArray(value.cast) && value.cast.every(isShortProjectCastMember);
+}
+
+function isShortProjectSceneReferenceAsset(value: unknown): value is ShortProjectSceneReferenceAsset {
+  return isRecord(value) && isNonEmptyString(value.assetId) && isNonEmptyString(value.purpose);
+}
+
+function isGetShortProjectAssetReferencesResponse(value: unknown): value is GetShortProjectAssetReferencesResponse {
+  return isRecord(value)
+    && Array.isArray(value.atmosphereAssetIds) && value.atmosphereAssetIds.every((item) => typeof item === "string")
+    && Array.isArray(value.sceneReferenceAssets) && value.sceneReferenceAssets.every(isShortProjectSceneReferenceAsset);
+}
+
+function isUpdateShortProjectAssetReferencesResponse(value: unknown): value is UpdateShortProjectAssetReferencesResponse {
+  return isGetShortProjectAssetReferencesResponse(value);
+}
+
+function isShortProjectContinuityOption(value: unknown): value is ShortProjectContinuityOption {
+  return isRecord(value) && isNonEmptyString(value.projectId) && isNonEmptyString(value.projectName) && isNonEmptyString(value.label);
+}
+
+function isListShortProjectContinuityOptionsResponse(value: unknown): value is ListShortProjectContinuityOptionsResponse {
+  return isRecord(value) && Array.isArray(value.options) && value.options.every(isShortProjectContinuityOption);
+}
+
+function isGetShortProjectContinuityResponse(value: unknown): value is GetShortProjectContinuityResponse {
+  return isRecord(value) && (value.link === null || isShortProjectContinuityOption(value.link));
+}
+
+function isSetShortProjectContinuityResponse(value: unknown): value is SetShortProjectContinuityResponse {
+  return isGetShortProjectContinuityResponse(value);
 }
 
 async function readJsonBody(response: Response): Promise<unknown> {
@@ -166,5 +228,65 @@ export async function updateProjectSettings(
     API_ROUTES.projectSettings(projectId),
     { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request) },
     isUpdateProjectSettingsResponse,
+  );
+}
+
+export async function getProjectCast(projectId: string): Promise<GetShortProjectCastResponse> {
+  return requestJson(API_ROUTES.projectCast(projectId), undefined, isGetShortProjectCastResponse);
+}
+
+export async function updateProjectCast(
+  projectId: string,
+  request: UpdateShortProjectCastRequest,
+): Promise<UpdateShortProjectCastResponse> {
+  return requestJson(
+    API_ROUTES.projectCast(projectId),
+    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request) },
+    isUpdateShortProjectCastResponse,
+  );
+}
+
+export async function getProjectAssetReferences(projectId: string): Promise<GetShortProjectAssetReferencesResponse> {
+  return requestJson(API_ROUTES.projectAssetReferences(projectId), undefined, isGetShortProjectAssetReferencesResponse);
+}
+
+export async function updateProjectAssetReferences(
+  projectId: string,
+  request: UpdateShortProjectAssetReferencesRequest,
+): Promise<UpdateShortProjectAssetReferencesResponse> {
+  return requestJson(
+    API_ROUTES.projectAssetReferences(projectId),
+    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request) },
+    isUpdateShortProjectAssetReferencesResponse,
+  );
+}
+
+export async function listProjectContinuityOptions(projectId: string): Promise<ListShortProjectContinuityOptionsResponse> {
+  return requestJson(API_ROUTES.projectContinuityOptions(projectId), undefined, isListShortProjectContinuityOptionsResponse);
+}
+
+export async function getProjectContinuity(projectId: string): Promise<GetShortProjectContinuityResponse> {
+  return requestJson(API_ROUTES.projectContinuity(projectId), undefined, isGetShortProjectContinuityResponse);
+}
+
+export async function setProjectContinuity(
+  projectId: string,
+  request: SetShortProjectContinuityRequest,
+): Promise<SetShortProjectContinuityResponse> {
+  return requestJson(
+    API_ROUTES.projectContinuity(projectId),
+    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request) },
+    isSetShortProjectContinuityResponse,
+  );
+}
+
+export async function archiveProject(
+  projectId: string,
+  request: ArchiveProjectRequest,
+): Promise<ArchiveProjectResponse> {
+  return requestJson(
+    API_ROUTES.projectArchive(projectId),
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request) },
+    isArchiveProjectResponse,
   );
 }

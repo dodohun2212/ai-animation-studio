@@ -53,4 +53,24 @@ describe("toApiSummary / toApiProject", () => {
     const project = toApiProject(stored);
     expect(project.finalVideoPath).toBe("videos/final/instagram_reel.mp4");
   });
+
+  it("omits currentVideoJobId when no video generation record exists", () => {
+    const stored = createStoredProject("sample_project", "topic", "2026-08-21T00:00:00.000Z");
+    expect("currentVideoJobId" in toApiProject(stored)).toBe(false);
+  });
+
+  it("exposes the most recently appended video generation record's job_id as currentVideoJobId", () => {
+    const stored = createStoredProject("sample_project", "topic", "2026-08-21T00:00:00.000Z");
+    stored.video_generation_records = [
+      { scene_number: 1, job_id: "job-old" },
+      { scene_number: 1, job_id: "job-new" },
+    ];
+    expect(toApiProject(stored).currentVideoJobId).toBe("job-new");
+  });
+
+  it("ignores malformed video generation records when deriving currentVideoJobId", () => {
+    const stored = createStoredProject("sample_project", "topic", "2026-08-21T00:00:00.000Z");
+    stored.video_generation_records = ["not-an-object", { job_id: 123 }, null];
+    expect("currentVideoJobId" in toApiProject(stored)).toBe(false);
+  });
 });
