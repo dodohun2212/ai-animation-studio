@@ -31,7 +31,7 @@ type Screen =
   | { name: "create" }
   | { name: "detail"; projectId: string }
   | { name: "mappingReview"; projectId: string }
-  | { name: "settings"; projectId: string }
+  | { name: "settings"; projectId: string; justCreated?: boolean }
   | { name: "storyPrompt"; projectId: string }
   | { name: "imageGeneration"; projectId: string }
   | { name: "videoPreview"; projectId: string }
@@ -59,7 +59,10 @@ export function App() {
 
   function handleCreated(project: Project): void {
     setListRefreshToken((token) => token + 1);
-    setScreen({ name: "detail", projectId: project.id });
+    // Land in setup (cast/atmosphere/scene reference Asset/continuity) right away — this is the
+    // continuous-flow equivalent of Python's creation wizard, rather than a separate screen the
+    // user has to discover on their own afterward.
+    setScreen({ name: "settings", projectId: project.id, justCreated: true });
   }
 
   function handleLongCreated(project: LongProject): void {
@@ -182,6 +185,7 @@ export function App() {
         {screen.name === "settings" && (
           <ShortProjectSettingsScreen
             projectId={screen.projectId}
+            justCreated={screen.justCreated}
             onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
           />
         )}

@@ -48,6 +48,29 @@ function createFakeBackend(): ReturnType<typeof vi.fn<FakeFetch>> {
       return jsonResponse(200, { project });
     }
 
+    // The settings screen shown right after creation loads its own settings/cast/asset-reference/
+    // continuity state independently — empty-but-valid defaults are enough for navigation tests.
+    const settingsMatch = /^\/projects\/([^/]+)\/settings$/.exec(url);
+    if (settingsMatch && method === "GET") {
+      const project = projects.get(settingsMatch[1] as string);
+      if (!project) return jsonResponse(404, { code: "PROJECT_NOT_FOUND", message: "프로젝트를 찾을 수 없습니다." });
+      return jsonResponse(200, {
+        settings: {
+          projectName: project.id, topic: project.topic, genre: "미스터리", mood: "시네마틱", character: "", lore: "",
+          fullStory: "", durationSeconds: 30, sceneCount: 6, additionalNotes: "", styleNotes: { aspect: "16:9" },
+        },
+      });
+    }
+    if (/^\/projects\/[^/]+\/settings\/cast$/.exec(url) && method === "GET") {
+      return jsonResponse(200, { cast: [] });
+    }
+    if (/^\/projects\/[^/]+\/settings\/asset-references$/.exec(url) && method === "GET") {
+      return jsonResponse(200, { atmosphereAssetIds: [], sceneReferenceAssets: [] });
+    }
+    if (/^\/projects\/[^/]+\/settings\/continuity$/.exec(url) && method === "GET") {
+      return jsonResponse(200, { link: null });
+    }
+
     throw new Error(`Unexpected fetch call in test: ${method} ${url}`);
   });
 }
@@ -76,7 +99,11 @@ describe("App", () => {
     fireEvent.change(screen.getByLabelText("영상 주제"), { target: { value: "우주를 여행하는 고양이" } });
     fireEvent.click(screen.getByRole("button", { name: "프로젝트 생성" }));
 
-    // Successful creation opens the reopened detail view immediately.
+    // Successful creation lands on setup (cast/atmosphere/continuity) first, not the bare detail view.
+    await screen.findByTestId("just-created-notice");
+    fireEvent.click(screen.getByRole("button", { name: "설정 완료 · 계속 진행하기" }));
+
+    // That hands off to the detail view for the same project.
     await screen.findByText("sample_project");
     expect(screen.getByText("우주를 여행하는 고양이")).toBeTruthy();
 
@@ -86,8 +113,8 @@ describe("App", () => {
     const projectButton = await screen.findByRole("button", { name: /sample_project/ });
     fireEvent.click(projectButton);
 
-    // Reopening goes through GET /projects/:projectId again — once right
-    // after creation, once more when explicitly reopened from the list.
+    // Reopening goes through GET /projects/:projectId again — once when
+    // leaving initial setup for detail, once more when reopened from the list.
     await screen.findByText("sample_project");
     expect(screen.getByText("우주를 여행하는 고양이")).toBeTruthy();
     expect(fetchMock.mock.calls.filter(([url]) => String(url) === "/projects/sample_project")).toHaveLength(2);

@@ -7,7 +7,7 @@ import {
   updateProjectAssetReferences, updateProjectCast, updateProjectSettings,
 } from "../api/projectsApi.js";
 
-interface Props { projectId: string; onBack: () => void; }
+interface Props { projectId: string; onBack: () => void; justCreated?: boolean; }
 type State = { settings: ShortProjectSettings | null; loading: boolean; error: { code: string; message: string } | null };
 
 const EMPTY_SETTINGS: ShortProjectSettings = {
@@ -86,6 +86,7 @@ function CastEditor({ projectId }: { projectId: string }) {
 
   return <section aria-label="등장 캐릭터" className="space-y-3 rounded border border-white/10 p-4 md:col-span-2">
     <h3 className="font-semibold">등장 캐릭터(Cast)</h3>
+    <p className="text-xs text-slate-400">검색 결과가 없다면 Asset Library에서 캐릭터를 먼저 등록해 주세요.</p>
     {error && <p role="alert" data-testid="cast-error" data-error-code={error.code} className="text-red-300">{error.message}</p>}
     {cast === null && !error && <p>불러오는 중...</p>}
     {cast && cast.length === 0 && <p>선택된 캐릭터가 없습니다.</p>}
@@ -261,6 +262,7 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
 
   return <section aria-label="분위기·장면 참고 Asset" className="space-y-3 rounded border border-white/10 p-4 md:col-span-2">
     <h3 className="font-semibold">전체 분위기 및 장면 참고 Asset</h3>
+    <p className="text-xs text-slate-400">검색 결과가 없다면 Asset Library에서 배경·소품·스타일 이미지를 먼저 등록해 주세요.</p>
     {error && <p role="alert" data-testid="asset-reference-error" data-error-code={error.code} className="text-red-300">{error.message}</p>}
     {atmosphereAssetIds === null && !error && <p>불러오는 중...</p>}
 
@@ -314,7 +316,7 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
   </section>;
 }
 
-export function ShortProjectSettingsScreen({ projectId, onBack }: Props) {
+export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = false }: Props) {
   const [state, setState] = useState<State>({ settings: null, loading: true, error: null });
   const saving = useRef(false);
 
@@ -352,8 +354,16 @@ export function ShortProjectSettingsScreen({ projectId, onBack }: Props) {
 
   if (state.loading && !state.settings) return <p className="mt-8 text-slate-400">불러오는 중…</p>;
   return <section className="mt-8">
-    <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300" onClick={onBack}>목록으로</button>
+    <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300" onClick={onBack}>
+      {justCreated ? "프로젝트로 이동" : "프로젝트로 돌아가기"}
+    </button>
     <h2 className="mt-4 text-xl font-semibold">프로젝트 설정</h2>
+    {justCreated && (
+      <p className="mt-2 rounded-lg border border-violet-400/30 bg-violet-500/10 px-4 py-3 text-sm text-violet-200" data-testid="just-created-notice">
+        프로젝트가 생성되었습니다. 대본을 생성하기 전에 아래에서 장르·분위기와 등장 캐릭터, 참고 이미지, 이전 장면 연결을
+        설정해 주세요 — 전부 선택 사항이며 나중에 다시 와서 바꿀 수도 있습니다.
+      </p>
+    )}
     {state.error && <p className="mt-4 text-sm text-rose-400" role="alert" data-error-code={state.error.code}>{state.error.message}</p>}
     {state.settings && <form className="mt-4 grid gap-4 md:grid-cols-2" onSubmit={submit} noValidate>
       <Field label="프로젝트 이름" value={state.settings.projectName} onChange={(value) => setField("projectName", value)} />
@@ -378,5 +388,17 @@ export function ShortProjectSettingsScreen({ projectId, onBack }: Props) {
     {state.settings && <CastEditor projectId={projectId} />}
     {state.settings && <AssetReferenceEditor projectId={projectId} />}
     {state.settings && <ContinuityEditor projectId={projectId} />}
+    {state.settings && justCreated && (
+      <div className="mt-6 flex justify-end">
+        <button
+          type="button"
+          data-testid="finish-setup-button"
+          className="rounded-full bg-violet-500 px-5 py-2 text-sm font-semibold text-white"
+          onClick={onBack}
+        >
+          설정 완료 · 계속 진행하기
+        </button>
+      </div>
+    )}
   </section>;
 }

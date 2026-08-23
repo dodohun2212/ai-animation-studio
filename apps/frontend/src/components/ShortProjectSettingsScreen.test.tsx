@@ -46,6 +46,39 @@ describe("ShortProjectSettingsScreen", () => {
     expect(JSON.parse(String((patchCall[1] as RequestInit).body))).toMatchObject({ settings: { topic: "새 주제", sceneCount: 6 } });
   });
 
+  it("shows a one-time setup banner and a finish button that hands off via onBack right after creation", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const onBack = vi.fn();
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={onBack} justCreated />);
+
+    await screen.findByTestId("just-created-notice");
+    expect(screen.getByRole("button", { name: "프로젝트로 이동" })).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "설정 완료 · 계속 진행하기" }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("omits the setup banner and finish button when reopened later for an existing project", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    await screen.findByDisplayValue("별의 지도");
+    expect(screen.queryByTestId("just-created-notice")).toBeNull();
+    expect(screen.queryByTestId("finish-setup-button")).toBeNull();
+    expect(screen.getByRole("button", { name: "프로젝트로 돌아가기" })).toBeTruthy();
+  });
+
   it("blocks empty project name before sending PATCH", async () => {
     const fetchMock = stubFetchByRoute({
       "GET /projects/sample_project/settings": { settings },
