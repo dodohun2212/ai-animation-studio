@@ -100,6 +100,19 @@ describe("provider-free local image generation", () => {
     expect(assets.filter((asset) => !asset.is_folder && asset.source_project_id === "images")).toHaveLength(6);
   });
 
+  it("serves a generated scene's PNG bytes by canonical path and rejects an out-of-range or ungenerated scene", async () => {
+    const { projectsRoot, projects, mappings } = await setup();
+    const service = new LocalImageGenerationService(projects, mappings, projectsRoot);
+    await service.generate("images", { approved: true });
+    const content = await service.content("images", "3");
+    expect(content).toEqual({ path: path.join(projectsRoot, "images", "images", "scene3.png"), extension: ".png" });
+    await expect(fs.readFile(content.path)).resolves.toEqual(await fs.readFile(path.join(projectsRoot, "images", "images", "scene3.png")));
+    await expect(service.content("images", "7")).rejects.toMatchObject({ response: { code: "IMAGE_CONTENT_UNAVAILABLE" } });
+    await expect(service.content("images", "abc")).rejects.toMatchObject({ response: { code: "IMAGE_CONTENT_UNAVAILABLE" } });
+    const { projectsRoot: freshRoot, projects: freshProjects, mappings: freshMappings } = await setup();
+    await expect(new LocalImageGenerationService(freshProjects, freshMappings, freshRoot).content("images", "1")).rejects.toMatchObject({ response: { code: "IMAGE_CONTENT_UNAVAILABLE" } });
+  });
+
   it("preserves checkpoints on failure and a new instance generates only missing images", async () => {
     const { projectsRoot, projects, mappings } = await setup();
     let writes = 0;

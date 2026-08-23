@@ -15,9 +15,13 @@ import { OpenAiAdapterError } from "../providers/openai-common.js";
 import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "./openai-image-adapter.js";
 import { collectReferenceImages } from "./image-reference-selection.js";
 import { previousSceneContinuityImagePath } from "../projects/project-continuity.js";
-import { imageBudgetExceeded, imageGenerationFailed, imageGenerationNotAllowed, imageProviderError, imageStorageError, invalidImageRequest, mappingReviewRequired } from "./image-api.error.js";
+import { imageBudgetExceeded, imageContentUnavailable, imageGenerationFailed, imageGenerationNotAllowed, imageProviderError, imageStorageError, invalidImageRequest, mappingReviewRequired } from "./image-api.error.js";
 
 const SCENES = [1, 2, 3, 4, 5, 6] as const;
+const sceneNumberFromParam = (raw: string): SceneNumber | undefined => {
+  const value = Number(raw);
+  return Number.isInteger(value) && String(value) === raw && SCENES.includes(value as SceneNumber) ? (value as SceneNumber) : undefined;
+};
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -70,6 +74,15 @@ export class LocalImageGenerationService {
 
   private imagePath(projectId: string, scene: SceneNumber): string {
     return path.join(this.projectsRoot, projectId, "images", `scene${scene}.png`);
+  }
+
+  async content(projectId: string, rawSceneNumber: string): Promise<{ path: string; extension: ".png" }> {
+    const project = await this.projects.findById(projectId.trim());
+    const number = sceneNumberFromParam(rawSceneNumber);
+    if (!number) throw imageContentUnavailable();
+    const file = this.imagePath(project.project_id, number);
+    if (!(await validPng(file))) throw imageContentUnavailable();
+    return { path: file, extension: ".png" };
   }
 
   private async approvedMapping(project: StoredProject): Promise<void> {

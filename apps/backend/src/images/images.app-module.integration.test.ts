@@ -50,6 +50,13 @@ describe.sequential("local image generation HTTP route", () => {
     expect(regenerated.status).toBe(201);
     expect(await regenerated.json()).toMatchObject({ sceneNumber: 1, project: { workflowState: WorkflowState.ImagesReview } });
     await expect(fs.readFile(path.join(projectsRoot, "image_http", "images", "originals", "scene1_v001.png"))).resolves.toEqual(expect.any(Buffer));
+
+    const content = await fetch(`${base}/projects/image_http/images/6/content`);
+    expect(content.status).toBe(200);
+    expect(content.headers.get("content-type")).toBe("image/png");
+    expect(Buffer.from(await content.arrayBuffer())).toEqual(await fs.readFile(path.join(projectsRoot, "image_http", "images", "scene6.png")));
+    const missing = await fetch(`${base}/projects/image_http/images/7/content`);
+    expect(missing.status).toBe(404);
   });
 
   it("calls the real OpenAI Images endpoint once a credential is saved and connected over the same running app", async () => {

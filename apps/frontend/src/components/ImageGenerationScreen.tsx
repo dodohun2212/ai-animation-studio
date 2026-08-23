@@ -7,6 +7,7 @@ import { startImageGeneration, toImageGenerationDisplayError } from "../api/imag
 import {
   approveImageReview,
   getImageReview,
+  imageReviewContentUrl,
   regenerateImageReview,
   toImageReviewDisplayError,
 } from "../api/imageReviewApi.js";
@@ -306,8 +307,15 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                         key={review.sceneNumber}
                         data-testid={`review-${review.sceneNumber}`}
                         data-status={review.status}
-                        className="space-y-1"
+                        className="flex gap-3"
                       >
+                        <img
+                          src={imageReviewContentUrl(projectId, review.sceneNumber, review.updatedAt)}
+                          alt={`${review.sceneNumber}번 장면 이미지`}
+                          data-testid={`review-image-${review.sceneNumber}`}
+                          className="h-24 w-24 flex-shrink-0 rounded-md border border-white/10 bg-slate-800 object-cover"
+                        />
+                        <div className="flex-1 space-y-1">
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-sm text-slate-300">
                             {review.sceneNumber}번 장면 · {review.status === "approved" ? "승인됨" : "검토 대기"}
@@ -389,6 +397,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                             {regenerateError.message}
                           </p>
                         )}
+                        </div>
                       </li>
                     );
                   })}

@@ -240,6 +240,19 @@ describe("ImageGenerationScreen", () => {
     expect(document.body.textContent).not.toContain("images/scene1.png");
   });
 
+  it("shows each scene's actual generated image, cache-busted by its review updatedAt", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews([1]) }));
+    renderScreen(fetchMock);
+
+    const image = await screen.findByTestId("review-image-1");
+    expect(image).toHaveAttribute("src", "/projects/sample_project/images/1/content?v=2026-08-22T00%3A00%3A00.000Z");
+    expect(screen.getByTestId("review-image-6")).toHaveAttribute("src", "/projects/sample_project/images/6/content?v=2026-08-22T00%3A00%3A00.000Z");
+  });
+
   it("shows no not-allowed message once the project has reached IMAGES_REVIEW or later", async () => {
     const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
     const fetchMock = vi

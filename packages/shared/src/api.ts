@@ -814,6 +814,8 @@ export const API_ROUTES = {
     `/projects/${encodeURIComponent(projectId)}/images/review/${sceneNumber}/approve`,
   imageReviewRegeneration: (projectId: string, sceneNumber: SceneNumber) =>
     `/projects/${encodeURIComponent(projectId)}/images/review/${sceneNumber}/regenerate`,
+  imageContent: (projectId: string, sceneNumber: SceneNumber) =>
+    `/projects/${encodeURIComponent(projectId)}/images/${sceneNumber}/content`,
   assets: "/assets",
   asset: (assetId: string) => `/assets/${encodeURIComponent(assetId)}`,
   assetContent: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/content`,

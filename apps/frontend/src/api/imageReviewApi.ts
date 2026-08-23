@@ -140,6 +140,11 @@ export function getImageReview(projectId: string): Promise<GetImageReviewRespons
   return request(API_ROUTES.imageReview(projectId), undefined, isGetImageReviewResponse);
 }
 
+/** `cacheBuster` (e.g. a review's `updatedAt`) forces a refetch after a scene is regenerated. */
+export function imageReviewContentUrl(projectId: string, sceneNumber: SceneNumber, cacheBuster: string): string {
+  return `${API_ROUTES.imageContent(projectId, sceneNumber)}?v=${encodeURIComponent(cacheBuster)}`;
+}
+
 /** A review action is deliberately explicit and cannot be inferred from navigation. */
 export function approveImageReview(projectId: string, sceneNumber: SceneNumber): Promise<ApproveImageReviewResponse> {
   const requestBody: ApproveImageReviewRequest = { approved: true };
