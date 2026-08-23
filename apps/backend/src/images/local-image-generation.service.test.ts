@@ -1,16 +1,22 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkflowState } from "@ai-animation-studio/shared";
 import { LocalProjectAssetMappingsRepository, scriptFingerprint } from "../mappings/mappings.repository.js";
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
+import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
+import { ProviderSettingsService } from "../settings/provider-settings.service.js";
+import { OpenAiBudget } from "../providers/openai-budget.js";
 import { LocalImageGenerationService } from "./local-image-generation.service.js";
 
 const roots: string[] = [];
-afterEach(async () => { await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true }))); });
+afterEach(async () => {
+  vi.unstubAllGlobals();
+  await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
+});
 
 async function setup() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "local-images-")); roots.push(root);
@@ -24,7 +30,22 @@ async function setup() {
   await projects.create(project);
   const mappings = new LocalProjectAssetMappingsRepository(projectsRoot);
   await mappings.saveReview("images", { project_id: "images", mapping_revision: 3, script_revision: 1, script_fingerprint: scriptFingerprint(project.scenes), status: "approved", approved_at: "2026-08-22T00:00:00.000Z", approved_by: "user", text_only_confirmed: true, legacy_confirmed: false, reviewed_scenes: [1, 2, 3, 4, 5, 6] });
-  return { projectsRoot, projects, mappings };
+  return { root, projectsRoot, projects, mappings };
+}
+
+const PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=";
+function jsonResponse(status: number, body: unknown): Response {
+  return { ok: status >= 200 && status < 300, status, json: async () => body, headers: { get: () => null } } as unknown as Response;
+}
+
+async function setupWithConnectedOpenAi() {
+  const base = await setup();
+  const settingsRepository = new ProviderSettingsRepository(base.root);
+  const providerSettings = new ProviderSettingsService(settingsRepository);
+  await providerSettings.save("openai", { value: "sk-test-key-1234567890" });
+  const budget = new OpenAiBudget(base.root, 10);
+  const service = new LocalImageGenerationService(base.projects, base.mappings, base.projectsRoot, undefined, new LocalAssetsRepository(path.dirname(base.projectsRoot)), providerSettings, budget);
+  return { ...base, providerSettings, budget, service };
 }
 
 describe("provider-free local image generation", () => {
@@ -93,5 +114,55 @@ describe("provider-free local image generation", () => {
       .generate("images", { approved: true });
     expect(resumed.reusedSceneNumbers).toEqual([1, 2, 3, 4, 5, 6]);
     expect((await assets.list()).map((asset) => asset.asset_id).sort()).toEqual(before);
+  });
+});
+
+describe("real OpenAI image generation", () => {
+  it("calls the real adapter for all six scenes and records the real model as the adapter", async () => {
+    const { projectsRoot, service } = await setupWithConnectedOpenAi();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await service.generate("images", { approved: true });
+
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(result.project.workflowState).toBe(WorkflowState.ImagesReview);
+    const reloaded = await new LocalProjectRepository(projectsRoot).findById("images");
+    expect(reloaded.image_generation_records).toEqual(expect.arrayContaining([expect.objectContaining({ scene_number: 1, adapter: "gpt-image-2", image_api_calls: 1 })]));
+  });
+
+  it("falls back to the local fake adapter, never calling fetch, when no OpenAI credential is configured", async () => {
+    const { projectsRoot, projects, mappings } = await setup();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await new LocalImageGenerationService(projects, mappings, projectsRoot).generate("images", { approved: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect((await new LocalProjectRepository(projectsRoot).findById("images")).image_generation_records).toEqual(
+      expect.arrayContaining([expect.objectContaining({ adapter: "local-fake-image-adapter", image_api_calls: 0 })]),
+    );
+  });
+
+  it("blocks the real request and restores ASSET_MAPPING_APPROVED when the monthly budget is already spent", async () => {
+    const { projects, budget, service } = await setupWithConnectedOpenAi();
+    await budget.record("images", "image", true, 10, new Date());
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(service.generate("images", { approved: true })).rejects.toMatchObject({ response: { code: "IMAGE_BUDGET_EXCEEDED" } });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect((await projects.findById("images")).workflow_state).toBe(WorkflowState.AssetMappingApproved);
+  });
+
+  it("classifies a real provider failure, records failed budget usage, and restores ASSET_MAPPING_APPROVED for retry", async () => {
+    const { root, projects, service } = await setupWithConnectedOpenAi();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { error: { code: "invalid_api_key" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(service.generate("images", { approved: true })).rejects.toMatchObject({ response: { code: "IMAGE_PROVIDER_ERROR", details: { category: "authentication" } } });
+
+    expect((await projects.findById("images")).workflow_state).toBe(WorkflowState.AssetMappingApproved);
+    const usage = JSON.parse(await fs.readFile(path.join(root, "api_budget_usage.json"), "utf8")) as Array<Record<string, unknown>>;
+    expect(usage).toEqual([expect.objectContaining({ project_id: "images", api_type: "image", succeeded: false })]);
   });
 });

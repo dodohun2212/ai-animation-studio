@@ -9,7 +9,11 @@ import type { StoredProject } from "../projects/project-storage.schema.js";
 import { LocalProjectAssetMappingsRepository, scriptFingerprint } from "../mappings/mappings.repository.js";
 import { validateImage } from "../assets/image-validation.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
-import { imageGenerationFailed, imageGenerationNotAllowed, imageStorageError, invalidImageRequest, mappingReviewRequired } from "./image-api.error.js";
+import { ProviderSettingsService } from "../settings/provider-settings.service.js";
+import { IMAGE_ESTIMATED_COST_USD, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
+import { OpenAiAdapterError } from "../providers/openai-common.js";
+import { OPENAI_IMAGE_MODEL, callOpenAiImageApi } from "./openai-image-adapter.js";
+import { imageBudgetExceeded, imageGenerationFailed, imageGenerationNotAllowed, imageProviderError, imageStorageError, invalidImageRequest, mappingReviewRequired } from "./image-api.error.js";
 
 const SCENES = [1, 2, 3, 4, 5, 6] as const;
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
@@ -58,6 +62,8 @@ export class LocalImageGenerationService {
     private readonly projectsRoot: string,
     private readonly writeImage: WriteImage = atomicWriteImage,
     private readonly assets: LocalAssetsRepository = new LocalAssetsRepository(path.dirname(projectsRoot)),
+    private readonly providerSettings?: ProviderSettingsService,
+    private readonly budget?: OpenAiBudget,
   ) {}
 
   private imagePath(projectId: string, scene: SceneNumber): string {
@@ -82,6 +88,7 @@ export class LocalImageGenerationService {
     let current: StoredProject = { ...project, workflow_state: WorkflowState.GeneratingImages, updated_at: startedAt };
     try { await this.projects.save(current); } catch { throw imageStorageError(); }
 
+    const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     const generated: SceneNumber[] = [];
     const reused: SceneNumber[] = [];
     try {
@@ -92,15 +99,32 @@ export class LocalImageGenerationService {
           reused.push(number);
           continue;
         }
+        const prompt = sceneValue(current.scenes[number - 1], "description");
+        let bytes: Buffer = PNG;
+        let adapter = "local-fake-image-adapter";
+        let apiCalls = 0;
+        if (apiKey && this.budget) {
+          await this.budget.preflight(IMAGE_ESTIMATED_COST_USD);
+          let succeeded = false;
+          try {
+            const result = await callOpenAiImageApi(apiKey, prompt);
+            bytes = result.bytes;
+            succeeded = true;
+          } finally {
+            await this.budget.record(current.project_id, "image", succeeded, IMAGE_ESTIMATED_COST_USD);
+          }
+          adapter = OPENAI_IMAGE_MODEL;
+          apiCalls = 1;
+        }
         await fs.mkdir(path.dirname(destination), { recursive: true });
-        await this.writeImage(destination, PNG);
+        await this.writeImage(destination, bytes);
         if (!await validPng(destination)) throw new Error("invalid png");
         current = {
           ...current,
-          image_prompts: [...current.image_prompts.slice(0, number - 1), sceneValue(current.scenes[number - 1], "description")],
+          image_prompts: [...current.image_prompts.slice(0, number - 1), prompt],
           motion_prompts: [...current.motion_prompts.slice(0, number - 1), sceneValue(current.scenes[number - 1], "main_motion")],
           generated_images: [...current.generated_images.slice(0, number - 1), destination],
-          image_generation_records: [...current.image_generation_records.slice(0, number - 1), { scene_number: number, prompt: sceneValue(current.scenes[number - 1], "description"), checkpoint: "completed", adapter: "local-fake-image-adapter", image_api_calls: 0 }],
+          image_generation_records: [...current.image_generation_records.slice(0, number - 1), { scene_number: number, prompt, checkpoint: "completed", adapter, image_api_calls: apiCalls }],
           updated_at: new Date().toISOString(),
         };
         await this.projects.save(current);
@@ -119,6 +143,8 @@ export class LocalImageGenerationService {
     } catch (error) {
       const recoverable = { ...current, workflow_state: WorkflowState.AssetMappingApproved, updated_at: new Date().toISOString() };
       await this.projects.save(recoverable).catch(() => undefined);
+      if (error instanceof OpenAiBudgetExceededError) throw imageBudgetExceeded(error.message);
+      if (error instanceof OpenAiAdapterError) throw imageProviderError(error.category, error.message);
       if (error instanceof Error && error.message === "invalid png") throw imageGenerationFailed();
       if (error instanceof Error && error.message === "incomplete") throw imageGenerationFailed();
       throw imageStorageError();

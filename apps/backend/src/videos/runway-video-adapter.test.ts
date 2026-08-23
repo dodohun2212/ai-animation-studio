@@ -1,0 +1,180 @@
+import { describe, expect, it, vi } from "vitest";
+import {
+  RunwayAdapterError, createRunwayImageToVideoTask, downloadRunwayOutput, getRunwayTask,
+} from "./runway-video-adapter.js";
+
+const IMAGE_BYTES = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
+function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}): Response {
+  return {
+    ok: status >= 200 && status < 300, status,
+    json: async () => body,
+    arrayBuffer: async () => (body as { __bytes?: Buffer }).__bytes ?? new ArrayBuffer(0),
+    headers: { get: (name: string) => headers[name.toLowerCase()] ?? null },
+  } as unknown as Response;
+}
+const noSleep = async () => {};
+
+describe("createRunwayImageToVideoTask", () => {
+  it("posts the verified image_to_video request shape and returns the task ID", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1", estimatedCost: { credits: 25 } }));
+    const result = await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "a hero walks forward", { fetchImpl: fetchMock, sleep: noSleep });
+    expect(result.taskId).toBe("task-1");
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.dev.runwayml.com/v1/image_to_video");
+    expect(init.method).toBe("POST");
+    const headers = init.headers as Record<string, string>;
+    expect(headers.authorization).toBe("Bearer secret");
+    expect(headers["x-runway-version"]).toBe("2024-11-06");
+    const body = JSON.parse(String(init.body));
+    expect(body).toMatchObject({ model: "gen4_turbo", promptText: "a hero walks forward", ratio: "720:1280", duration: 5 });
+    expect(body.promptImage).toBe(`data:image/png;base64,${IMAGE_BYTES.toString("base64")}`);
+  });
+
+  it("uses caller-supplied model/ratio/duration instead of the defaults", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
+    await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "gen4.5", ratio: "1280:720", durationSeconds: 10, fetchImpl: fetchMock, sleep: noSleep });
+    const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body));
+    expect(body).toMatchObject({ model: "gen4.5", ratio: "1280:720", duration: 10 });
+  });
+
+  it("rejects an empty prompt without calling fetch", async () => {
+    const fetchMock = vi.fn();
+    await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "   ", { fetchImpl: fetchMock, sleep: noSleep }))
+      .rejects.toMatchObject({ category: "invalid_request" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a prompt exceeding 1000 UTF-16 code units without calling fetch", async () => {
+    const fetchMock = vi.fn();
+    await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "x".repeat(1001), { fetchImpl: fetchMock, sleep: noSleep }))
+      .rejects.toMatchObject({ category: "invalid_request" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an image over the 5MB data-URI limit without calling fetch", async () => {
+    const fetchMock = vi.fn();
+    const huge = Buffer.alloc(5 * 1024 * 1024 + 1);
+    await expect(createRunwayImageToVideoTask("secret", huge, "image/png", "p", { fetchImpl: fetchMock, sleep: noSleep }))
+      .rejects.toMatchObject({ category: "invalid_request" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("classifies a 401 as authentication and never retries", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { error: { message: "bad key" } }));
+    await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "p", { fetchImpl: fetchMock, sleep: noSleep }))
+      .rejects.toMatchObject({ category: "authentication" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("classifies a 403 as permission and never retries", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(403, {}));
+    await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "p", { fetchImpl: fetchMock, sleep: noSleep }))
+      .rejects.toMatchObject({ category: "permission" });
+  });
+
+  it("retries a 429, honoring Retry-After, then succeeds", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(429, {}, { "retry-after": "0" }))
+      .mockResolvedValueOnce(jsonResponse(200, { id: "task-2" }));
+    const sleep = vi.fn(noSleep);
+    const result = await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "p", { fetchImpl: fetchMock, sleep, maxRetries: 2 });
+    expect(result.taskId).toBe("task-2");
+    expect(sleep).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a 500 server error, then succeeds", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(500, {})).mockResolvedValueOnce(jsonResponse(200, { id: "task-3" }));
+    const result = await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "p", { fetchImpl: fetchMock, sleep: noSleep });
+    expect(result.taskId).toBe("task-3");
+  });
+
+  it("classifies a 400/404/409/422 as invalid_request and never retries", async () => {
+    for (const status of [400, 404, 409, 422]) {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(status, {}));
+      await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "p", { fetchImpl: fetchMock, sleep: noSleep }))
+        .rejects.toMatchObject({ category: "invalid_request" });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("retries a network-level fetch rejection, then succeeds", async () => {
+    const fetchMock = vi.fn().mockRejectedValueOnce(new TypeError("fetch failed")).mockResolvedValueOnce(jsonResponse(200, { id: "task-4" }));
+    const result = await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "p", { fetchImpl: fetchMock, sleep: noSleep });
+    expect(result.taskId).toBe("task-4");
+  });
+
+  it("rejects a response with no task ID as unknown", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {}));
+    await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "p", { fetchImpl: fetchMock, sleep: noSleep }))
+      .rejects.toMatchObject({ category: "unknown" });
+  });
+
+  it("is an instance of RunwayAdapterError with a Korean message", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, {}));
+    try {
+      await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "p", { fetchImpl: fetchMock, sleep: noSleep });
+      throw new Error("expected to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(RunwayAdapterError);
+      expect((error as RunwayAdapterError).message).toContain("인증");
+    }
+  });
+});
+
+describe("getRunwayTask", () => {
+  it("gets the task by ID and returns RUNNING with progress", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1", status: "RUNNING", progress: 0.4, createdAt: "2026-01-01T00:00:00Z" }));
+    const task = await getRunwayTask("secret", "task-1", { fetchImpl: fetchMock, sleep: noSleep });
+    expect(task).toMatchObject({ taskId: "task-1", status: "RUNNING", progress: 0.4, terminal: false, outputUrls: [] });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.dev.runwayml.com/v1/tasks/task-1");
+    expect(init.method).toBe("GET");
+    expect((init.headers as Record<string, string>)["x-runway-version"]).toBe("2024-11-06");
+  });
+
+  it("returns SUCCEEDED with output URLs and marks it terminal", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1", status: "SUCCEEDED", output: ["https://cdn.runwayml.com/out.mp4"] }));
+    const task = await getRunwayTask("secret", "task-1", { fetchImpl: fetchMock, sleep: noSleep });
+    expect(task).toMatchObject({ status: "SUCCEEDED", outputUrls: ["https://cdn.runwayml.com/out.mp4"], terminal: true });
+  });
+
+  it("returns FAILED with a combined failure message and code", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1", status: "FAILED", failure: "content flagged", failureCode: "SAFETY.INPUT.FLAGGED" }));
+    const task = await getRunwayTask("secret", "task-1", { fetchImpl: fetchMock, sleep: noSleep });
+    expect(task.failure).toBe("content flagged (Runway code: SAFETY.INPUT.FLAGGED)");
+    expect(task.terminal).toBe(true);
+  });
+
+  it("rejects an empty task_id without calling fetch", async () => {
+    const fetchMock = vi.fn();
+    await expect(getRunwayTask("secret", "  ", { fetchImpl: fetchMock, sleep: noSleep })).rejects.toMatchObject({ category: "invalid_request" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a response with no status as unknown", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
+    await expect(getRunwayTask("secret", "task-1", { fetchImpl: fetchMock, sleep: noSleep })).rejects.toMatchObject({ category: "unknown" });
+  });
+});
+
+describe("downloadRunwayOutput", () => {
+  it("downloads and returns the raw bytes from an ephemeral output URL without a Runway auth header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, arrayBuffer: async () => IMAGE_BYTES.buffer.slice(IMAGE_BYTES.byteOffset, IMAGE_BYTES.byteOffset + IMAGE_BYTES.byteLength), headers: { get: () => null } } as unknown as Response);
+    const bytes = await downloadRunwayOutput("https://cdn.runwayml.com/out.mp4", { fetchImpl: fetchMock, sleep: noSleep });
+    expect(bytes).toEqual(IMAGE_BYTES);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://cdn.runwayml.com/out.mp4");
+    expect(init.headers).toBeUndefined();
+  });
+
+  it("rejects a non-http(s) URL without calling fetch", async () => {
+    const fetchMock = vi.fn();
+    await expect(downloadRunwayOutput("ftp://example.com/file", { fetchImpl: fetchMock, sleep: noSleep })).rejects.toMatchObject({ category: "invalid_request" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty download as unknown", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(0), headers: { get: () => null } } as unknown as Response);
+    await expect(downloadRunwayOutput("https://cdn.runwayml.com/out.mp4", { fetchImpl: fetchMock, sleep: noSleep })).rejects.toMatchObject({ category: "unknown" });
+  });
+});
