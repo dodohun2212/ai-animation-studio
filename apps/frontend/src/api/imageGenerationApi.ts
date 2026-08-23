@@ -27,6 +27,7 @@ const SAFE_ERRORS: Record<string, string> = {
   IMAGE_STORAGE_ERROR: "이미지 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
   IMAGE_BUDGET_EXCEEDED: "이번 달 OpenAI 예산을 초과하여 요청을 보내지 않았습니다.",
   IMAGE_PROVIDER_ERROR: "OpenAI 이미지 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+  IMAGE_CONTENT_UNAVAILABLE: "이미지를 불러올 수 없습니다.",
 };
 const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };

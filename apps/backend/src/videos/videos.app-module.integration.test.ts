@@ -56,3 +56,43 @@ it("serves a restart-safe local video preview and explicit fake submission witho
   expect(reloaded.video_generation_records).toHaveLength(6);
   expect(JSON.stringify(reloaded)).not.toContain(projectsRoot);
 });
+
+it("serves a generated scene's mp4 over HTTP once the local fake workflow completes, independent of jobId", async () => {
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "video-content-http-"));
+  const projectsRoot = path.join(root, "projects");
+  const projects = new LocalProjectRepository(projectsRoot);
+  const project = createStoredProject("video_content_http", "topic", "2026-08-22T00:00:00.000Z");
+  project.workflow_state = WorkflowState.WaitingForVideoConfirmation;
+  project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, description: `d${number}`, visual_action: `a${number}`, start_motion: `s${number}`, main_motion: `m${number}`, end_motion: `e${number}`, shot_size: "medium", camera_angle: "eye", composition: "center", lens_feel: "natural", focus_subject: "subject", camera_motion: "dolly", environment_motion: "wind", motion_speed: "normal", motion_intensity: "moderate", expression_change: "calm", continuity_hint: "continue" }));
+  await projects.create(project);
+  const images = path.join(projectsRoot, "video_content_http", "images"); await fs.mkdir(images, { recursive: true });
+  project.generated_images = await Promise.all([1, 2, 3, 4, 5, 6].map(async (number) => { const file = path.join(images, `scene${number}.png`); await fs.writeFile(file, PNG); return file; }));
+  await projects.save(project);
+  previousLearningRoot = process.env.LEARNING_DATA_ROOT; process.env.LEARNING_DATA_ROOT = root;
+  app = await NestFactory.create(AppModule, { logger: false }); await app.listen(0, "127.0.0.1");
+  const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
+
+  const missingBeforeGeneration = await fetch(`${base}/projects/video_content_http/videos/1/content`);
+  expect(missingBeforeGeneration.status).toBe(404);
+
+  const previewResponse = await fetch(`${base}/projects/video_content_http/videos/preview`, { method: "POST" });
+  const preview = await previewResponse.json() as { confirmationId: string; previews: Array<{ sceneNumber: number; prompt: string }> };
+  const acceptedResponse = await fetch(`${base}/projects/video_content_http/videos/generations`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ confirmationId: preview.confirmationId, userRequestId: "http_request_1", approved: true, prompts: preview.previews.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) }),
+  });
+  const accepted = await acceptedResponse.json() as { jobId: string };
+
+  await expect.poll(async () => {
+    const progress = await (await fetch(`${base}/projects/video_content_http/videos/generations/${accepted.jobId}`)).json() as { status: string };
+    return progress.status;
+  }, { timeout: 10000 }).toBe("succeeded");
+
+  const content = await fetch(`${base}/projects/video_content_http/videos/6/content`);
+  expect(content.status).toBe(200);
+  expect(content.headers.get("content-type")).toBe("video/mp4");
+  expect(Buffer.from(await content.arrayBuffer())).toEqual(await fs.readFile(path.join(projectsRoot, "video_content_http", "videos", "runway", "scene6.mp4")));
+  const outOfRange = await fetch(`${base}/projects/video_content_http/videos/7/content`);
+  expect(outOfRange.status).toBe(404);
+}, 20000);

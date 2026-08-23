@@ -27,6 +27,7 @@ const SAFE_ERRORS: Record<string, string> = {
   VIDEO_WORKFLOW_NOT_ALLOWED: "현재 프로젝트 상태에서는 이 작업을 수행할 수 없습니다.",
   VIDEO_REVIEW_DATA_INVALID: "영상 검토 데이터를 확인할 수 없습니다.",
   VIDEO_STORAGE_ERROR: "영상 작업 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+  VIDEO_CONTENT_UNAVAILABLE: "영상을 불러올 수 없습니다.",
 };
 const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };
@@ -203,6 +204,11 @@ export function regenerateAllVideoScenes(projectId: string, jobId: string): Prom
 
 export function getVideoReview(projectId: string, jobId: string): Promise<GetVideoReviewResponse> {
   return request(API_ROUTES.videoReview(projectId, jobId), undefined, isGetVideoReviewResponse);
+}
+
+/** `cacheBuster` (e.g. a review's `updatedAt`) forces a refetch after a scene is regenerated. */
+export function videoReviewContentUrl(projectId: string, sceneNumber: SceneNumber, cacheBuster: string): string {
+  return `${API_ROUTES.videoContent(projectId, sceneNumber)}?v=${encodeURIComponent(cacheBuster)}`;
 }
 
 /** A review action is deliberately explicit and cannot be inferred from navigation. */

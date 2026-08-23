@@ -1,10 +1,14 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import * as fs from "node:fs/promises";
+import { Body, Controller, Get, HttpException, Param, Post, Res, StreamableFile } from "@nestjs/common";
 import { API_ROUTES, type ApproveVideoReviewResponse, type GenerationProgressResponse, type GetVideoPromptPreviewResponse, type GetVideoReviewResponse, type MergeVideosResponse, type RegenerateVideoResponse, type StartVideoGenerationResponse } from "@ai-animation-studio/shared";
 
+import { videoContentUnavailable } from "./video-workflow-api.error.js";
 import { LocalVideoPreviewService } from "./video-preview.service.js";
 import { LocalVideoSubmissionService } from "./local-video-submission.service.js";
 import { LocalVideoWorkflowService } from "./local-video-workflow.service.js";
 import { LocalVideoMergeService } from "./video-merge.service.js";
+
+interface HttpResponse { type(value: string): void; setHeader(name: string, value: string): void }
 
 @Controller()
 export class VideosController {
@@ -13,6 +17,24 @@ export class VideosController {
   @Post(`${API_ROUTES.projects}/:projectId/videos/preview`)
   preview(@Param("projectId") projectId: string, @Body() body: unknown): Promise<GetVideoPromptPreviewResponse> {
     return this.previews.preview(projectId, body);
+  }
+
+  @Get(`${API_ROUTES.projects}/:projectId/videos/:sceneNumber/content`)
+  async content(@Param("projectId") projectId: string, @Param("sceneNumber") sceneNumber: string, @Res({ passthrough: true }) response: HttpResponse): Promise<StreamableFile> {
+    const content = await this.workflow.content(projectId, sceneNumber);
+    try {
+      const handle = await fs.open(content.path, "r");
+      const stat = await handle.stat();
+      if (!stat.isFile()) { await handle.close(); throw videoContentUnavailable(); }
+      response.type("video/mp4");
+      response.setHeader("Content-Disposition", `inline; filename="scene${sceneNumber}.mp4"`);
+      response.setHeader("Content-Length", String(stat.size));
+      response.setHeader("X-Content-Type-Options", "nosniff");
+      return new StreamableFile(handle.createReadStream());
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw videoContentUnavailable();
+    }
   }
 
   @Post(`${API_ROUTES.projects}/:projectId/videos/generations`)

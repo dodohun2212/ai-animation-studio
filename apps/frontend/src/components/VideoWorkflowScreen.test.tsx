@@ -147,6 +147,16 @@ describe("VideoWorkflowScreen", () => {
     }
   });
 
+  it("shows each scene's actual generated clip, cache-busted by its review updatedAt", async () => {
+    const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, succeeded)).mockResolvedValueOnce(jsonResponse(200, reviewResponse(sixReviews([1]))));
+    renderScreen(fetchMock);
+
+    const clip = await screen.findByTestId("video-review-clip-1");
+    expect(clip).toHaveAttribute("src", "/projects/sample_project/videos/1/content?v=2026-08-23T00%3A00%3A00.000Z");
+    expect(screen.getByTestId("video-review-clip-6")).toHaveAttribute("src", "/projects/sample_project/videos/6/content?v=2026-08-23T00%3A00%3A00.000Z");
+  });
+
   it("approves a single scene via POST .../review/:sceneNumber/approve and preserves the others as pending", async () => {
     const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
     const fetchMock = vi

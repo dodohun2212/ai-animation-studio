@@ -56,8 +56,8 @@
 
 #### 1순위 — 핵심 도구 기능이 막혀 있음 (실사용자 데이터에 실제 영향)
 
-1. **이미지 검토 화면(`ImageGenerationScreen.tsx`)에 실제 이미지 미리보기 추가.** `<img>` 태그가 하나도 없어 무엇을 승인하는지 보지 못한 채 승인 버튼을 누르는 구조다. 이미 존재하는 이미지 content 엔드포인트를 그대로 쓰면 된다.
-2. **영상 검토 화면(`VideoWorkflowScreen.tsx`)에 실제 영상 미리보기 추가.** 위와 동일한 문제, `<video>` 태그 부재.
+1. ~~**이미지 검토 화면(`ImageGenerationScreen.tsx`)에 실제 이미지 미리보기 추가.**~~ **완료(2026-08-24)** — 새 엔드포인트 `GET /projects/:projectId/images/:sceneNumber/content`(Asset content 스트리밍과 동일 패턴, job과 무관하게 project+scene만으로 동작)를 추가하고 `<img>`를 review 목록에 연결했다. `review.updatedAt`을 쿼리 캐시버스터로 써서 재생성 직후 새 이미지가 바로 보인다. 실제 backend+frontend dev 서버로 시딩한 프로젝트를 열어 썸네일이 실제로 뜨는 것을 스크린샷으로 확인했다.
+2. ~~**영상 검토 화면(`VideoWorkflowScreen.tsx`)에 실제 영상 미리보기 추가.**~~ **완료(2026-08-24)** — 동일 패턴으로 `GET /projects/:projectId/videos/:sceneNumber/content`를 추가했다. **의도적으로 jobId를 요구하지 않게 설계**했다 — 3번 항목(레거시 job 편입)이 해결되기 전에도 이 엔드포인트 자체는 project+scene 경로만으로 항상 동작한다. `<video controls>`를 review 목록에 연결, 동일하게 `updatedAt` 캐시버스터 적용. 실제 dev 서버로 검증 완료.
 3. **레거시(Python) 영상 데이터를 새 job 시스템으로 편입.** `local-video-workflow.service.ts`의 진행상황/검토 API는 전부 `jobId` 파라미터가 필수인데, Python이 저장한 `video_generation_records`에는 `job_id` 필드 자체가 없다. 그 결과 실제 사용자 프로젝트 중 아직 영상 검토가 끝나지 않은 것들(`project_5f11f561bf62`, `project_0ee811d6dcea`, `project_8b96c3cc1f71` 등, `WAITING_FOR_VIDEO_CONFIRMATION`/`REVIEWING_VIDEOS` 상태)은 새 UI에서 검토를 이어갈 방법이 전혀 없다 — job_id가 없는 기존 레코드를 발견하면 그 자리에서 새 jobId를 채번해 편입시키는 "레거시 채택(adopt)" 경로가 필요하다. `VIDEOS_APPROVED`처럼 이미 승인이 끝난 프로젝트는 병합(`/videos/merge`)이 job과 무관하게 동작하므로 영향 없음.
 4. **프로젝트 생성 마법사 복원.** Python `_build_short_project_wizard`(약 3,000줄)는 캐릭터·서브캐스트·분위기·장면 참고 Asset을 생성 시점에 고르는 마법사였는데, 지금 `CreateProjectForm.tsx`는 프로젝트 ID·주제 텍스트 입력 2개뿐이다. Backend API(`settings/cast`, `settings/asset-references` 등)는 이미 다 있으므로 프런트엔드에 생성 흐름으로 다시 엮는 작업이다.
 

@@ -22,6 +22,7 @@ import { RunwayBudget, RunwayBudgetExceededError, VIDEO_SCENE_ESTIMATED_COST_USD
 import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceResult, type RunwaySceneState } from "./runway-workflow-support.js";
 import {
   invalidVideoWorkflowRequest,
+  videoContentUnavailable,
   videoJobNotFound,
   videoReviewDataInvalid,
   videoStorageError,
@@ -40,6 +41,10 @@ type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved";
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const sceneNumber = (value: unknown): SceneNumber | undefined => typeof value === "number" && Number.isInteger(value) && SCENES.includes(value as SceneNumber) ? value as SceneNumber : undefined;
+const sceneNumberFromParam = (raw: string): SceneNumber | undefined => {
+  const value = Number(raw);
+  return Number.isInteger(value) && String(value) === raw ? sceneNumber(value) : undefined;
+};
 
 function isRecord(value: unknown): value is VideoRecord {
   return isObject(value) && !!sceneNumber(value.scene_number) && typeof value.job_id === "string"
@@ -85,6 +90,24 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
   private videoDirectory(projectId: string): string { return path.join(this.projectsRoot, projectId, "videos", "runway"); }
   private reviewFile(projectId: string): string { return path.join(this.projectsRoot, projectId, "generated_video_reviews.json"); }
   private file(projectId: string, scene: SceneNumber): string { return path.join(this.videoDirectory(projectId), `scene${scene}.mp4`); }
+
+  // Never keyed by jobId: a scene's video always lives at this canonical path
+  // regardless of which job produced it, so a project stuck without a
+  // matching job record (see legacy video-job adoption gap) can still be
+  // previewed once its file exists.
+  async content(projectId: string, rawSceneNumber: string): Promise<{ path: string }> {
+    const project = await this.projects.findById(projectId.trim());
+    const number = sceneNumberFromParam(rawSceneNumber);
+    if (!number) throw videoContentUnavailable();
+    const file = this.file(project.project_id, number);
+    try {
+      const stat = await fs.stat(file);
+      if (!stat.isFile() || stat.size <= 0) throw new Error("invalid");
+    } catch {
+      throw videoContentUnavailable();
+    }
+    return { path: file };
+  }
 
   private records(project: StoredProject, jobId: string): VideoRecord[] {
     const records = project.video_generation_records.filter(isRecord).filter((record) => record.job_id === jobId).sort((a, b) => a.scene_number - b.scene_number);

@@ -41,6 +41,21 @@ describe("local fake video workflow", () => {
     expect(JSON.stringify(review)).not.toContain(projectsRoot); expect(review.reviews).toHaveLength(6);
   });
 
+  it("serves a completed scene's mp4 bytes by canonical path, independent of jobId, and rejects a missing or out-of-range scene", async () => {
+    const { projectsRoot, accepted, workflow } = await setup();
+    await workflow.run("video_workflow", accepted.jobId);
+    const content = await workflow.content("video_workflow", "2");
+    expect(content).toEqual({ path: path.join(projectsRoot, "video_workflow", "videos", "runway", "scene2.mp4") });
+    await expect(fs.readFile(content.path)).resolves.toEqual(expect.any(Buffer));
+    await expect(workflow.content("video_workflow", "7")).rejects.toMatchObject({ response: { code: "VIDEO_CONTENT_UNAVAILABLE" } });
+    await expect(workflow.content("video_workflow", "abc")).rejects.toMatchObject({ response: { code: "VIDEO_CONTENT_UNAVAILABLE" } });
+  });
+
+  it("rejects content for a scene that has not produced a video yet", async () => {
+    const { workflow } = await setup();
+    await expect(workflow.content("video_workflow", "1")).rejects.toMatchObject({ response: { code: "VIDEO_CONTENT_UNAVAILABLE" } });
+  });
+
   it("stops before a new scene, blocks direct new submission state, and restarts missing work without replacing completed files", async () => {
     const { projectsRoot, projects, accepted, workflow } = await setup();
     const project = await projects.findById("video_workflow");

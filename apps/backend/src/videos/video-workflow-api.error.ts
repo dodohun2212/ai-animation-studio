@@ -6,7 +6,8 @@ type VideoWorkflowErrorCode =
   | "VIDEO_JOB_NOT_FOUND"
   | "VIDEO_WORKFLOW_NOT_ALLOWED"
   | "VIDEO_REVIEW_DATA_INVALID"
-  | "VIDEO_STORAGE_ERROR";
+  | "VIDEO_STORAGE_ERROR"
+  | "VIDEO_CONTENT_UNAVAILABLE";
 
 class VideoWorkflowApiException extends HttpException {
   constructor(code: VideoWorkflowErrorCode, message: string, status: HttpStatus) {
@@ -25,3 +26,5 @@ export const videoReviewDataInvalid = () =>
   new VideoWorkflowApiException("VIDEO_REVIEW_DATA_INVALID", "Generated video review data is invalid.", HttpStatus.INTERNAL_SERVER_ERROR);
 export const videoStorageError = () =>
   new VideoWorkflowApiException("VIDEO_STORAGE_ERROR", "Local video workflow storage failed.", HttpStatus.INTERNAL_SERVER_ERROR);
+export const videoContentUnavailable = () =>
+  new VideoWorkflowApiException("VIDEO_CONTENT_UNAVAILABLE", "The requested scene video is unavailable.", HttpStatus.NOT_FOUND);
