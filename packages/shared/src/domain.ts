@@ -35,6 +35,8 @@ export interface ProjectSummary {
 export interface Project extends ProjectSummary {
   scenes: Scene[];
   finalVideoPath?: string;
+  /** The most recently submitted local fake video job's ID, when one exists — lets a dashboard resume directly into its progress screen. */
+  currentVideoJobId?: string;
   warnings: string[];
   errors: string[];
 }

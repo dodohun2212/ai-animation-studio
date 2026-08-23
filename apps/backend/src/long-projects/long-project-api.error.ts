@@ -1,7 +1,7 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { ApiError } from "@ai-animation-studio/shared";
 
-type Code = "INVALID_REQUEST" | "UNSAFE_PROJECT_ID" | "LONG_PROJECT_NOT_FOUND" | "LONG_PROJECT_ALREADY_EXISTS" | "LONG_PROJECT_JSON_MALFORMED" | "LONG_PROJECT_DATA_INVALID" | "LONG_PROJECT_STORAGE_ERROR" | "LONG_OUTLINE_STALE" | "LONG_OUTLINE_NOT_ALLOWED" | "STORY_BIBLE_ITEM_NOT_FOUND" | "STORY_BIBLE_ITEM_ALREADY_EXISTS";
+type Code = "INVALID_REQUEST" | "UNSAFE_PROJECT_ID" | "LONG_PROJECT_NOT_FOUND" | "LONG_PROJECT_ALREADY_EXISTS" | "LONG_PROJECT_JSON_MALFORMED" | "LONG_PROJECT_DATA_INVALID" | "LONG_PROJECT_STORAGE_ERROR" | "LONG_PROJECT_ARCHIVE_NOT_ALLOWED" | "LONG_PROJECT_ARCHIVE_COLLISION" | "LONG_OUTLINE_STALE" | "LONG_OUTLINE_NOT_ALLOWED" | "LONG_EPISODE_NOT_FOUND" | "LONG_EPISODE_TIMELINE_NOT_ALLOWED" | "LONG_EPISODE_LIMIT_REACHED" | "LONG_EPISODE_SCRIPT_NOT_ALLOWED" | "LONG_EPISODE_SCRIPT_EXISTS" | "LONG_EPISODE_MAPPING_NOT_ALLOWED" | "LONG_EPISODE_MAPPING_NOT_FOUND" | "LONG_EPISODE_MAPPING_STALE" | "LONG_EPISODE_MAPPING_UNCONFIRMED" | "LONG_EPISODE_IMAGES_NOT_ALLOWED" | "LONG_EPISODE_IMAGES_INVALID" | "LONG_EPISODE_VIDEOS_NOT_ALLOWED" | "LONG_EPISODE_VIDEOS_INVALID" | "LONG_EPISODE_VIDEO_JOB_NOT_FOUND" | "LONG_EPISODE_MERGE_NOT_ALLOWED" | "LONG_EPISODE_MERGE_CLIPS_INVALID" | "LONG_EPISODE_FFMPEG_UNAVAILABLE" | "LONG_EPISODE_MERGE_FAILED" | "LONG_EPISODE_CONTINUITY_NOT_ALLOWED" | "STORY_BIBLE_ITEM_NOT_FOUND" | "STORY_BIBLE_ITEM_ALREADY_EXISTS";
 
 export class LongProjectApiException extends HttpException {
   constructor(code: Code, message: string, status: HttpStatus) { super({ code, message } satisfies ApiError, status); }
@@ -13,7 +13,28 @@ export const longExists = () => new LongProjectApiException("LONG_PROJECT_ALREAD
 export const longMalformed = () => new LongProjectApiException("LONG_PROJECT_JSON_MALFORMED", "Long project data is not valid JSON.", HttpStatus.INTERNAL_SERVER_ERROR);
 export const longInvalidData = () => new LongProjectApiException("LONG_PROJECT_DATA_INVALID", "Long project data is invalid.", HttpStatus.INTERNAL_SERVER_ERROR);
 export const longStorageError = () => new LongProjectApiException("LONG_PROJECT_STORAGE_ERROR", "Long project storage could not be read or written.", HttpStatus.INTERNAL_SERVER_ERROR);
+export const longArchiveNotAllowed = () => new LongProjectApiException("LONG_PROJECT_ARCHIVE_NOT_ALLOWED", "A long project with active generation or rendering work cannot be archived.", HttpStatus.CONFLICT);
+export const longArchiveCollision = () => new LongProjectApiException("LONG_PROJECT_ARCHIVE_COLLISION", "A recoverable archive already exists for this long project.", HttpStatus.CONFLICT);
 export const longOutlineStale = () => new LongProjectApiException("LONG_OUTLINE_STALE", "The outline prompt is stale. Preview it again before approval.", HttpStatus.CONFLICT);
 export const longOutlineNotAllowed = () => new LongProjectApiException("LONG_OUTLINE_NOT_ALLOWED", "Outline approval requires a planned long project.", HttpStatus.CONFLICT);
+export const longEpisodeNotFound = () => new LongProjectApiException("LONG_EPISODE_NOT_FOUND", "Long project episode was not found.", HttpStatus.NOT_FOUND);
+export const longEpisodeTimelineNotAllowed = () => new LongProjectApiException("LONG_EPISODE_TIMELINE_NOT_ALLOWED", "Timeline edits require draft-only Episodes and may archive only the final Episode.", HttpStatus.CONFLICT);
+export const longEpisodeLimitReached = () => new LongProjectApiException("LONG_EPISODE_LIMIT_REACHED", "The configured long-project Episode limit has been reached.", HttpStatus.CONFLICT);
+export const longEpisodeScriptNotAllowed = () => new LongProjectApiException("LONG_EPISODE_SCRIPT_NOT_ALLOWED", "Episode script is not allowed in the current state.", HttpStatus.CONFLICT);
+export const longEpisodeScriptExists = () => new LongProjectApiException("LONG_EPISODE_SCRIPT_EXISTS", "Episode script already exists; explicit regeneration is required.", HttpStatus.CONFLICT);
+export const longEpisodeMappingNotAllowed = () => new LongProjectApiException("LONG_EPISODE_MAPPING_NOT_ALLOWED", "Episode Asset Mapping review is not allowed in the current state.", HttpStatus.CONFLICT);
+export const longEpisodeMappingNotFound = () => new LongProjectApiException("LONG_EPISODE_MAPPING_NOT_FOUND", "Episode Asset Mapping was not found.", HttpStatus.NOT_FOUND);
+export const longEpisodeMappingStale = () => new LongProjectApiException("LONG_EPISODE_MAPPING_STALE", "Episode Asset Mapping review is stale. Start the review again.", HttpStatus.CONFLICT);
+export const longEpisodeMappingUnconfirmed = () => new LongProjectApiException("LONG_EPISODE_MAPPING_UNCONFIRMED", "Confirm or exclude every Episode Asset Mapping candidate before approval.", HttpStatus.CONFLICT);
+export const longEpisodeImagesNotAllowed = () => new LongProjectApiException("LONG_EPISODE_IMAGES_NOT_ALLOWED", "Episode image work is not allowed in the current state.", HttpStatus.CONFLICT);
+export const longEpisodeImagesInvalid = () => new LongProjectApiException("LONG_EPISODE_IMAGES_INVALID", "Episode images or their review data are invalid.", HttpStatus.CONFLICT);
+export const longEpisodeVideosNotAllowed = () => new LongProjectApiException("LONG_EPISODE_VIDEOS_NOT_ALLOWED", "Episode video work is not allowed in the current state.", HttpStatus.CONFLICT);
+export const longEpisodeVideosInvalid = () => new LongProjectApiException("LONG_EPISODE_VIDEOS_INVALID", "Episode videos or their review data are invalid.", HttpStatus.CONFLICT);
+export const longEpisodeVideoJobNotFound = () => new LongProjectApiException("LONG_EPISODE_VIDEO_JOB_NOT_FOUND", "Episode video job was not found.", HttpStatus.NOT_FOUND);
+export const longEpisodeMergeNotAllowed = () => new LongProjectApiException("LONG_EPISODE_MERGE_NOT_ALLOWED", "Final rendering requires six approved Episode videos.", HttpStatus.CONFLICT);
+export const longEpisodeMergeClipsInvalid = () => new LongProjectApiException("LONG_EPISODE_MERGE_CLIPS_INVALID", "The six approved Episode videos are missing or invalid.", HttpStatus.CONFLICT);
+export const longEpisodeFfmpegUnavailable = () => new LongProjectApiException("LONG_EPISODE_FFMPEG_UNAVAILABLE", "FFmpeg or ffprobe is not available on this computer.", HttpStatus.SERVICE_UNAVAILABLE);
+export const longEpisodeMergeFailed = () => new LongProjectApiException("LONG_EPISODE_MERGE_FAILED", "Episode rendering failed. Approved scene videos were kept.", HttpStatus.INTERNAL_SERVER_ERROR);
+export const longEpisodeContinuityNotAllowed = () => new LongProjectApiException("LONG_EPISODE_CONTINUITY_NOT_ALLOWED", "Episode Continuity Memory can be saved only after image approval.", HttpStatus.CONFLICT);
 export const storyBibleItemNotFound = () => new LongProjectApiException("STORY_BIBLE_ITEM_NOT_FOUND", "Story Bible item was not found.", HttpStatus.NOT_FOUND);
 export const storyBibleItemExists = () => new LongProjectApiException("STORY_BIBLE_ITEM_ALREADY_EXISTS", "Story Bible item already exists.", HttpStatus.CONFLICT);

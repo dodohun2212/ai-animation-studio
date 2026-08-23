@@ -3,16 +3,32 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   approveLongProjectOutline,
+  approveLongEpisodeAssetMappingReview,
+  approveLongEpisodeImageReview,
+  beginLongEpisodeAssetMappingReview,
   createLongProject,
   createLongProjectOutlinePreview,
   getLongProject,
   getLongProjectSettings,
+  getLongEpisodeAssetMappingReview,
+  getLongEpisodeImageReview,
   listLongProjects,
   LongProjectsApiError,
   toLongProjectDisplayError,
   updateLongProjectSettings,
+  updateLongEpisodeAssetMapping,
+  regenerateLongEpisodeImageReview,
+  startLongEpisodeImageGeneration,
+  getLongEpisodeVideoPreview,
+  startLongEpisodeVideoGeneration,
+  getLongEpisodeContinuity,
+  saveLongEpisodeContinuity,
+  getLongEpisodeContinuityReference,
+  addLongEpisode,
+  duplicateLongEpisode,
+  archiveLongEpisode,
 } from "./longProjectsApi.js";
-import { jsonResponse, makeLongProject, makeLongProjectSettings, makeLongProjectSummary, nonJsonResponse } from "./testUtils.js";
+import { jsonResponse, makeLongEpisodeOutline, makeLongProject, makeLongProjectSettings, makeLongProjectSummary, nonJsonResponse } from "./testUtils.js";
 
 describe("longProjectsApi", () => {
   afterEach(() => {
@@ -96,6 +112,89 @@ describe("longProjectsApi", () => {
     expect(JSON.parse(String(init.body))).toEqual(body);
   });
 
+  it("uses the local draft Episode timeline routes with an explicit archive body", async () => {
+    const project = makeLongProject({ id: "timeline", episodeCount: 2 });
+    const episode = makeLongEpisodeOutline({ episodeNumber: 3 });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project, episode }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, episode }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, archivedEpisodeNumber: 2, archiveId: "archive-1" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await addLongEpisode("timeline");
+    await duplicateLongEpisode("timeline", 2);
+    await archiveLongEpisode("timeline", 2);
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/long-projects/timeline/episodes",
+      "/long-projects/timeline/episodes/2/duplicate",
+      "/long-projects/timeline/episodes/2",
+    ]);
+    expect(JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body))).toEqual({});
+    const archive = fetchMock.mock.calls[2]?.[1] as RequestInit;
+    expect(archive.method).toBe("DELETE");
+    expect(JSON.parse(String(archive.body))).toEqual({ approved: true });
+  });
+
+  it("uses only the documented local Episode mapping-review routes", async () => {
+    const candidate = { mappingId: "MAP-1", sourceCollection: "characters" as const, sourceItemId: "hero", assetId: "ASSET-1", usageRole: "character" as const, versionPolicy: "pinned_version" as const, pinnedVersion: 1, episodeScope: { mode: "all" as const }, status: "suggested" as const, userConfirmed: false };
+    const review = { projectId: "reopen_me", episodeNumber: 1, mappingRevision: 1, scriptRevision: 3, scriptFingerprint: "a".repeat(64), status: "waiting" as const, textOnlyConfirmed: false, candidates: [candidate] };
+    const episode = { episodeNumber: 1, title: "Episode 1", summary: "", mainEvent: "", conflict: "", cliffhanger: "", nextEpisodeHook: "", status: "asset_mapping_approved" as const, approved: true, scriptRevision: 3, scriptHistoryCount: 1 };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { review }))
+      .mockResolvedValueOnce(jsonResponse(200, { review }))
+      .mockResolvedValueOnce(jsonResponse(200, { mapping: { ...candidate, status: "confirmed", userConfirmed: true }, review }))
+      .mockResolvedValueOnce(jsonResponse(200, { review: { ...review, status: "approved" }, episode }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getLongEpisodeAssetMappingReview("reopen_me", 1);
+    await beginLongEpisodeAssetMappingReview("reopen_me", 1, {});
+    await updateLongEpisodeAssetMapping("reopen_me", 1, "MAP-1", { decision: "confirm" });
+    await approveLongEpisodeAssetMappingReview("reopen_me", 1, { approved: true, scriptFingerprint: review.scriptFingerprint });
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/long-projects/reopen_me/episodes/1/asset-mapping-review",
+      "/long-projects/reopen_me/episodes/1/asset-mapping-review",
+      "/long-projects/reopen_me/episodes/1/asset-mapping-review/mappings/MAP-1",
+      "/long-projects/reopen_me/episodes/1/asset-mapping-review/approval",
+    ]);
+    expect(JSON.parse(String((fetchMock.mock.calls[2]?.[1] as RequestInit).body))).toEqual({ decision: "confirm" });
+  });
+
+  it("uses only the documented local Episode image routes and explicit approval bodies", async () => {
+    const imageEpisode = { episodeNumber: 1, title: "Episode 1", summary: "", mainEvent: "", conflict: "", cliffhanger: "", nextEpisodeHook: "", status: "images_review" as const, approved: true, scriptRevision: 3, scriptHistoryCount: 1 };
+    const reviews = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending" as const, updatedAt: "2026-08-23T00:00:00.000Z" }));
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: imageEpisode, reviews }))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: imageEpisode, generatedSceneNumbers: [1, 2, 3, 4, 5, 6], reusedSceneNumbers: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: imageEpisode, reviews }))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: imageEpisode, reviews, sceneNumber: 2 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getLongEpisodeImageReview("reopen_me", 1);
+    await startLongEpisodeImageGeneration("reopen_me", 1);
+    await approveLongEpisodeImageReview("reopen_me", 1, 1);
+    await regenerateLongEpisodeImageReview("reopen_me", 1, 2);
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/long-projects/reopen_me/episodes/1/images/review",
+      "/long-projects/reopen_me/episodes/1/images/generations",
+      "/long-projects/reopen_me/episodes/1/images/review/1/approve",
+      "/long-projects/reopen_me/episodes/1/images/review/2/regenerate",
+    ]);
+    expect(JSON.parse(String((fetchMock.mock.calls[1]?.[1] as RequestInit).body))).toEqual({ approved: true });
+    expect(JSON.parse(String((fetchMock.mock.calls[3]?.[1] as RequestInit).body))).toEqual({ approved: true });
+  });
+
+  it("gets the read-only Episode Scene 6 continuity reference without a request body", async () => {
+    const response = { reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6 as const, available: true } };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, response));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getLongEpisodeContinuityReference("reopen_me", 2)).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith("/long-projects/reopen_me/episodes/2/continuity-reference");
+  });
+
   it("rejects malformed settings responses", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { settings: { title: "x" } })));
     await expect(getLongProjectSettings("sample")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
@@ -161,5 +260,28 @@ describe("longProjectsApi", () => {
       expect(result.code.length).toBeGreaterThan(0);
       expect(result.message).not.toContain("some internal detail");
     });
+  });
+
+  it("validates Episode video preview responses and preserves a stale submission API code", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { confirmationId: "x", model: "gen4_turbo", ratio: "720:1280", durationSecondsPerScene: 5, executionMode: "sequential", estimatedCostUsd: 1.5, scenes: [] })));
+    await expect(getLongEpisodeVideoPreview("long", 1)).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(409, { code: "VIDEO_CONFIRMATION_STALE", message: "C:\\\\private" })));
+    await expect(startLongEpisodeVideoGeneration("long", 1, { confirmationId: "confirm", userRequestId: "request", approved: true, prompts: [1,2,3,4,5,6].map((sceneNumber) => ({ sceneNumber: sceneNumber as 1|2|3|4|5|6, prompt: "prompt" })) })).rejects.toMatchObject({ code: "VIDEO_CONFIRMATION_STALE" });
+  });
+
+  it("uses GET and explicit PUT only for Episode continuity memory", async () => {
+    const continuity = { episodeNumber: 1, episodeSummary: "summary", events: [], appearedCharacterIds: [], characterChanges: [], appearedLocationIds: [], itemChanges: [], resolvedConflicts: [], newConflicts: [], revealedSecretIds: [], remainingSecretIds: [], newForeshadowingIds: [], resolvedForeshadowingIds: [], nextActions: [], timeElapsed: "", worldChanges: [], userEdits: "", updatedAt: "2026-08-23T00:00:00.000Z" };
+    const nextEpisode = { episodeNumber: 2, title: "Episode 2", summary: "", mainEvent: "", conflict: "", cliffhanger: "", nextEpisodeHook: "", status: "outline_ready" as const, approved: false, scriptRevision: 0, scriptHistoryCount: 0 };
+    const { episodeNumber: _episodeNumber, updatedAt: _updatedAt, ...inputMemory } = continuity;
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { memory: null })).mockResolvedValueOnce(jsonResponse(200, { memory: continuity, nextEpisode }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getLongEpisodeContinuity("long", 1)).resolves.toEqual({ memory: null });
+    await expect(saveLongEpisodeContinuity("long", 1, { memory: inputMemory })).resolves.toEqual({ memory: continuity, nextEpisode });
+
+    expect(fetchMock.mock.calls[0]).toEqual(["/long-projects/long/episodes/1/continuity"]);
+    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(url).toBe("/long-projects/long/episodes/1/continuity");
+    expect(init.method).toBe("PUT");
   });
 });

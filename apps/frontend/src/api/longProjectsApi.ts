@@ -1,5 +1,12 @@
 import {
   API_ROUTES,
+  type ArchiveProjectRequest,
+  type ArchiveProjectResponse,
+  type AddLongEpisodeRequest,
+  type AddLongEpisodeResponse,
+  type DuplicateLongEpisodeResponse,
+  type ArchiveLongEpisodeRequest,
+  type ArchiveLongEpisodeResponse,
   type ApproveLongProjectOutlineRequest,
   type ApproveLongProjectOutlineResponse,
   type CreateLongProjectOutlinePreviewResponse,
@@ -12,6 +19,47 @@ import {
   type LongProject,
   type LongProjectSettings,
   type LongProjectSummary,
+  type GetLongEpisodeResponse,
+  type GenerateLongEpisodeScriptRequest,
+  type GenerateLongEpisodeScriptResponse,
+  type UpdateLongEpisodeScriptRequest,
+  type UpdateLongEpisodeScriptResponse,
+  type ApproveLongEpisodeScriptRequest,
+  type ApproveLongEpisodeScriptResponse,
+  type LongEpisodeDetail,
+  type LongEpisodeScript,
+  type LongEpisodeAssetMappingCandidate,
+  type LongEpisodeAssetMappingReview,
+  type GetLongEpisodeAssetMappingReviewResponse,
+  type BeginLongEpisodeAssetMappingReviewRequest,
+  type BeginLongEpisodeAssetMappingReviewResponse,
+  type UpdateLongEpisodeAssetMappingRequest,
+  type UpdateLongEpisodeAssetMappingResponse,
+  type ApproveLongEpisodeAssetMappingReviewRequest,
+  type ApproveLongEpisodeAssetMappingReviewResponse,
+  type LongEpisodeAutomaticReferenceSummary,
+  type GetLongEpisodeAutomaticReferenceSummaryResponse,
+  type RerunLongEpisodeAssetMatchingResponse,
+  type LongEpisodeImageReview,
+  type StartLongEpisodeImageGenerationRequest,
+  type StartLongEpisodeImageGenerationResponse,
+  type GetLongEpisodeImageReviewResponse,
+  type ApproveLongEpisodeImageReviewResponse,
+  type RegenerateLongEpisodeImageReviewResponse,
+  type GetLongEpisodeVideoPreviewResponse,
+  type StartLongEpisodeVideoGenerationRequest,
+  type StartLongEpisodeVideoGenerationResponse,
+  type LongEpisodeVideoProgress,
+  type LongEpisodeVideoReview,
+  type GetLongEpisodeVideoReviewResponse,
+  type ApproveLongEpisodeVideoReviewResponse,
+  type RegenerateLongEpisodeVideoResponse,
+  type MergeLongEpisodeVideosResponse,
+  type LongEpisodeContinuityMemory,
+  type GetLongEpisodeContinuityResponse,
+  type SaveLongEpisodeContinuityRequest,
+  type SaveLongEpisodeContinuityResponse,
+  type GetLongEpisodeContinuityReferenceResponse,
   type UpdateLongProjectSettingsRequest,
   type UpdateLongProjectSettingsResponse,
 } from "@ai-animation-studio/shared";
@@ -44,12 +92,25 @@ const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답�
 const UNKNOWN = { code: "CLIENT_UNKNOWN_ERROR", message: "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요." };
 
 /** Never surfaces the backend's raw message or details text — only a fixed, safe message per code. */
+const LONG_EPISODE_MERGE_ERRORS: Record<string, string> = {
+  LONG_EPISODE_MERGE_NOT_ALLOWED: "Final Episode rendering requires six approved video scenes.",
+  LONG_EPISODE_MERGE_CLIPS_INVALID: "The approved Episode video scenes are not ready to render.",
+  LONG_EPISODE_FFMPEG_UNAVAILABLE: "Final Episode rendering is unavailable on this computer.",
+  LONG_EPISODE_MERGE_FAILED: "Episode rendering could not be completed. The approved scenes were kept.",
+};
+const LONG_EPISODE_CONTINUITY_ERRORS: Record<string, string> = {
+  LONG_EPISODE_CONTINUITY_NOT_ALLOWED: "Continuity memory can be saved only after the Episode final video is complete.",
+  LONG_EPISODE_CONTINUITY_INVALID: "The continuity memory needs valid reviewed values before it can be saved.",
+};
+
 export function toLongProjectDisplayError(error: unknown): { code: string; message: string; details?: Record<string, unknown> } {
   if (!(error instanceof LongProjectsApiError)) return UNKNOWN;
   if (Object.prototype.hasOwnProperty.call(SAFE_ERRORS, error.code)) {
     const details = error.details;
     return details ? { code: error.code, message: SAFE_ERRORS[error.code]!, details } : { code: error.code, message: SAFE_ERRORS[error.code]! };
   }
+  if (Object.prototype.hasOwnProperty.call(LONG_EPISODE_MERGE_ERRORS, error.code)) return { code: error.code, message: LONG_EPISODE_MERGE_ERRORS[error.code]! };
+  if (Object.prototype.hasOwnProperty.call(LONG_EPISODE_CONTINUITY_ERRORS, error.code)) return { code: error.code, message: LONG_EPISODE_CONTINUITY_ERRORS[error.code]! };
   if (error.code === NETWORK.code) return NETWORK;
   if (error.code === MALFORMED.code) return MALFORMED;
   return UNKNOWN;
@@ -69,6 +130,7 @@ const isDigest = (value: unknown): value is string => typeof value === "string" 
 const PLATFORMS = new Set(["YouTube Shorts", "YouTube"]);
 const ASPECT_RATIOS = new Set(["9:16", "16:9"]);
 const OUTLINE_STATUSES = new Set(["planned", "outline_ready"]);
+const EPISODE_STATUSES = new Set(["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted", "rendering", "completed", "failed"]);
 
 function isLongProjectSettings(value: unknown): value is LongProjectSettings {
   if (!isRecord(value)) return false;
@@ -107,8 +169,20 @@ function isLongEpisodeOutline(value: unknown): value is LongEpisodeOutline {
     typeof value.conflict === "string" &&
     typeof value.cliffhanger === "string" &&
     typeof value.nextEpisodeHook === "string" &&
-    OUTLINE_STATUSES.has(value.status as string)
+    EPISODE_STATUSES.has(value.status as string)
   );
+}
+
+function isLongEpisodeScript(value: unknown): value is LongEpisodeScript {
+  if (!isRecord(value) || typeof value.title !== "string" || typeof value.synopsis !== "string" || typeof value.ending !== "string" || !Array.isArray(value.scenes) || value.scenes.length !== 6) return false;
+  const fields = ["description", "visualAction", "startMotion", "mainMotion", "endMotion", "shotSize", "cameraAngle", "composition", "lensFeel", "focusSubject", "cameraMotion", "environmentMotion", "motionSpeed", "motionIntensity", "expressionChange", "continuityHint"];
+  return value.scenes.every((scene, index) => isRecord(scene) && scene.number === index + 1 && fields.every((field) => typeof scene[field] === "string"));
+}
+
+function isLongEpisodeDetail(value: unknown): value is LongEpisodeDetail {
+  if (!isLongEpisodeOutline(value)) return false;
+  const record = value as unknown as Record<string, unknown>;
+  return typeof record.approved === "boolean" && Number.isInteger(record.scriptRevision) && Number.isInteger(record.scriptHistoryCount) && (record.script === undefined || isLongEpisodeScript(record.script));
 }
 
 function isLongProject(value: unknown): value is LongProject {
@@ -162,6 +236,124 @@ function isApprovalResponse(value: unknown): value is ApproveLongProjectOutlineR
     typeof value.modified === "boolean"
   );
 }
+
+function isArchiveProjectResponse(value: unknown): value is ArchiveProjectResponse {
+  return isRecord(value) && isNonEmptyString(value.archivedProjectId);
+}
+
+function isAddLongEpisodeResponse(value: unknown): value is AddLongEpisodeResponse {
+  return isRecord(value) && isLongProject(value.project) && isLongEpisodeOutline(value.episode);
+}
+
+function isDuplicateLongEpisodeResponse(value: unknown): value is DuplicateLongEpisodeResponse {
+  return isAddLongEpisodeResponse(value);
+}
+
+function isArchiveLongEpisodeResponse(value: unknown): value is ArchiveLongEpisodeResponse {
+  return isRecord(value) && isLongProject(value.project) && Number.isInteger(value.archivedEpisodeNumber) && isNonEmptyString(value.archiveId);
+}
+
+function isEpisodeResponse(value: unknown): value is GetLongEpisodeResponse {
+  return isRecord(value) && isLongEpisodeDetail(value.episode);
+}
+
+function isEpisodeCandidate(value: unknown): value is LongEpisodeAssetMappingCandidate {
+  if (!isRecord(value) || !isNonEmptyString(value.mappingId) || !isNonEmptyString(value.assetId) || !isNonEmptyString(value.sourceItemId)) return false;
+  if (value.sourceCollection !== "basic" && value.sourceCollection !== "characters" && value.sourceCollection !== "locations" && value.sourceCollection !== "props") return false;
+  if (value.usageRole !== "character" && value.usageRole !== "background" && value.usageRole !== "object" && value.usageRole !== "style") return false;
+  if (value.versionPolicy !== "pinned_version" && value.versionPolicy !== "follow_latest" && value.versionPolicy !== "snapshot") return false;
+  if (value.pinnedVersion !== null && (!Number.isInteger(value.pinnedVersion) || (value.pinnedVersion as number) <= 0)) return false;
+  if (!isRecord(value.episodeScope) || (value.episodeScope.mode !== "all" && (value.episodeScope.mode !== "episode" || !Number.isInteger(value.episodeScope.episode)))) return false;
+  return (value.status === "suggested" || value.status === "confirmed" || value.status === "excluded") && typeof value.userConfirmed === "boolean";
+}
+
+function isEpisodeMappingReview(value: unknown): value is LongEpisodeAssetMappingReview {
+  return isRecord(value) && isNonEmptyString(value.projectId) && Number.isInteger(value.episodeNumber) && Number.isInteger(value.mappingRevision)
+    && Number.isInteger(value.scriptRevision) && isDigest(value.scriptFingerprint) && (value.status === "waiting" || value.status === "approved")
+    && typeof value.textOnlyConfirmed === "boolean" && Array.isArray(value.candidates) && value.candidates.every(isEpisodeCandidate);
+}
+
+const isGetEpisodeMappingReviewResponse = (value: unknown): value is GetLongEpisodeAssetMappingReviewResponse => isRecord(value) && isEpisodeMappingReview(value.review);
+const isBeginEpisodeMappingReviewResponse = (value: unknown): value is BeginLongEpisodeAssetMappingReviewResponse => isGetEpisodeMappingReviewResponse(value);
+const isUpdateEpisodeMappingResponse = (value: unknown): value is UpdateLongEpisodeAssetMappingResponse => isRecord(value) && isEpisodeCandidate(value.mapping) && isEpisodeMappingReview(value.review);
+const isApproveEpisodeMappingResponse = (value: unknown): value is ApproveLongEpisodeAssetMappingReviewResponse => isRecord(value) && isEpisodeMappingReview(value.review) && isLongEpisodeDetail(value.episode);
+
+function isAutomaticReferenceSummary(value: unknown): value is LongEpisodeAutomaticReferenceSummary {
+  if (!isRecord(value) || !Array.isArray(value.candidateAssetIds) || !value.candidateAssetIds.every(isNonEmptyString)
+    || !isRecord(value.selectedAssetIdsByScene) || value.estimatedImageApiCalls !== 6) return false;
+  const selections = value.selectedAssetIdsByScene as Record<string, unknown>;
+  return [1, 2, 3, 4, 5, 6].every((sceneNumber) => {
+    const selection = selections[String(sceneNumber)];
+    return Array.isArray(selection) && selection.every(isNonEmptyString);
+  });
+}
+const isGetAutomaticReferenceSummaryResponse = (value: unknown): value is GetLongEpisodeAutomaticReferenceSummaryResponse => isRecord(value) && isAutomaticReferenceSummary(value.summary);
+const isRerunEpisodeAssetMatchingResponse = (value: unknown): value is RerunLongEpisodeAssetMatchingResponse => isRecord(value) && isEpisodeMappingReview(value.review) && isLongEpisodeDetail(value.episode);
+
+function isSceneNumber(value: unknown): value is 1 | 2 | 3 | 4 | 5 | 6 {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 6;
+}
+
+function isEpisodeImageReview(value: unknown): value is LongEpisodeImageReview {
+  return isRecord(value) && isSceneNumber(value.sceneNumber)
+    && (value.status === "pending" || value.status === "approved") && isNonEmptyString(value.updatedAt);
+}
+
+const isEpisodeImageReviews = (value: unknown): value is LongEpisodeImageReview[] => Array.isArray(value) && value.every(isEpisodeImageReview);
+const isStartEpisodeImageGenerationResponse = (value: unknown): value is StartLongEpisodeImageGenerationResponse => isRecord(value)
+  && isLongEpisodeDetail(value.episode) && Array.isArray(value.generatedSceneNumbers) && value.generatedSceneNumbers.every(isSceneNumber)
+  && Array.isArray(value.reusedSceneNumbers) && value.reusedSceneNumbers.every(isSceneNumber);
+const isGetEpisodeImageReviewResponse = (value: unknown): value is GetLongEpisodeImageReviewResponse => isRecord(value) && isLongEpisodeDetail(value.episode) && isEpisodeImageReviews(value.reviews);
+const isApproveEpisodeImageReviewResponse = (value: unknown): value is ApproveLongEpisodeImageReviewResponse => isGetEpisodeImageReviewResponse(value);
+const isRegenerateEpisodeImageReviewResponse = (value: unknown): value is RegenerateLongEpisodeImageReviewResponse => isRecord(value) && isGetEpisodeImageReviewResponse(value) && isSceneNumber(value.sceneNumber);
+
+function isEpisodeVideoPreview(value: unknown): boolean {
+  return isRecord(value) && isSceneNumber(value.sceneNumber) && typeof value.prompt === "string" && typeof value.estimatedCostUsd === "number";
+}
+const isGetEpisodeVideoPreviewResponse = (value: unknown): value is GetLongEpisodeVideoPreviewResponse => isRecord(value)
+  && isNonEmptyString(value.confirmationId) && value.model === "gen4_turbo" && (value.ratio === "720:1280" || value.ratio === "1280:720")
+  && value.durationSecondsPerScene === 5 && value.executionMode === "sequential" && typeof value.estimatedCostUsd === "number"
+  && Array.isArray(value.scenes) && value.scenes.length === 6 && value.scenes.every(isEpisodeVideoPreview);
+function isEpisodeVideoProgress(value: unknown): value is LongEpisodeVideoProgress {
+  return isRecord(value) && isNonEmptyString(value.jobId) && (value.status === "created" || value.status === "running" || value.status === "succeeded" || value.status === "failed" || value.status === "interrupted")
+    && (value.currentSceneNumber === undefined || isSceneNumber(value.currentSceneNumber)) && Array.isArray(value.completedSceneNumbers) && value.completedSceneNumbers.every(isSceneNumber)
+    && Array.isArray(value.failedSceneNumbers) && value.failedSceneNumbers.every(isSceneNumber) && isLongEpisodeDetail(value.episode);
+}
+const isStartEpisodeVideoResponse = (value: unknown): value is StartLongEpisodeVideoGenerationResponse => isRecord(value) && isNonEmptyString(value.jobId) && Array.isArray(value.acceptedSceneNumbers) && value.acceptedSceneNumbers.length === 6 && value.acceptedSceneNumbers.every(isSceneNumber) && isLongEpisodeDetail(value.episode);
+function isEpisodeVideoReview(value: unknown): value is LongEpisodeVideoReview { return isRecord(value) && isSceneNumber(value.sceneNumber) && (value.status === "pending" || value.status === "approved") && isNonEmptyString(value.updatedAt); }
+const isGetEpisodeVideoReviewResponse = (value: unknown): value is GetLongEpisodeVideoReviewResponse => isRecord(value) && isLongEpisodeDetail(value.episode) && Array.isArray(value.reviews) && value.reviews.every(isEpisodeVideoReview);
+const isApproveEpisodeVideoReviewResponse = (value: unknown): value is ApproveLongEpisodeVideoReviewResponse => isGetEpisodeVideoReviewResponse(value);
+const isRegenerateEpisodeVideoResponse = (value: unknown): value is RegenerateLongEpisodeVideoResponse => {
+  if (!isEpisodeVideoProgress(value)) return false;
+  const record = value as unknown as Record<string, unknown>;
+  return Array.isArray(record.regeneratedSceneNumbers) && record.regeneratedSceneNumbers.every(isSceneNumber);
+};
+const isMergeLongEpisodeVideosResponse = (value: unknown): value is MergeLongEpisodeVideosResponse => isRecord(value)
+  && isLongEpisodeDetail(value.episode) && value.finalVideoPath === "videos/final/instagram_reel.mp4";
+
+function isUnknownRecordArray(value: unknown): value is Array<Record<string, unknown>> {
+  return Array.isArray(value) && value.every(isRecord);
+}
+
+function isLongEpisodeContinuityMemory(value: unknown): value is LongEpisodeContinuityMemory {
+  if (!isRecord(value) || !Number.isInteger(value.episodeNumber) || !isNonEmptyString(value.updatedAt)) return false;
+  const stringKeys = ["episodeSummary", "timeElapsed", "userEdits"];
+  const listKeys = ["events", "appearedCharacterIds", "appearedLocationIds", "resolvedConflicts", "newConflicts", "revealedSecretIds", "remainingSecretIds", "newForeshadowingIds", "resolvedForeshadowingIds", "nextActions", "worldChanges"];
+  return stringKeys.every((key) => typeof value[key] === "string")
+    && listKeys.every((key) => Array.isArray(value[key]) && value[key].every((item) => typeof item === "string"))
+    && isUnknownRecordArray(value.characterChanges) && isUnknownRecordArray(value.itemChanges);
+}
+
+const isGetLongEpisodeContinuityResponse = (value: unknown): value is GetLongEpisodeContinuityResponse => isRecord(value) && (value.memory === null || isLongEpisodeContinuityMemory(value.memory));
+const isSaveLongEpisodeContinuityResponse = (value: unknown): value is SaveLongEpisodeContinuityResponse => isRecord(value)
+  && isLongEpisodeContinuityMemory(value.memory) && (value.nextEpisode === null || isLongEpisodeDetail(value.nextEpisode));
+const isGetLongEpisodeContinuityReferenceResponse = (value: unknown): value is GetLongEpisodeContinuityReferenceResponse => {
+  if (!isRecord(value)) return false;
+  const reference = value.reference;
+  if (reference === null) return true;
+  return isRecord(reference) && typeof reference.previousEpisodeNumber === "number" && Number.isInteger(reference.previousEpisodeNumber) && reference.previousEpisodeNumber > 0
+    && reference.sourceSceneNumber === 6 && typeof reference.available === "boolean";
+};
 
 async function readJsonBody(response: Response): Promise<unknown> {
   try {
@@ -241,3 +433,92 @@ export function approveLongProjectOutline(
     isApprovalResponse,
   );
 }
+
+export function archiveLongProject(
+  projectId: string,
+  requestBody: ArchiveProjectRequest,
+): Promise<ArchiveProjectResponse> {
+  return request(
+    API_ROUTES.longProjectArchive(projectId),
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) },
+    isArchiveProjectResponse,
+  );
+}
+
+/** Adds a local draft Episode only; it never triggers story, image, or video generation. */
+export function addLongEpisode(projectId: string, requestBody: AddLongEpisodeRequest = {}): Promise<AddLongEpisodeResponse> {
+  return request(API_ROUTES.longProjectEpisodes(projectId), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isAddLongEpisodeResponse);
+}
+
+/** Duplicates outline metadata into a new planned Episode; generated work is not copied. */
+export function duplicateLongEpisode(projectId: string, episodeNumber: number): Promise<DuplicateLongEpisodeResponse> {
+  return request(API_ROUTES.longProjectEpisodeDuplicate(projectId, episodeNumber), { method: "POST" }, isDuplicateLongEpisodeResponse);
+}
+
+/** The backend recoverably archives the final draft Episode after this explicit approval. */
+export function archiveLongEpisode(projectId: string, episodeNumber: number): Promise<ArchiveLongEpisodeResponse> {
+  const requestBody: ArchiveLongEpisodeRequest = { approved: true };
+  return request(API_ROUTES.longProjectEpisodeArchive(projectId, episodeNumber), { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isArchiveLongEpisodeResponse);
+}
+
+export function getLongEpisode(projectId: string, episodeNumber: number): Promise<GetLongEpisodeResponse> { return request(API_ROUTES.longEpisode(projectId, episodeNumber), undefined, isEpisodeResponse); }
+export function generateLongEpisodeScript(projectId: string, episodeNumber: number, requestBody: GenerateLongEpisodeScriptRequest): Promise<GenerateLongEpisodeScriptResponse> { return request(API_ROUTES.longEpisodeScriptGeneration(projectId, episodeNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isEpisodeResponse); }
+export function updateLongEpisodeScript(projectId: string, episodeNumber: number, requestBody: UpdateLongEpisodeScriptRequest): Promise<UpdateLongEpisodeScriptResponse> { return request(API_ROUTES.longEpisodeScript(projectId, episodeNumber), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isEpisodeResponse); }
+export function approveLongEpisodeScript(projectId: string, episodeNumber: number, requestBody: ApproveLongEpisodeScriptRequest): Promise<ApproveLongEpisodeScriptResponse> { return request(API_ROUTES.longEpisodeScriptApproval(projectId, episodeNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isEpisodeResponse); }
+
+export function getLongEpisodeAssetMappingReview(projectId: string, episodeNumber: number): Promise<GetLongEpisodeAssetMappingReviewResponse> {
+  return request(API_ROUTES.longEpisodeAssetMappingReview(projectId, episodeNumber), undefined, isGetEpisodeMappingReviewResponse);
+}
+
+export function beginLongEpisodeAssetMappingReview(projectId: string, episodeNumber: number, requestBody: BeginLongEpisodeAssetMappingReviewRequest): Promise<BeginLongEpisodeAssetMappingReviewResponse> {
+  return request(API_ROUTES.longEpisodeAssetMappingReview(projectId, episodeNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isBeginEpisodeMappingReviewResponse);
+}
+
+export function updateLongEpisodeAssetMapping(projectId: string, episodeNumber: number, mappingId: string, requestBody: UpdateLongEpisodeAssetMappingRequest): Promise<UpdateLongEpisodeAssetMappingResponse> {
+  return request(API_ROUTES.longEpisodeAssetMapping(projectId, episodeNumber, mappingId), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isUpdateEpisodeMappingResponse);
+}
+
+export function approveLongEpisodeAssetMappingReview(projectId: string, episodeNumber: number, requestBody: ApproveLongEpisodeAssetMappingReviewRequest): Promise<ApproveLongEpisodeAssetMappingReviewResponse> {
+  return request(API_ROUTES.longEpisodeAssetMappingReviewApproval(projectId, episodeNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isApproveEpisodeMappingResponse);
+}
+
+/** Read-only deterministic scene-to-Asset preview; it never starts image generation. */
+export function getLongEpisodeAutomaticReferenceSummary(projectId: string, episodeNumber: number): Promise<GetLongEpisodeAutomaticReferenceSummaryResponse> {
+  return request(API_ROUTES.longEpisodeAutomaticReferenceSummary(projectId, episodeNumber), undefined, isGetAutomaticReferenceSummaryResponse);
+}
+
+/** Re-runs only the local matcher and returns the Episode to explicit mapping review. */
+export function rerunLongEpisodeAssetMatching(projectId: string, episodeNumber: number): Promise<RerunLongEpisodeAssetMatchingResponse> {
+  return request(API_ROUTES.longEpisodeAssetMatchingRerun(projectId, episodeNumber), { method: "POST" }, isRerunEpisodeAssetMatchingResponse);
+}
+
+export function getLongEpisodeImageReview(projectId: string, episodeNumber: number): Promise<GetLongEpisodeImageReviewResponse> {
+  return request(API_ROUTES.longEpisodeImageReview(projectId, episodeNumber), undefined, isGetEpisodeImageReviewResponse);
+}
+
+export function startLongEpisodeImageGeneration(projectId: string, episodeNumber: number): Promise<StartLongEpisodeImageGenerationResponse> {
+  const requestBody: StartLongEpisodeImageGenerationRequest = { approved: true };
+  return request(API_ROUTES.longEpisodeImageGeneration(projectId, episodeNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isStartEpisodeImageGenerationResponse);
+}
+
+export function approveLongEpisodeImageReview(projectId: string, episodeNumber: number, sceneNumber: 1 | 2 | 3 | 4 | 5 | 6): Promise<ApproveLongEpisodeImageReviewResponse> {
+  return request(API_ROUTES.longEpisodeImageReviewApproval(projectId, episodeNumber, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) }, isApproveEpisodeImageReviewResponse);
+}
+
+export function regenerateLongEpisodeImageReview(projectId: string, episodeNumber: number, sceneNumber: 1 | 2 | 3 | 4 | 5 | 6): Promise<RegenerateLongEpisodeImageReviewResponse> {
+  return request(API_ROUTES.longEpisodeImageReviewRegeneration(projectId, episodeNumber, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) }, isRegenerateEpisodeImageReviewResponse);
+}
+
+export function getLongEpisodeVideoPreview(projectId: string, episodeNumber: number): Promise<GetLongEpisodeVideoPreviewResponse> { return request(API_ROUTES.longEpisodeVideoPreview(projectId, episodeNumber), undefined, isGetEpisodeVideoPreviewResponse); }
+export function startLongEpisodeVideoGeneration(projectId: string, episodeNumber: number, requestBody: StartLongEpisodeVideoGenerationRequest): Promise<StartLongEpisodeVideoGenerationResponse> { return request(API_ROUTES.longEpisodeVideoGeneration(projectId, episodeNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isStartEpisodeVideoResponse); }
+export function getLongEpisodeVideoProgress(projectId: string, episodeNumber: number, jobId: string): Promise<LongEpisodeVideoProgress> { return request(API_ROUTES.longEpisodeVideoProgress(projectId, episodeNumber, jobId), undefined, isEpisodeVideoProgress); }
+export function stopLongEpisodeVideoGeneration(projectId: string, episodeNumber: number, jobId: string): Promise<LongEpisodeVideoProgress> { return request(API_ROUTES.longEpisodeVideoStop(projectId, episodeNumber, jobId), { method: "POST" }, isEpisodeVideoProgress); }
+export function restartLongEpisodeVideoGeneration(projectId: string, episodeNumber: number, jobId: string): Promise<LongEpisodeVideoProgress> { return request(API_ROUTES.longEpisodeVideoRestart(projectId, episodeNumber, jobId), { method: "POST" }, isEpisodeVideoProgress); }
+export function regenerateLongEpisodeVideo(projectId: string, episodeNumber: number, jobId: string, sceneNumber: 1 | 2 | 3 | 4 | 5 | 6): Promise<RegenerateLongEpisodeVideoResponse> { return request(API_ROUTES.longEpisodeVideoRegenerate(projectId, episodeNumber, jobId, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) }, isRegenerateEpisodeVideoResponse); }
+export function getLongEpisodeVideoReview(projectId: string, episodeNumber: number, jobId: string): Promise<GetLongEpisodeVideoReviewResponse> { return request(API_ROUTES.longEpisodeVideoReview(projectId, episodeNumber, jobId), undefined, isGetEpisodeVideoReviewResponse); }
+export function approveLongEpisodeVideoReview(projectId: string, episodeNumber: number, jobId: string, sceneNumber: 1 | 2 | 3 | 4 | 5 | 6): Promise<ApproveLongEpisodeVideoReviewResponse> { return request(API_ROUTES.longEpisodeVideoReviewApproval(projectId, episodeNumber, jobId, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) }, isApproveEpisodeVideoReviewResponse); }
+/** Sends only the already explicitly confirmed Episode final-render request. */
+export function mergeLongEpisodeVideos(projectId: string, episodeNumber: number): Promise<MergeLongEpisodeVideosResponse> { return request(API_ROUTES.longEpisodeVideoMerge(projectId, episodeNumber), { method: "POST" }, isMergeLongEpisodeVideosResponse); }
+export function getLongEpisodeContinuity(projectId: string, episodeNumber: number): Promise<GetLongEpisodeContinuityResponse> { return request(API_ROUTES.longEpisodeContinuity(projectId, episodeNumber), undefined, isGetLongEpisodeContinuityResponse); }
+export function saveLongEpisodeContinuity(projectId: string, episodeNumber: number, requestBody: SaveLongEpisodeContinuityRequest): Promise<SaveLongEpisodeContinuityResponse> { return request(API_ROUTES.longEpisodeContinuity(projectId, episodeNumber), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isSaveLongEpisodeContinuityResponse); }
+export function getLongEpisodeContinuityReference(projectId: string, episodeNumber: number): Promise<GetLongEpisodeContinuityReferenceResponse> { return request(API_ROUTES.longEpisodeContinuityReference(projectId, episodeNumber), undefined, isGetLongEpisodeContinuityReferenceResponse); }

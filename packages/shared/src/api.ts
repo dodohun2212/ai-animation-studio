@@ -46,8 +46,203 @@ export interface LongEpisodeOutline {
   conflict: string;
   cliffhanger: string;
   nextEpisodeHook: string;
-  status: "planned" | "outline_ready";
+  status: LongEpisodeStatus;
 }
+
+export type LongEpisodeStatus = "planned" | "outline_ready" | "script_review" | "script_approved" | "waiting_for_asset_mapping_review" | "asset_mapping_approved" | "generating_images" | "images_ready" | "images_review" | "waiting_for_video_confirmation" | "videos_generating" | "videos_ready" | "videos_review" | "videos_approved" | "interrupted" | "rendering" | "completed" | "failed";
+
+export interface LongEpisodeScene {
+  number: SceneNumber;
+  description: string;
+  visualAction: string;
+  startMotion: string;
+  mainMotion: string;
+  endMotion: string;
+  shotSize: string;
+  cameraAngle: string;
+  composition: string;
+  lensFeel: string;
+  focusSubject: string;
+  cameraMotion: string;
+  environmentMotion: string;
+  motionSpeed: string;
+  motionIntensity: string;
+  expressionChange: string;
+  continuityHint: string;
+}
+
+export interface LongEpisodeScript {
+  title: string;
+  synopsis: string;
+  ending: string;
+  scenes: LongEpisodeScene[];
+}
+
+export interface LongEpisodeDetail extends LongEpisodeOutline {
+  approved: boolean;
+  scriptRevision: number;
+  script?: LongEpisodeScript;
+  scriptHistoryCount: number;
+}
+
+export interface GetLongEpisodeResponse { episode: LongEpisodeDetail; }
+export interface GenerateLongEpisodeScriptRequest { regenerate?: true; }
+export interface GenerateLongEpisodeScriptResponse { episode: LongEpisodeDetail; }
+export interface UpdateLongEpisodeScriptRequest { script: LongEpisodeScript; }
+export interface UpdateLongEpisodeScriptResponse { episode: LongEpisodeDetail; }
+export interface ApproveLongEpisodeScriptRequest { approved: true; }
+export interface ApproveLongEpisodeScriptResponse { episode: LongEpisodeDetail; }
+
+export interface LongEpisodeAssetMappingCandidate {
+  mappingId: string;
+  sourceCollection: "basic" | "characters" | "locations" | "props";
+  sourceItemId: string;
+  assetId: string;
+  usageRole: "character" | "background" | "object" | "style";
+  versionPolicy: "pinned_version" | "follow_latest" | "snapshot";
+  pinnedVersion: number | null;
+  episodeScope: { mode: "all" } | { mode: "episode"; episode: number };
+  status: "suggested" | "confirmed" | "excluded";
+  userConfirmed: boolean;
+}
+
+export interface LongEpisodeAssetMappingReview {
+  projectId: string;
+  episodeNumber: number;
+  mappingRevision: number;
+  scriptRevision: number;
+  scriptFingerprint: string;
+  status: "waiting" | "approved";
+  textOnlyConfirmed: boolean;
+  candidates: LongEpisodeAssetMappingCandidate[];
+}
+
+export interface GetLongEpisodeAssetMappingReviewResponse { review: LongEpisodeAssetMappingReview; }
+export interface BeginLongEpisodeAssetMappingReviewRequest { textOnlyConfirmed?: boolean; }
+export interface BeginLongEpisodeAssetMappingReviewResponse { review: LongEpisodeAssetMappingReview; }
+export interface UpdateLongEpisodeAssetMappingRequest { decision: "confirm" | "exclude"; }
+export interface UpdateLongEpisodeAssetMappingResponse { mapping: LongEpisodeAssetMappingCandidate; review: LongEpisodeAssetMappingReview; }
+export interface ApproveLongEpisodeAssetMappingReviewRequest { approved: true; scriptFingerprint: string; }
+export interface ApproveLongEpisodeAssetMappingReviewResponse { review: LongEpisodeAssetMappingReview; episode: LongEpisodeDetail; }
+
+/** Provider-free preview of the Asset IDs automatically selected per Episode scene. */
+export interface LongEpisodeAutomaticReferenceSummary {
+  candidateAssetIds: string[];
+  selectedAssetIdsByScene: Record<SceneNumber, string[]>;
+  estimatedImageApiCalls: 6;
+}
+export interface GetLongEpisodeAutomaticReferenceSummaryResponse { summary: LongEpisodeAutomaticReferenceSummary; }
+/** Rebuilds only deterministic automatic scene selections and returns to mapping review. */
+export interface RerunLongEpisodeAssetMatchingResponse { review: LongEpisodeAssetMappingReview; episode: LongEpisodeDetail; }
+
+/** Provider-free persisted review decision for one long-story Episode image. */
+export interface LongEpisodeImageReview {
+  sceneNumber: SceneNumber;
+  status: "pending" | "approved";
+  updatedAt: string;
+}
+
+/** Explicit approval starts only the local fake image adapter for this Episode. */
+export interface StartLongEpisodeImageGenerationRequest { approved: true; }
+export interface StartLongEpisodeImageGenerationResponse {
+  episode: LongEpisodeDetail;
+  generatedSceneNumbers: SceneNumber[];
+  reusedSceneNumbers: SceneNumber[];
+}
+export interface GetLongEpisodeImageReviewResponse { episode: LongEpisodeDetail; reviews: LongEpisodeImageReview[]; }
+export interface ApproveLongEpisodeImageReviewRequest { approved: true; }
+export interface ApproveLongEpisodeImageReviewResponse extends GetLongEpisodeImageReviewResponse {}
+export interface RegenerateLongEpisodeImageReviewRequest { approved: true; }
+export interface RegenerateLongEpisodeImageReviewResponse extends GetLongEpisodeImageReviewResponse { sceneNumber: SceneNumber; }
+
+/** A provider-free Episode video preflight; internal image paths are never exposed. */
+export interface LongEpisodeVideoPreview {
+  sceneNumber: SceneNumber;
+  prompt: string;
+  estimatedCostUsd: number;
+}
+export interface GetLongEpisodeVideoPreviewResponse {
+  confirmationId: string;
+  model: "gen4_turbo";
+  ratio: "720:1280" | "1280:720";
+  durationSecondsPerScene: 5;
+  executionMode: "sequential";
+  scenes: LongEpisodeVideoPreview[];
+  estimatedCostUsd: number;
+}
+export interface StartLongEpisodeVideoGenerationRequest {
+  confirmationId: string;
+  userRequestId: string;
+  approved: true;
+  prompts: Array<{ sceneNumber: SceneNumber; prompt: string }>;
+}
+export interface StartLongEpisodeVideoGenerationResponse { jobId: string; acceptedSceneNumbers: SceneNumber[]; episode: LongEpisodeDetail; }
+export interface LongEpisodeVideoProgress {
+  jobId: string;
+  status: "created" | "running" | "succeeded" | "failed" | "interrupted";
+  currentSceneNumber?: SceneNumber;
+  completedSceneNumbers: SceneNumber[];
+  failedSceneNumbers: SceneNumber[];
+  episode: LongEpisodeDetail;
+}
+export interface LongEpisodeVideoReview { sceneNumber: SceneNumber; status: "pending" | "approved"; updatedAt: string; }
+export interface GetLongEpisodeVideoReviewResponse { episode: LongEpisodeDetail; reviews: LongEpisodeVideoReview[]; }
+export interface ApproveLongEpisodeVideoReviewRequest { approved: true; }
+export interface ApproveLongEpisodeVideoReviewResponse extends GetLongEpisodeVideoReviewResponse {}
+export interface RegenerateLongEpisodeVideoResponse extends LongEpisodeVideoProgress { regeneratedSceneNumbers: SceneNumber[]; }
+
+/** Final Episode render has a fixed relative output and never exposes an absolute path. */
+export interface MergeLongEpisodeVideosResponse {
+  episode: LongEpisodeDetail;
+  finalVideoPath: "videos/final/instagram_reel.mp4";
+}
+
+/** User-reviewed facts from a completed Episode, persisted before the next Episode is drafted. */
+export interface LongEpisodeContinuityMemory {
+  episodeNumber: number;
+  episodeSummary: string;
+  events: string[];
+  appearedCharacterIds: string[];
+  characterChanges: Array<Record<string, unknown>>;
+  appearedLocationIds: string[];
+  itemChanges: Array<Record<string, unknown>>;
+  resolvedConflicts: string[];
+  newConflicts: string[];
+  revealedSecretIds: string[];
+  remainingSecretIds: string[];
+  newForeshadowingIds: string[];
+  resolvedForeshadowingIds: string[];
+  nextActions: string[];
+  timeElapsed: string;
+  worldChanges: string[];
+  userEdits: string;
+  updatedAt: string;
+}
+export interface GetLongEpisodeContinuityResponse { memory: LongEpisodeContinuityMemory | null; }
+export interface SaveLongEpisodeContinuityRequest { memory: Omit<LongEpisodeContinuityMemory, "episodeNumber" | "updatedAt">; }
+export interface SaveLongEpisodeContinuityResponse { memory: LongEpisodeContinuityMemory; nextEpisode: LongEpisodeDetail | null; }
+
+/** Read-only integrity report for advanced Story Bible links; it never alters stored data. */
+export interface LongStoryBibleRelationshipIssue {
+  collection: LongStoryBibleCollection;
+  itemId: string;
+  field: "locationId" | "ownerId" | "ownedItemIds" | "characterIds" | "locationIds";
+  missingIds: string[];
+}
+export interface GetLongStoryBibleRelationshipAuditResponse { issues: LongStoryBibleRelationshipIssue[]; }
+export interface SearchLongStoryBibleItemsResponse { items: LongStoryBibleItem[]; }
+export interface DuplicateLongStoryBibleItemResponse { item: LongStoryBibleItem; storyBible: LongStoryBible; }
+export interface LongEpisodeContinuityReference {
+  previousEpisodeNumber: number;
+  sourceSceneNumber: 6;
+  available: boolean;
+}
+export interface GetLongEpisodeContinuityReferenceResponse { reference: LongEpisodeContinuityReference | null; }
+/** Archive is a recoverable local lifecycle action and requires the exact project confirmation text. */
+export interface ArchiveProjectRequest { confirmation: string; }
+export interface ArchiveProjectResponse { archivedProjectId: string; }
+export interface CharacterFolderReferenceSetRequest { childAssetIds: string[]; thumbnailAssetId: string; }
+export interface CharacterFolderReferenceSetResponse { folder: Asset; children: Asset[]; }
 
 export interface LongProjectSummary {
   id: string;
@@ -77,6 +272,16 @@ export interface CreateLongProjectOutlinePreviewResponse { preview: LongProjectO
 export interface ApproveLongProjectOutlineRequest { promptSha256: string; prompt: string; approved: true; }
 export interface ApproveLongProjectOutlineResponse { project: LongProject; approvedAt: string; promptSha256: string; modified: boolean; }
 
+/**
+ * Timeline edits are limited to draft-only Episodes.  A removed Episode is
+ * recoverably archived on disk rather than deleted in place.
+ */
+export interface AddLongEpisodeRequest { title?: string; }
+export interface AddLongEpisodeResponse { project: LongProject; episode: LongEpisodeOutline; }
+export interface DuplicateLongEpisodeResponse { project: LongProject; episode: LongEpisodeOutline; }
+export interface ArchiveLongEpisodeRequest { approved: true; }
+export interface ArchiveLongEpisodeResponse { project: LongProject; archivedEpisodeNumber: number; archiveId: string; }
+
 /** Provider-free editable records stored in a long project's Story Bible. */
 export type LongStoryBibleCollection = "characters" | "locations" | "props" | "secrets" | "foreshadowing";
 
@@ -102,6 +307,23 @@ export interface LongStoryBibleItem {
   truth?: string;
   revealAvailableEpisode?: number;
   content?: string;
+  /** null explicitly removes an existing link in an update request. */
+  assetLink?: LongStoryBibleAssetLink | null;
+}
+
+/** Optional Asset Library reference for a character, location, or prop. */
+export interface LongStoryBibleAssetLink {
+  assetId: string;
+  versionPolicy: "pinned_version" | "follow_latest";
+  pinnedVersion: number | null;
+  episodeScope: { mode: "all" } | { mode: "episode"; episode: number };
+}
+
+/** Project-wide visual style reference stored as `basic.style_asset_link`. */
+export interface LongStoryBibleStyleAssetLink {
+  assetId: string;
+  versionPolicy: "pinned_version" | "follow_latest" | "snapshot";
+  pinnedVersion: number;
 }
 
 export type LongStoryBibleItemInput = Omit<LongStoryBibleItem, "id"> & { id?: string };
@@ -109,6 +331,7 @@ export type LongStoryBibleItemInput = Omit<LongStoryBibleItem, "id"> & { id?: st
 export interface LongStoryBible {
   basic: Record<string, unknown>;
   world: Record<string, unknown>;
+  styleAssetLink?: LongStoryBibleStyleAssetLink;
   characters: LongStoryBibleItem[];
   locations: LongStoryBibleItem[];
   props: LongStoryBibleItem[];
@@ -118,6 +341,11 @@ export interface LongStoryBible {
 }
 
 export interface GetLongProjectStoryBibleResponse { storyBible: LongStoryBible; }
+export interface UpdateLongStoryBibleContentRequest { basic: Record<string, unknown>; world: Record<string, unknown>; }
+export interface UpdateLongStoryBibleContentResponse { storyBible: LongStoryBible; }
+/** `null` explicitly removes the global style Asset link. */
+export interface UpdateLongStoryBibleStyleAssetLinkRequest { assetLink: LongStoryBibleStyleAssetLink | null; }
+export interface UpdateLongStoryBibleStyleAssetLinkResponse { storyBible: LongStoryBible; }
 export interface CreateLongStoryBibleItemRequest { item: LongStoryBibleItemInput; }
 export interface CreateLongStoryBibleItemResponse { item: LongStoryBibleItem; storyBible: LongStoryBible; }
 export interface UpdateLongStoryBibleItemRequest { item: LongStoryBibleItemInput; }
@@ -155,6 +383,63 @@ export interface ShortProjectSettings {
 export interface GetProjectSettingsResponse { settings: ShortProjectSettings; }
 export interface UpdateProjectSettingsRequest { settings: ShortProjectSettings; }
 export interface UpdateProjectSettingsResponse { project: Project; settings: ShortProjectSettings; }
+
+/**
+ * One Wizard-selected supporting or representative Character Asset and its narrative role, matching Python's
+ * `character_profile.cast`. This feeds the Story prompt's `character_cast_metadata` placeholder — it does not
+ * create a project Asset Mapping (that stays owned by the separate Asset Mapping review feature).
+ */
+export interface ShortProjectCastMember {
+  assetId: string;
+  /** Free text, e.g. "protagonist" or "supporting" — Python has no fixed enum here. */
+  castRole: string;
+  /** Free text describing the character's role in the story, e.g. "서브 캐릭터". */
+  storyRole: string;
+}
+export interface GetShortProjectCastResponse { cast: ShortProjectCastMember[]; }
+export interface UpdateShortProjectCastRequest { cast: ShortProjectCastMember[]; }
+export interface UpdateShortProjectCastResponse { cast: ShortProjectCastMember[]; }
+
+/**
+ * One Wizard-selected scene reference Asset (background/object/style/general_reference) and why it matters to
+ * this project, matching Python's `lore_context["scene_reference_assets"]`. Feeds the Story and image prompts'
+ * `scene_reference_asset_metadata` placeholder alongside the separate `atmosphere_asset_metadata` list below.
+ */
+export interface ShortProjectSceneReferenceAsset {
+  assetId: string;
+  /** Free text describing project-local use, e.g. "주인공이 항상 들고 다니는 열쇠". Required, unlike cast roles. */
+  purpose: string;
+}
+/**
+ * Wizard-selected overall mood/color/lighting reference Assets (style/general_reference/background), matching
+ * Python's `lore_context["atmosphere_asset_ids"]`. An Asset here may not also appear in `sceneReferenceAssets` —
+ * Python enforces the same mutual exclusion so one Asset has one declared purpose in a project.
+ */
+export interface GetShortProjectAssetReferencesResponse {
+  atmosphereAssetIds: string[];
+  sceneReferenceAssets: ShortProjectSceneReferenceAsset[];
+}
+export type UpdateShortProjectAssetReferencesRequest = GetShortProjectAssetReferencesResponse;
+export type UpdateShortProjectAssetReferencesResponse = GetShortProjectAssetReferencesResponse;
+
+/**
+ * One other short project eligible to link as this project's Scene 1 continuity source, matching Python's
+ * `short_scene_continuity_option`: its images must be approved (workflow state at video stage or later) and it
+ * must have a full 6-scene script and 6 generated images. `storyContext` and the source image path are computed
+ * and stored server-side only — never trusted from the client — so this option list carries no editable fields.
+ */
+export interface ShortProjectContinuityOption {
+  projectId: string;
+  projectName: string;
+  label: string;
+}
+export interface ListShortProjectContinuityOptionsResponse { options: ShortProjectContinuityOption[]; }
+
+/** The currently linked continuity source, or null when this project starts an independent new story. */
+export interface GetShortProjectContinuityResponse { link: ShortProjectContinuityOption | null; }
+/** `projectId: null` disconnects the current link (Python's "연결 해제"). */
+export interface SetShortProjectContinuityRequest { projectId: string | null; }
+export type SetShortProjectContinuityResponse = GetShortProjectContinuityResponse;
 
 /** Exact local Story request text shown before any provider submission. */
 export interface StoryPromptPreview {
@@ -291,6 +576,55 @@ export interface DeleteAssetResponse {
   deletedOwnedFile: boolean;
 }
 
+/**
+ * `deleteManualFiles: true` implies removing child indexes too. Never deletes a project-owned image; a manual
+ * child whose file cannot be safely identified as Library-owned blocks the whole request.
+ */
+export interface DeleteAssetFolderRequest {
+  removeChildIndexes?: boolean;
+  deleteManualFiles?: boolean;
+}
+export interface DeleteAssetFolderResponse {
+  assetId: string;
+  removedChildAssetIds: string[];
+  deletedFiles: number;
+}
+
+/** Multipart field alongside the new version's image bytes. */
+export interface AddAssetVersionMetadata { notes?: string; }
+export interface AddAssetVersionResponse { asset: Asset; }
+
+/** Repoints an Asset's current version at replacement bytes while preserving its stable identity. */
+export interface RelinkAssetResponse { asset: Asset; }
+
+export type AssetFileAuditClassification = "healthy" | "missing" | "damaged";
+export interface AssetFileAuditEntry {
+  assetId: string;
+  displayName: string;
+  classification: AssetFileAuditClassification;
+  sourceKind: "manual" | "project";
+  message: string;
+}
+export interface ListAssetFileAuditResponse { entries: AssetFileAuditEntry[]; }
+
+/** Deletes a Library-manual Asset's index entry and, unless another Asset still references the same bytes, its owned file. */
+export interface DeleteAssetOwnedFileResponse {
+  assetId: string;
+  deletedOwnedFile: true;
+}
+
+/**
+ * Idempotently imports every project's legacy `reference_assets/references.json` entries (from the preserved
+ * Python baseline) into the Asset Library and a confirmed, migrated project Asset Mapping. Never calls a Provider
+ * or FFmpeg, and never modifies or deletes the legacy files it reads.
+ */
+export interface RunLegacyReferenceMigrationResponse {
+  projectsScanned: number;
+  migratedAssets: number;
+  deduplicatedAssets: number;
+  failedAssets: number;
+}
+
 export type ProviderCredentialKind = "openai" | "runway";
 
 export interface ProviderCredentialStatus {
@@ -383,6 +717,10 @@ export const API_ROUTES = {
   longProjects: "/long-projects",
   longProjectStoryBible: (projectId: string) =>
     `/long-projects/${encodeURIComponent(projectId)}/story-bible`,
+  longProjectStoryBibleContent: (projectId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/story-bible/content`,
+  longProjectStoryBibleStyleAssetLink: (projectId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/story-bible/style-asset-link`,
   longProjectStoryBibleCollection: (projectId: string, collection: LongStoryBibleCollection) =>
     `/long-projects/${encodeURIComponent(projectId)}/story-bible/${collection}`,
   longProjectStoryBibleItem: (projectId: string, collection: LongStoryBibleCollection, itemId: string) =>
@@ -391,9 +729,79 @@ export const API_ROUTES = {
   longProjectSettings: (projectId: string) => `/long-projects/${encodeURIComponent(projectId)}/settings`,
   longProjectOutlinePreview: (projectId: string) => `/long-projects/${encodeURIComponent(projectId)}/outline/preview`,
   longProjectOutlineApproval: (projectId: string) => `/long-projects/${encodeURIComponent(projectId)}/outline/approval`,
+  longProjectEpisodes: (projectId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes`,
+  longProjectEpisodeDuplicate: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/duplicate`,
+  longProjectEpisodeArchive: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}`,
+  longEpisode: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}`,
+  longEpisodeScriptGeneration: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/script/generations`,
+  longEpisodeScript: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/script`,
+  longEpisodeScriptApproval: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/script/approval`,
+  longEpisodeAssetMappingReview: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/asset-mapping-review`,
+  longEpisodeAssetMappingReviewApproval: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/asset-mapping-review/approval`,
+  longEpisodeAutomaticReferenceSummary: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/asset-mapping-review/automatic-selection`,
+  longEpisodeAssetMatchingRerun: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/asset-mapping-review/rerun`,
+  longEpisodeAssetMapping: (projectId: string, episodeNumber: number, mappingId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/asset-mapping-review/mappings/${encodeURIComponent(mappingId)}`,
+  longEpisodeImageGeneration: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/images/generations`,
+  longEpisodeImageReview: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/images/review`,
+  longEpisodeImageReviewApproval: (projectId: string, episodeNumber: number, sceneNumber: SceneNumber) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/images/review/${sceneNumber}/approve`,
+  longEpisodeImageReviewRegeneration: (projectId: string, episodeNumber: number, sceneNumber: SceneNumber) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/images/review/${sceneNumber}/regenerate`,
+  longEpisodeVideoPreview: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/preview`,
+  longEpisodeVideoGeneration: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/generations`,
+  longEpisodeVideoProgress: (projectId: string, episodeNumber: number, jobId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/generations/${encodeURIComponent(jobId)}`,
+  longEpisodeVideoStop: (projectId: string, episodeNumber: number, jobId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/generations/${encodeURIComponent(jobId)}/stop`,
+  longEpisodeVideoRestart: (projectId: string, episodeNumber: number, jobId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/generations/${encodeURIComponent(jobId)}/restart`,
+  longEpisodeVideoRegenerate: (projectId: string, episodeNumber: number, jobId: string, sceneNumber: SceneNumber) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/generations/${encodeURIComponent(jobId)}/scenes/${sceneNumber}/regenerate`,
+  longEpisodeVideoReview: (projectId: string, episodeNumber: number, jobId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/generations/${encodeURIComponent(jobId)}/review`,
+  longEpisodeVideoReviewApproval: (projectId: string, episodeNumber: number, jobId: string, sceneNumber: SceneNumber) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/generations/${encodeURIComponent(jobId)}/review/${sceneNumber}/approve`,
+  longEpisodeVideoMerge: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/merge`,
+  longEpisodeContinuity: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/continuity`,
+  longProjectStoryBibleRelationshipAudit: (projectId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/story-bible/relationship-audit`,
+  longProjectStoryBibleSearch: (projectId: string, collection: LongStoryBibleCollection, query: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/story-bible/${collection}/search?query=${encodeURIComponent(query)}`,
+  longProjectStoryBibleDuplicate: (projectId: string, collection: LongStoryBibleCollection, itemId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/story-bible/${collection}/${encodeURIComponent(itemId)}/duplicate`,
+  longEpisodeContinuityReference: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/continuity-reference`,
+  projectArchive: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/archive`,
+  longProjectArchive: (projectId: string) => `/long-projects/${encodeURIComponent(projectId)}/archive`,
   project: (projectId: string) => `/projects/${projectId}`,
   projectSettings: (projectId: string) =>
     `/projects/${encodeURIComponent(projectId)}/settings`,
+  projectCast: (projectId: string) =>
+    `/projects/${encodeURIComponent(projectId)}/settings/cast`,
+  projectAssetReferences: (projectId: string) =>
+    `/projects/${encodeURIComponent(projectId)}/settings/asset-references`,
+  projectContinuityOptions: (projectId: string) =>
+    `/projects/${encodeURIComponent(projectId)}/settings/continuity-options`,
+  projectContinuity: (projectId: string) =>
+    `/projects/${encodeURIComponent(projectId)}/settings/continuity`,
   storyPromptPreview: (projectId: string) =>
     `/projects/${encodeURIComponent(projectId)}/story/preview`,
   storyPromptApproval: (projectId: string) =>
@@ -409,6 +817,13 @@ export const API_ROUTES = {
   assets: "/assets",
   asset: (assetId: string) => `/assets/${encodeURIComponent(assetId)}`,
   assetContent: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/content`,
+  characterFolderReferenceSet: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/character-reference-set`,
+  assetsAudit: "/assets/audit",
+  assetVersions: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/versions`,
+  assetRelink: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/relink`,
+  assetOwnedFile: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/owned-file`,
+  assetFolder: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/folder`,
+  legacyReferenceMigration: "/assets/legacy-migration",
   providerSettings: "/settings/providers",
   providerCredential: (provider: ProviderCredentialKind) =>
     `/settings/providers/${provider}/credential`,
