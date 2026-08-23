@@ -8,6 +8,8 @@ venv/
 # Node.js / TypeScript
 node_modules/
 dist/
+dist-bundle/
+release/
 coverage/
 *.tsbuildinfo
 

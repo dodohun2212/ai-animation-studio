@@ -6,13 +6,32 @@
   "main": "dist/main.js",
   "scripts": {
     "dev": "npm run build && electron .",
-    "build": "tsc",
+    "build": "tsc && node -e \"require('node:fs').copyFileSync('src/preload.cjs','dist/preload.cjs')\"",
     "test": "node --test",
-    "typecheck": "tsc --noEmit --pretty false"
+    "typecheck": "tsc --noEmit --pretty false",
+    "package": "electron-builder --dir",
+    "package:installer": "electron-builder --win nsis"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
     "electron": "^43.4.1",
+    "electron-builder": "^26.15.3",
     "typescript": "^6.0.3"
+  },
+  "build": {
+    "appId": "com.aianimationstudio.desktop",
+    "productName": "AI Animation Studio",
+    "electronVersion": "43.4.1",
+    "directories": {
+      "output": "release"
+    },
+    "files": ["dist/**/*"],
+    "extraResources": [
+      { "from": "../backend/dist-bundle", "to": "backend" },
+      { "from": "../frontend/dist", "to": "frontend" }
+    ],
+    "win": {
+      "target": ["nsis"]
+    }
   }
 }
