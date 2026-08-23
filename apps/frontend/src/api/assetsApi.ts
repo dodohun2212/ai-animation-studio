@@ -1,17 +1,28 @@
 import {
   API_ROUTES,
+  type AddAssetVersionResponse,
   type Asset,
+  type AssetFileAuditClassification,
+  type AssetFileAuditEntry,
   type AssetOwnership,
   type AssetReferenceImage,
+  type CharacterFolderReferenceSetRequest,
+  type CharacterFolderReferenceSetResponse,
   type AssetStatus,
   type AssetType,
   type AssetVersion,
   type CreateAssetMetadata,
   type CreateAssetResponse,
+  type DeleteAssetFolderRequest,
+  type DeleteAssetFolderResponse,
+  type DeleteAssetOwnedFileResponse,
   type DeleteAssetResponse,
   type GetAssetResponse,
+  type ListAssetFileAuditResponse,
   type ListAssetsQuery,
   type ListAssetsResponse,
+  type RelinkAssetResponse,
+  type RunLegacyReferenceMigrationResponse,
   type UpdateAssetMetadataRequest,
   type UpdateAssetResponse,
 } from "@ai-animation-studio/shared";
@@ -32,6 +43,7 @@ const SAFE_ERRORS: Record<string, string> = {
   ASSET_ALREADY_EXISTS: "같은 이미지가 이미 등록되어 있습니다.",
   ASSET_IN_USE: "프로젝트에서 사용 중인 에셋은 삭제할 수 없습니다.",
   ASSET_MUTATION_UNSUPPORTED: "이 에셋은 현재 수정할 수 없습니다.",
+  ASSET_VERSION_DUPLICATE: "이미 등록된 버전입니다.",
   ASSET_JSON_MALFORMED: "에셋 목록 파일을 읽을 수 없습니다.",
   ASSET_DATA_INVALID: "에셋 목록 데이터가 올바르지 않습니다.",
   ASSET_FILE_INVALID: "지원되는 이미지 파일을 선택해 주세요.",
@@ -126,6 +138,23 @@ const isGetResponse = (value: unknown): value is GetAssetResponse => isRecord(va
   && isStringArray(value.usageProjectIds) && OWNERSHIPS.includes(value.ownership as AssetOwnership)
   && typeof value.canDeleteOwnedFile === "boolean";
 const isDeleteResponse = (value: unknown): value is DeleteAssetResponse => isRecord(value) && isString(value.assetId) && typeof value.deletedOwnedFile === "boolean";
+const isCharacterFolderReferenceSetResponse = (value: unknown): value is CharacterFolderReferenceSetResponse =>
+  isRecord(value) && isAsset(value.folder) && Array.isArray(value.children) && value.children.every(isAsset);
+const isAddVersionResponse = (value: unknown): value is AddAssetVersionResponse => isRecord(value) && isAsset(value.asset);
+const isRelinkResponse = (value: unknown): value is RelinkAssetResponse => isRecord(value) && isAsset(value.asset);
+const isDeleteOwnedFileResponse = (value: unknown): value is DeleteAssetOwnedFileResponse =>
+  isRecord(value) && isString(value.assetId) && value.deletedOwnedFile === true;
+const isDeleteFolderResponse = (value: unknown): value is DeleteAssetFolderResponse =>
+  isRecord(value) && isString(value.assetId) && isStringArray(value.removedChildAssetIds) && isNonNegativeInteger(value.deletedFiles);
+const AUDIT_CLASSIFICATIONS: readonly AssetFileAuditClassification[] = ["healthy", "missing", "damaged"];
+const isAuditEntry = (value: unknown): value is AssetFileAuditEntry => isRecord(value)
+  && isString(value.assetId) && isString(value.displayName) && AUDIT_CLASSIFICATIONS.includes(value.classification as AssetFileAuditClassification)
+  && (value.sourceKind === "manual" || value.sourceKind === "project") && isString(value.message);
+const isAuditResponse = (value: unknown): value is ListAssetFileAuditResponse => isRecord(value) && Array.isArray(value.entries) && value.entries.every(isAuditEntry);
+const isNonNegativeInteger = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= 0;
+const isLegacyMigrationResponse = (value: unknown): value is RunLegacyReferenceMigrationResponse => isRecord(value)
+  && isNonNegativeInteger(value.projectsScanned) && isNonNegativeInteger(value.migratedAssets)
+  && isNonNegativeInteger(value.deduplicatedAssets) && isNonNegativeInteger(value.failedAssets);
 
 async function request<T>(url: string, init: RequestInit | undefined, guard: (value: unknown) => value is T): Promise<T> {
   let response: Response;
@@ -173,5 +202,63 @@ export async function updateAsset(assetId: string, metadata: UpdateAssetMetadata
 export async function deleteAsset(assetId: string): Promise<DeleteAssetResponse> {
   const response = await request(API_ROUTES.asset(assetId), { method: "DELETE" }, isDeleteResponse);
   if (response.assetId !== assetId) throw new AssetsApiError(MALFORMED.code, MALFORMED.message);
+  return response;
+}
+
+export async function deleteAssetFolder(assetId: string, options: DeleteAssetFolderRequest): Promise<DeleteAssetFolderResponse> {
+  const params = new URLSearchParams();
+  if (options.removeChildIndexes) params.set("removeChildIndexes", "true");
+  if (options.deleteManualFiles) params.set("deleteManualFiles", "true");
+  const suffix = params.size ? `?${params.toString()}` : "";
+  const response = await request(`${API_ROUTES.assetFolder(assetId)}${suffix}`, { method: "DELETE" }, isDeleteFolderResponse);
+  if (response.assetId !== assetId) throw new AssetsApiError(MALFORMED.code, MALFORMED.message);
+  return response;
+}
+
+export async function addAssetVersion(assetId: string, file: File, notes: string): Promise<AddAssetVersionResponse> {
+  const body = new FormData();
+  body.append("image", file);
+  if (notes.trim()) body.append("notes", notes.trim());
+  const response = await request(API_ROUTES.assetVersions(assetId), { method: "POST", body }, isAddVersionResponse);
+  if (response.asset.assetId !== assetId) throw new AssetsApiError(MALFORMED.code, MALFORMED.message);
+  return response;
+}
+
+export async function relinkAsset(assetId: string, file: File): Promise<RelinkAssetResponse> {
+  const body = new FormData();
+  body.append("image", file);
+  const response = await request(API_ROUTES.assetRelink(assetId), { method: "POST", body }, isRelinkResponse);
+  if (response.asset.assetId !== assetId) throw new AssetsApiError(MALFORMED.code, MALFORMED.message);
+  return response;
+}
+
+export function listAssetFileAudit(): Promise<ListAssetFileAuditResponse> {
+  return request(API_ROUTES.assetsAudit, undefined, isAuditResponse);
+}
+
+export async function deleteAssetOwnedFile(assetId: string): Promise<DeleteAssetOwnedFileResponse> {
+  const response = await request(API_ROUTES.assetOwnedFile(assetId), { method: "DELETE" }, isDeleteOwnedFileResponse);
+  if (response.assetId !== assetId) throw new AssetsApiError(MALFORMED.code, MALFORMED.message);
+  return response;
+}
+
+/** Silently, idempotently imports every project's legacy references into the Library — mirrors Python's on-open self-heal. */
+export function runLegacyReferenceMigration(): Promise<RunLegacyReferenceMigrationResponse> {
+  return request(API_ROUTES.legacyReferenceMigration, { method: "POST" }, isLegacyMigrationResponse);
+}
+
+export async function updateCharacterFolderReferenceSet(
+  assetId: string,
+  requestBody: CharacterFolderReferenceSetRequest,
+): Promise<CharacterFolderReferenceSetResponse> {
+  const response = await request(API_ROUTES.characterFolderReferenceSet(assetId), {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody),
+  }, isCharacterFolderReferenceSetResponse);
+  if (response.folder.assetId !== assetId
+    || !response.folder.isFolder
+    || response.folder.assetType !== "character"
+    || response.children.some((child) => child.parentFolderId !== assetId)) {
+    throw new AssetsApiError(MALFORMED.code, MALFORMED.message);
+  }
   return response;
 }

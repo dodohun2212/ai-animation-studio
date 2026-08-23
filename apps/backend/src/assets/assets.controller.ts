@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import { ArgumentsHost, BadRequestException, Catch, Controller, Delete, ExceptionFilter, Get, Param, Patch, PayloadTooLargeException, Post, Query, Body, UploadedFile, UseFilters, UseInterceptors, StreamableFile, Res } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import type { CreateAssetResponse, DeleteAssetResponse, GetAssetResponse, ListAssetsResponse, UpdateAssetResponse } from "@ai-animation-studio/shared";
+import type { AddAssetVersionResponse, CharacterFolderReferenceSetResponse, CreateAssetResponse, DeleteAssetFolderResponse, DeleteAssetOwnedFileResponse, DeleteAssetResponse, GetAssetResponse, ListAssetFileAuditResponse, ListAssetsResponse, RelinkAssetResponse, UpdateAssetResponse } from "@ai-animation-studio/shared";
 import { AssetsService } from "./assets.service.js";
 import { AssetApiException, assetStorageError, invalidAssetFile } from "./asset-api.error.js";
 
@@ -52,6 +52,7 @@ export class AssetsController {
       throw invalidAssetFile("Asset image is unavailable.");
     }
   }
+  @Get("audit") audit(): Promise<ListAssetFileAuditResponse> { return this.service.audit(); }
   @Get(":assetId") get(@Param("assetId") assetId: string): Promise<GetAssetResponse> { return this.service.get(assetId); }
   @Post()
   @UseFilters(AssetUploadExceptionFilter)
@@ -59,6 +60,31 @@ export class AssetsController {
   create(@UploadedFile() file: MemoryUpload | undefined, @Body() body: unknown): Promise<CreateAssetResponse> {
     return this.service.createMultipart(file, body);
   }
+  @Post(":assetId/versions")
+  @UseFilters(AssetUploadExceptionFilter)
+  @UseInterceptors(FileInterceptor("image", { limits: { fileSize: 25 * 1024 * 1024, files: 1, fields: 1, parts: 3, fieldSize: 1024 * 1024 } }))
+  addVersion(@Param("assetId") assetId: string, @UploadedFile() file: MemoryUpload | undefined, @Body() body: { notes?: string }): Promise<AddAssetVersionResponse> {
+    return this.service.addVersion(assetId, file, body?.notes);
+  }
+  @Post(":assetId/relink")
+  @UseFilters(AssetUploadExceptionFilter)
+  @UseInterceptors(FileInterceptor("image", { limits: { fileSize: 25 * 1024 * 1024, files: 1, fields: 0, parts: 2, fieldSize: 1024 * 1024 } }))
+  relink(@Param("assetId") assetId: string, @UploadedFile() file: MemoryUpload | undefined): Promise<RelinkAssetResponse> {
+    return this.service.relink(assetId, file);
+  }
+  @Patch(":assetId/character-reference-set")
+  updateCharacterFolderReferenceSet(@Param("assetId") assetId: string, @Body() body: unknown): Promise<CharacterFolderReferenceSetResponse> {
+    return this.service.updateCharacterFolderReferenceSet(assetId, body);
+  }
   @Patch(":assetId") update(@Param("assetId") assetId: string, @Body() body: unknown): Promise<UpdateAssetResponse> { return this.service.update(assetId, body); }
+  @Delete(":assetId/owned-file") removeOwnedFile(@Param("assetId") assetId: string): Promise<DeleteAssetOwnedFileResponse> { return this.service.removeOwnedFile(assetId); }
+  @Delete(":assetId/folder")
+  removeFolder(
+    @Param("assetId") assetId: string,
+    @Query("removeChildIndexes") removeChildIndexes?: string,
+    @Query("deleteManualFiles") deleteManualFiles?: string,
+  ): Promise<DeleteAssetFolderResponse> {
+    return this.service.removeFolder(assetId, removeChildIndexes, deleteManualFiles);
+  }
   @Delete(":assetId") remove(@Param("assetId") assetId: string): Promise<DeleteAssetResponse> { return this.service.remove(assetId); }
 }

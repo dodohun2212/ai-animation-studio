@@ -32,4 +32,37 @@ describe.sequential("Project Asset Mapping HTTP routes", () => {
     const approved = await fetch(`${base}/projects/mapping_http/assets/mapping-review/approve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scriptFingerprint: review.review.scriptFingerprint }) }); expect(approved.status).toBe(201);
     expect((await projects.findById("mapping_http")).workflow_state).toBe(WorkflowState.AssetMappingApproved);
   });
+
+  it("migrates a real legacy reference file over real HTTP without a Provider call", async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "mapping-http-"));
+    const projects = new LocalProjectRepository(path.join(root, "projects"));
+    await projects.create(createStoredProject("legacy_http", "Legacy HTTP", "2026-08-22T00:00:00.000Z"));
+    const legacyDirectory = path.join(root, "projects", "legacy_http", "reference_assets");
+    await fs.mkdir(legacyDirectory, { recursive: true });
+    await fs.writeFile(path.join(legacyDirectory, "RA-000000000001.png"), png);
+    await fs.writeFile(path.join(legacyDirectory, "references.json"), JSON.stringify([{
+      asset_id: "RA-000000000001", project_id: "legacy_http", stored_path: "reference_assets/RA-000000000001.png",
+      original_filename: "legacy.png", display_name: "Legacy HTTP Reference", source: "manual_upload", reference_type: "style",
+      enabled: true, scene_scope: { mode: "all" }, episode_scope: { mode: "all" }, notes: "", character_id: null, face_baseline: false, content_sha256: "",
+    }]), "utf8");
+    previous = process.env.LEARNING_DATA_ROOT; process.env.LEARNING_DATA_ROOT = root;
+    app = await NestFactory.create(AppModule, { logger: false }); await app.listen(0, "127.0.0.1");
+    const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
+
+    const response = await fetch(`${base}/assets/legacy-migration`, { method: "POST" });
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ projectsScanned: 1, migratedAssets: 1, deduplicatedAssets: 0, failedAssets: 0 });
+
+    const listed = await fetch(`${base}/assets`);
+    const assetsList = await listed.json() as { assets: Array<{ displayName: string }> };
+    expect(assetsList.assets).toHaveLength(1);
+    expect(assetsList.assets[0]?.displayName).toBe("Legacy HTTP Reference");
+
+    const mappingsList = await fetch(`${base}/projects/legacy_http/assets/mappings`);
+    const mappingsResponse = await mappingsList.json() as { mappings: Array<{ assignmentSource: string; status: string }> };
+    expect(mappingsResponse.mappings).toMatchObject([{ assignmentSource: "migrated", status: "confirmed" }]);
+
+    const secondResponse = await fetch(`${base}/assets/legacy-migration`, { method: "POST" });
+    expect(await secondResponse.json()).toEqual({ projectsScanned: 1, migratedAssets: 0, deduplicatedAssets: 0, failedAssets: 0 });
+  });
 });

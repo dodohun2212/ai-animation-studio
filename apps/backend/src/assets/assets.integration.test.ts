@@ -75,6 +75,43 @@ describe("Asset Library HTTP and restart integration", () => {
     expect(body.message).not.toContain(root);
   });
 
+  it("updates only an existing Character Folder's child order and representative through the dedicated route", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "asset-http-folder-")); roots.push(root);
+    const service = new AssetsService(new LocalAssetsRepository(root));
+    class TestModule {}
+    Module({ controllers: [AssetsController], providers: [{ provide: AssetsService, useValue: service }] })(TestModule);
+    const app = await NestFactory.create(TestModule, { logger: false }); await app.listen(0, "127.0.0.1"); apps.push(app);
+    const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
+    const form = new FormData();
+    form.append("image", new Blob([png], { type: "image/png" }), "front.png");
+    form.append("metadata", JSON.stringify({ assetType: "character", displayName: "Character front" }));
+    const created = await (await fetch(`${base}/assets`, { method: "POST", body: form })).json() as { asset: { assetId: string } };
+    const indexPath = path.join(root, "asset_library", "assets.json");
+    const records = JSON.parse(await fs.readFile(indexPath, "utf8")) as Array<Record<string, unknown>>;
+    const childId = "ASSET-CHAR-SECOND"; const folderId = "FOLDER-CHARACTER";
+    const second = { ...records[0]!, asset_id: childId, display_name: "Character side", parent_folder_id: folderId, sort_order: 1 };
+    records[0]!.parent_folder_id = folderId; records[0]!.sort_order = 0;
+    records.push(second, {
+      ...records[0]!, asset_id: folderId, asset_type: "character", display_name: "Character references", stored_path: "",
+      original_filename: "", content_sha256: "", versions: [], reference_images: [], reference_roles: [], is_folder: true,
+      parent_folder_id: "", child_asset_ids: [created.asset.assetId, childId], thumbnail_asset_id: created.asset.assetId, role: "", sort_order: 0,
+    });
+    await fs.writeFile(indexPath, JSON.stringify(records), "utf8");
+
+    const response = await fetch(`${base}/assets/${folderId}/character-reference-set`, {
+      method: "PATCH", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ childAssetIds: [childId, created.asset.assetId], thumbnailAssetId: childId }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ folder: { childAssetIds: [childId, created.asset.assetId], thumbnailAssetId: childId } });
+    const content = await fetch(`${base}/assets/${folderId}/content`);
+    expect(content.status).toBe(200);
+    await expect(fetch(`${base}/assets/${folderId}/character-reference-set`, {
+      method: "PATCH", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ childAssetIds: [created.asset.assetId], thumbnailAssetId: created.asset.assetId }),
+    })).resolves.toMatchObject({ status: 400 });
+  });
+
   it("returns exact safe error codes for every multipart boundary", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "asset-http-table-")); roots.push(root);
     const service = new AssetsService(new LocalAssetsRepository(root));

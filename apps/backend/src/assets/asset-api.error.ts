@@ -8,6 +8,7 @@ export type AssetErrorCode =
   | "ASSET_ALREADY_EXISTS"
   | "ASSET_IN_USE"
   | "ASSET_MUTATION_UNSUPPORTED"
+  | "ASSET_VERSION_DUPLICATE"
   | "ASSET_JSON_MALFORMED"
   | "ASSET_DATA_INVALID"
   | "ASSET_FILE_INVALID"
@@ -30,6 +31,8 @@ export const assetInUse = () =>
   new AssetApiException("ASSET_IN_USE", "Asset is used by one or more projects.", HttpStatus.CONFLICT);
 export const assetMutationUnsupported = () =>
   new AssetApiException("ASSET_MUTATION_UNSUPPORTED", "Folder and folder-child mutation is not supported in this migration step.", HttpStatus.CONFLICT);
+export const assetVersionDuplicate = () =>
+  new AssetApiException("ASSET_VERSION_DUPLICATE", "This version is already registered.", HttpStatus.CONFLICT);
 export const malformedAssetIndex = () =>
   new AssetApiException("ASSET_JSON_MALFORMED", "Asset Library metadata is not valid JSON.", HttpStatus.INTERNAL_SERVER_ERROR);
 export const invalidAssetData = () =>

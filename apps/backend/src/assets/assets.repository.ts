@@ -2,9 +2,9 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
-import type { CreateAssetMetadata, UpdateAssetMetadataRequest } from "@ai-animation-studio/shared";
+import type { AssetFileAuditEntry, CharacterFolderReferenceSetRequest, CreateAssetMetadata, UpdateAssetMetadataRequest } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
-import { assetInUse, assetMutationUnsupported, assetNotFound, assetStorageError, invalidAssetData, malformedAssetIndex } from "./asset-api.error.js";
+import { assetInUse, assetMutationUnsupported, assetNotFound, assetStorageError, assetVersionDuplicate, badAssetRequest, invalidAssetData, malformedAssetIndex } from "./asset-api.error.js";
 import { assertSafeAssetId } from "./asset-id.js";
 import { parseAssetIndex, type StoredAsset } from "./asset-storage.js";
 import { validateImage } from "./image-validation.js";
@@ -13,6 +13,7 @@ const PREFIX = { character: "CHAR", style: "STYLE", background: "BG", object: "O
 const CHARACTER_ROLES = ["back", "expression", "front", "left45", "other", "right45", "side", "thumbnail"];
 const RETRYABLE = new Set(["EPERM", "EBUSY", "EACCES"]);
 const errorCode = (error: unknown) => typeof error === "object" && error !== null && "code" in error ? String((error as { code?: unknown }).code) : "";
+const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const terms = (values: string[] | undefined) => [...new Set((values ?? []).flatMap((value) => value.replaceAll(",", " ").split(/\s+/u)).map((value) => value.trim().toLocaleLowerCase()).filter(Boolean))].sort();
 const GENERATED_IMAGE_NOTE = "Automatically indexed project image";
 const GENERATED_FOLDER_NOTE = "Automatically grouped generated project images";
@@ -118,6 +119,54 @@ export class LocalAssetsRepository {
     });
   }
 
+  /**
+   * Reorder an existing Character Folder's reference children and select its
+   * representative image.  This deliberately does not add or remove links:
+   * Python keeps those lifecycle operations separate from reference-set edits.
+   */
+  async updateCharacterFolderReferenceSet(folderId: string, request: CharacterFolderReferenceSetRequest): Promise<{ folder: StoredAsset; children: StoredAsset[] }> {
+    assertSafeAssetId(folderId);
+    return this.serialized(async () => {
+      const assets = await this.load();
+      const folder = assets.find((item) => item.asset_id === folderId);
+      if (!folder) throw assetNotFound();
+      if (!folder.is_folder || folder.asset_type !== "character") throw assetMutationUnsupported();
+      const requestedIds = request.childAssetIds;
+      if (new Set(requestedIds).size !== requestedIds.length
+        || requestedIds.length !== folder.child_asset_ids.length
+        || requestedIds.some((assetId) => !folder.child_asset_ids.includes(assetId))
+        || !requestedIds.includes(request.thumbnailAssetId)) {
+        throw badAssetRequest("Character Folder reference children must be an exact unique ordering of its current children.");
+      }
+      const children = requestedIds.map((assetId) => assets.find((item) => item.asset_id === assetId));
+      if (children.some((child) => !child || child.is_folder)) throw badAssetRequest("Character Folder reference children are invalid.");
+      const now = new Date().toISOString();
+      for (const [sortOrder, child] of children.entries()) {
+        const item = child!;
+        if (item.parent_folder_id !== folder.asset_id) throw badAssetRequest("Character Folder reference children are invalid.");
+        item.parent_folder_id = folder.asset_id;
+        item.sort_order = sortOrder;
+        // This mirrors Python update_folder: character Folder children are
+        // normal Character Assets with a local reference-role set.
+        item.asset_type = "character";
+        item.face_baseline = false;
+        item.reference_roles = [...CHARACTER_ROLES];
+        if (item.reference_images.length === 0 && item.stored_path) {
+          item.reference_images = ["thumbnail", "front"].map((role) => ({
+            role, path: item.stored_path, content_sha256: item.content_sha256, original_filename: item.original_filename,
+          }));
+        }
+        if (!CHARACTER_ROLES.includes(item.role)) item.role = "other";
+        item.updated_at = now;
+      }
+      folder.child_asset_ids = [...requestedIds];
+      folder.thumbnail_asset_id = request.thumbnailAssetId;
+      folder.updated_at = now;
+      await this.save(assets);
+      return { folder, children: children as StoredAsset[] };
+    });
+  }
+
   async remove(assetId: string): Promise<void> {
     assertSafeAssetId(assetId);
     return this.serialized(async () => {
@@ -129,6 +178,264 @@ export class LocalAssetsRepository {
       assets.splice(index, 1);
       await this.save(assets);
     });
+  }
+
+  /**
+   * Remove a Folder's own metadata and, when requested, its children's index entries and owned files, matching
+   * Python's `delete_folder`. `deleteManualFiles` implies `removeChildIndexes`. Never deletes a project-owned image.
+   */
+  async removeFolder(folderId: string, options: { removeChildIndexes?: boolean; deleteManualFiles?: boolean } = {}): Promise<{ removedChildAssetIds: string[]; deletedFiles: number }> {
+    assertSafeAssetId(folderId);
+    const removeChildIndexes = Boolean(options.removeChildIndexes) || Boolean(options.deleteManualFiles);
+    const deleteManualFiles = Boolean(options.deleteManualFiles);
+    return this.serialized(async () => {
+      if ((await this.usageProjects(folderId)).length) throw assetInUse();
+      const assets = await this.load();
+      const folder = assets.find((item) => item.asset_id === folderId);
+      if (!folder) throw assetNotFound();
+      if (!folder.is_folder) throw assetMutationUnsupported();
+      const childIds = new Set([...folder.child_asset_ids, ...assets.filter((item) => item.parent_folder_id === folderId).map((item) => item.asset_id)]);
+      if (removeChildIndexes) {
+        for (const childId of childIds) {
+          if ((await this.usageProjects(childId)).length) throw assetInUse();
+        }
+      }
+      let manualRoot = "";
+      const filesToDelete = new Set<string>();
+      if (deleteManualFiles) {
+        try { manualRoot = fs.realpathSync(path.join(this.projectsRoot, "_asset_library_manual", "images")); } catch { throw assetStorageError(); }
+        for (const child of assets) {
+          if (!childIds.has(child.asset_id)) continue;
+          if (child.source_project_id !== "_asset_library_manual") throw assetMutationUnsupported();
+          const resolved = this.resolveContentPath(child);
+          if (!resolved || path.dirname(resolved) !== manualRoot) throw assetMutationUnsupported();
+          filesToDelete.add(resolved);
+        }
+      }
+      const retained: StoredAsset[] = [];
+      for (const asset of assets) {
+        if (asset.asset_id === folderId) continue;
+        if (removeChildIndexes && childIds.has(asset.asset_id)) continue;
+        if (childIds.has(asset.asset_id)) { asset.parent_folder_id = ""; asset.sort_order = 0; }
+        retained.push(asset);
+      }
+      await this.save(retained);
+      let deletedFiles = 0;
+      if (deleteManualFiles) {
+        const retainedPaths = new Set(retained.filter((item) => !item.is_folder && item.stored_path).map((item) => this.resolveContentPath(item)).filter((value): value is string => value !== null));
+        for (const file of filesToDelete) {
+          if (retainedPaths.has(file)) continue;
+          await fsPromises.unlink(file).catch(() => undefined);
+          deletedFiles += 1;
+        }
+      }
+      return { removedChildAssetIds: removeChildIndexes ? [...childIds] : [], deletedFiles };
+    });
+  }
+
+  /** Point a new immutable metadata revision at freshly uploaded bytes, matching Python's add_version. */
+  async addVersion(assetId: string, file: { buffer: Buffer; originalname: string; mimetype?: string }, notes: string): Promise<StoredAsset> {
+    assertSafeAssetId(assetId);
+    return this.serialized(async () => {
+      const validated = validateImage(file.buffer, file.originalname, file.mimetype);
+      const assets = await this.load();
+      const asset = assets.find((item) => item.asset_id === assetId);
+      if (!asset) throw assetNotFound();
+      if (asset.is_folder) throw assetMutationUnsupported();
+      if (asset.versions.some((version) => version.content_sha256 === validated.digest)) throw assetVersionDuplicate();
+      const { destination, createdOwnedFile } = await this.storeManualBytes(validated.digest, validated.extension, file.buffer);
+      const now = new Date().toISOString();
+      const number = Math.max(...asset.versions.map((version) => version.version)) + 1;
+      asset.versions.push({ version: number, stored_path: destination, content_sha256: validated.digest, created_at: now, notes: notes.trim() });
+      asset.version = number; asset.stored_path = destination; asset.content_sha256 = validated.digest; asset.updated_at = now;
+      try { await this.save(assets); } catch (error) {
+        if (createdOwnedFile) await fsPromises.unlink(destination).catch(() => undefined);
+        throw error;
+      }
+      await this.invalidateDependents(assetId, "follow_latest");
+      return asset;
+    });
+  }
+
+  /** Safely repoint an Asset's current version at replacement bytes while preserving its stable identity, matching Python's relink_file. */
+  async relink(assetId: string, file: { buffer: Buffer; originalname: string; mimetype?: string }): Promise<StoredAsset> {
+    assertSafeAssetId(assetId);
+    return this.serialized(async () => {
+      const validated = validateImage(file.buffer, file.originalname, file.mimetype);
+      const assets = await this.load();
+      const asset = assets.find((item) => item.asset_id === assetId);
+      if (!asset) throw assetNotFound();
+      if (asset.is_folder) throw assetMutationUnsupported();
+      const version = asset.versions.find((item) => item.version === asset.version);
+      if (!version) throw assetStorageError();
+      const { destination, createdOwnedFile } = await this.storeManualBytes(validated.digest, validated.extension, file.buffer);
+      version.stored_path = destination; version.content_sha256 = validated.digest;
+      asset.stored_path = destination; asset.content_sha256 = validated.digest;
+      asset.status = asset.source_project_id === "_asset_library_manual" ? "manual" : "generated";
+      asset.updated_at = new Date().toISOString();
+      try { await this.save(assets); } catch (error) {
+        if (createdOwnedFile) await fsPromises.unlink(destination).catch(() => undefined);
+        throw error;
+      }
+      await this.invalidateDependents(assetId);
+      return asset;
+    });
+  }
+
+  /** Classify every indexed non-folder file without changing Library metadata, matching Python's audit_files. */
+  async auditFiles(): Promise<AssetFileAuditEntry[]> {
+    const results: AssetFileAuditEntry[] = [];
+    for (const asset of await this.load()) {
+      if (asset.is_folder) continue;
+      const sourceKind = asset.source_project_id === "_asset_library_manual" ? "manual" : "project";
+      const resolved = this.resolveContentPath(asset);
+      if (!resolved) {
+        results.push({ assetId: asset.asset_id, displayName: asset.display_name, classification: "missing", sourceKind, message: "파일이 존재하지 않습니다" });
+        continue;
+      }
+      try {
+        validateImage(await fsPromises.readFile(resolved), path.basename(resolved));
+        results.push({ assetId: asset.asset_id, displayName: asset.display_name, classification: "healthy", sourceKind, message: "" });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "이미지 파일을 확인할 수 없습니다";
+        results.push({ assetId: asset.asset_id, displayName: asset.display_name, classification: "damaged", sourceKind, message });
+      }
+    }
+    return results;
+  }
+
+  /** Delete an unused manual Asset and its owned file, never a project-owned image, matching Python's delete_manual_file. */
+  async removeOwnedFile(assetId: string): Promise<void> {
+    assertSafeAssetId(assetId);
+    return this.serialized(async () => {
+      if ((await this.usageProjects(assetId)).length) throw assetInUse();
+      const assets = await this.load();
+      const index = assets.findIndex((item) => item.asset_id === assetId);
+      if (index < 0) throw assetNotFound();
+      const asset = assets[index]!;
+      if (asset.is_folder || asset.parent_folder_id || asset.source_project_id !== "_asset_library_manual") throw assetMutationUnsupported();
+      const resolved = this.resolveContentPath(asset);
+      if (!resolved) throw assetStorageError();
+      let manualRoot: string;
+      try { manualRoot = fs.realpathSync(path.join(this.projectsRoot, "_asset_library_manual", "images")); } catch { throw assetStorageError(); }
+      if (path.dirname(resolved) !== manualRoot) throw assetMutationUnsupported();
+      assets.splice(index, 1);
+      const shared = assets.some((item) => !item.is_folder && this.resolveContentPath(item) === resolved);
+      await this.save(assets);
+      if (!shared) await fsPromises.unlink(resolved).catch(() => undefined);
+    });
+  }
+
+  /**
+   * Import a legacy project Reference image without copying it twice on repeated runs, matching Python's
+   * `AssetLibrary.import_file` as used by `LegacyReferenceMigrator`. Never throws on a single bad reference —
+   * callers decide whether to count a failure.
+   */
+  async importLegacyReference(sourcePath: string, options: {
+    assetType: StoredAsset["asset_type"]; displayName: string; description?: string; approved?: boolean;
+    faceBaseline?: boolean; characterKey?: string | null; notes?: string; legacyAssetId: string;
+  }): Promise<StoredAsset> {
+    return this.serialized(async () => {
+      const bytes = await fsPromises.readFile(sourcePath).catch(() => { throw assetStorageError(); });
+      const validated = validateImage(bytes, path.basename(sourcePath));
+      const assets = await this.load();
+      const duplicate = assets.find((asset) => !asset.is_folder && asset.content_sha256 === validated.digest);
+      if (duplicate) {
+        duplicate.status = "manual";
+        duplicate.approved = (options.approved ?? false) || duplicate.approved;
+        duplicate.source_project_id = duplicate.source_project_id || "_asset_library_manual";
+        duplicate.updated_at = new Date().toISOString();
+        if (!duplicate.legacy_asset_ids.includes(options.legacyAssetId)) duplicate.legacy_asset_ids.push(options.legacyAssetId);
+        await this.save(assets);
+        return duplicate;
+      }
+      const { destination, createdOwnedFile } = await this.storeManualBytes(validated.digest, validated.extension, bytes);
+      const now = new Date().toISOString();
+      const assetId = `ASSET-${PREFIX[options.assetType]}-${crypto.randomBytes(6).toString("hex").toUpperCase()}`;
+      const referenceImages = options.assetType === "character" ? ["thumbnail", "front"].map((role) => ({
+        role, path: destination, content_sha256: validated.digest, original_filename: validated.originalFilename,
+      })) : [];
+      const asset: StoredAsset = {
+        asset_id: assetId, asset_type: options.assetType, display_name: options.displayName.trim(), description: (options.description ?? "").trim(),
+        stored_path: destination, original_filename: validated.originalFilename, content_sha256: validated.digest,
+        tags: [], aliases: [], enabled: true, approved: options.approved ?? false, face_baseline: options.faceBaseline ?? false,
+        character_key: options.characterKey ?? null, version: 1,
+        versions: [{ version: 1, stored_path: destination, content_sha256: validated.digest, created_at: now, notes: "" }],
+        created_at: now, updated_at: now, notes: (options.notes ?? "").trim(), legacy_asset_ids: [options.legacyAssetId], status: "manual",
+        source_project_id: "_asset_library_manual", source_scene_number: null, reference_images: referenceImages,
+        reference_roles: options.assetType === "character" ? CHARACTER_ROLES : [], is_folder: false, parent_folder_id: "",
+        child_asset_ids: [], thumbnail_asset_id: "", role: "", sort_order: 0,
+      };
+      assets.push(asset);
+      try { await this.save(assets); } catch (error) {
+        if (createdOwnedFile) await fsPromises.unlink(destination).catch(() => undefined);
+        throw error;
+      }
+      return asset;
+    });
+  }
+
+  private async storeManualBytes(digest: string, extension: string, bytes: Buffer): Promise<{ destination: string; createdOwnedFile: boolean }> {
+    const manualRoot = path.join(this.projectsRoot, "_asset_library_manual", "images");
+    const destination = path.join(manualRoot, `${digest.slice(0, 16)}${extension}`);
+    await fsPromises.mkdir(manualRoot, { recursive: true }).catch(() => { throw assetStorageError(); });
+    const createdOwnedFile = !fs.existsSync(destination);
+    if (createdOwnedFile) await this.atomicWriteBytes(destination, bytes);
+    return { destination, createdOwnedFile };
+  }
+
+  /** Invalidate persisted project/Episode mapping approvals after a Library Asset's content changes, matching Python's _invalidate_dependents. */
+  private async invalidateDependents(assetId: string, versionPolicyFilter?: "follow_latest"): Promise<void> {
+    let entries: fs.Dirent[];
+    try { entries = await fsPromises.readdir(this.projectsRoot, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name === "_asset_library_manual") continue;
+      const projectDir = path.join(this.projectsRoot, entry.name);
+      await this.invalidateProjectMappingReview(projectDir, assetId, versionPolicyFilter);
+      let episodeEntries: fs.Dirent[];
+      try { episodeEntries = await fsPromises.readdir(path.join(projectDir, "long_story"), { withFileTypes: true }); } catch { continue; }
+      for (const episodeEntry of episodeEntries) {
+        if (!episodeEntry.isDirectory() || !/^Episode\d+$/.test(episodeEntry.name)) continue;
+        await this.invalidateEpisodeMappingReview(path.join(projectDir, "long_story", episodeEntry.name), assetId, versionPolicyFilter);
+      }
+    }
+  }
+
+  private referencesAsset(item: unknown, assetId: string, versionPolicyFilter?: "follow_latest"): boolean {
+    if (!isObject(item)) return false;
+    const matches = item.asset_id === assetId
+      || (Array.isArray(item.selected_child_asset_ids) && item.selected_child_asset_ids.includes(assetId));
+    return matches && (!versionPolicyFilter || item.version_policy === versionPolicyFilter);
+  }
+
+  private async invalidateProjectMappingReview(projectDir: string, assetId: string, versionPolicyFilter?: "follow_latest"): Promise<void> {
+    let mappings: unknown;
+    try { mappings = JSON.parse(await fsPromises.readFile(path.join(projectDir, "asset_mappings.json"), "utf8")); } catch { return; }
+    if (!Array.isArray(mappings) || !mappings.some((item) => this.referencesAsset(item, assetId, versionPolicyFilter))) return;
+    let review: unknown;
+    try { review = JSON.parse(await fsPromises.readFile(path.join(projectDir, "asset_mapping_review.json"), "utf8")); } catch { return; }
+    if (!isObject(review)) return;
+    const nextRevision = (typeof review.mapping_revision === "number" ? review.mapping_revision : 0) + 1;
+    const next = { ...review, status: "waiting", approved_at: "", approved_by: "", mapping_revision: nextRevision };
+    try { await atomicWriteUtf8File(path.join(projectDir, "asset_mapping_review.json"), JSON.stringify(next, null, 2)); } catch { return; }
+    await this.invalidateOwnerState(path.join(projectDir, "project.json"), "workflow_state", "WAITING_FOR_ASSET_MAPPING_REVIEW", "ASSET_MAPPING_APPROVED");
+  }
+
+  private async invalidateEpisodeMappingReview(episodeDir: string, assetId: string, versionPolicyFilter?: "follow_latest"): Promise<void> {
+    let review: unknown;
+    try { review = JSON.parse(await fsPromises.readFile(path.join(episodeDir, "asset_mapping_review.json"), "utf8")); } catch { return; }
+    if (!isObject(review) || !Array.isArray(review.candidates) || !review.candidates.some((item) => this.referencesAsset(item, assetId, versionPolicyFilter))) return;
+    const nextRevision = (typeof review.mapping_revision === "number" ? review.mapping_revision : 0) + 1;
+    const next = { ...review, status: "waiting", approved_at: "", mapping_revision: nextRevision };
+    try { await atomicWriteUtf8File(path.join(episodeDir, "asset_mapping_review.json"), JSON.stringify(next, null, 2)); } catch { return; }
+    await this.invalidateOwnerState(path.join(episodeDir, "project.json"), "state", "waiting_for_asset_mapping_review", "asset_mapping_approved");
+  }
+
+  private async invalidateOwnerState(statePath: string, key: "workflow_state" | "state", waitingValue: string, approvedValue: string): Promise<void> {
+    let raw: unknown;
+    try { raw = JSON.parse(await fsPromises.readFile(statePath, "utf8")); } catch { return; }
+    if (!isObject(raw) || raw[key] !== approvedValue) return;
+    try { await atomicWriteUtf8File(statePath, JSON.stringify({ ...raw, [key]: waitingValue }, null, 2)); } catch { /* best-effort, matches Python's silent skip */ }
   }
 
   async usageProjects(assetId: string): Promise<string[]> {
@@ -159,6 +466,14 @@ export class LocalAssetsRepository {
       if (relative.startsWith("..") || path.isAbsolute(relative)) return null;
       return fs.statSync(realCandidate).isFile() ? realCandidate : null;
     } catch { return null; }
+  }
+
+  /** Resolve only the selected representative of a Folder, never an arbitrary child. */
+  async resolveFolderRepresentativeContentPath(folder: StoredAsset): Promise<string | null> {
+    if (!folder.is_folder || !folder.thumbnail_asset_id) return null;
+    const child = (await this.load()).find((asset) => asset.asset_id === folder.thumbnail_asset_id);
+    if (!child || child.is_folder || child.parent_folder_id !== folder.asset_id) return null;
+    return this.resolveContentPath(child);
   }
 
   /** Resolve a version recorded in the trusted Asset Library index for a local snapshot. */

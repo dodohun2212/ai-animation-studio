@@ -1,6 +1,7 @@
 import type {
-  AssetType, CreateAssetMetadata, CreateAssetResponse, DeleteAssetResponse, GetAssetResponse,
-  ListAssetsResponse, UpdateAssetMetadataRequest, UpdateAssetResponse,
+  AddAssetVersionResponse, AssetType, CharacterFolderReferenceSetRequest, CharacterFolderReferenceSetResponse, CreateAssetMetadata, CreateAssetResponse,
+  DeleteAssetFolderResponse, DeleteAssetOwnedFileResponse, DeleteAssetResponse, GetAssetResponse, ListAssetFileAuditResponse,
+  ListAssetsResponse, RelinkAssetResponse, UpdateAssetMetadataRequest, UpdateAssetResponse,
 } from "@ai-animation-studio/shared";
 import { Injectable } from "@nestjs/common";
 import { badAssetRequest, invalidAssetFile } from "./asset-api.error.js";
@@ -55,14 +56,67 @@ export class AssetsService {
     return { asset: toPublicAsset(asset, this.repository.resolveContentPath(asset) !== null) };
   }
 
+  async updateCharacterFolderReferenceSet(assetId: string, body: unknown): Promise<CharacterFolderReferenceSetResponse> {
+    const request = this.parseCharacterFolderReferenceSet(body);
+    const updated = await this.repository.updateCharacterFolderReferenceSet(assetId, request);
+    return {
+      folder: toPublicAsset(updated.folder, false),
+      children: updated.children.map((asset) => toPublicAsset(asset, this.repository.resolveContentPath(asset) !== null)),
+    };
+  }
+
   async remove(assetId: string): Promise<DeleteAssetResponse> {
     await this.repository.remove(assetId);
     return { assetId, deletedOwnedFile: false };
   }
 
+  async addVersion(assetId: string, file: { buffer: Buffer; originalname: string; mimetype?: string } | undefined, rawNotes: unknown): Promise<AddAssetVersionResponse> {
+    if (!file) throw invalidAssetFile("An image file is required.");
+    const notes = this.parseNotes(rawNotes);
+    const asset = await this.repository.addVersion(assetId, file, notes);
+    return { asset: toPublicAsset(asset, this.repository.resolveContentPath(asset) !== null) };
+  }
+
+  async relink(assetId: string, file: { buffer: Buffer; originalname: string; mimetype?: string } | undefined): Promise<RelinkAssetResponse> {
+    if (!file) throw invalidAssetFile("An image file is required.");
+    const asset = await this.repository.relink(assetId, file);
+    return { asset: toPublicAsset(asset, this.repository.resolveContentPath(asset) !== null) };
+  }
+
+  async audit(): Promise<ListAssetFileAuditResponse> {
+    return { entries: await this.repository.auditFiles() };
+  }
+
+  async removeOwnedFile(assetId: string): Promise<DeleteAssetOwnedFileResponse> {
+    await this.repository.removeOwnedFile(assetId);
+    return { assetId, deletedOwnedFile: true };
+  }
+
+  async removeFolder(assetId: string, rawRemoveChildIndexes?: string, rawDeleteManualFiles?: string): Promise<DeleteAssetFolderResponse> {
+    const removeChildIndexes = this.parseBooleanFlag(rawRemoveChildIndexes, "removeChildIndexes");
+    const deleteManualFiles = this.parseBooleanFlag(rawDeleteManualFiles, "deleteManualFiles");
+    const result = await this.repository.removeFolder(assetId, { removeChildIndexes, deleteManualFiles });
+    return { assetId, removedChildAssetIds: result.removedChildAssetIds, deletedFiles: result.deletedFiles };
+  }
+
+  private parseBooleanFlag(raw: string | undefined, name: string): boolean {
+    if (raw === undefined) return false;
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+    throw badAssetRequest(`${name} must be "true" or "false".`);
+  }
+
+  private parseNotes(raw: unknown): string {
+    if (raw === undefined || raw === null || raw === "") return "";
+    if (typeof raw !== "string" || raw.length > 2000) throw badAssetRequest("Version notes are invalid.");
+    return raw;
+  }
+
   async content(assetId: string): Promise<{ path: string; extension: string }> {
     const asset = await this.repository.get(assetId);
-    const contentPath = this.repository.resolveContentPath(asset);
+    const contentPath = asset.is_folder
+      ? await this.repository.resolveFolderRepresentativeContentPath(asset)
+      : this.repository.resolveContentPath(asset);
     if (!contentPath) throw invalidAssetFile("Asset image is unavailable.");
     const extension = contentPath.slice(contentPath.lastIndexOf(".")).toLowerCase();
     if (![".png", ".jpg", ".jpeg", ".webp"].includes(extension)) throw invalidAssetFile("Asset image format is unavailable.");
@@ -100,5 +154,13 @@ export class AssetsService {
       || !(value.notes === undefined || typeof value.notes === "string") || !(value.role === undefined || typeof value.role === "string"))
       throw badAssetRequest("Update payload is invalid.");
     return value as UpdateAssetMetadataRequest;
+  }
+
+  private parseCharacterFolderReferenceSet(value: unknown): CharacterFolderReferenceSetRequest {
+    if (!isObject(value) || Object.keys(value).length !== 2 || !isStrings(value.childAssetIds)
+      || typeof value.thumbnailAssetId !== "string" || !value.thumbnailAssetId) {
+      throw badAssetRequest("Character Folder reference set payload is invalid.");
+    }
+    return { childAssetIds: value.childAssetIds, thumbnailAssetId: value.thumbnailAssetId };
   }
 }
