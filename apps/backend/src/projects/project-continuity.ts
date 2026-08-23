@@ -94,6 +94,18 @@ export function previousSceneContext(stored: StoredProject): string {
   return trimmedString(link.story_context);
 }
 
+/**
+ * The one place that reads the raw linked image path back off disk — for internal server-side Reference-image
+ * use only (real Scene 1 image generation). Never exposed through any API/DTO; `ShortProjectContinuityOption`
+ * intentionally carries only `projectId`/`projectName`/`label`.
+ */
+export function previousSceneContinuityImagePath(stored: StoredProject): string | null {
+  const link = stored.lore_context.previous_scene_link;
+  if (!isObject(link) || link.source_kind !== "short_project" || link.user_selected !== true) return null;
+  const imagePath = trimmedString(link.image_path);
+  return imagePath || null;
+}
+
 export function applyContinuityCandidate(stored: StoredProject, candidate: ContinuityCandidate | null, updatedAt: string): StoredProject {
   return {
     ...stored,

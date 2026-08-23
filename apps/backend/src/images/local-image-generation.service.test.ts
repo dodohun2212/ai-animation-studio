@@ -48,6 +48,23 @@ async function setupWithConnectedOpenAi() {
   return { ...base, providerSettings, budget, service };
 }
 
+const PNG_BYTES = Buffer.from(PNG_BASE64, "base64");
+
+async function setupWithConnectedOpenAiAndConfirmedReference() {
+  const base = await setupWithConnectedOpenAi();
+  const assets = new LocalAssetsRepository(path.dirname(base.projectsRoot));
+  const character = await assets.create({ buffer: PNG_BYTES, originalname: "hero.png", mimetype: "image/png" }, { assetType: "character", displayName: "Hero", approved: true });
+  const now = "2026-08-22T00:00:00.000Z";
+  await base.mappings.save("images", [{
+    mapping_id: "MAP-TEST0001", project_id: "images", asset_id: character.asset_id, enabled: true, usage_role: "character",
+    scene_scope: { mode: "all" }, assignment_source: "manual", confidence: null, match_reason: "manual_assignment",
+    status: "confirmed", user_confirmed: true, version_policy: "follow_latest", pinned_version: null, candidate_only: false,
+    created_at: now, updated_at: now, snapshot_path: null, snapshot_sha256: null, snapshot_source_version: null, selected_child_asset_ids: [],
+  }]);
+  await base.mappings.saveReview("images", { project_id: "images", mapping_revision: 1, script_revision: 1, script_fingerprint: scriptFingerprint((await base.projects.findById("images")).scenes), status: "approved", approved_at: now, approved_by: "user", text_only_confirmed: false, legacy_confirmed: false, reviewed_scenes: [1, 2, 3, 4, 5, 6] });
+  return { ...base, character };
+}
+
 describe("provider-free local image generation", () => {
   it("requires explicit approval, the approved mapping state, and a current approved review", async () => {
     const { projectsRoot, projects, mappings } = await setup();
@@ -164,5 +181,53 @@ describe("real OpenAI image generation", () => {
     expect((await projects.findById("images")).workflow_state).toBe(WorkflowState.AssetMappingApproved);
     const usage = JSON.parse(await fs.readFile(path.join(root, "api_budget_usage.json"), "utf8")) as Array<Record<string, unknown>>;
     expect(usage).toEqual([expect.objectContaining({ project_id: "images", api_type: "image", succeeded: false })]);
+  });
+
+  it("sends the confirmed Asset Mapping's approved Reference image via images/edits for every scene, recording the :edit adapter", async () => {
+    const { projectsRoot, service } = await setupWithConnectedOpenAiAndConfirmedReference();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await service.generate("images", { approved: true });
+
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    for (const call of fetchMock.mock.calls) {
+      const [url, init] = call as [string, RequestInit];
+      expect(url).toBe("https://api.openai.com/v1/images/edits");
+      expect((init.body as FormData).getAll("image[]")).toHaveLength(1);
+    }
+    const reloaded = await new LocalProjectRepository(projectsRoot).findById("images");
+    expect(reloaded.image_generation_records).toEqual(expect.arrayContaining([expect.objectContaining({ scene_number: 1, adapter: "gpt-image-2:edit", image_api_calls: 1 })]));
+  });
+
+  it("includes the linked previous project's approved Scene 6 as an additional Scene 1 Reference only", async () => {
+    const { projectsRoot, projects, service } = await setupWithConnectedOpenAiAndConfirmedReference();
+    const continuityImage = path.join(projectsRoot, "continuity_source_scene6.png");
+    await fs.writeFile(continuityImage, PNG_BYTES);
+    const project = await projects.findById("images");
+    project.lore_context = { ...project.lore_context, previous_scene_link: { source_kind: "short_project", user_selected: true, project_id: "other", project_name: "Other", label: "Other · Scene 6", scene_number: 6, story_context: "context", image_path: continuityImage } };
+    await projects.save(project);
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await service.generate("images", { approved: true });
+
+    const editCalls = fetchMock.mock.calls.filter((call) => call[0] === "https://api.openai.com/v1/images/edits");
+    expect(editCalls).toHaveLength(6);
+    const sceneOneReferenceCount = (editCalls[0]![1] as RequestInit).body as FormData;
+    expect(sceneOneReferenceCount.getAll("image[]")).toHaveLength(2); // confirmed character mapping + continuity Scene 6
+    for (const call of editCalls.slice(1)) {
+      expect(((call[1] as RequestInit).body as FormData).getAll("image[]")).toHaveLength(1); // no continuity image outside Scene 1
+    }
+  });
+
+  it("falls back to reference-free images/generations when no Asset Mapping is confirmed", async () => {
+    const { service } = await setupWithConnectedOpenAi();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await service.generate("images", { approved: true });
+
+    for (const call of fetchMock.mock.calls) expect(call[0]).toBe("https://api.openai.com/v1/images/generations");
   });
 });

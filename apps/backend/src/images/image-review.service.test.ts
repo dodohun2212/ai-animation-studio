@@ -2,12 +2,16 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
+import { LocalProjectAssetMappingsRepository, scriptFingerprint } from "../mappings/mappings.repository.js";
+import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
+import { ProviderSettingsService } from "../settings/provider-settings.service.js";
+import { OpenAiBudget } from "../providers/openai-budget.js";
 import { ImageReviewService } from "./image-review.service.js";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
@@ -27,9 +31,36 @@ async function setup() {
     const file = path.join(images, `scene${number}.png`); await fs.writeFile(file, PNG); return file;
   }));
   await projects.save(project);
+  project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, description: `scene ${number}` }));
+  await projects.save(project);
   const assets = new LocalAssetsRepository(path.dirname(projectsRoot));
   await assets.indexGeneratedProjectImages("review", project.topic, []);
-  return { projectsRoot, projects, assets, service: new ImageReviewService(projects, projectsRoot, assets) };
+  return { root, projectsRoot, projects, assets, service: new ImageReviewService(projects, projectsRoot, assets) };
+}
+
+const PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=";
+function jsonResponse(status: number, body: unknown): Response {
+  return { ok: status >= 200 && status < 300, status, json: async () => body, headers: { get: () => null } } as unknown as Response;
+}
+
+async function setupWithConnectedOpenAiAndConfirmedReference() {
+  const base = await setup();
+  const settingsRepository = new ProviderSettingsRepository(base.root);
+  const providerSettings = new ProviderSettingsService(settingsRepository);
+  await providerSettings.save("openai", { value: "sk-test-key-1234567890" });
+  const budget = new OpenAiBudget(base.root, 10);
+  const character = await base.assets.create({ buffer: PNG, originalname: "hero.png", mimetype: "image/png" }, { assetType: "character", displayName: "Hero", approved: true });
+  const mappings = new LocalProjectAssetMappingsRepository(base.projectsRoot);
+  const now = "2026-08-22T00:00:00.000Z";
+  await mappings.save("review", [{
+    mapping_id: "MAP-TEST0001", project_id: "review", asset_id: character.asset_id, enabled: true, usage_role: "character",
+    scene_scope: { mode: "all" }, assignment_source: "manual", confidence: null, match_reason: "manual_assignment",
+    status: "confirmed", user_confirmed: true, version_policy: "follow_latest", pinned_version: null, candidate_only: false,
+    created_at: now, updated_at: now, snapshot_path: null, snapshot_sha256: null, snapshot_source_version: null, selected_child_asset_ids: [],
+  }]);
+  await mappings.saveReview("review", { project_id: "review", mapping_revision: 1, script_revision: 0, script_fingerprint: scriptFingerprint((await base.projects.findById("review")).scenes), status: "approved", approved_at: now, approved_by: "user", text_only_confirmed: false, legacy_confirmed: false, reviewed_scenes: [1, 2, 3, 4, 5, 6] });
+  const service = new ImageReviewService(base.projects, base.projectsRoot, base.assets, mappings, providerSettings, budget);
+  return { ...base, providerSettings, budget, service };
 }
 
 describe("provider-free generated image review", () => {
@@ -110,5 +141,62 @@ describe("provider-free generated image review", () => {
     await expect(service.regenerate("review", "1", { approved: true })).rejects.toMatchObject({ response: { code: "IMAGE_REVIEW_DATA_INVALID" } });
     await expect(fs.readFile(current)).resolves.toEqual(before);
     await expect(fs.stat(path.join(projectsRoot, "review", "images", "originals"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+});
+
+describe("real OpenAI image regeneration", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("regenerates via images/edits using the confirmed Asset Mapping's Reference image and records the :edit adapter", async () => {
+    const { projectsRoot, service } = await setupWithConnectedOpenAiAndConfirmedReference();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await service.regenerate("review", "3", { approved: true });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.openai.com/v1/images/edits");
+    expect((init.body as FormData).getAll("image[]")).toHaveLength(1);
+    const raw = JSON.parse(await fs.readFile(path.join(projectsRoot, "review", "generated_image_reviews.json"), "utf8")) as Array<{ scene_number: number }>;
+    expect(raw.find((item) => item.scene_number === 3)).toBeTruthy();
+    const project = JSON.parse(await fs.readFile(path.join(projectsRoot, "review", "project.json"), "utf8")) as { image_generation_records: Array<{ scene_number: number; adapter: string; image_api_calls: number }> };
+    expect(project.image_generation_records[2]).toMatchObject({ scene_number: 3, adapter: "gpt-image-2:edit", image_api_calls: 1 });
+  });
+
+  it("never calls fetch and keeps the local fake adapter when no OpenAI credential is configured", async () => {
+    const { service } = await setup();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await service.regenerate("review", "2", { approved: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks the real request and leaves the current image untouched when the monthly budget is already spent", async () => {
+    const { projectsRoot, budget, service } = await setupWithConnectedOpenAiAndConfirmedReference();
+    await budget.record("review", "image", true, 10, new Date());
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const current = path.join(projectsRoot, "review", "images", "scene3.png");
+    const before = await fs.readFile(current);
+
+    await expect(service.regenerate("review", "3", { approved: true })).rejects.toMatchObject({ response: { code: "IMAGE_REVIEW_BUDGET_EXCEEDED" } });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(fs.readFile(current)).resolves.toEqual(before);
+  });
+
+  it("classifies a real provider failure, records failed budget usage, and leaves the current image untouched", async () => {
+    const { root, projectsRoot, service } = await setupWithConnectedOpenAiAndConfirmedReference();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { error: { code: "invalid_api_key" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const current = path.join(projectsRoot, "review", "images", "scene3.png");
+    const before = await fs.readFile(current);
+
+    await expect(service.regenerate("review", "3", { approved: true })).rejects.toMatchObject({ response: { code: "IMAGE_REVIEW_PROVIDER_ERROR", details: { category: "authentication" } } });
+
+    await expect(fs.readFile(current)).resolves.toEqual(before);
+    const usage = JSON.parse(await fs.readFile(path.join(root, "api_budget_usage.json"), "utf8")) as Array<Record<string, unknown>>;
+    expect(usage).toEqual([expect.objectContaining({ project_id: "review", api_type: "image", succeeded: false })]);
   });
 });

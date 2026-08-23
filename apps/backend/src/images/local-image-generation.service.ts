@@ -12,7 +12,9 @@ import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { IMAGE_ESTIMATED_COST_USD, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OpenAiAdapterError } from "../providers/openai-common.js";
-import { OPENAI_IMAGE_MODEL, callOpenAiImageApi } from "./openai-image-adapter.js";
+import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "./openai-image-adapter.js";
+import { collectReferenceImages } from "./image-reference-selection.js";
+import { previousSceneContinuityImagePath } from "../projects/project-continuity.js";
 import { imageBudgetExceeded, imageGenerationFailed, imageGenerationNotAllowed, imageProviderError, imageStorageError, invalidImageRequest, mappingReviewRequired } from "./image-api.error.js";
 
 const SCENES = [1, 2, 3, 4, 5, 6] as const;
@@ -89,6 +91,8 @@ export class LocalImageGenerationService {
     try { await this.projects.save(current); } catch { throw imageStorageError(); }
 
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
+    const mappings = apiKey && this.budget ? await this.mappings.load(current.project_id) : [];
+    const continuityImagePath = previousSceneContinuityImagePath(current);
     const generated: SceneNumber[] = [];
     const reused: SceneNumber[] = [];
     try {
@@ -104,16 +108,19 @@ export class LocalImageGenerationService {
         let adapter = "local-fake-image-adapter";
         let apiCalls = 0;
         if (apiKey && this.budget) {
+          const references = await collectReferenceImages(this.assets, mappings, this.projectsRoot, current.project_id, number, continuityImagePath);
           await this.budget.preflight(IMAGE_ESTIMATED_COST_USD);
           let succeeded = false;
           try {
-            const result = await callOpenAiImageApi(apiKey, prompt);
+            const result = references.length > 0
+              ? await callOpenAiImageEditApi(apiKey, prompt, references)
+              : await callOpenAiImageApi(apiKey, prompt);
             bytes = result.bytes;
             succeeded = true;
           } finally {
             await this.budget.record(current.project_id, "image", succeeded, IMAGE_ESTIMATED_COST_USD);
           }
-          adapter = OPENAI_IMAGE_MODEL;
+          adapter = references.length > 0 ? `${OPENAI_IMAGE_MODEL}:edit` : OPENAI_IMAGE_MODEL;
           apiCalls = 1;
         }
         await fs.mkdir(path.dirname(destination), { recursive: true });

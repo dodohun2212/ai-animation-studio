@@ -24,8 +24,9 @@ import { ImageReviewService } from "./image-review.service.js";
       inject: [LocalProjectRepository, LocalProjectAssetMappingsRepository, PROJECTS_ROOT, LocalAssetsRepository, ProviderSettingsService, OpenAiBudget],
     }, {
       provide: ImageReviewService,
-      useFactory: (projects: LocalProjectRepository, projectsRoot: string, assets: LocalAssetsRepository) => new ImageReviewService(projects, projectsRoot, assets),
-      inject: [LocalProjectRepository, PROJECTS_ROOT, LocalAssetsRepository],
+      useFactory: (projects: LocalProjectRepository, projectsRoot: string, assets: LocalAssetsRepository, mappings: LocalProjectAssetMappingsRepository, providerSettings: ProviderSettingsService, budget: OpenAiBudget) =>
+        new ImageReviewService(projects, projectsRoot, assets, mappings, providerSettings, budget),
+      inject: [LocalProjectRepository, PROJECTS_ROOT, LocalAssetsRepository, LocalProjectAssetMappingsRepository, ProviderSettingsService, OpenAiBudget],
     },
   ],
 })

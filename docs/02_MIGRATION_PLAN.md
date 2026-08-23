@@ -45,7 +45,7 @@
 ### 다음 권장 작업 순서
 
 1. ~~**(중요, 아키텍처 변경 필요)** `local-video-workflow.service.ts`를 "몇 분짜리 실제 작업을 감당하는 구조"로 재설계한 뒤 Runway adapter를 실제로 연결.~~ **완료** — "마흔한 번째 이전 기능" 참고. 단기·장편 양쪽 모두 제출→폴링 기반 상태 기계로 재설계하고 실제 Runway를 연결했다.
-2. 실제 OpenAI 이미지 생성에 Asset Mapping 기반 Reference 이미지 편집(`images.edit`, 승인된 캐릭터/스타일 이미지 전달)과 장면 재생성(`image-review.service.ts`) 경로 추가. 마흔 번째 기능에서 저장하기 시작한 `lore_context.previous_scene_link.image_path`(연결된 이전 프로젝트의 Scene 6 이미지)를 이 작업에서 Scene 1 Image 생성의 continuity Reference로 실제로 소비하는 것도 포함한다 — 지금은 저장만 하고 아직 아무 것도 이 값을 읽지 않는다.
+2. ~~실제 OpenAI 이미지 생성에 Asset Mapping 기반 Reference 이미지 편집(`images.edit`, 승인된 캐릭터/스타일 이미지 전달)과 장면 재생성(`image-review.service.ts`) 경로 추가.~~ **완료** — "마흔두 번째 이전 기능" 참고.
 3. 실제 FFmpeg 환경 검증은 Provider adapter 이후 별도 기능으로 진행한다. 테스트에서는 절대 유료 요청이나 실제 바이너리 호출을 하지 않는다.
 
 ### 실제 Provider 연동 설계 원칙(서른세 번째 기능부터 적용)
@@ -707,6 +707,17 @@ Frontend 및 통합 완료 근거(2026-08-21): `feature/frontend`의 `48065b0`�
 - [x] 신규 테스트: `runway-budget.test.ts`, `runway-workflow-support.test.ts`(제출/throttle/still-running/성공/실패/check-error/timeout/예산초과 전부 mocked fetch로 검증), `local-video-workflow.runway.test.ts`(전체 흐름, 실패 후 재생성, 화면 polling 없이도 백엔드 타이머만으로 진행, 동시 호출 이중 제출 방지, 크래시 후 새 인스턴스로 재개), `local-video-workflow.no-provider-calls.test.ts`, `episode-videos.runway.test.ts`, 두 프런트 화면의 실패 장면 재시도 테스트. 기존 local fake 테스트는 전부 한 글자도 안 바뀐 채 그대로 통과한다(신규 코드는 `providerSettings`/`budget` 미주입 시 항상 기존 분기로 빠짐).
 - [x] Main 통합 검증에서 Backend 432 통과(+1 intentional skip), Frontend 533 통과, Shared 25 통과, root typecheck/test/build 및 `git diff --check`를 통과했다. 실제 Runway·OpenAI·network·FFmpeg 호출은 0건이다.
 - [ ] 다음 범위는 "다음 권장 작업 순서" 2번(실제 OpenAI 이미지 Reference 편집·재생성)과 3번(실제 FFmpeg 환경 검증), 그리고 4번(Electron 통합·Windows 패키징)이다.
+
+## 마흔두 번째 이전 기능: 실제 OpenAI 이미지 Reference 편집·재생성
+
+- [x] "다음 권장 작업 순서" 2번 항목을 완료했다: Python `OpenAIImageAdapter.generate_for_size`의 Reference 경로(`client.images.edit(model, image=files, prompt, size, quality, output_format)`)를 참고해 `openai-image-adapter.ts`에 `callOpenAiImageEditApi()`를 추가했다 — SDK 없이 순수 `fetch` + `FormData`로 `multipart/form-data` 요청을 만들고, Reference 이미지마다 `image[]` part 하나씩 붙인다. 기존 `callOpenAiImageApi()`(Reference 없는 경로)와 동일한 오류 분류·재시도 패턴을 공유한다.
+- [x] 신규 공용 헬퍼 `image-reference-selection.ts`의 `collectReferenceImages()`가 한 장면의 실제 Reference 이미지 바이트를 모은다: 그 장면 범위(`scopeIncludes`)에 포함되는 confirmed·enabled Asset Mapping 전부(버전 정책에 따라 snapshot/pinned_version/follow_latest 파일을 실제로 해석)와, Scene 1에 한해서만 마흔 번째 기능에서 저장하기 시작했던 `lore_context.previous_scene_link.image_path`(연결된 이전 프로젝트의 승인된 Scene 6 이미지)를 추가한다 — 지금까지 아무도 읽지 않던 이 값을 처음으로 실제 소비했다. Python의 `MAX_REFERENCE_IMAGES`(16장) 한도를 그대로 지킨다. 클라이언트가 보낸 어떤 경로도 신뢰하지 않고, 전부 이미 검증된 저장 데이터(Asset Library 버전 해석 또는 이미 안전성 검사를 거친 continuity 링크)에서만 파일을 연다.
+- [x] `local-image-generation.service.ts`(최초 6장면 생성)와 `image-review.service.ts`(장면 재생성)에 이 선택 로직을 동일하게 연결했다. 두 서비스 모두, 해당 장면에 Reference가 하나라도 있으면 `images.edit`(Reference 있음)을 쓰고 없으면 기존 `images.generate`를 쓰며 — Python의 "Reference 있으면 edit, 없으면 generate" 분기를 그대로 재현했다. 실행 기록의 `adapter` 필드는 Reference 사용 시 `"gpt-image-2:edit"`, 아닐 때는 기존과 동일한 `"gpt-image-2"`로 구분해 저장한다.
+- [x] `image-review.service.ts`는 기존에 재생성을 100% local fake로만 처리했다 — 이번에 `ProviderSettingsService`/`OpenAiBudget`(둘 다 선택적 trailing 생성자 인자, 기존 테스트 생성자 호출과 하위 호환)을 주입받아 다른 실제 Provider 연동과 동일한 원칙을 적용했다: 실제 요청이 예산 초과나 Provider 오류로 실패하면 기존 이미지 파일을 절대 archive하거나 덮어쓰지 않고 그대로 둔다(바이트를 먼저 확보한 뒤에만 파일을 건드림). 새 오류 코드 `IMAGE_REVIEW_BUDGET_EXCEEDED`/`IMAGE_REVIEW_PROVIDER_ERROR`를 추가하고, Frontend `imageReviewApi.ts`에 고정된 한국어 안전 메시지를 매핑했다(원문 노출 안 함, 기존 `IMAGE_BUDGET_EXCEEDED`/`IMAGE_PROVIDER_ERROR` 패턴과 동일).
+- [x] `images.module.ts`에서 `ImageReviewService`도 `LocalProjectAssetMappingsRepository`/`ProviderSettingsService`/`OpenAiBudget`을 주입받도록 배선을 확장했다(이전에는 두 서비스 중 이미지 생성 쪽만 실제 Provider를 알고 있었다).
+- [x] 신규 테스트: `openai-image-adapter.test.ts`에 `callOpenAiImageEditApi` 6개(요청 shape·multipart part 개수·Reference 없음 거부·모델override·오류분류·재시도), `local-image-generation.service.test.ts`에 confirmed mapping의 Reference가 6장면 모두에 전송되는지·Scene 1에만 continuity 이미지가 추가로 붙는지(2장 vs 1장)·Reference 없을 때 여전히 `images.generate`로 폴백하는지 3개, `image-review.service.test.ts`에 Reference 기반 재생성·미연결 시 fetch 0회·예산초과 시 기존 이미지 보존·Provider 오류 시 기존 이미지 보존과 실패 예산 기록 4개. 기존 provider-free/로컬 fake 테스트는 전부 한 글자도 안 바뀐 채 그대로 통과한다.
+- [x] Main 통합 검증에서 Backend 445 통과(+1 intentional skip), Frontend 533 통과, Shared 25 통과, root typecheck/test/build 및 `git diff --check`를 통과했다. 실제 OpenAI·network·FFmpeg 호출은 0건이다.
+- [ ] 다음 범위는 "다음 권장 작업 순서" 3번(실제 FFmpeg 환경 검증)과 4번(Electron 통합·Windows 패키징)이다.
 
 ## 공통 완료 조건
 
