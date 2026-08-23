@@ -11,6 +11,8 @@ import {
 
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
+import { ProviderSettingsService } from "../settings/provider-settings.service.js";
+import { RunwayBudget } from "../providers/runway-budget.js";
 import { LocalVideoPreviewService, utf16Length } from "./video-preview.service.js";
 import {
   invalidVideoSubmission,
@@ -38,7 +40,7 @@ type VideoRecord = {
   duration_seconds: 5;
   estimated_cost_usd: number;
   status: "created";
-  execution_mode: "local_fake_no_provider";
+  execution_mode: "local_fake_no_provider" | "runway";
   approved_at: string;
 };
 
@@ -74,6 +76,8 @@ export class LocalVideoSubmissionService {
     private readonly projects: LocalProjectRepository,
     private readonly previews: LocalVideoPreviewService,
     private readonly monthlyBudgetUsd = DEFAULT_MONTHLY_BUDGET_USD,
+    private readonly providerSettings?: ProviderSettingsService,
+    private readonly budget?: RunwayBudget,
   ) {}
 
   private validateRequest(value: unknown): StartVideoGenerationRequest {
@@ -150,6 +154,9 @@ export class LocalVideoSubmissionService {
     const duplicate = this.existing(project, request, hashes);
     if (duplicate) return duplicate;
 
+    const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("runway") : null;
+    const executionMode: VideoRecord["execution_mode"] = apiKey && this.budget ? "runway" : "local_fake_no_provider";
+
     const jobId = randomUUID();
     const approvedAt = new Date().toISOString();
     const records: VideoRecord[] = SCENES.map((scene, index) => ({
@@ -164,7 +171,7 @@ export class LocalVideoSubmissionService {
       duration_seconds: 5,
       estimated_cost_usd: 0.25,
       status: "created",
-      execution_mode: "local_fake_no_provider",
+      execution_mode: executionMode,
       approved_at: approvedAt,
     }));
     await this.projects.save({
@@ -181,7 +188,7 @@ export class LocalVideoSubmissionService {
           approved_at: approvedAt,
           estimated_cost_usd: ESTIMATED_COST_USD,
           maximum_provider_calls: MAX_PROVIDER_CALLS,
-          execution_mode: "local_fake_no_provider",
+          execution_mode: executionMode,
         },
       },
     });

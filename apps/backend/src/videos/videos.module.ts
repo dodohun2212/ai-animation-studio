@@ -1,7 +1,11 @@
 import { Module } from "@nestjs/common";
 
+import { AssetsModule, LEARNING_DATA_ROOT } from "../assets/assets.module.js";
 import { PROJECTS_ROOT, ProjectsModule } from "../projects/projects.module.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
+import { ProviderSettingsModule } from "../settings/provider-settings.module.js";
+import { ProviderSettingsService } from "../settings/provider-settings.service.js";
+import { RunwayBudget } from "../providers/runway-budget.js";
 import { VideosController } from "./videos.controller.js";
 import { LocalVideoPreviewService } from "./video-preview.service.js";
 import { LocalVideoSubmissionService } from "./local-video-submission.service.js";
@@ -9,20 +13,24 @@ import { LocalVideoWorkflowService } from "./local-video-workflow.service.js";
 import { LocalVideoMergeService } from "./video-merge.service.js";
 
 @Module({
-  imports: [ProjectsModule],
+  imports: [ProjectsModule, ProviderSettingsModule, AssetsModule],
   controllers: [VideosController],
-  providers: [{
+  providers: [
+    { provide: RunwayBudget, useFactory: (root: string) => new RunwayBudget(root), inject: [LEARNING_DATA_ROOT] },
+    {
     provide: LocalVideoPreviewService,
     useFactory: (projects: LocalProjectRepository, projectsRoot: string) => new LocalVideoPreviewService(projects, projectsRoot),
     inject: [LocalProjectRepository, PROJECTS_ROOT],
   }, {
     provide: LocalVideoSubmissionService,
-    useFactory: (projects: LocalProjectRepository, previews: LocalVideoPreviewService) => new LocalVideoSubmissionService(projects, previews),
-    inject: [LocalProjectRepository, LocalVideoPreviewService],
+    useFactory: (projects: LocalProjectRepository, previews: LocalVideoPreviewService, providerSettings: ProviderSettingsService, budget: RunwayBudget) =>
+      new LocalVideoSubmissionService(projects, previews, undefined, providerSettings, budget),
+    inject: [LocalProjectRepository, LocalVideoPreviewService, ProviderSettingsService, RunwayBudget],
   }, {
     provide: LocalVideoWorkflowService,
-    useFactory: (projects: LocalProjectRepository, projectsRoot: string) => new LocalVideoWorkflowService(projects, projectsRoot),
-    inject: [LocalProjectRepository, PROJECTS_ROOT],
+    useFactory: (projects: LocalProjectRepository, projectsRoot: string, providerSettings: ProviderSettingsService, budget: RunwayBudget) =>
+      new LocalVideoWorkflowService(projects, projectsRoot, providerSettings, budget),
+    inject: [LocalProjectRepository, PROJECTS_ROOT, ProviderSettingsService, RunwayBudget],
   }, {
     provide: LocalVideoMergeService,
     useFactory: (projects: LocalProjectRepository, projectsRoot: string) => new LocalVideoMergeService(projects, projectsRoot),
