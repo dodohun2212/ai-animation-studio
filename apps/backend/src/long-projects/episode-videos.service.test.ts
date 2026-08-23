@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { EpisodeAssetMappingsService } from "./episode-asset-mappings.service.js";
 import { EpisodeImagesService } from "./episode-images.service.js";
@@ -19,7 +19,7 @@ async function setup() {
   const images = new EpisodeImagesService(projectsRoot); await images.generate("long", 1, { approved: true }); for (const number of [1, 2, 3, 4, 5, 6] as const) await images.approve("long", 1, String(number), { approved: true });
   return { videos: new EpisodeVideosService(projectsRoot), projectsRoot };
 }
-afterEach(async () => { if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
+afterEach(async () => { vi.unstubAllGlobals(); if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 
 describe("EpisodeVideosService", () => {
   it("keeps preview provider-free, requires its exact approval snapshot, and produces six local fake clips sequentially", async () => {
@@ -40,5 +40,16 @@ describe("EpisodeVideosService", () => {
     await expect(fs.readdir(path.join(projectsRoot, "long", "long_story", "Episode01", "videos", "history"))).resolves.toHaveLength(1);
   });
 
-  it("does not import or call a provider, network, FFmpeg, or subprocess", async () => { const source = await fs.readFile(path.join(process.cwd(), "src", "long-projects", "episode-videos.service.ts"), "utf8"); expect(source).not.toMatch(/openai|runway|ffmpeg|child_process|fetch\s*\(/i); });
+  it("never calls fetch across preview, start, run, progress, regenerate, and approve when no Runway credential/budget is wired in", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { videos } = await setup();
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_3", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+    await videos.progress("long", 1, started.jobId);
+    await videos.regenerate("long", 1, started.jobId, "2", { approved: true });
+    for (const number of [1, 2, 3, 4, 5, 6] as const) await videos.approve("long", 1, started.jobId, String(number), { approved: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

@@ -16,7 +16,7 @@ const statuses: readonly LongEpisodeStatus[] = ["planned", "outline_ready", "scr
 type ObjectMap = Record<string, unknown>;
 type Episode = ObjectMap & { number: number; state: LongEpisodeStatus; approved: boolean; script: ObjectMap; script_revision: number; updated_at: string };
 type Review = { scene_number: SceneNumber; status: "pending" | "approved"; updated_at: string };
-type VideoRecord = { scene_number: SceneNumber; job_id: string; status: "created" | "running" | "succeeded" | "interrupted"; execution_mode: "local_fake_no_provider" };
+type VideoRecord = { scene_number: SceneNumber; job_id: string; status: "created" | "running" | "succeeded" | "interrupted" | "failed"; execution_mode: "local_fake_no_provider" | "runway" };
 
 const object = (value: unknown): value is ObjectMap => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const scene = (value: unknown): value is SceneNumber => Number.isInteger(value) && SCENES.includes(value as SceneNumber);
@@ -70,7 +70,7 @@ export class EpisodeVideoMergeService {
     if (episode.state !== "videos_approved") throw longEpisodeMergeNotAllowed();
     const [rawReviews, rawRecords] = await Promise.all([this.json(this.files(id, number).reviews).catch(() => { throw longEpisodeMergeClipsInvalid(); }), this.json(this.files(id, number).records).catch(() => { throw longEpisodeMergeClipsInvalid(); })]);
     if (!Array.isArray(rawReviews) || rawReviews.length !== 6 || !rawReviews.every((item) => object(item) && scene(item.scene_number) && item.status === "approved" && typeof item.updated_at === "string") || new Set(rawReviews.map((item) => (item as Review).scene_number)).size !== 6) throw longEpisodeMergeClipsInvalid();
-    if (!Array.isArray(rawRecords) || rawRecords.length !== 6 || !rawRecords.every((item) => object(item) && scene(item.scene_number) && typeof item.job_id === "string" && item.job_id.length > 0 && item.status === "succeeded" && item.execution_mode === "local_fake_no_provider") || new Set(rawRecords.map((item) => (item as VideoRecord).scene_number)).size !== 6 || new Set(rawRecords.map((item) => (item as VideoRecord).job_id)).size !== 1) throw longEpisodeMergeClipsInvalid();
+    if (!Array.isArray(rawRecords) || rawRecords.length !== 6 || !rawRecords.every((item) => object(item) && scene(item.scene_number) && typeof item.job_id === "string" && item.job_id.length > 0 && item.status === "succeeded" && (item.execution_mode === "local_fake_no_provider" || item.execution_mode === "runway")) || new Set(rawRecords.map((item) => (item as VideoRecord).scene_number)).size !== 6 || new Set(rawRecords.map((item) => (item as VideoRecord).job_id)).size !== 1) throw longEpisodeMergeClipsInvalid();
     const clips = SCENES.map((number_) => this.clip(id, number, number_));
     try { await Promise.all(clips.map(async (file) => { if ((await fs.stat(file)).size <= 0) throw new Error("empty"); })); }
     catch { throw longEpisodeMergeClipsInvalid(); }

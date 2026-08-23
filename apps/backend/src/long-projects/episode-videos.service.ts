@@ -1,11 +1,14 @@
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { Injectable } from "@nestjs/common";
+import { Injectable, type OnModuleDestroy } from "@nestjs/common";
 import type { ApproveLongEpisodeVideoReviewRequest, ApproveLongEpisodeVideoReviewResponse, GetLongEpisodeVideoPreviewResponse, GetLongEpisodeVideoReviewResponse, LongEpisodeDetail, LongEpisodeStatus, LongEpisodeVideoProgress, LongEpisodeVideoReview, RegenerateLongEpisodeVideoResponse, SceneNumber, StartLongEpisodeVideoGenerationRequest, StartLongEpisodeVideoGenerationResponse } from "@ai-animation-studio/shared";
 import { validateImage } from "../assets/image-validation.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
+import { ProviderSettingsService } from "../settings/provider-settings.service.js";
+import { RunwayBudget, RunwayBudgetExceededError, VIDEO_SCENE_ESTIMATED_COST_USD } from "../providers/runway-budget.js";
+import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceResult, type RunwaySceneState } from "../videos/runway-workflow-support.js";
 import { longEpisodeNotFound, longEpisodeVideoJobNotFound, longEpisodeVideosInvalid, longEpisodeVideosNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 
@@ -14,7 +17,7 @@ const MP4 = Buffer.from("000000186674797069736F6D0000020069736F6D69736F326176633
 const statuses: readonly LongEpisodeStatus[] = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted"];
 type ObjectMap = { [key: string]: unknown };
 type Episode = ObjectMap & { number: number; state: LongEpisodeStatus; approved: boolean; script: { scenes?: unknown }; script_revision: number; updated_at: string };
-type VideoRecord = { scene_number: SceneNumber; job_id: string; user_request_id: string; confirmation_id: string; input_hash: string; prompt: string; status: "created" | "running" | "succeeded" | "interrupted"; execution_mode: "local_fake_no_provider"; completed_at?: string };
+type VideoRecord = { scene_number: SceneNumber; job_id: string; user_request_id: string; confirmation_id: string; input_hash: string; prompt: string; status: "created" | "running" | "succeeded" | "interrupted" | "failed"; execution_mode: "local_fake_no_provider" | "runway"; completed_at?: string; runway_task_id?: string; runway_submitted_at?: string; runway_last_checked_at?: string; error?: string };
 type Record = VideoRecord;
 type Review = { scene_number: SceneNumber; status: "pending" | "approved"; updated_at: string };
 const object = (value: unknown): value is ObjectMap => Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -22,9 +25,16 @@ const scene = (value: unknown): SceneNumber | undefined => Number.isInteger(valu
 const validId = (value: unknown): value is string => typeof value === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(value);
 
 @Injectable()
-export class EpisodeVideosService {
+export class EpisodeVideosService implements OnModuleDestroy {
   private readonly stopped = new Set<string>();
-  constructor(private readonly projectsRoot: string) {}
+  private readonly activeTimers = new Map<string, NodeJS.Timeout>();
+  private readonly advancing = new Set<string>();
+  constructor(
+    private readonly projectsRoot: string,
+    private readonly providerSettings?: ProviderSettingsService,
+    private readonly budget?: RunwayBudget,
+  ) {}
+  onModuleDestroy(): void { for (const timer of this.activeTimers.values()) clearInterval(timer); this.activeTimers.clear(); }
   private files(id: string, number: number) { if (!isSafeProjectId(id)) throw longUnsafeId(); const root = path.join(resolveSafeProjectDirectory(this.projectsRoot, id), "long_story"); const episode = path.join(root, `Episode${String(number).padStart(2, "0")}`); const videos = path.join(episode, "videos"); return { root, outlines: path.join(root, "episode_outlines.json"), project: path.join(episode, "project.json"), images: path.join(episode, "images"), videos, records: path.join(episode, "video_generation_records.json"), reviews: path.join(episode, "generated_video_reviews.json") }; }
   private async json(file: string): Promise<unknown> { try { return JSON.parse(await fs.readFile(file, "utf8")); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw longNotFound(); if (error instanceof SyntaxError) throw longMalformed(); throw longStorageError(); } }
   private async loadEpisode(id: string, number: number): Promise<Episode> { if (!Number.isInteger(number) || number < 1) throw longEpisodeNotFound(); const f = this.files(id, number); const outlines = await this.json(f.outlines); if (!Array.isArray(outlines) || number > outlines.length || !object(outlines[number - 1]) || outlines[number - 1].episode_number !== number) throw longEpisodeNotFound(); const raw = await this.json(f.project); if (!object(raw) || raw.number !== number || !statuses.includes(raw.state as LongEpisodeStatus) || typeof raw.approved !== "boolean" || !object(raw.script) || !Number.isInteger(raw.script_revision) || typeof raw.updated_at !== "string") throw longInvalidData(); return raw as Episode; }
@@ -37,23 +47,129 @@ export class EpisodeVideosService {
   private scenes(episode: Episode): ObjectMap[] { const value = episode.script.scenes; if (!Array.isArray(value) || value.length !== 6 || value.some((item, index) => !object(item) || item.number !== index + 1 || typeof item.description !== "string" || !item.description.trim())) throw longInvalidData(); return value; }
   private prompt(current: ObjectMap, previous: ObjectMap | undefined): string { const text = (key: string) => typeof current[key] === "string" ? current[key] as string : ""; const earlier = previous ? [previous.end_motion, previous.continuity_hint].filter((value): value is string => typeof value === "string" && Boolean(value)).join(" ") : ""; const value = ["Create one continuous cinematic 5-second vertical image-to-video shot from the supplied exact first frame.", `Continuity cue: ${earlier}`, `Opening movement: ${text("start_motion")}`, `Main action: ${text("main_motion")}`, `Ending movement: ${text("end_motion")}`, `Motivated camera: ${text("camera_motion")}`, `Environment: ${text("environment_motion")}`, "Maintain stable identity, anatomy, clothing, essential objects, lighting and scene continuity throughout the shot."].filter(Boolean).join("\n"); if (!value.trim() || value.length > 1000) throw longInvalidData(); return value; }
   private async assertReady(id: string, number: number, episode: Episode) { if (episode.state !== "waiting_for_video_confirmation") throw longEpisodeVideosNotAllowed(); if (!(await Promise.all(SCENES.map((item) => this.validImage(this.image(id, number, item))))).every(Boolean)) throw longEpisodeVideosInvalid(); const raw = await this.json(path.join(this.files(id, number).videos, "..", "generated_image_reviews.json")); if (!Array.isArray(raw) || !SCENES.every((item) => raw.some((review) => object(review) && review.scene_number === item && review.status === "approved"))) throw longEpisodeVideosInvalid(); }
-  private parseRecords(raw: unknown, job?: string): VideoRecord[] { if (!Array.isArray(raw)) throw longInvalidData(); const values = raw.map((item) => { if (!object(item) || !scene(item.scene_number) || !validId(item.job_id) || !validId(item.user_request_id) || typeof item.confirmation_id !== "string" || typeof item.input_hash !== "string" || typeof item.prompt !== "string" || !["created", "running", "succeeded", "interrupted"].includes(String(item.status)) || item.execution_mode !== "local_fake_no_provider") throw longInvalidData(); return item as VideoRecord; }).filter((item) => !job || item.job_id === job).sort((a, b) => a.scene_number - b.scene_number); if (job && (values.length !== 6 || values.some((item, index) => item.scene_number !== SCENES[index]))) throw longEpisodeVideoJobNotFound(); return values; }
+  private parseRecords(raw: unknown, job?: string): VideoRecord[] { if (!Array.isArray(raw)) throw longInvalidData(); const values = raw.map((item) => { if (!object(item) || !scene(item.scene_number) || !validId(item.job_id) || !validId(item.user_request_id) || typeof item.confirmation_id !== "string" || typeof item.input_hash !== "string" || typeof item.prompt !== "string" || !["created", "running", "succeeded", "interrupted", "failed"].includes(String(item.status)) || (item.execution_mode !== "local_fake_no_provider" && item.execution_mode !== "runway")) throw longInvalidData(); return item as VideoRecord; }).filter((item) => !job || item.job_id === job).sort((a, b) => a.scene_number - b.scene_number); if (job && (values.length !== 6 || values.some((item, index) => item.scene_number !== SCENES[index]))) throw longEpisodeVideoJobNotFound(); return values; }
   private async records(id: string, number: number, job?: string) { try { return this.parseRecords(await this.json(this.files(id, number).records), job); } catch (error) { if (error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404 && job) throw longEpisodeVideoJobNotFound(); throw error; } }
   private async saveRecords(id: string, number: number, values: VideoRecord[]) { try { await atomicWriteUtf8File(this.files(id, number).records, JSON.stringify(values, null, 2)); } catch { throw longStorageError(); } }
   private async loadReviews(id: string, number: number, absent = false): Promise<Review[]> { try { const raw = await this.json(this.files(id, number).reviews); if (!Array.isArray(raw)) throw longInvalidData(); return raw.map((item) => { if (!object(item) || !scene(item.scene_number) || !["pending", "approved"].includes(String(item.status)) || typeof item.updated_at !== "string") throw longInvalidData(); return item as Review; }); } catch (error) { if (absent && error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404) return []; throw error; } }
   private async saveReviews(id: string, number: number, values: Review[]) { try { await atomicWriteUtf8File(this.files(id, number).reviews, JSON.stringify(values, null, 2)); } catch { throw longStorageError(); } }
-  private progressFor(episode: Episode, job: string, records: VideoRecord[]): LongEpisodeVideoProgress { const done = records.filter((item) => item.status === "succeeded").map((item) => item.scene_number); const running = records.find((item) => item.status === "running")?.scene_number; return { jobId: job, status: episode.state === "interrupted" ? "interrupted" : done.length === 6 ? "succeeded" : running ? "running" : "created", ...(running ? { currentSceneNumber: running } : {}), completedSceneNumbers: done, failedSceneNumbers: [], episode: this.detail(episode) }; }
+  private progressFor(episode: Episode, job: string, records: VideoRecord[]): LongEpisodeVideoProgress { const done = records.filter((item) => item.status === "succeeded").map((item) => item.scene_number); const failed = records.filter((item) => item.status === "failed").map((item) => item.scene_number); const running = records.find((item) => item.status === "running")?.scene_number; return { jobId: job, status: episode.state === "interrupted" ? "interrupted" : failed.length > 0 ? "failed" : done.length === 6 ? "succeeded" : running ? "running" : "created", ...(running ? { currentSceneNumber: running } : {}), completedSceneNumbers: done, failedSceneNumbers: failed, episode: this.detail(episode) }; }
   private async binary(file: string) { const temp = `${file}.${crypto.randomUUID()}.tmp`; let done = false; try { await fs.writeFile(temp, MP4); await fs.rename(temp, file); done = true; } finally { if (!done) await fs.unlink(temp).catch(() => undefined); } }
+
+  private scheduleTimer(jobKey: string, tick: () => void): void {
+    if (this.activeTimers.has(jobKey)) return;
+    const timer = setInterval(tick, RUNWAY_POLL_INTERVAL_SECONDS * 1000);
+    if (typeof timer.unref === "function") timer.unref();
+    this.activeTimers.set(jobKey, timer);
+  }
+  private clearTimer(jobKey: string): void { const timer = this.activeTimers.get(jobKey); if (timer) { clearInterval(timer); this.activeTimers.delete(jobKey); } }
+
+  private async runwayInputForScene(id: string, number: number, records: VideoRecord[], sceneNumber: SceneNumber) {
+    const record = records.find((item) => item.scene_number === sceneNumber)!;
+    const imageBytes = await fs.readFile(this.image(id, number, sceneNumber));
+    return { imageBytes, imageMimeType: "image/png", prompt: record.prompt };
+  }
+
+  /** Guards against a timer tick and a concurrent GET poll both trying to advance the same job at once. */
+  private async advanceReal(id: string, number: number, job: string): Promise<VideoRecord[]> {
+    const jobKey = `${id}:${number}:${job}`;
+    if (this.advancing.has(jobKey)) return this.records(id, number, job);
+    this.advancing.add(jobKey);
+    try { return await this.advanceRealCore(id, number, job); }
+    finally { this.advancing.delete(jobKey); }
+  }
+
+  private async advanceRealCore(id: string, number: number, job: string): Promise<VideoRecord[]> {
+    const episode = await this.loadEpisode(id, number);
+    const records = await this.records(id, number, job);
+    if (records[0]!.execution_mode !== "runway") return records;
+    if (episode.state !== "videos_generating") return records;
+    const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("runway") : null;
+    if (!apiKey || !this.budget) return records;
+
+    const states: RunwaySceneState[] = records.map((record) => ({
+      sceneNumber: record.scene_number,
+      status: record.status === "interrupted" ? "failed" : record.status,
+      taskId: record.runway_task_id,
+      submittedAt: record.runway_submitted_at,
+      lastCheckedAt: record.runway_last_checked_at,
+    }));
+
+    let result: RunwayAdvanceResult;
+    try {
+      result = await advanceRunwayScene(states, (sceneNumber) => this.runwayInputForScene(id, number, records, sceneNumber), {
+        apiSecret: apiKey, projectId: id, apiType: "video",
+        estimatedCostPerSceneUsd: VIDEO_SCENE_ESTIMATED_COST_USD, budget: this.budget,
+      });
+    } catch (error) {
+      if (error instanceof RunwayBudgetExceededError) {
+        const created = records.find((record) => record.status === "created");
+        if (!created) return records;
+        created.status = "failed"; created.error = "budget_exceeded";
+        await this.saveRecords(id, number, records).catch(() => undefined);
+        this.clearTimer(`${id}:${number}:${job}`);
+        return records;
+      }
+      throw error;
+    }
+    return this.applyRunwayAdvance(id, number, job, records, result);
+  }
+
+  private async applyRunwayAdvance(id: string, number: number, job: string, records: VideoRecord[], result: RunwayAdvanceResult): Promise<VideoRecord[]> {
+    const jobKey = `${id}:${number}:${job}`;
+    if (result.kind === "unchanged" || result.kind === "check-error") return records;
+    const record = records.find((item) => item.scene_number === result.sceneNumber)!;
+
+    if (result.kind === "still-running") {
+      record.runway_last_checked_at = new Date().toISOString();
+      await this.saveRecords(id, number, records);
+      return records;
+    }
+    if (result.kind === "submitted") {
+      record.status = "running"; record.runway_task_id = result.taskId;
+      record.runway_submitted_at = result.submittedAt; record.runway_last_checked_at = result.submittedAt;
+      await this.saveRecords(id, number, records);
+      this.scheduleTimer(jobKey, () => { void this.advanceReal(id, number, job).catch(() => undefined); });
+      return records;
+    }
+    if (result.kind === "failed") {
+      record.status = "failed"; record.error = result.error;
+      await this.saveRecords(id, number, records);
+      this.clearTimer(jobKey);
+      return records;
+    }
+    // result.kind === "succeeded"
+    await fs.mkdir(this.files(id, number).videos, { recursive: true });
+    await this.binary(this.video(id, number, result.sceneNumber));
+    record.status = "succeeded"; record.completed_at = new Date().toISOString();
+    await this.saveRecords(id, number, records);
+
+    if (records.every((item) => item.status === "succeeded")) {
+      const episode = await this.loadEpisode(id, number);
+      episode.state = "videos_review"; episode.updated_at = new Date().toISOString();
+      await this.saveEpisode(id, number, episode);
+      this.clearTimer(jobKey);
+      return records;
+    }
+    // Immediately try to submit the next scene within this same call/timer-tick.
+    return this.advanceRealCore(id, number, job);
+  }
   async preview(projectId: string, number: number): Promise<GetLongEpisodeVideoPreviewResponse> { const id = projectId.trim(); const episode = await this.loadEpisode(id, number); await this.assertReady(id, number, episode); const scenes = this.scenes(episode); const items = scenes.map((item, index) => ({ sceneNumber: SCENES[index]!, prompt: this.prompt(item, scenes[index - 1]), estimatedCostUsd: 0.25 })); const hash = crypto.createHash("sha256").update(id).update(String(number)); for (const item of items) { hash.update(await fs.readFile(this.image(id, number, item.sceneNumber))); hash.update(item.prompt); } return { confirmationId: hash.digest("hex"), model: "gen4_turbo", ratio: "720:1280", durationSecondsPerScene: 5, executionMode: "sequential", scenes: items, estimatedCostUsd: 1.5 }; }
-  async start(projectId: string, number: number, request: StartLongEpisodeVideoGenerationRequest): Promise<StartLongEpisodeVideoGenerationResponse> { const id = projectId.trim(); if (!object(request) || Object.keys(request).length !== 4 || !validId(request.userRequestId) || typeof request.confirmationId !== "string" || request.approved !== true || !Array.isArray(request.prompts) || request.prompts.length !== 6) throw longInvalidRequest("Episode video start request is invalid."); const episode = await this.loadEpisode(id, number); const existing = await this.records(id, number).catch((error) => error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404 ? [] : Promise.reject(error)); const same = existing.filter((item) => item.user_request_id === request.userRequestId); if (same.length) { const jobId = same[0]!.job_id; if (same.some((item, index) => item.prompt !== request.prompts[index]?.prompt || item.confirmation_id !== request.confirmationId)) throw longInvalidRequest("Episode video request ID conflicts with a previous request."); return { jobId, acceptedSceneNumbers: [...SCENES], episode: this.detail(episode) }; } const preview = await this.preview(id, number); if (preview.confirmationId !== request.confirmationId || request.prompts.some((item, index) => !object(item) || item.sceneNumber !== SCENES[index] || item.prompt !== preview.scenes[index]!.prompt)) throw longInvalidRequest("Episode video confirmation is stale."); const jobId = crypto.randomUUID(); const at = new Date().toISOString(); const records: Record[] = preview.scenes.map((item) => ({ scene_number: item.sceneNumber, job_id: jobId, user_request_id: request.userRequestId, confirmation_id: request.confirmationId, input_hash: crypto.createHash("sha256").update(item.prompt).digest("hex"), prompt: item.prompt, status: "created", execution_mode: "local_fake_no_provider" })); await this.saveRecords(id, number, [...existing, ...records]); episode.state = "videos_generating"; episode.updated_at = at; await this.saveEpisode(id, number, episode); return { jobId, acceptedSceneNumbers: [...SCENES], episode: this.detail(episode) }; }
-  async run(id: string, number: number, job: string): Promise<LongEpisodeVideoProgress> { let episode = await this.loadEpisode(id, number); let records = await this.records(id, number, job); for (const item of records) { if (this.stopped.has(job) || episode.state !== "videos_generating") return this.progressFor(episode, job, records); if (item.status === "succeeded" && await this.validVideo(this.video(id, number, item.scene_number))) continue; item.status = "running"; await this.saveRecords(id, number, records); await fs.mkdir(this.files(id, number).videos, { recursive: true }); await this.binary(this.video(id, number, item.scene_number)); item.status = "succeeded"; item.completed_at = new Date().toISOString(); await this.saveRecords(id, number, records); episode = await this.loadEpisode(id, number); }
+  async start(projectId: string, number: number, request: StartLongEpisodeVideoGenerationRequest): Promise<StartLongEpisodeVideoGenerationResponse> { const id = projectId.trim(); if (!object(request) || Object.keys(request).length !== 4 || !validId(request.userRequestId) || typeof request.confirmationId !== "string" || request.approved !== true || !Array.isArray(request.prompts) || request.prompts.length !== 6) throw longInvalidRequest("Episode video start request is invalid."); const episode = await this.loadEpisode(id, number); const existing = await this.records(id, number).catch((error) => error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404 ? [] : Promise.reject(error)); const same = existing.filter((item) => item.user_request_id === request.userRequestId); if (same.length) { const jobId = same[0]!.job_id; if (same.some((item, index) => item.prompt !== request.prompts[index]?.prompt || item.confirmation_id !== request.confirmationId)) throw longInvalidRequest("Episode video request ID conflicts with a previous request."); return { jobId, acceptedSceneNumbers: [...SCENES], episode: this.detail(episode) }; } const preview = await this.preview(id, number); if (preview.confirmationId !== request.confirmationId || request.prompts.some((item, index) => !object(item) || item.sceneNumber !== SCENES[index] || item.prompt !== preview.scenes[index]!.prompt)) throw longInvalidRequest("Episode video confirmation is stale."); const jobId = crypto.randomUUID(); const at = new Date().toISOString(); const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("runway") : null; const executionMode: VideoRecord["execution_mode"] = apiKey && this.budget ? "runway" : "local_fake_no_provider"; const records: Record[] = preview.scenes.map((item) => ({ scene_number: item.sceneNumber, job_id: jobId, user_request_id: request.userRequestId, confirmation_id: request.confirmationId, input_hash: crypto.createHash("sha256").update(item.prompt).digest("hex"), prompt: item.prompt, status: "created", execution_mode: executionMode })); await this.saveRecords(id, number, [...existing, ...records]); episode.state = "videos_generating"; episode.updated_at = at; await this.saveEpisode(id, number, episode); return { jobId, acceptedSceneNumbers: [...SCENES], episode: this.detail(episode) }; }
+  async run(id: string, number: number, job: string): Promise<LongEpisodeVideoProgress> {
+    let episode = await this.loadEpisode(id, number); let records = await this.records(id, number, job);
+    if (episode.state === "videos_generating" && records[0]!.execution_mode === "runway") {
+      records = await this.advanceReal(id, number, job);
+      this.scheduleTimer(`${id}:${number}:${job}`, () => { void this.advanceReal(id, number, job).catch(() => undefined); });
+      return this.progressFor(await this.loadEpisode(id, number), job, records);
+    }
+    for (const item of records) { if (this.stopped.has(job) || episode.state !== "videos_generating") return this.progressFor(episode, job, records); if (item.status === "succeeded" && await this.validVideo(this.video(id, number, item.scene_number))) continue; item.status = "running"; await this.saveRecords(id, number, records); await fs.mkdir(this.files(id, number).videos, { recursive: true }); await this.binary(this.video(id, number, item.scene_number)); item.status = "succeeded"; item.completed_at = new Date().toISOString(); await this.saveRecords(id, number, records); episode = await this.loadEpisode(id, number); }
     if (records.every((item) => item.status === "succeeded") && (await Promise.all(SCENES.map((item) => this.validVideo(this.video(id, number, item))))).every(Boolean)) { episode.state = "videos_review"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode); }
     return this.progressFor(episode, job, records);
   }
-  async progress(projectId: string, number: number, job: string) { const id = projectId.trim(); const episode = await this.loadEpisode(id, number); return this.progressFor(episode, job, await this.records(id, number, job)); }
-  async stop(projectId: string, number: number, job: string) { const id = projectId.trim(); const episode = await this.loadEpisode(id, number); await this.records(id, number, job); if (episode.state !== "videos_generating") throw longEpisodeVideosNotAllowed(); this.stopped.add(job); episode.state = "interrupted"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode); return this.progress(id, number, job); }
+  async progress(projectId: string, number: number, job: string) { const id = projectId.trim(); let episode = await this.loadEpisode(id, number); let records = await this.records(id, number, job); if (episode.state === "videos_generating" && records[0]!.execution_mode === "runway") { records = await this.advanceReal(id, number, job); episode = await this.loadEpisode(id, number); this.scheduleTimer(`${id}:${number}:${job}`, () => { void this.advanceReal(id, number, job).catch(() => undefined); }); } return this.progressFor(episode, job, records); }
+  async stop(projectId: string, number: number, job: string) { const id = projectId.trim(); const episode = await this.loadEpisode(id, number); await this.records(id, number, job); if (episode.state !== "videos_generating") throw longEpisodeVideosNotAllowed(); this.stopped.add(job); this.clearTimer(`${id}:${number}:${job}`); episode.state = "interrupted"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode); return this.progress(id, number, job); }
   async restart(projectId: string, number: number, job: string) { const id = projectId.trim(); const episode = await this.loadEpisode(id, number); await this.records(id, number, job); if (episode.state !== "interrupted") throw longEpisodeVideosNotAllowed(); this.stopped.delete(job); episode.state = "videos_generating"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode); return this.run(id, number, job); }
-  async regenerate(projectId: string, number: number, job: string, rawScene: string, body: unknown): Promise<RegenerateLongEpisodeVideoResponse> { if (!object(body) || Object.keys(body).length !== 1 || body.approved !== true) throw longInvalidRequest("Episode video regeneration requires explicit approval."); const selected = scene(Number(rawScene)); if (!selected || String(selected) !== rawScene) throw longInvalidRequest(); const id = projectId.trim(); const episode = await this.loadEpisode(id, number); if (!["videos_review", "videos_approved"].includes(episode.state)) throw longEpisodeVideosNotAllowed(); const records = await this.records(id, number, job); const file = this.video(id, number, selected); if (await this.validVideo(file)) { const history = path.join(this.files(id, number).videos, "history"); await fs.mkdir(history, { recursive: true }); await fs.copyFile(file, path.join(history, `scene${selected}_${Date.now()}.mp4`)); } const record = records.find((item) => item.scene_number === selected)!; record.status = "created"; delete record.completed_at; await this.saveRecords(id, number, records); const reviews = (await this.loadReviews(id, number, true)).filter((item) => item.scene_number !== selected); await this.saveReviews(id, number, reviews); episode.state = "videos_generating"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode); const result = await this.run(id, number, job); return { ...result, regeneratedSceneNumbers: [selected] }; }
+  async regenerate(projectId: string, number: number, job: string, rawScene: string, body: unknown): Promise<RegenerateLongEpisodeVideoResponse> { if (!object(body) || Object.keys(body).length !== 1 || body.approved !== true) throw longInvalidRequest("Episode video regeneration requires explicit approval."); const selected = scene(Number(rawScene)); if (!selected || String(selected) !== rawScene) throw longInvalidRequest(); const id = projectId.trim(); const episode = await this.loadEpisode(id, number); const records = await this.records(id, number, job); const allowedTerminal = ["videos_review", "videos_approved"].includes(episode.state); const allowedFailedRetry = episode.state === "videos_generating" && records.find((item) => item.scene_number === selected)?.status === "failed"; if (!allowedTerminal && !allowedFailedRetry) throw longEpisodeVideosNotAllowed(); const file = this.video(id, number, selected); if (await this.validVideo(file)) { const history = path.join(this.files(id, number).videos, "history"); await fs.mkdir(history, { recursive: true }); await fs.copyFile(file, path.join(history, `scene${selected}_${Date.now()}.mp4`)); } const record = records.find((item) => item.scene_number === selected)!; record.status = "created"; delete record.completed_at; delete record.runway_task_id; delete record.runway_submitted_at; delete record.runway_last_checked_at; delete record.error; await this.saveRecords(id, number, records); const reviews = (await this.loadReviews(id, number, true)).filter((item) => item.scene_number !== selected); await this.saveReviews(id, number, reviews); episode.state = "videos_generating"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode); const result = await this.run(id, number, job); return { ...result, regeneratedSceneNumbers: [selected] }; }
   async review(projectId: string, number: number, job: string): Promise<GetLongEpisodeVideoReviewResponse> { const id = projectId.trim(); const episode = await this.loadEpisode(id, number); await this.records(id, number, job); if (!["videos_review", "videos_approved"].includes(episode.state) || !(await Promise.all(SCENES.map((item) => this.validVideo(this.video(id, number, item))))).every(Boolean)) throw longEpisodeVideosNotAllowed(); const reviews = await this.loadReviews(id, number, true); const now = episode.updated_at; return { episode: this.detail(episode), reviews: SCENES.map((item) => { const review = reviews.find((value) => value.scene_number === item); return { sceneNumber: item, status: review?.status || "pending", updatedAt: review?.updated_at || now }; }) }; }
   async approve(projectId: string, number: number, job: string, rawScene: string, body: ApproveLongEpisodeVideoReviewRequest): Promise<ApproveLongEpisodeVideoReviewResponse> { if (!object(body) || Object.keys(body).length !== 1 || body.approved !== true) throw longInvalidRequest(); const selected = scene(Number(rawScene)); if (!selected || String(selected) !== rawScene) throw longInvalidRequest(); await this.review(projectId, number, job); const id = projectId.trim(); const episode = await this.loadEpisode(id, number); const reviews = (await this.loadReviews(id, number, true)).filter((item) => item.scene_number !== selected); const now = new Date().toISOString(); reviews.push({ scene_number: selected, status: "approved", updated_at: now }); episode.state = SCENES.every((item) => reviews.some((review) => review.scene_number === item && review.status === "approved")) ? "videos_approved" : "videos_review"; episode.updated_at = now; await this.saveReviews(id, number, reviews.sort((a, b) => a.scene_number - b.scene_number)); await this.saveEpisode(id, number, episode); return this.review(id, number, job); }
 }
