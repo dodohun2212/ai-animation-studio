@@ -1,5 +1,7 @@
 import { WorkflowState, type Project, type ProjectSummary, type ProjectType, type Scene } from "@ai-animation-studio/shared";
 
+import { LEGACY_VIDEO_JOB_ID } from "../videos/legacy-job.js";
+
 import type { StoredProject } from "./project-storage.schema.js";
 
 /**
@@ -63,7 +65,17 @@ function latestVideoJobId(records: unknown[]): string | undefined {
       return (record as Record<string, unknown>).job_id as string;
     }
   }
-  return undefined;
+  // Legacy Python records never had a job_id, so none of them matched above.
+  // Adopt them under the synthetic legacy jobId instead of leaving this
+  // project's video review permanently unreachable through the job-scoped API —
+  // but only once at least one entry actually looks like a scene record, so
+  // unrelated malformed data never fabricates a job that was never generated.
+  const looksLikeVideoRecord = (value: unknown): boolean => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const scene = (value as Record<string, unknown>).scene_number;
+    return typeof scene === "number" && Number.isInteger(scene) && scene >= 1 && scene <= 6;
+  };
+  return records.some(looksLikeVideoRecord) ? LEGACY_VIDEO_JOB_ID : undefined;
 }
 
 export function toApiProject(stored: StoredProject): Project {

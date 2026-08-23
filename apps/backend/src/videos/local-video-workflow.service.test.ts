@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
-import { createStoredProject } from "../projects/project.mapper.js";
+import { createStoredProject, toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { LocalVideoPreviewService } from "./video-preview.service.js";
 import { LocalVideoSubmissionService } from "./local-video-submission.service.js";
@@ -74,5 +74,63 @@ describe("local fake video workflow", () => {
     await expect(fs.readdir(path.join(projectsRoot, "video_workflow", "videos", "history"))).resolves.toContain("scene2_v001.mp4");
     for (const scene of [1, 2, 3, 4, 5, 6] as const) await workflow.approveReview("video_workflow", accepted.jobId, String(scene), { approved: true });
     expect((await projects.findById("video_workflow")).workflow_state).toBe(WorkflowState.VideosApproved);
+  });
+});
+
+describe("legacy Python video job adoption", () => {
+  // Mirrors a real pre-migration project.json: no job_id, task_id instead of
+  // runway_task_id, and none of the model/duration_seconds fields the current
+  // adapter writes — Python never persisted those.
+  async function setupLegacy() {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "video-legacy-")); roots.push(root);
+    const projectsRoot = path.join(root, "projects"); const projects = new LocalProjectRepository(projectsRoot);
+    const project = createStoredProject("legacy_video", "topic", "2026-08-01T00:00:00.000Z");
+    project.workflow_state = WorkflowState.ReviewingVideos;
+    project.scenes = scenes();
+    project.video_generation_records = [1, 2, 3, 4, 5, 6].map((number) => ({
+      scene_number: number, task_id: `${number}-task`, status: "succeeded", ratio: "720:1280", estimated_cost_usd: 0.25,
+    }));
+    await projects.create(project);
+    const videos = path.join(projectsRoot, "legacy_video", "videos", "runway"); await fs.mkdir(videos, { recursive: true });
+    project.generated_video_paths = await Promise.all([1, 2, 3, 4, 5, 6].map(async (number) => {
+      const file = path.join(videos, `scene${number}.mp4`); await fs.writeFile(file, Buffer.from(`clip ${number}`)); return file;
+    }));
+    await projects.save(project);
+    return { projectsRoot, projects, workflow: new LocalVideoWorkflowService(projects, projectsRoot) };
+  }
+
+  it("exposes the legacy jobId for a project whose stored records have no job_id", async () => {
+    const { projects } = await setupLegacy();
+    expect(toApiProject(await projects.findById("legacy_video")).currentVideoJobId).toBe("legacy");
+  });
+
+  it("serves progress and review for the legacy job from real on-disk clips, independent of any job_id", async () => {
+    const { workflow } = await setupLegacy();
+    await expect(workflow.getProgress("legacy_video", "legacy")).resolves.toMatchObject({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+    const review = await workflow.getReview("legacy_video", "legacy");
+    expect(review.reviews).toHaveLength(6);
+    expect(review.reviews.every((item) => item.status === "pending")).toBe(true);
+  });
+
+  it("approves legacy scenes through the normal review flow and reaches VIDEOS_APPROVED", async () => {
+    const { projects, workflow } = await setupLegacy();
+    for (const scene of [1, 2, 3, 4, 5, 6] as const) {
+      await expect(workflow.approveReview("legacy_video", "legacy", String(scene), { approved: true })).resolves.toMatchObject({});
+    }
+    expect((await projects.findById("legacy_video")).workflow_state).toBe(WorkflowState.VideosApproved);
+  });
+
+  it("regenerating a legacy scene falls back to the local-fake adapter rather than guessing real Runway parameters", async () => {
+    const { projectsRoot, workflow } = await setupLegacy();
+    const before = await fs.readFile(path.join(projectsRoot, "legacy_video", "videos", "runway", "scene3.mp4"), "utf8");
+    await expect(workflow.regenerate("legacy_video", "legacy", [3])).resolves.toMatchObject({ regeneratedSceneNumbers: [3], status: "succeeded" });
+    const after = await fs.readFile(path.join(projectsRoot, "legacy_video", "videos", "runway", "scene3.mp4"), "utf8");
+    expect(after).not.toBe(before);
+    await expect(fs.readdir(path.join(projectsRoot, "legacy_video", "videos", "history"))).resolves.toContain("scene3_v001.mp4");
+  });
+
+  it("rejects an unrelated jobId for a legacy-only project", async () => {
+    const { workflow } = await setupLegacy();
+    await expect(workflow.getProgress("legacy_video", "some-other-job")).rejects.toMatchObject({ response: { code: "VIDEO_JOB_NOT_FOUND" } });
   });
 });

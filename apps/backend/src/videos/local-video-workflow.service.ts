@@ -20,6 +20,7 @@ import type { StoredProject } from "../projects/project-storage.schema.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { RunwayBudget, RunwayBudgetExceededError, VIDEO_SCENE_ESTIMATED_COST_USD } from "../providers/runway-budget.js";
 import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceResult, type RunwaySceneState } from "./runway-workflow-support.js";
+import { LEGACY_VIDEO_JOB_ID } from "./legacy-job.js";
 import {
   invalidVideoWorkflowRequest,
   videoContentUnavailable,
@@ -34,7 +35,7 @@ const LOCAL_FAKE_MP4 = Buffer.from("000000186674797069736F6D0000020069736F6D6973
 
 type VideoStatus = "created" | "running" | "succeeded" | "interrupted" | "failed";
 type VideoRecord = Record<string, unknown> & {
-  scene_number: SceneNumber; job_id: string; status: VideoStatus; execution_mode: "local_fake_no_provider" | "runway";
+  scene_number: SceneNumber; job_id?: string; status: VideoStatus; execution_mode: "local_fake_no_provider" | "runway";
   runway_task_id?: string; runway_submitted_at?: string; runway_last_checked_at?: string; error?: string;
 };
 type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved"; updated_at: string };
@@ -46,10 +47,30 @@ const sceneNumberFromParam = (raw: string): SceneNumber | undefined => {
   return Number.isInteger(value) && String(value) === raw ? sceneNumber(value) : undefined;
 };
 
-function isRecord(value: unknown): value is VideoRecord {
-  return isObject(value) && !!sceneNumber(value.scene_number) && typeof value.job_id === "string"
-    && ["created", "running", "succeeded", "interrupted", "failed"].includes(String(value.status))
-    && (value.execution_mode === "local_fake_no_provider" || value.execution_mode === "runway");
+/**
+ * Normalizes a raw stored record, including a legacy Python-era shape that
+ * has no job_id/execution_mode and named the field task_id instead of
+ * runway_task_id. A record without a job_id defaults to the local-fake
+ * execution mode: Python already produced its real output, and regenerating
+ * it should never risk a real Runway call using fields Python never
+ * persisted (model, duration_seconds) — see LEGACY_VIDEO_JOB_ID.
+ */
+function normalizeRecord(value: unknown): VideoRecord | undefined {
+  if (!isObject(value)) return undefined;
+  const scene = sceneNumber(value.scene_number);
+  const status = String(value.status);
+  if (!scene || !["created", "running", "succeeded", "interrupted", "failed"].includes(status)) return undefined;
+  const jobId = typeof value.job_id === "string" ? value.job_id : undefined;
+  const executionMode = value.execution_mode === "runway" || value.execution_mode === "local_fake_no_provider" ? value.execution_mode : "local_fake_no_provider";
+  const runwayTaskId = typeof value.runway_task_id === "string" ? value.runway_task_id : typeof value.task_id === "string" ? value.task_id : undefined;
+  return {
+    ...value,
+    scene_number: scene,
+    status: status as VideoStatus,
+    execution_mode: executionMode,
+    ...(jobId !== undefined ? { job_id: jobId } : {}),
+    ...(runwayTaskId !== undefined ? { runway_task_id: runwayTaskId } : {}),
+  };
 }
 
 function parseReviews(raw: unknown): StoredReview[] {
@@ -110,7 +131,11 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
   }
 
   private records(project: StoredProject, jobId: string): VideoRecord[] {
-    const records = project.video_generation_records.filter(isRecord).filter((record) => record.job_id === jobId).sort((a, b) => a.scene_number - b.scene_number);
+    const normalized = project.video_generation_records.map(normalizeRecord).filter((record): record is VideoRecord => record !== undefined);
+    const matching = jobId === LEGACY_VIDEO_JOB_ID
+      ? normalized.filter((record) => record.job_id === undefined)
+      : normalized.filter((record) => record.job_id === jobId);
+    const records = matching.sort((a, b) => a.scene_number - b.scene_number);
     if (records.length !== 6 || records.some((record, index) => record.scene_number !== SCENES[index])) throw videoJobNotFound();
     return records;
   }
@@ -128,8 +153,13 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
   }
 
   private replaceRecords(project: StoredProject, replacements: VideoRecord[]): StoredProject {
-    const keys = new Set(replacements.map((record) => `${record.job_id}:${record.scene_number}`));
-    return { ...project, video_generation_records: [...project.video_generation_records.filter((item) => !isRecord(item) || !keys.has(`${item.job_id}:${item.scene_number}`)), ...replacements] };
+    const keyOf = (record: VideoRecord) => `${record.job_id ?? LEGACY_VIDEO_JOB_ID}:${record.scene_number}`;
+    const keys = new Set(replacements.map(keyOf));
+    const kept = project.video_generation_records.filter((item) => {
+      const normalized = normalizeRecord(item);
+      return !normalized || !keys.has(keyOf(normalized));
+    });
+    return { ...project, video_generation_records: [...kept, ...replacements] };
   }
 
   private scheduleTimer(projectId: string, jobId: string): void {
