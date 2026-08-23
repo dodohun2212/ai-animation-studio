@@ -539,6 +539,15 @@ Frontend 및 통합 완료 근거(2026-08-21): `feature/frontend`의 `48065b0`�
 
 완료 근거(그룹 커밋, 2026-08-23): Asset Library Character Reference Set·version 추가/relink/file health audit/소유 파일 삭제·legacy Reference 멱등 이전·Folder 삭제 parity(스물여덟~서른한 번째 이전 기능)를 `f2f360b` 그룹 커밋으로 함께 통합·검증했다.
 
+## 서른두 번째 이전 기능: 단기 프로젝트 "이어서 진행하기" 상태 기반 재개
+
+- [x] 프로젝트의 `workflowState`를 고정된 제품 흐름(주제→Story→Asset Mapping→이미지→영상 승인→영상 생성→병합)에 매핑해 다음에 열어야 할 화면 하나를 결정하는 순수 함수를 Frontend에 추가했다. Backend나 저장 데이터의 변경 없이 기존 화면 라우팅만 재사용한다.
+- [x] `GENERATING_VIDEOS`/`VIDEOS_READY`/`REVIEWING_VIDEOS`/`INTERRUPTED` 상태로 재개하려면 현재 video job ID가 필요하므로, `Project` 계약에 `currentVideoJobId`(선택 필드)를 추가했다. Backend는 `video_generation_records`에 가장 최근에 추가된 유효한 `job_id`만 반환하며, 기록이 없으면 필드 자체를 생략한다(job ID를 발견하지 못하면 영상 확인 화면으로 안전하게 대체).
+- [x] `ProjectDetail` 화면 상단에 "이어서 진행하기 · <다음 단계 이름>" 버튼을 추가했다. `COMPLETED`/`FAILED`/`CANCELLED` 같은 종료 상태에서는 버튼을 표시하지 않는다.
+- [x] Main 통합 검증에서 Backend 289 통과(+1 intentional skip), Frontend 516 통과, Shared 25 통과, root typecheck/test/build 및 `git diff --check`를 통과했다. 실제 Provider·network·FFmpeg 호출은 0건이다.
+
+완료 근거(그룹 커밋, 2026-08-23): 단기 프로젝트 "이어서 진행하기" 상태 기반 재개(서른두 번째 이전 기능)를 `6276564` 그룹 커밋으로 함께 통합·검증했다. 이 그룹 커밋에는 장기 프로젝트 Episode 재개(서른여섯 번째)와 생성 이미지 모음 링크(서른일곱 번째)도 `App.tsx`/`LongProjectDetail.tsx`/`ProjectDetail.tsx` 등 공용 파일을 통해 함께 포함되었다 — 문서 순서를 지키기 위해 두 기능의 상세 기록은 서른다섯 번째 기능 뒤에 이어서 적는다.
+
 ## 공통 완료 조건
 
 - Python 동작·데이터 규칙, shared 계약, Frontend 흐름, Backend 로직·저장이 모두 구현되어야 한다.
