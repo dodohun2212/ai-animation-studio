@@ -1,65 +1,74 @@
-# Three-AI Team Workflow
+# Agent Team Workflow
 
 ## 역할
 
-### Main — GPT-5.6 Sol
+문서에는 특정 모델이나 도구 이름을 고정하지 않는다. 각 세션을 시작할 때 사용자가 현재 에이전트와 역할을 지정한다.
 
-- Python 기준 기능 분석
-- 작업 범위와 완료 조건 정의
+### Main — Lead Agent
+
+- Python 기준 기능 분석, 작업 범위와 완료 조건 정의
 - 공유 타입과 내부 API 계약 관리
-- Frontend와 Backend 작업 지시문 작성
-- 브랜치 통합, 전체 테스트와 마이그레이션 상태 갱신
+- Frontend/Backend 작업 지시와 충돌 조정
+- 변경 통합, 전체 typecheck/test/build, 마이그레이션 상태 갱신
+- 검증과 문서 갱신 뒤 다음 기능을 자동으로 시작
 
-### Frontend — Claude
+### Frontend — UI Agent
 
-- `apps/frontend`의 화면과 사용자 상호작용
-- 로딩, 오류, 승인, 검토와 진행 상태 표현
-- `packages/shared` 계약 사용
+- `apps/frontend` 화면과 사용자 상호작용
+- 로딩, 오류, 명시적 승인, 검토와 진행 상태
+- `packages/shared` 계약 사용 및 API 응답 검증
 - Backend 동작을 임의로 가정하지 않음
 
-### Backend — GPT-5.6 Terra
+### Backend — Workflow Agent
 
-- `apps/backend`의 워크플로와 데이터 저장
-- Provider Fake/Adapter와 비용·승인 Gate
-- 중지, 재시도, 복구와 중복 호출 차단
-- FFmpeg 및 로컬 파일 처리
+- `apps/backend` 워크플로, API, 저장과 복구
+- fake/provider adapter, 비용·승인 gate, 중복 요청 차단
+- 중지·재개·archive와 FFmpeg·로컬 파일 처리
+
+## 단독 실행과 병렬 실행
+
+- 역할과 worktree는 **세션 시작 지시문**에서 정한다.
+- 단독 실행 시 현재 Lead Agent가 Main, Frontend, Backend 역할을 함께 맡아 `main`에서 작업할 수 있다.
+- 병렬 실행 시 역할별 작업을 `main`, `feature/frontend`, `feature/backend`에 나누되, 역할과 worktree를 세션 시작 시 명시한다.
+- 단독/병렬 어느 경우에도 기능 하나를 완료하면 전체 검증과 `docs/02_MIGRATION_PLAN.md` 갱신 뒤 다음 기능으로 계속 진행한다.
+- 특정 모델·도구·에이전트 이름을 이 문서에 추가하지 않는다.
 
 ## 작업 반복 단위
 
 ```text
-Main이 Python 기능 분석
-→ Main이 완료 조건과 공통 계약 확정
-→ 사용자가 Frontend/Backend 지시문 전달
-→ 각 브랜치에서 구현·테스트
-→ 각 브랜치 커밋·푸시
-→ Main이 통합
-→ Main에서 전체 검증
+Lead Agent가 Python 기능 분석
+→ 완료 조건과 공통 계약 확정
+→ 역할별 구현·테스트
+→ Lead Agent가 통합
+→ main에서 전체 검증
 → Migration Plan 갱신
-→ 다음 기능 선택
+→ 다음 기능 자동 시작
 ```
 
-기존 기능 전체를 한 번에 옮기지 않는다. 통합 가능한 작은 사용자 기능 하나씩
-반복한다.
+기존 기능 전체를 한 번에 옮기지 않는다. 통합 가능한 작은 사용자 기능 하나씩 반복한다.
 
 ## Git 규칙
 
-- Main: `main`
-- Frontend: `feature/frontend`
-- Backend: `feature/backend`
-- 작업 시작 전 담당 브랜치를 확인한다.
-- 다른 AI의 변경을 덮어쓰지 않는다.
+- `main`: 통합과 전체 검증의 기준 worktree
+- `feature/frontend`, `feature/backend`: 병렬 실행 시 선택적으로 사용
+- 작업 시작 전 현재 worktree와 Git 상태를 확인한다.
+- 다른 에이전트의 변경을 덮어쓰지 않는다.
 - 커밋 전에 관련 테스트를 실행한다.
-- Main에는 통합 검증을 통과한 변경만 유지한다.
+- `main`에는 통합 검증을 통과한 변경만 유지한다.
+- 커밋·푸시는 사용자가 요청한 경우에만 수행한다.
 
-## 세션 시작 문장
+## 세션 시작 규칙
 
-각 새 CLI 세션은 이전 대화를 기억하지 못한다. 다음 순서로 시작한다.
+새 세션은 이전 대화를 기억하지 못한다. 시작 시 다음을 수행한다.
 
 ```text
-AGENTS.md와 안내된 현재 문서를 먼저 읽고,
-현재 브랜치와 Git 상태를 확인해줘.
-문서에 없는 결정을 추측하지 말고 질문해줘.
+AGENTS.md, AI_GUIDELINES.md,
+docs/01_CURRENT_PRODUCT_SPEC.md,
+docs/02_MIGRATION_PLAN.md,
+docs/03_TEAM_WORKFLOW.md를 읽고,
+공유/API 변경이면 docs/04_INTERNAL_API_CONTRACT.md도 읽는다.
+현재 worktree와 Git 상태를 확인하고,
+이번 세션에 지정된 역할과 worktree 범위 안에서 작업한다.
 ```
 
-그다음 Main이 작성한 이번 기능의 지시문을 전달한다. 장기 요구사항을 대화에만
-남기지 않고 현재 문서 또는 마이그레이션 계획에 반영한다.
+문서에 없는 결정을 추측하지 않는다. 장기 요구사항과 검증 결과는 대화에만 남기지 않고 현재 문서 또는 마이그레이션 계획에 반영한다.
