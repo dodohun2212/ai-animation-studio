@@ -56,7 +56,10 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
       .then((response) => { if (!cancelled) { setEpisode(response.episode); setReviewState({ status: "ready", reviews: response.reviews }); } })
       .catch((caught: unknown) => { if (!cancelled) setReviewState({ status: "error", error: toLongProjectDisplayError(caught) }); });
     return () => { cancelled = true; };
-  }, [episodeNumber, projectId, reviewState.status, reviewable]);
+    // reviewState.status is intentionally excluded: it is set inside this effect as a start-once guard,
+    // and including it would re-run the effect (and its cleanup) before the in-flight fetch resolves,
+    // permanently discarding the response via the `cancelled` flag and leaving the screen stuck loading.
+  }, [episodeNumber, projectId, reviewable]);
 
   const eligible = episode?.status === "asset_mapping_approved";
   async function confirmGeneration(): Promise<void> {

@@ -7,6 +7,7 @@ import { validateImage } from "../assets/image-validation.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { longEpisodeImagesInvalid, longEpisodeImagesNotAllowed, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { toApiEpisodeScript } from "./episode-script-format.js";
 import { EpisodeContinuityReferenceService } from "./episode-continuity-reference.service.js";
 
 const SCENES = [1, 2, 3, 4, 5, 6] as const;
@@ -40,7 +41,7 @@ export class EpisodeImagesService {
     return raw as StoredEpisode;
   }
   private scenes(episode: StoredEpisode): unknown[] { const scenes = episode.script.scenes; if (!Array.isArray(scenes) || scenes.length !== 6 || scenes.some((scene, index) => !object(scene) || scene.number !== index + 1 || typeof scene.description !== "string" || !scene.description.trim())) throw longInvalidData(); return scenes; }
-  private detail(episode: StoredEpisode): LongEpisodeDetail { return { episodeNumber: episode.number, title: String(episode.title), summary: String(episode.summary), mainEvent: String(episode.core_event), conflict: String(episode.conflict), cliffhanger: String(episode.cliffhanger), nextEpisodeHook: String(episode.next_connection), status: episode.state, approved: episode.approved, scriptRevision: episode.script_revision, script: episode.script as never, scriptHistoryCount: Array.isArray(episode.script_history) ? episode.script_history.length : 0 }; }
+  private detail(episode: StoredEpisode): LongEpisodeDetail { const script = toApiEpisodeScript(episode.script); return { episodeNumber: episode.number, title: String(episode.title), summary: String(episode.summary), mainEvent: String(episode.core_event), conflict: String(episode.conflict), cliffhanger: String(episode.cliffhanger), nextEpisodeHook: String(episode.next_connection), status: episode.state, approved: episode.approved, scriptRevision: episode.script_revision, ...(script ? { script } : {}), scriptHistoryCount: Array.isArray(episode.script_history) ? episode.script_history.length : 0 }; }
   private async saveEpisode(projectId: string, number: number, episode: StoredEpisode): Promise<void> {
     const files = this.files(projectId, number); const outlines = await this.json(files.outlines);
     if (!Array.isArray(outlines) || !object(outlines[number - 1])) throw longInvalidData();

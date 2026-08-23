@@ -7,6 +7,7 @@ import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { longEpisodeMappingNotAllowed, longEpisodeMappingNotFound, longEpisodeMappingStale, longEpisodeMappingUnconfirmed, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { toApiEpisodeScript } from "./episode-script-format.js";
 
 type StoredCandidate = { mapping_id: string; source_collection: "basic" | "characters" | "locations" | "props"; source_item_id: string; asset_id: string; usage_role: "character" | "background" | "object" | "style"; version_policy: "pinned_version" | "follow_latest" | "snapshot"; pinned_version: number | null; episode_scope: { mode: "all" } | { mode: "episode"; episode: number }; status: "suggested" | "confirmed" | "excluded"; user_confirmed: boolean; created_at: string; updated_at: string };
 type StoredReview = { project_id: string; episode_number: number; mapping_revision: number; script_revision: number; script_fingerprint: string; status: "waiting" | "approved"; text_only_confirmed: boolean; approved_at: string; candidates: StoredCandidate[] };
@@ -102,7 +103,7 @@ export class EpisodeAssetMappingsService {
     }
     return result;
   }
-  private detail(episode: StoredEpisode): LongEpisodeDetail { return { episodeNumber: episode.number, title: String(episode.title), summary: String(episode.summary), mainEvent: String(episode.core_event), conflict: String(episode.conflict), cliffhanger: String(episode.cliffhanger), nextEpisodeHook: String(episode.next_connection), status: episode.state, approved: episode.approved, scriptRevision: episode.script_revision, script: episode.script as never, scriptHistoryCount: Array.isArray(episode.script_history) ? episode.script_history.length : 0 }; }
+  private detail(episode: StoredEpisode): LongEpisodeDetail { const script = toApiEpisodeScript(episode.script); return { episodeNumber: episode.number, title: String(episode.title), summary: String(episode.summary), mainEvent: String(episode.core_event), conflict: String(episode.conflict), cliffhanger: String(episode.cliffhanger), nextEpisodeHook: String(episode.next_connection), status: episode.state, approved: episode.approved, scriptRevision: episode.script_revision, ...(script ? { script } : {}), scriptHistoryCount: Array.isArray(episode.script_history) ? episode.script_history.length : 0 }; }
 
   async get(projectId: string, number: number): Promise<GetLongEpisodeAssetMappingReviewResponse> {
     const id = projectId.trim(); await this.episode(id, number);
@@ -119,7 +120,13 @@ export class EpisodeAssetMappingsService {
   }
   async begin(projectId: string, number: number, request: BeginLongEpisodeAssetMappingReviewRequest): Promise<BeginLongEpisodeAssetMappingReviewResponse> {
     const id = projectId.trim(); if (!isObject(request ?? {}) || Object.keys(request ?? {}).some((key) => key !== "textOnlyConfirmed") || !(request?.textOnlyConfirmed === undefined || typeof request.textOnlyConfirmed === "boolean")) throw longInvalidRequest("Episode Asset Mapping review request is invalid.");
-    const episode = await this.episode(id, number); if (episode.state !== "script_approved" || !episode.approved) throw longEpisodeMappingNotAllowed(); const scenes = this.scenes(episode); const candidates = await this.bibleCandidates(id, number);
+    const episode = await this.episode(id, number);
+    if (episode.state === "waiting_for_asset_mapping_review" && request?.textOnlyConfirmed === true) {
+      // Re-confirming the already-started, candidate-less review (the Frontend's second "Confirm text-only review" click) — not a fresh review, so keep the existing revision/candidates untouched.
+      const existing = await this.loadReview(id, number); if (existing.candidates.length > 0) throw longEpisodeMappingNotAllowed();
+      existing.text_only_confirmed = true; await this.saveReview(id, number, existing); return { review: this.public(existing) };
+    }
+    if (episode.state !== "script_approved" || !episode.approved) throw longEpisodeMappingNotAllowed(); const scenes = this.scenes(episode); const candidates = await this.bibleCandidates(id, number);
     const review: StoredReview = { project_id: id, episode_number: number, mapping_revision: 1, script_revision: episode.script_revision, script_fingerprint: fingerprint(scenes), status: "waiting", text_only_confirmed: request?.textOnlyConfirmed ?? false, approved_at: "", candidates };
     episode.state = "waiting_for_asset_mapping_review"; episode.updated_at = new Date().toISOString(); await this.saveReview(id, number, review); await this.saveEpisode(id, number, episode); return { review: this.public(review) };
   }

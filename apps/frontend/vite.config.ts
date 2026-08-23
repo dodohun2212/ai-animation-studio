@@ -12,6 +12,7 @@ export default defineConfig({
     proxy: {
       "/health": "http://127.0.0.1:3000",
       "/projects": "http://127.0.0.1:3000",
+      "/long-projects": "http://127.0.0.1:3000",
       "/settings": "http://127.0.0.1:3000",
       "/assets": "http://127.0.0.1:3000",
     },
