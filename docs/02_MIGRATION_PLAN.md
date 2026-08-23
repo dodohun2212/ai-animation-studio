@@ -93,7 +93,7 @@ Shared의 `/projects` route는 NestJS에 구현되었으며 video route는 아�
 - [x] `app/` Python 소스 전체, `tests/` 단위·통합 테스트 전체, `prompts/` 템플릿 3개 조사
 - [x] `apps/`, `packages/shared/` TypeScript 소스와 테스트 대조
 - [x] Tkinter 화면에서 호출 서비스·저장소·adapter까지 추적
-- [ ] 실제 사용자 프로젝트 JSON 표본을 통한 모든 과거 버전 필드 검증은 **확인 필요**
+- [x] 실제 사용자 프로젝트 JSON 표본을 통한 과거 버전 필드 검증 — 2026-08-23에 완료. `learning_data/projects/`에 실제로 남아있는, 마이그레이션 착수(8/21) 이전인 2026-07-28~08-02에 Python이 생성한 실제 프로젝트 8개(IMAGES_REVIEW/WAITING_FOR_CAPCUT(legacy)/VIDEOS_APPROVED/REVIEWING_VIDEOS 등 다양한 workflow_state 포함)를 실제로 실행 중인 Backend에 붙여 `GET /projects`, `/projects/:id`, `/settings`, `/settings/cast`, `/images/review`로 읽었다. `WAITING_FOR_CAPCUT`(legacy) → `WAITING_FOR_VIDEO_CONFIRMATION` 상태 변환은 정상 동작을 확인했다. 이 과정에서 실제 버그 하나를 발견해 수정했다: `image-review.service.ts`의 `assertReviewable()`가 `generated_images`에 저장된 절대경로 문자열을 현재 계산한 경로와 완전히 일치해야만 통과시켰는데, (1) 프로젝트 폴더가 다른 PC/드라이브(`C:\Users\lg\OneDrive - koreatech.ac.kr\...`)에서 생성된 뒤 지금 위치로 옮겨진 경우, (2) Python의 더 오래된 재생성 아카이브 경로(`images/generated/<project_id>/sceneN-regen-NNN.png`)가 남아있는 경우 모두 실제 이미지 파일은 정상인데도 검토 화면 진입 자체가 막혔다(8개 중 4개 실사용 프로젝트가 이 버그로 막혀 있었다). `regenerate()`는 애초에 이 저장된 값을 파일 I/O에 전혀 쓰지 않고 항상 현재 머신의 정식 경로(`imagePath()`)로만 읽고 쓰고 있었으므로, `assertReviewable()`도 동일하게 정식 경로만 신뢰하도록 맞췄다 — 배열 길이(6개)만 완전성 신호로 남기고 저장된 경로 문자열 자체는 더 이상 파일 위치 판단에 쓰지 않는다. "저장된 경로가 프로젝트 폴더 밖을 가리켜도 그 경로를 실제로 읽거나 덮어쓰지 않는다"는 보안 성질은 그대로 유지되며, 이를 직접 검증하는 테스트로 갱신했다. 수정 후 8개 실제 프로젝트 중 IMAGES_REVIEW 단계인 4개 전부 정상적으로 검토 가능해졌다(나머지 4개는 이미지 검토 단계를 지난 상태라 `IMAGE_REVIEW_NOT_ALLOWED`가 정상 응답). 신규 테스트 1개 추가(`image-review.service.test.ts`, 총 12개), 기존 테스트 2개는 더 정확한 시나리오로 갱신. Backend 449 통과(+1 intentional skip).
 - [ ] GUI 옵션별 실제 Provider 결과 품질과 전체 클릭 E2E는 **확인 필요**
 
 ### 1. 사용자가 실제로 사용하는 화면과 기능

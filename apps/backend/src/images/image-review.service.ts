@@ -135,14 +135,18 @@ export class ImageReviewService {
     }
   }
 
+  // `generated_images` is never dereferenced for file I/O here or in regenerate() below — both
+  // always read/write through `imagePath()`, this machine's current canonical location. Stored
+  // entries from an older version or a moved/relocated project folder keep a stale absolute path
+  // (a different machine's drive letter, or an even older per-scene archive layout), so they are
+  // not trustworthy as literal paths; only the array length is used, as a completeness signal.
   private async assertReviewable(project: StoredProject, allowVideoConfirmation = false): Promise<void> {
     if (project.workflow_state !== WorkflowState.ImagesReview
       && (!allowVideoConfirmation || project.workflow_state !== WorkflowState.WaitingForVideoConfirmation)) throw imageReviewNotAllowed();
     if (project.generated_images.length !== 6) throw imageReviewImageInvalid();
-    for (const [index, file] of project.generated_images.entries()) {
-      if (file !== this.imagePath(project.project_id, SCENES[index]!)) throw imageReviewImageInvalid();
+    for (const number of SCENES) {
       try {
-        const bytes = await fs.readFile(file);
+        const bytes = await fs.readFile(this.imagePath(project.project_id, number));
         if (validateImage(bytes, "scene.png", "image/png").extension !== ".png") throw imageReviewImageInvalid();
       } catch (error) {
         if (error instanceof Error && "response" in error) throw error;

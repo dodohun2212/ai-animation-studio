@@ -73,12 +73,13 @@ describe("provider-free generated image review", () => {
   });
 
   it("requires an explicit action, a numeric scene 1 through 6, IMAGES_REVIEW, and a valid PNG", async () => {
-    const { projects, service } = await setup();
+    const { projectsRoot, projects, service } = await setup();
     await expect(service.approve("review", "1", {})).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     await expect(service.approve("review", "0", { approved: true })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     const project = await projects.findById("review"); project.workflow_state = WorkflowState.ImagesReady; await projects.save(project);
     await expect(service.approve("review", "1", { approved: true })).rejects.toMatchObject({ response: { code: "IMAGE_REVIEW_NOT_ALLOWED" } });
-    project.workflow_state = WorkflowState.ImagesReview; project.generated_images[0] = `${project.generated_images[0]}.missing`; await projects.save(project);
+    project.workflow_state = WorkflowState.ImagesReview; await projects.save(project);
+    await fs.rm(path.join(projectsRoot, "review", "images", "scene1.png"));
     await expect(service.approve("review", "1", { approved: true })).rejects.toMatchObject({ response: { code: "IMAGE_REVIEW_IMAGE_INVALID" } });
   });
 
@@ -123,14 +124,34 @@ describe("provider-free generated image review", () => {
     expect((await projects.findById("review")).workflow_state).toBe(WorkflowState.WaitingForVideoConfirmation);
   });
 
-  it("rejects unknown or unsafe regeneration input and never permits a stored path outside the project images folder", async () => {
-    const { projects, service } = await setup();
+  it("rejects unknown or unsafe regeneration input and never reads or archives a stored path outside the project images folder", async () => {
+    const { projectsRoot, projects, service } = await setup();
     await expect(service.regenerate("review", "01", { approved: true })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     await expect(service.regenerate("review", "1", { approved: true, extra: true })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     const project = await projects.findById("review");
-    project.generated_images[0] = path.join(path.dirname(project.generated_images[0]!), "..", "outside.png");
+    const outside = path.join(path.dirname(project.generated_images[0]!), "..", "outside.png");
+    await fs.writeFile(outside, "not a scene image");
+    project.generated_images[0] = outside;
     await projects.save(project);
-    await expect(service.regenerate("review", "1", { approved: true })).rejects.toMatchObject({ response: { code: "IMAGE_REVIEW_IMAGE_INVALID" } });
+    const before = await fs.readFile(path.join(projectsRoot, "review", "images", "scene1.png"));
+    const result = await service.regenerate("review", "1", { approved: true });
+    expect(result.reviews.find((review) => review.sceneNumber === 1)?.status).toBe("pending");
+    // The tampered metadata pointed elsewhere, but only the canonical scene1.png was ever
+    // touched: "outside.png" is untouched and the real image was archived, not read from there.
+    await expect(fs.readFile(outside, "utf8")).resolves.toBe("not a scene image");
+    await expect(fs.readFile(path.join(projectsRoot, "review", "images", "originals", "scene1_v001.png"))).resolves.toEqual(before);
+  });
+
+  it("still reviews a project whose stored image paths were written by a different machine or moved folder", async () => {
+    const { projects, projectsRoot, service } = await setup();
+    const project = await projects.findById("review");
+    project.generated_images = [1, 2, 3, 4, 5, 6].map((number) =>
+      path.join("C:", "Users", "other-machine", "OneDrive", "AI-Animation-Studio", "learning_data", "projects", "review", "images", `scene${number}.png`));
+    await projects.save(project);
+    const result = await service.getStatus("review");
+    expect(result.project.workflowState).toBe(WorkflowState.ImagesReview);
+    // The real files on this machine, at the canonical path, are untouched and still readable.
+    await expect(fs.readFile(path.join(projectsRoot, "review", "images", "scene1.png"))).resolves.toEqual(PNG);
   });
 
   it("does not replace image bytes when existing review metadata is malformed", async () => {
