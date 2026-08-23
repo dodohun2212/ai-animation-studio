@@ -47,6 +47,39 @@
 1. ~~**(중요, 아키텍처 변경 필요)** `local-video-workflow.service.ts`를 "몇 분짜리 실제 작업을 감당하는 구조"로 재설계한 뒤 Runway adapter를 실제로 연결.~~ **완료** — "마흔한 번째 이전 기능" 참고. 단기·장편 양쪽 모두 제출→폴링 기반 상태 기계로 재설계하고 실제 Runway를 연결했다.
 2. ~~실제 OpenAI 이미지 생성에 Asset Mapping 기반 Reference 이미지 편집(`images.edit`, 승인된 캐릭터/스타일 이미지 전달)과 장면 재생성(`image-review.service.ts`) 경로 추가.~~ **완료** — "마흔두 번째 이전 기능" 참고.
 3. ~~실제 FFmpeg 환경 검증은 Provider adapter 이후 별도 기능으로 진행한다. 테스트에서는 절대 유료 요청이나 실제 바이너리 호출을 하지 않는다.~~ **완료** — "마흔세 번째 이전 기능" 참고.
+4. ~~Electron 통합·Windows 패키징~~ **완료** — "마흔네 번째 이전 기능" 참고.
+5. ~~실제 사용자 프로젝트 JSON 표본을 통한 과거 버전 필드 검증~~ **완료** — 이 과정에서 `image-review.service.ts`의 저장 경로 신뢰 버그를 발견·수정했다(커밋 `2726741`).
+
+### 2026-08-24 UI/UX 완성도 및 레거시 데이터 편입 — 다음 작업 목록
+
+사용자가 실제 패키징된 앱을 직접 실행해보고 "Python 원본보다 다운그레이드된 것 같다"고 지적했다. 지금까지 검증은 "Backend 로직·데이터가 Python과 같은가"에 집중했고, `app/ui.py`(약 16,000줄)를 화면 단위로 대조한 적이 없었다. 서브에이전트로 Python UI 전체와 `apps/frontend/src/components/*.tsx` 51개 파일을 화면별로 대조한 결과와, 이어서 직접 확인한 레거시 영상 job 연결 문제를 합쳐 아래 우선순위로 정리한다. **AGENTS.md의 "Preserve observable behavior" 원칙에 따라, 이 목록은 선택적 업그레이드가 아니라 마이그레이션 완료 조건의 일부로 취급한다.**
+
+#### 1순위 — 핵심 도구 기능이 막혀 있음 (실사용자 데이터에 실제 영향)
+
+1. **이미지 검토 화면(`ImageGenerationScreen.tsx`)에 실제 이미지 미리보기 추가.** `<img>` 태그가 하나도 없어 무엇을 승인하는지 보지 못한 채 승인 버튼을 누르는 구조다. 이미 존재하는 이미지 content 엔드포인트를 그대로 쓰면 된다.
+2. **영상 검토 화면(`VideoWorkflowScreen.tsx`)에 실제 영상 미리보기 추가.** 위와 동일한 문제, `<video>` 태그 부재.
+3. **레거시(Python) 영상 데이터를 새 job 시스템으로 편입.** `local-video-workflow.service.ts`의 진행상황/검토 API는 전부 `jobId` 파라미터가 필수인데, Python이 저장한 `video_generation_records`에는 `job_id` 필드 자체가 없다. 그 결과 실제 사용자 프로젝트 중 아직 영상 검토가 끝나지 않은 것들(`project_5f11f561bf62`, `project_0ee811d6dcea`, `project_8b96c3cc1f71` 등, `WAITING_FOR_VIDEO_CONFIRMATION`/`REVIEWING_VIDEOS` 상태)은 새 UI에서 검토를 이어갈 방법이 전혀 없다 — job_id가 없는 기존 레코드를 발견하면 그 자리에서 새 jobId를 채번해 편입시키는 "레거시 채택(adopt)" 경로가 필요하다. `VIDEOS_APPROVED`처럼 이미 승인이 끝난 프로젝트는 병합(`/videos/merge`)이 job과 무관하게 동작하므로 영향 없음.
+4. **프로젝트 생성 마법사 복원.** Python `_build_short_project_wizard`(약 3,000줄)는 캐릭터·서브캐스트·분위기·장면 참고 Asset을 생성 시점에 고르는 마법사였는데, 지금 `CreateProjectForm.tsx`는 프로젝트 ID·주제 텍스트 입력 2개뿐이다. Backend API(`settings/cast`, `settings/asset-references` 등)는 이미 다 있으므로 프런트엔드에 생성 흐름으로 다시 엮는 작업이다.
+
+#### 2순위 — 눈에 띄게 UX가 나쁨
+
+5. **화면 전반에 지속적인 네비게이션 추가.** 대시보드를 벗어나면 각 화면의 "뒤로" 버튼 하나로만 이동 가능 — Python은 항상 보이는 좌측 nav rail이 있었다.
+6. **병합 완료 후 결과 영상을 앱 안에서 재생하거나 탐색기로 열기.** 지금은 파일 경로 문자열만 표시(`VideoMergeScreen.tsx`). Electron IPC(`window.electronAPI.openProjectPath`, 마흔네 번째 기능에서 이미 구현)를 프런트엔드가 아직 안 쓰고 있다.
+7. **장편(Episode) 화면들을 하나의 작업공간으로 묶기.** 지금은 outline/story-bible/episode script/mapping/이미지/영상이 전부 분리된 화면이라 형제 단계 사이를 오가려면 `LongProjectDetail`까지 매번 되돌아가야 한다.
+
+#### 3순위 — 폴리싱
+
+8. 토스트 알림, 스켈레톤 로딩, 스피너 등 공통 피드백 컴포넌트 도입(지금은 전부 고정 문구 텍스트).
+9. 대시보드 시각적 개선(포스터/썸네일/진행률 표시) — Python의 애니메이션 hero/meter bar까지는 아니어도 진행률 정도는 필요.
+10. Asset Library 스타일링 일관성 — 헤더만 Tailwind가 적용되고 나머지 폼은 스타일 없는 순수 HTML.
+11. 얼굴 일관성 검사(InsightFace) — Python은 선택적·best-effort 기능이었고 TS는 데이터 필드(`face_consistency_results`)만 남기고 실제 검사 로직이 빠졌다. 우선순위 낮음, 필요 여부는 별도 논의.
+
+#### 4순위 — 구현이 아닌 검증/마무리
+
+12. 패키징된 실행 파일로 생성→검토→병합 전체 흐름을 실제로 끝까지 돌려보기(지금까지는 화면 로딩까지만 확인).
+13. Windows 화면 배율(DPI) 대응 확인 — Python 때부터 미확인 상태로 남아있던 항목.
+14. NSIS 설치 프로그램 실제 빌드·설치, 앱 아이콘, 코드 서명.
+15. 실제 유료 Provider로 전체 클릭 E2E — 사용자가 실제 비용을 지불할 준비가 됐을 때만 진행.
 
 ### 실제 Provider 연동 설계 원칙(서른세 번째 기능부터 적용)
 
