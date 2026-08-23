@@ -3,12 +3,22 @@ import {
   type CreateLongStoryBibleItemRequest,
   type CreateLongStoryBibleItemResponse,
   type DeleteLongStoryBibleItemResponse,
+  type DuplicateLongStoryBibleItemResponse,
   type GetLongProjectStoryBibleResponse,
+  type GetLongStoryBibleRelationshipAuditResponse,
   type LongStoryBible,
   type LongStoryBibleCollection,
   type LongStoryBibleItem,
+  type LongStoryBibleRelationshipIssue,
+  type LongStoryBibleStyleAssetLink,
+  type SearchLongStoryBibleItemsResponse,
+  type UpdateLongStoryBibleContentRequest,
+  type UpdateLongStoryBibleContentResponse,
+  type LongStoryBibleAssetLink,
   type UpdateLongStoryBibleItemRequest,
   type UpdateLongStoryBibleItemResponse,
+  type UpdateLongStoryBibleStyleAssetLinkRequest,
+  type UpdateLongStoryBibleStyleAssetLinkResponse,
 } from "@ai-animation-studio/shared";
 
 export class LongStoryBibleApiError extends Error {
@@ -48,6 +58,20 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 const isString = (value: unknown): value is string => typeof value === "string";
 const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every(isString);
 
+function isAssetLink(value: unknown): value is LongStoryBibleAssetLink {
+  if (!isRecord(value) || !isString(value.assetId) || !value.assetId.trim()) return false;
+  if (value.versionPolicy !== "pinned_version" && value.versionPolicy !== "follow_latest") return false;
+  if (!(value.pinnedVersion === null || (Number.isInteger(value.pinnedVersion) && (value.pinnedVersion as number) >= 1))) return false;
+  if (!isRecord(value.episodeScope) || (value.episodeScope.mode !== "all" && value.episodeScope.mode !== "episode")) return false;
+  return value.episodeScope.mode === "all" || (Number.isInteger(value.episodeScope.episode) && (value.episodeScope.episode as number) >= 1);
+}
+
+function isStyleAssetLink(value: unknown): value is LongStoryBibleStyleAssetLink {
+  return isRecord(value) && isString(value.assetId) && value.assetId.trim().length > 0
+    && (value.versionPolicy === "pinned_version" || value.versionPolicy === "follow_latest" || value.versionPolicy === "snapshot")
+    && Number.isInteger(value.pinnedVersion) && (value.pinnedVersion as number) >= 1;
+}
+
 function isItem(value: unknown): value is LongStoryBibleItem {
   if (!isRecord(value) || !isString(value.id) || !value.id.trim()) return false;
   const stringFields = ["name", "status", "description", "referenceId", "lastAppearance", "emotionalState", "locationId", "ownerId", "truth", "content"];
@@ -57,18 +81,29 @@ function isItem(value: unknown): value is LongStoryBibleItem {
     && arrayFields.every((key) => value[key] === undefined || isStringArray(value[key]))
     && numberFields.every((key) => value[key] === undefined || (typeof value[key] === "number" && Number.isInteger(value[key])))
     && (value.alive === undefined || typeof value.alive === "boolean")
-    && (value.injured === undefined || typeof value.injured === "boolean");
+    && (value.injured === undefined || typeof value.injured === "boolean")
+    && (value.assetLink === undefined || value.assetLink === null || isAssetLink(value.assetLink));
 }
 
 function isStoryBible(value: unknown): value is LongStoryBible {
   if (!isRecord(value) || !isRecord(value.basic) || !isRecord(value.world) || !isString(value.updatedAt)) return false;
-  return COLLECTIONS.every((collection) => Array.isArray(value[collection]) && value[collection].every(isItem));
+  return (value.styleAssetLink === undefined || isStyleAssetLink(value.styleAssetLink))
+    && COLLECTIONS.every((collection) => Array.isArray(value[collection]) && value[collection].every(isItem));
 }
 
 const isGetResponse = (value: unknown): value is GetLongProjectStoryBibleResponse => isRecord(value) && isStoryBible(value.storyBible);
+const isContentResponse = (value: unknown): value is UpdateLongStoryBibleContentResponse => isRecord(value) && isStoryBible(value.storyBible);
+const isStyleAssetLinkResponse = (value: unknown): value is UpdateLongStoryBibleStyleAssetLinkResponse => isRecord(value) && isStoryBible(value.storyBible);
 const isCreateResponse = (value: unknown): value is CreateLongStoryBibleItemResponse => isRecord(value) && isItem(value.item) && isStoryBible(value.storyBible);
 const isUpdateResponse = (value: unknown): value is UpdateLongStoryBibleItemResponse => isRecord(value) && isItem(value.item) && isStoryBible(value.storyBible);
 const isDeleteResponse = (value: unknown): value is DeleteLongStoryBibleItemResponse => isRecord(value) && isStoryBible(value.storyBible);
+const isSearchResponse = (value: unknown): value is SearchLongStoryBibleItemsResponse => isRecord(value) && Array.isArray(value.items) && value.items.every(isItem);
+const isDuplicateResponse = (value: unknown): value is DuplicateLongStoryBibleItemResponse => isRecord(value) && isItem(value.item) && isStoryBible(value.storyBible);
+const isRelationshipIssue = (value: unknown): value is LongStoryBibleRelationshipIssue => {
+  if (!isRecord(value) || !COLLECTIONS.includes(value.collection as LongStoryBibleCollection) || !isString(value.itemId) || !isStringArray(value.missingIds)) return false;
+  return value.field === "locationId" || value.field === "ownerId" || value.field === "ownedItemIds" || value.field === "characterIds" || value.field === "locationIds";
+};
+const isRelationshipAuditResponse = (value: unknown): value is GetLongStoryBibleRelationshipAuditResponse => isRecord(value) && Array.isArray(value.issues) && value.issues.every(isRelationshipIssue);
 
 async function request<T>(url: string, init: RequestInit | undefined, guard: (value: unknown) => value is T): Promise<T> {
   let response: Response;
@@ -88,6 +123,18 @@ export function getLongProjectStoryBible(projectId: string): Promise<GetLongProj
   return request(API_ROUTES.longProjectStoryBible(projectId), undefined, isGetResponse);
 }
 
+export function updateLongStoryBibleContent(projectId: string, body: UpdateLongStoryBibleContentRequest): Promise<UpdateLongStoryBibleContentResponse> {
+  return request(API_ROUTES.longProjectStoryBibleContent(projectId), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, isContentResponse);
+}
+
+export function updateLongStoryBibleStyleAssetLink(projectId: string, body: UpdateLongStoryBibleStyleAssetLinkRequest): Promise<UpdateLongStoryBibleStyleAssetLinkResponse> {
+  return request(API_ROUTES.longProjectStoryBibleStyleAssetLink(projectId), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, isStyleAssetLinkResponse);
+}
+
+export function getLongStoryBibleRelationshipAudit(projectId: string): Promise<GetLongStoryBibleRelationshipAuditResponse> {
+  return request(API_ROUTES.longProjectStoryBibleRelationshipAudit(projectId), undefined, isRelationshipAuditResponse);
+}
+
 export function createLongStoryBibleItem(projectId: string, collection: LongStoryBibleCollection, body: CreateLongStoryBibleItemRequest): Promise<CreateLongStoryBibleItemResponse> {
   return request(API_ROUTES.longProjectStoryBibleCollection(projectId, collection), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, isCreateResponse);
 }
@@ -98,4 +145,12 @@ export function updateLongStoryBibleItem(projectId: string, collection: LongStor
 
 export function deleteLongStoryBibleItem(projectId: string, collection: LongStoryBibleCollection, itemId: string): Promise<DeleteLongStoryBibleItemResponse> {
   return request(API_ROUTES.longProjectStoryBibleItem(projectId, collection, itemId), { method: "DELETE" }, isDeleteResponse);
+}
+
+export function searchLongStoryBibleItems(projectId: string, collection: LongStoryBibleCollection, query: string): Promise<SearchLongStoryBibleItemsResponse> {
+  return request(API_ROUTES.longProjectStoryBibleSearch(projectId, collection, query), undefined, isSearchResponse);
+}
+
+export function duplicateLongStoryBibleItem(projectId: string, collection: LongStoryBibleCollection, itemId: string): Promise<DuplicateLongStoryBibleItemResponse> {
+  return request(API_ROUTES.longProjectStoryBibleDuplicate(projectId, collection, itemId), { method: "POST" }, isDuplicateResponse);
 }

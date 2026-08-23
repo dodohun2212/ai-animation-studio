@@ -76,6 +76,12 @@ export class ProviderSettingsService {
     return { provider: await this.status(provider) };
   }
 
+  /** Returns the raw credential only when it is both configured and not session-disconnected — never logged or exposed over the API. */
+  async rawCredentialIfConnected(providerValue: ProviderCredentialKind): Promise<string | null> {
+    if (this.disconnected.has(providerValue)) return null;
+    return this.repository.read(providerValue);
+  }
+
   private async status(provider: ProviderCredentialKind): Promise<ProviderCredentialStatus> {
     const value = await this.repository.read(provider);
     if (value) this.logger.rememberCredential(value);

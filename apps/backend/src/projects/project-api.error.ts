@@ -8,7 +8,9 @@ export type ProjectErrorCode =
   | "PROJECT_NOT_FOUND"
   | "PROJECT_JSON_MALFORMED"
   | "PROJECT_DATA_INVALID"
-  | "PROJECT_STORAGE_ERROR";
+  | "PROJECT_STORAGE_ERROR"
+  | "PROJECT_ARCHIVE_NOT_ALLOWED"
+  | "PROJECT_ARCHIVE_COLLISION";
 
 export class ProjectApiException extends HttpException {
   constructor(
@@ -64,4 +66,20 @@ export function dataInvalid(message: string): ProjectApiException {
 
 export function storageError(message: string): ProjectApiException {
   return new ProjectApiException("PROJECT_STORAGE_ERROR", message, HttpStatus.INTERNAL_SERVER_ERROR);
+}
+
+export function projectArchiveNotAllowed(): ProjectApiException {
+  return new ProjectApiException(
+    "PROJECT_ARCHIVE_NOT_ALLOWED",
+    "A project with active generation or rendering work cannot be archived.",
+    HttpStatus.CONFLICT,
+  );
+}
+
+export function projectArchiveCollision(): ProjectApiException {
+  return new ProjectApiException(
+    "PROJECT_ARCHIVE_COLLISION",
+    "A recoverable archive already exists for this project.",
+    HttpStatus.CONFLICT,
+  );
 }

@@ -5,12 +5,20 @@ import { Injectable } from "@nestjs/common";
 import { WorkflowState } from "@ai-animation-studio/shared";
 import type { ApproveStoryPromptRequest, ApproveStoryPromptResponse, CreateStoryPromptPreviewResponse, StoryPromptPreview } from "@ai-animation-studio/shared";
 import { toApiProject } from "../projects/project.mapper.js";
+import { toShortProjectAssetReferences } from "../projects/project-asset-references.js";
+import { toShortProjectCast } from "../projects/project-cast.js";
+import { previousSceneContext } from "../projects/project-continuity.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { ProjectAssetMappingsService } from "../mappings/mappings.service.js";
+import { ProviderSettingsService } from "../settings/provider-settings.service.js";
+import type { LocalAssetsRepository } from "../assets/assets.repository.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
-import { generateLocalStory } from "./story-generation.service.js";
-import { invalidStoryRequest, storyGenerationFailed, storyGenerationNotAllowed, storyPromptStale, storyStorageError } from "./story-api.error.js";
+import { generateLocalStory, type StoredStory } from "./story-generation.service.js";
+import { OpenAiBudget, OpenAiBudgetExceededError, STORY_ESTIMATED_COST_USD } from "../providers/openai-budget.js";
+import { OPENAI_STORY_MODEL, OpenAiStoryAdapterError, callOpenAiStoryApi } from "./openai-story-adapter.js";
+import { describeAtmosphereAssets, describeCharacterCast, describeSceneReferenceAssets } from "./story-asset-metadata.js";
+import { invalidStoryRequest, storyBudgetExceeded, storyGenerationFailed, storyGenerationNotAllowed, storyPromptStale, storyProviderError, storyStorageError } from "./story-api.error.js";
 
 const sha256 = (value: string) => crypto.createHash("sha256").update(value, "utf8").digest("hex");
 const object = (value: unknown): Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -28,13 +36,13 @@ export function renderTemplate(template: string, variables: Record<string, strin
   }).trim();
 }
 
-function promptVariables(stored: StoredProject): Record<string, string> {
+async function promptVariables(stored: StoredProject, assets?: LocalAssetsRepository): Promise<Record<string, string>> {
   const settings = toShortProjectSettings(stored);
   const profile = object(stored.style_profile);
   const notes = settings.styleNotes;
   const story = object(stored.story);
-  const cast = object(stored.character_profile).cast;
-  const previous = object(stored.lore_context).previous_scene_context;
+  const cast = toShortProjectCast(stored);
+  const { atmosphereAssetIds, sceneReferenceAssets } = toShortProjectAssetReferences(stored);
   return {
     project_name: settings.projectName || "별도 이름 없음",
     topic: settings.topic,
@@ -44,11 +52,11 @@ function promptVariables(stored: StoredProject): Record<string, string> {
     lore: settings.lore || "AUTONOMOUS_SETTING",
     character: settings.character,
     character_asset_metadata: "",
-    character_cast_metadata: Array.isArray(cast) ? JSON.stringify(cast, null, 2) : "",
-    atmosphere_asset_metadata: "",
-    scene_reference_asset_metadata: "",
+    character_cast_metadata: await describeCharacterCast(assets, cast),
+    atmosphere_asset_metadata: await describeAtmosphereAssets(assets, atmosphereAssetIds),
+    scene_reference_asset_metadata: await describeSceneReferenceAssets(assets, sceneReferenceAssets),
     project_asset_metadata: "",
-    previous_scene_context: typeof previous === "string" ? previous : "",
+    previous_scene_context: previousSceneContext(stored),
     visual_style: notes.visualStyle ?? value(profile, "visual_style"),
     color: notes.color ?? value(profile, "color"),
     lighting: notes.lighting ?? value(profile, "lighting"),
@@ -74,7 +82,24 @@ export class StoryPromptService {
     private readonly projects: LocalProjectRepository,
     private readonly templateRoot = promptsRoot(),
     private readonly mappings?: ProjectAssetMappingsService,
+    private readonly providerSettings?: ProviderSettingsService,
+    private readonly budget?: OpenAiBudget,
+    private readonly assets?: LocalAssetsRepository,
   ) {}
+
+  /** Real OpenAI generation only runs when a connected credential and a budget tracker are both wired in; otherwise this always falls back to the local fake adapter. */
+  private async generateStory(stored: StoredProject, prompt: string, apiKey: string | null): Promise<StoredStory> {
+    if (!apiKey || !this.budget) return generateLocalStory(stored, prompt);
+    await this.budget.preflight(STORY_ESTIMATED_COST_USD);
+    let succeeded = false;
+    try {
+      const { story } = await callOpenAiStoryApi(apiKey, prompt);
+      succeeded = true;
+      return story;
+    } finally {
+      await this.budget.record(stored.project_id, "story", succeeded, STORY_ESTIMATED_COST_USD);
+    }
+  }
 
   private async original(stored: StoredProject): Promise<string> {
     let template: string;
@@ -83,7 +108,7 @@ export class StoryPromptService {
     } catch {
       throw storyStorageError();
     }
-    return renderTemplate(template, promptVariables(stored));
+    return renderTemplate(template, await promptVariables(stored, this.assets));
   }
 
   async preview(projectId: string): Promise<CreateStoryPromptPreviewResponse> {
@@ -107,6 +132,7 @@ export class StoryPromptService {
     if (stored.workflow_state !== WorkflowState.Ready) throw storyGenerationNotAllowed();
     const prompt = body.prompt.trim();
     const approvedAt = new Date().toISOString();
+    const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     const generating: StoredProject = {
       ...stored,
       workflow_state: WorkflowState.GeneratingStory,
@@ -119,15 +145,23 @@ export class StoryPromptService {
           modified: prompt !== originalPrompt,
           prompt_sha256: sha256(prompt),
           approved_at: approvedAt,
-          model: "local-fake-story-adapter",
+          model: apiKey ? OPENAI_STORY_MODEL : "local-fake-story-adapter",
           character_count: characterCount(stored),
         },
       },
     };
     try { await this.projects.save(generating); } catch { throw storyStorageError(); }
 
-    let story;
-    try { story = generateLocalStory(generating, prompt); } catch { throw storyGenerationFailed(); }
+    let story: StoredStory;
+    try {
+      story = await this.generateStory(generating, prompt, apiKey);
+    } catch (error) {
+      // Return to READY so the user can retry instead of being stuck in GENERATING_STORY forever.
+      try { await this.projects.save({ ...generating, workflow_state: WorkflowState.Ready, updated_at: new Date().toISOString() }); } catch { /* best-effort recovery */ }
+      if (error instanceof OpenAiBudgetExceededError) throw storyBudgetExceeded(error.message);
+      if (error instanceof OpenAiStoryAdapterError) throw storyProviderError(error.category, error.message);
+      throw storyGenerationFailed();
+    }
     const completedAt = new Date().toISOString();
     const updated: StoredProject = {
       ...generating,

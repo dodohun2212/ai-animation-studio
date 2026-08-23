@@ -1,9 +1,27 @@
 import { Module } from "@nestjs/common";
+import { AssetsModule } from "../assets/assets.module.js";
+import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { PROJECTS_ROOT, ProjectsModule } from "../projects/projects.module.js";
 import { LongProjectsController } from "./long-projects.controller.js";
 import { LongProjectsService } from "./long-projects.service.js";
 import { StoryBibleController } from "./story-bible.controller.js";
 import { StoryBibleService } from "./story-bible.service.js";
+import { EpisodeScriptsController } from "./episode-scripts.controller.js";
+import { EpisodeScriptsService } from "./episode-scripts.service.js";
+import { EpisodeAssetMappingsController } from "./episode-asset-mappings.controller.js";
+import { EpisodeAssetMappingsService } from "./episode-asset-mappings.service.js";
+import { EpisodeImagesController } from "./episode-images.controller.js";
+import { EpisodeImagesService } from "./episode-images.service.js";
+import { EpisodeVideosController } from "./episode-videos.controller.js";
+import { EpisodeVideosService } from "./episode-videos.service.js";
+import { EpisodeVideoMergeController } from "./episode-video-merge.controller.js";
+import { EpisodeVideoMergeService } from "./episode-video-merge.service.js";
+import { EpisodeContinuityController } from "./episode-continuity.controller.js";
+import { EpisodeContinuityService } from "./episode-continuity.service.js";
+import { EpisodeContinuityReferenceController } from "./episode-continuity-reference.controller.js";
+import { EpisodeContinuityReferenceService } from "./episode-continuity-reference.service.js";
+import { EpisodeTimelineController } from "./episode-timeline.controller.js";
+import { EpisodeTimelineService } from "./episode-timeline.service.js";
 
-@Module({ imports: [ProjectsModule], controllers: [LongProjectsController, StoryBibleController], providers: [{ provide: LongProjectsService, useFactory: (projectsRoot: string) => new LongProjectsService(projectsRoot), inject: [PROJECTS_ROOT] }, { provide: StoryBibleService, useFactory: (projectsRoot: string) => new StoryBibleService(projectsRoot), inject: [PROJECTS_ROOT] }] })
+@Module({ imports: [ProjectsModule, AssetsModule], controllers: [LongProjectsController, StoryBibleController, EpisodeScriptsController, EpisodeAssetMappingsController, EpisodeImagesController, EpisodeVideosController, EpisodeVideoMergeController, EpisodeContinuityController, EpisodeContinuityReferenceController, EpisodeTimelineController], providers: [{ provide: LongProjectsService, useFactory: (projectsRoot: string) => new LongProjectsService(projectsRoot), inject: [PROJECTS_ROOT] }, { provide: StoryBibleService, useFactory: (projectsRoot: string, assets: LocalAssetsRepository) => new StoryBibleService(projectsRoot, assets), inject: [PROJECTS_ROOT] }, { provide: EpisodeScriptsService, useFactory: (projectsRoot: string) => new EpisodeScriptsService(projectsRoot), inject: [PROJECTS_ROOT] }, { provide: EpisodeAssetMappingsService, useFactory: (projectsRoot: string, assets: LocalAssetsRepository) => new EpisodeAssetMappingsService(projectsRoot, assets), inject: [PROJECTS_ROOT, LocalAssetsRepository] }, { provide: EpisodeImagesService, useFactory: (projectsRoot: string) => new EpisodeImagesService(projectsRoot), inject: [PROJECTS_ROOT] }, { provide: EpisodeVideosService, useFactory: (projectsRoot: string) => new EpisodeVideosService(projectsRoot), inject: [PROJECTS_ROOT] }, { provide: EpisodeVideoMergeService, useFactory: (projectsRoot: string) => new EpisodeVideoMergeService(projectsRoot), inject: [PROJECTS_ROOT] }, { provide: EpisodeContinuityService, useFactory: (projectsRoot: string) => new EpisodeContinuityService(projectsRoot), inject: [PROJECTS_ROOT] }, { provide: EpisodeContinuityReferenceService, useFactory: (projectsRoot: string) => new EpisodeContinuityReferenceService(projectsRoot), inject: [PROJECTS_ROOT] }, { provide: EpisodeTimelineService, useFactory: (projectsRoot: string) => new EpisodeTimelineService(projectsRoot), inject: [PROJECTS_ROOT] }] })
 export class LongProjectsModule {}

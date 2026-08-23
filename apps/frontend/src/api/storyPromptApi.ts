@@ -23,6 +23,8 @@ const SAFE_ERRORS: Record<string, string> = {
   INVALID_REQUEST: "입력 내용을 확인해 주세요.",
   PROJECT_NOT_FOUND: "프로젝트를 찾을 수 없습니다.",
   STORY_PROMPT_STALE: "Story 프롬프트가 그 사이에 변경되었습니다. 미리보기를 다시 불러와 주세요.",
+  STORY_BUDGET_EXCEEDED: "이번 달 OpenAI 예산을 초과하여 요청을 보내지 않았습니다.",
+  STORY_PROVIDER_ERROR: "OpenAI Story 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
 };
 const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };

@@ -1,18 +1,38 @@
 import { Injectable } from "@nestjs/common";
+import { WorkflowState } from "@ai-animation-studio/shared";
 import type {
+  ArchiveProjectRequest,
+  ArchiveProjectResponse,
   CreateProjectRequest,
   CreateProjectResponse,
   GetProjectResponse,
   GetProjectSettingsResponse,
+  GetShortProjectAssetReferencesResponse,
+  GetShortProjectCastResponse,
+  GetShortProjectContinuityResponse,
   ListProjectsResponse,
+  ListShortProjectContinuityOptionsResponse,
+  SetShortProjectContinuityRequest,
+  SetShortProjectContinuityResponse,
   UpdateProjectSettingsRequest,
   UpdateProjectSettingsResponse,
+  UpdateShortProjectAssetReferencesRequest,
+  UpdateShortProjectAssetReferencesResponse,
+  UpdateShortProjectCastRequest,
+  UpdateShortProjectCastResponse,
 } from "@ai-animation-studio/shared";
 
-import { invalidRequest } from "./project-api.error.js";
+import { invalidRequest, projectArchiveCollision, projectArchiveNotAllowed, storageError } from "./project-api.error.js";
 import { createStoredProject, toApiProject, toApiSummary } from "./project.mapper.js";
+import { applyShortProjectAssetReferences, parseShortProjectAssetReferences, toShortProjectAssetReferences } from "./project-asset-references.js";
+import { applyShortProjectCast, parseShortProjectCast, toShortProjectCast } from "./project-cast.js";
+import { applyContinuityCandidate, listContinuityOptions, resolveContinuityCandidate, toShortProjectContinuityLink } from "./project-continuity.js";
 import { applyShortProjectSettings, parseShortProjectSettings, toShortProjectSettings } from "./project-settings.js";
 import { LocalProjectRepository } from "./projects.repository.js";
+import type { LocalAssetsRepository } from "../assets/assets.repository.js";
+
+const ATMOSPHERE_ASSET_TYPES = new Set(["style", "general_reference", "background"]);
+const SCENE_REFERENCE_ASSET_TYPES = new Set(["background", "object", "style", "general_reference"]);
 
 function requireNonEmptyTrimmed(value: unknown, field: string): string {
   if (typeof value !== "string") {
@@ -27,7 +47,7 @@ function requireNonEmptyTrimmed(value: unknown, field: string): string {
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly repository: LocalProjectRepository) {}
+  constructor(private readonly repository: LocalProjectRepository, private readonly assets?: LocalAssetsRepository) {}
 
   async createProject(request: CreateProjectRequest): Promise<CreateProjectResponse> {
     const projectId = requireNonEmptyTrimmed(request?.projectId, "projectId");
@@ -52,6 +72,25 @@ export class ProjectsService {
     return { project: toApiProject(stored) };
   }
 
+  async archiveProject(projectId: string, request: ArchiveProjectRequest): Promise<ArchiveProjectResponse> {
+    const id = typeof projectId === "string" ? projectId.trim() : "";
+    const project = await this.repository.findById(id);
+    if (!request || Object.keys(request).length !== 1 || typeof request.confirmation !== "string"
+      || !request.confirmation.trim() || request.confirmation !== project.topic) {
+      throw invalidRequest("Archive confirmation must exactly match the project topic.", { field: "confirmation" });
+    }
+    if ([WorkflowState.GeneratingStory, WorkflowState.GeneratingImages, WorkflowState.GeneratingVideos, WorkflowState.Rendering, WorkflowState.Interrupted].includes(project.workflow_state as WorkflowState)) {
+      throw projectArchiveNotAllowed();
+    }
+    try {
+      await this.repository.archive(id);
+    } catch (error) {
+      if (error instanceof Error && error.message === "archive destination already exists") throw projectArchiveCollision();
+      throw storageError(`Failed to archive project "${id}".`);
+    }
+    return { archivedProjectId: id };
+  }
+
   async getProjectSettings(projectId: string): Promise<GetProjectSettingsResponse> {
     const stored = await this.repository.findById(projectId.trim());
     return { settings: toShortProjectSettings(stored) };
@@ -66,5 +105,90 @@ export class ProjectsService {
     const updated = applyShortProjectSettings(stored, settings, new Date().toISOString());
     await this.repository.save(updated);
     return { project: toApiProject(updated), settings };
+  }
+
+  async getProjectCast(projectId: string): Promise<GetShortProjectCastResponse> {
+    const stored = await this.repository.findById(projectId.trim());
+    return { cast: toShortProjectCast(stored) };
+  }
+
+  async updateProjectCast(projectId: string, request: unknown): Promise<UpdateShortProjectCastResponse> {
+    const stored = await this.repository.findById(projectId.trim());
+    const cast = parseShortProjectCast(request as UpdateShortProjectCastRequest);
+    if (this.assets) {
+      for (const member of cast) {
+        let asset;
+        try { asset = await this.assets.get(member.assetId); } catch { throw invalidRequest(`Character Asset "${member.assetId}" was not found.`, { field: "assetId" }); }
+        if (asset.is_folder || asset.asset_type !== "character") {
+          throw invalidRequest(`Asset "${member.assetId}" must be a non-folder character Asset.`, { field: "assetId" });
+        }
+      }
+    }
+    const updated = applyShortProjectCast(stored, cast, new Date().toISOString());
+    await this.repository.save(updated);
+    return { cast };
+  }
+
+  async getProjectAssetReferences(projectId: string): Promise<GetShortProjectAssetReferencesResponse> {
+    const stored = await this.repository.findById(projectId.trim());
+    return toShortProjectAssetReferences(stored);
+  }
+
+  async updateProjectAssetReferences(projectId: string, request: unknown): Promise<UpdateShortProjectAssetReferencesResponse> {
+    const stored = await this.repository.findById(projectId.trim());
+    const references = parseShortProjectAssetReferences(request as UpdateShortProjectAssetReferencesRequest);
+    if (this.assets) {
+      for (const assetId of references.atmosphereAssetIds) {
+        let asset;
+        try { asset = await this.assets.get(assetId); } catch { throw invalidRequest(`Asset "${assetId}" was not found.`, { field: "atmosphereAssetIds" }); }
+        if (asset.is_folder || !ATMOSPHERE_ASSET_TYPES.has(asset.asset_type)) {
+          throw invalidRequest(`Asset "${assetId}" must be a non-folder style, background or general reference Asset.`, { field: "atmosphereAssetIds" });
+        }
+      }
+      for (const member of references.sceneReferenceAssets) {
+        let asset;
+        try { asset = await this.assets.get(member.assetId); } catch { throw invalidRequest(`Asset "${member.assetId}" was not found.`, { field: "sceneReferenceAssets" }); }
+        if (asset.is_folder || !SCENE_REFERENCE_ASSET_TYPES.has(asset.asset_type)) {
+          throw invalidRequest(`Asset "${member.assetId}" must be a non-folder background, object, style or general reference Asset.`, { field: "sceneReferenceAssets" });
+        }
+      }
+    }
+    const updated = applyShortProjectAssetReferences(stored, references, new Date().toISOString());
+    await this.repository.save(updated);
+    return references;
+  }
+
+  async listProjectContinuityOptions(projectId: string): Promise<ListShortProjectContinuityOptionsResponse> {
+    const id = projectId.trim();
+    await this.repository.findById(id);
+    return { options: await listContinuityOptions(this.repository, id) };
+  }
+
+  async getProjectContinuity(projectId: string): Promise<GetShortProjectContinuityResponse> {
+    const stored = await this.repository.findById(projectId.trim());
+    return { link: toShortProjectContinuityLink(stored) };
+  }
+
+  async updateProjectContinuity(projectId: string, request: unknown): Promise<SetShortProjectContinuityResponse> {
+    const id = projectId.trim();
+    const stored = await this.repository.findById(id);
+    if (typeof request !== "object" || request === null || Array.isArray(request)
+      || Object.keys(request).length !== 1 || !("projectId" in request)
+      || (typeof (request as SetShortProjectContinuityRequest).projectId !== "string" && (request as SetShortProjectContinuityRequest).projectId !== null)) {
+      throw invalidRequest("Request body must contain only a projectId string or null.", { field: "projectId" });
+    }
+    const sourceProjectId = (request as SetShortProjectContinuityRequest).projectId;
+    if (sourceProjectId === null) {
+      const updated = applyContinuityCandidate(stored, null, new Date().toISOString());
+      await this.repository.save(updated);
+      return { link: null };
+    }
+    const trimmedSourceId = sourceProjectId.trim();
+    if (!trimmedSourceId) throw invalidRequest("projectId must not be empty.", { field: "projectId" });
+    const candidate = await resolveContinuityCandidate(this.repository, id, trimmedSourceId);
+    if (!candidate) throw invalidRequest(`Project "${trimmedSourceId}" is not eligible for continuity linking.`, { field: "projectId" });
+    const updated = applyContinuityCandidate(stored, candidate, new Date().toISOString());
+    await this.repository.save(updated);
+    return { link: { projectId: candidate.projectId, projectName: candidate.projectName, label: candidate.label } };
   }
 }

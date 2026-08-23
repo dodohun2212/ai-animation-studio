@@ -5,8 +5,12 @@ import * as path from "node:path";
 import { WorkflowState } from "@ai-animation-studio/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { LocalProjectRepository } from "./projects.repository.js";
 import { ProjectsService } from "./projects.service.js";
+
+const CHAR_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
+const SECOND_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
 
 describe("ProjectsService", () => {
   let root: string;
@@ -98,5 +102,143 @@ describe("ProjectsService", () => {
 
     expect(saved.project.topic).toBe("별을 찾는 아이");
     expect(await restarted.getProjectSettings("wizard_project")).toEqual({ settings });
+  });
+
+  it("returns an empty cast for a project that has never set one", async () => {
+    await service.createProject({ projectId: "cast_project", topic: "topic" });
+    expect(await service.getProjectCast("cast_project")).toEqual({ cast: [] });
+  });
+
+  it("saves a Wizard cast selection, validates each Asset, and reopens it from a new backend instance", async () => {
+    const assets = new LocalAssetsRepository(root);
+    const withAssets = new ProjectsService(new LocalProjectRepository(root), assets);
+    await withAssets.createProject({ projectId: "cast_project", topic: "topic" });
+    const hero = await assets.create({ buffer: CHAR_PNG, originalname: "hero.png" }, { assetType: "character", displayName: "Hero" });
+
+    const saved = await withAssets.updateProjectCast("cast_project", { cast: [{ assetId: hero.asset_id, castRole: "protagonist", storyRole: "대표 캐릭터" }] });
+    expect(saved).toEqual({ cast: [{ assetId: hero.asset_id, castRole: "protagonist", storyRole: "대표 캐릭터" }] });
+
+    const restarted = new ProjectsService(new LocalProjectRepository(root), new LocalAssetsRepository(root));
+    expect(await restarted.getProjectCast("cast_project")).toEqual(saved);
+  });
+
+  it("rejects a cast selection referencing an Asset that does not exist", async () => {
+    const withAssets = new ProjectsService(new LocalProjectRepository(root), new LocalAssetsRepository(root));
+    await withAssets.createProject({ projectId: "cast_project", topic: "topic" });
+    await expect(withAssets.updateProjectCast("cast_project", { cast: [{ assetId: "ASSET-CHAR-MISSING", castRole: "protagonist", storyRole: "대표 캐릭터" }] }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
+  it("rejects a cast selection referencing a non-character Asset", async () => {
+    const assets = new LocalAssetsRepository(root);
+    const withAssets = new ProjectsService(new LocalProjectRepository(root), assets);
+    await withAssets.createProject({ projectId: "cast_project", topic: "topic" });
+    const background = await assets.create({ buffer: CHAR_PNG, originalname: "bg.png" }, { assetType: "background", displayName: "Background" });
+
+    await expect(withAssets.updateProjectCast("cast_project", { cast: [{ assetId: background.asset_id, castRole: "protagonist", storyRole: "대표 캐릭터" }] }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
+  it("skips Asset validation when no assets repository is injected", async () => {
+    await service.createProject({ projectId: "cast_project", topic: "topic" });
+    const saved = await service.updateProjectCast("cast_project", { cast: [{ assetId: "ASSET-CHAR-ANY", castRole: "protagonist", storyRole: "대표 캐릭터" }] });
+    expect(saved.cast).toHaveLength(1);
+  });
+
+  it("returns empty asset references for a project that has never set any", async () => {
+    await service.createProject({ projectId: "refs_project", topic: "topic" });
+    expect(await service.getProjectAssetReferences("refs_project")).toEqual({ atmosphereAssetIds: [], sceneReferenceAssets: [] });
+  });
+
+  it("saves atmosphere and scene reference Asset selections, validates each Asset's type, and reopens them from a new backend instance", async () => {
+    const assets = new LocalAssetsRepository(root);
+    const withAssets = new ProjectsService(new LocalProjectRepository(root), assets);
+    await withAssets.createProject({ projectId: "refs_project", topic: "topic" });
+    const style = await assets.create({ buffer: CHAR_PNG, originalname: "style.png" }, { assetType: "style", displayName: "Style" });
+    const object = await assets.create({ buffer: SECOND_PNG, originalname: "key.png" }, { assetType: "object", displayName: "Key" });
+
+    const saved = await withAssets.updateProjectAssetReferences("refs_project", {
+      atmosphereAssetIds: [style.asset_id],
+      sceneReferenceAssets: [{ assetId: object.asset_id, purpose: "주인공이 항상 들고 다니는 열쇠" }],
+    });
+    expect(saved).toEqual({ atmosphereAssetIds: [style.asset_id], sceneReferenceAssets: [{ assetId: object.asset_id, purpose: "주인공이 항상 들고 다니는 열쇠" }] });
+
+    const restarted = new ProjectsService(new LocalProjectRepository(root), new LocalAssetsRepository(root));
+    expect(await restarted.getProjectAssetReferences("refs_project")).toEqual(saved);
+  });
+
+  it("rejects an atmosphere Asset selection referencing an Asset that does not exist", async () => {
+    const withAssets = new ProjectsService(new LocalProjectRepository(root), new LocalAssetsRepository(root));
+    await withAssets.createProject({ projectId: "refs_project", topic: "topic" });
+    await expect(withAssets.updateProjectAssetReferences("refs_project", { atmosphereAssetIds: ["ASSET-MISSING"], sceneReferenceAssets: [] }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
+  it("rejects an atmosphere Asset selection referencing a character Asset", async () => {
+    const assets = new LocalAssetsRepository(root);
+    const withAssets = new ProjectsService(new LocalProjectRepository(root), assets);
+    await withAssets.createProject({ projectId: "refs_project", topic: "topic" });
+    const hero = await assets.create({ buffer: CHAR_PNG, originalname: "hero.png" }, { assetType: "character", displayName: "Hero" });
+    await expect(withAssets.updateProjectAssetReferences("refs_project", { atmosphereAssetIds: [hero.asset_id], sceneReferenceAssets: [] }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
+  it("rejects a scene reference Asset selection referencing a character Asset", async () => {
+    const assets = new LocalAssetsRepository(root);
+    const withAssets = new ProjectsService(new LocalProjectRepository(root), assets);
+    await withAssets.createProject({ projectId: "refs_project", topic: "topic" });
+    const hero = await assets.create({ buffer: CHAR_PNG, originalname: "hero.png" }, { assetType: "character", displayName: "Hero" });
+    await expect(withAssets.updateProjectAssetReferences("refs_project", { atmosphereAssetIds: [], sceneReferenceAssets: [{ assetId: hero.asset_id, purpose: "x" }] }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
+  it("skips Asset validation for asset references when no assets repository is injected", async () => {
+    await service.createProject({ projectId: "refs_project", topic: "topic" });
+    const saved = await service.updateProjectAssetReferences("refs_project", { atmosphereAssetIds: ["ASSET-ANY"], sceneReferenceAssets: [] });
+    expect(saved.atmosphereAssetIds).toEqual(["ASSET-ANY"]);
+  });
+
+  it("has no continuity link or options before any other project exists", async () => {
+    await service.createProject({ projectId: "current", topic: "topic" });
+    expect(await service.getProjectContinuity("current")).toEqual({ link: null });
+    expect(await service.listProjectContinuityOptions("current")).toEqual({ options: [] });
+  });
+
+  it("links, reflects, and disconnects a Scene 6 continuity source from another eligible project", async () => {
+    await service.createProject({ projectId: "current", topic: "topic" });
+    const candidateId = "candidate";
+    const imagesDir = path.join(root, candidateId, "images");
+    await service.createProject({ projectId: candidateId, topic: "candidate topic" });
+    const repository = new LocalProjectRepository(root);
+    const candidate = await repository.findById(candidateId);
+    await repository.save({
+      ...candidate, workflow_state: WorkflowState.VideosReady,
+      scenes: Array.from({ length: 6 }, (_, i) => ({ number: i + 1, description: `Scene ${i + 1}` })),
+      story: { title: "Candidate Story", synopsis: "s", ending: "ending" },
+      generated_images: Array.from({ length: 6 }, (_, i) => path.join(imagesDir, `scene${i + 1}.png`)),
+    });
+    await fsPromises.mkdir(imagesDir, { recursive: true });
+    await fsPromises.writeFile(path.join(imagesDir, "scene6.png"), "fake-png-bytes");
+
+    const options = await service.listProjectContinuityOptions("current");
+    expect(options.options).toEqual([{ projectId: candidateId, projectName: "Candidate Story", label: "Candidate Story · Scene 6" }]);
+
+    const linked = await service.updateProjectContinuity("current", { projectId: candidateId });
+    expect(linked).toEqual({ link: { projectId: candidateId, projectName: "Candidate Story", label: "Candidate Story · Scene 6" } });
+    expect(await service.getProjectContinuity("current")).toEqual(linked);
+
+    const disconnected = await service.updateProjectContinuity("current", { projectId: null });
+    expect(disconnected).toEqual({ link: null });
+    expect(await service.getProjectContinuity("current")).toEqual({ link: null });
+  });
+
+  it("rejects linking to a project that is not eligible or does not exist", async () => {
+    await service.createProject({ projectId: "current", topic: "topic" });
+    await expect(service.updateProjectContinuity("current", { projectId: "missing" })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
+  it("rejects a continuity request body with fields other than projectId", async () => {
+    await service.createProject({ projectId: "current", topic: "topic" });
+    await expect(service.updateProjectContinuity("current", { projectId: null, extra: true })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 });

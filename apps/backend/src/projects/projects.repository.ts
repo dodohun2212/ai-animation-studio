@@ -2,6 +2,7 @@ import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
 
 import { atomicWriteUtf8File } from "./atomic-file.js";
+import { archiveProjectDirectory } from "./project-archive.js";
 import { dataInvalid, jsonMalformed, projectAlreadyExists, projectNotFound, storageError } from "./project-api.error.js";
 import { resolveSafeProjectDirectory } from "./project-id.js";
 import { parseStoredProject, type StoredProject } from "./project-storage.schema.js";
@@ -13,6 +14,7 @@ function errorCode(error: unknown): string | undefined {
 }
 
 type WriteProjectFile = (file: string, content: string) => Promise<void>;
+type ArchiveDirectory = (projectsRoot: string, projectId: string) => Promise<void>;
 
 /**
  * Reads and writes `<projectsRoot>/<projectId>/project.json`. Pure local
@@ -22,11 +24,21 @@ export class LocalProjectRepository {
   constructor(
     private readonly projectsRoot: string,
     private readonly writeProjectFile: WriteProjectFile = atomicWriteUtf8File,
+    private readonly moveDirectory: ArchiveDirectory = archiveProjectDirectory,
   ) {}
+
+  async archive(projectId: string): Promise<void> {
+    await this.moveDirectory(this.projectsRoot, projectId);
+  }
 
   private projectFile(projectId: string): { directory: string; file: string } {
     const directory = resolveSafeProjectDirectory(this.projectsRoot, projectId);
     return { directory, file: path.join(directory, "project.json") };
+  }
+
+  /** Resolved absolute storage directory for one project, e.g. for confirming a stored path stays within it. */
+  projectDirectory(projectId: string): string {
+    return this.projectFile(projectId).directory;
   }
 
   async create(stored: StoredProject): Promise<void> {

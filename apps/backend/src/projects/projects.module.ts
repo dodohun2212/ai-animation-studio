@@ -2,6 +2,8 @@ import * as path from "node:path";
 
 import { Module } from "@nestjs/common";
 
+import { AssetsModule } from "../assets/assets.module.js";
+import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { ProjectsController } from "./projects.controller.js";
 import { LocalProjectRepository } from "./projects.repository.js";
 import { ProjectsService } from "./projects.service.js";
@@ -13,6 +15,7 @@ function defaultProjectsRoot(): string {
 }
 
 @Module({
+  imports: [AssetsModule],
   controllers: [ProjectsController],
   providers: [
     { provide: PROJECTS_ROOT, useFactory: defaultProjectsRoot },
@@ -21,7 +24,11 @@ function defaultProjectsRoot(): string {
       useFactory: (projectsRoot: string) => new LocalProjectRepository(projectsRoot),
       inject: [PROJECTS_ROOT],
     },
-    ProjectsService,
+    {
+      provide: ProjectsService,
+      useFactory: (repository: LocalProjectRepository, assets: LocalAssetsRepository) => new ProjectsService(repository, assets),
+      inject: [LocalProjectRepository, LocalAssetsRepository],
+    },
   ],
   exports: [LocalProjectRepository, PROJECTS_ROOT],
 })
