@@ -268,18 +268,20 @@ learning_data/api_calls.json  learning_data/api_jobs.json  learning_data/api_bud
 1. [x] 단기 프로젝트 생성·목록·재열기와 Python JSON fixture
 2. [x] 설정·secret 저장/가림/log redaction; Provider 미연결
 3. [x] Asset Library 최소 CRUD·검색·소유권과 legacy index
-4. [ ] project Asset scope·mapping review/snapshot/fingerprint Gate
+4. [x] project Asset scope·mapping review/snapshot/fingerprint Gate
 5. [x] Story prompt preview/edit/restore/별도 explicit approval audit; local fake adapter, Provider 무호출
-6. [ ] Story 저장, 6장면 검증·복구
-7. [ ] image prompt/reference preview와 fake 생성, cache/partial resume
-8. [ ] image review/regen/version/Library 등록과 6승인 Gate
-9. [ ] 예산·일일 limit·job lock·duplicate request/input hash·audit
-10. [ ] Runway preview/edit/cost/confirmation fake 통합
-11. [ ] Runway sequential/stop/task recovery/regen과 6승인 Gate
-12. [ ] FFmpeg probe/normalize/order merge/continuity/final MP4
-13. [ ] 장기 Project/Bible CRUD와 outline Preview/approval
-14. [ ] Episode 공통 pipeline과 ContinuityMemory
-15. [ ] Electron 통합, Python 동등 fixture, Windows packaging·회귀 검증
+6. [x] Story 저장, 6장면 검증·복구
+7. [x] image prompt/reference preview와 fake 생성, cache/partial resume
+8. [x] image review/regen/version/Library 등록과 6승인 Gate
+9. [x] 예산·일일 limit·job lock·duplicate request/input hash·audit
+10. [x] Runway preview/edit/cost/confirmation fake 통합 — local fake만. 실제 Runway 연결은 "다음 권장 작업 순서" 1번(아키텍처 재설계) 참고.
+11. [x] Runway sequential/stop/task recovery/regen과 6승인 Gate — local fake만, 위와 동일.
+12. [x] FFmpeg probe/normalize/order merge/continuity/final MP4 — mock runner로 구조 검증 완료. 실제 설치된 FFmpeg 환경 검증은 "다음 권장 작업 순서" 3번 참고.
+13. [x] 장기 Project/Bible CRUD와 outline Preview/approval
+14. [x] Episode 공통 pipeline과 ContinuityMemory
+15. [ ] Electron 통합, Python 동등 fixture, Windows packaging·회귀 검증 — 아직 착수 전.
+
+이 목록은 2026-08-21 계획 초안 당시 만들어진 뒤 기능이 하나씩 끝날 때마다 갱신되지 않고 있었다. 실제 진행 상황의 기준은 위 "1번째~마흔 번째 이전 기능" 개별 섹션이며, 이 15개 목록은 그것을 요약한 것이다(2026-08-23 최신화).
 
 비용·call guard·job/task 저장·secret redaction은 Provider보다 먼저 구현한다. Preview/explicit approval는 submit 전 통합 테스트로 고정한다. Mapping snapshot/fingerprint 없이 이미지 생성을, file/task reuse와 input hash 중복 차단 없이 실제 Runway 연결을 허용하지 않는다.
 
