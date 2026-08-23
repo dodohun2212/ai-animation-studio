@@ -17,4 +17,6 @@ Respect the role and worktree assigned for the current session. A single agent m
 
 Continue the migration from the latest verified item in `docs/02_MIGRATION_PLAN.md`. For each user-visible feature: implement both required layers, run relevant checks and the integrated verification, update the migration plan only after verification, then proceed to the next feature. Do not end the working loop merely because one feature has completed.
 
-Do not make paid provider requests in tests. Preserve the Python baseline and existing uncommitted user changes. Do not commit or push unless the user asks.
+Do not make paid provider requests in tests. Preserve the Python baseline and existing uncommitted user changes.
+
+Commit each feature or fix as soon as it passes verification — do not let uncommitted work accumulate across features. Push to `origin` after each commit unless the user says otherwise. If a hook or check fails, fix it and create a new commit rather than leaving the change uncommitted.
