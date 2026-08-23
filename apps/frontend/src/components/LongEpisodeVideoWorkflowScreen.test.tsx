@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse } from "../api/testUtils.js";
 import { LongEpisodeVideoWorkflowScreen } from "./LongEpisodeVideoWorkflowScreen.js";
@@ -24,5 +24,21 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4)); fireEvent.click(screen.getAllByRole("button", { name: "Approve" })[0]!); await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5)); expect(fetchMock.mock.calls[4]![0]).toBe("/long-projects/long/episodes/1/videos/generations/job/review/1/approve");
     fireEvent.click(screen.getAllByRole("button", { name: "Regenerate" })[1]!); expect(await screen.findByTestId("episode-video-regenerate-confirm-2")).toBeTruthy();
   });
+  it("offers a retry for a scene Runway reported failed, only submitting after explicit confirmation", async () => {
+    const failedJob = { jobId: "job", status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2], episode: episode("videos_generating") };
+    const retriedJob = { jobId: "job", status: "running", completedSceneNumbers: [1], currentSceneNumber: 2, failedSceneNumbers: [], episode: episode("videos_generating") };
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, preview)).mockResolvedValueOnce(jsonResponse(200, { jobId: "job", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") })).mockResolvedValueOnce(jsonResponse(200, failedJob)).mockResolvedValueOnce(jsonResponse(200, retriedJob));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+    await screen.findByTestId("episode-video-summary");
+    fireEvent.click(screen.getByTestId("episode-video-open-confirm")); fireEvent.click(screen.getByRole("button", { name: "Start local fake videos" }));
+    await screen.findByTestId("episode-video-failed-scenes");
+    fireEvent.click(screen.getByTestId("episode-video-failed-retry-2"));
+    const panel = await screen.findByTestId("episode-video-failed-retry-confirm-2");
+    fireEvent.click(within(panel).getByRole("button", { name: "Retry scene" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(fetchMock.mock.calls[3]![0]).toBe("/long-projects/long/episodes/1/videos/generations/job/scenes/2/regenerate");
+  });
+
   it("handles stale API errors without exposing internal paths", async () => { vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(409, { code: "VIDEO_CONFIRMATION_STALE", message: "raw C:\\\\private" }))); render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />); const alert = await screen.findByRole("alert"); expect(alert).toHaveAttribute("data-error-code", "CLIENT_UNKNOWN_ERROR"); expect(document.body.textContent).not.toContain("C:\\private"); });
 });

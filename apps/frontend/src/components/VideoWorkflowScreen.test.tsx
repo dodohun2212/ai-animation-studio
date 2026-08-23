@@ -239,6 +239,28 @@ describe("VideoWorkflowScreen", () => {
     }
   });
 
+  it("shows a retry action for a scene Runway reported failed, and retries only after explicit confirmation", async () => {
+    const failed = makeProgress({ status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2] });
+    const retried = makeProgress({ status: "running", completedSceneNumbers: [1], currentSceneNumber: 2 });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, failed))
+      .mockResolvedValueOnce(jsonResponse(200, retried));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("failed-scenes-section");
+    expect(screen.getByTestId("scene-progress-2")).toHaveAttribute("data-status", "failed");
+    fireEvent.click(screen.getByTestId("failed-scene-retry-2"));
+    const panel = await screen.findByTestId("failed-scene-retry-confirm-2");
+    fireEvent.click(within(panel).getByRole("button", { name: "예, 다시 시도합니다" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(url).toBe(`${PROGRESS_URL}/scenes/2/regenerate`);
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ approved: true });
+  });
+
   it("does not call the regenerate-all endpoint on the first click — only an explicit confirmation does", async () => {
     const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
     const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, succeeded)).mockResolvedValueOnce(jsonResponse(200, reviewResponse(sixReviews())));

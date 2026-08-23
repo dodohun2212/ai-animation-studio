@@ -44,7 +44,7 @@
 
 ### 다음 권장 작업 순서
 
-1. **(중요, 아키텍처 변경 필요)** `local-video-workflow.service.ts`를 "몇 분짜리 실제 작업을 감당하는 구조"로 재설계한 뒤 Runway adapter를 실제로 연결. 현재 구조(한 HTTP 요청 안에서 6장면을 동기적으로 순회)는 실제 Runway task의 제출→polling→다운로드 시간(수 분)과 맞지 않는다. Python처럼 제출은 즉시 응답하고, 진행 상태는 프론트엔드가 주기적으로 poll하는 방식으로 바꿔야 한다. 착수 전 접근 방식을 다시 한 번 사용자와 확인한다. 사용자는 향후 Runway 외 다른 영상 Provider(예: Seedance — 참고로 Runway API 자체도 이미 seedance2 계열 모델을 지원한다) 연동도 고려 중이므로, 이 재설계 시점에 Provider를 하나로 고정하지 않는 구조를 함께 검토한다.
+1. ~~**(중요, 아키텍처 변경 필요)** `local-video-workflow.service.ts`를 "몇 분짜리 실제 작업을 감당하는 구조"로 재설계한 뒤 Runway adapter를 실제로 연결.~~ **완료** — "마흔한 번째 이전 기능" 참고. 단기·장편 양쪽 모두 제출→폴링 기반 상태 기계로 재설계하고 실제 Runway를 연결했다.
 2. 실제 OpenAI 이미지 생성에 Asset Mapping 기반 Reference 이미지 편집(`images.edit`, 승인된 캐릭터/스타일 이미지 전달)과 장면 재생성(`image-review.service.ts`) 경로 추가. 마흔 번째 기능에서 저장하기 시작한 `lore_context.previous_scene_link.image_path`(연결된 이전 프로젝트의 Scene 6 이미지)를 이 작업에서 Scene 1 Image 생성의 continuity Reference로 실제로 소비하는 것도 포함한다 — 지금은 저장만 하고 아직 아무 것도 이 값을 읽지 않는다.
 3. 실제 FFmpeg 환경 검증은 Provider adapter 이후 별도 기능으로 진행한다. 테스트에서는 절대 유료 요청이나 실제 바이너리 호출을 하지 않는다.
 
@@ -694,6 +694,19 @@ Frontend 및 통합 완료 근거(2026-08-21): `feature/frontend`의 `48065b0`�
 - [ ] 이것으로 단기 Wizard parity 작업이 모두 끝났다. 다음 권장 범위는 이 문서 상단 "다음 권장 작업 순서"의 나머지 항목(Runway 실제 연동을 위한 영상 워크플로 재설계, 실제 OpenAI 이미지 Reference 편집/재생성)이다.
 
 완료 근거(그룹 커밋, 2026-08-23): 서른여덟~마흔 번째 이전 기능의 프런트엔드 화면은 `3b1df7f` 그룹 커밋으로 통합·검증했다. 해당 백엔드 라우트(`project-cast.ts`/`project-asset-references.ts`/`project-continuity.ts`와 `projects.service.ts`/`story-prompt.service.ts` 배선)는 Story Bible·archive·실제 OpenAI Story adapter와 공용 파일을 공유해 이미 `f84ba1e` 그룹 커밋에 포함되어 있었다. 이것으로 27개 이전 기능(열네~마흔 번째)이 6개의 파이프라인 단계별 그룹 커밋(`a1ba785`, `f84ba1e`, `f2f360b`, `6276564`, `399cb5b`, `3b1df7f`)으로 모두 정리·커밋되었다.
+
+## 마흔한 번째 이전 기능: 실제 Runway 영상 생성 연결(단기·장편 동시)
+
+- [x] "다음 권장 작업 순서" 1번 항목을 완료했다: `local-video-workflow.service.ts`(단기)와 `episode-videos.service.ts`(장편) 모두, 한 요청 안에서 6장면을 동기 순회하던 기존 구조 대신 "한 장면 제출 → 폴링 때마다 최대 한 번만 확인 → 완료 시 다음 장면 자동 제출"하는 상태 기계로 재설계했다. 사용자와 상의해 확정한 안정성 요구사항 4가지를 반영했다: (1) 백엔드 자체 타이머가 화면 polling 없이도 계속 진행시키고(재시작 시 다음 polling에서 자동 복구), (2) Runway가 명시적으로 FAILED/CANCELLED라고 답하거나 15분(`RUNWAY_TASK_TIMEOUT_SECONDS`) 타임아웃일 때만 그 장면을 실패 처리하며, 우리 쪽 확인 요청 자체가 실패한 경우(`check-error`)는 상태를 건드리지 않고 다음 기회에 재시도, (3) 위 타임아웃으로 무한 대기를 막고, (4) 같은 job에 대한 동시 advance 호출은 in-memory 잠금으로 직렬화해 이중 제출을 막는다. 실패한 장면은 다음 장면으로 건너뛰지 않고 파이프라인을 그 자리에서 멈추며, 기존 재생성(regenerate) 흐름을 그대로 재사용해 사용자가 명시적으로 재시도할 수 있다.
+- [x] 이 상태 기계의 핵심 로직(`apps/backend/src/videos/runway-workflow-support.ts`)은 persistence에 전혀 의존하지 않는 순수 함수로 만들어 단기·장편 양쪽 서비스가 공유한다. Runway 연결 여부는 기존 OpenAI Story/Image adapter와 동일한 패턴(`ProviderSettingsService.rawCredentialIfConnected("runway")` + budget 존재 여부)으로 판단하며, 미연결 시 기존 local fake 경로가 한 글자도 바뀌지 않고 그대로 실행된다.
+- [x] `RunwayBudget`(`apps/backend/src/providers/runway-budget.ts`)을 `OpenAiBudget`과 같은 형태로 신설해 `learning_data/runway_budget_usage.json`에 별도 기록한다(OpenAI 예산과 절대 합산하지 않음). 단기·장편 영상 생성이 이 예산 하나를 공유한다(OpenAI budget이 Story/Image에 공통인 것과 동일한 선례). 예산 초과는 제출 전에 차단되며, 초과 시 해당 장면을 즉시 `failed`로 표시해 사용자에게 원인을 보여준다(예외를 삼키지 않음).
+- [x] 타입은 이번에 일부러 느슨하게 풀지 않았다: `VideoPromptPreview`/`LongEpisodeVideoPreview`의 `model`/`ratio`/`durationSeconds` 리터럴 타입을 그대로 유지해 컴파일러가 계속 오타·잘못된 값을 잡아주게 했다. 향후 Runway 외 다른 영상 Provider를 실제로 붙일 때는 이 타입을 discriminated union으로 확장하기로 했다(무제한 `string`으로 풀지 않음).
+- [x] `episode-video-merge.service.ts`의 자체 `execution_mode` 검증에 `"runway"`를 허용하도록 넓혔다 — 안 하면 실제로 생성된 장편 영상은 병합 단계에서 막힌다. 병합 로직 자체(이미 다운로드된 mp4 파일을 합치는 것)는 변경하지 않았다.
+- [x] Frontend `VideoWorkflowScreen.tsx`/`LongEpisodeVideoWorkflowScreen.tsx`에 `status === "failed"`일 때만 보이는 실패 장면 재시도 블록을 추가했다 — 기존 재생성 확인 흐름과 API 함수를 그대로 재사용하고, Runway의 원문 실패 메시지는 노출하지 않는다.
+- [x] 기존에 파일 내용을 정적으로 훑어 "openai/runway/fetch가 전혀 없어야 한다"고 검증하던 테스트 2개(`episode-videos.service.ts`, `episode-video-merge.service.ts`)를 갱신했다 — 전자는 미연결 시 fetch 0회를 직접 검증하는 동작 테스트로 교체했고(파일이 이제 의도적으로 Runway를 참조하므로), 후자는 "runway" 문자열 자체가 아니라 실제 provider 도메인/adapter import만 금지하도록 정규식을 좁혔다.
+- [x] 신규 테스트: `runway-budget.test.ts`, `runway-workflow-support.test.ts`(제출/throttle/still-running/성공/실패/check-error/timeout/예산초과 전부 mocked fetch로 검증), `local-video-workflow.runway.test.ts`(전체 흐름, 실패 후 재생성, 화면 polling 없이도 백엔드 타이머만으로 진행, 동시 호출 이중 제출 방지, 크래시 후 새 인스턴스로 재개), `local-video-workflow.no-provider-calls.test.ts`, `episode-videos.runway.test.ts`, 두 프런트 화면의 실패 장면 재시도 테스트. 기존 local fake 테스트는 전부 한 글자도 안 바뀐 채 그대로 통과한다(신규 코드는 `providerSettings`/`budget` 미주입 시 항상 기존 분기로 빠짐).
+- [x] Main 통합 검증에서 Backend 432 통과(+1 intentional skip), Frontend 533 통과, Shared 25 통과, root typecheck/test/build 및 `git diff --check`를 통과했다. 실제 Runway·OpenAI·network·FFmpeg 호출은 0건이다.
+- [ ] 다음 범위는 "다음 권장 작업 순서" 2번(실제 OpenAI 이미지 Reference 편집·재생성)과 3번(실제 FFmpeg 환경 검증), 그리고 4번(Electron 통합·Windows 패키징)이다.
 
 ## 공통 완료 조건
 

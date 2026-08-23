@@ -314,6 +314,75 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
             </p>
           )}
 
+          {progress.status === "failed" && (
+            <div className="space-y-3 rounded-lg border border-rose-400/40 p-4" data-testid="failed-scenes-section">
+              <p className="text-sm font-semibold text-rose-300">
+                일부 장면 생성에 실패했습니다. 아래에서 실패한 장면을 다시 시도할 수 있습니다.
+              </p>
+              <ul className="space-y-2" data-testid="failed-scenes-list">
+                {progress.failedSceneNumbers.map((sceneNumber) => {
+                  const regeneratePending = regeneratePendingScenes.has(sceneNumber);
+                  const regenerateError = regenerateErrors[sceneNumber];
+                  const regenerateConfirmOpen = regenerateConfirmScene === sceneNumber;
+                  return (
+                    <li key={sceneNumber} data-testid={`failed-scene-${sceneNumber}`} className="space-y-1">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-slate-300">{sceneNumber}번 장면</span>
+                        <button
+                          type="button"
+                          data-testid={`failed-scene-retry-${sceneNumber}`}
+                          className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-200 disabled:opacity-50"
+                          onClick={() => openRegenerateConfirmation(sceneNumber)}
+                          disabled={regeneratePending || regenerateConfirmOpen}
+                        >
+                          {regeneratePending ? "다시 시도 중..." : "다시 시도"}
+                        </button>
+                      </div>
+                      {regenerateConfirmOpen && (
+                        <div
+                          role="alertdialog"
+                          aria-label={`${sceneNumber}번 장면 다시 시도 확인`}
+                          data-testid={`failed-scene-retry-confirm-${sceneNumber}`}
+                          className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900 p-3"
+                        >
+                          <p className="text-sm font-semibold text-amber-300">{sceneNumber}번 장면을 다시 시도할까요?</p>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 disabled:opacity-50"
+                              onClick={() => cancelRegenerateConfirmation(sceneNumber)}
+                              disabled={regeneratePending}
+                            >
+                              취소
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                              onClick={() => void confirmRegenerate(sceneNumber)}
+                              disabled={regeneratePending}
+                            >
+                              {regeneratePending ? "다시 시도 중..." : "예, 다시 시도합니다"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {regenerateError && (
+                        <p
+                          role="alert"
+                          data-testid={`failed-scene-retry-error-${sceneNumber}`}
+                          data-error-code={regenerateError.code}
+                          className="text-sm text-rose-400"
+                        >
+                          {regenerateError.message}
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
           {canStop && (
             <div className="space-y-1">
               <p className="text-xs text-slate-400">중지하면 현재 장면 이후의 새 장면은 생성되지 않습니다.</p>
