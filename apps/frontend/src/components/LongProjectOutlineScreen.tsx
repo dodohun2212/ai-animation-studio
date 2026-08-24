@@ -120,11 +120,21 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
   const isStale = approveError?.code === "LONG_OUTLINE_STALE";
 
   return (
-    <section className="mt-8 space-y-4">
-      <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300" onClick={onBack}>
+    <section className="mt-8 max-w-3xl space-y-5">
+      <button
+        type="button"
+        className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
+        onClick={onBack}
+      >
         프로젝트로 돌아가기
       </button>
-      <h2 className="text-xl font-semibold">아웃라인 프롬프트 확인</h2>
+      <h2 className="flex items-center gap-2.5 text-lg font-semibold">
+        <span
+          aria-hidden="true"
+          className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
+        />
+        아웃라인 프롬프트 확인
+      </h2>
 
       {previewLoading && !preview && <Spinner label="미리보기를 불러오는 중..." />}
       {previewError && (
@@ -134,13 +144,13 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
       )}
 
       {preview && (
-        <>
+        <div className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
           <p className="text-sm text-slate-400">Episode 수: {preview.episodeCount}</p>
           <label className="block text-sm text-slate-300" htmlFor="outline-prompt">
             아웃라인 프롬프트
             <textarea
               id="outline-prompt"
-              className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100"
+              className="mt-1.5 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
               rows={10}
               value={promptText}
               disabled={approvePending || confirmOpen}
@@ -150,10 +160,10 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
               }}
             />
           </label>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 disabled:opacity-50"
+              className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50"
               onClick={restoreOriginal}
               disabled={approvePending || confirmOpen || promptText === preview.prompt}
             >
@@ -161,14 +171,18 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
             </button>
             <button
               type="button"
-              className="rounded-full bg-violet-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
               onClick={openConfirmation}
               disabled={approvePending || confirmOpen}
             >
               이 프롬프트로 승인
             </button>
             {isStale && (
-              <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300" onClick={() => void load()}>
+              <button
+                type="button"
+                className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
+                onClick={() => void load()}
+              >
                 새로고침
               </button>
             )}
@@ -183,7 +197,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
               role="alertdialog"
               aria-label="아웃라인 승인 확인"
               data-testid="approve-confirm-panel"
-              className="space-y-3 rounded-lg border border-amber-400/40 bg-slate-900 p-4"
+              className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
             >
               <p className="text-sm font-semibold text-amber-300">아웃라인을 승인할까요?</p>
               <p className="text-sm text-slate-300">
@@ -192,7 +206,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
               <div className="flex gap-3">
                 <button
                   type="button"
-                  className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 disabled:opacity-50"
+                  className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50"
                   onClick={cancelConfirmation}
                   disabled={approvePending}
                 >
@@ -200,7 +214,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
                 </button>
                 <button
                   type="button"
-                  className="rounded-full bg-violet-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
                   onClick={() => void confirmApproval()}
                   disabled={approvePending}
                 >
@@ -215,12 +229,12 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
             </p>
           )}
           {approved && (
-            <p data-testid="approved-message" className="text-sm text-emerald-400">
+            <p data-testid="approved-message" className="text-sm font-semibold text-emerald-400">
               승인되었습니다. ({approved.approvedAt})
             </p>
           )}
           {approved && (
-            <div data-testid="episode-outline-list" className="space-y-2 rounded-lg border border-white/10 bg-slate-900 p-4">
+            <div data-testid="episode-outline-list" className="space-y-2 rounded-xl border border-white/10 bg-slate-950/40 p-4">
               <p className="text-sm font-semibold text-slate-200">Episode 아웃라인 상태</p>
               <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-300">
                 {approved.episodes.map((episode) => (
@@ -231,7 +245,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
               </ol>
             </div>
           )}
-        </>
+        </div>
       )}
     </section>
   );

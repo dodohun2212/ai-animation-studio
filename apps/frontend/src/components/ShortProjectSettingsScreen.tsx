@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { Asset, AssetType, ShortProjectCastMember, ShortProjectContinuityOption, ShortProjectSceneReferenceAsset, ShortProjectSettings } from "@ai-animation-studio/shared";
 
 import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
@@ -16,12 +16,47 @@ const EMPTY_SETTINGS: ShortProjectSettings = {
   durationSeconds: 30, sceneCount: 6, additionalNotes: "", styleNotes: { aspect: "16:9" },
 };
 
+const fieldClassName =
+  "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
+const inlineInput =
+  "rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
+const primaryButton =
+  "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
+const outlineButton =
+  "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
+const dangerOutlineButton =
+  "rounded-full border border-rose-400/30 px-4 py-2 text-sm text-rose-300 hover:bg-rose-500/10 disabled:opacity-50";
+const smallOutlineButton =
+  "rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50";
+const smallAddButton =
+  "rounded-full border border-emerald-400/30 px-3 py-1.5 text-xs text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50";
+const smallRemoveButton =
+  "rounded-full border border-rose-400/30 px-3 py-1.5 text-xs text-rose-300 hover:bg-rose-500/10 disabled:opacity-50";
+const cardSection = "space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
+
+function SectionHeading({ children }: { children: ReactNode }) {
+  return (
+    <h3 className="flex items-center gap-2.5 text-base font-semibold">
+      <span
+        aria-hidden="true"
+        className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
+      />
+      {children}
+    </h3>
+  );
+}
+
 function Field({ label, value, onChange, multiline = false }: { label: string; value: string; onChange: (value: string) => void; multiline?: boolean }) {
-  const classes = "mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100";
-  return <label className="block text-sm text-slate-300">{label}{multiline
-    ? <textarea className={classes} value={value} onChange={(event) => onChange(event.target.value)} rows={3} />
-    : <input className={classes} value={value} onChange={(event) => onChange(event.target.value)} />}
-  </label>;
+  return (
+    <label className="block text-sm text-slate-300">
+      {label}
+      {multiline ? (
+        <textarea className={fieldClassName} value={value} onChange={(event) => onChange(event.target.value)} rows={3} />
+      ) : (
+        <input className={fieldClassName} value={value} onChange={(event) => onChange(event.target.value)} />
+      )}
+    </label>
+  );
 }
 
 /**
@@ -85,33 +120,83 @@ function CastEditor({ projectId }: { projectId: string }) {
     void persist(cast);
   }
 
-  return <section aria-label="등장 캐릭터" className="space-y-3 rounded border border-white/10 p-4 md:col-span-2">
-    <h3 className="font-semibold">등장 캐릭터(Cast)</h3>
-    <p className="text-xs text-slate-400">검색 결과가 없다면 Asset Library에서 캐릭터를 먼저 등록해 주세요.</p>
-    {error && <p role="alert" data-testid="cast-error" data-error-code={error.code} className="text-red-300">{error.message}</p>}
-    {cast === null && !error && <Spinner label="불러오는 중..." />}
-    {cast && cast.length === 0 && <p>선택된 캐릭터가 없습니다.</p>}
-    {cast && cast.length > 0 && <ul aria-label="선택된 캐릭터 목록" className="space-y-2">
-      {cast.map((member) => <li key={member.assetId} className="flex flex-wrap items-center gap-2">
-        <span>{member.assetId}</span>
-        <label>배역 <input value={member.castRole} disabled={saving} onChange={(event) => updateMember(member.assetId, "castRole", event.target.value)} onBlur={() => saveMember(member.assetId)} /></label>
-        <label>이야기 속 역할 <input value={member.storyRole} disabled={saving} onChange={(event) => updateMember(member.assetId, "storyRole", event.target.value)} onBlur={() => saveMember(member.assetId)} /></label>
-        <button type="button" disabled={saving} onClick={() => removeMember(member.assetId)}>제거</button>
-      </li>)}
-    </ul>}
-    <form onSubmit={search} aria-label="캐릭터 Asset 검색" className="flex flex-wrap items-end gap-2">
-      <label>캐릭터 검색 <input value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-      <button type="submit" disabled={searchLoading}>검색</button>
-    </form>
-    {searchError && <p role="alert" data-testid="cast-search-error" data-error-code={searchError.code} className="text-red-300">{searchError.message}</p>}
-    {results && <ul aria-label="캐릭터 검색 결과" className="space-y-1">
-      {results.map((asset) => <li key={asset.assetId} className="flex items-center gap-2">
-        <span>{asset.displayName}</span>
-        <button type="button" disabled={saving || cast === null || cast.some((member) => member.assetId === asset.assetId)} onClick={() => addMember(asset)}>추가</button>
-      </li>)}
-    </ul>}
-    {results && results.length === 0 && !searchLoading && <p>검색 결과가 없습니다.</p>}
-  </section>;
+  return (
+    <section aria-label="등장 캐릭터" className={cardSection}>
+      <SectionHeading>등장 캐릭터(Cast)</SectionHeading>
+      <p className="text-xs text-slate-400">검색 결과가 없다면 Asset Library에서 캐릭터를 먼저 등록해 주세요.</p>
+      {error && (
+        <p role="alert" data-testid="cast-error" data-error-code={error.code} className="text-sm text-rose-400">
+          {error.message}
+        </p>
+      )}
+      {cast === null && !error && <Spinner label="불러오는 중..." />}
+      {cast && cast.length === 0 && <p className="text-sm text-slate-400">선택된 캐릭터가 없습니다.</p>}
+      {cast && cast.length > 0 && (
+        <ul aria-label="선택된 캐릭터 목록" className="space-y-2">
+          {cast.map((member) => (
+            <li key={member.assetId} className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-3">
+              <span className="text-sm font-medium text-slate-200">{member.assetId}</span>
+              <label className="flex items-center gap-1.5 text-xs text-slate-400">
+                배역
+                <input
+                  className={inlineInput}
+                  value={member.castRole}
+                  disabled={saving}
+                  onChange={(event) => updateMember(member.assetId, "castRole", event.target.value)}
+                  onBlur={() => saveMember(member.assetId)}
+                />
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-slate-400">
+                이야기 속 역할
+                <input
+                  className={inlineInput}
+                  value={member.storyRole}
+                  disabled={saving}
+                  onChange={(event) => updateMember(member.assetId, "storyRole", event.target.value)}
+                  onBlur={() => saveMember(member.assetId)}
+                />
+              </label>
+              <button type="button" className={smallRemoveButton} disabled={saving} onClick={() => removeMember(member.assetId)}>
+                제거
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form onSubmit={search} aria-label="캐릭터 Asset 검색" className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1 text-xs text-slate-400">
+          캐릭터 검색
+          <input className={inlineInput} value={query} onChange={(event) => setQuery(event.target.value)} />
+        </label>
+        <button type="submit" className={smallOutlineButton} disabled={searchLoading}>
+          검색
+        </button>
+      </form>
+      {searchError && (
+        <p role="alert" data-testid="cast-search-error" data-error-code={searchError.code} className="text-sm text-rose-400">
+          {searchError.message}
+        </p>
+      )}
+      {results && (
+        <ul aria-label="캐릭터 검색 결과" className="space-y-1">
+          {results.map((asset) => (
+            <li key={asset.assetId} className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/40 p-2.5">
+              <span className="text-sm text-slate-200">{asset.displayName}</span>
+              <button
+                type="button"
+                className={smallAddButton}
+                disabled={saving || cast === null || cast.some((member) => member.assetId === asset.assetId)}
+                onClick={() => addMember(asset)}
+              >
+                추가
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {results && results.length === 0 && !searchLoading && <p className="text-sm text-slate-400">검색 결과가 없습니다.</p>}
+    </section>
+  );
 }
 
 /**
@@ -155,26 +240,56 @@ function ContinuityEditor({ projectId }: { projectId: string }) {
     finally { savingRef.current = false; setSaving(false); }
   }
 
-  return <section aria-label="이전 장면 연결" className="space-y-3 rounded border border-white/10 p-4 md:col-span-2">
-    <h3 className="font-semibold">이전 장면 연결</h3>
-    {error && <p role="alert" data-testid="continuity-error" data-error-code={error.code} className="text-red-300">{error.message}</p>}
-    {link === undefined && !error && <Spinner label="불러오는 중..." />}
-    {link !== undefined && (link
-      ? <p>{link.label} 연결됨. Story AI에는 마지막 상황, Image AI에는 마지막 장면을 Scene 1 연속성 Reference로 전달합니다.</p>
-      : <p>연결 안 함. 독립적인 새 이야기와 장면으로 시작합니다.</p>)}
-    <div className="flex flex-wrap gap-2">
-      <button type="button" disabled={saving} onClick={() => void loadOptions()}>이전 프로젝트 선택</button>
-      {link && <button type="button" disabled={saving} onClick={() => void applyLink(null)}>연결 해제</button>}
-    </div>
-    {optionsError && <p role="alert" data-testid="continuity-options-error" data-error-code={optionsError.code} className="text-red-300">{optionsError.message}</p>}
-    {options && options.length === 0 && !optionsLoading && <p>연결 가능한 이미지 승인 완료 단기 프로젝트가 없습니다.</p>}
-    {options && options.length > 0 && <ul aria-label="이전 프로젝트 선택 목록" className="space-y-1">
-      {options.map((option) => <li key={option.projectId} className="flex items-center gap-2">
-        <span>{option.label}</span>
-        <button type="button" disabled={saving} onClick={() => void applyLink(option.projectId)}>선택</button>
-      </li>)}
-    </ul>}
-  </section>;
+  return (
+    <section aria-label="이전 장면 연결" className={cardSection}>
+      <SectionHeading>이전 장면 연결</SectionHeading>
+      {error && (
+        <p role="alert" data-testid="continuity-error" data-error-code={error.code} className="text-sm text-rose-400">
+          {error.message}
+        </p>
+      )}
+      {link === undefined && !error && <Spinner label="불러오는 중..." />}
+      {link !== undefined && (
+        link ? (
+          <p className="text-sm text-slate-300">
+            {link.label} 연결됨. Story AI에는 마지막 상황, Image AI에는 마지막 장면을 Scene 1 연속성 Reference로 전달합니다.
+          </p>
+        ) : (
+          <p className="text-sm text-slate-400">연결 안 함. 독립적인 새 이야기와 장면으로 시작합니다.</p>
+        )
+      )}
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className={outlineButton} disabled={saving} onClick={() => void loadOptions()}>
+          이전 프로젝트 선택
+        </button>
+        {link && (
+          <button type="button" className={dangerOutlineButton} disabled={saving} onClick={() => void applyLink(null)}>
+            연결 해제
+          </button>
+        )}
+      </div>
+      {optionsError && (
+        <p role="alert" data-testid="continuity-options-error" data-error-code={optionsError.code} className="text-sm text-rose-400">
+          {optionsError.message}
+        </p>
+      )}
+      {options && options.length === 0 && !optionsLoading && (
+        <p className="text-sm text-slate-400">연결 가능한 이미지 승인 완료 단기 프로젝트가 없습니다.</p>
+      )}
+      {options && options.length > 0 && (
+        <ul aria-label="이전 프로젝트 선택 목록" className="space-y-1">
+          {options.map((option) => (
+            <li key={option.projectId} className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/40 p-2.5">
+              <span className="text-sm text-slate-200">{option.label}</span>
+              <button type="button" className={smallAddButton} disabled={saving} onClick={() => void applyLink(option.projectId)}>
+                선택
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
 }
 
 const ATMOSPHERE_ASSET_TYPES: AssetType[] = ["style", "general_reference", "background"];
@@ -261,60 +376,141 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
 
   const selectedIds = new Set([...(atmosphereAssetIds ?? []), ...(sceneReferenceAssets ?? []).map((item) => item.assetId)]);
 
-  return <section aria-label="분위기·장면 참고 Asset" className="space-y-3 rounded border border-white/10 p-4 md:col-span-2">
-    <h3 className="font-semibold">전체 분위기 및 장면 참고 Asset</h3>
-    <p className="text-xs text-slate-400">검색 결과가 없다면 Asset Library에서 배경·소품·스타일 이미지를 먼저 등록해 주세요.</p>
-    {error && <p role="alert" data-testid="asset-reference-error" data-error-code={error.code} className="text-red-300">{error.message}</p>}
-    {atmosphereAssetIds === null && !error && <Spinner label="불러오는 중..." />}
+  return (
+    <section aria-label="분위기·장면 참고 Asset" className={cardSection}>
+      <SectionHeading>전체 분위기 및 장면 참고 Asset</SectionHeading>
+      <p className="text-xs text-slate-400">검색 결과가 없다면 Asset Library에서 배경·소품·스타일 이미지를 먼저 등록해 주세요.</p>
+      {error && (
+        <p role="alert" data-testid="asset-reference-error" data-error-code={error.code} className="text-sm text-rose-400">
+          {error.message}
+        </p>
+      )}
+      {atmosphereAssetIds === null && !error && <Spinner label="불러오는 중..." />}
 
-    {atmosphereAssetIds && <div aria-label="전체 분위기 Asset" className="space-y-2">
-      <h4 className="text-sm font-medium text-slate-300">전체 분위기 Asset</h4>
-      {atmosphereAssetIds.length === 0 && <p>선택된 분위기 Asset이 없습니다.</p>}
-      {atmosphereAssetIds.length > 0 && <ul aria-label="선택된 분위기 Asset 목록" className="space-y-1">
-        {atmosphereAssetIds.map((assetId) => <li key={assetId} className="flex items-center gap-2">
-          <span>{assetId}</span>
-          <button type="button" disabled={saving} onClick={() => removeAtmosphere(assetId)}>제거</button>
-        </li>)}
-      </ul>}
-      <form onSubmit={(event) => { event.preventDefault(); void search(atmosphereQuery, ATMOSPHERE_ASSET_TYPES, setAtmosphereResults, setAtmosphereSearchError); }} aria-label="분위기 Asset 검색" className="flex flex-wrap items-end gap-2">
-        <label>분위기 Asset 검색 <input value={atmosphereQuery} onChange={(event) => setAtmosphereQuery(event.target.value)} /></label>
-        <button type="submit">검색</button>
-      </form>
-      {atmosphereSearchError && <p role="alert" data-testid="atmosphere-search-error" data-error-code={atmosphereSearchError.code} className="text-red-300">{atmosphereSearchError.message}</p>}
-      {atmosphereResults && <ul aria-label="분위기 Asset 검색 결과" className="space-y-1">
-        {atmosphereResults.map((asset) => <li key={asset.assetId} className="flex items-center gap-2">
-          <span>{asset.displayName}</span>
-          <button type="button" disabled={saving || selectedIds.has(asset.assetId)} onClick={() => addAtmosphere(asset)}>추가</button>
-        </li>)}
-      </ul>}
-      {atmosphereResults && atmosphereResults.length === 0 && <p>검색 결과가 없습니다.</p>}
-    </div>}
+      {atmosphereAssetIds && (
+        <div aria-label="전체 분위기 Asset" className="space-y-2 rounded-xl border border-white/5 bg-slate-950/30 p-3.5">
+          <h4 className="text-sm font-medium text-slate-300">전체 분위기 Asset</h4>
+          {atmosphereAssetIds.length === 0 && <p className="text-sm text-slate-400">선택된 분위기 Asset이 없습니다.</p>}
+          {atmosphereAssetIds.length > 0 && (
+            <ul aria-label="선택된 분위기 Asset 목록" className="space-y-1">
+              {atmosphereAssetIds.map((assetId) => (
+                <li key={assetId} className="flex items-center gap-2 rounded-lg border border-white/10 bg-slate-900/60 p-2.5">
+                  <span className="text-sm text-slate-200">{assetId}</span>
+                  <button type="button" className={smallRemoveButton} disabled={saving} onClick={() => removeAtmosphere(assetId)}>
+                    제거
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <form
+            onSubmit={(event) => { event.preventDefault(); void search(atmosphereQuery, ATMOSPHERE_ASSET_TYPES, setAtmosphereResults, setAtmosphereSearchError); }}
+            aria-label="분위기 Asset 검색"
+            className="flex flex-wrap items-end gap-2"
+          >
+            <label className="flex flex-col gap-1 text-xs text-slate-400">
+              분위기 Asset 검색
+              <input className={inlineInput} value={atmosphereQuery} onChange={(event) => setAtmosphereQuery(event.target.value)} />
+            </label>
+            <button type="submit" className={smallOutlineButton}>
+              검색
+            </button>
+          </form>
+          {atmosphereSearchError && (
+            <p role="alert" data-testid="atmosphere-search-error" data-error-code={atmosphereSearchError.code} className="text-sm text-rose-400">
+              {atmosphereSearchError.message}
+            </p>
+          )}
+          {atmosphereResults && (
+            <ul aria-label="분위기 Asset 검색 결과" className="space-y-1">
+              {atmosphereResults.map((asset) => (
+                <li key={asset.assetId} className="flex items-center gap-2 rounded-lg border border-white/10 bg-slate-900/60 p-2.5">
+                  <span className="text-sm text-slate-200">{asset.displayName}</span>
+                  <button type="button" className={smallAddButton} disabled={saving || selectedIds.has(asset.assetId)} onClick={() => addAtmosphere(asset)}>
+                    추가
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {atmosphereResults && atmosphereResults.length === 0 && <p className="text-sm text-slate-400">검색 결과가 없습니다.</p>}
+        </div>
+      )}
 
-    {sceneReferenceAssets && <div aria-label="장면 참고 Asset" className="space-y-2">
-      <h4 className="text-sm font-medium text-slate-300">장면 참고 Asset</h4>
-      {sceneReferenceAssets.length === 0 && <p>선택된 장면 참고 Asset이 없습니다.</p>}
-      {sceneReferenceAssets.length > 0 && <ul aria-label="선택된 장면 참고 Asset 목록" className="space-y-2">
-        {sceneReferenceAssets.map((item) => <li key={item.assetId} className="flex flex-wrap items-center gap-2">
-          <span>{item.assetId}</span>
-          <label>사용 목적 <input value={item.purpose} disabled={saving} onChange={(event) => updateSceneReferencePurpose(item.assetId, event.target.value)} onBlur={() => saveSceneReferencePurpose(item.assetId)} /></label>
-          <button type="button" disabled={saving} onClick={() => removeSceneReference(item.assetId)}>제거</button>
-        </li>)}
-      </ul>}
-      <form onSubmit={(event) => { event.preventDefault(); void search(sceneQuery, SCENE_REFERENCE_ASSET_TYPES, setSceneResults, setSceneSearchError); }} aria-label="장면 참고 Asset 검색" className="flex flex-wrap items-end gap-2">
-        <label>장면 참고 Asset 검색 <input value={sceneQuery} onChange={(event) => setSceneQuery(event.target.value)} /></label>
-        <button type="submit">검색</button>
-      </form>
-      {sceneSearchError && <p role="alert" data-testid="scene-reference-search-error" data-error-code={sceneSearchError.code} className="text-red-300">{sceneSearchError.message}</p>}
-      {sceneResults && <ul aria-label="장면 참고 Asset 검색 결과" className="space-y-1">
-        {sceneResults.map((asset) => <li key={asset.assetId} className="flex flex-wrap items-center gap-2">
-          <span>{asset.displayName}</span>
-          <label>사용 목적 <input value={scenePurposeDraft[asset.assetId] ?? ""} onChange={(event) => setScenePurposeDraft({ ...scenePurposeDraft, [asset.assetId]: event.target.value })} /></label>
-          <button type="button" disabled={saving || selectedIds.has(asset.assetId) || !(scenePurposeDraft[asset.assetId] ?? "").trim()} onClick={() => addSceneReference(asset)}>추가</button>
-        </li>)}
-      </ul>}
-      {sceneResults && sceneResults.length === 0 && <p>검색 결과가 없습니다.</p>}
-    </div>}
-  </section>;
+      {sceneReferenceAssets && (
+        <div aria-label="장면 참고 Asset" className="space-y-2 rounded-xl border border-white/5 bg-slate-950/30 p-3.5">
+          <h4 className="text-sm font-medium text-slate-300">장면 참고 Asset</h4>
+          {sceneReferenceAssets.length === 0 && <p className="text-sm text-slate-400">선택된 장면 참고 Asset이 없습니다.</p>}
+          {sceneReferenceAssets.length > 0 && (
+            <ul aria-label="선택된 장면 참고 Asset 목록" className="space-y-2">
+              {sceneReferenceAssets.map((item) => (
+                <li key={item.assetId} className="flex flex-wrap items-center gap-3 rounded-lg border border-white/10 bg-slate-900/60 p-3">
+                  <span className="text-sm font-medium text-slate-200">{item.assetId}</span>
+                  <label className="flex items-center gap-1.5 text-xs text-slate-400">
+                    사용 목적
+                    <input
+                      className={inlineInput}
+                      value={item.purpose}
+                      disabled={saving}
+                      onChange={(event) => updateSceneReferencePurpose(item.assetId, event.target.value)}
+                      onBlur={() => saveSceneReferencePurpose(item.assetId)}
+                    />
+                  </label>
+                  <button type="button" className={smallRemoveButton} disabled={saving} onClick={() => removeSceneReference(item.assetId)}>
+                    제거
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <form
+            onSubmit={(event) => { event.preventDefault(); void search(sceneQuery, SCENE_REFERENCE_ASSET_TYPES, setSceneResults, setSceneSearchError); }}
+            aria-label="장면 참고 Asset 검색"
+            className="flex flex-wrap items-end gap-2"
+          >
+            <label className="flex flex-col gap-1 text-xs text-slate-400">
+              장면 참고 Asset 검색
+              <input className={inlineInput} value={sceneQuery} onChange={(event) => setSceneQuery(event.target.value)} />
+            </label>
+            <button type="submit" className={smallOutlineButton}>
+              검색
+            </button>
+          </form>
+          {sceneSearchError && (
+            <p role="alert" data-testid="scene-reference-search-error" data-error-code={sceneSearchError.code} className="text-sm text-rose-400">
+              {sceneSearchError.message}
+            </p>
+          )}
+          {sceneResults && (
+            <ul aria-label="장면 참고 Asset 검색 결과" className="space-y-1">
+              {sceneResults.map((asset) => (
+                <li key={asset.assetId} className="flex flex-wrap items-center gap-3 rounded-lg border border-white/10 bg-slate-900/60 p-3">
+                  <span className="text-sm text-slate-200">{asset.displayName}</span>
+                  <label className="flex items-center gap-1.5 text-xs text-slate-400">
+                    사용 목적
+                    <input
+                      className={inlineInput}
+                      value={scenePurposeDraft[asset.assetId] ?? ""}
+                      onChange={(event) => setScenePurposeDraft({ ...scenePurposeDraft, [asset.assetId]: event.target.value })}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className={smallAddButton}
+                    disabled={saving || selectedIds.has(asset.assetId) || !(scenePurposeDraft[asset.assetId] ?? "").trim()}
+                    onClick={() => addSceneReference(asset)}
+                  >
+                    추가
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {sceneResults && sceneResults.length === 0 && <p className="text-sm text-slate-400">검색 결과가 없습니다.</p>}
+        </div>
+      )}
+    </section>
+  );
 }
 
 export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = false }: Props) {
@@ -354,52 +550,63 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
   }
 
   if (state.loading && !state.settings) return <Spinner label="불러오는 중…" className="mt-8" />;
-  return <section className="mt-8">
-    <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300" onClick={onBack}>
-      {justCreated ? "프로젝트로 이동" : "프로젝트로 돌아가기"}
-    </button>
-    <h2 className="mt-4 text-xl font-semibold">프로젝트 설정</h2>
-    {justCreated && (
-      <p className="mt-2 rounded-lg border border-violet-400/30 bg-violet-500/10 px-4 py-3 text-sm text-violet-200" data-testid="just-created-notice">
-        프로젝트가 생성되었습니다. 대본을 생성하기 전에 아래에서 장르·분위기와 등장 캐릭터, 참고 이미지, 이전 장면 연결을
-        설정해 주세요 — 전부 선택 사항이며 나중에 다시 와서 바꿀 수도 있습니다.
-      </p>
-    )}
-    {state.error && <p className="mt-4 text-sm text-rose-400" role="alert" data-error-code={state.error.code}>{state.error.message}</p>}
-    {state.settings && <form className="mt-4 grid gap-4 md:grid-cols-2" onSubmit={submit} noValidate>
-      <Field label="프로젝트 이름" value={state.settings.projectName} onChange={(value) => setField("projectName", value)} />
-      <Field label="영상 주제" value={state.settings.topic} onChange={(value) => setField("topic", value)} />
-      <Field label="장르" value={state.settings.genre} onChange={(value) => setField("genre", value)} />
-      <Field label="분위기" value={state.settings.mood} onChange={(value) => setField("mood", value)} />
-      <Field label="대표 캐릭터" value={state.settings.character} onChange={(value) => setField("character", value)} />
-      <Field label="영상 길이(초)" value={String(state.settings.durationSeconds)} onChange={(value) => setField("durationSeconds", Number(value) || 0)} />
-      <Field label="전체 줄거리" value={state.settings.fullStory} onChange={(value) => setField("fullStory", value)} multiline />
-      <Field label="세계관" value={state.settings.lore} onChange={(value) => setField("lore", value)} multiline />
-      <Field label="시각 스타일" value={state.settings.styleNotes.visualStyle ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, visualStyle: value })} />
-      <Field label="색감" value={state.settings.styleNotes.color ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, color: value })} />
-      <Field label="조명" value={state.settings.styleNotes.lighting ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, lighting: value })} />
-      <Field label="카메라 느낌" value={state.settings.styleNotes.camera ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, camera: value })} />
-      <Field label="대사 스타일" value={state.settings.styleNotes.dialogue ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, dialogue: value })} />
-      <Field label="피할 요소" value={state.settings.styleNotes.avoid ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, avoid: value })} />
-      <Field label="화면 비율" value={state.settings.styleNotes.aspect ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, aspect: value })} />
-      <Field label="추가 지시사항" value={state.settings.additionalNotes} onChange={(value) => setField("additionalNotes", value)} multiline />
-      <p className="text-sm text-slate-400">장면 수: 정확히 {state.settings.sceneCount}개</p>
-      <button type="submit" disabled={state.loading} className="rounded-full bg-violet-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{state.loading ? "저장 중…" : "설정 저장"}</button>
-    </form>}
-    {state.settings && <CastEditor projectId={projectId} />}
-    {state.settings && <AssetReferenceEditor projectId={projectId} />}
-    {state.settings && <ContinuityEditor projectId={projectId} />}
-    {state.settings && justCreated && (
-      <div className="mt-6 flex justify-end">
-        <button
-          type="button"
-          data-testid="finish-setup-button"
-          className="rounded-full bg-violet-500 px-5 py-2 text-sm font-semibold text-white"
-          onClick={onBack}
-        >
-          설정 완료 · 계속 진행하기
-        </button>
-      </div>
-    )}
-  </section>;
+  return (
+    <section className="mt-8 max-w-3xl space-y-5">
+      <button type="button" className={outlineButton} onClick={onBack}>
+        {justCreated ? "프로젝트로 이동" : "프로젝트로 돌아가기"}
+      </button>
+      <h2 className="flex items-center gap-2.5 text-lg font-semibold">
+        <span
+          aria-hidden="true"
+          className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
+        />
+        프로젝트 설정
+      </h2>
+      {justCreated && (
+        <p className="rounded-xl border border-violet-400/30 bg-violet-500/10 px-4 py-3 text-sm text-violet-200" data-testid="just-created-notice">
+          프로젝트가 생성되었습니다. 대본을 생성하기 전에 아래에서 장르·분위기와 등장 캐릭터, 참고 이미지, 이전 장면 연결을
+          설정해 주세요 — 전부 선택 사항이며 나중에 다시 와서 바꿀 수도 있습니다.
+        </p>
+      )}
+      {state.error && (
+        <p className="text-sm text-rose-400" role="alert" data-error-code={state.error.code}>
+          {state.error.message}
+        </p>
+      )}
+      {state.settings && (
+        <form className="grid gap-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6 md:grid-cols-2" onSubmit={submit} noValidate>
+          <Field label="프로젝트 이름" value={state.settings.projectName} onChange={(value) => setField("projectName", value)} />
+          <Field label="영상 주제" value={state.settings.topic} onChange={(value) => setField("topic", value)} />
+          <Field label="장르" value={state.settings.genre} onChange={(value) => setField("genre", value)} />
+          <Field label="분위기" value={state.settings.mood} onChange={(value) => setField("mood", value)} />
+          <Field label="대표 캐릭터" value={state.settings.character} onChange={(value) => setField("character", value)} />
+          <Field label="영상 길이(초)" value={String(state.settings.durationSeconds)} onChange={(value) => setField("durationSeconds", Number(value) || 0)} />
+          <Field label="전체 줄거리" value={state.settings.fullStory} onChange={(value) => setField("fullStory", value)} multiline />
+          <Field label="세계관" value={state.settings.lore} onChange={(value) => setField("lore", value)} multiline />
+          <Field label="시각 스타일" value={state.settings.styleNotes.visualStyle ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, visualStyle: value })} />
+          <Field label="색감" value={state.settings.styleNotes.color ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, color: value })} />
+          <Field label="조명" value={state.settings.styleNotes.lighting ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, lighting: value })} />
+          <Field label="카메라 느낌" value={state.settings.styleNotes.camera ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, camera: value })} />
+          <Field label="대사 스타일" value={state.settings.styleNotes.dialogue ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, dialogue: value })} />
+          <Field label="피할 요소" value={state.settings.styleNotes.avoid ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, avoid: value })} />
+          <Field label="화면 비율" value={state.settings.styleNotes.aspect ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, aspect: value })} />
+          <Field label="추가 지시사항" value={state.settings.additionalNotes} onChange={(value) => setField("additionalNotes", value)} multiline />
+          <p className="text-sm text-slate-400 md:col-span-2">장면 수: 정확히 {state.settings.sceneCount}개</p>
+          <button type="submit" disabled={state.loading} className={`${primaryButton} md:col-span-2`}>
+            {state.loading ? "저장 중…" : "설정 저장"}
+          </button>
+        </form>
+      )}
+      {state.settings && <CastEditor projectId={projectId} />}
+      {state.settings && <AssetReferenceEditor projectId={projectId} />}
+      {state.settings && <ContinuityEditor projectId={projectId} />}
+      {state.settings && justCreated && (
+        <div className="flex justify-end">
+          <button type="button" data-testid="finish-setup-button" className={primaryButton} onClick={onBack}>
+            설정 완료 · 계속 진행하기
+          </button>
+        </div>
+      )}
+    </section>
+  );
 }
