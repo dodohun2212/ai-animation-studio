@@ -12,6 +12,30 @@ const TYPES: Array<{ value: AssetType; label: string }> = [
 const splitList = (value: string) => value.split(",").map((item) => item.trim()).filter(Boolean);
 const IMPORT_VALIDATION_MESSAGE = "이미지 파일과 이름을 모두 입력해 주세요.";
 
+const fieldClassName =
+  "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
+const primaryButton =
+  "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
+const outlineButton =
+  "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
+const dangerOutlineButton =
+  "rounded-full border border-rose-400/30 px-4 py-2 text-sm text-rose-300 hover:bg-rose-500/10 disabled:opacity-50";
+const smallOutlineButton =
+  "rounded-full border border-white/10 px-3 py-1 text-xs text-slate-200 hover:bg-white/5 disabled:opacity-50";
+const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <h3 className="flex items-center gap-2.5 text-base font-semibold">
+      <span
+        aria-hidden="true"
+        className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
+      />
+      {children}
+    </h3>
+  );
+}
+
 export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   const [assets, setAssets] = useState<Asset[] | null>(null);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
@@ -265,118 +289,357 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
     void saveCharacterReferenceSet(next, selected.asset.thumbnailAssetId);
   }
 
-  return <section className="mt-8 space-y-6">
-    <header className="flex items-center justify-between">
-      <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300" onClick={onBack}>프로젝트 목록으로</button>
-      <h2 className="text-2xl font-semibold">Asset Library</h2>
-    </header>
-    {error && <p role="alert" data-error-code={error.code} className="text-rose-400 text-sm">{error.message}</p>}
-    <form onSubmit={(event) => { event.preventDefault(); void load(); }} className="flex flex-wrap items-end gap-3">
-      <label className="text-sm text-slate-300">검색 <input className="mt-1 block rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-      <label className="text-sm text-slate-300">유형 <select className="mt-1 block rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100" value={assetType} onChange={(event) => setAssetType(event.target.value as AssetType | "")}><option value="">전체</option>{TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
-      <button type="submit" className="rounded-full bg-violet-500 px-4 py-2 text-sm font-semibold text-white">검색</button>
-    </form>
-    <section aria-label="파일 상태 점검" className="space-y-2 rounded border border-white/10 p-4">
-      <div className="flex items-center justify-between"><h3 className="font-semibold">파일 상태 점검</h3><button type="button" className="rounded-full border border-white/10 px-3 py-1 text-sm text-slate-200 disabled:opacity-50" onClick={() => void runAudit()} disabled={auditLoading}>점검 실행</button></div>
-      {auditLoading && <Spinner label="파일 상태를 확인하는 중..." />}
-      {auditError && <p role="alert" data-testid="audit-error" data-error-code={auditError.code} className="text-rose-400 text-sm">{auditError.message}</p>}
-      {audit && audit.length === 0 && !auditLoading && <p className="text-sm text-slate-400">점검할 에셋이 없습니다.</p>}
-      {audit && audit.length > 0 && <ul aria-label="파일 상태 목록" className="space-y-1 text-sm text-slate-300">
-        {audit.map((entry) => <li key={entry.assetId}>
-          {entry.displayName} · {entry.classification === "healthy" ? "정상" : entry.classification === "missing" ? "파일 없음" : "손상됨"} · {entry.sourceKind === "manual" ? "수동 등록" : "프로젝트 생성"}
-          {entry.message && <span> — {entry.message}</span>}
-        </li>)}
-      </ul>}
-    </section>
-    <section aria-label="레거시 참고자료 가져오기" className="space-y-2 rounded border border-white/10 p-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold">레거시 참고자료 가져오기</h3>
-        <button type="button" className="rounded-full border border-white/10 px-3 py-1 text-sm text-slate-200 disabled:opacity-50" onClick={() => void runLegacyMigration()} disabled={legacyMigrationPending}>가져오기 실행</button>
-      </div>
-      <p className="text-sm text-slate-400">기존 프로젝트의 레거시 참고자료를 Asset Library로 이전합니다. 이미 이전된 항목은 다시 가져오지 않습니다.</p>
-      {legacyMigrationPending && <Spinner label="레거시 참고자료를 확인하는 중..." />}
-      {legacyMigrationError && <p role="alert" data-testid="legacy-migration-error" data-error-code={legacyMigrationError.code} className="text-rose-400 text-sm">{legacyMigrationError.message}</p>}
-      {legacyMigrationResult && !legacyMigrationPending && <p data-testid="legacy-migration-result" className="text-sm text-slate-300">
-        프로젝트 {legacyMigrationResult.projectsScanned}개 확인, {legacyMigrationResult.migratedAssets}개 이전, 중복 {legacyMigrationResult.deduplicatedAssets}개, 실패 {legacyMigrationResult.failedAssets}개
-      </p>}
-    </section>
-
-    {loading && !assets && <Spinner label="에셋을 불러오는 중..." />}
-    {assets && assets.length === 0 && !loading && <p className="text-sm text-slate-400">등록된 에셋이 없습니다.</p>}
-    {assets && <ul aria-label="에셋 목록" className="grid gap-3 sm:grid-cols-2">{assets.map((asset) => <li key={asset.assetId}><button type="button" onClick={() => void open(asset.assetId)} className="w-full rounded-lg border border-white/10 bg-slate-800 p-3 text-left">
-      {asset.imageAvailable && asset.contentUrl ? <img src={asset.contentUrl} alt="" className="h-24 w-full rounded object-cover" /> : <span className="text-sm text-slate-500">이미지 없음</span>}
-      <strong className="mt-2 block">{asset.displayName}</strong><span className="text-xs text-slate-400"> · {asset.assetType}</span><p className="mt-1 text-sm text-slate-400">{asset.description}</p>
-    </button></li>)}</ul>}
-
-    <form onSubmit={submitImport} aria-label="에셋 가져오기" className="space-y-3 rounded border border-white/10 p-4">
-      <h3 className="font-semibold">이미지 가져오기</h3>
-      {importValidationError && <p role="alert" data-testid="import-validation-error" className="text-rose-400 text-sm">{importValidationError}</p>}
-      <label className="block text-sm text-slate-300">이미지 파일 <input key={fileInputGeneration} type="file" accept="image/*" disabled={importPending} className="mt-1 block text-slate-300" onChange={(event) => { setFile(event.target.files?.[0] ?? null); setImportValidationError(null); }} /></label>
-      <label className="block text-sm text-slate-300">이름 <input value={importName} disabled={importPending} className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100" onChange={(event) => { setImportName(event.target.value); setImportValidationError(null); }} /></label>
-      <label className="block text-sm text-slate-300">유형 <select value={importType} disabled={importPending} className="mt-1 block rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100" onChange={(event) => setImportType(event.target.value as AssetType)}>{TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
-      <label className="block text-sm text-slate-300">설명 <input value={importDescription} disabled={importPending} className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100" onChange={(event) => setImportDescription(event.target.value)} /></label>
-      <label className="block text-sm text-slate-300">태그(쉼표 구분) <input value={importTags} disabled={importPending} className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100" onChange={(event) => setImportTags(event.target.value)} /></label>
-      <button type="submit" disabled={importPending} className="rounded-full bg-violet-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">가져오기</button>
-    </form>
-
-    {detailLoading && <Spinner label="선택한 에셋 정보를 불러오는 중..." />}
-    {detailError && <p role="alert" data-testid="asset-detail-error" data-error-code={detailError.code} className="text-rose-400 text-sm">{detailError.message}</p>}
-    {selected && <section aria-label="에셋 상세" className="space-y-3 rounded border border-violet-400/30 p-4">
-      <h3 className="text-xl font-semibold">{selected.asset.displayName}</h3>
-      {selected.asset.imageAvailable && selected.asset.contentUrl && <img src={selected.asset.contentUrl} alt={`${selected.asset.displayName} 미리보기`} className="max-h-64 rounded-lg object-contain" />}
-      <p className="text-sm text-slate-300">소유권: {selected.ownership}</p><p className="text-sm text-slate-300">사용 프로젝트: {selected.usageProjectIds.length ? selected.usageProjectIds.join(", ") : "없음"}</p>
-      {selected.asset.isFolder && selected.asset.assetType === "character" && <section aria-label="Character reference set" className="space-y-2 rounded border border-white/10 p-3">
-        <h4 className="font-semibold">Character reference set</h4>
-        {selected.asset.childAssetIds.length === 0 && <p className="text-sm text-slate-400">No child reference images are registered.</p>}
-        {selected.asset.childAssetIds.length > 0 && characterFolderChildren.length !== selected.asset.childAssetIds.length && <p role="status" className="text-sm text-slate-400">Loading child reference metadata requires the full character list.</p>}
-        <ol aria-label="Ordered character reference images" className="space-y-2">
-          {characterFolderChildren.map((child, index) => <li key={child.assetId} className="flex items-center gap-2 text-sm text-slate-300">
-            {child.imageAvailable && child.contentUrl && <img src={child.contentUrl} alt="" className="h-10 w-10 rounded object-cover" />}
-            <span className="flex-1">{index + 1}. {child.displayName}{selected.asset.thumbnailAssetId === child.assetId ? " (representative)" : ""}</span>
-            <button type="button" className="rounded-full border border-white/10 px-2 py-1 text-xs text-slate-200 disabled:opacity-50" disabled={referenceSetPending || index === 0} onClick={() => moveCharacterReference(child.assetId, -1)}>Move up</button>
-            <button type="button" className="rounded-full border border-white/10 px-2 py-1 text-xs text-slate-200 disabled:opacity-50" disabled={referenceSetPending || index === characterFolderChildren.length - 1} onClick={() => moveCharacterReference(child.assetId, 1)}>Move down</button>
-            <button type="button" className="rounded-full border border-white/10 px-2 py-1 text-xs text-slate-200 disabled:opacity-50" disabled={referenceSetPending || selected.asset.thumbnailAssetId === child.assetId} onClick={() => void saveCharacterReferenceSet(selected.asset.childAssetIds, child.assetId)}>Set representative</button>
-          </li>)}
-        </ol>
-      </section>}
-      <form onSubmit={submitEdit} aria-label="에셋 정보 편집" className="space-y-2">
-        <label className="block text-sm text-slate-300">이름 <input value={editName} required disabled={editPending} className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100" onChange={(event) => setEditName(event.target.value)} /></label>
-        <label className="block text-sm text-slate-300">설명 <input value={editDescription} disabled={editPending} className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100" onChange={(event) => setEditDescription(event.target.value)} /></label>
-        <label className="block text-sm text-slate-300">태그(쉼표 구분) <input value={editTags} disabled={editPending} className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100" onChange={(event) => setEditTags(event.target.value)} /></label>
-        <button type="submit" disabled={editPending} className="rounded-full bg-violet-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">변경 저장</button>
+  return (
+    <section className="mt-8 max-w-4xl space-y-5">
+      <header className="flex items-center justify-between">
+        <button type="button" className={outlineButton} onClick={onBack}>
+          프로젝트 목록으로
+        </button>
+        <h2 className="flex items-center gap-2.5 text-lg font-semibold">
+          <span
+            aria-hidden="true"
+            className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
+          />
+          Asset Library
+        </h2>
+      </header>
+      {error && (
+        <p role="alert" data-error-code={error.code} className="text-sm text-rose-400">
+          {error.message}
+        </p>
+      )}
+      <form onSubmit={(event) => { event.preventDefault(); void load(); }} className="flex flex-wrap items-end gap-3">
+        <label className="text-sm text-slate-300">
+          검색
+          <input className={fieldClassName} value={query} onChange={(event) => setQuery(event.target.value)} />
+        </label>
+        <label className="text-sm text-slate-300">
+          유형
+          <select className={fieldClassName} value={assetType} onChange={(event) => setAssetType(event.target.value as AssetType | "")}>
+            <option value="">전체</option>
+            {TYPES.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="submit" className={primaryButton}>
+          검색
+        </button>
       </form>
 
-      {!selected.asset.isFolder && <section aria-label="버전 기록" className="space-y-2 rounded border border-white/10 p-3">
-        <h4 className="font-semibold">버전 기록</h4>
-        <ol aria-label="버전 목록" className="space-y-1 text-sm text-slate-300">
-          {selected.asset.versions.map((version) => <li key={version.version}>
-            v{version.version}{selected.asset.version === version.version ? " (현재)" : ""} · {version.createdAt}{version.notes && ` · ${version.notes}`}
-          </li>)}
-        </ol>
-        <form onSubmit={submitVersion} aria-label="새 버전 추가" className="space-y-2">
-          <label className="block text-sm text-slate-300">새 버전 이미지 <input key={versionFileGeneration} type="file" accept="image/*" disabled={versionPending} className="mt-1 block text-slate-300" onChange={(event) => setVersionFile(event.target.files?.[0] ?? null)} /></label>
-          <label className="block text-sm text-slate-300">메모 <input value={versionNotes} disabled={versionPending} className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100" onChange={(event) => setVersionNotes(event.target.value)} /></label>
-          <button type="submit" disabled={versionPending || !versionFile} className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-200 disabled:opacity-50">새 버전 추가</button>
-        </form>
-        <form onSubmit={submitRelink} aria-label="파일 재연결" className="space-y-2">
-          <p className="text-sm text-slate-400">현재 버전의 파일이 손상되었거나 잘못된 경우에만 사용하세요.</p>
-          <label className="block text-sm text-slate-300">교체 이미지 <input key={relinkFileGeneration} type="file" accept="image/*" disabled={relinkPending} className="mt-1 block text-slate-300" onChange={(event) => setRelinkFile(event.target.files?.[0] ?? null)} /></label>
-          <button type="submit" disabled={relinkPending || !relinkFile} className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-200 disabled:opacity-50">현재 버전 재연결</button>
-        </form>
-      </section>}
+      <section aria-label="파일 상태 점검" className={cardSection}>
+        <div className="flex items-center justify-between gap-3">
+          <SectionHeading>파일 상태 점검</SectionHeading>
+          <button type="button" className={smallOutlineButton} onClick={() => void runAudit()} disabled={auditLoading}>
+            점검 실행
+          </button>
+        </div>
+        {auditLoading && <Spinner label="파일 상태를 확인하는 중..." />}
+        {auditError && (
+          <p role="alert" data-testid="audit-error" data-error-code={auditError.code} className="text-sm text-rose-400">
+            {auditError.message}
+          </p>
+        )}
+        {audit && audit.length === 0 && !auditLoading && <p className="text-sm text-slate-400">점검할 에셋이 없습니다.</p>}
+        {audit && audit.length > 0 && (
+          <ul aria-label="파일 상태 목록" className="space-y-1.5 text-sm text-slate-300">
+            {audit.map((entry) => (
+              <li key={entry.assetId} className="rounded-lg border border-white/10 bg-slate-950/40 p-2.5">
+                {entry.displayName} · {entry.classification === "healthy" ? "정상" : entry.classification === "missing" ? "파일 없음" : "손상됨"} ·{" "}
+                {entry.sourceKind === "manual" ? "수동 등록" : "프로젝트 생성"}
+                {entry.message && <span> — {entry.message}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
-      {!selected.asset.isFolder && <div className="flex flex-wrap items-center gap-3">
-        <button type="button" className="rounded-full border border-rose-400/40 px-4 py-2 text-sm text-rose-300 disabled:opacity-50" onClick={() => void remove()} disabled={selected.usageProjectIds.length > 0 || deletePending}>목록에서 삭제</button>
-        {selected.usageProjectIds.length > 0 && <p className="text-sm text-slate-400">사용 중인 에셋은 삭제할 수 없습니다.</p>}
-        {selected.canDeleteOwnedFile && <button type="button" className="rounded-full border border-rose-400/40 px-4 py-2 text-sm text-rose-300 disabled:opacity-50" onClick={() => void removeOwnedFile()} disabled={ownedFileDeletePending}>에셋과 원본 파일 함께 삭제</button>}
-      </div>}
-      {selected.asset.isFolder && <section aria-label="Folder 삭제" className="space-y-2 rounded border border-white/10 p-3">
-        <h4 className="font-semibold">Folder 삭제</h4>
-        <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={folderRemoveChildIndexes} disabled={folderDeletePending || folderDeleteManualFiles} onChange={(event) => setFolderRemoveChildIndexes(event.target.checked)} /> 하위 항목 색인도 함께 삭제</label>
-        <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={folderDeleteManualFiles} disabled={folderDeletePending} onChange={(event) => { const checked = event.target.checked; setFolderDeleteManualFiles(checked); if (checked) setFolderRemoveChildIndexes(true); }} /> 하위 항목의 원본 파일도 함께 삭제(수동 등록 항목만 가능)</label>
-        <button type="button" className="rounded-full border border-rose-400/40 px-4 py-2 text-sm text-rose-300 disabled:opacity-50" onClick={() => void removeFolder()} disabled={selected.usageProjectIds.length > 0 || folderDeletePending}>Folder 삭제</button>
-        {selected.usageProjectIds.length > 0 && <p className="text-sm text-slate-400">사용 중인 Folder는 삭제할 수 없습니다.</p>}
-      </section>}
-    </section>}
-  </section>;
+      <section aria-label="레거시 참고자료 가져오기" className={cardSection}>
+        <div className="flex items-center justify-between gap-3">
+          <SectionHeading>레거시 참고자료 가져오기</SectionHeading>
+          <button type="button" className={smallOutlineButton} onClick={() => void runLegacyMigration()} disabled={legacyMigrationPending}>
+            가져오기 실행
+          </button>
+        </div>
+        <p className="text-sm text-slate-400">기존 프로젝트의 레거시 참고자료를 Asset Library로 이전합니다. 이미 이전된 항목은 다시 가져오지 않습니다.</p>
+        {legacyMigrationPending && <Spinner label="레거시 참고자료를 확인하는 중..." />}
+        {legacyMigrationError && (
+          <p role="alert" data-testid="legacy-migration-error" data-error-code={legacyMigrationError.code} className="text-sm text-rose-400">
+            {legacyMigrationError.message}
+          </p>
+        )}
+        {legacyMigrationResult && !legacyMigrationPending && (
+          <p data-testid="legacy-migration-result" className="text-sm text-slate-300">
+            프로젝트 {legacyMigrationResult.projectsScanned}개 확인, {legacyMigrationResult.migratedAssets}개 이전, 중복 {legacyMigrationResult.deduplicatedAssets}개, 실패{" "}
+            {legacyMigrationResult.failedAssets}개
+          </p>
+        )}
+      </section>
+
+      {loading && !assets && <Spinner label="에셋을 불러오는 중..." />}
+      {assets && assets.length === 0 && !loading && <p className="text-sm text-slate-400">등록된 에셋이 없습니다.</p>}
+      {assets && (
+        <ul aria-label="에셋 목록" className="grid gap-3 sm:grid-cols-2">
+          {assets.map((asset) => (
+            <li key={asset.assetId}>
+              <button
+                type="button"
+                onClick={() => void open(asset.assetId)}
+                className="w-full rounded-xl border border-white/10 bg-slate-900/70 p-3 text-left transition hover:border-violet-400/40 hover:bg-slate-900"
+              >
+                {asset.imageAvailable && asset.contentUrl ? (
+                  <img src={asset.contentUrl} alt="" className="h-24 w-full rounded-lg object-cover" />
+                ) : (
+                  <span className="flex h-24 w-full items-center justify-center rounded-lg border border-white/5 bg-slate-950/40 text-sm text-slate-500">
+                    이미지 없음
+                  </span>
+                )}
+                <strong className="mt-2 block text-slate-100">{asset.displayName}</strong>
+                <span className="text-xs text-slate-400"> · {asset.assetType}</span>
+                <p className="mt-1 text-sm text-slate-400">{asset.description}</p>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <form onSubmit={submitImport} aria-label="에셋 가져오기" className={cardSection}>
+        <SectionHeading>이미지 가져오기</SectionHeading>
+        {importValidationError && (
+          <p role="alert" data-testid="import-validation-error" className="text-sm text-rose-400">
+            {importValidationError}
+          </p>
+        )}
+        <label className="block text-sm text-slate-300">
+          이미지 파일
+          <input
+            key={fileInputGeneration}
+            type="file"
+            accept="image/*"
+            disabled={importPending}
+            className="mt-1.5 block w-full text-sm text-slate-300 file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-slate-200 disabled:opacity-50"
+            onChange={(event) => { setFile(event.target.files?.[0] ?? null); setImportValidationError(null); }}
+          />
+        </label>
+        <label className="block text-sm text-slate-300">
+          이름
+          <input
+            value={importName}
+            disabled={importPending}
+            className={fieldClassName}
+            onChange={(event) => { setImportName(event.target.value); setImportValidationError(null); }}
+          />
+        </label>
+        <label className="block text-sm text-slate-300">
+          유형
+          <select value={importType} disabled={importPending} className={fieldClassName} onChange={(event) => setImportType(event.target.value as AssetType)}>
+            {TYPES.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-sm text-slate-300">
+          설명
+          <input value={importDescription} disabled={importPending} className={fieldClassName} onChange={(event) => setImportDescription(event.target.value)} />
+        </label>
+        <label className="block text-sm text-slate-300">
+          태그(쉼표 구분)
+          <input value={importTags} disabled={importPending} className={fieldClassName} onChange={(event) => setImportTags(event.target.value)} />
+        </label>
+        <button type="submit" disabled={importPending} className={primaryButton}>
+          가져오기
+        </button>
+      </form>
+
+      {detailLoading && <Spinner label="선택한 에셋 정보를 불러오는 중..." />}
+      {detailError && (
+        <p role="alert" data-testid="asset-detail-error" data-error-code={detailError.code} className="text-sm text-rose-400">
+          {detailError.message}
+        </p>
+      )}
+      {selected && (
+        <section aria-label="에셋 상세" className="space-y-4 rounded-2xl border border-violet-400/30 bg-slate-900/70 p-5">
+          <h3 className="text-xl font-semibold text-slate-100">{selected.asset.displayName}</h3>
+          {selected.asset.imageAvailable && selected.asset.contentUrl && (
+            <img src={selected.asset.contentUrl} alt={`${selected.asset.displayName} 미리보기`} className="max-h-64 rounded-xl object-contain" />
+          )}
+          <p className="text-sm text-slate-300">소유권: {selected.ownership}</p>
+          <p className="text-sm text-slate-300">사용 프로젝트: {selected.usageProjectIds.length ? selected.usageProjectIds.join(", ") : "없음"}</p>
+
+          {selected.asset.isFolder && selected.asset.assetType === "character" && (
+            <section aria-label="Character reference set" className="space-y-2 rounded-xl border border-white/10 bg-slate-950/30 p-3.5">
+              <h4 className="text-sm font-semibold text-slate-200">Character reference set</h4>
+              {selected.asset.childAssetIds.length === 0 && <p className="text-sm text-slate-400">No child reference images are registered.</p>}
+              {selected.asset.childAssetIds.length > 0 && characterFolderChildren.length !== selected.asset.childAssetIds.length && (
+                <p role="status" className="text-sm text-slate-400">
+                  Loading child reference metadata requires the full character list.
+                </p>
+              )}
+              <ol aria-label="Ordered character reference images" className="space-y-2">
+                {characterFolderChildren.map((child, index) => (
+                  <li key={child.assetId} className="flex items-center gap-2 rounded-lg border border-white/10 bg-slate-900/60 p-2 text-sm text-slate-300">
+                    {child.imageAvailable && child.contentUrl && <img src={child.contentUrl} alt="" className="h-10 w-10 rounded-md object-cover" />}
+                    <span className="flex-1">
+                      {index + 1}. {child.displayName}
+                      {selected.asset.thumbnailAssetId === child.assetId ? " (representative)" : ""}
+                    </span>
+                    <button
+                      type="button"
+                      className="rounded-full border border-white/10 px-2 py-1 text-xs text-slate-200 hover:bg-white/5 disabled:opacity-50"
+                      disabled={referenceSetPending || index === 0}
+                      onClick={() => moveCharacterReference(child.assetId, -1)}
+                    >
+                      Move up
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-full border border-white/10 px-2 py-1 text-xs text-slate-200 hover:bg-white/5 disabled:opacity-50"
+                      disabled={referenceSetPending || index === characterFolderChildren.length - 1}
+                      onClick={() => moveCharacterReference(child.assetId, 1)}
+                    >
+                      Move down
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-full border border-emerald-400/30 px-2 py-1 text-xs text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50"
+                      disabled={referenceSetPending || selected.asset.thumbnailAssetId === child.assetId}
+                      onClick={() => void saveCharacterReferenceSet(selected.asset.childAssetIds, child.assetId)}
+                    >
+                      Set representative
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
+
+          <form onSubmit={submitEdit} aria-label="에셋 정보 편집" className="space-y-3 rounded-xl border border-white/10 bg-slate-950/30 p-3.5">
+            <label className="block text-sm text-slate-300">
+              이름
+              <input value={editName} required disabled={editPending} className={fieldClassName} onChange={(event) => setEditName(event.target.value)} />
+            </label>
+            <label className="block text-sm text-slate-300">
+              설명
+              <input value={editDescription} disabled={editPending} className={fieldClassName} onChange={(event) => setEditDescription(event.target.value)} />
+            </label>
+            <label className="block text-sm text-slate-300">
+              태그(쉼표 구분)
+              <input value={editTags} disabled={editPending} className={fieldClassName} onChange={(event) => setEditTags(event.target.value)} />
+            </label>
+            <button type="submit" disabled={editPending} className={primaryButton}>
+              변경 저장
+            </button>
+          </form>
+
+          {!selected.asset.isFolder && (
+            <section aria-label="버전 기록" className="space-y-3 rounded-xl border border-white/10 bg-slate-950/30 p-3.5">
+              <h4 className="text-sm font-semibold text-slate-200">버전 기록</h4>
+              <ol aria-label="버전 목록" className="space-y-1 text-sm text-slate-300">
+                {selected.asset.versions.map((version) => (
+                  <li key={version.version}>
+                    v{version.version}
+                    {selected.asset.version === version.version ? " (현재)" : ""} · {version.createdAt}
+                    {version.notes && ` · ${version.notes}`}
+                  </li>
+                ))}
+              </ol>
+              <form onSubmit={submitVersion} aria-label="새 버전 추가" className="space-y-2">
+                <label className="block text-sm text-slate-300">
+                  새 버전 이미지
+                  <input
+                    key={versionFileGeneration}
+                    type="file"
+                    accept="image/*"
+                    disabled={versionPending}
+                    className="mt-1.5 block w-full text-sm text-slate-300 file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-slate-200 disabled:opacity-50"
+                    onChange={(event) => setVersionFile(event.target.files?.[0] ?? null)}
+                  />
+                </label>
+                <label className="block text-sm text-slate-300">
+                  메모
+                  <input value={versionNotes} disabled={versionPending} className={fieldClassName} onChange={(event) => setVersionNotes(event.target.value)} />
+                </label>
+                <button type="submit" disabled={versionPending || !versionFile} className={outlineButton}>
+                  새 버전 추가
+                </button>
+              </form>
+              <form onSubmit={submitRelink} aria-label="파일 재연결" className="space-y-2">
+                <p className="text-sm text-slate-400">현재 버전의 파일이 손상되었거나 잘못된 경우에만 사용하세요.</p>
+                <label className="block text-sm text-slate-300">
+                  교체 이미지
+                  <input
+                    key={relinkFileGeneration}
+                    type="file"
+                    accept="image/*"
+                    disabled={relinkPending}
+                    className="mt-1.5 block w-full text-sm text-slate-300 file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-slate-200 disabled:opacity-50"
+                    onChange={(event) => setRelinkFile(event.target.files?.[0] ?? null)}
+                  />
+                </label>
+                <button type="submit" disabled={relinkPending || !relinkFile} className={outlineButton}>
+                  현재 버전 재연결
+                </button>
+              </form>
+            </section>
+          )}
+
+          {!selected.asset.isFolder && (
+            <div className="flex flex-wrap items-center gap-3">
+              <button type="button" className={dangerOutlineButton} onClick={() => void remove()} disabled={selected.usageProjectIds.length > 0 || deletePending}>
+                목록에서 삭제
+              </button>
+              {selected.usageProjectIds.length > 0 && <p className="text-sm text-slate-400">사용 중인 에셋은 삭제할 수 없습니다.</p>}
+              {selected.canDeleteOwnedFile && (
+                <button type="button" className={dangerOutlineButton} onClick={() => void removeOwnedFile()} disabled={ownedFileDeletePending}>
+                  에셋과 원본 파일 함께 삭제
+                </button>
+              )}
+            </div>
+          )}
+          {selected.asset.isFolder && (
+            <section aria-label="Folder 삭제" className="space-y-2 rounded-xl border border-rose-400/20 bg-rose-950/10 p-3.5">
+              <h4 className="text-sm font-semibold text-slate-200">Folder 삭제</h4>
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-violet-500"
+                  checked={folderRemoveChildIndexes}
+                  disabled={folderDeletePending || folderDeleteManualFiles}
+                  onChange={(event) => setFolderRemoveChildIndexes(event.target.checked)}
+                />
+                하위 항목 색인도 함께 삭제
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-violet-500"
+                  checked={folderDeleteManualFiles}
+                  disabled={folderDeletePending}
+                  onChange={(event) => {
+                    const checked = event.target.checked;
+                    setFolderDeleteManualFiles(checked);
+                    if (checked) setFolderRemoveChildIndexes(true);
+                  }}
+                />
+                하위 항목의 원본 파일도 함께 삭제(수동 등록 항목만 가능)
+              </label>
+              <button
+                type="button"
+                className={dangerOutlineButton}
+                onClick={() => void removeFolder()}
+                disabled={selected.usageProjectIds.length > 0 || folderDeletePending}
+              >
+                Folder 삭제
+              </button>
+              {selected.usageProjectIds.length > 0 && <p className="text-sm text-slate-400">사용 중인 Folder는 삭제할 수 없습니다.</p>}
+            </section>
+          )}
+        </section>
+      )}
+    </section>
+  );
 }

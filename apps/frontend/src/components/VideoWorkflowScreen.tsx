@@ -45,6 +45,20 @@ const STATUS_LABEL: Record<GenerationProgressResponse["status"], string> = {
   interrupted: "중지됨",
 };
 
+const primaryButton =
+  "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
+const outlineButton =
+  "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
+const dangerOutlineButton =
+  "rounded-full border border-rose-400/30 px-4 py-2 text-sm text-rose-300 hover:bg-rose-500/10 disabled:opacity-50";
+const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
+const smallOutlineButton =
+  "rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50";
+const smallApproveButton =
+  "rounded-full border border-emerald-400/30 px-3 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50";
+const smallAmberButton =
+  "rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-400 disabled:opacity-50";
+
 function sceneStatus(
   sceneNumber: SceneNumber,
   progress: GenerationProgressResponse,
@@ -263,11 +277,17 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
   const allApproved = reviewState.status === "ready" && reviewState.reviews.every((review) => review.status === "approved");
 
   return (
-    <section className="mt-8 space-y-4">
-      <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300" onClick={onBack}>
+    <section className="mt-8 max-w-3xl space-y-5">
+      <button type="button" className={outlineButton} onClick={onBack}>
         프로젝트로 돌아가기
       </button>
-      <h2 className="text-xl font-semibold">영상 생성 진행 상황</h2>
+      <h2 className="flex items-center gap-2.5 text-lg font-semibold">
+        <span
+          aria-hidden="true"
+          className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
+        />
+        영상 생성 진행 상황
+      </h2>
       <p className="text-sm text-amber-300" data-testid="no-provider-notice">
         실제 유료 Runway API와 영상 병합 프로그램을 호출하지 않습니다. 로컬 가짜(local fake) 어댑터가 장면 영상을 순서대로 만듭니다.
       </p>
@@ -278,11 +298,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
           <p role="alert" data-testid="progress-error" data-error-code={progressState.error.code} className="text-sm text-rose-400">
             {progressState.error.message}
           </p>
-          <button
-            type="button"
-            className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300"
-            onClick={() => void fetchProgress(true)}
-          >
+          <button type="button" className={outlineButton} onClick={() => void fetchProgress(true)}>
             다시 시도
           </button>
         </div>
@@ -297,17 +313,29 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
               : ""}
           </p>
 
-          <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-300" data-testid="scene-progress-list">
-            {SCENE_NUMBERS.map((number) => (
-              <li key={number} data-testid={`scene-progress-${number}`} data-status={sceneStatus(number, progress)}>
-                {number}번 장면 ·{" "}
-                {
-                  { completed: "완료", running: "진행 중", failed: "실패", pending: "대기" }[
-                    sceneStatus(number, progress)
-                  ]
-                }
-              </li>
-            ))}
+          <ol className="grid gap-2 sm:grid-cols-2" data-testid="scene-progress-list">
+            {SCENE_NUMBERS.map((number) => {
+              const status = sceneStatus(number, progress);
+              return (
+                <li
+                  key={number}
+                  data-testid={`scene-progress-${number}`}
+                  data-status={status}
+                  className={`rounded-lg border p-2.5 text-sm ${
+                    status === "completed"
+                      ? "border-emerald-400/30 text-emerald-300"
+                      : status === "running"
+                        ? "border-violet-400/30 text-violet-300"
+                        : status === "failed"
+                          ? "border-rose-400/30 text-rose-300"
+                          : "border-white/10 text-slate-300"
+                  }`}
+                >
+                  {number}번 장면 ·{" "}
+                  {{ completed: "완료", running: "진행 중", failed: "실패", pending: "대기" }[status]}
+                </li>
+              );
+            })}
           </ol>
 
           {progress.status === "interrupted" && (
@@ -317,7 +345,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
           )}
 
           {progress.status === "failed" && (
-            <div className="space-y-3 rounded-lg border border-rose-400/40 p-4" data-testid="failed-scenes-section">
+            <div className="space-y-3 rounded-2xl border border-rose-400/30 bg-rose-950/10 p-5" data-testid="failed-scenes-section">
               <p className="text-sm font-semibold text-rose-300">
                 일부 장면 생성에 실패했습니다. 아래에서 실패한 장면을 다시 시도할 수 있습니다.
               </p>
@@ -327,13 +355,13 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                   const regenerateError = regenerateErrors[sceneNumber];
                   const regenerateConfirmOpen = regenerateConfirmScene === sceneNumber;
                   return (
-                    <li key={sceneNumber} data-testid={`failed-scene-${sceneNumber}`} className="space-y-1">
+                    <li key={sceneNumber} data-testid={`failed-scene-${sceneNumber}`} className="space-y-1.5 rounded-xl border border-white/10 bg-slate-950/40 p-3">
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-sm text-slate-300">{sceneNumber}번 장면</span>
                         <button
                           type="button"
                           data-testid={`failed-scene-retry-${sceneNumber}`}
-                          className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-200 disabled:opacity-50"
+                          className={smallOutlineButton}
                           onClick={() => openRegenerateConfirmation(sceneNumber)}
                           disabled={regeneratePending || regenerateConfirmOpen}
                         >
@@ -345,13 +373,13 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                           role="alertdialog"
                           aria-label={`${sceneNumber}번 장면 다시 시도 확인`}
                           data-testid={`failed-scene-retry-confirm-${sceneNumber}`}
-                          className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900 p-3"
+                          className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3"
                         >
                           <p className="text-sm font-semibold text-amber-300">{sceneNumber}번 장면을 다시 시도할까요?</p>
                           <div className="flex gap-2">
                             <button
                               type="button"
-                              className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 disabled:opacity-50"
+                              className={smallOutlineButton}
                               onClick={() => cancelRegenerateConfirmation(sceneNumber)}
                               disabled={regeneratePending}
                             >
@@ -359,7 +387,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                             </button>
                             <button
                               type="button"
-                              className="rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                              className={smallAmberButton}
                               onClick={() => void confirmRegenerate(sceneNumber)}
                               disabled={regeneratePending}
                             >
@@ -386,15 +414,9 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
           )}
 
           {canStop && (
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <p className="text-xs text-slate-400">중지하면 현재 장면 이후의 새 장면은 생성되지 않습니다.</p>
-              <button
-                type="button"
-                className="rounded-full border border-rose-400/40 px-4 py-2 text-sm text-rose-300 disabled:opacity-50"
-                data-testid="stop-button"
-                onClick={() => void stop()}
-                disabled={stopPending}
-              >
+              <button type="button" className={dangerOutlineButton} data-testid="stop-button" onClick={() => void stop()} disabled={stopPending}>
                 {stopPending ? "중지 중..." : "생성 중지"}
               </button>
             </div>
@@ -406,13 +428,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
           )}
 
           {canRestart && (
-            <button
-              type="button"
-              className="rounded-full bg-violet-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              data-testid="restart-button"
-              onClick={() => void restart()}
-              disabled={restartPending}
-            >
+            <button type="button" className={primaryButton} data-testid="restart-button" onClick={() => void restart()} disabled={restartPending}>
               {restartPending ? "재개 중..." : "이어서 생성"}
             </button>
           )}
@@ -423,8 +439,14 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
           )}
 
           {reviewable && (
-            <div className="space-y-3 rounded-lg border border-white/10 p-4" data-testid="video-review-section">
-              <h3 className="text-lg font-semibold">영상 검토</h3>
+            <div className={cardSection} data-testid="video-review-section">
+              <h3 className="flex items-center gap-2.5 text-base font-semibold">
+                <span
+                  aria-hidden="true"
+                  className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
+                />
+                영상 검토
+              </h3>
               <p className="text-sm text-slate-300">각 장면의 영상을 확인하고 개별적으로 승인해 주세요.</p>
               <p className="text-xs text-amber-300" data-testid="no-provider-regenerate-notice">
                 재생성은 실제 유료 Provider를 호출하지 않는 로컬 가짜 어댑터만 사용하며, 이전 영상은 history로 보존됩니다.
@@ -442,7 +464,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                   <div className="flex items-center justify-end">
                     <button
                       type="button"
-                      className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-200 disabled:opacity-50"
+                      className={smallOutlineButton}
                       data-testid="regenerate-all-button"
                       onClick={openRegenerateAllConfirmation}
                       disabled={regenerateAllPending || regenerateAllConfirmOpen}
@@ -456,7 +478,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                       role="alertdialog"
                       aria-label="전체 장면 재생성 확인"
                       data-testid="regenerate-all-confirm-panel"
-                      className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900 p-3"
+                      className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3"
                     >
                       <p className="text-sm font-semibold text-amber-300">6개 장면 영상을 모두 다시 생성할까요?</p>
                       <p className="text-xs text-slate-300">
@@ -464,20 +486,10 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                         생성하며, 실제 유료 요청은 전송되지 않습니다. 기존 승인 상태는 초기화됩니다.
                       </p>
                       <div className="flex gap-2">
-                        <button
-                          type="button"
-                          className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 disabled:opacity-50"
-                          onClick={cancelRegenerateAllConfirmation}
-                          disabled={regenerateAllPending}
-                        >
+                        <button type="button" className={smallOutlineButton} onClick={cancelRegenerateAllConfirmation} disabled={regenerateAllPending}>
                           취소
                         </button>
-                        <button
-                          type="button"
-                          className="rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
-                          onClick={() => void confirmRegenerateAll()}
-                          disabled={regenerateAllPending}
-                        >
+                        <button type="button" className={smallAmberButton} onClick={() => void confirmRegenerateAll()} disabled={regenerateAllPending}>
                           {regenerateAllPending ? "재생성 중..." : "예, 로컬로 전체 재생성합니다"}
                         </button>
                       </div>
@@ -501,98 +513,98 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                           key={review.sceneNumber}
                           data-testid={`video-review-${review.sceneNumber}`}
                           data-status={review.status}
-                          className="flex gap-3"
+                          className="flex gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-3"
                         >
                           <video
                             src={videoReviewContentUrl(projectId, review.sceneNumber, review.updatedAt)}
                             data-testid={`video-review-clip-${review.sceneNumber}`}
-                            className="h-24 w-24 flex-shrink-0 rounded-md border border-white/10 bg-slate-800 object-cover"
+                            className="h-28 w-44 flex-shrink-0 rounded-lg border border-white/10 bg-slate-800 object-cover"
                             controls
                             muted
                             preload="metadata"
                           />
-                          <div className="flex-1 space-y-1">
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-sm text-slate-300">
-                              {review.sceneNumber}번 장면 · {review.status === "approved" ? "승인됨" : "검토 대기"}
-                            </span>
-                            <button
-                              type="button"
-                              className="rounded-full bg-emerald-500 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
-                              onClick={() => void approve(review.sceneNumber)}
-                              disabled={review.status === "approved" || pending}
-                            >
-                              {review.status === "approved" ? "승인 완료" : pending ? "승인 중..." : "승인"}
-                            </button>
-                          </div>
-                          {approveError && (
-                            <p
-                              role="alert"
-                              data-testid={`video-review-approve-error-${review.sceneNumber}`}
-                              data-error-code={approveError.code}
-                              className="text-sm text-rose-400"
-                            >
-                              {approveError.message}
-                            </p>
-                          )}
-
-                          <div className="flex items-center justify-end gap-3">
-                            <button
-                              type="button"
-                              data-testid={`video-review-regenerate-${review.sceneNumber}`}
-                              className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-200 disabled:opacity-50"
-                              onClick={() => openRegenerateConfirmation(review.sceneNumber)}
-                              disabled={regeneratePending || regenerateConfirmOpen}
-                            >
-                              {regeneratePending ? "재생성 중..." : "재생성"}
-                            </button>
-                          </div>
-
-                          {regenerateConfirmOpen && (
-                            <div
-                              role="alertdialog"
-                              aria-label={`${review.sceneNumber}번 장면 재생성 확인`}
-                              data-testid={`video-regenerate-confirm-panel-${review.sceneNumber}`}
-                              className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900 p-3"
-                            >
-                              <p className="text-sm font-semibold text-amber-300">
-                                {review.sceneNumber}번 장면 영상을 다시 생성할까요?
-                              </p>
-                              <p className="text-xs text-slate-300">
-                                아직 재생성이 시작되지 않았습니다. 확인을 누르면 로컬 가짜 어댑터가 이 장면 영상만 다시
-                                생성하며, 실제 유료 요청은 전송되지 않습니다.
-                              </p>
-                              <div className="flex gap-2">
-                                <button
-                                  type="button"
-                                  className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 disabled:opacity-50"
-                                  onClick={() => cancelRegenerateConfirmation(review.sceneNumber)}
-                                  disabled={regeneratePending}
-                                >
-                                  취소
-                                </button>
-                                <button
-                                  type="button"
-                                  className="rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
-                                  onClick={() => void confirmRegenerate(review.sceneNumber)}
-                                  disabled={regeneratePending}
-                                >
-                                  {regeneratePending ? "재생성 중..." : "예, 로컬로 재생성합니다"}
-                                </button>
-                              </div>
+                          <div className="flex-1 space-y-1.5">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-sm text-slate-300">
+                                {review.sceneNumber}번 장면 · {review.status === "approved" ? "승인됨" : "검토 대기"}
+                              </span>
+                              <button
+                                type="button"
+                                className={smallApproveButton}
+                                onClick={() => void approve(review.sceneNumber)}
+                                disabled={review.status === "approved" || pending}
+                              >
+                                {review.status === "approved" ? "승인 완료" : pending ? "승인 중..." : "승인"}
+                              </button>
                             </div>
-                          )}
+                            {approveError && (
+                              <p
+                                role="alert"
+                                data-testid={`video-review-approve-error-${review.sceneNumber}`}
+                                data-error-code={approveError.code}
+                                className="text-sm text-rose-400"
+                              >
+                                {approveError.message}
+                              </p>
+                            )}
 
-                          {regenerateError && (
-                            <p
-                              role="alert"
-                              data-testid={`video-review-regenerate-error-${review.sceneNumber}`}
-                              data-error-code={regenerateError.code}
-                              className="text-sm text-rose-400"
-                            >
-                              {regenerateError.message}
-                            </p>
-                          )}
+                            <div className="flex items-center justify-end gap-3">
+                              <button
+                                type="button"
+                                data-testid={`video-review-regenerate-${review.sceneNumber}`}
+                                className={smallOutlineButton}
+                                onClick={() => openRegenerateConfirmation(review.sceneNumber)}
+                                disabled={regeneratePending || regenerateConfirmOpen}
+                              >
+                                {regeneratePending ? "재생성 중..." : "재생성"}
+                              </button>
+                            </div>
+
+                            {regenerateConfirmOpen && (
+                              <div
+                                role="alertdialog"
+                                aria-label={`${review.sceneNumber}번 장면 재생성 확인`}
+                                data-testid={`video-regenerate-confirm-panel-${review.sceneNumber}`}
+                                className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3"
+                              >
+                                <p className="text-sm font-semibold text-amber-300">
+                                  {review.sceneNumber}번 장면 영상을 다시 생성할까요?
+                                </p>
+                                <p className="text-xs text-slate-300">
+                                  아직 재생성이 시작되지 않았습니다. 확인을 누르면 로컬 가짜 어댑터가 이 장면 영상만 다시
+                                  생성하며, 실제 유료 요청은 전송되지 않습니다.
+                                </p>
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    className={smallOutlineButton}
+                                    onClick={() => cancelRegenerateConfirmation(review.sceneNumber)}
+                                    disabled={regeneratePending}
+                                  >
+                                    취소
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={smallAmberButton}
+                                    onClick={() => void confirmRegenerate(review.sceneNumber)}
+                                    disabled={regeneratePending}
+                                  >
+                                    {regeneratePending ? "재생성 중..." : "예, 로컬로 재생성합니다"}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {regenerateError && (
+                              <p
+                                role="alert"
+                                data-testid={`video-review-regenerate-error-${review.sceneNumber}`}
+                                data-error-code={regenerateError.code}
+                                className="text-sm text-rose-400"
+                              >
+                                {regenerateError.message}
+                              </p>
+                            )}
                           </div>
                         </li>
                       );
@@ -604,12 +616,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                       <p data-testid="all-scenes-approved" className="text-sm font-semibold text-emerald-400">
                         6개 장면 영상이 모두 승인되었습니다.
                       </p>
-                      <button
-                        type="button"
-                        className="rounded-full bg-violet-500 px-4 py-2 text-sm font-semibold text-white"
-                        data-testid="open-video-merge-button"
-                        onClick={() => onOpenMerge?.(projectId)}
-                      >
+                      <button type="button" className={primaryButton} data-testid="open-video-merge-button" onClick={() => onOpenMerge?.(projectId)}>
                         최종 영상으로 병합하기
                       </button>
                     </div>
