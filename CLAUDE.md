@@ -15,7 +15,7 @@ If instructions conflict, `AGENTS.md` takes precedence.
 
 Respect the role and worktree assigned for the current session. A single agent may be assigned Main, Frontend, and Backend together; in that case it may work in `main` without creating or switching worktrees.
 
-Continue the migration from the latest verified item in `docs/02_MIGRATION_PLAN.md`. For each user-visible feature: implement both required layers, run relevant checks and the integrated verification, update the migration plan only after verification, then proceed to the next feature. Do not end the working loop merely because one feature has completed.
+The Python-to-TypeScript migration itself is complete (see `docs/02_MIGRATION_PLAN.md`'s handoff status). Current work is post-migration feature improvement and polish, tracked in the same file's dated sections. For each item: implement both required layers, run relevant checks and the integrated verification, update the migration plan only after verification, then proceed to the next item. Do not end the working loop merely because one item has completed.
 
 Do not make paid provider requests in tests. Preserve the Python baseline and existing uncommitted user changes.
 

@@ -14,12 +14,20 @@ Project-specific rules in this file take precedence over shared guidelines.
 
 ## Current objective
 
-Reimplement every required behavior of the preserved Python application in the
-new TypeScript application. Do not add unrelated new features until the
-migration checklist is complete and the integrated application is verified.
+The migration is complete: every required Python behavior has been
+reimplemented in TypeScript, verified, and committed (see
+`docs/02_MIGRATION_PLAN.md`). Current work is post-migration feature
+improvement and polish — driven by real usage feedback and UI/UX audits
+against the Python original, tracked in the same file's dated sections
+after the migration checklist.
 
-Do not translate Python line by line. Preserve observable behavior and data,
-then implement it in the appropriate TypeScript layer.
+This does not relax the discipline below (surgical changes, no speculative
+abstractions, verify before marking done) — it only means new user-visible
+work is now in scope, not just Python parity.
+
+Do not translate Python line by line when a Python behavior still needs
+porting. Preserve observable behavior and data, then implement it in the
+appropriate TypeScript layer.
 
 ## Source and target
 
@@ -68,9 +76,11 @@ server deployment and user accounts without implementing those features now.
 → Instagram Reels용 최종 MP4
 ```
 
-## Migration discipline
+## Feature discipline
 
-- Migrate one user-visible feature at a time.
+Applies to migration work and post-migration improvement work alike.
+
+- Deliver one user-visible feature or fix at a time.
 - Define completion criteria before implementation.
 - Update `docs/02_MIGRATION_PLAN.md` only after verification.
 - Do not mark a feature complete when only its UI or backend half exists.
