@@ -11,15 +11,17 @@ interface Props {
 
 type State = { settings: LongProjectSettings | null; loading: boolean; error: { code: string; message: string } | null };
 
+const fieldClassName =
+  "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
+
 function Field({ label, value, onChange, multiline = false }: { label: string; value: string; onChange: (value: string) => void; multiline?: boolean }) {
-  const classes = "mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100";
   return (
     <label className="block text-sm text-slate-300">
       {label}
       {multiline ? (
-        <textarea className={classes} value={value} onChange={(event) => onChange(event.target.value)} rows={3} />
+        <textarea className={fieldClassName} value={value} onChange={(event) => onChange(event.target.value)} rows={3} />
       ) : (
-        <input className={classes} value={value} onChange={(event) => onChange(event.target.value)} />
+        <input className={fieldClassName} value={value} onChange={(event) => onChange(event.target.value)} />
       )}
     </label>
   );
@@ -78,18 +80,28 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
 
   if (state.loading && !state.settings) return <Spinner label="불러오는 중…" className="mt-8" />;
   return (
-    <section className="mt-8">
-      <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300" onClick={onBack}>
+    <section className="mt-8 max-w-3xl space-y-4">
+      <button
+        type="button"
+        className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
+        onClick={onBack}
+      >
         돌아가기
       </button>
-      <h2 className="mt-4 text-xl font-semibold">장기 프로젝트 설정</h2>
+      <h2 className="flex items-center gap-2.5 text-lg font-semibold">
+        <span
+          aria-hidden="true"
+          className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
+        />
+        장기 프로젝트 설정
+      </h2>
       {state.error && (
-        <p className="mt-4 text-sm text-rose-400" role="alert" data-error-code={state.error.code}>
+        <p className="text-sm text-rose-400" role="alert" data-error-code={state.error.code}>
           {state.error.message}
         </p>
       )}
       {state.settings && (
-        <form className="mt-4 grid gap-4 md:grid-cols-2" onSubmit={submit} noValidate>
+        <form className="grid gap-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6 md:grid-cols-2" onSubmit={submit} noValidate>
           <Field label="제목" value={state.settings.title} onChange={(value) => setField("title", value)} />
           <Field label="로그라인" value={state.settings.logline} onChange={(value) => setField("logline", value)} />
           <Field label="개요" value={state.settings.overview} onChange={(value) => setField("overview", value)} multiline />
@@ -100,7 +112,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
             Episode 수
             <input
               type="number"
-              className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100"
+              className={fieldClassName}
               value={state.settings.episodeCount}
               onChange={(event) => setField("episodeCount", Number(event.target.value))}
             />
@@ -109,7 +121,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
             Episode 길이(초)
             <input
               type="number"
-              className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100"
+              className={fieldClassName}
               value={state.settings.episodeDurationSeconds}
               onChange={(event) => setField("episodeDurationSeconds", Number(event.target.value))}
             />
@@ -117,7 +129,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
           <label className="block text-sm text-slate-300">
             플랫폼
             <select
-              className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100"
+              className={fieldClassName}
               value={state.settings.platform}
               onChange={(event) => setField("platform", event.target.value as LongProjectSettings["platform"])}
             >
@@ -128,7 +140,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
           <label className="block text-sm text-slate-300">
             화면 비율
             <select
-              className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100"
+              className={fieldClassName}
               value={state.settings.aspectRatio}
               onChange={(event) => setField("aspectRatio", event.target.value as LongProjectSettings["aspectRatio"])}
             >
@@ -150,7 +162,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
           <button
             type="submit"
             disabled={state.loading}
-            className="rounded-full bg-violet-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 md:col-span-2"
+            className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50 md:col-span-2"
           >
             {state.loading ? "저장 중…" : "설정 저장"}
           </button>

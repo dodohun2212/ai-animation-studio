@@ -23,6 +23,11 @@ type EpisodeResumeTarget =
   | { screen: "script"; label: string } | { screen: "mappingReview"; label: string } | { screen: "imageGeneration"; label: string }
   | { screen: "videoWorkflow"; label: string } | { screen: "videoMerge"; label: string } | { screen: "continuity"; label: string };
 
+const secondaryButton = "rounded-full border border-violet-400/30 px-4 py-2 text-sm text-violet-300 hover:bg-violet-500/10";
+const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
+const fieldClassName =
+  "rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
+
 /** Maps an Episode's current status to the single screen that continues it, matching the long-project fixed flow. */
 function episodeResumeTarget(status: LongEpisodeStatus): EpisodeResumeTarget | null {
   switch (status) {
@@ -63,34 +68,151 @@ export function LongProjectDetail({
     else onOpenContinuity(projectId, episodeNumber);
   }
 
-  return <section className="mt-8">
-    <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300" onClick={onBack}>목록으로</button>
-    {state.status === "loading" && <Spinner label="Loading..." className="mt-4" />}
-    {state.status === "error" && <p className="mt-4 text-sm text-rose-400" role="alert" data-error-code={state.error.code}>{state.error.message}</p>}
-    {state.status === "success" && <>
-      <button type="button" className="mt-4 rounded-full border border-violet-400/40 px-4 py-2 text-sm text-violet-300" onClick={() => onOpenSettings(projectId)}>장기 프로젝트 설정</button>
-      <button type="button" className="ml-3 mt-4 rounded-full border border-violet-400/40 px-4 py-2 text-sm text-violet-300" onClick={() => onOpenOutline(projectId)}>아웃라인 확인</button>
-      {onOpenStoryBible && <button type="button" className="ml-3 mt-4 rounded-full border border-violet-400/40 px-4 py-2 text-sm text-violet-300" onClick={() => onOpenStoryBible(projectId)}>Story Bible</button>}
-      <button type="button" className="ml-3 mt-4 rounded-full border border-violet-400/40 px-4 py-2 text-sm text-violet-300" onClick={() => onOpenGallery(projectId)}>생성 이미지 모음</button>
-      <button type="button" className="ml-3 mt-4 rounded-full border border-rose-400/40 px-4 py-2 text-sm text-rose-300" onClick={() => setArchiveOpen(true)}>Archive project</button>
-      {archiveOpen && <ArchiveProjectDialog confirmationText={state.project.title} projectKind="long" onCancel={() => setArchiveOpen(false)} onConfirm={async (confirmation) => { await archiveLongProject(projectId, { confirmation }); onArchived(); }} />}
-      <dl className="mt-4 space-y-2 text-slate-100"><div><dt>ID</dt><dd>{state.project.id}</dd></div><div><dt>Title</dt><dd>{state.project.title}</dd></div><div><dt>Logline</dt><dd>{state.project.logline}</dd></div><div><dt>Outline status</dt><dd data-testid="outline-status">{state.project.outlineStatus}</dd></div><div><dt>Episode count</dt><dd>{state.project.episodeCount}</dd></div></dl>
-      <div data-testid="episode-list" className="mt-4 space-y-2"><h3 className="text-sm font-semibold text-slate-200">Episode timeline</h3>
-        <div className="mt-3 flex flex-wrap gap-2"><input aria-label="Search episodes" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search episodes" /><select aria-label="Filter episode status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All statuses</option>{[...new Set(state.project.episodes.map((episode) => episode.status))].sort().map((status) => <option key={status} value={status}>{status}</option>)}</select></div>
-        <div className="mt-3 flex flex-wrap gap-2" aria-label="Episode timeline actions"><button type="button" onClick={() => void updateTimeline(() => addLongEpisode(projectId), state.project.episodes.length + 1)} disabled={!editableTimeline || timelinePending}>Add Episode</button><button type="button" onClick={() => selectedEpisode && void updateTimeline(() => duplicateLongEpisode(projectId, selectedEpisode.episodeNumber), state.project.episodes.length + 1)} disabled={!editableTimeline || !selectedEpisode || timelinePending}>Duplicate selected</button><button type="button" onClick={() => { setRemoveConfirmationOpen(true); setRemoveConfirmation(""); }} disabled={!editableTimeline || !selectedEpisode || selectedEpisode.episodeNumber !== state.project.episodes.length || timelinePending}>Archive selected</button></div>
-        {!editableTimeline && <p className="mt-2 text-sm text-slate-400">Timeline edits are available only before script or media work starts.</p>}{timelineError && <p className="mt-2 text-sm text-rose-400" role="alert" data-error-code={timelineError.code}>{timelineError.message}</p>}
-        {removeConfirmationOpen && selectedEpisode && <section className="mt-3 rounded border border-rose-400/40 p-3" aria-label="Episode archive confirmation"><p>This recoverably archives Episode {selectedEpisode.episodeNumber}. Type <strong>ARCHIVE EPISODE {selectedEpisode.episodeNumber}</strong> to continue.</p><label htmlFor="episode-archive-confirmation">Exact confirmation</label><input id="episode-archive-confirmation" value={removeConfirmation} onChange={(event) => setRemoveConfirmation(event.target.value)} disabled={timelinePending} /><div className="mt-3 flex gap-2"><button type="button" onClick={() => setRemoveConfirmationOpen(false)} disabled={timelinePending}>Cancel</button><button type="button" onClick={() => void updateTimeline(() => archiveLongEpisode(projectId, selectedEpisode.episodeNumber))} disabled={timelinePending || removeConfirmation !== `ARCHIVE EPISODE ${selectedEpisode.episodeNumber}`}>Confirm archive</button></div></section>}
-        <ol className="mt-3 space-y-1 text-sm text-slate-300">{filteredEpisodes.map((episode) => {
-          const target = episodeResumeTarget(episode.status);
-          const showResume = target && (target.screen !== "script" || onOpenEpisodeScript);
-          return <li key={episode.episodeNumber} data-testid={`episode-${episode.episodeNumber}`} data-status={episode.status} data-selected={selectedEpisodeNumber === episode.episodeNumber ? "true" : "false"}>
-            <button type="button" className="mr-2 text-left" onClick={() => setSelectedEpisodeNumber(episode.episodeNumber)} aria-pressed={selectedEpisodeNumber === episode.episodeNumber}>{episode.episodeNumber}. {episode.title}</button>
-            <span className={episode.status === "outline_ready" ? "text-emerald-400" : "text-slate-400"}>{episode.status}</span>
-            {showResume && <button type="button" className="ml-3 text-violet-300 underline" onClick={() => resumeEpisode(target, episode.episodeNumber)}>{target.label}</button>}
-          </li>;
-        })}</ol>
-        {!filteredEpisodes.length && <p className="mt-3 text-sm text-slate-400">No Episodes match this filter.</p>}
-      </div>
-    </>}
-  </section>;
+  return (
+    <section className="mt-8 max-w-4xl space-y-5">
+      <button type="button" className={outlineButton} onClick={onBack}>목록으로</button>
+      {state.status === "loading" && <Spinner label="Loading..." className="mt-4" />}
+      {state.status === "error" && <p className="mt-4 text-sm text-rose-400" role="alert" data-error-code={state.error.code}>{state.error.message}</p>}
+      {state.status === "success" && (
+        <>
+          <div className="flex flex-wrap gap-3">
+            <button type="button" className={secondaryButton} onClick={() => onOpenSettings(projectId)}>장기 프로젝트 설정</button>
+            <button type="button" className={secondaryButton} onClick={() => onOpenOutline(projectId)}>아웃라인 확인</button>
+            {onOpenStoryBible && <button type="button" className={secondaryButton} onClick={() => onOpenStoryBible(projectId)}>Story Bible</button>}
+            <button type="button" className={secondaryButton} onClick={() => onOpenGallery(projectId)}>생성 이미지 모음</button>
+            <button
+              type="button"
+              className="rounded-full border border-rose-400/30 px-4 py-2 text-sm text-rose-300 hover:bg-rose-500/10"
+              onClick={() => setArchiveOpen(true)}
+            >
+              Archive project
+            </button>
+          </div>
+          {archiveOpen && (
+            <ArchiveProjectDialog
+              confirmationText={state.project.title}
+              projectKind="long"
+              onCancel={() => setArchiveOpen(false)}
+              onConfirm={async (confirmation) => { await archiveLongProject(projectId, { confirmation }); onArchived(); }}
+            />
+          )}
+          <dl className="grid grid-cols-1 gap-x-8 gap-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6 text-slate-100 sm:grid-cols-2">
+            <div><dt className="text-xs uppercase tracking-wide text-slate-400">ID</dt><dd className="mt-0.5">{state.project.id}</dd></div>
+            <div><dt className="text-xs uppercase tracking-wide text-slate-400">Title</dt><dd className="mt-0.5">{state.project.title}</dd></div>
+            <div className="sm:col-span-2"><dt className="text-xs uppercase tracking-wide text-slate-400">Logline</dt><dd className="mt-0.5">{state.project.logline}</dd></div>
+            <div><dt className="text-xs uppercase tracking-wide text-slate-400">Outline status</dt><dd className="mt-0.5" data-testid="outline-status">{state.project.outlineStatus}</dd></div>
+            <div><dt className="text-xs uppercase tracking-wide text-slate-400">Episode count</dt><dd className="mt-0.5">{state.project.episodeCount}</dd></div>
+          </dl>
+          <div data-testid="episode-list" className="space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-6">
+            <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-200">
+              <span
+                aria-hidden="true"
+                className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
+              />
+              Episode timeline
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              <input
+                aria-label="Search episodes"
+                className={fieldClassName}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search episodes"
+              />
+              <select aria-label="Filter episode status" className={fieldClassName} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                <option value="all">All statuses</option>
+                {[...new Set(state.project.episodes.map((episode) => episode.status))].sort().map((status) => <option key={status} value={status}>{status}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-wrap gap-2" aria-label="Episode timeline actions">
+              <button
+                type="button"
+                className={outlineButton}
+                onClick={() => void updateTimeline(() => addLongEpisode(projectId), state.project.episodes.length + 1)}
+                disabled={!editableTimeline || timelinePending}
+              >
+                Add Episode
+              </button>
+              <button
+                type="button"
+                className={outlineButton}
+                onClick={() => selectedEpisode && void updateTimeline(() => duplicateLongEpisode(projectId, selectedEpisode.episodeNumber), state.project.episodes.length + 1)}
+                disabled={!editableTimeline || !selectedEpisode || timelinePending}
+              >
+                Duplicate selected
+              </button>
+              <button
+                type="button"
+                className={outlineButton}
+                onClick={() => { setRemoveConfirmationOpen(true); setRemoveConfirmation(""); }}
+                disabled={!editableTimeline || !selectedEpisode || selectedEpisode.episodeNumber !== state.project.episodes.length || timelinePending}
+              >
+                Archive selected
+              </button>
+            </div>
+            {!editableTimeline && <p className="text-sm text-slate-400">Timeline edits are available only before script or media work starts.</p>}
+            {timelineError && <p className="text-sm text-rose-400" role="alert" data-error-code={timelineError.code}>{timelineError.message}</p>}
+            {removeConfirmationOpen && selectedEpisode && (
+              <section className="rounded-xl border border-rose-400/30 bg-rose-950/20 p-4" aria-label="Episode archive confirmation">
+                <p className="text-sm text-slate-300">
+                  This recoverably archives Episode {selectedEpisode.episodeNumber}. Type <strong className="text-slate-100">ARCHIVE EPISODE {selectedEpisode.episodeNumber}</strong> to continue.
+                </p>
+                <label className="mt-3 block text-sm text-slate-200" htmlFor="episode-archive-confirmation">Exact confirmation</label>
+                <input
+                  id="episode-archive-confirmation"
+                  className={`mt-1.5 w-full ${fieldClassName}`}
+                  value={removeConfirmation}
+                  onChange={(event) => setRemoveConfirmation(event.target.value)}
+                  disabled={timelinePending}
+                />
+                <div className="mt-3 flex gap-2">
+                  <button type="button" className={outlineButton} onClick={() => setRemoveConfirmationOpen(false)} disabled={timelinePending}>Cancel</button>
+                  <button
+                    type="button"
+                    className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    onClick={() => void updateTimeline(() => archiveLongEpisode(projectId, selectedEpisode.episodeNumber))}
+                    disabled={timelinePending || removeConfirmation !== `ARCHIVE EPISODE ${selectedEpisode.episodeNumber}`}
+                  >
+                    Confirm archive
+                  </button>
+                </div>
+              </section>
+            )}
+            <ol className="space-y-1.5 text-sm text-slate-300">
+              {filteredEpisodes.map((episode) => {
+                const target = episodeResumeTarget(episode.status);
+                const showResume = target && (target.screen !== "script" || onOpenEpisodeScript);
+                const selected = selectedEpisodeNumber === episode.episodeNumber;
+                return (
+                  <li
+                    key={episode.episodeNumber}
+                    data-testid={`episode-${episode.episodeNumber}`}
+                    data-status={episode.status}
+                    data-selected={selected ? "true" : "false"}
+                    className={`flex flex-wrap items-center gap-3 rounded-xl border px-3 py-2 ${selected ? "border-violet-400/40 bg-violet-500/10" : "border-white/10 bg-slate-950/40"}`}
+                  >
+                    <button
+                      type="button"
+                      className="text-left font-medium text-slate-100"
+                      onClick={() => setSelectedEpisodeNumber(episode.episodeNumber)}
+                      aria-pressed={selected}
+                    >
+                      {episode.episodeNumber}. {episode.title}
+                    </button>
+                    <span className={episode.status === "outline_ready" ? "text-emerald-400" : "text-slate-400"}>{episode.status}</span>
+                    {showResume && (
+                      <button type="button" className="ml-auto text-violet-300 hover:text-violet-200" onClick={() => resumeEpisode(target, episode.episodeNumber)}>
+                        {target.label}
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+            {!filteredEpisodes.length && <p className="text-sm text-slate-400">No Episodes match this filter.</p>}
+          </div>
+        </>
+      )}
+    </section>
+  );
 }
