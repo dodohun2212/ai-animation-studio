@@ -57,6 +57,17 @@ Lead Agent가 작업 분석(Python 기준 또는 개선 과제)
 - `main`에는 통합 검증을 통과한 변경만 유지한다.
 - 기능·수정 하나가 검증을 통과하면 바로 커밋하고 `origin`에 푸시한다. 사용자가 다르게 요청하지 않는 한 매번 확인을 구하지 않는다. 검증 실패로 되돌릴 일이 생기면 새 커밋으로 고치고, 되돌릴 수 없는 명령(강제 push, reset --hard 등)은 여전히 사용자 승인 없이 쓰지 않는다.
 
+## 로컬 개발 서버 포트
+
+`npm run dev:backend`와 `npm run dev:desktop`은 서로 다른 백엔드 프로세스를 각자의 기본 포트로 띄운다. 둘을 섞어서 접속 포트를 착각하지 않는다.
+
+| 실행 방식 | 백엔드 포트 | 비고 |
+| --- | --- | --- |
+| `npm run dev:backend` (+ `npm run dev:frontend`) | `3000` (`process.env.PORT` 기본값, `apps/backend/src/main.ts`) | Vite 프론트엔드(`5173`)가 `/projects`, `/settings` 등을 `127.0.0.1:3000`으로 프록시한다(`apps/frontend/vite.config.ts`). 개발 중 별도 창에서 프론트/백엔드를 각각 띄울 때 쓴다. |
+| `npm run dev:desktop` (Electron) | `4317` (`DEFAULT_BACKEND_PORT`, `apps/desktop/src/main.ts`) | Electron이 백엔드 번들을 직접 fork해서 이 포트로 띄우고 같은 origin에서 프론트엔드 정적 파일을 서빙한다. `dev:backend`를 따로 켤 필요가 없다. |
+
+두 방식을 동시에 쓰지 않는다 — 예를 들어 `dev:backend`만 켜놓고 `4317`로 접속을 시도하면 아무것도 응답하지 않는다.
+
 ## 세션 시작 규칙
 
 새 세션은 이전 대화를 기억하지 못한다. 시작 시 다음을 수행한다.
