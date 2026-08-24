@@ -88,12 +88,22 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
   }
 
   return (
-    <section className="mt-8 space-y-4">
-      <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300" onClick={onBack}>
+    <section className="mt-8 max-w-2xl space-y-5">
+      <button
+        type="button"
+        className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
+        onClick={onBack}
+      >
         프로젝트로 돌아가기
       </button>
-      <h2 className="text-xl font-semibold">최종 영상 병합</h2>
-      <p className="text-sm text-amber-300" data-testid="no-provider-notice">
+      <h2 className="flex items-center gap-2.5 text-lg font-semibold">
+        <span
+          aria-hidden="true"
+          className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
+        />
+        최종 영상 병합
+      </h2>
+      <p className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300" data-testid="no-provider-notice">
         실제 유료 Runway나 OpenAI Provider를 호출하지 않습니다. 이 컴퓨터에 설치된 로컬 영상 병합 프로그램만 실행해
         6개 승인 장면 영상을 순서대로 이어 붙입니다.
       </p>
@@ -102,7 +112,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
         <div className="space-y-3">
           <button
             type="button"
-            className="rounded-full bg-violet-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
             data-testid="open-merge-confirm-button"
             onClick={openConfirmation}
             disabled={confirmOpen || pending}
@@ -115,7 +125,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
               role="alertdialog"
               aria-label="최종 영상 병합 확인"
               data-testid="merge-confirm-panel"
-              className="space-y-3 rounded-lg border border-amber-400/40 bg-slate-900 p-4"
+              className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
             >
               <p className="text-sm font-semibold text-amber-300">
                 6개 승인 장면 영상을 하나의 최종 영상으로 병합할까요?
@@ -127,7 +137,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
               <div className="flex gap-3">
                 <button
                   type="button"
-                  className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 disabled:opacity-50"
+                  className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50"
                   data-testid="cancel-merge-button"
                   onClick={cancelConfirmation}
                   disabled={pending}
@@ -136,7 +146,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
                 </button>
                 <button
                   type="button"
-                  className="rounded-full bg-violet-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
                   data-testid="confirm-merge-button"
                   onClick={() => void confirmMerge()}
                   disabled={pending}
@@ -156,14 +166,14 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
       )}
 
       {result && (
-        <div data-testid="merge-success" className="space-y-3 rounded-lg border border-emerald-400/30 bg-slate-900 p-4">
+        <div data-testid="merge-success" className="space-y-3 rounded-2xl border border-emerald-400/30 bg-slate-900/70 p-5">
           <p className="text-sm font-semibold text-emerald-400">
             최종 영상 병합이 완료되었습니다. 실제 유료 Provider 요청은 전송되지 않았습니다.
           </p>
           <video
             src={finalVideoContentUrl(projectId)}
             data-testid="final-video-player"
-            className="w-full max-w-sm rounded-lg border border-white/10 bg-slate-800"
+            className="w-full max-w-sm rounded-xl border border-white/10 bg-slate-950/60"
             controls
           />
           <p className="text-sm text-slate-300" data-testid="final-video-path">
@@ -174,7 +184,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
               <button
                 type="button"
                 data-testid="open-in-explorer-button"
-                className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-200 disabled:opacity-50"
+                className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5 disabled:opacity-50"
                 onClick={() => void openInExplorer()}
                 disabled={openPending}
               >
