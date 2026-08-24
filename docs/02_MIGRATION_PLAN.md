@@ -65,7 +65,7 @@
 
 5. ~~**화면 전반에 지속적인 네비게이션 추가.**~~ **완료(2026-08-24)** — `App.tsx`에 `NavBar` 컴포넌트를 추가해 모든 화면 상단에 항상 단기/장기 프로젝트·Asset Library·API 설정 4개 링크를 띄운다. 기존에 `list`/`longList` 화면에만 각자 다르게 있던 중복 링크를 이걸로 대체했다(교차 이동만 가능하던 "단기 프로젝트로" 버튼도 통합됨). Python의 좌측 nav rail과 똑같이 만들지 않고 상단 바 형태로 더 단순하게 구현했다 — 화면 깊이와 무관하게 항상 한 클릭 거리라는 핵심 속성만 유지했다.
 6. ~~**병합 완료 후 결과 영상을 앱 안에서 재생하거나 탐색기로 열기.**~~ **완료(2026-08-24)** — 새 엔드포인트 `GET /projects/:projectId/videos/final/content`(`:sceneNumber/content` 라우트보다 먼저 등록해 "final"이 장면 번호로 잘못 해석되지 않게 함)를 추가하고 `<video controls>`와 "탐색기에서 열기" 버튼(`window.electronAPI.openProjectPath`, `hasElectronBridge()`로 브라우저 dev 모드에서는 숨김)을 연결했다. 구현 중 발견한 추가 버그도 같이 고쳤다: `ProjectDetail.tsx`의 `resumeTarget()`이 `COMPLETED` 상태에 대해 `null`을 반환해, 병합이 끝난 프로젝트를 나중에 다시 열면 결과를 볼 방법이 전혀 없었다 — "최종 영상 결과 보기" 버튼을 추가하고, `VideoMergeScreen.tsx`가 마운트 시 프로젝트 상태를 먼저 확인해 이미 완료된 경우 재병합 없이 기존 결과를 바로 보여주도록 했다. 실제 패키징된 실행 파일(`--user-data-dir`로 격리한 시나리오)에서 영상 재생 UI와 탐색기 열기 버튼이 실제로 동작하는 것을 스크린샷으로 확인했다.
-7. **장편(Episode) 화면들을 하나의 작업공간으로 묶기.** 지금은 outline/story-bible/episode script/mapping/이미지/영상이 전부 분리된 화면이라 형제 단계 사이를 오가려면 `LongProjectDetail`까지 매번 되돌아가야 한다.
+7. ~~**장편(Episode) 화면들을 하나의 작업공간으로 묶기.**~~ **완료(2026-08-24)** — 각 화면을 재구성하는 대신(위험이 크고 개별 화면 24개를 전부 다시 손대야 함), `App.tsx`에 두 번째 단계 nav인 `LongWorkspaceNav`를 추가했다. 장편 프로젝트 관련 화면 어디서든 상단에 프로젝트 개요·설정·Outline·Story Bible 탭이 뜨고, Episode 화면 안에서는 그 옆에 `· Episode N` 표시와 함께 대본·Asset Mapping·이미지·영상·병합·Continuity 탭이 추가로 뜬다 — 현재 화면은 강조 표시된다. 각 화면 컴포넌트는 전혀 건드리지 않고 `App.tsx`에만 추가한 순수 네비게이션 레이어라 위험이 낮다. 기존 개별 "뒤로" 버튼은 그대로 둬서 단계별 흐름도 유지된다. 실제 dev 서버로 프로젝트 개요 → Outline → Story Bible → (아웃라인 승인 후) Episode 1 대본까지 전부 형제 단계 직접 이동이 실제로 되는 것을 스크린샷 4장으로 확인했다.
 
 #### 3순위 — 폴리싱
 

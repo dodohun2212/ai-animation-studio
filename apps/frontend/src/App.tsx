@@ -64,6 +64,58 @@ function NavBar({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
   );
 }
 
+const LONG_PROJECT_SCREEN_NAMES = new Set<Screen["name"]>([
+  "longDetail", "longSettings", "longOutline", "longStoryBible",
+  "longEpisodeScript", "longEpisodeMappingReview", "longEpisodeImageGeneration",
+  "longEpisodeVideoWorkflow", "longEpisodeVideoMerge", "longEpisodeContinuity",
+]);
+
+function tab(current: Screen["name"], name: Screen["name"], label: string, onClick: () => void) {
+  const active = current === name;
+  return (
+    <button
+      key={name}
+      type="button"
+      aria-current={active ? "page" : undefined}
+      className={`rounded-full px-3 py-1 text-sm ${active ? "bg-violet-500 text-white" : "text-violet-300 underline"}`}
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  );
+}
+
+/**
+ * A second-level workspace nav for one long-form project (and, once inside one, one Episode),
+ * so every sibling step is a direct jump instead of a walk back through LongProjectDetail each
+ * time — the project-level cohesion Python's single Story Studio workspace had.
+ */
+function LongWorkspaceNav({ screen, onNavigate }: { screen: Screen; onNavigate: (screen: Screen) => void }) {
+  if (!LONG_PROJECT_SCREEN_NAMES.has(screen.name) || !("projectId" in screen)) return null;
+  const projectId = screen.projectId;
+  const episodeNumber = "episodeNumber" in screen ? screen.episodeNumber : undefined;
+  return (
+    <nav aria-label="장편 프로젝트 작업공간" className="mt-4 flex flex-wrap items-center gap-2 border-b border-white/10 pb-4">
+      {tab(screen.name, "longDetail", "프로젝트 개요", () => onNavigate({ name: "longDetail", projectId }))}
+      {tab(screen.name, "longSettings", "설정", () => onNavigate({ name: "longSettings", projectId }))}
+      {tab(screen.name, "longOutline", "Outline", () => onNavigate({ name: "longOutline", projectId }))}
+      {tab(screen.name, "longStoryBible", "Story Bible", () => onNavigate({ name: "longStoryBible", projectId }))}
+      {episodeNumber !== undefined && (
+        <>
+          <span className="mx-1 text-sm text-slate-500">·</span>
+          <span className="text-sm text-slate-400">Episode {episodeNumber}</span>
+          {tab(screen.name, "longEpisodeScript", "대본", () => onNavigate({ name: "longEpisodeScript", projectId, episodeNumber }))}
+          {tab(screen.name, "longEpisodeMappingReview", "Asset Mapping", () => onNavigate({ name: "longEpisodeMappingReview", projectId, episodeNumber }))}
+          {tab(screen.name, "longEpisodeImageGeneration", "이미지", () => onNavigate({ name: "longEpisodeImageGeneration", projectId, episodeNumber }))}
+          {tab(screen.name, "longEpisodeVideoWorkflow", "영상", () => onNavigate({ name: "longEpisodeVideoWorkflow", projectId, episodeNumber }))}
+          {tab(screen.name, "longEpisodeVideoMerge", "병합", () => onNavigate({ name: "longEpisodeVideoMerge", projectId, episodeNumber }))}
+          {tab(screen.name, "longEpisodeContinuity", "Continuity", () => onNavigate({ name: "longEpisodeContinuity", projectId, episodeNumber }))}
+        </>
+      )}
+    </nav>
+  );
+}
+
 export function App() {
   const [screen, setScreen] = useState<Screen>({ name: "list" });
   const [listRefreshToken, setListRefreshToken] = useState(0);
@@ -95,6 +147,7 @@ export function App() {
         </p>
 
         <NavBar onNavigate={setScreen} />
+        <LongWorkspaceNav screen={screen} onNavigate={setScreen} />
 
         {screen.name === "list" && (
           <ProjectList
