@@ -744,6 +744,7 @@ describe("AssetLibraryScreen", () => {
     render(<AssetLibraryScreen onBack={() => {}} />);
     await screen.findByText("등록된 에셋이 없습니다.");
 
+    fireEvent.click(screen.getByTestId("asset-maintenance-toggle"));
     fireEvent.click(screen.getByRole("button", { name: "점검 실행" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
@@ -801,7 +802,8 @@ describe("AssetLibraryScreen", () => {
     render(<AssetLibraryScreen onBack={() => {}} />);
     await screen.findByText("등록된 에셋이 없습니다.");
 
-    fireEvent.click(screen.getByRole("button", { name: "가져오기 실행" }));
+    fireEvent.click(screen.getByTestId("asset-maintenance-toggle"));
+    fireEvent.click(screen.getByRole("button", { name: "일괄 이전 실행" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
@@ -822,7 +824,8 @@ describe("AssetLibraryScreen", () => {
     render(<AssetLibraryScreen onBack={() => {}} />);
     await screen.findByText("등록된 에셋이 없습니다.");
 
-    fireEvent.click(screen.getByRole("button", { name: "가져오기 실행" }));
+    fireEvent.click(screen.getByTestId("asset-maintenance-toggle"));
+    fireEvent.click(screen.getByRole("button", { name: "일괄 이전 실행" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     await screen.findByTestId("legacy-migration-result");
@@ -839,7 +842,8 @@ describe("AssetLibraryScreen", () => {
     render(<AssetLibraryScreen onBack={() => {}} />);
     await screen.findByText("등록된 에셋이 없습니다.");
 
-    fireEvent.click(screen.getByRole("button", { name: "가져오기 실행" }));
+    fireEvent.click(screen.getByTestId("asset-maintenance-toggle"));
+    fireEvent.click(screen.getByRole("button", { name: "일괄 이전 실행" }));
 
     const alert = await screen.findByTestId("legacy-migration-error");
     expect(alert.textContent).toBe("에셋을 저장하거나 읽지 못했습니다.");

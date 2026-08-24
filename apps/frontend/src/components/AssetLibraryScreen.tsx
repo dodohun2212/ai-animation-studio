@@ -17,11 +17,11 @@ const fieldClassName =
 const primaryButton =
   "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
 const outlineButton =
-  "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
+  "rounded-full border border-white/20 bg-white/[0.06] px-4 py-2 text-sm font-medium text-slate-200 shadow-sm hover:border-white/30 hover:bg-white/10 disabled:opacity-50";
 const dangerOutlineButton =
-  "rounded-full border border-rose-400/30 px-4 py-2 text-sm text-rose-300 hover:bg-rose-500/10 disabled:opacity-50";
+  "rounded-full border border-rose-400/40 bg-rose-500/10 px-4 py-2 text-sm font-medium text-rose-300 shadow-sm hover:border-rose-400/60 hover:bg-rose-500/15 disabled:opacity-50";
 const smallOutlineButton =
-  "rounded-full border border-white/10 px-3 py-1 text-xs text-slate-200 hover:bg-white/5 disabled:opacity-50";
+  "rounded-full border border-white/20 bg-white/[0.06] px-3 py-1 text-xs font-medium text-slate-200 hover:border-white/30 hover:bg-white/10 disabled:opacity-50";
 const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
@@ -73,6 +73,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   const [legacyMigrationPending, setLegacyMigrationPending] = useState(false);
   const [legacyMigrationResult, setLegacyMigrationResult] = useState<RunLegacyReferenceMigrationResponse | null>(null);
   const [legacyMigrationError, setLegacyMigrationError] = useState<{ code: string; message: string } | null>(null);
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const [folderRemoveChildIndexes, setFolderRemoveChildIndexes] = useState(false);
   const [folderDeleteManualFiles, setFolderDeleteManualFiles] = useState(false);
   const [folderDeletePending, setFolderDeletePending] = useState(false);
@@ -329,54 +330,78 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
         </button>
       </form>
 
-      <section aria-label="파일 상태 점검" className={cardSection}>
-        <div className="flex items-center justify-between gap-3">
-          <SectionHeading>파일 상태 점검</SectionHeading>
-          <button type="button" className={smallOutlineButton} onClick={() => void runAudit()} disabled={auditLoading}>
-            점검 실행
-          </button>
-        </div>
-        {auditLoading && <Spinner label="파일 상태를 확인하는 중..." />}
-        {auditError && (
-          <p role="alert" data-testid="audit-error" data-error-code={auditError.code} className="text-sm text-rose-400">
-            {auditError.message}
-          </p>
-        )}
-        {audit && audit.length === 0 && !auditLoading && <p className="text-sm text-slate-400">점검할 에셋이 없습니다.</p>}
-        {audit && audit.length > 0 && (
-          <ul aria-label="파일 상태 목록" className="space-y-1.5 text-sm text-slate-300">
-            {audit.map((entry) => (
-              <li key={entry.assetId} className="rounded-lg border border-white/10 bg-slate-950/40 p-2.5">
-                {entry.displayName} · {entry.classification === "healthy" ? "정상" : entry.classification === "missing" ? "파일 없음" : "손상됨"} ·{" "}
-                {entry.sourceKind === "manual" ? "수동 등록" : "프로젝트 생성"}
-                {entry.message && <span> — {entry.message}</span>}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <div className="rounded-2xl border border-white/10 bg-slate-900/40">
+        <button
+          type="button"
+          data-testid="asset-maintenance-toggle"
+          aria-expanded={maintenanceOpen}
+          className="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium text-slate-300 hover:bg-white/5"
+          onClick={() => setMaintenanceOpen((current) => !current)}
+        >
+          <span className="flex items-center gap-2.5">
+            <span
+              aria-hidden="true"
+              className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
+            />
+            관리 도구 (파일 점검 · 레거시 자료 이전)
+          </span>
+          <span aria-hidden="true" className="text-xs text-slate-500">
+            {maintenanceOpen ? "숨기기 ▲" : "펼치기 ▼"}
+          </span>
+        </button>
+        {maintenanceOpen && (
+          <div className="space-y-4 px-4 pb-4">
+            <section aria-label="파일 상태 점검" className={cardSection}>
+              <div className="flex items-center justify-between gap-3">
+                <SectionHeading>파일 상태 점검</SectionHeading>
+                <button type="button" className={smallOutlineButton} onClick={() => void runAudit()} disabled={auditLoading}>
+                  점검 실행
+                </button>
+              </div>
+              {auditLoading && <Spinner label="파일 상태를 확인하는 중..." />}
+              {auditError && (
+                <p role="alert" data-testid="audit-error" data-error-code={auditError.code} className="text-sm text-rose-400">
+                  {auditError.message}
+                </p>
+              )}
+              {audit && audit.length === 0 && !auditLoading && <p className="text-sm text-slate-400">점검할 에셋이 없습니다.</p>}
+              {audit && audit.length > 0 && (
+                <ul aria-label="파일 상태 목록" className="space-y-1.5 text-sm text-slate-300">
+                  {audit.map((entry) => (
+                    <li key={entry.assetId} className="rounded-lg border border-white/10 bg-slate-950/40 p-2.5">
+                      {entry.displayName} · {entry.classification === "healthy" ? "정상" : entry.classification === "missing" ? "파일 없음" : "손상됨"} ·{" "}
+                      {entry.sourceKind === "manual" ? "수동 등록" : "프로젝트 생성"}
+                      {entry.message && <span> — {entry.message}</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
 
-      <section aria-label="레거시 참고자료 가져오기" className={cardSection}>
-        <div className="flex items-center justify-between gap-3">
-          <SectionHeading>레거시 참고자료 가져오기</SectionHeading>
-          <button type="button" className={smallOutlineButton} onClick={() => void runLegacyMigration()} disabled={legacyMigrationPending}>
-            가져오기 실행
-          </button>
-        </div>
-        <p className="text-sm text-slate-400">기존 프로젝트의 레거시 참고자료를 Asset Library로 이전합니다. 이미 이전된 항목은 다시 가져오지 않습니다.</p>
-        {legacyMigrationPending && <Spinner label="레거시 참고자료를 확인하는 중..." />}
-        {legacyMigrationError && (
-          <p role="alert" data-testid="legacy-migration-error" data-error-code={legacyMigrationError.code} className="text-sm text-rose-400">
-            {legacyMigrationError.message}
-          </p>
+            <section aria-label="레거시 참고자료 일괄 이전" className={cardSection}>
+              <div className="flex items-center justify-between gap-3">
+                <SectionHeading>레거시 참고자료 일괄 이전</SectionHeading>
+                <button type="button" className={smallOutlineButton} onClick={() => void runLegacyMigration()} disabled={legacyMigrationPending}>
+                  일괄 이전 실행
+                </button>
+              </div>
+              <p className="text-sm text-slate-400">다른 프로젝트에 남아 있는 옛 참고자료를 한 번에 이 라이브러리로 옮겨 등록합니다. 이미 이전된 항목은 다시 옮기지 않습니다.</p>
+              {legacyMigrationPending && <Spinner label="레거시 참고자료를 확인하는 중..." />}
+              {legacyMigrationError && (
+                <p role="alert" data-testid="legacy-migration-error" data-error-code={legacyMigrationError.code} className="text-sm text-rose-400">
+                  {legacyMigrationError.message}
+                </p>
+              )}
+              {legacyMigrationResult && !legacyMigrationPending && (
+                <p data-testid="legacy-migration-result" className="text-sm text-slate-300">
+                  프로젝트 {legacyMigrationResult.projectsScanned}개 확인, {legacyMigrationResult.migratedAssets}개 이전, 중복 {legacyMigrationResult.deduplicatedAssets}개, 실패{" "}
+                  {legacyMigrationResult.failedAssets}개
+                </p>
+              )}
+            </section>
+          </div>
         )}
-        {legacyMigrationResult && !legacyMigrationPending && (
-          <p data-testid="legacy-migration-result" className="text-sm text-slate-300">
-            프로젝트 {legacyMigrationResult.projectsScanned}개 확인, {legacyMigrationResult.migratedAssets}개 이전, 중복 {legacyMigrationResult.deduplicatedAssets}개, 실패{" "}
-            {legacyMigrationResult.failedAssets}개
-          </p>
-        )}
-      </section>
+      </div>
 
       {loading && !assets && <Spinner label="에셋을 불러오는 중..." />}
       {assets && assets.length === 0 && !loading && <p className="text-sm text-slate-400">등록된 에셋이 없습니다.</p>}
@@ -406,7 +431,8 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
       )}
 
       <form onSubmit={submitImport} aria-label="에셋 가져오기" className={cardSection}>
-        <SectionHeading>이미지 가져오기</SectionHeading>
+        <SectionHeading>새 에셋 등록</SectionHeading>
+        <p className="text-sm text-slate-400">이미지를 업로드해 새 에셋으로 등록합니다.</p>
         {importValidationError && (
           <p role="alert" data-testid="import-validation-error" className="text-sm text-rose-400">
             {importValidationError}
@@ -489,7 +515,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                     </span>
                     <button
                       type="button"
-                      className="rounded-full border border-white/10 px-2 py-1 text-xs text-slate-200 hover:bg-white/5 disabled:opacity-50"
+                      className="rounded-full border border-white/20 bg-white/[0.06] px-2 py-1 text-xs font-medium text-slate-200 hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
                       disabled={referenceSetPending || index === 0}
                       onClick={() => moveCharacterReference(child.assetId, -1)}
                     >
@@ -497,7 +523,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                     </button>
                     <button
                       type="button"
-                      className="rounded-full border border-white/10 px-2 py-1 text-xs text-slate-200 hover:bg-white/5 disabled:opacity-50"
+                      className="rounded-full border border-white/20 bg-white/[0.06] px-2 py-1 text-xs font-medium text-slate-200 hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
                       disabled={referenceSetPending || index === characterFolderChildren.length - 1}
                       onClick={() => moveCharacterReference(child.assetId, 1)}
                     >
@@ -505,7 +531,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                     </button>
                     <button
                       type="button"
-                      className="rounded-full border border-emerald-400/30 px-2 py-1 text-xs text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50"
+                      className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-xs font-medium text-emerald-300 hover:border-emerald-400/60 hover:bg-emerald-500/15 disabled:opacity-50"
                       disabled={referenceSetPending || selected.asset.thumbnailAssetId === child.assetId}
                       onClick={() => void saveCharacterReferenceSet(selected.asset.childAssetIds, child.assetId)}
                     >
