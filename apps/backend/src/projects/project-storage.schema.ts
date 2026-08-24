@@ -1,4 +1,4 @@
-import { WorkflowState } from "@ai-animation-studio/shared";
+import { MAX_SCENE_COUNT, WorkflowState } from "@ai-animation-studio/shared";
 
 import { dataInvalid } from "./project-api.error.js";
 
@@ -176,9 +176,11 @@ function finalVideoPathField(data: Record<string, unknown>): string | null {
   return value;
 }
 
-function requireAtMostSix(field: string, values: readonly unknown[]): void {
-  if (values.length > 6) {
-    throw dataInvalid(`${field} cannot contain over 6 items`);
+// Bounded by MAX_SCENE_COUNT (not a fixed six): these arrays hold one entry per scene, and a
+// project's scene count is variable (2-12, see MAX_SCENE_COUNT), so the bound must track it too.
+function requireAtMostMaxScenes(field: string, values: readonly unknown[]): void {
+  if (values.length > MAX_SCENE_COUNT) {
+    throw dataInvalid(`${field} cannot contain over ${MAX_SCENE_COUNT} items`);
   }
 }
 
@@ -223,11 +225,11 @@ export function parseStoredProject(raw: unknown): StoredProject {
   const generatedImages = stringArrayField(data, "generated_images", []);
   const generatedVideoPaths = stringArrayField(data, "generated_video_paths", []);
   const capcutClipPaths = stringArrayField(data, "capcut_clip_paths", []);
-  requireAtMostSix("image_prompts", imagePrompts);
-  requireAtMostSix("motion_prompts", motionPrompts);
-  requireAtMostSix("generated_images", generatedImages);
-  requireAtMostSix("generated_video_paths", generatedVideoPaths);
-  requireAtMostSix("capcut_clip_paths", capcutClipPaths);
+  requireAtMostMaxScenes("image_prompts", imagePrompts);
+  requireAtMostMaxScenes("motion_prompts", motionPrompts);
+  requireAtMostMaxScenes("generated_images", generatedImages);
+  requireAtMostMaxScenes("generated_video_paths", generatedVideoPaths);
+  requireAtMostMaxScenes("capcut_clip_paths", capcutClipPaths);
 
   return {
     project_id: stringField(data, "project_id"),

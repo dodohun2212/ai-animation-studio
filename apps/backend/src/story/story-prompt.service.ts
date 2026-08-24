@@ -93,7 +93,7 @@ export class StoryPromptService {
     await this.budget.preflight(STORY_ESTIMATED_COST_USD);
     let succeeded = false;
     try {
-      const { story } = await callOpenAiStoryApi(apiKey, prompt);
+      const { story } = await callOpenAiStoryApi(apiKey, prompt, { sceneCount: toShortProjectSettings(stored).sceneCount });
       succeeded = true;
       return story;
     } finally {

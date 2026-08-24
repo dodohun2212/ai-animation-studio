@@ -1,6 +1,7 @@
-import type {
-  AssetMappingAssignmentSource, AssetMappingSceneScope, AssetMappingStatus, AssetMappingVersionPolicy,
-  ProjectAssetMapping, ProjectAssetMappingReview, SceneNumber,
+import {
+  MAX_SCENE_COUNT,
+  type AssetMappingAssignmentSource, type AssetMappingSceneScope, type AssetMappingStatus, type AssetMappingVersionPolicy,
+  type ProjectAssetMapping, type ProjectAssetMappingReview, type SceneNumber,
 } from "@ai-animation-studio/shared";
 
 export interface StoredAssetMapping {
@@ -22,7 +23,7 @@ export interface StoredMappingReview {
 const statuses = new Set<AssetMappingStatus>(["confirmed", "suggested", "ambiguous", "unmatched", "excluded", "invalid"]);
 const sources = new Set<AssetMappingAssignmentSource>(["manual", "auto", "migrated", "approved_generated_image"]);
 const policies = new Set<AssetMappingVersionPolicy>(["pinned_version", "follow_latest", "snapshot"]);
-const scene = (value: unknown): value is SceneNumber => Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 6;
+const scene = (value: unknown): value is SceneNumber => Number.isInteger(value) && Number(value) >= 1 && Number(value) <= MAX_SCENE_COUNT;
 const iso = (value: unknown): value is string => typeof value === "string" && !Number.isNaN(Date.parse(value));
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === "string");
 const object = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);

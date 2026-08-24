@@ -2,23 +2,27 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import { WorkflowState, type MergeVideosResponse, type SceneNumber } from "@ai-animation-studio/shared";
+import { sceneNumbersFor, WorkflowState, type MergeVideosResponse, type SceneNumber } from "@ai-animation-studio/shared";
 
 import { toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
+import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
 import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner } from "./ffmpeg-merge.service.js";
 import { ffmpegUnavailable, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
 
-const SCENES = [1, 2, 3, 4, 5, 6] as const satisfies readonly SceneNumber[];
 const FINAL_VIDEO_PATH = "videos/final/instagram_reel.mp4" as const;
 type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved" };
 
-function isApprovedReviews(value: unknown): value is StoredReview[] {
-  return Array.isArray(value) && value.length === 6 && value.every((item) => typeof item === "object" && item !== null
-    && SCENES.includes((item as { scene_number?: unknown }).scene_number as SceneNumber)
+function scenesFor(project: StoredProject): SceneNumber[] {
+  return sceneNumbersFor(toShortProjectSettings(project).sceneCount);
+}
+
+function isApprovedReviews(value: unknown, scenes: readonly SceneNumber[]): value is StoredReview[] {
+  return Array.isArray(value) && value.length === scenes.length && value.every((item) => typeof item === "object" && item !== null
+    && scenes.includes((item as { scene_number?: unknown }).scene_number as SceneNumber)
     && (item as { status?: unknown }).status === "approved")
-    && new Set(value.map((item) => item.scene_number)).size === 6;
+    && new Set(value.map((item) => item.scene_number)).size === scenes.length;
 }
 
 @Injectable()
@@ -50,8 +54,9 @@ export class LocalVideoMergeService {
     let reviews: unknown;
     try { reviews = JSON.parse(await fs.readFile(path.join(this.projectDirectory(project.project_id), "generated_video_reviews.json"), "utf8")); }
     catch { throw videoMergeClipsInvalid(); }
-    if (!isApprovedReviews(reviews)) throw videoMergeClipsInvalid();
-    const clips = SCENES.map((scene) => this.clip(project.project_id, scene));
+    const scenes = scenesFor(project);
+    if (!isApprovedReviews(reviews, scenes)) throw videoMergeClipsInvalid();
+    const clips = scenes.map((scene) => this.clip(project.project_id, scene));
     try { await Promise.all(clips.map(async (clip) => { if ((await fs.stat(clip)).size <= 0) throw new Error("empty"); })); }
     catch { throw videoMergeClipsInvalid(); }
     return clips;

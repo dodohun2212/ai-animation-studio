@@ -21,7 +21,7 @@ type VideoRecord = { scene_number: SceneNumber; job_id: string; user_request_id:
 type Record = VideoRecord;
 type Review = { scene_number: SceneNumber; status: "pending" | "approved"; updated_at: string };
 const object = (value: unknown): value is ObjectMap => Boolean(value) && typeof value === "object" && !Array.isArray(value);
-const scene = (value: unknown): SceneNumber | undefined => Number.isInteger(value) && SCENES.includes(value as SceneNumber) ? value as SceneNumber : undefined;
+const scene = (value: unknown): SceneNumber | undefined => Number.isInteger(value) && SCENES.includes(value as (typeof SCENES)[number]) ? value as SceneNumber : undefined;
 const validId = (value: unknown): value is string => typeof value === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(value);
 
 @Injectable()

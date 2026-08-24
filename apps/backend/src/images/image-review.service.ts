@@ -4,6 +4,8 @@ import * as crypto from "node:crypto";
 
 import { Injectable } from "@nestjs/common";
 import {
+  MAX_SCENE_COUNT,
+  sceneNumbersFor,
   WorkflowState,
   type ApproveImageReviewResponse,
   type GetImageReviewResponse,
@@ -17,6 +19,7 @@ import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
+import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
 import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
@@ -35,10 +38,13 @@ import {
   invalidImageReviewRequest,
 } from "./image-review-api.error.js";
 
-const SCENES = [1, 2, 3, 4, 5, 6] as const;
 const LOCAL_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+function scenesFor(project: StoredProject): SceneNumber[] {
+  return sceneNumbersFor(toShortProjectSettings(project).sceneCount);
+}
 
 interface StoredImageReview {
   scene_number: SceneNumber;
@@ -50,7 +56,7 @@ interface StoredImageReview {
 }
 
 function sceneNumber(value: unknown): SceneNumber | null {
-  return typeof value === "number" && Number.isInteger(value) && SCENES.includes(value as SceneNumber)
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= MAX_SCENE_COUNT
     ? value as SceneNumber : null;
 }
 
@@ -78,9 +84,9 @@ function parseReviews(raw: unknown): StoredImageReview[] {
   return parsed;
 }
 
-function toApiReviews(reviews: StoredImageReview[], timestamp: string): ImageReview[] {
+function toApiReviews(reviews: StoredImageReview[], timestamp: string, sceneNumbers: readonly SceneNumber[]): ImageReview[] {
   const byScene = new Map(reviews.map((review) => [review.scene_number, review]));
-  return SCENES.map((number) => {
+  return sceneNumbers.map((number) => {
     const review = byScene.get(number);
     return { sceneNumber: number, status: review?.status === "approved" ? "approved" : "pending", updatedAt: review?.updated_at || timestamp };
   });
@@ -143,8 +149,9 @@ export class ImageReviewService {
   private async assertReviewable(project: StoredProject, allowVideoConfirmation = false): Promise<void> {
     if (project.workflow_state !== WorkflowState.ImagesReview
       && (!allowVideoConfirmation || project.workflow_state !== WorkflowState.WaitingForVideoConfirmation)) throw imageReviewNotAllowed();
-    if (project.generated_images.length !== 6) throw imageReviewImageInvalid();
-    for (const number of SCENES) {
+    const scenes = scenesFor(project);
+    if (project.generated_images.length !== scenes.length) throw imageReviewImageInvalid();
+    for (const number of scenes) {
       try {
         const bytes = await fs.readFile(this.imagePath(project.project_id, number));
         if (validateImage(bytes, "scene.png", "image/png").extension !== ".png") throw imageReviewImageInvalid();
@@ -159,7 +166,7 @@ export class ImageReviewService {
     const project = await this.projects.findById(projectId.trim());
     await this.assertReviewable(project);
     const reviews = await this.load(project.project_id);
-    return { project: toApiProject(project), reviews: toApiReviews(reviews, project.updated_at) };
+    return { project: toApiProject(project), reviews: toApiReviews(reviews, project.updated_at, scenesFor(project)) };
   }
 
   async approve(projectId: string, rawSceneNumber: string, body: unknown): Promise<ApproveImageReviewResponse> {
@@ -168,6 +175,8 @@ export class ImageReviewService {
     if (!number || String(number) !== rawSceneNumber) throw invalidImageReviewRequest();
     const project = await this.projects.findById(projectId.trim());
     await this.assertReviewable(project);
+    const scenes = scenesFor(project);
+    if (!scenes.includes(number)) throw invalidImageReviewRequest();
     const reviews = await this.load(project.project_id);
     const timestamp = new Date().toISOString();
     const index = reviews.findIndex((item) => item.scene_number === number);
@@ -180,14 +189,14 @@ export class ImageReviewService {
       await atomicWriteUtf8File(this.reviewFile(project.project_id), JSON.stringify(reviews, null, 2));
     } catch { throw imageReviewStorageError(); }
 
-    const allApproved = SCENES.every((scene) => reviews.some((item) => item.scene_number === scene && item.status === "approved"));
+    const allApproved = scenes.every((scene) => reviews.some((item) => item.scene_number === scene && item.status === "approved"));
     try { await this.assets.approveGeneratedProjectImage(project.project_id, number, allApproved); }
     catch { throw imageReviewStorageError(); }
     const updated = allApproved
       ? { ...project, workflow_state: WorkflowState.WaitingForVideoConfirmation, updated_at: timestamp }
       : { ...project, updated_at: timestamp };
     try { await this.projects.save(updated); } catch { throw imageReviewStorageError(); }
-    return { project: toApiProject(updated), reviews: toApiReviews(reviews, timestamp) };
+    return { project: toApiProject(updated), reviews: toApiReviews(reviews, timestamp, scenes) };
   }
 
   async regenerate(projectId: string, rawSceneNumber: string, body: unknown): Promise<RegenerateImageReviewResponse> {
@@ -196,6 +205,7 @@ export class ImageReviewService {
     if (!number || String(number) !== rawSceneNumber) throw invalidImageReviewRequest();
     const project = await this.projects.findById(projectId.trim());
     await this.assertReviewable(project, true);
+    if (!scenesFor(project).includes(number)) throw invalidImageReviewRequest();
     // Parse persisted review state before changing image bytes. A damaged JSON
     // file is a read error, never a reason to replace an otherwise valid image.
     const reviews = await this.load(project.project_id);
@@ -290,6 +300,6 @@ export class ImageReviewService {
       await atomicWriteUtf8File(this.reviewFile(project.project_id), JSON.stringify(reviews, null, 2));
       await this.projects.save(updated);
     } catch { throw imageReviewStorageError(); }
-    return { project: toApiProject(updated), reviews: toApiReviews(reviews, timestamp), sceneNumber: number };
+    return { project: toApiProject(updated), reviews: toApiReviews(reviews, timestamp, scenesFor(updated)), sceneNumber: number };
   }
 }

@@ -1,7 +1,13 @@
 import type { WorkflowState } from "./workflow.js";
 
+/** Kept at exactly six — still used by the not-yet-migrated screens/helpers below that assume a fixed 6-scene grid. */
 export const SCENE_NUMBERS = [1, 2, 3, 4, 5, 6] as const;
-export type SceneNumber = (typeof SCENE_NUMBERS)[number];
+/**
+ * Deliberately widened to plain `number` rather than derived from SCENE_NUMBERS: a scene number is now bounded by
+ * a project's own scene count (2-12, see MIN/MAX below), not a single fixed set. Nothing in this codebase does
+ * exhaustive matching over the old 1-6 literal union, so this widening is backward compatible.
+ */
+export type SceneNumber = number;
 
 /**
  * A short project's scene count is being generalized away from a fixed 6 (see docs/02_MIGRATION_PLAN.md) so it can
@@ -11,6 +17,11 @@ export type SceneNumber = (typeof SCENE_NUMBERS)[number];
  */
 export const MIN_SCENE_COUNT = 2;
 export const MAX_SCENE_COUNT = 12;
+
+/** The canonical 1..count scene number sequence for a project with this many scenes. */
+export function sceneNumbersFor(sceneCount: number): SceneNumber[] {
+  return Array.from({ length: sceneCount }, (_, index) => index + 1);
+}
 export type ProjectType = "short_project" | "long_story_project";
 export type ReviewDecision = "pending" | "approved" | "rejected";
 export type JobStatus =
@@ -73,8 +84,9 @@ export interface ProviderTaskRecord {
   error?: string;
 }
 
+/** Whether `value` is a plausible scene number for *some* project (2-12 scenes) — not tied to any one project's actual scene count. */
 export function isSceneNumber(value: number): value is SceneNumber {
-  return SCENE_NUMBERS.includes(value as SceneNumber);
+  return Number.isInteger(value) && value >= 1 && value <= MAX_SCENE_COUNT;
 }
 
 export function assertExactlySixScenes(scenes: readonly Scene[]): void {

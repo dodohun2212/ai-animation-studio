@@ -60,6 +60,7 @@ import {
   type SaveLongEpisodeContinuityRequest,
   type SaveLongEpisodeContinuityResponse,
   type GetLongEpisodeContinuityReferenceResponse,
+  type SceneNumber,
   type UpdateLongProjectSettingsRequest,
   type UpdateLongProjectSettingsResponse,
 } from "@ai-animation-studio/shared";
@@ -501,11 +502,11 @@ export function startLongEpisodeImageGeneration(projectId: string, episodeNumber
   return request(API_ROUTES.longEpisodeImageGeneration(projectId, episodeNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isStartEpisodeImageGenerationResponse);
 }
 
-export function approveLongEpisodeImageReview(projectId: string, episodeNumber: number, sceneNumber: 1 | 2 | 3 | 4 | 5 | 6): Promise<ApproveLongEpisodeImageReviewResponse> {
+export function approveLongEpisodeImageReview(projectId: string, episodeNumber: number, sceneNumber: SceneNumber): Promise<ApproveLongEpisodeImageReviewResponse> {
   return request(API_ROUTES.longEpisodeImageReviewApproval(projectId, episodeNumber, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) }, isApproveEpisodeImageReviewResponse);
 }
 
-export function regenerateLongEpisodeImageReview(projectId: string, episodeNumber: number, sceneNumber: 1 | 2 | 3 | 4 | 5 | 6): Promise<RegenerateLongEpisodeImageReviewResponse> {
+export function regenerateLongEpisodeImageReview(projectId: string, episodeNumber: number, sceneNumber: SceneNumber): Promise<RegenerateLongEpisodeImageReviewResponse> {
   return request(API_ROUTES.longEpisodeImageReviewRegeneration(projectId, episodeNumber, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) }, isRegenerateEpisodeImageReviewResponse);
 }
 
@@ -514,9 +515,9 @@ export function startLongEpisodeVideoGeneration(projectId: string, episodeNumber
 export function getLongEpisodeVideoProgress(projectId: string, episodeNumber: number, jobId: string): Promise<LongEpisodeVideoProgress> { return request(API_ROUTES.longEpisodeVideoProgress(projectId, episodeNumber, jobId), undefined, isEpisodeVideoProgress); }
 export function stopLongEpisodeVideoGeneration(projectId: string, episodeNumber: number, jobId: string): Promise<LongEpisodeVideoProgress> { return request(API_ROUTES.longEpisodeVideoStop(projectId, episodeNumber, jobId), { method: "POST" }, isEpisodeVideoProgress); }
 export function restartLongEpisodeVideoGeneration(projectId: string, episodeNumber: number, jobId: string): Promise<LongEpisodeVideoProgress> { return request(API_ROUTES.longEpisodeVideoRestart(projectId, episodeNumber, jobId), { method: "POST" }, isEpisodeVideoProgress); }
-export function regenerateLongEpisodeVideo(projectId: string, episodeNumber: number, jobId: string, sceneNumber: 1 | 2 | 3 | 4 | 5 | 6): Promise<RegenerateLongEpisodeVideoResponse> { return request(API_ROUTES.longEpisodeVideoRegenerate(projectId, episodeNumber, jobId, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) }, isRegenerateEpisodeVideoResponse); }
+export function regenerateLongEpisodeVideo(projectId: string, episodeNumber: number, jobId: string, sceneNumber: SceneNumber): Promise<RegenerateLongEpisodeVideoResponse> { return request(API_ROUTES.longEpisodeVideoRegenerate(projectId, episodeNumber, jobId, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) }, isRegenerateEpisodeVideoResponse); }
 export function getLongEpisodeVideoReview(projectId: string, episodeNumber: number, jobId: string): Promise<GetLongEpisodeVideoReviewResponse> { return request(API_ROUTES.longEpisodeVideoReview(projectId, episodeNumber, jobId), undefined, isGetEpisodeVideoReviewResponse); }
-export function approveLongEpisodeVideoReview(projectId: string, episodeNumber: number, jobId: string, sceneNumber: 1 | 2 | 3 | 4 | 5 | 6): Promise<ApproveLongEpisodeVideoReviewResponse> { return request(API_ROUTES.longEpisodeVideoReviewApproval(projectId, episodeNumber, jobId, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) }, isApproveEpisodeVideoReviewResponse); }
+export function approveLongEpisodeVideoReview(projectId: string, episodeNumber: number, jobId: string, sceneNumber: SceneNumber): Promise<ApproveLongEpisodeVideoReviewResponse> { return request(API_ROUTES.longEpisodeVideoReviewApproval(projectId, episodeNumber, jobId, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) }, isApproveEpisodeVideoReviewResponse); }
 /** Sends only the already explicitly confirmed Episode final-render request. */
 export function mergeLongEpisodeVideos(projectId: string, episodeNumber: number): Promise<MergeLongEpisodeVideosResponse> { return request(API_ROUTES.longEpisodeVideoMerge(projectId, episodeNumber), { method: "POST" }, isMergeLongEpisodeVideosResponse); }
 export function getLongEpisodeContinuity(projectId: string, episodeNumber: number): Promise<GetLongEpisodeContinuityResponse> { return request(API_ROUTES.longEpisodeContinuity(projectId, episodeNumber), undefined, isGetLongEpisodeContinuityResponse); }

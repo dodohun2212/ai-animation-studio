@@ -3,6 +3,9 @@ import * as fs from "node:fs/promises";
 
 import { Injectable } from "@nestjs/common";
 import {
+  MAX_SCENE_COUNT,
+  MIN_SCENE_COUNT,
+  sceneNumbersFor,
   WorkflowState,
   type SceneNumber,
   type StartVideoGenerationRequest,
@@ -10,6 +13,7 @@ import {
 } from "@ai-animation-studio/shared";
 
 import { LocalProjectRepository } from "../projects/projects.repository.js";
+import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { RunwayBudget } from "../providers/runway-budget.js";
@@ -23,8 +27,9 @@ import {
   videoSubmissionNotAllowed,
 } from "./video-submission-api.error.js";
 
-const SCENES = [1, 2, 3, 4, 5, 6] as const satisfies readonly SceneNumber[];
-const MAX_PROVIDER_CALLS = 6;
+function scenesFor(project: StoredProject): SceneNumber[] {
+  return sceneNumbersFor(toShortProjectSettings(project).sceneCount);
+}
 const ESTIMATED_COST_USD = 1.5;
 const DEFAULT_MONTHLY_BUDGET_USD = 10;
 
@@ -54,7 +59,7 @@ function validId(value: unknown): value is string {
 
 function isVideoRecord(value: unknown): value is VideoRecord {
   return isObject(value)
-    && SCENES.includes(value.scene_number as SceneNumber)
+    && typeof value.scene_number === "number" && Number.isInteger(value.scene_number) && value.scene_number >= 1 && value.scene_number <= MAX_SCENE_COUNT
     && typeof value.job_id === "string"
     && typeof value.user_request_id === "string"
     && typeof value.input_hash === "string"
@@ -80,12 +85,12 @@ export class LocalVideoSubmissionService {
     private readonly budget?: RunwayBudget,
   ) {}
 
-  private validateRequest(value: unknown): StartVideoGenerationRequest {
+  private validateRequest(value: unknown, scenes: readonly SceneNumber[]): StartVideoGenerationRequest {
     if (!isObject(value) || Object.keys(value).length !== 4
       || !validId(value.confirmationId) || !validId(value.userRequestId) || value.approved !== true
-      || !Array.isArray(value.prompts) || value.prompts.length !== SCENES.length) throw invalidVideoSubmission();
+      || !Array.isArray(value.prompts) || value.prompts.length !== scenes.length) throw invalidVideoSubmission();
     const prompts = value.prompts.map((item, index) => {
-      if (!isObject(item) || Object.keys(item).length !== 2 || item.sceneNumber !== SCENES[index]
+      if (!isObject(item) || Object.keys(item).length !== 2 || item.sceneNumber !== scenes[index]
         || typeof item.prompt !== "string" || !item.prompt.trim() || utf16Length(item.prompt) > 1_000) throw invalidVideoSubmission();
       return { sceneNumber: item.sceneNumber as SceneNumber, prompt: item.prompt };
     });
@@ -103,51 +108,53 @@ export class LocalVideoSubmissionService {
   }
 
   private existing(project: StoredProject, request: StartVideoGenerationRequest, hashes: readonly string[]): StartVideoGenerationResponse | undefined {
+    const scenes = scenesFor(project);
     const records = project.video_generation_records.filter(isVideoRecord);
     const sameRequest = records.filter((record) => record.user_request_id === request.userRequestId);
     if (sameRequest.length > 0) {
       const jobId = sameRequest[0]!.job_id;
       const job = recordsForJob(project, jobId);
-      if (job.length !== 6 || job.some((record, index) => record.input_hash !== hashes[index] || record.prompt !== request.prompts[index]!.prompt)) {
+      if (job.length !== scenes.length || job.some((record, index) => record.input_hash !== hashes[index] || record.prompt !== request.prompts[index]!.prompt)) {
         throw videoRequestIdConflict();
       }
-      return { jobId, acceptedSceneNumbers: [...SCENES] };
+      return { jobId, acceptedSceneNumbers: [...scenes] };
     }
     const jobIds = [...new Set(records.map((record) => record.job_id))];
     for (const jobId of jobIds) {
       const job = recordsForJob(project, jobId);
-      if (job.length === 6 && job.every((record, index) => record.input_hash === hashes[index])) {
-        return { jobId, acceptedSceneNumbers: [...SCENES] };
+      if (job.length === scenes.length && job.every((record, index) => record.input_hash === hashes[index])) {
+        return { jobId, acceptedSceneNumbers: [...scenes] };
       }
     }
     return undefined;
   }
 
   private existingRequest(project: StoredProject, request: StartVideoGenerationRequest): StartVideoGenerationResponse | undefined {
+    const scenes = scenesFor(project);
     const records = project.video_generation_records.filter(isVideoRecord).filter((record) => record.user_request_id === request.userRequestId);
     if (records.length === 0) return undefined;
     const jobId = records[0]!.job_id;
     const job = recordsForJob(project, jobId);
-    if (job.length !== 6 || job.some((record, index) => record.confirmation_id !== request.confirmationId || record.prompt !== request.prompts[index]!.prompt)) {
+    if (job.length !== scenes.length || job.some((record, index) => record.confirmation_id !== request.confirmationId || record.prompt !== request.prompts[index]!.prompt)) {
       throw videoRequestIdConflict();
     }
-    return { jobId, acceptedSceneNumbers: [...SCENES] };
+    return { jobId, acceptedSceneNumbers: [...scenes] };
   }
 
   async start(projectId: string, body: unknown): Promise<StartVideoGenerationResponse> {
-    const request = this.validateRequest(body);
-    let project: StoredProject;
-    project = await this.projects.findById(projectId.trim());
+    const project = await this.projects.findById(projectId.trim());
+    const scenes = scenesFor(project);
+    const request = this.validateRequest(body, scenes);
     const priorRequest = this.existingRequest(project, request);
     if (priorRequest) return priorRequest;
     if (project.workflow_state !== WorkflowState.WaitingForVideoConfirmation) throw videoSubmissionNotAllowed();
     const preview = await this.previews.preview(project.project_id, undefined);
     if (!preview.confirmationId || request.confirmationId !== preview.confirmationId) throw videoConfirmationStale();
-    if (MAX_PROVIDER_CALLS !== 6) throw videoCallLimitExceeded();
+    if (scenes.length < MIN_SCENE_COUNT || scenes.length > MAX_SCENE_COUNT) throw videoCallLimitExceeded();
     if (ESTIMATED_COST_USD > this.monthlyBudgetUsd) throw videoBudgetExceeded();
 
     const hashes: string[] = [];
-    for (const scene of SCENES) {
+    for (const scene of scenes) {
       const image = await fs.readFile(project.generated_images[scene - 1]!);
       hashes.push(this.hashInput(image, request.prompts[scene - 1]!.prompt, preview.previews[scene - 1]!.ratio));
     }
@@ -159,7 +166,7 @@ export class LocalVideoSubmissionService {
 
     const jobId = randomUUID();
     const approvedAt = new Date().toISOString();
-    const records: VideoRecord[] = SCENES.map((scene, index) => ({
+    const records: VideoRecord[] = scenes.map((scene, index) => ({
       scene_number: scene,
       job_id: jobId,
       user_request_id: request.userRequestId,
@@ -187,11 +194,11 @@ export class LocalVideoSubmissionService {
           user_request_id: request.userRequestId,
           approved_at: approvedAt,
           estimated_cost_usd: ESTIMATED_COST_USD,
-          maximum_provider_calls: MAX_PROVIDER_CALLS,
+          maximum_provider_calls: scenes.length,
           execution_mode: executionMode,
         },
       },
     });
-    return { jobId, acceptedSceneNumbers: [...SCENES] };
+    return { jobId, acceptedSceneNumbers: [...scenes] };
   }
 }

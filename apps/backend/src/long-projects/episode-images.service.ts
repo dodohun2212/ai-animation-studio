@@ -18,7 +18,7 @@ type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved";
 const object = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(stable) : object(value) ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])])) : value;
 const fingerprint = (scenes: unknown[]) => crypto.createHash("sha256").update(JSON.stringify(stable(scenes)), "utf8").digest("hex");
-const sceneNumber = (value: unknown): SceneNumber | undefined => Number.isInteger(value) && SCENES.includes(value as SceneNumber) ? value as SceneNumber : undefined;
+const sceneNumber = (value: unknown): SceneNumber | undefined => Number.isInteger(value) && SCENES.includes(value as (typeof SCENES)[number]) ? value as SceneNumber : undefined;
 
 @Injectable()
 export class EpisodeImagesService {

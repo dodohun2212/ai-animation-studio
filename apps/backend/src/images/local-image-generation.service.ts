@@ -2,9 +2,10 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import { WorkflowState, type SceneNumber, type StartImageGenerationResponse } from "@ai-animation-studio/shared";
+import { MAX_SCENE_COUNT, sceneNumbersFor, WorkflowState, type SceneNumber, type StartImageGenerationResponse } from "@ai-animation-studio/shared";
 import { toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
+import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
 import { LocalProjectAssetMappingsRepository, scriptFingerprint } from "../mappings/mappings.repository.js";
 import { validateImage } from "../assets/image-validation.js";
@@ -17,10 +18,12 @@ import { collectReferenceImages } from "./image-reference-selection.js";
 import { previousSceneContinuityImagePath } from "../projects/project-continuity.js";
 import { imageBudgetExceeded, imageContentUnavailable, imageGenerationFailed, imageGenerationNotAllowed, imageProviderError, imageStorageError, invalidImageRequest, mappingReviewRequired } from "./image-api.error.js";
 
-const SCENES = [1, 2, 3, 4, 5, 6] as const;
+function scenesFor(project: StoredProject): SceneNumber[] {
+  return sceneNumbersFor(toShortProjectSettings(project).sceneCount);
+}
 const sceneNumberFromParam = (raw: string): SceneNumber | undefined => {
   const value = Number(raw);
-  return Number.isInteger(value) && String(value) === raw && SCENES.includes(value as SceneNumber) ? (value as SceneNumber) : undefined;
+  return Number.isInteger(value) && String(value) === raw && value >= 1 && value <= MAX_SCENE_COUNT ? (value as SceneNumber) : undefined;
 };
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -54,8 +57,9 @@ function sceneValue(scene: unknown, key: string): string {
   return isObject(scene) && typeof scene[key] === "string" ? scene[key].trim() : "";
 }
 
-function assertSixScenes(project: StoredProject): void {
-  if (project.scenes.length !== 6 || project.scenes.some((scene, index) => !isObject(scene) || scene.number !== index + 1 || !sceneValue(scene, "description"))) {
+function assertValidScenes(project: StoredProject): void {
+  const expected = scenesFor(project);
+  if (project.scenes.length !== expected.length || project.scenes.some((scene, index) => !isObject(scene) || scene.number !== index + 1 || !sceneValue(scene, "description"))) {
     throw imageGenerationFailed();
   }
 }
@@ -96,7 +100,8 @@ export class LocalImageGenerationService {
     if (!isObject(body) || Object.keys(body).length !== 1 || body.approved !== true) throw invalidImageRequest();
     const project = await this.projects.findById(projectId.trim());
     if (project.workflow_state !== WorkflowState.AssetMappingApproved) throw imageGenerationNotAllowed();
-    assertSixScenes(project);
+    assertValidScenes(project);
+    const scenes = scenesFor(project);
     await this.approvedMapping(project);
 
     const startedAt = new Date().toISOString();
@@ -109,7 +114,7 @@ export class LocalImageGenerationService {
     const generated: SceneNumber[] = [];
     const reused: SceneNumber[] = [];
     try {
-      for (const number of SCENES) {
+      for (const number of scenes) {
         const destination = this.imagePath(current.project_id, number);
         const existing = current.generated_images[number - 1];
         if (existing === destination && await validPng(destination)) {
@@ -150,7 +155,7 @@ export class LocalImageGenerationService {
         await this.projects.save(current);
         generated.push(number);
       }
-      if (current.generated_images.length !== 6 || !(await Promise.all(SCENES.map((number) => validPng(this.imagePath(current.project_id, number))))).every(Boolean)) throw new Error("incomplete");
+      if (current.generated_images.length !== scenes.length || !(await Promise.all(scenes.map((number) => validPng(this.imagePath(current.project_id, number))))).every(Boolean)) throw new Error("incomplete");
       await this.assets.indexGeneratedProjectImages(
         current.project_id,
         current.topic,

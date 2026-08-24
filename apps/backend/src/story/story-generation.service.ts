@@ -1,4 +1,5 @@
 import type { StoredProject } from "../projects/project-storage.schema.js";
+import { toShortProjectSettings } from "../projects/project-settings.js";
 
 const SCENE_FIELDS = [
   "number", "description", "visual_action", "start_motion", "main_motion", "end_motion",
@@ -20,12 +21,12 @@ const object = (value: unknown): value is Record<string, unknown> =>
  * Enforces Python's OpenAI `STORY_SCHEMA` plus StoryEngine's ordered-scene
  * and non-empty-description invariants before anything is persisted.
  */
-export function validateStory(value: unknown): asserts value is StoredStory {
+export function validateStory(value: unknown, sceneCount = 6): asserts value is StoredStory {
   if (!object(value) || Object.keys(value).length !== 4
     || !["title", "synopsis", "ending", "scenes"].every((key) => key in value)
     || typeof value.title !== "string" || typeof value.synopsis !== "string" || typeof value.ending !== "string"
-    || !Array.isArray(value.scenes) || value.scenes.length !== 6) {
-    throw new Error("Story response does not match the required six-scene schema.");
+    || !Array.isArray(value.scenes) || value.scenes.length !== sceneCount) {
+    throw new Error(`Story response does not match the required ${sceneCount}-scene schema.`);
   }
 
   value.scenes.forEach((scene, index) => {
@@ -46,10 +47,11 @@ export function validateStory(value: unknown): asserts value is StoredStory {
  */
 export function generateLocalStory(stored: StoredProject, approvedPrompt: string): StoredStory {
   const topic = stored.topic.trim();
+  const sceneCount = toShortProjectSettings(stored).sceneCount;
   const concisePrompt = approvedPrompt.trim().replace(/\s+/g, " ").slice(0, 120);
-  const scenes = Array.from({ length: 6 }, (_, offset) => {
+  const scenes = Array.from({ length: sceneCount }, (_, offset) => {
     const number = offset + 1;
-    const phase = number === 1 ? "begins" : number === 6 ? "resolves" : "continues";
+    const phase = number === 1 ? "begins" : number === sceneCount ? "resolves" : "continues";
     return {
       number,
       description: `Scene ${number}: ${topic} ${phase}.`,
@@ -72,10 +74,10 @@ export function generateLocalStory(stored: StoredProject, approvedPrompt: string
   });
   const story: StoredStory = {
     title: `${topic} — Local Story`,
-    synopsis: `A six-scene local draft for ${topic}, based on the approved prompt: ${concisePrompt}.`,
-    ending: `The six-scene ${topic} story reaches a clear local ending.`,
+    synopsis: `A ${sceneCount}-scene local draft for ${topic}, based on the approved prompt: ${concisePrompt}.`,
+    ending: `The ${sceneCount}-scene ${topic} story reaches a clear local ending.`,
     scenes,
   };
-  validateStory(story);
+  validateStory(story, sceneCount);
   return story;
 }

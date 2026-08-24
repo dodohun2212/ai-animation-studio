@@ -96,10 +96,10 @@ describe("parseStoredProject", () => {
     expect(() => parseStoredProject(baseProject({ script_revision: "0" }))).toThrow();
   });
 
-  it("rejects more than six items in a bounded array field", () => {
-    expect(() =>
-      parseStoredProject(baseProject({ image_prompts: ["1", "2", "3", "4", "5", "6", "7"] })),
-    ).toThrow();
+  it("accepts up to MAX_SCENE_COUNT (12) items in a bounded array field, but rejects more", () => {
+    const twelve = Array.from({ length: 12 }, (_, index) => String(index + 1));
+    expect(() => parseStoredProject(baseProject({ image_prompts: twelve }))).not.toThrow();
+    expect(() => parseStoredProject(baseProject({ image_prompts: [...twelve, "13"] }))).toThrow();
   });
 
   it("remaps legacy WAITING_FOR_CAPCUT and CAPCUT_CLIPS_READY workflow states", () => {

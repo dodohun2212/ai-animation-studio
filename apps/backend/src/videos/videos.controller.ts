@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import { Body, Controller, Get, HttpException, Param, Post, Res, StreamableFile } from "@nestjs/common";
-import { API_ROUTES, type ApproveVideoReviewResponse, type GenerationProgressResponse, type GetVideoPromptPreviewResponse, type GetVideoReviewResponse, type MergeVideosResponse, type RegenerateVideoResponse, type StartVideoGenerationResponse } from "@ai-animation-studio/shared";
+import { API_ROUTES, type ApproveVideoReviewResponse, type GenerationProgressResponse, type GetVideoPromptPreviewResponse, type GetVideoReviewResponse, type MergeVideosResponse, type RegenerateVideoResponse, type SceneNumber, type StartVideoGenerationResponse } from "@ai-animation-studio/shared";
 
 import { videoContentUnavailable } from "./video-workflow-api.error.js";
 import { videoMergeContentUnavailable } from "./video-merge-api.error.js";
@@ -77,13 +77,14 @@ export class VideosController {
   @Post(`${API_ROUTES.projects}/:projectId/videos/generations/:jobId/scenes/:sceneNumber/regenerate`)
   regenerate(@Param("projectId") projectId: string, @Param("jobId") jobId: string, @Param("sceneNumber") sceneNumber: string, @Body() body: unknown): Promise<RegenerateVideoResponse> {
     if (!(typeof body === "object" && body !== null && !Array.isArray(body) && Object.keys(body).length === 1 && (body as { approved?: unknown }).approved === true)) return this.workflow.regenerate(projectId, jobId, []);
-    const number = Number(sceneNumber); return this.workflow.regenerate(projectId, jobId, Number.isInteger(number) && String(number) === sceneNumber ? [number as 1 | 2 | 3 | 4 | 5 | 6] : []);
+    const number = Number(sceneNumber); return this.workflow.regenerate(projectId, jobId, Number.isInteger(number) && String(number) === sceneNumber ? [number as SceneNumber] : []);
   }
 
   @Post(`${API_ROUTES.projects}/:projectId/videos/generations/:jobId/regenerate-all`)
-  regenerateAll(@Param("projectId") projectId: string, @Param("jobId") jobId: string, @Body() body: unknown): Promise<RegenerateVideoResponse> {
+  async regenerateAll(@Param("projectId") projectId: string, @Param("jobId") jobId: string, @Body() body: unknown): Promise<RegenerateVideoResponse> {
     if (!(typeof body === "object" && body !== null && !Array.isArray(body) && Object.keys(body).length === 1 && (body as { approved?: unknown }).approved === true)) return this.workflow.regenerate(projectId, jobId, []);
-    return this.workflow.regenerate(projectId, jobId, [1, 2, 3, 4, 5, 6]);
+    const scenes = await this.workflow.jobSceneNumbers(projectId, jobId);
+    return this.workflow.regenerate(projectId, jobId, scenes);
   }
 
   @Get(`${API_ROUTES.projects}/:projectId/videos/generations/:jobId/review`)

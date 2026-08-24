@@ -128,7 +128,8 @@ export interface ApproveLongEpisodeAssetMappingReviewResponse { review: LongEpis
 /** Provider-free preview of the Asset IDs automatically selected per Episode scene. */
 export interface LongEpisodeAutomaticReferenceSummary {
   candidateAssetIds: string[];
-  selectedAssetIdsByScene: Record<SceneNumber, string[]>;
+  /** Long Episode is still fixed at exactly six scenes, so this stays a literal-keyed map independent of the now-widened SceneNumber. */
+  selectedAssetIdsByScene: Record<1 | 2 | 3 | 4 | 5 | 6, string[]>;
   estimatedImageApiCalls: 6;
 }
 export interface GetLongEpisodeAutomaticReferenceSummaryResponse { summary: LongEpisodeAutomaticReferenceSummary; }

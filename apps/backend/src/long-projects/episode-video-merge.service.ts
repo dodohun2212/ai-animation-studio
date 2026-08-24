@@ -19,7 +19,7 @@ type Review = { scene_number: SceneNumber; status: "pending" | "approved"; updat
 type VideoRecord = { scene_number: SceneNumber; job_id: string; status: "created" | "running" | "succeeded" | "interrupted" | "failed"; execution_mode: "local_fake_no_provider" | "runway" };
 
 const object = (value: unknown): value is ObjectMap => Boolean(value) && typeof value === "object" && !Array.isArray(value);
-const scene = (value: unknown): value is SceneNumber => Number.isInteger(value) && SCENES.includes(value as SceneNumber);
+const scene = (value: unknown): value is SceneNumber => Number.isInteger(value) && SCENES.includes(value as (typeof SCENES)[number]);
 
 /** Episode-scoped final rendering; its injectable runner keeps tests provider-free. */
 @Injectable()

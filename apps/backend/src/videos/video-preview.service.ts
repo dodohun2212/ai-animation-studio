@@ -3,10 +3,11 @@ import * as path from "node:path";
 import { createHash } from "node:crypto";
 
 import { Injectable } from "@nestjs/common";
-import { WorkflowState, type GetVideoPromptPreviewResponse, type SceneNumber, type VideoPromptPreview } from "@ai-animation-studio/shared";
+import { sceneNumbersFor, WorkflowState, type GetVideoPromptPreviewResponse, type SceneNumber, type VideoPromptPreview } from "@ai-animation-studio/shared";
 
 import { validateImage } from "../assets/image-validation.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
+import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
 import {
   invalidVideoPreviewRequest,
@@ -15,7 +16,9 @@ import {
   videoPreviewNotAllowed,
 } from "./video-preview-api.error.js";
 
-const SCENES = [1, 2, 3, 4, 5, 6] as const;
+function scenesFor(project: StoredProject): SceneNumber[] {
+  return sceneNumbersFor(toShortProjectSettings(project).sceneCount);
+}
 const SCENE_FIELDS = [
   "number", "description", "visual_action", "start_motion", "main_motion", "end_motion",
   "shot_size", "camera_angle", "composition", "lens_feel", "focus_subject", "camera_motion",
@@ -36,11 +39,11 @@ export function utf16Length(value: string): number {
   return value.length;
 }
 
-function parseScenes(project: StoredProject): StoredScene[] {
-  if (project.scenes.length !== SCENES.length) throw videoPreviewDataInvalid();
+function parseScenes(project: StoredProject, sceneNumbers: readonly SceneNumber[]): StoredScene[] {
+  if (project.scenes.length !== sceneNumbers.length) throw videoPreviewDataInvalid();
   return project.scenes.map((raw, index) => {
     if (!isObject(raw) || Object.keys(raw).length !== SCENE_FIELDS.length
-      || SCENE_FIELDS.some((key) => !(key in raw)) || raw.number !== SCENES[index]
+      || SCENE_FIELDS.some((key) => !(key in raw)) || raw.number !== sceneNumbers[index]
       || SCENE_FIELDS.filter((key) => key !== "number").some((key) => typeof raw[key] !== "string" || !raw[key].trim())) {
       throw videoPreviewDataInvalid();
     }
@@ -92,10 +95,10 @@ export class LocalVideoPreviewService {
     return path.join(this.projectsRoot, projectId, "images", `scene${scene}.png`);
   }
 
-  private async assertApprovedImages(project: StoredProject): Promise<void> {
+  private async assertApprovedImages(project: StoredProject, sceneNumbers: readonly SceneNumber[]): Promise<void> {
     if (project.workflow_state !== WorkflowState.WaitingForVideoConfirmation) throw videoPreviewNotAllowed();
-    if (project.generated_images.length !== SCENES.length) throw videoPreviewImagesInvalid();
-    for (const scene of SCENES) {
+    if (project.generated_images.length !== sceneNumbers.length) throw videoPreviewImagesInvalid();
+    for (const scene of sceneNumbers) {
       const expected = this.imagePath(project.project_id, scene);
       if (project.generated_images[scene - 1] !== expected) throw videoPreviewImagesInvalid();
       try {
@@ -111,11 +114,12 @@ export class LocalVideoPreviewService {
   async preview(projectId: string, body: unknown): Promise<GetVideoPromptPreviewResponse> {
     if (body !== undefined && body !== null && (!isObject(body) || Object.keys(body).length !== 0)) throw invalidVideoPreviewRequest();
     const project = await this.projects.findById(projectId.trim());
-    await this.assertApprovedImages(project);
-    const scenes = parseScenes(project);
+    const sceneNumbers = scenesFor(project);
+    await this.assertApprovedImages(project, sceneNumbers);
+    const scenes = parseScenes(project, sceneNumbers);
     const ratio = ratioFor(project);
     const previews: VideoPromptPreview[] = scenes.map((scene, index) => ({
-      sceneNumber: SCENES[index]!,
+      sceneNumber: sceneNumbers[index]!,
       prompt: promptFor(scene, scenes[index - 1], ratio),
       model: "gen4_turbo",
       ratio,
@@ -137,7 +141,7 @@ export class LocalVideoPreviewService {
     return {
       previews,
       confirmationId: digest.digest("hex"),
-      maximumProviderCalls: 6,
+      maximumProviderCalls: sceneNumbers.length,
       budget: {
         monthlyLimitUsd: LOCAL_MONTHLY_BUDGET_USD,
         spentUsd: 0,

@@ -220,4 +220,13 @@ describe("local Story generator", () => {
     const incomplete = { ...valid.scenes[0]! } as Record<string, unknown>; delete incomplete.camera_motion;
     expect(() => validateStory({ ...valid, scenes: [incomplete, ...valid.scenes.slice(1)] })).toThrow();
   });
+  it("produces exactly as many scenes as the project's stored scene count, not always six", () => {
+    const stored = createStoredProject("story", "rain", "2026-08-22T00:00:00.000Z");
+    stored.lore_context = { scene_count: 4 };
+    const story = generateLocalStory(stored, "approved local prompt");
+    validateStory(story, 4);
+    expect(story.scenes).toHaveLength(4);
+    expect(story.scenes[3]!.number).toBe(4);
+    expect(() => validateStory(story)).toThrow();
+  });
 });

@@ -4,6 +4,7 @@ import * as path from "node:path";
 
 import { Injectable, type OnModuleDestroy } from "@nestjs/common";
 import {
+  MAX_SCENE_COUNT,
   WorkflowState,
   type ApproveVideoReviewResponse,
   type GenerationProgressResponse,
@@ -30,7 +31,6 @@ import {
   videoWorkflowNotAllowed,
 } from "./video-workflow-api.error.js";
 
-const SCENES = [1, 2, 3, 4, 5, 6] as const satisfies readonly SceneNumber[];
 const LOCAL_FAKE_MP4 = Buffer.from("000000186674797069736F6D0000020069736F6D69736F32617663316D703431", "hex");
 
 type VideoStatus = "created" | "running" | "succeeded" | "interrupted" | "failed";
@@ -41,7 +41,7 @@ type VideoRecord = Record<string, unknown> & {
 type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved"; updated_at: string };
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
-const sceneNumber = (value: unknown): SceneNumber | undefined => typeof value === "number" && Number.isInteger(value) && SCENES.includes(value as SceneNumber) ? value as SceneNumber : undefined;
+const sceneNumber = (value: unknown): SceneNumber | undefined => typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= MAX_SCENE_COUNT ? value as SceneNumber : undefined;
 const sceneNumberFromParam = (raw: string): SceneNumber | undefined => {
   const value = Number(raw);
   return Number.isInteger(value) && String(value) === raw ? sceneNumber(value) : undefined;
@@ -136,7 +136,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       ? normalized.filter((record) => record.job_id === undefined)
       : normalized.filter((record) => record.job_id === jobId);
     const records = matching.sort((a, b) => a.scene_number - b.scene_number);
-    if (records.length !== 6 || records.some((record, index) => record.scene_number !== SCENES[index])) throw videoJobNotFound();
+    if (records.length < 1 || records.length > MAX_SCENE_COUNT || records.some((record, index) => record.scene_number !== index + 1)) throw videoJobNotFound();
     return records;
   }
 
@@ -147,7 +147,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     const current = records.find((record) => record.status === "running")?.scene_number;
     const status = project.workflow_state === WorkflowState.Interrupted ? "interrupted"
       : failedSceneNumbers.length > 0 ? "failed"
-      : completedSceneNumbers.length === 6 ? "succeeded"
+      : completedSceneNumbers.length === records.length ? "succeeded"
         : current ? "running" : "created";
     return { jobId, status, ...(current ? { currentSceneNumber: current } : {}), completedSceneNumbers, failedSceneNumbers };
   }
@@ -233,7 +233,8 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
   private async applyRunwayAdvance(project: StoredProject, jobId: string, result: RunwayAdvanceResult): Promise<StoredProject> {
     const nowIso = new Date().toISOString();
     if (result.kind === "unchanged" || result.kind === "check-error") return project;
-    const record = this.records(project, jobId).find((item) => item.scene_number === result.sceneNumber)!;
+    const jobRecords = this.records(project, jobId);
+    const record = jobRecords.find((item) => item.scene_number === result.sceneNumber)!;
 
     if (result.kind === "still-running") {
       const updated = this.replaceRecords(project, [{ ...record, runway_last_checked_at: nowIso }]);
@@ -263,7 +264,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     await this.atomicBinary(this.file(project.project_id, result.sceneNumber), result.bytes);
     const succeededRecord: VideoRecord = { ...record, status: "succeeded", output_path: this.file(project.project_id, result.sceneNumber), completed_at: nowIso };
     const updated = this.replaceRecords(project, [succeededRecord]);
-    const paths = [...updated.generated_video_paths]; while (paths.length < 6) paths.push("");
+    const paths = [...updated.generated_video_paths]; while (paths.length < jobRecords.length) paths.push("");
     paths[result.sceneNumber - 1] = this.file(project.project_id, result.sceneNumber);
     updated.generated_video_paths = paths; updated.updated_at = nowIso;
 
@@ -299,8 +300,8 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     }
   }
 
-  private toReviews(reviews: StoredReview[], timestamp: string): VideoReview[] {
-    return SCENES.map((scene) => {
+  private toReviews(reviews: StoredReview[], timestamp: string, sceneNumbers: readonly SceneNumber[]): VideoReview[] {
+    return sceneNumbers.map((scene) => {
       const review = reviews.find((item) => item.scene_number === scene);
       return { sceneNumber: scene, status: review?.status ?? "pending", updatedAt: review?.updated_at ?? timestamp };
     });
@@ -328,9 +329,10 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     return this.progress(updated, jobId);
   }
 
-  async run(projectId: string, jobId: string, scenes: readonly SceneNumber[] = SCENES): Promise<GenerationProgressResponse> {
+  async run(projectId: string, jobId: string, requestedScenes?: readonly SceneNumber[]): Promise<GenerationProgressResponse> {
     let project = await this.projects.findById(projectId.trim());
     const initialRecords = this.records(project, jobId);
+    const scenes = requestedScenes ?? initialRecords.map((record) => record.scene_number);
     if (project.workflow_state !== WorkflowState.GeneratingVideos) throw videoWorkflowNotAllowed();
     this.stoppedJobs.delete(jobId);
 
@@ -356,11 +358,11 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
         throw videoStorageError();
       }
       const succeeded = this.replaceRecords(project, [{ ...running, status: "succeeded", output_path: this.file(project.project_id, scene), completed_at: new Date().toISOString() }]);
-      const paths = [...succeeded.generated_video_paths]; while (paths.length < 6) paths.push(""); paths[scene - 1] = this.file(project.project_id, scene); succeeded.generated_video_paths = paths;
+      const paths = [...succeeded.generated_video_paths]; while (paths.length < initialRecords.length) paths.push(""); paths[scene - 1] = this.file(project.project_id, scene); succeeded.generated_video_paths = paths;
       succeeded.updated_at = new Date().toISOString(); await this.projects.save(succeeded); project = succeeded;
     }
     const records = this.records(project, jobId);
-    if (records.every((record) => record.status === "succeeded") && await Promise.all(SCENES.map((scene) => this.hasCompletedFile(project.project_id, scene))).then((items) => items.every(Boolean))) {
+    if (records.every((record) => record.status === "succeeded") && await Promise.all(records.map((record) => this.hasCompletedFile(project.project_id, record.scene_number))).then((items) => items.every(Boolean))) {
       const completed = { ...project, workflow_state: WorkflowState.ReviewingVideos, updated_at: new Date().toISOString() };
       await this.projects.save(completed); return this.progress(completed, jobId);
     }
@@ -380,6 +382,12 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     const history = path.join(this.projectsRoot, projectId, "videos", "history"); await fs.mkdir(history, { recursive: true });
     const entries = await fs.readdir(history); const versions = entries.map((name) => new RegExp(`^scene${scene}_v(\\d{3})\\.mp4$`).exec(name)).filter((match): match is RegExpExecArray => !!match).map((match) => Number(match[1]));
     await this.atomicBinary(path.join(history, `scene${scene}_v${String((versions.length ? Math.max(...versions) : 0) + 1).padStart(3, "0")}.mp4`), await fs.readFile(current));
+  }
+
+  /** The full set of scene numbers belonging to this job, for callers (like "regenerate all") that need every scene without hardcoding a count. */
+  async jobSceneNumbers(projectId: string, jobId: string): Promise<SceneNumber[]> {
+    const project = await this.projects.findById(projectId.trim());
+    return this.records(project, jobId).map((record) => record.scene_number);
   }
 
   async regenerate(projectId: string, jobId: string, selected: readonly SceneNumber[]): Promise<RegenerateVideoResponse> {
@@ -403,22 +411,26 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
   }
 
   async getReview(projectId: string, jobId: string): Promise<GetVideoReviewResponse> {
-    const project = await this.projects.findById(projectId.trim()); this.records(project, jobId);
+    const project = await this.projects.findById(projectId.trim());
+    const records = this.records(project, jobId);
     if (![WorkflowState.ReviewingVideos, WorkflowState.VideosReady, WorkflowState.VideosApproved].includes(project.workflow_state as WorkflowState)) throw videoWorkflowNotAllowed();
-    if (!(await Promise.all(SCENES.map((scene) => this.hasCompletedFile(project.project_id, scene)))).every(Boolean)) throw videoWorkflowNotAllowed();
-    const reviews = await this.loadReviews(project.project_id); return { project: toApiProject(project), reviews: this.toReviews(reviews, project.updated_at) };
+    if (!(await Promise.all(records.map((record) => this.hasCompletedFile(project.project_id, record.scene_number)))).every(Boolean)) throw videoWorkflowNotAllowed();
+    const reviews = await this.loadReviews(project.project_id);
+    return { project: toApiProject(project), reviews: this.toReviews(reviews, project.updated_at, records.map((record) => record.scene_number)) };
   }
 
   async approveReview(projectId: string, jobId: string, rawScene: string, body: unknown): Promise<ApproveVideoReviewResponse> {
     if (!isObject(body) || Object.keys(body).length !== 1 || body.approved !== true) throw invalidVideoWorkflowRequest();
     const scene = sceneNumber(Number(rawScene)); if (!scene || String(scene) !== rawScene) throw invalidVideoWorkflowRequest();
     await this.getReview(projectId, jobId); const project = await this.projects.findById(projectId.trim());
+    const jobSceneNumbers = this.records(project, jobId).map((record) => record.scene_number);
+    if (!jobSceneNumbers.includes(scene)) throw invalidVideoWorkflowRequest();
     const timestamp = new Date().toISOString(); const reviews = (await this.loadReviews(project.project_id)).filter((item) => item.scene_number !== scene);
     reviews.push({ scene_number: scene, status: "approved", updated_at: timestamp });
-    const allApproved = SCENES.every((number) => reviews.some((review) => review.scene_number === number && review.status === "approved"));
+    const allApproved = jobSceneNumbers.every((number) => reviews.some((review) => review.scene_number === number && review.status === "approved"));
     const updated = { ...project, workflow_state: allApproved ? WorkflowState.VideosApproved : WorkflowState.ReviewingVideos, updated_at: timestamp };
     try { await atomicWriteUtf8File(this.reviewFile(project.project_id), JSON.stringify(reviews.sort((a, b) => a.scene_number - b.scene_number), null, 2)); await this.projects.save(updated); }
     catch { throw videoStorageError(); }
-    return { project: toApiProject(updated), reviews: this.toReviews(reviews, timestamp) };
+    return { project: toApiProject(updated), reviews: this.toReviews(reviews, timestamp, jobSceneNumbers) };
   }
 }
