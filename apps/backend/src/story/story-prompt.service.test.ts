@@ -59,6 +59,22 @@ describe("StoryPromptService", () => {
     expect(result.preview).toMatchObject({ projectId: "sample", originalPrompt: "name=Stars topic=night sky count=6 literal=$ missing=$missing", characterCount: 1, sceneCount: 6 });
     expect(result.preview.originalPromptSha256).toMatch(/^[a-f0-9]{64}$/);
   });
+  it("renders a draft preview from not-yet-saved settings, leaving the stored project untouched", async () => {
+    const { repository, service } = await setup();
+    const before = await repository.findById("sample");
+    const draftSettings = {
+      projectName: "Draft Name", topic: "draft topic", genre: "", mood: "", character: "",
+      lore: "", fullStory: "", durationSeconds: 30, sceneCount: 6, additionalNotes: "", styleNotes: {},
+    };
+    const result = await service.draftPreview("sample", { settings: draftSettings });
+    expect(result).toEqual({ prompt: "name=Draft Name topic=draft topic count=6 literal=$ missing=$missing" });
+    expect(await repository.findById("sample")).toEqual(before);
+  });
+  it("rejects malformed or incomplete draft settings", async () => {
+    const { service } = await setup();
+    await expect(service.draftPreview("sample", { settings: { projectName: "x" } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(service.draftPreview("sample", {})).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
   it("persists only the approved exact text and detects a stale preview", async () => {
     const { repository, service } = await setup(); const preview = await service.preview("sample");
     const approved = await service.approve("sample", { originalPromptSha256: preview.preview.originalPromptSha256, prompt: "  edited prompt  ", approved: true });

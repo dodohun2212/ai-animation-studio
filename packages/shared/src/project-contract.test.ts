@@ -97,6 +97,7 @@ describe("project routes and DTO shape", () => {
     const approval: ApproveStoryPromptRequest = { originalPromptSha256: preview.preview.originalPromptSha256, prompt: "edited exact prompt", approved: true };
     expect(API_ROUTES.storyPromptPreview("sample project")).toBe("/projects/sample%20project/story/preview");
     expect(API_ROUTES.storyPromptApproval("sample project")).toBe("/projects/sample%20project/story/approval");
+    expect(API_ROUTES.storyPromptDraftPreview("sample project")).toBe("/projects/sample%20project/story/draft-preview");
     expect(approval.approved).toBe(true);
   });
 

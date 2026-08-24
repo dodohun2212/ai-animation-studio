@@ -2,8 +2,10 @@ import {
   API_ROUTES,
   type ApproveStoryPromptRequest,
   type ApproveStoryPromptResponse,
+  type CreateStoryPromptDraftPreviewResponse,
   type CreateStoryPromptPreviewResponse,
   type Project,
+  type ShortProjectSettings,
   type StoryPromptPreview,
 } from "@ai-animation-studio/shared";
 
@@ -84,6 +86,10 @@ function isPreviewResponse(value: unknown): value is CreateStoryPromptPreviewRes
   return isRecord(value) && isPreview(value.preview);
 }
 
+function isDraftPreviewResponse(value: unknown): value is CreateStoryPromptDraftPreviewResponse {
+  return isRecord(value) && typeof value.prompt === "string";
+}
+
 function isApprovalResponse(value: unknown): value is ApproveStoryPromptResponse {
   return (
     isRecord(value) &&
@@ -131,6 +137,18 @@ async function request<T>(url: string, init: RequestInit | undefined, guard: (va
 /** Local-only preview of the exact Story request text — never calls a paid provider. */
 export function createStoryPromptPreview(projectId: string): Promise<CreateStoryPromptPreviewResponse> {
   return request(API_ROUTES.storyPromptPreview(projectId), { method: "POST" }, isPreviewResponse);
+}
+
+/** Live, not-yet-saved preview of the exact Story prompt for the given draft settings — never persists, never calls a paid provider. */
+export function createStoryPromptDraftPreview(
+  projectId: string,
+  settings: ShortProjectSettings,
+): Promise<CreateStoryPromptDraftPreviewResponse> {
+  return request(
+    API_ROUTES.storyPromptDraftPreview(projectId),
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings }) },
+    isDraftPreviewResponse,
+  );
 }
 
 export function approveStoryPrompt(

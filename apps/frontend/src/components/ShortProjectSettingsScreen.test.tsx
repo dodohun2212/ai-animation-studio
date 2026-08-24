@@ -117,6 +117,53 @@ describe("ShortProjectSettingsScreen", () => {
     expect((screen.getByDisplayValue("은빛 늑대") as HTMLInputElement).value).toBe("은빛 늑대");
   });
 
+  it("shows a live draft Story prompt preview from unsaved settings once the panel is opened, and stays closed by default", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+      "POST /projects/sample_project/story/draft-preview": { prompt: "draft prompt text" },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    await screen.findByDisplayValue("별의 지도");
+    // Closed by default: no draft-preview request fires just from loading the screen.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("draft-preview"))).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "프롬프트 미리보기 보기" }));
+    expect(await screen.findByText("draft prompt text", undefined, { timeout: 2000 })).toBeTruthy();
+
+    const call = fetchMock.mock.calls.find(([url]) => String(url) === "/projects/sample_project/story/draft-preview")!;
+    expect((call[1] as RequestInit).method).toBe("POST");
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toMatchObject({ settings: { topic: "별을 찾는 아이" } });
+  });
+
+  it("shows the actual error when the draft preview request fails, instead of the empty-fields hint", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/projects/sample_project/settings") return jsonResponse(200, { settings });
+      if (url === "/projects/sample_project/settings/cast") return jsonResponse(200, { cast: [] });
+      if (url === "/projects/sample_project/settings/asset-references") return jsonResponse(200, { atmosphereAssetIds: [], sceneReferenceAssets: [] });
+      if (url === "/projects/sample_project/settings/continuity") return jsonResponse(200, { link: null });
+      if (url === "/projects/sample_project/story/draft-preview" && init?.method === "POST") {
+        return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "미리보기를 불러오지 못했습니다." });
+      }
+      throw new Error(`Unexpected fetch call in test: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    await screen.findByDisplayValue("별의 지도");
+    fireEvent.click(screen.getByRole("button", { name: "프롬프트 미리보기 보기" }));
+
+    const alert = await screen.findByTestId("story-prompt-draft-preview-error", undefined, { timeout: 2000 });
+    expect(alert.textContent).not.toContain("채우면");
+    expect(screen.queryByText("프로젝트 이름과 영상 주제를 채우면 미리보기가 표시됩니다.")).toBeNull();
+  });
+
   it("shows the current cast, adds a searched character, and removes a cast member", async () => {
     const hero = makeAsset({ assetId: "ASSET-CHAR-1", displayName: "주인공", assetType: "character" });
     const fetchMock = stubFetchByRoute({

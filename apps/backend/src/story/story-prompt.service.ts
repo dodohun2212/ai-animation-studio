@@ -3,12 +3,12 @@ import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import { WorkflowState } from "@ai-animation-studio/shared";
-import type { ApproveStoryPromptRequest, ApproveStoryPromptResponse, CreateStoryPromptPreviewResponse, StoryPromptPreview } from "@ai-animation-studio/shared";
+import type { ApproveStoryPromptRequest, ApproveStoryPromptResponse, CreateStoryPromptDraftPreviewResponse, CreateStoryPromptPreviewResponse, StoryPromptPreview } from "@ai-animation-studio/shared";
 import { toApiProject } from "../projects/project.mapper.js";
 import { toShortProjectAssetReferences } from "../projects/project-asset-references.js";
 import { toShortProjectCast } from "../projects/project-cast.js";
 import { previousSceneContext } from "../projects/project-continuity.js";
-import { toShortProjectSettings } from "../projects/project-settings.js";
+import { applyShortProjectSettings, parseShortProjectSettings, toShortProjectSettings } from "../projects/project-settings.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { ProjectAssetMappingsService } from "../mappings/mappings.service.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
@@ -116,6 +116,18 @@ export class StoryPromptService {
     const originalPrompt = await this.original(stored);
     const preview: StoryPromptPreview = { projectId: stored.project_id, originalPrompt, originalPromptSha256: sha256(originalPrompt), characterCount: characterCount(stored), sceneCount: 6 };
     return { preview };
+  }
+
+  /**
+   * Renders the exact Story prompt from settings the user hasn't saved yet — for a live side-panel preview
+   * while editing the settings form. Never writes to the project, never calls a paid provider.
+   */
+  async draftPreview(projectId: string, request: unknown): Promise<CreateStoryPromptDraftPreviewResponse> {
+    const stored = await this.projects.findById(projectId.trim());
+    const settings = parseShortProjectSettings(object(request).settings);
+    const draft = applyShortProjectSettings(stored, settings, stored.updated_at);
+    const prompt = await this.original(draft);
+    return { prompt };
   }
 
   async approve(projectId: string, request: unknown): Promise<ApproveStoryPromptResponse> {

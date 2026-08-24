@@ -452,6 +452,10 @@ export interface StoryPromptPreview {
 
 export interface CreateStoryPromptPreviewResponse { preview: StoryPromptPreview; }
 
+/** Renders the exact Story prompt from not-yet-saved settings — never persists anything, never calls a paid provider. */
+export interface CreateStoryPromptDraftPreviewRequest { settings: ShortProjectSettings; }
+export interface CreateStoryPromptDraftPreviewResponse { prompt: string; }
+
 /** The user-authored final text must be explicitly approved before fake submission. */
 export interface ApproveStoryPromptRequest {
   originalPromptSha256: string;
@@ -806,6 +810,8 @@ export const API_ROUTES = {
     `/projects/${encodeURIComponent(projectId)}/story/preview`,
   storyPromptApproval: (projectId: string) =>
     `/projects/${encodeURIComponent(projectId)}/story/approval`,
+  storyPromptDraftPreview: (projectId: string) =>
+    `/projects/${encodeURIComponent(projectId)}/story/draft-preview`,
   imageGeneration: (projectId: string) =>
     `/projects/${encodeURIComponent(projectId)}/images/generations`,
   imageReview: (projectId: string) =>

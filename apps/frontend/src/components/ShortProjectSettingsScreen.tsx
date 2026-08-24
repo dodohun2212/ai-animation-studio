@@ -6,6 +6,7 @@ import {
   getProjectAssetReferences, getProjectCast, getProjectContinuity, getProjectSettings, listProjectContinuityOptions, setProjectContinuity, toDisplayError,
   updateProjectAssetReferences, updateProjectCast, updateProjectSettings,
 } from "../api/projectsApi.js";
+import { createStoryPromptDraftPreview, toStoryDisplayError } from "../api/storyPromptApi.js";
 import { Spinner } from "./Spinner.js";
 
 interface Props { projectId: string; onBack: () => void; justCreated?: boolean; }
@@ -520,6 +521,40 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
   const [characterPickerOpen, setCharacterPickerOpen] = useState(false);
   const [characterOptionsLoading, setCharacterOptionsLoading] = useState(false);
   const [characterOptionsError, setCharacterOptionsError] = useState<{ code: string; message: string } | null>(null);
+  const [promptPreviewOpen, setPromptPreviewOpen] = useState(false);
+  const [promptPreview, setPromptPreview] = useState<string | null>(null);
+  const [promptPreviewLoading, setPromptPreviewLoading] = useState(false);
+  const [promptPreviewError, setPromptPreviewError] = useState<{ code: string; message: string } | null>(null);
+  const promptPreviewRequest = useRef(0);
+
+  useEffect(() => {
+    if (!promptPreviewOpen || !state.settings) return;
+    const settings = state.settings;
+    if (!settings.projectName.trim() || !settings.topic.trim()) {
+      setPromptPreview(null);
+      setPromptPreviewError(null);
+      setPromptPreviewLoading(false);
+      return;
+    }
+    const requestId = ++promptPreviewRequest.current;
+    setPromptPreviewLoading(true);
+    const timer = setTimeout(() => {
+      void createStoryPromptDraftPreview(projectId, settings)
+        .then((response) => {
+          if (requestId !== promptPreviewRequest.current) return;
+          setPromptPreview(response.prompt);
+          setPromptPreviewError(null);
+        })
+        .catch((caught: unknown) => {
+          if (requestId !== promptPreviewRequest.current) return;
+          setPromptPreviewError(toStoryDisplayError(caught));
+        })
+        .finally(() => {
+          if (requestId === promptPreviewRequest.current) setPromptPreviewLoading(false);
+        });
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [promptPreviewOpen, state.settings, projectId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -598,6 +633,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
         </p>
       )}
       {state.settings && (
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
         <form className="grid gap-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6 md:grid-cols-2" onSubmit={submit} noValidate>
           <Field label="프로젝트 이름" value={state.settings.projectName} onChange={(value) => setField("projectName", value)} />
           <Field label="영상 주제" value={state.settings.topic} onChange={(value) => setField("topic", value)} />
@@ -663,6 +699,31 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
             {state.loading ? "저장 중…" : "설정 저장"}
           </button>
         </form>
+        <aside aria-label="대본 프롬프트 실시간 미리보기" className="space-y-2 rounded-2xl border border-white/10 bg-slate-900/70 p-4 lg:sticky lg:top-4">
+          <button type="button" className={smallOutlineButton} onClick={() => setPromptPreviewOpen((open) => !open)}>
+            {promptPreviewOpen ? "프롬프트 미리보기 닫기" : "프롬프트 미리보기 보기"}
+          </button>
+          {promptPreviewOpen && (
+            <div className="space-y-2">
+              <p className="text-xs text-slate-500">입력을 멈추면 잠시 후 실제 대본 AI에 보낼 프롬프트가 여기에 표시됩니다. 저장하지 않아도 됩니다.</p>
+              {promptPreviewLoading && <Spinner label="미리보기 갱신 중..." />}
+              {!promptPreviewLoading && promptPreviewError && (
+                <p role="alert" data-testid="story-prompt-draft-preview-error" data-error-code={promptPreviewError.code} className="text-xs text-rose-400">
+                  {promptPreviewError.message}
+                </p>
+              )}
+              {!promptPreviewLoading && !promptPreviewError && promptPreview && (
+                <pre data-testid="story-prompt-draft-preview" className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-xl border border-white/10 bg-slate-950/60 p-3 text-xs text-slate-300">
+                  {promptPreview}
+                </pre>
+              )}
+              {!promptPreviewLoading && !promptPreviewError && !promptPreview && (
+                <p className="text-xs text-slate-500">프로젝트 이름과 영상 주제를 채우면 미리보기가 표시됩니다.</p>
+              )}
+            </div>
+          )}
+        </aside>
+        </div>
       )}
       {state.settings && <CastEditor projectId={projectId} />}
       {state.settings && <AssetReferenceEditor projectId={projectId} />}

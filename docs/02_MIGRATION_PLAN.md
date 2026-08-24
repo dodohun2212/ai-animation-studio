@@ -833,6 +833,30 @@ Frontend 및 통합 완료 근거(2026-08-21): `feature/frontend`의 `48065b0`�
 - [x] Main 통합 검증에서 Backend 448 통과(+1 intentional skip), Desktop 8 통과(node:test), Frontend 533 통과, Shared 25 통과, root typecheck/build 전부 통과, `git diff --check` 통과. 실제 OpenAI·Runway·network·유료 호출은 0건이다.
 - [ ] 남은 범위: NSIS 설치 프로그램 실제 빌드·설치 검증(7z postinstall 스크립트 승인 필요), 앱 아이콘 지정(현재 Electron 기본 아이콘), 코드 서명. 이것으로 "다음 권장 작업 순서" 1~4번이 모두 완료되어 문서 상단 체크리스트의 마지막 미완료 항목(15번)이 해소되었다.
 
+## 마흔다섯 번째 이전 기능: 프로젝트 설정 저장 에러 표시 위치 수정 + 대표 캐릭터 이미지 선택
+
+실사용 중 "설정 저장 버튼이 안 먹힌다"는 리포트를 받아 Main이 먼저 백엔드 프로세스·API를 직접 재현 진단했다(`npm run dev:backend`의 실제 기본 포트는 3000이며 4317은 `npm run dev:desktop`(Electron) 전용이라는 혼동이 있었음 — 코드 결함 아님). `curl`로 `PATCH /projects/:id/settings`가 정상 응답하는 것까지 확인한 뒤 진짜 원인을 특정했다: 에러 메시지(`role="alert"`)가 폼 최상단에만 떠서, 필드가 많아 스크롤해야 보이는 "설정 저장" 버튼 근처에서는 실패해도 아무 피드백이 안 보였다.
+
+- [x] `ShortProjectSettingsScreen.tsx`, `LongProjectSettingsScreen.tsx`: 초기 로딩 실패(폼 자체가 없는 경우)는 기존처럼 상단에, 폼이 떠 있는 상태의 저장 실패는 저장 버튼 바로 위에도 표시하도록 `state.error && !state.settings`(상단)/`state.error`(폼 내부, 버튼 위)로 조건을 분리했다 — 폼이 있을 때는 상단이 렌더링되지 않으므로 `role="alert"` 중복 없음.
+- [x] `ShortProjectSettingsScreen.tsx`: "대표 캐릭터" 입력 아래에 `이미지에서 캐릭터 선택` 버튼을 추가해 Asset Library의 character 타입 에셋을 썸네일 그리드로 보여주고 클릭 시 이름을 채운다. 기존 자유 텍스트 입력은 유지(하위 호환), 저장 스키마·백엔드 변경 없음.
+- [x] 신규 테스트 2개(`ShortProjectSettingsScreen.test.tsx`). Frontend 548 통과, Backend 460 통과(+1 skip, 무관한 실시간 타이머 테스트 1건 최초 실행 시 플레이키했으나 단독 재실행 시 통과 확인), Desktop 8, Shared 25, root typecheck/build 통과.
+
+## 마흔여섯 번째 이전 기능: Asset Library 버튼 라벨/구조 개선 + 개발 서버 포트 문서화
+
+- [x] `AssetLibraryScreen.tsx`: "파일 상태 점검"과 "레거시 참고자료 가져오기"를 `관리 도구` 접이식 섹션 하나로 묶고 기본은 접어둠(검색 후 목록이 바로 보이도록). 레거시 마이그레이션 버튼을 `가져오기 실행` → `일괄 이전 실행`으로 개명(새 에셋 등록 폼의 `가져오기`와 혼동 방지), 새 에셋 등록 폼 제목을 `이미지 가져오기` → `새 에셋 등록`으로 변경. outline/danger/작은 버튼에 배경 채움을 줘서 카드 컨테이너와 구분.
+- [x] `AssetLibraryScreen.test.tsx`: 버튼 문구 변경분 반영 + `asset-maintenance-toggle` 클릭 단계 추가. Frontend 548 통과(해당 파일 39개), root typecheck/build 통과.
+- [x] `docs/03_TEAM_WORKFLOW.md`에 "로컬 개발 서버 포트" 표 추가(`dev:backend`=3000, `dev:desktop` 내부 fork=4317) — 위 마흔다섯 번째 항목 진단에서 드러난 혼동을 재발 방지하기 위한 문서 전용 변경.
+
+## 마흔일곱 번째 이전 기능: 프로젝트 설정 화면 실시간 대본 프롬프트 미리보기
+
+기존 "대본 프롬프트 미리보기/승인"(저장된 프로젝트 기준, `StoryPromptService.preview`/`original()`)의 렌더링 로직을 그대로 재사용해, 저장하지 않은 입력값으로도 프롬프트를 계산하는 새 경로를 추가했다 — 저장 스키마 변경 없음, 기존 승인(approve) 흐름 변경 없음.
+
+- [x] `packages/shared/src/api.ts`: `CreateStoryPromptDraftPreviewRequest/Response` 타입, `API_ROUTES.storyPromptDraftPreview(projectId)` 추가(`POST /projects/:projectId/story/draft-preview`).
+- [x] `apps/backend/src/story/story-prompt.service.ts`: `draftPreview(projectId, request)`가 저장된 프로젝트를 불러온 뒤 기존 `parseShortProjectSettings`(검증)와 `applyShortProjectSettings`(불변 적용, `{...stored, ...}`로 새 객체 반환)로 메모리상에서만 설정을 반영하고 기존 `original()` 렌더 로직으로 프롬프트를 계산한다. 디스크에 저장하지 않는다 — 테스트로 저장 프로젝트가 그대로 남는 것과 잘못된 입력이 거부되는 것을 확인.
+- [x] `apps/frontend/src/components/ShortProjectSettingsScreen.tsx`: 설정 폼 옆(데스크톱 2컬럼, 좁은 화면은 아래로)에 미리보기 패널 추가. 기본은 닫힘(열기 전에는 새 API를 호출하지 않아 기존 13개 테스트의 fetch 시퀀스에 영향 없음), 열면 입력 후 0.5초 디바운스로 자동 갱신. 프로젝트 이름/주제가 비어 있으면 에러 없이 "채우면 표시됩니다" 안내만 노출.
+- [x] Main 리뷰에서 발견해 수정: 최초 구현은 실제 API 에러(네트워크 단절, 서버 오류 등)도 같은 "채우면 표시됩니다" 안내로 뭉뚱그려 실제 에러가 안 보이는 결함이 있었다 — 오늘 세션에서 진단·수정한 "저장 에러가 안 보이는" 문제(마흔다섯 번째 항목)와 같은 패턴이 새 기능에 재도입된 것. 로딩/에러/빈 상태/성공 4가지를 명확히 분리하도록 렌더링 조건을 수정하고, 실제 에러 시 `role="alert"`로 안내 문구가 아닌 진짜 에러 메시지가 뜨는 것을 확인하는 테스트를 추가했다(`story-prompt-draft-preview-error`).
+- [x] 신규 테스트: `project-contract.test.ts` 1줄, `story-prompt.service.test.ts` 2개, `ShortProjectSettingsScreen.test.tsx` 2개(리뷰 중 추가한 에러 케이스 포함). Backend 462 통과(+1 skip), Frontend 550 통과, Shared 25 통과, Desktop 8 통과, root typecheck/build 통과. 유료 Provider 호출 없음(`draftPreview`는 항상 로컬 템플릿 렌더링만 수행).
+
 ## 공통 완료 조건
 
 - Python 동작·데이터 규칙, shared 계약, Frontend 흐름, Backend 로직·저장이 모두 구현되어야 한다.
