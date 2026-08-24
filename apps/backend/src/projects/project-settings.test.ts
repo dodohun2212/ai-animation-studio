@@ -53,9 +53,16 @@ describe("short project settings", () => {
   it("rejects missing required fields, invalid duration/scene count, and unknown fields", () => {
     expect(() => parseShortProjectSettings({ ...settings, projectName: "" })).toThrow();
     expect(() => parseShortProjectSettings({ ...settings, durationSeconds: 0 })).toThrow();
-    expect(() => parseShortProjectSettings({ ...settings, sceneCount: 5 })).toThrow();
+    expect(() => parseShortProjectSettings({ ...settings, sceneCount: 1 })).toThrow();
+    expect(() => parseShortProjectSettings({ ...settings, sceneCount: 13 })).toThrow();
+    expect(() => parseShortProjectSettings({ ...settings, sceneCount: 4.5 })).toThrow();
     expect(() => parseShortProjectSettings({ ...settings, unexpected: true })).toThrow();
     expect(() => parseShortProjectSettings({ ...settings, styleNotes: { unknown: "x" } })).toThrow();
+  });
+
+  it("accepts a scene count anywhere in the supported 2-12 range, not just 6", () => {
+    expect(parseShortProjectSettings({ ...settings, sceneCount: 4 }).sceneCount).toBe(4);
+    expect(parseShortProjectSettings({ ...settings, sceneCount: 12 }).sceneCount).toBe(12);
   });
 
   it("trims strings and omits blank optional style entries", () => {

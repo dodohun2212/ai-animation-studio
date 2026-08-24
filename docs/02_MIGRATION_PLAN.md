@@ -863,3 +863,14 @@ Frontend 및 통합 완료 근거(2026-08-21): `feature/frontend`의 `48065b0`�
 - 오류·경계 테스트와 유료 Provider를 호출하지 않는 통합 테스트가 통과해야 한다.
 - main에서 관련 typecheck, test, build를 통과한 뒤에만 체크리스트를 완료로 바꾼다.
 - UI 또는 Backend 한쪽만 구현된 기능은 완료로 표시하지 않는다.
+
+## 마흔여덟 번째 이전 기능: 장면 수(scene count)를 6 고정에서 가변으로 (1단계: 기반 작업)
+
+지금까지 "장면은 항상 6개, 클립은 항상 5초"라는 전제가 `packages/shared/src/domain.ts`의 `SceneNumber` 타입, `apps/backend/src/videos/local-video-submission.service.ts`/`local-video-workflow.service.ts`의 `SCENES=[1..6]` 하드코딩, 프론트 3개 화면(`ImageGenerationScreen`, `VideoWorkflowScreen`, `MappingReviewScreen`)의 `assertExactlySixScenes` 사용 등 최소 20개 파일에 걸쳐 박혀 있음을 확인했다. 사용자가 향후 Runway 외 다른 영상 AI로 교체할 계획이 있어, "장면 수" 자체보다 "공급자별 지원 클립 길이"를 축으로 설계하기로 했다 — 이 항목은 그 초석이 되는 1단계(설정/타입 계층)만 다룬다. 영상 생성 상태 머신(2단계), 공급자별 클립 길이 선택 UI(3단계), 화면별 6개 고정 그리드(4단계)는 후속 배치로 이어질 예정이며, 이 배치 하나로는 사용자가 실제로 6이 아닌 장면 수를 만들어낼 방법이 없다(설정 화면에 아직 장면 수 입력 UI가 없음) — 그래서 위험 없이 먼저 착수했다.
+
+- [x] `packages/shared/src/domain.ts`: `MIN_SCENE_COUNT=2`, `MAX_SCENE_COUNT=12` 상수 추가(순수 추가, 기존 `SceneNumber`/`assertExactlySixScenes`는 이번 배치에서 손대지 않음 — 그 타입을 쓰는 20개 파일과 한 배치로 묶이지 않으면 typecheck가 깨지므로 2/4단계에서 함께 처리 예정).
+- [x] `packages/shared/src/api.ts`: 숏 프로젝트 전용 타입 5곳(`ShortProjectSettings.sceneCount`, `StoryPromptPreview.sceneCount`, `VideoPromptPreview.durationSeconds`, `VideoGenerationPreviewResponse.sceneCount`/`durationSecondsPerScene`)을 리터럴(`6`/`5`)에서 `number`로 완화. 리터럴을 넓히는 변경이라 기존 호출부는 그대로 컴파일된다(하위 호환). Long Episode 쪽 동일 패턴(`GetLongEpisodeVideoPreviewResponse` 등)은 이번 항목과 무관한 별도 워크플로우라 의도적으로 손대지 않음.
+- [x] `apps/backend/src/projects/project-settings.ts`: `sceneCount !== 6` 하드코딩을 `MIN_SCENE_COUNT`~`MAX_SCENE_COUNT` 범위 검증으로 교체. `toShortProjectSettings`/`applyShortProjectSettings`가 실제 저장된 `lore_context.scene_count`를 읽고 쓰도록 변경(레거시 프로젝트는 6으로 폴백).
+- [x] `apps/backend/src/story/story-prompt.service.ts`: 대본 프롬프트 템플릿 변수 `scene_count`와 `preview()` 응답의 `sceneCount`가 하드코딩된 `"6"`/`6` 대신 프로젝트에 실제 저장된 값을 반영하도록 수정.
+- [x] 신규/수정 테스트: `project-settings.test.ts`(범위 검증 테스트 추가·6 고정 테스트 교체), `story-prompt.service.test.ts`(장면 수 4인 프로젝트에서 미리보기가 4를 반영하는지 확인하는 테스트 추가).
+- [x] Main 검증: 리터럴→`number` 완화가 다른 곳의 좁은 타입 가정을 깨뜨리는지가 이 배치의 유일한 실질적 리스크였는데, root typecheck 전체(Backend/Desktop/Frontend/Shared)가 컴파일 에러 없이 통과해 그런 곳이 없음을 확인했다. Backend 464 통과(+1 skip, 신규 2건 포함), Frontend 550, Shared 25, Desktop 8(node:test) 통과, root build 통과. 유료 Provider 호출 없음. 남은 2~4단계(영상 생성 상태 머신, 공급자별 클립 길이 선택 UI, 화면별 6 고정 그리드)는 계획대로 후속 배치에서 진행.

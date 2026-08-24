@@ -65,7 +65,7 @@ async function promptVariables(stored: StoredProject, assets?: LocalAssetsReposi
     avoid: notes.avoid ?? value(profile, "avoid"),
     aspect: notes.aspect ?? value(profile, "aspect", "9:16"),
     duration_seconds: String(settings.durationSeconds),
-    scene_count: "6",
+    scene_count: String(settings.sceneCount),
     additional_notes: settings.additionalNotes,
   };
 }
@@ -114,7 +114,8 @@ export class StoryPromptService {
   async preview(projectId: string): Promise<CreateStoryPromptPreviewResponse> {
     const stored = await this.projects.findById(projectId.trim());
     const originalPrompt = await this.original(stored);
-    const preview: StoryPromptPreview = { projectId: stored.project_id, originalPrompt, originalPromptSha256: sha256(originalPrompt), characterCount: characterCount(stored), sceneCount: 6 };
+    const sceneCount = toShortProjectSettings(stored).sceneCount;
+    const preview: StoryPromptPreview = { projectId: stored.project_id, originalPrompt, originalPromptSha256: sha256(originalPrompt), characterCount: characterCount(stored), sceneCount };
     return { preview };
   }
 

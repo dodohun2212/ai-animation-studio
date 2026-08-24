@@ -375,7 +375,8 @@ export interface ShortProjectSettings {
   lore: string;
   fullStory: string;
   durationSeconds: number;
-  sceneCount: 6;
+  /** No longer fixed at 6 — see MIN_SCENE_COUNT/MAX_SCENE_COUNT in domain.ts. */
+  sceneCount: number;
   additionalNotes: string;
   styleNotes: ShortProjectStyleNotes;
 }
@@ -447,7 +448,7 @@ export interface StoryPromptPreview {
   originalPrompt: string;
   originalPromptSha256: string;
   characterCount: number;
-  sceneCount: 6;
+  sceneCount: number;
 }
 
 export interface CreateStoryPromptPreviewResponse { preview: StoryPromptPreview; }
@@ -516,7 +517,7 @@ export interface VideoPromptPreview {
   prompt: string;
   model: "gen4_turbo";
   ratio: "720:1280" | "1280:720";
-  durationSeconds: 5;
+  durationSeconds: number;
   estimatedCostUsd: number;
 }
 
@@ -662,8 +663,8 @@ export interface VideoGenerationPreviewResponse {
   confirmationId: string;
   model: "gen4_turbo";
   ratio: "720:1280" | "1280:720";
-  sceneCount: 6;
-  durationSecondsPerScene: 5;
+  sceneCount: number;
+  durationSecondsPerScene: number;
   executionMode: "sequential";
   audioEnabled: false;
   continuityStrength: "low" | "normal" | "high";

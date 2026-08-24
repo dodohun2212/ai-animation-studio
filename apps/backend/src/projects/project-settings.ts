@@ -1,7 +1,13 @@
-import type { ShortProjectSettings, ShortProjectStyleNotes } from "@ai-animation-studio/shared";
+import { MAX_SCENE_COUNT, MIN_SCENE_COUNT, type ShortProjectSettings, type ShortProjectStyleNotes } from "@ai-animation-studio/shared";
 
 import { invalidRequest } from "./project-api.error.js";
 import type { StoredProject } from "./project-storage.schema.js";
+
+const DEFAULT_SCENE_COUNT = 6;
+
+function isValidSceneCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= MIN_SCENE_COUNT && value <= MAX_SCENE_COUNT;
+}
 
 const STYLE_KEYS = ["visualStyle", "color", "lighting", "camera", "dialogue", "avoid", "aspect"] as const;
 const SETTINGS_KEYS = ["projectName", "topic", "genre", "mood", "character", "lore", "fullStory", "durationSeconds", "sceneCount", "additionalNotes", "styleNotes"] as const;
@@ -64,7 +70,7 @@ export function toShortProjectSettings(stored: StoredProject): ShortProjectSetti
     lore: stringFrom(stored.lore_context.lore),
     fullStory: stringFrom(stored.lore_context.full_story),
     durationSeconds: typeof duration === "number" && Number.isInteger(duration) && duration > 0 ? duration : 30,
-    sceneCount: 6,
+    sceneCount: isValidSceneCount(stored.lore_context.scene_count) ? stored.lore_context.scene_count : DEFAULT_SCENE_COUNT,
     additionalNotes: stringFrom(stored.lore_context.additional_notes),
     styleNotes: styleNotesFrom(stored.lore_context.style_notes),
   };
@@ -90,8 +96,8 @@ export function parseShortProjectSettings(value: unknown): ShortProjectSettings 
   if (!Number.isInteger(settings.durationSeconds) || (settings.durationSeconds as number) <= 0) {
     throw invalidRequest("settings.durationSeconds must be a positive integer.", { field: "settings.durationSeconds" });
   }
-  if (settings.sceneCount !== 6) {
-    throw invalidRequest("settings.sceneCount must be exactly 6.", { field: "settings.sceneCount" });
+  if (!isValidSceneCount(settings.sceneCount)) {
+    throw invalidRequest(`settings.sceneCount must be an integer between ${MIN_SCENE_COUNT} and ${MAX_SCENE_COUNT}.`, { field: "settings.sceneCount" });
   }
   return {
     projectName: requiredString(settings.projectName, "settings.projectName"),
@@ -102,7 +108,7 @@ export function parseShortProjectSettings(value: unknown): ShortProjectSettings 
     lore: optionalString(settings.lore, "settings.lore"),
     fullStory: optionalString(settings.fullStory, "settings.fullStory"),
     durationSeconds: settings.durationSeconds as number,
-    sceneCount: 6,
+    sceneCount: settings.sceneCount,
     additionalNotes: optionalString(settings.additionalNotes, "settings.additionalNotes"),
     styleNotes: normalizedStyleNotes,
   };
@@ -126,7 +132,7 @@ export function applyShortProjectSettings(stored: StoredProject, settings: Short
       lore: settings.lore,
       full_story: settings.fullStory,
       duration_seconds: settings.durationSeconds,
-      scene_count: 6,
+      scene_count: settings.sceneCount,
       additional_notes: settings.additionalNotes,
       style_notes: styleNotes,
     },

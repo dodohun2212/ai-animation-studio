@@ -2,6 +2,15 @@ import type { WorkflowState } from "./workflow.js";
 
 export const SCENE_NUMBERS = [1, 2, 3, 4, 5, 6] as const;
 export type SceneNumber = (typeof SCENE_NUMBERS)[number];
+
+/**
+ * A short project's scene count is being generalized away from a fixed 6 (see docs/02_MIGRATION_PLAN.md) so it can
+ * match whichever video AI provider is connected — different providers support different per-clip durations, so
+ * the total video length is scene count times the connected provider's clip length. These bounds are a sanity
+ * range, not tied to any one provider.
+ */
+export const MIN_SCENE_COUNT = 2;
+export const MAX_SCENE_COUNT = 12;
 export type ProjectType = "short_project" | "long_story_project";
 export type ReviewDecision = "pending" | "approved" | "rejected";
 export type JobStatus =

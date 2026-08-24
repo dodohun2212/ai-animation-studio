@@ -59,6 +59,13 @@ describe("StoryPromptService", () => {
     expect(result.preview).toMatchObject({ projectId: "sample", originalPrompt: "name=Stars topic=night sky count=6 literal=$ missing=$missing", characterCount: 1, sceneCount: 6 });
     expect(result.preview.originalPromptSha256).toMatch(/^[a-f0-9]{64}$/);
   });
+  it("reflects a project's actual stored scene count in the preview instead of assuming six", async () => {
+    const { repository, service } = await setup();
+    const stored = await repository.findById("sample");
+    await repository.save({ ...stored, lore_context: { ...stored.lore_context, scene_count: 4 } });
+    const result = await service.preview("sample");
+    expect(result.preview).toMatchObject({ sceneCount: 4, originalPrompt: "name=Stars topic=night sky count=4 literal=$ missing=$missing" });
+  });
   it("renders a draft preview from not-yet-saved settings, leaving the stored project untouched", async () => {
     const { repository, service } = await setup();
     const before = await repository.findById("sample");
