@@ -42,7 +42,7 @@ type VideoRecord = {
   prompt: string;
   model: "gen4_turbo";
   ratio: "720:1280" | "1280:720";
-  duration_seconds: 5;
+  duration_seconds: number;
   estimated_cost_usd: number;
   status: "created";
   execution_mode: "local_fake_no_provider" | "runway";
@@ -97,13 +97,13 @@ export class LocalVideoSubmissionService {
     return { confirmationId: value.confirmationId, userRequestId: value.userRequestId, approved: true, prompts };
   }
 
-  private hashInput(imageBytes: Buffer, prompt: string, ratio: string): string {
+  private hashInput(imageBytes: Buffer, prompt: string, ratio: string, durationSeconds: number): string {
     const hash = createHash("sha256");
     hash.update(imageBytes);
     hash.update(prompt, "utf8");
     hash.update("gen4_turbo", "ascii");
     hash.update(ratio, "ascii");
-    hash.update("5", "ascii");
+    hash.update(String(durationSeconds), "ascii");
     return hash.digest("hex");
   }
 
@@ -156,7 +156,7 @@ export class LocalVideoSubmissionService {
     const hashes: string[] = [];
     for (const scene of scenes) {
       const image = await fs.readFile(project.generated_images[scene - 1]!);
-      hashes.push(this.hashInput(image, request.prompts[scene - 1]!.prompt, preview.previews[scene - 1]!.ratio));
+      hashes.push(this.hashInput(image, request.prompts[scene - 1]!.prompt, preview.previews[scene - 1]!.ratio, preview.previews[scene - 1]!.durationSeconds));
     }
     const duplicate = this.existing(project, request, hashes);
     if (duplicate) return duplicate;
@@ -175,7 +175,7 @@ export class LocalVideoSubmissionService {
       prompt: request.prompts[index]!.prompt,
       model: "gen4_turbo",
       ratio: preview.previews[index]!.ratio,
-      duration_seconds: 5,
+      duration_seconds: preview.previews[index]!.durationSeconds,
       estimated_cost_usd: 0.25,
       status: "created",
       execution_mode: executionMode,

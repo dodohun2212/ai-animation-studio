@@ -1,16 +1,21 @@
-import { MAX_SCENE_COUNT, MIN_SCENE_COUNT, type ShortProjectSettings, type ShortProjectStyleNotes } from "@ai-animation-studio/shared";
+import { MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, type ShortProjectSettings, type ShortProjectStyleNotes } from "@ai-animation-studio/shared";
 
 import { invalidRequest } from "./project-api.error.js";
 import type { StoredProject } from "./project-storage.schema.js";
 
 const DEFAULT_SCENE_COUNT = 6;
+const DEFAULT_CLIP_DURATION_SECONDS = 5;
 
 function isValidSceneCount(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= MIN_SCENE_COUNT && value <= MAX_SCENE_COUNT;
 }
 
+function isValidClipDuration(value: unknown): value is number {
+  return typeof value === "number" && (RUNWAY_CLIP_DURATIONS as readonly number[]).includes(value);
+}
+
 const STYLE_KEYS = ["visualStyle", "color", "lighting", "camera", "dialogue", "avoid", "aspect"] as const;
-const SETTINGS_KEYS = ["projectName", "topic", "genre", "mood", "character", "lore", "fullStory", "durationSeconds", "sceneCount", "additionalNotes", "styleNotes"] as const;
+const SETTINGS_KEYS = ["projectName", "topic", "genre", "mood", "character", "lore", "fullStory", "sceneCount", "clipDurationSeconds", "additionalNotes", "styleNotes"] as const;
 
 function asObject(value: unknown, field: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -60,7 +65,8 @@ function styleNotesFrom(value: unknown): ShortProjectStyleNotes {
 
 export function toShortProjectSettings(stored: StoredProject): ShortProjectSettings {
   const storyTitle = stringFrom(stored.story.title);
-  const duration = stored.lore_context.duration_seconds;
+  const sceneCount = isValidSceneCount(stored.lore_context.scene_count) ? stored.lore_context.scene_count : DEFAULT_SCENE_COUNT;
+  const clipDurationSeconds = isValidClipDuration(stored.lore_context.clip_duration_seconds) ? stored.lore_context.clip_duration_seconds : DEFAULT_CLIP_DURATION_SECONDS;
   return {
     projectName: stringFrom(stored.lore_context.project_name, storyTitle || "단편 프로젝트"),
     topic: stored.topic,
@@ -69,8 +75,9 @@ export function toShortProjectSettings(stored: StoredProject): ShortProjectSetti
     character: stringFrom(stored.character_profile.name),
     lore: stringFrom(stored.lore_context.lore),
     fullStory: stringFrom(stored.lore_context.full_story),
-    durationSeconds: typeof duration === "number" && Number.isInteger(duration) && duration > 0 ? duration : 30,
-    sceneCount: isValidSceneCount(stored.lore_context.scene_count) ? stored.lore_context.scene_count : DEFAULT_SCENE_COUNT,
+    durationSeconds: sceneCount * clipDurationSeconds,
+    sceneCount,
+    clipDurationSeconds,
     additionalNotes: stringFrom(stored.lore_context.additional_notes),
     styleNotes: styleNotesFrom(stored.lore_context.style_notes),
   };
@@ -93,11 +100,11 @@ export function parseShortProjectSettings(value: unknown): ShortProjectSettings 
       if (item) normalizedStyleNotes[key] = item;
     }
   }
-  if (!Number.isInteger(settings.durationSeconds) || (settings.durationSeconds as number) <= 0) {
-    throw invalidRequest("settings.durationSeconds must be a positive integer.", { field: "settings.durationSeconds" });
-  }
   if (!isValidSceneCount(settings.sceneCount)) {
     throw invalidRequest(`settings.sceneCount must be an integer between ${MIN_SCENE_COUNT} and ${MAX_SCENE_COUNT}.`, { field: "settings.sceneCount" });
+  }
+  if (!isValidClipDuration(settings.clipDurationSeconds)) {
+    throw invalidRequest(`settings.clipDurationSeconds must be one of: ${RUNWAY_CLIP_DURATIONS.join(", ")}.`, { field: "settings.clipDurationSeconds" });
   }
   return {
     projectName: requiredString(settings.projectName, "settings.projectName"),
@@ -107,8 +114,10 @@ export function parseShortProjectSettings(value: unknown): ShortProjectSettings 
     character: optionalString(settings.character, "settings.character"),
     lore: optionalString(settings.lore, "settings.lore"),
     fullStory: optionalString(settings.fullStory, "settings.fullStory"),
-    durationSeconds: settings.durationSeconds as number,
+    // Derived, not accepted from the client — see the ShortProjectSettings.durationSeconds doc comment.
+    durationSeconds: settings.sceneCount * settings.clipDurationSeconds,
     sceneCount: settings.sceneCount,
+    clipDurationSeconds: settings.clipDurationSeconds,
     additionalNotes: optionalString(settings.additionalNotes, "settings.additionalNotes"),
     styleNotes: normalizedStyleNotes,
   };
@@ -131,8 +140,11 @@ export function applyShortProjectSettings(stored: StoredProject, settings: Short
       project_name: settings.projectName,
       lore: settings.lore,
       full_story: settings.fullStory,
+      // duration_seconds is kept in storage for transparency/debugging even though it is always derived
+      // (scene_count * clip_duration_seconds) — see ShortProjectSettings.durationSeconds.
       duration_seconds: settings.durationSeconds,
       scene_count: settings.sceneCount,
+      clip_duration_seconds: settings.clipDurationSeconds,
       additional_notes: settings.additionalNotes,
       style_notes: styleNotes,
     },

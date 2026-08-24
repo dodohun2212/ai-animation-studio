@@ -375,15 +375,21 @@ export interface ShortProjectSettings {
   character: string;
   lore: string;
   fullStory: string;
+  /** Derived, not user-set directly: sceneCount * clipDurationSeconds. The server recomputes this from those two fields on every save; a request's own durationSeconds value (if any) is ignored. */
   durationSeconds: number;
   /** No longer fixed at 6 — see MIN_SCENE_COUNT/MAX_SCENE_COUNT in domain.ts. */
   sceneCount: number;
+  /** One of RUNWAY_CLIP_DURATIONS (domain.ts) — Runway is the only supported video Provider today, so this is not yet keyed by provider. */
+  clipDurationSeconds: number;
   additionalNotes: string;
   styleNotes: ShortProjectStyleNotes;
 }
 
+/** What a client actually sends: durationSeconds is derived server-side (sceneCount * clipDurationSeconds) and is rejected as an unsupported field if included. */
+export type ShortProjectSettingsInput = Omit<ShortProjectSettings, "durationSeconds">;
+
 export interface GetProjectSettingsResponse { settings: ShortProjectSettings; }
-export interface UpdateProjectSettingsRequest { settings: ShortProjectSettings; }
+export interface UpdateProjectSettingsRequest { settings: ShortProjectSettingsInput; }
 export interface UpdateProjectSettingsResponse { project: Project; settings: ShortProjectSettings; }
 
 /**
@@ -455,7 +461,7 @@ export interface StoryPromptPreview {
 export interface CreateStoryPromptPreviewResponse { preview: StoryPromptPreview; }
 
 /** Renders the exact Story prompt from not-yet-saved settings — never persists anything, never calls a paid provider. */
-export interface CreateStoryPromptDraftPreviewRequest { settings: ShortProjectSettings; }
+export interface CreateStoryPromptDraftPreviewRequest { settings: ShortProjectSettingsInput; }
 export interface CreateStoryPromptDraftPreviewResponse { prompt: string; }
 
 /** The user-authored final text must be explicitly approved before fake submission. */

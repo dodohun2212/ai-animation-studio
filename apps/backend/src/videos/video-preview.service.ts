@@ -58,7 +58,7 @@ function ratioFor(project: StoredProject): "720:1280" | "1280:720" {
   return aspect === "16:9" ? "1280:720" : "720:1280";
 }
 
-function promptFor(scene: StoredScene, previous: StoredScene | undefined, ratio: "720:1280" | "1280:720"): string {
+function promptFor(scene: StoredScene, previous: StoredScene | undefined, ratio: "720:1280" | "1280:720", clipDurationSeconds: number): string {
   const orientation = ratio === "1280:720" ? "horizontal" : "vertical";
   const continuity = previous
     ? [previous.end_motion, previous.continuity_hint].filter((value, index, values) => values.indexOf(value) === index).join(" ")
@@ -73,7 +73,7 @@ function promptFor(scene: StoredScene, previous: StoredScene | undefined, ratio:
     ["Environment", String(scene.environment_motion)],
     ["Pacing", `motion speed ${scene.motion_speed}; intensity ${scene.motion_intensity}`],
   ];
-  const prefix = `Create one continuous cinematic 5-second ${orientation} image-to-video shot from the supplied exact first frame.`;
+  const prefix = `Create one continuous cinematic ${clipDurationSeconds}-second ${orientation} image-to-video shot from the supplied exact first frame.`;
   const suffix = "Maintain stable identity, anatomy, clothing, essential objects, lighting and scene continuity throughout the shot.";
   const render = (included: readonly [string, string][]) => [prefix, ...included.map(([label, value]) => `${label}: ${value}`), suffix].join("\n");
   let included = [...sections];
@@ -115,15 +115,16 @@ export class LocalVideoPreviewService {
     if (body !== undefined && body !== null && (!isObject(body) || Object.keys(body).length !== 0)) throw invalidVideoPreviewRequest();
     const project = await this.projects.findById(projectId.trim());
     const sceneNumbers = scenesFor(project);
+    const clipDurationSeconds = toShortProjectSettings(project).clipDurationSeconds;
     await this.assertApprovedImages(project, sceneNumbers);
     const scenes = parseScenes(project, sceneNumbers);
     const ratio = ratioFor(project);
     const previews: VideoPromptPreview[] = scenes.map((scene, index) => ({
       sceneNumber: sceneNumbers[index]!,
-      prompt: promptFor(scene, scenes[index - 1], ratio),
+      prompt: promptFor(scene, scenes[index - 1], ratio, clipDurationSeconds),
       model: "gen4_turbo",
       ratio,
-      durationSeconds: 5,
+      durationSeconds: clipDurationSeconds,
       estimatedCostUsd: 0.25,
     }));
     // This is an opaque, deterministic snapshot of the reviewed images and

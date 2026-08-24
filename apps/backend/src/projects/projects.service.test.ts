@@ -92,8 +92,8 @@ describe("ProjectsService", () => {
     await service.createProject({ projectId: "wizard_project", topic: "old topic" });
     const settings = {
       projectName: "별의 지도", topic: "별을 찾는 아이", genre: "판타지", mood: "따뜻함",
-      character: "아이", lore: "별의 세계", fullStory: "별을 찾는다.", durationSeconds: 30,
-      sceneCount: 6 as const, additionalNotes: "무서운 장면 제외",
+      character: "아이", lore: "별의 세계", fullStory: "별을 찾는다.",
+      sceneCount: 6 as const, clipDurationSeconds: 5 as const, additionalNotes: "무서운 장면 제외",
       styleNotes: { lighting: "달빛", aspect: "16:9" },
     };
 
@@ -101,7 +101,8 @@ describe("ProjectsService", () => {
     const restarted = new ProjectsService(new LocalProjectRepository(root));
 
     expect(saved.project.topic).toBe("별을 찾는 아이");
-    expect(await restarted.getProjectSettings("wizard_project")).toEqual({ settings });
+    // durationSeconds is derived server-side (sceneCount * clipDurationSeconds), not part of the request.
+    expect(await restarted.getProjectSettings("wizard_project")).toEqual({ settings: { ...settings, durationSeconds: 30 } });
   });
 
   it("returns an empty cast for a project that has never set one", async () => {

@@ -22,6 +22,15 @@ export const MAX_SCENE_COUNT = 12;
 export function sceneNumbersFor(sceneCount: number): SceneNumber[] {
   return Array.from({ length: sceneCount }, (_, index) => index + 1);
 }
+
+/**
+ * Clip durations Runway Gen-4 Turbo's API accepts (`enum: [5, 10]`, confirmed against docs.aimlapi.com and
+ * help.runwayml.com) — there is no bin-packing or mixed-duration support, a project picks one of these directly
+ * and its total video length is sceneCount * that duration. Runway is the only supported video Provider today,
+ * so this list is not yet keyed by provider; when a second one is added, this becomes a per-provider capability.
+ */
+export const RUNWAY_CLIP_DURATIONS = [5, 10] as const;
+export type RunwayClipDurationSeconds = (typeof RUNWAY_CLIP_DURATIONS)[number];
 export type ProjectType = "short_project" | "long_story_project";
 export type ReviewDecision = "pending" | "approved" | "rejected";
 export type JobStatus =

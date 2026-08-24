@@ -75,13 +75,15 @@ describe("project routes and DTO shape", () => {
         character: "아이",
         lore: "별이 사라진 세계",
         fullStory: "아이가 별을 되찾는다.",
-        durationSeconds: 30,
         sceneCount: 6,
+        clipDurationSeconds: 5,
         additionalNotes: "무서운 장면 제외",
         styleNotes: { aspect: "16:9", lighting: "달빛" },
       },
     };
-    const response: GetProjectSettingsResponse = { settings: settings.settings };
+    // durationSeconds is derived server-side (sceneCount * clipDurationSeconds), so the response's full
+    // ShortProjectSettings adds it back rather than reusing the request's narrower ShortProjectSettingsInput.
+    const response: GetProjectSettingsResponse = { settings: { ...settings.settings, durationSeconds: 30 } };
 
     expect(API_ROUTES.projectSettings("한글 id")).toBe(
       "/projects/%ED%95%9C%EA%B8%80%20id/settings",

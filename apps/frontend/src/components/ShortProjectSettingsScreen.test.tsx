@@ -6,7 +6,7 @@ import { ShortProjectSettingsScreen } from "./ShortProjectSettingsScreen.js";
 
 const settings = {
   projectName: "별의 지도", topic: "별을 찾는 아이", genre: "판타지", mood: "따뜻함", character: "아이",
-  lore: "별의 세계", fullStory: "별을 찾는다.", durationSeconds: 30, sceneCount: 6,
+  lore: "별의 세계", fullStory: "별을 찾는다.", durationSeconds: 30, sceneCount: 6, clipDurationSeconds: 5,
   additionalNotes: "", styleNotes: { aspect: "16:9", lighting: "달빛" },
 };
 
@@ -43,7 +43,38 @@ describe("ShortProjectSettingsScreen", () => {
 
     await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => String(url) === "/projects/sample_project/settings" && (init as RequestInit | undefined)?.method === "PATCH")).toBe(true));
     const patchCall = fetchMock.mock.calls.find(([url, init]) => String(url) === "/projects/sample_project/settings" && (init as RequestInit | undefined)?.method === "PATCH")!;
-    expect(JSON.parse(String((patchCall[1] as RequestInit).body))).toMatchObject({ settings: { topic: "새 주제", sceneCount: 6 } });
+    const patchBody = JSON.parse(String((patchCall[1] as RequestInit).body));
+    expect(patchBody).toMatchObject({ settings: { topic: "새 주제", sceneCount: 6, clipDurationSeconds: 5 } });
+    // durationSeconds is derived server-side and must never be sent by the client.
+    expect(patchBody.settings).not.toHaveProperty("durationSeconds");
+  });
+
+  it("edits scene count and clip duration, shows the computed total, and saves both without durationSeconds", async () => {
+    const project = makeProject({});
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+      "PATCH /projects/sample_project/settings": { project, settings: { ...settings, sceneCount: 8, clipDurationSeconds: 10 } },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    await screen.findByDisplayValue("별의 지도");
+    expect(screen.getByText(/예상 총 영상 길이: 30초/)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("장면 수"), { target: { value: "8" } });
+    fireEvent.change(screen.getByLabelText("클립 길이(초)"), { target: { value: "10" } });
+    expect(screen.getByText(/예상 총 영상 길이: 80초/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "설정 저장" }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => String(url) === "/projects/sample_project/settings" && (init as RequestInit | undefined)?.method === "PATCH")).toBe(true));
+    const patchCall = fetchMock.mock.calls.find(([url, init]) => String(url) === "/projects/sample_project/settings" && (init as RequestInit | undefined)?.method === "PATCH")!;
+    const patchBody = JSON.parse(String((patchCall[1] as RequestInit).body));
+    expect(patchBody).toMatchObject({ settings: { sceneCount: 8, clipDurationSeconds: 10 } });
+    expect(patchBody.settings).not.toHaveProperty("durationSeconds");
   });
 
   it("shows a one-time setup banner and a finish button that hands off via onBack right after creation", async () => {

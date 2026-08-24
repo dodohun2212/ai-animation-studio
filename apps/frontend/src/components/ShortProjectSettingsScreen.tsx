@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import type { Asset, AssetType, ShortProjectCastMember, ShortProjectContinuityOption, ShortProjectSceneReferenceAsset, ShortProjectSettings } from "@ai-animation-studio/shared";
+import {
+  MAX_SCENE_COUNT,
+  MIN_SCENE_COUNT,
+  RUNWAY_CLIP_DURATIONS,
+  type Asset,
+  type AssetType,
+  type ShortProjectCastMember,
+  type ShortProjectContinuityOption,
+  type ShortProjectSceneReferenceAsset,
+  type ShortProjectSettings,
+} from "@ai-animation-studio/shared";
 
 import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
 import {
@@ -14,7 +24,7 @@ type State = { settings: ShortProjectSettings | null; loading: boolean; error: {
 
 const EMPTY_SETTINGS: ShortProjectSettings = {
   projectName: "", topic: "", genre: "미스터리", mood: "시네마틱", character: "", lore: "", fullStory: "",
-  durationSeconds: 30, sceneCount: 6, additionalNotes: "", styleNotes: { aspect: "16:9" },
+  durationSeconds: 30, sceneCount: 6, clipDurationSeconds: 5, additionalNotes: "", styleNotes: { aspect: "16:9" },
 };
 
 const fieldClassName =
@@ -538,8 +548,11 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
     }
     const requestId = ++promptPreviewRequest.current;
     setPromptPreviewLoading(true);
+    // durationSeconds is derived server-side (sceneCount * clipDurationSeconds) and is rejected as an
+    // unsupported field if sent, so it is left out of the draft-preview request body here.
+    const { durationSeconds: _draftDurationSeconds, ...settingsInput } = settings;
     const timer = setTimeout(() => {
-      void createStoryPromptDraftPreview(projectId, settings)
+      void createStoryPromptDraftPreview(projectId, settingsInput)
         .then((response) => {
           if (requestId !== promptPreviewRequest.current) return;
           setPromptPreview(response.prompt);
@@ -593,7 +606,10 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (!state.settings || saving.current) return;
-    const settings = { ...state.settings, projectName: state.settings.projectName.trim(), topic: state.settings.topic.trim() };
+    // durationSeconds is derived server-side (sceneCount * clipDurationSeconds) and is rejected as an
+    // unsupported field if sent, so it is left out of the save request body here.
+    const { durationSeconds: _formDurationSeconds, ...settingsInput } = state.settings;
+    const settings = { ...settingsInput, projectName: state.settings.projectName.trim(), topic: state.settings.topic.trim() };
     if (!settings.projectName || !settings.topic) {
       setState((old) => ({ ...old, error: { code: "INVALID_REQUEST", message: "프로젝트 이름과 영상 주제는 필수입니다." } }));
       return;
@@ -678,7 +694,39 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
               </div>
             )}
           </div>
-          <Field label="영상 길이(초)" value={String(state.settings.durationSeconds)} onChange={(value) => setField("durationSeconds", Number(value) || 0)} />
+          <label className="block text-sm text-slate-300">
+            장면 수
+            <input
+              type="number"
+              min={MIN_SCENE_COUNT}
+              max={MAX_SCENE_COUNT}
+              className={fieldClassName}
+              value={state.settings.sceneCount}
+              onChange={(event) => {
+                const parsed = Number(event.target.value);
+                if (!Number.isInteger(parsed)) return;
+                const sceneCount = Math.min(MAX_SCENE_COUNT, Math.max(MIN_SCENE_COUNT, parsed));
+                setField("sceneCount", sceneCount);
+                setField("durationSeconds", sceneCount * state.settings!.clipDurationSeconds);
+              }}
+            />
+          </label>
+          <label className="block text-sm text-slate-300">
+            클립 길이(초)
+            <select
+              className={fieldClassName}
+              value={state.settings.clipDurationSeconds}
+              onChange={(event) => {
+                const clipDurationSeconds = Number(event.target.value);
+                setField("clipDurationSeconds", clipDurationSeconds);
+                setField("durationSeconds", state.settings!.sceneCount * clipDurationSeconds);
+              }}
+            >
+              {RUNWAY_CLIP_DURATIONS.map((duration) => (
+                <option key={duration} value={duration}>{duration}초</option>
+              ))}
+            </select>
+          </label>
           <Field label="전체 줄거리" value={state.settings.fullStory} onChange={(value) => setField("fullStory", value)} multiline />
           <Field label="세계관" value={state.settings.lore} onChange={(value) => setField("lore", value)} multiline />
           <Field label="시각 스타일" value={state.settings.styleNotes.visualStyle ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, visualStyle: value })} />
@@ -689,7 +737,9 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
           <Field label="피할 요소" value={state.settings.styleNotes.avoid ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, avoid: value })} />
           <Field label="화면 비율" value={state.settings.styleNotes.aspect ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, aspect: value })} />
           <Field label="추가 지시사항" value={state.settings.additionalNotes} onChange={(value) => setField("additionalNotes", value)} multiline />
-          <p className="text-sm text-slate-400 md:col-span-2">장면 수: 정확히 {state.settings.sceneCount}개</p>
+          <p className="text-sm text-slate-400 md:col-span-2">
+            예상 총 영상 길이: {state.settings.sceneCount * state.settings.clipDurationSeconds}초 ({state.settings.sceneCount}장면 × {state.settings.clipDurationSeconds}초)
+          </p>
           {state.error && (
             <p className="text-sm text-rose-400 md:col-span-2" role="alert" data-error-code={state.error.code}>
               {state.error.message}

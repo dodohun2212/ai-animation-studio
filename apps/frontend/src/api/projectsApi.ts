@@ -1,5 +1,8 @@
 import {
   API_ROUTES,
+  MAX_SCENE_COUNT,
+  MIN_SCENE_COUNT,
+  RUNWAY_CLIP_DURATIONS,
   type ArchiveProjectRequest,
   type ArchiveProjectResponse,
   type CreateProjectRequest,
@@ -103,7 +106,16 @@ function isGetProjectResponse(value: unknown): value is GetProjectResponse {
 }
 
 function isShortProjectSettings(value: unknown): value is ShortProjectSettings {
-  if (!isRecord(value) || value.sceneCount !== 6 || !Number.isInteger(value.durationSeconds) || (value.durationSeconds as number) <= 0) {
+  if (
+    !isRecord(value) ||
+    typeof value.sceneCount !== "number" ||
+    !Number.isInteger(value.sceneCount) ||
+    value.sceneCount < MIN_SCENE_COUNT ||
+    value.sceneCount > MAX_SCENE_COUNT ||
+    !(RUNWAY_CLIP_DURATIONS as readonly number[]).includes(value.clipDurationSeconds as number) ||
+    !Number.isInteger(value.durationSeconds) ||
+    (value.durationSeconds as number) <= 0
+  ) {
     return false;
   }
   const stringKeys = ["projectName", "topic", "genre", "mood", "character", "lore", "fullStory", "additionalNotes"];

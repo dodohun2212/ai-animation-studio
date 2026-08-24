@@ -71,7 +71,7 @@ describe("StoryPromptService", () => {
     const before = await repository.findById("sample");
     const draftSettings = {
       projectName: "Draft Name", topic: "draft topic", genre: "", mood: "", character: "",
-      lore: "", fullStory: "", durationSeconds: 30, sceneCount: 6, additionalNotes: "", styleNotes: {},
+      lore: "", fullStory: "", sceneCount: 6, clipDurationSeconds: 5, additionalNotes: "", styleNotes: {},
     };
     const result = await service.draftPreview("sample", { settings: draftSettings });
     expect(result).toEqual({ prompt: "name=Draft Name topic=draft topic count=6 literal=$ missing=$missing" });

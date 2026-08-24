@@ -94,8 +94,8 @@ describe("ProjectsController", () => {
     const response = await controller.updateSettings("wizard_project", {
       settings: {
         projectName: "별의 지도", topic: "별을 찾는 아이", genre: "판타지", mood: "따뜻함",
-        character: "아이", lore: "별의 세계", fullStory: "별을 찾는다.", durationSeconds: 30,
-        sceneCount: 6, additionalNotes: "", styleNotes: { aspect: "16:9" },
+        character: "아이", lore: "별의 세계", fullStory: "별을 찾는다.",
+        sceneCount: 6, clipDurationSeconds: 5, additionalNotes: "", styleNotes: { aspect: "16:9" },
       },
     });
     expect(response.project.topic).toBe("별을 찾는 아이");

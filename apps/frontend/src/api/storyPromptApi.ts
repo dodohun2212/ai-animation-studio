@@ -1,11 +1,13 @@
 import {
   API_ROUTES,
+  MAX_SCENE_COUNT,
+  MIN_SCENE_COUNT,
   type ApproveStoryPromptRequest,
   type ApproveStoryPromptResponse,
   type CreateStoryPromptDraftPreviewResponse,
   type CreateStoryPromptPreviewResponse,
   type Project,
-  type ShortProjectSettings,
+  type ShortProjectSettingsInput,
   type StoryPromptPreview,
 } from "@ai-animation-studio/shared";
 
@@ -78,7 +80,10 @@ function isPreview(value: unknown): value is StoryPromptPreview {
     isDigest(value.originalPromptSha256) &&
     typeof value.characterCount === "number" &&
     value.characterCount >= 0 &&
-    value.sceneCount === 6
+    typeof value.sceneCount === "number" &&
+    Number.isInteger(value.sceneCount) &&
+    value.sceneCount >= MIN_SCENE_COUNT &&
+    value.sceneCount <= MAX_SCENE_COUNT
   );
 }
 
@@ -142,7 +147,7 @@ export function createStoryPromptPreview(projectId: string): Promise<CreateStory
 /** Live, not-yet-saved preview of the exact Story prompt for the given draft settings — never persists, never calls a paid provider. */
 export function createStoryPromptDraftPreview(
   projectId: string,
-  settings: ShortProjectSettings,
+  settings: ShortProjectSettingsInput,
 ): Promise<CreateStoryPromptDraftPreviewResponse> {
   return request(
     API_ROUTES.storyPromptDraftPreview(projectId),
