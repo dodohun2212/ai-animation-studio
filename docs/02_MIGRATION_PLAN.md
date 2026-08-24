@@ -10,7 +10,7 @@
 
 ## 상태: 마이그레이션 완료 (2026-08-24), 현재는 기능 개선·다듬기 단계
 
-Python → TypeScript 이전 자체는 끝났다 — 상위 15개 체크리스트(8절)와 44개 개별 기능 전부 구현·검증·커밋 완료. 이후 사용자가 실제 패키징된 앱을 써보고 "Python 원본보다 다운그레이드된 것 같다"고 지적해 UI/UX 격차 감사를 진행했고("2026-08-24 UI/UX 완성도 및 레거시 데이터 편입" 이하), 1~3순위(핵심 기능 막힘·UX 문제·폴리싱, 총 10개 항목) 전부 완료했다. 남은 4순위(패키징된 exe 실사용 테스트·DPI 확인·NSIS 설치 프로그램·실제 유료 Provider E2E)는 사용자가 먼저 직접 써보고 안정성을 확인한 뒤 순서대로 진행하기로 했다(패키징·배포는 사용자 승인 후).
+Python → TypeScript 이전 자체는 끝났다 — 상위 15개 체크리스트(8절)와 44개 개별 기능 전부 구현·검증·커밋 완료. 이후 사용자가 실제 패키징된 앱을 써보고 "Python 원본보다 다운그레이드된 것 같다"고 지적해 UI/UX 격차 감사를 진행했고("2026-08-24 UI/UX 완성도 및 레거시 데이터 편입" 이하), 1~3순위(핵심 기능 막힘·UX 문제·폴리싱, 총 10개 항목) 전부 완료했다. 이어서 별도의 UI 스타일 리디자인(Phase 0~2, "2026-08-24 UI 셸 리디자인" 이하)으로 `apps/frontend/src/components/*.tsx` 26개 화면 전체와 App.tsx에 violet/gold 다크 테마 시각 언어를 일관 적용하는 것까지 완료했다 — 이건 3순위 폴리싱의 연장선이며 새로운 우선순위 항목은 아니다. 남은 4순위(패키징된 exe 실사용 테스트·DPI 확인·NSIS 설치 프로그램·실제 유료 Provider E2E)는 사용자가 먼저 직접 써보고 안정성을 확인한 뒤 순서대로 진행하기로 했다(패키징·배포는 사용자 승인 후).
 
 **지금부터의 작업은 "Python 기능 이전"이 아니라 "이미 이전된 프로그램의 개선·다듬기"다.** AGENTS.md의 "Feature discipline"(예전 "Migration discipline")은 이 단계에도 그대로 적용된다 — 작업 하나씩, 완료 조건 먼저 정의, 검증 후에만 문서 갱신.
 
@@ -104,6 +104,36 @@ Cowork 디자인 세션이 `apps/frontend` 4개 화면을 Phase 0 사이드바 �
 - `MappingReviewScreen.tsx`: 원래 스타일이 거의 없던 화면 전체에 검토 상태 카드, 체크박스, 필터 셀렉트, 매핑 카드(상태별 색상 텍스트, 확인/제외/스냅샷 버튼 색상 아웃라인)를 새로 입혔다. 이 파일만 쓰던 `text-red-300`도 앱 전역 관례인 `text-rose-400`으로 통일했다(Asset Library 스타일링 통일 작업과 동일한 정리). 모든 role/label/`data-testid`, PATCH·POST 호출 로직은 변경 없음.
 - `ProjectDetail.tsx`: "이어서 진행하기" 버튼을 그라데이션 CTA로, 나머지 액션 버튼을 pill 그룹으로, 상세 정보를 `dl` 그리드 카드로 재구성. `resumeTarget()` 함수 자체와 버튼 텍스트·조건부 노출 로직, dt/dd 텍스트 구성은 변경 없음.
 - Main 검증: 프런트엔드 typecheck/test(547 통과, 4개 파일 diff를 직접 대조해 접근성 구조·로직 보존 확인)/build 통과, 루트 전체 typecheck 통과, `git diff --check` 통과(개행문자 경고만 있음). `apps/backend/learning_data/`(시각 검증 중 생성된 로컬 테스트 프로젝트 데이터)는 이번에도 커밋에서 제외했다.
+
+### 2026-08-24~25 UI 스타일 리디자인 (Phase 2 — 나머지 22개 화면, 배치 2~8)
+
+Phase 1(4개 화면)과 같은 Cowork 디자인 세션이 이어서 `apps/frontend/src/components/*.tsx`의 나머지 화면 22개 전부를 같은 카드/그라데이션 시각 언어로 확장했다(파일 직접 반영 + 브라우저 시각 검증). 로컬 CLI 세션이 배치마다 diff 검토·typecheck·test·build를 거쳐 커밋·push했다. 매 배치 회귀 0건.
+
+**적용한 화면(배치 순서, 확인된 커밋만 표기 — 배치 2~4는 이 문서 갱신 시점에 정확한 해시를 확인하지 못했으니 `git log --oneline -- <파일명>`으로 보완할 것)**:
+
+- 배치 2: `ProviderSettingsScreen.tsx` + `ProviderCredentialCard.tsx`, `LongProjectList.tsx`, `VideoMergeScreen.tsx`
+- 배치 3: `ArchiveProjectDialog.tsx`, `CreateLongProjectForm.tsx`, `VideoPromptPreviewScreen.tsx`
+- 배치 4: `LongProjectDetail.tsx`, `LongProjectSettingsScreen.tsx`, `LongEpisodeVideoMergeScreen.tsx`
+- 배치 5(`e88ac1a`): `ShortProjectSettingsScreen.tsx`(설정 폼 + `CastEditor`/`ContinuityEditor`/`AssetReferenceEditor` 3개 서브 에디터), `LongProjectOutlineScreen.tsx`
+- 배치 6(`4b71391`): `LongStoryBibleScreen.tsx`(5탭 컬렉션 전환·CRUD·삭제 확인까지 포함한 가장 복잡한 화면 중 하나 — 글로벌 스타일 Asset 옵션 라벨의 모지바케 문자 "쨌"을 앱 전역 관례인 "·"로 정규화, 테스트에서 해당 텍스트를 검사하지 않는다는 것을 먼저 확인 후 수정), `ImageGenerationScreen.tsx`
+- 배치 7(`caace80`): `VideoWorkflowScreen.tsx`, `AssetLibraryScreen.tsx`(383줄·938줄 테스트 파일, 이번 리디자인 중 가장 상호작용이 밀집된 화면)
+- 배치 8(`70966ce`): `LongEpisodeScriptScreen.tsx`, `LongEpisodeMappingReviewScreen.tsx`, `LongEpisodeImageGenerationScreen.tsx`, `LongEpisodeVideoWorkflowScreen.tsx`, `LongEpisodeContinuityScreen.tsx`
+
+**공통 원칙(Phase 1과 동일, 전 배치 일관 적용)**: aria-label·`role`·`data-testid`·`data-status`·`data-error-code` 등 접근성/테스트 훅, 버튼·라벨의 정확한 문구, 조건부 렌더링·`disabled` 조건, 콜백 시그니처와 API 호출 shape는 절대 바꾸지 않는다 — `className`과 순수 레이아웃용 래퍼 `<div>`/`<span>` 추가만 허용. 이 원칙 덕분에 8개 배치 전부 테스트 수정 없이 그린으로 통과했다.
+
+**재사용한 디자인 토큰(파일마다 로컬 상수로 재선언, 공용 모듈화는 하지 않음)**:
+- `fieldClassName`(라벨+입력 세로 배치): `rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 ... focus:ring-2 focus:ring-violet-500/30`
+- `primaryButton`(그라데이션 pill): `bg-gradient-to-r from-violet-500 to-fuchsia-500 ... shadow-[0_0_16px_rgba(139,92,246,0.35)]`
+- `outlineButton` / `dangerOutlineButton`(rose) / `smallOutlineButton`·`smallAddButton`(emerald)·`smallRemoveButton`(rose)·`smallAmberButton`: 밀도 높은 인라인 행용 축소 버전
+- `cardSection`: `rounded-2xl border border-white/10 bg-slate-900/70 p-5`
+- `SectionHeading`: 그라데이션 점(`bg-gradient-to-br from-violet-300 to-pink-300`) + 제목 텍스트 헬퍼 컴포넌트
+- 확인(confirm) 대화상자: `role="alertdialog"` + `rounded-xl border border-amber-400/40 bg-slate-900/70 p-4`
+
+**발견한 특수 제약**: `VideoWorkflowScreen.test.tsx`(그리고 이미 알려진 `VideoMergeScreen.test.tsx`/`VideoPromptPreviewScreen.test.tsx`)에는 컴포넌트 소스 코드(`.tsx` 파일 원문)를 `node:fs/promises`로 직접 읽어 `localStorage`/`sessionStorage`/`indexedDB`/`console\s*\.`/`api\.openai\.com`/`runwayml\.com`/`\bffmpeg\b`/`child_process`/`spawn\(` 정규식을 검사하는 테스트가 있다. 스타일링만 하는 작업이라도 이 파일들은 원본 텍스트 노드를 한 글자도 바꾸지 않도록 별도로 대조해야 한다("Runway"라는 단어 자체는 허용되며, 도메인 `runwayml.com`과 단어 경계의 `ffmpeg`만 금지). 반대로 `LongEpisodeVideoWorkflowScreen.test.tsx`에는 이런 소스 스캔 테스트가 없다.
+
+**중요한 발견(배치 8): 장편(Episode) 파이프라인은 실제 Provider 없이도 끝까지 라이브로 검증 가능하다.** 배치 6·7 시점에는 `ImageGenerationScreen.tsx`/`VideoWorkflowScreen.tsx`(단기 프로젝트용)가 실제 OpenAI/Runway 연결 없이는 `AssetMappingApproved` 이후 상태에 도달할 수 없다고 보고 `.test.tsx` 전체 대조로만 검증했었다. 그런데 장편 Episode 쪽 화면(`LongEpisodeScriptScreen`의 "Local 대본 생성", `LongEpisodeImageGenerationScreen`의 "로컬 fake 이미지 어댑터", `LongEpisodeVideoWorkflowScreen`의 "로컬 fake 영상 워크플로")은 전부 로컬 결정론적 어댑터만 쓰므로, 테스트 프로젝트(`design-preview-long-1`)의 Episode 1을 아웃라인 승인 → Local 대본 생성·승인 → Asset mapping 텍스트 전용 검토·승인 → 로컬 이미지 6장 생성·전체 승인 → 로컬 영상 6개 생성·전체 승인 → Continuity 저장까지 브라우저로 실제로 끝까지 클릭해서 5개 화면 전부 실제 데이터 렌더링과 콘솔 에러 없음을 확인했다. 다음에 유사한 화면을 검증할 때는 먼저 "로컬 fake" 문구가 있는지 확인하고, 있다면 실제 Provider 연결 여부와 무관하게 라이브 E2E 클릭 검증을 우선 시도할 것.
+
+**검증 수치(배치 5~8, 매번 동일)**: typecheck 전체 워크스페이스 통과, test는 backend 460 통과(+1 skip)·desktop 8 통과·frontend 547 통과·shared 25 통과, build는 shared/backend/frontend/desktop 전부 성공. `apps/backend/learning_data/`(시각 검증 중 생성된 로컬 테스트 프로젝트 데이터)는 매 배치 커밋에서 의도적으로 제외했다.
 
 #### 4순위 — 구현이 아닌 검증/마무리
 
