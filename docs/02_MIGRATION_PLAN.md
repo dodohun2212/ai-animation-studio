@@ -93,6 +93,17 @@ Cowork 디자인 세션에서 `apps/frontend` 비주얼 개편을 진행하고(�
 - `Spinner.tsx`: 테두리 색상·glow 효과만 조정(요청 목록엔 없었으나 함께 반영된 사소한 시각적 변경).
 - 범위 밖으로 확인된 항목(추가 논의 예정): 프로젝트 카드 즐겨찾기 아이콘, 그리드/리스트 뷰 전환 토글, 사이드바 프로모 카드 드롭다운 화살표.
 - Main 검증: 프런트엔드 typecheck/test(547 통과)/build 통과, 루트 전체 typecheck 통과, `git diff --check` 통과(개행문자 경고만 있음). 사용되지 않는 `hero-ribbon.png`(어디서도 import되지 않음)와 시각 검증 중 생성된 `apps/backend/learning_data/projects/design-preview-1/`은 이번 커밋에서 의도적으로 제외했다.
+- 후속 확인(2026-08-25): 사용자 확인 결과 `hero-ribbon.png`는 실제로 미사용이라 삭제(never git-tracked라 커밋 기록은 없음). Sidebar의 "PRISM FORGE" 브랜드마크는 의도한 정식 브랜드명이라 유지 — 메인 헤딩 "AI Animation Studio" 문구 교체(리브랜딩)는 이번 범위에서 제외하고 별도로 처리하기로 했다.
+
+### 2026-08-25 UI 스타일 리디자인 (Phase 1 — 4개 화면)
+
+Cowork 디자인 세션이 `apps/frontend` 4개 화면을 Phase 0 사이드바 리디자인과 같은 카드/그라데이션 시각 언어로 확장하고(파일 직접 반영 + 브라우저 시각 검증), Main이 최종 검증·커밋했다(`6bbb379`).
+
+- `CreateProjectForm.tsx`: 폼 전체를 카드(`rounded-2xl`, `bg-slate-900/70`)로 감싸고 입력 필드에 포커스 링, 생성 버튼에 그라데이션 적용. 필드 구성·라벨·검증 로직은 변경 없음.
+- `StoryPromptScreen.tsx`: 미리보기·textarea·승인 확인 패널을 카드로 통합, 버튼을 그라데이션/아웃라인으로 스타일링. 2단계 승인 확인 흐름, textarea 값, 모든 `data-testid`는 변경 없음.
+- `MappingReviewScreen.tsx`: 원래 스타일이 거의 없던 화면 전체에 검토 상태 카드, 체크박스, 필터 셀렉트, 매핑 카드(상태별 색상 텍스트, 확인/제외/스냅샷 버튼 색상 아웃라인)를 새로 입혔다. 이 파일만 쓰던 `text-red-300`도 앱 전역 관례인 `text-rose-400`으로 통일했다(Asset Library 스타일링 통일 작업과 동일한 정리). 모든 role/label/`data-testid`, PATCH·POST 호출 로직은 변경 없음.
+- `ProjectDetail.tsx`: "이어서 진행하기" 버튼을 그라데이션 CTA로, 나머지 액션 버튼을 pill 그룹으로, 상세 정보를 `dl` 그리드 카드로 재구성. `resumeTarget()` 함수 자체와 버튼 텍스트·조건부 노출 로직, dt/dd 텍스트 구성은 변경 없음.
+- Main 검증: 프런트엔드 typecheck/test(547 통과, 4개 파일 diff를 직접 대조해 접근성 구조·로직 보존 확인)/build 통과, 루트 전체 typecheck 통과, `git diff --check` 통과(개행문자 경고만 있음). `apps/backend/learning_data/`(시각 검증 중 생성된 로컬 테스트 프로젝트 데이터)는 이번에도 커밋에서 제외했다.
 
 #### 4순위 — 구현이 아닌 검증/마무리
 
