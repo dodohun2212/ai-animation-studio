@@ -31,7 +31,7 @@ export function ArchiveProjectDialog({ confirmationText, projectKind, onCancel, 
   }
 
   return (
-    <section className="mt-6 rounded-xl border border-rose-400/40 bg-rose-950/20 p-4" aria-label={`${projectKind} project archive confirmation`}>
+    <section className="mt-6 rounded-2xl border border-rose-400/30 bg-rose-950/20 p-5" aria-label={`${projectKind} project archive confirmation`}>
       <h3 className="font-semibold text-rose-200">Archive project</h3>
       <p className="mt-2 text-sm text-slate-300">
         This recoverably archives the project. Type the exact {projectKind === "short" ? "topic" : "title"} to continue:
@@ -42,15 +42,15 @@ export function ArchiveProjectDialog({ confirmationText, projectKind, onCancel, 
       </label>
       <input
         id="archive-confirmation"
-        className="mt-1 w-full rounded border border-white/20 bg-slate-900 px-3 py-2 text-slate-100"
+        className="mt-1.5 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-slate-100 focus:border-rose-400/50 focus:outline-none focus:ring-2 focus:ring-rose-500/30 disabled:opacity-50"
         value={confirmation}
         onChange={(event) => setConfirmation(event.target.value)}
         disabled={pending}
       />
       {error && <p className="mt-3 text-sm text-rose-300" role="alert" data-error-code={error.code}>{error.message}</p>}
       <div className="mt-4 flex gap-3">
-        <button type="button" className="rounded-full border border-white/20 px-4 py-2 text-sm text-slate-200" onClick={onCancel} disabled={pending}>Cancel</button>
-        <button type="button" className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => { void submit(); }} disabled={!matches || pending}>
+        <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5 disabled:opacity-50" onClick={onCancel} disabled={pending}>Cancel</button>
+        <button type="button" className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(225,29,72,0.3)] disabled:opacity-50" onClick={() => { void submit(); }} disabled={!matches || pending}>
           {pending ? "Archiving…" : "Confirm archive"}
         </button>
       </div>

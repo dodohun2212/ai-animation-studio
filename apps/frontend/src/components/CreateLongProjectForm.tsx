@@ -36,6 +36,9 @@ const EMPTY_SETTINGS: LongProjectSettings = {
   storyFlowSummary: "",
 };
 
+const fieldClassName =
+  "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
+
 function Field({
   label,
   value,
@@ -49,14 +52,13 @@ function Field({
   multiline?: boolean;
   disabled: boolean;
 }) {
-  const classes = "mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100";
   return (
     <label className="block text-sm text-slate-300">
       {label}
       {multiline ? (
-        <textarea className={classes} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} rows={3} />
+        <textarea className={fieldClassName} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} rows={3} />
       ) : (
-        <input className={classes} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} />
+        <input className={fieldClassName} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} />
       )}
     </label>
   );
@@ -125,20 +127,24 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
   }
 
   return (
-    <form className="mt-8 grid gap-4 md:grid-cols-2" onSubmit={handleSubmit} noValidate>
+    <form
+      className="mt-8 grid gap-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6 md:grid-cols-2"
+      onSubmit={handleSubmit}
+      noValidate
+    >
       <div>
         <label className="block text-sm text-slate-300" htmlFor="long-project-id">
           프로젝트 ID
         </label>
         <input
           id="long-project-id"
-          className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100"
+          className={fieldClassName}
           value={projectId}
           onChange={(event) => setProjectId(event.target.value)}
           disabled={submitting}
         />
         {fieldErrors.projectId && (
-          <p className="mt-1 text-sm text-rose-400" role="alert">
+          <p className="mt-1.5 text-sm text-rose-400" role="alert">
             {fieldErrors.projectId}
           </p>
         )}
@@ -146,7 +152,7 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
       <div>
         <Field label="제목" value={settings.title} onChange={(value) => setField("title", value)} disabled={submitting} />
         {fieldErrors.title && (
-          <p className="mt-1 text-sm text-rose-400" role="alert">
+          <p className="mt-1.5 text-sm text-rose-400" role="alert">
             {fieldErrors.title}
           </p>
         )}
@@ -154,7 +160,7 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
       <div className="md:col-span-2">
         <Field label="로그라인" value={settings.logline} onChange={(value) => setField("logline", value)} disabled={submitting} multiline />
         {fieldErrors.logline && (
-          <p className="mt-1 text-sm text-rose-400" role="alert">
+          <p className="mt-1.5 text-sm text-rose-400" role="alert">
             {fieldErrors.logline}
           </p>
         )}
@@ -170,13 +176,13 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
         <input
           id="episode-count"
           type="number"
-          className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100"
+          className={fieldClassName}
           value={settings.episodeCount}
           disabled={submitting}
           onChange={(event) => setField("episodeCount", Number(event.target.value))}
         />
         {fieldErrors.episodeCount && (
-          <p className="mt-1 text-sm text-rose-400" role="alert">
+          <p className="mt-1.5 text-sm text-rose-400" role="alert">
             {fieldErrors.episodeCount}
           </p>
         )}
@@ -188,13 +194,13 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
         <input
           id="episode-duration"
           type="number"
-          className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100"
+          className={fieldClassName}
           value={settings.episodeDurationSeconds}
           disabled={submitting}
           onChange={(event) => setField("episodeDurationSeconds", Number(event.target.value))}
         />
         {fieldErrors.episodeDurationSeconds && (
-          <p className="mt-1 text-sm text-rose-400" role="alert">
+          <p className="mt-1.5 text-sm text-rose-400" role="alert">
             {fieldErrors.episodeDurationSeconds}
           </p>
         )}
@@ -205,7 +211,7 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
         </label>
         <select
           id="long-platform"
-          className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100"
+          className={fieldClassName}
           value={settings.platform}
           disabled={submitting}
           onChange={(event) => setField("platform", event.target.value as LongProjectSettings["platform"])}
@@ -220,7 +226,7 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
         </label>
         <select
           id="long-aspect-ratio"
-          className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100"
+          className={fieldClassName}
           value={settings.aspectRatio}
           disabled={submitting}
           onChange={(event) => setField("aspectRatio", event.target.value as LongProjectSettings["aspectRatio"])}
@@ -247,17 +253,17 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
           {submitError.message}
         </p>
       )}
-      <div className="flex gap-3 md:col-span-2">
+      <div className="flex gap-3 pt-1 md:col-span-2">
         <button
           type="submit"
-          className="rounded-full bg-violet-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
           disabled={submitting}
         >
           {submitting ? "생성 중..." : "장기 프로젝트 생성"}
         </button>
         <button
           type="button"
-          className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300"
+          className="rounded-full border border-white/10 px-5 py-2.5 text-sm text-slate-300 hover:bg-white/5"
           onClick={onCancel}
           disabled={submitting}
         >

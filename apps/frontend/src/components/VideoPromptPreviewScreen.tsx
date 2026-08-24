@@ -19,6 +19,7 @@ type LoadState =
   | { status: "ready"; previews: VideoPromptPreview[]; confirmationId?: string };
 
 const PROMPT_UTF16_LIMIT = 1000;
+const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
 
 /** JavaScript string length already counts UTF-16 code units, matching the Backend's limit. */
 function utf16Length(value: string): number {
@@ -115,12 +116,22 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
   const isStale = submitError?.code === "VIDEO_CONFIRMATION_STALE";
 
   return (
-    <section className="mt-8 space-y-4">
-      <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300" onClick={onBack}>
+    <section className="mt-8 max-w-3xl space-y-5">
+      <button
+        type="button"
+        className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
+        onClick={onBack}
+      >
         프로젝트로 돌아가기
       </button>
-      <h2 className="text-xl font-semibold">영상 프롬프트 및 비용 확인</h2>
-      <p className="text-sm text-amber-300" data-testid="no-provider-notice">
+      <h2 className="flex items-center gap-2.5 text-lg font-semibold">
+        <span
+          aria-hidden="true"
+          className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
+        />
+        영상 프롬프트 및 비용 확인
+      </h2>
+      <p className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300" data-testid="no-provider-notice">
         실제 유료 Runway API를 호출하지 않습니다. 아래 수정 내용은 이 화면에만 유지되며 저장되지 않습니다.
       </p>
 
@@ -130,11 +141,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
           <p role="alert" data-testid="preview-error" data-error-code={state.error.code} className="text-sm text-rose-400">
             {state.error.message}
           </p>
-          <button
-            type="button"
-            className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300"
-            onClick={() => void load()}
-          >
+          <button type="button" className={outlineButton} onClick={() => void load()}>
             다시 시도
           </button>
         </div>
@@ -154,7 +161,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
                 <li
                   key={preview.sceneNumber}
                   data-testid={`preview-${preview.sceneNumber}`}
-                  className="space-y-1 rounded-lg border border-white/10 p-4"
+                  className="space-y-1.5 rounded-2xl border border-white/10 bg-slate-900/70 p-4"
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-slate-200">{preview.sceneNumber}번 장면</span>
@@ -166,7 +173,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
                     Runway 프롬프트
                     <textarea
                       id={`prompt-${preview.sceneNumber}`}
-                      className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100"
+                      className="mt-1.5 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
                       rows={6}
                       value={promptText}
                       disabled={confirmOpen || submitPending || Boolean(submitted)}
@@ -200,7 +207,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
             <div className="flex gap-3">
               <button
                 type="button"
-                className="rounded-full bg-violet-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
                 data-testid="open-confirm-button"
                 onClick={openConfirmation}
                 disabled={confirmOpen || submitPending || hasBlockingPromptError || !confirmationId}
@@ -208,11 +215,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
                 이 프롬프트로 전송 승인
               </button>
               {isStale && (
-                <button
-                  type="button"
-                  className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300"
-                  onClick={() => void load()}
-                >
+                <button type="button" className={outlineButton} onClick={() => void load()}>
                   새로고침
                 </button>
               )}
@@ -224,7 +227,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
               role="alertdialog"
               aria-label="영상 생성 요청 전송 확인"
               data-testid="submit-confirm-panel"
-              className="space-y-3 rounded-lg border border-amber-400/40 bg-slate-900 p-4"
+              className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
             >
               <p className="text-sm font-semibold text-amber-300">이 프롬프트로 영상 생성 요청을 전송할까요?</p>
               <p className="text-sm text-slate-300">
@@ -234,7 +237,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
               <div className="flex gap-3">
                 <button
                   type="button"
-                  className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 disabled:opacity-50"
+                  className={outlineButton}
                   data-testid="cancel-submit-button"
                   onClick={cancelConfirmation}
                   disabled={submitPending}
@@ -243,7 +246,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
                 </button>
                 <button
                   type="button"
-                  className="rounded-full bg-violet-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
                   data-testid="confirm-submit-button"
                   onClick={() => void confirmSubmission()}
                   disabled={submitPending}
@@ -261,7 +264,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
           )}
 
           {submitted && (
-            <div data-testid="submit-success" className="space-y-2 rounded-lg border border-emerald-400/30 bg-slate-900 p-4">
+            <div data-testid="submit-success" className="space-y-2 rounded-2xl border border-emerald-400/30 bg-slate-900/70 p-4">
               <p className="text-sm font-semibold text-emerald-400">
                 로컬 가짜 영상 생성 작업이 접수되었습니다. 실제 유료 Runway 요청은 전송되지 않았습니다.
               </p>
@@ -273,7 +276,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
               </p>
               <button
                 type="button"
-                className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white"
+                className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(16,185,129,0.35)]"
                 data-testid="view-progress-button"
                 onClick={() => onSubmitted(projectId, submitted.jobId)}
               >
