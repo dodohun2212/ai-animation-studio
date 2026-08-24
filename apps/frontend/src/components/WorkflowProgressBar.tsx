@@ -21,7 +21,7 @@ const PIPELINE_ORDER: WorkflowState[] = [
   WorkflowState.Completed,
 ];
 
-function progressPercent(state: WorkflowState): number {
+export function progressPercent(state: WorkflowState): number {
   if (state === WorkflowState.Failed || state === WorkflowState.Cancelled) return 100;
   const resolved = state === WorkflowState.Interrupted ? WorkflowState.GeneratingVideos : state;
   const index = PIPELINE_ORDER.indexOf(resolved);
@@ -40,9 +40,12 @@ export function WorkflowProgressBar({ state, className = "" }: { state: Workflow
       aria-valuemin={0}
       aria-valuemax={100}
       aria-label="진행률"
-      className={`h-1.5 w-full overflow-hidden rounded-full bg-slate-700 ${className}`.trim()}
+      className={`h-1.5 w-full overflow-hidden rounded-full bg-slate-800 ${className}`.trim()}
     >
-      <div className={`h-full rounded-full ${failed ? "bg-rose-500" : "bg-violet-500"}`} style={{ width: `${percent}%` }} />
+      <div
+        className={`h-full rounded-full ${failed ? "bg-rose-500" : "bg-violet-500 shadow-[0_0_8px_rgba(139,92,246,0.6)]"}`}
+        style={{ width: `${percent}%` }}
+      />
     </div>
   );
 }
