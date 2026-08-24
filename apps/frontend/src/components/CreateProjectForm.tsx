@@ -14,6 +14,9 @@ interface FieldErrors {
   topic?: string;
 }
 
+const fieldClassName =
+  "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
+
 export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProps) {
   const [projectId, setProjectId] = useState("");
   const [topic, setTopic] = useState("");
@@ -62,20 +65,24 @@ export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProp
   }
 
   return (
-    <form className="mt-8 space-y-4" onSubmit={handleSubmit} noValidate>
+    <form
+      className="mt-8 max-w-xl space-y-5 rounded-2xl border border-white/10 bg-slate-900/70 p-6"
+      onSubmit={handleSubmit}
+      noValidate
+    >
       <div>
         <label className="block text-sm text-slate-300" htmlFor="projectId">
           프로젝트 ID
         </label>
         <input
           id="projectId"
-          className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100"
+          className={fieldClassName}
           value={projectId}
           onChange={(event) => setProjectId(event.target.value)}
           disabled={submitting}
         />
         {fieldErrors.projectId && (
-          <p className="mt-1 text-sm text-rose-400" role="alert">
+          <p className="mt-1.5 text-sm text-rose-400" role="alert">
             {fieldErrors.projectId}
           </p>
         )}
@@ -86,13 +93,13 @@ export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProp
         </label>
         <input
           id="topic"
-          className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-slate-100"
+          className={fieldClassName}
           value={topic}
           onChange={(event) => setTopic(event.target.value)}
           disabled={submitting}
         />
         {fieldErrors.topic && (
-          <p className="mt-1 text-sm text-rose-400" role="alert">
+          <p className="mt-1.5 text-sm text-rose-400" role="alert">
             {fieldErrors.topic}
           </p>
         )}
@@ -102,17 +109,17 @@ export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProp
           {submitError.message}
         </p>
       )}
-      <div className="flex gap-3">
+      <div className="flex gap-3 pt-1">
         <button
           type="submit"
-          className="rounded-full bg-violet-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
           disabled={submitting}
         >
           {submitting ? "생성 중..." : "프로젝트 생성"}
         </button>
         <button
           type="button"
-          className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300"
+          className="rounded-full border border-white/10 px-5 py-2.5 text-sm text-slate-300 hover:bg-white/5"
           onClick={onCancel}
           disabled={submitting}
         >

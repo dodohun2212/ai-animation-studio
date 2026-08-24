@@ -29,10 +29,19 @@ const STATUS_LABELS: Record<AssetMappingStatus, string> = {
   confirmed: "확인됨", suggested: "제안됨", ambiguous: "모호함",
   unmatched: "매칭 안됨", excluded: "제외됨", invalid: "유효하지 않음",
 };
+const STATUS_TEXT_TONE: Record<AssetMappingStatus, string> = {
+  confirmed: "text-emerald-300", suggested: "text-violet-300", ambiguous: "text-amber-300",
+  unmatched: "text-slate-400", excluded: "text-rose-300", invalid: "text-rose-300",
+};
 const TYPE_LABELS: Record<AssetType, string> = {
   character: "캐릭터", style: "스타일", background: "배경", object: "오브젝트", general_reference: "일반 참고",
 };
 const SCENE_NUMBERS: readonly SceneNumber[] = [1, 2, 3, 4, 5, 6];
+
+const outlineButton =
+  "rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50 disabled:hover:bg-transparent";
+const selectClassName =
+  "mt-1 rounded-lg border border-white/10 bg-slate-900/70 px-2.5 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
 
 function scopeIncludesScene(scope: AssetMappingSceneScope, sceneNumber: SceneNumber): boolean {
   if (scope.kind === "all") return true;
@@ -220,64 +229,89 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
   });
 
   return (
-    <section className="mt-8 space-y-6">
+    <section className="mt-8 max-w-5xl space-y-6">
       <header className="flex items-center justify-between">
-        <button type="button" onClick={onBack}>프로젝트로 돌아가기</button>
-        <h2 className="text-2xl font-semibold">Asset Mapping 검토</h2>
-        <button type="button" onClick={() => void load()}>새로고침</button>
+        <button type="button" className={outlineButton} onClick={onBack}>프로젝트로 돌아가기</button>
+        <h2 className="flex items-center gap-2.5 text-lg font-semibold">
+          <span
+            aria-hidden="true"
+            className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
+          />
+          Asset Mapping 검토
+        </h2>
+        <button type="button" className={outlineButton} onClick={() => void load()}>새로고침</button>
       </header>
 
-      <section aria-label="검토 상태" className="space-y-2 rounded border border-white/10 p-4">
+      <section aria-label="검토 상태" className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6">
         {reviewLoading && !review && <Spinner label="검토 상태를 불러오는 중..." />}
         {reviewError && (
-          <p role="alert" data-testid="review-error" data-error-code={reviewError.code} className="text-red-300">{reviewError.message}</p>
+          <p role="alert" data-testid="review-error" data-error-code={reviewError.code} className="text-sm text-rose-400">{reviewError.message}</p>
         )}
         {review && (
-          <dl className="space-y-1">
-            <div><dt className="inline font-semibold">Mapping Revision: </dt><dd className="inline">{review.mappingRevision}</dd></div>
-            <div><dt className="inline font-semibold">Script Revision: </dt><dd className="inline">{review.scriptRevision}</dd></div>
-            <div><dt className="inline font-semibold">Fingerprint: </dt><dd className="inline break-all">{review.scriptFingerprint || "없음"}</dd></div>
-            <div><dt className="inline font-semibold">상태: </dt><dd className="inline">{review.status === "approved" ? "승인됨" : "대기 중"}</dd></div>
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+            <div><dt className="inline text-slate-400">Mapping Revision: </dt><dd className="inline font-medium text-slate-100">{review.mappingRevision}</dd></div>
+            <div><dt className="inline text-slate-400">Script Revision: </dt><dd className="inline font-medium text-slate-100">{review.scriptRevision}</dd></div>
+            <div className="sm:col-span-2"><dt className="inline text-slate-400">Fingerprint: </dt><dd className="inline break-all font-medium text-slate-100">{review.scriptFingerprint || "없음"}</dd></div>
+            <div><dt className="inline text-slate-400">상태: </dt><dd className="inline font-medium text-slate-100">{review.status === "approved" ? "승인됨" : "대기 중"}</dd></div>
             {review.status === "approved" && (
-              <div><dt className="inline font-semibold">승인 시각: </dt><dd className="inline">{review.approvedAt}</dd></div>
+              <div><dt className="inline text-slate-400">승인 시각: </dt><dd className="inline font-medium text-slate-100">{review.approvedAt}</dd></div>
             )}
-            <div><dt className="inline font-semibold">검토된 장면: </dt><dd className="inline">{review.reviewedScenes.join(", ") || "없음"}</dd></div>
+            <div className="sm:col-span-2"><dt className="inline text-slate-400">검토된 장면: </dt><dd className="inline font-medium text-slate-100">{review.reviewedScenes.join(", ") || "없음"}</dd></div>
           </dl>
         )}
-        <label className="block"><input type="checkbox" checked={textOnlyConfirmed} disabled={beginPending} onChange={(event) => setTextOnlyConfirmed(event.target.checked)} /> 텍스트만 사용(매핑 없음) 확인</label>
-        <label className="block"><input type="checkbox" checked={legacyConfirmed} disabled={beginPending} onChange={(event) => setLegacyConfirmed(event.target.checked)} /> 기존 방식(legacy) 확인</label>
+        <div className="space-y-1.5">
+          <label className="flex items-center gap-2 text-sm text-slate-300">
+            <input type="checkbox" className="accent-violet-500" checked={textOnlyConfirmed} disabled={beginPending} onChange={(event) => setTextOnlyConfirmed(event.target.checked)} /> 텍스트만 사용(매핑 없음) 확인
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-300">
+            <input type="checkbox" className="accent-violet-500" checked={legacyConfirmed} disabled={beginPending} onChange={(event) => setLegacyConfirmed(event.target.checked)} /> 기존 방식(legacy) 확인
+          </label>
+        </div>
         <div className="flex gap-3">
-          <button type="button" onClick={() => void beginReview()} disabled={beginPending}>검토 시작</button>
-          <button type="button" onClick={() => void approve()} disabled={approvePending || !review}>최종 승인</button>
+          <button type="button" className={outlineButton} onClick={() => void beginReview()} disabled={beginPending}>검토 시작</button>
+          <button
+            type="button"
+            className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-3.5 py-1.5 text-xs font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+            onClick={() => void approve()}
+            disabled={approvePending || !review}
+          >
+            최종 승인
+          </button>
         </div>
         {reviewMutationError && (
-          <p role="alert" data-testid="review-mutation-error" data-error-code={reviewMutationError.code} className="text-red-300">
+          <p role="alert" data-testid="review-mutation-error" data-error-code={reviewMutationError.code} className="text-sm text-rose-400">
             {reviewMutationError.message}
             {errorDetailLabel(reviewMutationError.details) && <span> ({errorDetailLabel(reviewMutationError.details)})</span>}
           </p>
         )}
       </section>
 
-      <form onSubmit={(event) => event.preventDefault()} className="flex gap-3">
-        <label>상태 <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as AssetMappingStatus | "")}>
-          <option value="">전체</option>
-          {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select></label>
-        <label>유형 <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as AssetType | "")}>
-          <option value="">전체</option>
-          {Object.entries(TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select></label>
-        <label>장면 <select value={sceneFilter} onChange={(event) => setSceneFilter(event.target.value ? (Number(event.target.value) as SceneNumber) : "")}>
-          <option value="">전체</option>
-          {SCENE_NUMBERS.map((number) => <option key={number} value={number}>{number}</option>)}
-        </select></label>
+      <form onSubmit={(event) => event.preventDefault()} className="flex flex-wrap gap-4">
+        <label className="text-sm text-slate-300">상태
+          <select className={`block ${selectClassName}`} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as AssetMappingStatus | "")}>
+            <option value="">전체</option>
+            {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </label>
+        <label className="text-sm text-slate-300">유형
+          <select className={`block ${selectClassName}`} value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as AssetType | "")}>
+            <option value="">전체</option>
+            {Object.entries(TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </label>
+        <label className="text-sm text-slate-300">장면
+          <select className={`block ${selectClassName}`} value={sceneFilter} onChange={(event) => setSceneFilter(event.target.value ? (Number(event.target.value) as SceneNumber) : "")}>
+            <option value="">전체</option>
+            {SCENE_NUMBERS.map((number) => <option key={number} value={number}>{number}</option>)}
+          </select>
+        </label>
       </form>
 
       {mappingsLoading && !mappings && <Spinner label="Mapping을 불러오는 중..." />}
       {mappingsError && (
-        <p role="alert" data-testid="mappings-error" data-error-code={mappingsError.code} className="text-red-300">{mappingsError.message}</p>
+        <p role="alert" data-testid="mappings-error" data-error-code={mappingsError.code} className="text-sm text-rose-400">{mappingsError.message}</p>
       )}
-      {mappings && mappings.length === 0 && !mappingsLoading && <p>등록된 Asset Mapping이 없습니다.</p>}
+      {mappings && mappings.length === 0 && !mappingsLoading && <p className="text-slate-400">등록된 Asset Mapping이 없습니다.</p>}
 
       {mappings && mappings.length > 0 && (
         <ul aria-label="Mapping 목록" className="space-y-3">
@@ -287,37 +321,41 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
             const decisionBusyNow = decisionPendingIds.has(mapping.mappingId);
             const snapshotBusyNow = snapshotPendingIds.has(mapping.mappingId);
             return (
-              <li key={mapping.mappingId} className="rounded border border-white/10 p-3">
+              <li key={mapping.mappingId} className="space-y-2 rounded-2xl border border-white/10 bg-slate-900/70 p-4">
                 {asset ? (
-                  <>
-                    {asset.imageAvailable && asset.contentUrl && <img src={asset.contentUrl} alt="" className="h-20 w-32 object-cover" />}
-                    <strong>{asset.displayName}</strong>
-                    <span> · {TYPE_LABELS[asset.assetType]}</span>
-                  </>
+                  <div className="flex items-baseline gap-2">
+                    {asset.imageAvailable && asset.contentUrl && (
+                      <img src={asset.contentUrl} alt="" className="mr-1 h-20 w-32 flex-shrink-0 rounded-xl border border-white/10 object-cover" />
+                    )}
+                    <strong className="font-semibold text-slate-100">{asset.displayName}</strong>
+                    <span className="text-sm text-slate-400"> · {TYPE_LABELS[asset.assetType]}</span>
+                  </div>
                 ) : assetError ? (
-                  <p role="alert" data-testid={`asset-error-${mapping.mappingId}`} data-error-code={assetError.code}>{assetError.message}</p>
+                  <p role="alert" data-testid={`asset-error-${mapping.mappingId}`} data-error-code={assetError.code} className="text-sm text-rose-400">{assetError.message}</p>
                 ) : (
                   <Spinner label="에셋 정보를 불러오는 중..." />
                 )}
-                <p>Mapping ID: {mapping.mappingId}</p>
-                <p>역할: {mapping.usageRole}</p>
-                <p>범위: {scopeLabel(mapping.sceneScope)}</p>
-                <p>상태: {STATUS_LABELS[mapping.status]}</p>
-                <p>출처: {mapping.assignmentSource}</p>
-                <p>버전 정책: {mapping.versionPolicy}{mapping.pinnedVersion !== null ? ` (v${mapping.pinnedVersion})` : ""}</p>
-                <p>스냅샷: {mapping.snapshot ? `v${mapping.snapshot.sourceVersion} · ${mapping.snapshot.sha256.slice(0, 12)}...` : "없음"}</p>
-                <div className="flex gap-3">
-                  <button type="button" onClick={() => void decide(mapping.mappingId, "confirm")} disabled={decisionBusyNow}>확인</button>
-                  <button type="button" onClick={() => void decide(mapping.mappingId, "exclude")} disabled={decisionBusyNow}>제외</button>
-                  <button type="button" onClick={() => void createSnapshot(mapping.mappingId)} disabled={snapshotBusyNow}>스냅샷 생성</button>
+                <div className="space-y-0.5 text-sm text-slate-400">
+                  <p>Mapping ID: {mapping.mappingId}</p>
+                  <p>역할: {mapping.usageRole}</p>
+                  <p>범위: {scopeLabel(mapping.sceneScope)}</p>
+                  <p className={STATUS_TEXT_TONE[mapping.status]}>상태: {STATUS_LABELS[mapping.status]}</p>
+                  <p>출처: {mapping.assignmentSource}</p>
+                  <p>버전 정책: {mapping.versionPolicy}{mapping.pinnedVersion !== null ? ` (v${mapping.pinnedVersion})` : ""}</p>
+                  <p>스냅샷: {mapping.snapshot ? `v${mapping.snapshot.sourceVersion} · ${mapping.snapshot.sha256.slice(0, 12)}...` : "없음"}</p>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button type="button" className={`${outlineButton} border-emerald-400/30 text-emerald-300`} onClick={() => void decide(mapping.mappingId, "confirm")} disabled={decisionBusyNow}>확인</button>
+                  <button type="button" className={`${outlineButton} border-rose-400/30 text-rose-300`} onClick={() => void decide(mapping.mappingId, "exclude")} disabled={decisionBusyNow}>제외</button>
+                  <button type="button" className={outlineButton} onClick={() => void createSnapshot(mapping.mappingId)} disabled={snapshotBusyNow}>스냅샷 생성</button>
                 </div>
                 {decisionErrors[mapping.mappingId] && (
-                  <p role="alert" data-testid={`decision-error-${mapping.mappingId}`} data-error-code={decisionErrors[mapping.mappingId]!.code} className="text-red-300">
+                  <p role="alert" data-testid={`decision-error-${mapping.mappingId}`} data-error-code={decisionErrors[mapping.mappingId]!.code} className="text-sm text-rose-400">
                     {decisionErrors[mapping.mappingId]!.message}
                   </p>
                 )}
                 {snapshotErrors[mapping.mappingId] && (
-                  <p role="alert" data-testid={`snapshot-error-${mapping.mappingId}`} data-error-code={snapshotErrors[mapping.mappingId]!.code} className="text-red-300">
+                  <p role="alert" data-testid={`snapshot-error-${mapping.mappingId}`} data-error-code={snapshotErrors[mapping.mappingId]!.code} className="text-sm text-rose-400">
                     {snapshotErrors[mapping.mappingId]!.message}
                   </p>
                 )}

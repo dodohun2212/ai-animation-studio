@@ -34,6 +34,9 @@ type ResumeTarget =
   | { screen: "videoWorkflow"; jobId: string; label: string }
   | { screen: "videoMerge"; label: string };
 
+const secondaryButton =
+  "rounded-full border border-violet-400/30 px-4 py-2 text-sm text-violet-300 hover:bg-violet-500/10";
+
 /** Maps a project's current workflow state to the single screen that continues it, matching the fixed product flow. */
 /** `label` is the complete button text — each case phrases its own lead-in, since "이어서 진행하기" only fits an in-progress state, not a finished one. */
 function resumeTarget(project: Project): ResumeTarget | null {
@@ -117,10 +120,10 @@ export function ProjectDetail({
   }, [projectId]);
 
   return (
-    <section className="mt-8">
+    <section className="mt-8 max-w-4xl space-y-5">
       <button
         type="button"
-        className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300"
+        className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
         onClick={onBack}
       >
         목록으로
@@ -133,114 +136,92 @@ export function ProjectDetail({
       )}
       {state.status === "success" && (
         <>
-        {resumeTarget(state.project) && (
-          <button
-            type="button"
-            className="mt-4 rounded-full bg-violet-500 px-4 py-2 text-sm font-semibold text-white"
-            onClick={() => resume(resumeTarget(state.project)!)}
-          >
-            {resumeTarget(state.project)!.label}
-          </button>
-        )}
-        <button
-          type="button"
-          className="ml-3 mt-4 rounded-full border border-violet-400/40 px-4 py-2 text-sm text-violet-300"
-          onClick={() => onOpenMappingReview(projectId)}
-        >
-          Asset Mapping 검토
-        </button>
-        <button
-          type="button"
-          className="ml-3 mt-4 rounded-full border border-violet-400/40 px-4 py-2 text-sm text-violet-300"
-          onClick={() => onOpenSettings(projectId)}
-        >
-          프로젝트 설정
-        </button>
-        <button
-          type="button"
-          className="ml-3 mt-4 rounded-full border border-violet-400/40 px-4 py-2 text-sm text-violet-300"
-          onClick={() => onOpenStoryPrompt(projectId)}
-        >
-          Story 프롬프트 확인
-        </button>
-        {state.project.workflowState === WorkflowState.AssetMappingApproved && (
-          <button
-            type="button"
-            className="ml-3 mt-4 rounded-full border border-violet-400/40 px-4 py-2 text-sm text-violet-300"
-            onClick={() => onOpenImageGeneration(projectId)}
-          >
-            장면 이미지 생성
-          </button>
-        )}
-        {state.project.workflowState === WorkflowState.WaitingForVideoConfirmation && (
-          <button
-            type="button"
-            className="ml-3 mt-4 rounded-full border border-violet-400/40 px-4 py-2 text-sm text-violet-300"
-            onClick={() => onOpenVideoPreview(projectId)}
-          >
-            영상 프롬프트 및 비용 확인
-          </button>
-        )}
-        <button
-          type="button"
-          className="ml-3 mt-4 rounded-full border border-violet-400/40 px-4 py-2 text-sm text-violet-300"
-          onClick={() => onOpenGallery(projectId)}
-        >
-          생성 이미지 모음
-        </button>
-        <button
-          type="button"
-          className="ml-3 mt-4 rounded-full border border-rose-400/40 px-4 py-2 text-sm text-rose-300"
-          onClick={() => setArchiveOpen(true)}
-        >
-          Archive project
-        </button>
-        {archiveOpen && (
-          <ArchiveProjectDialog
-            confirmationText={state.project.topic}
-            projectKind="short"
-            onCancel={() => setArchiveOpen(false)}
-            onConfirm={async (confirmation) => {
-              await archiveProject(projectId, { confirmation });
-              onArchived();
-            }}
-          />
-        )}
-        <dl className="mt-4 space-y-2 text-slate-100">
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-slate-400">ID</dt>
-            <dd>{state.project.id}</dd>
+          {resumeTarget(state.project) && (
+            <button
+              type="button"
+              className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)]"
+              onClick={() => resume(resumeTarget(state.project)!)}
+            >
+              {resumeTarget(state.project)!.label}
+            </button>
+          )}
+          <div className="flex flex-wrap gap-3">
+            <button type="button" className={secondaryButton} onClick={() => onOpenMappingReview(projectId)}>
+              Asset Mapping 검토
+            </button>
+            <button type="button" className={secondaryButton} onClick={() => onOpenSettings(projectId)}>
+              프로젝트 설정
+            </button>
+            <button type="button" className={secondaryButton} onClick={() => onOpenStoryPrompt(projectId)}>
+              Story 프롬프트 확인
+            </button>
+            {state.project.workflowState === WorkflowState.AssetMappingApproved && (
+              <button type="button" className={secondaryButton} onClick={() => onOpenImageGeneration(projectId)}>
+                장면 이미지 생성
+              </button>
+            )}
+            {state.project.workflowState === WorkflowState.WaitingForVideoConfirmation && (
+              <button type="button" className={secondaryButton} onClick={() => onOpenVideoPreview(projectId)}>
+                영상 프롬프트 및 비용 확인
+              </button>
+            )}
+            <button type="button" className={secondaryButton} onClick={() => onOpenGallery(projectId)}>
+              생성 이미지 모음
+            </button>
+            <button
+              type="button"
+              className="rounded-full border border-rose-400/30 px-4 py-2 text-sm text-rose-300 hover:bg-rose-500/10"
+              onClick={() => setArchiveOpen(true)}
+            >
+              Archive project
+            </button>
           </div>
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-slate-400">주제</dt>
-            <dd>{state.project.topic}</dd>
-          </div>
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-slate-400">프로젝트 유형</dt>
-            <dd>{state.project.projectType}</dd>
-          </div>
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-slate-400">진행 상태</dt>
-            <dd>{state.project.workflowState}</dd>
-            <WorkflowProgressBar state={state.project.workflowState} className="mt-2 max-w-xs" />
-          </div>
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-slate-400">생성 시각</dt>
-            <dd>{state.project.createdAt}</dd>
-          </div>
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-slate-400">수정 시각</dt>
-            <dd>{state.project.updatedAt}</dd>
-          </div>
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-slate-400">경고</dt>
-            <dd>{state.project.warnings.length}건</dd>
-          </div>
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-slate-400">오류</dt>
-            <dd>{state.project.errors.length}건</dd>
-          </div>
-        </dl>
+          {archiveOpen && (
+            <ArchiveProjectDialog
+              confirmationText={state.project.topic}
+              projectKind="short"
+              onCancel={() => setArchiveOpen(false)}
+              onConfirm={async (confirmation) => {
+                await archiveProject(projectId, { confirmation });
+                onArchived();
+              }}
+            />
+          )}
+          <dl className="grid grid-cols-1 gap-x-8 gap-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6 text-slate-100 sm:grid-cols-2">
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">ID</dt>
+              <dd className="mt-0.5">{state.project.id}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">주제</dt>
+              <dd className="mt-0.5">{state.project.topic}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">프로젝트 유형</dt>
+              <dd className="mt-0.5">{state.project.projectType}</dd>
+            </div>
+            <div className="sm:col-span-2">
+              <dt className="text-xs uppercase tracking-wide text-slate-400">진행 상태</dt>
+              <dd className="mt-0.5">{state.project.workflowState}</dd>
+              <WorkflowProgressBar state={state.project.workflowState} className="mt-2 max-w-xs" />
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">생성 시각</dt>
+              <dd className="mt-0.5">{state.project.createdAt}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">수정 시각</dt>
+              <dd className="mt-0.5">{state.project.updatedAt}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">경고</dt>
+              <dd className="mt-0.5">{state.project.warnings.length}건</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">오류</dt>
+              <dd className="mt-0.5">{state.project.errors.length}건</dd>
+            </div>
+          </dl>
         </>
       )}
     </section>
