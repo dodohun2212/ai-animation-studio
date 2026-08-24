@@ -3,6 +3,7 @@ import { Body, Controller, Get, HttpException, Param, Post, Res, StreamableFile 
 import { API_ROUTES, type ApproveVideoReviewResponse, type GenerationProgressResponse, type GetVideoPromptPreviewResponse, type GetVideoReviewResponse, type MergeVideosResponse, type RegenerateVideoResponse, type StartVideoGenerationResponse } from "@ai-animation-studio/shared";
 
 import { videoContentUnavailable } from "./video-workflow-api.error.js";
+import { videoMergeContentUnavailable } from "./video-merge-api.error.js";
 import { LocalVideoPreviewService } from "./video-preview.service.js";
 import { LocalVideoSubmissionService } from "./local-video-submission.service.js";
 import { LocalVideoWorkflowService } from "./local-video-workflow.service.js";
@@ -17,6 +18,26 @@ export class VideosController {
   @Post(`${API_ROUTES.projects}/:projectId/videos/preview`)
   preview(@Param("projectId") projectId: string, @Body() body: unknown): Promise<GetVideoPromptPreviewResponse> {
     return this.previews.preview(projectId, body);
+  }
+
+  // Registered before the :sceneNumber route below so the literal "final" segment is
+  // matched here first, rather than being parsed as a (necessarily invalid) scene number.
+  @Get(`${API_ROUTES.projects}/:projectId/videos/final/content`)
+  async finalContent(@Param("projectId") projectId: string, @Res({ passthrough: true }) response: HttpResponse): Promise<StreamableFile> {
+    const content = await this.mergeService.content(projectId);
+    try {
+      const handle = await fs.open(content.path, "r");
+      const stat = await handle.stat();
+      if (!stat.isFile()) { await handle.close(); throw videoMergeContentUnavailable(); }
+      response.type("video/mp4");
+      response.setHeader("Content-Disposition", `inline; filename="instagram_reel.mp4"`);
+      response.setHeader("Content-Length", String(stat.size));
+      response.setHeader("X-Content-Type-Options", "nosniff");
+      return new StreamableFile(handle.createReadStream());
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw videoMergeContentUnavailable();
+    }
   }
 
   @Get(`${API_ROUTES.projects}/:projectId/videos/:sceneNumber/content`)

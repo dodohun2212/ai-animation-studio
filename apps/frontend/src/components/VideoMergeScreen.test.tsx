@@ -1,10 +1,12 @@
-import type { MergeVideosResponse } from "@ai-animation-studio/shared";
-import { fireEvent, render, screen } from "@testing-library/react";
+import type { MergeVideosResponse, Project } from "@ai-animation-studio/shared";
+import { WorkflowState } from "@ai-animation-studio/shared";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { jsonResponse, makeProject } from "../api/testUtils.js";
 import { VideoMergeScreen } from "./VideoMergeScreen.js";
 
+const PROJECT_URL = "/projects/sample_project";
 const MERGE_URL = "/projects/sample_project/videos/merge";
 
 function makeResponse(overrides: Partial<MergeVideosResponse> = {}): MergeVideosResponse {
@@ -15,9 +17,18 @@ function makeResponse(overrides: Partial<MergeVideosResponse> = {}): MergeVideos
   };
 }
 
-function renderScreen(fetchMock: ReturnType<typeof vi.fn>) {
+/** Routes GET /projects/:id (defaulting to VIDEOS_APPROVED, not yet merged) and lets the caller supply the merge-time fetch behavior. */
+function renderScreen(mergeFetch: ReturnType<typeof vi.fn>, project: Partial<Project> = {}) {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = String(input);
+    if (url === PROJECT_URL && !init) {
+      return jsonResponse(200, { project: makeProject({ workflowState: WorkflowState.VideosApproved, ...project }) });
+    }
+    const call = mergeFetch as unknown as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+    return call(input, init);
+  });
   vi.stubGlobal("fetch", fetchMock);
-  return render(<VideoMergeScreen projectId="sample_project" onBack={() => {}} />);
+  return { fetchMock, render: render(<VideoMergeScreen projectId="sample_project" onBack={() => {}} />) };
 }
 
 describe("VideoMergeScreen", () => {
@@ -25,61 +36,101 @@ describe("VideoMergeScreen", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shows the no-provider notice and never calls the network before any confirmation", () => {
-    const fetchMock = vi.fn();
-    renderScreen(fetchMock);
+  it("shows the no-provider notice and never calls the merge endpoint before any confirmation", async () => {
+    const mergeFetch = vi.fn();
+    const { fetchMock } = renderScreen(mergeFetch);
 
     expect(screen.getByTestId("no-provider-notice").textContent).toContain("실제 유료 Runway나 OpenAI Provider를 호출하지 않습니다");
-    expect(fetchMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(PROJECT_URL));
+    expect(mergeFetch).not.toHaveBeenCalled();
   });
 
   it("does not call the merge endpoint on the first click — only an explicit confirmation does", async () => {
-    const fetchMock = vi.fn();
-    renderScreen(fetchMock);
+    const mergeFetch = vi.fn();
+    renderScreen(mergeFetch);
 
-    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("open-merge-confirm-button"));
     const panel = await screen.findByTestId("merge-confirm-panel");
     expect(panel.textContent).toContain("실제 유료 Provider 요청은 전송되지 않습니다");
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mergeFetch).not.toHaveBeenCalled();
   });
 
-  it("cancels the confirmation without ever calling the network", async () => {
-    const fetchMock = vi.fn();
-    renderScreen(fetchMock);
+  it("cancels the confirmation without ever calling the merge endpoint", async () => {
+    const mergeFetch = vi.fn();
+    renderScreen(mergeFetch);
 
-    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("open-merge-confirm-button"));
     await screen.findByTestId("merge-confirm-panel");
     fireEvent.click(screen.getByTestId("cancel-merge-button"));
 
     expect(screen.queryByTestId("merge-confirm-panel")).toBeNull();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mergeFetch).not.toHaveBeenCalled();
   });
 
   it("merges via POST /projects/:id/videos/merge with no body only after explicit confirmation, then shows the completed state", async () => {
     const response = makeResponse();
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, response));
-    renderScreen(fetchMock);
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, response));
+    renderScreen(mergeFetch);
 
-    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("open-merge-confirm-button"));
     await screen.findByTestId("merge-confirm-panel");
     fireEvent.click(screen.getByTestId("confirm-merge-button"));
 
     await screen.findByTestId("merge-success");
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url, init] = mergeFetch.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(MERGE_URL);
     expect(init.method).toBe("POST");
     expect(init.body).toBeUndefined();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(mergeFetch).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("final-video-path").textContent).toBe("저장 위치: videos/final/instagram_reel.mp4");
     expect(screen.queryByTestId("open-merge-confirm-button")).toBeNull();
   });
 
+  it("shows the existing result immediately when reopened for an already-completed project, without re-merging", async () => {
+    const mergeFetch = vi.fn();
+    renderScreen(mergeFetch, { workflowState: WorkflowState.Completed, finalVideoPath: "videos/final/instagram_reel.mp4" });
+
+    await screen.findByTestId("merge-success");
+    expect(screen.queryByTestId("open-merge-confirm-button")).toBeNull();
+    expect(mergeFetch).not.toHaveBeenCalled();
+  });
+
+  it("shows the actual final video and no open-in-explorer button outside Electron", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    renderScreen(mergeFetch);
+
+    fireEvent.click(await screen.findByTestId("open-merge-confirm-button"));
+    await screen.findByTestId("merge-confirm-panel");
+    fireEvent.click(screen.getByTestId("confirm-merge-button"));
+
+    await screen.findByTestId("merge-success");
+    expect(screen.getByTestId("final-video-player")).toHaveAttribute("src", "/projects/sample_project/videos/final/content");
+    expect(screen.queryByTestId("open-in-explorer-button")).toBeNull();
+  });
+
+  it("opens the final video's folder through the Electron bridge when running inside the desktop shell", async () => {
+    const openProjectPath = vi.fn().mockResolvedValue({ opened: true });
+    (window as unknown as { electronAPI?: unknown }).electronAPI = { openProjectPath };
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    renderScreen(mergeFetch);
+
+    fireEvent.click(await screen.findByTestId("open-merge-confirm-button"));
+    await screen.findByTestId("merge-confirm-panel");
+    fireEvent.click(screen.getByTestId("confirm-merge-button"));
+    await screen.findByTestId("merge-success");
+
+    fireEvent.click(await screen.findByTestId("open-in-explorer-button"));
+    await waitFor(() => expect(openProjectPath).toHaveBeenCalledWith("sample_project", "videos/final/instagram_reel.mp4"));
+    expect(screen.queryByTestId("open-in-explorer-error")).toBeNull();
+    delete (window as unknown as { electronAPI?: unknown }).electronAPI;
+  });
+
   it("shows a pending state while the merge request is in flight", async () => {
     let resolveFetch: (value: Response) => void = () => {};
-    const fetchMock = vi.fn().mockReturnValue(new Promise<Response>((resolve) => { resolveFetch = resolve; }));
-    renderScreen(fetchMock);
+    const mergeFetch = vi.fn().mockReturnValue(new Promise<Response>((resolve) => { resolveFetch = resolve; }));
+    renderScreen(mergeFetch);
 
-    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("open-merge-confirm-button"));
     await screen.findByTestId("merge-confirm-panel");
     fireEvent.click(screen.getByTestId("confirm-merge-button"));
 
@@ -94,10 +145,10 @@ describe("VideoMergeScreen", () => {
     ["FFMPEG_UNAVAILABLE", "이 컴퓨터에서 로컬 영상 병합 프로그램을 사용할 수 없습니다. 설치 상태를 확인해 주세요."],
     ["VIDEO_MERGE_FAILED", "로컬 영상 병합에 실패했습니다. 승인된 장면 영상은 그대로 보존됩니다."],
   ])("shows a safe message for %s instead of the raw backend detail, and stays retryable", async (code, message) => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(409, { code, message: "raw backend detail C:/Users/someone" }));
-    renderScreen(fetchMock);
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(409, { code, message: "raw backend detail C:/Users/someone" }));
+    renderScreen(mergeFetch);
 
-    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("open-merge-confirm-button"));
     await screen.findByTestId("merge-confirm-panel");
     fireEvent.click(screen.getByTestId("confirm-merge-button"));
 
@@ -112,10 +163,10 @@ describe("VideoMergeScreen", () => {
   });
 
   it("maps a network failure to a safe network error", async () => {
-    const fetchMock = vi.fn().mockRejectedValue(new Error("network down"));
-    renderScreen(fetchMock);
+    const mergeFetch = vi.fn().mockRejectedValue(new Error("network down"));
+    renderScreen(mergeFetch);
 
-    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("open-merge-confirm-button"));
     await screen.findByTestId("merge-confirm-panel");
     fireEvent.click(screen.getByTestId("confirm-merge-button"));
 
@@ -124,10 +175,10 @@ describe("VideoMergeScreen", () => {
   });
 
   it("never shows an absolute filesystem path anywhere on screen", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
-    renderScreen(fetchMock);
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    renderScreen(mergeFetch);
 
-    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("open-merge-confirm-button"));
     await screen.findByTestId("merge-confirm-panel");
     fireEvent.click(screen.getByTestId("confirm-merge-button"));
 

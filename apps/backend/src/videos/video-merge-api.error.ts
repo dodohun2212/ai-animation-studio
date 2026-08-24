@@ -6,7 +6,8 @@ type VideoMergeErrorCode =
   | "VIDEO_MERGE_CLIPS_INVALID"
   | "FFMPEG_UNAVAILABLE"
   | "VIDEO_MERGE_FAILED"
-  | "VIDEO_STORAGE_ERROR";
+  | "VIDEO_STORAGE_ERROR"
+  | "VIDEO_MERGE_CONTENT_UNAVAILABLE";
 
 class VideoMergeApiException extends HttpException {
   constructor(code: VideoMergeErrorCode, message: string, status: HttpStatus) {
@@ -25,3 +26,5 @@ export const videoMergeFailed = () =>
   new VideoMergeApiException("VIDEO_MERGE_FAILED", "Local video rendering failed. Approved scene videos were kept.", HttpStatus.INTERNAL_SERVER_ERROR);
 export const videoMergeStorageError = () =>
   new VideoMergeApiException("VIDEO_STORAGE_ERROR", "Local video render state could not be saved.", HttpStatus.INTERNAL_SERVER_ERROR);
+export const videoMergeContentUnavailable = () =>
+  new VideoMergeApiException("VIDEO_MERGE_CONTENT_UNAVAILABLE", "The final merged video is unavailable.", HttpStatus.NOT_FOUND);

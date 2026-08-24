@@ -8,7 +8,7 @@ import { toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
 import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner } from "./ffmpeg-merge.service.js";
-import { ffmpegUnavailable, videoMergeClipsInvalid, videoMergeFailed, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
+import { ffmpegUnavailable, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
 
 const SCENES = [1, 2, 3, 4, 5, 6] as const satisfies readonly SceneNumber[];
 const FINAL_VIDEO_PATH = "videos/final/instagram_reel.mp4" as const;
@@ -32,6 +32,18 @@ export class LocalVideoMergeService {
   private projectDirectory(projectId: string): string { return path.join(this.projectsRoot, projectId); }
   private clip(projectId: string, scene: SceneNumber): string { return path.join(this.projectDirectory(projectId), "videos", "runway", `scene${scene}.mp4`); }
   private final(projectId: string): string { return path.join(this.projectDirectory(projectId), FINAL_VIDEO_PATH); }
+
+  async content(projectId: string): Promise<{ path: string }> {
+    const project = await this.projects.findById(projectId.trim());
+    const file = this.final(project.project_id);
+    try {
+      const stat = await fs.stat(file);
+      if (!stat.isFile() || stat.size <= 0) throw new Error("invalid");
+    } catch {
+      throw videoMergeContentUnavailable();
+    }
+    return { path: file };
+  }
 
   private async approvedClips(project: StoredProject): Promise<string[]> {
     if (project.workflow_state !== WorkflowState.VideosApproved) throw videoMergeNotAllowed();

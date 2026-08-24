@@ -20,6 +20,7 @@ const SAFE_ERRORS: Record<string, string> = {
   FFMPEG_UNAVAILABLE: "이 컴퓨터에서 로컬 영상 병합 프로그램을 사용할 수 없습니다. 설치 상태를 확인해 주세요.",
   VIDEO_MERGE_FAILED: "로컬 영상 병합에 실패했습니다. 승인된 장면 영상은 그대로 보존됩니다.",
   VIDEO_STORAGE_ERROR: "영상 작업 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+  VIDEO_MERGE_CONTENT_UNAVAILABLE: "최종 영상을 불러올 수 없습니다.",
 };
 const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };
@@ -99,4 +100,8 @@ export async function mergeVideos(projectId: string): Promise<MergeVideosRespons
   }
   if (!isMergeVideosResponse(body)) throw new VideoMergeApiError(MALFORMED.code, MALFORMED.message);
   return body;
+}
+
+export function finalVideoContentUrl(projectId: string): string {
+  return API_ROUTES.videoFinalContent(projectId);
 }

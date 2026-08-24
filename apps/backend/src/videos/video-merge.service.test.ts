@@ -50,6 +50,16 @@ describe("local FFmpeg video merge", () => {
     expect(await fs.readFile(path.join(projectsRoot, "video_merge", "videos", "final", "instagram_reel.mp4"), "utf8")).toBe("rendered");
   });
 
+  it("serves the final merged video by canonical path once it exists, and rejects before that", async () => {
+    const { projectsRoot, projects } = await setup();
+    const service = new LocalVideoMergeService(projects, projectsRoot, runner({}));
+    await expect(service.content("video_merge")).rejects.toMatchObject({ response: { code: "VIDEO_MERGE_CONTENT_UNAVAILABLE" } });
+    await service.merge("video_merge");
+    const content = await service.content("video_merge");
+    expect(content).toEqual({ path: path.join(projectsRoot, "video_merge", "videos", "final", "instagram_reel.mp4") });
+    await expect(fs.readFile(content.path, "utf8")).resolves.toBe("rendered");
+  });
+
   it("uses the documented landscape normalization when the stored wizard aspect is 16:9", async () => {
     const { projectsRoot, projects } = await setup(); const project = await projects.findById("video_merge"); project.style_profile = { aspect: "16:9" }; await projects.save(project);
     const calls: string[][] = []; await new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge");

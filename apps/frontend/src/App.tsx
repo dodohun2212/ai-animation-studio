@@ -52,6 +52,18 @@ type Screen =
   | { name: "longEpisodeVideoMerge"; projectId: string; episodeNumber: number }
   | { name: "longEpisodeContinuity"; projectId: string; episodeNumber: number };
 
+/** Always visible so a section (Asset Library, API 설정, 장기 프로젝트) is never more than one click away, no matter how deep the current screen is. */
+function NavBar({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
+  return (
+    <nav aria-label="주 메뉴" className="mt-6 flex flex-wrap justify-end gap-4 border-b border-white/10 pb-6">
+      <button type="button" className="text-sm text-violet-300 underline" onClick={() => onNavigate({ name: "list" })}>단기 프로젝트</button>
+      <button type="button" className="text-sm text-violet-300 underline" onClick={() => onNavigate({ name: "longList" })}>장기 프로젝트</button>
+      <button type="button" className="text-sm text-violet-300 underline" onClick={() => onNavigate({ name: "assets" })}>Asset Library</button>
+      <button type="button" className="text-sm text-violet-300 underline" onClick={() => onNavigate({ name: "providerSettings" })}>API 설정</button>
+    </nav>
+  );
+}
+
 export function App() {
   const [screen, setScreen] = useState<Screen>({ name: "list" });
   const [listRefreshToken, setListRefreshToken] = useState(0);
@@ -82,37 +94,21 @@ export function App() {
           워크플로는 새 기능이 검증될 때까지 그대로 보존됩니다.
         </p>
 
+        <NavBar onNavigate={setScreen} />
+
         {screen.name === "list" && (
-          <>
-            <div className="mt-6 flex justify-end gap-4">
-              <button type="button" className="text-sm text-violet-300 underline" onClick={() => setScreen({ name: "longList" })}>장기 프로젝트</button>
-              <button type="button" className="text-sm text-violet-300 underline" onClick={() => setScreen({ name: "assets" })}>Asset Library</button>
-              <button
-                type="button"
-                className="text-sm text-violet-300 underline"
-                onClick={() => setScreen({ name: "providerSettings" })}
-              >
-                API 설정
-              </button>
-            </div>
-            <ProjectList
-              refreshToken={listRefreshToken}
-              onOpenProject={(projectId) => setScreen({ name: "detail", projectId })}
-              onCreateNew={() => setScreen({ name: "create" })}
-            />
-          </>
+          <ProjectList
+            refreshToken={listRefreshToken}
+            onOpenProject={(projectId) => setScreen({ name: "detail", projectId })}
+            onCreateNew={() => setScreen({ name: "create" })}
+          />
         )}
         {screen.name === "longList" && (
-          <>
-            <div className="mt-6 flex justify-end">
-              <button type="button" className="text-sm text-violet-300 underline" onClick={() => setScreen({ name: "list" })}>단기 프로젝트로</button>
-            </div>
-            <LongProjectList
-              refreshToken={longListRefreshToken}
-              onOpenProject={(projectId) => setScreen({ name: "longDetail", projectId })}
-              onCreateNew={() => setScreen({ name: "longCreate" })}
-            />
-          </>
+          <LongProjectList
+            refreshToken={longListRefreshToken}
+            onOpenProject={(projectId) => setScreen({ name: "longDetail", projectId })}
+            onCreateNew={() => setScreen({ name: "longCreate" })}
+          />
         )}
         {screen.name === "longCreate" && (
           <CreateLongProjectForm onCreated={handleLongCreated} onCancel={() => setScreen({ name: "longList" })} />

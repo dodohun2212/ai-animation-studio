@@ -147,6 +147,7 @@ describe("ProjectDetail", () => {
       { workflowState: WorkflowState.GeneratingVideos, currentVideoJobId: "job-123", label: "이어서 진행하기 · 영상 생성/검토", button: "onOpenVideoWorkflow", args: ["sample_project", "job-123"] },
       { workflowState: WorkflowState.GeneratingVideos, label: "이어서 진행하기 · 영상 프롬프트 및 비용 확인", button: "onOpenVideoPreview", args: ["sample_project"] },
       { workflowState: WorkflowState.VideosApproved, label: "이어서 진행하기 · 최종 영상 병합", button: "onOpenVideoMerge", args: ["sample_project"] },
+      { workflowState: WorkflowState.Completed, label: "최종 영상 결과 보기", button: "onOpenVideoMerge", args: ["sample_project"] },
     ];
     for (const testCase of cases) {
       const project = makeProject({ id: "sample_project", workflowState: testCase.workflowState, ...(testCase.currentVideoJobId ? { currentVideoJobId: testCase.currentVideoJobId } : {}) });
@@ -160,7 +161,7 @@ describe("ProjectDetail", () => {
       vi.unstubAllGlobals();
     }
 
-    for (const terminal of [WorkflowState.Completed, WorkflowState.Failed, WorkflowState.Cancelled]) {
+    for (const terminal of [WorkflowState.Failed, WorkflowState.Cancelled]) {
       const project = makeProject({ id: "sample_project", workflowState: terminal });
       vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
       render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} />);

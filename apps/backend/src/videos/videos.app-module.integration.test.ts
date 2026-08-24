@@ -96,3 +96,26 @@ it("serves a generated scene's mp4 over HTTP once the local fake workflow comple
   const outOfRange = await fetch(`${base}/projects/video_content_http/videos/7/content`);
   expect(outOfRange.status).toBe(404);
 }, 20000);
+
+it("serves the final merged video at /videos/final/content, matched ahead of the :sceneNumber route", async () => {
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "video-final-content-http-"));
+  const projectsRoot = path.join(root, "projects");
+  const projects = new LocalProjectRepository(projectsRoot);
+  const project = createStoredProject("video_final_http", "topic", "2026-08-22T00:00:00.000Z");
+  project.workflow_state = WorkflowState.Completed;
+  await projects.create(project);
+  const finalDirectory = path.join(projectsRoot, "video_final_http", "videos", "final");
+  await fs.mkdir(finalDirectory, { recursive: true });
+  await fs.writeFile(path.join(finalDirectory, "instagram_reel.mp4"), Buffer.from("final reel bytes"));
+  previousLearningRoot = process.env.LEARNING_DATA_ROOT; process.env.LEARNING_DATA_ROOT = root;
+  app = await NestFactory.create(AppModule, { logger: false }); await app.listen(0, "127.0.0.1");
+  const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
+
+  const response = await fetch(`${base}/projects/video_final_http/videos/final/content`);
+  expect(response.status).toBe(200);
+  expect(response.headers.get("content-type")).toBe("video/mp4");
+  expect(await response.text()).toBe("final reel bytes");
+
+  const missingScene = await fetch(`${base}/projects/video_final_http/videos/1/content`);
+  expect(missingScene.status).toBe(404);
+});

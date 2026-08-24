@@ -167,6 +167,29 @@ describe("App", () => {
     expect(await screen.findByText("아직 생성된 프로젝트가 없습니다.")).toBeTruthy();
   });
 
+  it("keeps the main nav (단기/장기 프로젝트, Asset Library, API 설정) reachable from a deep screen, not just the dashboard", async () => {
+    const fetchMock = vi.fn<FakeFetch>(async (input) => {
+      const requestUrl = String(input);
+      if (requestUrl === "/projects") return jsonResponse(200, { projects: [] });
+      if (requestUrl === "/assets") return jsonResponse(200, { assets: [] });
+      if (requestUrl === "/long-projects") return jsonResponse(200, { projects: [] });
+      throw new Error(`Unexpected fetch call in test: ${requestUrl}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    await screen.findByText("아직 생성된 프로젝트가 없습니다.");
+    fireEvent.click(screen.getByRole("button", { name: "Asset Library" }));
+    await screen.findByText("등록된 에셋이 없습니다.");
+
+    // From inside a screen several hops away from the dashboard, the same nav is still there.
+    fireEvent.click(screen.getByRole("button", { name: "장기 프로젝트" }));
+    await screen.findByText("아직 생성된 장기 프로젝트가 없습니다.");
+    expect(screen.getByRole("button", { name: "단기 프로젝트" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Asset Library" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "API 설정" })).toBeTruthy();
+  });
+
   it("entering Asset Library issues only /assets, and back restores the project list without any provider route call", async () => {
     const fetchMock = vi.fn<FakeFetch>(async (input) => {
       const requestUrl = String(input);

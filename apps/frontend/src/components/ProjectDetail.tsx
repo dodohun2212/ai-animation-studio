@@ -33,33 +33,38 @@ type ResumeTarget =
   | { screen: "videoMerge"; label: string };
 
 /** Maps a project's current workflow state to the single screen that continues it, matching the fixed product flow. */
+/** `label` is the complete button text — each case phrases its own lead-in, since "이어서 진행하기" only fits an in-progress state, not a finished one. */
 function resumeTarget(project: Project): ResumeTarget | null {
   switch (project.workflowState) {
     case WorkflowState.Init:
     case WorkflowState.Ready:
     case WorkflowState.GeneratingStory:
-      return { screen: "storyPrompt", label: "Story 프롬프트 확인" };
+      return { screen: "storyPrompt", label: "이어서 진행하기 · Story 프롬프트 확인" };
     case WorkflowState.WaitingForAssetMappingReview:
-      return { screen: "mappingReview", label: "Asset Mapping 검토" };
+      return { screen: "mappingReview", label: "이어서 진행하기 · Asset Mapping 검토" };
     case WorkflowState.AssetMappingApproved:
     case WorkflowState.GeneratingImages:
     case WorkflowState.ImagesReady:
     case WorkflowState.ImagesReview:
-      return { screen: "imageGeneration", label: "장면 이미지 생성/검토" };
+      return { screen: "imageGeneration", label: "이어서 진행하기 · 장면 이미지 생성/검토" };
     case WorkflowState.WaitingForVideoConfirmation:
-      return { screen: "videoPreview", label: "영상 프롬프트 및 비용 확인" };
+      return { screen: "videoPreview", label: "이어서 진행하기 · 영상 프롬프트 및 비용 확인" };
     case WorkflowState.GeneratingVideos:
     case WorkflowState.VideosReady:
     case WorkflowState.ReviewingVideos:
     case WorkflowState.Interrupted:
       return project.currentVideoJobId
-        ? { screen: "videoWorkflow", jobId: project.currentVideoJobId, label: "영상 생성/검토" }
-        : { screen: "videoPreview", label: "영상 프롬프트 및 비용 확인" };
+        ? { screen: "videoWorkflow", jobId: project.currentVideoJobId, label: "이어서 진행하기 · 영상 생성/검토" }
+        : { screen: "videoPreview", label: "이어서 진행하기 · 영상 프롬프트 및 비용 확인" };
     case WorkflowState.VideosApproved:
     case WorkflowState.Rendering:
-      return { screen: "videoMerge", label: "최종 영상 병합" };
+      return { screen: "videoMerge", label: "이어서 진행하기 · 최종 영상 병합" };
+    case WorkflowState.Completed:
+      // Nothing left to do, but the finished result should still be reachable to watch again
+      // or open in Explorer — VideoMergeScreen shows the existing video instead of re-merging.
+      return { screen: "videoMerge", label: "최종 영상 결과 보기" };
     default:
-      // Completed / Failed / Cancelled have no next step to resume into.
+      // Failed / Cancelled have no next step to resume into.
       return null;
   }
 }
@@ -132,7 +137,7 @@ export function ProjectDetail({
             className="mt-4 rounded-full bg-violet-500 px-4 py-2 text-sm font-semibold text-white"
             onClick={() => resume(resumeTarget(state.project)!)}
           >
-            이어서 진행하기 · {resumeTarget(state.project)!.label}
+            {resumeTarget(state.project)!.label}
           </button>
         )}
         <button

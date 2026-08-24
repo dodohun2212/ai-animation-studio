@@ -1,7 +1,10 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MergeVideosResponse } from "@ai-animation-studio/shared";
+import { WorkflowState } from "@ai-animation-studio/shared";
 
-import { mergeVideos, toVideoMergeDisplayError } from "../api/videoMergeApi.js";
+import { getProject, toDisplayError } from "../api/projectsApi.js";
+import { finalVideoContentUrl, mergeVideos, toVideoMergeDisplayError } from "../api/videoMergeApi.js";
+import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBridge.js";
 
 interface Props {
   projectId: string;
@@ -9,13 +12,51 @@ interface Props {
 }
 
 type DisplayError = { code: string; message: string };
+type LoadState = { status: "loading" } | { status: "error"; error: DisplayError } | { status: "ready" };
 
 export function VideoMergeScreen({ projectId, onBack }: Props) {
+  const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<DisplayError | null>(null);
   const [result, setResult] = useState<MergeVideosResponse | null>(null);
+  const [openPending, setOpenPending] = useState(false);
+  const [openFailed, setOpenFailed] = useState(false);
   const busy = useRef(false);
+
+  // A project that already finished merging (revisited later, e.g. from the dashboard) should
+  // show its existing result immediately instead of offering to merge again from scratch.
+  useEffect(() => {
+    let cancelled = false;
+    getProject(projectId)
+      .then((response) => {
+        if (cancelled) return;
+        if (response.project.workflowState === WorkflowState.Completed && response.project.finalVideoPath === "videos/final/instagram_reel.mp4") {
+          setResult({ project: response.project, finalVideoPath: response.project.finalVideoPath });
+        }
+        setLoadState({ status: "ready" });
+      })
+      .catch((caught: unknown) => {
+        if (!cancelled) setLoadState({ status: "error", error: toDisplayError(caught) });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  async function openInExplorer(): Promise<void> {
+    if (openPending || !result) return;
+    setOpenPending(true);
+    setOpenFailed(false);
+    try {
+      const outcome = await openProjectPathInExplorer(projectId, result.finalVideoPath);
+      if (!outcome?.opened) setOpenFailed(true);
+    } catch {
+      setOpenFailed(true);
+    } finally {
+      setOpenPending(false);
+    }
+  }
 
   /** Opens the explicit confirmation panel. Never calls the network by itself. */
   function openConfirmation(): void {
@@ -115,13 +156,37 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
       )}
 
       {result && (
-        <div data-testid="merge-success" className="space-y-2 rounded-lg border border-emerald-400/30 bg-slate-900 p-4">
+        <div data-testid="merge-success" className="space-y-3 rounded-lg border border-emerald-400/30 bg-slate-900 p-4">
           <p className="text-sm font-semibold text-emerald-400">
             최종 영상 병합이 완료되었습니다. 실제 유료 Provider 요청은 전송되지 않았습니다.
           </p>
+          <video
+            src={finalVideoContentUrl(projectId)}
+            data-testid="final-video-player"
+            className="w-full max-w-sm rounded-lg border border-white/10 bg-slate-800"
+            controls
+          />
           <p className="text-sm text-slate-300" data-testid="final-video-path">
             저장 위치: {result.finalVideoPath}
           </p>
+          {hasElectronBridge() && (
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                data-testid="open-in-explorer-button"
+                className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-200 disabled:opacity-50"
+                onClick={() => void openInExplorer()}
+                disabled={openPending}
+              >
+                {openPending ? "여는 중..." : "탐색기에서 열기"}
+              </button>
+              {openFailed && (
+                <p role="alert" data-testid="open-in-explorer-error" className="text-sm text-rose-400">
+                  폴더를 열지 못했습니다.
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
     </section>
