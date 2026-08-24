@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { Asset, LongStoryBible, LongStoryBibleAssetLink, LongStoryBibleCollection, LongStoryBibleItem, LongStoryBibleItemInput, LongStoryBibleRelationshipIssue, LongStoryBibleStyleAssetLink } from "@ai-animation-studio/shared";
 
 import { createLongStoryBibleItem, deleteLongStoryBibleItem, duplicateLongStoryBibleItem, getLongProjectStoryBible, getLongStoryBibleRelationshipAudit, searchLongStoryBibleItems, toLongStoryBibleDisplayError, updateLongStoryBibleContent, updateLongStoryBibleItem, updateLongStoryBibleStyleAssetLink } from "../api/longStoryBibleApi.js";
@@ -13,6 +13,37 @@ const TABS: Array<{ value: LongStoryBibleCollection; label: string }> = [
   { value: "secrets", label: "Secrets" }, { value: "foreshadowing", label: "Foreshadowing" },
 ];
 const ASSET_LINK_COLLECTIONS: readonly LongStoryBibleCollection[] = ["characters", "locations", "props"];
+
+const compactField =
+  "rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
+const fieldClassName = `mt-1.5 w-full ${compactField}`;
+const jsonFieldClassName =
+  "mt-1.5 min-h-28 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 font-mono text-xs text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
+const primaryButton =
+  "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
+const outlineButton =
+  "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
+const dangerButton =
+  "rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(225,29,72,0.3)] disabled:opacity-50";
+const smallOutlineButton =
+  "rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50";
+const smallAddButton =
+  "rounded-full border border-emerald-400/30 px-3 py-1.5 text-xs text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50";
+const smallRemoveButton =
+  "rounded-full border border-rose-400/30 px-3 py-1.5 text-xs text-rose-300 hover:bg-rose-500/10 disabled:opacity-50";
+const cardSection = "space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
+
+function SectionHeading({ children }: { children: ReactNode }) {
+  return (
+    <h3 className="flex items-center gap-2.5 text-base font-semibold">
+      <span
+        aria-hidden="true"
+        className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
+      />
+      {children}
+    </h3>
+  );
+}
 
 function itemInput(item: LongStoryBibleItem): LongStoryBibleItemInput {
   const { id: _id, ...input } = item;
@@ -205,73 +236,371 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
   const supportsAssetLink = ASSET_LINK_COLLECTIONS.includes(collection);
   const styleAssets = assets.filter((asset) => asset.assetType === "style");
 
-  return <section className="mt-8 space-y-5">
-    <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300" onClick={onBack}>Back to project</button>
-    <h2 className="text-xl font-semibold">Story Bible</h2>
-    <p className="text-sm text-slate-400">Organize this long project's characters and world-building records locally.</p>
-    {error && <p role="alert" data-error-code={error.code} className="text-sm text-rose-400">{error.message}</p>}
-    <section aria-label="Story Bible basic and world settings" className="space-y-3 rounded-lg border border-white/10 p-4">
-      <div><h3 className="font-semibold">Basic and world settings</h3><p className="text-sm text-slate-400">Edit the local JSON objects used as Story Bible context. Saving does not generate scripts, images, or videos.</p></div>
-      {contentValidationError && <p role="alert" data-testid="story-bible-content-validation-error" className="text-sm text-rose-400">{contentValidationError}</p>}
-      <label className="block text-sm">Basic settings JSON<textarea aria-label="Basic settings JSON" value={basicDraft} disabled={pending} onChange={(event) => { setBasicDraft(event.target.value); setContentValidationError(null); }} className="mt-1 min-h-28 w-full rounded border border-white/10 bg-slate-800 px-3 py-2 font-mono text-xs" /></label>
-      <label className="block text-sm">World settings JSON<textarea aria-label="World settings JSON" value={worldDraft} disabled={pending} onChange={(event) => { setWorldDraft(event.target.value); setContentValidationError(null); }} className="mt-1 min-h-28 w-full rounded border border-white/10 bg-slate-800 px-3 py-2 font-mono text-xs" /></label>
-      <button type="button" onClick={() => void saveContent()} disabled={pending}>{pending ? "Saving..." : "Save basic and world settings"}</button>
-    </section>
-    <section aria-label="Global visual style Asset Library link" className="space-y-3 rounded-lg border border-white/10 p-4">
-      <div><h3 className="font-semibold">Global visual style</h3><p className="text-sm text-slate-400">Optionally link one approved style asset for this whole project.</p></div>
-      {assetLoading && <p className="text-sm text-slate-400">Loading usable style assets...</p>}
-      {!assetLoading && styleAssets.length === 0 && <p className="text-sm text-slate-400">No approved, enabled style assets are available.</p>}
-      <label className="block text-sm">Style Asset<select aria-label="Global style Asset" value={styleAssetId} disabled={pending || assetLoading} onChange={(event) => setStyleAssetId(event.target.value)} className="mt-1 w-full rounded border border-white/10 bg-slate-800 px-3 py-2"><option value="">No global style asset</option>{styleAssets.map((asset) => <option key={asset.assetId} value={asset.assetId}>{asset.displayName} ({asset.assetId}) 쨌 v{asset.version}</option>)}</select></label>
-      {styleAssetId && <label className="block text-sm">Style version policy<select aria-label="Global style version policy" value={styleVersionPolicy} disabled={pending} onChange={(event) => setStyleVersionPolicy(event.target.value as LongStoryBibleStyleAssetLink["versionPolicy"])} className="mt-1 w-full rounded border border-white/10 bg-slate-800 px-3 py-2"><option value="pinned_version">Pin current version</option><option value="follow_latest">Follow latest version</option><option value="snapshot">Snapshot current version</option></select></label>}
-      {bible?.styleAssetLink && <p data-testid="global-style-asset-link" className="text-sm text-emerald-300">Linked style: {bible.styleAssetLink.assetId} 쨌 {bible.styleAssetLink.versionPolicy} 쨌 v{bible.styleAssetLink.pinnedVersion}</p>}
-      <button type="button" onClick={() => void saveStyleAssetLink()} disabled={pending || assetLoading}>{pending ? "Saving..." : styleAssetId ? "Save global style" : "Remove global style"}</button>
-    </section>
-    <section aria-label="Story Bible relationship audit" className="rounded-lg border border-white/10 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-semibold">Relationship audit</h3><p className="text-sm text-slate-400">Read-only check for missing Story Bible links.</p></div><button type="button" onClick={() => void loadRelationshipAudit()} disabled={relationshipAuditLoading}>{relationshipAuditLoading ? "Checking..." : relationshipAudit === null ? "Check relationships" : "Refresh audit"}</button></div>
-      {relationshipAuditLoading && <p className="mt-3 text-sm text-slate-400">Checking Story Bible relationships...</p>}
-      {relationshipAuditError && <div className="mt-3"><p role="alert" data-error-code={relationshipAuditError.code} className="text-sm text-rose-400">{relationshipAuditError.message}</p><button type="button" className="mt-2" onClick={() => void loadRelationshipAudit()} disabled={relationshipAuditLoading}>Retry audit</button></div>}
-      {relationshipAudit && relationshipAudit.length === 0 && <p data-testid="relationship-audit-healthy" className="mt-3 text-sm text-emerald-300">All Story Bible relationships are healthy.</p>}
-      {relationshipAudit && relationshipAudit.length > 0 && <ul aria-label="Relationship audit issues" className="mt-3 space-y-2">{relationshipAudit.map((issue, index) => <li key={`${issue.collection}-${issue.itemId}-${issue.field}-${index}`} className="rounded border border-amber-400/30 p-2 text-sm"><strong>{issue.collection}</strong> / {issue.itemId} / {issue.field}: missing {issue.missingIds.join(", ")}</li>)}</ul>}
-    </section>
-    <div role="tablist" aria-label="Story Bible collection" className="flex flex-wrap gap-2">
-      {TABS.map((tab) => <button key={tab.value} type="button" role="tab" aria-selected={collection === tab.value} onClick={() => { setCollection(tab.value); resetEditor(); setDeleteTarget(null); setSearchQuery(""); setSearchResults(null); setSearchError(null); setDuplicateError(null); }} className="rounded-full border border-white/10 px-3 py-1 text-sm">{tab.label}</button>)}
-    </div>
-    <section aria-label={`${collectionLabel} search`} className="rounded-lg border border-white/10 p-4">
-      <h3 className="font-semibold">Search {collectionLabel}</h3>
-      <p className="mt-1 text-sm text-slate-400">Search this collection only. No search runs until you submit a query.</p>
-      <form className="mt-3 flex flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); void search(); }}>
-        <label className="sr-only" htmlFor="story-bible-search">Search {collectionLabel}</label>
-        <input id="story-bible-search" aria-label={`Search ${collectionLabel}`} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="rounded border border-white/10 bg-slate-800 px-3 py-2" />
-        <button type="submit" disabled={searchLoading || !searchQuery.trim()}>{searchLoading ? "Searching..." : "Search"}</button>
+  return (
+    <section className="mt-8 max-w-3xl space-y-5">
+      <button type="button" className={outlineButton} onClick={onBack}>
+        Back to project
+      </button>
+      <h2 className="flex items-center gap-2.5 text-lg font-semibold">
+        <span
+          aria-hidden="true"
+          className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
+        />
+        Story Bible
+      </h2>
+      <p className="text-sm text-slate-400">Organize this long project's characters and world-building records locally.</p>
+      {error && (
+        <p role="alert" data-error-code={error.code} className="text-sm text-rose-400">
+          {error.message}
+        </p>
+      )}
+
+      <section aria-label="Story Bible basic and world settings" className={cardSection}>
+        <SectionHeading>Basic and world settings</SectionHeading>
+        <p className="text-sm text-slate-400">Edit the local JSON objects used as Story Bible context. Saving does not generate scripts, images, or videos.</p>
+        {contentValidationError && (
+          <p role="alert" data-testid="story-bible-content-validation-error" className="text-sm text-rose-400">
+            {contentValidationError}
+          </p>
+        )}
+        <label className="block text-sm text-slate-300">
+          Basic settings JSON
+          <textarea
+            aria-label="Basic settings JSON"
+            value={basicDraft}
+            disabled={pending}
+            onChange={(event) => { setBasicDraft(event.target.value); setContentValidationError(null); }}
+            className={jsonFieldClassName}
+          />
+        </label>
+        <label className="block text-sm text-slate-300">
+          World settings JSON
+          <textarea
+            aria-label="World settings JSON"
+            value={worldDraft}
+            disabled={pending}
+            onChange={(event) => { setWorldDraft(event.target.value); setContentValidationError(null); }}
+            className={jsonFieldClassName}
+          />
+        </label>
+        <button type="button" className={outlineButton} onClick={() => void saveContent()} disabled={pending}>
+          {pending ? "Saving..." : "Save basic and world settings"}
+        </button>
+      </section>
+
+      <section aria-label="Global visual style Asset Library link" className={cardSection}>
+        <SectionHeading>Global visual style</SectionHeading>
+        <p className="text-sm text-slate-400">Optionally link one approved style asset for this whole project.</p>
+        {assetLoading && <p className="text-sm text-slate-400">Loading usable style assets...</p>}
+        {!assetLoading && styleAssets.length === 0 && <p className="text-sm text-slate-400">No approved, enabled style assets are available.</p>}
+        <label className="block text-sm text-slate-300">
+          Style Asset
+          <select
+            aria-label="Global style Asset"
+            value={styleAssetId}
+            disabled={pending || assetLoading}
+            onChange={(event) => setStyleAssetId(event.target.value)}
+            className={fieldClassName}
+          >
+            <option value="">No global style asset</option>
+            {styleAssets.map((asset) => (
+              <option key={asset.assetId} value={asset.assetId}>
+                {asset.displayName} ({asset.assetId}) · v{asset.version}
+              </option>
+            ))}
+          </select>
+        </label>
+        {styleAssetId && (
+          <label className="block text-sm text-slate-300">
+            Style version policy
+            <select
+              aria-label="Global style version policy"
+              value={styleVersionPolicy}
+              disabled={pending}
+              onChange={(event) => setStyleVersionPolicy(event.target.value as LongStoryBibleStyleAssetLink["versionPolicy"])}
+              className={fieldClassName}
+            >
+              <option value="pinned_version">Pin current version</option>
+              <option value="follow_latest">Follow latest version</option>
+              <option value="snapshot">Snapshot current version</option>
+            </select>
+          </label>
+        )}
+        {bible?.styleAssetLink && (
+          <p data-testid="global-style-asset-link" className="text-sm text-emerald-300">
+            Linked style: {bible.styleAssetLink.assetId} · {bible.styleAssetLink.versionPolicy} · v{bible.styleAssetLink.pinnedVersion}
+          </p>
+        )}
+        <button type="button" className={outlineButton} onClick={() => void saveStyleAssetLink()} disabled={pending || assetLoading}>
+          {pending ? "Saving..." : styleAssetId ? "Save global style" : "Remove global style"}
+        </button>
+      </section>
+
+      <section aria-label="Story Bible relationship audit" className={cardSection}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <SectionHeading>Relationship audit</SectionHeading>
+            <p className="text-sm text-slate-400">Read-only check for missing Story Bible links.</p>
+          </div>
+          <button type="button" className={outlineButton} onClick={() => void loadRelationshipAudit()} disabled={relationshipAuditLoading}>
+            {relationshipAuditLoading ? "Checking..." : relationshipAudit === null ? "Check relationships" : "Refresh audit"}
+          </button>
+        </div>
+        {relationshipAuditLoading && <p className="text-sm text-slate-400">Checking Story Bible relationships...</p>}
+        {relationshipAuditError && (
+          <div className="space-y-2">
+            <p role="alert" data-error-code={relationshipAuditError.code} className="text-sm text-rose-400">
+              {relationshipAuditError.message}
+            </p>
+            <button type="button" className={smallOutlineButton} onClick={() => void loadRelationshipAudit()} disabled={relationshipAuditLoading}>
+              Retry audit
+            </button>
+          </div>
+        )}
+        {relationshipAudit && relationshipAudit.length === 0 && (
+          <p data-testid="relationship-audit-healthy" className="text-sm text-emerald-300">
+            All Story Bible relationships are healthy.
+          </p>
+        )}
+        {relationshipAudit && relationshipAudit.length > 0 && (
+          <ul aria-label="Relationship audit issues" className="space-y-2">
+            {relationshipAudit.map((issue, index) => (
+              <li
+                key={`${issue.collection}-${issue.itemId}-${issue.field}-${index}`}
+                className="rounded-lg border border-amber-400/30 bg-amber-500/5 p-2.5 text-sm text-slate-200"
+              >
+                <strong>{issue.collection}</strong> / {issue.itemId} / {issue.field}: missing {issue.missingIds.join(", ")}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <div role="tablist" aria-label="Story Bible collection" className="flex flex-wrap gap-2">
+        {TABS.map((tab) => (
+          <button
+            key={tab.value}
+            type="button"
+            role="tab"
+            aria-selected={collection === tab.value}
+            onClick={() => { setCollection(tab.value); resetEditor(); setDeleteTarget(null); setSearchQuery(""); setSearchResults(null); setSearchError(null); setDuplicateError(null); }}
+            className={
+              collection === tab.value
+                ? "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-3.5 py-1.5 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)]"
+                : "rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-slate-300 hover:bg-white/5"
+            }
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <section aria-label={`${collectionLabel} search`} className={cardSection}>
+        <SectionHeading>Search {collectionLabel}</SectionHeading>
+        <p className="text-sm text-slate-400">Search this collection only. No search runs until you submit a query.</p>
+        <form className="flex flex-wrap items-center gap-2" onSubmit={(event) => { event.preventDefault(); void search(); }}>
+          <label className="sr-only" htmlFor="story-bible-search">Search {collectionLabel}</label>
+          <input
+            id="story-bible-search"
+            aria-label={`Search ${collectionLabel}`}
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            className={`min-w-48 flex-1 ${compactField}`}
+          />
+          <button type="submit" className={smallOutlineButton} disabled={searchLoading || !searchQuery.trim()}>
+            {searchLoading ? "Searching..." : "Search"}
+          </button>
+        </form>
+        {searchError && (
+          <div className="space-y-2">
+            <p role="alert" data-error-code={searchError.code} className="text-sm text-rose-400">
+              {searchError.message}
+            </p>
+            <button type="button" className={smallOutlineButton} onClick={() => void search()} disabled={searchLoading}>
+              Retry search
+            </button>
+          </div>
+        )}
+        {searchResults && searchResults.length === 0 && (
+          <p data-testid="story-bible-search-empty" className="text-sm text-slate-400">
+            No matching {collectionLabel} entries.
+          </p>
+        )}
+        {searchResults && searchResults.length > 0 && (
+          <ul aria-label={`${collectionLabel} search results`} className="space-y-2">
+            {searchResults.map((item) => (
+              <li key={item.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-white/10 bg-slate-950/40 p-2.5 text-sm">
+                <strong className="text-slate-100">{item.name || item.id}</strong>
+                <span className="text-slate-400">{item.id}</span>
+                <button type="button" className={smallAddButton} onClick={() => void duplicate(item)} disabled={Boolean(duplicatingId) || pending}>
+                  {duplicatingId === item.id ? "Duplicating..." : "Duplicate"}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {duplicateError && (
+          <p role="alert" data-error-code={duplicateError.code} className="text-sm text-rose-400">
+            {duplicateError.message}
+          </p>
+        )}
+      </section>
+
+      {loading && !bible && <Spinner label="Loading Story Bible..." />}
+      {bible && items.length === 0 && (
+        <p data-testid="story-bible-empty" className="text-sm text-slate-400">
+          No {collectionLabel} entries yet.
+        </p>
+      )}
+      {bible && items.length > 0 && (
+        <ul aria-label={`${collectionLabel} list`} className="space-y-2">
+          {items.map((item) => (
+            <li key={item.id} className="rounded-xl border border-white/10 bg-slate-900/70 p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <strong className="text-slate-100">{item.name || item.id}</strong>
+                <span className="text-xs text-slate-400">{item.id}</span>
+                {item.status && <span className="text-xs text-violet-300">{item.status}</span>}
+              </div>
+              {item.description && <p className="mt-1 text-sm text-slate-300">{item.description}</p>}
+              {item.assetLink && (
+                <p data-testid={`asset-link-${item.id}`} className="mt-1 text-sm text-emerald-300">
+                  Asset: {item.assetLink.assetId} · {item.assetLink.versionPolicy === "pinned_version" ? `pinned v${item.assetLink.pinnedVersion}` : "follow latest"} ·{" "}
+                  {item.assetLink.episodeScope.mode === "all" ? "all episodes" : `Episode ${item.assetLink.episodeScope.episode}`}
+                </p>
+              )}
+              <div className="mt-2 flex gap-2">
+                <button type="button" className={smallOutlineButton} onClick={() => startEdit(item)}>
+                  Edit
+                </button>
+                <button type="button" className={smallAddButton} onClick={() => void duplicate(item)} disabled={Boolean(duplicatingId) || pending}>
+                  {duplicatingId === item.id ? "Duplicating..." : "Duplicate"}
+                </button>
+                <button type="button" className={smallRemoveButton} onClick={() => setDeleteTarget(item)} disabled={pending}>
+                  Delete
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <form
+        aria-label={editing ? "Edit Story Bible item" : "Add Story Bible item"}
+        onSubmit={(event) => void submit(event)}
+        className="space-y-3 rounded-2xl border border-violet-400/30 bg-slate-900/70 p-5"
+      >
+        <SectionHeading>{editing ? "Edit item" : "Add item"}</SectionHeading>
+        {validationError && (
+          <p role="alert" data-testid="story-bible-validation-error" className="text-sm text-rose-400">
+            {validationError}
+          </p>
+        )}
+        <label className="block text-sm text-slate-300">
+          ID (optional)
+          <input aria-label="Item ID" value={itemId} disabled={pending || Boolean(editing)} onChange={(event) => setItemId(event.target.value)} className={fieldClassName} />
+        </label>
+        <label className="block text-sm text-slate-300">
+          Name
+          <input
+            aria-label="Item name"
+            value={name}
+            disabled={pending}
+            onChange={(event) => { setName(event.target.value); setValidationError(null); }}
+            className={fieldClassName}
+          />
+        </label>
+        <label className="block text-sm text-slate-300">
+          Description
+          <textarea aria-label="Item description" value={description} disabled={pending} onChange={(event) => setDescription(event.target.value)} className={fieldClassName} />
+        </label>
+        <label className="block text-sm text-slate-300">
+          Status
+          <input aria-label="Item status" value={status} disabled={pending} onChange={(event) => setStatus(event.target.value)} className={fieldClassName} />
+        </label>
+        {supportsAssetLink && (
+          <fieldset className="space-y-3 rounded-xl border border-white/10 bg-slate-950/30 p-3.5 disabled:opacity-50" disabled={pending || assetLoading}>
+            <legend className="px-1 text-sm text-slate-300">Asset Library link (optional)</legend>
+            {assetLoading && <p className="text-sm text-slate-400">Loading usable assets...</p>}
+            {!assetLoading && assets.length === 0 && <p className="text-sm text-slate-400">No approved, enabled Asset Library assets are available.</p>}
+            <label className="block text-sm text-slate-300">
+              Asset
+              <select aria-label="Linked Asset" value={assetId} onChange={(event) => setAssetId(event.target.value)} className={fieldClassName}>
+                <option value="">No Asset Library link</option>
+                {assets.map((asset) => (
+                  <option key={asset.assetId} value={asset.assetId}>
+                    {asset.displayName} ({asset.assetId}) · v{asset.version}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {assetId && (
+              <>
+                <label className="block text-sm text-slate-300">
+                  Version policy
+                  <select
+                    aria-label="Asset version policy"
+                    value={versionPolicy}
+                    onChange={(event) => setVersionPolicy(event.target.value as LongStoryBibleAssetLink["versionPolicy"])}
+                    className={fieldClassName}
+                  >
+                    <option value="pinned_version">Pin current version</option>
+                    <option value="follow_latest">Follow latest version</option>
+                  </select>
+                </label>
+                <label className="block text-sm text-slate-300">
+                  Episode scope
+                  <select
+                    aria-label="Asset episode scope"
+                    value={scopeMode}
+                    onChange={(event) => setScopeMode(event.target.value as "all" | "episode")}
+                    className={fieldClassName}
+                  >
+                    <option value="all">All episodes</option>
+                    <option value="episode">One episode</option>
+                  </select>
+                </label>
+                {scopeMode === "episode" && (
+                  <label className="block text-sm text-slate-300">
+                    Episode number
+                    <select aria-label="Asset episode number" value={scopeEpisode} onChange={(event) => setScopeEpisode(event.target.value)} className={fieldClassName}>
+                      {Array.from({ length: episodeCount ?? 0 }, (_, index) => (
+                        <option key={index + 1} value={index + 1}>
+                          Episode {index + 1}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </>
+            )}
+          </fieldset>
+        )}
+        <div className="flex gap-2">
+          <button type="submit" className={primaryButton} disabled={pending}>
+            {pending ? "Saving..." : editing ? "Save changes" : "Add item"}
+          </button>
+          {editing && (
+            <button type="button" className={outlineButton} onClick={resetEditor} disabled={pending}>
+              Cancel
+            </button>
+          )}
+        </div>
       </form>
-      {searchError && <div className="mt-3"><p role="alert" data-error-code={searchError.code} className="text-sm text-rose-400">{searchError.message}</p><button type="button" className="mt-2" onClick={() => void search()} disabled={searchLoading}>Retry search</button></div>}
-      {searchResults && searchResults.length === 0 && <p data-testid="story-bible-search-empty" className="mt-3 text-sm text-slate-400">No matching {collectionLabel} entries.</p>}
-      {searchResults && searchResults.length > 0 && <ul aria-label={`${collectionLabel} search results`} className="mt-3 space-y-2">{searchResults.map((item) => <li key={item.id} className="rounded border border-white/10 p-2 text-sm"><strong>{item.name || item.id}</strong><span className="ml-2 text-slate-400">{item.id}</span><button type="button" className="ml-3" onClick={() => void duplicate(item)} disabled={Boolean(duplicatingId) || pending}>{duplicatingId === item.id ? "Duplicating..." : "Duplicate"}</button></li>)}</ul>}
-      {duplicateError && <p role="alert" data-error-code={duplicateError.code} className="mt-3 text-sm text-rose-400">{duplicateError.message}</p>}
+
+      {deleteTarget && (
+        <div role="alertdialog" aria-label="Confirm Story Bible item deletion" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
+          <p className="text-sm font-semibold text-amber-300">Delete {deleteTarget.name || deleteTarget.id}?</p>
+          <p className="text-sm text-slate-300">This separate final confirmation is required before deletion.</p>
+          <div className="flex gap-3">
+            <button type="button" className={outlineButton} onClick={() => setDeleteTarget(null)} disabled={pending}>
+              Cancel
+            </button>
+            <button type="button" className={dangerButton} onClick={() => void confirmDelete()} disabled={pending}>
+              {pending ? "Deleting..." : "Confirm delete"}
+            </button>
+          </div>
+        </div>
+      )}
     </section>
-    {loading && !bible && <Spinner label="Loading Story Bible..." />}
-    {bible && items.length === 0 && <p data-testid="story-bible-empty" className="text-slate-400">No {collectionLabel} entries yet.</p>}
-    {bible && items.length > 0 && <ul aria-label={`${collectionLabel} list`} className="space-y-2">
-      {items.map((item) => <li key={item.id} className="rounded-lg border border-white/10 p-3"><strong>{item.name || item.id}</strong><span className="ml-2 text-xs text-slate-400">{item.id}</span>{item.status && <span className="ml-2 text-xs text-violet-300">{item.status}</span>}{item.description && <p className="mt-1 text-sm text-slate-300">{item.description}</p>}{item.assetLink && <p data-testid={`asset-link-${item.id}`} className="mt-1 text-sm text-emerald-300">Asset: {item.assetLink.assetId} · {item.assetLink.versionPolicy === "pinned_version" ? `pinned v${item.assetLink.pinnedVersion}` : "follow latest"} · {item.assetLink.episodeScope.mode === "all" ? "all episodes" : `Episode ${item.assetLink.episodeScope.episode}`}</p>}<div className="mt-2 flex gap-2"><button type="button" onClick={() => startEdit(item)}>Edit</button><button type="button" onClick={() => void duplicate(item)} disabled={Boolean(duplicatingId) || pending}>{duplicatingId === item.id ? "Duplicating..." : "Duplicate"}</button><button type="button" onClick={() => setDeleteTarget(item)} disabled={pending}>Delete</button></div></li>)}
-    </ul>}
-    <form aria-label={editing ? "Edit Story Bible item" : "Add Story Bible item"} onSubmit={(event) => void submit(event)} className="space-y-3 rounded-lg border border-violet-400/30 p-4">
-      <h3 className="font-semibold">{editing ? "Edit item" : "Add item"}</h3>
-      {validationError && <p role="alert" data-testid="story-bible-validation-error" className="text-sm text-rose-400">{validationError}</p>}
-      <label className="block text-sm">ID (optional)<input aria-label="Item ID" value={itemId} disabled={pending || Boolean(editing)} onChange={(event) => setItemId(event.target.value)} className="mt-1 w-full rounded border border-white/10 bg-slate-800 px-3 py-2" /></label>
-      <label className="block text-sm">Name<input aria-label="Item name" value={name} disabled={pending} onChange={(event) => { setName(event.target.value); setValidationError(null); }} className="mt-1 w-full rounded border border-white/10 bg-slate-800 px-3 py-2" /></label>
-      <label className="block text-sm">Description<textarea aria-label="Item description" value={description} disabled={pending} onChange={(event) => setDescription(event.target.value)} className="mt-1 w-full rounded border border-white/10 bg-slate-800 px-3 py-2" /></label>
-      <label className="block text-sm">Status<input aria-label="Item status" value={status} disabled={pending} onChange={(event) => setStatus(event.target.value)} className="mt-1 w-full rounded border border-white/10 bg-slate-800 px-3 py-2" /></label>
-      {supportsAssetLink && <fieldset className="space-y-3 rounded border border-white/10 p-3" disabled={pending || assetLoading}>
-        <legend className="px-1 text-sm">Asset Library link (optional)</legend>
-        {assetLoading && <p className="text-sm text-slate-400">Loading usable assets...</p>}
-        {!assetLoading && assets.length === 0 && <p className="text-sm text-slate-400">No approved, enabled Asset Library assets are available.</p>}
-        <label className="block text-sm">Asset<select aria-label="Linked Asset" value={assetId} onChange={(event) => setAssetId(event.target.value)} className="mt-1 w-full rounded border border-white/10 bg-slate-800 px-3 py-2"><option value="">No Asset Library link</option>{assets.map((asset) => <option key={asset.assetId} value={asset.assetId}>{asset.displayName} ({asset.assetId}) · v{asset.version}</option>)}</select></label>
-        {assetId && <><label className="block text-sm">Version policy<select aria-label="Asset version policy" value={versionPolicy} onChange={(event) => setVersionPolicy(event.target.value as LongStoryBibleAssetLink["versionPolicy"])} className="mt-1 w-full rounded border border-white/10 bg-slate-800 px-3 py-2"><option value="pinned_version">Pin current version</option><option value="follow_latest">Follow latest version</option></select></label>
-          <label className="block text-sm">Episode scope<select aria-label="Asset episode scope" value={scopeMode} onChange={(event) => setScopeMode(event.target.value as "all" | "episode")} className="mt-1 w-full rounded border border-white/10 bg-slate-800 px-3 py-2"><option value="all">All episodes</option><option value="episode">One episode</option></select></label>
-          {scopeMode === "episode" && <label className="block text-sm">Episode number<select aria-label="Asset episode number" value={scopeEpisode} onChange={(event) => setScopeEpisode(event.target.value)} className="mt-1 w-full rounded border border-white/10 bg-slate-800 px-3 py-2">{Array.from({ length: episodeCount ?? 0 }, (_, index) => <option key={index + 1} value={index + 1}>Episode {index + 1}</option>)}</select></label>}</>}
-      </fieldset>}
-      <div className="flex gap-2"><button type="submit" disabled={pending}>{pending ? "Saving..." : editing ? "Save changes" : "Add item"}</button>{editing && <button type="button" onClick={resetEditor} disabled={pending}>Cancel</button>}</div>
-    </form>
-    {deleteTarget && <div role="alertdialog" aria-label="Confirm Story Bible item deletion" className="rounded-lg border border-amber-400/40 p-4"><p>Delete {deleteTarget.name || deleteTarget.id}?</p><p className="mt-1 text-sm text-slate-400">This separate final confirmation is required before deletion.</p><div className="mt-3 flex gap-2"><button type="button" onClick={() => setDeleteTarget(null)} disabled={pending}>Cancel</button><button type="button" onClick={() => void confirmDelete()} disabled={pending}>{pending ? "Deleting..." : "Confirm delete"}</button></div></div>}
-  </section>;
+  );
 }

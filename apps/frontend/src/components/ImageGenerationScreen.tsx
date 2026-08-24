@@ -33,6 +33,18 @@ type ReviewLoadState =
 
 const SCENE_NUMBERS = [1, 2, 3, 4, 5, 6] as const;
 
+const primaryButton =
+  "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
+const outlineButton =
+  "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
+const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
+const smallOutlineButton =
+  "rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50";
+const smallApproveButton =
+  "rounded-full border border-emerald-400/30 px-3 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50";
+const smallAmberButton =
+  "rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-400 disabled:opacity-50";
+
 export function ImageGenerationScreen({ projectId, onBack }: Props) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -189,11 +201,17 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
   }
 
   return (
-    <section className="mt-8 space-y-4">
-      <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300" onClick={onBack}>
+    <section className="mt-8 max-w-3xl space-y-5">
+      <button type="button" className={outlineButton} onClick={onBack}>
         프로젝트로 돌아가기
       </button>
-      <h2 className="text-xl font-semibold">장면 이미지 생성</h2>
+      <h2 className="flex items-center gap-2.5 text-lg font-semibold">
+        <span
+          aria-hidden="true"
+          className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
+        />
+        장면 이미지 생성
+      </h2>
 
       {state.status === "loading" && <Spinner label="불러오는 중..." />}
       {state.status === "error" && (
@@ -214,21 +232,23 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
             </p>
           )}
 
-          <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-300" data-testid="scene-results">
+          <ol className="grid gap-2 sm:grid-cols-2" data-testid="scene-results">
             {SCENE_NUMBERS.map((number) => (
-              <li key={number} data-testid={`scene-${number}`} data-status={sceneStatus(number)}>
+              <li
+                key={number}
+                data-testid={`scene-${number}`}
+                data-status={sceneStatus(number)}
+                className={`rounded-lg border p-2.5 text-sm ${
+                  sceneStatus(number) === "completed" ? "border-emerald-400/30 text-emerald-300" : "border-white/10 text-slate-300"
+                }`}
+              >
                 {number}번 장면 · {sceneStatus(number) === "completed" ? "완료" : "대기"}
               </li>
             ))}
           </ol>
 
           {allowed && !result && (
-            <button
-              type="button"
-              className="rounded-full bg-violet-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              onClick={openConfirmation}
-              disabled={confirmOpen}
-            >
+            <button type="button" className={primaryButton} onClick={openConfirmation} disabled={confirmOpen}>
               이미지 생성 시작
             </button>
           )}
@@ -238,7 +258,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
               role="alertdialog"
               aria-label="장면 이미지 생성 확인"
               data-testid="generate-confirm-panel"
-              className="space-y-3 rounded-lg border border-amber-400/40 bg-slate-900 p-4"
+              className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
             >
               <p className="text-sm font-semibold text-amber-300">장면 이미지 6장을 생성할까요?</p>
               <p className="text-sm text-slate-300">
@@ -246,20 +266,10 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                 전송되지 않습니다.
               </p>
               <div className="flex gap-3">
-                <button
-                  type="button"
-                  className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 disabled:opacity-50"
-                  onClick={cancelConfirmation}
-                  disabled={generatePending}
-                >
+                <button type="button" className={outlineButton} onClick={cancelConfirmation} disabled={generatePending}>
                   돌아가기
                 </button>
-                <button
-                  type="button"
-                  className="rounded-full bg-violet-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                  onClick={() => void confirmGeneration()}
-                  disabled={generatePending}
-                >
+                <button type="button" className={primaryButton} onClick={() => void confirmGeneration()} disabled={generatePending}>
                   {generatePending ? "생성 중..." : "예, 로컬 이미지 생성을 시작합니다"}
                 </button>
               </div>
@@ -273,15 +283,21 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
           )}
 
           {result && (
-            <p data-testid="generation-summary" className="text-sm text-emerald-400">
+            <p data-testid="generation-summary" className="text-sm font-semibold text-emerald-400">
               생성 완료 · 새로 생성 {result.generatedSceneNumbers.length}장 · 기존 이미지 재사용{" "}
               {result.reusedSceneNumbers.length}장
             </p>
           )}
 
           {(reviewable || videoConfirmationReached) && (
-            <div className="space-y-3 rounded-lg border border-white/10 p-4" data-testid="image-review-section">
-              <h3 className="text-lg font-semibold">이미지 검토</h3>
+            <div className={cardSection} data-testid="image-review-section">
+              <h3 className="flex items-center gap-2.5 text-base font-semibold">
+                <span
+                  aria-hidden="true"
+                  className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
+                />
+                이미지 검토
+              </h3>
               <p className="text-sm text-slate-300">각 장면의 이미지를 확인하고 개별적으로 승인해 주세요.</p>
               <p className="text-xs text-amber-300" data-testid="no-paid-regenerate-notice">
                 재생성은 실제 유료 Provider를 호출하지 않는 로컬 가짜 어댑터만 사용하며, 이전 이미지는 버전 기록으로
@@ -308,96 +324,96 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                         key={review.sceneNumber}
                         data-testid={`review-${review.sceneNumber}`}
                         data-status={review.status}
-                        className="flex gap-3"
+                        className="flex gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-3"
                       >
                         <img
                           src={imageReviewContentUrl(projectId, review.sceneNumber, review.updatedAt)}
                           alt={`${review.sceneNumber}번 장면 이미지`}
                           data-testid={`review-image-${review.sceneNumber}`}
-                          className="h-24 w-24 flex-shrink-0 rounded-md border border-white/10 bg-slate-800 object-cover"
+                          className="h-24 w-24 flex-shrink-0 rounded-lg border border-white/10 bg-slate-800 object-cover"
                         />
-                        <div className="flex-1 space-y-1">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-sm text-slate-300">
-                            {review.sceneNumber}번 장면 · {review.status === "approved" ? "승인됨" : "검토 대기"}
-                          </span>
-                          <button
-                            type="button"
-                            className="rounded-full bg-emerald-500 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
-                            onClick={() => void approveScene(review.sceneNumber)}
-                            disabled={review.status === "approved" || pending}
-                          >
-                            {review.status === "approved" ? "승인 완료" : pending ? "승인 중..." : "승인"}
-                          </button>
-                        </div>
-                        {approveError && (
-                          <p
-                            role="alert"
-                            data-testid={`review-approve-error-${review.sceneNumber}`}
-                            data-error-code={approveError.code}
-                            className="text-sm text-rose-400"
-                          >
-                            {approveError.message}
-                          </p>
-                        )}
-
-                        <div className="flex items-center justify-end gap-3">
-                          <button
-                            type="button"
-                            data-testid={`review-regenerate-${review.sceneNumber}`}
-                            className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-200 disabled:opacity-50"
-                            onClick={() => openRegenerateConfirmation(review.sceneNumber)}
-                            disabled={regeneratePending || regenerateConfirmOpen}
-                          >
-                            {regeneratePending ? "재생성 중..." : "재생성"}
-                          </button>
-                        </div>
-
-                        {regenerateConfirmOpen && (
-                          <div
-                            role="alertdialog"
-                            aria-label={`${review.sceneNumber}번 장면 재생성 확인`}
-                            data-testid={`regenerate-confirm-panel-${review.sceneNumber}`}
-                            className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900 p-3"
-                          >
-                            <p className="text-sm font-semibold text-amber-300">
-                              {review.sceneNumber}번 장면 이미지를 다시 생성할까요?
-                            </p>
-                            <p className="text-xs text-slate-300">
-                              아직 재생성이 시작되지 않았습니다. 확인을 누르면 로컬 가짜 어댑터가 이 장면 이미지만 다시
-                              생성하며, 실제 유료 요청은 전송되지 않습니다.
-                            </p>
-                            <div className="flex gap-2">
-                              <button
-                                type="button"
-                                className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 disabled:opacity-50"
-                                onClick={() => cancelRegenerateConfirmation(review.sceneNumber)}
-                                disabled={regeneratePending}
-                              >
-                                취소
-                              </button>
-                              <button
-                                type="button"
-                                className="rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
-                                onClick={() => void confirmRegenerate(review.sceneNumber)}
-                                disabled={regeneratePending}
-                              >
-                                {regeneratePending ? "재생성 중..." : "예, 로컬로 재생성합니다"}
-                              </button>
-                            </div>
+                        <div className="flex-1 space-y-1.5">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-sm text-slate-300">
+                              {review.sceneNumber}번 장면 · {review.status === "approved" ? "승인됨" : "검토 대기"}
+                            </span>
+                            <button
+                              type="button"
+                              className={smallApproveButton}
+                              onClick={() => void approveScene(review.sceneNumber)}
+                              disabled={review.status === "approved" || pending}
+                            >
+                              {review.status === "approved" ? "승인 완료" : pending ? "승인 중..." : "승인"}
+                            </button>
                           </div>
-                        )}
+                          {approveError && (
+                            <p
+                              role="alert"
+                              data-testid={`review-approve-error-${review.sceneNumber}`}
+                              data-error-code={approveError.code}
+                              className="text-sm text-rose-400"
+                            >
+                              {approveError.message}
+                            </p>
+                          )}
 
-                        {regenerateError && (
-                          <p
-                            role="alert"
-                            data-testid={`review-regenerate-error-${review.sceneNumber}`}
-                            data-error-code={regenerateError.code}
-                            className="text-sm text-rose-400"
-                          >
-                            {regenerateError.message}
-                          </p>
-                        )}
+                          <div className="flex items-center justify-end gap-3">
+                            <button
+                              type="button"
+                              data-testid={`review-regenerate-${review.sceneNumber}`}
+                              className={smallOutlineButton}
+                              onClick={() => openRegenerateConfirmation(review.sceneNumber)}
+                              disabled={regeneratePending || regenerateConfirmOpen}
+                            >
+                              {regeneratePending ? "재생성 중..." : "재생성"}
+                            </button>
+                          </div>
+
+                          {regenerateConfirmOpen && (
+                            <div
+                              role="alertdialog"
+                              aria-label={`${review.sceneNumber}번 장면 재생성 확인`}
+                              data-testid={`regenerate-confirm-panel-${review.sceneNumber}`}
+                              className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3"
+                            >
+                              <p className="text-sm font-semibold text-amber-300">
+                                {review.sceneNumber}번 장면 이미지를 다시 생성할까요?
+                              </p>
+                              <p className="text-xs text-slate-300">
+                                아직 재생성이 시작되지 않았습니다. 확인을 누르면 로컬 가짜 어댑터가 이 장면 이미지만 다시
+                                생성하며, 실제 유료 요청은 전송되지 않습니다.
+                              </p>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  className={smallOutlineButton}
+                                  onClick={() => cancelRegenerateConfirmation(review.sceneNumber)}
+                                  disabled={regeneratePending}
+                                >
+                                  취소
+                                </button>
+                                <button
+                                  type="button"
+                                  className={smallAmberButton}
+                                  onClick={() => void confirmRegenerate(review.sceneNumber)}
+                                  disabled={regeneratePending}
+                                >
+                                  {regeneratePending ? "재생성 중..." : "예, 로컬로 재생성합니다"}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {regenerateError && (
+                            <p
+                              role="alert"
+                              data-testid={`review-regenerate-error-${review.sceneNumber}`}
+                              data-error-code={regenerateError.code}
+                              className="text-sm text-rose-400"
+                            >
+                              {regenerateError.message}
+                            </p>
+                          )}
                         </div>
                       </li>
                     );
@@ -408,7 +424,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
           )}
 
           {videoConfirmationReached && (
-            <p data-testid="video-confirmation-transition" className="text-sm text-emerald-400">
+            <p data-testid="video-confirmation-transition" className="text-sm font-semibold text-emerald-400">
               장면 이미지 6장이 모두 승인되어 영상 생성 확인 단계로 이동했습니다.
             </p>
           )}
