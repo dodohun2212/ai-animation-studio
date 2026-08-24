@@ -516,6 +516,10 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
 export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = false }: Props) {
   const [state, setState] = useState<State>({ settings: null, loading: true, error: null });
   const saving = useRef(false);
+  const [characterOptions, setCharacterOptions] = useState<Asset[] | null>(null);
+  const [characterPickerOpen, setCharacterPickerOpen] = useState(false);
+  const [characterOptionsLoading, setCharacterOptionsLoading] = useState(false);
+  const [characterOptionsError, setCharacterOptionsError] = useState<{ code: string; message: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -529,6 +533,26 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
 
   function setField<Key extends keyof ShortProjectSettings>(key: Key, value: ShortProjectSettings[Key]): void {
     setState((old) => old.settings ? { ...old, settings: { ...old.settings, [key]: value }, error: null } : old);
+  }
+
+  async function openCharacterPicker(): Promise<void> {
+    setCharacterPickerOpen((open) => !open);
+    if (characterOptions !== null) return;
+    setCharacterOptionsLoading(true);
+    setCharacterOptionsError(null);
+    try {
+      const response = await listAssets({ assetType: "character" });
+      setCharacterOptions(response.assets);
+    } catch (caught) {
+      setCharacterOptionsError(toAssetDisplayError(caught));
+    } finally {
+      setCharacterOptionsLoading(false);
+    }
+  }
+
+  function pickCharacter(asset: Asset): void {
+    setField("character", asset.displayName);
+    setCharacterPickerOpen(false);
   }
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -568,7 +592,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
           설정해 주세요 — 전부 선택 사항이며 나중에 다시 와서 바꿀 수도 있습니다.
         </p>
       )}
-      {state.error && (
+      {state.error && !state.settings && (
         <p className="text-sm text-rose-400" role="alert" data-error-code={state.error.code}>
           {state.error.message}
         </p>
@@ -580,6 +604,44 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
           <Field label="장르" value={state.settings.genre} onChange={(value) => setField("genre", value)} />
           <Field label="분위기" value={state.settings.mood} onChange={(value) => setField("mood", value)} />
           <Field label="대표 캐릭터" value={state.settings.character} onChange={(value) => setField("character", value)} />
+          <div className="text-sm text-slate-300 md:col-span-2">
+            <button type="button" className={smallOutlineButton} onClick={() => void openCharacterPicker()}>
+              {characterPickerOpen ? "이미지에서 선택 닫기" : "이미지에서 캐릭터 선택"}
+            </button>
+            {characterPickerOpen && (
+              <div className="mt-2 space-y-2 rounded-xl border border-white/10 bg-slate-950/40 p-3">
+                {characterOptionsLoading && <Spinner label="캐릭터 이미지를 불러오는 중..." />}
+                {characterOptionsError && (
+                  <p role="alert" data-testid="character-picker-error" data-error-code={characterOptionsError.code} className="text-sm text-rose-400">
+                    {characterOptionsError.message}
+                  </p>
+                )}
+                {characterOptions && characterOptions.length === 0 && !characterOptionsLoading && (
+                  <p className="text-sm text-slate-400">Asset Library에 등록된 캐릭터가 없습니다. 먼저 캐릭터 이미지를 등록해 주세요.</p>
+                )}
+                {characterOptions && characterOptions.length > 0 && (
+                  <ul aria-label="캐릭터 이미지 선택" className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                    {characterOptions.map((asset) => (
+                      <li key={asset.assetId}>
+                        <button
+                          type="button"
+                          className="w-full rounded-lg border border-white/10 bg-slate-900/70 p-1.5 text-left hover:border-violet-400/40"
+                          onClick={() => pickCharacter(asset)}
+                        >
+                          {asset.imageAvailable && asset.contentUrl ? (
+                            <img src={asset.contentUrl} alt="" className="h-16 w-full rounded object-cover" />
+                          ) : (
+                            <span className="flex h-16 w-full items-center justify-center rounded bg-slate-950/40 text-xs text-slate-500">이미지 없음</span>
+                          )}
+                          <span className="mt-1 block truncate text-xs text-slate-200">{asset.displayName}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
           <Field label="영상 길이(초)" value={String(state.settings.durationSeconds)} onChange={(value) => setField("durationSeconds", Number(value) || 0)} />
           <Field label="전체 줄거리" value={state.settings.fullStory} onChange={(value) => setField("fullStory", value)} multiline />
           <Field label="세계관" value={state.settings.lore} onChange={(value) => setField("lore", value)} multiline />
@@ -592,6 +654,11 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
           <Field label="화면 비율" value={state.settings.styleNotes.aspect ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, aspect: value })} />
           <Field label="추가 지시사항" value={state.settings.additionalNotes} onChange={(value) => setField("additionalNotes", value)} multiline />
           <p className="text-sm text-slate-400 md:col-span-2">장면 수: 정확히 {state.settings.sceneCount}개</p>
+          {state.error && (
+            <p className="text-sm text-rose-400 md:col-span-2" role="alert" data-error-code={state.error.code}>
+              {state.error.message}
+            </p>
+          )}
           <button type="submit" disabled={state.loading} className={`${primaryButton} md:col-span-2`}>
             {state.loading ? "저장 중…" : "설정 저장"}
           </button>

@@ -96,6 +96,27 @@ describe("ShortProjectSettingsScreen", () => {
     expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PATCH")).toBe(false);
   });
 
+  it("lets you pick the representative character from an existing Asset Library character image", async () => {
+    const hero = makeAsset({ assetId: "ASSET-CHAR-2", displayName: "은빛 늑대", assetType: "character" });
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+      "GET /assets?assetType=character": { assets: [hero] },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    await screen.findByDisplayValue("별의 지도");
+    fireEvent.click(screen.getByRole("button", { name: "이미지에서 캐릭터 선택" }));
+
+    const picker = await screen.findByRole("list", { name: "캐릭터 이미지 선택" });
+    fireEvent.click(within(picker).getByText("은빛 늑대"));
+
+    expect((screen.getByDisplayValue("은빛 늑대") as HTMLInputElement).value).toBe("은빛 늑대");
+  });
+
   it("shows the current cast, adds a searched character, and removes a cast member", async () => {
     const hero = makeAsset({ assetId: "ASSET-CHAR-1", displayName: "주인공", assetType: "character" });
     const fetchMock = stubFetchByRoute({

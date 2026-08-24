@@ -95,7 +95,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
         />
         장기 프로젝트 설정
       </h2>
-      {state.error && (
+      {state.error && !state.settings && (
         <p className="text-sm text-rose-400" role="alert" data-error-code={state.error.code}>
           {state.error.message}
         </p>
@@ -159,6 +159,11 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
             onChange={(value) => setField("storyFlowSummary", value)}
             multiline
           />
+          {state.error && (
+            <p className="text-sm text-rose-400 md:col-span-2" role="alert" data-error-code={state.error.code}>
+              {state.error.message}
+            </p>
+          )}
           <button
             type="submit"
             disabled={state.loading}
