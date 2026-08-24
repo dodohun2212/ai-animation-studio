@@ -83,6 +83,17 @@ Python → TypeScript 이전 자체는 끝났다 — 상위 15개 체크리스�
 
 **제외 결정(2026-08-24): 얼굴 일관성 검사(InsightFace)를 이전 범위에서 뺐다.** Python 소스(`app/services/face_consistency.py`, `app/ui.py`)를 직접 확인한 결과, 이 기능은 (1) 자동이 아니라 이미지 검토 화면에서 장면을 골라 버튼을 직접 눌러야만 실행되는 수동 기능이었고, (2) 필요한 `insightface`/`onnxruntime`/`opencv-python` 패키지가 `requirements.txt`에 전부 주석 처리된 채 "라이선스 검토 후 별도 설치" 안내만 있어 기본 설치로는 절대 동작하지 않았다. 즉 별도로 무거운 ML 패키지를 수동 설치하지 않은 이상 실사용에서 의미 있게 작동한 적이 없는 기능이었다 — 사용자 확인 후 재현하지 않기로 결정했다.
 
+### 2026-08-24 UI 셸 리디자인 (Phase 0)
+
+Cowork 디자인 세션에서 `apps/frontend` 비주얼 개편을 진행하고(파일 직접 반영 + 브라우저 시각 검증), Main이 최종 검증·커밋했다(`865a307`).
+
+- `App.tsx`: 상단 `NavBar`를 좌측 `Sidebar`(아이콘 네비 + 장/단기 파이프라인 스테퍼)로 교체, 배경 그라데이션/그리드 패턴 추가, 단기 프로젝트 목록 화면에 히어로 이미지 2장(`hero-ring.png`, `hero-landscape.png`) 추가, 헤더 타이틀 그라데이션 텍스트 적용. 화면 라우팅·각 화면으로의 props 전달은 변경 없음.
+- `WorkflowProgressBar.tsx`: `progressPercent()`를 `export`로 변경(다른 컴포넌트 재사용용)하고 트랙 색상·glow 효과만 조정 — 로직 변경 없음.
+- `ProjectList.tsx`: 프로젝트 카드를 큐브 아이콘 썸네일·상태 배지·진행률 바+퍼센트·화살표 버튼으로 리디자인. 접근성 구조(카드당 버튼 1개, id/topic/workflowState/updatedAt 텍스트 노드, "새 프로젝트" 버튼 접근성 이름)는 그대로 유지해 기존 테스트가 수정 없이 통과했다.
+- `Spinner.tsx`: 테두리 색상·glow 효과만 조정(요청 목록엔 없었으나 함께 반영된 사소한 시각적 변경).
+- 범위 밖으로 확인된 항목(추가 논의 예정): 프로젝트 카드 즐겨찾기 아이콘, 그리드/리스트 뷰 전환 토글, 사이드바 프로모 카드 드롭다운 화살표.
+- Main 검증: 프런트엔드 typecheck/test(547 통과)/build 통과, 루트 전체 typecheck 통과, `git diff --check` 통과(개행문자 경고만 있음). 사용되지 않는 `hero-ribbon.png`(어디서도 import되지 않음)와 시각 검증 중 생성된 `apps/backend/learning_data/projects/design-preview-1/`은 이번 커밋에서 의도적으로 제외했다.
+
 #### 4순위 — 구현이 아닌 검증/마무리
 
 11. 패키징된 실행 파일로 생성→검토→병합 전체 흐름을 실제로 끝까지 돌려보기(지금까지는 화면 로딩까지만 확인).
