@@ -4,6 +4,8 @@ import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { archiveProject, getProject, toDisplayError } from "../api/projectsApi.js";
 import { ArchiveProjectDialog } from "./ArchiveProjectDialog.js";
+import { Spinner } from "./Spinner.js";
+import { WorkflowProgressBar } from "./WorkflowProgressBar.js";
 
 interface ProjectDetailProps {
   projectId: string;
@@ -123,7 +125,7 @@ export function ProjectDetail({
       >
         목록으로
       </button>
-      {state.status === "loading" && <p className="mt-4 text-slate-400">불러오는 중...</p>}
+      {state.status === "loading" && <Spinner label="불러오는 중..." className="mt-4" />}
       {state.status === "error" && (
         <p className="mt-4 text-sm text-rose-400" role="alert" data-error-code={state.error.code}>
           {state.error.message}
@@ -220,6 +222,7 @@ export function ProjectDetail({
           <div>
             <dt className="text-xs uppercase tracking-wide text-slate-400">진행 상태</dt>
             <dd>{state.project.workflowState}</dd>
+            <WorkflowProgressBar state={state.project.workflowState} className="mt-2 max-w-xs" />
           </div>
           <div>
             <dt className="text-xs uppercase tracking-wide text-slate-400">생성 시각</dt>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { LongEpisodeOutline, LongProjectOutlinePromptPreview } from "@ai-animation-studio/shared";
 
 import { approveLongProjectOutline, createLongProjectOutlinePreview, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { Spinner } from "./Spinner.js";
 
 interface Props {
   projectId: string;
@@ -125,7 +126,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
       </button>
       <h2 className="text-xl font-semibold">아웃라인 프롬프트 확인</h2>
 
-      {previewLoading && !preview && <p className="text-slate-400">미리보기를 불러오는 중...</p>}
+      {previewLoading && !preview && <Spinner label="미리보기를 불러오는 중..." />}
       {previewError && (
         <p role="alert" data-testid="preview-error" data-error-code={previewError.code} className="text-sm text-rose-400">
           {previewError.message}

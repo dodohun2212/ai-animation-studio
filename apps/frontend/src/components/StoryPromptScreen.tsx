@@ -3,6 +3,7 @@ import type { Scene, StoryPromptPreview } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { approveStoryPrompt, createStoryPromptPreview, toStoryDisplayError } from "../api/storyPromptApi.js";
+import { Spinner } from "./Spinner.js";
 
 interface Props {
   projectId: string;
@@ -128,7 +129,7 @@ export function StoryPromptScreen({ projectId, onBack }: Props) {
       </button>
       <h2 className="text-xl font-semibold">Story 프롬프트 확인</h2>
 
-      {previewLoading && !preview && <p className="text-slate-400">미리보기를 불러오는 중...</p>}
+      {previewLoading && !preview && <Spinner label="미리보기를 불러오는 중..." />}
       {previewError && (
         <p role="alert" data-testid="preview-error" data-error-code={previewError.code} className="text-sm text-rose-400">
           {previewError.message}

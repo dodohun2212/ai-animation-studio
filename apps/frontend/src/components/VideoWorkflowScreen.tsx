@@ -12,6 +12,7 @@ import {
   toVideoWorkflowDisplayError,
   videoReviewContentUrl,
 } from "../api/videoWorkflowApi.js";
+import { Spinner } from "./Spinner.js";
 
 interface Props {
   projectId: string;
@@ -271,7 +272,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
         실제 유료 Runway API와 영상 병합 프로그램을 호출하지 않습니다. 로컬 가짜(local fake) 어댑터가 장면 영상을 순서대로 만듭니다.
       </p>
 
-      {progressState.status === "loading" && <p className="text-slate-400">진행 상황을 불러오는 중...</p>}
+      {progressState.status === "loading" && <Spinner label="진행 상황을 불러오는 중..." />}
       {progressState.status === "error" && (
         <div className="space-y-2">
           <p role="alert" data-testid="progress-error" data-error-code={progressState.error.code} className="text-sm text-rose-400">
@@ -429,7 +430,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                 재생성은 실제 유료 Provider를 호출하지 않는 로컬 가짜 어댑터만 사용하며, 이전 영상은 history로 보존됩니다.
               </p>
 
-              {reviewState.status === "loading" && <p className="text-slate-400">검토 상태를 불러오는 중...</p>}
+              {reviewState.status === "loading" && <Spinner label="검토 상태를 불러오는 중..." />}
               {reviewState.status === "error" && (
                 <p role="alert" data-testid="review-load-error" data-error-code={reviewState.error.code} className="text-sm text-rose-400">
                   {reviewState.error.message}

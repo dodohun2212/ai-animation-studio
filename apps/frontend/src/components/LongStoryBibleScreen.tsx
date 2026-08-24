@@ -4,6 +4,7 @@ import type { Asset, LongStoryBible, LongStoryBibleAssetLink, LongStoryBibleColl
 import { createLongStoryBibleItem, deleteLongStoryBibleItem, duplicateLongStoryBibleItem, getLongProjectStoryBible, getLongStoryBibleRelationshipAudit, searchLongStoryBibleItems, toLongStoryBibleDisplayError, updateLongStoryBibleContent, updateLongStoryBibleItem, updateLongStoryBibleStyleAssetLink } from "../api/longStoryBibleApi.js";
 import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
 import { getLongProject, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { Spinner } from "./Spinner.js";
 
 interface Props { projectId: string; onBack: () => void; }
 type DisplayError = { code: string; message: string };
@@ -248,7 +249,7 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
       {searchResults && searchResults.length > 0 && <ul aria-label={`${collectionLabel} search results`} className="mt-3 space-y-2">{searchResults.map((item) => <li key={item.id} className="rounded border border-white/10 p-2 text-sm"><strong>{item.name || item.id}</strong><span className="ml-2 text-slate-400">{item.id}</span><button type="button" className="ml-3" onClick={() => void duplicate(item)} disabled={Boolean(duplicatingId) || pending}>{duplicatingId === item.id ? "Duplicating..." : "Duplicate"}</button></li>)}</ul>}
       {duplicateError && <p role="alert" data-error-code={duplicateError.code} className="mt-3 text-sm text-rose-400">{duplicateError.message}</p>}
     </section>
-    {loading && !bible && <p className="text-slate-400">Loading Story Bible...</p>}
+    {loading && !bible && <Spinner label="Loading Story Bible..." />}
     {bible && items.length === 0 && <p data-testid="story-bible-empty" className="text-slate-400">No {collectionLabel} entries yet.</p>}
     {bible && items.length > 0 && <ul aria-label={`${collectionLabel} list`} className="space-y-2">
       {items.map((item) => <li key={item.id} className="rounded-lg border border-white/10 p-3"><strong>{item.name || item.id}</strong><span className="ml-2 text-xs text-slate-400">{item.id}</span>{item.status && <span className="ml-2 text-xs text-violet-300">{item.status}</span>}{item.description && <p className="mt-1 text-sm text-slate-300">{item.description}</p>}{item.assetLink && <p data-testid={`asset-link-${item.id}`} className="mt-1 text-sm text-emerald-300">Asset: {item.assetLink.assetId} · {item.assetLink.versionPolicy === "pinned_version" ? `pinned v${item.assetLink.pinnedVersion}` : "follow latest"} · {item.assetLink.episodeScope.mode === "all" ? "all episodes" : `Episode ${item.assetLink.episodeScope.episode}`}</p>}<div className="mt-2 flex gap-2"><button type="button" onClick={() => startEdit(item)}>Edit</button><button type="button" onClick={() => void duplicate(item)} disabled={Boolean(duplicatingId) || pending}>{duplicatingId === item.id ? "Duplicating..." : "Duplicate"}</button><button type="button" onClick={() => setDeleteTarget(item)} disabled={pending}>Delete</button></div></li>)}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { LongProjectSettings } from "@ai-animation-studio/shared";
 
 import { getLongProjectSettings, toLongProjectDisplayError, updateLongProjectSettings } from "../api/longProjectsApi.js";
+import { Spinner } from "./Spinner.js";
 
 interface Props {
   projectId: string;
@@ -75,7 +76,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
     }
   }
 
-  if (state.loading && !state.settings) return <p className="mt-8 text-slate-400">불러오는 중…</p>;
+  if (state.loading && !state.settings) return <Spinner label="불러오는 중…" className="mt-8" />;
   return (
     <section className="mt-8">
       <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300" onClick={onBack}>

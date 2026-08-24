@@ -3,6 +3,7 @@ import type { SceneNumber, StartVideoGenerationResponse, VideoPromptPreview } fr
 
 import { getVideoPromptPreview, toVideoPreviewDisplayError } from "../api/videoPreviewApi.js";
 import { startVideoSubmission, toVideoSubmissionDisplayError } from "../api/videoSubmissionApi.js";
+import { Spinner } from "./Spinner.js";
 
 interface Props {
   projectId: string;
@@ -123,7 +124,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
         실제 유료 Runway API를 호출하지 않습니다. 아래 수정 내용은 이 화면에만 유지되며 저장되지 않습니다.
       </p>
 
-      {state.status === "loading" && <p className="text-slate-400">미리보기를 불러오는 중...</p>}
+      {state.status === "loading" && <Spinner label="미리보기를 불러오는 중..." />}
       {state.status === "error" && (
         <div className="space-y-2">
           <p role="alert" data-testid="preview-error" data-error-code={state.error.code} className="text-sm text-rose-400">

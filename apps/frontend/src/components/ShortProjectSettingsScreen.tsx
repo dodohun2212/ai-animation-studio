@@ -6,6 +6,7 @@ import {
   getProjectAssetReferences, getProjectCast, getProjectContinuity, getProjectSettings, listProjectContinuityOptions, setProjectContinuity, toDisplayError,
   updateProjectAssetReferences, updateProjectCast, updateProjectSettings,
 } from "../api/projectsApi.js";
+import { Spinner } from "./Spinner.js";
 
 interface Props { projectId: string; onBack: () => void; justCreated?: boolean; }
 type State = { settings: ShortProjectSettings | null; loading: boolean; error: { code: string; message: string } | null };
@@ -88,7 +89,7 @@ function CastEditor({ projectId }: { projectId: string }) {
     <h3 className="font-semibold">등장 캐릭터(Cast)</h3>
     <p className="text-xs text-slate-400">검색 결과가 없다면 Asset Library에서 캐릭터를 먼저 등록해 주세요.</p>
     {error && <p role="alert" data-testid="cast-error" data-error-code={error.code} className="text-red-300">{error.message}</p>}
-    {cast === null && !error && <p>불러오는 중...</p>}
+    {cast === null && !error && <Spinner label="불러오는 중..." />}
     {cast && cast.length === 0 && <p>선택된 캐릭터가 없습니다.</p>}
     {cast && cast.length > 0 && <ul aria-label="선택된 캐릭터 목록" className="space-y-2">
       {cast.map((member) => <li key={member.assetId} className="flex flex-wrap items-center gap-2">
@@ -157,7 +158,7 @@ function ContinuityEditor({ projectId }: { projectId: string }) {
   return <section aria-label="이전 장면 연결" className="space-y-3 rounded border border-white/10 p-4 md:col-span-2">
     <h3 className="font-semibold">이전 장면 연결</h3>
     {error && <p role="alert" data-testid="continuity-error" data-error-code={error.code} className="text-red-300">{error.message}</p>}
-    {link === undefined && !error && <p>불러오는 중...</p>}
+    {link === undefined && !error && <Spinner label="불러오는 중..." />}
     {link !== undefined && (link
       ? <p>{link.label} 연결됨. Story AI에는 마지막 상황, Image AI에는 마지막 장면을 Scene 1 연속성 Reference로 전달합니다.</p>
       : <p>연결 안 함. 독립적인 새 이야기와 장면으로 시작합니다.</p>)}
@@ -264,7 +265,7 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
     <h3 className="font-semibold">전체 분위기 및 장면 참고 Asset</h3>
     <p className="text-xs text-slate-400">검색 결과가 없다면 Asset Library에서 배경·소품·스타일 이미지를 먼저 등록해 주세요.</p>
     {error && <p role="alert" data-testid="asset-reference-error" data-error-code={error.code} className="text-red-300">{error.message}</p>}
-    {atmosphereAssetIds === null && !error && <p>불러오는 중...</p>}
+    {atmosphereAssetIds === null && !error && <Spinner label="불러오는 중..." />}
 
     {atmosphereAssetIds && <div aria-label="전체 분위기 Asset" className="space-y-2">
       <h4 className="text-sm font-medium text-slate-300">전체 분위기 Asset</h4>
@@ -352,7 +353,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
     } finally { saving.current = false; }
   }
 
-  if (state.loading && !state.settings) return <p className="mt-8 text-slate-400">불러오는 중…</p>;
+  if (state.loading && !state.settings) return <Spinner label="불러오는 중…" className="mt-8" />;
   return <section className="mt-8">
     <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300" onClick={onBack}>
       {justCreated ? "프로젝트로 이동" : "프로젝트로 돌아가기"}

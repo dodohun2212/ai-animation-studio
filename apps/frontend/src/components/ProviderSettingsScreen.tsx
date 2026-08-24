@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ProviderCredentialKind, ProviderCredentialStatus } from "@ai-animation-studio/shared";
 import { getProviderSettings, toDisplayError } from "../api/providerSettingsApi.js";
 import { ProviderCredentialCard } from "./ProviderCredentialCard.js";
+import { Spinner } from "./Spinner.js";
 
 interface Props { onBack: () => void }
 type StatusMap = Record<ProviderCredentialKind, ProviderCredentialStatus>;
@@ -37,7 +38,7 @@ export function ProviderSettingsScreen({ onBack }: Props) {
       <button type="button" onClick={onBack}>목록으로</button><h2 className="text-xl font-semibold">API 설정</h2>
       <button type="button" onClick={() => void load()} disabled={state.loading}>새로고침</button>
     </div>
-    {!state.statuses && state.loading && <p className="mt-4 text-slate-400">불러오는 중...</p>}
+    {!state.statuses && state.loading && <Spinner label="불러오는 중..." className="mt-4" />}
     {state.error && <div className="mt-4 space-y-2"><p role="alert" data-error-code={state.error.code}>{state.error.message}</p><button type="button" onClick={() => void load()} disabled={state.loading}>다시 시도</button></div>}
     {state.statuses && <div>
       <ProviderCredentialCard label="OpenAI" status={state.statuses.openai} onStatusChange={update} acquireMutation={() => acquireMutation("openai")} releaseMutation={() => releaseMutation("openai")}/>

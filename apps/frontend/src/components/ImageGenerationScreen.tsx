@@ -11,6 +11,7 @@ import {
   regenerateImageReview,
   toImageReviewDisplayError,
 } from "../api/imageReviewApi.js";
+import { Spinner } from "./Spinner.js";
 
 interface Props {
   projectId: string;
@@ -194,7 +195,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
       </button>
       <h2 className="text-xl font-semibold">장면 이미지 생성</h2>
 
-      {state.status === "loading" && <p className="text-slate-400">불러오는 중...</p>}
+      {state.status === "loading" && <Spinner label="불러오는 중..." />}
       {state.status === "error" && (
         <p role="alert" data-testid="load-error" data-error-code={state.error.code} className="text-sm text-rose-400">
           {state.error.message}
@@ -287,7 +288,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                 보존됩니다.
               </p>
 
-              {reviewState.status === "loading" && <p className="text-slate-400">검토 상태를 불러오는 중...</p>}
+              {reviewState.status === "loading" && <Spinner label="검토 상태를 불러오는 중..." />}
               {reviewState.status === "error" && (
                 <p role="alert" data-testid="review-load-error" data-error-code={reviewState.error.code} className="text-sm text-rose-400">
                   {reviewState.error.message}

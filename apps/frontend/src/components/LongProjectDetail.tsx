@@ -3,6 +3,7 @@ import type { LongEpisodeStatus, LongProject } from "@ai-animation-studio/shared
 
 import { addLongEpisode, archiveLongEpisode, archiveLongProject, duplicateLongEpisode, getLongProject, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { ArchiveProjectDialog } from "./ArchiveProjectDialog.js";
+import { Spinner } from "./Spinner.js";
 
 interface LongProjectDetailProps {
   projectId: string; onBack: () => void; onOpenSettings: (projectId: string) => void; onOpenOutline: (projectId: string) => void;
@@ -64,7 +65,7 @@ export function LongProjectDetail({
 
   return <section className="mt-8">
     <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300" onClick={onBack}>목록으로</button>
-    {state.status === "loading" && <p className="mt-4 text-slate-400">Loading...</p>}
+    {state.status === "loading" && <Spinner label="Loading..." className="mt-4" />}
     {state.status === "error" && <p className="mt-4 text-sm text-rose-400" role="alert" data-error-code={state.error.code}>{state.error.message}</p>}
     {state.status === "success" && <>
       <button type="button" className="mt-4 rounded-full border border-violet-400/40 px-4 py-2 text-sm text-violet-300" onClick={() => onOpenSettings(projectId)}>장기 프로젝트 설정</button>

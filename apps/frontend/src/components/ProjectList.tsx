@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import type { ProjectSummary } from "@ai-animation-studio/shared";
 
 import { listProjects, toDisplayError } from "../api/projectsApi.js";
+import { Spinner } from "./Spinner.js";
+import { WorkflowProgressBar } from "./WorkflowProgressBar.js";
 
 interface ProjectListProps {
   refreshToken: number;
@@ -53,7 +55,7 @@ export function ProjectList({ refreshToken, onOpenProject, onCreateNew }: Projec
         </button>
       </header>
 
-      {state.projects === null && state.loading && <p className="mt-4 text-slate-400">불러오는 중...</p>}
+      {state.projects === null && state.loading && <Spinner label="불러오는 중..." className="mt-4" />}
 
       {state.error && (
         <p className="mt-4 text-sm text-rose-400" role="alert" data-error-code={state.error.code}>
@@ -77,6 +79,7 @@ export function ProjectList({ refreshToken, onOpenProject, onCreateNew }: Projec
                 <span className="block text-slate-300">{project.topic}</span>
                 <span className="block text-xs uppercase tracking-wide text-slate-400">{project.workflowState}</span>
                 <span className="block text-xs text-slate-500">{project.updatedAt}</span>
+                <WorkflowProgressBar state={project.workflowState} className="mt-2" />
               </button>
             </li>
           ))}

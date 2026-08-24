@@ -19,6 +19,7 @@ import {
   toMappingDisplayError,
   updateProjectAssetMapping,
 } from "../api/mappingsApi.js";
+import { Spinner } from "./Spinner.js";
 
 interface Props { projectId: string; onBack: () => void }
 
@@ -227,7 +228,7 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
       </header>
 
       <section aria-label="검토 상태" className="space-y-2 rounded border border-white/10 p-4">
-        {reviewLoading && !review && <p>검토 상태를 불러오는 중...</p>}
+        {reviewLoading && !review && <Spinner label="검토 상태를 불러오는 중..." />}
         {reviewError && (
           <p role="alert" data-testid="review-error" data-error-code={reviewError.code} className="text-red-300">{reviewError.message}</p>
         )}
@@ -272,7 +273,7 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
         </select></label>
       </form>
 
-      {mappingsLoading && !mappings && <p>Mapping을 불러오는 중...</p>}
+      {mappingsLoading && !mappings && <Spinner label="Mapping을 불러오는 중..." />}
       {mappingsError && (
         <p role="alert" data-testid="mappings-error" data-error-code={mappingsError.code} className="text-red-300">{mappingsError.message}</p>
       )}
@@ -296,7 +297,7 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
                 ) : assetError ? (
                   <p role="alert" data-testid={`asset-error-${mapping.mappingId}`} data-error-code={assetError.code}>{assetError.message}</p>
                 ) : (
-                  <p>에셋 정보를 불러오는 중...</p>
+                  <Spinner label="에셋 정보를 불러오는 중..." />
                 )}
                 <p>Mapping ID: {mapping.mappingId}</p>
                 <p>역할: {mapping.usageRole}</p>

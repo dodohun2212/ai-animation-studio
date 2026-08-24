@@ -11,6 +11,7 @@ import {
   toLongProjectDisplayError,
   updateLongEpisodeAssetMapping,
 } from "../api/longProjectsApi.js";
+import { Spinner } from "./Spinner.js";
 
 interface Props { projectId: string; episodeNumber: number; onBack: () => void; onOpenImageGeneration?: (projectId: string, episodeNumber: number) => void; }
 type DisplayError = { code: string; message: string };
@@ -78,7 +79,7 @@ export function LongEpisodeMappingReviewScreen({ projectId, episodeNumber, onBac
         <h2 className="text-xl font-semibold">Episode {episodeNumber} Asset mapping review</h2>
         <p className="mt-1 text-sm text-slate-400">Reviewing candidates never starts image generation.</p>
       </header>
-      {loading && <p className="text-slate-400">Loading mapping review…</p>}
+      {loading && <Spinner label="Loading mapping review…" />}
       {episode && <p data-testid="episode-mapping-status" className="text-sm text-slate-400">Episode: {episode.status} · Script revision {episode.scriptRevision}</p>}
       {episode && !isEligible && <p role="alert" data-testid="episode-mapping-not-eligible" className="text-sm text-amber-300">Approve this Episode script before opening Asset mapping review.</p>}
       {review && (

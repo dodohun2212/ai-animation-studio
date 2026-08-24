@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { LongProjectSummary } from "@ai-animation-studio/shared";
 
 import { listLongProjects, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { Spinner } from "./Spinner.js";
 
 interface LongProjectListProps {
   refreshToken: number;
@@ -52,7 +53,7 @@ export function LongProjectList({ refreshToken, onOpenProject, onCreateNew }: Lo
         </button>
       </header>
 
-      {state.projects === null && state.loading && <p className="mt-4 text-slate-400">불러오는 중...</p>}
+      {state.projects === null && state.loading && <Spinner label="불러오는 중..." className="mt-4" />}
 
       {state.error && (
         <p className="mt-4 text-sm text-rose-400" role="alert" data-error-code={state.error.code}>

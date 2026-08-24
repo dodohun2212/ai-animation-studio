@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { LongEpisodeContinuityMemory, LongEpisodeDetail, SaveLongEpisodeContinuityRequest } from "@ai-animation-studio/shared";
 
 import { getLongEpisodeContinuity, saveLongEpisodeContinuity, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { Spinner } from "./Spinner.js";
 
 interface Props {
   projectId: string;
@@ -91,7 +92,7 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
     <button type="button" onClick={onBack}>Back to final Episode video</button>
     <h2>Episode {episodeNumber} continuity memory</h2>
     <p>Review and save these facts explicitly before preparing the next Episode. Opening this screen never saves anything.</p>
-    {loading && <p>Loading saved continuity memory...</p>}
+    {loading && <Spinner label="Loading saved continuity memory..." />}
     {!loading && <div className="space-y-3">
       <label>Episode summary<textarea data-testid="continuity-summary" value={form.episodeSummary} disabled={pending} onChange={(event) => update("episodeSummary", event.target.value)} /></label>
       {listFields.map(([key, label]) => <label key={key}>{label}<textarea data-testid={`continuity-${key}`} value={toLines(form[key])} disabled={pending} onChange={(event) => setForm((current) => ({ ...current, [key]: fromLines(event.target.value) }))} placeholder="One item per line" /></label>)}
