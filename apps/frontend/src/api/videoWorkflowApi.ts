@@ -5,6 +5,7 @@ import {
   type ApproveVideoReviewResponse,
   type GenerationProgressResponse,
   type GetVideoReviewResponse,
+  type RegenerateVideoRequest,
   type RegenerateVideoResponse,
   type SceneNumber,
   type VideoReview,
@@ -207,6 +208,15 @@ async function request<T>(url: string, init: RequestInit | undefined, guard: (va
 }
 
 const APPROVED_BODY = { approved: true as const };
+
+/**
+ * Omits `additionalInstruction` entirely when blank rather than sending an empty string — the contract treats
+ * blank as absent, and leaving the key out keeps the request byte-identical to a plain regeneration.
+ */
+function regenerateBody(additionalInstruction?: string): RegenerateVideoRequest {
+  const trimmed = additionalInstruction?.trim();
+  return trimmed ? { approved: true, additionalInstruction: trimmed } : { approved: true };
+}
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
 /** Reads the persisted local-fake sequential progress for one video job — never a provider or merge-program call. */
@@ -232,10 +242,11 @@ export function regenerateVideoScene(
   projectId: string,
   jobId: string,
   sceneNumber: SceneNumber,
+  additionalInstruction?: string,
 ): Promise<RegenerateVideoResponse> {
   return request(
     API_ROUTES.videoRegenerate(projectId, jobId, sceneNumber),
-    { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(APPROVED_BODY) },
+    { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(regenerateBody(additionalInstruction)) },
     isRegenerateVideoResponse,
   );
 }
@@ -244,10 +255,14 @@ export function regenerateVideoScene(
  * Explicit, provider-free replacement of every generated scene video in the job. Must only be
  * called after a second user confirmation, never on the first click.
  */
-export function regenerateAllVideoScenes(projectId: string, jobId: string): Promise<RegenerateVideoResponse> {
+export function regenerateAllVideoScenes(
+  projectId: string,
+  jobId: string,
+  additionalInstruction?: string,
+): Promise<RegenerateVideoResponse> {
   return request(
     API_ROUTES.videoRegenerateAll(projectId, jobId),
-    { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(APPROVED_BODY) },
+    { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(regenerateBody(additionalInstruction)) },
     isRegenerateVideoResponse,
   );
 }

@@ -107,6 +107,30 @@ describe("videoWorkflowApi", () => {
     expect(JSON.parse(String(init.body))).toEqual({ approved: true });
   });
 
+  it("attaches a trimmed one-off direction to either regeneration endpoint, and omits it when blank", async () => {
+    const response: RegenerateVideoResponse = {
+      ...makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] }),
+      regeneratedSceneNumbers: [3],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, response));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await regenerateVideoScene("sample_project", "job_1", 3, "  카메라를 더 천천히  ");
+    await regenerateAllVideoScenes("sample_project", "job_1", "배경을 더 밝게");
+    // Whitespace-only input must not become an empty string on the wire: the contract treats a missing field
+    // and an empty one differently, and a blank box means "no direction at all".
+    await regenerateVideoScene("sample_project", "job_1", 3, "   ");
+    await regenerateAllVideoScenes("sample_project", "job_1", undefined);
+
+    const bodies = fetchMock.mock.calls.map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+    expect(bodies).toEqual([
+      { approved: true, additionalInstruction: "카메라를 더 천천히" },
+      { approved: true, additionalInstruction: "배경을 더 밝게" },
+      { approved: true },
+      { approved: true },
+    ]);
+  });
+
   it("fetches review status via GET /projects/:id/videos/generations/:jobId/review", async () => {
     const response: GetVideoReviewResponse = { project: makeProject({ workflowState: WorkflowState.ReviewingVideos }), reviews: sixReviews() };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, response));

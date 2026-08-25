@@ -17,6 +17,7 @@ import {
 import { Spinner } from "./Spinner.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
+import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
 import { StatusChip, type StatusTone } from "./ui/StatusChip.js";
 
 type SceneStatus = "completed" | "running" | "failed" | "pending";
@@ -109,6 +110,10 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
   const [regenerateErrors, setRegenerateErrors] = useState<Partial<Record<SceneNumber, DisplayError>>>({});
 
   const [regenerateAllConfirmOpen, setRegenerateAllConfirmOpen] = useState(false);
+  /** One-off direction for the open single-scene confirmation; cleared whenever that panel opens or closes. */
+  const [regenerateInstruction, setRegenerateInstruction] = useState("");
+  /** Kept separate from the per-scene one: regenerate-all applies its direction to every scene at once. */
+  const [regenerateAllInstruction, setRegenerateAllInstruction] = useState("");
   const [regenerateAllPending, setRegenerateAllPending] = useState(false);
   const [regenerateAllError, setRegenerateAllError] = useState<DisplayError | null>(null);
 
@@ -231,11 +236,13 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
   /** Opens the explicit per-scene confirmation panel. Never calls the network by itself. */
   function openRegenerateConfirmation(sceneNumber: SceneNumber): void {
     if (regenerateBusy.current.has(sceneNumber)) return;
+    setRegenerateInstruction("");
     setRegenerateConfirmScene(sceneNumber);
   }
 
   function cancelRegenerateConfirmation(sceneNumber: SceneNumber): void {
     if (regenerateBusy.current.has(sceneNumber)) return;
+    setRegenerateInstruction("");
     setRegenerateConfirmScene((current) => (current === sceneNumber ? null : current));
   }
 
@@ -244,10 +251,11 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
     regenerateBusy.current.add(sceneNumber);
     setRegeneratePendingScenes(new Set(regenerateBusy.current));
     try {
-      const response = await regenerateVideoScene(projectId, jobId, sceneNumber);
+      const response = await regenerateVideoScene(projectId, jobId, sceneNumber, regenerateInstruction);
       setProgressState({ status: "ready", progress: response });
       setReviewState({ status: "idle" });
       setRegenerateConfirmScene(null);
+      setRegenerateInstruction("");
       setRegenerateErrors((current) => {
         if (!(sceneNumber in current)) return current;
         const next = { ...current };
@@ -266,11 +274,13 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
   function openRegenerateAllConfirmation(): void {
     if (regenerateAllBusy.current) return;
     setRegenerateAllError(null);
+    setRegenerateAllInstruction("");
     setRegenerateAllConfirmOpen(true);
   }
 
   function cancelRegenerateAllConfirmation(): void {
     if (regenerateAllBusy.current) return;
+    setRegenerateAllInstruction("");
     setRegenerateAllConfirmOpen(false);
   }
 
@@ -280,10 +290,11 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
     setRegenerateAllPending(true);
     setRegenerateAllError(null);
     try {
-      const response = await regenerateAllVideoScenes(projectId, jobId);
+      const response = await regenerateAllVideoScenes(projectId, jobId, regenerateAllInstruction);
       setProgressState({ status: "ready", progress: response });
       setReviewState({ status: "idle" });
       setRegenerateAllConfirmOpen(false);
+      setRegenerateAllInstruction("");
     } catch (caught) {
       setRegenerateAllError(toVideoWorkflowDisplayError(caught));
       void fetchProgress(false);
@@ -417,6 +428,17 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                             sceneCount={1}
                             data-testid={`failed-scene-retry-cost-${sceneNumber}`}
                           />
+                          {/* Same endpoint as a review regeneration, so the same one-off direction applies —
+                              useful when the scene failed on its content rather than on a transient error. */}
+                          <RegenerateInstructionField
+                            id={`failed-scene-retry-instruction-${sceneNumber}`}
+                            value={regenerateInstruction}
+                            onChange={setRegenerateInstruction}
+                            disabled={regeneratePending}
+                            subject="움직임"
+                            placeholder="예: 움직임을 단순하게"
+                            data-testid={`failed-scene-retry-instruction-${sceneNumber}`}
+                          />
                           <div className="flex gap-2">
                             <button
                               type="button"
@@ -542,6 +564,15 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                         estimate={progress?.retryEstimate}
                         sceneCount={totalScenes}
                         data-testid="regenerate-all-cost"
+                      />
+                      <RegenerateInstructionField
+                        id="video-regenerate-all-instruction"
+                        value={regenerateAllInstruction}
+                        onChange={setRegenerateAllInstruction}
+                        disabled={regenerateAllPending}
+                        subject="움직임"
+                        placeholder="예: 카메라를 더 천천히 (모든 장면에 적용)"
+                        data-testid="regenerate-all-instruction"
                       />
                       <div className="flex gap-2">
                         <button type="button" className={smallOutlineButton} onClick={cancelRegenerateAllConfirmation} disabled={regenerateAllPending}>
@@ -684,6 +715,15 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                                   estimate={progress?.retryEstimate}
                                   sceneCount={1}
                                   data-testid={`video-regenerate-cost-${review.sceneNumber}`}
+                                />
+                                <RegenerateInstructionField
+                                  id={`video-regenerate-instruction-${review.sceneNumber}`}
+                                  value={regenerateInstruction}
+                                  onChange={setRegenerateInstruction}
+                                  disabled={regeneratePending}
+                                  subject="움직임"
+                                  placeholder="예: 카메라를 더 천천히, 표정 변화를 크게"
+                                  data-testid={`video-regenerate-instruction-${review.sceneNumber}`}
                                 />
                                 <div className="flex gap-2">
                                   <button

@@ -517,6 +517,75 @@ describe("VideoWorkflowScreen", () => {
     expect(screen.getByTestId("scene-progress-3")).toHaveAttribute("data-status", "completed");
     expect(screen.getByTestId("scene-progress-4")).toHaveAttribute("data-status", "pending");
   });
+
+  it("sends a one-off direction with a single-scene regeneration, trimmed", async () => {
+    const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, succeeded))
+      .mockResolvedValueOnce(jsonResponse(200, reviewResponse(sixReviews([1, 2, 3, 4, 5, 6]))))
+      .mockResolvedValueOnce(jsonResponse(200, { ...succeeded, regeneratedSceneNumbers: [2] }))
+      .mockResolvedValueOnce(jsonResponse(200, reviewResponse(sixReviews([1, 3, 4, 5, 6]))));
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByTestId("video-review-regenerate-2"));
+    fireEvent.change(screen.getByTestId("video-regenerate-instruction-2"), {
+      target: { value: "  카메라를 더 천천히  " },
+    });
+    const panel = screen.getByTestId("video-regenerate-confirm-panel-2");
+    fireEvent.click(within(panel).getByRole("button", { name: "예, 다시 생성합니다" }));
+
+    await waitFor(() => expect(screen.getByTestId("video-review-2")).toHaveAttribute("data-status", "pending"));
+    const [, init] = fetchMock.mock.calls[2] as [string, RequestInit];
+    // Trimmed before sending; the blank-field case is covered by the plain regeneration test above.
+    expect(JSON.parse(String(init.body))).toEqual({ approved: true, additionalInstruction: "카메라를 더 천천히" });
+  });
+
+  it("sends a one-off direction with regenerate-all, applying it to every scene at once", async () => {
+    const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, succeeded))
+      .mockResolvedValueOnce(jsonResponse(200, reviewResponse(sixReviews([1, 2, 3, 4, 5, 6]))))
+      .mockResolvedValueOnce(jsonResponse(200, { ...succeeded, regeneratedSceneNumbers: [1, 2, 3, 4, 5, 6] }))
+      .mockResolvedValueOnce(jsonResponse(200, reviewResponse(sixReviews())));
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByTestId("regenerate-all-button"));
+    fireEvent.change(screen.getByTestId("regenerate-all-instruction"), { target: { value: " 배경을 더 밝게 " } });
+    const panel = screen.getByTestId("regenerate-all-confirm-panel");
+    fireEvent.click(within(panel).getByRole("button", { name: "예, 전체 재생성합니다" }));
+
+    await waitFor(() => expect(screen.getByTestId("video-review-1")).toHaveAttribute("data-status", "pending"));
+    const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit];
+    expect(url).toBe(`${PROGRESS_URL}/regenerate-all`);
+    expect(JSON.parse(String(init.body))).toEqual({ approved: true, additionalInstruction: "배경을 더 밝게" });
+  });
+
+  it("does not carry a cancelled direction into the next scene's regeneration", async () => {
+    const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, succeeded))
+      .mockResolvedValueOnce(jsonResponse(200, reviewResponse(sixReviews([1, 2, 3, 4, 5, 6]))))
+      .mockResolvedValueOnce(jsonResponse(200, { ...succeeded, regeneratedSceneNumbers: [3] }))
+      .mockResolvedValueOnce(jsonResponse(200, reviewResponse(sixReviews([1, 2, 4, 5, 6]))));
+    renderScreen(fetchMock);
+
+    // Type a direction for scene 2, then back out of it entirely.
+    fireEvent.click(await screen.findByTestId("video-review-regenerate-2"));
+    fireEvent.change(screen.getByTestId("video-regenerate-instruction-2"), { target: { value: "더 어둡게" } });
+    fireEvent.click(within(screen.getByTestId("video-regenerate-confirm-panel-2")).getByRole("button", { name: "취소" }));
+
+    // Scene 3 must start from an empty box, and must not inherit scene 2's abandoned direction.
+    fireEvent.click(screen.getByTestId("video-review-regenerate-3"));
+    expect((screen.getByTestId("video-regenerate-instruction-3") as HTMLInputElement).value).toBe("");
+    fireEvent.click(within(screen.getByTestId("video-regenerate-confirm-panel-3")).getByRole("button", { name: "예, 다시 생성합니다" }));
+
+    await waitFor(() => expect(screen.getByTestId("video-review-3")).toHaveAttribute("data-status", "pending"));
+    const [, init] = fetchMock.mock.calls[2] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({ approved: true });
+  });
 });
 
 describe("VideoWorkflowScreen source", () => {
