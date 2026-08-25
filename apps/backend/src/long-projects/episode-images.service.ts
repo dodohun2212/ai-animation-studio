@@ -24,7 +24,12 @@ type StoredEpisode = Record<string, unknown> & { number: number; state: LongEpis
 type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved"; updated_at: string; regeneration_count: number; history: Record<string, unknown>[] };
 const object = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(stable) : object(value) ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])])) : value;
-const fingerprint = (scenes: unknown[]) => crypto.createHash("sha256").update(JSON.stringify(stable(scenes)), "utf8").digest("hex");
+// Must compute byte-for-byte the same fingerprint as episode-asset-mappings.service.ts's fingerprint() (see its
+// doc comment) — this is the check that confirms a mapping's stored script_fingerprint still matches the
+// Episode's current script before allowing image generation, so the two algorithms disagreeing on whether
+// narration counts would make every mapping look stale (or not) inconsistently between the two services.
+const withoutNarration = (scene: unknown): unknown => { if (!object(scene)) return scene; const { narration: _narration, ...rest } = scene; return rest; };
+const fingerprint = (scenes: unknown[]) => crypto.createHash("sha256").update(JSON.stringify(stable(scenes.map(withoutNarration))), "utf8").digest("hex");
 // Format-only check (1..MAX_SCENE_COUNT) — a scene number is confirmed to be within THIS episode's own
 // scene_count separately, once the episode has been loaded (see sceneCount()/scenes()).
 const sceneNumber = (value: unknown): SceneNumber | undefined => Number.isInteger(value) && isSceneNumber(value as number) ? value as SceneNumber : undefined;

@@ -35,6 +35,26 @@ describe("EpisodeAssetMappingsService", () => {
     expect((await new EpisodeAssetMappingsService(path.join(root!, "projects"), new LocalAssetsRepository(root!)).get("long", 1)).review.status).toBe("approved");
   });
 
+  it("does not treat a changed narration text as a stale script, unlike a changed visual field", async () => {
+    const subject = await setup(true);
+    const started = await subject.begin("long", 1, {});
+    const candidate = started.review.candidates[0]!;
+    const episodeProjectFile = path.join(root!, "projects", "long", "long_story", "Episode01", "project.json");
+
+    // narration has nothing to do with Asset Mapping (it never feeds image/video prompts) — changing only that
+    // field must not invalidate an in-progress review's fingerprint.
+    const stored = JSON.parse(await fs.readFile(episodeProjectFile, "utf8")) as { script: { scenes: Array<Record<string, unknown>> } };
+    stored.script.scenes[0]!.narration = "완전히 다른 내레이션 문장";
+    await fs.writeFile(episodeProjectFile, JSON.stringify(stored, null, 2), "utf8");
+    await expect(subject.update("long", 1, candidate.mappingId, { decision: "confirm" })).resolves.toMatchObject({ mapping: { status: "confirmed" } });
+
+    // A visual field, in contrast, does feed matching/prompts and must still invalidate the review.
+    const afterNarration = JSON.parse(await fs.readFile(episodeProjectFile, "utf8")) as { script: { scenes: Array<Record<string, unknown>> } };
+    afterNarration.script.scenes[0]!.visual_action = "완전히 다른 시각 묘사";
+    await fs.writeFile(episodeProjectFile, JSON.stringify(afterNarration, null, 2), "utf8");
+    await expect(subject.update("long", 1, candidate.mappingId, { decision: "exclude" })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_MAPPING_STALE" } });
+  });
+
   it("requires explicit text-only confirmation with no candidates and rejects stale scripts", async () => {
     const subject = await setup(); expect((await subject.get("long", 1)).review).toMatchObject({ mappingRevision: 0, scriptRevision: 0, candidates: [] }); const started = await subject.begin("long", 1, {});
     await expect(subject.approve("long", 1, { approved: true, scriptFingerprint: started.review.scriptFingerprint })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_MAPPING_UNCONFIRMED" } });

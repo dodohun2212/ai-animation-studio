@@ -30,6 +30,15 @@ describe("EpisodeImagesService", () => {
     await expect(images.generate("long", 1, { approved: true })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_NOT_ALLOWED" } });
   });
 
+  it("still recognizes an approved mapping as current after narration text changes, agreeing with episode-asset-mappings.service.ts's own fingerprint", async () => {
+    const { images, projectsRoot } = await setup();
+    const episodeProjectFile = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
+    const stored = JSON.parse(await fs.readFile(episodeProjectFile, "utf8")) as { script: { scenes: Array<Record<string, unknown>> } };
+    stored.script.scenes[0]!.narration = "완전히 다른 내레이션 문장";
+    await fs.writeFile(episodeProjectFile, JSON.stringify(stored, null, 2), "utf8");
+    await expect(images.generate("long", 1, { approved: true })).resolves.toMatchObject({ episode: { status: "images_review" } });
+  });
+
   it("requires every review, then archives and resets only the regenerated scene", async () => {
     const { images, projectsRoot } = await setup(); await images.generate("long", 1, { approved: true });
     for (const scene of [1, 2, 3, 4, 5] as const) await images.approve("long", 1, String(scene), { approved: true });

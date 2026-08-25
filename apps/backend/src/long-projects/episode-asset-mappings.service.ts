@@ -18,7 +18,15 @@ const idKeys = { characters: "character_id", locations: "location_id", props: "p
 const roleByCollection = { characters: "character", locations: "background", props: "object" } as const;
 const isObject = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(stable) : isObject(value) ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])])) : value;
-const fingerprint = (scenes: unknown[]) => crypto.createHash("sha256").update(JSON.stringify(stable(scenes)), "utf8").digest("hex");
+/**
+ * narration is never an Asset Mapping input (it has nothing to do with which characters/locations/props appear
+ * on screen — see episode-images.service.ts/episode-videos.service.ts's prompt builders, which never read it
+ * either) — excluded here so editing a scene's narration text never invalidates an already-approved mapping
+ * review. Omitting the key entirely (rather than setting it to a fixed placeholder) keeps a script from before
+ * this field existed hashing identically to one after, since neither has the key.
+ */
+const withoutNarration = (scene: unknown): unknown => { if (!isObject(scene)) return scene; const { narration: _narration, ...rest } = scene; return rest; };
+const fingerprint = (scenes: unknown[]) => crypto.createHash("sha256").update(JSON.stringify(stable(scenes.map(withoutNarration))), "utf8").digest("hex");
 
 @Injectable()
 export class EpisodeAssetMappingsService {
