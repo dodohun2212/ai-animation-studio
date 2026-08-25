@@ -212,12 +212,31 @@ rounded-xl border border-white/10 bg-slate-950/40 p-3
 
 ### 3.4 상태 칩 (배지)
 
+**구현체: `components/ui/StatusChip.tsx` — 새로 만들지 말고 이걸 쓴다.**
+(장면 진행 그리드·이미지 검토·영상 검토 3곳 이상에서 반복되어 §3 규칙대로 추출했다.)
+
+```tsx
+<StatusChip tone="success">확정됨</StatusChip>
+```
+
+`tone`은 §2.1 상태색 문법과 1:1로 대응하며 다른 의미로 재사용하지 않는다:
+
+| tone | 의미 | 색 |
+|---|---|---|
+| `success` | 완료·확정 | emerald |
+| `progress` | 진행 중·주의 | amber |
+| `danger` | 실패·오류 | rose |
+| `active` | 현재 위치·선택 | violet |
+| `neutral` | 대기·미시작 | 무채색 |
+
+내부 클래스(직접 쓸 일 없음):
 ```
 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5
 text-xs font-semibold
 ```
 + §2.1 상태색 표의 텍스트/테두리/배경 3종 세트.
 칩 안 점: `h-1.5 w-1.5 rounded-full bg-current`.
+라벨 텍스트는 항상 렌더한다 — 상태를 색으로만 전달하지 않는다(§6).
 
 워크플로우 상태 ↔ 칩 매핑: COMPLETED→성공 / GENERATING_*, RENDERING→진행 중
 / FAILED, CANCELLED→실패 / INTERRUPTED→주의(amber) / 대기·검토 단계→중립

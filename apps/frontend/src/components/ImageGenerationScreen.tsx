@@ -12,6 +12,7 @@ import {
   toImageReviewDisplayError,
 } from "../api/imageReviewApi.js";
 import { Spinner } from "./Spinner.js";
+import { StatusChip } from "./ui/StatusChip.js";
 
 interface Props {
   projectId: string;
@@ -314,7 +315,13 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
               )}
 
               {reviewState.status === "ready" && (
-                <ul className="space-y-2" data-testid="review-list">
+                <>
+                  {/* §4.3: overall confirmation progress is stated before the grid. */}
+                  <p className="text-sm text-slate-300 tabular-nums" data-testid="image-review-progress-summary">
+                    {reviewState.reviews.length}장면 중{" "}
+                    {reviewState.reviews.filter((review) => review.status === "approved").length}장면 확정
+                  </p>
+                <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-testid="review-list">
                   {reviewState.reviews.map((review) => {
                     const pending = approvePendingScenes.has(review.sceneNumber);
                     const approveError = approveErrors[review.sceneNumber];
@@ -326,26 +333,32 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                         key={review.sceneNumber}
                         data-testid={`review-${review.sceneNumber}`}
                         data-status={review.status}
-                        className="flex gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-3"
+                        className={`space-y-2 rounded-xl border bg-slate-950/40 p-3 ${
+                          review.status === "approved" ? "border-emerald-400/30" : "border-white/10"
+                        }`}
                       >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-semibold text-slate-100">{review.sceneNumber}번 장면</span>
+                          <StatusChip tone={review.status === "approved" ? "success" : "neutral"}>
+                            {review.status === "approved" ? "확정됨" : "검토 대기"}
+                          </StatusChip>
+                        </div>
+                        {/* 9:16 keeps the thumbnail in the aspect ratio the Reel is actually produced in (§4.2). */}
                         <img
                           src={imageReviewContentUrl(projectId, review.sceneNumber, review.updatedAt)}
                           alt={`${review.sceneNumber}번 장면 이미지`}
                           data-testid={`review-image-${review.sceneNumber}`}
-                          className="h-24 w-24 flex-shrink-0 rounded-lg border border-white/10 bg-slate-800 object-cover"
+                          className="aspect-[9/16] w-full rounded-xl border border-white/10 bg-slate-800 object-cover"
                         />
-                        <div className="flex-1 space-y-1.5">
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-sm text-slate-300">
-                              {review.sceneNumber}번 장면 · {review.status === "approved" ? "승인됨" : "검토 대기"}
-                            </span>
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-end gap-3">
                             <button
                               type="button"
                               className={smallApproveButton}
                               onClick={() => void approveScene(review.sceneNumber)}
                               disabled={review.status === "approved" || pending}
                             >
-                              {review.status === "approved" ? "승인 완료" : pending ? "승인 중..." : "승인"}
+                              {review.status === "approved" ? "확정 완료" : pending ? "확정 중..." : "이 이미지로 확정"}
                             </button>
                           </div>
                           {approveError && (
@@ -421,6 +434,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                     );
                   })}
                 </ul>
+                </>
               )}
             </div>
           )}

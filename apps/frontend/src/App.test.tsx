@@ -413,7 +413,7 @@ describe("App", () => {
     expect(screen.queryByTestId("open-video-merge-button")).toBeNull();
     for (const sceneNumber of [1, 2, 3, 4, 5, 6]) {
       const row = screen.getByTestId(`video-review-${sceneNumber}`);
-      fireEvent.click(within(row).getByRole("button", { name: "승인" }));
+      fireEvent.click(within(row).getByRole("button", { name: "이 영상으로 확정" }));
       await vi.waitFor(() => expect(row).toHaveAttribute("data-status", "approved"));
     }
 

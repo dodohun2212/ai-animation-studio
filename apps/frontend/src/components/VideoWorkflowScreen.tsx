@@ -15,6 +15,24 @@ import {
   videoReviewContentUrl,
 } from "../api/videoWorkflowApi.js";
 import { Spinner } from "./Spinner.js";
+import { StatusChip, type StatusTone } from "./ui/StatusChip.js";
+
+type SceneStatus = "completed" | "running" | "failed" | "pending";
+
+const SCENE_STATUS_LABEL: Record<SceneStatus, string> = {
+  completed: "완료",
+  running: "진행 중",
+  failed: "실패",
+  pending: "대기",
+};
+
+/** Status grammar per design system §2.1 — amber is "in progress", never violet. */
+const SCENE_STATUS_TONE: Record<SceneStatus, StatusTone> = {
+  completed: "success",
+  running: "progress",
+  failed: "danger",
+  pending: "neutral",
+};
 
 interface Props {
   projectId: string;
@@ -317,26 +335,33 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
               : ""}
           </p>
 
-          <ol className="grid gap-2 sm:grid-cols-2" data-testid="scene-progress-list">
+          {/* Design system §4.2: scenes are always a 9:16 thumbnail grid, so the sequence reads as the
+              vertical Reel it will become — not as a flat text list. */}
+          <ol className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-testid="scene-progress-list">
             {progress.sceneNumbers.map((number) => {
               const status = sceneStatus(number, progress);
+              const tone = SCENE_STATUS_TONE[status];
               return (
                 <li
                   key={number}
                   data-testid={`scene-progress-${number}`}
                   data-status={status}
-                  className={`rounded-lg border p-2.5 text-sm ${
-                    status === "completed"
-                      ? "border-emerald-400/30 text-emerald-300"
-                      : status === "running"
-                        ? "border-violet-400/30 text-violet-300"
-                        : status === "failed"
-                          ? "border-rose-400/30 text-rose-300"
-                          : "border-white/10 text-slate-300"
+                  className={`space-y-2 rounded-xl border bg-slate-950/40 p-3 ${
+                    status === "running" ? "border-amber-400/40" : status === "failed" ? "border-rose-400/30" : "border-white/10"
                   }`}
                 >
-                  {number}번 장면 ·{" "}
-                  {{ completed: "완료", running: "진행 중", failed: "실패", pending: "대기" }[status]}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-slate-100">{number}번 장면</span>
+                    <StatusChip tone={tone}>{SCENE_STATUS_LABEL[status]}</StatusChip>
+                  </div>
+                  <img
+                    src={sceneImageContentUrl(projectId, number)}
+                    alt=""
+                    aria-hidden="true"
+                    className={`aspect-[9/16] w-full rounded-xl border border-white/10 bg-slate-800 object-cover ${
+                      status === "pending" ? "opacity-40" : ""
+                    }`}
+                  />
                 </li>
               );
             })}
@@ -468,7 +493,11 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
 
               {reviewState.status === "ready" && (
                 <>
-                  <div className="flex items-center justify-end">
+                  {/* Design system §4.3: the review step always states overall confirmation progress up front. */}
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm text-slate-300 tabular-nums" data-testid="review-progress-summary">
+                      {totalScenes}장면 중 {reviewState.reviews.filter((review) => review.status === "approved").length}장면 확정
+                    </p>
                     <button
                       type="button"
                       className={smallOutlineButton}
@@ -508,7 +537,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                     </p>
                   )}
 
-                  <ul className="space-y-2" data-testid="video-review-list">
+                  <ul className="grid gap-3 sm:grid-cols-2" data-testid="video-review-list">
                     {reviewState.reviews.map((review) => {
                       const pending = approvePendingScenes.has(review.sceneNumber);
                       const approveError = approveErrors[review.sceneNumber];
@@ -521,38 +550,52 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                           key={review.sceneNumber}
                           data-testid={`video-review-${review.sceneNumber}`}
                           data-status={review.status}
-                          className="flex gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-3"
+                          // §4.3: confirmation state is carried by the card border.
+                          className={`space-y-2 rounded-xl border bg-slate-950/40 p-3 ${
+                            review.status === "approved" ? "border-emerald-400/30" : "border-white/10"
+                          }`}
                         >
-                          {/* Source still beside the clip: the spec requires the original image, the final
-                              prompt, the status and the video to all be reviewable for each scene. */}
-                          {scene?.generatedImagePath && (
-                            <img
-                              src={sceneImageContentUrl(projectId, review.sceneNumber)}
-                              alt={`${review.sceneNumber}번 장면 원본 이미지`}
-                              data-testid={`video-review-source-image-${review.sceneNumber}`}
-                              className="h-28 w-16 flex-shrink-0 rounded-lg border border-white/10 bg-slate-800 object-cover"
-                            />
-                          )}
-                          <video
-                            src={videoReviewContentUrl(projectId, review.sceneNumber, review.updatedAt)}
-                            data-testid={`video-review-clip-${review.sceneNumber}`}
-                            className="h-28 w-44 flex-shrink-0 rounded-lg border border-white/10 bg-slate-800 object-cover"
-                            controls
-                            muted
-                            preload="metadata"
-                          />
-                          <div className="flex-1 space-y-1.5">
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="text-sm text-slate-300">
-                                {review.sceneNumber}번 장면 · {review.status === "approved" ? "승인됨" : "검토 대기"}
-                              </span>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-semibold text-slate-100">{review.sceneNumber}번 장면</span>
+                            <StatusChip tone={review.status === "approved" ? "success" : "neutral"}>
+                              {review.status === "approved" ? "확정됨" : "검토 대기"}
+                            </StatusChip>
+                          </div>
+                          {/* §4.3: the source still and the result sit side by side in one card, so the
+                              generated motion can be judged against the image it came from. */}
+                          <div className="flex gap-2">
+                            {scene?.generatedImagePath && (
+                              <figure className="w-1/3 space-y-1">
+                                <img
+                                  src={sceneImageContentUrl(projectId, review.sceneNumber)}
+                                  alt={`${review.sceneNumber}번 장면 원본 이미지`}
+                                  data-testid={`video-review-source-image-${review.sceneNumber}`}
+                                  className="aspect-[9/16] w-full rounded-xl border border-white/10 bg-slate-800 object-cover"
+                                />
+                                <figcaption className="text-xs text-slate-400">원본 이미지</figcaption>
+                              </figure>
+                            )}
+                            <figure className="flex-1 space-y-1">
+                              <video
+                                src={videoReviewContentUrl(projectId, review.sceneNumber, review.updatedAt)}
+                                data-testid={`video-review-clip-${review.sceneNumber}`}
+                                className="aspect-[9/16] w-full rounded-xl border border-white/10 bg-slate-800 object-cover"
+                                controls
+                                muted
+                                preload="metadata"
+                              />
+                              <figcaption className="text-xs text-slate-400">생성된 영상</figcaption>
+                            </figure>
+                          </div>
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-end gap-3">
                               <button
                                 type="button"
                                 className={smallApproveButton}
                                 onClick={() => void approve(review.sceneNumber)}
                                 disabled={review.status === "approved" || pending}
                               >
-                                {review.status === "approved" ? "승인 완료" : pending ? "승인 중..." : "승인"}
+                                {review.status === "approved" ? "확정 완료" : pending ? "확정 중..." : "이 영상으로 확정"}
                               </button>
                             </div>
                             {scene?.motionPrompt && (

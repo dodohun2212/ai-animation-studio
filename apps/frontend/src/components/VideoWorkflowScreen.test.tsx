@@ -220,7 +220,7 @@ describe("VideoWorkflowScreen", () => {
     renderScreen(fetchMock);
 
     const row = await screen.findByTestId("video-review-2");
-    fireEvent.click(within(row).getByRole("button", { name: "승인" }));
+    fireEvent.click(within(row).getByRole("button", { name: "이 영상으로 확정" }));
 
     await waitFor(() => expect(screen.getByTestId("video-review-2")).toHaveAttribute("data-status", "approved"));
     const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit];
@@ -255,7 +255,7 @@ describe("VideoWorkflowScreen", () => {
 
     fetchMock.mockResolvedValueOnce(jsonResponse(200, reviewResponse(sixReviews([1, 2, 3, 4, 5, 6]))));
     const row = screen.getByTestId("video-review-6");
-    fireEvent.click(within(row).getByRole("button", { name: "승인" }));
+    fireEvent.click(within(row).getByRole("button", { name: "이 영상으로 확정" }));
     await screen.findByTestId("all-scenes-approved");
 
     const onOpenMerge = vi.fn();
