@@ -3,6 +3,7 @@ import {
   isSceneNumber as isValidSceneNumber,
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
+  RUNWAY_CLIP_DURATIONS,
   type ArchiveProjectRequest,
   type ArchiveProjectResponse,
   type BudgetPreview,
@@ -235,6 +236,11 @@ function isLongProjectSettings(value: unknown): value is LongProjectSettings {
   if (!stringKeys.every((key) => typeof value[key] === "string")) return false;
   if (!Number.isInteger(value.episodeCount) || (value.episodeCount as number) <= 0) return false;
   if (!Number.isInteger(value.episodeDurationSeconds) || (value.episodeDurationSeconds as number) <= 0) return false;
+  // Checked rather than assumed, same reasoning as narrationEnabled/subtitlesEnabled below: the settings screen
+  // binds sceneCount straight to a number input's value and clipDurationSeconds to a select's value, and an
+  // absent or out-of-range value would silently misrender either control.
+  if (!Number.isInteger(value.sceneCount) || (value.sceneCount as number) < MIN_SCENE_COUNT || (value.sceneCount as number) > MAX_SCENE_COUNT) return false;
+  if (!(RUNWAY_CLIP_DURATIONS as readonly number[]).includes(value.clipDurationSeconds as number)) return false;
   if (!PLATFORMS.has(value.platform as string)) return false;
   if (!ASPECT_RATIOS.has(value.aspectRatio as string)) return false;
   // Checked rather than assumed: the settings screen binds these straight to checkbox `checked`, and an

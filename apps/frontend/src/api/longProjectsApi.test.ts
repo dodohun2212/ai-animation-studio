@@ -200,6 +200,14 @@ describe("longProjectsApi", () => {
     await expect(getLongProjectSettings("sample")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
   });
 
+  it("rejects a settings response with an out-of-range sceneCount or an unsupported clipDurationSeconds", async () => {
+    const valid = makeLongProjectSettings();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { settings: { ...valid, sceneCount: 99 } })));
+    await expect(getLongProjectSettings("sample")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { settings: { ...valid, clipDurationSeconds: 7 } })));
+    await expect(getLongProjectSettings("sample")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+  });
+
   /**
    * Every code long-project-api.error.ts can throw. Kept complete on purpose: an unmapped code falls through
    * to the generic "잠시 후 다시 시도해 주세요", which is wrong twice over for this feature's errors — most are
