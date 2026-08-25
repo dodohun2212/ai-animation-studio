@@ -43,16 +43,21 @@ export class LocalVideoMergeService {
    * (see image-review.service.ts's identical caution about stale generated_images entries) must never fail the
    * merge — narration is supplementary, the video is not. Any such scene simply falls back to silence.
    *
+   * narrationAudioPath is also gated on narrationEnabled, not just file existence: if a user generated narration
+   * audio and later turned narrationEnabled off (e.g. switching to subtitles-only to stop spending on TTS), the
+   * old audio file can still be sitting on disk — using it anyway would silently ignore the toggle the user just
+   * set. "off" means "don't use it", the same as subtitlesEnabled below, not just "don't make more of it".
+   *
    * subtitleText is independent of narrationAudioPath (subtitles-only, no TTS spend, is a deliberate mode — see
    * ShortProjectSettings.subtitlesEnabled's doc comment): a scene gets a subtitle whenever subtitlesEnabled is on
    * AND that scene has narration text, regardless of whether narration audio exists for it.
    */
   private async mergeScenes(project: StoredProject, clips: readonly string[], scenes: readonly SceneNumber[]): Promise<MergeSceneInput[]> {
-    const subtitlesEnabled = toShortProjectSettings(project).subtitlesEnabled;
+    const settings = toShortProjectSettings(project);
     return Promise.all(scenes.map(async (scene, index) => {
       const file = project.generated_narrations[scene - 1];
-      const narrationAudioPath = typeof file === "string" && (await fs.stat(file).then((stat) => stat.size > 0).catch(() => false)) ? file : null;
-      const subtitleText = subtitlesEnabled ? sceneValue(project.scenes[scene - 1], "narration") || null : null;
+      const narrationAudioPath = settings.narrationEnabled && typeof file === "string" && (await fs.stat(file).then((stat) => stat.size > 0).catch(() => false)) ? file : null;
+      const subtitleText = settings.subtitlesEnabled ? sceneValue(project.scenes[scene - 1], "narration") || null : null;
       return { clip: clips[index]!, narrationAudioPath, subtitleText };
     }));
   }

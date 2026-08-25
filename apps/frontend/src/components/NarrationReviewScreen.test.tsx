@@ -204,7 +204,7 @@ describe("NarrationReviewScreen", () => {
 
     const error = await screen.findByTestId("narration-action-error");
     expect(error).toHaveAttribute("data-error-code", "NARRATION_NOT_ENABLED");
-    expect(error.textContent).toContain("내레이션 넣기");
+    expect(error.textContent).toContain("음성 넣기");
     expect(error.textContent).not.toContain("narrationEnabled must be on");
   });
 
@@ -260,5 +260,48 @@ describe("NarrationReviewScreen", () => {
     expect(guess.textContent).toContain("어림한");
     expect(screen.queryByTestId("narration-runs-long")).toBeNull();
     expect(screen.getByTestId("narration-scene-1").textContent).toContain("40자");
+  });
+
+  it("offers no paid audio action when narration is off, and says the sentences become subtitles", async () => {
+    renderScreen(
+      stubFetchByRoute({
+        [REVIEW]: { project, narrations: narrations([{ narration: "문장", hasAudio: true }, { narration: "문장" }]) },
+        [SETTINGS]: { settings: { ...settings, narrationEnabled: false, subtitlesEnabled: true } },
+      }),
+    );
+
+    // The backend rejects TTS with NARRATION_NOT_ENABLED here, so offering the button would offer a guaranteed
+    // failure — and the sentences are still doing their job, for free, as subtitles.
+    const notice = await screen.findByTestId("narration-voice-off");
+    expect(notice.textContent).toContain("자막으로 들어갑니다");
+    expect(screen.queryByTestId("narration-generate-button")).toBeNull();
+    expect(screen.getByTestId("narration-estimated-cost").textContent).toBe("$0.00");
+    // Even a scene that already has audio must not offer to spend on remaking it.
+    expect(screen.queryByTestId("narration-regenerate-1")).toBeNull();
+  });
+
+  it("says the sentences go unused when both audio and subtitles are off", async () => {
+    renderScreen(
+      stubFetchByRoute({
+        [REVIEW]: { project, narrations: narrations([{ narration: "문장" }]) },
+        [SETTINGS]: { settings: { ...settings, narrationEnabled: false, subtitlesEnabled: false } },
+      }),
+    );
+
+    expect((await screen.findByTestId("narration-voice-off")).textContent).toContain("영상에는 쓰이지 않습니다");
+    expect(screen.queryByTestId("narration-generate-button")).toBeNull();
+  });
+
+  it("keeps the paid action available when the settings request fails rather than hiding it on a guess", async () => {
+    renderScreen(
+      stubFetchByRoute(
+        { [REVIEW]: { project, narrations: narrations([{ narration: "문장" }]) } },
+        { [SETTINGS]: { status: 500, body: { code: "PROJECT_STORAGE_ERROR", message: "raw" } } },
+      ),
+    );
+
+    expect(await screen.findByTestId("narration-generate-button")).toBeTruthy();
+    expect(screen.queryByTestId("narration-voice-off")).toBeNull();
+    expect(screen.getByTestId("narration-estimated-cost").textContent).toBe("$0.01");
   });
 });

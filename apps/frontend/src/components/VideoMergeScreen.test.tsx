@@ -8,6 +8,16 @@ import { VideoMergeScreen } from "./VideoMergeScreen.js";
 
 const PROJECT_URL = "/projects/sample_project";
 const MERGE_URL = "/projects/sample_project/videos/merge";
+const SETTINGS_URL = "/projects/sample_project/settings";
+
+/** Only narrationEnabled/subtitlesEnabled matter to this screen; the rest is filler the response type requires. */
+function makeSettings(narrationEnabled: boolean, subtitlesEnabled: boolean) {
+  return {
+    projectName: "이름", topic: "주제", genre: "장르", mood: "분위기", character: "인물",
+    lore: "", fullStory: "", durationSeconds: 30, sceneCount: 6, clipDurationSeconds: 5,
+    additionalNotes: "", styleNotes: {}, narrationEnabled, subtitlesEnabled,
+  };
+}
 
 function sixScenes(): Scene[] {
   return [1, 2, 3, 4, 5, 6].map((number) => ({
@@ -29,11 +39,19 @@ function makeResponse(overrides: Partial<MergeVideosResponse> = {}): MergeVideos
 }
 
 /** Routes GET /projects/:id (defaulting to VIDEOS_APPROVED with six approved scenes, not yet merged) and lets the caller supply the merge-time fetch behavior. */
-function renderScreen(mergeFetch: ReturnType<typeof vi.fn>, project: Partial<Project> = {}) {
+function renderScreen(
+  mergeFetch: ReturnType<typeof vi.fn>,
+  project: Partial<Project> = {},
+  settings: { narrationEnabled: boolean; subtitlesEnabled: boolean } | "fails" = { narrationEnabled: false, subtitlesEnabled: false },
+) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input);
     if (url === PROJECT_URL && !init) {
       return jsonResponse(200, { project: makeProject({ workflowState: WorkflowState.VideosApproved, scenes: sixScenes(), ...project }) });
+    }
+    if (url === SETTINGS_URL && !init) {
+      if (settings === "fails") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "raw" });
+      return jsonResponse(200, { settings: makeSettings(settings.narrationEnabled, settings.subtitlesEnabled) });
     }
     const call = mergeFetch as unknown as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
     return call(input, init);
@@ -54,7 +72,7 @@ describe("VideoMergeScreen", () => {
     expect(screen.getByTestId("merge-scope-notice").textContent).toContain("이 단계는 비용이 들지 않습니다");
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(PROJECT_URL));
     // The scene count follows the project's actual scenes, not a fixed six.
-    await waitFor(() => expect(screen.getByTestId("merge-scope-notice").textContent).toContain("6개 승인 장면 영상을 순서대로 이어 붙이고"));
+    await waitFor(() => expect(screen.getByTestId("merge-scope-notice").textContent).toContain("6개 승인 장면 영상을 순서대로 이어 붙입니다"));
     expect(mergeFetch).not.toHaveBeenCalled();
   });
 
@@ -73,7 +91,7 @@ describe("VideoMergeScreen", () => {
     const mergeFetch = vi.fn();
     renderScreen(mergeFetch, { scenes: sixScenes().slice(0, 4) });
 
-    await waitFor(() => expect(screen.getByTestId("merge-scope-notice").textContent).toContain("4개 승인 장면 영상을 순서대로 이어 붙이고"));
+    await waitFor(() => expect(screen.getByTestId("merge-scope-notice").textContent).toContain("4개 승인 장면 영상을 순서대로 이어 붙입니다"));
     fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
     const panel = await screen.findByTestId("merge-confirm-panel");
     await waitFor(() => expect(panel.textContent).toContain("4개 승인 장면 영상을 하나의 최종 영상으로 병합할까요?"));
@@ -209,6 +227,58 @@ describe("VideoMergeScreen", () => {
     await screen.findByTestId("merge-success");
     expect(document.body.textContent).not.toMatch(/[A-Za-z]:[\\/]/);
     expect(document.body.textContent).not.toContain("learning_data");
+  });
+
+  it("says a scene with no audio still gets its subtitle when subtitles are on", async () => {
+    // Subtitles-only is a real mode (no TTS spend): the copy must not imply a silent scene loses its subtitle.
+    renderScreen(vi.fn(), {}, { narrationEnabled: false, subtitlesEnabled: true });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("merge-scope-notice").textContent).toContain(
+        "음성이 아직 없는 장면에도 자막은 들어갑니다",
+      ),
+    );
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    expect((await screen.findByTestId("merge-confirm-panel")).textContent).toContain("자막이 들어갑니다");
+  });
+
+  it("says the same thing about subtitles whether or not narration is on — only subtitlesEnabled decides", async () => {
+    const { render: first } = renderScreen(vi.fn(), {}, { narrationEnabled: true, subtitlesEnabled: true });
+    const withNarration = await waitFor(() => {
+      const text = screen.getByTestId("merge-scope-notice").textContent ?? "";
+      expect(text).toContain("자막이 들어갑니다");
+      return text;
+    });
+    first.unmount();
+    vi.unstubAllGlobals();
+
+    renderScreen(vi.fn(), {}, { narrationEnabled: false, subtitlesEnabled: true });
+    await waitFor(() => expect(screen.getByTestId("merge-scope-notice").textContent).toBe(withNarration));
+  });
+
+  it("promises no subtitles when subtitles are off, without claiming existing audio is dropped", async () => {
+    renderScreen(vi.fn(), {}, { narrationEnabled: false, subtitlesEnabled: false });
+
+    // Audio follows the generated file, not the narration setting — the merge service never checks the flag,
+    // so a project that made audio and later turned narration off still gets that audio.
+    await waitFor(() => {
+      const text = screen.getByTestId("merge-scope-notice").textContent ?? "";
+      expect(text).toContain("자막은 넣지 않습니다");
+      expect(text).toContain("음성을 만들어 둔 장면에는 그 음성이 입혀집니다");
+    });
+  });
+
+  it("claims nothing about audio or subtitles when the settings request fails", async () => {
+    renderScreen(vi.fn(), {}, "fails");
+
+    // The merge itself still works without settings, so the screen stays usable — it just stops describing
+    // what it cannot confirm rather than guessing a mode.
+    await waitFor(() => expect(screen.getByTestId("merge-scope-notice").textContent).toContain("순서대로 이어 붙입니다"));
+    expect(screen.getByTestId("merge-scope-notice").textContent).not.toContain("자막");
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    const panel = await screen.findByTestId("merge-confirm-panel");
+    expect(panel.textContent).toContain("유료 요청은 전송되지 않습니다");
+    expect(panel.textContent).not.toContain("자막");
   });
 });
 

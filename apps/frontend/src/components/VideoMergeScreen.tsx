@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { MergeVideosResponse } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
-import { getProject, toDisplayError } from "../api/projectsApi.js";
+import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
 import { finalVideoContentUrl, mergeVideos, toVideoMergeDisplayError } from "../api/videoMergeApi.js";
 import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBridge.js";
 
@@ -14,6 +14,27 @@ interface Props {
 type DisplayError = { code: string; message: string };
 type LoadState = { status: "loading" } | { status: "error"; error: DisplayError } | { status: "ready" };
 
+/**
+ * One sentence describing what this merge lays over the clips.
+ *
+ * Mirrors video-merge.service.ts. Two things matter, and only one of them is a setting:
+ *  - Audio: a scene gets its narration audio whenever that file exists, full stop. The merge does not consult
+ *    narrationEnabled, so turning narration off does not strip audio that was already made — the sentence
+ *    therefore states the file rule, not the setting.
+ *  - Subtitles: a scene gets a subtitle when subtitlesEnabled is on AND it has narration text, whether or not
+ *    audio exists. Subtitles-only (no TTS spend) is a deliberate mode, so the copy must never tie subtitles to
+ *    audio the way an earlier version of this screen did.
+ *
+ * Returns null when the settings could not be read: saying nothing beats promising something unconfirmed.
+ */
+function mergeContentSentence(subtitlesEnabled: boolean | null): string | null {
+  if (subtitlesEnabled === null) return null;
+  const audio = "음성을 만들어 둔 장면에는 그 음성이 입혀집니다.";
+  return subtitlesEnabled
+    ? `${audio} 내레이션 문장이 있는 장면에는 자막이 들어갑니다 — 음성이 아직 없는 장면에도 자막은 들어갑니다.`
+    : `${audio} 자막은 넣지 않습니다.`;
+}
+
 export function VideoMergeScreen({ projectId, onBack }: Props) {
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -23,6 +44,8 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
   const [openPending, setOpenPending] = useState(false);
   const [openFailed, setOpenFailed] = useState(false);
   const [sceneCount, setSceneCount] = useState<number | null>(null);
+  /** null until the project settings load, and stays null if they fail — the copy then claims nothing. */
+  const [subtitlesEnabled, setSubtitlesEnabled] = useState<boolean | null>(null);
   const busy = useRef(false);
 
   // A project that already finished merging (revisited later, e.g. from the dashboard) should
@@ -41,6 +64,14 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
       .catch((caught: unknown) => {
         if (!cancelled) setLoadState({ status: "error", error: toDisplayError(caught) });
       });
+    // What gets laid over the clips only changes this screen's wording, so a failure here is not fatal:
+    // the sentence is dropped rather than guessed at.
+    getProjectSettings(projectId)
+      .then(({ settings }) => {
+        if (cancelled) return;
+        setSubtitlesEnabled(settings.subtitlesEnabled);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -89,6 +120,8 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
     }
   }
 
+  const contentSentence = mergeContentSentence(subtitlesEnabled);
+
   return (
     <section className="mt-8 max-w-2xl space-y-5">
       <button
@@ -107,8 +140,8 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
       </h1>
       <p className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300" data-testid="merge-scope-notice">
         이 단계는 비용이 들지 않습니다 — 유료 요청 없이, 이 컴퓨터에 설치된 영상 병합 프로그램만 실행합니다.
-        {sceneCount !== null ? ` ${sceneCount}개` : ""} 승인 장면 영상을 순서대로 이어 붙이고, 내레이션 음성을 만들어 둔
-        장면에는 그 음성과 자막을 함께 입힙니다.
+        {sceneCount !== null ? ` ${sceneCount}개` : ""} 승인 장면 영상을 순서대로 이어 붙입니다.
+        {contentSentence ? ` ${contentSentence}` : ""}
       </p>
 
       {!result && (
@@ -134,9 +167,8 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
                 {sceneCount !== null ? `${sceneCount}개 승인 장면 영상을` : "승인 장면 영상을"} 하나의 최종 영상으로 병합할까요?
               </p>
               <p className="text-sm text-slate-300">
-                아직 병합이 시작되지 않았습니다. 확인을 누르면 이 컴퓨터의 영상 병합 프로그램이 실행됩니다. 음성을 만들어 둔
-                장면은 음성과 자막이 함께 입혀지고, 음성이 없는 장면은 소리 없이 그대로 이어 붙습니다. 유료 요청은 전송되지
-                않습니다.
+                아직 병합이 시작되지 않았습니다. 확인을 누르면 이 컴퓨터의 영상 병합 프로그램이 실행됩니다.
+                {contentSentence ? ` ${contentSentence}` : ""} 유료 요청은 전송되지 않습니다.
               </p>
               <div className="flex gap-3">
                 <button

@@ -91,6 +91,7 @@ describe("local FFmpeg video merge", () => {
     await fs.writeFile(narrationFile, Buffer.from("fake narration audio"));
     const project = await projects.findById("video_merge");
     project.generated_narrations = [null, narrationFile, null, null, null, null];
+    project.lore_context = { ...project.lore_context, narration_enabled: true };
     await projects.save(project);
 
     const calls: string[][] = [];
@@ -128,7 +129,7 @@ describe("local FFmpeg video merge", () => {
     await fs.writeFile(narrationFile, Buffer.from("fake narration audio"));
     const project = await projects.findById("video_merge");
     project.generated_narrations = [narrationFile]; // only scene 1 has audio
-    project.lore_context = { ...project.lore_context, subtitles_enabled: true };
+    project.lore_context = { ...project.lore_context, narration_enabled: true, subtitles_enabled: true };
     project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, narration: number <= 2 ? `장면 ${number} 내레이션` : "" }));
     await projects.save(project);
 
@@ -154,6 +155,7 @@ describe("local FFmpeg video merge", () => {
     await fs.mkdir(path.dirname(emptyNarration), { recursive: true });
     await fs.writeFile(emptyNarration, Buffer.alloc(0));
     project.generated_narrations = [emptyNarration, "C:/no/such/file/scene2.mp3"];
+    project.lore_context = { ...project.lore_context, narration_enabled: true };
     await projects.save(project);
 
     const calls: string[][] = [];
@@ -161,5 +163,22 @@ describe("local FFmpeg video merge", () => {
     expect(result.finalVideoPath).toBe("videos/final/instagram_reel.mp4");
     const normalizeCalls = calls.filter((args) => args[0] === "ffmpeg" && args.includes("-vf"));
     expect(normalizeCalls.every((call) => call.includes("anullsrc=channel_layout=stereo:sample_rate=48000"))).toBe(true);
+  });
+
+  it("falls back to silence for a scene with real narration audio once narrationEnabled is turned off, even though the old file is still on disk", async () => {
+    const { projectsRoot, projects } = await setup();
+    const narrationFile = path.join(projectsRoot, "video_merge", "narration", "scene1.mp3");
+    await fs.mkdir(path.dirname(narrationFile), { recursive: true });
+    await fs.writeFile(narrationFile, Buffer.from("fake narration audio"));
+    const project = await projects.findById("video_merge");
+    project.generated_narrations = [narrationFile];
+    project.lore_context = { ...project.lore_context, narration_enabled: false };
+    await projects.save(project);
+
+    const calls: string[][] = [];
+    await new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge");
+    const normalizeCalls = calls.filter((args) => args[0] === "ffmpeg" && args.includes("-vf"));
+    expect(normalizeCalls[0]).not.toContain(narrationFile);
+    expect(normalizeCalls[0]).toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
   });
 });

@@ -60,6 +60,11 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
    * warning, so a settings request that fails must not take the narration text down with it.
    */
   const [clipDurationSeconds, setClipDurationSeconds] = useState<number | null>(null);
+  /**
+   * From the same settings request. null means "not known" (never loaded, or the request failed) — the screen
+   * then behaves exactly as before rather than hiding a control on an unconfirmed guess.
+   */
+  const [voiceMode, setVoiceMode] = useState<{ narrationEnabled: boolean; subtitlesEnabled: boolean } | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [generatePending, setGeneratePending] = useState(false);
   const [actionError, setActionError] = useState<DisplayError | null>(null);
@@ -78,6 +83,7 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
     const requestId = ++loadRequest.current;
     setState({ status: "loading" });
     setClipDurationSeconds(null);
+    setVoiceMode(null);
     getNarrationReview(projectId)
       .then((response) => {
         if (requestId !== loadRequest.current) return;
@@ -91,9 +97,14 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
       .then((response) => {
         if (requestId !== loadRequest.current) return;
         setClipDurationSeconds(response.settings.clipDurationSeconds);
+        setVoiceMode({
+          narrationEnabled: response.settings.narrationEnabled,
+          subtitlesEnabled: response.settings.subtitlesEnabled,
+        });
       })
       .catch(() => {
-        // Length warnings are a convenience, not the point of this screen — silently do without them.
+        // Length warnings and the voice/subtitle mode are conveniences, not the point of this screen — silently
+        // do without them. voiceMode stays null, so nothing gets hidden on a guess.
       });
   }, [projectId]);
 
@@ -101,6 +112,12 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
   const withText = narrations.filter((item) => item.narration.trim());
   const missing = narrations.filter((item) => !item.narration.trim());
   const estimatedCost = withText.length * TTS_ESTIMATED_COST_USD;
+  /**
+   * Only true once the settings actually say narration is off. The backend rejects TTS with
+   * NARRATION_NOT_ENABLED in that case, so offering the paid button would be offering a guaranteed failure —
+   * and in subtitles-only mode these sentences are still doing their job, just for free.
+   */
+  const voiceOff = voiceMode?.narrationEnabled === false;
   /** A guess from character count — used only for scenes whose audio has not been made yet. */
   const looksTooLong = (item: NarrationReview) =>
     item.audioDurationSeconds === undefined &&
@@ -206,15 +223,25 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
                   {withText.length} / {narrations.length}
                 </p>
               </div>
-              <div>
-                <p className="text-xs text-slate-400">음성 생성 예상 비용</p>
-                <p data-testid="narration-estimated-cost" className="mt-0.5 text-2xl font-semibold tabular-nums text-slate-100">
-                  ${estimatedCost.toFixed(2)}
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  {withText.length}장면 × ${TTS_ESTIMATED_COST_USD.toFixed(2)} · 키가 연결되어 있을 때만 청구됩니다
-                </p>
-              </div>
+              {voiceOff ? (
+                <div>
+                  <p className="text-xs text-slate-400">음성 생성 예상 비용</p>
+                  <p data-testid="narration-estimated-cost" className="mt-0.5 text-2xl font-semibold tabular-nums text-slate-100">
+                    $0.00
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">음성이 꺼져 있어 이 화면에서는 비용이 들지 않습니다</p>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-xs text-slate-400">음성 생성 예상 비용</p>
+                  <p data-testid="narration-estimated-cost" className="mt-0.5 text-2xl font-semibold tabular-nums text-slate-100">
+                    ${estimatedCost.toFixed(2)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {withText.length}장면 × ${TTS_ESTIMATED_COST_USD.toFixed(2)} · 키가 연결되어 있을 때만 청구됩니다
+                  </p>
+                </div>
+              )}
             </div>
             <BudgetLine budget={state.budget} data-testid="narration-budget" />
             {missing.length > 0 && (
@@ -236,7 +263,15 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
               </p>
             )}
 
-            {withText.length > 0 && (
+            {voiceOff && (
+              <p data-testid="narration-voice-off" className="text-sm text-slate-300">
+                {voiceMode?.subtitlesEnabled
+                  ? "음성이 꺼져 있어 여기서는 음성을 만들지 않습니다 — 비용도 들지 않습니다. 이 문장들은 최종 병합에서 자막으로 들어갑니다. 목소리도 넣으려면 프로젝트 설정에서 \"음성 넣기\"를 켜세요."
+                  : "음성과 자막이 모두 꺼져 있습니다. 문장은 저장되지만 영상에는 쓰이지 않습니다. 프로젝트 설정에서 \"음성 넣기\" 또는 \"자막 넣기\"를 켜면 쓰입니다."}
+              </p>
+            )}
+
+            {withText.length > 0 && !voiceOff && (
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
@@ -253,7 +288,7 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
               </div>
             )}
 
-            {confirmOpen && (
+            {confirmOpen && !voiceOff && (
               <div
                 role="alertdialog"
                 aria-label="음성 생성 확인"
@@ -365,7 +400,7 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
                       </audio>
                     )}
 
-                    {item.hasAudio && text && (
+                    {item.hasAudio && text && !voiceOff && (
                       <div className="flex justify-end">
                         <button
                           type="button"
@@ -383,7 +418,7 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
                       </div>
                     )}
 
-                    {confirming && (
+                    {confirming && !voiceOff && (
                       <div
                         role="alertdialog"
                         aria-label={`${item.sceneNumber}번 장면 음성 재생성 확인`}
