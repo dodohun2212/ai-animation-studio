@@ -96,7 +96,8 @@ export class EpisodeVideoMergeService {
     await this.saveEpisode(id, number, rendering);
     try {
       const output = this.final(id, number); await fs.mkdir(path.dirname(output), { recursive: true });
-      await this.engine.merge(clips, output, await this.ratio(id, number));
+      // Long Episode has no narration (out of that feature's scope) — every scene falls back to silence, same as before.
+      await this.engine.merge(clips, clips.map(() => null), output, await this.ratio(id, number));
       const completed = { ...rendering, state: "completed" as const, updated_at: new Date().toISOString(), final_video_path: FINAL_PATH };
       await this.saveEpisode(id, number, completed);
       return { episode: this.detail(completed), finalVideoPath: FINAL_PATH };

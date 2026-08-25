@@ -83,4 +83,41 @@ describe("local FFmpeg video merge", () => {
     failed.workflow_state = WorkflowState.VideosApproved; failed.errors = []; await projects.save(failed);
     await expect(new LocalVideoMergeService(new LocalProjectRepository(projectsRoot), projectsRoot, runner()).merge("video_merge")).resolves.toMatchObject({ finalVideoPath: "videos/final/instagram_reel.mp4" });
   });
+
+  it("mixes in a scene's generated narration audio when it has one, and falls back to silence for the rest", async () => {
+    const { projectsRoot, projects } = await setup();
+    const narrationFile = path.join(projectsRoot, "video_merge", "narration", "scene2.mp3");
+    await fs.mkdir(path.dirname(narrationFile), { recursive: true });
+    await fs.writeFile(narrationFile, Buffer.from("fake narration audio"));
+    const project = await projects.findById("video_merge");
+    project.generated_narrations = [null, narrationFile, null, null, null, null];
+    await projects.save(project);
+
+    const calls: string[][] = [];
+    await new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge");
+    const normalizeCalls = calls.filter((args) => args[0] === "ffmpeg" && args.includes("-vf"));
+    expect(normalizeCalls).toHaveLength(6);
+    expect(normalizeCalls[1]).toContain(narrationFile);
+    expect(normalizeCalls[1]).toContain("[1:a]apad[aout]");
+    for (const [index, call] of normalizeCalls.entries()) {
+      if (index === 1) continue;
+      expect(call).toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
+    }
+  });
+
+  it("never fails the merge over a missing or empty narration file — that scene just falls back to silence", async () => {
+    const { projectsRoot, projects } = await setup();
+    const project = await projects.findById("video_merge");
+    const emptyNarration = path.join(projectsRoot, "video_merge", "narration", "scene1.mp3");
+    await fs.mkdir(path.dirname(emptyNarration), { recursive: true });
+    await fs.writeFile(emptyNarration, Buffer.alloc(0));
+    project.generated_narrations = [emptyNarration, "C:/no/such/file/scene2.mp3"];
+    await projects.save(project);
+
+    const calls: string[][] = [];
+    const result = await new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge");
+    expect(result.finalVideoPath).toBe("videos/final/instagram_reel.mp4");
+    const normalizeCalls = calls.filter((args) => args[0] === "ffmpeg" && args.includes("-vf"));
+    expect(normalizeCalls.every((call) => call.includes("anullsrc=channel_layout=stereo:sample_rate=48000"))).toBe(true);
+  });
 });

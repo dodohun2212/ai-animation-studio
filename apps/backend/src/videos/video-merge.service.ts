@@ -37,6 +37,19 @@ export class LocalVideoMergeService {
   private clip(projectId: string, scene: SceneNumber): string { return path.join(this.projectDirectory(projectId), "videos", "runway", `scene${scene}.mp4`); }
   private final(projectId: string): string { return path.join(this.projectDirectory(projectId), FINAL_VIDEO_PATH); }
 
+  /**
+   * A narration file that is missing, empty, or was recorded under a path this machine no longer resolves to
+   * (see image-review.service.ts's identical caution about stale generated_images entries) must never fail the
+   * merge — narration is supplementary, the video is not. Any such scene simply falls back to silence.
+   */
+  private async narrationPaths(project: StoredProject, scenes: readonly SceneNumber[]): Promise<Array<string | null>> {
+    return Promise.all(scenes.map(async (scene) => {
+      const file = project.generated_narrations[scene - 1];
+      if (typeof file !== "string") return null;
+      try { return (await fs.stat(file)).size > 0 ? file : null; } catch { return null; }
+    }));
+  }
+
   async content(projectId: string): Promise<{ path: string }> {
     const project = await this.projects.findById(projectId.trim());
     const file = this.final(project.project_id);
@@ -75,11 +88,12 @@ export class LocalVideoMergeService {
       if (error instanceof MediaToolError && error.kind === "unavailable") throw ffmpegUnavailable();
       throw videoMergeClipsInvalid();
     }
+    const narrations = await this.narrationPaths(project, scenesFor(project));
     const rendering = { ...project, workflow_state: WorkflowState.Rendering, updated_at: new Date().toISOString() };
     try { await this.projects.save(rendering); } catch { throw videoMergeStorageError(); }
     try {
       await fs.mkdir(path.dirname(this.final(project.project_id)), { recursive: true });
-      await this.engine.merge(clips, this.final(project.project_id), rendering.style_profile.aspect);
+      await this.engine.merge(clips, narrations, this.final(project.project_id), rendering.style_profile.aspect);
       const completed = { ...rendering, workflow_state: WorkflowState.Completed, updated_at: new Date().toISOString(), final_video_path: FINAL_VIDEO_PATH };
       await this.projects.save(completed);
       return { project: toApiProject(completed), finalVideoPath: FINAL_VIDEO_PATH };

@@ -52,7 +52,17 @@ export class FfmpegMergeEngine {
     } catch { throw new MediaToolError("invalid", "Scene video is invalid."); }
   }
 
-  async merge(clips: readonly string[], finalPath: string, ratio: unknown): Promise<void> {
+  /**
+   * `narrations[index]` is that scene's narration audio file, or null/undefined to fall back to silence
+   * (narration disabled, missing text, or generation never ran). The scene's video clip is always the master
+   * duration — narration audio is never allowed to extend it. A real narration file is padded with silence
+   * (`apad`) before `-shortest` so a narration shorter than the clip doesn't truncate the video the way it
+   * would without padding; a narration longer than the clip is simply cut off at the clip's end by
+   * `-shortest`, matching the agreed "warn before generating, don't reject after" overlong-narration handling
+   * (see NarrationReviewScreen's length warning). `anullsrc` (used when there is no narration file) has no
+   * natural duration of its own, so `-shortest` already caps it at the video's length without needing `apad`.
+   */
+  async merge(clips: readonly string[], narrations: readonly (string | null | undefined)[], finalPath: string, ratio: unknown): Promise<void> {
     const [width, height] = outputSize(ratio);
     const directory = path.dirname(finalPath);
     const normalizedDirectory = path.join(directory, "normalized");
@@ -61,7 +71,12 @@ export class FfmpegMergeEngine {
     const filter = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p`;
     for (const [index, clip] of clips.entries()) {
       const target = path.join(normalizedDirectory, `scene${index + 1}.mp4`);
-      await this.command(["ffmpeg", "-y", "-i", clip, "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000", "-map", "0:v:0", "-map", "1:a:0", "-vf", filter, "-c:v", "libx264", "-c:a", "aac", "-shortest", target]);
+      const narration = narrations[index];
+      if (narration) {
+        await this.command(["ffmpeg", "-y", "-i", clip, "-i", narration, "-filter_complex", "[1:a]apad[aout]", "-map", "0:v:0", "-map", "[aout]", "-vf", filter, "-c:v", "libx264", "-c:a", "aac", "-shortest", target]);
+      } else {
+        await this.command(["ffmpeg", "-y", "-i", clip, "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000", "-map", "0:v:0", "-map", "1:a:0", "-vf", filter, "-c:v", "libx264", "-c:a", "aac", "-shortest", target]);
+      }
       normalized.push(target);
     }
     const concatFile = path.join(normalizedDirectory, "concat.txt");
