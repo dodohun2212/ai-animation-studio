@@ -16,6 +16,7 @@ import { StatusChip } from "./ui/StatusChip.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { BudgetLine } from "./ui/BudgetLine.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
+import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
 
 interface Props {
   projectId: string;
@@ -58,6 +59,8 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
   const [approvePendingScenes, setApprovePendingScenes] = useState<Set<SceneNumber>>(new Set());
   const [approveErrors, setApproveErrors] = useState<Partial<Record<SceneNumber, DisplayError>>>({});
   const [regenerateConfirmScene, setRegenerateConfirmScene] = useState<SceneNumber | null>(null);
+  /** One-off direction for the scene whose confirmation is open; cleared whenever the panel opens or closes. */
+  const [regenerateInstruction, setRegenerateInstruction] = useState("");
   const [regeneratePendingScenes, setRegeneratePendingScenes] = useState<Set<SceneNumber>>(new Set());
   const [regenerateErrors, setRegenerateErrors] = useState<Partial<Record<SceneNumber, DisplayError>>>({});
   const generateBusy = useRef(false);
@@ -146,11 +149,13 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
   /** Opens the explicit per-scene confirmation panel. Never calls the network by itself. */
   function openRegenerateConfirmation(sceneNumber: SceneNumber): void {
     if (regenerateBusy.current.has(sceneNumber)) return;
+    setRegenerateInstruction("");
     setRegenerateConfirmScene(sceneNumber);
   }
 
   function cancelRegenerateConfirmation(sceneNumber: SceneNumber): void {
     if (regenerateBusy.current.has(sceneNumber)) return;
+    setRegenerateInstruction("");
     setRegenerateConfirmScene((current) => (current === sceneNumber ? null : current));
   }
 
@@ -159,7 +164,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
     regenerateBusy.current.add(sceneNumber);
     setRegeneratePendingScenes(new Set(regenerateBusy.current));
     try {
-      const response = await regenerateImageReview(projectId, sceneNumber);
+      const response = await regenerateImageReview(projectId, sceneNumber, regenerateInstruction);
       setReviewState((current) => ({
         status: "ready",
         reviews: response.reviews,
@@ -173,6 +178,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
       }));
       setProjectOverride(response.project);
       setRegenerateConfirmScene(null);
+      setRegenerateInstruction("");
       setRegenerateErrors((current) => {
         if (!(sceneNumber in current)) return current;
         const next = { ...current };
@@ -439,6 +445,15 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                                 estimate={reviewState.status === "ready" ? reviewState.retryEstimate : undefined}
                                 sceneCount={1}
                                 data-testid={`regenerate-cost-${review.sceneNumber}`}
+                              />
+                              <RegenerateInstructionField
+                                id={`image-regenerate-instruction-${review.sceneNumber}`}
+                                value={regenerateInstruction}
+                                onChange={setRegenerateInstruction}
+                                disabled={regeneratePending}
+                                subject="그림"
+                                placeholder="예: 더 어둡게, 인물을 더 멀리서"
+                                data-testid={`regenerate-instruction-${review.sceneNumber}`}
                               />
                               <div className="flex gap-2">
                                 <button

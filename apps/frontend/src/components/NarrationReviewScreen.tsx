@@ -15,6 +15,7 @@ import { StatusChip } from "./ui/StatusChip.js";
 import { BudgetLine } from "./ui/BudgetLine.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
+import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
 
 interface Props {
   projectId: string;
@@ -64,6 +65,8 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
   const [actionError, setActionError] = useState<DisplayError | null>(null);
   const [generationSummary, setGenerationSummary] = useState<{ generated: number; reused: number; skipped: number } | null>(null);
   const [regenerateConfirmScene, setRegenerateConfirmScene] = useState<SceneNumber | null>(null);
+  /** One-off delivery direction (tone, pace) for the scene whose confirmation is open. */
+  const [regenerateInstruction, setRegenerateInstruction] = useState("");
   const [regeneratePendingScenes, setRegeneratePendingScenes] = useState<Set<SceneNumber>>(new Set());
   /** Bumped after any successful synthesis so <audio> refetches instead of replaying the cached file. */
   const [audioVersion, setAudioVersion] = useState(0);
@@ -141,7 +144,7 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
     setRegeneratePendingScenes(new Set(regenerateBusy.current));
     setActionError(null);
     try {
-      const response = await regenerateNarration(projectId, sceneNumber);
+      const response = await regenerateNarration(projectId, sceneNumber, regenerateInstruction);
       setState((current) => ({
         status: "ready",
         narrations: response.narrations,
@@ -158,6 +161,7 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
       }));
       setAudioVersion((version) => version + 1);
       setRegenerateConfirmScene(null);
+      setRegenerateInstruction("");
     } catch (caught) {
       setActionError(toNarrationDisplayError(caught));
     } finally {
@@ -368,6 +372,7 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
                           data-testid={`narration-regenerate-${item.sceneNumber}`}
                           className={smallOutlineButton}
                           onClick={() => {
+                            setRegenerateInstruction("");
                             setRegenerateConfirmScene(item.sceneNumber);
                             setActionError(null);
                           }}
@@ -394,11 +399,20 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
                           sceneCount={1}
                           data-testid={`narration-regenerate-cost-${item.sceneNumber}`}
                         />
+                        <RegenerateInstructionField
+                          id={`narration-regenerate-instruction-${item.sceneNumber}`}
+                          value={regenerateInstruction}
+                          onChange={setRegenerateInstruction}
+                          disabled={regenerating}
+                          subject="말투"
+                          placeholder="예: 더 천천히, 담담한 톤으로"
+                          data-testid={`narration-regenerate-instruction-${item.sceneNumber}`}
+                        />
                         <div className="flex gap-2">
                           <button
                             type="button"
                             className={smallOutlineButton}
-                            onClick={() => setRegenerateConfirmScene(null)}
+                            onClick={() => { setRegenerateConfirmScene(null); setRegenerateInstruction(""); }}
                             disabled={regenerating}
                           >
                             취소

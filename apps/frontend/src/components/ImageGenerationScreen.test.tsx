@@ -574,4 +574,41 @@ describe("ImageGenerationScreen", () => {
     const reviewBudget = await screen.findByTestId("review-budget");
     expect(reviewBudget.textContent).toContain("$9.00");
   });
+
+  it("sends a one-off direction with the regeneration, and nothing when the field is left blank", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews() }))
+      .mockResolvedValue(jsonResponse(200, { project, reviews: sixReviews(), sceneNumber: 2 }));
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByTestId("review-regenerate-2"));
+    fireEvent.change(screen.getByTestId("regenerate-instruction-2"), { target: { value: "  더 어둡게  " } });
+    fireEvent.click(within(screen.getByTestId("regenerate-confirm-panel-2")).getByRole("button", { name: "예, 다시 생성합니다" }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/regenerate"))).toBe(true));
+    const call = fetchMock.mock.calls.find(([url]) => String(url).includes("/regenerate"))!;
+    // Trimmed before sending.
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ approved: true, additionalInstruction: "더 어둡게" });
+  });
+
+  it("omits the direction field from the request when it is left empty", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews() }))
+      .mockResolvedValue(jsonResponse(200, { project, reviews: sixReviews(), sceneNumber: 2 }));
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByTestId("review-regenerate-2"));
+    fireEvent.click(within(screen.getByTestId("regenerate-confirm-panel-2")).getByRole("button", { name: "예, 다시 생성합니다" }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/regenerate"))).toBe(true));
+    const call = fetchMock.mock.calls.find(([url]) => String(url).includes("/regenerate"))!;
+    // A blank box must produce a plain regeneration, not additionalInstruction: "".
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ approved: true });
+  });
 });

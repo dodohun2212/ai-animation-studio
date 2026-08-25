@@ -181,8 +181,13 @@ export function startNarrationGeneration(projectId: string): Promise<StartNarrat
 }
 
 /** Replaces one scene's narration audio. Costs one more TTS call, so it needs its own confirmation. */
-export function regenerateNarration(projectId: string, sceneNumber: SceneNumber): Promise<RegenerateNarrationResponse> {
-  const requestBody: RegenerateNarrationRequest = { approved: true };
+export function regenerateNarration(
+  projectId: string,
+  sceneNumber: SceneNumber,
+  additionalInstruction?: string,
+): Promise<RegenerateNarrationResponse> {
+  const trimmed = additionalInstruction?.trim();
+  const requestBody: RegenerateNarrationRequest = trimmed ? { approved: true, additionalInstruction: trimmed } : { approved: true };
   return request(
     API_ROUTES.narrationRegeneration(projectId, sceneNumber),
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) },

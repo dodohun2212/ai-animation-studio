@@ -159,8 +159,15 @@ export function approveImageReview(projectId: string, sceneNumber: SceneNumber):
  * Replaces one scene's generated image via the local fake adapter only. Never sends a paid
  * provider request. Must only be called after an explicit second user confirmation.
  */
-export function regenerateImageReview(projectId: string, sceneNumber: SceneNumber): Promise<RegenerateImageReviewResponse> {
-  const requestBody: RegenerateImageReviewRequest = { approved: true };
+export function regenerateImageReview(
+  projectId: string,
+  sceneNumber: SceneNumber,
+  additionalInstruction?: string,
+): Promise<RegenerateImageReviewResponse> {
+  const trimmed = additionalInstruction?.trim();
+  // Omit rather than send an empty string: the contract treats blank as absent, and not sending it keeps the
+  // request identical to a plain regeneration.
+  const requestBody: RegenerateImageReviewRequest = trimmed ? { approved: true, additionalInstruction: trimmed } : { approved: true };
   return request(
     API_ROUTES.imageReviewRegeneration(projectId, sceneNumber),
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) },
