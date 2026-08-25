@@ -114,7 +114,10 @@ describe("provider-free generated image review", () => {
     for (const scene of [2, 3, 4, 5, 6]) await restarted.approve("review", String(scene), { approved: true });
     const reloaded = await new LocalProjectRepository(projectsRoot).findById("review");
     expect(reloaded.workflow_state).toBe(WorkflowState.WaitingForVideoConfirmation);
-    await expect(restarted.getStatus("review")).rejects.toMatchObject({ response: { code: "IMAGE_REVIEW_NOT_ALLOWED" } });
+    // Read-only, so it must stay viewable once every scene is approved and the project has moved on to video
+    // confirmation — the Frontend's video confirmation screen relies on this GET succeeding.
+    const status = await restarted.getStatus("review");
+    expect(status.reviews.every((review) => review.status === "approved")).toBe(true);
     expect((await projects.findById("review")).workflow_state).toBe(WorkflowState.WaitingForVideoConfirmation);
   });
 

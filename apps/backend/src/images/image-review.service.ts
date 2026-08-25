@@ -163,7 +163,10 @@ export class ImageReviewService {
 
   async getStatus(projectId: string): Promise<GetImageReviewResponse> {
     const project = await this.projects.findById(projectId.trim());
-    await this.assertReviewable(project);
+    // Read-only, so as permissive as regenerate(): once every scene is approved and the project has moved on to
+    // WaitingForVideoConfirmation, the review list (all approved) must still be viewable — the Frontend's video
+    // confirmation screen relies on this GET succeeding to show it.
+    await this.assertReviewable(project, true);
     const reviews = await this.load(project.project_id);
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.
