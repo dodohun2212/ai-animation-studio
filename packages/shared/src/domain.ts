@@ -78,6 +78,32 @@ export interface Scene {
   videoReview: ReviewDecision;
   /** Short-project-only narration/subtitle sentence. Optional: absent on scenes stored before this field existed, and always absent for long-form Episodes (narration is out of that scope). Present regardless of ShortProjectSettings.narrationEnabled — only actually turned into TTS audio when that flag is on. */
   narration?: string;
+  /**
+   * The 16 remaining short-project scene fields PATCH /projects/:id/scenes/:sceneNumber can edit
+   * (`description` is Story's own narrated-script text, display-only — nothing downstream reads it;
+   * the rest feed image or video prompt assembly, see that endpoint's editable-field grouping). Kept
+   * snake_case rather than translated to camelCase like `script`/`imagePrompt`/`motionPrompt` above,
+   * because unlike those three (which are computed, mapped fields), these are the project's own raw
+   * scene object passed straight through with its original key names — naming them camelCase here would
+   * claim a translation that doesn't actually happen. All optional: absent on scenes stored before Story
+   * generation ran, and on any legacy scene shape from before these fields existed.
+   */
+  description?: string;
+  visual_action?: string;
+  shot_size?: string;
+  camera_angle?: string;
+  composition?: string;
+  lens_feel?: string;
+  focus_subject?: string;
+  start_motion?: string;
+  main_motion?: string;
+  end_motion?: string;
+  expression_change?: string;
+  camera_motion?: string;
+  environment_motion?: string;
+  motion_speed?: string;
+  motion_intensity?: string;
+  continuity_hint?: string;
 }
 
 export interface ProjectSummary {

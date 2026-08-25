@@ -58,7 +58,7 @@ export interface MergeSceneInput {
   clip: string;
   /** Path to that scene's narration audio, or null/undefined to fall back to silence. */
   narrationAudioPath?: string | null;
-  /** That scene's narration text, or null/undefined to burn in no subtitle line. A separate field from narrationAudioPath (not derived from it) so the caller decides the pairing — video-merge.service.ts only ever sets this when narrationAudioPath is also set, so a subtitle never appears for narration that has no voice. */
+  /** That scene's narration text, or null/undefined to burn in no subtitle line. Independent of narrationAudioPath — video-merge.service.ts sets this based on ShortProjectSettings.subtitlesEnabled, which can be on with no narration audio at all (subtitles-only, no TTS spend, a real Shorts use case since many viewers watch muted). */
   subtitleText?: string | null;
 }
 

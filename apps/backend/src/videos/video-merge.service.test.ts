@@ -105,26 +105,46 @@ describe("local FFmpeg video merge", () => {
     }
   });
 
-  it("burns in that scene's narration text as a subtitle only where real narration audio also exists", async () => {
+  it("does not burn in any subtitle when subtitlesEnabled is off, even for a scene with real narration audio", async () => {
     const { projectsRoot, projects } = await setup();
     const narrationFile = path.join(projectsRoot, "video_merge", "narration", "scene1.mp3");
     await fs.mkdir(path.dirname(narrationFile), { recursive: true });
     await fs.writeFile(narrationFile, Buffer.from("fake narration audio"));
     const project = await projects.findById("video_merge");
     project.generated_narrations = [narrationFile];
-    project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, narration: number === 1 ? "첫 장면 내레이션입니다." : "다른 장면의 내레이션(오디오 없음)." }));
+    project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, narration: `장면 ${number} 내레이션` }));
+    await projects.save(project); // subtitlesEnabled defaults false — narrationEnabled was never set either, so there's no fallback to true
+
+    const calls: string[][] = [];
+    await new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge");
+    const normalizeCalls = calls.filter((args) => args[0] === "ffmpeg" && args.includes("-vf"));
+    expect(normalizeCalls[0]!.find((arg) => arg.includes("subtitles="))).toBeUndefined();
+  });
+
+  it("burns in subtitles for every scene with narration text when subtitlesEnabled is on, independent of whether narration audio exists (captions-only mode)", async () => {
+    const { projectsRoot, projects } = await setup();
+    const narrationFile = path.join(projectsRoot, "video_merge", "narration", "scene1.mp3");
+    await fs.mkdir(path.dirname(narrationFile), { recursive: true });
+    await fs.writeFile(narrationFile, Buffer.from("fake narration audio"));
+    const project = await projects.findById("video_merge");
+    project.generated_narrations = [narrationFile]; // only scene 1 has audio
+    project.lore_context = { ...project.lore_context, subtitles_enabled: true };
+    project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, narration: number <= 2 ? `장면 ${number} 내레이션` : "" }));
     await projects.save(project);
 
     const calls: string[][] = [];
     await new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge");
     const normalizeCalls = calls.filter((args) => args[0] === "ffmpeg" && args.includes("-vf"));
+    // Scene 1: audio + subtitle. Scene 2: subtitle only, no audio (the captions-only case). Scenes 3-6: neither (no narration text).
     expect(normalizeCalls[0]!.find((arg) => arg.includes("subtitles="))).toBeDefined();
-    // Scene 2 has narration text too, but no generated audio for it — must not get a floating subtitle either.
-    for (const call of normalizeCalls.slice(1)) {
+    expect(normalizeCalls[0]).toContain(narrationFile);
+    expect(normalizeCalls[1]!.find((arg) => arg.includes("subtitles="))).toBeDefined();
+    expect(normalizeCalls[1]).toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
+    for (const call of normalizeCalls.slice(2)) {
       expect(call.find((arg) => arg.includes("subtitles="))).toBeUndefined();
     }
-    const assContent = await fs.readFile(path.join(projectsRoot, "video_merge", "videos", "final", "normalized", "scene1.ass"), "utf8");
-    expect(assContent).toContain("첫 장면 내레이션입니다.");
+    const assContent = await fs.readFile(path.join(projectsRoot, "video_merge", "videos", "final", "normalized", "scene2.ass"), "utf8");
+    expect(assContent).toContain("장면 2 내레이션");
   });
 
   it("never fails the merge over a missing or empty narration file — that scene just falls back to silence", async () => {

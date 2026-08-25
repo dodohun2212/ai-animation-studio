@@ -16,7 +16,7 @@ afterEach(async () => {
 
 const SETTINGS_REQUEST = {
   projectName: "narration review test", topic: "topic", genre: "", mood: "", character: "", lore: "", fullStory: "",
-  sceneCount: 2, clipDurationSeconds: 5, additionalNotes: "", styleNotes: {}, narrationEnabled: true,
+  sceneCount: 2, clipDurationSeconds: 5, additionalNotes: "", styleNotes: {}, narrationEnabled: true, subtitlesEnabled: false,
 };
 
 async function setup(narrationEnabled = true) {

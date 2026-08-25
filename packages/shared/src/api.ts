@@ -419,6 +419,16 @@ export interface ShortProjectSettings {
   styleNotes: ShortProjectStyleNotes;
   /** Off by default for existing projects. When on, the Story schema's `narration` field is used to generate per-scene TTS audio during Video merge instead of silence. */
   narrationEnabled: boolean;
+  /**
+   * Independent of narrationEnabled — a scene's narration text can be burned in as a subtitle during merge
+   * without any TTS audio at all ("captions only", a real Shorts use case since many viewers watch muted).
+   * A scene only gets a subtitle when this is on AND that scene has narration text; it never depends on
+   * whether narration audio was actually generated. For a project stored before this field existed, the
+   * server falls back to narrationEnabled's value (see project-settings.ts's toShortProjectSettings) so an
+   * existing narration-enabled project keeps exactly its current merged output instead of silently losing
+   * subtitles the first time this is read.
+   */
+  subtitlesEnabled: boolean;
 }
 
 /** What a client actually sends: durationSeconds is derived server-side (sceneCount * clipDurationSeconds) and is rejected as an unsupported field if included. */

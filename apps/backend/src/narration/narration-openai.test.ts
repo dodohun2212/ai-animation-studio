@@ -19,7 +19,7 @@ afterEach(async () => {
 
 const SETTINGS_REQUEST = {
   projectName: "narration openai test", topic: "topic", genre: "", mood: "", character: "", lore: "", fullStory: "",
-  sceneCount: 2, clipDurationSeconds: 5, additionalNotes: "", styleNotes: {}, narrationEnabled: true,
+  sceneCount: 2, clipDurationSeconds: 5, additionalNotes: "", styleNotes: {}, narrationEnabled: true, subtitlesEnabled: false,
 };
 const AUDIO_BYTES = Buffer.from("fake mp3 bytes from openai");
 

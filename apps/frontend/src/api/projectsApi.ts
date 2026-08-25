@@ -115,7 +115,8 @@ function isShortProjectSettings(value: unknown): value is ShortProjectSettings {
     !(RUNWAY_CLIP_DURATIONS as readonly number[]).includes(value.clipDurationSeconds as number) ||
     !Number.isInteger(value.durationSeconds) ||
     (value.durationSeconds as number) <= 0 ||
-    typeof value.narrationEnabled !== "boolean"
+    typeof value.narrationEnabled !== "boolean" ||
+    typeof value.subtitlesEnabled !== "boolean"
   ) {
     return false;
   }

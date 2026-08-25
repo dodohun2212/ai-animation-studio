@@ -15,7 +15,7 @@ function isValidClipDuration(value: unknown): value is number {
 }
 
 const STYLE_KEYS = ["visualStyle", "color", "lighting", "camera", "dialogue", "avoid", "aspect"] as const;
-const SETTINGS_KEYS = ["projectName", "topic", "genre", "mood", "character", "lore", "fullStory", "sceneCount", "clipDurationSeconds", "additionalNotes", "styleNotes", "narrationEnabled"] as const;
+const SETTINGS_KEYS = ["projectName", "topic", "genre", "mood", "character", "lore", "fullStory", "sceneCount", "clipDurationSeconds", "additionalNotes", "styleNotes", "narrationEnabled", "subtitlesEnabled"] as const;
 
 function asObject(value: unknown, field: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -81,6 +81,10 @@ export function toShortProjectSettings(stored: StoredProject): ShortProjectSetti
     additionalNotes: stringFrom(stored.lore_context.additional_notes),
     styleNotes: styleNotesFrom(stored.lore_context.style_notes),
     narrationEnabled: stored.lore_context.narration_enabled === true,
+    // Falls back to narrationEnabled's value when the key has never been stored — see ShortProjectSettings.subtitlesEnabled's doc comment.
+    subtitlesEnabled: "subtitles_enabled" in stored.lore_context
+      ? stored.lore_context.subtitles_enabled === true
+      : stored.lore_context.narration_enabled === true,
   };
 }
 
@@ -110,6 +114,9 @@ export function parseShortProjectSettings(value: unknown): ShortProjectSettings 
   if (typeof settings.narrationEnabled !== "boolean") {
     throw invalidRequest("settings.narrationEnabled must be a boolean.", { field: "settings.narrationEnabled" });
   }
+  if (typeof settings.subtitlesEnabled !== "boolean") {
+    throw invalidRequest("settings.subtitlesEnabled must be a boolean.", { field: "settings.subtitlesEnabled" });
+  }
   return {
     projectName: requiredString(settings.projectName, "settings.projectName"),
     topic: requiredString(settings.topic, "settings.topic"),
@@ -125,6 +132,7 @@ export function parseShortProjectSettings(value: unknown): ShortProjectSettings 
     additionalNotes: optionalString(settings.additionalNotes, "settings.additionalNotes"),
     styleNotes: normalizedStyleNotes,
     narrationEnabled: settings.narrationEnabled,
+    subtitlesEnabled: settings.subtitlesEnabled,
   };
 }
 
@@ -153,6 +161,7 @@ export function applyShortProjectSettings(stored: StoredProject, settings: Short
       additional_notes: settings.additionalNotes,
       style_notes: styleNotes,
       narration_enabled: settings.narrationEnabled,
+      subtitles_enabled: settings.subtitlesEnabled,
     },
   };
 }

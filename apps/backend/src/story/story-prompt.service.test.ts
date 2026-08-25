@@ -87,7 +87,7 @@ describe("StoryPromptService", () => {
     const draftSettings = {
       projectName: "Draft Name", topic: "draft topic", genre: "", mood: "", character: "",
       lore: "", fullStory: "", sceneCount: 6, clipDurationSeconds: 5, additionalNotes: "", styleNotes: {},
-      narrationEnabled: false,
+      narrationEnabled: false, subtitlesEnabled: false,
     };
     const result = await service.draftPreview("sample", { settings: draftSettings });
     expect(result).toEqual({ prompt: "name=Draft Name topic=draft topic count=6 literal=$ missing=$missing" });

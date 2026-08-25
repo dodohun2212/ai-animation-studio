@@ -19,6 +19,7 @@ const settings = {
   additionalNotes: "무서운 장면 제외",
   styleNotes: { visualStyle: "수채화", lighting: "달빛", aspect: "16:9" },
   narrationEnabled: true,
+  subtitlesEnabled: true,
 };
 
 // What a client actually sends in a request body: no durationSeconds field (SETTINGS_KEYS rejects it as unsupported).
@@ -35,6 +36,7 @@ const settingsRequest = {
   additionalNotes: settings.additionalNotes,
   styleNotes: settings.styleNotes,
   narrationEnabled: settings.narrationEnabled,
+  subtitlesEnabled: settings.subtitlesEnabled,
 };
 
 describe("short project settings", () => {
@@ -49,6 +51,7 @@ describe("short project settings", () => {
       sceneCount: 6,
       clipDurationSeconds: 5,
       narrationEnabled: false,
+      subtitlesEnabled: false,
     });
   });
 
@@ -85,12 +88,33 @@ describe("short project settings", () => {
     expect(() => parseShortProjectSettings({ ...settingsRequest, narrationEnabled: "true" })).toThrow();
     const { narrationEnabled, ...withoutNarration } = settingsRequest;
     expect(() => parseShortProjectSettings(withoutNarration)).toThrow();
+    expect(() => parseShortProjectSettings({ ...settingsRequest, subtitlesEnabled: "true" })).toThrow();
+    const { subtitlesEnabled, ...withoutSubtitles } = settingsRequest;
+    expect(() => parseShortProjectSettings(withoutSubtitles)).toThrow();
   });
 
   it("defaults narrationEnabled to false for existing projects and round-trips true/false through settings", () => {
     expect(toShortProjectSettings(createStoredProject("sample", "topic", "2026-08-22T00:00:00.000Z")).narrationEnabled).toBe(false);
     expect(parseShortProjectSettings({ ...settingsRequest, narrationEnabled: true }).narrationEnabled).toBe(true);
     expect(parseShortProjectSettings({ ...settingsRequest, narrationEnabled: false }).narrationEnabled).toBe(false);
+  });
+
+  it("round-trips subtitlesEnabled true/false through settings independently of narrationEnabled", () => {
+    expect(parseShortProjectSettings({ ...settingsRequest, narrationEnabled: false, subtitlesEnabled: true }).subtitlesEnabled).toBe(true);
+    expect(parseShortProjectSettings({ ...settingsRequest, narrationEnabled: true, subtitlesEnabled: false }).subtitlesEnabled).toBe(false);
+  });
+
+  it("falls back subtitlesEnabled to narrationEnabled's stored value for a project that predates the subtitlesEnabled field", () => {
+    const stored = createStoredProject("sample", "topic", "2026-08-22T00:00:00.000Z");
+    stored.lore_context = { narration_enabled: true }; // legacy project: no subtitles_enabled key at all
+    expect(toShortProjectSettings(stored).subtitlesEnabled).toBe(true);
+
+    stored.lore_context = { narration_enabled: false };
+    expect(toShortProjectSettings(stored).subtitlesEnabled).toBe(false);
+
+    // Once the key IS present, it wins even if it disagrees with narrationEnabled — the fallback is only for its absence.
+    stored.lore_context = { narration_enabled: true, subtitles_enabled: false };
+    expect(toShortProjectSettings(stored).subtitlesEnabled).toBe(false);
   });
 
   it("accepts a scene count anywhere in the supported 2-12 range, not just 6", () => {

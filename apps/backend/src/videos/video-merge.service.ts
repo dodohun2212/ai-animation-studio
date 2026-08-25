@@ -41,15 +41,18 @@ export class LocalVideoMergeService {
   /**
    * A narration file that is missing, empty, or was recorded under a path this machine no longer resolves to
    * (see image-review.service.ts's identical caution about stale generated_images entries) must never fail the
-   * merge — narration is supplementary, the video is not. Any such scene simply falls back to silence, and a
-   * subtitle is only ever attached alongside real audio (see MergeSceneInput.subtitleText's doc comment) — no
-   * audio means no subtitle either, even if the scene's narration text itself is otherwise present.
+   * merge — narration is supplementary, the video is not. Any such scene simply falls back to silence.
+   *
+   * subtitleText is independent of narrationAudioPath (subtitles-only, no TTS spend, is a deliberate mode — see
+   * ShortProjectSettings.subtitlesEnabled's doc comment): a scene gets a subtitle whenever subtitlesEnabled is on
+   * AND that scene has narration text, regardless of whether narration audio exists for it.
    */
   private async mergeScenes(project: StoredProject, clips: readonly string[], scenes: readonly SceneNumber[]): Promise<MergeSceneInput[]> {
+    const subtitlesEnabled = toShortProjectSettings(project).subtitlesEnabled;
     return Promise.all(scenes.map(async (scene, index) => {
       const file = project.generated_narrations[scene - 1];
       const narrationAudioPath = typeof file === "string" && (await fs.stat(file).then((stat) => stat.size > 0).catch(() => false)) ? file : null;
-      const subtitleText = narrationAudioPath ? sceneValue(project.scenes[scene - 1], "narration") || null : null;
+      const subtitleText = subtitlesEnabled ? sceneValue(project.scenes[scene - 1], "narration") || null : null;
       return { clip: clips[index]!, narrationAudioPath, subtitleText };
     }));
   }
