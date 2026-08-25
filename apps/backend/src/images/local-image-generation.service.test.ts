@@ -26,7 +26,10 @@ async function setup() {
   project.workflow_state = WorkflowState.AssetMappingApproved;
   project.script_revision = 1;
   project.mapping_revision = 3;
-  project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, description: `scene ${number}`, main_motion: `motion ${number}` }));
+  project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({
+    number, description: `scene ${number}`, main_motion: `motion ${number}`, visual_action: `action ${number}`,
+    shot_size: "medium shot", camera_angle: "eye level", composition: `composition ${number}`, lens_feel: "natural", focus_subject: "subject",
+  }));
   await projects.create(project);
   const mappings = new LocalProjectAssetMappingsRepository(projectsRoot);
   await mappings.saveReview("images", { project_id: "images", mapping_revision: 3, script_revision: 1, script_fingerprint: scriptFingerprint(project.scenes), status: "approved", approved_at: "2026-08-22T00:00:00.000Z", approved_by: "user", text_only_confirmed: true, legacy_confirmed: false, reviewed_scenes: [1, 2, 3, 4, 5, 6] });
@@ -86,7 +89,8 @@ describe("provider-free local image generation", () => {
     const reloaded = await new LocalProjectRepository(projectsRoot).findById("images");
     expect(reloaded).toMatchObject({ workflow_state: WorkflowState.ImagesReview });
     expect(reloaded.generated_images).toHaveLength(6);
-    expect(reloaded.image_prompts).toEqual(["scene 1", "scene 2", "scene 3", "scene 4", "scene 5", "scene 6"]);
+    expect(reloaded.image_prompts).toEqual([1, 2, 3, 4, 5, 6].map((number) =>
+      `Scene: action ${number}\nShot: medium shot, eye level\nComposition: composition ${number}\nLens: natural\nFocus: subject`));
     expect(reloaded.motion_prompts).toEqual(["motion 1", "motion 2", "motion 3", "motion 4", "motion 5", "motion 6"]);
     expect(reloaded.image_generation_records).toEqual(expect.arrayContaining([expect.objectContaining({ scene_number: 1, checkpoint: "completed", image_api_calls: 0 })]));
     await Promise.all(reloaded.generated_images.map(async (file, index) => {
@@ -98,6 +102,33 @@ describe("provider-free local image generation", () => {
     expect(folder?.child_asset_ids).toHaveLength(6);
     expect(folder?.approved).toBe(false);
     expect(assets.filter((asset) => !asset.is_folder && asset.source_project_id === "images")).toHaveLength(6);
+  });
+
+  it("assembles the image prompt from visual_action and composition fields, never the narrated description, and omits empty composition lines", async () => {
+    const { projectsRoot, projects, mappings } = await setup();
+    const project = await projects.findById("images");
+    project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({
+      number, description: `A character says "line ${number}" while walking.`, main_motion: `motion ${number}`,
+      visual_action: `walks toward the ${number} gate`, shot_size: "", camera_angle: "", composition: "", lens_feel: "", focus_subject: "",
+    }));
+    await projects.save(project);
+    await mappings.saveReview("images", { ...(await mappings.loadReview("images")), script_fingerprint: scriptFingerprint(project.scenes) });
+    await new LocalImageGenerationService(projects, mappings, projectsRoot).generate("images", { approved: true });
+    const reloaded = await new LocalProjectRepository(projectsRoot).findById("images");
+    for (const [index, prompt] of reloaded.image_prompts.entries()) {
+      expect(prompt).toBe(`Scene: walks toward the ${index + 1} gate`);
+      expect(prompt).not.toContain("says");
+      expect(prompt).not.toContain("Shot:");
+    }
+  });
+
+  it("rejects generation when a scene is missing visual_action, the field the image prompt now depends on", async () => {
+    const { projectsRoot, projects, mappings } = await setup();
+    const project = await projects.findById("images");
+    project.scenes[0] = { number: 1, description: "scene 1", main_motion: "motion 1" };
+    await projects.save(project);
+    await expect(new LocalImageGenerationService(projects, mappings, projectsRoot).generate("images", { approved: true }))
+      .rejects.toMatchObject({ response: { code: "IMAGE_GENERATION_FAILED" } });
   });
 
   it("serves a generated scene's PNG bytes by canonical path and rejects an out-of-range or ungenerated scene", async () => {

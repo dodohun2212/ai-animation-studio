@@ -427,17 +427,19 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
 
   return (
     <section className="mt-8 max-w-6xl space-y-5">
-      <header className="flex items-center justify-between">
-        <button type="button" className={outlineButton} onClick={onBack}>
-          프로젝트 목록으로
+      <header className="space-y-1.5">
+        <button type="button" className="text-xs text-slate-400 hover:text-slate-300" onClick={onBack}>
+          <span aria-hidden="true">←</span> 프로젝트 목록으로
         </button>
-        <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-slate-100">
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-slate-100">
           <span
             aria-hidden="true"
             className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
           />
-          Asset Library
-        </h1>
+            Asset Library
+          </h1>
+        </div>
       </header>
       {error && (
         <p role="alert" data-error-code={error.code} className="text-sm text-rose-400">

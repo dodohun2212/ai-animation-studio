@@ -57,9 +57,31 @@ function sceneValue(scene: unknown, key: string): string {
   return isObject(scene) && typeof scene[key] === "string" ? scene[key].trim() : "";
 }
 
+/**
+ * The Story template's own field definitions assign `visual_action` and the composition fields below to image
+ * generation specifically ("이미지 한 장의 구도") — `description` is the narrated script (background, emotional
+ * flow, and dialogue) meant for on-screen script display, not a model prompt. Sending `description` to the image
+ * model (the prior behavior) fed it dialogue text no image model can render, while leaving these composition
+ * fields generated-but-unused. Mirrors the "select fields, label them, join with newlines" shape of
+ * video-preview.service.ts's promptFor, which assembles the equivalent video prompt from this same scene shape.
+ * No length truncation: OpenAI's image prompt limit (32,000 chars) is far larger than anything a single scene's
+ * fields could reach.
+ */
+function imagePromptFor(scene: unknown): string {
+  const sections: Array<[string, string]> = [
+    ["Scene", sceneValue(scene, "visual_action")],
+    ["Shot", [sceneValue(scene, "shot_size"), sceneValue(scene, "camera_angle")].filter(Boolean).join(", ")],
+    ["Composition", sceneValue(scene, "composition")],
+    ["Lens", sceneValue(scene, "lens_feel")],
+    ["Focus", sceneValue(scene, "focus_subject")],
+  ];
+  return sections.filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`).join("\n");
+}
+
 function assertValidScenes(project: StoredProject): void {
   const expected = scenesFor(project);
-  if (project.scenes.length !== expected.length || project.scenes.some((scene, index) => !isObject(scene) || scene.number !== index + 1 || !sceneValue(scene, "description"))) {
+  if (project.scenes.length !== expected.length || project.scenes.some((scene, index) =>
+    !isObject(scene) || scene.number !== index + 1 || !sceneValue(scene, "description") || !sceneValue(scene, "visual_action"))) {
     throw imageGenerationFailed();
   }
 }
@@ -121,7 +143,7 @@ export class LocalImageGenerationService {
           reused.push(number);
           continue;
         }
-        const prompt = sceneValue(current.scenes[number - 1], "description");
+        const prompt = imagePromptFor(current.scenes[number - 1]);
         let bytes: Buffer = PNG;
         let adapter = "local-fake-image-adapter";
         let apiCalls = 0;

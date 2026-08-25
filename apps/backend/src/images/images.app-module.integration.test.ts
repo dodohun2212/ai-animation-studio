@@ -32,7 +32,7 @@ describe.sequential("local image generation HTTP route", () => {
     const projects = new LocalProjectRepository(projectsRoot);
     const project = createStoredProject("image_http", "Image HTTP", "2026-08-22T00:00:00.000Z");
     project.workflow_state = WorkflowState.AssetMappingApproved; project.script_revision = 1; project.mapping_revision = 1;
-    project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, description: `scene ${number}`, main_motion: `motion ${number}` }));
+    project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, description: `scene ${number}`, main_motion: `motion ${number}`, visual_action: `action ${number}` }));
     await projects.create(project);
     const mappings = new LocalProjectAssetMappingsRepository(projectsRoot);
     await mappings.saveReview("image_http", { project_id: "image_http", mapping_revision: 1, script_revision: 1, script_fingerprint: scriptFingerprint(project.scenes), status: "approved", approved_at: "2026-08-22T00:00:00.000Z", approved_by: "user", text_only_confirmed: true, legacy_confirmed: false, reviewed_scenes: [1, 2, 3, 4, 5, 6] });
@@ -65,7 +65,7 @@ describe.sequential("local image generation HTTP route", () => {
     const projects = new LocalProjectRepository(projectsRoot);
     const project = createStoredProject("image_http_real", "Image HTTP Real", "2026-08-22T00:00:00.000Z");
     project.workflow_state = WorkflowState.AssetMappingApproved; project.script_revision = 1; project.mapping_revision = 1;
-    project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, description: `scene ${number}`, main_motion: `motion ${number}` }));
+    project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, description: `scene ${number}`, main_motion: `motion ${number}`, visual_action: `action ${number}` }));
     await projects.create(project);
     const mappings = new LocalProjectAssetMappingsRepository(projectsRoot);
     await mappings.saveReview("image_http_real", { project_id: "image_http_real", mapping_revision: 1, script_revision: 1, script_fingerprint: scriptFingerprint(project.scenes), status: "approved", approved_at: "2026-08-22T00:00:00.000Z", approved_by: "user", text_only_confirmed: true, legacy_confirmed: false, reviewed_scenes: [1, 2, 3, 4, 5, 6] });
