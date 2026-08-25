@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { WorkflowState, type ProjectSummary } from "@ai-animation-studio/shared";
 
 import { listProjects, toDisplayError } from "../api/projectsApi.js";
+import { formatDateTime } from "../utils/formatDateTime.js";
 import { workflowStateLabel } from "../utils/workflowStateLabels.js";
 import { Spinner } from "./Spinner.js";
 import { WorkflowProgressBar, progressPercent } from "./WorkflowProgressBar.js";
+import { StatusChip, type StatusTone } from "./ui/StatusChip.js";
 
 interface ProjectListProps {
   refreshToken: number;
@@ -19,10 +21,20 @@ interface ListState {
   loading: boolean;
 }
 
-function statusTone(state: WorkflowState): string {
-  if (state === WorkflowState.Failed || state === WorkflowState.Cancelled) return "bg-rose-500/15 text-rose-300";
-  if (state === WorkflowState.Ready || state === WorkflowState.Completed) return "bg-emerald-500/15 text-emerald-300";
-  return "bg-violet-500/15 text-violet-300";
+/**
+ * Workflow state → status chip tone, per the design system's fixed grammar (§2.1/§3.4): emerald only for a
+ * genuinely finished project, amber while something is running, rose on failure, neutral for the waiting and
+ * review steps. `Ready` is deliberately neutral — it means "set up, not started", not "done".
+ */
+function statusTone(state: WorkflowState): StatusTone {
+  if (state === WorkflowState.Failed || state === WorkflowState.Cancelled) return "danger";
+  if (state === WorkflowState.Completed) return "success";
+  if (state === WorkflowState.Interrupted) return "progress";
+  if (
+    state === WorkflowState.GeneratingStory || state === WorkflowState.GeneratingImages
+    || state === WorkflowState.GeneratingVideos || state === WorkflowState.Rendering
+  ) return "progress";
+  return "neutral";
 }
 
 function PlusIcon() {
@@ -123,20 +135,24 @@ export function ProjectList({ refreshToken, onOpenProject, onCreateNew }: Projec
             <li key={project.id}>
               <button
                 type="button"
-                className="flex w-full items-center gap-4 rounded-2xl border border-white/10 bg-slate-900/70 p-3 text-left text-slate-100"
+                className="flex w-full items-center gap-4 rounded-2xl border border-white/10 bg-slate-900/70 p-3 text-left text-slate-100 transition-colors duration-150 hover:border-violet-400/40 hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/30"
                 onClick={() => onOpenProject(project.id)}
               >
                 <span className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-xl bg-slate-800">
                   <ProjectThumbnail />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-semibold">{project.id}</span>
-                  <span className="block truncate text-sm text-slate-300">{project.topic}</span>
+                  {/* The topic is what the user recognizes a project by; the generated id is the machine
+                      handle and belongs underneath it, not as the headline. */}
+                  <span className="block truncate text-sm font-semibold text-slate-100">{project.topic || project.id}</span>
+                  <span className="block truncate text-xs text-slate-400">{project.id}</span>
                   <span className="mt-1.5 flex flex-wrap items-center gap-2">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusTone(project.workflowState)}`}>
+                    <StatusChip tone={statusTone(project.workflowState)}>
                       {workflowStateLabel(project.workflowState)}
+                    </StatusChip>
+                    <span className="text-xs text-slate-400 tabular-nums" title={project.updatedAt}>
+                      {formatDateTime(project.updatedAt)}
                     </span>
-                    <span className="text-xs text-slate-500">{project.updatedAt}</span>
                   </span>
                   <span className="mt-2 flex items-center gap-3">
                     <WorkflowProgressBar state={project.workflowState} className="flex-1" />

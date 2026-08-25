@@ -3,6 +3,7 @@ import type { Scene, StoryPromptPreview } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { approveStoryPrompt, createStoryPromptPreview, toStoryDisplayError } from "../api/storyPromptApi.js";
+import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
 
 interface Props {
@@ -235,7 +236,7 @@ export function StoryPromptScreen({ projectId, onBack }: Props) {
           )}
           {approved && (
             <p data-testid="approved-message" className="text-sm text-emerald-400">
-              승인되었습니다. ({approved.approvedAt})
+              승인되었습니다. (<span className="tabular-nums" title={approved.approvedAt}>{formatDateTime(approved.approvedAt)}</span>)
             </p>
           )}
           {approved && approved.workflowState === WorkflowState.WaitingForAssetMappingReview && approved.scenes.length > 0 && (

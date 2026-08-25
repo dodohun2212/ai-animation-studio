@@ -1,3 +1,4 @@
+import { RUNWAY_PROMPT_MAX_LENGTH } from "@ai-animation-studio/shared";
 import { utf16Length } from "./video-preview.service.js";
 
 /**
@@ -102,7 +103,7 @@ export async function createRunwayImageToVideoTask(
 ): Promise<{ taskId: string }> {
   const text = prompt.trim();
   if (!text) throw new RunwayAdapterError("invalid_request", "Runway 프롬프트가 비어 있습니다.");
-  if (utf16Length(text) > 1000) throw new RunwayAdapterError("invalid_request", "Runway 프롬프트가 1000 UTF-16 코드 유닛을 초과했습니다.");
+  if (utf16Length(text) > RUNWAY_PROMPT_MAX_LENGTH) throw new RunwayAdapterError("invalid_request", `Runway 프롬프트가 ${RUNWAY_PROMPT_MAX_LENGTH} UTF-16 코드 유닛을 초과했습니다.`);
   const response = await requestWithRetry(`${RUNWAY_BASE_URL}/v1/image_to_video`, {
     method: "POST",
     headers: {

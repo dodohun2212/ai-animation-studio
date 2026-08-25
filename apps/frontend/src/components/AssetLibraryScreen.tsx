@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { Asset, AssetFileAuditEntry, AssetType, CreateAssetMetadata, GetAssetResponse, RunLegacyReferenceMigrationResponse, UpdateAssetMetadataRequest } from "@ai-animation-studio/shared";
 import { addAssetVersion, createAsset, createAssetFolder, deleteAsset, deleteAssetFolder, deleteAssetOwnedFile, getAsset, listAssetFileAudit, listAssets, relinkAsset, runLegacyReferenceMigration, setAssetParentFolder, toAssetDisplayError, updateAsset, updateCharacterFolderReferenceSet } from "../api/assetsApi.js";
+import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
 
 interface Props { onBack: () => void; initialQuery?: string }
@@ -878,7 +879,8 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                 {selected.asset.versions.map((version) => (
                   <li key={version.version}>
                     v{version.version}
-                    {selected.asset.version === version.version ? " (현재)" : ""} · {version.createdAt}
+                    {selected.asset.version === version.version ? " (현재)" : ""} ·{" "}
+                    <span className="tabular-nums" title={version.createdAt}>{formatDateTime(version.createdAt)}</span>
                     {version.notes && ` · ${version.notes}`}
                   </li>
                 ))}

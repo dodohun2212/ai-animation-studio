@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { createHash } from "node:crypto";
 
 import { Injectable } from "@nestjs/common";
-import { sceneNumbersFor, WorkflowState, type GetVideoPromptPreviewResponse, type SceneNumber, type VideoPromptPreview } from "@ai-animation-studio/shared";
+import { RUNWAY_PROMPT_MAX_LENGTH, sceneNumbersFor, WorkflowState, type GetVideoPromptPreviewResponse, type SceneNumber, type VideoPromptPreview } from "@ai-animation-studio/shared";
 
 import { validateImage } from "../assets/image-validation.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
@@ -25,7 +25,7 @@ const SCENE_FIELDS = [
   "shot_size", "camera_angle", "composition", "lens_feel", "focus_subject", "camera_motion",
   "environment_motion", "motion_speed", "motion_intensity", "expression_change", "continuity_hint",
 ] as const;
-const UTF16_PROMPT_LIMIT = 1_000;
+const UTF16_PROMPT_LIMIT = RUNWAY_PROMPT_MAX_LENGTH;
 
 type StoredScene = Record<(typeof SCENE_FIELDS)[number], string | number>;
 

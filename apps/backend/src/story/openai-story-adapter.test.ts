@@ -72,6 +72,13 @@ describe("callOpenAiStoryApi", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("classifies context_length_exceeded distinctly from a generic invalid_request and never retries", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(400, { error: { code: "context_length_exceeded", message: "too long" } }));
+    await expect(callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock, sleep: noSleep }))
+      .rejects.toMatchObject({ category: "context_length_exceeded" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("retries a 429 up to maxRetries, honoring Retry-After, then succeeds", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(429, { error: { message: "slow down" } }, { "retry-after": "0" }))

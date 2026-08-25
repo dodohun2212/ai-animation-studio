@@ -20,6 +20,7 @@ import {
   toMappingDisplayError,
   updateProjectAssetMapping,
 } from "../api/mappingsApi.js";
+import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
 
 interface Props { projectId: string; onBack: () => void }
@@ -262,8 +263,8 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
             <div><dt className="inline text-slate-400">Script Revision: </dt><dd className="inline font-medium text-slate-100">{review.scriptRevision}</dd></div>
             <div className="sm:col-span-2"><dt className="inline text-slate-400">Fingerprint: </dt><dd className="inline break-all font-medium text-slate-100">{review.scriptFingerprint || "없음"}</dd></div>
             <div><dt className="inline text-slate-400">상태: </dt><dd className="inline font-medium text-slate-100">{review.status === "approved" ? "승인됨" : "대기 중"}</dd></div>
-            {review.status === "approved" && (
-              <div><dt className="inline text-slate-400">승인 시각: </dt><dd className="inline font-medium text-slate-100">{review.approvedAt}</dd></div>
+            {review.status === "approved" && review.approvedAt && (
+              <div><dt className="inline text-slate-400">승인 시각: </dt><dd className="inline font-medium text-slate-100 tabular-nums" title={review.approvedAt}>{formatDateTime(review.approvedAt)}</dd></div>
             )}
             <div className="sm:col-span-2"><dt className="inline text-slate-400">검토된 장면: </dt><dd className="inline font-medium text-slate-100">{review.reviewedScenes.join(", ") || "없음"}</dd></div>
           </dl>

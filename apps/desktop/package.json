@@ -28,7 +28,8 @@
     "files": ["dist/**/*"],
     "extraResources": [
       { "from": "../backend/dist-bundle", "to": "backend" },
-      { "from": "../frontend/dist", "to": "frontend" }
+      { "from": "../frontend/dist", "to": "frontend" },
+      { "from": "../../prompts", "to": "backend/prompts" }
     ],
     "win": {
       "target": ["nsis"]

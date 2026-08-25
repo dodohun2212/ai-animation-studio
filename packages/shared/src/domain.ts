@@ -28,6 +28,14 @@ export function sceneNumbersFor(sceneCount: number): SceneNumber[] {
  */
 export const RUNWAY_CLIP_DURATIONS = [5, 10] as const;
 export type RunwayClipDurationSeconds = (typeof RUNWAY_CLIP_DURATIONS)[number];
+
+/**
+ * Runway Gen-4 Turbo's API `prompt` field maxLength (confirmed against docs.aimlapi.com's schema, the same source
+ * already cited for {@link RUNWAY_CLIP_DURATIONS}). Measured in UTF-16 code units, matching JavaScript's native
+ * `.length` and Runway's own counting. When a rendered video prompt would exceed this, the caller drops optional
+ * sections in priority order rather than truncating mid-sentence.
+ */
+export const RUNWAY_PROMPT_MAX_LENGTH = 1_000;
 export type ProjectType = "short_project" | "long_story_project";
 export type ReviewDecision = "pending" | "approved" | "rejected";
 export type JobStatus =

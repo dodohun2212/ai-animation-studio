@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { jsonResponse, makeProject } from "../api/testUtils.js";
+import { formatDateTime } from "../utils/formatDateTime.js";
 import { workflowStateLabel } from "../utils/workflowStateLabels.js";
 import { ProjectDetail } from "./ProjectDetail.js";
 
@@ -27,19 +28,36 @@ describe("ProjectDetail", () => {
     expect(await screen.findByText("sample_project")).toBeTruthy();
     expect(screen.getByText("우주를 여행하는 고양이")).toBeTruthy();
     expect(screen.getByText("단편 프로젝트")).toBeTruthy();
+    // Topic, project type and workflow state each appear exactly once — the heading owns them, the
+    // detail list below carries only the id and timestamps.
     expect(screen.getByText(workflowStateLabel(project.workflowState))).toBeTruthy();
-    expect(screen.getByText("2026-08-21T00:00:00.000Z")).toBeTruthy();
-    expect(screen.getByText("2026-08-21T05:00:00.000Z")).toBeTruthy();
+    // Timestamps are rendered as local date+time; the exact stored ISO string stays available as the title.
+    expect(screen.getByTitle("2026-08-21T00:00:00.000Z").textContent).toBe(formatDateTime("2026-08-21T00:00:00.000Z"));
+    expect(screen.getByTitle("2026-08-21T05:00:00.000Z").textContent).toBe(formatDateTime("2026-08-21T05:00:00.000Z"));
     expect(fetchMock).toHaveBeenCalledWith("/projects/sample_project");
   });
 
-  it("shows warnings and errors counts", async () => {
-    const project = makeProject({ warnings: ["a", "b"], errors: ["c"] });
+  it("lists the actual warning and error messages, not only their counts", async () => {
+    const project = makeProject({ warnings: ["장면 3 프롬프트가 길어 잘렸습니다", "b"], errors: ["Runway 인증 실패"] });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
     render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} />);
 
-    expect(await screen.findByText("2건")).toBeTruthy();
-    expect(screen.getByText("1건")).toBeTruthy();
+    const errors = await screen.findByTestId("project-errors");
+    expect(errors.textContent).toContain("오류 1건");
+    expect(errors.textContent).toContain("Runway 인증 실패");
+    const warnings = screen.getByTestId("project-warnings");
+    expect(warnings.textContent).toContain("경고 2건");
+    expect(warnings.textContent).toContain("장면 3 프롬프트가 길어 잘렸습니다");
+  });
+
+  it("omits the warning and error sections entirely when there are none", async () => {
+    const project = makeProject({ warnings: [], errors: [] });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} />);
+
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.queryByTestId("project-errors")).toBeNull();
+    expect(screen.queryByTestId("project-warnings")).toBeNull();
   });
 
   it("shows a not-found error with its code identifiable via data-error-code", async () => {

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { LongProjectSummary } from "@ai-animation-studio/shared";
 
 import { listLongProjects, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
 
 interface LongProjectListProps {
@@ -128,7 +129,7 @@ export function LongProjectList({ refreshToken, onOpenProject, onCreateNew }: Lo
                     <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-xs font-medium text-violet-300">
                       {project.outlineStatus} · Episode {project.episodeCount}개
                     </span>
-                    <span className="text-xs text-slate-500">{project.updatedAt}</span>
+                    <span className="text-xs text-slate-400 tabular-nums" title={project.updatedAt}>{formatDateTime(project.updatedAt)}</span>
                   </span>
                 </span>
                 <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-slate-800 text-slate-300">

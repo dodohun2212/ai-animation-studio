@@ -28,6 +28,21 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fsPromises.rm(root, { recursive: true, force: true })));
 });
 
+describe("default prompts root resolution (regression: must not depend on process.cwd())", () => {
+  it("finds the real repository prompts/story/story_generation.txt with no templateRoot override, exactly as production wiring constructs the service", async () => {
+    const root = await fsPromises.mkdtemp(path.join(os.tmpdir(), "story-prompt-default-root-")); roots.push(root);
+    const repository = new LocalProjectRepository(path.join(root, "projects"));
+    const stored = createStoredProject("default_root_check", "a lighthouse at dusk", "2026-08-22T00:00:00.000Z");
+    await repository.create(stored);
+    // No templateRoot argument: exercises the real default promptsRoot() resolution, which every production
+    // launch path (nest start --watch, node dist/main.js, the packaged app) relies on and which previously
+    // silently broke whenever process.cwd() wasn't the repository root (i.e. every real launch).
+    const service = new StoryPromptService(repository);
+    const result = await service.preview("default_root_check");
+    expect(result.preview.originalPrompt).toContain("a lighthouse at dusk");
+  });
+});
+
 const SCENE = (number: number) => ({
   number, description: `d${number}`, visual_action: "v", start_motion: "s", main_motion: "m", end_motion: "e",
   shot_size: "medium", camera_angle: "eye", composition: "centered", lens_feel: "natural", focus_subject: "hero",

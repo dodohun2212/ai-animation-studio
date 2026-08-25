@@ -1,6 +1,8 @@
 import * as crypto from "node:crypto";
+import { existsSync } from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Injectable } from "@nestjs/common";
 import { WorkflowState } from "@ai-animation-studio/shared";
 import type { ApproveStoryPromptRequest, ApproveStoryPromptResponse, CreateStoryPromptDraftPreviewResponse, CreateStoryPromptPreviewResponse, StoryPromptPreview } from "@ai-animation-studio/shared";
@@ -24,8 +26,42 @@ const sha256 = (value: string) => crypto.createHash("sha256").update(value, "utf
 const object = (value: unknown): Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const value = (record: Record<string, unknown>, key: string, fallback = "") => typeof record[key] === "string" ? record[key] as string : fallback;
 
+/**
+ * The source is real ESM (apps/backend's package.json has `"type": "module"`), where `import.meta.url` is the
+ * correct way to find this module's own directory — but the `package` script also bundles this same source into a
+ * single CJS file with esbuild, and esbuild empties `import.meta` in CJS output rather than shimming it (it warns
+ * "is not available... and will be empty" at build time). Evaluating `import.meta.url` there produces `undefined`,
+ * and `new URL(".", undefined)` throws immediately, which would crash the packaged app at startup. `__dirname` is
+ * always defined in that bundled CJS output and never defined in genuine ESM, so branching on it keeps the
+ * `import.meta.url` expression unreached (never evaluated, never thrown) whenever `__dirname` is available.
+ */
+function currentModuleDirectory(): string {
+  const cjsDirname: string | undefined = typeof __dirname === "string" ? __dirname : undefined;
+  return cjsDirname ?? fileURLToPath(new URL(".", import.meta.url));
+}
+
+/**
+ * `prompts/` is a static repository asset (checked into git, not per-run data), so its location must never depend
+ * on the launching process's cwd — unlike `learning_data/`, which is intentionally cwd-relative because every real
+ * launch path (`nest start --watch`, `node dist/main.js`, the packaged `dist-bundle`) always runs from
+ * `apps/backend`, making that a consistent per-install data directory rather than a bug.
+ *
+ * The module's own file location is a stable anchor, but its depth below the repository root differs by build
+ * output: dev (`apps/backend/src/story/`) and `nest build` (`apps/backend/dist/story/`) both sit 4 directories
+ * below the repo root, the single-file esbuild bundle (`apps/backend/dist-bundle/main.cjs`) sits only 3 below, and
+ * the packaged Electron app ships `prompts/` as a sibling of the bundle (see apps/desktop/package.json's
+ * extraResources). Rather than hardcode one depth, try each candidate and use the first that actually contains
+ * the story template.
+ */
 function promptsRoot(): string {
-  return process.env.PROMPTS_ROOT ?? path.resolve(process.cwd(), "prompts");
+  if (process.env.PROMPTS_ROOT) return process.env.PROMPTS_ROOT;
+  const moduleDirectory = currentModuleDirectory();
+  const candidates = [
+    path.resolve(moduleDirectory, "../../../../prompts"), // dev: src/story/ -> repo root; build: dist/story/ -> repo root
+    path.resolve(moduleDirectory, "../../../prompts"), // bundled: dist-bundle/ -> repo root (e.g. running dist-bundle/main.cjs from a repo checkout)
+    path.resolve(moduleDirectory, "prompts"), // packaged: prompts/ copied as a sibling of the bundle
+  ];
+  return candidates.find((candidate) => existsSync(path.join(candidate, "story", "story_generation.txt"))) ?? candidates[0]!;
 }
 
 /** Mirrors Python Template.safe_substitute for this fixed local template. */

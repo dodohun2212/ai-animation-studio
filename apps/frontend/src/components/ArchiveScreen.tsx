@@ -10,6 +10,7 @@ import {
   restoreProject,
   toArchiveDisplayError,
 } from "../api/archiveApi.js";
+import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
 
 interface Props {
@@ -121,7 +122,9 @@ export function ArchiveScreen({ onBack, onChanged }: Props) {
       <li key={id} data-testid={`archived-${scope}-${id}`} className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-3">
         <span className="min-w-0 flex-1">
           <strong className="block truncate text-sm text-slate-100">{displayLabel}</strong>
-          <span className="text-xs text-slate-400">{extra} · 보관 시각: {archivedAt}</span>
+          <span className="text-xs text-slate-400 tabular-nums" title={archivedAt}>
+            {extra} · 보관 시각: {formatDateTime(archivedAt)}
+          </span>
         </span>
         <button
           type="button"

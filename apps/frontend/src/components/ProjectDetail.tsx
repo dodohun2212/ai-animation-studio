@@ -3,10 +3,22 @@ import type { Project } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { archiveProject, getProject, toDisplayError } from "../api/projectsApi.js";
+import { formatDateTime } from "../utils/formatDateTime.js";
 import { projectTypeLabel, workflowStateLabel } from "../utils/workflowStateLabels.js";
 import { ArchiveProjectDialog } from "./ArchiveProjectDialog.js";
 import { Spinner } from "./Spinner.js";
 import { WorkflowProgressBar } from "./WorkflowProgressBar.js";
+import { StatusChip, type StatusTone } from "./ui/StatusChip.js";
+
+/** Workflow state → status chip tone, per design system §3.4's documented mapping. */
+function workflowTone(state: WorkflowState): StatusTone {
+  if (state === WorkflowState.Completed) return "success";
+  if (state === WorkflowState.Failed || state === WorkflowState.Cancelled) return "danger";
+  if (state === WorkflowState.Interrupted) return "progress";
+  if (state === WorkflowState.GeneratingStory || state === WorkflowState.GeneratingImages
+    || state === WorkflowState.GeneratingVideos || state === WorkflowState.Rendering) return "progress";
+  return "neutral";
+}
 
 interface ProjectDetailProps {
   projectId: string;
@@ -137,6 +149,18 @@ export function ProjectDetail({
       )}
       {state.status === "success" && (
         <>
+          {/* §4.1: every screen leads with its own title. The project's topic is what identifies it —
+              previously the screen opened straight into a row of buttons with no heading at all. */}
+          <header className="space-y-2">
+            <h1 className="text-2xl font-semibold text-slate-100">{state.project.topic || state.project.id}</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusChip tone={workflowTone(state.project.workflowState)}>
+                {workflowStateLabel(state.project.workflowState)}
+              </StatusChip>
+              <span className="text-xs text-slate-400">{projectTypeLabel(state.project.projectType)}</span>
+            </div>
+            <WorkflowProgressBar state={state.project.workflowState} className="max-w-md" />
+          </header>
           {resumeTarget(state.project) && (
             <button
               type="button"
@@ -188,39 +212,54 @@ export function ProjectDetail({
               }}
             />
           )}
-          <dl className="grid grid-cols-1 gap-x-8 gap-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6 text-slate-100 sm:grid-cols-2">
+          {/* Warnings and errors were previously shown as bare counts ("2건"), with the actual messages
+              unreachable anywhere in the UI. A count the user cannot act on is not information. */}
+          {state.project.errors.length > 0 && (
+            <section
+              aria-label="프로젝트 오류"
+              data-testid="project-errors"
+              className="space-y-2 rounded-xl border border-rose-400/30 bg-rose-500/15 p-4"
+            >
+              <h2 className="text-sm font-semibold text-rose-300">오류 {state.project.errors.length}건</h2>
+              <ul className="space-y-1 text-sm text-rose-300">
+                {state.project.errors.map((message, index) => (
+                  <li key={`${index}-${message}`}>{message}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+          {state.project.warnings.length > 0 && (
+            <section
+              aria-label="프로젝트 경고"
+              data-testid="project-warnings"
+              className="space-y-2 rounded-xl border border-amber-400/40 bg-amber-500/10 p-4"
+            >
+              <h2 className="text-sm font-semibold text-amber-300">경고 {state.project.warnings.length}건</h2>
+              <ul className="space-y-1 text-sm text-amber-300">
+                {state.project.warnings.map((message, index) => (
+                  <li key={`${index}-${message}`}>{message}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+          <dl className="grid grid-cols-1 gap-x-8 gap-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6 sm:grid-cols-2">
             <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-400">ID</dt>
-              <dd className="mt-0.5">{state.project.id}</dd>
+              <dt className="text-xs text-slate-400">ID</dt>
+              <dd className="mt-0.5 text-sm text-slate-300">{state.project.id}</dd>
+            </div>
+            {/* Topic, project type and workflow state are the screen heading and its chips above; this list
+                carries only what the heading does not — repeating them showed the same value twice. */}
+            <div>
+              <dt className="text-xs text-slate-400">만든 시각</dt>
+              <dd className="mt-0.5 text-sm text-slate-300 tabular-nums" title={state.project.createdAt}>
+                {formatDateTime(state.project.createdAt)}
+              </dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-400">주제</dt>
-              <dd className="mt-0.5">{state.project.topic}</dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-400">프로젝트 유형</dt>
-              <dd className="mt-0.5">{projectTypeLabel(state.project.projectType)}</dd>
-            </div>
-            <div className="sm:col-span-2">
-              <dt className="text-xs uppercase tracking-wide text-slate-400">진행 상태</dt>
-              <dd className="mt-0.5">{workflowStateLabel(state.project.workflowState)}</dd>
-              <WorkflowProgressBar state={state.project.workflowState} className="mt-2 max-w-xs" />
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-400">생성 시각</dt>
-              <dd className="mt-0.5">{state.project.createdAt}</dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-400">수정 시각</dt>
-              <dd className="mt-0.5">{state.project.updatedAt}</dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-400">경고</dt>
-              <dd className="mt-0.5">{state.project.warnings.length}건</dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-slate-400">오류</dt>
-              <dd className="mt-0.5">{state.project.errors.length}건</dd>
+              <dt className="text-xs text-slate-400">마지막 수정</dt>
+              <dd className="mt-0.5 text-sm text-slate-300 tabular-nums" title={state.project.updatedAt}>
+                {formatDateTime(state.project.updatedAt)}
+              </dd>
             </div>
           </dl>
         </>

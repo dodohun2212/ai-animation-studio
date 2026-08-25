@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { jsonResponse, makeProject } from "../api/testUtils.js";
+import { formatDateTime } from "../utils/formatDateTime.js";
 import { workflowStateLabel } from "../utils/workflowStateLabels.js";
 import { ProjectList } from "./ProjectList.js";
 
@@ -33,7 +34,8 @@ describe("ProjectList", () => {
     expect(within(card).getByText("sample_project")).toBeTruthy();
     expect(within(card).getByText("우주를 여행하는 고양이")).toBeTruthy();
     expect(within(card).getByText(workflowStateLabel(WorkflowState.Ready))).toBeTruthy();
-    expect(within(card).getByText("2026-08-21T05:00:00.000Z")).toBeTruthy();
+    // Shown as local date+time; the stored ISO string stays available as the title attribute.
+    expect(within(card).getByTitle("2026-08-21T05:00:00.000Z").textContent).toBe(formatDateTime("2026-08-21T05:00:00.000Z"));
   });
 
   it("keeps the Backend's response order", async () => {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { LongEpisodeOutline, LongProjectOutlinePromptPreview } from "@ai-animation-studio/shared";
 
 import { approveLongProjectOutline, createLongProjectOutlinePreview, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
 
 interface Props {
@@ -230,7 +231,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
           )}
           {approved && (
             <p data-testid="approved-message" className="text-sm font-semibold text-emerald-400">
-              승인되었습니다. ({approved.approvedAt})
+              승인되었습니다. (<span className="tabular-nums" title={approved.approvedAt}>{formatDateTime(approved.approvedAt)}</span>)
             </p>
           )}
           {approved && (

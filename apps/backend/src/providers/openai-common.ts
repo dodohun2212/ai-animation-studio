@@ -5,7 +5,7 @@
 
 export type OpenAiErrorCategory =
   | "authentication" | "quota_or_permission" | "rate_limit" | "server" | "network"
-  | "invalid_request" | "safety_policy" | "unknown";
+  | "invalid_request" | "safety_policy" | "context_length_exceeded" | "unknown";
 
 export const OPENAI_KOREAN_MESSAGES: Record<OpenAiErrorCategory, string> = {
   authentication: "OpenAI API 키 인증에 실패했습니다.",
@@ -15,6 +15,7 @@ export const OPENAI_KOREAN_MESSAGES: Record<OpenAiErrorCategory, string> = {
   network: "OpenAI 연결 시간이 초과되거나 네트워크 연결에 실패했습니다.",
   invalid_request: "모델 또는 요청 형식이 지원되지 않습니다.",
   safety_policy: "안전 정책에 따라 요청이 거부되었습니다. 자동 재시도하지 않습니다.",
+  context_length_exceeded: "설정 내용이 모델이 처리할 수 있는 길이를 초과했습니다. 세계관·전체 줄거리·캐릭터 설명 등을 줄여서 다시 시도하세요.",
   unknown: "OpenAI 요청을 완료하지 못했습니다.",
 };
 
@@ -43,6 +44,10 @@ export async function classifyOpenAiHttpError(response: Response): Promise<OpenA
   if (status === 401) return "authentication";
   if (status === 402 || status === 403 || code === "insufficient_quota" || code === "billing_hard_limit_reached" || message.includes("insufficient_quota")) return "quota_or_permission";
   if (code === "content_policy_violation" || code === "safety_violation" || message.includes("content policy") || message.includes("safety")) return "safety_policy";
+  // OpenAI's documented code for a request whose rendered prompt exceeds the model's context window — a fixed
+  // character-count guard can't catch this upstream (the limit is model-dependent, not our prompt's), so the
+  // adapter classifies it after the fact instead, into a category the user can actually act on (shorten settings).
+  if (code === "context_length_exceeded" || message.includes("context_length_exceeded") || message.includes("maximum context length")) return "context_length_exceeded";
   if (status === 429) return "rate_limit";
   if (status >= 500 && status <= 599) return "server";
   if (status === 400) return "invalid_request";

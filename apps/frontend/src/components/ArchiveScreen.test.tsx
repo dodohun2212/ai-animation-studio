@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { jsonResponse } from "../api/testUtils.js";
+import { formatDateTime } from "../utils/formatDateTime.js";
 import { ArchiveScreen } from "./ArchiveScreen.js";
 
 const shortArchived = {
@@ -54,7 +55,7 @@ describe("ArchiveScreen", () => {
 
     const shortSection = await screen.findByRole("region", { name: "보관된 단편 프로젝트" });
     expect(within(shortSection).getByText("판다 기사")).toBeTruthy();
-    expect(within(shortSection).getByText(/보관 시각: 2026-08-24T00:00:00.000Z/)).toBeTruthy();
+    expect(within(shortSection).getByTitle("2026-08-24T00:00:00.000Z").textContent).toContain(formatDateTime("2026-08-24T00:00:00.000Z"));
     const longSection = screen.getByRole("region", { name: "보관된 장기 프로젝트" });
     expect(within(longSection).getByText("우주 방랑자")).toBeTruthy();
     expect(within(longSection).getByText(/에피소드 12개/)).toBeTruthy();
