@@ -101,7 +101,9 @@ function isNarrationReview(value: unknown): value is NarrationReview {
     isRecord(value) &&
     isSceneNumber(value.sceneNumber) &&
     typeof value.narration === "string" &&
-    typeof value.hasAudio === "boolean"
+    typeof value.hasAudio === "boolean" &&
+    // Optional, but never a non-number: the screen does arithmetic with it.
+    (value.audioDurationSeconds === undefined || typeof value.audioDurationSeconds === "number")
   );
 }
 

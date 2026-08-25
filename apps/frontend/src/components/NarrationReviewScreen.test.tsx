@@ -6,11 +6,12 @@ import { NarrationReviewScreen } from "./NarrationReviewScreen.js";
 
 const project = makeProject({});
 
-function narrations(entries: { narration: string; hasAudio?: boolean }[]) {
+function narrations(entries: { narration: string; hasAudio?: boolean; audioDurationSeconds?: number }[]) {
   return entries.map((entry, index) => ({
     sceneNumber: index + 1,
     narration: entry.narration,
     hasAudio: entry.hasAudio ?? false,
+    ...(entry.audioDurationSeconds === undefined ? {} : { audioDurationSeconds: entry.audioDurationSeconds }),
   }));
 }
 
@@ -222,5 +223,42 @@ describe("NarrationReviewScreen", () => {
     await screen.findByTestId("narration-stale-2");
     // Scene 1's audio still matches its text, so it carries no badge.
     expect(screen.queryByTestId("narration-stale-1")).toBeNull();
+  });
+
+  it("states measured audio length as fact once the audio exists, instead of guessing from characters", async () => {
+    renderScreen(
+      stubFetchByRoute({
+        [REVIEW]: {
+          project,
+          narrations: narrations([
+            { narration: "짧은 문장", hasAudio: true, audioDurationSeconds: 3.2 },
+            { narration: "긴 문장", hasAudio: true, audioDurationSeconds: 7.4 },
+          ]),
+        },
+        [SETTINGS]: { settings },
+      }),
+    );
+
+    // 7.4s of audio in a 5s clip is a fact, not an estimate — and it is reported as one.
+    const runsLong = await screen.findByTestId("narration-runs-long");
+    expect(runsLong.textContent).toContain("1개 장면");
+    expect(runsLong.textContent).toContain("실제로");
+    expect(screen.getByTestId("narration-scene-2").textContent).toContain("7.4초");
+    // The character-count guess must not also fire for scenes that already have measured audio.
+    expect(screen.queryByTestId("narration-too-long")).toBeNull();
+  });
+
+  it("falls back to the character-count guess only while a scene has no audio yet", async () => {
+    renderScreen(
+      stubFetchByRoute({
+        [REVIEW]: { project, narrations: narrations([{ narration: "가".repeat(40) }]) },
+        [SETTINGS]: { settings },
+      }),
+    );
+
+    const guess = await screen.findByTestId("narration-too-long");
+    expect(guess.textContent).toContain("어림한");
+    expect(screen.queryByTestId("narration-runs-long")).toBeNull();
+    expect(screen.getByTestId("narration-scene-1").textContent).toContain("40자");
   });
 });

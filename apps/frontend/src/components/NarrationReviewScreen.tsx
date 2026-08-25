@@ -35,9 +35,10 @@ type LoadState =
     };
 
 /**
- * Rough Korean narration reading pace, in characters per second, used only to warn that a line looks too long
- * for its clip. Deliberately conservative, and never used to block anything — it flags lines for a human to
- * shorten, it does not decide for them.
+ * Rough Korean narration reading pace, in characters per second. Only a fallback: once a scene's audio exists
+ * the server reports its measured length, and a measured length is a fact where this is a guess (it also reads
+ * Korean-calibrated, so Latin text and numbers over-trigger it). Never blocks anything either way — it flags
+ * lines for a human to shorten, it does not decide for them.
  */
 const READING_CHARS_PER_SECOND = 5;
 
@@ -97,9 +98,18 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
   const withText = narrations.filter((item) => item.narration.trim());
   const missing = narrations.filter((item) => !item.narration.trim());
   const estimatedCost = withText.length * TTS_ESTIMATED_COST_USD;
-  const tooLongFor = (text: string) =>
-    Boolean(clipDurationSeconds) && text.trim().length > (clipDurationSeconds ?? 0) * READING_CHARS_PER_SECOND;
-  const overLongCount = withText.filter((item) => tooLongFor(item.narration)).length;
+  /** A guess from character count — used only for scenes whose audio has not been made yet. */
+  const looksTooLong = (item: NarrationReview) =>
+    item.audioDurationSeconds === undefined &&
+    Boolean(clipDurationSeconds) &&
+    item.narration.trim().length > (clipDurationSeconds ?? 0) * READING_CHARS_PER_SECOND;
+  /** Measured from the actual audio file — this one is a fact, not an estimate. */
+  const runsTooLong = (item: NarrationReview) =>
+    item.audioDurationSeconds !== undefined &&
+    Boolean(clipDurationSeconds) &&
+    item.audioDurationSeconds > (clipDurationSeconds ?? 0);
+  const measuredOverLong = withText.filter(runsTooLong);
+  const estimatedOverLong = withText.filter(looksTooLong);
 
   async function confirmGeneration(): Promise<void> {
     if (generateBusy.current) return;
@@ -209,10 +219,16 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
                 만들어야 문장이 생깁니다.
               </p>
             )}
-            {overLongCount > 0 && (
+            {measuredOverLong.length > 0 && (
+              <p role="alert" data-testid="narration-runs-long" className="text-sm text-amber-300">
+                {measuredOverLong.length}개 장면의 음성이 실제로 {clipDurationSeconds}초 장면보다 깁니다. 문장을 줄이고 대본을
+                고친 뒤 그 장면 음성을 다시 만들면 맞출 수 있습니다.
+              </p>
+            )}
+            {estimatedOverLong.length > 0 && (
               <p role="alert" data-testid="narration-too-long" className="text-sm text-amber-300">
-                {overLongCount}개 장면의 문장이 {clipDurationSeconds}초 안에 읽기에 길어 보입니다. 음성이 장면보다 길어질 수
-                있으니 줄이는 편이 좋습니다.
+                {estimatedOverLong.length}개 장면의 문장이 {clipDurationSeconds}초 안에 읽기에 길어 보입니다. 글자 수로 어림한
+                것이라, 음성을 만들어 보면 실제 길이를 알 수 있습니다.
               </p>
             )}
 
@@ -292,7 +308,9 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
             <ul aria-label="장면별 내레이션" className="space-y-2">
               {narrations.map((item) => {
                 const text = item.narration.trim();
-                const tooLong = tooLongFor(item.narration);
+                const overByMeasure = runsTooLong(item);
+                const overByGuess = looksTooLong(item);
+                const tooLong = overByMeasure || overByGuess;
                 const regenerating = regeneratePendingScenes.has(item.sceneNumber);
                 const confirming = regenerateConfirmScene === item.sceneNumber;
                 return (
@@ -310,7 +328,9 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
                       <span className="flex items-center gap-2">
                         {text ? (
                           <StatusChip tone={tooLong ? "progress" : "neutral"}>
-                            {text.length}자{tooLong ? " · 길 수 있음" : ""}
+                            {item.audioDurationSeconds !== undefined
+                              ? `${item.audioDurationSeconds.toFixed(1)}초${overByMeasure ? " · 장면보다 김" : ""}`
+                              : `${text.length}자${overByGuess ? " · 길 수 있음" : ""}`}
                           </StatusChip>
                         ) : (
                           <StatusChip tone="danger">문장 없음</StatusChip>
