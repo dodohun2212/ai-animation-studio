@@ -1,5 +1,8 @@
 import {
   API_ROUTES,
+  isSceneNumber as isValidSceneNumber,
+  MAX_SCENE_COUNT,
+  MIN_SCENE_COUNT,
   type ArchiveProjectRequest,
   type ArchiveProjectResponse,
   type BudgetPreview,
@@ -225,7 +228,7 @@ function isLongEpisodeOutline(value: unknown): value is LongEpisodeOutline {
 }
 
 function isLongEpisodeScript(value: unknown): value is LongEpisodeScript {
-  if (!isRecord(value) || typeof value.title !== "string" || typeof value.synopsis !== "string" || typeof value.ending !== "string" || !Array.isArray(value.scenes) || value.scenes.length !== 6) return false;
+  if (!isRecord(value) || typeof value.title !== "string" || typeof value.synopsis !== "string" || typeof value.ending !== "string" || !Array.isArray(value.scenes) || value.scenes.length < MIN_SCENE_COUNT || value.scenes.length > MAX_SCENE_COUNT) return false;
   const fields = ["description", "visualAction", "startMotion", "mainMotion", "endMotion", "shotSize", "cameraAngle", "composition", "lensFeel", "focusSubject", "cameraMotion", "environmentMotion", "motionSpeed", "motionIntensity", "expressionChange", "continuityHint"];
   return value.scenes.every((scene, index) => isRecord(scene) && scene.number === index + 1 && fields.every((field) => typeof scene[field] === "string"));
 }
@@ -331,18 +334,15 @@ const isApproveEpisodeMappingResponse = (value: unknown): value is ApproveLongEp
 
 function isAutomaticReferenceSummary(value: unknown): value is LongEpisodeAutomaticReferenceSummary {
   if (!isRecord(value) || !Array.isArray(value.candidateAssetIds) || !value.candidateAssetIds.every(isNonEmptyString)
-    || !isRecord(value.selectedAssetIdsByScene) || value.estimatedImageApiCalls !== 6) return false;
+    || !isRecord(value.selectedAssetIdsByScene) || !Number.isInteger(value.estimatedImageApiCalls) || (value.estimatedImageApiCalls as number) < 0) return false;
   const selections = value.selectedAssetIdsByScene as Record<string, unknown>;
-  return [1, 2, 3, 4, 5, 6].every((sceneNumber) => {
-    const selection = selections[String(sceneNumber)];
-    return Array.isArray(selection) && selection.every(isNonEmptyString);
-  });
+  return Object.entries(selections).every(([key, selection]) => isSceneNumber(Number(key)) && Array.isArray(selection) && selection.every(isNonEmptyString));
 }
 const isGetAutomaticReferenceSummaryResponse = (value: unknown): value is GetLongEpisodeAutomaticReferenceSummaryResponse => isRecord(value) && isAutomaticReferenceSummary(value.summary);
 const isRerunEpisodeAssetMatchingResponse = (value: unknown): value is RerunLongEpisodeAssetMatchingResponse => isRecord(value) && isEpisodeMappingReview(value.review) && isLongEpisodeDetail(value.episode);
 
-function isSceneNumber(value: unknown): value is 1 | 2 | 3 | 4 | 5 | 6 {
-  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 6;
+function isSceneNumber(value: unknown): value is SceneNumber {
+  return typeof value === "number" && Number.isInteger(value) && isValidSceneNumber(value);
 }
 
 function isEpisodeImageReview(value: unknown): value is LongEpisodeImageReview {
@@ -374,13 +374,13 @@ function isBudgetPreview(value: unknown): value is BudgetPreview {
 }
 const isGetEpisodeVideoPreviewResponse = (value: unknown): value is GetLongEpisodeVideoPreviewResponse => isRecord(value)
   && isNonEmptyString(value.confirmationId) && value.model === "gen4_turbo" && (value.ratio === "720:1280" || value.ratio === "1280:720")
-  && value.durationSecondsPerScene === 5 && value.executionMode === "sequential" && typeof value.estimatedCostUsd === "number"
-  && Array.isArray(value.scenes) && value.scenes.length === 6 && value.scenes.every(isEpisodeVideoPreview)
+  && (value.durationSecondsPerScene === 5 || value.durationSecondsPerScene === 10) && value.executionMode === "sequential" && typeof value.estimatedCostUsd === "number"
+  && Array.isArray(value.scenes) && value.scenes.length >= MIN_SCENE_COUNT && value.scenes.length <= MAX_SCENE_COUNT && value.scenes.every(isEpisodeVideoPreview)
   && (value.maximumProviderCalls === undefined || isFiniteNonNegative(value.maximumProviderCalls))
   && isBudgetPreview(value.budget);
 /** Keys arrive over JSON as numeric strings (object keys are always strings); each must resolve to a
  * valid scene number and every value must be a non-empty failure code string. */
-function isSceneErrorMap(value: unknown): value is Partial<Record<1 | 2 | 3 | 4 | 5 | 6, string>> {
+function isSceneErrorMap(value: unknown): value is Partial<Record<SceneNumber, string>> {
   if (value === undefined) return true;
   if (!isRecord(value)) return false;
   return Object.entries(value).every(([key, message]) => isSceneNumber(Number(key)) && isNonEmptyString(message));
@@ -391,7 +391,7 @@ function isEpisodeVideoProgress(value: unknown): value is LongEpisodeVideoProgre
     && (value.currentSceneNumber === undefined || isSceneNumber(value.currentSceneNumber)) && Array.isArray(value.completedSceneNumbers) && value.completedSceneNumbers.every(isSceneNumber)
     && Array.isArray(value.failedSceneNumbers) && value.failedSceneNumbers.every(isSceneNumber) && isLongEpisodeDetail(value.episode) && isSceneErrorMap(value.sceneErrors);
 }
-const isStartEpisodeVideoResponse = (value: unknown): value is StartLongEpisodeVideoGenerationResponse => isRecord(value) && isNonEmptyString(value.jobId) && Array.isArray(value.acceptedSceneNumbers) && value.acceptedSceneNumbers.length === 6 && value.acceptedSceneNumbers.every(isSceneNumber) && isLongEpisodeDetail(value.episode);
+const isStartEpisodeVideoResponse = (value: unknown): value is StartLongEpisodeVideoGenerationResponse => isRecord(value) && isNonEmptyString(value.jobId) && Array.isArray(value.acceptedSceneNumbers) && value.acceptedSceneNumbers.length >= MIN_SCENE_COUNT && value.acceptedSceneNumbers.length <= MAX_SCENE_COUNT && value.acceptedSceneNumbers.every(isSceneNumber) && isLongEpisodeDetail(value.episode);
 function isEpisodeVideoReview(value: unknown): value is LongEpisodeVideoReview { return isRecord(value) && isSceneNumber(value.sceneNumber) && (value.status === "pending" || value.status === "approved") && isNonEmptyString(value.updatedAt) && (value.costUsd === undefined || isFiniteNonNegative(value.costUsd)); }
 const isGetEpisodeVideoReviewResponse = (value: unknown): value is GetLongEpisodeVideoReviewResponse => isRecord(value) && isLongEpisodeDetail(value.episode) && Array.isArray(value.reviews) && value.reviews.every(isEpisodeVideoReview);
 const isApproveEpisodeVideoReviewResponse = (value: unknown): value is ApproveLongEpisodeVideoReviewResponse => isGetEpisodeVideoReviewResponse(value);
@@ -424,7 +424,7 @@ const isGetLongEpisodeContinuityReferenceResponse = (value: unknown): value is G
   const reference = value.reference;
   if (reference === null) return true;
   return isRecord(reference) && typeof reference.previousEpisodeNumber === "number" && Number.isInteger(reference.previousEpisodeNumber) && reference.previousEpisodeNumber > 0
-    && reference.sourceSceneNumber === 6 && typeof reference.available === "boolean";
+    && isSceneNumber(reference.sourceSceneNumber) && typeof reference.available === "boolean";
 };
 
 async function readJsonBody(response: Response): Promise<unknown> {
