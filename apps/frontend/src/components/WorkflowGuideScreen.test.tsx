@@ -74,9 +74,9 @@ describe("WorkflowGuideScreen", () => {
     expect(screen.getByTestId("workflow-guide-stage-narration-calls").textContent).toBe("6회");
     // 13 + 6 scenes of narration.
     expect(screen.getByTestId("workflow-guide-total-calls").textContent).toBe("19회");
-    // $2.15 + (6 x $0.05).
-    expect(screen.getByTestId("workflow-guide-total-cost").textContent).toBe("$2.45");
-    expect(screen.getByTestId("workflow-guide-stage-narration-cost").textContent).toBe("$0.30");
+    // $2.15 + (6 x $0.01).
+    expect(screen.getByTestId("workflow-guide-total-cost").textContent).toBe("$2.21");
+    expect(screen.getByTestId("workflow-guide-stage-narration-cost").textContent).toBe("$0.06");
   });
 
   it("scales narration with the scene count like the image and video stages", () => {
@@ -86,7 +86,7 @@ describe("WorkflowGuideScreen", () => {
 
     expect(screen.getByTestId("workflow-guide-stage-narration-calls").textContent).toBe("3회");
     expect(screen.getByTestId("workflow-guide-total-calls").textContent).toBe("10회");
-    // $1.10 + (3 x $0.05).
-    expect(screen.getByTestId("workflow-guide-total-cost").textContent).toBe("$1.25");
+    // $1.10 + (3 x $0.01).
+    expect(screen.getByTestId("workflow-guide-total-cost").textContent).toBe("$1.13");
   });
 });

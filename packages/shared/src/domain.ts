@@ -47,8 +47,15 @@ export const RUNWAY_PROMPT_MAX_LENGTH = 1_000;
 export const STORY_ESTIMATED_COST_USD = 0.05;
 export const IMAGE_ESTIMATED_COST_USD = 0.10;
 export const VIDEO_SCENE_ESTIMATED_COST_USD = 0.25;
-/** Provisional — one narration TTS call per scene (matching Image/Video's per-scene pattern, since each scene has distinct narration text). Will be firmed up against real OpenAI TTS pricing when narration generation (Phase 4) is implemented; only used today by the workflow guide's call-count/cost projection while narrationEnabled is on. */
-export const TTS_ESTIMATED_COST_USD = 0.05;
+/**
+ * One narration TTS call per scene (matching Image/Video's per-scene pattern, since each scene has distinct
+ * narration text). Based on gpt-4o-mini-tts's real per-minute rate (~$0.015/min as of 2026-08, from
+ * $0.60/1M input text tokens + $12/1M audio output tokens) applied to the longest supported clip
+ * (RUNWAY_CLIP_DURATIONS' 10s max) — actual cost per scene is closer to $0.0025, so this keeps a roughly
+ * 4x safety margin without wildly overstating the true cost the way a same-order-of-magnitude-as-Image
+ * estimate would.
+ */
+export const TTS_ESTIMATED_COST_USD = 0.01;
 
 export type ProjectType = "short_project" | "long_story_project";
 export type ReviewDecision = "pending" | "approved" | "rejected";
