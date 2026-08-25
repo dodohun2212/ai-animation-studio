@@ -293,4 +293,33 @@ describe("StoryPromptScreen", () => {
     // Opening the panel still sent nothing beyond the initial preview.
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("shows the remaining monthly budget alongside the estimate when a credential is connected", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        preview: PREVIEW,
+        budget: { monthlyLimitUsd: 10, spentUsd: 3.2, remainingUsd: 6.8, estimatedRequestCostUsd: 0.05, canSpend: true },
+      }),
+    );
+    renderScreen(fetchMock);
+
+    await screen.findByDisplayValue(PREVIEW.originalPrompt);
+    fireEvent.click(screen.getByRole("button", { name: "이 프롬프트로 승인" }));
+
+    const budget = await screen.findByTestId("story-budget");
+    expect(budget.textContent).toContain("$6.80");
+    expect(budget.textContent).toContain("$3.20");
+  });
+
+  it("omits the budget line in the local fake mode, where nothing is charged", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { preview: PREVIEW }));
+    renderScreen(fetchMock);
+
+    await screen.findByDisplayValue(PREVIEW.originalPrompt);
+    fireEvent.click(screen.getByRole("button", { name: "이 프롬프트로 승인" }));
+
+    // The estimate still shows — it is computable without a ledger — but the ledger line does not.
+    await screen.findByTestId("story-cost-estimate");
+    expect(screen.queryByTestId("story-budget")).toBeNull();
+  });
 });

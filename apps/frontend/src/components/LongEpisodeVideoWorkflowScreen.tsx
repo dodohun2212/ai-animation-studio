@@ -41,9 +41,9 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
       <button type="button" className={outlineButton} onClick={onBack}>에피소드 이미지로</button>
       <header className="space-y-1">
         <h2 className="flex items-center gap-2.5 text-lg font-semibold">{dot}{`에피소드 ${episodeNumber} 영상 작업`}</h2>
-        <p data-testid="episode-video-local-notice" className="text-sm text-amber-300">지금은 로컬 가짜 영상 작업만 진행합니다. Runway 등 Provider 요청은 보내지 않습니다.</p>
+        <p data-testid="episode-video-provider-notice" className="text-sm text-amber-300">Runway 키가 연결되어 있으면 장면마다 실제 유료 요청이 전송됩니다. 연결되어 있지 않으면 비용 없이 임시 영상으로 만들어집니다.</p>
       </header>
-      {!preview && !error && <Spinner label="로컬 영상 미리보기를 불러오는 중..." />}
+      {!preview && !error && <Spinner label="영상 미리보기를 불러오는 중..." />}
       {preview && !job && (
         <div className={cardSection}>
           <p data-testid="episode-video-summary" className="text-sm text-slate-300">순차 진행 · ${preview.estimatedCostUsd.toFixed(2)}</p>
@@ -85,13 +85,13 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
               </li>
             ))}
           </ol>
-          <button type="button" data-testid="episode-video-open-confirm" className={primaryButton} disabled={!valid || confirmStart} onClick={() => setConfirmStart(true)}>로컬 생성 확인창 열기</button>
+          <button type="button" data-testid="episode-video-open-confirm" className={primaryButton} disabled={!valid || confirmStart} onClick={() => setConfirmStart(true)}>영상 생성 확인창 열기</button>
           {confirmStart && (
             <div role="alertdialog" data-testid="episode-video-start-confirm" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
-              <p className="text-sm text-amber-200">이 확인창을 연 것만으로는 아직 요청이 가지 않았습니다. 로컬 가짜 순차 영상 작업을 시작할까요?</p>
+              <p className="text-sm text-amber-200">이 확인창을 연 것만으로는 아직 요청이 가지 않았습니다. 장면 영상을 순서대로 만들까요? Runway 키가 연결되어 있으면 이때부터 실제로 청구됩니다.</p>
               <div className="flex gap-3">
                 <button type="button" className={outlineButton} disabled={busy} onClick={() => setConfirmStart(false)}>취소</button>
-                <button type="button" className={primaryButton} disabled={busy} onClick={() => void start()}>로컬 가짜 영상 시작</button>
+                <button type="button" className={primaryButton} disabled={busy} onClick={() => void start()}>영상 만들기 시작</button>
               </div>
             </div>
           )}
@@ -120,7 +120,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
                 <button type="button" data-testid={`episode-video-failed-retry-${scene}`} className={smallOutlineButton} disabled={busy || regenerate === scene} onClick={() => setRegenerate(scene)}>다시 시도</button>
                 {regenerate === scene && (
                   <div role="alertdialog" data-testid={`episode-video-failed-retry-confirm-${scene}`} className="w-full space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
-                    <p className="text-sm text-amber-200">{scene}번 장면을 로컬 가짜 영상으로만 다시 시도할까요?</p>
+                    <p className="text-sm text-amber-200">{scene}번 장면을 다시 시도할까요? Runway 키가 연결되어 있으면 이번 시도분이 실제로 청구됩니다.</p>
                     <RetryCostNotice estimate={job.retryEstimate} sceneCount={1} data-testid={`episode-video-failed-retry-cost-${scene}`} />
                     <div className="flex gap-2">
                       <button type="button" className={smallOutlineButton} onClick={() => setRegenerate(null)}>취소</button>
@@ -171,7 +171,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
               </div>
               {regenerate === review.sceneNumber && (
                 <div role="alertdialog" data-testid={`episode-video-regenerate-confirm-${review.sceneNumber}`} className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
-                  <p className="text-sm text-amber-200">{review.sceneNumber}번 장면을 로컬 가짜 영상으로만 다시 만들까요?</p>
+                  <p className="text-sm text-amber-200">{review.sceneNumber}번 장면을 다시 만들까요? Runway 키가 연결되어 있으면 이번 재생성분이 실제로 청구됩니다.</p>
                   <RetryCostNotice estimate={job.retryEstimate} sceneCount={1} data-testid={`episode-video-regenerate-cost-${review.sceneNumber}`} />
                   <div className="flex gap-2">
                     <button type="button" className={smallOutlineButton} onClick={() => setRegenerate(null)}>취소</button>

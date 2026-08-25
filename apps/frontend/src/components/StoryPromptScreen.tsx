@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import type { Scene, StoryPromptPreview } from "@ai-animation-studio/shared";
+import type { BudgetPreview, Scene, StoryPromptPreview } from "@ai-animation-studio/shared";
 import { WorkflowState, STORY_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 
 import { approveStoryPrompt, createStoryPromptPreview, toStoryDisplayError } from "../api/storyPromptApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
+import { BudgetLine } from "./ui/BudgetLine.js";
 
 interface Props {
   projectId: string;
@@ -24,6 +25,8 @@ interface ApprovedState {
 
 export function StoryPromptScreen({ projectId, onBack }: Props) {
   const [preview, setPreview] = useState<StoryPromptPreview | null>(null);
+  /** Absent in the local fake execution mode, where the story call costs nothing. */
+  const [budget, setBudget] = useState<BudgetPreview | undefined>(undefined);
   const [previewLoading, setPreviewLoading] = useState(true);
   const [previewError, setPreviewError] = useState<DisplayError | null>(null);
 
@@ -46,6 +49,7 @@ export function StoryPromptScreen({ projectId, onBack }: Props) {
       const response = await createStoryPromptPreview(projectId);
       if (requestId !== loadRequest.current) return;
       setPreview(response.preview);
+      setBudget(response.budget);
       setPromptText(response.preview.originalPrompt);
       setApproved(null);
       setApproveError(null);
@@ -214,6 +218,11 @@ export function StoryPromptScreen({ projectId, onBack }: Props) {
                 예상 비용: ${STORY_ESTIMATED_COST_USD.toFixed(2)} · 장면 수와 무관하게 프로젝트당 1회 · 키가 연결되어 있을 때만
                 청구됩니다
               </p>
+              <BudgetLine
+                budget={budget}
+                estimatedRequestCostUsd={STORY_ESTIMATED_COST_USD}
+                data-testid="story-budget"
+              />
               <div className="flex gap-3">
                 <button
                   type="button"
