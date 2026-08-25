@@ -62,6 +62,12 @@ describe("real OpenAI Episode image generation", () => {
     // images/generations JSON path rather than images/edits FormData (no reference images to attach).
     const { prompt } = JSON.parse(init.body as string) as { prompt: string };
     expect(prompt).toContain("Scene:");
+    // All five composition fields (not just visual_action/description) — confirms the shared imagePromptFor()
+    // is genuinely reading them for a Long Episode scene, not just for a short-project one.
+    expect(prompt).toContain("Shot: medium shot, eye level");
+    expect(prompt).toContain("Composition: centered subject with readable background");
+    expect(prompt).toContain("Lens: natural perspective");
+    expect(prompt).toContain("Focus:");
     expect(prompt).not.toMatch(/says|dialogue/i);
     expect(result.budget?.monthlyLimitUsd).toBe(10);
     expect(result.budget?.spentUsd).toBeCloseTo(0.6, 8);

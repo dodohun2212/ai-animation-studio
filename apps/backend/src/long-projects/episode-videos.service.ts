@@ -9,10 +9,13 @@ import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/projec
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { RunwayBudget, RunwayBudgetExceededError } from "../providers/runway-budget.js";
 import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceResult, type RunwaySceneState } from "../videos/runway-workflow-support.js";
+import { promptFor, type StoredScene } from "../videos/video-preview.service.js";
 import { longEpisodeNotFound, longEpisodeVideoJobNotFound, longEpisodeVideosInvalid, longEpisodeVideosNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 
 const SCENES = [1, 2, 3, 4, 5, 6] as const satisfies readonly SceneNumber[];
+/** Matches video-preview.service.ts's SCENE_FIELDS (minus "number", "narration"): the fields promptFor() reads. */
+const MOTION_SCENE_FIELDS = ["description", "visual_action", "start_motion", "main_motion", "end_motion", "shot_size", "camera_angle", "composition", "lens_feel", "focus_subject", "camera_motion", "environment_motion", "motion_speed", "motion_intensity", "expression_change", "continuity_hint"] as const;
 const MP4 = Buffer.from("000000186674797069736F6D0000020069736F6D69736F32617663316D703431", "hex");
 const statuses: readonly LongEpisodeStatus[] = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted"];
 type ObjectMap = { [key: string]: unknown };
@@ -44,7 +47,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
   private video(id: string, number: number, value: SceneNumber) { return path.join(this.files(id, number).videos, `scene${value}.mp4`); }
   private async validImage(file: string) { try { return validateImage(await fs.readFile(file), "scene.png", "image/png").extension === ".png"; } catch { return false; } }
   private async validVideo(file: string) { try { const bytes = await fs.readFile(file); return bytes.length >= MP4.length && bytes.subarray(4, 8).toString("ascii") === "ftyp"; } catch { return false; } }
-  private scenes(episode: Episode): ObjectMap[] { const value = episode.script.scenes; if (!Array.isArray(value) || value.length !== 6 || value.some((item, index) => !object(item) || item.number !== index + 1 || typeof item.description !== "string" || !item.description.trim())) throw longInvalidData(); return value; }
+  private scenes(episode: Episode): ObjectMap[] { const value = episode.script.scenes; if (!Array.isArray(value) || value.length !== 6 || value.some((item, index) => !object(item) || item.number !== index + 1 || MOTION_SCENE_FIELDS.some((key) => typeof item[key] !== "string" || !(item[key] as string).trim()))) throw longInvalidData(); return value; }
   /**
    * Every Episode is a fixed 6 scenes (SCENES), and Runway's image-to-video generation only accepts a 5-second
    * or 10-second duration per clip — so LongProjectSettings.episodeDurationSeconds (30 or 60) maps onto exactly
@@ -53,7 +56,18 @@ export class EpisodeVideosService implements OnModuleDestroy {
    * predate this 30/60 constraint for an older project; coerce to the nearer valid value rather than reject.
    */
   private durationSecondsPerScene(episode: Episode): 5 | 10 { return Number(episode.duration_seconds) >= 45 ? 10 : 5; }
-  private prompt(current: ObjectMap, previous: ObjectMap | undefined, durationSeconds: 5 | 10): string { const text = (key: string) => typeof current[key] === "string" ? current[key] as string : ""; const earlier = previous ? [previous.end_motion, previous.continuity_hint].filter((value): value is string => typeof value === "string" && Boolean(value)).join(" ") : ""; const value = [`Create one continuous cinematic ${durationSeconds}-second vertical image-to-video shot from the supplied exact first frame.`, `Continuity cue: ${earlier}`, `Opening movement: ${text("start_motion")}`, `Main action: ${text("main_motion")}`, `Ending movement: ${text("end_motion")}`, `Motivated camera: ${text("camera_motion")}`, `Environment: ${text("environment_motion")}`, "Maintain stable identity, anatomy, clothing, essential objects, lighting and scene continuity throughout the shot."].filter(Boolean).join("\n"); if (!value.trim() || value.length > RUNWAY_PROMPT_MAX_LENGTH) throw longInvalidData(); return value; }
+  /**
+   * Delegates to video-preview.service.ts's promptFor() — the short-project and Long Episode script schemas use
+   * the same 16 field names (see MOTION_SCENE_FIELDS/scenes() above), so the same function correctly reads all
+   * of them (motion_speed, motion_intensity, and expression_change previously had no reader anywhere on the
+   * Long Episode side; this was the actual fix, not a new prompt format).
+   * ratio is hardcoded to "720:1280" here, same as preview()'s response field below — this does not yet vary by
+   * the project's own aspectRatio setting (9:16 vs 16:9), which is a separate, still-open issue.
+   */
+  private prompt(current: ObjectMap, previous: ObjectMap | undefined, durationSeconds: 5 | 10): string {
+    try { return promptFor(current as unknown as StoredScene, previous as unknown as StoredScene | undefined, "720:1280", durationSeconds); }
+    catch { throw longInvalidData(); }
+  }
   private async assertReady(id: string, number: number, episode: Episode) { if (episode.state !== "waiting_for_video_confirmation") throw longEpisodeVideosNotAllowed(); if (!(await Promise.all(SCENES.map((item) => this.validImage(this.image(id, number, item))))).every(Boolean)) throw longEpisodeVideosInvalid(); const raw = await this.json(path.join(this.files(id, number).videos, "..", "generated_image_reviews.json")); if (!Array.isArray(raw) || !SCENES.every((item) => raw.some((review) => object(review) && review.scene_number === item && review.status === "approved"))) throw longEpisodeVideosInvalid(); }
   private parseRecords(raw: unknown, job?: string): VideoRecord[] { if (!Array.isArray(raw)) throw longInvalidData(); const values = raw.map((item) => { if (!object(item) || !scene(item.scene_number) || !validId(item.job_id) || !validId(item.user_request_id) || typeof item.confirmation_id !== "string" || typeof item.input_hash !== "string" || typeof item.prompt !== "string" || !["created", "running", "succeeded", "interrupted", "failed"].includes(String(item.status)) || (item.execution_mode !== "local_fake_no_provider" && item.execution_mode !== "runway")) throw longInvalidData(); return item as VideoRecord; }).filter((item) => !job || item.job_id === job).sort((a, b) => a.scene_number - b.scene_number); if (job && (values.length !== 6 || values.some((item, index) => item.scene_number !== SCENES[index]))) throw longEpisodeVideoJobNotFound(); return values; }
   private async records(id: string, number: number, job?: string) { try { return this.parseRecords(await this.json(this.files(id, number).records), job); } catch (error) { if (error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404 && job) throw longEpisodeVideoJobNotFound(); throw error; } }

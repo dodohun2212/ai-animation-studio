@@ -32,6 +32,14 @@ describe("EpisodeVideosService", () => {
     const repeated = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) }); expect(repeated.jobId).toBe(started.jobId);
   });
 
+  it("includes motion_speed, motion_intensity, and expression_change in the video prompt — previously generated and stored but never read by any prompt builder", async () => {
+    const { videos } = await setup();
+    const preview = await videos.preview("long", 1);
+    const prompt = preview.scenes[0]!.prompt;
+    expect(prompt).toContain("Pacing: motion speed normal; intensity moderate");
+    expect(prompt).toContain("Performance: focused to hopeful");
+  });
+
   it("derives durationSecondsPerScene from the project's episodeDurationSeconds setting (60s project -> 10s/scene, matching Runway's only two valid clip lengths)", async () => {
     const { videos } = await setup(60);
     const preview = await videos.preview("long", 1);
