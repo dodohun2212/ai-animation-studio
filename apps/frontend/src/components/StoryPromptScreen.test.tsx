@@ -278,4 +278,19 @@ describe("StoryPromptScreen", () => {
     resolveApproval(jsonResponse(200, APPROVAL_RESPONSE));
     await waitFor(() => expect(screen.queryByTestId("approve-confirm-panel")).toBeNull());
   });
+
+  it("shows what the story call costs before it is approved", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { preview: PREVIEW }));
+    renderScreen(fetchMock);
+
+    await screen.findByDisplayValue(PREVIEW.originalPrompt);
+    fireEvent.click(screen.getByRole("button", { name: "이 프롬프트로 승인" }));
+
+    const estimate = await screen.findByTestId("story-cost-estimate");
+    expect(estimate.textContent).toContain("$0.05");
+    // The story call is per project, not per scene — the copy has to say so.
+    expect(estimate.textContent).toContain("프로젝트당 1회");
+    // Opening the panel still sent nothing beyond the initial preview.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Scene, StoryPromptPreview } from "@ai-animation-studio/shared";
-import { WorkflowState } from "@ai-animation-studio/shared";
+import { WorkflowState, STORY_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 
 import { approveStoryPrompt, createStoryPromptPreview, toStoryDisplayError } from "../api/storyPromptApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
@@ -205,9 +205,14 @@ export function StoryPromptScreen({ projectId, onBack }: Props) {
               data-testid="approve-confirm-panel"
               className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-950/60 p-4"
             >
-              <p className="text-sm font-semibold text-amber-300">Story 프롬프트를 전송할까요?</p>
+              <p className="text-sm font-semibold text-amber-300">이 프롬프트로 대본을 만들까요?</p>
               <p className="text-sm text-slate-300">
-                아직 전송되지 않았습니다. 확인을 누르면 위 프롬프트가 그대로 서버로 전송되어 승인 처리됩니다.
+                아직 전송되지 않았습니다. OpenAI 키가 연결되어 있으면 확인을 누르는 순간 실제 유료 요청이 전송되어 대본이
+                만들어집니다. 키가 연결되어 있지 않으면 비용 없이 임시 대본으로 만들어집니다.
+              </p>
+              <p data-testid="story-cost-estimate" className="text-xs text-slate-300 tabular-nums">
+                예상 비용: ${STORY_ESTIMATED_COST_USD.toFixed(2)} · 장면 수와 무관하게 프로젝트당 1회 · 키가 연결되어 있을 때만
+                청구됩니다
               </p>
               <div className="flex gap-3">
                 <button
