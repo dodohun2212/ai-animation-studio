@@ -67,8 +67,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
     if (
       !Number.isInteger(settings.episodeCount) ||
       settings.episodeCount < 1 ||
-      !Number.isInteger(settings.episodeDurationSeconds) ||
-      settings.episodeDurationSeconds <= 0
+      (settings.episodeDurationSeconds !== 30 && settings.episodeDurationSeconds !== 60)
     ) {
       setState((old) => ({ ...old, error: { code: "INVALID_REQUEST", message: "에피소드 수와 길이를 올바르게 입력하세요." } }));
       return;
@@ -129,20 +128,17 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
           </label>
           <label className="block text-sm text-slate-300">
             에피소드 길이(초)
-            <input
-              type="number"
+            {/* A fixed choice, not free input: every Episode is 6 scenes and Runway only accepts a 5s or 10s
+                clip, so 30 and 60 are the only two durations that can ever actually be produced
+                (episode-videos.service.ts's durationSecondsPerScene()). */}
+            <select
               className={fieldClassName}
               value={state.settings.episodeDurationSeconds}
-              onChange={(event) => setField("episodeDurationSeconds", Number(event.target.value))}
-            />
-            {/* This value is stored and put into the outline prompt text, but nothing downstream reads it:
-                Episode scripts are always six scenes (episode-scripts.service.ts) and the video step submits a
-                hardcoded durationSecondsPerScene: 5 (episode-videos.service.ts) — so the finished Episode is
-                always 30 seconds whatever is typed here. Saying so beats letting the number look like a
-                setting that shapes the result. */}
-            <span data-testid="episode-duration-effect-note" className="mt-1 block text-xs text-slate-400">
-              지금은 완성 영상 길이에 반영되지 않습니다 — 에피소드는 항상 6장면 × 5초 = 30초로 만들어집니다.
-            </span>
+              onChange={(event) => setField("episodeDurationSeconds", Number(event.target.value) as LongProjectSettings["episodeDurationSeconds"])}
+            >
+              <option value={30}>30초</option>
+              <option value={60}>60초</option>
+            </select>
           </label>
           <label className="block text-sm text-slate-300">
             플랫폼

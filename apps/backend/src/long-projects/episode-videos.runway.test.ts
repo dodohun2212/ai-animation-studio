@@ -17,11 +17,11 @@ import { LongProjectsService } from "./long-projects.service.js";
 let root: string | undefined;
 const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, episodeDurationSeconds: 30, platform: "YouTube Shorts" as const, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "" };
 
-async function setupWithConnectedRunway() {
+async function setupWithConnectedRunway(episodeDurationSeconds: 30 | 60 = 30) {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-videos-runway-"));
   const projectsRoot = path.join(root, "projects");
   const projects = new LongProjectsService(projectsRoot);
-  await projects.create({ projectId: "long", settings });
+  await projects.create({ projectId: "long", settings: { ...settings, episodeDurationSeconds } });
   const outline = await projects.preview("long");
   await projects.approve("long", { approved: true, prompt: outline.preview.prompt, promptSha256: outline.preview.promptSha256 });
   const scripts = new EpisodeScriptsService(projectsRoot); await scripts.generate("long", 1, {}); await scripts.approve("long", 1, { approved: true });
@@ -90,6 +90,21 @@ describe("real Runway episode video generation", () => {
 
     expect(progress).toMatchObject({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
     expect(progress.episode.status).toBe("videos_review");
+  });
+
+  it("submits every scene with duration: 10 for a 60-second Episode, not the 5-second default", async () => {
+    const deps = await setupWithConnectedRunway(60);
+    const videos = newVideos(deps);
+    const fetchMock = runwayFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const preview = await videos.preview("long", 1);
+    expect(preview.durationSecondsPerScene).toBe(10);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+
+    const submitCall = fetchMock.mock.calls.find((call) => String(call[0]).endsWith("/v1/image_to_video"))!;
+    expect(JSON.parse(String((submitCall[1] as RequestInit).body))).toMatchObject({ duration: 10 });
   });
 
   it("halts at a scene Runway explicitly reports FAILED, without submitting later scenes, and lets the user regenerate it", async () => {

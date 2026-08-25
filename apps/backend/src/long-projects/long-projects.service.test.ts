@@ -19,6 +19,13 @@ describe("LongProjectsService", () => {
     expect(await fs.stat(path.join(root!, "projects", "long_test", "long_story", "story_bible.json"))).toBeTruthy();
   });
 
+  it("rejects an episodeDurationSeconds other than 30 or 60 — the only durations 6 fixed scenes x Runway's 5s/10s clips can produce", async () => {
+    const subject = await service();
+    await expect(subject.create({ ...input, settings: { ...input.settings, episodeDurationSeconds: 45 as 30 } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    const created = await subject.create(input);
+    expect(created.project.settings.episodeDurationSeconds).toBe(30);
+  });
+
   it("requires an unchanged preview before local outline approval and creates no scripts or media", async () => {
     const subject = await service(); await subject.create(input); const preview = await subject.preview("long_test");
     await expect(subject.approve("long_test", { approved: true, promptSha256: "wrong", prompt: preview.preview.prompt })).rejects.toMatchObject({ response: { code: "LONG_OUTLINE_STALE" } });

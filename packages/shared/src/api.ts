@@ -28,7 +28,12 @@ export interface LongProjectSettings {
   tone: string;
   theme: string;
   episodeCount: number;
-  episodeDurationSeconds: number;
+  /**
+   * Total final-video length per Episode. Only 30 or 60 are valid: every Episode is a fixed 6 scenes
+   * (EPISODE_SCENE_COUNT), and Runway's image-to-video generation only accepts a 5-second or 10-second duration
+   * per clip — so the only two per-scene durations that exist are 5s (6x5=30) and 10s (6x10=60).
+   */
+  episodeDurationSeconds: 30 | 60;
   platform: "YouTube Shorts" | "YouTube";
   aspectRatio: "9:16" | "16:9";
   audience: string;
@@ -178,7 +183,8 @@ export interface GetLongEpisodeVideoPreviewResponse {
   confirmationId: string;
   model: "gen4_turbo";
   ratio: "720:1280" | "1280:720";
-  durationSecondsPerScene: 5;
+  /** Derived from the Episode's own LongProjectSettings.episodeDurationSeconds ÷ 6 (30 -> 5, 60 -> 10). */
+  durationSecondsPerScene: 5 | 10;
   executionMode: "sequential";
   scenes: LongEpisodeVideoPreview[];
   estimatedCostUsd: number;

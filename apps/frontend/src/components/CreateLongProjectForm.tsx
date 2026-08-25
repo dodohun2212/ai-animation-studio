@@ -101,8 +101,8 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
     if (!Number.isInteger(settings.episodeCount) || settings.episodeCount < 1) {
       errors.episodeCount = "에피소드 수는 1 이상의 정수여야 합니다.";
     }
-    if (!Number.isInteger(settings.episodeDurationSeconds) || settings.episodeDurationSeconds <= 0) {
-      errors.episodeDurationSeconds = "에피소드 길이는 0보다 큰 정수여야 합니다.";
+    if (settings.episodeDurationSeconds !== 30 && settings.episodeDurationSeconds !== 60) {
+      errors.episodeDurationSeconds = "에피소드 길이는 30초 또는 60초 중 하나여야 합니다.";
     }
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) {
@@ -191,14 +191,17 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
         <label className="block text-sm text-slate-300" htmlFor="episode-duration">
           에피소드 길이(초)
         </label>
-        <input
+        {/* A fixed choice, not free input: every Episode is 6 scenes and Runway only accepts a 5s or 10s clip, so 30 and 60 are the only two durations that can ever actually be produced. */}
+        <select
           id="episode-duration"
-          type="number"
           className={fieldClassName}
           value={settings.episodeDurationSeconds}
           disabled={submitting}
-          onChange={(event) => setField("episodeDurationSeconds", Number(event.target.value))}
-        />
+          onChange={(event) => setField("episodeDurationSeconds", Number(event.target.value) as LongProjectSettings["episodeDurationSeconds"])}
+        >
+          <option value={30}>30초</option>
+          <option value={60}>60초</option>
+        </select>
         {fieldErrors.episodeDurationSeconds && (
           <p className="mt-1.5 text-sm text-rose-400" role="alert">
             {fieldErrors.episodeDurationSeconds}

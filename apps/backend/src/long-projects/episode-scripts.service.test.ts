@@ -7,7 +7,7 @@ import { LongProjectsService } from "./long-projects.service.js";
 
 let root: string | undefined;
 const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, episodeDurationSeconds: 30, platform: "YouTube Shorts" as const, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "" };
-async function setup() { root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-script-")); const projects = new LongProjectsService(path.join(root, "projects")); await projects.create({ projectId: "long", settings }); const preview = await projects.preview("long"); await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 }); return new EpisodeScriptsService(path.join(root, "projects")); }
+async function setup(episodeDurationSeconds: 30 | 60 = 30) { root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-script-")); const projects = new LongProjectsService(path.join(root, "projects")); await projects.create({ projectId: "long", settings: { ...settings, episodeDurationSeconds } }); const preview = await projects.preview("long"); await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 }); return new EpisodeScriptsService(path.join(root, "projects")); }
 afterEach(async () => { if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 
 describe("EpisodeScriptsService", () => {
@@ -26,6 +26,13 @@ describe("EpisodeScriptsService", () => {
     const reloaded = new EpisodeScriptsService(path.join(root!, "projects"));
     expect((await reloaded.get("long", 1)).episode.script?.title).toBe("Edited");
     await expect(fs.access(path.join(root!, "projects", "long", "long_story", "Episode01", "script.json"))).resolves.toBeUndefined();
+  });
+
+  it("snapshots the project's real episodeDurationSeconds onto a newly created episode, not a hardcoded 30", async () => {
+    const subject = await setup(60);
+    await subject.generate("long", 1, {});
+    const stored = JSON.parse(await fs.readFile(path.join(root!, "projects", "long", "long_story", "Episode01", "project.json"), "utf8")) as { duration_seconds: number };
+    expect(stored.duration_seconds).toBe(60);
   });
 
   it("rejects malformed user edits and never imports a provider or media runner", async () => {
