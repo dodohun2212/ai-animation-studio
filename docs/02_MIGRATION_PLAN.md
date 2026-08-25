@@ -547,6 +547,8 @@ Frontend 및 통합 완료 근거(2026-08-21): `feature/frontend`의 `48065b0`�
 - [x] Main 통합 검증에서 Backend 210개 통과(+1 intentional skip), Frontend 466개, Shared 24개 테스트와 root typecheck/test/build, `git diff --check`를 통과했다. 실제 유료 Provider 호출은 0회다.
 - [ ] 다음 범위는 Story Bible Asset link, 검색·복제·관계 편집 또는 Episode Asset mapping이다. 실제 Provider 연결은 포함하지 않는다.
 
+> 🚨 **미해결 격차(2026-08-26, Cowork가 실사용 브라우저 검증 중 발견, CLI가 문서 이력으로 확정)**: 이 "local fake" 범위가 그 뒤로 한 번도 다시 다뤄지지 않았다. "서른세 번째 이전 기능(실제 OpenAI Story 생성 adapter)"은 본문에 `StoryPromptService`만 나오는 **단기 전용**이고, `EpisodeScriptsService`는 이후 어떤 항목에도 등장하지 않는다 — 대조로 "마흔한 번째(실제 Runway 영상)"는 제목에 "단기·장편 동시"라고 명시했고 장기 이미지(`episode-images.service.ts`)도 실제로 `callOpenAiImageApi`/`callOpenAiImageEditApi`를 쓰고 있다(다만 이건 언제 연결됐는지 명시한 항목이 따로 없는 별개의 작은 문서 누락). 즉 매핑(원래 Provider 불필요)·이미지·영상은 전부 실제 Provider에 연결됐는데 **대본만 남았다** — 의도적으로 미룬다는 결정이 사용자와 논의되거나 기록된 적이 없다. `EpisodeScriptsService`는 지금도 생성자가 `projectsRoot` 하나뿐이라 Provider에 물리적으로 닿을 수 없고, 그 결과 모든 장기 프로젝트의 이미지·영상 프롬프트와 내레이션 문장이 템플릿 placeholder 텍스트("Scene N narration for Episode X.") 위에 얹혀 있다. 실제 adapter 연결은 서른세~서른다섯 번째 항목급 작업(신규 OpenAI adapter, 전용 예산 게이트, 파이썬 `build_context()`—이전 Episode 연속성+승인된 Asset mapping 컨텍스트 조립—포팅, 생성자·호출부 배선)이라 사용자와 우선순위를 다시 맞춘 뒤 별도 항목으로 착수한다.
+
 ## 열다섯 번째 이전 기능: 장편 Story Bible Asset Library 연결
 
 - [x] character/location/prop Bible 항목에만 승인·활성 상태의 character/background/object Asset을 연결할 수 있으며, folder·unknown·disabled·unapproved·type mismatch Asset은 차단한다.
