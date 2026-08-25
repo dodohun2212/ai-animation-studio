@@ -11,6 +11,17 @@ import { LocalVideoMergeService } from "./video-merge.service.js";
 
 interface HttpResponse { type(value: string): void; setHeader(name: string, value: string): void }
 
+/** Same lenient "not the expected shape → treat as no-op" fallback this controller already used for regenerate before additionalInstruction existed — see the two routes below. */
+function parseRegenerateBody(body: unknown): { additionalInstruction?: string } | undefined {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return undefined;
+  const record = body as { approved?: unknown; additionalInstruction?: unknown };
+  if (record.approved !== true) return undefined;
+  if (Object.keys(record).some((key) => key !== "approved" && key !== "additionalInstruction")) return undefined;
+  if (record.additionalInstruction !== undefined && typeof record.additionalInstruction !== "string") return undefined;
+  const trimmed = typeof record.additionalInstruction === "string" ? record.additionalInstruction.trim() : "";
+  return { ...(trimmed ? { additionalInstruction: trimmed } : {}) };
+}
+
 @Controller()
 export class VideosController {
   constructor(private readonly previews: LocalVideoPreviewService, private readonly submissions: LocalVideoSubmissionService, private readonly workflow: LocalVideoWorkflowService, private readonly mergeService: LocalVideoMergeService) {}
@@ -76,15 +87,18 @@ export class VideosController {
 
   @Post(`${API_ROUTES.projects}/:projectId/videos/generations/:jobId/scenes/:sceneNumber/regenerate`)
   regenerate(@Param("projectId") projectId: string, @Param("jobId") jobId: string, @Param("sceneNumber") sceneNumber: string, @Body() body: unknown): Promise<RegenerateVideoResponse> {
-    if (!(typeof body === "object" && body !== null && !Array.isArray(body) && Object.keys(body).length === 1 && (body as { approved?: unknown }).approved === true)) return this.workflow.regenerate(projectId, jobId, []);
-    const number = Number(sceneNumber); return this.workflow.regenerate(projectId, jobId, Number.isInteger(number) && String(number) === sceneNumber ? [number as SceneNumber] : []);
+    const parsed = parseRegenerateBody(body);
+    if (!parsed) return this.workflow.regenerate(projectId, jobId, []);
+    const number = Number(sceneNumber);
+    return this.workflow.regenerate(projectId, jobId, Number.isInteger(number) && String(number) === sceneNumber ? [number as SceneNumber] : [], parsed.additionalInstruction);
   }
 
   @Post(`${API_ROUTES.projects}/:projectId/videos/generations/:jobId/regenerate-all`)
   async regenerateAll(@Param("projectId") projectId: string, @Param("jobId") jobId: string, @Body() body: unknown): Promise<RegenerateVideoResponse> {
-    if (!(typeof body === "object" && body !== null && !Array.isArray(body) && Object.keys(body).length === 1 && (body as { approved?: unknown }).approved === true)) return this.workflow.regenerate(projectId, jobId, []);
+    const parsed = parseRegenerateBody(body);
+    if (!parsed) return this.workflow.regenerate(projectId, jobId, []);
     const scenes = await this.workflow.jobSceneNumbers(projectId, jobId);
-    return this.workflow.regenerate(projectId, jobId, scenes);
+    return this.workflow.regenerate(projectId, jobId, scenes, parsed.additionalInstruction);
   }
 
   @Get(`${API_ROUTES.projects}/:projectId/videos/generations/:jobId/review`)

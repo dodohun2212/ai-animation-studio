@@ -213,6 +213,38 @@ describe("real OpenAI image regeneration", () => {
     });
   });
 
+  it("appends additionalInstruction as the prompt's last line without persisting it, so staleness stays unaffected", async () => {
+    const { projectsRoot, service } = await setupWithConnectedOpenAiAndConfirmedReference();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await service.regenerate("review", "3", { approved: true, additionalInstruction: "  더 어둡게  " });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const prompt = (init.body as FormData).get("prompt");
+    expect(prompt).toBe("Scene: walks toward the 3 gate\n더 어둡게");
+    // The persisted record keeps the plain scene prompt (not the one-off instruction), so a later
+    // staleness check still compares like-for-like against a freshly recomputed plain prompt.
+    const project = JSON.parse(await fs.readFile(path.join(projectsRoot, "review", "project.json"), "utf8")) as { image_generation_records: Array<{ prompt: string }> };
+    expect(project.image_generation_records[2]!.prompt).not.toContain("더 어둡게");
+  });
+
+  it("ignores a blank additionalInstruction the same as omitting it", async () => {
+    const { service } = await setupWithConnectedOpenAiAndConfirmedReference();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await service.regenerate("review", "3", { approved: true, additionalInstruction: "   " });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect((init.body as FormData).get("prompt")).toBe("Scene: walks toward the 3 gate");
+  });
+
+  it("rejects a non-string additionalInstruction", async () => {
+    const { service } = await setup();
+    await expect(service.regenerate("review", "2", { approved: true, additionalInstruction: 5 })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
   it("omits retryEstimate when no OpenAI credential is configured (local fake adapter)", async () => {
     const { service } = await setup();
     const result = await service.regenerate("review", "2", { approved: true });

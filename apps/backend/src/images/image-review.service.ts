@@ -207,7 +207,10 @@ export class ImageReviewService {
   }
 
   async regenerate(projectId: string, rawSceneNumber: string, body: unknown): Promise<RegenerateImageReviewResponse> {
-    if (!isObject(body) || Object.keys(body).length !== 1 || body.approved !== true) throw invalidImageReviewRequest();
+    if (!isObject(body) || body.approved !== true
+      || Object.keys(body).some((key) => key !== "approved" && key !== "additionalInstruction")
+      || (body.additionalInstruction !== undefined && typeof body.additionalInstruction !== "string")) throw invalidImageReviewRequest();
+    const additionalInstruction = typeof body.additionalInstruction === "string" ? body.additionalInstruction.trim() : "";
     const number = sceneNumber(Number(rawSceneNumber));
     if (!number || String(number) !== rawSceneNumber) throw invalidImageReviewRequest();
     const project = await this.projects.findById(projectId.trim());
@@ -229,7 +232,8 @@ export class ImageReviewService {
     let apiCalls = 0;
     let retryEstimate: RegenerateImageReviewResponse["retryEstimate"];
     if (apiKey && this.budget) {
-      const prompt = imagePromptFor(project.scenes[number - 1], styleLineFor(project));
+      const basePrompt = imagePromptFor(project.scenes[number - 1], styleLineFor(project));
+      const prompt = additionalInstruction ? `${basePrompt}\n${additionalInstruction}` : basePrompt;
       const mappings = await this.mappings.load(project.project_id);
       const continuityImagePath = previousSceneContinuityImagePath(project);
       const references = await collectReferenceImages(this.assets, mappings, this.projectsRoot, project.project_id, number, continuityImagePath);

@@ -70,7 +70,10 @@ export class NarrationReviewService {
   }
 
   async regenerate(projectId: string, rawSceneNumber: string, body: unknown): Promise<RegenerateNarrationResponse> {
-    if (!isObject(body) || Object.keys(body).length !== 1 || body.approved !== true) throw invalidNarrationRequest();
+    if (!isObject(body) || body.approved !== true
+      || Object.keys(body).some((key) => key !== "approved" && key !== "additionalInstruction")
+      || (body.additionalInstruction !== undefined && typeof body.additionalInstruction !== "string")) throw invalidNarrationRequest();
+    const additionalInstruction = typeof body.additionalInstruction === "string" ? body.additionalInstruction.trim() : "";
     const number = Number(rawSceneNumber);
     const project = await this.projects.findById(projectId.trim());
     const scenes = scenesFor(project);
@@ -90,7 +93,7 @@ export class NarrationReviewService {
         await this.budget.preflight(TTS_ESTIMATED_COST_USD);
         let succeeded = false;
         try {
-          const result = await callOpenAiTtsApi(apiKey, text);
+          const result = await callOpenAiTtsApi(apiKey, text, additionalInstruction ? { instructions: additionalInstruction } : {});
           bytes = result.bytes;
           succeeded = true;
         } finally {

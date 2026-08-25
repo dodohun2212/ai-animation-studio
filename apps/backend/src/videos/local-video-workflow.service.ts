@@ -39,6 +39,8 @@ type VideoStatus = "created" | "running" | "succeeded" | "interrupted" | "failed
 type VideoRecord = Record<string, unknown> & {
   scene_number: SceneNumber; job_id?: string; status: VideoStatus; execution_mode: "local_fake_no_provider" | "runway";
   runway_task_id?: string; runway_submitted_at?: string; runway_last_checked_at?: string; error?: string;
+  /** One-off regenerate() instruction, applied only to the Runway submission still pending for this record — see runwayInputForScene(). Never read for staleness (record.prompt alone is), and always overwritten (to a value or to undefined) on every regenerate() call so a stale instruction from an earlier regeneration can never leak into a later one that didn't ask for it. */
+  additional_instruction?: string;
 };
 type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved"; updated_at: string };
 
@@ -202,9 +204,12 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
   private async runwayInputForScene(project: StoredProject, jobId: string, scene: SceneNumber) {
     const record = this.records(project, jobId).find((item) => item.scene_number === scene)!;
     const imageBytes = await fs.readFile(project.generated_images[scene - 1]!);
+    const basePrompt = String(record.prompt);
+    const additionalInstruction = typeof record.additional_instruction === "string" ? record.additional_instruction : "";
     return {
       imageBytes, imageMimeType: "image/png",
-      prompt: String(record.prompt), model: String(record.model), ratio: String(record.ratio),
+      prompt: additionalInstruction ? `${basePrompt}\n${additionalInstruction}` : basePrompt,
+      model: String(record.model), ratio: String(record.ratio),
       durationSeconds: Number(record.duration_seconds),
     };
   }
@@ -414,7 +419,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     return this.records(project, jobId).map((record) => record.scene_number);
   }
 
-  async regenerate(projectId: string, jobId: string, selected: readonly SceneNumber[]): Promise<RegenerateVideoResponse> {
+  async regenerate(projectId: string, jobId: string, selected: readonly SceneNumber[], additionalInstruction?: string): Promise<RegenerateVideoResponse> {
     if (!selected.length || new Set(selected).size !== selected.length) throw invalidVideoWorkflowRequest();
     const project = await this.projects.findById(projectId.trim()); const records = this.records(project, jobId);
     const allowedTerminalState = [WorkflowState.ReviewingVideos, WorkflowState.VideosReady, WorkflowState.VideosApproved].includes(project.workflow_state as WorkflowState);
@@ -422,9 +427,11 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       && selected.every((scene) => records.find((record) => record.scene_number === scene)?.status === "failed");
     if (!allowedTerminalState && !allowedFailedRetry) throw videoWorkflowNotAllowed();
     try { for (const scene of selected) await this.archive(project.project_id, scene); } catch { throw videoStorageError(); }
+    const trimmedInstruction = additionalInstruction?.trim() || undefined;
     const reset = records.filter((record) => selected.includes(record.scene_number)).map((record) => ({
       ...record, status: "created" as const,
       runway_task_id: undefined, runway_submitted_at: undefined, runway_last_checked_at: undefined, error: undefined,
+      additional_instruction: trimmedInstruction,
     }));
     const updated = this.replaceRecords(project, reset); updated.workflow_state = WorkflowState.GeneratingVideos; updated.updated_at = new Date().toISOString();
     const paths = [...updated.generated_video_paths]; for (const scene of selected) paths[scene - 1] = ""; updated.generated_video_paths = paths;

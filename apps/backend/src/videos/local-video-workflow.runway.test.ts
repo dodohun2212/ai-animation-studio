@@ -129,6 +129,30 @@ describe("real Runway video workflow", () => {
     expect(project.workflow_state).toBe(WorkflowState.GeneratingVideos);
   });
 
+  it("appends a one-off additionalInstruction to the resubmitted scene's prompt without persisting it into the record", async () => {
+    const deps = await setupWithConnectedRunway();
+    const workflow = newWorkflow(deps);
+    const fetchMock = runwayFetchMock({ failTaskId: "task-1" });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+
+    await workflow.run("video_workflow", deps.accepted.jobId);
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    await workflow.getProgress("video_workflow", deps.accepted.jobId); // scene 1 fails
+
+    const recordForScene1 = (records: Array<Record<string, unknown>>) => records.find((record) => record.scene_number === 1)!;
+    fetchMock.mockClear();
+    const basePrompt = String(recordForScene1((await deps.projects.findById("video_workflow")).video_generation_records).prompt);
+    await workflow.regenerate("video_workflow", deps.accepted.jobId, [1], "  더 격렬하게  ");
+    const submitCall = fetchMock.mock.calls.find((call) => String(call[0]).endsWith("/v1/image_to_video"))!;
+    expect(JSON.parse(String((submitCall[1] as RequestInit).body))).toMatchObject({ promptText: `${basePrompt}\n더 격렬하게` });
+
+    // Not stored: the record's own prompt field stays the plain scene prompt.
+    const project = await deps.projects.findById("video_workflow");
+    expect(String(recordForScene1(project.video_generation_records).prompt)).toBe(basePrompt);
+  });
+
   it("reports a retry cost estimate reflecting real recorded spend for a Runway job", async () => {
     const deps = await setupWithConnectedRunway();
     await deps.budget.record("other-project", 1, "video", true, 4, new Date("2026-08-23T00:00:00.000Z"));

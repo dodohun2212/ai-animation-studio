@@ -111,4 +111,34 @@ describe("narration generation with a connected OpenAI credential", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(result.retryEstimate).toMatchObject({ perSceneCostUsd: 0.01 });
   });
+
+  it("passes a one-off additionalInstruction as the TTS instructions field, never appended to the spoken input", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(audioResponse(200, AUDIO_BYTES));
+    vi.stubGlobal("fetch", fetchMock);
+    const { generation, reviews, projectsRoot } = await setup();
+    await generation.generate("narr", { approved: true });
+    fetchMock.mockClear();
+    await reviews.regenerate("narr", "1", { approved: true, additionalInstruction: "  더 밝고 신나게  " });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toMatchObject({ input: "narration line 1", instructions: "더 밝고 신나게" });
+    // Not stored: the persisted record still holds only the spoken narration text.
+    const project = JSON.parse(await fs.readFile(path.join(projectsRoot, "narr", "project.json"), "utf8")) as { narration_generation_records: Array<{ narration: string }> };
+    expect(project.narration_generation_records[0]!.narration).toBe("narration line 1");
+  });
+
+  it("omits instructions when additionalInstruction is blank or absent", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(audioResponse(200, AUDIO_BYTES));
+    vi.stubGlobal("fetch", fetchMock);
+    const { generation, reviews } = await setup();
+    await generation.generate("narr", { approved: true });
+    fetchMock.mockClear();
+    await reviews.regenerate("narr", "1", { approved: true, additionalInstruction: "   " });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).not.toHaveProperty("instructions");
+  });
+
+  it("rejects a non-string additionalInstruction", async () => {
+    const { reviews } = await setup();
+    await expect(reviews.regenerate("narr", "1", { approved: true, additionalInstruction: 5 })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
 });

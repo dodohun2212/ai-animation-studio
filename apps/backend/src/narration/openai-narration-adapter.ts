@@ -3,7 +3,7 @@ import {
   OpenAiAdapterError, backoffSeconds, classifyOpenAiHttpError, defaultSleep, parseRetryAfterSeconds,
 } from "../providers/openai-common.js";
 
-/** Cheapest real-time TTS model; supports `instructions` for tone (unused today) — see TTS_ESTIMATED_COST_USD's doc comment for the pricing basis. */
+/** Cheapest real-time TTS model; supports `instructions` for tone/delivery — see TTS_ESTIMATED_COST_USD's doc comment for the pricing basis. */
 export const OPENAI_TTS_MODEL = "gpt-4o-mini-tts";
 export const OPENAI_TTS_VOICE = "alloy";
 export const OPENAI_TTS_FORMAT = "mp3";
@@ -20,7 +20,7 @@ export async function callOpenAiTtsApi(
   apiKey: string,
   input: string,
   options: {
-    model?: string; voice?: string; responseFormat?: string;
+    model?: string; voice?: string; responseFormat?: string; instructions?: string;
     maxRetries?: number; fetchImpl?: typeof fetch; sleep?: (seconds: number) => Promise<void>;
   } = {},
 ): Promise<{ bytes: Buffer; requestId: string }> {
@@ -40,7 +40,7 @@ export async function callOpenAiTtsApi(
       response = await fetchImpl("https://api.openai.com/v1/audio/speech", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model, input, voice, response_format: responseFormat }),
+        body: JSON.stringify({ model, input, voice, response_format: responseFormat, ...(options.instructions ? { instructions: options.instructions } : {}) }),
       });
     } catch {
       if (attempt >= maxRetries) throw new OpenAiAdapterError("network", OPENAI_KOREAN_MESSAGES.network);
