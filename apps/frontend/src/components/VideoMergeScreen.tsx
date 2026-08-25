@@ -14,25 +14,35 @@ interface Props {
 type DisplayError = { code: string; message: string };
 type LoadState = { status: "loading" } | { status: "error"; error: DisplayError } | { status: "ready" };
 
+/** What the merge lays over the clips, as the two settings that decide it. */
+interface MediaMode {
+  narrationEnabled: boolean;
+  subtitlesEnabled: boolean;
+}
+
 /**
  * One sentence describing what this merge lays over the clips.
  *
- * Mirrors video-merge.service.ts. Two things matter, and only one of them is a setting:
- *  - Audio: a scene gets its narration audio whenever that file exists, full stop. The merge does not consult
- *    narrationEnabled, so turning narration off does not strip audio that was already made — the sentence
- *    therefore states the file rule, not the setting.
- *  - Subtitles: a scene gets a subtitle when subtitlesEnabled is on AND it has narration text, whether or not
- *    audio exists. Subtitles-only (no TTS spend) is a deliberate mode, so the copy must never tie subtitles to
- *    audio the way an earlier version of this screen did.
+ * Mirrors video-merge.service.ts, where both halves are now gated the same way — "off" means "not used",
+ * not "not made again": audio goes on only when narrationEnabled is on AND that scene's file exists, and a
+ * subtitle goes on only when subtitlesEnabled is on AND that scene has narration text. The two are otherwise
+ * independent, so subtitles-only (no TTS spend) is a real mode and the copy must never tie a subtitle to the
+ * presence of audio.
  *
  * Returns null when the settings could not be read: saying nothing beats promising something unconfirmed.
  */
-function mergeContentSentence(subtitlesEnabled: boolean | null): string | null {
-  if (subtitlesEnabled === null) return null;
-  const audio = "음성을 만들어 둔 장면에는 그 음성이 입혀집니다.";
-  return subtitlesEnabled
-    ? `${audio} 내레이션 문장이 있는 장면에는 자막이 들어갑니다 — 음성이 아직 없는 장면에도 자막은 들어갑니다.`
-    : `${audio} 자막은 넣지 않습니다.`;
+function mergeContentSentence(mode: MediaMode | null): string | null {
+  if (!mode) return null;
+  if (mode.narrationEnabled && mode.subtitlesEnabled) {
+    return "음성을 만들어 둔 장면에는 그 음성이 입혀지고, 내레이션 문장이 있는 장면에는 자막이 들어갑니다 — 음성이 아직 없는 장면에도 자막은 들어갑니다.";
+  }
+  if (mode.subtitlesEnabled) {
+    return "음성은 꺼져 있어 넣지 않습니다. 내레이션 문장이 있는 장면에 자막만 입힙니다.";
+  }
+  if (mode.narrationEnabled) {
+    return "음성을 만들어 둔 장면에는 그 음성이 입혀지고, 자막은 넣지 않습니다.";
+  }
+  return "음성도 자막도 꺼져 있어 장면 영상만 이어 붙입니다.";
 }
 
 export function VideoMergeScreen({ projectId, onBack }: Props) {
@@ -45,7 +55,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
   const [openFailed, setOpenFailed] = useState(false);
   const [sceneCount, setSceneCount] = useState<number | null>(null);
   /** null until the project settings load, and stays null if they fail — the copy then claims nothing. */
-  const [subtitlesEnabled, setSubtitlesEnabled] = useState<boolean | null>(null);
+  const [mediaMode, setMediaMode] = useState<MediaMode | null>(null);
   const busy = useRef(false);
 
   // A project that already finished merging (revisited later, e.g. from the dashboard) should
@@ -69,7 +79,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
     getProjectSettings(projectId)
       .then(({ settings }) => {
         if (cancelled) return;
-        setSubtitlesEnabled(settings.subtitlesEnabled);
+        setMediaMode({ narrationEnabled: settings.narrationEnabled, subtitlesEnabled: settings.subtitlesEnabled });
       })
       .catch(() => {});
     return () => {
@@ -120,7 +130,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
     }
   }
 
-  const contentSentence = mergeContentSentence(subtitlesEnabled);
+  const contentSentence = mergeContentSentence(mediaMode);
 
   return (
     <section className="mt-8 max-w-2xl space-y-5">

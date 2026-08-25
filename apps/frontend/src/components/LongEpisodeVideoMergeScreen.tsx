@@ -12,6 +12,18 @@ interface Props {
 
 type DisplayError = { code: string; message: string };
 
+/**
+ * A long-form Episode always has exactly six scenes — unlike a short project, where the user picks the count.
+ * This is a backend invariant, not an assumption: episode-scripts.service.ts rejects a script whose scenes are
+ * not six, episode-video-merge.service.ts rejects review/record arrays that are not six, and the image, video,
+ * mapping and continuity services all iterate a fixed [1..6]. longProjectsApi.ts's own isLongEpisodeScript
+ * guard rejects any other length before a response ever reaches this screen, so reading the count back from the
+ * Episode could only ever return six — or nothing at all when that request fails, which would drop a number
+ * that is always correct. Stated directly for that reason; if Episodes ever become variable, this constant and
+ * those services move together.
+ */
+const EPISODE_SCENE_COUNT = 6;
+
 /** The explicit, final client gate for one Episode's already-approved videos. */
 export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, onOpenContinuity }: Props) {
   const [confirmationOpen, setConfirmationOpen] = useState(false);
@@ -45,16 +57,19 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
   return (
     <section className="mt-8 max-w-2xl space-y-5" data-testid="episode-video-merge-screen">
       <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5" onClick={onBack}>
-        Back to Episode videos
+        에피소드 영상으로 돌아가기
       </button>
       <h2 className="flex items-center gap-2.5 text-lg font-semibold">
         <span
           aria-hidden="true"
           className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
         />
-        Episode final video
+        에피소드 최종 영상
       </h2>
-      <p className="text-sm text-slate-400">Six approved Episode scenes will be combined into the final Reel.</p>
+      <p className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300" data-testid="episode-merge-scope-notice">
+        이 단계는 비용이 들지 않습니다 — 유료 요청 없이, 이 컴퓨터에 설치된 영상 병합 프로그램만 실행합니다. 승인된 에피소드
+        장면 영상 {EPISODE_SCENE_COUNT}개를 순서대로 이어 붙여 최종 영상을 만듭니다.
+      </p>
       {!result && (
         <div className="space-y-3">
           <button
@@ -64,11 +79,13 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
             disabled={confirmationOpen || pending}
             onClick={openConfirmation}
           >
-            Create final Episode video
+            최종 영상 만들기
           </button>
           {confirmationOpen && (
-            <div role="alertdialog" aria-label="Confirm Episode final video" data-testid="episode-merge-confirm-panel" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
-              <p className="text-sm text-slate-300">Creating the final Episode video starts only after this confirmation.</p>
+            <div role="alertdialog" aria-label="에피소드 최종 영상 확인" data-testid="episode-merge-confirm-panel" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
+              <p className="text-sm text-slate-300">
+                아직 시작되지 않았습니다. 확인을 눌러야 최종 영상 만들기가 시작됩니다. 유료 요청은 전송되지 않습니다.
+              </p>
               <div className="flex gap-3">
                 <button
                   type="button"
@@ -76,7 +93,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
                   disabled={pending}
                   onClick={() => setConfirmationOpen(false)}
                 >
-                  Cancel
+                  돌아가기
                 </button>
                 <button
                   type="button"
@@ -85,7 +102,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
                   disabled={pending}
                   onClick={() => void confirm()}
                 >
-                  {pending ? "Creating final video…" : "Confirm final Episode video"}
+                  {pending ? "만드는 중..." : "네, 최종 영상을 만듭니다"}
                 </button>
               </div>
             </div>
@@ -99,8 +116,8 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
       )}
       {result && (
         <div data-testid="episode-merge-success" className="space-y-3 rounded-2xl border border-emerald-400/30 bg-slate-900/70 p-5">
-          <p className="text-sm font-semibold text-emerald-400">Episode final video is ready.</p>
-          <p className="text-sm text-slate-300" data-testid="episode-final-video-path">Final video: {result.finalVideoPath}</p>
+          <p className="text-sm font-semibold text-emerald-400">에피소드 최종 영상이 완성되었습니다.</p>
+          <p className="text-sm text-slate-300" data-testid="episode-final-video-path">최종 영상: {result.finalVideoPath}</p>
           {onOpenContinuity && (
             <button
               type="button"
@@ -108,7 +125,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
               data-testid="open-episode-continuity"
               onClick={() => onOpenContinuity(projectId, episodeNumber)}
             >
-              Review continuity memory
+              연결 기억 검토하기
             </button>
           )}
         </div>

@@ -122,14 +122,14 @@ export function episodeSceneErrorMessage(code: string | undefined): string {
 
 /** Never surfaces the backend's raw message or details text — only a fixed, safe message per code. */
 const LONG_EPISODE_MERGE_ERRORS: Record<string, string> = {
-  LONG_EPISODE_MERGE_NOT_ALLOWED: "Final Episode rendering requires six approved video scenes.",
-  LONG_EPISODE_MERGE_CLIPS_INVALID: "The approved Episode video scenes are not ready to render.",
-  LONG_EPISODE_FFMPEG_UNAVAILABLE: "Final Episode rendering is unavailable on this computer.",
-  LONG_EPISODE_MERGE_FAILED: "Episode rendering could not be completed. The approved scenes were kept.",
+  LONG_EPISODE_MERGE_NOT_ALLOWED: "에피소드 장면 영상 6개가 모두 승인되어야 최종 영상을 만들 수 있습니다.",
+  LONG_EPISODE_MERGE_CLIPS_INVALID: "승인된 에피소드 장면 영상이 아직 병합할 수 있는 상태가 아닙니다.",
+  LONG_EPISODE_FFMPEG_UNAVAILABLE: "이 컴퓨터에서 영상 병합 프로그램을 실행할 수 없습니다.",
+  LONG_EPISODE_MERGE_FAILED: "최종 영상 만들기를 끝내지 못했습니다. 승인된 장면들은 그대로 남아 있습니다.",
 };
 const LONG_EPISODE_CONTINUITY_ERRORS: Record<string, string> = {
-  LONG_EPISODE_CONTINUITY_NOT_ALLOWED: "Continuity memory can be saved only after the Episode final video is complete.",
-  LONG_EPISODE_CONTINUITY_INVALID: "The continuity memory needs valid reviewed values before it can be saved.",
+  LONG_EPISODE_CONTINUITY_NOT_ALLOWED: "에피소드 최종 영상이 완성된 뒤에야 연결 기억을 저장할 수 있습니다.",
+  LONG_EPISODE_CONTINUITY_INVALID: "연결 기억을 저장하려면 검토한 값이 올바르게 채워져 있어야 합니다.",
 };
 
 export function toLongProjectDisplayError(error: unknown): { code: string; message: string; details?: Record<string, unknown> } {

@@ -229,43 +229,53 @@ describe("VideoMergeScreen", () => {
     expect(document.body.textContent).not.toContain("learning_data");
   });
 
-  it("says a scene with no audio still gets its subtitle when subtitles are on", async () => {
+  it("says a scene with no audio still gets its subtitle when subtitles are on without narration", async () => {
     // Subtitles-only is a real mode (no TTS spend): the copy must not imply a silent scene loses its subtitle.
     renderScreen(vi.fn(), {}, { narrationEnabled: false, subtitlesEnabled: true });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("merge-scope-notice").textContent).toContain("자막만 입힙니다"),
+    );
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    expect((await screen.findByTestId("merge-confirm-panel")).textContent).toContain("자막만 입힙니다");
+  });
+
+  it("still promises the subtitle on a scene with no audio yet when both are on", async () => {
+    renderScreen(vi.fn(), {}, { narrationEnabled: true, subtitlesEnabled: true });
 
     await waitFor(() =>
       expect(screen.getByTestId("merge-scope-notice").textContent).toContain(
         "음성이 아직 없는 장면에도 자막은 들어갑니다",
       ),
     );
-    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
-    expect((await screen.findByTestId("merge-confirm-panel")).textContent).toContain("자막이 들어갑니다");
   });
 
-  it("says the same thing about subtitles whether or not narration is on — only subtitlesEnabled decides", async () => {
-    const { render: first } = renderScreen(vi.fn(), {}, { narrationEnabled: true, subtitlesEnabled: true });
-    const withNarration = await waitFor(() => {
-      const text = screen.getByTestId("merge-scope-notice").textContent ?? "";
-      expect(text).toContain("자막이 들어갑니다");
-      return text;
-    });
-    first.unmount();
-    vi.unstubAllGlobals();
-
+  it("promises no audio when narration is off, matching the merge service's own gate", async () => {
+    // "Off" means "not used", not "not made again" — a scene whose audio file still exists from before is
+    // skipped, so the copy must not promise that audio comes back.
     renderScreen(vi.fn(), {}, { narrationEnabled: false, subtitlesEnabled: true });
-    await waitFor(() => expect(screen.getByTestId("merge-scope-notice").textContent).toBe(withNarration));
-  });
 
-  it("promises no subtitles when subtitles are off, without claiming existing audio is dropped", async () => {
-    renderScreen(vi.fn(), {}, { narrationEnabled: false, subtitlesEnabled: false });
-
-    // Audio follows the generated file, not the narration setting — the merge service never checks the flag,
-    // so a project that made audio and later turned narration off still gets that audio.
     await waitFor(() => {
       const text = screen.getByTestId("merge-scope-notice").textContent ?? "";
-      expect(text).toContain("자막은 넣지 않습니다");
-      expect(text).toContain("음성을 만들어 둔 장면에는 그 음성이 입혀집니다");
+      expect(text).toContain("음성은 꺼져 있어 넣지 않습니다");
+      expect(text).not.toContain("음성이 입혀지고");
     });
+  });
+
+  it("promises no subtitles when only narration is on", async () => {
+    renderScreen(vi.fn(), {}, { narrationEnabled: true, subtitlesEnabled: false });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("merge-scope-notice").textContent).toContain("자막은 넣지 않습니다"),
+    );
+  });
+
+  it("promises neither when both are off", async () => {
+    renderScreen(vi.fn(), {}, { narrationEnabled: false, subtitlesEnabled: false });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("merge-scope-notice").textContent).toContain("음성도 자막도 꺼져 있어"),
+    );
   });
 
   it("claims nothing about audio or subtitles when the settings request fails", async () => {
