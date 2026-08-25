@@ -722,6 +722,17 @@ export interface GenerationProgressResponse {
   failedSceneNumbers: SceneNumber[];
   /** Every scene number belonging to this job, 1..N in order — lets a caller render the full scene set without assuming a fixed count. */
   sceneNumbers: SceneNumber[];
+  /**
+   * A short, stable failure code per currently-failed scene (present only for scenes in `failedSceneNumbers`).
+   * For a Runway execution, this is one of RunwayErrorCategory ("authentication" | "permission" | "rate_limit" |
+   * "invalid_request" | "server" | "network" | "unknown") when the failure happened submitting or checking the
+   * task, or one of our own synthesized codes ("timeout" | "no_output" | "invalid_state" | "budget_exceeded")
+   * for a failure this app detected itself. When Runway itself reports the task FAILED/CANCELLED, this is
+   * Runway's own free-text failure reason instead of a fixed code — treat any code not in the known set above
+   * as opaque and fall back to a generic message. Never present for the local fake execution mode, which never
+   * fails.
+   */
+  sceneErrors?: Record<SceneNumber, string>;
 }
 
 export interface VideoReview {

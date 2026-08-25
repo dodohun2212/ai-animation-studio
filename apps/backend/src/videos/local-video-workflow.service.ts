@@ -143,7 +143,9 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
   private progress(project: StoredProject, jobId: string): GenerationProgressResponse {
     const records = this.records(project, jobId);
     const completedSceneNumbers = records.filter((record) => record.status === "succeeded").map((record) => record.scene_number);
-    const failedSceneNumbers = records.filter((record) => record.status === "failed").map((record) => record.scene_number);
+    const failedRecords = records.filter((record) => record.status === "failed");
+    const failedSceneNumbers = failedRecords.map((record) => record.scene_number);
+    const sceneErrors = Object.fromEntries(failedRecords.filter((record) => record.error).map((record) => [record.scene_number, record.error!]));
     const current = records.find((record) => record.status === "running")?.scene_number;
     const status = project.workflow_state === WorkflowState.Interrupted ? "interrupted"
       : failedSceneNumbers.length > 0 ? "failed"
@@ -152,6 +154,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     return {
       jobId, status, ...(current ? { currentSceneNumber: current } : {}), completedSceneNumbers, failedSceneNumbers,
       sceneNumbers: records.map((record) => record.scene_number),
+      ...(Object.keys(sceneErrors).length > 0 ? { sceneErrors } : {}),
     };
   }
 

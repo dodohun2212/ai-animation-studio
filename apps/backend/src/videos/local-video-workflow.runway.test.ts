@@ -119,6 +119,7 @@ describe("real Runway video workflow", () => {
     now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
     const progress = await workflow.getProgress("video_workflow", deps.accepted.jobId);
     expect(progress).toMatchObject({ status: "failed", failedSceneNumbers: [1] });
+    expect(progress.sceneErrors).toEqual({ 1: "content policy violation" });
     const submitCallsAfterFailure = fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/v1/image_to_video")).length;
     expect(submitCallsAfterFailure).toBe(1); // only scene 1 was ever submitted — no skipping ahead
 
@@ -126,6 +127,23 @@ describe("real Runway video workflow", () => {
     expect(regenerated.status).toBe("running");
     const project = await deps.projects.findById("video_workflow");
     expect(project.workflow_state).toBe(WorkflowState.GeneratingVideos);
+  });
+
+  it("fails the scene with a category code instead of an uncaught exception when Runway rejects the submission itself", async () => {
+    const deps = await setupWithConnectedRunway();
+    const workflow = newWorkflow(deps);
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/v1/image_to_video")) {
+        return { ok: false, status: 401, json: async () => ({ error: "invalid api key" }), headers: { get: () => null } } as unknown as Response;
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await workflow.run("video_workflow", deps.accepted.jobId);
+    const progress = await workflow.getProgress("video_workflow", deps.accepted.jobId);
+    expect(progress).toMatchObject({ status: "failed", failedSceneNumbers: [1] });
+    expect(progress.sceneErrors).toEqual({ 1: "authentication" });
   });
 
   it("keeps advancing on its own background timer even when nothing polls getProgress", async () => {

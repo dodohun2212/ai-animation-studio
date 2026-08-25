@@ -1,5 +1,5 @@
 import type { SceneNumber } from "@ai-animation-studio/shared";
-import { createRunwayImageToVideoTask, downloadRunwayOutput, getRunwayTask } from "./runway-video-adapter.js";
+import { createRunwayImageToVideoTask, downloadRunwayOutput, getRunwayTask, RunwayAdapterError } from "./runway-video-adapter.js";
 
 /** Matches Python's runway_poll_interval_seconds default. Real Runway status is never re-checked more often than this, no matter how often a caller (e.g. a Frontend poll every 400ms) invokes advanceRunwayScene. */
 export const RUNWAY_POLL_INTERVAL_SECONDS = 5;
@@ -133,12 +133,22 @@ export async function advanceRunwayScene(
 
   await deps.budget.preflight(deps.estimatedCostPerSceneUsd);
   const input = await inputForScene(next.sceneNumber);
-  const { taskId } = await createRunwayImageToVideoTask(
-    deps.apiSecret,
-    input.imageBytes,
-    input.imageMimeType,
-    input.prompt,
-    { model: input.model, ratio: input.ratio, durationSeconds: input.durationSeconds, ...deps.adapterOptions },
-  );
+  let taskId: string;
+  try {
+    ({ taskId } = await createRunwayImageToVideoTask(
+      deps.apiSecret,
+      input.imageBytes,
+      input.imageMimeType,
+      input.prompt,
+      { model: input.model, ratio: input.ratio, durationSeconds: input.durationSeconds, ...deps.adapterOptions },
+    ));
+  } catch (error) {
+    // A submission-time failure (bad key, rejected prompt/image, Runway outage, ...) must become a failed scene
+    // like every other failure path here — otherwise it would propagate uncaught out of advanceRunwayScene and
+    // the scene would silently stay "created" forever with nothing for the user to act on.
+    await deps.budget.record(deps.projectId, deps.apiType, false, deps.estimatedCostPerSceneUsd).catch(() => undefined);
+    const code = error instanceof RunwayAdapterError ? error.category : "unknown";
+    return { kind: "failed", sceneNumber: next.sceneNumber, error: code };
+  }
   return { kind: "submitted", sceneNumber: next.sceneNumber, taskId, submittedAt: now().toISOString() };
 }

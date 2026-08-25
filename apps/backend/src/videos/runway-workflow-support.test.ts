@@ -37,6 +37,17 @@ describe("advanceRunwayScene", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it("fails the scene with the adapter's error category instead of throwing when submission itself is rejected", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(401, { error: "invalid api key" }));
+    const budget = fakeBudget();
+    const result = await advanceRunwayScene(sixScenes(), input, {
+      apiSecret: "bad-secret", projectId: "p1", apiType: "video", estimatedCostPerSceneUsd: 0.25,
+      budget, adapterOptions: { fetchImpl, sleep: noSleep, maxRetries: 0 },
+    });
+    expect(result).toEqual({ kind: "failed", sceneNumber: 1, error: "authentication" });
+    expect(budget.record).toHaveBeenCalledWith("p1", "video", false, 0.25);
+  });
+
   it("does not call Runway at all when the running scene was checked within the poll interval", async () => {
     const now = new Date("2026-08-23T10:00:00.000Z");
     const fetchImpl = vi.fn();
