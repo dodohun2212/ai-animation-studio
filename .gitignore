@@ -37,3 +37,6 @@ output/archive/*
 
 # Keep empty runtime directories
 !.gitkeep
+
+# Agent-to-agent mailbox (local coordination, never committed)
+.claude-bridge/

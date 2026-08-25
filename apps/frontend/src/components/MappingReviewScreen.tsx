@@ -245,6 +245,12 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
         <button type="button" className={outlineButton} onClick={() => void load()}>새로고침</button>
       </header>
 
+      <p className="text-sm text-slate-400">
+        대본에 등장하는 캐릭터·배경·오브젝트 등의 문구를 Asset Library의 실제 이미지와 자동으로 연결해 둔 목록입니다.
+        이미지·영상 생성 시 각 장면에서 어떤 이미지를 참고할지가 여기서 결정되므로, 대본이 바뀌었거나 처음 이 프로젝트를 진행할 때는
+        아래에서 각 연결이 맞는지 확인한 뒤 최종 승인해야 다음 단계로 넘어갈 수 있습니다.
+      </p>
+
       <section aria-label="검토 상태" className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6">
         {reviewLoading && !review && <Spinner label="검토 상태를 불러오는 중..." />}
         {reviewError && (
@@ -266,12 +272,17 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
           <label className="flex items-center gap-2 text-sm text-slate-300">
             <input type="checkbox" className="accent-violet-500" checked={textOnlyConfirmed} disabled={beginPending} onChange={(event) => setTextOnlyConfirmed(event.target.checked)} /> 텍스트만 사용(매핑 없음) 확인
           </label>
+          <p className="pl-6 text-xs text-slate-500">연결할 이미지가 없어도 괜찮으며, 이 장면들은 이미지 참고 없이 텍스트만으로 진행하겠다는 확인입니다.</p>
           <label className="flex items-center gap-2 text-sm text-slate-300">
             <input type="checkbox" className="accent-violet-500" checked={legacyConfirmed} disabled={beginPending} onChange={(event) => setLegacyConfirmed(event.target.checked)} /> 기존 방식(legacy) 확인
           </label>
+          <p className="pl-6 text-xs text-slate-500">예전 방식으로 이미 연결되어 있던 매핑을 새로 검토하지 않고 그대로 사용하겠다는 확인입니다.</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button type="button" className={outlineButton} onClick={() => void beginReview()} disabled={beginPending}>검토 시작</button>
+          <span className="text-xs text-slate-500">현재 대본 기준으로 새 검토 라운드를 시작합니다.</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-3.5 py-1.5 text-xs font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
@@ -280,6 +291,7 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
           >
             최종 승인
           </button>
+          <span className="text-xs text-slate-500">아래 매핑 확인이 끝났으면 눌러서 확정합니다 — 승인해야 다음 단계로 넘어갈 수 있습니다.</span>
         </div>
         {reviewMutationError && (
           <p role="alert" data-testid="review-mutation-error" data-error-code={reviewMutationError.code} className="text-sm text-rose-400">
@@ -347,10 +359,11 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
                   <p>버전 정책: {mapping.versionPolicy}{mapping.pinnedVersion !== null ? ` (v${mapping.pinnedVersion})` : ""}</p>
                   <p>스냅샷: {mapping.snapshot ? `v${mapping.snapshot.sourceVersion} · ${mapping.snapshot.sha256.slice(0, 12)}...` : "없음"}</p>
                 </div>
-                <div className="flex gap-2 pt-1">
+                <div className="flex flex-wrap items-center gap-2 pt-1">
                   <button type="button" className={`${outlineButton} border-emerald-400/30 text-emerald-300`} onClick={() => void decide(mapping.mappingId, "confirm")} disabled={decisionBusyNow}>확인</button>
                   <button type="button" className={`${outlineButton} border-rose-400/30 text-rose-300`} onClick={() => void decide(mapping.mappingId, "exclude")} disabled={decisionBusyNow}>제외</button>
                   <button type="button" className={outlineButton} onClick={() => void createSnapshot(mapping.mappingId)} disabled={snapshotBusyNow}>스냅샷 생성</button>
+                  <span className="text-xs text-slate-500">확인: 이 연결을 그대로 사용 · 제외: 이 연결을 쓰지 않음 · 스냅샷 생성: 지금 이미지 버전을 이 장면에 고정</span>
                 </div>
                 {decisionErrors[mapping.mappingId] && (
                   <p role="alert" data-testid={`decision-error-${mapping.mappingId}`} data-error-code={decisionErrors[mapping.mappingId]!.code} className="text-sm text-rose-400">

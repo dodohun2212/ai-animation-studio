@@ -537,6 +537,14 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
   const [promptPreviewLoading, setPromptPreviewLoading] = useState(false);
   const [promptPreviewError, setPromptPreviewError] = useState<{ code: string; message: string } | null>(null);
   const promptPreviewRequest = useRef(0);
+  const [justSaved, setJustSaved] = useState(false);
+  const justSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (justSavedTimer.current) clearTimeout(justSavedTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!promptPreviewOpen || !state.settings) return;
@@ -582,6 +590,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
 
   function setField<Key extends keyof ShortProjectSettings>(key: Key, value: ShortProjectSettings[Key]): void {
     setState((old) => old.settings ? { ...old, settings: { ...old.settings, [key]: value }, error: null } : old);
+    setJustSaved(false);
   }
 
   async function openCharacterPicker(): Promise<void> {
@@ -620,6 +629,9 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
     try {
       const response = await updateProjectSettings(projectId, { settings });
       setState({ settings: response.settings, loading: false, error: null });
+      setJustSaved(true);
+      if (justSavedTimer.current) clearTimeout(justSavedTimer.current);
+      justSavedTimer.current = setTimeout(() => setJustSaved(false), 4000);
     } catch (error) {
       setState((old) => ({ ...old, loading: false, error: toDisplayError(error) }));
     } finally { saving.current = false; }
@@ -744,6 +756,15 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
           {state.error && (
             <p className="text-sm text-rose-400 md:col-span-2" role="alert" data-error-code={state.error.code}>
               {state.error.message}
+            </p>
+          )}
+          {justSaved && !state.error && (
+            <p
+              role="status"
+              data-testid="settings-saved-notice"
+              className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3.5 py-2 text-sm text-emerald-300 md:col-span-2"
+            >
+              설정이 저장되었습니다.
             </p>
           )}
           <button type="submit" disabled={state.loading} className={`${primaryButton} md:col-span-2`}>

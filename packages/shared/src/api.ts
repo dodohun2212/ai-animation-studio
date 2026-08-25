@@ -584,6 +584,27 @@ export interface UpdateAssetMetadataRequest {
 
 export interface UpdateAssetResponse { asset: Asset; }
 
+/**
+ * Creates an empty Character Folder (no image, no file upload) that other Character Assets can then be linked
+ * into via `SetAssetParentFolderRequest`. Only `assetType: "character"` is supported — mirrors the existing
+ * `characterFolderReferenceSet` restriction to character folders.
+ */
+export interface CreateAssetFolderRequest {
+  displayName: string;
+  description?: string;
+  notes?: string;
+}
+export interface CreateAssetFolderResponse { asset: Asset; }
+
+/**
+ * Links (or unlinks, with `parentFolderId: null`) one existing Character Asset as a child of a Character Folder —
+ * the add/remove counterpart to `characterFolderReferenceSet`, which only reorders a folder's already-linked
+ * children. Returns both the updated child and its new (or former) parent folder so a client can refresh both
+ * without a second round trip.
+ */
+export interface SetAssetParentFolderRequest { parentFolderId: string | null; }
+export interface SetAssetParentFolderResponse { asset: Asset; folder: Asset | null; }
+
 export interface DeleteAssetResponse {
   assetId: string;
   deletedOwnedFile: boolean;
@@ -837,6 +858,8 @@ export const API_ROUTES = {
   asset: (assetId: string) => `/assets/${encodeURIComponent(assetId)}`,
   assetContent: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/content`,
   characterFolderReferenceSet: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/character-reference-set`,
+  createAssetFolder: "/assets/folders",
+  assetParentFolder: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/parent-folder`,
   assetsAudit: "/assets/audit",
   assetVersions: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/versions`,
   assetRelink: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/relink`,

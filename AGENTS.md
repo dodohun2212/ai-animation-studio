@@ -9,6 +9,7 @@ Before changing code, read:
 3. `docs/02_MIGRATION_PLAN.md`
 4. `docs/03_TEAM_WORKFLOW.md`
 5. `docs/04_INTERNAL_API_CONTRACT.md` when changing shared or API code
+6. `docs/05_DESIGN_SYSTEM.md` when changing anything in `apps/frontend`
 
 Project-specific rules in this file take precedence over shared guidelines.
 
@@ -75,6 +76,15 @@ server deployment and user accounts without implementing those features now.
 → FFmpeg 순서 병합
 → Instagram Reels용 최종 MP4
 ```
+
+## UI and visual work
+
+All visual decisions in `apps/frontend` (color, spacing, radius, shadows,
+typography, state colors, component recipes) come from
+`docs/05_DESIGN_SYSTEM.md`. Do not invent new visual patterns inline.
+If a needed pattern is missing, add it to the design system document in
+the same task, then implement it. Before reporting UI work complete, run
+the checklist in that document's final section.
 
 ## Feature discipline
 

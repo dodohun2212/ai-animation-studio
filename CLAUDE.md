@@ -10,6 +10,7 @@ Before working, read and follow these files in order:
 4. `docs/02_MIGRATION_PLAN.md`
 5. `docs/03_TEAM_WORKFLOW.md`
 6. `docs/04_INTERNAL_API_CONTRACT.md` when changing shared contracts or API code
+7. `docs/05_DESIGN_SYSTEM.md` when doing UI work in `apps/frontend`
 
 If instructions conflict, `AGENTS.md` takes precedence.
 

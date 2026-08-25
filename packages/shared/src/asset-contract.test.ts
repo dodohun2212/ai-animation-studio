@@ -6,10 +6,14 @@ import {
   type AssetOwnership,
   type AssetStatus,
   type AssetType,
+  type CreateAssetFolderRequest,
+  type CreateAssetFolderResponse,
   type CreateAssetMetadata,
   type DeleteAssetResponse,
   type GetAssetResponse,
   type ListAssetsQuery,
+  type SetAssetParentFolderRequest,
+  type SetAssetParentFolderResponse,
   type UpdateAssetMetadataRequest,
 } from "./index.js";
 
@@ -99,5 +103,27 @@ describe("Asset Library contract", () => {
       "assetType" | "displayName" | "description" | "tags" | "aliases" |
       "approved" | "faceBaseline" | "characterKey" | "notes" | "role"
     >();
+  });
+
+  it("supports creating an empty Character Folder and linking/unlinking a child into one", () => {
+    expect(API_ROUTES.createAssetFolder).toBe("/assets/folders");
+    expect(API_ROUTES.assetParentFolder("ASSET-CHAR-1")).toBe("/assets/ASSET-CHAR-1/parent-folder");
+    expect(API_ROUTES.assetParentFolder("ASSET/CHAR 1")).toBe("/assets/ASSET%2FCHAR%201/parent-folder");
+
+    expectTypeOf<keyof CreateAssetFolderRequest>().toEqualTypeOf<"displayName" | "description" | "notes">();
+    const folderRequest: CreateAssetFolderRequest = { displayName: "Hero" };
+    const folderResponse: CreateAssetFolderResponse = { asset: { ...legacyCompatibleAsset, isFolder: true } };
+    expect(folderRequest.displayName).toBe("Hero");
+    expect(folderResponse.asset.isFolder).toBe(true);
+
+    const link: SetAssetParentFolderRequest = { parentFolderId: "ASSET-FOLDER-1" };
+    const unlink: SetAssetParentFolderRequest = { parentFolderId: null };
+    const linkResponse: SetAssetParentFolderResponse = {
+      asset: { ...legacyCompatibleAsset, parentFolderId: "ASSET-FOLDER-1" },
+      folder: { ...legacyCompatibleAsset, assetId: "ASSET-FOLDER-1", isFolder: true, childAssetIds: ["ASSET-CHAR-1"] },
+    };
+    expect(link.parentFolderId).toBe("ASSET-FOLDER-1");
+    expect(unlink.parentFolderId).toBeNull();
+    expect(linkResponse.folder?.childAssetIds).toEqual(["ASSET-CHAR-1"]);
   });
 });
