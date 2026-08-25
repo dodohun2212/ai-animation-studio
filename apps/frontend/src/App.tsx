@@ -301,6 +301,8 @@ export function App() {
   const [screen, setScreen] = useState<Screen>({ name: "list" });
   const [listRefreshToken, setListRefreshToken] = useState(0);
   const [longListRefreshToken, setLongListRefreshToken] = useState(0);
+  /** The two dashboards a session starts from — everywhere else is a working screen with its own title. */
+  const isEntryScreen = screen.name === "list" || screen.name === "longList";
 
   function handleCreated(project: Project): void {
     setListRefreshToken((token) => token + 1);
@@ -354,13 +356,20 @@ export function App() {
           </>
         )}
         <div className="relative mx-auto max-w-4xl">
-          <h1 className="bg-gradient-to-r from-violet-200 via-violet-300 to-pink-300 bg-clip-text text-4xl font-semibold text-transparent">
-            AI Animation Studio
-          </h1>
-          <p className="mt-4 max-w-2xl text-slate-400">
-            TypeScript 기반 새 버전의 실행 환경이 준비되었습니다. 기존 Python
-            워크플로는 새 기능이 검증될 때까지 그대로 보존됩니다.
-          </p>
+          {/* The studio banner is the entry screens' hero, matching §5.1's rule for the hero images. Deep
+              screens carry their own <h1> title, so repeating this here would both push the actual work
+              down the page and put a second <h1> on every screen. */}
+          {isEntryScreen && (
+            <>
+              <h1 className="bg-gradient-to-r from-violet-200 via-violet-300 to-pink-300 bg-clip-text text-4xl font-semibold text-transparent">
+                AI Animation Studio
+              </h1>
+              <p className="mt-4 max-w-2xl text-slate-400">
+                TypeScript 기반 새 버전의 실행 환경이 준비되었습니다. 기존 Python
+                워크플로는 새 기능이 검증될 때까지 그대로 보존됩니다.
+              </p>
+            </>
+          )}
 
           <div className={screen.name === "list" ? "mt-8 pt-24" : "mt-8"}>
             {screen.name === "list" && (

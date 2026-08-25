@@ -154,13 +154,13 @@ export function ArchiveScreen({ onBack, onChanged }: Props) {
         <button type="button" className={outlineButton} onClick={onBack}>
           프로젝트 목록으로
         </button>
-        <h2 className="flex items-center gap-2.5 text-lg font-semibold">
+        <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-slate-100">
           <span
             aria-hidden="true"
             className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
           />
           보관함
-        </h2>
+        </h1>
       </header>
       <p className="text-sm text-slate-400">
         보관한 프로젝트는 데이터가 그대로 남아 있어 언제든 "복구"로 다시 꺼낼 수 있습니다. "완전히 삭제"는 파일까지 진짜로

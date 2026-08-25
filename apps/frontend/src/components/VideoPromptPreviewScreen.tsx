@@ -138,13 +138,13 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
       >
         프로젝트로 돌아가기
       </button>
-      <h2 className="flex items-center gap-2.5 text-lg font-semibold">
+      <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-slate-100">
         <span
           aria-hidden="true"
           className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
         />
         영상 프롬프트 및 비용 확인
-      </h2>
+      </h1>
       <p className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300" data-testid="no-provider-notice">
         실제 유료 Runway API를 호출하지 않습니다. 아래 수정 내용은 이 화면에만 유지되며 저장되지 않습니다.
       </p>
