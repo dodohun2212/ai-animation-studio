@@ -143,6 +143,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
   const [sceneCount, setSceneCount] = useState(6);
   const [clipDurationSeconds, setClipDurationSeconds] = useState<RunwayClipDurationSeconds>(5);
   const [narrationEnabled, setNarrationEnabled] = useState(false);
+  const [subtitlesEnabled, setSubtitlesEnabled] = useState(false);
 
   const storyCalls = 1;
   const imageCalls = sceneCount;
@@ -224,9 +225,24 @@ export function WorkflowGuideScreen({ onBack }: Props) {
             onChange={(event) => setNarrationEnabled(event.target.checked)}
           />
           <span>
-            내레이션 넣기
+            음성 넣기
             <span className="mt-0.5 block text-xs text-slate-500">
-              프로젝트 설정의 "내레이션 넣기"와 같은 항목입니다. 켜면 음성 단계가 하나 늘어납니다.
+              프로젝트 설정의 "음성 넣기"와 같은 항목입니다. 켜면 음성 단계가 하나 늘어납니다.
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2.5 text-sm text-slate-300">
+          <input
+            type="checkbox"
+            data-testid="workflow-guide-subtitles"
+            className="mt-0.5 h-4 w-4 flex-shrink-0 accent-violet-500"
+            checked={subtitlesEnabled}
+            onChange={(event) => setSubtitlesEnabled(event.target.checked)}
+          />
+          <span>
+            자막 넣기
+            <span className="mt-0.5 block text-xs text-slate-500">
+              자막은 AI를 부르지 않고 이 컴퓨터에서 직접 입힙니다 — 호출 횟수도 비용도 늘지 않습니다.
             </span>
           </span>
         </label>
@@ -276,7 +292,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
         ]}
         receives={
           `장면 ${sceneCount}개분의 구성 정보를 한 번에. 장면마다 구도·모션·대본이 항목별로 나뉘어 돌아옵니다.` +
-          (narrationEnabled ? " 내레이션을 켰으므로 장면마다 읽어줄 문장도 함께 만들어집니다." : "")
+          (narrationEnabled || subtitlesEnabled ? " 음성이나 자막을 켰으므로 장면마다 읽어줄 문장도 함께 만들어집니다." : "")
         }
       />
 
@@ -319,7 +335,13 @@ export function WorkflowGuideScreen({ onBack }: Props) {
         ]}
         receives={
           `장면마다 ${clipDurationSeconds}초 영상 1개. 검토 후 확정하면 마지막에 하나로 병합됩니다.` +
-          (narrationEnabled ? " 병합할 때 내레이션 음성과 자막이 함께 입혀집니다." : "")
+          (narrationEnabled && subtitlesEnabled
+            ? " 병합할 때 내레이션 음성과 자막이 함께 입혀집니다."
+            : narrationEnabled
+              ? " 병합할 때 내레이션 음성이 입혀집니다."
+              : subtitlesEnabled
+                ? " 병합할 때 자막이 입혀집니다(비용 없음)."
+                : "")
         }
       />
 
@@ -362,9 +384,9 @@ export function WorkflowGuideScreen({ onBack }: Props) {
             영상까지 반영됩니다.
           </li>
           <li>
-            · <span className="text-slate-300">내레이션은 프로젝트마다 켜고 끌 수 있습니다.</span> 꺼두면 음성 단계는 아예
-            실행되지 않아 비용도 발생하지 않습니다. 켜면 등장인물이 입을 움직여 말하는 방식이 아니라 이야기를 읽어주는
-            방식이라, 입 모양이 어긋나 보이지 않습니다.
+            · <span className="text-slate-300">음성과 자막은 따로 켤 수 있습니다.</span> 자막만 켜면 AI 호출이 늘지 않아
+            비용 없이 글자만 얹을 수 있고, 음성을 켜면 그때부터 장면마다 비용이 붙습니다. 음성은 등장인물이 입을 움직여
+            말하는 방식이 아니라 이야기를 읽어주는 방식이라, 입 모양이 어긋나 보이지 않습니다.
           </li>
           <li>
             · <span className="text-slate-300">위 금액은 예상치입니다.</span> 실제 청구는 각 제공사 기준을 따르며, 월

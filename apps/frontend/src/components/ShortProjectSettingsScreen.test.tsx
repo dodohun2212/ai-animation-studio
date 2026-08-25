@@ -433,4 +433,41 @@ describe("ShortProjectSettingsScreen", () => {
     await screen.findByDisplayValue("별의 지도");
     expect((screen.getByTestId("settings-narration-enabled") as HTMLInputElement).checked).toBe(true);
   });
+
+  it("lets subtitles be turned on without voice, so a project can get captions at no cost", async () => {
+    const project = makeProject({});
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+      "PATCH /projects/sample_project/settings": { project, settings: { ...settings, subtitlesEnabled: true } },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    await screen.findByDisplayValue("별의 지도");
+    fireEvent.click(screen.getByTestId("settings-subtitles-enabled"));
+    fireEvent.click(screen.getByRole("button", { name: "설정 저장" }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => String(url) === "/projects/sample_project/settings" && (init as RequestInit | undefined)?.method === "PATCH")).toBe(true));
+    const patchCall = fetchMock.mock.calls.find(([url, init]) => String(url) === "/projects/sample_project/settings" && (init as RequestInit | undefined)?.method === "PATCH")!;
+    // Subtitles on, voice untouched — the two switches are independent.
+    expect(JSON.parse(String((patchCall[1] as RequestInit).body))).toMatchObject({ settings: { subtitlesEnabled: true, narrationEnabled: false } });
+  });
+
+  it("reopens an existing project with subtitles already on", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings: { ...settings, subtitlesEnabled: true } },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    await screen.findByDisplayValue("별의 지도");
+    expect((screen.getByTestId("settings-subtitles-enabled") as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByTestId("settings-narration-enabled") as HTMLInputElement).checked).toBe(false);
+  });
 });

@@ -89,4 +89,24 @@ describe("WorkflowGuideScreen", () => {
     // $1.10 + (3 x $0.01).
     expect(screen.getByTestId("workflow-guide-total-cost").textContent).toBe("$1.13");
   });
+
+  it("adds no calls and no cost when only subtitles are turned on", () => {
+    render(<WorkflowGuideScreen onBack={() => {}} />);
+    fireEvent.click(screen.getByTestId("workflow-guide-subtitles"));
+
+    // Subtitles are burned in locally — they must not change the AI call count or the cost.
+    expect(screen.getByTestId("workflow-guide-total-calls").textContent).toBe("13회");
+    expect(screen.getByTestId("workflow-guide-total-cost").textContent).toBe("$2.15");
+    expect(screen.queryByTestId("workflow-guide-stage-narration-calls")).toBeNull();
+  });
+
+  it("keeps the voice stage priced on its own when both switches are on", () => {
+    render(<WorkflowGuideScreen onBack={() => {}} />);
+    fireEvent.click(screen.getByTestId("workflow-guide-subtitles"));
+    fireEvent.click(screen.getByTestId("workflow-guide-narration"));
+
+    expect(screen.getByTestId("workflow-guide-stage-narration-calls").textContent).toBe("6회");
+    expect(screen.getByTestId("workflow-guide-total-calls").textContent).toBe("19회");
+    expect(screen.getByTestId("workflow-guide-total-cost").textContent).toBe("$2.21");
+  });
 });
