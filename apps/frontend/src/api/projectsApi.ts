@@ -46,7 +46,16 @@ const NETWORK_ERROR = { code: "CLIENT_NETWORK_ERROR", message: "서버에 연결
 const MALFORMED_RESPONSE_ERROR = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 해석하지 못했습니다." };
 const UNKNOWN_ERROR = { code: "CLIENT_UNKNOWN_ERROR", message: "요청을 처리하지 못했습니다. 잠시 후 다시 시도해주세요." };
 
-/** Never surfaces raw body content, stack traces, or local paths — only a fixed, safe message. */
+/**
+ * KNOWN GAP (flagged by Cowork, Round 52): unlike imageReviewApi/narrationApi/videoWorkflowApi's own
+ * toDisplayError, which map each backend error code to a fixed safe message, this one still returns
+ * ProjectsApiError.message verbatim — the backend's raw internal string (e.g. scene-edit's
+ * "scene contains unsupported fields: ..."). Left as-is rather than fixed inline: this module backs many
+ * screens across many endpoints (project CRUD, settings, cast, asset-references, continuity, archive), so
+ * building a proper SAFE_ERRORS map means auditing every error code each of those endpoints can actually
+ * return — a wider, riskier change than fits alongside an unrelated feature, and worth its own round with
+ * its own verification pass.
+ */
 export function toDisplayError(error: unknown): { code: string; message: string } {
   if (error instanceof ProjectsApiError) {
     return { code: error.code, message: error.message };
