@@ -5,6 +5,7 @@ import { getProject, toDisplayError } from "../api/projectsApi.js";
 import { toSceneEditDisplayError, updateScene } from "../api/sceneEditApi.js";
 import { Spinner } from "./Spinner.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
+import { SCENE_FIELD_GROUPS, SCENE_FIELD_KEYS } from "../utils/sceneFields.js";
 
 interface Props {
   projectId: string;
@@ -17,71 +18,6 @@ type LoadState =
   | { status: "loading" }
   | { status: "error"; error: DisplayError }
   | { status: "ready"; project: Project };
-
-/** Every field the edit endpoint accepts, in the order they are shown. */
-type EditableField = {
-  key: string;
-  label: string;
-  multiline?: boolean;
-};
-
-/**
- * The editable fields grouped by what editing them actually costs.
- *
- * The grouping is the point of this screen: the endpoint accepts one flat set of fields, but they are not
- * equivalent — changing a composition field means paying to regenerate an image (and the video built from it),
- * while changing the narrated script costs nothing at all. Showing them in one undifferentiated list would hide
- * that, and the user would only discover the consequence after saving. `impact` is therefore stated up front,
- * not after the fact.
- */
-const FIELD_GROUPS: { title: string; impact: string; free?: boolean; fields: EditableField[] }[] = [
-  {
-    title: "화면 대본",
-    impact: "고쳐도 다시 만들 것이 없습니다.",
-    free: true,
-    fields: [{ key: "description", label: "장면 대본", multiline: true }],
-  },
-  {
-    title: "내레이션 문장",
-    impact: "고치면 이 장면의 음성을 다시 만들어야 합니다.",
-    fields: [{ key: "narration", label: "읽어줄 문장", multiline: true }],
-  },
-  {
-    title: "구도",
-    impact: "고치면 이 장면의 이미지를 다시 만들어야 하고, 그 이미지로 만든 영상도 다시 만들어야 합니다.",
-    fields: [
-      { key: "visual_action", label: "화면에 보이는 행동", multiline: true },
-      { key: "shot_size", label: "샷 크기" },
-      { key: "camera_angle", label: "카메라 앵글" },
-      { key: "composition", label: "구도" },
-      { key: "lens_feel", label: "렌즈 느낌" },
-      { key: "focus_subject", label: "초점 대상" },
-    ],
-  },
-  {
-    title: "움직임",
-    impact: "고치면 이 장면의 영상을 다시 만들어야 합니다. 이미지는 그대로 쓸 수 있습니다.",
-    fields: [
-      { key: "start_motion", label: "시작 동작" },
-      { key: "main_motion", label: "주요 동작" },
-      { key: "expression_change", label: "표정 변화" },
-      { key: "camera_motion", label: "카메라 움직임" },
-      { key: "environment_motion", label: "배경 움직임" },
-      { key: "motion_speed", label: "움직임 속도" },
-      { key: "motion_intensity", label: "움직임 강도" },
-    ],
-  },
-  {
-    title: "다음 장면과의 연결",
-    impact: "고치면 이 장면과 다음 장면의 영상을 모두 다시 만들어야 합니다.",
-    fields: [
-      { key: "end_motion", label: "마무리 동작" },
-      { key: "continuity_hint", label: "이어짐 힌트" },
-    ],
-  },
-];
-
-const ALL_FIELD_KEYS = FIELD_GROUPS.flatMap((group) => group.fields.map((field) => field.key));
 
 const primaryButton =
   "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
@@ -134,7 +70,7 @@ export function SceneEditScreen({ projectId, onBack }: Props) {
   }, [selected]);
 
   const currentValue = (key: string) => (key in draft ? draft[key]! : valueOf(scene, key));
-  const changedKeys = ALL_FIELD_KEYS.filter((key) => key in draft && draft[key] !== valueOf(scene, key));
+  const changedKeys = SCENE_FIELD_KEYS.filter((key) => key in draft && draft[key] !== valueOf(scene, key));
   const hasChanges = changedKeys.length > 0;
 
   async function save(): Promise<void> {
@@ -246,7 +182,7 @@ export function SceneEditScreen({ projectId, onBack }: Props) {
             </section>
           )}
 
-          {FIELD_GROUPS.map((group) => (
+          {SCENE_FIELD_GROUPS.map((group) => (
             <section key={group.title} aria-label={group.title} data-testid={`scene-edit-group-${group.title}`} className={cardSection}>
               <header className="space-y-1">
                 <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold text-slate-100">
