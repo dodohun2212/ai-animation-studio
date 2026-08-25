@@ -54,6 +54,8 @@ describe("parseStoredProject", () => {
         video_generation_records: [{ scene: 1 }],
         video_reviews: [{ scene: 1 }],
         capcut_clip_paths: [],
+        generated_narrations: ["scene1.mp3", null],
+        narration_generation_records: [{ scene: 1 }],
         api_usage: [{ provider: "openai" }],
         script_revision: 2,
         mapping_revision: 1,
@@ -61,6 +63,8 @@ describe("parseStoredProject", () => {
     );
     expect(stored.character_profile).toEqual({ name: "고양이" });
     expect(stored.image_prompts).toEqual(["p1"]);
+    expect(stored.generated_narrations).toEqual(["scene1.mp3", null]);
+    expect(stored.narration_generation_records).toEqual([{ scene: 1 }]);
     expect(stored.api_usage).toEqual([{ provider: "openai" }]);
     expect(stored.script_revision).toBe(2);
     expect(stored.mapping_revision).toBe(1);

@@ -36,6 +36,8 @@ export function createStoredProject(projectId: string, topic: string, timestamp:
     video_generation_records: [],
     video_reviews: [],
     capcut_clip_paths: [],
+    generated_narrations: [],
+    narration_generation_records: [],
     final_video_path: null,
     api_usage: [],
     warnings: [],

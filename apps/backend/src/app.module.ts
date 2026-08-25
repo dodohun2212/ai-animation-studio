@@ -9,6 +9,7 @@ import { StoryModule } from "./story/story.module.js";
 import { ImagesModule } from "./images/images.module.js";
 import { VideosModule } from "./videos/videos.module.js";
 import { LongProjectsModule } from "./long-projects/long-projects.module.js";
+import { NarrationModule } from "./narration/narration.module.js";
 
-@Module({ imports: [ProjectsModule, ProviderSettingsModule, AssetsModule, ProjectAssetMappingsModule, StoryModule, ImagesModule, VideosModule, LongProjectsModule], controllers: [HealthController] })
+@Module({ imports: [ProjectsModule, ProviderSettingsModule, AssetsModule, ProjectAssetMappingsModule, StoryModule, ImagesModule, VideosModule, LongProjectsModule, NarrationModule], controllers: [HealthController] })
 export class AppModule {}

@@ -1,0 +1,154 @@
+import * as crypto from "node:crypto";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { Injectable } from "@nestjs/common";
+import { sceneNumbersFor, TTS_ESTIMATED_COST_USD, type SceneNumber, type StartNarrationGenerationResponse } from "@ai-animation-studio/shared";
+import { toApiProject } from "../projects/project.mapper.js";
+import { LocalProjectRepository } from "../projects/projects.repository.js";
+import { toShortProjectSettings } from "../projects/project-settings.js";
+import type { StoredProject } from "../projects/project-storage.schema.js";
+import { sceneValue } from "../images/image-prompt.js";
+import { ProviderSettingsService } from "../settings/provider-settings.service.js";
+import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
+import { OpenAiAdapterError } from "../providers/openai-common.js";
+import { callOpenAiTtsApi } from "./openai-narration-adapter.js";
+import { invalidNarrationRequest, narrationBudgetExceeded, narrationContentUnavailable, narrationGenerationFailed, narrationNotEnabled, narrationProviderError, narrationStorageError } from "./narration-api.error.js";
+
+const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+/** A silent single-frame MP3, used in local-fake mode — mirrors the local-fake single-pixel PNG used by image generation. */
+const FAKE_MP3 = Buffer.from([0xff, 0xfb, 0x90, 0x00]);
+
+function scenesFor(project: StoredProject): SceneNumber[] {
+  return sceneNumbersFor(toShortProjectSettings(project).sceneCount);
+}
+
+export type WriteAudio = (file: string, bytes: Buffer) => Promise<void>;
+
+async function atomicWriteAudio(file: string, bytes: Buffer): Promise<void> {
+  const temporary = path.join(path.dirname(file), `.${path.basename(file)}.${crypto.randomUUID()}.tmp`);
+  let renamed = false;
+  try {
+    await fs.writeFile(temporary, bytes);
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try { await fs.rename(temporary, file); renamed = true; return; }
+      catch (error) {
+        const code = isObject(error) && typeof error.code === "string" ? error.code : "";
+        if (!new Set(["EPERM", "EBUSY", "EACCES"]).has(code) || attempt === 3) throw error;
+        await new Promise((resolve) => setTimeout(resolve, attempt * 25));
+      }
+    }
+  } finally { if (!renamed) await fs.unlink(temporary).catch(() => undefined); }
+}
+
+async function validAudio(file: string): Promise<boolean> {
+  try { return (await fs.stat(file)).size > 0; } catch { return false; }
+}
+
+/**
+ * Sets one index-aligned slot without disturbing the others. Plain slice-splice ([...a.slice(0,i), v,
+ * ...a.slice(i+1)]) silently shifts every later scene's slot left by however many earlier scenes were skipped
+ * (never written), because slice never pads a too-short array — it must pad with `pad` up to `index` first.
+ */
+function setAt<T>(array: readonly T[], index: number, value: T, pad: T): T[] {
+  const result = [...array];
+  while (result.length <= index) result.push(pad);
+  result[index] = value;
+  return result;
+}
+
+@Injectable()
+export class LocalNarrationGenerationService {
+  constructor(
+    private readonly projects: LocalProjectRepository,
+    private readonly projectsRoot: string,
+    private readonly writeAudio: WriteAudio = atomicWriteAudio,
+    private readonly providerSettings?: ProviderSettingsService,
+    private readonly budget?: OpenAiBudget,
+  ) {}
+
+  narrationPath(projectId: string, scene: SceneNumber): string {
+    return path.join(this.projectsRoot, projectId, "narration", `scene${scene}.mp3`);
+  }
+
+  async content(projectId: string, rawSceneNumber: string): Promise<{ path: string; extension: ".mp3" }> {
+    const project = await this.projects.findById(projectId.trim());
+    const scenes = scenesFor(project);
+    const number = Number(rawSceneNumber);
+    const scene = Number.isInteger(number) && scenes.includes(number as SceneNumber) ? (number as SceneNumber) : undefined;
+    if (!scene) throw narrationContentUnavailable();
+    const file = this.narrationPath(project.project_id, scene);
+    if (project.generated_narrations[scene - 1] !== file || !(await validAudio(file))) throw narrationContentUnavailable();
+    return { path: file, extension: ".mp3" };
+  }
+
+  async generate(projectId: string, body: unknown): Promise<StartNarrationGenerationResponse> {
+    if (!isObject(body) || Object.keys(body).length !== 1 || body.approved !== true) throw invalidNarrationRequest();
+    const project = await this.projects.findById(projectId.trim());
+    if (!toShortProjectSettings(project).narrationEnabled) throw narrationNotEnabled();
+    const scenes = scenesFor(project);
+
+    const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
+    let current: StoredProject = project;
+    const generated: SceneNumber[] = [];
+    const reused: SceneNumber[] = [];
+    const skipped: SceneNumber[] = [];
+
+    try {
+      for (const number of scenes) {
+        const text = sceneValue(current.scenes[number - 1], "narration");
+        const destination = this.narrationPath(current.project_id, number);
+        if (!text) { skipped.push(number); continue; }
+        const existing = current.generated_narrations[number - 1];
+        if (existing === destination && (await validAudio(destination))) { reused.push(number); continue; }
+
+        let bytes: Buffer = FAKE_MP3;
+        let adapter = "local-fake-tts-adapter";
+        let apiCalls = 0;
+        if (apiKey && this.budget) {
+          await this.budget.preflight(TTS_ESTIMATED_COST_USD);
+          let succeeded = false;
+          try {
+            const result = await callOpenAiTtsApi(apiKey, text);
+            bytes = result.bytes;
+            succeeded = true;
+          } finally {
+            await this.budget.record(current.project_id, "tts", succeeded, TTS_ESTIMATED_COST_USD);
+          }
+          adapter = "gpt-4o-mini-tts";
+          apiCalls = 1;
+        }
+        await fs.mkdir(path.dirname(destination), { recursive: true });
+        await this.writeAudio(destination, bytes);
+        if (!(await validAudio(destination))) throw new Error("invalid audio");
+
+        current = {
+          ...current,
+          generated_narrations: setAt(current.generated_narrations, number - 1, destination, null),
+          narration_generation_records: setAt(
+            current.narration_generation_records, number - 1,
+            { scene_number: number, narration: text, checkpoint: "completed", adapter, tts_api_calls: apiCalls },
+            null,
+          ),
+          updated_at: new Date().toISOString(),
+        };
+        await this.projects.save(current);
+        generated.push(number);
+      }
+    } catch (error) {
+      if (error instanceof OpenAiBudgetExceededError) throw narrationBudgetExceeded(error.message);
+      if (error instanceof OpenAiAdapterError) throw narrationProviderError(error.category, error.message);
+      if (error instanceof Error && error.message === "invalid audio") throw narrationGenerationFailed();
+      throw narrationStorageError();
+    }
+
+    // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.
+    const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, generated.length * TTS_ESTIMATED_COST_USD) : undefined;
+    return {
+      project: toApiProject(current),
+      generatedSceneNumbers: generated,
+      reusedSceneNumbers: reused,
+      skippedSceneNumbers: skipped,
+      ...(budget ? { budget } : {}),
+    };
+  }
+}

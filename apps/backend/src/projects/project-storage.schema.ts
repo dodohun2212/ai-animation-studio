@@ -32,6 +32,9 @@ export interface StoredProject {
   video_generation_records: unknown[];
   video_reviews: unknown[];
   capcut_clip_paths: string[];
+  /** One entry per scene, index-aligned like generated_images — but unlike images, a scene with no narration text is skipped rather than generated, so its slot holds null instead of a path. */
+  generated_narrations: (string | null)[];
+  narration_generation_records: unknown[];
   final_video_path: string | null;
   api_usage: unknown[];
   warnings: string[];
@@ -63,6 +66,8 @@ export const KNOWN_STORED_PROJECT_FIELDS: ReadonlySet<string> = new Set([
   "video_generation_records",
   "video_reviews",
   "capcut_clip_paths",
+  "generated_narrations",
+  "narration_generation_records",
   "final_video_path",
   "api_usage",
   "warnings",
@@ -122,6 +127,17 @@ function anyArrayField(data: Record<string, unknown>, key: string, fallback: unk
   const value = data[key];
   if (!Array.isArray(value)) {
     throw dataInvalid(`Field "${key}" must be an array.`);
+  }
+  return value;
+}
+
+function nullableStringArrayField(data: Record<string, unknown>, key: string, fallback: (string | null)[]): (string | null)[] {
+  if (!(key in data)) {
+    return fallback;
+  }
+  const value = data[key];
+  if (!Array.isArray(value) || !value.every((item) => item === null || typeof item === "string")) {
+    throw dataInvalid(`Field "${key}" must be an array of strings or null.`);
   }
   return value;
 }
@@ -225,11 +241,13 @@ export function parseStoredProject(raw: unknown): StoredProject {
   const generatedImages = stringArrayField(data, "generated_images", []);
   const generatedVideoPaths = stringArrayField(data, "generated_video_paths", []);
   const capcutClipPaths = stringArrayField(data, "capcut_clip_paths", []);
+  const generatedNarrations = nullableStringArrayField(data, "generated_narrations", []);
   requireAtMostMaxScenes("image_prompts", imagePrompts);
   requireAtMostMaxScenes("motion_prompts", motionPrompts);
   requireAtMostMaxScenes("generated_images", generatedImages);
   requireAtMostMaxScenes("generated_video_paths", generatedVideoPaths);
   requireAtMostMaxScenes("capcut_clip_paths", capcutClipPaths);
+  requireAtMostMaxScenes("generated_narrations", generatedNarrations);
 
   return {
     project_id: stringField(data, "project_id"),
@@ -253,6 +271,8 @@ export function parseStoredProject(raw: unknown): StoredProject {
     video_generation_records: anyArrayField(data, "video_generation_records", []),
     video_reviews: anyArrayField(data, "video_reviews", []),
     capcut_clip_paths: capcutClipPaths,
+    generated_narrations: generatedNarrations,
+    narration_generation_records: anyArrayField(data, "narration_generation_records", []),
     final_video_path: finalVideoPathField(data),
     api_usage: anyArrayField(data, "api_usage", []),
     warnings: stringArrayField(data, "warnings", []),

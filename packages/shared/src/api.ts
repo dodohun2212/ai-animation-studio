@@ -560,6 +560,46 @@ export interface RegenerateImageReviewResponse {
   retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview };
 }
 
+/** Explicit approval for narration TTS generation. Requires ShortProjectSettings.narrationEnabled to be on. */
+export interface StartNarrationGenerationRequest { approved: true; }
+
+export interface StartNarrationGenerationResponse {
+  project: Project;
+  /** Scenes that had narration text and were newly synthesized this call. */
+  generatedSceneNumbers: SceneNumber[];
+  /** Scenes that already had valid audio from a prior call and were left untouched (no cost incurred this call) — same reuse semantics as StartImageGenerationResponse.reusedSceneNumbers. */
+  reusedSceneNumbers: SceneNumber[];
+  /** Scenes with no narration text (e.g. narration was enabled after the Story was already generated) — not an error, simply nothing to synthesize. */
+  skippedSceneNumbers: SceneNumber[];
+  /** Same meaning and scope as StartImageGenerationResponse.budget (see that field's doc comment). */
+  budget?: BudgetPreview;
+}
+
+/** One scene's narration text and whether audio has been synthesized for it yet — provider-free to read (no TTS call happens from a GET). */
+export interface NarrationReview {
+  sceneNumber: SceneNumber;
+  narration: string;
+  hasAudio: boolean;
+}
+
+export interface GetNarrationReviewResponse {
+  project: Project;
+  narrations: NarrationReview[];
+  /** Same meaning and scope as StartImageGenerationResponse.budget (see that field's doc comment). */
+  budget?: BudgetPreview;
+}
+
+/** Explicit, replacement synthesis of one scene's narration audio. Rejected (NARRATION_MISSING_TEXT) if that scene has no narration text. */
+export interface RegenerateNarrationRequest { approved: true; }
+
+export interface RegenerateNarrationResponse {
+  project: Project;
+  narrations: NarrationReview[];
+  sceneNumber: SceneNumber;
+  /** Same meaning as RegenerateImageReviewResponse.retryEstimate (see that field's doc comment). */
+  retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview };
+}
+
 /** A local, non-submitting Runway preflight row for one approved image. */
 export interface VideoPromptPreview {
   sceneNumber: SceneNumber;
