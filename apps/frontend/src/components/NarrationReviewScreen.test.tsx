@@ -17,7 +17,7 @@ function narrations(entries: { narration: string; hasAudio?: boolean }[]) {
 const settings = {
   projectName: "이름", topic: "주제", genre: "장르", mood: "분위기", character: "인물",
   lore: "", fullStory: "", durationSeconds: 30, sceneCount: 6, clipDurationSeconds: 5,
-  additionalNotes: "", styleNotes: {}, narrationEnabled: true,
+  additionalNotes: "", styleNotes: {}, narrationEnabled: true, subtitlesEnabled: false,
 };
 
 /** Routes by "METHOD url"; an array value is consumed in order (last repeats). */
@@ -205,5 +205,22 @@ describe("NarrationReviewScreen", () => {
     expect(error).toHaveAttribute("data-error-code", "NARRATION_NOT_ENABLED");
     expect(error.textContent).toContain("내레이션 넣기");
     expect(error.textContent).not.toContain("narrationEnabled must be on");
+  });
+
+  it("marks a scene whose audio is behind the current narration text", async () => {
+    renderScreen(
+      stubFetchByRoute({
+        [REVIEW]: {
+          project,
+          narrations: narrations([{ narration: "문장", hasAudio: true }, { narration: "문장", hasAudio: true }]),
+          staleness: { imageStale: [], videoStale: [], narrationStale: [2] },
+        },
+        [SETTINGS]: { settings },
+      }),
+    );
+
+    await screen.findByTestId("narration-stale-2");
+    // Scene 1's audio still matches its text, so it carries no badge.
+    expect(screen.queryByTestId("narration-stale-1")).toBeNull();
   });
 });

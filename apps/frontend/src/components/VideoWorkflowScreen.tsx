@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { GenerationProgressResponse, Scene, SceneNumber, VideoReview } from "@ai-animation-studio/shared";
+import type { GenerationProgressResponse, Scene, SceneNumber, VideoReview, SceneStaleness } from "@ai-animation-studio/shared";
 
 import {
   approveVideoReview,
@@ -16,6 +16,7 @@ import {
 } from "../api/videoWorkflowApi.js";
 import { Spinner } from "./Spinner.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
+import { StaleBadge } from "./ui/StaleBadge.js";
 import { StatusChip, type StatusTone } from "./ui/StatusChip.js";
 
 type SceneStatus = "completed" | "running" | "failed" | "pending";
@@ -55,7 +56,7 @@ type ReviewLoadState =
   | { status: "error"; error: DisplayError }
   // `scenes` comes from the same response's `project` — it carries the source image path and the final
   // motion prompt each clip was generated from, both of which the review step must show.
-  | { status: "ready"; reviews: VideoReview[]; scenes: Scene[] };
+  | { status: "ready"; reviews: VideoReview[]; scenes: Scene[]; staleness?: SceneStaleness };
 
 const POLL_INTERVAL_MS = 400;
 
@@ -164,7 +165,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
     getVideoReview(projectId, jobId)
       .then((response) => {
         if (requestId !== reviewRequest.current) return;
-        setReviewState({ status: "ready", reviews: response.reviews, scenes: response.project.scenes });
+        setReviewState({ status: "ready", reviews: response.reviews, scenes: response.project.scenes, staleness: response.staleness });
       })
       .catch((caught: unknown) => {
         if (requestId !== reviewRequest.current) return;
@@ -212,7 +213,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
     setApprovePendingScenes(new Set(approveBusy.current));
     try {
       const response = await approveVideoReview(projectId, jobId, sceneNumber);
-      setReviewState({ status: "ready", reviews: response.reviews, scenes: response.project.scenes });
+      setReviewState((current) => ({ status: "ready", reviews: response.reviews, scenes: response.project.scenes, staleness: current.status === "ready" ? current.staleness : undefined }));
       setApproveErrors((current) => {
         if (!(sceneNumber in current)) return current;
         const next = { ...current };
@@ -576,11 +577,19 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                             review.status === "approved" ? "border-emerald-400/30" : "border-white/10"
                           }`}
                         >
-                          <div className="flex items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
                             <span className="text-sm font-semibold text-slate-100">{review.sceneNumber}번 장면</span>
-                            <StatusChip tone={review.status === "approved" ? "success" : "neutral"}>
-                              {review.status === "approved" ? "확정됨" : "검토 대기"}
-                            </StatusChip>
+                            <span className="flex flex-wrap items-center gap-2">
+                              <StaleBadge
+                                staleSceneNumbers={reviewState.status === "ready" ? reviewState.staleness?.videoStale : undefined}
+                                sceneNumber={review.sceneNumber}
+                                kind="video"
+                                data-testid={`video-review-stale-${review.sceneNumber}`}
+                              />
+                              <StatusChip tone={review.status === "approved" ? "success" : "neutral"}>
+                                {review.status === "approved" ? "확정됨" : "검토 대기"}
+                              </StatusChip>
+                            </span>
                           </div>
                           {/* §4.3: the source still and the result sit side by side in one card, so the
                               generated motion can be judged against the image it came from. */}

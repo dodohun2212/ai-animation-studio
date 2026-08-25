@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { BudgetPreview, NarrationReview, SceneNumber } from "@ai-animation-studio/shared";
+import type { BudgetPreview, NarrationReview, SceneNumber, SceneStaleness } from "@ai-animation-studio/shared";
 import { TTS_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 
 import { getProjectSettings } from "../api/projectsApi.js";
@@ -14,6 +14,7 @@ import { Spinner } from "./Spinner.js";
 import { StatusChip } from "./ui/StatusChip.js";
 import { BudgetLine } from "./ui/BudgetLine.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
+import { StaleBadge } from "./ui/StaleBadge.js";
 
 interface Props {
   projectId: string;
@@ -30,6 +31,7 @@ type LoadState =
       narrations: NarrationReview[];
       budget?: BudgetPreview;
       retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview };
+      staleness?: SceneStaleness;
     };
 
 /**
@@ -75,7 +77,7 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
     getNarrationReview(projectId)
       .then((response) => {
         if (requestId !== loadRequest.current) return;
-        setState({ status: "ready", narrations: response.narrations, budget: response.budget });
+        setState({ status: "ready", narrations: response.narrations, budget: response.budget, staleness: response.staleness });
       })
       .catch((caught: unknown) => {
         if (requestId !== loadRequest.current) return;
@@ -107,7 +109,7 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
     try {
       const response = await startNarrationGeneration(projectId);
       const review = await getNarrationReview(projectId);
-      setState({ status: "ready", narrations: review.narrations, budget: response.budget ?? review.budget });
+      setState({ status: "ready", narrations: review.narrations, budget: response.budget ?? review.budget, staleness: review.staleness });
       setGenerationSummary({
         generated: response.generatedSceneNumbers.length,
         reused: response.reusedSceneNumbers.length,
@@ -130,12 +132,20 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
     setActionError(null);
     try {
       const response = await regenerateNarration(projectId, sceneNumber);
-      setState({
+      setState((current) => ({
         status: "ready",
         narrations: response.narrations,
         budget: response.retryEstimate?.budget,
         retryEstimate: response.retryEstimate,
-      });
+        // The regenerate response has no staleness of its own; the scene just stopped being stale, so drop it.
+        staleness:
+          current.status === "ready" && current.staleness
+            ? {
+                ...current.staleness,
+                narrationStale: current.staleness.narrationStale.filter((number) => number !== sceneNumber),
+              }
+            : undefined,
+      }));
       setAudioVersion((version) => version + 1);
       setRegenerateConfirmScene(null);
     } catch (caught) {
@@ -306,6 +316,12 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
                           <StatusChip tone="danger">문장 없음</StatusChip>
                         )}
                         {item.hasAudio && <StatusChip tone="success">음성 있음</StatusChip>}
+                        <StaleBadge
+                          staleSceneNumbers={state.staleness?.narrationStale}
+                          sceneNumber={item.sceneNumber}
+                          kind="narration"
+                          data-testid={`narration-stale-${item.sceneNumber}`}
+                        />
                       </span>
                     </div>
                     {text ? (

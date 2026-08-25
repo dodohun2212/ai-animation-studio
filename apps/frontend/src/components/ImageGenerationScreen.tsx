@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { BudgetPreview, ImageReview, Project, SceneNumber, StartImageGenerationResponse } from "@ai-animation-studio/shared";
+import type { BudgetPreview, ImageReview, Project, SceneNumber, SceneStaleness, StartImageGenerationResponse } from "@ai-animation-studio/shared";
 import { IMAGE_ESTIMATED_COST_USD, WorkflowState, sceneNumbersFor } from "@ai-animation-studio/shared";
 
 import { getProject, toDisplayError } from "../api/projectsApi.js";
@@ -15,6 +15,7 @@ import { Spinner } from "./Spinner.js";
 import { StatusChip } from "./ui/StatusChip.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { BudgetLine } from "./ui/BudgetLine.js";
+import { StaleBadge } from "./ui/StaleBadge.js";
 
 interface Props {
   projectId: string;
@@ -32,7 +33,7 @@ type ReviewLoadState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "error"; error: DisplayError }
-  | { status: "ready"; reviews: ImageReview[]; budget?: BudgetPreview; retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview } };
+  | { status: "ready"; reviews: ImageReview[]; budget?: BudgetPreview; retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview }; staleness?: SceneStaleness };
 
 const primaryButton =
   "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
@@ -106,7 +107,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
     getImageReview(projectId)
       .then((response) => {
         if (requestId !== reviewLoadRequest.current) return;
-        setReviewState({ status: "ready", reviews: response.reviews, budget: response.budget });
+        setReviewState({ status: "ready", reviews: response.reviews, budget: response.budget, staleness: response.staleness });
       })
       .catch((error: unknown) => {
         if (requestId !== reviewLoadRequest.current) return;
@@ -125,6 +126,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
         reviews: response.reviews,
         budget: current.status === "ready" ? current.budget : undefined,
         retryEstimate: current.status === "ready" ? current.retryEstimate : undefined,
+        staleness: current.status === "ready" ? current.staleness : undefined,
       }));
       setProjectOverride(response.project);
       setApproveErrors((current) => {
@@ -158,7 +160,17 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
     setRegeneratePendingScenes(new Set(regenerateBusy.current));
     try {
       const response = await regenerateImageReview(projectId, sceneNumber);
-      setReviewState({ status: "ready", reviews: response.reviews, budget: response.retryEstimate?.budget, retryEstimate: response.retryEstimate });
+      setReviewState((current) => ({
+        status: "ready",
+        reviews: response.reviews,
+        budget: response.retryEstimate?.budget,
+        retryEstimate: response.retryEstimate,
+        // Regenerating this scene brings it back in line with the current text, so it is no longer stale.
+        staleness:
+          current.status === "ready" && current.staleness
+            ? { ...current.staleness, imageStale: current.staleness.imageStale.filter((number) => number !== sceneNumber) }
+            : undefined,
+      }));
       setProjectOverride(response.project);
       setRegenerateConfirmScene(null);
       setRegenerateErrors((current) => {
@@ -354,11 +366,19 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                           review.status === "approved" ? "border-emerald-400/30" : "border-white/10"
                         }`}
                       >
-                        <div className="flex items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
                           <span className="text-sm font-semibold text-slate-100">{review.sceneNumber}번 장면</span>
-                          <StatusChip tone={review.status === "approved" ? "success" : "neutral"}>
-                            {review.status === "approved" ? "확정됨" : "검토 대기"}
-                          </StatusChip>
+                          <span className="flex flex-wrap items-center gap-2">
+                            <StaleBadge
+                              staleSceneNumbers={reviewState.status === "ready" ? reviewState.staleness?.imageStale : undefined}
+                              sceneNumber={review.sceneNumber}
+                              kind="image"
+                              data-testid={`review-stale-${review.sceneNumber}`}
+                            />
+                            <StatusChip tone={review.status === "approved" ? "success" : "neutral"}>
+                              {review.status === "approved" ? "확정됨" : "검토 대기"}
+                            </StatusChip>
+                          </span>
                         </div>
                         {/* 9:16 keeps the thumbnail in the aspect ratio the Reel is actually produced in (§4.2). */}
                         <img
