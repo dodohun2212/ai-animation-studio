@@ -47,18 +47,58 @@ const MALFORMED_RESPONSE_ERROR = { code: "CLIENT_MALFORMED_RESPONSE", message: "
 const UNKNOWN_ERROR = { code: "CLIENT_UNKNOWN_ERROR", message: "요청을 처리하지 못했습니다. 잠시 후 다시 시도해주세요." };
 
 /**
- * KNOWN GAP (flagged by Cowork, Round 52): unlike imageReviewApi/narrationApi/videoWorkflowApi's own
- * toDisplayError, which map each backend error code to a fixed safe message, this one still returns
- * ProjectsApiError.message verbatim — the backend's raw internal string (e.g. scene-edit's
- * "scene contains unsupported fields: ..."). Left as-is rather than fixed inline: this module backs many
- * screens across many endpoints (project CRUD, settings, cast, asset-references, continuity, archive), so
- * building a proper SAFE_ERRORS map means auditing every error code each of those endpoints can actually
- * return — a wider, riskier change than fits alongside an unrelated feature, and worth its own round with
- * its own verification pass.
+ * Every non-INVALID_REQUEST code apps/backend/src/projects/project-api.error.ts can throw (audited against
+ * every throw site under apps/backend/src/projects/ — projects.service.ts, project-settings.ts, project-cast.ts,
+ * project-asset-references.ts, project-storage.schema.ts, projects.repository.ts, scene-edit.service.ts — this
+ * module's own toApiProject-backed endpoints are the only ones that can produce these).
  */
+const SAFE_ERRORS: Record<string, string> = {
+  UNSAFE_PROJECT_ID: "프로젝트 ID에 사용할 수 없는 문자가 포함되어 있습니다.",
+  PROJECT_ALREADY_EXISTS: "이미 같은 이름의 프로젝트가 있습니다.",
+  PROJECT_NOT_FOUND: "프로젝트를 찾을 수 없습니다.",
+  PROJECT_JSON_MALFORMED: "프로젝트 데이터를 읽을 수 없습니다.",
+  PROJECT_DATA_INVALID: "프로젝트 데이터가 손상되었습니다.",
+  PROJECT_STORAGE_ERROR: "저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+  PROJECT_ARCHIVE_NOT_ALLOWED: "생성 또는 렌더링이 진행 중인 프로젝트는 보관할 수 없습니다.",
+  PROJECT_ARCHIVE_COLLISION: "이미 복구 가능한 보관 항목이 있습니다. 먼저 정리해 주세요.",
+  PROJECT_RESTORE_COLLISION: "같은 위치에 이미 활성 프로젝트가 있어 복구할 수 없습니다.",
+};
+
+/**
+ * INVALID_REQUEST alone covers many different situations across every endpoint this module calls (settings
+ * validation, cast/asset-reference validation, archive/delete confirmation mismatch, continuity linking, ...),
+ * each throw site's own message an internal English string never meant for display. Rather than one generic
+ * message for all of them (losing real, actionable distinctions a couple of these carry — a mistyped archive
+ * confirmation is not the same situation as an unavailable Asset), `details.field` (already sent by every
+ * invalidRequest() call site) picks the closer message; anything else falls back to a generic one.
+ */
+const CONFIRMATION_MISMATCH_MESSAGE = "확인 문구가 프로젝트 제목과 일치하지 않습니다.";
+const ASSET_SELECTION_INVALID_MESSAGE = "선택한 Asset을 찾을 수 없거나 이 용도로 사용할 수 없는 유형입니다.";
+const INVALID_REQUEST_FALLBACK_MESSAGE = "입력값을 확인해 주세요.";
+const ASSET_FIELD_PREFIXES = ["assetId", "atmosphereAssetIds", "sceneReferenceAssets", "cast"];
+
+function invalidRequestMessage(details: Record<string, unknown> | undefined): string {
+  const field = typeof details?.field === "string" ? details.field : "";
+  if (field === "confirmation") return CONFIRMATION_MISMATCH_MESSAGE;
+  if (ASSET_FIELD_PREFIXES.some((prefix) => field === prefix || field.startsWith(`${prefix}[`) || field.startsWith(`${prefix}.`))) {
+    return ASSET_SELECTION_INVALID_MESSAGE;
+  }
+  return INVALID_REQUEST_FALLBACK_MESSAGE;
+}
+
+/** Never surfaces the backend's raw message or details text — only a fixed, safe message per code (or, for INVALID_REQUEST, per details.field). */
 export function toDisplayError(error: unknown): { code: string; message: string } {
-  if (error instanceof ProjectsApiError) {
-    return { code: error.code, message: error.message };
+  if (!(error instanceof ProjectsApiError)) return UNKNOWN_ERROR;
+  if (error.code === "INVALID_REQUEST") {
+    return { code: error.code, message: invalidRequestMessage(error.details) };
+  }
+  // These two are thrown by this module itself (see NETWORK_ERROR/MALFORMED_RESPONSE_ERROR above) with an
+  // already-safe, already-Korean message — never the backend's own text — so passing them through as-is is
+  // correct, not an exception to "never surfaces the backend's raw message."
+  if (error.code === NETWORK_ERROR.code) return NETWORK_ERROR;
+  if (error.code === MALFORMED_RESPONSE_ERROR.code) return MALFORMED_RESPONSE_ERROR;
+  if (Object.prototype.hasOwnProperty.call(SAFE_ERRORS, error.code)) {
+    return { code: error.code, message: SAFE_ERRORS[error.code]! };
   }
   return UNKNOWN_ERROR;
 }

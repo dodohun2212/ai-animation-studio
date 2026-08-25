@@ -245,7 +245,7 @@ describe("ShortProjectSettingsScreen", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "/projects/sample_project/settings") return jsonResponse(200, { settings });
-      if (url === "/projects/sample_project/settings/cast") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "캐릭터 목록을 불러오지 못했습니다." });
+      if (url === "/projects/sample_project/settings/cast") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "internal: failed to load cast" });
       if (url === "/projects/sample_project/settings/asset-references") return jsonResponse(200, { atmosphereAssetIds: [], sceneReferenceAssets: [] });
       if (url === "/projects/sample_project/settings/continuity") return jsonResponse(200, { link: null });
       throw new Error(`Unexpected fetch call in test: ${url}`);
@@ -256,7 +256,7 @@ describe("ShortProjectSettingsScreen", () => {
     await screen.findByDisplayValue("별의 지도");
     const alert = await screen.findByTestId("cast-error");
     expect(alert).toHaveAttribute("data-error-code", "PROJECT_STORAGE_ERROR");
-    expect(alert.textContent).toBe("캐릭터 목록을 불러오지 못했습니다.");
+    expect(alert.textContent).toBe("저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
   });
 
   it("shows the current atmosphere/scene reference Assets, adds a searched atmosphere Asset, and removes it", async () => {
@@ -320,7 +320,7 @@ describe("ShortProjectSettingsScreen", () => {
       const url = String(input);
       if (url === "/projects/sample_project/settings") return jsonResponse(200, { settings });
       if (url === "/projects/sample_project/settings/cast") return jsonResponse(200, { cast: [] });
-      if (url === "/projects/sample_project/settings/asset-references") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "참고 Asset 목록을 불러오지 못했습니다." });
+      if (url === "/projects/sample_project/settings/asset-references") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "internal: failed to load asset references" });
       if (url === "/projects/sample_project/settings/continuity") return jsonResponse(200, { link: null });
       throw new Error(`Unexpected fetch call in test: ${url}`);
     });
@@ -330,7 +330,7 @@ describe("ShortProjectSettingsScreen", () => {
     await screen.findByDisplayValue("별의 지도");
     const alert = await screen.findByTestId("asset-reference-error");
     expect(alert).toHaveAttribute("data-error-code", "PROJECT_STORAGE_ERROR");
-    expect(alert.textContent).toBe("참고 Asset 목록을 불러오지 못했습니다.");
+    expect(alert.textContent).toBe("저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
   });
 
   it("lists continuity options, links to one, and disconnects it again", async () => {
@@ -383,7 +383,7 @@ describe("ShortProjectSettingsScreen", () => {
       if (url === "/projects/sample_project/settings") return jsonResponse(200, { settings });
       if (url === "/projects/sample_project/settings/cast") return jsonResponse(200, { cast: [] });
       if (url === "/projects/sample_project/settings/asset-references") return jsonResponse(200, { atmosphereAssetIds: [], sceneReferenceAssets: [] });
-      if (url === "/projects/sample_project/settings/continuity") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "연결 정보를 불러오지 못했습니다." });
+      if (url === "/projects/sample_project/settings/continuity") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "internal: failed to load continuity" });
       throw new Error(`Unexpected fetch call in test: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -392,7 +392,7 @@ describe("ShortProjectSettingsScreen", () => {
     await screen.findByDisplayValue("별의 지도");
     const alert = await screen.findByTestId("continuity-error");
     expect(alert).toHaveAttribute("data-error-code", "PROJECT_STORAGE_ERROR");
-    expect(alert.textContent).toBe("연결 정보를 불러오지 못했습니다.");
+    expect(alert.textContent).toBe("저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
   });
 
   it("defaults narration off and saves it once turned on", async () => {

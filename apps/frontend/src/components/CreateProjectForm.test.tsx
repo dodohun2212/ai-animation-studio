@@ -116,10 +116,11 @@ describe("CreateProjectForm", () => {
     await waitFor(() => expect(submitButton).not.toBeDisabled());
   });
 
-  it("shows the backend error message with its code identifiable via data-error-code, and does not call onCreated", async () => {
+  it("shows a fixed safe error message (never the backend's own text) with its code identifiable via data-error-code, and does not call onCreated", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(jsonResponse(409, { code: "PROJECT_ALREADY_EXISTS", message: "이미 존재하는 프로젝트입니다." })),
+      // The backend's own message is deliberately never shown — toDisplayError maps by code only.
+      vi.fn().mockResolvedValue(jsonResponse(409, { code: "PROJECT_ALREADY_EXISTS", message: "internal: duplicate project_id in learning_data/projects" })),
     );
     const onCreated = vi.fn();
     render(<CreateProjectForm onCreated={onCreated} onCancel={() => {}} />);
@@ -127,8 +128,9 @@ describe("CreateProjectForm", () => {
     fillForm("dup", "topic");
     fireEvent.click(screen.getByRole("button", { name: "프로젝트 생성" }));
 
-    const alert = await screen.findByText("이미 존재하는 프로젝트입니다.");
+    const alert = await screen.findByText("이미 같은 이름의 프로젝트가 있습니다.");
     expect(alert.closest('[role="alert"]')).toHaveAttribute("data-error-code", "PROJECT_ALREADY_EXISTS");
+    expect(screen.queryByText(/internal:/)).toBeNull();
     expect(onCreated).not.toHaveBeenCalled();
   });
 

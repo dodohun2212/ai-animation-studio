@@ -55,15 +55,15 @@ describe("ProjectList", () => {
     ]);
   });
 
-  it("shows a backend error message with its code identifiable via data-error-code", async () => {
+  it("shows a fixed safe error message (never the backend's own text) with its code identifiable via data-error-code", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "목록을 불러오지 못했습니다." })),
+      vi.fn().mockResolvedValue(jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "internal: failed to list projects directory" })),
     );
     render(<ProjectList refreshToken={0} onOpenProject={() => {}} onCreateNew={() => {}} />);
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toBe("목록을 불러오지 못했습니다.");
+    expect(alert.textContent).toBe("저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
     expect(alert).toHaveAttribute("data-error-code", "PROJECT_STORAGE_ERROR");
   });
 
@@ -72,7 +72,7 @@ describe("ProjectList", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, { projects: [project] }))
-      .mockResolvedValueOnce(jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "새로고침에 실패했습니다." }));
+      .mockResolvedValueOnce(jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "internal: failed to list projects directory" }));
     vi.stubGlobal("fetch", fetchMock);
 
     const { rerender } = render(<ProjectList refreshToken={0} onOpenProject={() => {}} onCreateNew={() => {}} />);
@@ -83,7 +83,7 @@ describe("ProjectList", () => {
     await screen.findByRole("alert");
     // The previously displayed project must still be visible alongside the error.
     expect(screen.getByRole("button", { name: /sample_project/ })).toBeTruthy();
-    expect(screen.getByRole("alert").textContent).toBe("새로고침에 실패했습니다.");
+    expect(screen.getByRole("alert").textContent).toBe("저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
   });
 
   it("shows a safe error instead of crashing when the network fails or the response is not JSON", async () => {
