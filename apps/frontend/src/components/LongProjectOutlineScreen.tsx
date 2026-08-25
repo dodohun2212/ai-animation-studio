@@ -146,7 +146,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
 
       {preview && (
         <div className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
-          <p className="text-sm text-slate-400">Episode 수: {preview.episodeCount}</p>
+          <p className="text-sm text-slate-400">에피소드 수: {preview.episodeCount}</p>
           <label className="block text-sm text-slate-300" htmlFor="outline-prompt">
             스토리 개요 프롬프트
             <textarea
@@ -200,9 +200,14 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
               data-testid="approve-confirm-panel"
               className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
             >
-              <p className="text-sm font-semibold text-amber-300">스토리 개요을 승인할까요?</p>
+              <p className="text-sm font-semibold text-amber-300">스토리 개요를 승인할까요?</p>
               <p className="text-sm text-slate-300">
-                아직 승인되지 않았습니다. 확인을 누르면 위 프롬프트가 그대로 서버로 전송되어 승인 처리됩니다.
+                아직 승인되지 않았습니다. 확인을 누르면 위 프롬프트가 그대로 서버로 전송되어 승인 처리됩니다.{" "}
+                {/* The short project's story-prompt approval does call a paid API at this exact moment, so a
+                    user arriving from that flow has every reason to expect the same here. LongProjectsService
+                    is constructed with only a projects root — no ProviderSettingsService, no budget — so this
+                    approval cannot reach a provider (see long-projects.module.ts). */}
+                <span className="text-slate-300">이 단계는 비용이 들지 않습니다 — AI를 부르지 않고 프롬프트만 저장합니다.</span>
               </p>
               <div className="flex gap-3">
                 <button

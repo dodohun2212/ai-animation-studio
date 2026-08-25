@@ -101,6 +101,9 @@ describe("LongProjectOutlineScreen", () => {
     const panel = await screen.findByTestId("approve-confirm-panel");
     expect(panel).toBeTruthy();
     expect(screen.getByRole("button", { name: "네, 승인합니다" })).toBeTruthy();
+    // The short project's story-prompt approval spends money at this exact step; this one cannot
+    // (LongProjectsService is built with no provider or budget), so the panel has to say so.
+    expect(panel.textContent).toContain("비용이 들지 않습니다");
     // Only the preview POST has happened — the first click never sent an approval request.
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
