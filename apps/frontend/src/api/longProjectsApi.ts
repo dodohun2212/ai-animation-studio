@@ -88,6 +88,28 @@ const SAFE_ERRORS: Record<string, string> = {
   LONG_PROJECT_STORAGE_ERROR: "장기 프로젝트 저장소에 접근하지 못했습니다.",
   LONG_OUTLINE_STALE: "스토리 개요 프롬프트가 그 사이에 변경되었습니다. 미리보기를 다시 불러와 주세요.",
   LONG_OUTLINE_NOT_ALLOWED: "스토리 개요 승인은 아직 생성되지 않은 프로젝트에서만 가능합니다.",
+  LONG_PROJECT_ARCHIVE_NOT_ALLOWED: "생성이나 병합이 진행 중인 장기 프로젝트는 보관할 수 없습니다. 작업이 끝난 뒤에 다시 시도해 주세요.",
+  LONG_PROJECT_ARCHIVE_COLLISION: "이 장기 프로젝트의 보관본이 이미 있습니다.",
+  LONG_PROJECT_RESTORE_COLLISION: "원래 위치에 같은 장기 프로젝트가 이미 있습니다. 먼저 그 프로젝트를 정리해 주세요.",
+  LONG_EPISODE_NOT_FOUND: "에피소드를 찾을 수 없습니다.",
+  LONG_EPISODE_TIMELINE_NOT_ALLOWED: "타임라인 편집은 아직 대본 작업을 시작하지 않은 에피소드에서만 가능하고, 보관은 마지막 에피소드만 됩니다.",
+  LONG_EPISODE_LIMIT_REACHED: "설정한 에피소드 개수를 이미 다 채웠습니다. 더 만들려면 프로젝트 설정에서 에피소드 수를 늘려주세요.",
+  LONG_EPISODE_SCRIPT_NOT_ALLOWED: "지금 이 에피소드 단계에서는 대본 작업을 할 수 없습니다. 기다린다고 풀리지 않으니 에피소드 상태를 확인해 주세요.",
+  LONG_EPISODE_SCRIPT_EXISTS: "이미 대본이 있습니다. 새로 만들려면 다시 만들기를 직접 선택해 주세요.",
+  LONG_EPISODE_MAPPING_NOT_ALLOWED: "지금 이 에피소드 단계에서는 Asset Mapping 검토를 할 수 없습니다. 기다린다고 풀리지 않으니 에피소드 상태를 확인해 주세요.",
+  LONG_EPISODE_MAPPING_NOT_FOUND: "해당 Asset Mapping을 찾을 수 없습니다.",
+  LONG_EPISODE_MAPPING_STALE: "검토하는 사이에 Asset Mapping이 바뀌었습니다. 검토를 다시 시작해 주세요.",
+  LONG_EPISODE_MAPPING_UNCONFIRMED: "승인하기 전에 모든 Asset 후보를 확정하거나 제외해 주세요.",
+  LONG_EPISODE_IMAGES_NOT_ALLOWED: "지금 이 에피소드 단계에서는 이미지 작업을 할 수 없습니다. 기다린다고 풀리지 않으니 에피소드 상태를 확인해 주세요.",
+  LONG_EPISODE_IMAGES_INVALID: "에피소드 이미지나 검토 데이터가 올바르지 않습니다.",
+  // Money, not a transient failure — this must never read as "wait and retry".
+  LONG_EPISODE_IMAGES_BUDGET_EXCEEDED: "이번 달 OpenAI 예산을 초과하여 요청을 보내지 않았습니다. 비용은 청구되지 않았습니다.",
+  LONG_EPISODE_IMAGES_PROVIDER_ERROR: "이미지 생성 요청이 실패했습니다. 잠시 후 다시 시도해 주세요.",
+  LONG_EPISODE_VIDEOS_NOT_ALLOWED: "지금 이 에피소드 단계에서는 영상 작업을 할 수 없습니다. 기다린다고 풀리지 않으니 에피소드 상태를 확인해 주세요.",
+  LONG_EPISODE_VIDEOS_INVALID: "에피소드 영상이나 검토 데이터가 올바르지 않습니다.",
+  LONG_EPISODE_VIDEO_JOB_NOT_FOUND: "에피소드 영상 작업을 찾을 수 없습니다.",
+  STORY_BIBLE_ITEM_NOT_FOUND: "Story Bible 항목을 찾을 수 없습니다.",
+  STORY_BIBLE_ITEM_ALREADY_EXISTS: "같은 ID의 Story Bible 항목이 이미 있습니다.",
 };
 const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };
@@ -128,7 +150,7 @@ const LONG_EPISODE_MERGE_ERRORS: Record<string, string> = {
   LONG_EPISODE_MERGE_FAILED: "최종 영상 만들기를 끝내지 못했습니다. 승인된 장면들은 그대로 남아 있습니다.",
 };
 const LONG_EPISODE_CONTINUITY_ERRORS: Record<string, string> = {
-  LONG_EPISODE_CONTINUITY_NOT_ALLOWED: "에피소드 최종 영상이 완성된 뒤에야 연결 기억을 저장할 수 있습니다.",
+  LONG_EPISODE_CONTINUITY_NOT_ALLOWED: "이 에피소드는 아직 연결 기억을 저장할 수 있는 단계가 아닙니다. 이미지 승인 이후부터 저장할 수 있습니다.",
   LONG_EPISODE_CONTINUITY_INVALID: "연결 기억을 저장하려면 검토한 값이 올바르게 채워져 있어야 합니다.",
 };
 

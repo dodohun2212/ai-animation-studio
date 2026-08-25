@@ -200,7 +200,12 @@ describe("longProjectsApi", () => {
     await expect(getLongProjectSettings("sample")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
   });
 
-  describe.each([
+  /**
+   * Every code long-project-api.error.ts can throw. Kept complete on purpose: an unmapped code falls through
+   * to the generic "잠시 후 다시 시도해 주세요", which is wrong twice over for this feature's errors — most are
+   * state conflicts that retrying can never clear, and one is a budget stop that must not read as transient.
+   */
+  const BACKEND_ERROR_CODES = [
     "INVALID_REQUEST",
     "UNSAFE_PROJECT_ID",
     "LONG_PROJECT_NOT_FOUND",
@@ -208,9 +213,51 @@ describe("longProjectsApi", () => {
     "LONG_PROJECT_JSON_MALFORMED",
     "LONG_PROJECT_DATA_INVALID",
     "LONG_PROJECT_STORAGE_ERROR",
+    "LONG_PROJECT_ARCHIVE_NOT_ALLOWED",
+    "LONG_PROJECT_ARCHIVE_COLLISION",
+    "LONG_PROJECT_RESTORE_COLLISION",
     "LONG_OUTLINE_STALE",
     "LONG_OUTLINE_NOT_ALLOWED",
-  ])("Backend error code %s", (code) => {
+    "LONG_EPISODE_NOT_FOUND",
+    "LONG_EPISODE_TIMELINE_NOT_ALLOWED",
+    "LONG_EPISODE_LIMIT_REACHED",
+    "LONG_EPISODE_SCRIPT_NOT_ALLOWED",
+    "LONG_EPISODE_SCRIPT_EXISTS",
+    "LONG_EPISODE_MAPPING_NOT_ALLOWED",
+    "LONG_EPISODE_MAPPING_NOT_FOUND",
+    "LONG_EPISODE_MAPPING_STALE",
+    "LONG_EPISODE_MAPPING_UNCONFIRMED",
+    "LONG_EPISODE_IMAGES_NOT_ALLOWED",
+    "LONG_EPISODE_IMAGES_INVALID",
+    "LONG_EPISODE_IMAGES_BUDGET_EXCEEDED",
+    "LONG_EPISODE_IMAGES_PROVIDER_ERROR",
+    "LONG_EPISODE_VIDEOS_NOT_ALLOWED",
+    "LONG_EPISODE_VIDEOS_INVALID",
+    "LONG_EPISODE_VIDEO_JOB_NOT_FOUND",
+    "LONG_EPISODE_MERGE_NOT_ALLOWED",
+    "LONG_EPISODE_MERGE_CLIPS_INVALID",
+    "LONG_EPISODE_FFMPEG_UNAVAILABLE",
+    "LONG_EPISODE_MERGE_FAILED",
+    "LONG_EPISODE_CONTINUITY_NOT_ALLOWED",
+    "STORY_BIBLE_ITEM_NOT_FOUND",
+    "STORY_BIBLE_ITEM_ALREADY_EXISTS",
+  ] as const;
+
+  it("gives every backend error code its own message instead of the generic retry fallback", () => {
+    const generic = toLongProjectDisplayError(new Error("unmapped"));
+    const fellBack = BACKEND_ERROR_CODES.filter(
+      (code) => toLongProjectDisplayError(new LongProjectsApiError(code, "raw")).message === generic.message,
+    );
+    expect(fellBack).toEqual([]);
+  });
+
+  it("never tells the user to wait and retry a budget stop", () => {
+    const displayed = toLongProjectDisplayError(new LongProjectsApiError("LONG_EPISODE_IMAGES_BUDGET_EXCEEDED", "raw"));
+    expect(displayed.message).not.toContain("다시 시도");
+    expect(displayed.message).toContain("예산");
+  });
+
+  describe.each(BACKEND_ERROR_CODES)("Backend error code %s", (code) => {
     it("is preserved verbatim on the thrown LongProjectsApiError", async () => {
       vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(400, { code, message: `${code} raw backend detail` })));
 
