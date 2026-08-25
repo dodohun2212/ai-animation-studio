@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { LongEpisodeVideoProgress, LongEpisodeVideoReview, LongEpisodeVideoPreview, SceneNumber } from "@ai-animation-studio/shared";
 
-import { approveLongEpisodeVideoReview, getLongEpisodeVideoPreview, getLongEpisodeVideoProgress, getLongEpisodeVideoReview, regenerateLongEpisodeVideo, restartLongEpisodeVideoGeneration, startLongEpisodeVideoGeneration, stopLongEpisodeVideoGeneration, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { approveLongEpisodeVideoReview, episodeSceneErrorMessage, getLongEpisodeVideoPreview, getLongEpisodeVideoProgress, getLongEpisodeVideoReview, regenerateLongEpisodeVideo, restartLongEpisodeVideoGeneration, startLongEpisodeVideoGeneration, stopLongEpisodeVideoGeneration, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { Spinner } from "./Spinner.js";
 
 interface Props { projectId: string; episodeNumber: number; onBack: () => void; onOpenMerge: (projectId: string, episodeNumber: number) => void; }
@@ -84,7 +84,10 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
           <ul className="space-y-2">
             {job.failedSceneNumbers.map((scene) => (
               <li key={scene} data-testid={`episode-video-failed-${scene}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-slate-950/60 p-3">
-                <span className="text-sm text-slate-300">{scene}번 장면</span>
+                <div className="flex-1 space-y-1">
+                  <span className="text-sm text-slate-300">{scene}번 장면</span>
+                  <p data-testid={`episode-video-failed-reason-${scene}`} className="text-xs text-rose-300">{episodeSceneErrorMessage(job.sceneErrors?.[scene])}</p>
+                </div>
                 <button type="button" data-testid={`episode-video-failed-retry-${scene}`} className={smallOutlineButton} disabled={busy || regenerate === scene} onClick={() => setRegenerate(scene)}>다시 시도</button>
                 {regenerate === scene && (
                   <div role="alertdialog" data-testid={`episode-video-failed-retry-confirm-${scene}`} className="w-full space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">

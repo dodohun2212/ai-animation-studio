@@ -92,6 +92,33 @@ const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연�
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };
 const UNKNOWN = { code: "CLIENT_UNKNOWN_ERROR", message: "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요." };
 
+// LongEpisodeVideoProgress.sceneErrors has the same meaning and scope as
+// GenerationProgressResponse.sceneErrors in videoWorkflowApi.ts — kept as an identical, independent
+// copy here rather than a cross-module import, matching this file's existing self-contained pattern.
+// Only the closed set of known codes below gets an actionable Korean message; anything else —
+// including Runway's own raw free-text failure reason — is treated as opaque and shown with a
+// generic fallback rather than surfaced verbatim.
+const SCENE_ERROR_CATEGORY_MESSAGES: Record<string, string> = {
+  authentication: "Runway API 키 인증에 실패했습니다. API 설정 화면에서 키가 올바른지 확인해 주세요.",
+  permission: "Runway 사용 권한 문제로 요청이 거부되었습니다. Runway 계정 상태를 확인해 주세요.",
+  rate_limit: "Runway 요청 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.",
+  invalid_request: "요청 형식이 지원되지 않습니다. 문제가 계속되면 알려주세요.",
+  server: "Runway 서버에 일시적인 오류가 있습니다. 잠시 후 다시 시도해 주세요.",
+  network: "Runway 연결이 시간 초과되었거나 네트워크에 실패했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.",
+  timeout: "영상 생성이 제한 시간 안에 끝나지 않았습니다. 다시 시도해 주세요.",
+  no_output: "Runway가 영상 결과물을 반환하지 않았습니다. 다시 시도해 주세요.",
+  invalid_state: "영상 작업 상태가 예상과 달라 처리하지 못했습니다. 다시 시도해 주세요.",
+  budget_exceeded: "이번 달 Runway 예산을 초과하여 요청을 보내지 않았습니다.",
+};
+const SCENE_ERROR_FALLBACK = "영상 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.";
+
+/** Maps a per-scene failure code (see LongEpisodeVideoProgress.sceneErrors) to a safe, actionable
+ * Korean message. Falls back to a generic message for any code outside the known set. */
+export function episodeSceneErrorMessage(code: string | undefined): string {
+  if (!code) return SCENE_ERROR_FALLBACK;
+  return SCENE_ERROR_CATEGORY_MESSAGES[code] ?? SCENE_ERROR_FALLBACK;
+}
+
 /** Never surfaces the backend's raw message or details text — only a fixed, safe message per code. */
 const LONG_EPISODE_MERGE_ERRORS: Record<string, string> = {
   LONG_EPISODE_MERGE_NOT_ALLOWED: "Final Episode rendering requires six approved video scenes.",
@@ -315,10 +342,18 @@ const isGetEpisodeVideoPreviewResponse = (value: unknown): value is GetLongEpiso
   && isNonEmptyString(value.confirmationId) && value.model === "gen4_turbo" && (value.ratio === "720:1280" || value.ratio === "1280:720")
   && value.durationSecondsPerScene === 5 && value.executionMode === "sequential" && typeof value.estimatedCostUsd === "number"
   && Array.isArray(value.scenes) && value.scenes.length === 6 && value.scenes.every(isEpisodeVideoPreview);
+/** Keys arrive over JSON as numeric strings (object keys are always strings); each must resolve to a
+ * valid scene number and every value must be a non-empty failure code string. */
+function isSceneErrorMap(value: unknown): value is Partial<Record<1 | 2 | 3 | 4 | 5 | 6, string>> {
+  if (value === undefined) return true;
+  if (!isRecord(value)) return false;
+  return Object.entries(value).every(([key, message]) => isSceneNumber(Number(key)) && isNonEmptyString(message));
+}
+
 function isEpisodeVideoProgress(value: unknown): value is LongEpisodeVideoProgress {
   return isRecord(value) && isNonEmptyString(value.jobId) && (value.status === "created" || value.status === "running" || value.status === "succeeded" || value.status === "failed" || value.status === "interrupted")
     && (value.currentSceneNumber === undefined || isSceneNumber(value.currentSceneNumber)) && Array.isArray(value.completedSceneNumbers) && value.completedSceneNumbers.every(isSceneNumber)
-    && Array.isArray(value.failedSceneNumbers) && value.failedSceneNumbers.every(isSceneNumber) && isLongEpisodeDetail(value.episode);
+    && Array.isArray(value.failedSceneNumbers) && value.failedSceneNumbers.every(isSceneNumber) && isLongEpisodeDetail(value.episode) && isSceneErrorMap(value.sceneErrors);
 }
 const isStartEpisodeVideoResponse = (value: unknown): value is StartLongEpisodeVideoGenerationResponse => isRecord(value) && isNonEmptyString(value.jobId) && Array.isArray(value.acceptedSceneNumbers) && value.acceptedSceneNumbers.length === 6 && value.acceptedSceneNumbers.every(isSceneNumber) && isLongEpisodeDetail(value.episode);
 function isEpisodeVideoReview(value: unknown): value is LongEpisodeVideoReview { return isRecord(value) && isSceneNumber(value.sceneNumber) && (value.status === "pending" || value.status === "approved") && isNonEmptyString(value.updatedAt); }
