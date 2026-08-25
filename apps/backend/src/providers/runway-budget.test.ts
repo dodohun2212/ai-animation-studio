@@ -2,7 +2,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { RunwayBudget, RunwayBudgetExceededError, VIDEO_SCENE_ESTIMATED_COST_USD } from "./runway-budget.js";
+import { VIDEO_SCENE_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
+import { RunwayBudget, RunwayBudgetExceededError } from "./runway-budget.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true }))); });

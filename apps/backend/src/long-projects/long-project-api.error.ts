@@ -1,10 +1,12 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { ApiError } from "@ai-animation-studio/shared";
 
-type Code = "INVALID_REQUEST" | "UNSAFE_PROJECT_ID" | "LONG_PROJECT_NOT_FOUND" | "LONG_PROJECT_ALREADY_EXISTS" | "LONG_PROJECT_JSON_MALFORMED" | "LONG_PROJECT_DATA_INVALID" | "LONG_PROJECT_STORAGE_ERROR" | "LONG_PROJECT_ARCHIVE_NOT_ALLOWED" | "LONG_PROJECT_ARCHIVE_COLLISION" | "LONG_PROJECT_RESTORE_COLLISION" | "LONG_OUTLINE_STALE" | "LONG_OUTLINE_NOT_ALLOWED" | "LONG_EPISODE_NOT_FOUND" | "LONG_EPISODE_TIMELINE_NOT_ALLOWED" | "LONG_EPISODE_LIMIT_REACHED" | "LONG_EPISODE_SCRIPT_NOT_ALLOWED" | "LONG_EPISODE_SCRIPT_EXISTS" | "LONG_EPISODE_MAPPING_NOT_ALLOWED" | "LONG_EPISODE_MAPPING_NOT_FOUND" | "LONG_EPISODE_MAPPING_STALE" | "LONG_EPISODE_MAPPING_UNCONFIRMED" | "LONG_EPISODE_IMAGES_NOT_ALLOWED" | "LONG_EPISODE_IMAGES_INVALID" | "LONG_EPISODE_VIDEOS_NOT_ALLOWED" | "LONG_EPISODE_VIDEOS_INVALID" | "LONG_EPISODE_VIDEO_JOB_NOT_FOUND" | "LONG_EPISODE_MERGE_NOT_ALLOWED" | "LONG_EPISODE_MERGE_CLIPS_INVALID" | "LONG_EPISODE_FFMPEG_UNAVAILABLE" | "LONG_EPISODE_MERGE_FAILED" | "LONG_EPISODE_CONTINUITY_NOT_ALLOWED" | "STORY_BIBLE_ITEM_NOT_FOUND" | "STORY_BIBLE_ITEM_ALREADY_EXISTS";
+type Code = "INVALID_REQUEST" | "UNSAFE_PROJECT_ID" | "LONG_PROJECT_NOT_FOUND" | "LONG_PROJECT_ALREADY_EXISTS" | "LONG_PROJECT_JSON_MALFORMED" | "LONG_PROJECT_DATA_INVALID" | "LONG_PROJECT_STORAGE_ERROR" | "LONG_PROJECT_ARCHIVE_NOT_ALLOWED" | "LONG_PROJECT_ARCHIVE_COLLISION" | "LONG_PROJECT_RESTORE_COLLISION" | "LONG_OUTLINE_STALE" | "LONG_OUTLINE_NOT_ALLOWED" | "LONG_EPISODE_NOT_FOUND" | "LONG_EPISODE_TIMELINE_NOT_ALLOWED" | "LONG_EPISODE_LIMIT_REACHED" | "LONG_EPISODE_SCRIPT_NOT_ALLOWED" | "LONG_EPISODE_SCRIPT_EXISTS" | "LONG_EPISODE_MAPPING_NOT_ALLOWED" | "LONG_EPISODE_MAPPING_NOT_FOUND" | "LONG_EPISODE_MAPPING_STALE" | "LONG_EPISODE_MAPPING_UNCONFIRMED" | "LONG_EPISODE_IMAGES_NOT_ALLOWED" | "LONG_EPISODE_IMAGES_INVALID" | "LONG_EPISODE_IMAGES_BUDGET_EXCEEDED" | "LONG_EPISODE_IMAGES_PROVIDER_ERROR" | "LONG_EPISODE_VIDEOS_NOT_ALLOWED" | "LONG_EPISODE_VIDEOS_INVALID" | "LONG_EPISODE_VIDEO_JOB_NOT_FOUND" | "LONG_EPISODE_MERGE_NOT_ALLOWED" | "LONG_EPISODE_MERGE_CLIPS_INVALID" | "LONG_EPISODE_FFMPEG_UNAVAILABLE" | "LONG_EPISODE_MERGE_FAILED" | "LONG_EPISODE_CONTINUITY_NOT_ALLOWED" | "STORY_BIBLE_ITEM_NOT_FOUND" | "STORY_BIBLE_ITEM_ALREADY_EXISTS";
 
 export class LongProjectApiException extends HttpException {
-  constructor(code: Code, message: string, status: HttpStatus) { super({ code, message } satisfies ApiError, status); }
+  constructor(code: Code, message: string, status: HttpStatus, details?: Record<string, unknown>) {
+    super((details ? { code, message, details } : { code, message }) satisfies ApiError, status);
+  }
 }
 export const longInvalidRequest = (message = "Long project request is invalid.") => new LongProjectApiException("INVALID_REQUEST", message, HttpStatus.BAD_REQUEST);
 export const longUnsafeId = () => new LongProjectApiException("UNSAFE_PROJECT_ID", "Project ID must contain only letters, numbers, '_' or '-'.", HttpStatus.BAD_REQUEST);
@@ -29,6 +31,8 @@ export const longEpisodeMappingStale = () => new LongProjectApiException("LONG_E
 export const longEpisodeMappingUnconfirmed = () => new LongProjectApiException("LONG_EPISODE_MAPPING_UNCONFIRMED", "Confirm or exclude every Episode Asset Mapping candidate before approval.", HttpStatus.CONFLICT);
 export const longEpisodeImagesNotAllowed = () => new LongProjectApiException("LONG_EPISODE_IMAGES_NOT_ALLOWED", "Episode image work is not allowed in the current state.", HttpStatus.CONFLICT);
 export const longEpisodeImagesInvalid = () => new LongProjectApiException("LONG_EPISODE_IMAGES_INVALID", "Episode images or their review data are invalid.", HttpStatus.CONFLICT);
+export const longEpisodeImagesBudgetExceeded = (message: string) => new LongProjectApiException("LONG_EPISODE_IMAGES_BUDGET_EXCEEDED", message, HttpStatus.CONFLICT);
+export const longEpisodeImagesProviderError = (category: string, message: string) => new LongProjectApiException("LONG_EPISODE_IMAGES_PROVIDER_ERROR", message, HttpStatus.BAD_GATEWAY, { category });
 export const longEpisodeVideosNotAllowed = () => new LongProjectApiException("LONG_EPISODE_VIDEOS_NOT_ALLOWED", "Episode video work is not allowed in the current state.", HttpStatus.CONFLICT);
 export const longEpisodeVideosInvalid = () => new LongProjectApiException("LONG_EPISODE_VIDEOS_INVALID", "Episode videos or their review data are invalid.", HttpStatus.CONFLICT);
 export const longEpisodeVideoJobNotFound = () => new LongProjectApiException("LONG_EPISODE_VIDEO_JOB_NOT_FOUND", "Episode video job was not found.", HttpStatus.NOT_FOUND);

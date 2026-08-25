@@ -29,6 +29,7 @@ import { LongEpisodeVideoWorkflowScreen } from "./components/LongEpisodeVideoWor
 import { LongEpisodeVideoMergeScreen } from "./components/LongEpisodeVideoMergeScreen.js";
 import { LongEpisodeContinuityScreen } from "./components/LongEpisodeContinuityScreen.js";
 import { ArchiveScreen } from "./components/ArchiveScreen.js";
+import { WorkflowGuideScreen } from "./components/WorkflowGuideScreen.js";
 
 type Screen =
   | { name: "list" }
@@ -44,6 +45,7 @@ type Screen =
   | { name: "providerSettings" }
   | { name: "assets"; initialQuery?: string }
   | { name: "archive" }
+  | { name: "workflowGuide" }
   | { name: "longList" }
   | { name: "longCreate" }
   | { name: "longDetail"; projectId: string }
@@ -68,7 +70,7 @@ const SHORT_PROJECT_SCREEN_NAMES = new Set<Screen["name"]>([
   "imageGeneration", "videoPreview", "videoWorkflow", "videoMerge",
 ]);
 
-type NavIconName = "home" | "long" | "library" | "archive" | "settings";
+type NavIconName = "home" | "long" | "library" | "archive" | "workflow" | "settings";
 
 function NavIcon({ name }: { name: NavIconName }) {
   const shared = {
@@ -112,6 +114,15 @@ function NavIcon({ name }: { name: NavIconName }) {
           <path d="M10 13h4" />
         </svg>
       );
+    case "workflow":
+      return (
+        <svg {...shared}>
+          <circle cx="6" cy="6" r="2.5" />
+          <circle cx="18" cy="12" r="2.5" />
+          <circle cx="6" cy="18" r="2.5" />
+          <path d="M8.5 6h4a2 2 0 0 1 2 2v1.5M14.5 14.5V16a2 2 0 0 1-2 2h-4" />
+        </svg>
+      );
     case "settings":
       return (
         <svg {...shared}>
@@ -122,11 +133,12 @@ function NavIcon({ name }: { name: NavIconName }) {
   }
 }
 
-type NavSection = "short" | "long" | "assets" | "archive" | "providerSettings";
+type NavSection = "short" | "long" | "assets" | "archive" | "workflowGuide" | "providerSettings";
 
 function navSectionFor(name: Screen["name"]): NavSection | null {
   if (name === "assets") return "assets";
   if (name === "archive") return "archive";
+  if (name === "workflowGuide") return "workflowGuide";
   if (name === "providerSettings") return "providerSettings";
   if (LONG_PROJECT_SCREEN_NAMES.has(name) || name === "longList" || name === "longCreate") return "long";
   if (SHORT_PROJECT_SCREEN_NAMES.has(name)) return "short";
@@ -141,6 +153,7 @@ function NavBar({ current, onNavigate }: { current: Screen["name"]; onNavigate: 
     { key: "long", icon: "long", label: "장기 프로젝트", target: { name: "longList" } },
     { key: "assets", icon: "library", label: "Asset Library", target: { name: "assets" } },
     { key: "archive", icon: "archive", label: "보관함", target: { name: "archive" } },
+    { key: "workflowGuide", icon: "workflow", label: "작업 워크플로우", target: { name: "workflowGuide" } },
     { key: "providerSettings", icon: "settings", label: "API 설정", target: { name: "providerSettings" } },
   ];
   return (
@@ -498,6 +511,9 @@ export function App() {
               <ProviderSettingsScreen onBack={() => setScreen({ name: "list" })} />
             )}
             {screen.name === "assets" && <AssetLibraryScreen onBack={() => setScreen({ name: "list" })} initialQuery={screen.initialQuery} />}
+            {screen.name === "workflowGuide" && (
+              <WorkflowGuideScreen onBack={() => setScreen({ name: "list" })} />
+            )}
             {screen.name === "archive" && (
               <ArchiveScreen
                 onBack={() => setScreen({ name: "list" })}

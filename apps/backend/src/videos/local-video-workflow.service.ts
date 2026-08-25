@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { Injectable, type OnModuleDestroy } from "@nestjs/common";
 import {
   MAX_SCENE_COUNT,
+  VIDEO_SCENE_ESTIMATED_COST_USD,
   WorkflowState,
   type ApproveVideoReviewResponse,
   type GenerationProgressResponse,
@@ -19,7 +20,7 @@ import { toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
-import { RunwayBudget, RunwayBudgetExceededError, VIDEO_SCENE_ESTIMATED_COST_USD } from "../providers/runway-budget.js";
+import { RunwayBudget, RunwayBudgetExceededError } from "../providers/runway-budget.js";
 import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceResult, type RunwaySceneState } from "./runway-workflow-support.js";
 import { LEGACY_VIDEO_JOB_ID } from "./legacy-job.js";
 import {

@@ -2,13 +2,21 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import type { ApproveLongEpisodeImageReviewRequest, ApproveLongEpisodeImageReviewResponse, GetLongEpisodeImageReviewResponse, LongEpisodeDetail, LongEpisodeImageReview, LongEpisodeStatus, RegenerateLongEpisodeImageReviewRequest, RegenerateLongEpisodeImageReviewResponse, SceneNumber, StartLongEpisodeImageGenerationRequest, StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
+import { IMAGE_ESTIMATED_COST_USD, type ApproveLongEpisodeImageReviewRequest, type ApproveLongEpisodeImageReviewResponse, type GetLongEpisodeImageReviewResponse, type LongEpisodeDetail, type LongEpisodeImageReview, type LongEpisodeStatus, type RegenerateLongEpisodeImageReviewRequest, type RegenerateLongEpisodeImageReviewResponse, type SceneNumber, type StartLongEpisodeImageGenerationRequest, type StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
 import { validateImage } from "../assets/image-validation.js";
+import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
-import { longEpisodeImagesInvalid, longEpisodeImagesNotAllowed, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { ProviderSettingsService } from "../settings/provider-settings.service.js";
+import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
+import { OpenAiAdapterError } from "../providers/openai-common.js";
+import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "../images/openai-image-adapter.js";
+import { imagePromptFor } from "../images/image-prompt.js";
+import { longEpisodeImagesBudgetExceeded, longEpisodeImagesInvalid, longEpisodeImagesNotAllowed, longEpisodeImagesProviderError, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
+import { EpisodeAssetMappingsService } from "./episode-asset-mappings.service.js";
 import { EpisodeContinuityReferenceService } from "./episode-continuity-reference.service.js";
+import { collectEpisodeReferenceImages } from "./episode-image-reference-selection.js";
 
 const SCENES = [1, 2, 3, 4, 5, 6] as const;
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
@@ -22,7 +30,13 @@ const sceneNumber = (value: unknown): SceneNumber | undefined => Number.isIntege
 
 @Injectable()
 export class EpisodeImagesService {
-  constructor(private readonly projectsRoot: string) {}
+  constructor(
+    private readonly projectsRoot: string,
+    private readonly assets: LocalAssetsRepository = new LocalAssetsRepository(path.dirname(projectsRoot)),
+    private readonly mappings: EpisodeAssetMappingsService = new EpisodeAssetMappingsService(projectsRoot, assets),
+    private readonly providerSettings?: ProviderSettingsService,
+    private readonly budget?: OpenAiBudget,
+  ) {}
 
   private files(projectId: string, number: number) {
     if (!isSafeProjectId(projectId)) throw longUnsafeId();
@@ -40,7 +54,7 @@ export class EpisodeImagesService {
     if (!object(raw) || raw.number !== number || !statuses.includes(raw.state as LongEpisodeStatus) || typeof raw.approved !== "boolean" || !object(raw.script) || !Number.isInteger(raw.script_revision) || Number(raw.script_revision) < 1 || typeof raw.updated_at !== "string") throw longInvalidData();
     return raw as StoredEpisode;
   }
-  private scenes(episode: StoredEpisode): unknown[] { const scenes = episode.script.scenes; if (!Array.isArray(scenes) || scenes.length !== 6 || scenes.some((scene, index) => !object(scene) || scene.number !== index + 1 || typeof scene.description !== "string" || !scene.description.trim())) throw longInvalidData(); return scenes; }
+  private scenes(episode: StoredEpisode): unknown[] { const scenes = episode.script.scenes; if (!Array.isArray(scenes) || scenes.length !== 6 || scenes.some((scene, index) => !object(scene) || scene.number !== index + 1 || typeof scene.description !== "string" || !scene.description.trim() || typeof scene.visual_action !== "string" || !scene.visual_action.trim())) throw longInvalidData(); return scenes; }
   private detail(episode: StoredEpisode): LongEpisodeDetail { const script = toApiEpisodeScript(episode.script); return { episodeNumber: episode.number, title: String(episode.title), summary: String(episode.summary), mainEvent: String(episode.core_event), conflict: String(episode.conflict), cliffhanger: String(episode.cliffhanger), nextEpisodeHook: String(episode.next_connection), status: episode.state, approved: episode.approved, scriptRevision: episode.script_revision, ...(script ? { script } : {}), scriptHistoryCount: Array.isArray(episode.script_history) ? episode.script_history.length : 0 }; }
   private async saveEpisode(projectId: string, number: number, episode: StoredEpisode): Promise<void> {
     const files = this.files(projectId, number); const outlines = await this.json(files.outlines);
@@ -80,21 +94,59 @@ export class EpisodeImagesService {
   }
   private approval(request: unknown): asserts request is { approved: true } { if (!object(request) || Object.keys(request).length !== 1 || request.approved !== true) throw longInvalidRequest("Episode image approval request is invalid."); }
 
+  /** The previous Episode's approved final-scene image path, when usable — null otherwise (including Episode 1, which has no predecessor). */
+  private async continuityImagePath(projectId: string, number: number): Promise<string | null> {
+    const reference = await new EpisodeContinuityReferenceService(this.projectsRoot).get(projectId, number);
+    return reference.reference?.available ? this.image(projectId, number - 1, 6) : null;
+  }
+
   async generate(projectId: string, number: number, request: StartLongEpisodeImageGenerationRequest): Promise<StartLongEpisodeImageGenerationResponse> {
     const id = projectId.trim(); this.approval(request); const episode = await this.episode(id, number);
     if (episode.state !== "asset_mapping_approved" || !episode.approved) throw longEpisodeImagesNotAllowed(); await this.mappingCurrent(id, number, episode);
+    const scenes = this.scenes(episode);
     episode.state = "generating_images"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode);
     const generated: SceneNumber[] = []; const reused: SceneNumber[] = [];
+    const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
+    const candidates = apiKey && this.budget ? (await this.mappings.get(id, number)).review.candidates : [];
     try {
       await fs.mkdir(this.files(id, number).images, { recursive: true });
       await this.saveContinuityMetadata(id, number);
-      for (const scene of SCENES) { const file = this.image(id, number, scene); if (await this.validImage(file)) { reused.push(scene); } else { await this.writeImage(file, PNG); if (!await this.validImage(file)) throw new Error("invalid image"); generated.push(scene); } }
+      const continuityPath = apiKey && this.budget ? await this.continuityImagePath(id, number) : null;
+      for (const scene of SCENES) {
+        const file = this.image(id, number, scene);
+        if (await this.validImage(file)) { reused.push(scene); continue; }
+        let bytes: Buffer = PNG;
+        if (apiKey && this.budget) {
+          const prompt = imagePromptFor(scenes[scene - 1], "");
+          const references = await collectEpisodeReferenceImages(this.assets, candidates, number, scene, continuityPath);
+          await this.budget.preflight(IMAGE_ESTIMATED_COST_USD);
+          let succeeded = false;
+          try {
+            const result = references.length > 0 ? await callOpenAiImageEditApi(apiKey, prompt, references) : await callOpenAiImageApi(apiKey, prompt);
+            bytes = result.bytes; succeeded = true;
+          } finally { await this.budget.record(id, "image", succeeded, IMAGE_ESTIMATED_COST_USD); }
+        }
+        await this.writeImage(file, bytes); if (!await this.validImage(file)) throw new Error("invalid image"); generated.push(scene);
+      }
       episode.state = "images_ready"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode);
       episode.state = "images_review"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode);
-    } catch (error) { episode.state = "asset_mapping_approved"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode).catch(() => undefined); if (error instanceof Error && error.message === "invalid image") throw longEpisodeImagesInvalid(); throw longStorageError(); }
-    return { episode: this.detail(episode), generatedSceneNumbers: generated, reusedSceneNumbers: reused };
+    } catch (error) {
+      episode.state = "asset_mapping_approved"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode).catch(() => undefined);
+      if (error instanceof OpenAiBudgetExceededError) throw longEpisodeImagesBudgetExceeded(error.message);
+      if (error instanceof OpenAiAdapterError) throw longEpisodeImagesProviderError(error.category, error.message);
+      if (error instanceof Error && error.message === "invalid image") throw longEpisodeImagesInvalid();
+      throw longStorageError();
+    }
+    // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.
+    const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, generated.length * IMAGE_ESTIMATED_COST_USD) : undefined;
+    return { episode: this.detail(episode), generatedSceneNumbers: generated, reusedSceneNumbers: reused, ...(budget ? { budget } : {}) };
   }
-  async get(projectId: string, number: number): Promise<GetLongEpisodeImageReviewResponse> { const id = projectId.trim(); const episode = await this.episode(id, number); await this.assertReviewable(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(await this.loadReviews(id, number), episode.updated_at) }; }
+  async get(projectId: string, number: number): Promise<GetLongEpisodeImageReviewResponse> {
+    const id = projectId.trim(); const episode = await this.episode(id, number); await this.assertReviewable(id, number, episode);
+    const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
+    const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, IMAGE_ESTIMATED_COST_USD) : undefined;
+    return { episode: this.detail(episode), reviews: this.apiReviews(await this.loadReviews(id, number), episode.updated_at), ...(budget ? { budget } : {}) };
+  }
   async approve(projectId: string, number: number, rawScene: string, request: ApproveLongEpisodeImageReviewRequest): Promise<ApproveLongEpisodeImageReviewResponse> {
     const id = projectId.trim(); this.approval(request); const scene = sceneNumber(Number(rawScene)); if (!scene || String(scene) !== rawScene) throw longInvalidRequest("Episode image scene number is invalid."); const episode = await this.episode(id, number); await this.assertReviewable(id, number, episode);
     const reviews = await this.loadReviews(id, number); const now = new Date().toISOString(); const index = reviews.findIndex((review) => review.scene_number === scene); const old = index < 0 ? undefined : reviews[index]; const review: StoredReview = { scene_number: scene, status: "approved", updated_at: now, regeneration_count: old?.regeneration_count ?? 0, history: [...(old?.history ?? []), { event: "approved", timestamp: now }] }; if (index < 0) reviews.push(review); else reviews[index] = review;
@@ -103,8 +155,36 @@ export class EpisodeImagesService {
   async regenerate(projectId: string, number: number, rawScene: string, request: RegenerateLongEpisodeImageReviewRequest): Promise<RegenerateLongEpisodeImageReviewResponse> {
     const id = projectId.trim(); this.approval(request); const scene = sceneNumber(Number(rawScene)); if (!scene || String(scene) !== rawScene) throw longInvalidRequest("Episode image scene number is invalid."); const episode = await this.episode(id, number); await this.assertReviewable(id, number, episode, true); const reviews = await this.loadReviews(id, number);
     const current = this.image(id, number, scene); let bytes: Buffer; try { bytes = await fs.readFile(current); if (!await this.validImage(current)) throw new Error(); } catch { throw longEpisodeImagesInvalid(); }
+
+    // Resolve the real-vs-fake regenerated bytes BEFORE touching any file: a failed real request must never
+    // archive or overwrite the still-valid current image.
+    const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
+    let regenerated: Buffer = PNG;
+    let retryEstimate: RegenerateLongEpisodeImageReviewResponse["retryEstimate"];
+    if (apiKey && this.budget) {
+      const scenes = this.scenes(episode);
+      const prompt = imagePromptFor(scenes[scene - 1], "");
+      const candidates = (await this.mappings.get(id, number)).review.candidates;
+      const continuityPath = await this.continuityImagePath(id, number);
+      const references = await collectEpisodeReferenceImages(this.assets, candidates, number, scene, continuityPath);
+      try {
+        await this.budget.preflight(IMAGE_ESTIMATED_COST_USD);
+        let succeeded = false;
+        try {
+          const result = references.length > 0 ? await callOpenAiImageEditApi(apiKey, prompt, references) : await callOpenAiImageApi(apiKey, prompt);
+          regenerated = result.bytes; succeeded = true;
+        } finally { await this.budget.record(id, "image", succeeded, IMAGE_ESTIMATED_COST_USD); }
+      } catch (error) {
+        if (error instanceof OpenAiBudgetExceededError) throw longEpisodeImagesBudgetExceeded(error.message);
+        if (error instanceof OpenAiAdapterError) throw longEpisodeImagesProviderError(error.category, error.message);
+        throw error;
+      }
+      // Read-only, computed after the fact: reflects the ledger's state right after this regeneration's own record().
+      retryEstimate = { perSceneCostUsd: IMAGE_ESTIMATED_COST_USD, budget: await budgetPreviewFor(this.budget, IMAGE_ESTIMATED_COST_USD) };
+    }
+
     const originals = path.join(this.files(id, number).images, "originals"); let archive = "";
-    try { await fs.mkdir(originals, { recursive: true }); const entries = await fs.readdir(originals); const versions = entries.map((name) => new RegExp(`^scene${scene}_v(\\d{3})\\.png$`).exec(name)).filter((match): match is RegExpExecArray => Boolean(match)).map((match) => Number(match[1])); archive = path.join(originals, `scene${scene}_v${String((versions.length ? Math.max(...versions) : 0) + 1).padStart(3, "0")}.png`); await this.writeImage(archive, bytes); await this.writeImage(current, PNG); if (!await this.validImage(current)) throw new Error("invalid image"); } catch { if (archive) await fs.unlink(archive).catch(() => undefined); throw longStorageError(); }
-    const now = new Date().toISOString(); const index = reviews.findIndex((review) => review.scene_number === scene); const old = index < 0 ? undefined : reviews[index]; const review: StoredReview = { scene_number: scene, status: "pending", updated_at: now, regeneration_count: (old?.regeneration_count ?? 0) + 1, history: [...(old?.history ?? []), { event: "regenerated", timestamp: now, archive: path.basename(archive) }] }; if (index < 0) reviews.push(review); else reviews[index] = review; episode.state = "images_review"; episode.updated_at = now; await this.saveReviews(id, number, reviews); await this.saveEpisode(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(reviews, now), sceneNumber: scene };
+    try { await fs.mkdir(originals, { recursive: true }); const entries = await fs.readdir(originals); const versions = entries.map((name) => new RegExp(`^scene${scene}_v(\\d{3})\\.png$`).exec(name)).filter((match): match is RegExpExecArray => Boolean(match)).map((match) => Number(match[1])); archive = path.join(originals, `scene${scene}_v${String((versions.length ? Math.max(...versions) : 0) + 1).padStart(3, "0")}.png`); await this.writeImage(archive, bytes); await this.writeImage(current, regenerated); if (!await this.validImage(current)) throw new Error("invalid image"); } catch { if (archive) await fs.unlink(archive).catch(() => undefined); throw longStorageError(); }
+    const now = new Date().toISOString(); const index = reviews.findIndex((review) => review.scene_number === scene); const old = index < 0 ? undefined : reviews[index]; const review: StoredReview = { scene_number: scene, status: "pending", updated_at: now, regeneration_count: (old?.regeneration_count ?? 0) + 1, history: [...(old?.history ?? []), { event: "regenerated", timestamp: now, archive: path.basename(archive) }] }; if (index < 0) reviews.push(review); else reviews[index] = review; episode.state = "images_review"; episode.updated_at = now; await this.saveReviews(id, number, reviews); await this.saveEpisode(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(reviews, now), sceneNumber: scene, ...(retryEstimate ? { retryEstimate } : {}) };
   }
 }

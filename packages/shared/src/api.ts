@@ -144,18 +144,29 @@ export interface LongEpisodeImageReview {
   updatedAt: string;
 }
 
-/** Explicit approval starts only the local fake image adapter for this Episode. */
+/** Explicit approval; calls the real OpenAI image adapter when a credential and budget ledger are connected, the same as the short-project path, and falls back to the local fake adapter otherwise. */
 export interface StartLongEpisodeImageGenerationRequest { approved: true; }
 export interface StartLongEpisodeImageGenerationResponse {
   episode: LongEpisodeDetail;
   generatedSceneNumbers: SceneNumber[];
   reusedSceneNumbers: SceneNumber[];
+  /** Same meaning and scope as StartImageGenerationResponse.budget (see that field's doc comment). */
+  budget?: BudgetPreview;
 }
-export interface GetLongEpisodeImageReviewResponse { episode: LongEpisodeDetail; reviews: LongEpisodeImageReview[]; }
+export interface GetLongEpisodeImageReviewResponse {
+  episode: LongEpisodeDetail;
+  reviews: LongEpisodeImageReview[];
+  /** Same meaning and scope as StartImageGenerationResponse.budget (see that field's doc comment). */
+  budget?: BudgetPreview;
+}
 export interface ApproveLongEpisodeImageReviewRequest { approved: true; }
 export interface ApproveLongEpisodeImageReviewResponse extends GetLongEpisodeImageReviewResponse {}
 export interface RegenerateLongEpisodeImageReviewRequest { approved: true; }
-export interface RegenerateLongEpisodeImageReviewResponse extends GetLongEpisodeImageReviewResponse { sceneNumber: SceneNumber; }
+export interface RegenerateLongEpisodeImageReviewResponse extends GetLongEpisodeImageReviewResponse {
+  sceneNumber: SceneNumber;
+  /** Same meaning as RegenerateImageReviewResponse.retryEstimate (see that field's doc comment). */
+  retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview };
+}
 
 /** A provider-free Episode video preflight; internal image paths are never exposed. */
 export interface LongEpisodeVideoPreview {
@@ -510,6 +521,8 @@ export interface StartImageGenerationResponse {
   project: Project;
   generatedSceneNumbers: SceneNumber[];
   reusedSceneNumbers: SceneNumber[];
+  /** Local guard information only; present only when a real OpenAI credential and budget ledger are wired in — absent in the local fake execution mode, where nothing is charged. Same read-only, never-reserving principle as {@link GetVideoPromptPreviewResponse.budget}. */
+  budget?: BudgetPreview;
 }
 
 /** Provider-free persisted decision for one generated short-project image. */
@@ -522,6 +535,8 @@ export interface ImageReview {
 export interface GetImageReviewResponse {
   project: Project;
   reviews: ImageReview[];
+  /** Same meaning and scope as StartImageGenerationResponse.budget (see that field's doc comment). */
+  budget?: BudgetPreview;
 }
 
 /** A review action is deliberately explicit and cannot be inferred from navigation. */
@@ -539,6 +554,8 @@ export interface RegenerateImageReviewResponse {
   project: Project;
   reviews: ImageReview[];
   sceneNumber: SceneNumber;
+  /** Same meaning as GenerationProgressResponse.retryEstimate (see that field's doc comment) — the cost of this one regeneration, and the budget headroom at the time of the response. Absent in the local fake execution mode. */
+  retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview };
 }
 
 /** A local, non-submitting Runway preflight row for one approved image. */

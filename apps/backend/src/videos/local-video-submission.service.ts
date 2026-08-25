@@ -7,6 +7,7 @@ import {
   MIN_SCENE_COUNT,
   RUNWAY_PROMPT_MAX_LENGTH,
   sceneNumbersFor,
+  VIDEO_SCENE_ESTIMATED_COST_USD,
   WorkflowState,
   type SceneNumber,
   type StartVideoGenerationRequest,
@@ -31,7 +32,6 @@ import {
 function scenesFor(project: StoredProject): SceneNumber[] {
   return sceneNumbersFor(toShortProjectSettings(project).sceneCount);
 }
-const ESTIMATED_COST_USD = 1.5;
 const DEFAULT_MONTHLY_BUDGET_USD = 10;
 
 type VideoRecord = {
@@ -152,7 +152,8 @@ export class LocalVideoSubmissionService {
     const preview = await this.previews.preview(project.project_id, undefined);
     if (!preview.confirmationId || request.confirmationId !== preview.confirmationId) throw videoConfirmationStale();
     if (scenes.length < MIN_SCENE_COUNT || scenes.length > MAX_SCENE_COUNT) throw videoCallLimitExceeded();
-    if (ESTIMATED_COST_USD > this.monthlyBudgetUsd) throw videoBudgetExceeded();
+    const estimatedTotalCostUsd = scenes.length * VIDEO_SCENE_ESTIMATED_COST_USD;
+    if (estimatedTotalCostUsd > this.monthlyBudgetUsd) throw videoBudgetExceeded();
 
     const hashes: string[] = [];
     for (const scene of scenes) {
@@ -177,7 +178,7 @@ export class LocalVideoSubmissionService {
       model: "gen4_turbo",
       ratio: preview.previews[index]!.ratio,
       duration_seconds: preview.previews[index]!.durationSeconds,
-      estimated_cost_usd: 0.25,
+      estimated_cost_usd: VIDEO_SCENE_ESTIMATED_COST_USD,
       status: "created",
       execution_mode: executionMode,
       approved_at: approvedAt,
@@ -194,7 +195,7 @@ export class LocalVideoSubmissionService {
           confirmation_id: request.confirmationId,
           user_request_id: request.userRequestId,
           approved_at: approvedAt,
-          estimated_cost_usd: ESTIMATED_COST_USD,
+          estimated_cost_usd: estimatedTotalCostUsd,
           maximum_provider_calls: scenes.length,
           execution_mode: executionMode,
         },

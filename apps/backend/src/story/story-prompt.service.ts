@@ -4,7 +4,7 @@ import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Injectable } from "@nestjs/common";
-import { WorkflowState } from "@ai-animation-studio/shared";
+import { STORY_ESTIMATED_COST_USD, WorkflowState } from "@ai-animation-studio/shared";
 import type { ApproveStoryPromptRequest, ApproveStoryPromptResponse, CreateStoryPromptDraftPreviewResponse, CreateStoryPromptPreviewResponse, StoryPromptPreview } from "@ai-animation-studio/shared";
 import { toApiProject } from "../projects/project.mapper.js";
 import { toShortProjectAssetReferences } from "../projects/project-asset-references.js";
@@ -17,7 +17,7 @@ import { ProviderSettingsService } from "../settings/provider-settings.service.j
 import type { LocalAssetsRepository } from "../assets/assets.repository.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
 import { generateLocalStory, type StoredStory } from "./story-generation.service.js";
-import { OpenAiBudget, OpenAiBudgetExceededError, STORY_ESTIMATED_COST_USD } from "../providers/openai-budget.js";
+import { OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_STORY_MODEL, OpenAiStoryAdapterError, callOpenAiStoryApi } from "./openai-story-adapter.js";
 import { describeAtmosphereAssets, describeCharacterCast, describeSceneReferenceAssets } from "./story-asset-metadata.js";
 import { invalidStoryRequest, storyBudgetExceeded, storyGenerationFailed, storyGenerationNotAllowed, storyPromptStale, storyProviderError, storyStorageError } from "./story-api.error.js";

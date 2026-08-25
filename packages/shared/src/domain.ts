@@ -36,6 +36,18 @@ export type RunwayClipDurationSeconds = (typeof RUNWAY_CLIP_DURATIONS)[number];
  * sections in priority order rather than truncating mid-sentence.
  */
 export const RUNWAY_PROMPT_MAX_LENGTH = 1_000;
+
+/**
+ * Conservative local per-request cost estimates, used both for the local budget ledgers' preflight/record
+ * accounting (apps/backend/src/providers/{openai,runway}-budget.ts) and for any UI that needs to display or
+ * compute an estimate — e.g. the in-app workflow guide, or a video job's own stored estimated_cost_usd. Backend
+ * and frontend must never each hold their own copy of these (see Round 22's RUNWAY_PROMPT_MAX_LENGTH consolidation
+ * for the same reasoning) — a rate change updates every consumer via this single source.
+ */
+export const STORY_ESTIMATED_COST_USD = 0.05;
+export const IMAGE_ESTIMATED_COST_USD = 0.10;
+export const VIDEO_SCENE_ESTIMATED_COST_USD = 0.25;
+
 export type ProjectType = "short_project" | "long_story_project";
 export type ReviewDecision = "pending" | "approved" | "rejected";
 export type JobStatus =

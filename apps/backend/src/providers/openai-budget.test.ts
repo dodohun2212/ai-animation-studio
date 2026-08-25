@@ -2,7 +2,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { OpenAiBudget, OpenAiBudgetExceededError, STORY_ESTIMATED_COST_USD } from "./openai-budget.js";
+import { STORY_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
+import { OpenAiBudget, OpenAiBudgetExceededError } from "./openai-budget.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true }))); });

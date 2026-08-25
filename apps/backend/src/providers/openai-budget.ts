@@ -1,9 +1,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import type { BudgetPreview } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 
-export const STORY_ESTIMATED_COST_USD = 0.05;
-export const IMAGE_ESTIMATED_COST_USD = 0.10;
 const DEFAULT_MONTHLY_LIMIT_USD = 10;
 
 interface UsageRecord {
@@ -28,7 +27,7 @@ const isUsageRecord = (value: unknown): value is UsageRecord => isObject(value)
 export class OpenAiBudget {
   private readonly filePath: string;
 
-  constructor(learningDataRoot: string, private readonly monthlyLimitUsd: number = DEFAULT_MONTHLY_LIMIT_USD) {
+  constructor(learningDataRoot: string, readonly monthlyLimitUsd: number = DEFAULT_MONTHLY_LIMIT_USD) {
     this.filePath = path.join(learningDataRoot, "api_budget_usage.json");
   }
 
@@ -72,6 +71,12 @@ export class OpenAiBudget {
     await fs.mkdir(path.dirname(this.filePath), { recursive: true }).catch(() => undefined);
     await atomicWriteUtf8File(this.filePath, JSON.stringify(records, null, 2));
   }
+}
+
+/** Read-only ledger snapshot for display — never reserves anything, same principle as RunwayBudget's equivalent (video preview/retry estimate) helpers. */
+export async function budgetPreviewFor(budget: OpenAiBudget, estimatedCostUsd: number): Promise<BudgetPreview> {
+  const [spentUsd, remainingUsd] = await Promise.all([budget.spentThisMonth(), budget.remaining()]);
+  return { monthlyLimitUsd: budget.monthlyLimitUsd, spentUsd, remainingUsd, estimatedRequestCostUsd: estimatedCostUsd, canSpend: estimatedCostUsd <= remainingUsd };
 }
 
 export class OpenAiBudgetExceededError extends Error {

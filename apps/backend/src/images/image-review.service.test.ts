@@ -31,7 +31,7 @@ async function setup() {
     const file = path.join(images, `scene${number}.png`); await fs.writeFile(file, PNG); return file;
   }));
   await projects.save(project);
-  project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, description: `scene ${number}` }));
+  project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, description: `A character says "line ${number}".`, visual_action: `walks toward the ${number} gate` }));
   await projects.save(project);
   const assets = new LocalAssetsRepository(path.dirname(projectsRoot));
   await assets.indexGeneratedProjectImages("review", project.topic, [1, 2, 3, 4, 5, 6].map((number) => `scene ${number}`));
@@ -70,6 +70,14 @@ describe("provider-free generated image review", () => {
     expect(result.project.workflowState).toBe(WorkflowState.ImagesReview);
     expect(result.reviews).toEqual(expect.arrayContaining([{ sceneNumber: 1, status: "pending", updatedAt: expect.any(String) }]));
     await expect(fs.stat(path.join(projectsRoot, "review", "generated_image_reviews.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    expect(result.budget).toBeUndefined(); // no OpenAI credential/budget wired in — local fake mode
+  });
+
+  it("reports the real budget ledger state when an OpenAI credential is connected", async () => {
+    const { budget, service } = await setupWithConnectedOpenAiAndConfirmedReference();
+    await budget.record("review", "image", true, 4, new Date());
+    const result = await service.getStatus("review");
+    expect(result.budget).toEqual({ monthlyLimitUsd: 10, spentUsd: 4, remainingUsd: 6, estimatedRequestCostUsd: 0.10, canSpend: true });
   });
 
   it("requires an explicit action, a numeric scene 1 through 6, IMAGES_REVIEW, and a valid PNG", async () => {
@@ -173,16 +181,30 @@ describe("real OpenAI image regeneration", () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await service.regenerate("review", "3", { approved: true });
+    const result = await service.regenerate("review", "3", { approved: true });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://api.openai.com/v1/images/edits");
     expect((init.body as FormData).getAll("image[]")).toHaveLength(1);
+    // Sends the composition-assembled prompt (Round 28), never the narrated description with its dialogue.
+    const prompt = (init.body as FormData).get("prompt");
+    expect(prompt).toBe("Scene: walks toward the 3 gate");
+    expect(prompt).not.toContain("says");
     const raw = JSON.parse(await fs.readFile(path.join(projectsRoot, "review", "generated_image_reviews.json"), "utf8")) as Array<{ scene_number: number }>;
     expect(raw.find((item) => item.scene_number === 3)).toBeTruthy();
     const project = JSON.parse(await fs.readFile(path.join(projectsRoot, "review", "project.json"), "utf8")) as { image_generation_records: Array<{ scene_number: number; adapter: string; image_api_calls: number }> };
     expect(project.image_generation_records[2]).toMatchObject({ scene_number: 3, adapter: "gpt-image-2:edit", image_api_calls: 1 });
+    expect(result.retryEstimate).toEqual({
+      perSceneCostUsd: 0.10,
+      budget: { monthlyLimitUsd: 10, spentUsd: 0.10, remainingUsd: 9.90, estimatedRequestCostUsd: 0.10, canSpend: true },
+    });
+  });
+
+  it("omits retryEstimate when no OpenAI credential is configured (local fake adapter)", async () => {
+    const { service } = await setup();
+    const result = await service.regenerate("review", "2", { approved: true });
+    expect(result.retryEstimate).toBeUndefined();
   });
 
   it("never calls fetch and keeps the local fake adapter when no OpenAI credential is configured", async () => {

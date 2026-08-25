@@ -2,7 +2,6 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 
-export const VIDEO_SCENE_ESTIMATED_COST_USD = 0.25;
 const DEFAULT_MONTHLY_LIMIT_USD = 10;
 
 interface UsageRecord {

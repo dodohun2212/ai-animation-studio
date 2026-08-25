@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EpisodeAssetMappingsService } from "./episode-asset-mappings.service.js";
 import { EpisodeImagesService } from "./episode-images.service.js";
 import { EpisodeScriptsService } from "./episode-scripts.service.js";
@@ -47,8 +47,17 @@ describe("EpisodeImagesService", () => {
     await expect(images.generate("long", 1, { approved: true })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_NOT_ALLOWED" } });
   });
 
-  it("does not import or call a provider, network, FFmpeg, or subprocess", async () => {
-    const source = await fs.readFile(path.join(process.cwd(), "src", "long-projects", "episode-images.service.ts"), "utf8");
-    expect(source).not.toMatch(/openai|runway|ffmpeg|child_process|fetch\s*\(/i);
+  it("never calls fetch and omits budget/retryEstimate when no OpenAI credential or budget is wired in", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { images } = await setup();
+    const generated = await images.generate("long", 1, { approved: true });
+    expect(generated.budget).toBeUndefined();
+    const review = await images.get("long", 1);
+    expect(review.budget).toBeUndefined();
+    const regenerated = await images.regenerate("long", 1, "3", { approved: true });
+    expect(regenerated.retryEstimate).toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });

@@ -4,6 +4,7 @@ import * as crypto from "node:crypto";
 
 import { Injectable } from "@nestjs/common";
 import {
+  IMAGE_ESTIMATED_COST_USD,
   MAX_SCENE_COUNT,
   sceneNumbersFor,
   WorkflowState,
@@ -23,10 +24,11 @@ import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
 import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
-import { IMAGE_ESTIMATED_COST_USD, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
+import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OpenAiAdapterError } from "../providers/openai-common.js";
 import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "./openai-image-adapter.js";
 import { collectReferenceImages } from "./image-reference-selection.js";
+import { imagePromptFor, styleLineFor } from "./image-prompt.js";
 import { previousSceneContinuityImagePath } from "../projects/project-continuity.js";
 import {
   imageReviewBudgetExceeded,
@@ -90,10 +92,6 @@ function toApiReviews(reviews: StoredImageReview[], timestamp: string, sceneNumb
     const review = byScene.get(number);
     return { sceneNumber: number, status: review?.status === "approved" ? "approved" : "pending", updatedAt: review?.updated_at || timestamp };
   });
-}
-
-function sceneValue(scene: unknown, key: string): string {
-  return isObject(scene) && typeof (scene as Record<string, unknown>)[key] === "string" ? ((scene as Record<string, unknown>)[key] as string).trim() : "";
 }
 
 @Injectable()
@@ -166,7 +164,10 @@ export class ImageReviewService {
     const project = await this.projects.findById(projectId.trim());
     await this.assertReviewable(project);
     const reviews = await this.load(project.project_id);
-    return { project: toApiProject(project), reviews: toApiReviews(reviews, project.updated_at, scenesFor(project)) };
+    const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
+    // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.
+    const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, IMAGE_ESTIMATED_COST_USD) : undefined;
+    return { project: toApiProject(project), reviews: toApiReviews(reviews, project.updated_at, scenesFor(project)), ...(budget ? { budget } : {}) };
   }
 
   async approve(projectId: string, rawSceneNumber: string, body: unknown): Promise<ApproveImageReviewResponse> {
@@ -220,8 +221,9 @@ export class ImageReviewService {
     let regenerated: Buffer = LOCAL_PNG;
     let adapter = "local-fake-image-adapter";
     let apiCalls = 0;
+    let retryEstimate: RegenerateImageReviewResponse["retryEstimate"];
     if (apiKey && this.budget) {
-      const prompt = sceneValue(project.scenes[number - 1], "description");
+      const prompt = imagePromptFor(project.scenes[number - 1], styleLineFor(project));
       const mappings = await this.mappings.load(project.project_id);
       const continuityImagePath = previousSceneContinuityImagePath(project);
       const references = await collectReferenceImages(this.assets, mappings, this.projectsRoot, project.project_id, number, continuityImagePath);
@@ -244,6 +246,8 @@ export class ImageReviewService {
       }
       adapter = references.length > 0 ? `${OPENAI_IMAGE_MODEL}:edit` : OPENAI_IMAGE_MODEL;
       apiCalls = 1;
+      // Read-only, computed after the fact: reflects the ledger's state right after this regeneration's own record().
+      retryEstimate = { perSceneCostUsd: IMAGE_ESTIMATED_COST_USD, budget: await budgetPreviewFor(this.budget, IMAGE_ESTIMATED_COST_USD) };
     }
 
     const originals = path.join(path.dirname(currentPath), "originals");
@@ -300,6 +304,6 @@ export class ImageReviewService {
       await atomicWriteUtf8File(this.reviewFile(project.project_id), JSON.stringify(reviews, null, 2));
       await this.projects.save(updated);
     } catch { throw imageReviewStorageError(); }
-    return { project: toApiProject(updated), reviews: toApiReviews(reviews, timestamp, scenesFor(updated)), sceneNumber: number };
+    return { project: toApiProject(updated), reviews: toApiReviews(reviews, timestamp, scenesFor(updated)), sceneNumber: number, ...(retryEstimate ? { retryEstimate } : {}) };
   }
 }

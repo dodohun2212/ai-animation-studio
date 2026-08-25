@@ -2,7 +2,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import { MAX_SCENE_COUNT, sceneNumbersFor, WorkflowState, type SceneNumber, type StartImageGenerationResponse } from "@ai-animation-studio/shared";
+import { IMAGE_ESTIMATED_COST_USD, MAX_SCENE_COUNT, sceneNumbersFor, WorkflowState, type SceneNumber, type StartImageGenerationResponse } from "@ai-animation-studio/shared";
 import { toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
@@ -11,10 +11,11 @@ import { LocalProjectAssetMappingsRepository, scriptFingerprint } from "../mappi
 import { validateImage } from "../assets/image-validation.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
-import { IMAGE_ESTIMATED_COST_USD, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
+import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OpenAiAdapterError } from "../providers/openai-common.js";
 import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "./openai-image-adapter.js";
 import { collectReferenceImages } from "./image-reference-selection.js";
+import { imagePromptFor, sceneValue, styleLineFor } from "./image-prompt.js";
 import { previousSceneContinuityImagePath } from "../projects/project-continuity.js";
 import { imageBudgetExceeded, imageContentUnavailable, imageGenerationFailed, imageGenerationNotAllowed, imageProviderError, imageStorageError, invalidImageRequest, mappingReviewRequired } from "./image-api.error.js";
 
@@ -51,49 +52,6 @@ async function validPng(file: string): Promise<boolean> {
     const bytes = await fs.readFile(file);
     return validateImage(bytes, "scene.png", "image/png").extension === ".png";
   } catch { return false; }
-}
-
-function sceneValue(scene: unknown, key: string): string {
-  return isObject(scene) && typeof scene[key] === "string" ? scene[key].trim() : "";
-}
-
-/**
- * The Story template's own field definitions assign `visual_action` and the composition fields below to image
- * generation specifically ("이미지 한 장의 구도") — `description` is the narrated script (background, emotional
- * flow, and dialogue) meant for on-screen script display, not a model prompt. Sending `description` to the image
- * model (the prior behavior) fed it dialogue text no image model can render, while leaving these composition
- * fields generated-but-unused. Mirrors the "select fields, label them, join with newlines" shape of
- * video-preview.service.ts's promptFor, which assembles the equivalent video prompt from this same scene shape.
- * No length truncation: OpenAI's image prompt limit (32,000 chars) is far larger than anything a single scene's
- * fields could reach.
- */
-/**
- * Deterministic, not routed through the Story AI's own translation — same source and priority as the Story
- * prompt's own style fields (project styleNotes override, falling back to the AI-set style_profile). Keeping
- * this line identical across every scene's prompt (unlike the AI-authored fields above) is what gives scene-to-
- * scene visual consistency; camera is deliberately excluded, since camera work is a video concept and would be
- * noise in a still-image prompt.
- */
-function styleLineFor(project: StoredProject): string {
-  const notes = toShortProjectSettings(project).styleNotes;
-  const profile = isObject(project.style_profile) ? project.style_profile : {};
-  const fromProfile = (key: string): string => typeof profile[key] === "string" ? (profile[key] as string).trim() : "";
-  const parts = [notes.visualStyle ?? fromProfile("visual_style"), notes.color ?? fromProfile("color"), notes.lighting ?? fromProfile("lighting")]
-    .filter((part) => part.trim().length > 0);
-  return parts.length > 0 ? `Style: ${parts.join(", ")}` : "";
-}
-
-function imagePromptFor(scene: unknown, styleLine: string): string {
-  const sections: Array<[string, string]> = [
-    ["Scene", sceneValue(scene, "visual_action")],
-    ["Shot", [sceneValue(scene, "shot_size"), sceneValue(scene, "camera_angle")].filter(Boolean).join(", ")],
-    ["Composition", sceneValue(scene, "composition")],
-    ["Lens", sceneValue(scene, "lens_feel")],
-    ["Focus", sceneValue(scene, "focus_subject")],
-  ];
-  const lines = sections.filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`);
-  if (styleLine) lines.push(styleLine);
-  return lines.join("\n");
 }
 
 function assertValidScenes(project: StoredProject): void {
@@ -215,6 +173,8 @@ export class LocalImageGenerationService {
       if (error instanceof Error && error.message === "incomplete") throw imageGenerationFailed();
       throw imageStorageError();
     }
-    return { project: toApiProject(current), generatedSceneNumbers: generated, reusedSceneNumbers: reused };
+    // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.
+    const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, generated.length * IMAGE_ESTIMATED_COST_USD) : undefined;
+    return { project: toApiProject(current), generatedSceneNumbers: generated, reusedSceneNumbers: reused, ...(budget ? { budget } : {}) };
   }
 }

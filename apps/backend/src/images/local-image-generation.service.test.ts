@@ -211,17 +211,24 @@ describe("real OpenAI image generation", () => {
     expect(result.project.workflowState).toBe(WorkflowState.ImagesReview);
     const reloaded = await new LocalProjectRepository(projectsRoot).findById("images");
     expect(reloaded.image_generation_records).toEqual(expect.arrayContaining([expect.objectContaining({ scene_number: 1, adapter: "gpt-image-2", image_api_calls: 1 })]));
+    // Six scenes generated at IMAGE_ESTIMATED_COST_USD (0.10) each — reflects real recorded spend, not a guess.
+    expect(result.budget?.monthlyLimitUsd).toBe(10);
+    expect(result.budget?.spentUsd).toBeCloseTo(0.6, 8);
+    expect(result.budget?.remainingUsd).toBeCloseTo(9.4, 8);
+    expect(result.budget?.estimatedRequestCostUsd).toBeCloseTo(0.6, 8);
+    expect(result.budget?.canSpend).toBe(true);
   });
 
   it("falls back to the local fake adapter, never calling fetch, when no OpenAI credential is configured", async () => {
     const { projectsRoot, projects, mappings } = await setup();
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    await new LocalImageGenerationService(projects, mappings, projectsRoot).generate("images", { approved: true });
+    const result = await new LocalImageGenerationService(projects, mappings, projectsRoot).generate("images", { approved: true });
     expect(fetchMock).not.toHaveBeenCalled();
     expect((await new LocalProjectRepository(projectsRoot).findById("images")).image_generation_records).toEqual(
       expect.arrayContaining([expect.objectContaining({ adapter: "local-fake-image-adapter", image_api_calls: 0 })]),
     );
+    expect(result.budget).toBeUndefined();
   });
 
   it("blocks the real request and restores ASSET_MAPPING_APPROVED when the monthly budget is already spent", async () => {

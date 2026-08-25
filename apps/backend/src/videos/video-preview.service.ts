@@ -3,13 +3,13 @@ import * as path from "node:path";
 import { createHash } from "node:crypto";
 
 import { Injectable } from "@nestjs/common";
-import { RUNWAY_PROMPT_MAX_LENGTH, sceneNumbersFor, WorkflowState, type GetVideoPromptPreviewResponse, type SceneNumber, type VideoPromptPreview } from "@ai-animation-studio/shared";
+import { RUNWAY_PROMPT_MAX_LENGTH, sceneNumbersFor, VIDEO_SCENE_ESTIMATED_COST_USD, WorkflowState, type GetVideoPromptPreviewResponse, type SceneNumber, type VideoPromptPreview } from "@ai-animation-studio/shared";
 
 import { validateImage } from "../assets/image-validation.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
-import { RunwayBudget, VIDEO_SCENE_ESTIMATED_COST_USD } from "../providers/runway-budget.js";
+import { RunwayBudget } from "../providers/runway-budget.js";
 import {
   invalidVideoPreviewRequest,
   videoPreviewDataInvalid,
