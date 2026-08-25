@@ -28,6 +28,7 @@ import { LongEpisodeImageGenerationScreen } from "./components/LongEpisodeImageG
 import { LongEpisodeVideoWorkflowScreen } from "./components/LongEpisodeVideoWorkflowScreen.js";
 import { LongEpisodeVideoMergeScreen } from "./components/LongEpisodeVideoMergeScreen.js";
 import { LongEpisodeContinuityScreen } from "./components/LongEpisodeContinuityScreen.js";
+import { ArchiveScreen } from "./components/ArchiveScreen.js";
 
 type Screen =
   | { name: "list" }
@@ -42,6 +43,7 @@ type Screen =
   | { name: "videoMerge"; projectId: string }
   | { name: "providerSettings" }
   | { name: "assets"; initialQuery?: string }
+  | { name: "archive" }
   | { name: "longList" }
   | { name: "longCreate" }
   | { name: "longDetail"; projectId: string }
@@ -66,7 +68,7 @@ const SHORT_PROJECT_SCREEN_NAMES = new Set<Screen["name"]>([
   "imageGeneration", "videoPreview", "videoWorkflow", "videoMerge",
 ]);
 
-type NavIconName = "home" | "long" | "library" | "settings";
+type NavIconName = "home" | "long" | "library" | "archive" | "settings";
 
 function NavIcon({ name }: { name: NavIconName }) {
   const shared = {
@@ -102,6 +104,14 @@ function NavIcon({ name }: { name: NavIconName }) {
           <path d="M15 5.3 18.4 6a1 1 0 0 1 .8 1.2L17 20l-3.4-.6" />
         </svg>
       );
+    case "archive":
+      return (
+        <svg {...shared}>
+          <rect x="3" y="4" width="18" height="5" rx="1" />
+          <path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9" />
+          <path d="M10 13h4" />
+        </svg>
+      );
     case "settings":
       return (
         <svg {...shared}>
@@ -112,10 +122,11 @@ function NavIcon({ name }: { name: NavIconName }) {
   }
 }
 
-type NavSection = "short" | "long" | "assets" | "providerSettings";
+type NavSection = "short" | "long" | "assets" | "archive" | "providerSettings";
 
 function navSectionFor(name: Screen["name"]): NavSection | null {
   if (name === "assets") return "assets";
+  if (name === "archive") return "archive";
   if (name === "providerSettings") return "providerSettings";
   if (LONG_PROJECT_SCREEN_NAMES.has(name) || name === "longList" || name === "longCreate") return "long";
   if (SHORT_PROJECT_SCREEN_NAMES.has(name)) return "short";
@@ -129,6 +140,7 @@ function NavBar({ current, onNavigate }: { current: Screen["name"]; onNavigate: 
     { key: "short", icon: "home", label: "단기 프로젝트", target: { name: "list" } },
     { key: "long", icon: "long", label: "장기 프로젝트", target: { name: "longList" } },
     { key: "assets", icon: "library", label: "Asset Library", target: { name: "assets" } },
+    { key: "archive", icon: "archive", label: "보관함", target: { name: "archive" } },
     { key: "providerSettings", icon: "settings", label: "API 설정", target: { name: "providerSettings" } },
   ];
   return (
@@ -180,7 +192,7 @@ function LongWorkspaceNav({ screen, onNavigate }: { screen: Screen; onNavigate: 
     <nav aria-label="장편 프로젝트 작업공간" className="mt-4 flex flex-col items-start gap-1 border-b border-white/10 pb-4">
       {tab(screen.name, "longDetail", "프로젝트 개요", () => onNavigate({ name: "longDetail", projectId }))}
       {tab(screen.name, "longSettings", "설정", () => onNavigate({ name: "longSettings", projectId }))}
-      {tab(screen.name, "longOutline", "Outline", () => onNavigate({ name: "longOutline", projectId }))}
+      {tab(screen.name, "longOutline", "스토리 개요", () => onNavigate({ name: "longOutline", projectId }))}
       {tab(screen.name, "longStoryBible", "Story Bible", () => onNavigate({ name: "longStoryBible", projectId }))}
       {episodeNumber !== undefined && (
         <>
@@ -477,6 +489,15 @@ export function App() {
               <ProviderSettingsScreen onBack={() => setScreen({ name: "list" })} />
             )}
             {screen.name === "assets" && <AssetLibraryScreen onBack={() => setScreen({ name: "list" })} initialQuery={screen.initialQuery} />}
+            {screen.name === "archive" && (
+              <ArchiveScreen
+                onBack={() => setScreen({ name: "list" })}
+                onChanged={() => {
+                  setListRefreshToken((token) => token + 1);
+                  setLongListRefreshToken((token) => token + 1);
+                }}
+              />
+            )}
           </div>
         </div>
       </main>
