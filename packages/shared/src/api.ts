@@ -601,6 +601,8 @@ export interface NarrationReview {
   sceneNumber: SceneNumber;
   narration: string;
   hasAudio: boolean;
+  /** That scene's actual synthesized audio length, measured from the generated file. Omitted when hasAudio is false, or when the length could not be measured (e.g. the local fake-mode placeholder file, or ffprobe unavailable). */
+  audioDurationSeconds?: number;
 }
 
 export interface GetNarrationReviewResponse {

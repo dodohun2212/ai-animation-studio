@@ -21,6 +21,7 @@ import { callOpenAiTtsApi } from "./openai-narration-adapter.js";
 import { invalidNarrationRequest, narrationBudgetExceeded, narrationMissingText, narrationNotEnabled, narrationProviderError, narrationStorageError } from "./narration-api.error.js";
 import { computeSceneStaleness } from "../projects/scene-staleness.js";
 import type { LocalNarrationGenerationService } from "./local-narration-generation.service.js";
+import { probeAudioDurationSeconds } from "./audio-duration.js";
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const FAKE_MP3 = Buffer.from([0xff, 0xfb, 0x90, 0x00]);
@@ -33,12 +34,18 @@ async function validAudio(file: string): Promise<boolean> {
   try { return (await fs.stat(file)).size > 0; } catch { return false; }
 }
 
-async function toApiNarrations(project: StoredProject, scenes: readonly SceneNumber[], generation: LocalNarrationGenerationService): Promise<NarrationReview[]> {
+async function toApiNarrations(
+  project: StoredProject,
+  scenes: readonly SceneNumber[],
+  generation: LocalNarrationGenerationService,
+  probeDuration: typeof probeAudioDurationSeconds,
+): Promise<NarrationReview[]> {
   return Promise.all(scenes.map(async (number) => {
     const narration = sceneValue(project.scenes[number - 1], "narration");
     const file = project.generated_narrations[number - 1];
     const hasAudio = typeof file === "string" && file === generation.narrationPath(project.project_id, number) && (await validAudio(file));
-    return { sceneNumber: number, narration, hasAudio };
+    const audioDurationSeconds = hasAudio ? await probeDuration(file as string) : undefined;
+    return { sceneNumber: number, narration, hasAudio, ...(audioDurationSeconds !== undefined ? { audioDurationSeconds } : {}) };
   }));
 }
 
@@ -49,12 +56,13 @@ export class NarrationReviewService {
     private readonly generation: LocalNarrationGenerationService,
     private readonly providerSettings?: ProviderSettingsService,
     private readonly budget?: OpenAiBudget,
+    private readonly probeDuration: typeof probeAudioDurationSeconds = probeAudioDurationSeconds,
   ) {}
 
   async getStatus(projectId: string): Promise<GetNarrationReviewResponse> {
     const project = await this.projects.findById(projectId.trim());
     const scenes = scenesFor(project);
-    const narrations = await toApiNarrations(project, scenes, this.generation);
+    const narrations = await toApiNarrations(project, scenes, this.generation, this.probeDuration);
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.
     const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, TTS_ESTIMATED_COST_USD) : undefined;
@@ -120,7 +128,7 @@ export class NarrationReviewService {
     try { await this.projects.save(updated); } catch { throw narrationStorageError(); }
     return {
       project: toApiProject(updated),
-      narrations: await toApiNarrations(updated, scenes, this.generation),
+      narrations: await toApiNarrations(updated, scenes, this.generation, this.probeDuration),
       sceneNumber,
       ...(retryEstimate ? { retryEstimate } : {}),
     };

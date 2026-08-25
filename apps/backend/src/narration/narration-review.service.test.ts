@@ -7,6 +7,7 @@ import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { parseShortProjectSettings, applyShortProjectSettings } from "../projects/project-settings.js";
 import { LocalNarrationGenerationService } from "./local-narration-generation.service.js";
 import { NarrationReviewService } from "./narration-review.service.js";
+import type { probeAudioDurationSeconds } from "./audio-duration.js";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -19,7 +20,7 @@ const SETTINGS_REQUEST = {
   sceneCount: 2, clipDurationSeconds: 5, additionalNotes: "", styleNotes: {}, narrationEnabled: true, subtitlesEnabled: false,
 };
 
-async function setup(narrationEnabled = true) {
+async function setup(narrationEnabled = true, probeDuration: typeof probeAudioDurationSeconds = async () => undefined) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "narration-review-")); roots.push(root);
   const projectsRoot = path.join(root, "learning_data", "projects");
   const projects = new LocalProjectRepository(projectsRoot);
@@ -31,7 +32,7 @@ async function setup(narrationEnabled = true) {
   }));
   await projects.create(withSettings);
   const generation = new LocalNarrationGenerationService(projects, projectsRoot);
-  const reviews = new NarrationReviewService(projects, generation);
+  const reviews = new NarrationReviewService(projects, generation, undefined, undefined, probeDuration);
   return { root, projectsRoot, projects, generation, reviews };
 }
 
@@ -76,6 +77,24 @@ describe("NarrationReviewService", () => {
   it("rejects regenerating a scene with no narration text", async () => {
     const { reviews } = await setup();
     await expect(reviews.regenerate("narr", "2", { approved: true })).rejects.toMatchObject({ response: { code: "NARRATION_MISSING_TEXT" } });
+  });
+
+  it("includes the measured audio length only for scenes that actually have audio", async () => {
+    const probeDuration = vi.fn(async (file: string) => (file.endsWith("scene1.mp3") ? 4.2 : undefined));
+    const { reviews, generation } = await setup(true, probeDuration);
+    await generation.generate("narr", { approved: true });
+    const status = await reviews.getStatus("narr");
+    expect(status.narrations[0]).toMatchObject({ hasAudio: true, audioDurationSeconds: 4.2 });
+    expect(status.narrations[1]!.audioDurationSeconds).toBeUndefined();
+    expect(probeDuration).toHaveBeenCalledTimes(1);
+  });
+
+  it("omits audioDurationSeconds when the file exists but its length can't be measured (e.g. ffprobe unavailable)", async () => {
+    const { reviews, generation } = await setup();
+    await generation.generate("narr", { approved: true });
+    const status = await reviews.getStatus("narr");
+    expect(status.narrations[0]).toMatchObject({ hasAudio: true });
+    expect(status.narrations[0]!.audioDurationSeconds).toBeUndefined();
   });
 
   it("rejects regenerating when narrationEnabled is off", async () => {
