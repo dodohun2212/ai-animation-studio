@@ -42,6 +42,8 @@ const PROVIDER_ERROR_CATEGORY_MESSAGES: Record<string, string> = {
   network: "OpenAI 연결이 시간 초과되었거나 네트워크에 실패했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.",
   invalid_request: "요청 형식이 지원되지 않습니다. 문제가 계속되면 알려주세요.",
   safety_policy: "OpenAI 안전 정책에 따라 요청이 거부되었습니다. 내용을 수정한 뒤 다시 시도해 주세요 — 자동으로 재시도되지 않습니다.",
+  // Shared with the Story path via the backend's common OpenAI error classifier; retrying unchanged never helps.
+  context_length_exceeded: "장면 설명이 모델이 처리할 수 있는 길이를 초과했습니다. 프로젝트 설정의 설명을 줄인 뒤 대본부터 다시 만들어 주세요.",
 };
 const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };

@@ -15,6 +15,7 @@ import {
   videoReviewContentUrl,
 } from "../api/videoWorkflowApi.js";
 import { Spinner } from "./Spinner.js";
+import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { StatusChip, type StatusTone } from "./ui/StatusChip.js";
 
 type SceneStatus = "completed" | "running" | "failed" | "pending";
@@ -408,6 +409,11 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                           className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3"
                         >
                           <p className="text-sm font-semibold text-amber-300">{sceneNumber}번 장면을 다시 시도할까요?</p>
+                          <RetryCostNotice
+                            estimate={progress.retryEstimate}
+                            sceneCount={1}
+                            data-testid={`failed-scene-retry-cost-${sceneNumber}`}
+                          />
                           <div className="flex gap-2">
                             <button
                               type="button"
@@ -527,6 +533,13 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                         아직 재생성이 시작되지 않았습니다. 확인을 누르면 로컬 가짜 어댑터가 {totalScenes}개 장면 영상을 모두
                         다시 생성하며, 실제 유료 요청은 전송되지 않습니다. 기존 승인 상태는 초기화됩니다.
                       </p>
+                      {/* Regenerating every scene is the most expensive action on this screen — the total is
+                          spelled out before the confirm button, not only the per-scene rate. */}
+                      <RetryCostNotice
+                        estimate={progress?.retryEstimate}
+                        sceneCount={totalScenes}
+                        data-testid="regenerate-all-cost"
+                      />
                       <div className="flex gap-2">
                         <button type="button" className={smallOutlineButton} onClick={cancelRegenerateAllConfirmation} disabled={regenerateAllPending}>
                           취소
@@ -656,6 +669,11 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                                   아직 재생성이 시작되지 않았습니다. 확인을 누르면 로컬 가짜 어댑터가 이 장면 영상만 다시
                                   생성하며, 실제 유료 요청은 전송되지 않습니다.
                                 </p>
+                                <RetryCostNotice
+                                  estimate={progress?.retryEstimate}
+                                  sceneCount={1}
+                                  data-testid={`video-regenerate-cost-${review.sceneNumber}`}
+                                />
                                 <div className="flex gap-2">
                                   <button
                                     type="button"

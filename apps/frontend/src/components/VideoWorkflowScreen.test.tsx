@@ -183,6 +183,52 @@ describe("VideoWorkflowScreen", () => {
     expect(screen.getByTestId("video-review-clip-6")).toHaveAttribute("src", "/projects/sample_project/videos/6/content?v=2026-08-23T00%3A00%3A00.000Z");
   });
 
+  it("shows the additional cost and remaining budget before a single-scene retry is submitted", async () => {
+    const failed = makeProgress({
+      status: "failed",
+      completedSceneNumbers: [1],
+      failedSceneNumbers: [2],
+      retryEstimate: { perSceneCostUsd: 0.25, budget: { monthlyLimitUsd: 10, spentUsd: 4, remainingUsd: 6, estimatedRequestCostUsd: 0.25, canSpend: true } },
+    });
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, failed)));
+
+    await screen.findByTestId("failed-scenes-section");
+    fireEvent.click(screen.getByTestId("failed-scene-retry-2"));
+    const cost = await screen.findByTestId("failed-scene-retry-cost-2");
+    expect(cost.textContent).toContain("$0.25");
+    expect(cost.textContent).toContain("$6.00");
+    expect(within(cost).queryByRole("alert")).toBeNull();
+  });
+
+  it("multiplies the per-scene cost across every scene for regenerate-all and warns when it exceeds the budget", async () => {
+    const succeeded = makeProgress({
+      status: "succeeded",
+      completedSceneNumbers: [1, 2, 3, 4, 5, 6],
+      // 6 scenes x $0.25 = $1.50 against only $0.40 left.
+      retryEstimate: { perSceneCostUsd: 0.25, budget: { monthlyLimitUsd: 10, spentUsd: 9.6, remainingUsd: 0.4, estimatedRequestCostUsd: 0.25, canSpend: true } },
+    });
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, succeeded)).mockResolvedValueOnce(jsonResponse(200, reviewResponse(sixReviews())));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("video-review-1");
+    fireEvent.click(screen.getByTestId("regenerate-all-button"));
+    const cost = await screen.findByTestId("regenerate-all-cost");
+    expect(cost.textContent).toContain("$1.50");
+    expect(cost.textContent).toContain("6장면 × $0.25");
+    // Per-scene alone fits the budget; the multiplied total does not, and that is what must be flagged.
+    expect(within(cost).getByRole("alert").textContent).toContain("남은 월 예산을 초과");
+  });
+
+  it("shows no cost line at all when the job carries no retry estimate (local fake mode)", async () => {
+    const failed = makeProgress({ status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2] });
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, failed)));
+
+    await screen.findByTestId("failed-scenes-section");
+    fireEvent.click(screen.getByTestId("failed-scene-retry-2"));
+    await screen.findByTestId("failed-scene-retry-confirm-2");
+    expect(screen.queryByTestId("failed-scene-retry-cost-2")).toBeNull();
+  });
+
   it("shows the recorded cost per scene and their total, and omits the cost line for a scene that was never charged", async () => {
     const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
     const withCosts = reviewResponse(sixReviews());

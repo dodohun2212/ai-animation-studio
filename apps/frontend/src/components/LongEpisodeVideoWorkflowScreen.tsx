@@ -3,6 +3,7 @@ import type { BudgetPreview, LongEpisodeVideoProgress, LongEpisodeVideoReview, L
 
 import { approveLongEpisodeVideoReview, episodeSceneErrorMessage, getLongEpisodeVideoPreview, getLongEpisodeVideoProgress, getLongEpisodeVideoReview, regenerateLongEpisodeVideo, restartLongEpisodeVideoGeneration, startLongEpisodeVideoGeneration, stopLongEpisodeVideoGeneration, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { Spinner } from "./Spinner.js";
+import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { StatusChip } from "./ui/StatusChip.js";
 
 interface Props { projectId: string; episodeNumber: number; onBack: () => void; onOpenMerge: (projectId: string, episodeNumber: number) => void; }
@@ -120,6 +121,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
                 {regenerate === scene && (
                   <div role="alertdialog" data-testid={`episode-video-failed-retry-confirm-${scene}`} className="w-full space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
                     <p className="text-sm text-amber-200">{scene}번 장면을 로컬 가짜 영상으로만 다시 시도할까요?</p>
+                    <RetryCostNotice estimate={job.retryEstimate} sceneCount={1} data-testid={`episode-video-failed-retry-cost-${scene}`} />
                     <div className="flex gap-2">
                       <button type="button" className={smallOutlineButton} onClick={() => setRegenerate(null)}>취소</button>
                       <button type="button" className={smallAmberButton} disabled={busy} onClick={() => { setRegenerate(null); void action(() => regenerateLongEpisodeVideo(projectId, episodeNumber, job.jobId, scene)); }}>다시 시도</button>
@@ -170,6 +172,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
               {regenerate === review.sceneNumber && (
                 <div role="alertdialog" data-testid={`episode-video-regenerate-confirm-${review.sceneNumber}`} className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
                   <p className="text-sm text-amber-200">{review.sceneNumber}번 장면을 로컬 가짜 영상으로만 다시 만들까요?</p>
+                  <RetryCostNotice estimate={job.retryEstimate} sceneCount={1} data-testid={`episode-video-regenerate-cost-${review.sceneNumber}`} />
                   <div className="flex gap-2">
                     <button type="button" className={smallOutlineButton} onClick={() => setRegenerate(null)}>취소</button>
                     <button type="button" className={smallAmberButton} disabled={busy} onClick={() => { const scene = review.sceneNumber; setRegenerate(null); void action(() => regenerateLongEpisodeVideo(projectId, episodeNumber, job.jobId, scene)); }}>다시 만들기</button>
