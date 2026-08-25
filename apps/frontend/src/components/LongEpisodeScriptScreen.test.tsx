@@ -12,7 +12,10 @@ describe("LongEpisodeScriptScreen", () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { episode: episode("outline_ready", false) })).mockResolvedValueOnce(jsonResponse(200, { episode: episode("script_review") })).mockResolvedValueOnce(jsonResponse(200, { episode: episode("script_approved") }));
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeScriptScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
-    fireEvent.click(await screen.findByRole("button", { name: "대본 초안 만들기" }));
+    // This step is local-only by design (EpisodeScriptsService gets no provider or budget injected), and the
+    // short project's story step is not — so the difference has to be on screen before the button is pressed.
+    expect((await screen.findByTestId("episode-script-cost-notice")).textContent).toContain("비용이 들지 않습니다");
+    fireEvent.click(screen.getByRole("button", { name: "대본 초안 만들기" }));
     await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(JSON.stringify(script, null, 2)));
     expect(fetchMock.mock.calls[1]?.[0]).toBe("/long-projects/long/episodes/1/script/generations");
     fireEvent.click(screen.getByRole("button", { name: "대본 승인" }));

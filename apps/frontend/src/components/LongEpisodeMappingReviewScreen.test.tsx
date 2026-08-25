@@ -100,6 +100,19 @@ describe("LongEpisodeMappingReviewScreen", () => {
     expect(alert.textContent).not.toContain("raw private backend detail");
   });
 
+  it("tells an Episode that has not approved its script yet to do that first", async () => {
+    // The other branch of the same condition. The error-path test above cannot cover it: both requests go out
+    // in one Promise.all, so failing the mapping call leaves `episode` unset and no branch renders at all.
+    const notApproved = { ...episode(), status: "script_review" as const, approved: false };
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: notApproved }))
+      .mockResolvedValue(jsonResponse(200, { review: review() })));
+    render(<LongEpisodeMappingReviewScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    expect((await screen.findByTestId("episode-mapping-not-eligible")).textContent).toContain("대본을 승인해야 합니다");
+    expect(screen.queryByTestId("episode-mapping-already-done")).toBeNull();
+  });
+
   it("does not tell an Episode that already finished mapping to go approve its script", async () => {
     // Not-eligible has two opposite causes; one message for both was telling finished Episodes to redo a step.
     const past = { ...episode(), status: "videos_approved" as const };
