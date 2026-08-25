@@ -133,4 +133,41 @@ describe.sequential("real AppModule Asset HTTP smoke", () => {
     expect(await response.json()).toEqual({ assetId: folderId, removedChildAssetIds: [created.asset.assetId], deletedFiles: 0 });
     expect(await (await fetch(`${base}/assets`)).json()).toEqual({ assets: [] });
   });
+
+  it("creates a Character Folder and links/unlinks a child over real HTTP, and /assets/folders never resolves as an :assetId lookup", async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "asset-app-module-"));
+    previousRoot = process.env.LEARNING_DATA_ROOT;
+    process.env.LEARNING_DATA_ROOT = root;
+    app = await NestFactory.create(AppModule, { logger: false });
+    await app.listen(0, "127.0.0.1");
+    const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
+
+    const folderResponse = await fetch(`${base}/assets/folders`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ displayName: "주인공" }),
+    });
+    expect(folderResponse.status).toBe(201);
+    const folder = await folderResponse.json() as { asset: { assetId: string; isFolder: boolean } };
+    expect(folder.asset.isFolder).toBe(true);
+    // Confirms /assets/folders was routed as folder creation, not as a 404 :assetId="folders" lookup.
+    expect((await fetch(`${base}/assets/${folder.asset.assetId}`)).status).toBe(200);
+
+    const importForm = new FormData();
+    importForm.append("image", new Blob([png], { type: "image/png" }), "front.png");
+    importForm.append("metadata", JSON.stringify({ assetType: "general_reference", displayName: "정면" }));
+    const child = await (await fetch(`${base}/assets`, { method: "POST", body: importForm })).json() as { asset: { assetId: string } };
+
+    const linkResponse = await fetch(`${base}/assets/${child.asset.assetId}/parent-folder`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ parentFolderId: folder.asset.assetId }),
+    });
+    expect(linkResponse.status).toBe(200);
+    const linked = await linkResponse.json() as { asset: { assetType: string; parentFolderId: string }; folder: { childAssetIds: string[] } };
+    expect(linked.asset).toMatchObject({ assetType: "character", parentFolderId: folder.asset.assetId });
+    expect(linked.folder.childAssetIds).toEqual([child.asset.assetId]);
+
+    const unlinkResponse = await fetch(`${base}/assets/${child.asset.assetId}/parent-folder`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ parentFolderId: null }),
+    });
+    expect(unlinkResponse.status).toBe(200);
+    expect((await unlinkResponse.json() as { folder: { childAssetIds: string[] } }).folder.childAssetIds).toEqual([]);
+  });
 });

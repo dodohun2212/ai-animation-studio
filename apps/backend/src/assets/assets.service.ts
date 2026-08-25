@@ -1,7 +1,8 @@
 import type {
-  AddAssetVersionResponse, AssetType, CharacterFolderReferenceSetRequest, CharacterFolderReferenceSetResponse, CreateAssetMetadata, CreateAssetResponse,
+  AddAssetVersionResponse, AssetType, CharacterFolderReferenceSetRequest, CharacterFolderReferenceSetResponse,
+  CreateAssetFolderRequest, CreateAssetFolderResponse, CreateAssetMetadata, CreateAssetResponse,
   DeleteAssetFolderResponse, DeleteAssetOwnedFileResponse, DeleteAssetResponse, GetAssetResponse, ListAssetFileAuditResponse,
-  ListAssetsResponse, RelinkAssetResponse, UpdateAssetMetadataRequest, UpdateAssetResponse,
+  ListAssetsResponse, RelinkAssetResponse, SetAssetParentFolderResponse, UpdateAssetMetadataRequest, UpdateAssetResponse,
 } from "@ai-animation-studio/shared";
 import { Injectable } from "@nestjs/common";
 import { badAssetRequest, invalidAssetFile } from "./asset-api.error.js";
@@ -62,6 +63,21 @@ export class AssetsService {
     return {
       folder: toPublicAsset(updated.folder, false),
       children: updated.children.map((asset) => toPublicAsset(asset, this.repository.resolveContentPath(asset) !== null)),
+    };
+  }
+
+  async createFolder(body: unknown): Promise<CreateAssetFolderResponse> {
+    const request = this.parseCreateFolder(body);
+    const folder = await this.repository.createFolder(request);
+    return { asset: toPublicAsset(folder, false) };
+  }
+
+  async setParentFolder(assetId: string, body: unknown): Promise<SetAssetParentFolderResponse> {
+    const parentFolderId = this.parseSetParentFolder(body);
+    const updated = await this.repository.setParentFolder(assetId, parentFolderId);
+    return {
+      asset: toPublicAsset(updated.asset, this.repository.resolveContentPath(updated.asset) !== null),
+      folder: updated.folder ? toPublicAsset(updated.folder, false) : null,
     };
   }
 
@@ -162,5 +178,23 @@ export class AssetsService {
       throw badAssetRequest("Character Folder reference set payload is invalid.");
     }
     return { childAssetIds: value.childAssetIds, thumbnailAssetId: value.thumbnailAssetId };
+  }
+
+  private parseCreateFolder(raw: unknown): CreateAssetFolderRequest {
+    if (!isObject(raw)) throw badAssetRequest("Character Folder metadata is required.");
+    const allowed = new Set(["displayName", "description", "notes"]);
+    if (Object.keys(raw).some((key) => !allowed.has(key))
+      || typeof raw.displayName !== "string" || !raw.displayName.trim() || raw.displayName.trim().length > 200
+      || !(raw.description === undefined || typeof raw.description === "string")
+      || !(raw.notes === undefined || typeof raw.notes === "string")) throw badAssetRequest("Character Folder metadata is invalid.");
+    return raw as unknown as CreateAssetFolderRequest;
+  }
+
+  private parseSetParentFolder(value: unknown): string | null {
+    if (!isObject(value) || Object.keys(value).length !== 1 || !("parentFolderId" in value)
+      || !(value.parentFolderId === null || (typeof value.parentFolderId === "string" && value.parentFolderId.length > 0))) {
+      throw badAssetRequest("Character Folder parent payload is invalid.");
+    }
+    return value.parentFolderId as string | null;
   }
 }

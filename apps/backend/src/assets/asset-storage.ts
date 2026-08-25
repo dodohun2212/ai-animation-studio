@@ -1,4 +1,4 @@
-import type { AssetStatus, AssetType } from "@ai-animation-studio/shared";
+import { MAX_SCENE_COUNT, type AssetStatus, type AssetType } from "@ai-animation-studio/shared";
 import { isSafeAssetId } from "./asset-id.js";
 
 export interface StoredAssetVersion { version: number; stored_path: string; content_sha256: string; created_at: string; notes: string }
@@ -53,7 +53,7 @@ export function parseAssetIndex(value: unknown): StoredAsset[] {
       || !Number.isInteger(item.version) || (item.version as number) < 1 || !Array.isArray(item.versions)
       || !timestamp(item.created_at) || !timestamp(item.updated_at) || typeof item.notes !== "string" || !strings(item.legacy_asset_ids)
       || typeof item.status !== "string" || !STATUSES.has(item.status) || typeof item.source_project_id !== "string"
-      || !(item.source_scene_number === null || (Number.isInteger(item.source_scene_number) && Number(item.source_scene_number) >= 1 && Number(item.source_scene_number) <= 6))
+      || !(item.source_scene_number === null || (Number.isInteger(item.source_scene_number) && Number(item.source_scene_number) >= 1 && Number(item.source_scene_number) <= MAX_SCENE_COUNT))
       || !Array.isArray(item.reference_images) || !strings(item.reference_roles) || typeof item.is_folder !== "boolean"
       || typeof item.parent_folder_id !== "string" || !strings(item.child_asset_ids) || typeof item.thumbnail_asset_id !== "string"
       || typeof item.role !== "string" || !Number.isInteger(item.sort_order)) throw new Error("types");

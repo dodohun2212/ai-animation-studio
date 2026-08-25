@@ -34,7 +34,7 @@ async function setup() {
   project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, description: `scene ${number}` }));
   await projects.save(project);
   const assets = new LocalAssetsRepository(path.dirname(projectsRoot));
-  await assets.indexGeneratedProjectImages("review", project.topic, []);
+  await assets.indexGeneratedProjectImages("review", project.topic, [1, 2, 3, 4, 5, 6].map((number) => `scene ${number}`));
   return { root, projectsRoot, projects, assets, service: new ImageReviewService(projects, projectsRoot, assets) };
 }
 

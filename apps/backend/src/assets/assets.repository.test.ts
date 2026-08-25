@@ -401,4 +401,20 @@ describe("LocalAssetsRepository", () => {
     const asset = await repository.create({ buffer: image, originalname: "not-a-folder.png" }, metadata);
     await expect(repository.removeFolder(asset.asset_id)).rejects.toMatchObject({ response: { code: "ASSET_MUTATION_UNSUPPORTED" } });
   });
+
+  it("indexes exactly the project's actual generated scene count (not a fixed six)", async () => {
+    const root = await makeRoot(); const repository = new LocalAssetsRepository(root);
+    const projectId = "four_scene_project";
+    const imagesDir = path.join(root, "projects", projectId, "images");
+    await fs.mkdir(imagesDir, { recursive: true });
+    for (const number of [1, 2, 3, 4]) await fs.writeFile(path.join(imagesDir, `scene${number}.png`), image);
+
+    await repository.indexGeneratedProjectImages(projectId, "topic", ["one", "two", "three", "four"]);
+
+    const all = await repository.list();
+    const children = all.filter((item) => !item.is_folder && item.source_project_id === projectId).sort((a, b) => a.source_scene_number! - b.source_scene_number!);
+    expect(children.map((item) => item.source_scene_number)).toEqual([1, 2, 3, 4]);
+    const folder = all.find((item) => item.is_folder && item.source_project_id === projectId)!;
+    expect(folder.child_asset_ids).toEqual(children.map((item) => item.asset_id));
+  });
 });

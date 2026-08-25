@@ -944,3 +944,12 @@ Frontend 및 통합 완료 근거(2026-08-21): `feature/frontend`의 `48065b0`�
   - `project-continuity.ts`의 경로 탈출 방지(`resolvedPath.startsWith(projectDir + path.sep)`)와 파일 존재 확인(`fsPromises.stat` + try/catch)은 장면 수와 무관하게 모든 후보에 대해 조건 없이 그대로 실행되는 것을 코드로 직접 재확인 — 이번 변경은 인덱스 계산과 하한 비교(6→`MIN_SCENE_COUNT`)만 바꿨을 뿐 안전장치 자체는 전혀 손대지 않았다.
   - 위 수정 후 재검증: Backend 467 통과(+1 skip), Frontend 564 통과, Shared 24 통과(도메인 테스트 삭제로 순감, api.test.ts 신규 테스트로 일부 상쇄), Desktop 8(node:test) 통과, root typecheck/build 전부 통과. `git diff --check` 통과. 유료 Provider 호출 없음.
 - [x] Long Episode 워크플로우는 이번 배치에서도 계속 범위 밖(서브에이전트 스윕으로 재확인).
+
+## 다섯 번째 자가 발견 배치: 4단계 스윕에서 놓친 Asset Library의 6 고정 잔재 (.claude-bridge 협업 중 발견)
+
+Cowork↔CLI 브리지 협업 중 캐릭터 폴더 계약 확장 작업을 하다가, 4단계 스윕(`apps/backend/src/assets/`는 스윕 대상에서 빠져 있었음)이 놓친 실제 회귀 2건을 발견해 수정했다.
+
+- [x] **`apps/backend/src/assets/assets.repository.ts`의 `indexGeneratedProjectImages()`**: 로컬 `SCENES=[1..6]` 고정 배열로 `scene1.png`~`scene6.png`를 읽어 Asset Library에 색인하고 있었다 — `local-image-generation.service.ts`가 이미지 생성을 전부 마친 뒤 호출하는 마지막 단계라, 6장면 미만 프로젝트는 존재하지 않는 `scene5.png`/`scene6.png`를 읽으려다 `assetStorageError()`가 터져 **이미지 생성 자체가 마지막 단계에서 항상 실패**했고, 6장면 초과 프로젝트는 7번째 이후 장면 이미지가 Asset Library에 전혀 색인되지 않았다. 루프 상한을 인자로 받는 `descriptions.length`(실제 호출부가 이미 프로젝트의 정확한 장면 수만큼 채워 넘기고 있음) 기준으로 교체하고 죽은 `SCENES` 상수를 제거했다. 신규 테스트(`assets.repository.test.ts`, 4장면 케이스) 추가, 기존 테스트(`image-review.service.test.ts`)의 빈 `descriptions: []` 호출이 이 버그를 우연히 가려온 것도 발견해 실제 6개 설명 배열을 넘기도록 고쳤다.
+- [x] **`apps/backend/src/assets/asset-storage.ts`의 `parseAssetIndex()`**: `source_scene_number` 검증이 `<= 6` 하드코딩 — 위 버그를 고쳐도 7장면 이상 프로젝트에서 생성된 Asset 레코드는 저장 후 다시 불러오는 순간 파싱 자체가 거부되어 결국 막혀 있었다. `MAX_SCENE_COUNT`로 교체. 신규 테스트(`asset-storage.test.ts`, 12는 허용·13은 거부) 추가.
+- [x] 재검증: Backend 472 통과(+1 skip, 신규 5건 포함: 위 2건 + 캐릭터 폴더 계약 관련 3건), Frontend 564 통과, Shared 25 통과, Desktop 8(node:test) 통과, root typecheck/build 전부 통과. 유료 Provider 호출 없음.
+- [x] 같은 스윕에서 캐릭터 폴더 생성/연결 계약(`CreateAssetFolderRequest/Response`, `SetAssetParentFolderRequest/Response`)과 그 백엔드 구현(`assets.repository.ts`의 `createFolder()`/`setParentFolder()`, `POST /assets/folders`, `PATCH /assets/:assetId/parent-folder`)도 함께 완료했다 — Cowork의 계약 변경 요청에 대한 응답으로, `.claude-bridge/from-cli.md`에 상세 보고.

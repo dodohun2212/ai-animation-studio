@@ -32,4 +32,9 @@ describe("parseAssetIndex", () => {
     expect(() => parseAssetIndex([{ ...character, reference_images: [{ role: "front", path: "front.png", content_sha256: "not-a-digest", original_filename: "front.png" }] }])).toThrow();
     expect(() => parseAssetIndex([{ ...character, reference_images: [{ role: "front", path: "front.png", content_sha256: "b".repeat(64), original_filename: "../front.png" }] }])).toThrow();
   });
+  it("accepts a source_scene_number up to the supported maximum of 12, not just 6", () => {
+    expect(() => parseAssetIndex([{ ...legacy(), source_scene_number: 12 }])).not.toThrow();
+    expect(() => parseAssetIndex([{ ...legacy(), source_scene_number: 13 }])).toThrow();
+    expect(() => parseAssetIndex([{ ...legacy(), source_scene_number: 0 }])).toThrow();
+  });
 });

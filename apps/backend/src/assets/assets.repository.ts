@@ -2,7 +2,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
-import type { AssetFileAuditEntry, CharacterFolderReferenceSetRequest, CreateAssetMetadata, UpdateAssetMetadataRequest } from "@ai-animation-studio/shared";
+import type { AssetFileAuditEntry, CharacterFolderReferenceSetRequest, CreateAssetFolderRequest, CreateAssetMetadata, UpdateAssetMetadataRequest } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { assetInUse, assetMutationUnsupported, assetNotFound, assetStorageError, assetVersionDuplicate, badAssetRequest, invalidAssetData, malformedAssetIndex } from "./asset-api.error.js";
 import { assertSafeAssetId } from "./asset-id.js";
@@ -17,7 +17,6 @@ const isObject = (value: unknown): value is Record<string, unknown> => typeof va
 const terms = (values: string[] | undefined) => [...new Set((values ?? []).flatMap((value) => value.replaceAll(",", " ").split(/\s+/u)).map((value) => value.trim().toLocaleLowerCase()).filter(Boolean))].sort();
 const GENERATED_IMAGE_NOTE = "Automatically indexed project image";
 const GENERATED_FOLDER_NOTE = "Automatically grouped generated project images";
-const SCENES = [1, 2, 3, 4, 5, 6] as const;
 
 export class LocalAssetsRepository {
   private static readonly indexLocks = new Map<string, Promise<void>>();
@@ -116,6 +115,89 @@ export class LocalAssetsRepository {
       asset.updated_at = new Date().toISOString();
       await this.save(assets);
       return asset;
+    });
+  }
+
+  /** Creates an empty Character Folder — no image, no file. Children are linked into it afterward via `setParentFolder`. */
+  async createFolder(metadata: CreateAssetFolderRequest): Promise<StoredAsset> {
+    const displayName = metadata.displayName.trim();
+    if (!displayName) throw badAssetRequest("displayName is required.");
+    return this.serialized(async () => {
+      const assets = await this.load();
+      const now = new Date().toISOString();
+      const folder: StoredAsset = {
+        asset_id: `FOLDER-${crypto.randomBytes(6).toString("hex").toUpperCase()}`,
+        asset_type: "character", display_name: displayName, description: metadata.description?.trim() ?? "",
+        stored_path: "", original_filename: "", content_sha256: "", tags: [], aliases: [], enabled: true,
+        approved: false, face_baseline: false, character_key: null, version: 1, versions: [],
+        created_at: now, updated_at: now, notes: metadata.notes?.trim() ?? "", legacy_asset_ids: [], status: "manual",
+        source_project_id: "_asset_library_manual", source_scene_number: null, reference_images: [], reference_roles: [],
+        is_folder: true, parent_folder_id: "", child_asset_ids: [], thumbnail_asset_id: "", role: "", sort_order: 0,
+      };
+      assets.push(folder);
+      await this.save(assets);
+      return folder;
+    });
+  }
+
+  /**
+   * Links (`parentFolderId` set) or unlinks (`parentFolderId: null`) one existing, non-folder Asset as a
+   * Character Folder child — the add/remove counterpart to `updateCharacterFolderReferenceSet`, which only
+   * reorders a folder's already-linked children. Linking converts the Asset into a Character Asset with a local
+   * reference-role set, mirroring `updateCharacterFolderReferenceSet`'s existing conversion of newly-added
+   * children. Re-linking into a different folder first detaches it from its previous one.
+   */
+  async setParentFolder(assetId: string, parentFolderId: string | null): Promise<{ asset: StoredAsset; folder: StoredAsset | null }> {
+    assertSafeAssetId(assetId);
+    if (parentFolderId !== null) assertSafeAssetId(parentFolderId);
+    return this.serialized(async () => {
+      const assets = await this.load();
+      const asset = assets.find((item) => item.asset_id === assetId);
+      if (!asset) throw assetNotFound();
+      if (asset.is_folder) throw assetMutationUnsupported();
+      const now = new Date().toISOString();
+      const previousFolder = asset.parent_folder_id ? assets.find((item) => item.asset_id === asset.parent_folder_id) : undefined;
+
+      const detachFromPrevious = () => {
+        if (!previousFolder) return;
+        previousFolder.child_asset_ids = previousFolder.child_asset_ids.filter((id) => id !== assetId);
+        if (previousFolder.thumbnail_asset_id === assetId) previousFolder.thumbnail_asset_id = previousFolder.child_asset_ids[0] ?? "";
+        previousFolder.updated_at = now;
+      };
+
+      if (parentFolderId === null) {
+        detachFromPrevious();
+        asset.parent_folder_id = ""; asset.sort_order = 0; asset.updated_at = now;
+        await this.save(assets);
+        return { asset, folder: previousFolder ?? null };
+      }
+
+      if (parentFolderId === assetId) throw badAssetRequest("An Asset cannot be its own Character Folder parent.");
+      const folder = assets.find((item) => item.asset_id === parentFolderId);
+      if (!folder) throw assetNotFound();
+      if (!folder.is_folder || folder.asset_type !== "character") throw assetMutationUnsupported();
+
+      if (previousFolder && previousFolder.asset_id !== folder.asset_id) detachFromPrevious();
+      asset.parent_folder_id = folder.asset_id;
+      asset.sort_order = folder.child_asset_ids.length;
+      // Mirrors updateCharacterFolderReferenceSet: a folder child is always a Character Asset with the local reference-role set.
+      asset.asset_type = "character";
+      asset.face_baseline = false;
+      asset.reference_roles = [...CHARACTER_ROLES];
+      if (asset.reference_images.length === 0 && asset.stored_path) {
+        asset.reference_images = ["thumbnail", "front"].map((role) => ({
+          role, path: asset.stored_path, content_sha256: asset.content_sha256, original_filename: asset.original_filename,
+        }));
+      }
+      if (!CHARACTER_ROLES.includes(asset.role)) asset.role = "other";
+      asset.updated_at = now;
+
+      if (!folder.child_asset_ids.includes(assetId)) folder.child_asset_ids = [...folder.child_asset_ids, assetId];
+      if (!folder.thumbnail_asset_id) folder.thumbnail_asset_id = assetId;
+      folder.updated_at = now;
+
+      await this.save(assets);
+      return { asset, folder };
     });
   }
 
@@ -506,16 +588,18 @@ export class LocalAssetsRepository {
   }
 
   /**
-   * Index the six canonical project images without copying them.  This is an
-   * internal migration hook; public Asset mutations intentionally remain
-   * unchanged.  Reopening or resuming a project updates the same records.
+   * Index the project's generated scene images (one per entry in `descriptions`, not a fixed six — see
+   * docs/02_MIGRATION_PLAN.md's scene-count generalization) without copying them. This is an internal migration
+   * hook; public Asset mutations intentionally remain unchanged. Reopening or resuming a project updates the
+   * same records.
    */
   async indexGeneratedProjectImages(projectId: string, topic: string, descriptions: string[]): Promise<void> {
     await this.serialized(async () => {
       const assets = await this.load();
       const now = new Date().toISOString();
       const childIds: string[] = [];
-      for (const scene of SCENES) {
+      const scenes = Array.from({ length: descriptions.length }, (_, index) => index + 1);
+      for (const scene of scenes) {
         const storedPath = path.join(this.projectsRoot, projectId, "images", `scene${scene}.png`);
         const bytes = await fsPromises.readFile(storedPath).catch(() => { throw assetStorageError(); });
         let validated: ReturnType<typeof validateImage>;

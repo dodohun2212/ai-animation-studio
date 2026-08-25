@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import { ArgumentsHost, BadRequestException, Catch, Controller, Delete, ExceptionFilter, Get, Param, Patch, PayloadTooLargeException, Post, Query, Body, UploadedFile, UseFilters, UseInterceptors, StreamableFile, Res } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import type { AddAssetVersionResponse, CharacterFolderReferenceSetResponse, CreateAssetResponse, DeleteAssetFolderResponse, DeleteAssetOwnedFileResponse, DeleteAssetResponse, GetAssetResponse, ListAssetFileAuditResponse, ListAssetsResponse, RelinkAssetResponse, UpdateAssetResponse } from "@ai-animation-studio/shared";
+import type { AddAssetVersionResponse, CharacterFolderReferenceSetResponse, CreateAssetFolderResponse, CreateAssetResponse, DeleteAssetFolderResponse, DeleteAssetOwnedFileResponse, DeleteAssetResponse, GetAssetResponse, ListAssetFileAuditResponse, ListAssetsResponse, RelinkAssetResponse, SetAssetParentFolderResponse, UpdateAssetResponse } from "@ai-animation-studio/shared";
 import { AssetsService } from "./assets.service.js";
 import { AssetApiException, assetStorageError, invalidAssetFile } from "./asset-api.error.js";
 
@@ -75,6 +75,14 @@ export class AssetsController {
   @Patch(":assetId/character-reference-set")
   updateCharacterFolderReferenceSet(@Param("assetId") assetId: string, @Body() body: unknown): Promise<CharacterFolderReferenceSetResponse> {
     return this.service.updateCharacterFolderReferenceSet(assetId, body);
+  }
+  @Post("folders")
+  createFolder(@Body() body: unknown): Promise<CreateAssetFolderResponse> {
+    return this.service.createFolder(body);
+  }
+  @Patch(":assetId/parent-folder")
+  setParentFolder(@Param("assetId") assetId: string, @Body() body: unknown): Promise<SetAssetParentFolderResponse> {
+    return this.service.setParentFolder(assetId, body);
   }
   @Patch(":assetId") update(@Param("assetId") assetId: string, @Body() body: unknown): Promise<UpdateAssetResponse> { return this.service.update(assetId, body); }
   @Delete(":assetId/owned-file") removeOwnedFile(@Param("assetId") assetId: string): Promise<DeleteAssetOwnedFileResponse> { return this.service.removeOwnedFile(assetId); }
