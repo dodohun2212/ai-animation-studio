@@ -982,3 +982,18 @@ Cowork↔CLI 브리지 협업 중 캐릭터 폴더 계약 확장 작업을 하�
 - [x] `mappingsApi.test.ts`의 "9번 장면 거부" 테스트가 옛 고정 6 가정이라 실패 — "13은 거부·9는 허용"으로 교체.
 - [x] 재검증: Backend 593 통과(+1 skip), Frontend 735 통과(신규 1건), root typecheck/build 전부 통과. 유료 Provider 호출 없음.
 - [x] 커밋: `aa2783b`.
+
+## 쉰세 번째 이전 기능: 장기 프로젝트(Long Episode) 내레이션·자막
+
+숏 프로젝트는 이미 내레이션 TTS·자막 기능이 있는데 장기 프로젝트에는 없었다. 사용자에게 "3번(장면 수 가변화)까지 끝났고 4번(음성·자막)은 시작도 안 했다"고 보고하니 **"프로그램 목적에 맞아야 하니까 넣어야지"** 로 진행 승인이 났다. Cowork가 설계를 제안(`.claude-bridge` Round 80)했고, 그중 하나(`LongEpisodeScene.narration`을 선택 필드로 할지 필수+빈 문자열 폴백으로 할지)를 CLI가 판단해 진행했다.
+
+- [x] **가장 중요한 설계 결정**: `LongEpisodeStatus`에 새 상태를 추가하지 않는다. 숏 프로젝트의 내레이션도 `WorkflowState`에 없는 사이드 채널 기능이라("내레이션 문장을 가진 장면이 하나라도 있으면" 버튼이 뜸), 장기도 같게 — 진입 조건은 상태가 아니라 "이 장면에 내레이션 문장이 있는가"뿐이다.
+- [x] `packages/shared/src/api.ts`: `LongProjectSettings`에 `narrationEnabled`/`subtitlesEnabled` 추가 — `ShortProjectSettings`의 동명 필드와 의미·기본값·구버전 폴백(subtitlesEnabled 없으면 narrationEnabled 값으로) 전부 동일. `LongEpisodeScene`에 `narration?: string`(**선택 필드로 결정** — 이미 저장된 모든 Episode 대본에 이 필드가 없고, 장기 대본 생성이 아직 local-fake뿐이라 필수+폴백으로 만들 실익이 없음). 내레이션 리뷰/생성/재생성/콘텐츠 라우트·응답 타입 4세트를 숏 프로젝트 계약과 완전히 같은 모양으로 신설.
+- [x] `apps/backend/src/long-projects/long-projects.service.ts`: 두 신규 필드의 클라이언트 입력 검증과, 기존 저장 데이터의 관대한 보정(`coerceNarrationSettings()` — 숏 프로젝트의 `toShortProjectSettings`와 동일한 폴백 규칙)을 분리.
+- [x] `apps/backend/src/long-projects/episode-scripts.service.ts`: `narration`을 선택 필드로 파싱·저장(있으면 17번째 키, 없으면 기존 16개 그대로 — 다른 필드처럼 필수로 만들면 기존 저장 대본이 전부 깨짐). `generated()`(로컬 페이크 생성)가 매 장면에 템플릿 문장을 채운다 — 장기 대본 생성은 아직 실제 Provider를 안 부르므로(생성자에 `projectsRoot` 하나뿐) 내레이션도 당분간 템플릿일 뿐, "AI가 썼다"고 주장하지 않는다.
+  - **자가 발견 버그**: `episode-script-format.ts`의 `toApiEpisodeScript()`(이미지·영상·병합·매핑 등 다른 Episode 서비스들이 전부 이걸로 자기 응답의 `script` 필드를 만듦)가 자체 `snakeKeys`/`camelKeys` 배열을 따로 갖고 있어서 `narration`을 조용히 빠뜨리고 있었다 — `episode-scripts.service.ts` 자신의 응답에는 내레이션이 나오는데 다른 화면들의 응답에서는 사라지는 결함이었다. 함께 고치고 전용 테스트(`episode-script-format.test.ts`)를 새로 추가해 직접 검증했다.
+- [x] 신규 `apps/backend/src/long-projects/episode-narration.service.ts` + `episode-narration.controller.ts`: 숏 프로젝트 내레이션 모듈의 OpenAI TTS adapter(`callOpenAiTtsApi`)·오디오 길이 측정기(`probeAudioDurationSeconds`)를 그대로 재사용(복제 안 함). `LongEpisodeStatus`로 막지 않는다 — 유일한 상태 성격의 게이트는 "Episode에 대본이 아직 없음"(`LONG_EPISODE_NARRATION_NOT_ALLOWED`)뿐이고, 그 외에는 숏 프로젝트와 동일하게 장면별 내레이션 텍스트 유무로만 판단한다. `long-projects.module.ts`에 배선.
+- [x] `apps/backend/src/long-projects/episode-video-merge.service.ts`: 이전 배치에서 "장기는 내레이션·자막이 없어 항상 무음"이라고 적혀 있던 하드코딩(`narrationAudioPath: null, subtitleText: null`)을 실제 오디오 믹싱·자막 번인으로 교체 — 숏 프로젝트의 `video-merge.service.ts`와 **정확히 같은 게이팅**(오디오는 narrationEnabled+파일 유효성, 자막은 subtitlesEnabled+장면 내레이션 텍스트 존재, 둘은 서로 독립).
+- [x] 신규/수정 테스트: `episode-narration.service.test.ts`(전체 흐름 9건 — 대본 없을 때 거부, 생성·재사용, 빈 내레이션 장면 skip, narrationEnabled 꺼짐 거부, 재생성, 콘텐츠 제공, provider-free 확인), `episode-script-format.test.ts`(신규, narration 통과 확인), `episode-scripts.service.test.ts`(템플릿 생성·편집 round-trip), `episode-video-merge.service.test.ts`(오디오 믹싱·자막 번인·subtitlesEnabled 독립성 3건 추가), `long-projects.service.test.ts`(narrationEnabled/subtitlesEnabled 검증·레거시 폴백 3건 추가). 기존 14개 파일의 설정 픽스처에 두 신규 필수 필드 추가.
+- [x] **CLI 검증 완료**: `npm run typecheck`(shared 재빌드 후 전체)·`npm run test`(root)·`npm run build`·AppModule DI 부팅 확인 전부 통과. Backend 612 통과(+1 skip, 신규 19건), Frontend 736 통과. 유료 Provider 호출 없음.
+- [x] 커밋: `15caa8b`. 프론트(내레이션 리뷰 화면 신규, 대본 화면 narration 필드 편집 허용, 설정 화면 토글 2개, 영상 병합 화면 4분기 문구 등)는 계약이 랜딩된 뒤 Cowork가 이어서 보낼 예정 — `.claude-bridge`에 상세 보고.
