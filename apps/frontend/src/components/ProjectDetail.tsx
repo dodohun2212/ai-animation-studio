@@ -31,6 +31,7 @@ interface ProjectDetailProps {
   onOpenVideoWorkflow?: (projectId: string, jobId: string) => void;
   onOpenVideoMerge?: (projectId: string) => void;
   onOpenGallery?: (projectId: string) => void;
+  onOpenNarrationReview?: (projectId: string) => void;
   onArchived?: () => void;
 }
 
@@ -98,6 +99,7 @@ export function ProjectDetail({
   onOpenVideoWorkflow = () => {},
   onOpenVideoMerge = () => {},
   onOpenGallery = () => {},
+  onOpenNarrationReview = () => {},
   onArchived = () => {},
 }: ProjectDetailProps) {
   const [state, setState] = useState<DetailState>({ status: "loading" });
@@ -188,6 +190,16 @@ export function ProjectDetail({
             {state.project.workflowState === WorkflowState.WaitingForVideoConfirmation && (
               <button type="button" className={secondaryButton} onClick={() => onOpenVideoPreview(projectId)}>
                 영상 프롬프트 및 비용 확인
+              </button>
+            )}
+            {state.project.scenes.some((scene) => typeof scene.narration === "string" && scene.narration.trim()) && (
+              <button
+                type="button"
+                data-testid="open-narration-review"
+                className={secondaryButton}
+                onClick={() => onOpenNarrationReview(projectId)}
+              >
+                내레이션 확인
               </button>
             )}
             <button type="button" className={secondaryButton} onClick={() => onOpenGallery(projectId)}>
