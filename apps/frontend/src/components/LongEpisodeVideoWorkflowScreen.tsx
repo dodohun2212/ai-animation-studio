@@ -193,7 +193,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
       )}
       {job?.episode.status === "videos_approved" && (
         <div data-testid="episode-videos-approved" className="space-y-2 rounded-2xl border border-emerald-400/30 bg-emerald-500/5 p-5">
-          <p className="text-sm text-emerald-400">6개 에피소드 영상이 모두 승인되었습니다.</p>
+          <p className="text-sm text-emerald-400">{job.sceneNumbers.length}개 에피소드 영상이 모두 승인되었습니다.</p>
           <button type="button" data-testid="open-episode-video-merge" className={primaryButton} onClick={() => onOpenMerge(projectId, episodeNumber)}>최종 에피소드 영상 만들기</button>
         </div>
       )}

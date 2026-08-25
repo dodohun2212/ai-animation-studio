@@ -1,7 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MergeLongEpisodeVideosResponse } from "@ai-animation-studio/shared";
 
-import { mergeLongEpisodeVideos, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { getLongEpisode, mergeLongEpisodeVideos, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 
 interface Props {
   projectId: string;
@@ -12,25 +12,33 @@ interface Props {
 
 type DisplayError = { code: string; message: string };
 
-/**
- * A long-form Episode always has exactly six scenes — unlike a short project, where the user picks the count.
- * This is a backend invariant, not an assumption: episode-scripts.service.ts rejects a script whose scenes are
- * not six, episode-video-merge.service.ts rejects review/record arrays that are not six, and the image, video,
- * mapping and continuity services all iterate a fixed [1..6]. longProjectsApi.ts's own isLongEpisodeScript
- * guard rejects any other length before a response ever reaches this screen, so reading the count back from the
- * Episode could only ever return six — or nothing at all when that request fails, which would drop a number
- * that is always correct. Stated directly for that reason; if Episodes ever become variable, this constant and
- * those services move together.
- */
-const EPISODE_SCENE_COUNT = 6;
-
 /** The explicit, final client gate for one Episode's already-approved videos. */
 export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, onOpenContinuity }: Props) {
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<MergeLongEpisodeVideosResponse | null>(null);
   const [error, setError] = useState<DisplayError | null>(null);
+  /**
+   * How many scenes this Episode actually has. Was a local `const EPISODE_SCENE_COUNT = 6` with a comment
+   * arguing that six was a backend invariant — true when written, false since Episodes became 2-12 scenes.
+   * Read from the Episode itself for that reason. Stays null when the Episode or its script cannot be read,
+   * and the copy then omits the number rather than printing a guessed one.
+   */
+  const [sceneCount, setSceneCount] = useState<number | null>(null);
   const busy = useRef(false);
+
+  // Only ever changes this screen's wording, so a failure here is not fatal and is deliberately swallowed.
+  useEffect(() => {
+    let cancelled = false;
+    getLongEpisode(projectId, episodeNumber)
+      .then((response) => {
+        if (!cancelled) setSceneCount(response.episode.script?.scenes.length ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, episodeNumber]);
 
   function openConfirmation(): void {
     if (busy.current || result) return;
@@ -67,8 +75,8 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
         에피소드 최종 영상
       </h2>
       <p className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300" data-testid="episode-merge-scope-notice">
-        이 단계는 비용이 들지 않습니다 — 유료 요청 없이, 이 컴퓨터에 설치된 영상 병합 프로그램만 실행합니다. 승인된 에피소드
-        장면 영상 {EPISODE_SCENE_COUNT}개를 순서대로 이어 붙여 최종 영상을 만듭니다.
+        이 단계는 비용이 들지 않습니다 — 유료 요청 없이, 이 컴퓨터에 설치된 영상 병합 프로그램만 실행합니다.
+        {sceneCount !== null ? ` 승인된 에피소드 장면 영상 ${sceneCount}개를` : " 승인된 에피소드 장면 영상을"} 순서대로 이어 붙여 최종 영상을 만듭니다.
       </p>
       {!result && (
         <div className="space-y-3">
