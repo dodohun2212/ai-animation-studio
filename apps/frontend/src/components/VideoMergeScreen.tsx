@@ -105,9 +105,10 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
         />
         최종 영상 병합
       </h1>
-      <p className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300" data-testid="no-provider-notice">
-        실제 유료 Runway나 OpenAI Provider를 호출하지 않습니다. 이 컴퓨터에 설치된 로컬 영상 병합 프로그램만 실행해
-        {sceneCount !== null ? ` ${sceneCount}개` : ""} 승인 장면 영상을 순서대로 이어 붙입니다.
+      <p className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300" data-testid="merge-scope-notice">
+        이 단계는 비용이 들지 않습니다 — 유료 요청 없이, 이 컴퓨터에 설치된 영상 병합 프로그램만 실행합니다.
+        {sceneCount !== null ? ` ${sceneCount}개` : ""} 승인 장면 영상을 순서대로 이어 붙이고, 내레이션 음성을 만들어 둔
+        장면에는 그 음성과 자막을 함께 입힙니다.
       </p>
 
       {!result && (
@@ -133,8 +134,9 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
                 {sceneCount !== null ? `${sceneCount}개 승인 장면 영상을` : "승인 장면 영상을"} 하나의 최종 영상으로 병합할까요?
               </p>
               <p className="text-sm text-slate-300">
-                아직 병합이 시작되지 않았습니다. 확인을 누르면 로컬 영상 병합 프로그램이 실행되며, 실제 유료
-                Provider 요청은 전송되지 않습니다.
+                아직 병합이 시작되지 않았습니다. 확인을 누르면 이 컴퓨터의 영상 병합 프로그램이 실행됩니다. 음성을 만들어 둔
+                장면은 음성과 자막이 함께 입혀지고, 음성이 없는 장면은 소리 없이 그대로 이어 붙습니다. 유료 요청은 전송되지
+                않습니다.
               </p>
               <div className="flex gap-3">
                 <button
@@ -153,7 +155,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
                   onClick={() => void confirmMerge()}
                   disabled={pending}
                 >
-                  {pending ? "병합 중..." : "네, 로컬로 병합합니다"}
+                  {pending ? "병합 중..." : "네, 병합합니다"}
                 </button>
               </div>
             </div>
@@ -170,7 +172,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
       {result && (
         <div data-testid="merge-success" className="space-y-3 rounded-2xl border border-emerald-400/30 bg-slate-900/70 p-5">
           <p className="text-sm font-semibold text-emerald-400">
-            최종 영상 병합이 완료되었습니다. 실제 유료 Provider 요청은 전송되지 않았습니다.
+            최종 영상 병합이 완료되었습니다. 이 단계에서는 유료 요청이 전송되지 않았습니다.
           </p>
           <video
             src={finalVideoContentUrl(projectId)}

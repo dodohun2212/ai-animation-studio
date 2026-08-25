@@ -51,10 +51,10 @@ describe("VideoMergeScreen", () => {
     const mergeFetch = vi.fn();
     const { fetchMock } = renderScreen(mergeFetch);
 
-    expect(screen.getByTestId("no-provider-notice").textContent).toContain("실제 유료 Runway나 OpenAI Provider를 호출하지 않습니다");
+    expect(screen.getByTestId("merge-scope-notice").textContent).toContain("이 단계는 비용이 들지 않습니다");
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(PROJECT_URL));
     // The scene count follows the project's actual scenes, not a fixed six.
-    await waitFor(() => expect(screen.getByTestId("no-provider-notice").textContent).toContain("6개 승인 장면 영상을 순서대로 이어 붙입니다."));
+    await waitFor(() => expect(screen.getByTestId("merge-scope-notice").textContent).toContain("6개 승인 장면 영상을 순서대로 이어 붙이고"));
     expect(mergeFetch).not.toHaveBeenCalled();
   });
 
@@ -64,7 +64,7 @@ describe("VideoMergeScreen", () => {
 
     fireEvent.click(await screen.findByTestId("open-merge-confirm-button"));
     const panel = await screen.findByTestId("merge-confirm-panel");
-    expect(panel.textContent).toContain("실제 유료 Provider 요청은 전송되지 않습니다");
+    expect(panel.textContent).toContain("유료 요청은 전송되지 않습니다");
     await waitFor(() => expect(panel.textContent).toContain("6개 승인 장면 영상을 하나의 최종 영상으로 병합할까요?"));
     expect(mergeFetch).not.toHaveBeenCalled();
   });
@@ -73,7 +73,7 @@ describe("VideoMergeScreen", () => {
     const mergeFetch = vi.fn();
     renderScreen(mergeFetch, { scenes: sixScenes().slice(0, 4) });
 
-    await waitFor(() => expect(screen.getByTestId("no-provider-notice").textContent).toContain("4개 승인 장면 영상을 순서대로 이어 붙입니다."));
+    await waitFor(() => expect(screen.getByTestId("merge-scope-notice").textContent).toContain("4개 승인 장면 영상을 순서대로 이어 붙이고"));
     fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
     const panel = await screen.findByTestId("merge-confirm-panel");
     await waitFor(() => expect(panel.textContent).toContain("4개 승인 장면 영상을 하나의 최종 영상으로 병합할까요?"));
