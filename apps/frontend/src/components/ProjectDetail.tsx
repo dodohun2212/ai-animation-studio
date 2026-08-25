@@ -3,6 +3,7 @@ import type { Project } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { archiveProject, getProject, toDisplayError } from "../api/projectsApi.js";
+import { projectTypeLabel, workflowStateLabel } from "../utils/workflowStateLabels.js";
 import { ArchiveProjectDialog } from "./ArchiveProjectDialog.js";
 import { Spinner } from "./Spinner.js";
 import { WorkflowProgressBar } from "./WorkflowProgressBar.js";
@@ -173,7 +174,7 @@ export function ProjectDetail({
               className="rounded-full border border-rose-400/30 px-4 py-2 text-sm text-rose-300 hover:bg-rose-500/10"
               onClick={() => setArchiveOpen(true)}
             >
-              Archive project
+              프로젝트 보관하기
             </button>
           </div>
           {archiveOpen && (
@@ -198,11 +199,11 @@ export function ProjectDetail({
             </div>
             <div>
               <dt className="text-xs uppercase tracking-wide text-slate-400">프로젝트 유형</dt>
-              <dd className="mt-0.5">{state.project.projectType}</dd>
+              <dd className="mt-0.5">{projectTypeLabel(state.project.projectType)}</dd>
             </div>
             <div className="sm:col-span-2">
               <dt className="text-xs uppercase tracking-wide text-slate-400">진행 상태</dt>
-              <dd className="mt-0.5">{state.project.workflowState}</dd>
+              <dd className="mt-0.5">{workflowStateLabel(state.project.workflowState)}</dd>
               <WorkflowProgressBar state={state.project.workflowState} className="mt-2 max-w-xs" />
             </div>
             <div>

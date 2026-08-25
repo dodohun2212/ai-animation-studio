@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { jsonResponse, makeAsset, makeLongProject } from "../api/testUtils.js";
@@ -20,12 +20,12 @@ describe("LongStoryBibleScreen", () => {
     render(<LongStoryBibleScreen projectId="long_test" onBack={() => {}} />);
 
     expect(await screen.findByTestId("story-bible-empty")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Add item" }));
+    fireEvent.click(screen.getByRole("button", { name: "항목 추가" }));
     expect(screen.getByTestId("story-bible-validation-error")).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    fireEvent.change(screen.getByLabelText("Item ID"), { target: { value: "CHAR-1" } });
-    fireEvent.change(screen.getByLabelText("Item name"), { target: { value: "Mina" } });
-    fireEvent.click(screen.getByRole("button", { name: "Add item" }));
+    fireEvent.change(screen.getByLabelText("항목 ID"), { target: { value: "CHAR-1" } });
+    fireEvent.change(screen.getByLabelText("항목 이름"), { target: { value: "Mina" } });
+    fireEvent.click(screen.getByRole("button", { name: "항목 추가" }));
     await screen.findByText("Mina");
     expect(fetchMock.mock.calls[3]?.[0]).toBe("/long-projects/long_test/story-bible/characters");
     expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({ method: "POST" });
@@ -44,14 +44,15 @@ describe("LongStoryBibleScreen", () => {
     render(<LongStoryBibleScreen projectId="long_test" onBack={() => {}} />);
 
     await screen.findByText("Mina");
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    fireEvent.change(screen.getByLabelText("Item name"), { target: { value: "Mina revised" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    fireEvent.click(screen.getByRole("button", { name: "수정" }));
+    fireEvent.change(screen.getByLabelText("항목 이름"), { target: { value: "Mina revised" } });
+    fireEvent.click(screen.getByRole("button", { name: "변경 사항 저장" }));
     await screen.findByText("Mina revised");
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "삭제" }));
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledTimes(4);
-    fireEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "삭제" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
     expect(fetchMock.mock.calls[4]?.[1]).toMatchObject({ method: "DELETE" });
   });
@@ -62,7 +63,7 @@ describe("LongStoryBibleScreen", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveAttribute("data-error-code", "LONG_PROJECT_STORAGE_ERROR");
     expect(alert.textContent).not.toContain("absolute");
-    for (const name of ["Characters", "Locations", "Props", "Secrets", "Foreshadowing"]) expect(screen.getByRole("tab", { name })).toBeTruthy();
+    for (const name of ["캐릭터", "장소", "소품", "비밀", "복선"]) expect(screen.getByRole("tab", { name })).toBeTruthy();
   });
 
   it("shows a read-only relationship audit with deterministic issues, healthy state, and safe retry errors", async () => {
@@ -79,16 +80,16 @@ describe("LongStoryBibleScreen", () => {
     render(<LongStoryBibleScreen projectId="long_test" onBack={() => {}} />);
 
     await screen.findByTestId("story-bible-empty");
-    fireEvent.click(screen.getByRole("button", { name: "Check relationships" }));
-    expect((await screen.findByLabelText("Relationship audit issues")).textContent).toContain("characters / CHAR-1 / locationId: missing LOC-404");
+    fireEvent.click(screen.getByRole("button", { name: "연결 상태 확인" }));
+    expect((await screen.findByLabelText("연결 상태 문제 목록")).textContent).toContain("characters / CHAR-1 / locationId: LOC-404");
     expect(fetchMock.mock.calls[3]?.[0]).toBe("/long-projects/long_test/story-bible/relationship-audit");
     expect(fetchMock.mock.calls[3]?.[1]).toBeUndefined();
-    fireEvent.click(screen.getByRole("button", { name: "Refresh audit" }));
+    fireEvent.click(screen.getByRole("button", { name: "다시 확인" }));
     await screen.findByTestId("relationship-audit-healthy");
-    fireEvent.click(screen.getByRole("button", { name: "Refresh audit" }));
+    fireEvent.click(screen.getByRole("button", { name: "다시 확인" }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).not.toContain("raw");
-    fireEvent.click(screen.getByRole("button", { name: "Retry audit" }));
+    fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
     await screen.findByTestId("relationship-audit-healthy");
   });
 
@@ -110,17 +111,17 @@ describe("LongStoryBibleScreen", () => {
     render(<LongStoryBibleScreen projectId="long_test" onBack={() => {}} />);
 
     await screen.findByTestId("story-bible-empty");
-    fireEvent.change(screen.getByLabelText("Item name"), { target: { value: "Mina" } });
-    fireEvent.change(screen.getByLabelText("Linked Asset"), { target: { value: asset.assetId } });
-    fireEvent.change(screen.getByLabelText("Asset episode scope"), { target: { value: "episode" } });
-    fireEvent.change(screen.getByLabelText("Asset episode number"), { target: { value: "2" } });
-    fireEvent.click(screen.getByRole("button", { name: "Add item" }));
+    fireEvent.change(screen.getByLabelText("항목 이름"), { target: { value: "Mina" } });
+    fireEvent.change(screen.getByLabelText("연결할 에셋"), { target: { value: asset.assetId } });
+    fireEvent.change(screen.getByLabelText("에셋 적용 범위"), { target: { value: "episode" } });
+    fireEvent.change(screen.getByLabelText("적용할 에피소드 번호"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "항목 추가" }));
 
     await screen.findByTestId("asset-link-CHAR-1");
     expect(JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body))).toEqual({ item: {
       name: "Mina", assetLink: { assetId: "ASSET-CHAR-1", versionPolicy: "pinned_version", pinnedVersion: 4, episodeScope: { mode: "episode", episode: 2 } },
     } });
-    expect(screen.getByTestId("asset-link-CHAR-1").textContent).toContain("Episode 2");
+    expect(screen.getByTestId("asset-link-CHAR-1").textContent).toContain("에피소드 2");
   });
 
   it("sends an explicit null link when clearing an existing link", async () => {
@@ -136,9 +137,9 @@ describe("LongStoryBibleScreen", () => {
     render(<LongStoryBibleScreen projectId="long_test" onBack={() => {}} />);
 
     await screen.findByText("Mina");
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    fireEvent.change(screen.getByLabelText("Linked Asset"), { target: { value: "" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    fireEvent.click(screen.getByRole("button", { name: "수정" }));
+    fireEvent.change(screen.getByLabelText("연결할 에셋"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "변경 사항 저장" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
     expect(JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body)).item.assetLink).toBeNull();
   });
@@ -157,17 +158,17 @@ describe("LongStoryBibleScreen", () => {
     render(<LongStoryBibleScreen projectId="long_test" onBack={() => {}} />);
 
     await screen.findByTestId("story-bible-empty");
-    fireEvent.change(screen.getByLabelText("Basic settings JSON"), { target: { value: '{"title":"Revised"}' } });
-    fireEvent.change(screen.getByLabelText("World settings JSON"), { target: { value: '{"era":"future"}' } });
+    fireEvent.change(screen.getByLabelText("기본 설정 JSON"), { target: { value: '{"title":"Revised"}' } });
+    fireEvent.change(screen.getByLabelText("세계관 설정 JSON"), { target: { value: '{"era":"future"}' } });
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    fireEvent.click(screen.getByRole("button", { name: "Save basic and world settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "기본·세계관 설정 저장" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
     expect(fetchMock.mock.calls[3]?.[0]).toBe("/long-projects/long_test/story-bible/content");
     expect(JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body))).toEqual({ basic: { title: "Revised" }, world: { era: "future" } });
 
-    fireEvent.change(screen.getByLabelText("Global style Asset"), { target: { value: style.assetId } });
-    fireEvent.change(screen.getByLabelText("Global style version policy"), { target: { value: "snapshot" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save global style" }));
+    fireEvent.change(screen.getByLabelText("전체 스타일 에셋"), { target: { value: style.assetId } });
+    fireEvent.change(screen.getByLabelText("전체 스타일 버전 정책"), { target: { value: "snapshot" } });
+    fireEvent.click(screen.getByRole("button", { name: "전체 스타일 저장" }));
     await screen.findByTestId("global-style-asset-link");
     expect(fetchMock.mock.calls[4]?.[0]).toBe("/long-projects/long_test/story-bible/style-asset-link");
     expect(JSON.parse(String(fetchMock.mock.calls[4]?.[1]?.body))).toEqual({ assetLink: { assetId: "STYLE-1", versionPolicy: "snapshot", pinnedVersion: 3 } });
@@ -182,9 +183,9 @@ describe("LongStoryBibleScreen", () => {
     render(<LongStoryBibleScreen projectId="long_test" onBack={() => {}} />);
 
     await screen.findByTestId("story-bible-empty");
-    fireEvent.change(screen.getByLabelText("World settings JSON"), { target: { value: "[]" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save basic and world settings" }));
-    expect(screen.getByTestId("story-bible-content-validation-error").textContent).toContain("World settings");
+    fireEvent.change(screen.getByLabelText("세계관 설정 JSON"), { target: { value: "[]" } });
+    fireEvent.click(screen.getByRole("button", { name: "기본·세계관 설정 저장" }));
+    expect(screen.getByTestId("story-bible-content-validation-error").textContent).toContain("세계관 설정");
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -201,12 +202,12 @@ describe("LongStoryBibleScreen", () => {
     render(<LongStoryBibleScreen projectId="long_test" onBack={() => {}} />);
 
     await screen.findByText("Mina");
-    fireEvent.change(screen.getByLabelText("Search Characters"), { target: { value: "Mina" } });
+    fireEvent.change(screen.getByLabelText("캐릭터 검색"), { target: { value: "Mina" } });
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
-    await screen.findByLabelText("Characters search results");
+    fireEvent.click(screen.getByRole("button", { name: "검색" }));
+    await screen.findByLabelText("캐릭터 검색 결과");
     expect(fetchMock.mock.calls[3]?.[0]).toBe("/long-projects/long_test/story-bible/characters/search?query=Mina");
-    fireEvent.click(screen.getByLabelText("Characters search results").querySelector("button")!);
+    fireEvent.click(screen.getByLabelText("캐릭터 검색 결과").querySelector("button")!);
     await screen.findAllByText("Mina copy");
     expect(fetchMock.mock.calls[4]?.[0]).toBe("/long-projects/long_test/story-bible/characters/CHAR-1/duplicate");
     expect(fetchMock.mock.calls[4]?.[1]).toMatchObject({ method: "POST" });
@@ -223,11 +224,11 @@ describe("LongStoryBibleScreen", () => {
     render(<LongStoryBibleScreen projectId="long_test" onBack={() => {}} />);
 
     await screen.findByTestId("story-bible-empty");
-    fireEvent.change(screen.getByLabelText("Search Characters"), { target: { value: "missing" } });
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    fireEvent.change(screen.getByLabelText("캐릭터 검색"), { target: { value: "missing" } });
+    fireEvent.click(screen.getByRole("button", { name: "검색" }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).not.toContain("raw");
-    fireEvent.click(screen.getByRole("button", { name: "Retry search" }));
+    fireEvent.click(screen.getByRole("button", { name: "다시 검색" }));
     await screen.findByTestId("story-bible-search-empty");
     expect(fetchMock.mock.calls[4]?.[0]).toBe("/long-projects/long_test/story-bible/characters/search?query=missing");
   });

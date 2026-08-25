@@ -18,6 +18,29 @@ function editForm(): HTMLElement {
   return within(detailRegion()).getByRole("form", { name: "에셋 정보 편집" });
 }
 
+/**
+ * Routes each `fetch` call by "METHOD url" instead of call order — needed once a component issues
+ * requests whose exact count/sequence isn't fixed (e.g. AssetLibraryScreen's per-child `getAsset`
+ * effect, which can re-fire whenever a folder's `childAssetIds` order changes). A route value may be
+ * a single body (returned for every call to that route) or an array of bodies consumed in order, with
+ * the last one repeating for any further calls.
+ */
+function stubFetchByRoute(routes: Record<string, unknown | unknown[]>): ReturnType<typeof vi.fn> {
+  const queues = new Map<string, unknown[]>();
+  for (const [key, value] of Object.entries(routes)) {
+    queues.set(key, Array.isArray(value) ? [...value] : [value]);
+  }
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    const key = `${method} ${url}`;
+    const queue = queues.get(key);
+    if (!queue || queue.length === 0) throw new Error(`Unexpected fetch call in test: ${key}`);
+    const body = queue.length > 1 ? queue.shift() : queue[0];
+    return jsonResponse(200, body);
+  });
+}
+
 async function fillAndSubmitImport(file: File, name: string): Promise<void> {
   const form = importForm();
   fireEvent.change(within(form).getByLabelText("이미지 파일"), { target: { files: [file] } });
@@ -240,35 +263,37 @@ describe("AssetLibraryScreen", () => {
     const folder = makeAsset({ assetId: "FOLDER-CHAR", assetType: "character", displayName: "Hero references", isFolder: true, imageAvailable: false, contentSha256: "", versions: [], referenceImages: [], childAssetIds: ["CHAR-1", "CHAR-2"], thumbnailAssetId: "CHAR-1" });
     const updatedFolder = { ...folder, childAssetIds: ["CHAR-2", "CHAR-1"], thumbnailAssetId: "CHAR-1" };
     const representativeFolder = { ...updatedFolder, thumbnailAssetId: "CHAR-2" };
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { assets: [folder, first, second] }))
-      .mockResolvedValueOnce(jsonResponse(200, { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }))
-      .mockResolvedValueOnce(jsonResponse(200, { folder: updatedFolder, children: [second, first] }))
-      .mockResolvedValueOnce(jsonResponse(200, { assets: [updatedFolder, second, first] }))
-      .mockResolvedValueOnce(jsonResponse(200, { folder: representativeFolder, children: [second, first] }))
-      .mockResolvedValueOnce(jsonResponse(200, { assets: [representativeFolder, second, first] }));
+    // Routed by URL, not call order — the per-child getAsset() effect re-fires whenever childAssetIds's
+    // order changes (after each reorder/representative change), so the exact call sequence isn't fixed.
+    const fetchMock = stubFetchByRoute({
+      "GET /assets": { assets: [folder, first, second] },
+      "GET /assets/FOLDER-CHAR": { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
+      "GET /assets/CHAR-1": { asset: first, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
+      "GET /assets/CHAR-2": { asset: second, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
+      "PATCH /assets/FOLDER-CHAR/character-reference-set": [
+        { folder: updatedFolder, children: [second, first] },
+        { folder: representativeFolder, children: [second, first] },
+      ],
+    });
     vi.stubGlobal("fetch", fetchMock);
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
     fireEvent.click(within(list).getByText("Hero references"));
     const detail = await screen.findByRole("region", { name: "에셋 상세" });
-    const set = within(detail).getByRole("region", { name: "Character reference set" });
-    expect(within(set).getByRole("list", { name: "Ordered character reference images" }).textContent).toContain("1. Front");
+    const set = within(detail).getByRole("region", { name: "캐릭터 폴더 구성" });
+    await waitFor(() => expect(within(set).getByRole("list", { name: "순서가 있는 캐릭터 참고 이미지" }).textContent).toContain("1. Front"));
 
-    fireEvent.click(within(set).getAllByRole("button", { name: "Move down" })[0]!);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
-    const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit];
-    expect(url).toBe("/assets/FOLDER-CHAR/character-reference-set");
-    expect(init.method).toBe("PATCH");
-    expect(JSON.parse(String(init.body))).toEqual({ childAssetIds: ["CHAR-2", "CHAR-1"], thumbnailAssetId: "CHAR-1" });
-    expect(within(set).getByRole("list", { name: "Ordered character reference images" }).textContent).toContain("1. Side");
-    fireEvent.click(within(set).getAllByRole("button", { name: "Set representative" })[0]!);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(6));
-    const [representativeUrl, representativeInit] = fetchMock.mock.calls[4] as [string, RequestInit];
-    expect(representativeUrl).toBe("/assets/FOLDER-CHAR/character-reference-set");
-    expect(JSON.parse(String(representativeInit.body))).toEqual({ childAssetIds: ["CHAR-2", "CHAR-1"], thumbnailAssetId: "CHAR-2" });
-    expect(within(set).getByText(/Side \(representative\)/)).toBeTruthy();
+    fireEvent.click(within(set).getAllByRole("button", { name: "아래로" })[0]!);
+    await waitFor(() => expect(within(set).getByRole("list", { name: "순서가 있는 캐릭터 참고 이미지" }).textContent).toContain("1. Side"));
+    const patchCalls = fetchMock.mock.calls.filter(([url]) => String(url) === "/assets/FOLDER-CHAR/character-reference-set") as Array<[string, RequestInit]>;
+    expect(patchCalls[0]![1].method).toBe("PATCH");
+    expect(JSON.parse(String(patchCalls[0]![1].body))).toEqual({ childAssetIds: ["CHAR-2", "CHAR-1"], thumbnailAssetId: "CHAR-1" });
+
+    fireEvent.click(within(set).getAllByRole("button", { name: "대표 이미지로 정하기" })[0]!);
+    await waitFor(() => expect(within(set).getByText(/Side \(대표 이미지\)/)).toBeTruthy());
+    const patchCallsAfterRepresentative = fetchMock.mock.calls.filter(([url]) => String(url) === "/assets/FOLDER-CHAR/character-reference-set") as Array<[string, RequestInit]>;
+    expect(JSON.parse(String(patchCallsAfterRepresentative[1]![1].body))).toEqual({ childAssetIds: ["CHAR-2", "CHAR-1"], thumbnailAssetId: "CHAR-2" });
     for (const [calledUrl] of fetchMock.mock.calls as Array<[string]>) {
       expect(calledUrl).toMatch(/^\/assets/);
       expect(calledUrl).not.toContain("/videos/");
@@ -852,11 +877,14 @@ describe("AssetLibraryScreen", () => {
   it("deletes a Folder with the default (index-only) option, distinct from the deletion UI shown for a regular asset", async () => {
     const first = makeAsset({ assetId: "CHAR-1", assetType: "character", displayName: "Front", parentFolderId: "FOLDER-CHAR", sortOrder: 0 });
     const folder = makeAsset({ assetId: "FOLDER-CHAR", assetType: "character", displayName: "Hero references", isFolder: true, imageAvailable: false, contentSha256: "", versions: [], referenceImages: [], childAssetIds: ["CHAR-1"], thumbnailAssetId: "CHAR-1" });
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { assets: [folder, first] }))
-      .mockResolvedValueOnce(jsonResponse(200, { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false }))
-      .mockResolvedValueOnce(jsonResponse(200, { assetId: "FOLDER-CHAR", removedChildAssetIds: [], deletedFiles: 0 }))
-      .mockResolvedValueOnce(jsonResponse(200, { assets: [first] }));
+    // Routed by URL, not call order — the per-child getAsset() effect adds an extra request
+    // (GET /assets/CHAR-1) beyond the plain list/detail/delete/reload sequence.
+    const fetchMock = stubFetchByRoute({
+      "GET /assets": [{ assets: [folder, first] }, { assets: [first] }],
+      "GET /assets/FOLDER-CHAR": { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false },
+      "GET /assets/CHAR-1": { asset: first, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
+      "DELETE /assets/FOLDER-CHAR/folder": { assetId: "FOLDER-CHAR", removedChildAssetIds: [], deletedFiles: 0 },
+    });
     vi.stubGlobal("fetch", fetchMock);
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<AssetLibraryScreen onBack={() => {}} />);
@@ -865,26 +893,24 @@ describe("AssetLibraryScreen", () => {
     fireEvent.click(within(list).getByText("Hero references"));
     const detail = await screen.findByRole("region", { name: "에셋 상세" });
     expect(within(detail).queryByRole("button", { name: "목록에서 삭제" })).toBeNull();
-    const folderDeleteSection = within(detail).getByRole("region", { name: "Folder 삭제" });
+    const folderDeleteSection = within(detail).getByRole("region", { name: "폴더 삭제" });
 
-    fireEvent.click(within(folderDeleteSection).getByRole("button", { name: "Folder 삭제" }));
+    fireEvent.click(within(folderDeleteSection).getByRole("button", { name: "폴더 삭제" }));
 
     expect(confirmSpy.mock.calls.at(-1)?.[0]).toContain("Hero references");
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
-    const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit];
-    expect(url).toBe("/assets/FOLDER-CHAR/folder");
-    expect(init.method).toBe("DELETE");
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => String(url) === "/assets/FOLDER-CHAR/folder" && (init as RequestInit | undefined)?.method === "DELETE")).toBe(true));
     await waitFor(() => expect(screen.queryByRole("region", { name: "에셋 상세" })).toBeNull());
   });
 
   it("deletes a Folder together with its child indexes and owned files when both options are selected", async () => {
     const first = makeAsset({ assetId: "CHAR-1", assetType: "character", displayName: "Front", parentFolderId: "FOLDER-CHAR", sortOrder: 0 });
     const folder = makeAsset({ assetId: "FOLDER-CHAR", assetType: "character", displayName: "Hero references", isFolder: true, imageAvailable: false, contentSha256: "", versions: [], referenceImages: [], childAssetIds: ["CHAR-1"], thumbnailAssetId: "CHAR-1" });
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { assets: [folder, first] }))
-      .mockResolvedValueOnce(jsonResponse(200, { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false }))
-      .mockResolvedValueOnce(jsonResponse(200, { assetId: "FOLDER-CHAR", removedChildAssetIds: ["CHAR-1"], deletedFiles: 1 }))
-      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }));
+    const fetchMock = stubFetchByRoute({
+      "GET /assets": [{ assets: [folder, first] }, { assets: [] }],
+      "GET /assets/FOLDER-CHAR": { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false },
+      "GET /assets/CHAR-1": { asset: first, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
+      "DELETE /assets/FOLDER-CHAR/folder?removeChildIndexes=true&deleteManualFiles=true": { assetId: "FOLDER-CHAR", removedChildAssetIds: ["CHAR-1"], deletedFiles: 1 },
+    });
     vi.stubGlobal("fetch", fetchMock);
     vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<AssetLibraryScreen onBack={() => {}} />);
@@ -892,14 +918,14 @@ describe("AssetLibraryScreen", () => {
     const list = await screen.findByRole("list", { name: "에셋 목록" });
     fireEvent.click(within(list).getByText("Hero references"));
     const detail = await screen.findByRole("region", { name: "에셋 상세" });
-    const folderDeleteSection = within(detail).getByRole("region", { name: "Folder 삭제" });
+    const folderDeleteSection = within(detail).getByRole("region", { name: "폴더 삭제" });
     fireEvent.click(within(folderDeleteSection).getByLabelText("하위 항목의 원본 파일도 함께 삭제(수동 등록 항목만 가능)"));
     expect((within(folderDeleteSection).getByLabelText("하위 항목 색인도 함께 삭제") as HTMLInputElement).checked).toBe(true);
 
-    fireEvent.click(within(folderDeleteSection).getByRole("button", { name: "Folder 삭제" }));
+    fireEvent.click(within(folderDeleteSection).getByRole("button", { name: "폴더 삭제" }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
-    const [url] = fetchMock.mock.calls[2] as [string];
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => String(url).startsWith("/assets/FOLDER-CHAR/folder?") && (init as RequestInit | undefined)?.method === "DELETE")).toBe(true));
+    const [url] = fetchMock.mock.calls.find(([callUrl, init]) => String(callUrl).startsWith("/assets/FOLDER-CHAR/folder?") && (init as RequestInit | undefined)?.method === "DELETE")! as [string];
     const parsed = new URL(url, "http://localhost");
     expect(parsed.searchParams.get("removeChildIndexes")).toBe("true");
     expect(parsed.searchParams.get("deleteManualFiles")).toBe("true");
@@ -917,7 +943,7 @@ describe("AssetLibraryScreen", () => {
     const list = await screen.findByRole("list", { name: "에셋 목록" });
     fireEvent.click(within(list).getByText("Hero references"));
     const detail = await screen.findByRole("region", { name: "에셋 상세" });
-    fireEvent.click(within(within(detail).getByRole("region", { name: "Folder 삭제" })).getByRole("button", { name: "Folder 삭제" }));
+    fireEvent.click(within(within(detail).getByRole("region", { name: "폴더 삭제" })).getByRole("button", { name: "폴더 삭제" }));
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetchMock).toHaveBeenCalledTimes(2);

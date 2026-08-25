@@ -12,6 +12,8 @@ import {
   type AssetStatus,
   type AssetType,
   type AssetVersion,
+  type CreateAssetFolderRequest,
+  type CreateAssetFolderResponse,
   type CreateAssetMetadata,
   type CreateAssetResponse,
   type DeleteAssetFolderRequest,
@@ -24,6 +26,8 @@ import {
   type ListAssetsResponse,
   type RelinkAssetResponse,
   type RunLegacyReferenceMigrationResponse,
+  type SetAssetParentFolderRequest,
+  type SetAssetParentFolderResponse,
   type UpdateAssetMetadataRequest,
   type UpdateAssetResponse,
 } from "@ai-animation-studio/shared";
@@ -141,6 +145,9 @@ const isGetResponse = (value: unknown): value is GetAssetResponse => isRecord(va
 const isDeleteResponse = (value: unknown): value is DeleteAssetResponse => isRecord(value) && isString(value.assetId) && typeof value.deletedOwnedFile === "boolean";
 const isCharacterFolderReferenceSetResponse = (value: unknown): value is CharacterFolderReferenceSetResponse =>
   isRecord(value) && isAsset(value.folder) && Array.isArray(value.children) && value.children.every(isAsset);
+const isCreateAssetFolderResponse = (value: unknown): value is CreateAssetFolderResponse => isRecord(value) && isAsset(value.asset) && value.asset.isFolder;
+const isSetAssetParentFolderResponse = (value: unknown): value is SetAssetParentFolderResponse =>
+  isRecord(value) && isAsset(value.asset) && (value.folder === null || isAsset(value.folder));
 const isAddVersionResponse = (value: unknown): value is AddAssetVersionResponse => isRecord(value) && isAsset(value.asset);
 const isRelinkResponse = (value: unknown): value is RelinkAssetResponse => isRecord(value) && isAsset(value.asset);
 const isDeleteOwnedFileResponse = (value: unknown): value is DeleteAssetOwnedFileResponse =>
@@ -261,5 +268,24 @@ export async function updateCharacterFolderReferenceSet(
     || response.children.some((child) => child.parentFolderId !== assetId)) {
     throw new AssetsApiError(MALFORMED.code, MALFORMED.message);
   }
+  return response;
+}
+
+/** Creates an empty Character Folder (no image) that other Character Assets can then be linked into. */
+export function createAssetFolder(requestBody: CreateAssetFolderRequest): Promise<CreateAssetFolderResponse> {
+  return request(API_ROUTES.createAssetFolder, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody),
+  }, isCreateAssetFolderResponse);
+}
+
+/** Links (or, with `parentFolderId: null`, unlinks) an existing Asset as a child of a Character Folder. */
+export async function setAssetParentFolder(
+  assetId: string,
+  requestBody: SetAssetParentFolderRequest,
+): Promise<SetAssetParentFolderResponse> {
+  const response = await request(API_ROUTES.assetParentFolder(assetId), {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody),
+  }, isSetAssetParentFolderResponse);
+  if (response.asset.assetId !== assetId) throw new AssetsApiError(MALFORMED.code, MALFORMED.message);
   return response;
 }

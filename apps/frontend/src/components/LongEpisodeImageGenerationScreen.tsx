@@ -10,12 +10,15 @@ import {
   startLongEpisodeImageGeneration,
   toLongProjectDisplayError,
 } from "../api/longProjectsApi.js";
+import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { Spinner } from "./Spinner.js";
 
 interface Props { projectId: string; episodeNumber: number; onBack: () => void; onOpenVideoWorkflow?: (projectId: string, episodeNumber: number) => void; }
 type DisplayError = { code: string; message: string };
 type ReviewState = { status: "idle" | "loading" } | { status: "error"; error: DisplayError } | { status: "ready"; reviews: LongEpisodeImageReview[] };
 const SCENES: SceneNumber[] = [1, 2, 3, 4, 5, 6];
+const SCENE_SLOT_LABEL: Record<string, string> = { generated: "생성됨", waiting: "대기 중", pending: "검토 대기", approved: "승인됨" };
+const sceneSlotLabel = (status: string) => SCENE_SLOT_LABEL[status] ?? status;
 
 const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const primaryButton = "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
@@ -103,35 +106,35 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
 
   return (
     <section className="mt-8 space-y-5">
-      <button type="button" className={outlineButton} onClick={onBack}>Asset mapping review</button>
+      <button type="button" className={outlineButton} onClick={onBack}>Asset Mapping 검토로</button>
       <header className="space-y-1">
-        <h2 className="flex items-center gap-2.5 text-lg font-semibold"><span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />{`Episode ${episodeNumber} image generation`}</h2>
-        <p data-testid="episode-image-local-notice" className="text-sm text-amber-300">This uses only the local fake image adapter. No paid provider request is sent.</p>
+        <h2 className="flex items-center gap-2.5 text-lg font-semibold"><span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />{`에피소드 ${episodeNumber} 이미지 생성`}</h2>
+        <p data-testid="episode-image-local-notice" className="text-sm text-amber-300">지금은 로컬 가짜 이미지 어댑터만 사용합니다. 유료 Provider 요청은 보내지 않습니다.</p>
       </header>
-      {loading && <Spinner label="Loading Episode image state..." />}
-      {episode && <p data-testid="episode-image-status" className="text-sm text-slate-400">Episode status: {episode.status}</p>}
-      {continuityReferenceLoading && <p data-testid="episode-image-continuity-loading" className="text-sm text-slate-400">Checking prior Episode continuity reference...</p>}
-      {!continuityReferenceLoading && continuityReference?.available && <p data-testid="episode-image-continuity-available" className="text-sm text-violet-200">Episode {continuityReference.previousEpisodeNumber} Scene 6 will guide this Episode Scene 1.</p>}
-      {!continuityReferenceLoading && !continuityReference?.available && <p data-testid="episode-image-continuity-unavailable" className="text-sm text-slate-400">No prior Episode Scene 6 continuity reference is available for this Episode.</p>}
-      {episode && !eligible && !reviewable && <p data-testid="episode-image-not-eligible" className="text-sm text-amber-300">Approve Asset mapping before starting Episode image generation.</p>}
+      {loading && <Spinner label="에피소드 이미지 상태를 불러오는 중..." />}
+      {episode && <p data-testid="episode-image-status" className="text-sm text-slate-400">에피소드 상태: {longEpisodeStatusLabel(episode.status)}</p>}
+      {continuityReferenceLoading && <p data-testid="episode-image-continuity-loading" className="text-sm text-slate-400">이전 에피소드 연속성 참고 자료를 확인하는 중...</p>}
+      {!continuityReferenceLoading && continuityReference?.available && <p data-testid="episode-image-continuity-available" className="text-sm text-violet-200">에피소드 {continuityReference.previousEpisodeNumber}의 6번 장면이 이 에피소드 1번 장면의 기준이 됩니다.</p>}
+      {!continuityReferenceLoading && !continuityReference?.available && <p data-testid="episode-image-continuity-unavailable" className="text-sm text-slate-400">이 에피소드에 사용할 이전 에피소드 6번 장면 연속성 참고 자료가 없습니다.</p>}
+      {episode && !eligible && !reviewable && <p data-testid="episode-image-not-eligible" className="text-sm text-amber-300">에피소드 이미지 생성을 시작하려면 먼저 Asset Mapping을 승인하세요.</p>}
       <ol data-testid="episode-image-scenes" className="list-decimal space-y-1 pl-5 text-sm text-slate-300">
-        {SCENES.map((sceneNumber) => <li key={sceneNumber} data-testid={`episode-image-scene-${sceneNumber}`} data-status={reviewFor(sceneNumber)?.status ?? (generation ? "generated" : "waiting")}>Scene {sceneNumber}: {reviewFor(sceneNumber)?.status ?? (generation ? "generated" : "waiting")}</li>)}
+        {SCENES.map((sceneNumber) => <li key={sceneNumber} data-testid={`episode-image-scene-${sceneNumber}`} data-status={reviewFor(sceneNumber)?.status ?? (generation ? "generated" : "waiting")}>장면 {sceneNumber}: {sceneSlotLabel(reviewFor(sceneNumber)?.status ?? (generation ? "generated" : "waiting"))}</li>)}
       </ol>
-      {eligible && !generation && <button type="button" disabled={confirmingGeneration} className={primaryButton} onClick={() => setConfirmingGeneration(true)}>Start image generation</button>}
+      {eligible && !generation && <button type="button" disabled={confirmingGeneration} className={primaryButton} onClick={() => setConfirmingGeneration(true)}>이미지 생성 시작</button>}
       {confirmingGeneration && (
         <div role="alertdialog" data-testid="episode-image-generate-confirm" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
-          <p className="text-sm text-amber-200">Generate six local fake images for this Episode? Opening this confirmation did not make a request.</p>
+          <p className="text-sm text-amber-200">이 에피소드의 로컬 가짜 이미지 6장을 생성할까요? 이 확인창을 연 것만으로는 아직 요청이 가지 않았습니다.</p>
           <div className="flex gap-3">
-            <button type="button" className={outlineButton} disabled={generationPending} onClick={() => setConfirmingGeneration(false)}>Back</button>
-            <button type="button" className={primaryButton} disabled={generationPending} onClick={() => void confirmGeneration()}>{generationPending ? "Generating..." : "Generate local images"}</button>
+            <button type="button" className={outlineButton} disabled={generationPending} onClick={() => setConfirmingGeneration(false)}>돌아가기</button>
+            <button type="button" className={primaryButton} disabled={generationPending} onClick={() => void confirmGeneration()}>{generationPending ? "생성하는 중..." : "로컬 이미지 생성"}</button>
           </div>
         </div>
       )}
-      {generation && <p data-testid="episode-image-generation-summary" className="text-sm text-emerald-400">Generated {generation.generatedSceneNumbers.length}, reused {generation.reusedSceneNumbers.length} scene images.</p>}
-      {reviewState.status === "loading" && <Spinner label="Loading image reviews..." />}
+      {generation && <p data-testid="episode-image-generation-summary" className="text-sm text-emerald-400">{generation.generatedSceneNumbers.length}개 생성, {generation.reusedSceneNumbers.length}개 재사용됨.</p>}
+      {reviewState.status === "loading" && <Spinner label="이미지 검토 내용을 불러오는 중..." />}
       {reviewState.status === "ready" && (
         <section data-testid="episode-image-review-section" className={cardSection}>
-          <h3 className="flex items-center gap-2.5 text-base font-semibold"><span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />Image review</h3>
+          <h3 className="flex items-center gap-2.5 text-base font-semibold"><span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />이미지 검토</h3>
           {SCENES.map((sceneNumber) => {
             const review = reviewFor(sceneNumber);
             if (!review) return null;
@@ -140,17 +143,17 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
             const confirming = regenerateConfirm === sceneNumber;
             return (
               <div key={sceneNumber} data-testid={`episode-image-review-${sceneNumber}`} data-status={review.status} className="space-y-2 border-t border-white/10 pt-3">
-                <p className="text-sm text-slate-300">Scene {sceneNumber}: {review.status}</p>
+                <p className="text-sm text-slate-300">장면 {sceneNumber}: {sceneSlotLabel(review.status)}</p>
                 <div className="flex gap-3">
-                  <button type="button" className={smallOutlineButton} disabled={review.status === "approved" || approving} onClick={() => void approveScene(sceneNumber)}>{approving ? "Approving..." : review.status === "approved" ? "Approved" : "Approve"}</button>
-                  <button type="button" className={smallOutlineButton} disabled={regenerating || confirming} onClick={() => setRegenerateConfirm(sceneNumber)}>{regenerating ? "Regenerating..." : "Regenerate"}</button>
+                  <button type="button" className={smallOutlineButton} disabled={review.status === "approved" || approving} onClick={() => void approveScene(sceneNumber)}>{approving ? "승인하는 중..." : review.status === "approved" ? "승인됨" : "승인"}</button>
+                  <button type="button" className={smallOutlineButton} disabled={regenerating || confirming} onClick={() => setRegenerateConfirm(sceneNumber)}>{regenerating ? "다시 만드는 중..." : "다시 만들기"}</button>
                 </div>
                 {confirming && (
                   <div role="alertdialog" data-testid={`episode-image-regenerate-confirm-${sceneNumber}`} className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
-                    <p className="text-sm text-amber-200">Regenerate only Scene {sceneNumber} with the local fake adapter?</p>
+                    <p className="text-sm text-amber-200">{sceneNumber}번 장면만 로컬 가짜 어댑터로 다시 만들까요?</p>
                     <div className="flex gap-2">
-                      <button type="button" className={smallOutlineButton} disabled={regenerating} onClick={() => setRegenerateConfirm(null)}>Cancel</button>
-                      <button type="button" className={smallAmberButton} disabled={regenerating} onClick={() => void confirmRegenerate(sceneNumber)}>Regenerate scene</button>
+                      <button type="button" className={smallOutlineButton} disabled={regenerating} onClick={() => setRegenerateConfirm(null)}>취소</button>
+                      <button type="button" className={smallAmberButton} disabled={regenerating} onClick={() => void confirmRegenerate(sceneNumber)}>이 장면 다시 만들기</button>
                     </div>
                   </div>
                 )}
@@ -161,8 +164,8 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
       )}
       {episode?.status === "waiting_for_video_confirmation" && (
         <div className="space-y-2">
-          <p data-testid="episode-video-confirmation-transition" className="text-sm text-emerald-400">All six Episode images are approved. Continue to the separate video-confirmation step.</p>
-          {onOpenVideoWorkflow && <button type="button" data-testid="episode-open-video-workflow" className={outlineButton} onClick={() => onOpenVideoWorkflow(projectId, episodeNumber)}>Open Episode video workflow</button>}
+          <p data-testid="episode-video-confirmation-transition" className="text-sm text-emerald-400">6개 장면 이미지가 모두 승인되었습니다. 별도의 영상 확인 단계로 이어서 진행하세요.</p>
+          {onOpenVideoWorkflow && <button type="button" data-testid="episode-open-video-workflow" className={outlineButton} onClick={() => onOpenVideoWorkflow(projectId, episodeNumber)}>에피소드 영상 작업 열기</button>}
         </div>
       )}
       {error && <p role="alert" data-error-code={error.code} className="text-sm text-rose-400">{error.message}</p>}

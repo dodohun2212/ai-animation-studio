@@ -37,7 +37,7 @@ describe("LongEpisodeContinuityScreen", () => {
     fireEvent.change(screen.getByTestId("continuity-character-changes"), { target: { value: "[{\"id\":\"hero\"}]" } });
     fireEvent.click(screen.getByTestId("continuity-save"));
 
-    expect(await screen.findByTestId("continuity-save-success")).toHaveTextContent("Episode 2 is available next");
+    expect(await screen.findByTestId("continuity-save-success")).toHaveTextContent("에피소드 2");
     const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
     expect(url).toBe("/long-projects/long/episodes/1/continuity");
     expect(init.method).toBe("PUT");

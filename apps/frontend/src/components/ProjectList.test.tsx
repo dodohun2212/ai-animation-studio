@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { jsonResponse, makeProject } from "../api/testUtils.js";
+import { workflowStateLabel } from "../utils/workflowStateLabels.js";
 import { ProjectList } from "./ProjectList.js";
 
 describe("ProjectList", () => {
@@ -31,7 +32,7 @@ describe("ProjectList", () => {
     const card = await screen.findByRole("button", { name: /sample_project/ });
     expect(within(card).getByText("sample_project")).toBeTruthy();
     expect(within(card).getByText("우주를 여행하는 고양이")).toBeTruthy();
-    expect(within(card).getByText(WorkflowState.Ready)).toBeTruthy();
+    expect(within(card).getByText(workflowStateLabel(WorkflowState.Ready))).toBeTruthy();
     expect(within(card).getByText("2026-08-21T05:00:00.000Z")).toBeTruthy();
   });
 

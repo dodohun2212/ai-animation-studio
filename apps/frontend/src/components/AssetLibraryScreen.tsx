@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { Asset, AssetFileAuditEntry, AssetType, CreateAssetMetadata, GetAssetResponse, RunLegacyReferenceMigrationResponse, UpdateAssetMetadataRequest } from "@ai-animation-studio/shared";
-import { addAssetVersion, createAsset, deleteAsset, deleteAssetFolder, deleteAssetOwnedFile, getAsset, listAssetFileAudit, listAssets, relinkAsset, runLegacyReferenceMigration, toAssetDisplayError, updateAsset, updateCharacterFolderReferenceSet } from "../api/assetsApi.js";
+import { addAssetVersion, createAsset, createAssetFolder, deleteAsset, deleteAssetFolder, deleteAssetOwnedFile, getAsset, listAssetFileAudit, listAssets, relinkAsset, runLegacyReferenceMigration, setAssetParentFolder, toAssetDisplayError, updateAsset, updateCharacterFolderReferenceSet } from "../api/assetsApi.js";
 import { Spinner } from "./Spinner.js";
 
 interface Props { onBack: () => void; initialQuery?: string }
@@ -11,6 +11,12 @@ const TYPES: Array<{ value: AssetType; label: string }> = [
 ];
 const splitList = (value: string) => value.split(",").map((item) => item.trim()).filter(Boolean);
 const IMPORT_VALIDATION_MESSAGE = "이미지 파일과 이름을 모두 입력해 주세요.";
+// Mirrors the backend's CHARACTER_ROLES (apps/backend/src/assets/assets.repository.ts) in a stable, labeled order.
+const CHARACTER_ROLE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: "front", label: "정면" }, { value: "side", label: "옆모습" }, { value: "back", label: "뒷모습" },
+  { value: "left45", label: "왼쪽 45도" }, { value: "right45", label: "오른쪽 45도" },
+  { value: "expression", label: "표정" }, { value: "thumbnail", label: "썸네일" }, { value: "other", label: "기타" },
+];
 
 const fieldClassName =
   "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
@@ -22,6 +28,10 @@ const dangerOutlineButton =
   "rounded-full border border-rose-400/40 bg-rose-500/10 px-4 py-2 text-sm font-medium text-rose-300 shadow-sm hover:border-rose-400/60 hover:bg-rose-500/15 disabled:opacity-50";
 const smallOutlineButton =
   "rounded-full border border-white/20 bg-white/[0.06] px-3 py-1 text-xs font-medium text-slate-200 hover:border-white/30 hover:bg-white/10 disabled:opacity-50";
+const smallAddButton =
+  "rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300 hover:border-emerald-400/60 hover:bg-emerald-500/15 disabled:opacity-50";
+const smallRemoveButton =
+  "rounded-full border border-rose-400/40 bg-rose-500/10 px-3 py-1 text-xs font-medium text-rose-300 hover:border-rose-400/60 hover:bg-rose-500/15 disabled:opacity-50";
 const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
@@ -77,9 +87,22 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   const [folderRemoveChildIndexes, setFolderRemoveChildIndexes] = useState(false);
   const [folderDeleteManualFiles, setFolderDeleteManualFiles] = useState(false);
   const [folderDeletePending, setFolderDeletePending] = useState(false);
+  const [folderCreateName, setFolderCreateName] = useState("");
+  const [folderCreatePending, setFolderCreatePending] = useState(false);
+  const [folderCreateError, setFolderCreateError] = useState<{ code: string; message: string } | null>(null);
+  const [folderChildren, setFolderChildren] = useState<Asset[] | null>(null);
+  const [folderChildrenLoading, setFolderChildrenLoading] = useState(false);
+  const [folderChildrenError, setFolderChildrenError] = useState<{ code: string; message: string } | null>(null);
+  const [folderLinkQuery, setFolderLinkQuery] = useState("");
+  const [folderLinkResults, setFolderLinkResults] = useState<Asset[] | null>(null);
+  const [folderLinkSearchLoading, setFolderLinkSearchLoading] = useState(false);
+  const [folderLinkSearchError, setFolderLinkSearchError] = useState<{ code: string; message: string } | null>(null);
+  const [folderMutationPending, setFolderMutationPending] = useState(false);
+  const [folderMutationError, setFolderMutationError] = useState<{ code: string; message: string } | null>(null);
   const listRequest = useRef(0);
   const detailRequest = useRef(0);
   const auditRequest = useRef(0);
+  const folderChildrenRequest = useRef(0);
   const importBusy = useRef(false);
   const editBusy = useRef(false);
   const deleteBusy = useRef(false);
@@ -89,6 +112,8 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   const legacyMigrationBusy = useRef(false);
   const ownedFileDeleteBusy = useRef(false);
   const folderDeleteBusy = useRef(false);
+  const folderCreateBusy = useRef(false);
+  const folderMutationBusy = useRef(false);
 
   async function load(nextQuery = query, nextType = assetType) {
     const requestId = ++listRequest.current;
@@ -116,6 +141,31 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
       setSelected(null); setDetailError(toAssetDisplayError(caught));
     } finally { if (requestId === detailRequest.current) setDetailLoading(false); }
   }
+
+  // Fetches full detail for every child of the selected Character Folder directly (rather than relying on
+  // whatever happens to already be loaded in `assets`), so reordering/role editing works even for children
+  // outside the current search/filter — the "일부 하위 이미지 정보를 불러오지 못했습니다" case below only
+  // fires on a genuine per-child fetch failure now, not on a merely-unloaded one.
+  useEffect(() => {
+    const folder = selected?.asset;
+    if (!folder || !folder.isFolder || folder.assetType !== "character") {
+      setFolderChildren(null); setFolderChildrenError(null); setFolderLinkResults(null); setFolderLinkQuery("");
+      setFolderLinkSearchError(null); setFolderMutationError(null);
+      return;
+    }
+    const requestId = ++folderChildrenRequest.current;
+    if (folder.childAssetIds.length === 0) { setFolderChildren([]); setFolderChildrenError(null); return; }
+    setFolderChildrenLoading(true);
+    Promise.allSettled(folder.childAssetIds.map((childId) => getAsset(childId))).then((results) => {
+      if (requestId !== folderChildrenRequest.current) return;
+      const children: Asset[] = [];
+      let missing = false;
+      results.forEach((outcome) => { if (outcome.status === "fulfilled") children.push(outcome.value.asset); else missing = true; });
+      setFolderChildren(children);
+      setFolderChildrenError(missing ? { code: "CLIENT_PARTIAL_LOAD", message: "일부 하위 이미지 정보를 불러오지 못했습니다." } : null);
+    }).finally(() => { if (requestId === folderChildrenRequest.current) setFolderChildrenLoading(false); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.asset.assetId, selected?.asset.isFolder, selected?.asset.assetType, selected?.asset.childAssetIds.join(",")]);
 
   async function submitImport(event: FormEvent) {
     event.preventDefault();
@@ -221,10 +271,10 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
     const targetId = selected.asset.assetId;
     const removeChildIndexes = folderRemoveChildIndexes || folderDeleteManualFiles;
     const message = folderDeleteManualFiles
-      ? `'${selected.asset.displayName}' Folder와 하위 항목, 원본 파일을 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.`
+      ? `'${selected.asset.displayName}' 폴더와 하위 항목, 원본 파일을 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.`
       : removeChildIndexes
-        ? `'${selected.asset.displayName}' Folder와 하위 항목 색인을 삭제할까요? 원본 파일은 삭제하지 않습니다.`
-        : `'${selected.asset.displayName}' Folder만 삭제할까요? 하위 항목은 목록에 그대로 남습니다.`;
+        ? `'${selected.asset.displayName}' 폴더와 하위 항목 색인을 삭제할까요? 원본 파일은 삭제하지 않습니다.`
+        : `'${selected.asset.displayName}' 폴더만 삭제할까요? 하위 항목은 목록에 그대로 남습니다.`;
     if (!window.confirm(message)) return;
     folderDeleteBusy.current = true; setFolderDeletePending(true);
     const listGenerationAtStart = listRequest.current;
@@ -260,10 +310,6 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
     finally { legacyMigrationBusy.current = false; setLegacyMigrationPending(false); }
   }
 
-  const characterFolderChildren = selected?.asset.isFolder && selected.asset.assetType === "character"
-    ? selected.asset.childAssetIds.map((childId) => assets?.find((asset) => asset.assetId === childId)).filter((asset): asset is Asset => Boolean(asset))
-    : [];
-
   async function saveCharacterReferenceSet(childAssetIds: string[], thumbnailAssetId: string) {
     if (!selected || referenceSetBusy.current) return;
     const folderId = selected.asset.assetId;
@@ -288,6 +334,63 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
     if (index < 0 || nextIndex < 0 || nextIndex >= next.length) return;
     [next[index], next[nextIndex]] = [next[nextIndex]!, next[index]!];
     void saveCharacterReferenceSet(next, selected.asset.thumbnailAssetId);
+  }
+
+  async function createCharacterFolder(event: FormEvent) {
+    event.preventDefault();
+    if (folderCreateBusy.current || !folderCreateName.trim()) return;
+    folderCreateBusy.current = true; setFolderCreatePending(true); setFolderCreateError(null);
+    const listGenerationAtStart = listRequest.current;
+    try {
+      const response = await createAssetFolder({ displayName: folderCreateName.trim() });
+      setFolderCreateName("");
+      if (listRequest.current === listGenerationAtStart) await load();
+      await open(response.asset.assetId);
+    } catch (caught) { setFolderCreateError(toAssetDisplayError(caught)); }
+    finally { folderCreateBusy.current = false; setFolderCreatePending(false); }
+  }
+
+  async function searchFolderLinkCandidates(event: FormEvent) {
+    event.preventDefault();
+    setFolderLinkSearchLoading(true); setFolderLinkSearchError(null);
+    try {
+      const response = await listAssets({ query: folderLinkQuery || undefined, assetType: "character" });
+      setFolderLinkResults(response.assets);
+    } catch (caught) { setFolderLinkSearchError(toAssetDisplayError(caught)); }
+    finally { setFolderLinkSearchLoading(false); }
+  }
+
+  async function linkAssetToFolder(assetId: string) {
+    if (!selected || folderMutationBusy.current) return;
+    const folderId = selected.asset.assetId;
+    folderMutationBusy.current = true; setFolderMutationPending(true); setFolderMutationError(null);
+    try {
+      await setAssetParentFolder(assetId, { parentFolderId: folderId });
+      setFolderLinkResults((current) => current?.filter((asset) => asset.assetId !== assetId) ?? current);
+      await open(folderId);
+    } catch (caught) { setFolderMutationError(toAssetDisplayError(caught)); }
+    finally { folderMutationBusy.current = false; setFolderMutationPending(false); }
+  }
+
+  async function unlinkAssetFromFolder(assetId: string) {
+    if (!selected || folderMutationBusy.current) return;
+    const folderId = selected.asset.assetId;
+    folderMutationBusy.current = true; setFolderMutationPending(true); setFolderMutationError(null);
+    try {
+      await setAssetParentFolder(assetId, { parentFolderId: null });
+      await open(folderId);
+    } catch (caught) { setFolderMutationError(toAssetDisplayError(caught)); }
+    finally { folderMutationBusy.current = false; setFolderMutationPending(false); }
+  }
+
+  async function updateChildRole(assetId: string, role: string) {
+    if (folderMutationBusy.current) return;
+    folderMutationBusy.current = true; setFolderMutationPending(true); setFolderMutationError(null);
+    try {
+      const response = await updateAsset(assetId, { role });
+      setFolderChildren((current) => current?.map((asset) => (asset.assetId === assetId ? response.asset : asset)) ?? current);
+    } catch (caught) { setFolderMutationError(toAssetDisplayError(caught)); }
+    finally { folderMutationBusy.current = false; setFolderMutationPending(false); }
   }
 
   return (
@@ -481,6 +584,30 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
         </button>
       </form>
 
+      <form onSubmit={createCharacterFolder} aria-label="캐릭터 폴더 만들기" className={cardSection}>
+        <SectionHeading>새 캐릭터 폴더 만들기</SectionHeading>
+        <p className="text-sm text-slate-400">
+          이미지 없이 이름만으로 캐릭터 폴더를 먼저 만든 다음, 아래에서 정면·옆모습·뒷모습 같은 캐릭터 이미지를 그 안에 추가할 수 있습니다.
+        </p>
+        <label className="block text-sm text-slate-300">
+          캐릭터 이름
+          <input
+            value={folderCreateName}
+            disabled={folderCreatePending}
+            className={fieldClassName}
+            onChange={(event) => setFolderCreateName(event.target.value)}
+          />
+        </label>
+        {folderCreateError && (
+          <p role="alert" data-testid="folder-create-error" data-error-code={folderCreateError.code} className="text-sm text-rose-400">
+            {folderCreateError.message}
+          </p>
+        )}
+        <button type="submit" disabled={folderCreatePending || !folderCreateName.trim()} className={primaryButton}>
+          {folderCreatePending ? "만드는 중…" : "폴더 만들기"}
+        </button>
+      </form>
+
       {detailLoading && <Spinner label="선택한 에셋 정보를 불러오는 중..." />}
       {detailError && (
         <p role="alert" data-testid="asset-detail-error" data-error-code={detailError.code} className="text-sm text-rose-400">
@@ -497,49 +624,105 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
           <p className="text-sm text-slate-300">사용 프로젝트: {selected.usageProjectIds.length ? selected.usageProjectIds.join(", ") : "없음"}</p>
 
           {selected.asset.isFolder && selected.asset.assetType === "character" && (
-            <section aria-label="Character reference set" className="space-y-2 rounded-xl border border-white/10 bg-slate-950/30 p-3.5">
-              <h4 className="text-sm font-semibold text-slate-200">Character reference set</h4>
-              {selected.asset.childAssetIds.length === 0 && <p className="text-sm text-slate-400">No child reference images are registered.</p>}
-              {selected.asset.childAssetIds.length > 0 && characterFolderChildren.length !== selected.asset.childAssetIds.length && (
-                <p role="status" className="text-sm text-slate-400">
-                  Loading child reference metadata requires the full character list.
+            <section aria-label="캐릭터 폴더 구성" className="space-y-3 rounded-xl border border-white/10 bg-slate-950/30 p-3.5">
+              <h4 className="text-sm font-semibold text-slate-200">캐릭터 폴더 구성</h4>
+              <p className="text-xs text-slate-500">
+                이 폴더 안에 정면·옆모습·뒷모습 등 캐릭터의 여러 모습을 이미지로 모아두면, 프로젝트에 이 캐릭터를 등장시킬 때
+                모습을 확실하게 전달할 수 있습니다. 대표 이미지가 목록·썸네일에 표시됩니다.
+              </p>
+              {(folderChildrenLoading || referenceSetPending) && <Spinner label="불러오는 중..." />}
+              {folderChildrenError && (
+                <p role="alert" data-testid="folder-children-error" data-error-code={folderChildrenError.code} className="text-sm text-rose-400">
+                  {folderChildrenError.message}
                 </p>
               )}
-              <ol aria-label="Ordered character reference images" className="space-y-2">
-                {characterFolderChildren.map((child, index) => (
-                  <li key={child.assetId} className="flex items-center gap-2 rounded-lg border border-white/10 bg-slate-900/60 p-2 text-sm text-slate-300">
-                    {child.imageAvailable && child.contentUrl && <img src={child.contentUrl} alt="" className="h-10 w-10 rounded-md object-cover" />}
-                    <span className="flex-1">
-                      {index + 1}. {child.displayName}
-                      {selected.asset.thumbnailAssetId === child.assetId ? " (representative)" : ""}
-                    </span>
-                    <button
-                      type="button"
-                      className="rounded-full border border-white/20 bg-white/[0.06] px-2 py-1 text-xs font-medium text-slate-200 hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
-                      disabled={referenceSetPending || index === 0}
-                      onClick={() => moveCharacterReference(child.assetId, -1)}
-                    >
-                      Move up
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-full border border-white/20 bg-white/[0.06] px-2 py-1 text-xs font-medium text-slate-200 hover:border-white/30 hover:bg-white/10 disabled:opacity-50"
-                      disabled={referenceSetPending || index === characterFolderChildren.length - 1}
-                      onClick={() => moveCharacterReference(child.assetId, 1)}
-                    >
-                      Move down
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-xs font-medium text-emerald-300 hover:border-emerald-400/60 hover:bg-emerald-500/15 disabled:opacity-50"
-                      disabled={referenceSetPending || selected.asset.thumbnailAssetId === child.assetId}
-                      onClick={() => void saveCharacterReferenceSet(selected.asset.childAssetIds, child.assetId)}
-                    >
-                      Set representative
-                    </button>
-                  </li>
-                ))}
-              </ol>
+              {folderChildren && folderChildren.length === 0 && !folderChildrenLoading && (
+                <p className="text-sm text-slate-400">아직 등록된 이미지가 없습니다. 아래에서 기존 캐릭터 이미지를 추가해 주세요.</p>
+              )}
+              {folderChildren && folderChildren.length > 0 && (
+                <ol aria-label="순서가 있는 캐릭터 참고 이미지" className="space-y-2">
+                  {folderChildren.map((child, index) => (
+                    <li key={child.assetId} className="space-y-2 rounded-xl border border-white/10 bg-slate-900/60 p-2.5 text-sm text-slate-300">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {child.imageAvailable && child.contentUrl && <img src={child.contentUrl} alt="" className="h-10 w-10 rounded-lg object-cover" />}
+                        <span className="flex-1">
+                          {index + 1}. {child.displayName}
+                          {selected.asset.thumbnailAssetId === child.assetId ? " (대표 이미지)" : ""}
+                        </span>
+                        <label className="flex items-center gap-1.5 text-xs text-slate-400">
+                          역할
+                          <select
+                            className="rounded-lg border border-white/10 bg-slate-950/60 px-2 py-1 text-xs text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
+                            value={CHARACTER_ROLE_OPTIONS.some((option) => option.value === child.role) ? child.role : "other"}
+                            disabled={folderMutationPending}
+                            onChange={(event) => void updateChildRole(child.assetId, event.target.value)}
+                          >
+                            {CHARACTER_ROLE_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" className={smallOutlineButton} disabled={referenceSetPending || index === 0} onClick={() => moveCharacterReference(child.assetId, -1)}>
+                          위로
+                        </button>
+                        <button type="button" className={smallOutlineButton} disabled={referenceSetPending || index === folderChildren.length - 1} onClick={() => moveCharacterReference(child.assetId, 1)}>
+                          아래로
+                        </button>
+                        <button
+                          type="button"
+                          className={smallAddButton}
+                          disabled={referenceSetPending || selected.asset.thumbnailAssetId === child.assetId}
+                          onClick={() => void saveCharacterReferenceSet(selected.asset.childAssetIds, child.assetId)}
+                        >
+                          대표 이미지로 정하기
+                        </button>
+                        <button type="button" className={smallRemoveButton} disabled={folderMutationPending} onClick={() => void unlinkAssetFromFolder(child.assetId)}>
+                          폴더에서 빼기
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              {folderMutationError && (
+                <p role="alert" data-testid="folder-mutation-error" data-error-code={folderMutationError.code} className="text-sm text-rose-400">
+                  {folderMutationError.message}
+                </p>
+              )}
+              <form onSubmit={searchFolderLinkCandidates} aria-label="폴더에 추가할 캐릭터 이미지 검색" className="space-y-2 border-t border-white/10 pt-3">
+                <p className="text-xs text-slate-400">Asset Library에 이미 등록된 캐릭터 이미지를 검색해서 이 폴더에 추가할 수 있습니다.</p>
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="flex flex-col gap-1 text-xs text-slate-400">
+                    캐릭터 이미지 검색
+                    <input className="rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30" value={folderLinkQuery} onChange={(event) => setFolderLinkQuery(event.target.value)} />
+                  </label>
+                  <button type="submit" className={smallOutlineButton} disabled={folderLinkSearchLoading}>검색</button>
+                </div>
+                {folderLinkSearchLoading && <Spinner label="검색 중..." />}
+                {folderLinkSearchError && (
+                  <p role="alert" data-testid="folder-link-search-error" data-error-code={folderLinkSearchError.code} className="text-sm text-rose-400">
+                    {folderLinkSearchError.message}
+                  </p>
+                )}
+                {folderLinkResults && (
+                  <ul aria-label="추가 가능한 캐릭터 이미지 검색 결과" className="space-y-1">
+                    {folderLinkResults
+                      .filter((asset) => !asset.isFolder && asset.assetId !== selected.asset.assetId && !selected.asset.childAssetIds.includes(asset.assetId))
+                      .map((asset) => (
+                        <li key={asset.assetId} className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/40 p-2.5">
+                          {asset.imageAvailable && asset.contentUrl && <img src={asset.contentUrl} alt="" className="h-8 w-8 rounded-md object-cover" />}
+                          <span className="flex-1 text-sm text-slate-200">{asset.displayName}</span>
+                          <button type="button" className={smallAddButton} disabled={folderMutationPending} onClick={() => void linkAssetToFolder(asset.assetId)}>
+                            폴더에 넣기
+                          </button>
+                        </li>
+                      ))}
+                  </ul>
+                )}
+                {folderLinkResults && folderLinkResults.length === 0 && !folderLinkSearchLoading && <p className="text-sm text-slate-400">검색 결과가 없습니다.</p>}
+              </form>
             </section>
           )}
 
@@ -627,8 +810,8 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
             </div>
           )}
           {selected.asset.isFolder && (
-            <section aria-label="Folder 삭제" className="space-y-2 rounded-xl border border-rose-400/20 bg-rose-950/10 p-3.5">
-              <h4 className="text-sm font-semibold text-slate-200">Folder 삭제</h4>
+            <section aria-label="폴더 삭제" className="space-y-2 rounded-xl border border-rose-400/20 bg-rose-950/10 p-3.5">
+              <h4 className="text-sm font-semibold text-slate-200">폴더 삭제</h4>
               <label className="flex items-center gap-2 text-sm text-slate-300">
                 <input
                   type="checkbox"
@@ -659,9 +842,9 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                 onClick={() => void removeFolder()}
                 disabled={selected.usageProjectIds.length > 0 || folderDeletePending}
               >
-                Folder 삭제
+                폴더 삭제
               </button>
-              {selected.usageProjectIds.length > 0 && <p className="text-sm text-slate-400">사용 중인 Folder는 삭제할 수 없습니다.</p>}
+              {selected.usageProjectIds.length > 0 && <p className="text-sm text-slate-400">사용 중인 폴더는 삭제할 수 없습니다.</p>}
             </section>
           )}
         </section>

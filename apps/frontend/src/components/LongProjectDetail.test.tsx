@@ -101,19 +101,19 @@ describe("LongProjectDetail", () => {
     render(<LongProjectDetail projectId="long_test" onBack={() => {}} onOpenSettings={() => {}} onOpenOutline={() => {}} />);
 
     await screen.findByRole("button", { name: "1. Alpha" });
-    fireEvent.change(screen.getByLabelText("Search episodes"), { target: { value: "Beta" } });
+    fireEvent.change(screen.getByLabelText("에피소드 검색"), { target: { value: "Beta" } });
     expect(screen.queryByRole("button", { name: "1. Alpha" })).toBeNull();
-    fireEvent.change(screen.getByLabelText("Search episodes"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("에피소드 검색"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "2. Beta" }));
-    fireEvent.click(screen.getByRole("button", { name: "Duplicate selected" }));
+    fireEvent.click(screen.getByRole("button", { name: "선택한 에피소드 복제" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(fetchMock.mock.calls[1]?.[0]).toBe("/long-projects/long_test/episodes/2/duplicate");
 
     fireEvent.click(screen.getByRole("button", { name: "3. Beta copy" }));
-    fireEvent.click(screen.getByRole("button", { name: "Archive selected" }));
+    fireEvent.click(screen.getByRole("button", { name: "선택한 에피소드 보관하기" }));
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    fireEvent.change(screen.getByLabelText("Exact confirmation"), { target: { value: "ARCHIVE EPISODE 3" } });
-    fireEvent.click(screen.getByRole("button", { name: "Confirm archive" }));
+    fireEvent.change(screen.getByLabelText("위 내용 그대로 입력"), { target: { value: "ARCHIVE EPISODE 3" } });
+    fireEvent.click(screen.getByRole("button", { name: "보관하기" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect((fetchMock.mock.calls[2]?.[1] as RequestInit).method).toBe("DELETE");
   });
@@ -163,12 +163,12 @@ describe("LongProjectDetail", () => {
     render(<LongProjectDetail projectId={project.id} onBack={() => {}} onOpenSettings={() => {}} onOpenOutline={() => {}} onArchived={onArchived} />);
 
     await screen.findByText(project.title);
-    fireEvent.click(screen.getByRole("button", { name: "Archive project" }));
+    fireEvent.click(screen.getByRole("button", { name: "프로젝트 보관하기" }));
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    fireEvent.change(screen.getByLabelText("Exact confirmation"), { target: { value: "wrong" } });
-    expect(screen.getByRole("button", { name: "Confirm archive" })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("Exact confirmation"), { target: { value: project.title } });
-    fireEvent.click(screen.getByRole("button", { name: "Confirm archive" }));
+    fireEvent.change(screen.getByLabelText("위 내용 그대로 입력"), { target: { value: "wrong" } });
+    expect(screen.getByRole("button", { name: "보관하기" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("위 내용 그대로 입력"), { target: { value: project.title } });
+    fireEvent.click(screen.getByRole("button", { name: "보관하기" }));
     await waitFor(() => expect(onArchived).toHaveBeenCalledTimes(1));
     expect(fetchMock).toHaveBeenLastCalledWith("/long-projects/long_test/archive", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirmation: project.title }),

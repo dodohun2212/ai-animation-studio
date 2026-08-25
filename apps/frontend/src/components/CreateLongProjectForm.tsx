@@ -99,10 +99,10 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
       errors.logline = "로그라인을 입력하세요.";
     }
     if (!Number.isInteger(settings.episodeCount) || settings.episodeCount < 1) {
-      errors.episodeCount = "Episode 수는 1 이상의 정수여야 합니다.";
+      errors.episodeCount = "에피소드 수는 1 이상의 정수여야 합니다.";
     }
     if (!Number.isInteger(settings.episodeDurationSeconds) || settings.episodeDurationSeconds <= 0) {
-      errors.episodeDurationSeconds = "Episode 길이는 0보다 큰 정수여야 합니다.";
+      errors.episodeDurationSeconds = "에피소드 길이는 0보다 큰 정수여야 합니다.";
     }
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) {
@@ -171,7 +171,7 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
       <Field label="테마" value={settings.theme} onChange={(value) => setField("theme", value)} disabled={submitting} />
       <div>
         <label className="block text-sm text-slate-300" htmlFor="episode-count">
-          Episode 수
+          에피소드 수
         </label>
         <input
           id="episode-count"
@@ -189,7 +189,7 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
       </div>
       <div>
         <label className="block text-sm text-slate-300" htmlFor="episode-duration">
-          Episode 길이(초)
+          에피소드 길이(초)
         </label>
         <input
           id="episode-duration"

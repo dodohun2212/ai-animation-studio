@@ -11,12 +11,13 @@ import {
   toLongProjectDisplayError,
   updateLongEpisodeAssetMapping,
 } from "../api/longProjectsApi.js";
+import { assetMappingStatusLabel, longEpisodeStatusLabel, MAPPING_REVIEW_STATUS_LABEL } from "../utils/longEpisodeLabels.js";
 import { Spinner } from "./Spinner.js";
 
 interface Props { projectId: string; episodeNumber: number; onBack: () => void; onOpenImageGeneration?: (projectId: string, episodeNumber: number) => void; }
 type DisplayError = { code: string; message: string };
 
-const sourceLabel = { basic: "Global style", characters: "Character", locations: "Location", props: "Prop" } as const;
+const sourceLabel = { basic: "전체 스타일", characters: "캐릭터", locations: "장소", props: "소품" } as const;
 
 const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const violetOutlineButton = "rounded-full border border-violet-400/40 px-4 py-2 text-sm text-violet-200 hover:bg-violet-500/10 disabled:opacity-50";
@@ -87,25 +88,25 @@ export function LongEpisodeMappingReviewScreen({ projectId, episodeNumber, onBac
   return (
     <section className="mt-8 space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <button type="button" className={outlineButton} onClick={onBack}>Episode script</button>
+        <button type="button" className={outlineButton} onClick={onBack}>에피소드 대본으로</button>
       </div>
       <header className="space-y-1">
-        <h2 className="flex items-center gap-2.5 text-lg font-semibold"><span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />{`Episode ${episodeNumber} Asset mapping review`}</h2>
-        <p className="text-sm text-slate-400">Reviewing candidates never starts image generation.</p>
+        <h2 className="flex items-center gap-2.5 text-lg font-semibold"><span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />{`에피소드 ${episodeNumber} Asset Mapping 검토`}</h2>
+        <p className="text-sm text-slate-400">후보를 검토하는 것만으로는 이미지 생성이 시작되지 않습니다.</p>
       </header>
-      {loading && <Spinner label="Loading mapping review…" />}
-      {episode && <p data-testid="episode-mapping-status" className="text-sm text-slate-400">Episode: {episode.status} · Script revision {episode.scriptRevision}</p>}
-      {episode && !isEligible && <p role="alert" data-testid="episode-mapping-not-eligible" className="text-sm text-amber-300">Approve this Episode script before opening Asset mapping review.</p>}
+      {loading && <Spinner label="매핑 검토 내용을 불러오는 중…" />}
+      {episode && <p data-testid="episode-mapping-status" className="text-sm text-slate-400">에피소드 상태: {longEpisodeStatusLabel(episode.status)} · 대본 리비전 {episode.scriptRevision}</p>}
+      {episode && !isEligible && <p role="alert" data-testid="episode-mapping-not-eligible" className="text-sm text-amber-300">Asset Mapping 검토를 열려면 먼저 이 에피소드의 대본을 승인해야 합니다.</p>}
       {review && (
-        <section aria-label="Mapping review state" className={`${cardSection} text-sm`}>
-          <p>Mapping revision: {review.mappingRevision}</p>
-          <p>Script revision: {review.scriptRevision}</p>
-          <p className="break-all">Script fingerprint: {review.scriptFingerprint}</p>
-          <p>Status: {review.status}</p>
+        <section aria-label="매핑 검토 상태" className={`${cardSection} text-sm`}>
+          <p>매핑 리비전: {review.mappingRevision}</p>
+          <p>대본 리비전: {review.scriptRevision}</p>
+          <p className="break-all">대본 지문(fingerprint): {review.scriptFingerprint}</p>
+          <p>상태: {MAPPING_REVIEW_STATUS_LABEL[review.status]}</p>
           {requiresTextOnly && !review.textOnlyConfirmed && (
             <label className="flex items-start gap-2 text-amber-200">
               <input type="checkbox" className="mt-1" checked={textOnlyConfirmed} disabled={pending} onChange={(event) => setTextOnlyConfirmed(event.target.checked)} />
-              I confirm that this Episode will continue with text only because no scoped Bible Assets are available.
+              범위에 해당하는 Bible Asset이 없어 이 에피소드는 텍스트만으로 계속 진행함을 확인합니다.
             </label>
           )}
           <div className="flex flex-wrap gap-3">
@@ -115,56 +116,56 @@ export function LongEpisodeMappingReviewScreen({ projectId, episodeNumber, onBac
               setTextOnlyConfirmed(response.review.textOnlyConfirmed);
               const summaryResponse = await getLongEpisodeAutomaticReferenceSummary(projectId, episodeNumber);
               setAutomaticSummary(summaryResponse.summary);
-            })}>{reviewStarted ? "Confirm text-only review" : "Start review"}</button>
-            <button type="button" className={violetOutlineButton} disabled={!reviewStarted || pending || summaryLoading} onClick={() => void loadAutomaticSummary()}>{summaryLoading ? "Loading preview..." : "Refresh automatic preview"}</button>
-            <button type="button" className={amberOutlineButton} disabled={!reviewStarted || pending} onClick={() => setRerunOpen(true)}>Re-run automatic matching</button>
-            <button type="button" className={amberOutlineButton} disabled={!canFinalize} onClick={() => setApprovalOpen(true)}>Final approval</button>
+            })}>{reviewStarted ? "텍스트만 진행 확인" : "검토 시작"}</button>
+            <button type="button" className={violetOutlineButton} disabled={!reviewStarted || pending || summaryLoading} onClick={() => void loadAutomaticSummary()}>{summaryLoading ? "미리보기 불러오는 중..." : "자동 미리보기 새로고침"}</button>
+            <button type="button" className={amberOutlineButton} disabled={!reviewStarted || pending} onClick={() => setRerunOpen(true)}>자동 매칭 다시 실행</button>
+            <button type="button" className={amberOutlineButton} disabled={!canFinalize} onClick={() => setApprovalOpen(true)}>최종 승인</button>
           </div>
         </section>
       )}
-      {review && candidateCount === 0 && <p data-testid="episode-mapping-empty" className="text-sm text-slate-400">No scoped Bible Asset candidates were found.</p>}
-      {review && candidateCount > 0 && <ul aria-label="Scoped Bible Asset candidates" className="space-y-3">
+      {review && candidateCount === 0 && <p data-testid="episode-mapping-empty" className="text-sm text-slate-400">범위에 해당하는 Bible Asset 후보가 없습니다.</p>}
+      {review && candidateCount > 0 && <ul aria-label="범위 지정된 Bible Asset 후보" className="space-y-3">
         {review.candidates.map((candidate) => (
           <li key={candidate.mappingId} className="space-y-2 rounded-xl border border-white/10 bg-slate-900/70 p-4 text-sm">
             <p className="font-semibold">{sourceLabel[candidate.sourceCollection]}: {candidate.sourceItemId}</p>
             <p className="text-slate-300">Asset: {candidate.assetId} · {candidate.usageRole}</p>
-            <p className="text-slate-300">Scope: {candidate.episodeScope.mode === "all" ? "All episodes" : `Episode ${candidate.episodeScope.episode}`} · {candidate.versionPolicy}{candidate.pinnedVersion === null ? "" : ` v${candidate.pinnedVersion}`}</p>
-            <p className="text-slate-300">Status: {candidate.status}{candidate.userConfirmed ? " (user confirmed)" : ""}</p>
+            <p className="text-slate-300">적용 범위: {candidate.episodeScope.mode === "all" ? "모든 에피소드" : `에피소드 ${candidate.episodeScope.episode}`} · {candidate.versionPolicy}{candidate.pinnedVersion === null ? "" : ` v${candidate.pinnedVersion}`}</p>
+            <p className="text-slate-300">상태: {assetMappingStatusLabel(candidate.status)}{candidate.userConfirmed ? " (사용자 확인됨)" : ""}</p>
             <div className="flex gap-2">
-              <button type="button" className={smallAddButton} disabled={!reviewStarted || pending || review.status !== "waiting"} onClick={() => void run(async () => { const response = await updateLongEpisodeAssetMapping(projectId, episodeNumber, candidate.mappingId, { decision: "confirm" }); setReview(response.review); })}>Confirm</button>
-              <button type="button" className={smallRemoveButton} disabled={!reviewStarted || pending || review.status !== "waiting"} onClick={() => void run(async () => { const response = await updateLongEpisodeAssetMapping(projectId, episodeNumber, candidate.mappingId, { decision: "exclude" }); setReview(response.review); })}>Exclude</button>
+              <button type="button" className={smallAddButton} disabled={!reviewStarted || pending || review.status !== "waiting"} onClick={() => void run(async () => { const response = await updateLongEpisodeAssetMapping(projectId, episodeNumber, candidate.mappingId, { decision: "confirm" }); setReview(response.review); })}>확정</button>
+              <button type="button" className={smallRemoveButton} disabled={!reviewStarted || pending || review.status !== "waiting"} onClick={() => void run(async () => { const response = await updateLongEpisodeAssetMapping(projectId, episodeNumber, candidate.mappingId, { decision: "exclude" }); setReview(response.review); })}>제외</button>
             </div>
           </li>
         ))}
       </ul>}
-      {automaticSummary && <section data-testid="episode-automatic-reference-preview" aria-label="Automatic scene Asset preview" className="space-y-3 rounded-2xl border border-violet-400/30 bg-slate-900/70 p-5 text-sm">
-        <SectionHeading>Automatic scene Asset preview</SectionHeading>
-        <p className="text-slate-300">Candidate Assets: {automaticSummary.candidateAssetIds.length} · Estimated image API calls: {automaticSummary.estimatedImageApiCalls}</p>
-        <ol className="list-decimal space-y-1 pl-5 text-slate-300">{([1, 2, 3, 4, 5, 6] as const).map((sceneNumber) => <li key={sceneNumber} data-testid={`episode-automatic-reference-scene-${sceneNumber}`}>Scene {sceneNumber}: {automaticSummary.selectedAssetIdsByScene[sceneNumber].length ? automaticSummary.selectedAssetIdsByScene[sceneNumber].join(", ") : "No automatic Asset selection"}</li>)}</ol>
-        <p className="text-slate-400">This preview only shows local deterministic selections. It does not generate images or send a provider request.</p>
+      {automaticSummary && <section data-testid="episode-automatic-reference-preview" aria-label="장면별 자동 Asset 미리보기" className="space-y-3 rounded-2xl border border-violet-400/30 bg-slate-900/70 p-5 text-sm">
+        <SectionHeading>장면별 자동 Asset 미리보기</SectionHeading>
+        <p className="text-slate-300">후보 Asset: {automaticSummary.candidateAssetIds.length}개 · 예상 이미지 API 호출 수: {automaticSummary.estimatedImageApiCalls}</p>
+        <ol className="list-decimal space-y-1 pl-5 text-slate-300">{([1, 2, 3, 4, 5, 6] as const).map((sceneNumber) => <li key={sceneNumber} data-testid={`episode-automatic-reference-scene-${sceneNumber}`}>장면 {sceneNumber}: {automaticSummary.selectedAssetIdsByScene[sceneNumber].length ? automaticSummary.selectedAssetIdsByScene[sceneNumber].join(", ") : "자동으로 선택된 Asset 없음"}</li>)}</ol>
+        <p className="text-slate-400">이 미리보기는 로컬에서 결정된 선택 결과만 보여줍니다. 이미지를 생성하거나 Provider에 요청을 보내지 않습니다.</p>
       </section>}
       {rerunOpen && (
         <div role="alertdialog" data-testid="episode-asset-matching-rerun-confirm" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
-          <p className="text-sm text-amber-200">Re-run automatic matching for this Episode? This only rebuilds local scene selections and returns the Episode to review. It does not generate images.</p>
+          <p className="text-sm text-amber-200">이 에피소드의 자동 매칭을 다시 실행할까요? 로컬 장면 선택만 다시 만들고 검토 단계로 되돌립니다. 이미지는 생성하지 않습니다.</p>
           <div className="flex gap-3">
-            <button type="button" className={outlineButton} disabled={pending} onClick={() => setRerunOpen(false)}>Back</button>
-            <button type="button" className={primaryButton} disabled={pending} onClick={() => void run(async () => { const response = await rerunLongEpisodeAssetMatching(projectId, episodeNumber); setReview(response.review); setEpisode(response.episode); setAutomaticSummary(null); setRerunOpen(false); })}>Re-run matching</button>
+            <button type="button" className={outlineButton} disabled={pending} onClick={() => setRerunOpen(false)}>돌아가기</button>
+            <button type="button" className={primaryButton} disabled={pending} onClick={() => void run(async () => { const response = await rerunLongEpisodeAssetMatching(projectId, episodeNumber); setReview(response.review); setEpisode(response.episode); setAutomaticSummary(null); setRerunOpen(false); })}>다시 실행</button>
           </div>
         </div>
       )}
       {approvalOpen && review && (
         <div role="alertdialog" data-testid="episode-mapping-approval-confirm" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
-          <p className="text-sm text-amber-200">Approve this reviewed Asset mapping? This only records the mapping decision; it does not generate images.</p>
+          <p className="text-sm text-amber-200">검토된 이 Asset Mapping을 승인할까요? 매핑 결정만 기록하며 이미지는 생성하지 않습니다.</p>
           <div className="flex gap-3">
-            <button type="button" className={outlineButton} disabled={pending} onClick={() => setApprovalOpen(false)}>Back</button>
-            <button type="button" className={primaryButton} disabled={pending} onClick={() => void run(async () => { const response = await approveLongEpisodeAssetMappingReview(projectId, episodeNumber, { approved: true, scriptFingerprint: review.scriptFingerprint }); setReview(response.review); setEpisode(response.episode); setApprovalOpen(false); })}>Approve mapping</button>
+            <button type="button" className={outlineButton} disabled={pending} onClick={() => setApprovalOpen(false)}>돌아가기</button>
+            <button type="button" className={primaryButton} disabled={pending} onClick={() => void run(async () => { const response = await approveLongEpisodeAssetMappingReview(projectId, episodeNumber, { approved: true, scriptFingerprint: review.scriptFingerprint }); setReview(response.review); setEpisode(response.episode); setApprovalOpen(false); })}>매핑 승인</button>
           </div>
         </div>
       )}
       {review?.status === "approved" && (
         <div className="space-y-2">
-          <p className="text-sm text-emerald-400">Asset mapping is approved. Image generation remains a separate later step.</p>
-          {onOpenImageGeneration && <button type="button" className={violetOutlineButton} onClick={() => onOpenImageGeneration(projectId, episodeNumber)}>Open image generation</button>}
+          <p className="text-sm text-emerald-400">Asset Mapping이 승인되었습니다. 이미지 생성은 이후 별도 단계로 진행됩니다.</p>
+          {onOpenImageGeneration && <button type="button" className={violetOutlineButton} onClick={() => onOpenImageGeneration(projectId, episodeNumber)}>이미지 생성 열기</button>}
         </div>
       )}
       {error && <p role="alert" data-error-code={error.code} className="text-sm text-rose-400">{error.message}</p>}

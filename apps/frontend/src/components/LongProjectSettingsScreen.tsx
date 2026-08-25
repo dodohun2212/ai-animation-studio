@@ -29,7 +29,13 @@ function Field({ label, value, onChange, multiline = false }: { label: string; v
 
 export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
   const [state, setState] = useState<State>({ settings: null, loading: true, error: null });
+  const [justSaved, setJustSaved] = useState(false);
   const saving = useRef(false);
+  const justSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => { if (justSavedTimer.current) clearTimeout(justSavedTimer.current); };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,6 +53,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
 
   function setField<Key extends keyof LongProjectSettings>(key: Key, value: LongProjectSettings[Key]): void {
     setState((old) => (old.settings ? { ...old, settings: { ...old.settings, [key]: value }, error: null } : old));
+    setJustSaved(false);
   }
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -63,7 +70,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
       !Number.isInteger(settings.episodeDurationSeconds) ||
       settings.episodeDurationSeconds <= 0
     ) {
-      setState((old) => ({ ...old, error: { code: "INVALID_REQUEST", message: "Episode 수와 길이를 올바르게 입력하세요." } }));
+      setState((old) => ({ ...old, error: { code: "INVALID_REQUEST", message: "에피소드 수와 길이를 올바르게 입력하세요." } }));
       return;
     }
     saving.current = true;
@@ -71,6 +78,9 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
     try {
       const response = await updateLongProjectSettings(projectId, { settings });
       setState({ settings: response.project.settings, loading: false, error: null });
+      setJustSaved(true);
+      if (justSavedTimer.current) clearTimeout(justSavedTimer.current);
+      justSavedTimer.current = setTimeout(() => setJustSaved(false), 4000);
     } catch (error) {
       setState((old) => ({ ...old, loading: false, error: toLongProjectDisplayError(error) }));
     } finally {
@@ -109,7 +119,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
           <Field label="톤" value={state.settings.tone} onChange={(value) => setField("tone", value)} />
           <Field label="테마" value={state.settings.theme} onChange={(value) => setField("theme", value)} />
           <label className="block text-sm text-slate-300">
-            Episode 수
+            에피소드 수
             <input
               type="number"
               className={fieldClassName}
@@ -118,7 +128,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
             />
           </label>
           <label className="block text-sm text-slate-300">
-            Episode 길이(초)
+            에피소드 길이(초)
             <input
               type="number"
               className={fieldClassName}
@@ -162,6 +172,12 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
           {state.error && (
             <p className="text-sm text-rose-400 md:col-span-2" role="alert" data-error-code={state.error.code}>
               {state.error.message}
+            </p>
+          )}
+          {justSaved && !state.error && (
+            <p role="status" data-testid="long-settings-saved-notice"
+               className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3.5 py-2 text-sm text-emerald-300 md:col-span-2">
+              설정이 저장되었습니다.
             </p>
           )}
           <button

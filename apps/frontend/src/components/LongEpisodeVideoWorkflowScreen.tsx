@@ -36,33 +36,33 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
   async function approve(sceneNumber: SceneNumber): Promise<void> { if (!job) return; try { const response = await approveLongEpisodeVideoReview(projectId, episodeNumber, job.jobId, sceneNumber); setJob((current) => current ? { ...current, episode: response.episode } : current); setReviews(response.reviews); } catch (caught) { setError(toLongProjectDisplayError(caught)); } }
   return (
     <section className="mt-8 space-y-5">
-      <button type="button" className={outlineButton} onClick={onBack}>Episode images</button>
+      <button type="button" className={outlineButton} onClick={onBack}>에피소드 이미지로</button>
       <header className="space-y-1">
-        <h2 className="flex items-center gap-2.5 text-lg font-semibold">{dot}{`Episode ${episodeNumber} video workflow`}</h2>
-        <p data-testid="episode-video-local-notice" className="text-sm text-amber-300">Local fake video workflow only. No Runway or provider request is sent.</p>
+        <h2 className="flex items-center gap-2.5 text-lg font-semibold">{dot}{`에피소드 ${episodeNumber} 영상 작업`}</h2>
+        <p data-testid="episode-video-local-notice" className="text-sm text-amber-300">지금은 로컬 가짜 영상 작업만 진행합니다. Runway 등 Provider 요청은 보내지 않습니다.</p>
       </header>
-      {!preview && !error && <Spinner label="Loading local video preview..." />}
+      {!preview && !error && <Spinner label="로컬 영상 미리보기를 불러오는 중..." />}
       {preview && !job && (
         <div className={cardSection}>
-          <p data-testid="episode-video-summary" className="text-sm text-slate-300">Sequential · ${preview.estimatedCostUsd.toFixed(2)}</p>
+          <p data-testid="episode-video-summary" className="text-sm text-slate-300">순차 진행 · ${preview.estimatedCostUsd.toFixed(2)}</p>
           <ol className="space-y-3">
             {preview.scenes.map((scene) => (
               <li key={scene.sceneNumber} className="space-y-1">
                 <label className="block text-sm text-slate-300">
-                  {`Scene ${scene.sceneNumber} prompt`}
+                  {`${scene.sceneNumber}번 장면 프롬프트`}
                   <textarea data-testid={`episode-video-prompt-${scene.sceneNumber}`} className={textareaClassName} value={prompts[scene.sceneNumber] ?? ""} disabled={confirmStart || busy} onChange={(event) => setPrompts((current) => ({ ...current, [scene.sceneNumber]: event.target.value }))} />
                 </label>
                 <span className="text-xs text-slate-500">{(prompts[scene.sceneNumber] ?? "").length} / {LIMIT}</span>
               </li>
             ))}
           </ol>
-          <button type="button" data-testid="episode-video-open-confirm" className={primaryButton} disabled={!valid || confirmStart} onClick={() => setConfirmStart(true)}>Open local generation confirmation</button>
+          <button type="button" data-testid="episode-video-open-confirm" className={primaryButton} disabled={!valid || confirmStart} onClick={() => setConfirmStart(true)}>로컬 생성 확인창 열기</button>
           {confirmStart && (
             <div role="alertdialog" data-testid="episode-video-start-confirm" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
-              <p className="text-sm text-amber-200">Opening this confirmation made no request. Start the local fake sequential video job?</p>
+              <p className="text-sm text-amber-200">이 확인창을 연 것만으로는 아직 요청이 가지 않았습니다. 로컬 가짜 순차 영상 작업을 시작할까요?</p>
               <div className="flex gap-3">
-                <button type="button" className={outlineButton} disabled={busy} onClick={() => setConfirmStart(false)}>Cancel</button>
-                <button type="button" className={primaryButton} disabled={busy} onClick={() => void start()}>Start local fake videos</button>
+                <button type="button" className={outlineButton} disabled={busy} onClick={() => setConfirmStart(false)}>취소</button>
+                <button type="button" className={primaryButton} disabled={busy} onClick={() => void start()}>로컬 가짜 영상 시작</button>
               </div>
             </div>
           )}
@@ -70,28 +70,28 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
       )}
       {job && (
         <section data-testid="episode-video-progress" className={cardSection}>
-          <p className="text-sm text-slate-300">Job: {job.status}</p>
+          <p className="text-sm text-slate-300">작업 상태: {{ created: "생성됨", running: "진행 중", succeeded: "완료됨", failed: "실패", interrupted: "중단됨" }[job.status] ?? job.status}</p>
           <ol className="grid grid-cols-2 gap-2 text-sm text-slate-300 sm:grid-cols-3">
-            {SCENES.map((scene) => <li key={scene} data-testid={`episode-video-progress-${scene}`} className="rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2">{scene}: {job.completedSceneNumbers.includes(scene) ? "completed" : job.currentSceneNumber === scene ? "running" : job.failedSceneNumbers.includes(scene) ? "failed" : "pending"}</li>)}
+            {SCENES.map((scene) => <li key={scene} data-testid={`episode-video-progress-${scene}`} className="rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2">{scene}: {job.completedSceneNumbers.includes(scene) ? "완료" : job.currentSceneNumber === scene ? "진행 중" : job.failedSceneNumbers.includes(scene) ? "실패" : "대기 중"}</li>)}
           </ol>
-          {(job.status === "created" || job.status === "running") && <button type="button" className={dangerOutlineButton} disabled={busy} onClick={() => void action(() => stopLongEpisodeVideoGeneration(projectId, episodeNumber, job.jobId))}>Stop</button>}
-          {job.status === "interrupted" && <button type="button" className={outlineButton} disabled={busy} onClick={() => void action(() => restartLongEpisodeVideoGeneration(projectId, episodeNumber, job.jobId))}>Restart</button>}
+          {(job.status === "created" || job.status === "running") && <button type="button" className={dangerOutlineButton} disabled={busy} onClick={() => void action(() => stopLongEpisodeVideoGeneration(projectId, episodeNumber, job.jobId))}>중단</button>}
+          {job.status === "interrupted" && <button type="button" className={outlineButton} disabled={busy} onClick={() => void action(() => restartLongEpisodeVideoGeneration(projectId, episodeNumber, job.jobId))}>다시 시작</button>}
         </section>
       )}
       {job?.status === "failed" && (
         <section data-testid="episode-video-failed-scenes" className={cardSection}>
-          <p className="text-sm text-amber-300">Some scenes failed. You can retry a failed scene below.</p>
+          <p className="text-sm text-amber-300">일부 장면이 실패했습니다. 아래에서 실패한 장면을 다시 시도할 수 있습니다.</p>
           <ul className="space-y-2">
             {job.failedSceneNumbers.map((scene) => (
               <li key={scene} data-testid={`episode-video-failed-${scene}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-slate-950/60 p-3">
-                <span className="text-sm text-slate-300">Scene {scene}</span>
-                <button type="button" data-testid={`episode-video-failed-retry-${scene}`} className={smallOutlineButton} disabled={busy || regenerate === scene} onClick={() => setRegenerate(scene)}>Retry scene</button>
+                <span className="text-sm text-slate-300">{scene}번 장면</span>
+                <button type="button" data-testid={`episode-video-failed-retry-${scene}`} className={smallOutlineButton} disabled={busy || regenerate === scene} onClick={() => setRegenerate(scene)}>다시 시도</button>
                 {regenerate === scene && (
                   <div role="alertdialog" data-testid={`episode-video-failed-retry-confirm-${scene}`} className="w-full space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
-                    <p className="text-sm text-amber-200">Retry Scene {scene} with local fake video only?</p>
+                    <p className="text-sm text-amber-200">{scene}번 장면을 로컬 가짜 영상으로만 다시 시도할까요?</p>
                     <div className="flex gap-2">
-                      <button type="button" className={smallOutlineButton} onClick={() => setRegenerate(null)}>Cancel</button>
-                      <button type="button" className={smallAmberButton} disabled={busy} onClick={() => { setRegenerate(null); void action(() => regenerateLongEpisodeVideo(projectId, episodeNumber, job.jobId, scene)); }}>Retry scene</button>
+                      <button type="button" className={smallOutlineButton} onClick={() => setRegenerate(null)}>취소</button>
+                      <button type="button" className={smallAmberButton} disabled={busy} onClick={() => { setRegenerate(null); void action(() => regenerateLongEpisodeVideo(projectId, episodeNumber, job.jobId, scene)); }}>다시 시도</button>
                     </div>
                   </div>
                 )}
@@ -102,20 +102,20 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
       )}
       {job?.status === "succeeded" && reviews && (
         <section data-testid="episode-video-review" className={cardSection}>
-          <h3 className="flex items-center gap-2.5 text-base font-semibold">{dot}Video review</h3>
+          <h3 className="flex items-center gap-2.5 text-base font-semibold">{dot}영상 검토</h3>
           {reviews.map((review) => (
             <div key={review.sceneNumber} data-testid={`episode-video-review-${review.sceneNumber}`} data-status={review.status} className="space-y-2 border-t border-white/10 pt-3">
-              <p className="text-sm text-slate-300">Scene {review.sceneNumber}: {review.status}</p>
+              <p className="text-sm text-slate-300">{review.sceneNumber}번 장면: {review.status === "approved" ? "승인됨" : "검토 대기"}</p>
               <div className="flex gap-3">
-                <button type="button" className={smallOutlineButton} disabled={review.status === "approved"} onClick={() => void approve(review.sceneNumber)}>{review.status === "approved" ? "Approved" : "Approve"}</button>
-                <button type="button" className={smallOutlineButton} onClick={() => setRegenerate(review.sceneNumber)}>Regenerate</button>
+                <button type="button" className={smallOutlineButton} disabled={review.status === "approved"} onClick={() => void approve(review.sceneNumber)}>{review.status === "approved" ? "승인됨" : "승인"}</button>
+                <button type="button" className={smallOutlineButton} onClick={() => setRegenerate(review.sceneNumber)}>다시 만들기</button>
               </div>
               {regenerate === review.sceneNumber && (
                 <div role="alertdialog" data-testid={`episode-video-regenerate-confirm-${review.sceneNumber}`} className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
-                  <p className="text-sm text-amber-200">Regenerate Scene {review.sceneNumber} with local fake video only?</p>
+                  <p className="text-sm text-amber-200">{review.sceneNumber}번 장면을 로컬 가짜 영상으로만 다시 만들까요?</p>
                   <div className="flex gap-2">
-                    <button type="button" className={smallOutlineButton} onClick={() => setRegenerate(null)}>Cancel</button>
-                    <button type="button" className={smallAmberButton} disabled={busy} onClick={() => { const scene = review.sceneNumber; setRegenerate(null); void action(() => regenerateLongEpisodeVideo(projectId, episodeNumber, job.jobId, scene)); }}>Regenerate scene</button>
+                    <button type="button" className={smallOutlineButton} onClick={() => setRegenerate(null)}>취소</button>
+                    <button type="button" className={smallAmberButton} disabled={busy} onClick={() => { const scene = review.sceneNumber; setRegenerate(null); void action(() => regenerateLongEpisodeVideo(projectId, episodeNumber, job.jobId, scene)); }}>다시 만들기</button>
                   </div>
                 </div>
               )}
@@ -125,8 +125,8 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
       )}
       {job?.episode.status === "videos_approved" && (
         <div data-testid="episode-videos-approved" className="space-y-2 rounded-2xl border border-emerald-400/30 bg-emerald-500/5 p-5">
-          <p className="text-sm text-emerald-400">All six Episode videos are approved.</p>
-          <button type="button" data-testid="open-episode-video-merge" className={primaryButton} onClick={() => onOpenMerge(projectId, episodeNumber)}>Create final Episode video</button>
+          <p className="text-sm text-emerald-400">6개 에피소드 영상이 모두 승인되었습니다.</p>
+          <button type="button" data-testid="open-episode-video-merge" className={primaryButton} onClick={() => onOpenMerge(projectId, episodeNumber)}>최종 에피소드 영상 만들기</button>
         </div>
       )}
       {error && <p role="alert" data-error-code={error.code} className="text-sm text-rose-400">{error.message}</p>}

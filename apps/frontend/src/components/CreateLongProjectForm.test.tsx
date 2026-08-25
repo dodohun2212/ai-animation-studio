@@ -22,8 +22,8 @@ describe("CreateLongProjectForm", () => {
     expect(screen.getByLabelText("프로젝트 ID")).toBeTruthy();
     expect(screen.getByLabelText("제목")).toBeTruthy();
     expect(screen.getByLabelText("로그라인")).toBeTruthy();
-    expect(screen.getByLabelText("Episode 수")).toBeTruthy();
-    expect(screen.getByLabelText("Episode 길이(초)")).toBeTruthy();
+    expect(screen.getByLabelText("에피소드 수")).toBeTruthy();
+    expect(screen.getByLabelText("에피소드 길이(초)")).toBeTruthy();
     expect(screen.getByLabelText("플랫폼")).toBeTruthy();
     expect(screen.getByLabelText("화면 비율")).toBeTruthy();
   });
@@ -47,8 +47,8 @@ describe("CreateLongProjectForm", () => {
     render(<CreateLongProjectForm onCreated={() => {}} onCancel={() => {}} />);
 
     fillRequiredFields("long_test", "제목", "로그라인");
-    fireEvent.change(screen.getByLabelText("Episode 수"), { target: { value: "0" } });
-    fireEvent.change(screen.getByLabelText("Episode 길이(초)"), { target: { value: "0" } });
+    fireEvent.change(screen.getByLabelText("에피소드 수"), { target: { value: "0" } });
+    fireEvent.change(screen.getByLabelText("에피소드 길이(초)"), { target: { value: "0" } });
     fireEvent.click(screen.getByRole("button", { name: "장기 프로젝트 생성" }));
 
     expect(await screen.findAllByRole("alert")).toHaveLength(2);

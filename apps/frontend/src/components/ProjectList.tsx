@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { WorkflowState, type ProjectSummary } from "@ai-animation-studio/shared";
 
 import { listProjects, toDisplayError } from "../api/projectsApi.js";
+import { workflowStateLabel } from "../utils/workflowStateLabels.js";
 import { Spinner } from "./Spinner.js";
 import { WorkflowProgressBar, progressPercent } from "./WorkflowProgressBar.js";
 
@@ -133,7 +134,7 @@ export function ProjectList({ refreshToken, onOpenProject, onCreateNew }: Projec
                   <span className="block truncate text-sm text-slate-300">{project.topic}</span>
                   <span className="mt-1.5 flex flex-wrap items-center gap-2">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusTone(project.workflowState)}`}>
-                      {project.workflowState}
+                      {workflowStateLabel(project.workflowState)}
                     </span>
                     <span className="text-xs text-slate-500">{project.updatedAt}</span>
                   </span>

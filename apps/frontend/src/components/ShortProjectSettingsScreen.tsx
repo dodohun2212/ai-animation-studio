@@ -133,7 +133,7 @@ function CastEditor({ projectId }: { projectId: string }) {
 
   return (
     <section aria-label="등장 캐릭터" className={cardSection}>
-      <SectionHeading>등장 캐릭터(Cast)</SectionHeading>
+      <SectionHeading>등장 캐릭터</SectionHeading>
       <p className="text-xs text-slate-400">검색 결과가 없다면 Asset Library에서 캐릭터를 먼저 등록해 주세요.</p>
       {error && (
         <p role="alert" data-testid="cast-error" data-error-code={error.code} className="text-sm text-rose-400">

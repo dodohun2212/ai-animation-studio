@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { jsonResponse, makeProject } from "../api/testUtils.js";
+import { workflowStateLabel } from "../utils/workflowStateLabels.js";
 import { ProjectDetail } from "./ProjectDetail.js";
 
 describe("ProjectDetail", () => {
@@ -25,8 +26,8 @@ describe("ProjectDetail", () => {
     expect(screen.getByText("불러오는 중...")).toBeTruthy();
     expect(await screen.findByText("sample_project")).toBeTruthy();
     expect(screen.getByText("우주를 여행하는 고양이")).toBeTruthy();
-    expect(screen.getByText("short_project")).toBeTruthy();
-    expect(screen.getByText(project.workflowState)).toBeTruthy();
+    expect(screen.getByText("단편 프로젝트")).toBeTruthy();
+    expect(screen.getByText(workflowStateLabel(project.workflowState))).toBeTruthy();
     expect(screen.getByText("2026-08-21T00:00:00.000Z")).toBeTruthy();
     expect(screen.getByText("2026-08-21T05:00:00.000Z")).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledWith("/projects/sample_project");
@@ -182,14 +183,14 @@ describe("ProjectDetail", () => {
     render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} onArchived={onArchived} />);
 
     await screen.findByText(project.id);
-    fireEvent.click(screen.getByRole("button", { name: "Archive project" }));
+    fireEvent.click(screen.getByRole("button", { name: "프로젝트 보관하기" }));
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const input = screen.getByLabelText("Exact confirmation");
+    const input = screen.getByLabelText("위 내용 그대로 입력");
     fireEvent.change(input, { target: { value: "wrong" } });
-    expect(screen.getByRole("button", { name: "Confirm archive" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "보관하기" })).toBeDisabled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     fireEvent.change(input, { target: { value: project.topic } });
-    fireEvent.click(screen.getByRole("button", { name: "Confirm archive" }));
+    fireEvent.click(screen.getByRole("button", { name: "보관하기" }));
     await waitFor(() => expect(onArchived).toHaveBeenCalledTimes(1));
     expect(fetchMock).toHaveBeenLastCalledWith("/projects/sample_project/archive", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirmation: project.topic }),
@@ -203,9 +204,9 @@ describe("ProjectDetail", () => {
       .mockResolvedValueOnce(jsonResponse(409, { code: "PROJECT_ARCHIVE_NOT_ALLOWED", message: "raw local path C:\\private" })));
     render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} />);
     await screen.findByText(project.id);
-    fireEvent.click(screen.getByRole("button", { name: "Archive project" }));
-    fireEvent.change(screen.getByLabelText("Exact confirmation"), { target: { value: project.topic } });
-    fireEvent.click(screen.getByRole("button", { name: "Confirm archive" }));
+    fireEvent.click(screen.getByRole("button", { name: "프로젝트 보관하기" }));
+    fireEvent.change(screen.getByLabelText("위 내용 그대로 입력"), { target: { value: project.topic } });
+    fireEvent.click(screen.getByRole("button", { name: "보관하기" }));
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveAttribute("data-error-code", "PROJECT_ARCHIVE_NOT_ALLOWED");
     expect(alert.textContent).not.toContain("private");
