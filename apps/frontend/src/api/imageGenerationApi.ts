@@ -29,13 +29,32 @@ const SAFE_ERRORS: Record<string, string> = {
   IMAGE_PROVIDER_ERROR: "OpenAI 이미지 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
   IMAGE_CONTENT_UNAVAILABLE: "이미지를 불러올 수 없습니다.",
 };
+// The backend classifies every OpenAI provider failure into one of these closed categories (see
+// backend openai-common.ts's OpenAiErrorCategory) and sends it back as details.category alongside
+// IMAGE_PROVIDER_ERROR. Only "rate_limit"/"server"/"network" are actually worth retrying — showing the
+// same generic "다시 시도해 주세요" for an auth/quota/policy failure is misleading (retrying never helps
+// and, for a paid provider, just wastes the user's time wondering why nothing works).
+const PROVIDER_ERROR_CATEGORY_MESSAGES: Record<string, string> = {
+  authentication: "OpenAI API 키 인증에 실패했습니다. API 설정 화면에서 키가 올바른지 확인해 주세요.",
+  quota_or_permission: "OpenAI 사용 한도 또는 프로젝트 권한 문제로 요청이 거부되었습니다. OpenAI 계정 상태를 확인해 주세요.",
+  rate_limit: "OpenAI 요청 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.",
+  server: "OpenAI 서버에 일시적인 오류가 있습니다. 잠시 후 다시 시도해 주세요.",
+  network: "OpenAI 연결이 시간 초과되었거나 네트워크에 실패했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.",
+  invalid_request: "요청 형식이 지원되지 않습니다. 문제가 계속되면 알려주세요.",
+  safety_policy: "OpenAI 안전 정책에 따라 요청이 거부되었습니다. 내용을 수정한 뒤 다시 시도해 주세요 — 자동으로 재시도되지 않습니다.",
+};
 const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };
 const UNKNOWN = { code: "CLIENT_UNKNOWN_ERROR", message: "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요." };
 
-/** Never surfaces the backend's raw message or details text — only a fixed, safe message per code. */
+/** Never surfaces the backend's raw message text — only a fixed, safe message per code (or per known category). */
 export function toImageGenerationDisplayError(error: unknown): { code: string; message: string } {
   if (!(error instanceof ImageGenerationApiError)) return UNKNOWN;
+  if (error.code === "IMAGE_PROVIDER_ERROR") {
+    const category = error.details && typeof error.details.category === "string" ? error.details.category : undefined;
+    const message = (category && PROVIDER_ERROR_CATEGORY_MESSAGES[category]) ?? SAFE_ERRORS.IMAGE_PROVIDER_ERROR!;
+    return { code: error.code, message };
+  }
   if (Object.prototype.hasOwnProperty.call(SAFE_ERRORS, error.code)) {
     return { code: error.code, message: SAFE_ERRORS[error.code]! };
   }
