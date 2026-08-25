@@ -967,6 +967,14 @@ export const API_ROUTES = {
     `/projects/${encodeURIComponent(projectId)}/images/review/${sceneNumber}/regenerate`,
   imageContent: (projectId: string, sceneNumber: SceneNumber) =>
     `/projects/${encodeURIComponent(projectId)}/images/${sceneNumber}/content`,
+  narrationGenerations: (projectId: string) =>
+    `/projects/${encodeURIComponent(projectId)}/narration/generations`,
+  narrationReview: (projectId: string) =>
+    `/projects/${encodeURIComponent(projectId)}/narration/review`,
+  narrationRegeneration: (projectId: string, sceneNumber: SceneNumber) =>
+    `/projects/${encodeURIComponent(projectId)}/narration/review/${sceneNumber}/regenerate`,
+  narrationContent: (projectId: string, sceneNumber: SceneNumber) =>
+    `/projects/${encodeURIComponent(projectId)}/narration/${sceneNumber}/content`,
   assets: "/assets",
   asset: (assetId: string) => `/assets/${encodeURIComponent(assetId)}`,
   assetContent: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/content`,
