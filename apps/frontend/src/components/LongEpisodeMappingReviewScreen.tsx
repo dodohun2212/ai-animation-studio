@@ -79,6 +79,13 @@ export function LongEpisodeMappingReviewScreen({ projectId, episodeNumber, onBac
   }
 
   const isEligible = episode?.status === "script_approved" || episode?.status === "waiting_for_asset_mapping_review" || episode?.status === "asset_mapping_approved";
+  /**
+   * Not-eligible has two opposite causes, and one message for both was telling finished Episodes to go do
+   * something they had already done. Before the mapping stage the script really does need approving; after it
+   * (image generation onward, including a job that was interrupted or failed) the mapping is long since
+   * approved and this screen is just a read-only record.
+   */
+  const beforeMappingStage = episode?.status === "planned" || episode?.status === "outline_ready" || episode?.status === "script_review";
   const candidateCount = review?.candidates.length ?? 0;
   const reviewStarted = (review?.mappingRevision ?? 0) > 0;
   const requiresTextOnly = reviewStarted && candidateCount === 0;
@@ -96,7 +103,8 @@ export function LongEpisodeMappingReviewScreen({ projectId, episodeNumber, onBac
       </header>
       {loading && <Spinner label="매핑 검토 내용을 불러오는 중…" />}
       {episode && <p data-testid="episode-mapping-status" className="text-sm text-slate-400">에피소드 상태: {longEpisodeStatusLabel(episode.status)} · 대본 리비전 {episode.scriptRevision}</p>}
-      {episode && !isEligible && <p role="alert" data-testid="episode-mapping-not-eligible" className="text-sm text-amber-300">Asset Mapping 검토를 열려면 먼저 이 에피소드의 대본을 승인해야 합니다.</p>}
+      {episode && !isEligible && beforeMappingStage && <p role="alert" data-testid="episode-mapping-not-eligible" className="text-sm text-amber-300">Asset Mapping 검토를 열려면 먼저 이 에피소드의 대본을 승인해야 합니다.</p>}
+      {episode && !isEligible && !beforeMappingStage && <p data-testid="episode-mapping-already-done" className="text-sm text-slate-400">이 에피소드는 Asset Mapping을 이미 마치고 다음 단계로 넘어갔습니다. 여기서는 결과만 볼 수 있습니다.</p>}
       {review && (
         <section aria-label="매핑 검토 상태" className={`${cardSection} text-sm`}>
           <p>매핑 리비전: {review.mappingRevision}</p>

@@ -119,4 +119,29 @@ describe("LongEpisodeImageGenerationScreen", () => {
     await screen.findByTestId("episode-image-generation-summary");
     expect(screen.queryByTestId("episode-image-generation-budget")).toBeNull();
   });
+
+  it("does not report a missing continuity reference as a problem on the first Episode", async () => {
+    // Episode 1 has no previous Episode by definition — "없습니다" alone reads as an unmet prerequisite.
+    const first = episode("asset_mapping_approved");
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: first }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 0, sourceSceneNumber: 6, available: false } }))
+      .mockResolvedValue(jsonResponse(200, { episode: first, reviews: reviews() })));
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    expect((await screen.findByTestId("episode-image-continuity-unavailable")).textContent).toContain("첫 에피소드라");
+  });
+
+  it("explains what happens instead when a later Episode has no continuity reference", async () => {
+    const later = { ...episode("asset_mapping_approved"), episodeNumber: 2 };
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: later }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: false } }))
+      .mockResolvedValue(jsonResponse(200, { episode: later, reviews: reviews() })));
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={2} onBack={() => {}} />);
+
+    const notice = await screen.findByTestId("episode-image-continuity-unavailable");
+    expect(notice.textContent).toContain("이어받지 않고");
+    expect(notice.textContent).not.toContain("첫 에피소드라");
+  });
 });

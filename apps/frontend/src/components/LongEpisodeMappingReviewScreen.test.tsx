@@ -99,4 +99,16 @@ describe("LongEpisodeMappingReviewScreen", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).not.toContain("raw private backend detail");
   });
+
+  it("does not tell an Episode that already finished mapping to go approve its script", async () => {
+    // Not-eligible has two opposite causes; one message for both was telling finished Episodes to redo a step.
+    const past = { ...episode(), status: "videos_approved" as const };
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: past }))
+      .mockResolvedValue(jsonResponse(200, { review: review({ mappingRevision: 1, status: "approved" }) })));
+    render(<LongEpisodeMappingReviewScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    expect((await screen.findByTestId("episode-mapping-already-done")).textContent).toContain("이미 마치고");
+    expect(screen.queryByTestId("episode-mapping-not-eligible")).toBeNull();
+  });
 });
