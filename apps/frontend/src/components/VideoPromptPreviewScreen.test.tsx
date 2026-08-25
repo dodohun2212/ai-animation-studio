@@ -227,7 +227,7 @@ describe("VideoPromptPreviewScreen", () => {
 
       fireEvent.click(screen.getByTestId("open-confirm-button"));
       expect(screen.getByTestId("submit-confirm-panel")).toBeTruthy();
-      expect(screen.getByTestId("submit-confirm-panel").textContent).toContain("실제 유료 Runway 요청은 전송되지 않으며");
+      expect(screen.getByTestId("submit-confirm-panel").textContent).toContain("실제 유료 요청으로 전송됩니다");
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
@@ -238,7 +238,7 @@ describe("VideoPromptPreviewScreen", () => {
       await screen.findByTestId("preview-list");
 
       fireEvent.click(screen.getByTestId("open-confirm-button"));
-      expect(screen.getByTestId("submit-confirm-panel").textContent).toContain("위 4개 프롬프트가 그대로 로컬 승인 요청으로 전송됩니다.");
+      expect(screen.getByTestId("submit-confirm-panel").textContent).toContain("위 4개 프롬프트가 실제 유료 요청으로 전송됩니다");
     });
 
     it("cancelling the confirmation panel closes it and never submits", async () => {
@@ -322,7 +322,7 @@ describe("VideoPromptPreviewScreen", () => {
       fireEvent.click(screen.getByTestId("confirm-submit-button"));
 
       const success = await screen.findByTestId("submit-success");
-      expect(success.textContent).toContain("실제 유료 Runway 요청은 전송되지 않았습니다");
+      expect(success.textContent).toContain("영상 생성 작업이 접수되었습니다");
       expect(screen.getByTestId("job-id").textContent).toBe("작업 ID: job_42");
       expect(screen.getByTestId("accepted-scenes").textContent).toBe("접수된 장면: 1, 2, 3, 4, 5, 6");
       expect(screen.queryByTestId("open-confirm-button")).toBeNull();

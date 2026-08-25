@@ -504,7 +504,11 @@ export interface StoryPromptPreview {
   sceneCount: number;
 }
 
-export interface CreateStoryPromptPreviewResponse { preview: StoryPromptPreview; }
+export interface CreateStoryPromptPreviewResponse {
+  preview: StoryPromptPreview;
+  /** Same meaning and scope as StartImageGenerationResponse.budget (see that field's doc comment) — present only when a real OpenAI credential and budget ledger are wired in, absent in the local fake execution mode. Read before approval, same as the image/video/narration screens' own pre-request estimate + ledger split. */
+  budget?: BudgetPreview;
+}
 
 /** Renders the exact Story prompt from not-yet-saved settings — never persists anything, never calls a paid provider. */
 export interface CreateStoryPromptDraftPreviewRequest { settings: ShortProjectSettingsInput; }

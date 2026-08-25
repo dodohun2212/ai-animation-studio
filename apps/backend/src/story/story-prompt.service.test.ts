@@ -73,6 +73,13 @@ describe("StoryPromptService", () => {
     const result = await service.preview("sample");
     expect(result.preview).toMatchObject({ projectId: "sample", originalPrompt: "name=Stars topic=night sky count=6 literal=$ missing=$missing", characterCount: 1, sceneCount: 6 });
     expect(result.preview.originalPromptSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.budget).toBeUndefined(); // no OpenAI credential/budget wired in — local fake mode
+  });
+  it("reports the real budget ledger state when an OpenAI credential is connected", async () => {
+    const { budget, service } = await setupWithConnectedOpenAi();
+    await budget.record("sample", "story", true, 0.02, new Date());
+    const result = await service.preview("sample");
+    expect(result.budget).toEqual({ monthlyLimitUsd: 10, spentUsd: 0.02, remainingUsd: 9.98, estimatedRequestCostUsd: 0.05, canSpend: true });
   });
   it("reflects a project's actual stored scene count in the preview instead of assuming six", async () => {
     const { repository, service } = await setup();

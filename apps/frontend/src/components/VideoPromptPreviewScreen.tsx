@@ -264,10 +264,10 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
               data-testid="submit-confirm-panel"
               className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
             >
-              <p className="text-sm font-semibold text-amber-300">이 프롬프트로 영상 생성 요청을 전송할까요?</p>
+              <p className="text-sm font-semibold text-amber-300">이 프롬프트로 {previews.length}개 장면 영상을 만들까요?</p>
               <p className="text-sm text-slate-300">
-                아직 전송되지 않았습니다. 확인을 누르면 위 {previews.length}개 프롬프트가 그대로 로컬 승인 요청으로 전송됩니다.
-                실제 유료 Runway 요청은 전송되지 않으며, 로컬 가짜 처리로만 기록됩니다.
+                아직 전송되지 않았습니다. Runway 키가 연결되어 있으면 확인을 누르는 순간 위 {previews.length}개 프롬프트가
+                실제 유료 요청으로 전송됩니다. 키가 연결되어 있지 않으면 비용 없이 임시 영상으로 만들어집니다.
               </p>
               {/* The spec requires the full preflight to be visible at the moment of approval, not only
                   further up the page where it may be scrolled out of view. */}
@@ -319,7 +319,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
                   onClick={() => void confirmSubmission()}
                   disabled={submitPending}
                 >
-                  {submitPending ? "전송 중..." : "네, 로컬 승인 요청을 전송합니다"}
+                  {submitPending ? "전송 중..." : "네, 영상을 만듭니다"}
                 </button>
               </div>
             </div>
@@ -334,7 +334,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
           {submitted && (
             <div data-testid="submit-success" className="space-y-2 rounded-2xl border border-emerald-400/30 bg-slate-900/70 p-4">
               <p className="text-sm font-semibold text-emerald-400">
-                로컬 가짜 영상 생성 작업이 접수되었습니다. 실제 유료 Runway 요청은 전송되지 않았습니다.
+                영상 생성 작업이 접수되었습니다. 진행 상황은 다음 화면에서 확인할 수 있습니다.
               </p>
               <p className="text-sm text-slate-300" data-testid="job-id">
                 작업 ID: {submitted.jobId}

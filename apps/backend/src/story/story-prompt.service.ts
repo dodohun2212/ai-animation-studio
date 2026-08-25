@@ -17,7 +17,7 @@ import { ProviderSettingsService } from "../settings/provider-settings.service.j
 import type { LocalAssetsRepository } from "../assets/assets.repository.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
 import { generateLocalStory, type StoredStory } from "./story-generation.service.js";
-import { OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
+import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_STORY_MODEL, OpenAiStoryAdapterError, callOpenAiStoryApi } from "./openai-story-adapter.js";
 import { describeAtmosphereAssets, describeCharacterCast, describeSceneReferenceAssets } from "./story-asset-metadata.js";
 import { invalidStoryRequest, storyBudgetExceeded, storyGenerationFailed, storyGenerationNotAllowed, storyPromptStale, storyProviderError, storyStorageError } from "./story-api.error.js";
@@ -153,7 +153,10 @@ export class StoryPromptService {
     const originalPrompt = await this.original(stored);
     const sceneCount = toShortProjectSettings(stored).sceneCount;
     const preview: StoryPromptPreview = { projectId: stored.project_id, originalPrompt, originalPromptSha256: sha256(originalPrompt), characterCount: characterCount(stored), sceneCount };
-    return { preview };
+    const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
+    // Read-only, same as a preview's budget field elsewhere — never reserves anything, just reports the ledger's current state.
+    const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, STORY_ESTIMATED_COST_USD) : undefined;
+    return { preview, ...(budget ? { budget } : {}) };
   }
 
   /**
