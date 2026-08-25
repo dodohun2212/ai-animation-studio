@@ -96,8 +96,10 @@ export class EpisodeVideoMergeService {
     await this.saveEpisode(id, number, rendering);
     try {
       const output = this.final(id, number); await fs.mkdir(path.dirname(output), { recursive: true });
-      // Long Episode has no narration (out of that feature's scope) — every scene falls back to silence, same as before.
-      await this.engine.merge(clips, clips.map(() => null), output, await this.ratio(id, number));
+      // Long Episode has no narration or subtitles (out of that feature's scope) — every scene falls back to
+      // silence, same as before. clipDurationSeconds only matters for subtitle timing, so its exact value here
+      // is inert, but it's set to Long Episode's own fixed 5s clip length for correctness regardless.
+      await this.engine.merge(clips.map((clip) => ({ clip, narrationAudioPath: null, subtitleText: null })), 5, output, await this.ratio(id, number));
       const completed = { ...rendering, state: "completed" as const, updated_at: new Date().toISOString(), final_video_path: FINAL_PATH };
       await this.saveEpisode(id, number, completed);
       return { episode: this.detail(completed), finalVideoPath: FINAL_PATH };

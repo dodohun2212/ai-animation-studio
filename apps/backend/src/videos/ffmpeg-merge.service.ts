@@ -1,7 +1,33 @@
 import * as crypto from "node:crypto";
+import { existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { escapeForFfmpegFilterPath, sceneSubtitleAss } from "./subtitle-file.js";
+
+function currentModuleDirectory(): string {
+  const cjsDirname: string | undefined = typeof __dirname === "string" ? __dirname : undefined;
+  return cjsDirname ?? fileURLToPath(new URL(".", import.meta.url));
+}
+
+/**
+ * Same repository-relative-asset reasoning as story-prompt.service.ts's promptsRoot() (see that function's doc
+ * comment for the full explanation of why cwd can't be trusted and why each build output needs its own
+ * candidate depth) — `fonts/` is this feature's equivalent static asset, needed by the `subtitles` burn-in
+ * filter so Korean glyphs render the same regardless of what fonts happen to be installed on the machine
+ * running FFmpeg. See apps/desktop/package.json's extraResources for the packaged copy step.
+ */
+function fontsRoot(): string {
+  if (process.env.FONTS_ROOT) return process.env.FONTS_ROOT;
+  const moduleDirectory = currentModuleDirectory();
+  const candidates = [
+    path.resolve(moduleDirectory, "../../../../fonts"),
+    path.resolve(moduleDirectory, "../../../fonts"),
+    path.resolve(moduleDirectory, "fonts"),
+  ];
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0]!;
+}
 
 export class MediaToolError extends Error {
   constructor(readonly kind: "unavailable" | "invalid" | "failed", message: string) { super(message); }
@@ -28,9 +54,17 @@ function outputSize(ratio: unknown): [number, number] {
   return ratio === "16:9" || ratio === "1280:720" ? [1920, 1080] : [1080, 1920];
 }
 
+export interface MergeSceneInput {
+  clip: string;
+  /** Path to that scene's narration audio, or null/undefined to fall back to silence. */
+  narrationAudioPath?: string | null;
+  /** That scene's narration text, or null/undefined to burn in no subtitle line. A separate field from narrationAudioPath (not derived from it) so the caller decides the pairing — video-merge.service.ts only ever sets this when narrationAudioPath is also set, so a subtitle never appears for narration that has no voice. */
+  subtitleText?: string | null;
+}
+
 /** Small injectable engine mirroring Python FFmpegEngine's probe/normalize/concat sequence. */
 export class FfmpegMergeEngine {
-  constructor(private readonly runner: MediaCommandRunner = runMediaCommand) {}
+  constructor(private readonly runner: MediaCommandRunner = runMediaCommand, private readonly fontsDir: string = fontsRoot()) {}
 
   private async command(args: readonly string[]): Promise<MediaCommandResult> {
     try { return await this.runner(args); }
@@ -53,29 +87,41 @@ export class FfmpegMergeEngine {
   }
 
   /**
-   * `narrations[index]` is that scene's narration audio file, or null/undefined to fall back to silence
-   * (narration disabled, missing text, or generation never ran). The scene's video clip is always the master
-   * duration — narration audio is never allowed to extend it. A real narration file is padded with silence
-   * (`apad`) before `-shortest` so a narration shorter than the clip doesn't truncate the video the way it
-   * would without padding; a narration longer than the clip is simply cut off at the clip's end by
+   * `scenes[index].narrationAudioPath` is that scene's narration audio file, or null/undefined to fall back to
+   * silence (narration disabled, missing text, or generation never ran). The scene's video clip is always the
+   * master duration — narration audio is never allowed to extend it. A real narration file is padded with
+   * silence (`apad`) before `-shortest` so a narration shorter than the clip doesn't truncate the video the way
+   * it would without padding; a narration longer than the clip is simply cut off at the clip's end by
    * `-shortest`, matching the agreed "warn before generating, don't reject after" overlong-narration handling
    * (see NarrationReviewScreen's length warning). `anullsrc` (used when there is no narration file) has no
    * natural duration of its own, so `-shortest` already caps it at the video's length without needing `apad`.
+   *
+   * `scenes[index].subtitleText`, when set, is burned into that same normalized clip via a single-cue ASS file
+   * spanning the whole `clipDurationSeconds` (every project has one fixed clip length, so this is a project-wide
+   * value, not per-scene) — see subtitle-file.ts. `fontsDir` (constructor option) is passed to the `subtitles`
+   * filter's own `fontsdir` so Hangul renders identically regardless of what's installed system-wide; a missing
+   * or empty fonts directory degrades to whatever libass's system font matching finds (readable, but not
+   * guaranteed to match the intended look) rather than failing the merge.
    */
-  async merge(clips: readonly string[], narrations: readonly (string | null | undefined)[], finalPath: string, ratio: unknown): Promise<void> {
+  async merge(scenes: readonly MergeSceneInput[], clipDurationSeconds: number, finalPath: string, ratio: unknown): Promise<void> {
     const [width, height] = outputSize(ratio);
     const directory = path.dirname(finalPath);
     const normalizedDirectory = path.join(directory, "normalized");
     await fs.mkdir(normalizedDirectory, { recursive: true });
     const normalized: string[] = [];
-    const filter = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p`;
-    for (const [index, clip] of clips.entries()) {
+    const baseFilter = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p`;
+    for (const [index, scene] of scenes.entries()) {
       const target = path.join(normalizedDirectory, `scene${index + 1}.mp4`);
-      const narration = narrations[index];
-      if (narration) {
-        await this.command(["ffmpeg", "-y", "-i", clip, "-i", narration, "-filter_complex", "[1:a]apad[aout]", "-map", "0:v:0", "-map", "[aout]", "-vf", filter, "-c:v", "libx264", "-c:a", "aac", "-shortest", target]);
+      let filter = baseFilter;
+      if (scene.subtitleText) {
+        const assPath = path.join(normalizedDirectory, `scene${index + 1}.ass`);
+        await fs.writeFile(assPath, sceneSubtitleAss(scene.subtitleText, clipDurationSeconds, width, height), "utf8");
+        filter += `,subtitles='${escapeForFfmpegFilterPath(assPath)}':fontsdir='${escapeForFfmpegFilterPath(this.fontsDir)}'`;
+      }
+      if (scene.narrationAudioPath) {
+        await this.command(["ffmpeg", "-y", "-i", scene.clip, "-i", scene.narrationAudioPath, "-filter_complex", "[1:a]apad[aout]", "-map", "0:v:0", "-map", "[aout]", "-vf", filter, "-c:v", "libx264", "-c:a", "aac", "-shortest", target]);
       } else {
-        await this.command(["ffmpeg", "-y", "-i", clip, "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000", "-map", "0:v:0", "-map", "1:a:0", "-vf", filter, "-c:v", "libx264", "-c:a", "aac", "-shortest", target]);
+        await this.command(["ffmpeg", "-y", "-i", scene.clip, "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000", "-map", "0:v:0", "-map", "1:a:0", "-vf", filter, "-c:v", "libx264", "-c:a", "aac", "-shortest", target]);
       }
       normalized.push(target);
     }

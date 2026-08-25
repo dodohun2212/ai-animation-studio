@@ -105,6 +105,28 @@ describe("local FFmpeg video merge", () => {
     }
   });
 
+  it("burns in that scene's narration text as a subtitle only where real narration audio also exists", async () => {
+    const { projectsRoot, projects } = await setup();
+    const narrationFile = path.join(projectsRoot, "video_merge", "narration", "scene1.mp3");
+    await fs.mkdir(path.dirname(narrationFile), { recursive: true });
+    await fs.writeFile(narrationFile, Buffer.from("fake narration audio"));
+    const project = await projects.findById("video_merge");
+    project.generated_narrations = [narrationFile];
+    project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, narration: number === 1 ? "첫 장면 내레이션입니다." : "다른 장면의 내레이션(오디오 없음)." }));
+    await projects.save(project);
+
+    const calls: string[][] = [];
+    await new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge");
+    const normalizeCalls = calls.filter((args) => args[0] === "ffmpeg" && args.includes("-vf"));
+    expect(normalizeCalls[0]!.find((arg) => arg.includes("subtitles="))).toBeDefined();
+    // Scene 2 has narration text too, but no generated audio for it — must not get a floating subtitle either.
+    for (const call of normalizeCalls.slice(1)) {
+      expect(call.find((arg) => arg.includes("subtitles="))).toBeUndefined();
+    }
+    const assContent = await fs.readFile(path.join(projectsRoot, "video_merge", "videos", "final", "normalized", "scene1.ass"), "utf8");
+    expect(assContent).toContain("첫 장면 내레이션입니다.");
+  });
+
   it("never fails the merge over a missing or empty narration file — that scene just falls back to silence", async () => {
     const { projectsRoot, projects } = await setup();
     const project = await projects.findById("video_merge");
