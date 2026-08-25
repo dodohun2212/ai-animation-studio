@@ -971,3 +971,14 @@ Cowork↔CLI 브리지 협업 중 캐릭터 폴더 계약 확장 작업을 하�
 - [x] 신규/수정 테스트: `episode-scripts.service.test.ts`(9장면 생성·편집 종단 테스트), `episode-continuity-reference.service.test.ts`(4장면 스냅샷 후 프로젝트 설정 변경 시나리오), `LongEpisodeImageGenerationScreen.test.tsx`(연속성 문구 갱신, 비용 예상 테스트의 `episode("asset_mapping_approved")` 픽스처에 script 필드 누락 발견해 추가 — 상태 머신상 그 상태에는 대본 승인이 항상 먼저 끝나 있어 script가 없을 수 없음을 확인 후 수정), `CreateLongProjectForm.test.tsx`(장면 수 입력 클램프 테스트).
 - [x] **CLI 검증 완료**: 각 배치마다 `npm run typecheck`(shared 재빌드 후 전체)·`npm run test`(root)·`npm run build`·AppModule DI 부팅 확인을 실행, 전부 통과 후 커밋·푸시. 최종 상태: Backend 593 통과(+1 skip), Frontend 734 통과, root build 통과. 유료 Provider 호출 없음.
   - 커밋: `341f7b6`(계약 + 설정 계층 + 최소 프론트 컴파일 유지), `198a2cc`(백엔드 서비스 6개 전환 + 자가 발견 버그 2건), `827373a`(`longProjectsApi.ts` 검증기 6곳 + durationSecondsPerScene 버그), `592efe9`(`LongEpisodeImageGenerationScreen` 상수 제거 + 픽스처 수정, 4개 실패 전부 해결).
+
+## 여섯 번째 자가 발견 배치: 쉰두 번째 항목 뒤 전체 저장소 재스윕에서 놓친 잔재
+
+쉰두 번째 항목을 마친 뒤 `=== 6`/`!== 6`/`<= 6`/`[1..6]` 패턴으로 저장소 전체를 다시 grep해, 이전 스윕들(마흔여덟~쉰한 번째, 다섯 번째 자가 발견 배치)이 놓친 잔재를 추가로 발견했다.
+
+- [x] **`apps/frontend/src/api/imageGenerationApi.ts`/`imageReviewApi.ts`/`mappingsApi.ts`**: 로컬 `isSceneNumber()`/`isSceneNumberArray()`가 여전히 `>= 1 && <= 6`을 하드코딩 — 6 초과 장면 수(쉰 번째 항목에서 이미 지원)로 설정된 숏 프로젝트는 이미지 생성·이미지 검토·Asset Mapping 응답이 전부 프론트에서 "형식 오류"로 거부되고 있었다. shared의 `isSceneNumber()`에 위임하도록 통일.
+- [x] **`apps/frontend/src/components/LongEpisodeScriptScreen.tsx`**: `isScript()`가 정확히 6장면을 요구해, 6이 아닌 장면 수의 Episode는 대본을 편집해도 저장이 항상 거부되고 있었다 — `MIN_SCENE_COUNT`~`MAX_SCENE_COUNT` 범위 검증으로 교체.
+- [x] **`apps/frontend/src/components/LongEpisodeVideoWorkflowScreen.tsx`**: 영상 생성 진행 중 그리드가 여전히 로컬 `SCENES=[1..6]`을 순회 — 쉰두 번째 항목에서 이 화면을 위해 계약에 추가한 `LongEpisodeVideoProgress.sceneNumbers`를 쓰도록 교체(픽스처 3곳에 신규 필드 추가).
+- [x] `mappingsApi.test.ts`의 "9번 장면 거부" 테스트가 옛 고정 6 가정이라 실패 — "13은 거부·9는 허용"으로 교체.
+- [x] 재검증: Backend 593 통과(+1 skip), Frontend 735 통과(신규 1건), root typecheck/build 전부 통과. 유료 Provider 호출 없음.
+- [x] 커밋: `aa2783b`.
