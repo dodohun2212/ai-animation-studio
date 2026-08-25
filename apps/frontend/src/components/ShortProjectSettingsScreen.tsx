@@ -751,6 +751,25 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
           <Field label="피할 요소" value={state.settings.styleNotes.avoid ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, avoid: value })} />
           <Field label="화면 비율" value={state.settings.styleNotes.aspect ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, aspect: value })} />
           <Field label="추가 지시사항" value={state.settings.additionalNotes} onChange={(value) => setField("additionalNotes", value)} multiline />
+          <div className="md:col-span-2 space-y-1.5 rounded-xl border border-white/10 bg-slate-950/40 p-3.5">
+            <label className="flex items-start gap-2.5 text-sm text-slate-200">
+              <input
+                type="checkbox"
+                data-testid="settings-narration-enabled"
+                className="mt-0.5 h-4 w-4 flex-shrink-0 accent-violet-500"
+                checked={state.settings.narrationEnabled}
+                onChange={(event) => setField("narrationEnabled", event.target.checked)}
+              />
+              <span>
+                내레이션 넣기
+                <span className="mt-1 block text-xs leading-relaxed text-slate-400">
+                  켜면 대본 AI가 장면마다 읽어줄 내레이션 문장을 함께 만들고, 완성 영상에 음성과 자막으로 들어갑니다. 등장인물이
+                  입을 움직여 말하는 방식이 아니라 이야기를 읽어주는 방식이라, 입 모양이 어긋나 보이지 않습니다. 끄면 지금처럼
+                  음성 없이 영상만 만들어집니다.
+                </span>
+              </span>
+            </label>
+          </div>
           <p className="text-sm text-slate-400 md:col-span-2">
             예상 총 영상 길이: {state.settings.sceneCount * state.settings.clipDurationSeconds}초 ({state.settings.sceneCount}장면 × {state.settings.clipDurationSeconds}초)
           </p>
