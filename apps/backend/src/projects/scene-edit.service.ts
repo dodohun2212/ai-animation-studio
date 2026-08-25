@@ -1,11 +1,10 @@
 import { Injectable } from "@nestjs/common";
-import { sceneNumbersFor, type SceneNumber, type SceneStaleness, type UpdateSceneResponse } from "@ai-animation-studio/shared";
+import { sceneNumbersFor, type SceneNumber, type UpdateSceneResponse } from "@ai-animation-studio/shared";
 import { toApiProject } from "./project.mapper.js";
 import { LocalProjectRepository } from "./projects.repository.js";
 import { toShortProjectSettings } from "./project-settings.js";
 import type { StoredProject } from "./project-storage.schema.js";
-import { imagePromptFor, sceneValue, styleLineFor } from "../images/image-prompt.js";
-import { promptFor, ratioFor, type StoredScene } from "../videos/video-preview.service.js";
+import { computeSceneStaleness } from "./scene-staleness.js";
 import { scriptFingerprint, LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import { invalidRequest } from "./project-api.error.js";
 
@@ -13,9 +12,9 @@ import { invalidRequest } from "./project-api.error.js";
  * Every field the short-project scene schema has, classified by what a change actually makes stale downstream
  * (see the from-cli.md Round 49 report for the full reasoning): image-composition fields (imagePromptFor reads
  * these), video-motion fields (video-preview.service.ts's promptFor reads these — including from the *previous*
- * scene, which is why staleness is computed by full recomputation rather than a per-field diff, see staleness()
- * below), narration (only narration/TTS reads it), and description (display-only, read by nothing downstream —
- * still editable, just never makes anything stale).
+ * scene, which is why staleness is computed by full recomputation rather than a per-field diff, see
+ * scene-staleness.ts), narration (only narration/TTS reads it), and description (display-only, read by nothing
+ * downstream — still editable, just never makes anything stale).
  */
 const EDITABLE_SCENE_FIELDS = [
   "description",
@@ -29,15 +28,6 @@ function scenesFor(project: StoredProject): SceneNumber[] {
 }
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** Scans newest-first: a scene can have multiple records across regenerations, and only the latest reflects what's actually on disk. */
-function latestRecordField(records: readonly unknown[], sceneNumber: number, key: string): string | undefined {
-  for (let index = records.length - 1; index >= 0; index -= 1) {
-    const record = records[index];
-    if (isObject(record) && record.scene_number === sceneNumber && typeof record[key] === "string") return record[key];
-  }
-  return undefined;
-}
-
 @Injectable()
 export class SceneEditService {
   constructor(
@@ -45,42 +35,6 @@ export class SceneEditService {
     private readonly projectsRoot: string,
     private readonly mappings: LocalProjectAssetMappingsRepository = new LocalProjectAssetMappingsRepository(projectsRoot),
   ) {}
-
-  /**
-   * Compares a freshly recomputed prompt/narration against what's actually recorded from the last time that
-   * artifact was generated — never a persisted flag, so nothing needs to be kept in sync and nothing can drift
-   * out of accuracy on its own (see UpdateSceneResponse.staleness's doc comment). Recomputing scene N's video
-   * prompt from CURRENT scene data automatically picks up an edit to scene N-1's end_motion/continuity_hint
-   * too (promptFor reads the previous scene for its continuity cue) — so a scene whose own fields were
-   * untouched can still show up here, with no special-case propagation code needed for that.
-   */
-  private staleness(project: StoredProject): SceneStaleness {
-    const scenes = scenesFor(project);
-    const styleLine = styleLineFor(project);
-    const ratio = ratioFor(project);
-    const clipDurationSeconds = toShortProjectSettings(project).clipDurationSeconds;
-    const imageStale: SceneNumber[] = [];
-    const videoStale: SceneNumber[] = [];
-    const narrationStale: SceneNumber[] = [];
-    for (const number of scenes) {
-      const scene = project.scenes[number - 1];
-
-      const recordedImagePrompt = latestRecordField(project.image_generation_records, number, "prompt");
-      if (recordedImagePrompt !== undefined && imagePromptFor(scene, styleLine) !== recordedImagePrompt) imageStale.push(number);
-
-      const recordedNarration = latestRecordField(project.narration_generation_records, number, "narration");
-      if (recordedNarration !== undefined && sceneValue(scene, "narration") !== recordedNarration) narrationStale.push(number);
-
-      const recordedVideoPrompt = latestRecordField(project.video_generation_records, number, "prompt");
-      if (recordedVideoPrompt !== undefined) {
-        const previous = number > 1 ? (project.scenes[number - 2] as StoredScene) : undefined;
-        let recomputed: string | undefined;
-        try { recomputed = promptFor(scene as StoredScene, previous, ratio, clipDurationSeconds); } catch { recomputed = undefined; }
-        if (recomputed !== undefined && recomputed !== recordedVideoPrompt) videoStale.push(number);
-      }
-    }
-    return { imageStale, videoStale, narrationStale };
-  }
 
   async update(projectId: string, rawSceneNumber: string, body: unknown): Promise<UpdateSceneResponse> {
     if (!isObject(body) || Object.keys(body).length !== 1 || !isObject(body.scene)) throw invalidRequest("Request must be { scene: { <field>: <value>, ... } }.");
@@ -116,6 +70,6 @@ export class SceneEditService {
     }
 
     await this.projects.save(updated);
-    return { project: toApiProject(updated), staleness: this.staleness(updated) };
+    return { project: toApiProject(updated), staleness: computeSceneStaleness(updated) };
   }
 }

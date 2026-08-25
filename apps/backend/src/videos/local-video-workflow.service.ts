@@ -19,6 +19,7 @@ import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
+import { computeSceneStaleness } from "../projects/scene-staleness.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { RunwayBudget, RunwayBudgetExceededError } from "../providers/runway-budget.js";
 import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceResult, type RunwaySceneState } from "./runway-workflow-support.js";
@@ -440,7 +441,11 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     if (!(await Promise.all(records.map((record) => this.hasCompletedFile(project.project_id, record.scene_number)))).every(Boolean)) throw videoWorkflowNotAllowed();
     const reviews = await this.loadReviews(project.project_id);
     const costsByScene = this.budget ? await this.budget.costsByScene(project.project_id) : {};
-    return { project: toApiProject(project), reviews: this.toReviews(reviews, project.updated_at, records.map((record) => record.scene_number), costsByScene) };
+    return {
+      project: toApiProject(project),
+      reviews: this.toReviews(reviews, project.updated_at, records.map((record) => record.scene_number), costsByScene),
+      staleness: computeSceneStaleness(project),
+    };
   }
 
   async approveReview(projectId: string, jobId: string, rawScene: string, body: unknown): Promise<ApproveVideoReviewResponse> {

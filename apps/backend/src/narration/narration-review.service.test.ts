@@ -51,6 +51,17 @@ describe("NarrationReviewService", () => {
     const after = await reviews.getStatus("narr");
     expect(after.narrations[0]).toMatchObject({ hasAudio: true });
     expect(after.narrations[1]).toMatchObject({ hasAudio: false });
+    expect(after.staleness).toEqual({ imageStale: [], videoStale: [], narrationStale: [] });
+  });
+
+  it("flags narrationStale once the scene's narration text is edited after audio was generated", async () => {
+    const { reviews, generation, projects } = await setup();
+    await generation.generate("narr", { approved: true });
+    const project = await projects.findById("narr");
+    project.scenes[0] = { ...(project.scenes[0] as Record<string, unknown>), narration: "고친 내레이션" };
+    await projects.save(project);
+    const status = await reviews.getStatus("narr");
+    expect(status.staleness?.narrationStale).toEqual([1]);
   });
 
   it("regenerates one scene's fake audio and bumps its record", async () => {

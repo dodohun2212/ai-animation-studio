@@ -19,6 +19,7 @@ import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../pr
 import { OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiTtsApi } from "./openai-narration-adapter.js";
 import { invalidNarrationRequest, narrationBudgetExceeded, narrationMissingText, narrationNotEnabled, narrationProviderError, narrationStorageError } from "./narration-api.error.js";
+import { computeSceneStaleness } from "../projects/scene-staleness.js";
 import type { LocalNarrationGenerationService } from "./local-narration-generation.service.js";
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -57,7 +58,7 @@ export class NarrationReviewService {
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.
     const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, TTS_ESTIMATED_COST_USD) : undefined;
-    return { project: toApiProject(project), narrations, ...(budget ? { budget } : {}) };
+    return { project: toApiProject(project), narrations, staleness: computeSceneStaleness(project), ...(budget ? { budget } : {}) };
   }
 
   async regenerate(projectId: string, rawSceneNumber: string, body: unknown): Promise<RegenerateNarrationResponse> {

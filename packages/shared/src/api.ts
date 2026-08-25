@@ -539,6 +539,13 @@ export interface GetImageReviewResponse {
   reviews: ImageReview[];
   /** Same meaning and scope as StartImageGenerationResponse.budget (see that field's doc comment). */
   budget?: BudgetPreview;
+  /**
+   * Which scenes' images/videos/narration no longer match this project's current scene field values — see
+   * UpdateSceneResponse.staleness's doc comment for how this is computed. Present on every image/video/narration
+   * review GET (not only UpdateSceneResponse's own), so a user opening a review screen sees staleness from an
+   * edit made earlier in a different screen, not only right after editing.
+   */
+  staleness?: SceneStaleness;
 }
 
 /** A review action is deliberately explicit and cannot be inferred from navigation. */
@@ -587,6 +594,8 @@ export interface GetNarrationReviewResponse {
   narrations: NarrationReview[];
   /** Same meaning and scope as StartImageGenerationResponse.budget (see that field's doc comment). */
   budget?: BudgetPreview;
+  /** Same meaning and scope as GetImageReviewResponse.staleness (see that field's doc comment). */
+  staleness?: SceneStaleness;
 }
 
 /** Explicit, replacement synthesis of one scene's narration audio. Rejected (NARRATION_MISSING_TEXT) if that scene has no narration text. */
@@ -841,6 +850,8 @@ export interface VideoReview {
 export interface GetVideoReviewResponse {
   project: Project;
   reviews: VideoReview[];
+  /** Same meaning and scope as GetImageReviewResponse.staleness (see that field's doc comment). */
+  staleness?: SceneStaleness;
 }
 
 export interface ApproveVideoReviewResponse extends GetVideoReviewResponse {}

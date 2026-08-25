@@ -30,6 +30,7 @@ import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "
 import { collectReferenceImages } from "./image-reference-selection.js";
 import { imagePromptFor, styleLineFor } from "./image-prompt.js";
 import { previousSceneContinuityImagePath } from "../projects/project-continuity.js";
+import { computeSceneStaleness } from "../projects/scene-staleness.js";
 import {
   imageReviewBudgetExceeded,
   imageReviewDataInvalid,
@@ -167,7 +168,12 @@ export class ImageReviewService {
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.
     const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, IMAGE_ESTIMATED_COST_USD) : undefined;
-    return { project: toApiProject(project), reviews: toApiReviews(reviews, project.updated_at, scenesFor(project)), ...(budget ? { budget } : {}) };
+    return {
+      project: toApiProject(project),
+      reviews: toApiReviews(reviews, project.updated_at, scenesFor(project)),
+      staleness: computeSceneStaleness(project),
+      ...(budget ? { budget } : {}),
+    };
   }
 
   async approve(projectId: string, rawSceneNumber: string, body: unknown): Promise<ApproveImageReviewResponse> {

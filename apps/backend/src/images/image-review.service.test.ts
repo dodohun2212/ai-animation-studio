@@ -71,6 +71,18 @@ describe("provider-free generated image review", () => {
     expect(result.reviews).toEqual(expect.arrayContaining([{ sceneNumber: 1, status: "pending", updatedAt: expect.any(String) }]));
     await expect(fs.stat(path.join(projectsRoot, "review", "generated_image_reviews.json"))).rejects.toMatchObject({ code: "ENOENT" });
     expect(result.budget).toBeUndefined(); // no OpenAI credential/budget wired in — local fake mode
+    expect(result.staleness).toEqual({ imageStale: [], videoStale: [], narrationStale: [] }); // freshly generated, nothing edited since
+  });
+
+  it("flags a scene's image as stale after its composition fields are edited without regenerating", async () => {
+    const { projects, service } = await setup();
+    const project = await projects.findById("review");
+    const { imagePromptFor, styleLineFor } = await import("./image-prompt.js");
+    project.image_generation_records = [{ scene_number: 1, prompt: imagePromptFor(project.scenes[0], styleLineFor(project)) }];
+    project.scenes[0] = { ...(project.scenes[0] as Record<string, unknown>), focus_subject: "edited after generation" };
+    await projects.save(project);
+    const result = await service.getStatus("review");
+    expect(result.staleness?.imageStale).toEqual([1]);
   });
 
   it("reports the real budget ledger state when an OpenAI credential is connected", async () => {

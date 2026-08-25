@@ -40,6 +40,18 @@ describe("local fake video workflow", () => {
     expect(await Promise.all([1, 2, 3, 4, 5, 6].map((scene) => fs.stat(path.join(projectsRoot, "video_workflow", "videos", "runway", `scene${scene}.mp4`))))).toHaveLength(6);
     const review = await new LocalVideoWorkflowService(projects, projectsRoot).getReview("video_workflow", accepted.jobId);
     expect(JSON.stringify(review)).not.toContain(projectsRoot); expect(review.reviews).toHaveLength(6);
+    expect(review.staleness).toEqual({ imageStale: [], videoStale: [], narrationStale: [] });
+  });
+
+  it("flags a scene's video as stale after a motion field is edited without regenerating, and the next scene too when its end_motion changes", async () => {
+    const { projectsRoot, projects, accepted, workflow } = await setup();
+    await workflow.run("video_workflow", accepted.jobId);
+    const project = await projects.findById("video_workflow");
+    project.scenes[1] = { ...(project.scenes[1] as Record<string, unknown>), main_motion: "완전히 다른 동작" };
+    project.scenes[2] = { ...(project.scenes[2] as Record<string, unknown>), end_motion: "완전히 다른 종료 동작" };
+    await projects.save(project);
+    const review = await new LocalVideoWorkflowService(projects, projectsRoot).getReview("video_workflow", accepted.jobId);
+    expect(review.staleness?.videoStale).toEqual(expect.arrayContaining([2, 3, 4]));
   });
 
   it("serves a completed scene's mp4 bytes by canonical path, independent of jobId, and rejects a missing or out-of-range scene", async () => {
