@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { BudgetPreview, LongEpisodeVideoProgress, LongEpisodeVideoReview, LongEpisodeVideoPreview, SceneNumber } from "@ai-animation-studio/shared";
+import type { GetLongEpisodeVideoPreviewResponse, LongEpisodeVideoProgress, LongEpisodeVideoReview, SceneNumber } from "@ai-animation-studio/shared";
 
 import { approveLongEpisodeVideoReview, episodeSceneErrorMessage, getLongEpisodeVideoPreview, getLongEpisodeVideoProgress, getLongEpisodeVideoReview, regenerateLongEpisodeVideo, restartLongEpisodeVideoGeneration, startLongEpisodeVideoGeneration, stopLongEpisodeVideoGeneration, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { Spinner } from "./Spinner.js";
+import { videoRatioLabel } from "../utils/sceneFields.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { StatusChip } from "./ui/StatusChip.js";
 
@@ -21,7 +22,7 @@ const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/7
 const dot = <span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />;
 
 export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBack, onOpenMerge }: Props) {
-  const [preview, setPreview] = useState<{ confirmationId: string; scenes: LongEpisodeVideoPreview[]; estimatedCostUsd: number; maximumProviderCalls?: number; budget?: BudgetPreview } | null>(null);
+  const [preview, setPreview] = useState<GetLongEpisodeVideoPreviewResponse | null>(null);
   const [prompts, setPrompts] = useState<Partial<Record<SceneNumber, string>>>({});
   const [job, setJob] = useState<LongEpisodeVideoProgress | null>(null);
   const [reviews, setReviews] = useState<LongEpisodeVideoReview[] | null>(null);
@@ -47,6 +48,13 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
       {preview && !job && (
         <div className={cardSection}>
           <p data-testid="episode-video-summary" className="text-sm text-slate-300">순차 진행 · ${preview.estimatedCostUsd.toFixed(2)}</p>
+          {/* The short project's prompt preview states model, ratio and clip length before the paid button;
+              this screen carried the same values in its response and showed none of them. Orientation matters
+              most: a project set to 16:9 that submits a portrait ratio produces the wrong video shape, and the
+              only place that would have been visible is here, before the money is spent. */}
+          <p data-testid="episode-video-output-spec" className="text-sm text-slate-400">
+            모델: {preview.model} · 비율: {videoRatioLabel(preview.ratio)} · 장면당 길이: {preview.durationSecondsPerScene}초
+          </p>
           {/* Spec: the maximum call count and the remaining local budget must be visible before approval.
               `budget` is omitted when no Runway credential is connected — then there is nothing to show. */}
           <div

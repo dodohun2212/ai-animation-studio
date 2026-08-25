@@ -26,6 +26,25 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     expect(screen.getByTestId("episode-video-budget-exceeded")).toBeTruthy();
   });
 
+  it("states model, ratio and clip length before the paid button, the way the short project does", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, preview)));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    const spec = await screen.findByTestId("episode-video-output-spec");
+    expect(spec.textContent).toContain("gen4_turbo");
+    expect(spec.textContent).toContain("세로형 9:16");
+    expect(spec.textContent).toContain("5초");
+  });
+
+  it("shows a landscape Episode as landscape rather than always claiming vertical", async () => {
+    // The orientation comes from the response, so a project set to 16:9 reads as 16:9 here — this line is the
+    // only place a wrong output shape is visible before six clips are paid for.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { ...preview, ratio: "1280:720" })));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    expect((await screen.findByTestId("episode-video-output-spec")).textContent).toContain("가로형 16:9");
+  });
+
   it("omits the budget block entirely when no Runway credential is connected", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, preview)));
     render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);

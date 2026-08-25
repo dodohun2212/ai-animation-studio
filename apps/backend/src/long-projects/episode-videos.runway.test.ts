@@ -17,11 +17,11 @@ import { LongProjectsService } from "./long-projects.service.js";
 let root: string | undefined;
 const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, episodeDurationSeconds: 30, platform: "YouTube Shorts" as const, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "" };
 
-async function setupWithConnectedRunway(episodeDurationSeconds: 30 | 60 = 30) {
+async function setupWithConnectedRunway(episodeDurationSeconds: 30 | 60 = 30, aspectRatio: "9:16" | "16:9" = "9:16") {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-videos-runway-"));
   const projectsRoot = path.join(root, "projects");
   const projects = new LongProjectsService(projectsRoot);
-  await projects.create({ projectId: "long", settings: { ...settings, episodeDurationSeconds } });
+  await projects.create({ projectId: "long", settings: { ...settings, episodeDurationSeconds, aspectRatio } });
   const outline = await projects.preview("long");
   await projects.approve("long", { approved: true, prompt: outline.preview.prompt, promptSha256: outline.preview.promptSha256 });
   const scripts = new EpisodeScriptsService(projectsRoot); await scripts.generate("long", 1, {}); await scripts.approve("long", 1, { approved: true });
@@ -105,6 +105,21 @@ describe("real Runway episode video generation", () => {
 
     const submitCall = fetchMock.mock.calls.find((call) => String(call[0]).endsWith("/v1/image_to_video"))!;
     expect(JSON.parse(String((submitCall[1] as RequestInit).body))).toMatchObject({ duration: 10 });
+  });
+
+  it("submits with ratio: 1280:720 for a 16:9 Episode, not the 720:1280 default — the actual submission, not just preview", async () => {
+    const deps = await setupWithConnectedRunway(30, "16:9");
+    const videos = newVideos(deps);
+    const fetchMock = runwayFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const preview = await videos.preview("long", 1);
+    expect(preview.ratio).toBe("1280:720");
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+
+    const submitCall = fetchMock.mock.calls.find((call) => String(call[0]).endsWith("/v1/image_to_video"))!;
+    expect(JSON.parse(String((submitCall[1] as RequestInit).body))).toMatchObject({ ratio: "1280:720" });
   });
 
   it("halts at a scene Runway explicitly reports FAILED, without submitting later scenes, and lets the user regenerate it", async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { longEpisodeFieldGroups, SCENE_FIELD_GROUPS, SCENE_FIELD_KEYS } from "./sceneFields.js";
+import { longEpisodeFieldGroups, SCENE_FIELD_GROUPS, SCENE_FIELD_KEYS, videoRatioLabel } from "./sceneFields.js";
 
 /**
  * Every field on LongEpisodeScene (packages/shared/src/api.ts), which is also the list the long Episode's
@@ -53,6 +53,15 @@ describe("sceneFields", () => {
     }
     const free = SCENE_FIELD_GROUPS.filter((group) => group.free).map((group) => group.title);
     expect(free).toEqual(["화면 대본"]);
+  });
+
+  it("names the video ratio in the shape the user chose, keeping the exact value too", () => {
+    // "720:1280" is what Runway wants; "9:16" is what the person picked in settings. Showing only the former
+    // makes a wrong orientation impossible to notice before paying for six clips.
+    expect(videoRatioLabel("720:1280")).toBe("세로형 9:16 (720:1280)");
+    expect(videoRatioLabel("1280:720")).toBe("가로형 16:9 (1280:720)");
+    // An unfamiliar value is passed through rather than mislabelled as one of the two known shapes.
+    expect(videoRatioLabel("1024:1024")).toBe("1024:1024");
   });
 
   it("uses distinct short keys and never reuses one across groups", () => {

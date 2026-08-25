@@ -94,3 +94,16 @@ export function longEpisodeFieldGroups(): { title: string; impact: string; free?
       .map((field) => ({ key: field.longKey, label: field.label, ...(field.multiline === undefined ? {} : { multiline: field.multiline }) })),
   })).filter((group) => group.fields.length > 0);
 }
+
+/**
+ * Plain-language label for a Runway output ratio.
+ *
+ * The raw value ("720:1280") is what the provider wants and means nothing to the person deciding whether to
+ * spend money on it — what they picked in project settings was "9:16" or "16:9". Both are shown: the shape in
+ * words, and the exact value the request will carry.
+ */
+export function videoRatioLabel(ratio: string): string {
+  if (ratio === "1280:720") return `가로형 16:9 (${ratio})`;
+  if (ratio === "720:1280") return `세로형 9:16 (${ratio})`;
+  return ratio;
+}
