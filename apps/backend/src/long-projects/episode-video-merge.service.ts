@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import type { LongEpisodeDetail, LongEpisodeStatus, MergeLongEpisodeVideosResponse, SceneNumber } from "@ai-animation-studio/shared";
+import { isSceneNumber, sceneNumbersFor, type LongEpisodeDetail, type LongEpisodeStatus, type MergeLongEpisodeVideosResponse, type SceneNumber } from "@ai-animation-studio/shared";
 
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
@@ -10,16 +10,17 @@ import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner } from "../v
 import { longEpisodeFfmpegUnavailable, longEpisodeMergeClipsInvalid, longEpisodeMergeFailed, longEpisodeMergeNotAllowed, longEpisodeNotFound, longInvalidData, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 
-const SCENES = [1, 2, 3, 4, 5, 6] as const satisfies readonly SceneNumber[];
 const FINAL_PATH = "videos/final/instagram_reel.mp4" as const;
 const statuses: readonly LongEpisodeStatus[] = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted", "rendering", "completed", "failed"];
 type ObjectMap = Record<string, unknown>;
-type Episode = ObjectMap & { number: number; state: LongEpisodeStatus; approved: boolean; script: ObjectMap; script_revision: number; updated_at: string };
+type Episode = ObjectMap & { number: number; state: LongEpisodeStatus; approved: boolean; script: ObjectMap; script_revision: number; updated_at: string; scene_count?: number; duration_seconds?: number };
 type Review = { scene_number: SceneNumber; status: "pending" | "approved"; updated_at: string };
 type VideoRecord = { scene_number: SceneNumber; job_id: string; status: "created" | "running" | "succeeded" | "interrupted" | "failed"; execution_mode: "local_fake_no_provider" | "runway" };
 
 const object = (value: unknown): value is ObjectMap => Boolean(value) && typeof value === "object" && !Array.isArray(value);
-const scene = (value: unknown): value is SceneNumber => Number.isInteger(value) && SCENES.includes(value as (typeof SCENES)[number]);
+// Format-only check (1..MAX_SCENE_COUNT) — bounded to a specific episode's own scene_count separately (see
+// approvedClips()'s sceneCount()-derived length/set checks below).
+const scene = (value: unknown): value is SceneNumber => Number.isInteger(value) && isSceneNumber(value as number);
 
 /** Episode-scoped final rendering; its injectable runner keeps tests provider-free. */
 @Injectable()
@@ -65,13 +66,18 @@ export class EpisodeVideoMergeService {
 
   private clip(id: string, number: number, value: SceneNumber): string { return path.join(this.files(id, number).videos, `scene${value}.mp4`); }
   private final(id: string, number: number): string { return path.join(this.files(id, number).videos, "final", "instagram_reel.mp4"); }
+  /** Falls back to 6, matching every Episode stored before scene_count existed (see episode-scripts.service.ts's parseStored). */
+  private sceneCount(episode: Episode): number { return Number.isInteger(episode.scene_count) ? episode.scene_count as number : 6; }
+  /** Total episode duration_seconds divided by its own scene count — same derivation as episode-videos.service.ts's durationSecondsPerScene(). */
+  private clipDurationSeconds(episode: Episode): 5 | 10 { return Number(episode.duration_seconds) / this.sceneCount(episode) >= 7.5 ? 10 : 5; }
 
   private async approvedClips(id: string, number: number, episode: Episode): Promise<string[]> {
     if (episode.state !== "videos_approved") throw longEpisodeMergeNotAllowed();
+    const sceneNumbers = sceneNumbersFor(this.sceneCount(episode));
     const [rawReviews, rawRecords] = await Promise.all([this.json(this.files(id, number).reviews).catch(() => { throw longEpisodeMergeClipsInvalid(); }), this.json(this.files(id, number).records).catch(() => { throw longEpisodeMergeClipsInvalid(); })]);
-    if (!Array.isArray(rawReviews) || rawReviews.length !== 6 || !rawReviews.every((item) => object(item) && scene(item.scene_number) && item.status === "approved" && typeof item.updated_at === "string") || new Set(rawReviews.map((item) => (item as Review).scene_number)).size !== 6) throw longEpisodeMergeClipsInvalid();
-    if (!Array.isArray(rawRecords) || rawRecords.length !== 6 || !rawRecords.every((item) => object(item) && scene(item.scene_number) && typeof item.job_id === "string" && item.job_id.length > 0 && item.status === "succeeded" && (item.execution_mode === "local_fake_no_provider" || item.execution_mode === "runway")) || new Set(rawRecords.map((item) => (item as VideoRecord).scene_number)).size !== 6 || new Set(rawRecords.map((item) => (item as VideoRecord).job_id)).size !== 1) throw longEpisodeMergeClipsInvalid();
-    const clips = SCENES.map((number_) => this.clip(id, number, number_));
+    if (!Array.isArray(rawReviews) || rawReviews.length !== sceneNumbers.length || !rawReviews.every((item) => object(item) && scene(item.scene_number) && item.status === "approved" && typeof item.updated_at === "string") || new Set(rawReviews.map((item) => (item as Review).scene_number)).size !== sceneNumbers.length) throw longEpisodeMergeClipsInvalid();
+    if (!Array.isArray(rawRecords) || rawRecords.length !== sceneNumbers.length || !rawRecords.every((item) => object(item) && scene(item.scene_number) && typeof item.job_id === "string" && item.job_id.length > 0 && item.status === "succeeded" && (item.execution_mode === "local_fake_no_provider" || item.execution_mode === "runway")) || new Set(rawRecords.map((item) => (item as VideoRecord).scene_number)).size !== sceneNumbers.length || new Set(rawRecords.map((item) => (item as VideoRecord).job_id)).size !== 1) throw longEpisodeMergeClipsInvalid();
+    const clips = sceneNumbers.map((number_) => this.clip(id, number, number_));
     try { await Promise.all(clips.map(async (file) => { if ((await fs.stat(file)).size <= 0) throw new Error("empty"); })); }
     catch { throw longEpisodeMergeClipsInvalid(); }
     return clips;
@@ -98,8 +104,9 @@ export class EpisodeVideoMergeService {
       const output = this.final(id, number); await fs.mkdir(path.dirname(output), { recursive: true });
       // Long Episode has no narration or subtitles (out of that feature's scope) — every scene falls back to
       // silence, same as before. clipDurationSeconds only matters for subtitle timing, so its exact value here
-      // is inert, but it's set to Long Episode's own fixed 5s clip length for correctness regardless.
-      await this.engine.merge(clips.map((clip) => ({ clip, narrationAudioPath: null, subtitleText: null })), 5, output, await this.ratio(id, number));
+      // is inert, but it's set to this Episode's own clip length (5s or 10s, see clipDurationSeconds()) for
+      // correctness regardless.
+      await this.engine.merge(clips.map((clip) => ({ clip, narrationAudioPath: null, subtitleText: null })), this.clipDurationSeconds(episode), output, await this.ratio(id, number));
       const completed = { ...rendering, state: "completed" as const, updated_at: new Date().toISOString(), final_video_path: FINAL_PATH };
       await this.saveEpisode(id, number, completed);
       return { episode: this.detail(completed), finalVideoPath: FINAL_PATH };

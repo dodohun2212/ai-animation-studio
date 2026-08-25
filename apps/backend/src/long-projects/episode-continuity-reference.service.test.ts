@@ -49,4 +49,26 @@ describe("EpisodeContinuityReferenceService", () => {
     await expect(fs.access(episode(1, "image_generation_metadata.json"))).rejects.toMatchObject({ code: "ENOENT" });
     expect(JSON.stringify(metadata)).not.toContain(root!);
   });
+
+  it("reports the previous Episode's own scene count as sourceSceneNumber, not a hardcoded 6", async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-continuity-reference-scenecount-"));
+    const projectsRoot = path.join(root, "projects"); const projects = new LongProjectsService(projectsRoot);
+    await projects.create({ projectId: "long", settings: { ...settings, sceneCount: 4 } });
+    const preview = await projects.preview("long"); await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 });
+    const scripts = new EpisodeScriptsService(projectsRoot); const mappings = new EpisodeAssetMappingsService(projectsRoot, new LocalAssetsRepository(root)); const images = new EpisodeImagesService(projectsRoot); const reference = new EpisodeContinuityReferenceService(projectsRoot);
+
+    await scripts.generate("long", 1, {}); await scripts.approve("long", 1, { approved: true });
+    const review1 = await mappings.begin("long", 1, { textOnlyConfirmed: true }); await mappings.approve("long", 1, { approved: true, scriptFingerprint: review1.review.scriptFingerprint });
+
+    // Bump the project's own scene count before Episode 2 is ever created, so Episode 2 snapshots 8 while
+    // Episode 1 keeps its already-snapshotted 4 — sourceSceneNumber must reflect Episode 1's own count.
+    await projects.updateSettings("long", { settings: { ...settings, sceneCount: 8 } });
+    await scripts.generate("long", 2, {}); await scripts.approve("long", 2, { approved: true });
+    const review2 = await mappings.begin("long", 2, { textOnlyConfirmed: true }); await mappings.approve("long", 2, { approved: true, scriptFingerprint: review2.review.scriptFingerprint });
+
+    await images.generate("long", 1, { approved: true });
+    for (const scene of [1, 2, 3, 4]) await images.approve("long", 1, String(scene), { approved: true });
+
+    await expect(reference.get("long", 2)).resolves.toEqual({ reference: { previousEpisodeNumber: 1, sourceSceneNumber: 4, available: true } });
+  });
 });

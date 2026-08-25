@@ -11,7 +11,7 @@ import { toApiEpisodeScript } from "./episode-script-format.js";
 
 type StoredCandidate = { mapping_id: string; source_collection: "basic" | "characters" | "locations" | "props"; source_item_id: string; asset_id: string; usage_role: "character" | "background" | "object" | "style"; version_policy: "pinned_version" | "follow_latest" | "snapshot"; pinned_version: number | null; episode_scope: { mode: "all" } | { mode: "episode"; episode: number }; status: "suggested" | "confirmed" | "excluded"; user_confirmed: boolean; created_at: string; updated_at: string };
 type StoredReview = { project_id: string; episode_number: number; mapping_revision: number; script_revision: number; script_fingerprint: string; status: "waiting" | "approved"; text_only_confirmed: boolean; approved_at: string; candidates: StoredCandidate[] };
-type StoredEpisode = Record<string, unknown> & { number: number; state: LongEpisodeStatus; approved: boolean; script: Record<string, unknown>; script_revision: number; updated_at: string };
+type StoredEpisode = Record<string, unknown> & { number: number; state: LongEpisodeStatus; approved: boolean; script: Record<string, unknown>; script_revision: number; updated_at: string; scene_count?: number };
 const episodeStatuses: readonly LongEpisodeStatus[] = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted"];
 const collections = ["characters", "locations", "props"] as const;
 const idKeys = { characters: "character_id", locations: "location_id", props: "prop_id" } as const;
@@ -37,7 +37,9 @@ export class EpisodeAssetMappingsService {
     const raw = await this.json(files.project); if (!isObject(raw) || raw.number !== number || !episodeStatuses.includes(raw.state as LongEpisodeStatus) || typeof raw.approved !== "boolean" || !isObject(raw.script) || !Number.isInteger(raw.script_revision) || Number(raw.script_revision) < 1 || typeof raw.updated_at !== "string") throw longInvalidData();
     return raw as StoredEpisode;
   }
-  private scenes(episode: StoredEpisode): unknown[] { const scenes = episode.script.scenes; if (!Array.isArray(scenes) || scenes.length !== 6 || scenes.some((scene, index) => !isObject(scene) || scene.number !== index + 1)) throw longInvalidData(); return scenes; }
+  /** Falls back to 6, matching every Episode stored before scene_count existed (see episode-scripts.service.ts's parseStored). */
+  private sceneCount(episode: StoredEpisode): number { return Number.isInteger(episode.scene_count) ? episode.scene_count as number : 6; }
+  private scenes(episode: StoredEpisode): unknown[] { const scenes = episode.script.scenes; const count = this.sceneCount(episode); if (!Array.isArray(scenes) || scenes.length !== count || scenes.some((scene, index) => !isObject(scene) || scene.number !== index + 1)) throw longInvalidData(); return scenes; }
   private async saveEpisode(projectId: string, number: number, episode: StoredEpisode) { try { await atomicWriteUtf8File(this.files(projectId, number).project, JSON.stringify(episode, null, 2)); } catch { throw longStorageError(); } }
   private candidate(value: unknown): StoredCandidate {
     if (!isObject(value) || Object.keys(value).some((key) => !["mapping_id", "source_collection", "source_item_id", "asset_id", "usage_role", "version_policy", "pinned_version", "episode_scope", "status", "user_confirmed", "created_at", "updated_at"].includes(key))
@@ -70,7 +72,7 @@ export class EpisodeAssetMappingsService {
       terms.set(assetId, [asset.display_name, asset.character_key ?? "", ...asset.aliases, ...asset.tags].map((value) => value.trim().toLocaleLowerCase()).filter((value) => value.length >= 2));
     }
     const selectedAssetIdsByScene = {} as Record<SceneNumber, string[]>;
-    for (let index = 0; index < 6; index += 1) {
+    for (let index = 0; index < scenes.length; index += 1) {
       const scene = scenes[index]; if (!isObject(scene) || scene.number !== index + 1) throw longInvalidData();
       const content = JSON.stringify(scene).toLocaleLowerCase();
       selectedAssetIdsByScene[(index + 1) as SceneNumber] = assetIds.filter((assetId) => {
@@ -78,7 +80,7 @@ export class EpisodeAssetMappingsService {
         return Boolean(candidate) || (terms.get(assetId) ?? []).some((term) => content.includes(term));
       });
     }
-    return { candidateAssetIds: assetIds, selectedAssetIdsByScene, estimatedImageApiCalls: 6 };
+    return { candidateAssetIds: assetIds, selectedAssetIdsByScene, estimatedImageApiCalls: scenes.length };
   }
   private async bibleCandidates(projectId: string, number: number): Promise<StoredCandidate[]> {
     const bible = await this.json(this.files(projectId, number).bible); if (!isObject(bible)) throw longInvalidData(); const result: StoredCandidate[] = []; const now = new Date().toISOString();

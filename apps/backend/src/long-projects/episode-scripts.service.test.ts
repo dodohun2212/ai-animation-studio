@@ -7,7 +7,7 @@ import { LongProjectsService } from "./long-projects.service.js";
 
 let root: string | undefined;
 const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, platform: "YouTube Shorts" as const, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "" };
-async function setup(episodeDurationSeconds: 30 | 60 = 30) { root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-script-")); const projects = new LongProjectsService(path.join(root, "projects")); await projects.create({ projectId: "long", settings: { ...settings, clipDurationSeconds: episodeDurationSeconds === 60 ? 10 : 5 } }); const preview = await projects.preview("long"); await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 }); return new EpisodeScriptsService(path.join(root, "projects")); }
+async function setup(episodeDurationSeconds: 30 | 60 = 30, sceneCount = 6) { root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-script-")); const projects = new LongProjectsService(path.join(root, "projects")); await projects.create({ projectId: "long", settings: { ...settings, sceneCount, clipDurationSeconds: episodeDurationSeconds === 60 ? 10 : 5 } }); const preview = await projects.preview("long"); await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 }); return new EpisodeScriptsService(path.join(root, "projects")); }
 afterEach(async () => { if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 
 describe("EpisodeScriptsService", () => {
@@ -33,6 +33,16 @@ describe("EpisodeScriptsService", () => {
     await subject.generate("long", 1, {});
     const stored = JSON.parse(await fs.readFile(path.join(root!, "projects", "long", "long_story", "Episode01", "project.json"), "utf8")) as { duration_seconds: number };
     expect(stored.duration_seconds).toBe(60);
+  });
+
+  it("generates and edits a script sized to the project's own scene count, not a hardcoded six", async () => {
+    const subject = await setup(30, 9);
+    const generated = await subject.generate("long", 1, {});
+    expect(generated.episode.script?.scenes.map((scene) => scene.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    const script = generated.episode.script!;
+    const edited = await subject.update("long", 1, { script });
+    expect(edited.episode.script?.scenes).toHaveLength(9);
+    await expect(subject.update("long", 1, { script: { ...script, scenes: script.scenes.slice(0, 6) } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
   it("rejects malformed user edits and never imports a provider or media runner", async () => {
