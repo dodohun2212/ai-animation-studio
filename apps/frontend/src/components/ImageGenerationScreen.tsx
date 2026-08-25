@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { ImageReview, Project, SceneNumber, StartImageGenerationResponse } from "@ai-animation-studio/shared";
-import { WorkflowState, sceneNumbersFor } from "@ai-animation-studio/shared";
+import type { BudgetPreview, ImageReview, Project, SceneNumber, StartImageGenerationResponse } from "@ai-animation-studio/shared";
+import { IMAGE_ESTIMATED_COST_USD, WorkflowState, sceneNumbersFor } from "@ai-animation-studio/shared";
 
 import { getProject, toDisplayError } from "../api/projectsApi.js";
 import { startImageGeneration, toImageGenerationDisplayError } from "../api/imageGenerationApi.js";
@@ -13,6 +13,8 @@ import {
 } from "../api/imageReviewApi.js";
 import { Spinner } from "./Spinner.js";
 import { StatusChip } from "./ui/StatusChip.js";
+import { RetryCostNotice } from "./ui/RetryCostNotice.js";
+import { BudgetLine } from "./ui/BudgetLine.js";
 
 interface Props {
   projectId: string;
@@ -30,7 +32,7 @@ type ReviewLoadState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "error"; error: DisplayError }
-  | { status: "ready"; reviews: ImageReview[] };
+  | { status: "ready"; reviews: ImageReview[]; budget?: BudgetPreview; retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview } };
 
 const primaryButton =
   "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
@@ -104,7 +106,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
     getImageReview(projectId)
       .then((response) => {
         if (requestId !== reviewLoadRequest.current) return;
-        setReviewState({ status: "ready", reviews: response.reviews });
+        setReviewState({ status: "ready", reviews: response.reviews, budget: response.budget });
       })
       .catch((error: unknown) => {
         if (requestId !== reviewLoadRequest.current) return;
@@ -118,7 +120,12 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
     setApprovePendingScenes(new Set(approveBusy.current));
     try {
       const response = await approveImageReview(projectId, sceneNumber);
-      setReviewState({ status: "ready", reviews: response.reviews });
+      setReviewState((current) => ({
+        status: "ready",
+        reviews: response.reviews,
+        budget: current.status === "ready" ? current.budget : undefined,
+        retryEstimate: current.status === "ready" ? current.retryEstimate : undefined,
+      }));
       setProjectOverride(response.project);
       setApproveErrors((current) => {
         if (!(sceneNumber in current)) return current;
@@ -151,7 +158,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
     setRegeneratePendingScenes(new Set(regenerateBusy.current));
     try {
       const response = await regenerateImageReview(projectId, sceneNumber);
-      setReviewState({ status: "ready", reviews: response.reviews });
+      setReviewState({ status: "ready", reviews: response.reviews, budget: response.retryEstimate?.budget, retryEstimate: response.retryEstimate });
       setProjectOverride(response.project);
       setRegenerateConfirmScene(null);
       setRegenerateErrors((current) => {
@@ -265,15 +272,19 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
             >
               <p className="text-sm font-semibold text-amber-300">장면 이미지 {totalScenes}장을 생성할까요?</p>
               <p className="text-sm text-slate-300">
-                아직 생성이 시작되지 않았습니다. 확인을 누르면 로컬 가짜 어댑터가 이미지 {totalScenes}장을 생성하며, 실제 유료
-                요청은 전송되지 않습니다.
+                아직 생성이 시작되지 않았습니다. OpenAI 키가 연결되어 있으면 확인을 누르는 순간 이미지 {totalScenes}장에 대한
+                실제 유료 요청이 전송됩니다. 키가 연결되어 있지 않으면 비용 없이 임시 이미지로 생성됩니다.
+              </p>
+              <p data-testid="generate-cost-estimate" className="text-xs text-slate-300 tabular-nums">
+                예상 비용: ${(totalScenes * IMAGE_ESTIMATED_COST_USD).toFixed(2)} ({totalScenes}장 × $
+                {IMAGE_ESTIMATED_COST_USD.toFixed(2)}) · 키가 연결되어 있을 때만 청구됩니다
               </p>
               <div className="flex gap-3">
                 <button type="button" className={outlineButton} onClick={cancelConfirmation} disabled={generatePending}>
                   돌아가기
                 </button>
                 <button type="button" className={primaryButton} onClick={() => void confirmGeneration()} disabled={generatePending}>
-                  {generatePending ? "생성 중..." : "예, 로컬 이미지 생성을 시작합니다"}
+                  {generatePending ? "생성 중..." : "예, 이미지 생성을 시작합니다"}
                 </button>
               </div>
             </div>
@@ -286,10 +297,13 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
           )}
 
           {result && (
-            <p data-testid="generation-summary" className="text-sm font-semibold text-emerald-400">
-              생성 완료 · 새로 생성 {result.generatedSceneNumbers.length}장 · 기존 이미지 재사용{" "}
-              {result.reusedSceneNumbers.length}장
-            </p>
+            <div className="space-y-1.5">
+              <p data-testid="generation-summary" className="text-sm font-semibold text-emerald-400">
+                생성 완료 · 새로 생성 {result.generatedSceneNumbers.length}장 · 기존 이미지 재사용{" "}
+                {result.reusedSceneNumbers.length}장
+              </p>
+              <BudgetLine budget={result.budget} data-testid="generation-budget" />
+            </div>
           )}
 
           {(reviewable || videoConfirmationReached) && (
@@ -302,10 +316,12 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                 이미지 검토
               </h3>
               <p className="text-sm text-slate-300">각 장면의 이미지를 확인하고 개별적으로 승인해 주세요.</p>
-              <p className="text-xs text-amber-300" data-testid="no-paid-regenerate-notice">
-                재생성은 실제 유료 Provider를 호출하지 않는 로컬 가짜 어댑터만 사용하며, 이전 이미지는 버전 기록으로
-                보존됩니다.
+              <p className="text-xs text-amber-300" data-testid="regenerate-cost-notice">
+                재생성은 장면 1개당 한 번 더 청구됩니다(OpenAI 키가 연결된 경우). 이전 이미지는 버전 기록으로 보존됩니다.
               </p>
+              {reviewState.status === "ready" && (
+                <BudgetLine budget={reviewState.budget} data-testid="review-budget" />
+              )}
 
               {reviewState.status === "loading" && <Spinner label="검토 상태를 불러오는 중..." />}
               {reviewState.status === "error" && (
@@ -395,9 +411,14 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                                 {review.sceneNumber}번 장면 이미지를 다시 생성할까요?
                               </p>
                               <p className="text-xs text-slate-300">
-                                아직 재생성이 시작되지 않았습니다. 확인을 누르면 로컬 가짜 어댑터가 이 장면 이미지만 다시
-                                생성하며, 실제 유료 요청은 전송되지 않습니다.
+                                아직 재생성이 시작되지 않았습니다. 확인을 누르면 이 장면 이미지만 다시 생성합니다 — OpenAI
+                                키가 연결되어 있으면 이번 재생성분이 실제로 청구됩니다.
                               </p>
+                              <RetryCostNotice
+                                estimate={reviewState.status === "ready" ? reviewState.retryEstimate : undefined}
+                                sceneCount={1}
+                                data-testid={`regenerate-cost-${review.sceneNumber}`}
+                              />
                               <div className="flex gap-2">
                                 <button
                                   type="button"
@@ -413,7 +434,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                                   onClick={() => void confirmRegenerate(review.sceneNumber)}
                                   disabled={regeneratePending}
                                 >
-                                  {regeneratePending ? "재생성 중..." : "예, 로컬로 재생성합니다"}
+                                  {regeneratePending ? "재생성 중..." : "예, 다시 생성합니다"}
                                 </button>
                               </div>
                             </div>

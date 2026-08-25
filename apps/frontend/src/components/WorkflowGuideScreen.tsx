@@ -1,21 +1,17 @@
 import { useState } from "react";
-import { MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, type RunwayClipDurationSeconds } from "@ai-animation-studio/shared";
+import {
+  IMAGE_ESTIMATED_COST_USD,
+  MAX_SCENE_COUNT,
+  MIN_SCENE_COUNT,
+  RUNWAY_CLIP_DURATIONS,
+  STORY_ESTIMATED_COST_USD,
+  VIDEO_SCENE_ESTIMATED_COST_USD,
+  type RunwayClipDurationSeconds,
+} from "@ai-animation-studio/shared";
 
 interface Props {
   onBack: () => void;
 }
-
-/**
- * Per-call provider cost estimates. These mirror the backend's own budget constants
- * (`STORY_ESTIMATED_COST_USD`/`IMAGE_ESTIMATED_COST_USD` in providers/openai-budget.ts and
- * `VIDEO_SCENE_ESTIMATED_COST_USD` in providers/runway-budget.ts) — the backend remains the single
- * authority that actually reserves and records spend; this screen only explains what will happen.
- * TODO(bridge): swap these for the shared constants once the backend exports them from
- * packages/shared/src/domain.ts, so this screen can never drift from what is actually charged.
- */
-const STORY_COST_USD = 0.05;
-const IMAGE_COST_USD = 0.1;
-const VIDEO_SCENE_COST_USD = 0.25;
 
 type StageTone = "story" | "image" | "video";
 
@@ -144,9 +140,9 @@ export function WorkflowGuideScreen({ onBack }: Props) {
   const storyCalls = 1;
   const imageCalls = sceneCount;
   const videoCalls = sceneCount;
-  const storyTotal = storyCalls * STORY_COST_USD;
-  const imageTotal = imageCalls * IMAGE_COST_USD;
-  const videoTotal = videoCalls * VIDEO_SCENE_COST_USD;
+  const storyTotal = storyCalls * STORY_ESTIMATED_COST_USD;
+  const imageTotal = imageCalls * IMAGE_ESTIMATED_COST_USD;
+  const videoTotal = videoCalls * VIDEO_SCENE_ESTIMATED_COST_USD;
   const totalCalls = storyCalls + imageCalls + videoCalls;
   const totalCost = storyTotal + imageTotal + videoTotal;
   const runtimeSeconds = sceneCount * clipDurationSeconds;
@@ -244,7 +240,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
         provider="OpenAI"
         callRule="장면 수와 무관하게 프로젝트당 1회"
         calls={storyCalls}
-        unitCostUsd={STORY_COST_USD}
+        unitCostUsd={STORY_ESTIMATED_COST_USD}
         totalCostUsd={storyTotal}
         testId="workflow-guide-stage-story"
         sends={[
@@ -264,7 +260,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
         provider="OpenAI"
         callRule="장면 1개당 1회"
         calls={imageCalls}
-        unitCostUsd={IMAGE_COST_USD}
+        unitCostUsd={IMAGE_ESTIMATED_COST_USD}
         totalCostUsd={imageTotal}
         testId="workflow-guide-stage-image"
         sends={[
@@ -284,7 +280,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
         provider="Runway"
         callRule="장면 1개당 1회"
         calls={videoCalls}
-        unitCostUsd={VIDEO_SCENE_COST_USD}
+        unitCostUsd={VIDEO_SCENE_ESTIMATED_COST_USD}
         totalCostUsd={videoTotal}
         testId="workflow-guide-stage-video"
         sends={[

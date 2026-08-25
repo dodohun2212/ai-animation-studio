@@ -100,7 +100,7 @@ describe("ImageGenerationScreen", () => {
 
     const panel = await screen.findByTestId("generate-confirm-panel");
     expect(panel).toBeTruthy();
-    expect(screen.getByRole("button", { name: "예, 로컬 이미지 생성을 시작합니다" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "예, 이미지 생성을 시작합니다" })).toBeTruthy();
     // Only the initial GET happened — the first click never sent a generation request.
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -140,7 +140,7 @@ describe("ImageGenerationScreen", () => {
     await screen.findByTestId("generate-confirm-panel");
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "예, 로컬 이미지 생성을 시작합니다" }));
+    fireEvent.click(screen.getByRole("button", { name: "예, 이미지 생성을 시작합니다" }));
 
     const summary = await screen.findByTestId("generation-summary");
     expect(summary.textContent).toContain("새로 생성 6장");
@@ -173,7 +173,7 @@ describe("ImageGenerationScreen", () => {
     await screen.findByTestId("no-paid-notice");
     fireEvent.click(screen.getByRole("button", { name: "이미지 생성 시작" }));
     await screen.findByTestId("generate-confirm-panel");
-    fireEvent.click(screen.getByRole("button", { name: "예, 로컬 이미지 생성을 시작합니다" }));
+    fireEvent.click(screen.getByRole("button", { name: "예, 이미지 생성을 시작합니다" }));
 
     const alert = await screen.findByTestId("generate-error");
     expect(alert.textContent).not.toContain("raw backend detail");
@@ -200,7 +200,7 @@ describe("ImageGenerationScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "이미지 생성 시작" }));
     await screen.findByTestId("generate-confirm-panel");
 
-    const confirmButton = screen.getByRole("button", { name: "예, 로컬 이미지 생성을 시작합니다" });
+    const confirmButton = screen.getByRole("button", { name: "예, 이미지 생성을 시작합니다" });
     fireEvent.click(confirmButton);
     expect(confirmButton).toBeDisabled();
     fireEvent.click(confirmButton);
@@ -351,7 +351,7 @@ describe("ImageGenerationScreen", () => {
     fireEvent.click(await screen.findByTestId("review-regenerate-2"));
 
     const panel = await screen.findByTestId("regenerate-confirm-panel-2");
-    expect(panel.textContent).toContain("실제 유료 요청은 전송되지 않습니다");
+    expect(panel.textContent).toContain("키가 연결되어 있으면 이번 재생성분이 실제로 청구됩니다");
     // Only the two GETs happened — opening the panel never sent a regenerate request.
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -392,7 +392,7 @@ describe("ImageGenerationScreen", () => {
     const panel = await screen.findByTestId("regenerate-confirm-panel-2");
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
-    fireEvent.click(within(panel).getByRole("button", { name: "예, 로컬로 재생성합니다" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "예, 다시 생성합니다" }));
 
     await waitFor(() => expect(screen.getByTestId("review-2")).toHaveAttribute("data-status", "pending"));
     const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit];
@@ -422,7 +422,7 @@ describe("ImageGenerationScreen", () => {
 
     fireEvent.click(await screen.findByTestId("review-regenerate-2"));
     const panel = await screen.findByTestId("regenerate-confirm-panel-2");
-    fireEvent.click(within(panel).getByRole("button", { name: "예, 로컬로 재생성합니다" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "예, 다시 생성합니다" }));
 
     const alert = await screen.findByTestId("review-regenerate-error-2");
     expect(alert.textContent).not.toContain("raw disk failure detail");
@@ -433,7 +433,7 @@ describe("ImageGenerationScreen", () => {
       expect(screen.getByTestId(`review-${number}`)).toHaveAttribute("data-status", "approved");
     }
 
-    fireEvent.click(within(screen.getByTestId("regenerate-confirm-panel-2")).getByRole("button", { name: "예, 로컬로 재생성합니다" }));
+    fireEvent.click(within(screen.getByTestId("regenerate-confirm-panel-2")).getByRole("button", { name: "예, 다시 생성합니다" }));
     await waitFor(() => expect(screen.getByTestId("review-2")).toHaveAttribute("data-status", "pending"));
     expect(screen.queryByTestId("review-regenerate-error-2")).toBeNull();
   });
@@ -454,7 +454,7 @@ describe("ImageGenerationScreen", () => {
 
     fireEvent.click(await screen.findByTestId("review-regenerate-2"));
     const panel = await screen.findByTestId("regenerate-confirm-panel-2");
-    const confirmButton = within(panel).getByRole("button", { name: "예, 로컬로 재생성합니다" });
+    const confirmButton = within(panel).getByRole("button", { name: "예, 다시 생성합니다" });
     fireEvent.click(confirmButton);
     expect(confirmButton).toBeDisabled();
     fireEvent.click(confirmButton);
@@ -492,12 +492,86 @@ describe("ImageGenerationScreen", () => {
     expect(transition).toBeTruthy();
     fireEvent.click(await screen.findByTestId("review-regenerate-1"));
     const panel = await screen.findByTestId("regenerate-confirm-panel-1");
-    fireEvent.click(within(panel).getByRole("button", { name: "예, 로컬로 재생성합니다" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "예, 다시 생성합니다" }));
 
     await waitFor(() => expect(screen.getByTestId("review-1")).toHaveAttribute("data-status", "pending"));
     expect(screen.queryByTestId("video-confirmation-transition")).toBeNull();
     for (const number of [2, 3, 4, 5, 6]) {
       expect(screen.getByTestId(`review-${number}`)).toHaveAttribute("data-status", "approved");
     }
+  });
+
+  it("shows the estimated cost before generation is approved", async () => {
+    const project = makeProject({ workflowState: WorkflowState.AssetMappingApproved, scenes: sixScenes() });
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { project }));
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByRole("button", { name: "이미지 생성 시작" }));
+
+    // 6 scenes x $0.10 — visible before anything is sent, not after.
+    expect(screen.getByTestId("generate-cost-estimate").textContent).toContain("$0.60");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the budget the generation response reported", async () => {
+    const project = makeProject({ workflowState: WorkflowState.AssetMappingApproved, scenes: sixScenes() });
+    const generated = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(
+        jsonResponse(201, {
+          project: generated,
+          generatedSceneNumbers: [1, 2, 3, 4, 5, 6],
+          reusedSceneNumbers: [],
+          budget: { monthlyLimitUsd: 10, spentUsd: 2.6, remainingUsd: 7.4, estimatedRequestCostUsd: 0.6, canSpend: true },
+        }),
+      )
+      .mockResolvedValue(jsonResponse(200, { project: generated, reviews: sixReviews() }));
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByRole("button", { name: "이미지 생성 시작" }));
+    fireEvent.click(screen.getByRole("button", { name: "예, 이미지 생성을 시작합니다" }));
+
+    const budget = await screen.findByTestId("generation-budget");
+    expect(budget.textContent).toContain("$7.40");
+    expect(budget.textContent).toContain("$2.60");
+  });
+
+  it("omits the budget line entirely when the response reported none (local fake mode charges nothing)", async () => {
+    const project = makeProject({ workflowState: WorkflowState.AssetMappingApproved, scenes: sixScenes() });
+    const generated = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(
+        jsonResponse(201, { project: generated, generatedSceneNumbers: [1, 2, 3, 4, 5, 6], reusedSceneNumbers: [] }),
+      )
+      .mockResolvedValue(jsonResponse(200, { project: generated, reviews: sixReviews() }));
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByRole("button", { name: "이미지 생성 시작" }));
+    fireEvent.click(screen.getByRole("button", { name: "예, 이미지 생성을 시작합니다" }));
+
+    await screen.findByTestId("generation-summary");
+    expect(screen.queryByTestId("generation-budget")).toBeNull();
+  });
+
+  it("shows the retry cost inside a regenerate confirmation once an estimate is known", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          project,
+          reviews: sixReviews(),
+          budget: { monthlyLimitUsd: 10, spentUsd: 1, remainingUsd: 9, estimatedRequestCostUsd: 0.1, canSpend: true },
+        }),
+      );
+    renderScreen(fetchMock);
+
+    const reviewBudget = await screen.findByTestId("review-budget");
+    expect(reviewBudget.textContent).toContain("$9.00");
   });
 });
