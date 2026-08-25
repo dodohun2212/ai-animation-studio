@@ -17,19 +17,39 @@ function scenes(narrations: (string | undefined)[]): Scene[] {
   }));
 }
 
-function renderScreen(fetchMock: ReturnType<typeof vi.fn>, clipDurationSeconds?: number) {
+const settings = {
+  projectName: "이름", topic: "주제", genre: "장르", mood: "분위기", character: "인물",
+  lore: "", fullStory: "", durationSeconds: 30, sceneCount: 6, clipDurationSeconds: 5,
+  additionalNotes: "", styleNotes: {}, narrationEnabled: true,
+};
+
+/**
+ * Routes by "METHOD url" so the project and the (optional) settings request can answer independently — the
+ * screen deliberately tolerates the settings call failing.
+ */
+function stubFetch(project: unknown, settingsResponse?: { ok: boolean; body?: unknown }) {
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    void init;
+    const url = String(input);
+    if (url === "/projects/sample_project") return jsonResponse(200, { project });
+    if (url === "/projects/sample_project/settings") {
+      if (!settingsResponse || settingsResponse.ok) return jsonResponse(200, settingsResponse?.body ?? { settings });
+      return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "실패" });
+    }
+    throw new Error(`Unexpected fetch: ${url}`);
+  });
+}
+
+function renderScreen(fetchMock: ReturnType<typeof vi.fn>) {
   vi.stubGlobal("fetch", fetchMock);
-  return render(
-    <NarrationReviewScreen projectId="sample_project" onBack={() => {}} clipDurationSeconds={clipDurationSeconds} />,
-  );
+  return render(<NarrationReviewScreen projectId="sample_project" onBack={() => {}} />);
 }
 
 describe("NarrationReviewScreen", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("shows each scene's narration text so it can be read before any audio is paid for", async () => {
-    const project = makeProject({ scenes: scenes(["첫 문장입니다.", "둘째 문장입니다."]) });
-    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    renderScreen(stubFetch(makeProject({ scenes: scenes(["첫 문장입니다.", "둘째 문장입니다."]) })));
 
     expect(await screen.findByText("첫 문장입니다.")).toBeTruthy();
     expect(screen.getByText("둘째 문장입니다.")).toBeTruthy();
@@ -37,8 +57,7 @@ describe("NarrationReviewScreen", () => {
   });
 
   it("prices the run from the number of scenes that actually have narration", async () => {
-    const project = makeProject({ scenes: scenes(["문장", undefined, "문장"]) });
-    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    renderScreen(stubFetch(makeProject({ scenes: scenes(["문장", undefined, "문장"]) })));
 
     // 2 of 3 scenes carry text, so only those two would be spoken.
     expect((await screen.findByTestId("narration-count")).textContent).toBe("2 / 3");
@@ -46,37 +65,32 @@ describe("NarrationReviewScreen", () => {
   });
 
   it("warns about scenes left without narration instead of silently skipping them", async () => {
-    const project = makeProject({ scenes: scenes(["문장", undefined]) });
-    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    renderScreen(stubFetch(makeProject({ scenes: scenes(["문장", undefined]) })));
 
     expect((await screen.findByTestId("narration-missing")).textContent).toContain("1개 장면");
     expect(screen.getByTestId("narration-scene-2")).toHaveAttribute("data-has-narration", "false");
   });
 
-  it("flags narration that looks too long to read inside its clip", async () => {
-    // 5s clip x 5 chars/sec = 25 characters before the line is flagged.
-    const project = makeProject({ scenes: scenes(["짧은 문장", "가".repeat(40)]) });
-    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { project })), 5);
+  it("flags narration too long for the clip length it loaded from project settings", async () => {
+    // 5s clip x 5 chars/sec = 25 characters before a line is flagged.
+    renderScreen(stubFetch(makeProject({ scenes: scenes(["짧은 문장", "가".repeat(40)]) })));
 
     expect((await screen.findByTestId("narration-too-long")).textContent).toContain("1개 장면");
     expect(screen.getByTestId("narration-scene-1")).toHaveAttribute("data-has-narration", "true");
   });
 
-  it("never warns about length when no clip duration is known", async () => {
-    const project = makeProject({ scenes: scenes(["가".repeat(200)]) });
-    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+  it("still shows the narration when the settings request fails, just without length warnings", async () => {
+    renderScreen(stubFetch(makeProject({ scenes: scenes(["가".repeat(200)]) }), { ok: false }));
 
-    await screen.findByTestId("narration-count");
+    expect(await screen.findByText("가".repeat(200))).toBeTruthy();
     expect(screen.queryByTestId("narration-too-long")).toBeNull();
   });
 
   it("never sends anything — reviewing narration is read-only", async () => {
-    const project = makeProject({ scenes: scenes(["문장"]) });
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { project }));
+    const fetchMock = stubFetch(makeProject({ scenes: scenes(["문장"]) }));
     renderScreen(fetchMock);
 
     await screen.findByTestId("narration-count");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls.every(([, init]) => ((init as RequestInit | undefined)?.method ?? "GET") === "GET")).toBe(true);
   });
 });

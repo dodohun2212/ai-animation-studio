@@ -2,15 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import type { Project, Scene } from "@ai-animation-studio/shared";
 import { TTS_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 
-import { getProject, toDisplayError } from "../api/projectsApi.js";
+import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
 import { Spinner } from "./Spinner.js";
 import { StatusChip } from "./ui/StatusChip.js";
 
 interface Props {
   projectId: string;
   onBack: () => void;
-  /** The project's clip length, used to flag narration that looks too long to read inside one scene. */
-  clipDurationSeconds?: number;
 }
 
 type DisplayError = { code: string; message: string };
@@ -33,13 +31,19 @@ function narrationOf(scene: Scene): string {
   return typeof scene.narration === "string" ? scene.narration.trim() : "";
 }
 
-export function NarrationReviewScreen({ projectId, onBack, clipDurationSeconds }: Props) {
+export function NarrationReviewScreen({ projectId, onBack }: Props) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
+  /**
+   * Loaded separately and treated as optional: the clip length only powers a soft "this line looks long"
+   * warning, so a settings request that fails must not take the narration text down with it.
+   */
+  const [clipDurationSeconds, setClipDurationSeconds] = useState<number | null>(null);
   const loadRequest = useRef(0);
 
   useEffect(() => {
     const requestId = ++loadRequest.current;
     setState({ status: "loading" });
+    setClipDurationSeconds(null);
     getProject(projectId)
       .then((response) => {
         if (requestId !== loadRequest.current) return;
@@ -48,6 +52,14 @@ export function NarrationReviewScreen({ projectId, onBack, clipDurationSeconds }
       .catch((caught: unknown) => {
         if (requestId !== loadRequest.current) return;
         setState({ status: "error", error: toDisplayError(caught) });
+      });
+    getProjectSettings(projectId)
+      .then((response) => {
+        if (requestId !== loadRequest.current) return;
+        setClipDurationSeconds(response.settings.clipDurationSeconds);
+      })
+      .catch(() => {
+        // Length warnings are a convenience, not the point of this screen — silently do without them.
       });
   }, [projectId]);
 
