@@ -46,7 +46,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
-    expect(await screen.findByTestId("episode-image-continuity-available")).toHaveTextContent("에피소드 1의 6번 장면");
+    expect(await screen.findByTestId("episode-image-continuity-available")).toHaveTextContent("에피소드 1의 마지막 장면(6번)");
     expect(await screen.findByTestId("episode-image-review-1")).toHaveAttribute("data-status", "pending");
     fireEvent.click(screen.getAllByRole("button", { name: "이 이미지로 확정" })[0]!);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
@@ -77,8 +77,16 @@ describe("LongEpisodeImageGenerationScreen", () => {
 
   it("shows the estimated cost before generation, and the reported budget after it", async () => {
     const imageReviewEpisode = episode("images_review");
+    // Script approval happens before Asset Mapping approval in the workflow, so by "asset_mapping_approved" the
+    // Episode's own script already exists — the cost estimate reads its scene count from there (see the
+    // "falls back to the Episode's own script" test above), not a guessed six.
+    const scenes = [1, 2, 3, 4, 5, 6].map((number) => ({
+      number, description: "d", visualAction: "v", startMotion: "s", mainMotion: "m", endMotion: "e",
+      shotSize: "s", cameraAngle: "c", composition: "c", lensFeel: "l", focusSubject: "f", cameraMotion: "c",
+      environmentMotion: "e", motionSpeed: "n", motionIntensity: "m", expressionChange: "x", continuityHint: "h",
+    }));
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("asset_mapping_approved") }))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: { ...episode("asset_mapping_approved"), script: { title: "t", synopsis: "s", ending: "e", scenes } } }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
       .mockResolvedValueOnce(
         jsonResponse(200, {
@@ -143,5 +151,54 @@ describe("LongEpisodeImageGenerationScreen", () => {
     const notice = await screen.findByTestId("episode-image-continuity-unavailable");
     expect(notice.textContent).toContain("이어받지 않고");
     expect(notice.textContent).not.toContain("첫 에피소드라");
+  });
+
+  it("draws the scene list from the server's review list, not a six it made up itself", async () => {
+    // Four reviews means four scenes on screen and four in the price — the count is reported, never assumed.
+    const fourReviews = [1, 2, 3, 4].map((sceneNumber) => ({ sceneNumber, status: "pending" as const, updatedAt: "2026-08-23T00:00:00.000Z" }));
+    const ready = episode("images_review");
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: ready }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValue(jsonResponse(200, { episode: ready, reviews: fourReviews })));
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    await waitFor(() => expect(screen.getByTestId("episode-image-scene-4")).toBeTruthy());
+    expect(screen.queryByTestId("episode-image-scene-5")).toBeNull();
+    expect(screen.getByTestId("episode-image-review-summary").textContent).toContain("4장면 중");
+  });
+
+  it("falls back to the Episode's own script before any review exists", async () => {
+    // Right after Asset Mapping approval there are no reviews yet, but the approved script already knows how
+    // many scenes there are — so the list is still right instead of blank or a guessed six.
+    const scenes = [1, 2, 3].map((number) => ({
+      number, description: "d", visualAction: "v", startMotion: "s", mainMotion: "m", endMotion: "e",
+      shotSize: "s", cameraAngle: "c", composition: "c", lensFeel: "l", focusSubject: "f", cameraMotion: "c",
+      environmentMotion: "e", motionSpeed: "n", motionIntensity: "m", expressionChange: "x", continuityHint: "h",
+    }));
+    const withScript = { ...episode("asset_mapping_approved"), script: { title: "t", synopsis: "s", ending: "e", scenes } };
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: withScript }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValue(jsonResponse(200, { episode: withScript, reviews: [] })));
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    await waitFor(() => expect(screen.getByTestId("episode-image-scene-3")).toBeTruthy());
+    expect(screen.queryByTestId("episode-image-scene-4")).toBeNull();
+  });
+
+  it("names the previous Episode's last scene from the response instead of always saying six", async () => {
+    // The reference is "the previous Episode's last scene". Writing 6 into the sentence made that a claim the
+    // screen invented, and it goes wrong the moment an Episode is not six scenes long.
+    const ready = episode("images_review");
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: ready }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 2, sourceSceneNumber: 4, available: true } }))
+      .mockResolvedValue(jsonResponse(200, { episode: ready, reviews: reviews() })));
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={3} onBack={() => {}} />);
+
+    const line = await screen.findByTestId("episode-image-continuity-available");
+    expect(line.textContent).toContain("에피소드 2의 마지막 장면(4번)");
+    expect(line.textContent).not.toContain("6번 장면");
   });
 });

@@ -23,7 +23,6 @@ type ReviewState =
   | { status: "idle" | "loading" }
   | { status: "error"; error: DisplayError }
   | { status: "ready"; reviews: LongEpisodeImageReview[]; budget?: BudgetPreview; retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview } };
-const SCENES: SceneNumber[] = [1, 2, 3, 4, 5, 6];
 const SCENE_SLOT_LABEL: Record<string, string> = { generated: "생성됨", waiting: "대기 중", pending: "검토 대기", approved: "승인됨" };
 const sceneSlotLabel = (status: string) => SCENE_SLOT_LABEL[status] ?? status;
 
@@ -119,6 +118,18 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
 
   const reviewFor = (sceneNumber: SceneNumber) => reviewState.status === "ready" ? reviewState.reviews.find((item) => item.sceneNumber === sceneNumber) : undefined;
 
+  /**
+   * The Episode's scenes as the server reports them, never a constant of its own.
+   *
+   * This screen used to keep `[1..6]` locally, which made the count a claim the screen invented rather than one
+   * it was told — and it would have gone quietly wrong the moment Episodes stopped being six scenes. The review
+   * list is the authority once it loads; before that the loaded script is, and while neither has arrived the
+   * list is simply empty rather than guessing a number. The short project's video screen works the same way.
+   */
+  const sceneNumbers: SceneNumber[] = reviewState.status === "ready" && reviewState.reviews.length > 0
+    ? reviewState.reviews.map((item) => item.sceneNumber)
+    : (episode?.script?.scenes.map((scene) => scene.number) ?? []);
+
   return (
     <section className="mt-8 space-y-5">
       <button type="button" className={outlineButton} onClick={onBack}>Asset Mapping 검토로</button>
@@ -129,20 +140,20 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
       {loading && <Spinner label="에피소드 이미지 상태를 불러오는 중..." />}
       {episode && <p data-testid="episode-image-status" className="text-sm text-slate-400">에피소드 상태: {longEpisodeStatusLabel(episode.status)}</p>}
       {continuityReferenceLoading && <p data-testid="episode-image-continuity-loading" className="text-sm text-slate-400">이전 에피소드 연속성 참고 자료를 확인하는 중...</p>}
-      {!continuityReferenceLoading && continuityReference?.available && <p data-testid="episode-image-continuity-available" className="text-sm text-violet-200">에피소드 {continuityReference.previousEpisodeNumber}의 6번 장면이 이 에피소드 1번 장면의 기준이 됩니다.</p>}
+      {!continuityReferenceLoading && continuityReference?.available && <p data-testid="episode-image-continuity-available" className="text-sm text-violet-200">에피소드 {continuityReference.previousEpisodeNumber}의 마지막 장면({continuityReference.sourceSceneNumber}번)이 이 에피소드 1번 장면의 기준이 됩니다.</p>}
       {/* Episode 1 has no previous Episode by definition — saying a reference is "missing" there reads as a
           prerequisite the user failed to meet, when nothing is wrong at all. */}
       {!continuityReferenceLoading && !continuityReference?.available && <p data-testid="episode-image-continuity-unavailable" className="text-sm text-slate-400">{episodeNumber <= 1 ? "첫 에피소드라 이어받을 이전 장면이 없습니다. 이 에피소드부터 새로 시작합니다." : "이전 에피소드의 마지막 장면 자료가 아직 없어서, 이어받지 않고 이 에피소드만으로 만듭니다."}</p>}
       {episode && !eligible && !reviewable && <p data-testid="episode-image-not-eligible" className="text-sm text-amber-300">에피소드 이미지 생성을 시작하려면 먼저 Asset Mapping을 승인하세요.</p>}
       <ol data-testid="episode-image-scenes" className="list-decimal space-y-1 pl-5 text-sm text-slate-300">
-        {SCENES.map((sceneNumber) => <li key={sceneNumber} data-testid={`episode-image-scene-${sceneNumber}`} data-status={reviewFor(sceneNumber)?.status ?? (generation ? "generated" : "waiting")}>장면 {sceneNumber}: {sceneSlotLabel(reviewFor(sceneNumber)?.status ?? (generation ? "generated" : "waiting"))}</li>)}
+        {sceneNumbers.map((sceneNumber) => <li key={sceneNumber} data-testid={`episode-image-scene-${sceneNumber}`} data-status={reviewFor(sceneNumber)?.status ?? (generation ? "generated" : "waiting")}>장면 {sceneNumber}: {sceneSlotLabel(reviewFor(sceneNumber)?.status ?? (generation ? "generated" : "waiting"))}</li>)}
       </ol>
       {eligible && !generation && <button type="button" disabled={confirmingGeneration} className={primaryButton} onClick={() => setConfirmingGeneration(true)}>이미지 생성 시작</button>}
       {confirmingGeneration && (
         <div role="alertdialog" data-testid="episode-image-generate-confirm" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
-          <p className="text-sm text-amber-200">이 에피소드의 이미지 {SCENES.length}장을 생성할까요? 이 확인창을 연 것만으로는 아직 요청이 가지 않았습니다.</p>
+          <p className="text-sm text-amber-200">이 에피소드의 이미지 {sceneNumbers.length}장을 생성할까요? 이 확인창을 연 것만으로는 아직 요청이 가지 않았습니다.</p>
           <p data-testid="episode-image-cost-estimate" className="text-xs text-slate-300 tabular-nums">
-            예상 비용: ${(SCENES.length * IMAGE_ESTIMATED_COST_USD).toFixed(2)} ({SCENES.length}장 × $
+            예상 비용: ${(sceneNumbers.length * IMAGE_ESTIMATED_COST_USD).toFixed(2)} ({sceneNumbers.length}장 × $
             {IMAGE_ESTIMATED_COST_USD.toFixed(2)}) · 키가 연결되어 있을 때만 청구됩니다
           </p>
           <div className="flex gap-3">
@@ -164,10 +175,10 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
           <h3 className="flex items-center gap-2.5 text-base font-semibold"><span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />이미지 검토</h3>
           {/* Design system §4.3: overall confirmation progress before the per-scene cards. */}
           <p className="text-sm text-slate-300 tabular-nums" data-testid="episode-image-review-summary">
-            {SCENES.length}장면 중 {SCENES.filter((sceneNumber) => reviewFor(sceneNumber)?.status === "approved").length}장면 확정
+            {sceneNumbers.length}장면 중 {sceneNumbers.filter((sceneNumber) => reviewFor(sceneNumber)?.status === "approved").length}장면 확정
           </p>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {SCENES.map((sceneNumber) => {
+          {sceneNumbers.map((sceneNumber) => {
             const review = reviewFor(sceneNumber);
             if (!review) return null;
             const approving = approvePending.has(sceneNumber);
