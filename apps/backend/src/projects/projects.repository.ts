@@ -2,7 +2,7 @@ import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
 
 import { atomicWriteUtf8File } from "./atomic-file.js";
-import { archiveProjectDirectory } from "./project-archive.js";
+import { archiveProjectDirectory, deleteArchivedProjectDirectory, listArchivedProjectDirectories, restoreProjectDirectory } from "./project-archive.js";
 import { dataInvalid, jsonMalformed, projectAlreadyExists, projectNotFound, storageError } from "./project-api.error.js";
 import { resolveSafeProjectDirectory } from "./project-id.js";
 import { parseStoredProject, type StoredProject } from "./project-storage.schema.js";
@@ -25,10 +25,20 @@ export class LocalProjectRepository {
     private readonly projectsRoot: string,
     private readonly writeProjectFile: WriteProjectFile = atomicWriteUtf8File,
     private readonly moveDirectory: ArchiveDirectory = archiveProjectDirectory,
+    private readonly restoreDirectory: ArchiveDirectory = restoreProjectDirectory,
+    private readonly removeArchivedDirectory: ArchiveDirectory = deleteArchivedProjectDirectory,
   ) {}
 
   async archive(projectId: string): Promise<void> {
     await this.moveDirectory(this.projectsRoot, projectId);
+  }
+
+  async restore(projectId: string): Promise<void> {
+    await this.restoreDirectory(this.projectsRoot, projectId);
+  }
+
+  async deleteArchived(projectId: string): Promise<void> {
+    await this.removeArchivedDirectory(this.projectsRoot, projectId);
   }
 
   private projectFile(projectId: string): { directory: string; file: string } {
@@ -78,6 +88,17 @@ export class LocalProjectRepository {
 
   async findById(projectId: string): Promise<StoredProject> {
     const { file } = this.projectFile(projectId);
+    return this.readStoredProject(file, projectId);
+  }
+
+  /** Same as {@link findById} but reads from `<projectsRoot>/.archive/<projectId>` instead of the active location. */
+  async findArchivedById(projectId: string): Promise<StoredProject> {
+    const archiveRoot = path.resolve(this.projectsRoot, ".archive");
+    const directory = resolveSafeProjectDirectory(archiveRoot, projectId);
+    return this.readStoredProject(path.join(directory, "project.json"), projectId);
+  }
+
+  private async readStoredProject(file: string, projectId: string): Promise<StoredProject> {
     let raw: string;
     try {
       raw = await fsPromises.readFile(file, "utf8");
@@ -100,6 +121,20 @@ export class LocalProjectRepository {
       throw dataInvalid("Stored project ID does not match its directory.");
     }
     return stored;
+  }
+
+  /** Lists every readable archived project alongside its approximate archived-at timestamp. Unreadable entries are silently skipped, mirroring {@link list}. */
+  async listArchived(): Promise<Array<{ project: StoredProject; archivedAt: string }>> {
+    const entries = await listArchivedProjectDirectories(this.projectsRoot);
+    const results: Array<{ project: StoredProject; archivedAt: string }> = [];
+    for (const entry of entries) {
+      try {
+        results.push({ project: await this.findArchivedById(entry.projectId), archivedAt: entry.archivedAt });
+      } catch {
+        continue;
+      }
+    }
+    return results;
   }
 
   async save(stored: StoredProject): Promise<void> {

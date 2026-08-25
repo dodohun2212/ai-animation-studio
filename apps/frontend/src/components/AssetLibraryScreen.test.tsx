@@ -292,11 +292,11 @@ describe("AssetLibraryScreen", () => {
     const list = await screen.findByRole("list", { name: "에셋 목록" });
     fireEvent.click(within(list).getByText("Hero references"));
     const detail = await screen.findByRole("region", { name: "에셋 상세" });
-    const set = within(detail).getByRole("region", { name: "캐릭터 폴더 구성" });
-    await waitFor(() => expect(within(set).getByRole("list", { name: "순서가 있는 캐릭터 참고 이미지" }).textContent).toContain("1. Front"));
+    const set = within(detail).getByRole("region", { name: "폴더 구성" });
+    await waitFor(() => expect(within(set).getByRole("list", { name: "순서가 있는 참고 이미지" }).textContent).toContain("1. Front"));
 
     fireEvent.click(within(set).getAllByRole("button", { name: "아래로" })[0]!);
-    await waitFor(() => expect(within(set).getByRole("list", { name: "순서가 있는 캐릭터 참고 이미지" }).textContent).toContain("1. Side"));
+    await waitFor(() => expect(within(set).getByRole("list", { name: "순서가 있는 참고 이미지" }).textContent).toContain("1. Side"));
     const patchCalls = fetchMock.mock.calls.filter(([url]) => String(url) === "/assets/FOLDER-CHAR/character-reference-set") as Array<[string, RequestInit]>;
     expect(patchCalls[0]![1].method).toBe("PATCH");
     expect(JSON.parse(String(patchCalls[0]![1].body))).toEqual({ childAssetIds: ["CHAR-2", "CHAR-1"], thumbnailAssetId: "CHAR-1" });
@@ -962,6 +962,64 @@ describe("AssetLibraryScreen", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("creates a folder of any asset type with a common description, then opens it without the character-only role selector", async () => {
+    const folder = makeAsset({ assetId: "FOLDER-BG", assetType: "background", displayName: "숲 배경", description: "밤의 대나무 숲", isFolder: true, imageAvailable: false, contentSha256: "", versions: [], referenceImages: [], childAssetIds: [], thumbnailAssetId: "" });
+    const fetchMock = stubFetchByRoute({
+      "GET /assets": [{ assets: [] }, { assets: [folder] }],
+      "POST /assets/folders": { asset: folder },
+      "GET /assets/FOLDER-BG": { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AssetLibraryScreen onBack={() => {}} />);
+    await screen.findByText("등록된 에셋이 없습니다.");
+
+    fireEvent.click(screen.getByTestId("folder-create-toggle"));
+    const form = screen.getByRole("form", { name: "폴더 만들기" });
+    fireEvent.change(within(form).getByLabelText("폴더 이름"), { target: { value: "숲 배경" } });
+    fireEvent.change(within(form).getByLabelText("폴더 유형"), { target: { value: "background" } });
+    fireEvent.change(within(form).getByLabelText("공통 특징(선택)"), { target: { value: "밤의 대나무 숲" } });
+    fireEvent.click(within(form).getByRole("button", { name: "폴더 만들기" }));
+
+    const detail = await screen.findByRole("region", { name: "에셋 상세" });
+    const createCall = fetchMock.mock.calls.find(([url, init]) => String(url) === "/assets/folders" && (init as RequestInit | undefined)?.method === "POST")! as [string, RequestInit];
+    expect(JSON.parse(String(createCall[1].body))).toEqual({ assetType: "background", displayName: "숲 배경", description: "밤의 대나무 숲" });
+    // Non-character folders render the composition region but never the character-only role selector.
+    const set = within(detail).getByRole("region", { name: "폴더 구성" });
+    expect(within(set).queryByLabelText("역할")).toBeNull();
+  });
+
+  it("saves a child's individual description from the folder composition list, only when it differs from the saved value", async () => {
+    const child = makeAsset({ assetId: "CHAR-1", assetType: "character", displayName: "Front", description: "", parentFolderId: "FOLDER-CHAR", sortOrder: 0 });
+    const folder = makeAsset({ assetId: "FOLDER-CHAR", assetType: "character", displayName: "Hero references", isFolder: true, imageAvailable: false, contentSha256: "", versions: [], referenceImages: [], childAssetIds: ["CHAR-1"], thumbnailAssetId: "CHAR-1" });
+    const updatedChild = { ...child, description: "정면, 웃는 표정" };
+    const fetchMock = stubFetchByRoute({
+      "GET /assets": { assets: [folder, child] },
+      "GET /assets/FOLDER-CHAR": { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false },
+      "GET /assets/CHAR-1": { asset: child, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
+      "PATCH /assets/CHAR-1": { asset: updatedChild },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    const list = await screen.findByRole("list", { name: "에셋 목록" });
+    fireEvent.click(within(list).getByText("Hero references"));
+    const detail = await screen.findByRole("region", { name: "에셋 상세" });
+    const set = within(detail).getByRole("region", { name: "폴더 구성" });
+    await waitFor(() => expect(within(set).getByLabelText("개별 특징")).toBeTruthy());
+
+    const saveButton = screen.getByTestId("child-description-save-CHAR-1");
+    expect(saveButton).toBeDisabled(); // no edit yet — nothing to save
+    fireEvent.change(within(set).getByLabelText("개별 특징"), { target: { value: "정면, 웃는 표정" } });
+    expect(saveButton).not.toBeDisabled();
+    fireEvent.click(saveButton);
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => String(url) === "/assets/CHAR-1" && (init as RequestInit | undefined)?.method === "PATCH")).toBe(true));
+    const [, patchInit] = fetchMock.mock.calls.find(([url, init]) => String(url) === "/assets/CHAR-1" && (init as RequestInit | undefined)?.method === "PATCH")! as [string, RequestInit];
+    expect(JSON.parse(String(patchInit.body))).toEqual({ description: "정면, 웃는 표정" });
+    await waitFor(() => expect((within(set).getByLabelText("개별 특징") as HTMLInputElement).value).toBe("정면, 웃는 표정"));
+    expect(screen.getByTestId("child-description-save-CHAR-1")).toBeDisabled(); // draft consumed after save
   });
 
   it("calls onBack when the back button is clicked", async () => {

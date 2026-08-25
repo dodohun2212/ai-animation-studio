@@ -245,6 +245,13 @@ export interface GetLongEpisodeContinuityReferenceResponse { reference: LongEpis
 /** Archive is a recoverable local lifecycle action and requires the exact project confirmation text. */
 export interface ArchiveProjectRequest { confirmation: string; }
 export interface ArchiveProjectResponse { archivedProjectId: string; }
+/** A short project currently sitting in the recoverable archive, listed on the "보관함" (Archive) screen. */
+export interface ArchivedProjectSummary extends ProjectSummary { archivedAt: string; }
+export interface ListArchivedProjectsResponse { projects: ArchivedProjectSummary[]; }
+export interface RestoreProjectResponse { restoredProjectId: string; }
+/** Permanently and irreversibly deletes an archived project's data from disk; only ever operates on a project already in the recoverable archive, never an active one. Requires the exact confirmation text, same convention as {@link ArchiveProjectRequest}. */
+export interface DeleteArchivedProjectRequest { confirmation: string; }
+export interface DeleteArchivedProjectResponse { deletedProjectId: string; }
 /**
  * Reorders a Folder's already-linked children and selects its representative image. Despite the name, this
  * works for a Folder of any `AssetType`, not only `"character"` — kept as-is to avoid an unrelated rename.
@@ -271,6 +278,9 @@ export interface LongProject extends LongProjectSummary {
 export interface CreateLongProjectRequest { projectId: string; settings: LongProjectSettings; }
 export interface CreateLongProjectResponse { project: LongProject; }
 export interface ListLongProjectsResponse { projects: LongProjectSummary[]; }
+/** A long project currently sitting in the recoverable archive, listed on the "보관함" (Archive) screen. */
+export interface ArchivedLongProjectSummary extends LongProjectSummary { archivedAt: string; }
+export interface ListArchivedLongProjectsResponse { projects: ArchivedLongProjectSummary[]; }
 export interface GetLongProjectResponse { project: LongProject; }
 export interface GetLongProjectSettingsResponse { settings: LongProjectSettings; }
 export interface UpdateLongProjectSettingsRequest { settings: LongProjectSettings; }
@@ -848,6 +858,11 @@ export const API_ROUTES = {
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/continuity-reference`,
   projectArchive: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/archive`,
   longProjectArchive: (projectId: string) => `/long-projects/${encodeURIComponent(projectId)}/archive`,
+  /** `projectArchive`/`longProjectArchive` above double as the hard-delete route (POST archives, DELETE permanently deletes); these list what's in the archive, and restore has its own path below. */
+  projectsArchived: "/projects/archived",
+  longProjectsArchived: "/long-projects/archived",
+  projectRestore: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/restore`,
+  longProjectRestore: (projectId: string) => `/long-projects/${encodeURIComponent(projectId)}/restore`,
   project: (projectId: string) => `/projects/${projectId}`,
   projectSettings: (projectId: string) =>
     `/projects/${encodeURIComponent(projectId)}/settings`,

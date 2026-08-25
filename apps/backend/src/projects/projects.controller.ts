@@ -1,15 +1,19 @@
-import { Body, Controller, Get, Param, Patch, Post, Put } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put } from "@nestjs/common";
 import {
   API_ROUTES,
   type CreateProjectRequest,
   type CreateProjectResponse,
+  type DeleteArchivedProjectRequest,
+  type DeleteArchivedProjectResponse,
   type GetProjectResponse,
   type GetProjectSettingsResponse,
   type GetShortProjectAssetReferencesResponse,
   type GetShortProjectCastResponse,
   type GetShortProjectContinuityResponse,
+  type ListArchivedProjectsResponse,
   type ListProjectsResponse,
   type ListShortProjectContinuityOptionsResponse,
+  type RestoreProjectResponse,
   type SetShortProjectContinuityResponse,
   type UpdateProjectSettingsRequest,
   type UpdateProjectSettingsResponse,
@@ -33,6 +37,11 @@ export class ProjectsController {
   @Get(API_ROUTES.projects)
   list(): Promise<ListProjectsResponse> {
     return this.projectsService.listProjects();
+  }
+
+  @Get(API_ROUTES.projectsArchived)
+  listArchived(): Promise<ListArchivedProjectsResponse> {
+    return this.projectsService.listArchivedProjects();
   }
 
   @Get(`${API_ROUTES.projects}/:projectId`)
@@ -91,5 +100,15 @@ export class ProjectsController {
   @Post(`${API_ROUTES.projects}/:projectId/archive`)
   archive(@Param("projectId") projectId: string, @Body() body: ArchiveProjectRequest): Promise<ArchiveProjectResponse> {
     return this.projectsService.archiveProject(projectId, body);
+  }
+
+  @Post(`${API_ROUTES.projects}/:projectId/restore`)
+  restore(@Param("projectId") projectId: string): Promise<RestoreProjectResponse> {
+    return this.projectsService.restoreProject(projectId);
+  }
+
+  @Delete(`${API_ROUTES.projects}/:projectId/archive`)
+  deleteArchived(@Param("projectId") projectId: string, @Body() body: DeleteArchivedProjectRequest): Promise<DeleteArchivedProjectResponse> {
+    return this.projectsService.deleteArchivedProject(projectId, body);
   }
 }

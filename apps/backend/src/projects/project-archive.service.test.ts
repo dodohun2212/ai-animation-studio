@@ -56,4 +56,50 @@ describe("short-project recoverable archive", () => {
     await expect(failing.archiveProject("short", { confirmation: "Exact topic" })).rejects.toMatchObject({ response: { code: "PROJECT_STORAGE_ERROR" } });
     await expect(fs.readFile(path.join(root, "short", "nested", "keep.bin"), "utf8")).resolves.toBe("preserve");
   });
+
+  it("lists archived projects with an approximate archived-at timestamp, newest first, skipping unreadable entries", async () => {
+    await service.createProject({ projectId: "second", topic: "Second topic" });
+    await service.archiveProject("short", { confirmation: "Exact topic" });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await service.archiveProject("second", { confirmation: "Second topic" });
+    await fs.mkdir(path.join(root, ".archive", "garbage"), { recursive: true });
+
+    const listed = await service.listArchivedProjects();
+    expect(listed.projects.map((project) => project.id)).toEqual(["second", "short"]);
+    expect(listed.projects[0]).toMatchObject({ id: "second", topic: "Second topic" });
+    expect(typeof listed.projects[0]!.archivedAt).toBe("string");
+    expect(await service.listProjects()).toEqual({ projects: [] });
+  });
+
+  it("restores an archived project back to its active location, preserving contents", async () => {
+    await service.archiveProject("short", { confirmation: "Exact topic" });
+    await expect(service.restoreProject("short")).resolves.toEqual({ restoredProjectId: "short" });
+    await expect(fs.readFile(path.join(root, "short", "nested", "keep.bin"), "utf8")).resolves.toBe("preserve");
+    expect(await service.listArchivedProjects()).toEqual({ projects: [] });
+    await expect(service.getProject("short")).resolves.toMatchObject({ project: { topic: "Exact topic" } });
+  });
+
+  it("rejects restoring a project that is not archived and a restore collision with an active project", async () => {
+    await expect(service.restoreProject("short")).rejects.toMatchObject({ response: { code: "PROJECT_NOT_FOUND" } });
+    await expect(service.restoreProject("../short")).rejects.toMatchObject({ response: { code: "UNSAFE_PROJECT_ID" } });
+
+    await service.archiveProject("short", { confirmation: "Exact topic" });
+    await service.createProject({ projectId: "short", topic: "Recreated" });
+    await expect(service.restoreProject("short")).rejects.toMatchObject({ response: { code: "PROJECT_RESTORE_COLLISION" } });
+    await expect(fs.readFile(path.join(root, ".archive", "short", "nested", "keep.bin"), "utf8")).resolves.toBe("preserve");
+  });
+
+  it("permanently deletes an archived project after exact confirmation, never touching an active project of the same ID", async () => {
+    await service.archiveProject("short", { confirmation: "Exact topic" });
+    for (const confirmation of ["", "Exact topic ", "wrong"]) {
+      await expect(service.deleteArchivedProject("short", { confirmation })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    }
+    await service.createProject({ projectId: "active", topic: "Active project" });
+    await expect(service.deleteArchivedProject("active", { confirmation: "Active project" })).rejects.toMatchObject({ response: { code: "PROJECT_NOT_FOUND" } });
+    await expect(fs.access(path.join(root, "active"))).resolves.toBeUndefined();
+
+    await expect(service.deleteArchivedProject("short", { confirmation: "Exact topic" })).resolves.toEqual({ deletedProjectId: "short" });
+    await expect(fs.access(path.join(root, ".archive", "short"))).rejects.toBeTruthy();
+    expect(await service.listArchivedProjects()).toEqual({ projects: [] });
+  });
 });

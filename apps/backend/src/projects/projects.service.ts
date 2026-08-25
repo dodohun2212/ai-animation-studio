@@ -5,13 +5,17 @@ import type {
   ArchiveProjectResponse,
   CreateProjectRequest,
   CreateProjectResponse,
+  DeleteArchivedProjectRequest,
+  DeleteArchivedProjectResponse,
   GetProjectResponse,
   GetProjectSettingsResponse,
   GetShortProjectAssetReferencesResponse,
   GetShortProjectCastResponse,
   GetShortProjectContinuityResponse,
+  ListArchivedProjectsResponse,
   ListProjectsResponse,
   ListShortProjectContinuityOptionsResponse,
+  RestoreProjectResponse,
   SetShortProjectContinuityRequest,
   SetShortProjectContinuityResponse,
   UpdateProjectSettingsRequest,
@@ -22,7 +26,7 @@ import type {
   UpdateShortProjectCastResponse,
 } from "@ai-animation-studio/shared";
 
-import { invalidRequest, projectArchiveCollision, projectArchiveNotAllowed, storageError } from "./project-api.error.js";
+import { invalidRequest, projectArchiveCollision, projectArchiveNotAllowed, projectNotFound, projectRestoreCollision, storageError } from "./project-api.error.js";
 import { createStoredProject, toApiProject, toApiSummary } from "./project.mapper.js";
 import { applyShortProjectAssetReferences, parseShortProjectAssetReferences, toShortProjectAssetReferences } from "./project-asset-references.js";
 import { applyShortProjectCast, parseShortProjectCast, toShortProjectCast } from "./project-cast.js";
@@ -89,6 +93,41 @@ export class ProjectsService {
       throw storageError(`Failed to archive project "${id}".`);
     }
     return { archivedProjectId: id };
+  }
+
+  async listArchivedProjects(): Promise<ListArchivedProjectsResponse> {
+    const entries = await this.repository.listArchived();
+    const sorted = [...entries].sort((a, b) => Date.parse(b.archivedAt) - Date.parse(a.archivedAt));
+    return { projects: sorted.map(({ project, archivedAt }) => ({ ...toApiSummary(project), archivedAt })) };
+  }
+
+  async restoreProject(projectId: string): Promise<RestoreProjectResponse> {
+    const id = typeof projectId === "string" ? projectId.trim() : "";
+    try {
+      await this.repository.restore(id);
+    } catch (error) {
+      if (error instanceof Error && error.message === "archived project not found") throw projectNotFound(id);
+      if (error instanceof Error && error.message === "restore destination already exists") throw projectRestoreCollision();
+      if (error && typeof error === "object" && "getStatus" in error) throw error;
+      throw storageError(`Failed to restore project "${id}".`);
+    }
+    return { restoredProjectId: id };
+  }
+
+  async deleteArchivedProject(projectId: string, request: DeleteArchivedProjectRequest): Promise<DeleteArchivedProjectResponse> {
+    const id = typeof projectId === "string" ? projectId.trim() : "";
+    const archived = await this.repository.findArchivedById(id);
+    if (!request || Object.keys(request).length !== 1 || typeof request.confirmation !== "string"
+      || !request.confirmation.trim() || request.confirmation !== archived.topic) {
+      throw invalidRequest("Delete confirmation must exactly match the project topic.", { field: "confirmation" });
+    }
+    try {
+      await this.repository.deleteArchived(id);
+    } catch (error) {
+      if (error && typeof error === "object" && "getStatus" in error) throw error;
+      throw storageError(`Failed to delete archived project "${id}".`);
+    }
+    return { deletedProjectId: id };
   }
 
   async getProjectSettings(projectId: string): Promise<GetProjectSettingsResponse> {

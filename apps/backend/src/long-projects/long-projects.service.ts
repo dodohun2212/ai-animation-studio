@@ -2,11 +2,11 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import type { ApproveLongProjectOutlineRequest, ApproveLongProjectOutlineResponse, ArchiveProjectRequest, ArchiveProjectResponse, CreateLongProjectOutlinePreviewResponse, CreateLongProjectRequest, CreateLongProjectResponse, GetLongProjectResponse, GetLongProjectSettingsResponse, ListLongProjectsResponse, LongEpisodeOutline, LongProject, LongProjectSettings, LongProjectSummary, UpdateLongProjectSettingsRequest, UpdateLongProjectSettingsResponse } from "@ai-animation-studio/shared";
+import type { ApproveLongProjectOutlineRequest, ApproveLongProjectOutlineResponse, ArchivedLongProjectSummary, ArchiveProjectRequest, ArchiveProjectResponse, CreateLongProjectOutlinePreviewResponse, CreateLongProjectRequest, CreateLongProjectResponse, DeleteArchivedProjectRequest, DeleteArchivedProjectResponse, GetLongProjectResponse, GetLongProjectSettingsResponse, ListArchivedLongProjectsResponse, ListLongProjectsResponse, LongEpisodeOutline, LongProject, LongProjectSettings, LongProjectSummary, RestoreProjectResponse, UpdateLongProjectSettingsRequest, UpdateLongProjectSettingsResponse } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
-import { archiveProjectDirectory } from "../projects/project-archive.js";
+import { archiveProjectDirectory, deleteArchivedProjectDirectory, listArchivedProjectDirectories, restoreProjectDirectory } from "../projects/project-archive.js";
 import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
-import { longArchiveCollision, longArchiveNotAllowed, longExists, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longOutlineNotAllowed, longOutlineStale, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { longArchiveCollision, longArchiveNotAllowed, longExists, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longOutlineNotAllowed, longOutlineStale, longRestoreCollision, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 
 const MAX_EPISODES = Number(process.env.APP_MAX_LONG_PROJECT_EPISODES ?? "60");
 const settingKeys = ["title", "logline", "overview", "genre", "tone", "theme", "episodeCount", "episodeDurationSeconds", "platform", "aspectRatio", "audience", "notes", "startingState", "midpoint", "endingDirection", "storyFlowSummary"] as const;
@@ -20,9 +20,17 @@ function summary(s: Stored): LongProjectSummary { return { id: s.project_id, tit
 
 @Injectable()
 export class LongProjectsService {
-  constructor(private readonly projectsRoot: string, private readonly archiveDirectory: (projectsRoot: string, projectId: string) => Promise<void> = archiveProjectDirectory) {}
+  constructor(
+    private readonly projectsRoot: string,
+    private readonly archiveDirectory: (projectsRoot: string, projectId: string) => Promise<void> = archiveProjectDirectory,
+    private readonly restoreDirectory: (projectsRoot: string, projectId: string) => Promise<void> = restoreProjectDirectory,
+    private readonly deleteArchivedDirectory: (projectsRoot: string, projectId: string) => Promise<void> = deleteArchivedProjectDirectory,
+  ) {}
   private root(id: string): string { if (!isSafeProjectId(id)) throw longUnsafeId(); return path.join(resolveSafeProjectDirectory(this.projectsRoot, id), "long_story"); }
   private files(id: string) { const root = this.root(id); return { root, project: path.join(root, "project.json"), bible: path.join(root, "story_bible.json"), outlines: path.join(root, "episode_outlines.json") }; }
+  private archiveRoot(id: string): string { if (!isSafeProjectId(id)) throw longUnsafeId(); return path.join(resolveSafeProjectDirectory(path.resolve(this.projectsRoot, ".archive"), id), "long_story"); }
+  private archiveFile(id: string): string { return path.join(this.archiveRoot(id), "project.json"); }
+  private async loadArchived(id: string): Promise<Stored> { const stored = this.parseStored(await this.readJson(this.archiveFile(id))); if (stored.project_id !== id) throw longInvalidData(); return stored; }
   private async readJson(file: string): Promise<unknown> { try { return JSON.parse(await fs.readFile(file, "utf8")); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw longNotFound(); if (error instanceof SyntaxError) throw longMalformed(); throw longStorageError(); } }
   private parseStored(value: unknown): Stored { const d = object(value); const known = new Set(["project_id", "project_type", "title", "logline", "overview", "genre", "tone", "theme", "episode_count", "episode_duration_seconds", "platform", "aspect_ratio", "audience", "notes", "starting_state", "midpoint", "ending_direction", "story_flow_summary", "created_at", "updated_at", "outline_status", "outline_prompt_request"]); if (Object.keys(d).some((key) => !known.has(key))) throw longInvalidData(); try { const result = setStored(text(d.project_id, true), settings({ title: d.title, logline: d.logline, overview: d.overview, genre: d.genre, tone: d.tone, theme: d.theme, episodeCount: d.episode_count, episodeDurationSeconds: d.episode_duration_seconds, platform: d.platform, aspectRatio: d.aspect_ratio, audience: d.audience, notes: d.notes, startingState: d.starting_state, midpoint: d.midpoint, endingDirection: d.ending_direction, storyFlowSummary: d.story_flow_summary }), text(d.updated_at, true), text(d.created_at, true), d.outline_status === "outline_ready" ? "outline_ready" : d.outline_status === "planned" ? "planned" : (() => { throw longInvalidData(); })()); if (d.project_type !== "long_story_project") throw longInvalidData(); if (d.outline_prompt_request !== undefined) result.outline_prompt_request = d.outline_prompt_request as Stored["outline_prompt_request"]; return result; } catch (error) { if (error instanceof Error && "getStatus" in error) throw error; throw longInvalidData(); } }
   private async load(id: string): Promise<Stored> { const stored = this.parseStored(await this.readJson(this.files(id).project)); if (stored.project_id !== id) throw longInvalidData(); return stored; }
@@ -40,6 +48,34 @@ export class LongProjectsService {
     try { await this.archiveDirectory(this.projectsRoot, projectId); }
     catch (error) { if (error instanceof Error && error.message === "archive destination already exists") throw longArchiveCollision(); throw longStorageError(); }
     return { archivedProjectId: projectId };
+  }
+  async listArchived(): Promise<ListArchivedLongProjectsResponse> {
+    const entries = await listArchivedProjectDirectories(this.projectsRoot);
+    const results: ArchivedLongProjectSummary[] = [];
+    for (const entry of entries) {
+      try { results.push({ ...summary(await this.loadArchived(entry.projectId)), archivedAt: entry.archivedAt }); }
+      catch { /* Python catalog skips unreadable entries. */ }
+    }
+    return { projects: results.sort((a, b) => Date.parse(b.archivedAt) - Date.parse(a.archivedAt)) };
+  }
+  async restore(id: string): Promise<RestoreProjectResponse> {
+    const projectId = typeof id === "string" ? id.trim() : "";
+    try { await this.restoreDirectory(this.projectsRoot, projectId); }
+    catch (error) {
+      if (error instanceof Error && error.message === "archived project not found") throw longNotFound();
+      if (error instanceof Error && error.message === "restore destination already exists") throw longRestoreCollision();
+      if (error && typeof error === "object" && "getStatus" in error) throw error;
+      throw longStorageError();
+    }
+    return { restoredProjectId: projectId };
+  }
+  async deleteArchived(id: string, request: DeleteArchivedProjectRequest): Promise<DeleteArchivedProjectResponse> {
+    const projectId = typeof id === "string" ? id.trim() : "";
+    const stored = await this.loadArchived(projectId);
+    if (!request || Object.keys(request).length !== 1 || typeof request.confirmation !== "string" || !request.confirmation.trim() || request.confirmation !== stored.title) throw longInvalidRequest("Delete confirmation must exactly match the long-project title.");
+    try { await this.deleteArchivedDirectory(this.projectsRoot, projectId); }
+    catch (error) { if (error && typeof error === "object" && "getStatus" in error) throw error; throw longStorageError(); }
+    return { deletedProjectId: projectId };
   }
   async getSettings(id: string): Promise<GetLongProjectSettingsResponse> { return { settings: toSettings(await this.load(id.trim())) }; }
   async updateSettings(id: string, request: UpdateLongProjectSettingsRequest): Promise<UpdateLongProjectSettingsResponse> { const prior = await this.load(id.trim()); const updated = setStored(prior.project_id, settings(request?.settings), new Date().toISOString(), prior.created_at, prior.outline_status); updated.outline_prompt_request = prior.outline_prompt_request; try { await atomicWriteUtf8File(this.files(prior.project_id).project, JSON.stringify(updated, null, 2)); } catch { throw longStorageError(); } return { project: await this.project(prior.project_id) }; }

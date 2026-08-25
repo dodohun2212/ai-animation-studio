@@ -48,4 +48,43 @@ describe("long-project recoverable archive", () => {
     await expect(failing.archive("long", { confirmation: "Exact long title" })).rejects.toMatchObject({ response: { code: "LONG_PROJECT_STORAGE_ERROR" } });
     await expect(fs.readFile(path.join(projectsRoot, "long", "long_story", "episodes", "001", "history", "keep.txt"), "utf8")).resolves.toBe("all episode history");
   });
+
+  it("lists archived long projects with an archived-at timestamp and restores one back to its active location", async () => {
+    await service.archive("long", { confirmation: "Exact long title" });
+
+    const listed = await service.listArchived();
+    expect(listed.projects).toHaveLength(1);
+    expect(listed.projects[0]).toMatchObject({ id: "long", title: "Exact long title" });
+    expect(typeof listed.projects[0]!.archivedAt).toBe("string");
+    expect(await service.list()).toEqual({ projects: [] });
+
+    await expect(service.restore("long")).resolves.toEqual({ restoredProjectId: "long" });
+    await expect(fs.readFile(path.join(projectsRoot, "long", "long_story", "episodes", "001", "history", "keep.txt"), "utf8")).resolves.toBe("all episode history");
+    expect(await service.listArchived()).toEqual({ projects: [] });
+    await expect(service.get("long")).resolves.toMatchObject({ project: { title: "Exact long title" } });
+  });
+
+  it("rejects restoring a long project that is not archived and a restore collision with an active project", async () => {
+    await expect(service.restore("long")).rejects.toMatchObject({ response: { code: "LONG_PROJECT_NOT_FOUND" } });
+    await expect(service.restore("../long")).rejects.toMatchObject({ response: { code: "UNSAFE_PROJECT_ID" } });
+
+    await service.archive("long", { confirmation: "Exact long title" });
+    await service.create({ projectId: "long", settings: { ...settings, title: "Recreated" } });
+    await expect(service.restore("long")).rejects.toMatchObject({ response: { code: "LONG_PROJECT_RESTORE_COLLISION" } });
+    await expect(fs.readFile(path.join(projectsRoot, ".archive", "long", "long_story", "episodes", "001", "history", "keep.txt"), "utf8")).resolves.toBe("all episode history");
+  });
+
+  it("permanently deletes an archived long project after exact confirmation, never touching an active project of the same ID", async () => {
+    await service.archive("long", { confirmation: "Exact long title" });
+    for (const confirmation of ["", "Exact long title ", "wrong"]) {
+      await expect(service.deleteArchived("long", { confirmation })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    }
+    await service.create({ projectId: "active", settings: { ...settings, title: "Active long project" } });
+    await expect(service.deleteArchived("active", { confirmation: "Active long project" })).rejects.toMatchObject({ response: { code: "LONG_PROJECT_NOT_FOUND" } });
+    await expect(fs.access(path.join(projectsRoot, "active"))).resolves.toBeUndefined();
+
+    await expect(service.deleteArchived("long", { confirmation: "Exact long title" })).resolves.toEqual({ deletedProjectId: "long" });
+    await expect(fs.access(path.join(projectsRoot, ".archive", "long"))).rejects.toBeTruthy();
+    expect(await service.listArchived()).toEqual({ projects: [] });
+  });
 });

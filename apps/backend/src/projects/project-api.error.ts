@@ -10,7 +10,8 @@ export type ProjectErrorCode =
   | "PROJECT_DATA_INVALID"
   | "PROJECT_STORAGE_ERROR"
   | "PROJECT_ARCHIVE_NOT_ALLOWED"
-  | "PROJECT_ARCHIVE_COLLISION";
+  | "PROJECT_ARCHIVE_COLLISION"
+  | "PROJECT_RESTORE_COLLISION";
 
 export class ProjectApiException extends HttpException {
   constructor(
@@ -80,6 +81,14 @@ export function projectArchiveCollision(): ProjectApiException {
   return new ProjectApiException(
     "PROJECT_ARCHIVE_COLLISION",
     "A recoverable archive already exists for this project.",
+    HttpStatus.CONFLICT,
+  );
+}
+
+export function projectRestoreCollision(): ProjectApiException {
+  return new ProjectApiException(
+    "PROJECT_RESTORE_COLLISION",
+    "An active project already exists at this project's original location.",
     HttpStatus.CONFLICT,
   );
 }

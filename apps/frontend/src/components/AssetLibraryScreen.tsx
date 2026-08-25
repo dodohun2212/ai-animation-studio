@@ -104,6 +104,11 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   const [confirmAction, setConfirmAction] = useState<"delete-asset" | "relink" | "delete-owned-file" | "delete-folder" | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [folderCreateOpen, setFolderCreateOpen] = useState(false);
+  const [folderCreateType, setFolderCreateType] = useState<AssetType>("character");
+  const [folderCreateDescription, setFolderCreateDescription] = useState("");
+  // Per-child "개별 특징" drafts, keyed by child assetId; a key exists only while the draft differs from
+  // the saved value. Cleared whenever the selected folder changes.
+  const [childDescriptionDrafts, setChildDescriptionDrafts] = useState<Record<string, string>>({});
   const listRequest = useRef(0);
   const detailRequest = useRef(0);
   const auditRequest = useRef(0);
@@ -147,13 +152,15 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
     } finally { if (requestId === detailRequest.current) setDetailLoading(false); }
   }
 
-  // Fetches full detail for every child of the selected Character Folder directly (rather than relying on
+  // Fetches full detail for every child of the selected Folder directly (rather than relying on
   // whatever happens to already be loaded in `assets`), so reordering/role editing works even for children
   // outside the current search/filter — the "일부 하위 이미지 정보를 불러오지 못했습니다" case below only
-  // fires on a genuine per-child fetch failure now, not on a merely-unloaded one.
+  // fires on a genuine per-child fetch failure now, not on a merely-unloaded one. Folders of every
+  // AssetType are supported (the character-only restriction was lifted with the Round 11 contract).
   useEffect(() => {
     const folder = selected?.asset;
-    if (!folder || !folder.isFolder || folder.assetType !== "character") {
+    setChildDescriptionDrafts({});
+    if (!folder || !folder.isFolder) {
       setFolderChildren(null); setFolderChildrenError(null); setFolderLinkResults(null); setFolderLinkQuery("");
       setFolderLinkSearchError(null); setFolderMutationError(null);
       return;
@@ -341,14 +348,18 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
     void saveCharacterReferenceSet(next, selected.asset.thumbnailAssetId);
   }
 
-  async function createCharacterFolder(event: FormEvent) {
+  async function createFolder(event: FormEvent) {
     event.preventDefault();
     if (folderCreateBusy.current || !folderCreateName.trim()) return;
     folderCreateBusy.current = true; setFolderCreatePending(true); setFolderCreateError(null);
     const listGenerationAtStart = listRequest.current;
     try {
-      const response = await createAssetFolder({ assetType: "character", displayName: folderCreateName.trim() });
-      setFolderCreateName("");
+      const response = await createAssetFolder({
+        assetType: folderCreateType,
+        displayName: folderCreateName.trim(),
+        description: folderCreateDescription.trim() || undefined,
+      });
+      setFolderCreateName(""); setFolderCreateDescription("");
       if (listRequest.current === listGenerationAtStart) await load();
       await open(response.asset.assetId);
     } catch (caught) { setFolderCreateError(toAssetDisplayError(caught)); }
@@ -357,9 +368,11 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
 
   async function searchFolderLinkCandidates(event: FormEvent) {
     event.preventDefault();
+    if (!selected) return;
     setFolderLinkSearchLoading(true); setFolderLinkSearchError(null);
     try {
-      const response = await listAssets({ query: folderLinkQuery || undefined, assetType: "character" });
+      // Candidates share the folder's own type, so a background folder collects background images, etc.
+      const response = await listAssets({ query: folderLinkQuery || undefined, assetType: selected.asset.assetType });
       setFolderLinkResults(response.assets);
     } catch (caught) { setFolderLinkSearchError(toAssetDisplayError(caught)); }
     finally { setFolderLinkSearchLoading(false); }
@@ -394,6 +407,19 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
     try {
       const response = await updateAsset(assetId, { role });
       setFolderChildren((current) => current?.map((asset) => (asset.assetId === assetId ? response.asset : asset)) ?? current);
+    } catch (caught) { setFolderMutationError(toAssetDisplayError(caught)); }
+    finally { folderMutationBusy.current = false; setFolderMutationPending(false); }
+  }
+
+  /** Saves one child's "개별 특징" (its own description, combined with the folder's common description in AI prompts). */
+  async function saveChildDescription(assetId: string) {
+    const draft = childDescriptionDrafts[assetId];
+    if (draft === undefined || folderMutationBusy.current) return;
+    folderMutationBusy.current = true; setFolderMutationPending(true); setFolderMutationError(null);
+    try {
+      const response = await updateAsset(assetId, { description: draft.trim() });
+      setFolderChildren((current) => current?.map((asset) => (asset.assetId === assetId ? response.asset : asset)) ?? current);
+      setChildDescriptionDrafts(({ [assetId]: _saved, ...rest }) => rest);
     } catch (caught) { setFolderMutationError(toAssetDisplayError(caught)); }
     finally { folderMutationBusy.current = false; setFolderMutationPending(false); }
   }
@@ -452,7 +478,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
           className={outlineButton}
           onClick={() => setFolderCreateOpen((current) => !current)}
         >
-          새 캐릭터 폴더 만들기
+          새 폴더 만들기
         </button>
       </form>
 
@@ -568,7 +594,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
       <div className="space-y-4">
       {!selected && !detailLoading && !detailError && !importOpen && !folderCreateOpen && (
         <p className="rounded-2xl border border-dashed border-white/10 p-6 text-sm text-slate-500">
-          왼쪽 목록에서 항목을 선택하면 상세 정보가 여기에 표시됩니다. 새 항목은 위의 "새 에셋 등록" 또는 "새 캐릭터 폴더 만들기" 버튼으로 추가할 수 있습니다.
+          왼쪽 목록에서 항목을 선택하면 상세 정보가 여기에 표시됩니다. 새 항목은 위의 "새 에셋 등록" 또는 "새 폴더 만들기" 버튼으로 추가할 수 있습니다.
         </p>
       )}
       {importOpen && (
@@ -625,18 +651,45 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
       )}
 
       {folderCreateOpen && (
-      <form onSubmit={createCharacterFolder} aria-label="캐릭터 폴더 만들기" className={cardSection}>
-        <SectionHeading>새 캐릭터 폴더 만들기</SectionHeading>
+      <form onSubmit={createFolder} aria-label="폴더 만들기" className={cardSection}>
+        <SectionHeading>새 폴더 만들기</SectionHeading>
         <p className="text-sm text-slate-400">
-          이미지 없이 이름만으로 캐릭터 폴더를 먼저 만든 다음, 아래에서 정면·옆모습·뒷모습 같은 캐릭터 이미지를 그 안에 추가할 수 있습니다.
+          이미지 없이 이름만으로 폴더를 먼저 만든 다음, 폴더 상세에서 관련 이미지를 그 안에 추가할 수 있습니다. 캐릭터 폴더라면
+          정면·옆모습·뒷모습처럼 같은 캐릭터의 여러 모습을, 배경·소품 폴더라면 같은 장소나 물건의 여러 참고 이미지를 모아두는 식입니다.
+          폴더 설명에는 안에 담긴 이미지들이 공통으로 갖는 특징을 적어두면 AI 생성 시 함께 전달됩니다.
         </p>
         <label className="block text-sm text-slate-300">
-          캐릭터 이름
+          폴더 이름
           <input
             value={folderCreateName}
             disabled={folderCreatePending}
             className={fieldClassName}
             onChange={(event) => setFolderCreateName(event.target.value)}
+          />
+        </label>
+        <label className="block text-sm text-slate-300">
+          폴더 유형
+          <select
+            value={folderCreateType}
+            disabled={folderCreatePending}
+            className={fieldClassName}
+            onChange={(event) => setFolderCreateType(event.target.value as AssetType)}
+          >
+            {TYPES.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-sm text-slate-300">
+          공통 특징(선택)
+          <input
+            value={folderCreateDescription}
+            disabled={folderCreatePending}
+            className={fieldClassName}
+            placeholder="예: 파란 망토를 두른 판다 기사 — 안의 모든 이미지에 공통되는 특징"
+            onChange={(event) => setFolderCreateDescription(event.target.value)}
           />
         </label>
         {folderCreateError && (
@@ -665,12 +718,14 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
           <p className="text-sm text-slate-300">소유권: {selected.ownership}</p>
           <p className="text-sm text-slate-300">사용 프로젝트: {selected.usageProjectIds.length ? selected.usageProjectIds.join(", ") : "없음"}</p>
 
-          {selected.asset.isFolder && selected.asset.assetType === "character" && (
-            <section aria-label="캐릭터 폴더 구성" className="space-y-3 rounded-xl border border-white/10 bg-slate-950/30 p-3.5">
-              <h4 className="text-sm font-semibold text-slate-200">캐릭터 폴더 구성</h4>
+          {selected.asset.isFolder && (
+            <section aria-label="폴더 구성" className="space-y-3 rounded-xl border border-white/10 bg-slate-950/30 p-3.5">
+              <h4 className="text-sm font-semibold text-slate-200">폴더 구성</h4>
               <p className="text-xs text-slate-500">
-                이 폴더 안에 정면·옆모습·뒷모습 등 캐릭터의 여러 모습을 이미지로 모아두면, 프로젝트에 이 캐릭터를 등장시킬 때
-                모습을 확실하게 전달할 수 있습니다. 대표 이미지가 목록·썸네일에 표시됩니다.
+                {selected.asset.assetType === "character"
+                  ? "이 폴더 안에 정면·옆모습·뒷모습 등 캐릭터의 여러 모습을 이미지로 모아두면, 프로젝트에 이 캐릭터를 등장시킬 때 모습을 확실하게 전달할 수 있습니다."
+                  : "이 폴더 안에 같은 장소·물건·스타일의 여러 참고 이미지를 모아두면, AI 생성 시 폴더 하나로 함께 전달할 수 있습니다."}{" "}
+                대표 이미지가 목록·썸네일에 표시됩니다. 아래 폴더 설명(공통 특징)과 각 이미지의 개별 특징이 AI에게 함께 전달됩니다.
               </p>
               {(folderChildrenLoading || referenceSetPending) && <Spinner label="불러오는 중..." />}
               {folderChildrenError && (
@@ -679,10 +734,10 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                 </p>
               )}
               {folderChildren && folderChildren.length === 0 && !folderChildrenLoading && (
-                <p className="text-sm text-slate-400">아직 등록된 이미지가 없습니다. 아래에서 기존 캐릭터 이미지를 추가해 주세요.</p>
+                <p className="text-sm text-slate-400">아직 등록된 이미지가 없습니다. 아래에서 기존 이미지를 검색해 추가해 주세요.</p>
               )}
               {folderChildren && folderChildren.length > 0 && (
-                <ol aria-label="순서가 있는 캐릭터 참고 이미지" className="space-y-2">
+                <ol aria-label="순서가 있는 참고 이미지" className="space-y-2">
                   {folderChildren.map((child, index) => (
                     <li key={child.assetId} className="space-y-2 rounded-xl border border-white/10 bg-slate-900/60 p-2.5 text-sm text-slate-300">
                       <div className="flex flex-wrap items-center gap-2">
@@ -691,19 +746,49 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                           {index + 1}. {child.displayName}
                           {selected.asset.thumbnailAssetId === child.assetId ? " (대표 이미지)" : ""}
                         </span>
-                        <label className="flex items-center gap-1.5 text-xs text-slate-400">
-                          역할
-                          <select
-                            className="rounded-lg border border-white/10 bg-slate-950/60 px-2 py-1 text-xs text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
-                            value={CHARACTER_ROLE_OPTIONS.some((option) => option.value === child.role) ? child.role : "other"}
+                        {selected.asset.assetType === "character" && (
+                          <label className="flex items-center gap-1.5 text-xs text-slate-400">
+                            역할
+                            <select
+                              className="rounded-lg border border-white/10 bg-slate-950/60 px-2 py-1 text-xs text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
+                              value={CHARACTER_ROLE_OPTIONS.some((option) => option.value === child.role) ? child.role : "other"}
+                              disabled={folderMutationPending}
+                              onChange={(event) => void updateChildRole(child.assetId, event.target.value)}
+                            >
+                              {CHARACTER_ROLE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
+                        <label className="flex min-w-0 flex-1 items-center gap-1.5">
+                          개별 특징
+                          <input
+                            className="min-w-0 flex-1 rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
+                            placeholder="이 이미지만의 특징 (예: 정면, 웃는 표정)"
+                            value={childDescriptionDrafts[child.assetId] ?? child.description}
                             disabled={folderMutationPending}
-                            onChange={(event) => void updateChildRole(child.assetId, event.target.value)}
-                          >
-                            {CHARACTER_ROLE_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>{option.label}</option>
-                            ))}
-                          </select>
+                            onChange={(event) => {
+                              const next = event.target.value;
+                              setChildDescriptionDrafts((current) =>
+                                next === child.description
+                                  ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== child.assetId))
+                                  : { ...current, [child.assetId]: next },
+                              );
+                            }}
+                          />
                         </label>
+                        <button
+                          type="button"
+                          data-testid={`child-description-save-${child.assetId}`}
+                          className={smallOutlineButton}
+                          disabled={folderMutationPending || childDescriptionDrafts[child.assetId] === undefined}
+                          onClick={() => void saveChildDescription(child.assetId)}
+                        >
+                          특징 저장
+                        </button>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button type="button" className={smallOutlineButton} disabled={referenceSetPending || index === 0} onClick={() => moveCharacterReference(child.assetId, -1)}>
@@ -733,11 +818,11 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                   {folderMutationError.message}
                 </p>
               )}
-              <form onSubmit={searchFolderLinkCandidates} aria-label="폴더에 추가할 캐릭터 이미지 검색" className="space-y-2 border-t border-white/10 pt-3">
-                <p className="text-xs text-slate-400">Asset Library에 이미 등록된 캐릭터 이미지를 검색해서 이 폴더에 추가할 수 있습니다.</p>
+              <form onSubmit={searchFolderLinkCandidates} aria-label="폴더에 추가할 이미지 검색" className="space-y-2 border-t border-white/10 pt-3">
+                <p className="text-xs text-slate-400">Asset Library에 이미 등록된 같은 유형의 이미지를 검색해서 이 폴더에 추가할 수 있습니다.</p>
                 <div className="flex flex-wrap items-end gap-2">
                   <label className="flex flex-col gap-1 text-xs text-slate-400">
-                    캐릭터 이미지 검색
+                    이미지 검색
                     <input className="rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30" value={folderLinkQuery} onChange={(event) => setFolderLinkQuery(event.target.value)} />
                   </label>
                   <button type="submit" className={smallOutlineButton} disabled={folderLinkSearchLoading}>검색</button>
@@ -749,7 +834,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                   </p>
                 )}
                 {folderLinkResults && (
-                  <ul aria-label="추가 가능한 캐릭터 이미지 검색 결과" className="space-y-1">
+                  <ul aria-label="추가 가능한 이미지 검색 결과" className="space-y-1">
                     {folderLinkResults
                       .filter((asset) => !asset.isFolder && asset.assetId !== selected.asset.assetId && !selected.asset.childAssetIds.includes(asset.assetId))
                       .map((asset) => (
@@ -774,7 +859,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
               <input value={editName} required disabled={editPending} className={fieldClassName} onChange={(event) => setEditName(event.target.value)} />
             </label>
             <label className="block text-sm text-slate-300">
-              설명
+              {selected.asset.isFolder ? "공통 특징(폴더 설명)" : "설명"}
               <input value={editDescription} disabled={editPending} className={fieldClassName} onChange={(event) => setEditDescription(event.target.value)} />
             </label>
             <label className="block text-sm text-slate-300">
