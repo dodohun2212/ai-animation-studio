@@ -232,8 +232,9 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
 
       {currentProject && (
         <>
-          <p className="text-sm text-amber-300" data-testid="no-paid-notice">
-            실제 유료 OpenAI 이미지 API를 호출하지 않습니다. 로컬 가짜(local fake) 어댑터로 장면 이미지 {totalScenes}장을 생성합니다.
+          <p className="text-sm text-amber-300" data-testid="provider-mode-notice">
+            OpenAI 키가 연결되어 있으면 장면 이미지 {totalScenes}장에 대해 실제 유료 요청이 전송됩니다. 연결되어 있지 않으면
+            비용 없이 임시 이미지로 생성됩니다.
           </p>
 
           {!allowed && !reviewable && !videoConfirmationReached && !result && (

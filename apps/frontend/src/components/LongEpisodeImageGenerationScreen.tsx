@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { LongEpisodeContinuityReference, LongEpisodeDetail, LongEpisodeImageReview, SceneNumber, StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
+import type { BudgetPreview, LongEpisodeContinuityReference, LongEpisodeDetail, LongEpisodeImageReview, SceneNumber, StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
+import { IMAGE_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 
 import {
   approveLongEpisodeImageReview,
@@ -13,10 +14,15 @@ import {
 import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { Spinner } from "./Spinner.js";
 import { StatusChip } from "./ui/StatusChip.js";
+import { BudgetLine } from "./ui/BudgetLine.js";
+import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 
 interface Props { projectId: string; episodeNumber: number; onBack: () => void; onOpenVideoWorkflow?: (projectId: string, episodeNumber: number) => void; }
 type DisplayError = { code: string; message: string };
-type ReviewState = { status: "idle" | "loading" } | { status: "error"; error: DisplayError } | { status: "ready"; reviews: LongEpisodeImageReview[] };
+type ReviewState =
+  | { status: "idle" | "loading" }
+  | { status: "error"; error: DisplayError }
+  | { status: "ready"; reviews: LongEpisodeImageReview[]; budget?: BudgetPreview; retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview } };
 const SCENES: SceneNumber[] = [1, 2, 3, 4, 5, 6];
 const SCENE_SLOT_LABEL: Record<string, string> = { generated: "생성됨", waiting: "대기 중", pending: "검토 대기", approved: "승인됨" };
 const sceneSlotLabel = (status: string) => SCENE_SLOT_LABEL[status] ?? status;
@@ -64,7 +70,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
     let cancelled = false;
     setReviewState({ status: "loading" });
     getLongEpisodeImageReview(projectId, episodeNumber)
-      .then((response) => { if (!cancelled) { setEpisode(response.episode); setReviewState({ status: "ready", reviews: response.reviews }); } })
+      .then((response) => { if (!cancelled) { setEpisode(response.episode); setReviewState({ status: "ready", reviews: response.reviews, budget: response.budget }); } })
       .catch((caught: unknown) => { if (!cancelled) setReviewState({ status: "error", error: toLongProjectDisplayError(caught) }); });
     return () => { cancelled = true; };
     // reviewState.status is intentionally excluded: it is set inside this effect as a start-once guard,
@@ -88,7 +94,13 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
     approvalBusy.current.add(sceneNumber); setApprovePending(new Set(approvalBusy.current)); setError(null);
     try {
       const response = await approveLongEpisodeImageReview(projectId, episodeNumber, sceneNumber);
-      setEpisode(response.episode); setReviewState({ status: "ready", reviews: response.reviews });
+      setEpisode(response.episode);
+      setReviewState((current) => ({
+        status: "ready",
+        reviews: response.reviews,
+        budget: current.status === "ready" ? current.budget : undefined,
+        retryEstimate: current.status === "ready" ? current.retryEstimate : undefined,
+      }));
     } catch (caught) { setError(toLongProjectDisplayError(caught)); }
     finally { approvalBusy.current.delete(sceneNumber); setApprovePending(new Set(approvalBusy.current)); }
   }
@@ -98,7 +110,9 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
     regenerationBusy.current.add(sceneNumber); setRegeneratePending(new Set(regenerationBusy.current)); setError(null);
     try {
       const response = await regenerateLongEpisodeImageReview(projectId, episodeNumber, sceneNumber);
-      setEpisode(response.episode); setReviewState({ status: "ready", reviews: response.reviews }); setRegenerateConfirm(null);
+      setEpisode(response.episode);
+      setReviewState({ status: "ready", reviews: response.reviews, budget: response.retryEstimate?.budget, retryEstimate: response.retryEstimate });
+      setRegenerateConfirm(null);
     } catch (caught) { setError(toLongProjectDisplayError(caught)); }
     finally { regenerationBusy.current.delete(sceneNumber); setRegeneratePending(new Set(regenerationBusy.current)); }
   }
@@ -110,7 +124,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
       <button type="button" className={outlineButton} onClick={onBack}>Asset Mapping 검토로</button>
       <header className="space-y-1">
         <h2 className="flex items-center gap-2.5 text-lg font-semibold"><span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />{`에피소드 ${episodeNumber} 이미지 생성`}</h2>
-        <p data-testid="episode-image-local-notice" className="text-sm text-amber-300">지금은 로컬 가짜 이미지 어댑터만 사용합니다. 유료 Provider 요청은 보내지 않습니다.</p>
+        <p data-testid="episode-image-cost-notice" className="text-sm text-amber-300">OpenAI 키가 연결되어 있으면 장면마다 실제 유료 요청이 전송됩니다. 연결되어 있지 않으면 비용 없이 임시 이미지로 생성됩니다.</p>
       </header>
       {loading && <Spinner label="에피소드 이미지 상태를 불러오는 중..." />}
       {episode && <p data-testid="episode-image-status" className="text-sm text-slate-400">에피소드 상태: {longEpisodeStatusLabel(episode.status)}</p>}
@@ -124,14 +138,24 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
       {eligible && !generation && <button type="button" disabled={confirmingGeneration} className={primaryButton} onClick={() => setConfirmingGeneration(true)}>이미지 생성 시작</button>}
       {confirmingGeneration && (
         <div role="alertdialog" data-testid="episode-image-generate-confirm" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
-          <p className="text-sm text-amber-200">이 에피소드의 로컬 가짜 이미지 6장을 생성할까요? 이 확인창을 연 것만으로는 아직 요청이 가지 않았습니다.</p>
+          <p className="text-sm text-amber-200">이 에피소드의 이미지 {SCENES.length}장을 생성할까요? 이 확인창을 연 것만으로는 아직 요청이 가지 않았습니다.</p>
+          <p data-testid="episode-image-cost-estimate" className="text-xs text-slate-300 tabular-nums">
+            예상 비용: ${(SCENES.length * IMAGE_ESTIMATED_COST_USD).toFixed(2)} ({SCENES.length}장 × $
+            {IMAGE_ESTIMATED_COST_USD.toFixed(2)}) · 키가 연결되어 있을 때만 청구됩니다
+          </p>
           <div className="flex gap-3">
             <button type="button" className={outlineButton} disabled={generationPending} onClick={() => setConfirmingGeneration(false)}>돌아가기</button>
-            <button type="button" className={primaryButton} disabled={generationPending} onClick={() => void confirmGeneration()}>{generationPending ? "생성하는 중..." : "로컬 이미지 생성"}</button>
+            <button type="button" className={primaryButton} disabled={generationPending} onClick={() => void confirmGeneration()}>{generationPending ? "생성하는 중..." : "이미지 생성"}</button>
           </div>
         </div>
       )}
-      {generation && <p data-testid="episode-image-generation-summary" className="text-sm text-emerald-400">{generation.generatedSceneNumbers.length}개 생성, {generation.reusedSceneNumbers.length}개 재사용됨.</p>}
+      {generation && (
+        <div className="space-y-1.5">
+          <p data-testid="episode-image-generation-summary" className="text-sm text-emerald-400">{generation.generatedSceneNumbers.length}개 생성, {generation.reusedSceneNumbers.length}개 재사용됨.</p>
+          <BudgetLine budget={generation.budget} data-testid="episode-image-generation-budget" />
+        </div>
+      )}
+      {reviewState.status === "ready" && <BudgetLine budget={reviewState.budget} data-testid="episode-image-review-budget" />}
       {reviewState.status === "loading" && <Spinner label="이미지 검토 내용을 불러오는 중..." />}
       {reviewState.status === "ready" && (
         <section data-testid="episode-image-review-section" className={cardSection}>
@@ -164,7 +188,12 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
                 </div>
                 {confirming && (
                   <div role="alertdialog" data-testid={`episode-image-regenerate-confirm-${sceneNumber}`} className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
-                    <p className="text-sm text-amber-200">{sceneNumber}번 장면만 로컬 가짜 어댑터로 다시 만들까요?</p>
+                    <p className="text-sm text-amber-200">{sceneNumber}번 장면만 다시 만들까요? OpenAI 키가 연결되어 있으면 이번 재생성분이 실제로 청구됩니다.</p>
+                    <RetryCostNotice
+                      estimate={reviewState.status === "ready" ? reviewState.retryEstimate : undefined}
+                      sceneCount={1}
+                      data-testid={`episode-image-regenerate-cost-${sceneNumber}`}
+                    />
                     <div className="flex gap-2">
                       <button type="button" className={smallOutlineButton} disabled={regenerating} onClick={() => setRegenerateConfirm(null)}>취소</button>
                       <button type="button" className={smallAmberButton} disabled={regenerating} onClick={() => void confirmRegenerate(sceneNumber)}>이 장면 다시 만들기</button>

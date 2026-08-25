@@ -42,7 +42,7 @@ describe("ImageGenerationScreen", () => {
     renderScreen(fetchMock);
 
     expect(screen.getByText("불러오는 중...")).toBeTruthy();
-    await screen.findByTestId("no-paid-notice");
+    await screen.findByTestId("provider-mode-notice");
 
     expect(fetchMock).toHaveBeenCalledWith("/projects/sample_project");
   });
@@ -58,12 +58,12 @@ describe("ImageGenerationScreen", () => {
     expect(alert).toHaveAttribute("data-error-code", "PROJECT_NOT_FOUND");
   });
 
-  it("shows the explicit no-paid local fake generation notice and all six scenes as pending before generation", async () => {
+  it("says up front that a connected key means real paid requests, and shows all six scenes as pending before generation", async () => {
     const project = makeProject({ workflowState: WorkflowState.AssetMappingApproved, scenes: sixScenes() });
     renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { project })));
 
-    const notice = await screen.findByTestId("no-paid-notice");
-    expect(notice.textContent).toContain("실제 유료 OpenAI 이미지 API를 호출하지 않습니다");
+    const notice = await screen.findByTestId("provider-mode-notice");
+    expect(notice.textContent).toContain("실제 유료 요청이 전송됩니다");
 
     for (const number of [1, 2, 3, 4, 5, 6]) {
       const item = screen.getByTestId(`scene-${number}`);
@@ -75,7 +75,7 @@ describe("ImageGenerationScreen", () => {
     const project = makeProject({ workflowState: WorkflowState.AssetMappingApproved, scenes: sixScenes([1, 2]) });
     renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { project })));
 
-    await screen.findByTestId("no-paid-notice");
+    await screen.findByTestId("provider-mode-notice");
     expect(screen.getByTestId("scene-1")).toHaveAttribute("data-status", "completed");
     expect(screen.getByTestId("scene-2")).toHaveAttribute("data-status", "completed");
     expect(screen.getByTestId("scene-3")).toHaveAttribute("data-status", "pending");
@@ -95,7 +95,7 @@ describe("ImageGenerationScreen", () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { project }));
     renderScreen(fetchMock);
 
-    await screen.findByTestId("no-paid-notice");
+    await screen.findByTestId("provider-mode-notice");
     fireEvent.click(screen.getByRole("button", { name: "이미지 생성 시작" }));
 
     const panel = await screen.findByTestId("generate-confirm-panel");
@@ -110,7 +110,7 @@ describe("ImageGenerationScreen", () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { project }));
     renderScreen(fetchMock);
 
-    await screen.findByTestId("no-paid-notice");
+    await screen.findByTestId("provider-mode-notice");
     fireEvent.click(screen.getByRole("button", { name: "이미지 생성 시작" }));
     await screen.findByTestId("generate-confirm-panel");
 
@@ -135,7 +135,7 @@ describe("ImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { project: generatedProject, reviews: sixReviews() }));
     renderScreen(fetchMock);
 
-    await screen.findByTestId("no-paid-notice");
+    await screen.findByTestId("provider-mode-notice");
     fireEvent.click(screen.getByRole("button", { name: "이미지 생성 시작" }));
     await screen.findByTestId("generate-confirm-panel");
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -170,7 +170,7 @@ describe("ImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(500, { code: "IMAGE_GENERATION_FAILED", message: "raw backend detail" }));
     renderScreen(fetchMock);
 
-    await screen.findByTestId("no-paid-notice");
+    await screen.findByTestId("provider-mode-notice");
     fireEvent.click(screen.getByRole("button", { name: "이미지 생성 시작" }));
     await screen.findByTestId("generate-confirm-panel");
     fireEvent.click(screen.getByRole("button", { name: "예, 이미지 생성을 시작합니다" }));
@@ -196,7 +196,7 @@ describe("ImageGenerationScreen", () => {
       .mockResolvedValue(jsonResponse(200, { project: makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) }), reviews: sixReviews() }));
     renderScreen(fetchMock);
 
-    await screen.findByTestId("no-paid-notice");
+    await screen.findByTestId("provider-mode-notice");
     fireEvent.click(screen.getByRole("button", { name: "이미지 생성 시작" }));
     await screen.findByTestId("generate-confirm-panel");
 
@@ -224,7 +224,7 @@ describe("ImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews([1, 2]) }));
     renderScreen(fetchMock);
 
-    await screen.findByTestId("no-paid-notice");
+    await screen.findByTestId("provider-mode-notice");
     // The review request is scheduled by the post-project-load effect, so wait
     // for that dependent effect instead of treating the first rendered notice
     // as proof that it has already run.

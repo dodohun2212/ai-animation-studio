@@ -311,8 +311,10 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
         />
         영상 생성 진행 상황
       </h1>
-      <p className="text-sm text-amber-300" data-testid="no-provider-notice">
-        실제 유료 Runway API와 영상 병합 프로그램을 호출하지 않습니다. 로컬 가짜(local fake) 어댑터가 장면 영상을 순서대로 만듭니다.
+      <p className="text-sm text-amber-300" data-testid="provider-mode-notice">
+        {progress?.retryEstimate
+          ? "이 작업은 실제 유료 Runway API를 호출합니다. 장면마다 비용이 발생하며, 재생성하면 그만큼 다시 청구됩니다."
+          : "Runway 키가 연결되어 있지 않아 비용 없이 임시 영상으로 만들어집니다. 키를 연결하면 실제 유료 요청이 전송됩니다."}
       </p>
 
       {progressState.status === "loading" && <Spinner label="진행 상황을 불러오는 중..." />}
@@ -486,8 +488,8 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                 영상 검토
               </h3>
               <p className="text-sm text-slate-300">각 장면의 영상을 확인하고 개별적으로 승인해 주세요.</p>
-              <p className="text-xs text-amber-300" data-testid="no-provider-regenerate-notice">
-                재생성은 실제 유료 Provider를 호출하지 않는 로컬 가짜 어댑터만 사용하며, 이전 영상은 history로 보존됩니다.
+              <p className="text-xs text-amber-300" data-testid="regenerate-cost-notice">
+                재생성은 장면 1개당 한 번 더 청구됩니다(Runway 키가 연결된 경우). 이전 영상은 history로 보존됩니다.
               </p>
 
               {reviewState.status === "loading" && <Spinner label="검토 상태를 불러오는 중..." />}
@@ -530,8 +532,8 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                     >
                       <p className="text-sm font-semibold text-amber-300">{totalScenes}개 장면 영상을 모두 다시 생성할까요?</p>
                       <p className="text-xs text-slate-300">
-                        아직 재생성이 시작되지 않았습니다. 확인을 누르면 로컬 가짜 어댑터가 {totalScenes}개 장면 영상을 모두
-                        다시 생성하며, 실제 유료 요청은 전송되지 않습니다. 기존 승인 상태는 초기화됩니다.
+                        아직 재생성이 시작되지 않았습니다. 확인을 누르면 {totalScenes}개 장면 영상을 모두 다시 생성합니다 —
+                        Runway 키가 연결되어 있으면 {totalScenes}장면분이 실제로 청구됩니다. 기존 승인 상태는 초기화됩니다.
                       </p>
                       {/* Regenerating every scene is the most expensive action on this screen — the total is
                           spelled out before the confirm button, not only the per-scene rate. */}
@@ -545,7 +547,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                           취소
                         </button>
                         <button type="button" className={smallAmberButton} onClick={() => void confirmRegenerateAll()} disabled={regenerateAllPending}>
-                          {regenerateAllPending ? "재생성 중..." : "예, 로컬로 전체 재생성합니다"}
+                          {regenerateAllPending ? "재생성 중..." : "예, 전체 재생성합니다"}
                         </button>
                       </div>
                     </div>
@@ -666,8 +668,8 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                                   {review.sceneNumber}번 장면 영상을 다시 생성할까요?
                                 </p>
                                 <p className="text-xs text-slate-300">
-                                  아직 재생성이 시작되지 않았습니다. 확인을 누르면 로컬 가짜 어댑터가 이 장면 영상만 다시
-                                  생성하며, 실제 유료 요청은 전송되지 않습니다.
+                                  아직 재생성이 시작되지 않았습니다. 확인을 누르면 이 장면 영상만 다시 생성합니다 — Runway
+                                  키가 연결되어 있으면 이번 재생성분이 실제로 청구됩니다.
                                 </p>
                                 <RetryCostNotice
                                   estimate={progress?.retryEstimate}
@@ -689,7 +691,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                                     onClick={() => void confirmRegenerate(review.sceneNumber)}
                                     disabled={regeneratePending}
                                   >
-                                    {regeneratePending ? "재생성 중..." : "예, 로컬로 재생성합니다"}
+                                    {regeneratePending ? "재생성 중..." : "예, 다시 생성합니다"}
                                   </button>
                                 </div>
                               </div>

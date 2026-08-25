@@ -23,12 +23,12 @@ describe("LongEpisodeImageGenerationScreen", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
-    expect(await screen.findByTestId("episode-image-local-notice")).toBeTruthy();
+    expect(await screen.findByTestId("episode-image-cost-notice")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "이미지 생성 시작" }));
     expect(await screen.findByTestId("episode-image-generate-confirm")).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
-    fireEvent.click(screen.getByRole("button", { name: "로컬 이미지 생성" }));
+    fireEvent.click(screen.getByRole("button", { name: "이미지 생성" }));
     await screen.findByTestId("episode-image-generation-summary");
     expect(fetchMock.mock.calls[2]?.[0]).toBe("/long-projects/long/episodes/1/images/generations");
     expect(JSON.parse(String((fetchMock.mock.calls[2]?.[1] as RequestInit).body))).toEqual({ approved: true });
@@ -73,5 +73,50 @@ describe("LongEpisodeImageGenerationScreen", () => {
     expect(await screen.findByTestId("episode-video-confirmation-transition")).toBeTruthy();
     expect(await screen.findByTestId("episode-image-continuity-unavailable")).toBeTruthy();
     expect(document.body.textContent).not.toContain("C:\\");
+  });
+
+  it("shows the estimated cost before generation, and the reported budget after it", async () => {
+    const imageReviewEpisode = episode("images_review");
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("asset_mapping_approved") }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          episode: imageReviewEpisode,
+          generatedSceneNumbers: [1, 2, 3, 4, 5, 6],
+          reusedSceneNumbers: [],
+          budget: { monthlyLimitUsd: 10, spentUsd: 0.6, remainingUsd: 9.4, estimatedRequestCostUsd: 0.6, canSpend: true },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, reviews: reviews() }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "이미지 생성 시작" }));
+
+    // 6 scenes x $0.10, shown before the request goes out.
+    expect(screen.getByTestId("episode-image-cost-estimate").textContent).toContain("$0.60");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "이미지 생성" }));
+    const budget = await screen.findByTestId("episode-image-generation-budget");
+    expect(budget.textContent).toContain("$9.40");
+  });
+
+  it("omits the budget line when the response reported none (local fake mode charges nothing)", async () => {
+    const imageReviewEpisode = episode("images_review");
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("asset_mapping_approved") }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, generatedSceneNumbers: [1, 2, 3, 4, 5, 6], reusedSceneNumbers: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, reviews: reviews() }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "이미지 생성 시작" }));
+    fireEvent.click(screen.getByRole("button", { name: "이미지 생성" }));
+
+    await screen.findByTestId("episode-image-generation-summary");
+    expect(screen.queryByTestId("episode-image-generation-budget")).toBeNull();
   });
 });

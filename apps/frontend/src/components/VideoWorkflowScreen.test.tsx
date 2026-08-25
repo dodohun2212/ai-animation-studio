@@ -82,7 +82,7 @@ describe("VideoWorkflowScreen", () => {
     expect(screen.getByTestId("scene-progress-2")).toHaveAttribute("data-status", "completed");
     expect(screen.getByTestId("scene-progress-3")).toHaveAttribute("data-status", "running");
     expect(screen.getByTestId("scene-progress-4")).toHaveAttribute("data-status", "pending");
-    expect(screen.getByTestId("no-provider-notice").textContent).toContain("실제 유료 Runway API와 영상 병합 프로그램을 호출하지 않습니다");
+    expect(screen.getByTestId("provider-mode-notice").textContent).toContain("비용 없이 임시 영상으로 만들어집니다");
   });
 
   it("polls persisted progress while running and stops polling once the job reaches a terminal status", async () => {
@@ -347,7 +347,7 @@ describe("VideoWorkflowScreen", () => {
 
     fireEvent.click(await screen.findByTestId("video-review-regenerate-2"));
     const panel = await screen.findByTestId("video-regenerate-confirm-panel-2");
-    expect(panel.textContent).toContain("실제 유료 요청은 전송되지 않습니다");
+    expect(panel.textContent).toContain("실제로 청구됩니다");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -364,7 +364,7 @@ describe("VideoWorkflowScreen", () => {
 
     fireEvent.click(await screen.findByTestId("video-review-regenerate-2"));
     const panel = await screen.findByTestId("video-regenerate-confirm-panel-2");
-    fireEvent.click(within(panel).getByRole("button", { name: "예, 로컬로 재생성합니다" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "예, 다시 생성합니다" }));
 
     await waitFor(() => expect(screen.getByTestId("video-review-2")).toHaveAttribute("data-status", "pending"));
     const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit];
@@ -423,7 +423,7 @@ describe("VideoWorkflowScreen", () => {
 
     fireEvent.click(await screen.findByTestId("regenerate-all-button"));
     const panel = await screen.findByTestId("regenerate-all-confirm-panel");
-    expect(panel.textContent).toContain("실제 유료 요청은 전송되지 않습니다");
+    expect(panel.textContent).toContain("실제로 청구됩니다");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -440,7 +440,7 @@ describe("VideoWorkflowScreen", () => {
 
     fireEvent.click(await screen.findByTestId("regenerate-all-button"));
     const panel = await screen.findByTestId("regenerate-all-confirm-panel");
-    fireEvent.click(within(panel).getByRole("button", { name: "예, 로컬로 전체 재생성합니다" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "예, 전체 재생성합니다" }));
 
     await waitFor(() => expect(screen.getByTestId("video-review-1")).toHaveAttribute("data-status", "pending"));
     const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit];
@@ -487,7 +487,7 @@ describe("VideoWorkflowScreen", () => {
     fireEvent.click(screen.getByTestId("regenerate-all-button"));
     const panel = await screen.findByTestId("regenerate-all-confirm-panel");
     expect(panel.textContent).toContain("4개 장면 영상을 모두 다시 생성할까요?");
-    fireEvent.click(within(panel).getByRole("button", { name: "예, 로컬로 전체 재생성합니다" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "예, 전체 재생성합니다" }));
 
     await waitFor(() => expect(screen.getByTestId("video-review-1")).toHaveAttribute("data-status", "pending"));
     const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit];
@@ -543,5 +543,21 @@ describe("VideoWorkflowScreen source", () => {
     ]) {
       expect(pattern.test(content)).toBe(false);
     }
+  });
+
+  it("warns that real money is being spent once the job reports a paid execution mode", async () => {
+    const running = makeProgress({
+      completedSceneNumbers: [1],
+      retryEstimate: {
+        perSceneCostUsd: 0.25,
+        budget: { monthlyLimitUsd: 10, spentUsd: 0.25, remainingUsd: 9.75, estimatedRequestCostUsd: 0.25, canSpend: true },
+      },
+    });
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, running));
+    renderScreen(fetchMock);
+
+    const notice = await screen.findByTestId("provider-mode-notice");
+    expect(notice.textContent).toContain("실제 유료 Runway API를 호출합니다");
+    expect(notice.textContent).not.toContain("비용 없이");
   });
 });
