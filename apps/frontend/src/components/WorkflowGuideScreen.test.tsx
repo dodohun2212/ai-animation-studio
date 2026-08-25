@@ -58,4 +58,35 @@ describe("WorkflowGuideScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: /프로젝트 목록으로/ }));
     expect(onBack).toHaveBeenCalledTimes(1);
   });
+
+  it("leaves narration off by default so the projection matches a narration-free project", () => {
+    render(<WorkflowGuideScreen onBack={() => {}} />);
+    expect((screen.getByTestId("workflow-guide-narration") as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByTestId("workflow-guide-stage-narration-calls")).toBeNull();
+    expect(screen.getByTestId("workflow-guide-total-calls").textContent).toBe("13회");
+    expect(screen.getByTestId("workflow-guide-total-cost").textContent).toBe("$2.15");
+  });
+
+  it("adds one narration call per scene, and its cost, once narration is turned on", () => {
+    render(<WorkflowGuideScreen onBack={() => {}} />);
+    fireEvent.click(screen.getByTestId("workflow-guide-narration"));
+
+    expect(screen.getByTestId("workflow-guide-stage-narration-calls").textContent).toBe("6회");
+    // 13 + 6 scenes of narration.
+    expect(screen.getByTestId("workflow-guide-total-calls").textContent).toBe("19회");
+    // $2.15 + (6 x $0.05).
+    expect(screen.getByTestId("workflow-guide-total-cost").textContent).toBe("$2.45");
+    expect(screen.getByTestId("workflow-guide-stage-narration-cost").textContent).toBe("$0.30");
+  });
+
+  it("scales narration with the scene count like the image and video stages", () => {
+    render(<WorkflowGuideScreen onBack={() => {}} />);
+    fireEvent.click(screen.getByTestId("workflow-guide-narration"));
+    fireEvent.change(screen.getByLabelText(/장면 수/), { target: { value: "3" } });
+
+    expect(screen.getByTestId("workflow-guide-stage-narration-calls").textContent).toBe("3회");
+    expect(screen.getByTestId("workflow-guide-total-calls").textContent).toBe("10회");
+    // $1.10 + (3 x $0.05).
+    expect(screen.getByTestId("workflow-guide-total-cost").textContent).toBe("$1.25");
+  });
 });

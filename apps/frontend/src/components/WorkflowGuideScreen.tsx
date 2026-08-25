@@ -5,6 +5,7 @@ import {
   MIN_SCENE_COUNT,
   RUNWAY_CLIP_DURATIONS,
   STORY_ESTIMATED_COST_USD,
+  TTS_ESTIMATED_COST_USD,
   VIDEO_SCENE_ESTIMATED_COST_USD,
   type RunwayClipDurationSeconds,
 } from "@ai-animation-studio/shared";
@@ -13,7 +14,7 @@ interface Props {
   onBack: () => void;
 }
 
-type StageTone = "story" | "image" | "video";
+type StageTone = "story" | "image" | "video" | "narration";
 
 const STAGE_STYLES: Record<StageTone, { border: string; chip: string; accent: string }> = {
   story: {
@@ -30,6 +31,11 @@ const STAGE_STYLES: Record<StageTone, { border: string; chip: string; accent: st
     border: "border-rose-400/30",
     chip: "border-rose-400/45 bg-rose-500/15 text-rose-200",
     accent: "text-rose-200",
+  },
+  narration: {
+    border: "border-emerald-400/30",
+    chip: "border-emerald-400/45 bg-emerald-500/15 text-emerald-200",
+    accent: "text-emerald-200",
   },
 };
 
@@ -136,15 +142,19 @@ function FlowArrow({ label }: { label: string }) {
 export function WorkflowGuideScreen({ onBack }: Props) {
   const [sceneCount, setSceneCount] = useState(6);
   const [clipDurationSeconds, setClipDurationSeconds] = useState<RunwayClipDurationSeconds>(5);
+  const [narrationEnabled, setNarrationEnabled] = useState(false);
 
   const storyCalls = 1;
   const imageCalls = sceneCount;
   const videoCalls = sceneCount;
+  // Narration is opt-in per project, so it must not inflate the projection for projects that leave it off.
+  const narrationCalls = narrationEnabled ? sceneCount : 0;
   const storyTotal = storyCalls * STORY_ESTIMATED_COST_USD;
   const imageTotal = imageCalls * IMAGE_ESTIMATED_COST_USD;
   const videoTotal = videoCalls * VIDEO_SCENE_ESTIMATED_COST_USD;
-  const totalCalls = storyCalls + imageCalls + videoCalls;
-  const totalCost = storyTotal + imageTotal + videoTotal;
+  const narrationTotal = narrationCalls * TTS_ESTIMATED_COST_USD;
+  const totalCalls = storyCalls + imageCalls + videoCalls + narrationCalls;
+  const totalCost = storyTotal + imageTotal + videoTotal + narrationTotal;
   const runtimeSeconds = sceneCount * clipDurationSeconds;
 
   const sceneOptions = Array.from(
@@ -167,8 +177,8 @@ export function WorkflowGuideScreen({ onBack }: Props) {
         </h1>
       </header>
       <p className="text-sm leading-relaxed text-slate-400">
-        영상 하나가 만들어지기까지 AI를 세 번에 나눠 부릅니다. 아래에서 장면 수를 바꾸면 실제로 몇 번 호출되고 비용이
-        얼마나 드는지 바로 계산됩니다.
+        영상 하나가 만들어지기까지 AI를 순서대로 나눠 부릅니다. 아래에서 조건을 바꾸면 실제로 몇 번 호출되고 비용이 얼마나
+        드는지 바로 계산됩니다.
       </p>
 
       <section aria-label="계산 조건" className="space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
@@ -205,6 +215,21 @@ export function WorkflowGuideScreen({ onBack }: Props) {
             </select>
           </label>
         </div>
+        <label className="flex items-start gap-2.5 text-sm text-slate-300">
+          <input
+            type="checkbox"
+            data-testid="workflow-guide-narration"
+            className="mt-0.5 h-4 w-4 flex-shrink-0 accent-violet-500"
+            checked={narrationEnabled}
+            onChange={(event) => setNarrationEnabled(event.target.checked)}
+          />
+          <span>
+            내레이션 넣기
+            <span className="mt-0.5 block text-xs text-slate-500">
+              프로젝트 설정의 "내레이션 넣기"와 같은 항목입니다. 켜면 음성 단계가 하나 늘어납니다.
+            </span>
+          </span>
+        </label>
         <p className="text-xs text-slate-500">
           완성 영상 길이: <span className="tabular-nums text-slate-300">{runtimeSeconds}초</span>
         </p>
@@ -222,6 +247,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
           </p>
           <p className="mt-1 text-xs text-slate-500">
             대본 {storyCalls}회 + 이미지 {imageCalls}회 + 영상 {videoCalls}회
+            {narrationEnabled ? ` + 음성 ${narrationCalls}회` : ""}
           </p>
         </div>
         <div>
@@ -248,7 +274,10 @@ export function WorkflowGuideScreen({ onBack }: Props) {
           "내가 입력한 스타일 설정 (그림체·색감·조명·카메라)",
           "Asset Library의 폴더 공통 특징과 이미지별 개별 특징 (글로 변환)",
         ]}
-        receives={`장면 ${sceneCount}개분의 구성 정보를 한 번에. 장면마다 구도·모션·대본이 항목별로 나뉘어 돌아옵니다.`}
+        receives={
+          `장면 ${sceneCount}개분의 구성 정보를 한 번에. 장면마다 구도·모션·대본이 항목별로 나뉘어 돌아옵니다.` +
+          (narrationEnabled ? " 내레이션을 켰으므로 장면마다 읽어줄 문장도 함께 만들어집니다." : "")
+        }
       />
 
       <FlowArrow label="대본 AI가 만든 항목이 이미지용과 영상용으로 갈라집니다" />
@@ -288,8 +317,33 @@ export function WorkflowGuideScreen({ onBack }: Props) {
           "앞 장면과 이어지도록 하는 연속성 힌트",
           "확정한 장면 이미지 1장 (첫 프레임)",
         ]}
-        receives={`장면마다 ${clipDurationSeconds}초 영상 1개. 검토 후 확정하면 마지막에 하나로 병합됩니다.`}
+        receives={
+          `장면마다 ${clipDurationSeconds}초 영상 1개. 검토 후 확정하면 마지막에 하나로 병합됩니다.` +
+          (narrationEnabled ? " 병합할 때 내레이션 음성과 자막이 함께 입혀집니다." : "")
+        }
       />
+
+      {narrationEnabled && (
+        <>
+          <FlowArrow label="내레이션을 켜면 음성 단계가 하나 더 붙습니다" />
+          <StageCard
+            tone="narration"
+            step={4}
+            title="음성 AI"
+            provider="OpenAI TTS"
+            callRule="장면 1개당 1회"
+            calls={narrationCalls}
+            unitCostUsd={TTS_ESTIMATED_COST_USD}
+            totalCostUsd={narrationTotal}
+            testId="workflow-guide-stage-narration"
+            sends={[
+              "대본 AI가 만든 장면별 내레이션 문장",
+              "새 계정이나 새 키가 필요하지 않습니다 — 이미 연결한 OpenAI 키를 그대로 씁니다",
+            ]}
+            receives="장면마다 읽어주는 음성 1개. 마지막 병합 단계에서 영상에 음성과 자막으로 입혀집니다."
+          />
+        </>
+      )}
 
       <section aria-label="알아두면 좋은 것" className="space-y-2.5 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
         <h2 className="text-sm font-semibold text-slate-200">알아두면 좋은 것</h2>
@@ -306,6 +360,11 @@ export function WorkflowGuideScreen({ onBack }: Props) {
             · <span className="text-slate-300">내가 입력한 설정은 대본 AI에게만 전달됩니다.</span> 이미지·영상 AI는 내
             입력이 아니라 대본 AI가 장면별로 정리한 결과를 받습니다. 그래서 설정을 바꾸면 대본부터 다시 만들어야 그림과
             영상까지 반영됩니다.
+          </li>
+          <li>
+            · <span className="text-slate-300">내레이션은 프로젝트마다 켜고 끌 수 있습니다.</span> 꺼두면 음성 단계는 아예
+            실행되지 않아 비용도 발생하지 않습니다. 켜면 등장인물이 입을 움직여 말하는 방식이 아니라 이야기를 읽어주는
+            방식이라, 입 모양이 어긋나 보이지 않습니다.
           </li>
           <li>
             · <span className="text-slate-300">위 금액은 예상치입니다.</span> 실제 청구는 각 제공사 기준을 따르며, 월
