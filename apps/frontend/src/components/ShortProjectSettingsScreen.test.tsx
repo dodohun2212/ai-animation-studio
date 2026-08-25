@@ -470,4 +470,59 @@ describe("ShortProjectSettingsScreen", () => {
     expect((screen.getByTestId("settings-subtitles-enabled") as HTMLInputElement).checked).toBe(true);
     expect((screen.getByTestId("settings-narration-enabled") as HTMLInputElement).checked).toBe(false);
   });
+
+  it("offers the screen shape as a choice instead of a box to type into", async () => {
+    // The backend decides orientation with `aspect === "16:9"`, so a typed value that is off by a character
+    // silently produces a vertical video — after six clips have been paid for.
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    const select = (await screen.findByTestId("settings-aspect")) as HTMLSelectElement;
+    expect([...select.options].map((option) => option.value)).toEqual(["9:16", "16:9"]);
+    expect(select.value).toBe("16:9");
+    expect(screen.queryByTestId("settings-aspect-unknown")).toBeNull();
+  });
+
+  it("keeps an unrecognised saved ratio visible and says what it will actually produce", async () => {
+    // Rewriting the stored value on render would hide that this project is about to come out vertical.
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings: { ...settings, styleNotes: { ...settings.styleNotes, aspect: "1920x1080" } } },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    const select = (await screen.findByTestId("settings-aspect")) as HTMLSelectElement;
+    expect([...select.options].some((option) => option.textContent?.includes("1920x1080"))).toBe(true);
+    expect((await screen.findByTestId("settings-aspect-unknown")).textContent).toContain("세로형으로 만들어집니다");
+  });
+
+  it("saves the chosen ratio in the exact spelling the video step compares against", async () => {
+    const project = makeProject({});
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+      "PATCH /projects/sample_project/settings": { project, settings },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    fireEvent.change(await screen.findByTestId("settings-aspect"), { target: { value: "9:16" } });
+    fireEvent.click(screen.getByRole("button", { name: "설정 저장" }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PATCH")).toBe(true));
+    const call = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PATCH")!;
+    const body = JSON.parse(String((call[1] as RequestInit).body)) as { settings: { styleNotes: { aspect: string } } };
+    expect(body.settings.styleNotes.aspect).toBe("9:16");
+  });
 });

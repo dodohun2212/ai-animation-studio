@@ -58,6 +58,49 @@ function SectionHeading({ children }: { children: ReactNode }) {
   );
 }
 
+/** The two shapes the video step can actually produce, in the spelling its ratio check compares against. */
+const ASPECT_OPTIONS: { value: string; label: string }[] = [
+  { value: "9:16", label: "세로형 9:16" },
+  { value: "16:9", label: "가로형 16:9" },
+];
+
+/**
+ * Screen shape, as a choice rather than a free-text note.
+ *
+ * The backend decides orientation with `aspect === "16:9" ? landscape : portrait` (video-preview.service.ts),
+ * so anything else — a typo, "1920x1080", Korean, an empty box — silently produces a vertical video. Typing it
+ * by hand meant a project could look landscape in settings and bill six vertical clips. A stored value that is
+ * neither option is kept and named rather than quietly rewritten: replacing the user's data on render would
+ * hide that their old project is about to come out vertical.
+ */
+function AspectField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const known = ASPECT_OPTIONS.some((option) => option.value === value);
+  return (
+    <div className="space-y-1.5">
+      <label className="block text-sm text-slate-300" htmlFor="settings-aspect">
+        화면 비율
+        <select
+          id="settings-aspect"
+          data-testid="settings-aspect"
+          className={fieldClassName}
+          value={known ? value : ""}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          {!known && <option value="">{value ? `인식할 수 없는 값: ${value}` : "선택 안 됨"}</option>}
+          {ASPECT_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </label>
+      {!known && (
+        <p data-testid="settings-aspect-unknown" className="text-xs text-amber-300">
+          지금 값으로는 세로형으로 만들어집니다. 위에서 하나를 고르면 바뀝니다.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function Field({ label, value, onChange, multiline = false }: { label: string; value: string; onChange: (value: string) => void; multiline?: boolean }) {
   return (
     <label className="block text-sm text-slate-300">
@@ -749,7 +792,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
           <Field label="카메라 느낌" value={state.settings.styleNotes.camera ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, camera: value })} />
           <Field label="대사 스타일" value={state.settings.styleNotes.dialogue ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, dialogue: value })} />
           <Field label="피할 요소" value={state.settings.styleNotes.avoid ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, avoid: value })} />
-          <Field label="화면 비율" value={state.settings.styleNotes.aspect ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, aspect: value })} />
+          <AspectField value={state.settings.styleNotes.aspect ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, aspect: value })} />
           <Field label="추가 지시사항" value={state.settings.additionalNotes} onChange={(value) => setField("additionalNotes", value)} multiline />
           <div className="md:col-span-2 space-y-3 rounded-xl border border-white/10 bg-slate-950/40 p-3.5">
             <p className="text-sm font-semibold text-slate-200">내레이션</p>
