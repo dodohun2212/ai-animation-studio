@@ -7,6 +7,7 @@ import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
+import { RunwayBudget } from "../providers/runway-budget.js";
 import { LocalVideoPreviewService } from "./video-preview.service.js";
 import { LocalVideoSubmissionService } from "./local-video-submission.service.js";
 import { LocalVideoWorkflowService } from "./local-video-workflow.service.js";
@@ -26,7 +27,7 @@ async function setup() {
   const project = createStoredProject("video_workflow", "topic", "2026-08-23T00:00:00.000Z"); project.workflow_state = WorkflowState.WaitingForVideoConfirmation; project.scenes = scenes(); await projects.create(project);
   const images = path.join(projectsRoot, project.project_id, "images"); await fs.mkdir(images, { recursive: true });
   project.generated_images = await Promise.all([1, 2, 3, 4, 5, 6].map(async (number) => { const file = path.join(images, `scene${number}.png`); await fs.writeFile(file, PNG); return file; })); await projects.save(project);
-  const previews = new LocalVideoPreviewService(projects, projectsRoot); const submit = new LocalVideoSubmissionService(projects, previews);
+  const previews = new LocalVideoPreviewService(projects, projectsRoot, new RunwayBudget(root)); const submit = new LocalVideoSubmissionService(projects, previews);
   const preview = await previews.preview(project.project_id, undefined);
   const accepted = await submit.start(project.project_id, { confirmationId: preview.confirmationId!, userRequestId: "request_1", approved: true, prompts: preview.previews.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
   return { projectsRoot, projects, accepted, workflow: new LocalVideoWorkflowService(projects, projectsRoot) };

@@ -171,6 +171,9 @@ export interface GetLongEpisodeVideoPreviewResponse {
   executionMode: "sequential";
   scenes: LongEpisodeVideoPreview[];
   estimatedCostUsd: number;
+  /** Local guard information only; previewing never reserves budget or calls a provider. */
+  maximumProviderCalls?: number;
+  budget?: BudgetPreview;
 }
 export interface StartLongEpisodeVideoGenerationRequest {
   confirmationId: string;

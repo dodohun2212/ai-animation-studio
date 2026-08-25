@@ -9,6 +9,7 @@ import { validateImage } from "../assets/image-validation.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
+import { RunwayBudget, VIDEO_SCENE_ESTIMATED_COST_USD } from "../providers/runway-budget.js";
 import {
   invalidVideoPreviewRequest,
   videoPreviewDataInvalid,
@@ -25,8 +26,6 @@ const SCENE_FIELDS = [
   "environment_motion", "motion_speed", "motion_intensity", "expression_change", "continuity_hint",
 ] as const;
 const UTF16_PROMPT_LIMIT = 1_000;
-const ESTIMATED_REQUEST_COST_USD = 1.5;
-const LOCAL_MONTHLY_BUDGET_USD = 10;
 
 type StoredScene = Record<(typeof SCENE_FIELDS)[number], string | number>;
 
@@ -89,7 +88,11 @@ function promptFor(scene: StoredScene, previous: StoredScene | undefined, ratio:
 
 @Injectable()
 export class LocalVideoPreviewService {
-  constructor(private readonly projects: LocalProjectRepository, private readonly projectsRoot: string) {}
+  constructor(
+    private readonly projects: LocalProjectRepository,
+    private readonly projectsRoot: string,
+    private readonly budget: RunwayBudget,
+  ) {}
 
   private imagePath(projectId: string, scene: SceneNumber): string {
     return path.join(this.projectsRoot, projectId, "images", `scene${scene}.png`);
@@ -125,7 +128,7 @@ export class LocalVideoPreviewService {
       model: "gen4_turbo",
       ratio,
       durationSeconds: clipDurationSeconds,
-      estimatedCostUsd: 0.25,
+      estimatedCostUsd: VIDEO_SCENE_ESTIMATED_COST_USD,
     }));
     // This is an opaque, deterministic snapshot of the reviewed images and
     // preflight settings. It is deliberately not persisted: generating a
@@ -139,16 +142,19 @@ export class LocalVideoPreviewService {
       digest.update(preview.ratio, "ascii");
       digest.update(String(preview.durationSeconds), "ascii");
     }
+    const estimatedRequestCostUsd = previews.reduce((sum, preview) => sum + preview.estimatedCostUsd, 0);
+    // Read-only: previewing never reserves or records budget, it only reports the ledger's current state.
+    const [spentUsd, remainingUsd] = await Promise.all([this.budget.spentThisMonth(), this.budget.remaining()]);
     return {
       previews,
       confirmationId: digest.digest("hex"),
       maximumProviderCalls: sceneNumbers.length,
       budget: {
-        monthlyLimitUsd: LOCAL_MONTHLY_BUDGET_USD,
-        spentUsd: 0,
-        remainingUsd: LOCAL_MONTHLY_BUDGET_USD,
-        estimatedRequestCostUsd: ESTIMATED_REQUEST_COST_USD,
-        canSpend: ESTIMATED_REQUEST_COST_USD <= LOCAL_MONTHLY_BUDGET_USD,
+        monthlyLimitUsd: this.budget.monthlyLimitUsd,
+        spentUsd,
+        remainingUsd,
+        estimatedRequestCostUsd,
+        canSpend: estimatedRequestCostUsd <= remainingUsd,
       },
     };
   }

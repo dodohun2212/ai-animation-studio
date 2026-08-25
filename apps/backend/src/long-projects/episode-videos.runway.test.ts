@@ -113,4 +113,21 @@ describe("real Runway episode video generation", () => {
     const regenerated = await videos.regenerate("long", 1, started.jobId, "1", { approved: true });
     expect(regenerated.status).toBe("running");
   });
+
+  it("reflects real recorded spend from the shared RunwayBudget ledger instead of a hardcoded budget", async () => {
+    const deps = await setupWithConnectedRunway();
+    await deps.budget.record("some_other_project", "video", true, 4);
+    const videos = newVideos(deps);
+    const preview = await videos.preview("long", 1);
+    expect(preview.maximumProviderCalls).toBe(6);
+    expect(preview.budget).toEqual({ monthlyLimitUsd: 10, spentUsd: 4, remainingUsd: 6, estimatedRequestCostUsd: 1.5, canSpend: true });
+  });
+
+  it("omits the budget field entirely when no RunwayBudget is wired (no provider connected)", async () => {
+    const deps = await setupWithConnectedRunway();
+    const videos = new EpisodeVideosService(deps.projectsRoot);
+    const preview = await videos.preview("long", 1);
+    expect(preview.maximumProviderCalls).toBe(6);
+    expect(preview.budget).toBeUndefined();
+  });
 });

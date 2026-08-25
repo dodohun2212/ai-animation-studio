@@ -30,6 +30,67 @@ describe("VideoPromptPreviewScreen", () => {
     vi.unstubAllGlobals();
   });
 
+  it("shows the remaining monthly budget and maximum provider calls alongside the cost", async () => {
+    const response: GetVideoPromptPreviewResponse = {
+      ...makePreviewResponse(),
+      maximumProviderCalls: 6,
+      budget: { monthlyLimitUsd: 10, spentUsd: 4.25, remainingUsd: 5.75, estimatedRequestCostUsd: 1.5, canSpend: true },
+    };
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, response)));
+
+    await screen.findByTestId("preview-list");
+    expect(screen.getByTestId("max-provider-calls").textContent).toContain("6회");
+    const summary = screen.getByTestId("budget-summary").textContent ?? "";
+    expect(summary).toContain("$5.75");
+    expect(summary).toContain("$10.00");
+    expect(summary).toContain("$4.25");
+    expect(screen.queryByTestId("budget-exceeded-warning")).toBeNull();
+  });
+
+  it("warns when the request's estimated cost exceeds the remaining budget, and repeats the preflight in the confirmation panel", async () => {
+    const response: GetVideoPromptPreviewResponse = {
+      ...makePreviewResponse(),
+      maximumProviderCalls: 6,
+      // 6 scenes x $0.25 = $1.50 estimated, against only $0.40 left.
+      budget: { monthlyLimitUsd: 10, spentUsd: 9.6, remainingUsd: 0.4, estimatedRequestCostUsd: 1.5, canSpend: false },
+    };
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, response)));
+
+    await screen.findByTestId("preview-list");
+    expect(screen.getByTestId("budget-exceeded-warning")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("open-confirm-button"));
+    const preflight = (await screen.findByTestId("confirm-preflight")).textContent ?? "";
+    expect(preflight).toContain("gen4_turbo");
+    expect(preflight).toContain("720:1280");
+    expect(preflight).toContain("6회");
+    expect(preflight).toContain("$1.50");
+    expect(preflight).toContain("$0.40");
+    expect(screen.getByTestId("confirm-budget-warning")).toBeTruthy();
+  });
+
+  it("still renders normally when the response carries no budget information", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, makePreviewResponse())));
+
+    await screen.findByTestId("preview-list");
+    expect(screen.getByTestId("total-cost").textContent).toContain("$1.50");
+    expect(screen.queryByTestId("budget-summary")).toBeNull();
+    expect(screen.queryByTestId("max-provider-calls")).toBeNull();
+    expect(screen.queryByTestId("budget-exceeded-warning")).toBeNull();
+  });
+
+  it("rejects a malformed budget rather than displaying a wrong number", async () => {
+    const response = {
+      ...makePreviewResponse(),
+      budget: { monthlyLimitUsd: 10, spentUsd: "네", remainingUsd: 5, estimatedRequestCostUsd: 1.5, canSpend: true },
+    };
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, response)));
+
+    const alert = await screen.findByTestId("preview-error");
+    expect(alert).toHaveAttribute("data-error-code", "CLIENT_MALFORMED_RESPONSE");
+    expect(screen.queryByTestId("budget-summary")).toBeNull();
+  });
+
   it("shows a loading state, then loads via an explicit POST /projects/:id/videos/preview", async () => {
     const response: GetVideoPromptPreviewResponse = { previews: makePreviews() };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, response));

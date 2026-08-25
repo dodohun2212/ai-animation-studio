@@ -28,7 +28,7 @@ const isUsageRecord = (value: unknown): value is UsageRecord => isObject(value)
 export class RunwayBudget {
   private readonly filePath: string;
 
-  constructor(learningDataRoot: string, private readonly monthlyLimitUsd: number = DEFAULT_MONTHLY_LIMIT_USD) {
+  constructor(learningDataRoot: string, readonly monthlyLimitUsd: number = DEFAULT_MONTHLY_LIMIT_USD) {
     this.filePath = path.join(learningDataRoot, "runway_budget_usage.json");
   }
 

@@ -19,8 +19,8 @@ import { LocalVideoMergeService } from "./video-merge.service.js";
     { provide: RunwayBudget, useFactory: (root: string) => new RunwayBudget(root), inject: [LEARNING_DATA_ROOT] },
     {
     provide: LocalVideoPreviewService,
-    useFactory: (projects: LocalProjectRepository, projectsRoot: string) => new LocalVideoPreviewService(projects, projectsRoot),
-    inject: [LocalProjectRepository, PROJECTS_ROOT],
+    useFactory: (projects: LocalProjectRepository, projectsRoot: string, budget: RunwayBudget) => new LocalVideoPreviewService(projects, projectsRoot, budget),
+    inject: [LocalProjectRepository, PROJECTS_ROOT, RunwayBudget],
   }, {
     provide: LocalVideoSubmissionService,
     useFactory: (projects: LocalProjectRepository, previews: LocalVideoPreviewService, providerSettings: ProviderSettingsService, budget: RunwayBudget) =>

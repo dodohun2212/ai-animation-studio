@@ -2,6 +2,7 @@ import {
   API_ROUTES,
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
+  type BudgetPreview,
   type GetVideoPromptPreviewResponse,
   type SceneNumber,
   type VideoPromptPreview,
@@ -66,6 +67,27 @@ function isVideoPromptPreview(value: unknown): value is VideoPromptPreview {
   );
 }
 
+function isFiniteNonNegative(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+/**
+ * The spend guard shown before a paid submission. Optional on the contract, so an older/partial response
+ * is tolerated — but a malformed one is rejected outright rather than displayed, because a wrong budget
+ * number is worse than none at all.
+ */
+function isBudgetPreview(value: unknown): value is BudgetPreview {
+  if (value === undefined) return true;
+  return (
+    isRecord(value) &&
+    isFiniteNonNegative(value.monthlyLimitUsd) &&
+    isFiniteNonNegative(value.spentUsd) &&
+    isFiniteNonNegative(value.remainingUsd) &&
+    isFiniteNonNegative(value.estimatedRequestCostUsd) &&
+    typeof value.canSpend === "boolean"
+  );
+}
+
 /** Every preview response must carry every scene belonging to the project (2-12), 1..N in order — never fewer, never out of order. */
 function isGetVideoPromptPreviewResponse(value: unknown): value is GetVideoPromptPreviewResponse {
   return (
@@ -73,7 +95,9 @@ function isGetVideoPromptPreviewResponse(value: unknown): value is GetVideoPromp
     Array.isArray(value.previews) &&
     value.previews.length >= MIN_SCENE_COUNT &&
     value.previews.length <= MAX_SCENE_COUNT &&
-    value.previews.every((item, index) => isVideoPromptPreview(item) && item.sceneNumber === index + 1)
+    value.previews.every((item, index) => isVideoPromptPreview(item) && item.sceneNumber === index + 1) &&
+    (value.maximumProviderCalls === undefined || isFiniteNonNegative(value.maximumProviderCalls)) &&
+    isBudgetPreview(value.budget)
   );
 }
 

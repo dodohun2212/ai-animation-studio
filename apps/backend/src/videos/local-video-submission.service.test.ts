@@ -7,6 +7,7 @@ import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
+import { RunwayBudget } from "../providers/runway-budget.js";
 import { LocalVideoPreviewService } from "./video-preview.service.js";
 import { LocalVideoSubmissionService } from "./local-video-submission.service.js";
 
@@ -29,7 +30,7 @@ async function setup(budget = 10) {
   const images = path.join(projectsRoot, project.project_id, "images"); await fs.mkdir(images, { recursive: true });
   project.generated_images = await Promise.all([1, 2, 3, 4, 5, 6].map(async (number) => { const file = path.join(images, `scene${number}.png`); await fs.writeFile(file, PNG); return file; }));
   await projects.save(project);
-  const previews = new LocalVideoPreviewService(projects, projectsRoot);
+  const previews = new LocalVideoPreviewService(projects, projectsRoot, new RunwayBudget(root));
   return { projects, previews, service: new LocalVideoSubmissionService(projects, previews, budget) };
 }
 

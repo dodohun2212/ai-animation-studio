@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { SceneNumber, StartVideoGenerationResponse, VideoPromptPreview } from "@ai-animation-studio/shared";
+import type { BudgetPreview, SceneNumber, StartVideoGenerationResponse, VideoPromptPreview } from "@ai-animation-studio/shared";
 
 import { getVideoPromptPreview, toVideoPreviewDisplayError } from "../api/videoPreviewApi.js";
 import { startVideoSubmission, toVideoSubmissionDisplayError } from "../api/videoSubmissionApi.js";
@@ -16,7 +16,7 @@ type DisplayError = { code: string; message: string };
 type LoadState =
   | { status: "loading" }
   | { status: "error"; error: DisplayError }
-  | { status: "ready"; previews: VideoPromptPreview[]; confirmationId?: string };
+  | { status: "ready"; previews: VideoPromptPreview[]; confirmationId?: string; maximumProviderCalls?: number; budget?: BudgetPreview };
 
 const PROMPT_UTF16_LIMIT = 1000;
 const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
@@ -45,7 +45,13 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
     try {
       const response = await getVideoPromptPreview(projectId);
       if (requestId !== loadRequest.current) return;
-      setState({ status: "ready", previews: response.previews, confirmationId: response.confirmationId });
+      setState({
+        status: "ready",
+        previews: response.previews,
+        confirmationId: response.confirmationId,
+        maximumProviderCalls: response.maximumProviderCalls,
+        budget: response.budget,
+      });
       setEditedPrompts(Object.fromEntries(response.previews.map((preview) => [preview.sceneNumber, preview.prompt])));
       setConfirmOpen(false);
       setUserRequestId(null);
@@ -73,6 +79,11 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
   const previews = state.status === "ready" ? state.previews : [];
   const totalCostUsd = previews.reduce((sum, preview) => sum + preview.estimatedCostUsd, 0);
   const confirmationId = state.status === "ready" ? state.confirmationId : undefined;
+  const budget = state.status === "ready" ? state.budget : undefined;
+  const maximumProviderCalls = state.status === "ready" ? state.maximumProviderCalls : undefined;
+  // Compared against our own per-scene sum rather than the response's `estimatedRequestCostUsd`, so the
+  // number the user is warned about is exactly the number shown above it.
+  const overBudget = budget ? totalCostUsd > budget.remainingUsd || !budget.canSpend : false;
   const hasBlockingPromptError = previews.some((preview) => {
     const text = promptFor(preview);
     return !text.trim() || utf16Length(text) > PROMPT_UTF16_LIMIT;
@@ -199,9 +210,30 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
               );
             })}
           </ul>
-          <p className="text-sm font-semibold text-slate-200" data-testid="total-cost">
-            총 예상 비용: ${totalCostUsd.toFixed(2)}
-          </p>
+          <section
+            aria-label="비용 및 예산 확인"
+            className={`space-y-1.5 rounded-2xl border p-4 ${overBudget ? "border-rose-400/40 bg-rose-950/20" : "border-white/10 bg-slate-900/70"}`}
+          >
+            <p className="text-sm font-semibold text-slate-200" data-testid="total-cost">
+              총 예상 비용: ${totalCostUsd.toFixed(2)}
+            </p>
+            {maximumProviderCalls !== undefined && (
+              <p className="text-sm text-slate-300" data-testid="max-provider-calls">
+                최대 호출 수: {maximumProviderCalls}회
+              </p>
+            )}
+            {budget && (
+              <p className="text-sm text-slate-300" data-testid="budget-summary">
+                이번 달 남은 예산: ${budget.remainingUsd.toFixed(2)} (월 한도 ${budget.monthlyLimitUsd.toFixed(2)} 중 $
+                {budget.spentUsd.toFixed(2)} 사용)
+              </p>
+            )}
+            {overBudget && (
+              <p role="alert" data-testid="budget-exceeded-warning" className="text-sm font-semibold text-rose-300">
+                이번 요청의 예상 비용이 남은 월 예산을 초과합니다. 그대로 전송하면 예산 한도에 막혀 실패할 수 있습니다.
+              </p>
+            )}
+          </section>
 
           {!submitted && (
             <div className="flex gap-3">
@@ -234,6 +266,39 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
                 아직 전송되지 않았습니다. 확인을 누르면 위 {previews.length}개 프롬프트가 그대로 로컬 승인 요청으로 전송됩니다.
                 실제 유료 Runway 요청은 전송되지 않으며, 로컬 가짜 처리로만 기록됩니다.
               </p>
+              {/* The spec requires the full preflight to be visible at the moment of approval, not only
+                  further up the page where it may be scrolled out of view. */}
+              <dl data-testid="confirm-preflight" className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-slate-300">
+                <dt className="text-slate-400">모델</dt>
+                <dd>{previews[0]!.model}</dd>
+                <dt className="text-slate-400">해상도 / 비율</dt>
+                <dd>{previews[0]!.ratio}</dd>
+                <dt className="text-slate-400">장면 수 / 길이</dt>
+                <dd>
+                  {previews.length}개 · 장면당 {previews[0]!.durationSeconds}초
+                </dd>
+                {maximumProviderCalls !== undefined && (
+                  <>
+                    <dt className="text-slate-400">최대 호출 수</dt>
+                    <dd>{maximumProviderCalls}회</dd>
+                  </>
+                )}
+                <dt className="text-slate-400">총 예상 비용</dt>
+                <dd className="font-semibold text-slate-100">${totalCostUsd.toFixed(2)}</dd>
+                {budget && (
+                  <>
+                    <dt className="text-slate-400">남은 월 예산</dt>
+                    <dd className={overBudget ? "font-semibold text-rose-300" : undefined}>
+                      ${budget.remainingUsd.toFixed(2)} / ${budget.monthlyLimitUsd.toFixed(2)}
+                    </dd>
+                  </>
+                )}
+              </dl>
+              {overBudget && (
+                <p role="alert" data-testid="confirm-budget-warning" className="text-sm font-semibold text-rose-300">
+                  예상 비용이 남은 월 예산을 초과합니다.
+                </p>
+              )}
               <div className="flex gap-3">
                 <button
                   type="button"

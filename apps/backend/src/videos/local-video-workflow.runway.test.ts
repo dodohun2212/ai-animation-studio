@@ -40,7 +40,7 @@ async function setupWithConnectedRunway() {
   await providerSettings.save("runway", { value: "key_test_runway_1234567890" });
   const budget = new RunwayBudget(root, 10);
 
-  const previews = new LocalVideoPreviewService(projects, projectsRoot);
+  const previews = new LocalVideoPreviewService(projects, projectsRoot, budget);
   const submit = new LocalVideoSubmissionService(projects, previews, undefined, providerSettings, budget);
   const preview = await previews.preview(project.project_id, undefined);
   const accepted = await submit.start(project.project_id, { confirmationId: preview.confirmationId!, userRequestId: "request_1", approved: true, prompts: preview.previews.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });

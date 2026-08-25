@@ -7,6 +7,7 @@ import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
+import { RunwayBudget } from "../providers/runway-budget.js";
 import { LocalVideoPreviewService, utf16Length } from "./video-preview.service.js";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
@@ -37,7 +38,9 @@ function scenes() {
 
 async function setup() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "video-preview-")); roots.push(root);
-  const projectsRoot = path.join(root, "learning_data", "projects");
+  const learningDataRoot = path.join(root, "learning_data");
+  const projectsRoot = path.join(learningDataRoot, "projects");
+  const budget = new RunwayBudget(learningDataRoot);
   const projects = new LocalProjectRepository(projectsRoot);
   const project = createStoredProject("video_preview", "topic", "2026-08-22T00:00:00.000Z");
   project.workflow_state = WorkflowState.WaitingForVideoConfirmation;
@@ -50,7 +53,7 @@ async function setup() {
     const file = path.join(images, `scene${number}.png`); await fs.writeFile(file, PNG); return file;
   }));
   await projects.save(project);
-  return { projectsRoot, projects, service: new LocalVideoPreviewService(projects, projectsRoot) };
+  return { projectsRoot, learningDataRoot, budget, projects, service: new LocalVideoPreviewService(projects, projectsRoot, budget) };
 }
 
 describe("provider-free video prompt preview", () => {
@@ -64,15 +67,31 @@ describe("provider-free video prompt preview", () => {
     expect(result.previews[1]?.prompt).toContain("Opening movement: start 2");
     expect(result.previews[1]?.prompt).toContain("Main action: main 2");
     expect(result.previews.every((item) => utf16Length(item.prompt) <= 1_000)).toBe(true);
+    expect(result.maximumProviderCalls).toBe(6);
+    expect(result.budget).toEqual({ monthlyLimitUsd: 10, spentUsd: 0, remainingUsd: 10, estimatedRequestCostUsd: 1.5, canSpend: true });
     await expect(fs.readFile(path.join(projectsRoot, "video_preview", "project.json"), "utf8")).resolves.toBe(before);
   });
 
   it("uses portrait as the Python fallback and counts non-BMP characters as two UTF-16 units", async () => {
-    const { projects, projectsRoot } = await setup();
+    const { projects, projectsRoot, learningDataRoot } = await setup();
     const project = await projects.findById("video_preview"); project.style_profile = {}; await projects.save(project);
-    const result = await new LocalVideoPreviewService(new LocalProjectRepository(projectsRoot), projectsRoot).preview("video_preview", {});
+    const result = await new LocalVideoPreviewService(new LocalProjectRepository(projectsRoot), projectsRoot, new RunwayBudget(learningDataRoot)).preview("video_preview", {});
     expect(result.previews.every((item) => item.ratio === "720:1280")).toBe(true);
     expect(utf16Length("A😀B")).toBe(4);
+  });
+
+  it("reflects real recorded spend from the shared RunwayBudget ledger instead of a hardcoded value", async () => {
+    const { budget, service } = await setup();
+    await budget.record("some_other_project", "video", true, 4);
+    const result = await service.preview("video_preview", undefined);
+    expect(result.budget).toEqual({ monthlyLimitUsd: 10, spentUsd: 4, remainingUsd: 6, estimatedRequestCostUsd: 1.5, canSpend: true });
+  });
+
+  it("reports canSpend: false and the true remaining budget once spend nearly exhausts the monthly limit", async () => {
+    const { budget, service } = await setup();
+    await budget.record("some_other_project", "video", true, 9);
+    const result = await service.preview("video_preview", undefined);
+    expect(result.budget).toEqual({ monthlyLimitUsd: 10, spentUsd: 9, remainingUsd: 1, estimatedRequestCostUsd: 1.5, canSpend: false });
   });
 
   it("rejects unknown request fields, wrong state, bad image paths, and corrupt scenes safely", async () => {
