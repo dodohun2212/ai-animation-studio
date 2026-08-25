@@ -67,7 +67,23 @@ function sceneValue(scene: unknown, key: string): string {
  * No length truncation: OpenAI's image prompt limit (32,000 chars) is far larger than anything a single scene's
  * fields could reach.
  */
-function imagePromptFor(scene: unknown): string {
+/**
+ * Deterministic, not routed through the Story AI's own translation — same source and priority as the Story
+ * prompt's own style fields (project styleNotes override, falling back to the AI-set style_profile). Keeping
+ * this line identical across every scene's prompt (unlike the AI-authored fields above) is what gives scene-to-
+ * scene visual consistency; camera is deliberately excluded, since camera work is a video concept and would be
+ * noise in a still-image prompt.
+ */
+function styleLineFor(project: StoredProject): string {
+  const notes = toShortProjectSettings(project).styleNotes;
+  const profile = isObject(project.style_profile) ? project.style_profile : {};
+  const fromProfile = (key: string): string => typeof profile[key] === "string" ? (profile[key] as string).trim() : "";
+  const parts = [notes.visualStyle ?? fromProfile("visual_style"), notes.color ?? fromProfile("color"), notes.lighting ?? fromProfile("lighting")]
+    .filter((part) => part.trim().length > 0);
+  return parts.length > 0 ? `Style: ${parts.join(", ")}` : "";
+}
+
+function imagePromptFor(scene: unknown, styleLine: string): string {
   const sections: Array<[string, string]> = [
     ["Scene", sceneValue(scene, "visual_action")],
     ["Shot", [sceneValue(scene, "shot_size"), sceneValue(scene, "camera_angle")].filter(Boolean).join(", ")],
@@ -75,7 +91,9 @@ function imagePromptFor(scene: unknown): string {
     ["Lens", sceneValue(scene, "lens_feel")],
     ["Focus", sceneValue(scene, "focus_subject")],
   ];
-  return sections.filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`).join("\n");
+  const lines = sections.filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`);
+  if (styleLine) lines.push(styleLine);
+  return lines.join("\n");
 }
 
 function assertValidScenes(project: StoredProject): void {
@@ -133,6 +151,7 @@ export class LocalImageGenerationService {
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     const mappings = apiKey && this.budget ? await this.mappings.load(current.project_id) : [];
     const continuityImagePath = previousSceneContinuityImagePath(current);
+    const styleLine = styleLineFor(current);
     const generated: SceneNumber[] = [];
     const reused: SceneNumber[] = [];
     try {
@@ -143,7 +162,7 @@ export class LocalImageGenerationService {
           reused.push(number);
           continue;
         }
-        const prompt = imagePromptFor(current.scenes[number - 1]);
+        const prompt = imagePromptFor(current.scenes[number - 1], styleLine);
         let bytes: Buffer = PNG;
         let adapter = "local-fake-image-adapter";
         let apiCalls = 0;

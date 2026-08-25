@@ -122,6 +122,27 @@ describe("provider-free local image generation", () => {
     }
   });
 
+  it("appends a deterministic Style line from project style settings, preferring styleNotes over style_profile and always excluding camera", async () => {
+    const { projectsRoot, projects, mappings } = await setup();
+    const project = await projects.findById("images");
+    project.style_profile = { visual_style: "watercolor", color: "pastel", lighting: "soft", camera: "handheld" };
+    project.lore_context = { style_notes: { visual_style: "override style" } };
+    await projects.save(project);
+    await new LocalImageGenerationService(projects, mappings, projectsRoot).generate("images", { approved: true });
+    const reloaded = await new LocalProjectRepository(projectsRoot).findById("images");
+    for (const prompt of reloaded.image_prompts) {
+      expect(prompt).toContain("Style: override style, pastel, soft");
+      expect(prompt).not.toContain("handheld");
+    }
+  });
+
+  it("omits the Style line entirely when no project style setting is present", async () => {
+    const { projectsRoot, projects, mappings } = await setup();
+    await new LocalImageGenerationService(projects, mappings, projectsRoot).generate("images", { approved: true });
+    const reloaded = await new LocalProjectRepository(projectsRoot).findById("images");
+    for (const prompt of reloaded.image_prompts) expect(prompt).not.toContain("Style:");
+  });
+
   it("rejects generation when a scene is missing visual_action, the field the image prompt now depends on", async () => {
     const { projectsRoot, projects, mappings } = await setup();
     const project = await projects.findById("images");
