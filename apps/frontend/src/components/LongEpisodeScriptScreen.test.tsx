@@ -12,7 +12,7 @@ describe("LongEpisodeScriptScreen", () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { episode: episode("outline_ready", false) })).mockResolvedValueOnce(jsonResponse(200, { episode: episode("script_review") })).mockResolvedValueOnce(jsonResponse(200, { episode: episode("script_approved") }));
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeScriptScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Local 대본 생성" }));
+    fireEvent.click(await screen.findByRole("button", { name: "대본 초안 만들기" }));
     await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(JSON.stringify(script, null, 2)));
     expect(fetchMock.mock.calls[1]?.[0]).toBe("/long-projects/long/episodes/1/script/generations");
     fireEvent.click(screen.getByRole("button", { name: "대본 승인" }));
@@ -21,5 +21,19 @@ describe("LongEpisodeScriptScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "최종 승인" }));
     await waitFor(() => expect(screen.getByText(/대본이 승인되었습니다/)).toBeTruthy());
     expect(JSON.parse(String((fetchMock.mock.calls[2]?.[1] as RequestInit).body))).toEqual({ approved: true });
+  });
+
+  it("shows the Episode status in Korean instead of the raw stored value", async () => {
+    // Every other Long Project screen runs the status through longEpisodeStatusLabel; this one printed the
+    // enum itself, so a finished Episode read "videos_approved" here and "영상 승인됨" everywhere else.
+    const approved = { ...episode("script_approved"), status: "videos_approved" as const };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { episode: approved })));
+    render(<LongEpisodeScriptScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    const status = await screen.findByTestId("episode-script-status");
+    expect(status.textContent).toContain("영상 승인됨");
+    expect(status.textContent).not.toContain("videos_approved");
+    expect(status.textContent).not.toContain("revision");
+    expect(status.textContent).not.toContain("history");
   });
 });

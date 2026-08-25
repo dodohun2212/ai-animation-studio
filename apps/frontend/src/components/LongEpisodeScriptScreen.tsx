@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { LongEpisodeDetail, LongEpisodeScript } from "@ai-animation-studio/shared";
 import { approveLongEpisodeScript, generateLongEpisodeScript, getLongEpisode, toLongProjectDisplayError, updateLongEpisodeScript } from "../api/longProjectsApi.js";
 import { Spinner } from "./Spinner.js";
+import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 
 interface Props { projectId: string; episodeNumber: number; onBack: () => void; onOpenMappingReview?: (projectId: string, episodeNumber: number) => void; }
 type ErrorState = { code: string; message: string };
@@ -30,17 +31,17 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
     <section className="mt-8 space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button type="button" className={outlineButton} onClick={onBack}>프로젝트로 돌아가기</button>
-        <h2 className="flex items-center gap-2.5 text-lg font-semibold"><SectionDot />{`Episode ${episodeNumber} 상세 대본`}</h2>
+        <h2 className="flex items-center gap-2.5 text-lg font-semibold"><SectionDot />{`에피소드 ${episodeNumber} 상세 대본`}</h2>
       </div>
       {loading && <Spinner label="불러오는 중..." />}
       {episode && (
         <p data-testid="episode-script-status" className="text-sm text-slate-400">
-          상태: {episode.status} · revision {episode.scriptRevision} · history {episode.scriptHistoryCount}
+          상태: {longEpisodeStatusLabel(episode.status)} · 리비전 {episode.scriptRevision} · 이전 기록 {episode.scriptHistoryCount}개
         </p>
       )}
       {!hasScript && episode?.status === "outline_ready" && (
         <button type="button" className={primaryButton} disabled={pending} onClick={() => void run(() => generateLongEpisodeScript(projectId, episodeNumber, {}))}>
-          {pending ? "생성 중..." : "Local 대본 생성"}
+          {pending ? "생성 중..." : "대본 초안 만들기"}
         </button>
       )}
       {hasScript && (
@@ -58,7 +59,7 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
           )}
           {confirming && (
             <div role="alertdialog" data-testid="episode-script-approve-confirm" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
-              <p className="text-sm text-amber-300">이 대본을 승인할까요? 다음 Asset mapping 단계는 아직 시작하지 않습니다.</p>
+              <p className="text-sm text-amber-300">이 대본을 승인할까요? 다음 Asset Mapping 단계는 아직 시작하지 않습니다.</p>
               <div className="flex gap-3">
                 <button type="button" className={outlineButton} disabled={pending} onClick={() => setConfirming(false)}>돌아가기</button>
                 <button type="button" className={primaryButton} disabled={pending} onClick={() => void run(async () => { const response = await approveLongEpisodeScript(projectId, episodeNumber, { approved: true }); setConfirming(false); return response; })}>최종 승인</button>
@@ -68,7 +69,7 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
           {episode?.status === "script_approved" && (
             <div className="space-y-2">
               <p className="text-sm text-emerald-400">대본이 승인되었습니다.</p>
-              {onOpenMappingReview && <button type="button" className={violetOutlineButton} onClick={() => onOpenMappingReview(projectId, episodeNumber)}>Asset mapping 검토</button>}
+              {onOpenMappingReview && <button type="button" className={violetOutlineButton} onClick={() => onOpenMappingReview(projectId, episodeNumber)}>Asset Mapping 검토</button>}
             </div>
           )}
         </div>
