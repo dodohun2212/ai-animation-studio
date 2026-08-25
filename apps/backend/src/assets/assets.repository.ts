@@ -118,7 +118,7 @@ export class LocalAssetsRepository {
     });
   }
 
-  /** Creates an empty Character Folder — no image, no file. Children are linked into it afterward via `setParentFolder`. */
+  /** Creates an empty Folder of the given type — no image, no file. Children are linked into it afterward via `setParentFolder`. */
   async createFolder(metadata: CreateAssetFolderRequest): Promise<StoredAsset> {
     const displayName = metadata.displayName.trim();
     if (!displayName) throw badAssetRequest("displayName is required.");
@@ -127,7 +127,7 @@ export class LocalAssetsRepository {
       const now = new Date().toISOString();
       const folder: StoredAsset = {
         asset_id: `FOLDER-${crypto.randomBytes(6).toString("hex").toUpperCase()}`,
-        asset_type: "character", display_name: displayName, description: metadata.description?.trim() ?? "",
+        asset_type: metadata.assetType, display_name: displayName, description: metadata.description?.trim() ?? "",
         stored_path: "", original_filename: "", content_sha256: "", tags: [], aliases: [], enabled: true,
         approved: false, face_baseline: false, character_key: null, version: 1, versions: [],
         created_at: now, updated_at: now, notes: metadata.notes?.trim() ?? "", legacy_asset_ids: [], status: "manual",
@@ -141,11 +141,29 @@ export class LocalAssetsRepository {
   }
 
   /**
-   * Links (`parentFolderId` set) or unlinks (`parentFolderId: null`) one existing, non-folder Asset as a
-   * Character Folder child — the add/remove counterpart to `updateCharacterFolderReferenceSet`, which only
-   * reorders a folder's already-linked children. Linking converts the Asset into a Character Asset with a local
-   * reference-role set, mirroring `updateCharacterFolderReferenceSet`'s existing conversion of newly-added
-   * children. Re-linking into a different folder first detaches it from its previous one.
+   * Converts a child Asset to match its (new) parent Folder's type. For a character Folder this also mirrors
+   * Python's `update_folder`: children get the local reference-role set and lose any face-baseline flag. For any
+   * other Folder type, only `asset_type` is changed — the character-specific reference-image/role scaffolding
+   * does not apply.
+   */
+  private convertToFolderChild(item: StoredAsset, folder: StoredAsset): void {
+    item.asset_type = folder.asset_type;
+    if (folder.asset_type !== "character") return;
+    item.face_baseline = false;
+    item.reference_roles = [...CHARACTER_ROLES];
+    if (item.reference_images.length === 0 && item.stored_path) {
+      item.reference_images = ["thumbnail", "front"].map((role) => ({
+        role, path: item.stored_path, content_sha256: item.content_sha256, original_filename: item.original_filename,
+      }));
+    }
+    if (!CHARACTER_ROLES.includes(item.role)) item.role = "other";
+  }
+
+  /**
+   * Links (`parentFolderId` set) or unlinks (`parentFolderId: null`) one existing, non-folder Asset as a Folder
+   * child — the add/remove counterpart to `updateCharacterFolderReferenceSet`, which only reorders a folder's
+   * already-linked children. Linking converts the Asset to match its new folder's type (see
+   * `convertToFolderChild`). Re-linking into a different folder first detaches it from its previous one.
    */
   async setParentFolder(assetId: string, parentFolderId: string | null): Promise<{ asset: StoredAsset; folder: StoredAsset | null }> {
     assertSafeAssetId(assetId);
@@ -172,24 +190,15 @@ export class LocalAssetsRepository {
         return { asset, folder: previousFolder ?? null };
       }
 
-      if (parentFolderId === assetId) throw badAssetRequest("An Asset cannot be its own Character Folder parent.");
+      if (parentFolderId === assetId) throw badAssetRequest("An Asset cannot be its own Folder parent.");
       const folder = assets.find((item) => item.asset_id === parentFolderId);
       if (!folder) throw assetNotFound();
-      if (!folder.is_folder || folder.asset_type !== "character") throw assetMutationUnsupported();
+      if (!folder.is_folder) throw assetMutationUnsupported();
 
       if (previousFolder && previousFolder.asset_id !== folder.asset_id) detachFromPrevious();
       asset.parent_folder_id = folder.asset_id;
       asset.sort_order = folder.child_asset_ids.length;
-      // Mirrors updateCharacterFolderReferenceSet: a folder child is always a Character Asset with the local reference-role set.
-      asset.asset_type = "character";
-      asset.face_baseline = false;
-      asset.reference_roles = [...CHARACTER_ROLES];
-      if (asset.reference_images.length === 0 && asset.stored_path) {
-        asset.reference_images = ["thumbnail", "front"].map((role) => ({
-          role, path: asset.stored_path, content_sha256: asset.content_sha256, original_filename: asset.original_filename,
-        }));
-      }
-      if (!CHARACTER_ROLES.includes(asset.role)) asset.role = "other";
+      this.convertToFolderChild(asset, folder);
       asset.updated_at = now;
 
       if (!folder.child_asset_ids.includes(assetId)) folder.child_asset_ids = [...folder.child_asset_ids, assetId];
@@ -212,33 +221,23 @@ export class LocalAssetsRepository {
       const assets = await this.load();
       const folder = assets.find((item) => item.asset_id === folderId);
       if (!folder) throw assetNotFound();
-      if (!folder.is_folder || folder.asset_type !== "character") throw assetMutationUnsupported();
+      if (!folder.is_folder) throw assetMutationUnsupported();
       const requestedIds = request.childAssetIds;
       if (new Set(requestedIds).size !== requestedIds.length
         || requestedIds.length !== folder.child_asset_ids.length
         || requestedIds.some((assetId) => !folder.child_asset_ids.includes(assetId))
         || !requestedIds.includes(request.thumbnailAssetId)) {
-        throw badAssetRequest("Character Folder reference children must be an exact unique ordering of its current children.");
+        throw badAssetRequest("Folder reference children must be an exact unique ordering of its current children.");
       }
       const children = requestedIds.map((assetId) => assets.find((item) => item.asset_id === assetId));
-      if (children.some((child) => !child || child.is_folder)) throw badAssetRequest("Character Folder reference children are invalid.");
+      if (children.some((child) => !child || child.is_folder)) throw badAssetRequest("Folder reference children are invalid.");
       const now = new Date().toISOString();
       for (const [sortOrder, child] of children.entries()) {
         const item = child!;
-        if (item.parent_folder_id !== folder.asset_id) throw badAssetRequest("Character Folder reference children are invalid.");
+        if (item.parent_folder_id !== folder.asset_id) throw badAssetRequest("Folder reference children are invalid.");
         item.parent_folder_id = folder.asset_id;
         item.sort_order = sortOrder;
-        // This mirrors Python update_folder: character Folder children are
-        // normal Character Assets with a local reference-role set.
-        item.asset_type = "character";
-        item.face_baseline = false;
-        item.reference_roles = [...CHARACTER_ROLES];
-        if (item.reference_images.length === 0 && item.stored_path) {
-          item.reference_images = ["thumbnail", "front"].map((role) => ({
-            role, path: item.stored_path, content_sha256: item.content_sha256, original_filename: item.original_filename,
-          }));
-        }
-        if (!CHARACTER_ROLES.includes(item.role)) item.role = "other";
+        this.convertToFolderChild(item, folder);
         item.updated_at = now;
       }
       folder.child_asset_ids = [...requestedIds];

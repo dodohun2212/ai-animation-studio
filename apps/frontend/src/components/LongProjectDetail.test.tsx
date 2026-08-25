@@ -58,7 +58,7 @@ describe("LongProjectDetail", () => {
     render(<LongProjectDetail projectId="long_test" onBack={() => {}} onOpenSettings={onOpenSettings} onOpenOutline={onOpenOutline} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "장기 프로젝트 설정" }));
-    fireEvent.click(screen.getByRole("button", { name: "아웃라인 확인" }));
+    fireEvent.click(screen.getByRole("button", { name: "스토리 개요 확인" }));
 
     expect(onOpenSettings).toHaveBeenCalledWith("long_test");
     expect(onOpenOutline).toHaveBeenCalledWith("long_test");

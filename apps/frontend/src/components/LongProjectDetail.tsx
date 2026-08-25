@@ -78,7 +78,7 @@ export function LongProjectDetail({
         <>
           <div className="flex flex-wrap gap-3">
             <button type="button" className={secondaryButton} onClick={() => onOpenSettings(projectId)}>장기 프로젝트 설정</button>
-            <button type="button" className={secondaryButton} onClick={() => onOpenOutline(projectId)}>아웃라인 확인</button>
+            <button type="button" className={secondaryButton} onClick={() => onOpenOutline(projectId)}>스토리 개요 확인</button>
             {onOpenStoryBible && <button type="button" className={secondaryButton} onClick={() => onOpenStoryBible(projectId)}>Story Bible</button>}
             <button type="button" className={secondaryButton} onClick={() => onOpenGallery(projectId)}>생성 이미지 모음</button>
             <button
@@ -101,7 +101,7 @@ export function LongProjectDetail({
             <div><dt className="text-xs uppercase tracking-wide text-slate-400">ID</dt><dd className="mt-0.5">{state.project.id}</dd></div>
             <div><dt className="text-xs uppercase tracking-wide text-slate-400">제목</dt><dd className="mt-0.5">{state.project.title}</dd></div>
             <div className="sm:col-span-2"><dt className="text-xs uppercase tracking-wide text-slate-400">로그라인</dt><dd className="mt-0.5">{state.project.logline}</dd></div>
-            <div><dt className="text-xs uppercase tracking-wide text-slate-400">아웃라인 상태</dt><dd className="mt-0.5" data-testid="outline-status">{state.project.outlineStatus}</dd></div>
+            <div><dt className="text-xs uppercase tracking-wide text-slate-400">스토리 개요 상태</dt><dd className="mt-0.5" data-testid="outline-status">{longEpisodeStatusLabel(state.project.outlineStatus)}</dd></div>
             <div><dt className="text-xs uppercase tracking-wide text-slate-400">에피소드 수</dt><dd className="mt-0.5">{state.project.episodeCount}</dd></div>
           </dl>
           <div data-testid="episode-list" className="space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-6">

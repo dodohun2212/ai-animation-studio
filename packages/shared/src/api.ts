@@ -245,6 +245,10 @@ export interface GetLongEpisodeContinuityReferenceResponse { reference: LongEpis
 /** Archive is a recoverable local lifecycle action and requires the exact project confirmation text. */
 export interface ArchiveProjectRequest { confirmation: string; }
 export interface ArchiveProjectResponse { archivedProjectId: string; }
+/**
+ * Reorders a Folder's already-linked children and selects its representative image. Despite the name, this
+ * works for a Folder of any `AssetType`, not only `"character"` — kept as-is to avoid an unrelated rename.
+ */
 export interface CharacterFolderReferenceSetRequest { childAssetIds: string[]; thumbnailAssetId: string; }
 export interface CharacterFolderReferenceSetResponse { folder: Asset; children: Asset[]; }
 
@@ -587,11 +591,15 @@ export interface UpdateAssetMetadataRequest {
 export interface UpdateAssetResponse { asset: Asset; }
 
 /**
- * Creates an empty Character Folder (no image, no file upload) that other Character Assets can then be linked
- * into via `SetAssetParentFolderRequest`. Only `assetType: "character"` is supported — mirrors the existing
- * `characterFolderReferenceSet` restriction to character folders.
+ * Creates an empty Folder (no image, no file upload) of the given type that other same-library Assets can then
+ * be linked into via `SetAssetParentFolderRequest`. Any `AssetType` is supported — a Folder is not limited to
+ * characters. `description` is the folder's own shared/common description; each child keeps its own independent
+ * `description` (set via `UpdateAssetMetadataRequest`) — when a Folder itself is referenced (Story cast, an
+ * atmosphere/scene-reference Asset, or an Asset Mapping), both the Folder's description and every child's
+ * description are combined into the generated prompt (see `describeCharacterCast`-style helpers on the backend).
  */
 export interface CreateAssetFolderRequest {
+  assetType: AssetType;
   displayName: string;
   description?: string;
   notes?: string;
@@ -599,10 +607,10 @@ export interface CreateAssetFolderRequest {
 export interface CreateAssetFolderResponse { asset: Asset; }
 
 /**
- * Links (or unlinks, with `parentFolderId: null`) one existing Character Asset as a child of a Character Folder —
+ * Links (or unlinks, with `parentFolderId: null`) one existing Asset as a child of a Folder of any `AssetType` —
  * the add/remove counterpart to `characterFolderReferenceSet`, which only reorders a folder's already-linked
- * children. Returns both the updated child and its new (or former) parent folder so a client can refresh both
- * without a second round trip.
+ * children. Linking converts the child's `assetType` to match its new parent folder's. Returns both the updated
+ * child and its new (or former) parent folder so a client can refresh both without a second round trip.
  */
 export interface SetAssetParentFolderRequest { parentFolderId: string | null; }
 export interface SetAssetParentFolderResponse { asset: Asset; folder: Asset | null; }

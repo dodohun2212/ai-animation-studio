@@ -181,12 +181,12 @@ export class AssetsService {
   }
 
   private parseCreateFolder(raw: unknown): CreateAssetFolderRequest {
-    if (!isObject(raw)) throw badAssetRequest("Character Folder metadata is required.");
-    const allowed = new Set(["displayName", "description", "notes"]);
-    if (Object.keys(raw).some((key) => !allowed.has(key))
+    if (!isObject(raw)) throw badAssetRequest("Folder metadata is required.");
+    const allowed = new Set(["assetType", "displayName", "description", "notes"]);
+    if (Object.keys(raw).some((key) => !allowed.has(key)) || !TYPES.has(raw.assetType as AssetType)
       || typeof raw.displayName !== "string" || !raw.displayName.trim() || raw.displayName.trim().length > 200
       || !(raw.description === undefined || typeof raw.description === "string")
-      || !(raw.notes === undefined || typeof raw.notes === "string")) throw badAssetRequest("Character Folder metadata is invalid.");
+      || !(raw.notes === undefined || typeof raw.notes === "string")) throw badAssetRequest("Folder metadata is invalid.");
     return raw as unknown as CreateAssetFolderRequest;
   }
 

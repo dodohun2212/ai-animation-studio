@@ -85,8 +85,8 @@ const SAFE_ERRORS: Record<string, string> = {
   LONG_PROJECT_JSON_MALFORMED: "장기 프로젝트 데이터를 해석하지 못했습니다.",
   LONG_PROJECT_DATA_INVALID: "장기 프로젝트 데이터가 올바르지 않습니다.",
   LONG_PROJECT_STORAGE_ERROR: "장기 프로젝트 저장소에 접근하지 못했습니다.",
-  LONG_OUTLINE_STALE: "아웃라인 프롬프트가 그 사이에 변경되었습니다. 미리보기를 다시 불러와 주세요.",
-  LONG_OUTLINE_NOT_ALLOWED: "아웃라인 승인은 아직 생성되지 않은 프로젝트에서만 가능합니다.",
+  LONG_OUTLINE_STALE: "스토리 개요 프롬프트가 그 사이에 변경되었습니다. 미리보기를 다시 불러와 주세요.",
+  LONG_OUTLINE_NOT_ALLOWED: "스토리 개요 승인은 아직 생성되지 않은 프로젝트에서만 가능합니다.",
 };
 const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };

@@ -9,7 +9,18 @@ function searchForm(): HTMLFormElement {
   return screen.getByRole("button", { name: "검색" }).closest("form") as HTMLFormElement;
 }
 function importForm(): HTMLElement {
+  // The import form is collapsed by default — open it via its toolbar toggle on first access.
+  const existing = screen.queryByRole("form", { name: "에셋 가져오기" });
+  if (existing) return existing;
+  fireEvent.click(screen.getByTestId("import-toggle"));
   return screen.getByRole("form", { name: "에셋 가져오기" });
+}
+/** Clicks the in-screen confirmation panel's proceed button (replaces the old window.confirm flow). */
+function confirmPanelProceed(): void {
+  fireEvent.click(within(screen.getByTestId("asset-confirm-panel")).getByRole("button", { name: "네, 진행합니다" }));
+}
+function confirmPanelCancel(): void {
+  fireEvent.click(within(screen.getByTestId("asset-confirm-panel")).getByRole("button", { name: "취소" }));
 }
 function detailRegion(): HTMLElement {
   return screen.getByRole("region", { name: "에셋 상세" });
@@ -354,7 +365,6 @@ describe("AssetLibraryScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { assetId: "ASSET-FREE", deletedOwnedFile: false }))
       .mockResolvedValueOnce(jsonResponse(200, { assets: [] }));
     vi.stubGlobal("fetch", fetchMock);
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -362,7 +372,8 @@ describe("AssetLibraryScreen", () => {
     const detail = await screen.findByRole("region", { name: "에셋 상세" });
     fireEvent.click(within(detail).getByRole("button", { name: "목록에서 삭제" }));
 
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2); // opening the confirm panel sends nothing
+    confirmPanelProceed();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
     const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit];
     expect(url).toBe("/assets/ASSET-FREE");
@@ -378,16 +389,17 @@ describe("AssetLibraryScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { assets: [asset] }))
       .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }));
     vi.stubGlobal("fetch", fetchMock);
-    vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
     fireEvent.click(within(list).getByText("삭제 가능"));
     const detail = await screen.findByRole("region", { name: "에셋 상세" });
     fireEvent.click(within(detail).getByRole("button", { name: "목록에서 삭제" }));
+    confirmPanelCancel();
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId("asset-confirm-panel")).toBeNull();
     expect(screen.getByRole("region", { name: "에셋 상세" })).toBeTruthy();
   });
 
@@ -485,13 +497,13 @@ describe("AssetLibraryScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { asset: assetB, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }))
       .mockResolvedValueOnce(jsonResponse(200, { assets: [assetB] }));
     vi.stubGlobal("fetch", fetchMock);
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
     fireEvent.click(within(list).getByText("삭제 대상"));
     await screen.findByRole("region", { name: "에셋 상세" });
     fireEvent.click(within(detailRegion()).getByRole("button", { name: "목록에서 삭제" }));
+    confirmPanelProceed();
 
     // Navigate to a different asset before the delete resolves.
     fireEvent.click(within(list).getByText("다른 에셋"));
@@ -612,13 +624,13 @@ describe("AssetLibraryScreen", () => {
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveDelete = resolve; })) // DELETE: pending
       .mockResolvedValueOnce(jsonResponse(200, { assets: [newerResult] })); // explicit newer search while delete is pending
     vi.stubGlobal("fetch", fetchMock);
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
     fireEvent.click(within(list).getByText("삭제 대상"));
     const detail = await screen.findByRole("region", { name: "에셋 상세" });
     fireEvent.click(within(detail).getByRole("button", { name: "목록에서 삭제" }));
+    confirmPanelProceed();
 
     const search = searchForm();
     fireEvent.change(within(search).getByLabelText("검색"), { target: { value: "새 검색" } });
@@ -713,7 +725,6 @@ describe("AssetLibraryScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { asset: relinked }))
       .mockResolvedValueOnce(jsonResponse(200, { assets: [relinked] }));
     vi.stubGlobal("fetch", fetchMock);
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -726,7 +737,9 @@ describe("AssetLibraryScreen", () => {
     fireEvent.change(within(form).getByLabelText("교체 이미지"), { target: { files: [file] } });
     fireEvent.click(within(form).getByRole("button", { name: "현재 버전 재연결" }));
 
-    expect(confirmSpy.mock.calls.at(-1)?.[0]).toContain("재연결 대상");
+    const panel = await screen.findByTestId("asset-confirm-panel");
+    expect(panel.textContent).toContain("재연결 대상");
+    fireEvent.click(within(panel).getByRole("button", { name: "네, 진행합니다" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
     const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit];
     expect(url).toBe("/assets/ASSET-RELINK/relink");
@@ -741,7 +754,6 @@ describe("AssetLibraryScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { assets: [asset] }))
       .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }));
     vi.stubGlobal("fetch", fetchMock);
-    vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -750,6 +762,7 @@ describe("AssetLibraryScreen", () => {
     const form = within(within(detail).getByRole("region", { name: "버전 기록" })).getByRole("form", { name: "파일 재연결" });
     fireEvent.change(within(form).getByLabelText("교체 이미지"), { target: { files: [new File(["x"], "x.png", { type: "image/png" })] } });
     fireEvent.click(within(form).getByRole("button", { name: "현재 버전 재연결" }));
+    confirmPanelCancel();
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -788,7 +801,6 @@ describe("AssetLibraryScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { assetId: "ASSET-OWNED", deletedOwnedFile: true }))
       .mockResolvedValueOnce(jsonResponse(200, { assets: [] }));
     vi.stubGlobal("fetch", fetchMock);
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -796,7 +808,9 @@ describe("AssetLibraryScreen", () => {
     const detail = await screen.findByRole("region", { name: "에셋 상세" });
     fireEvent.click(within(detail).getByRole("button", { name: "에셋과 원본 파일 함께 삭제" }));
 
-    expect(confirmSpy.mock.calls.at(-1)?.[0]).toContain("원본 삭제 대상");
+    const panel = await screen.findByTestId("asset-confirm-panel");
+    expect(panel.textContent).toContain("원본 삭제 대상");
+    fireEvent.click(within(panel).getByRole("button", { name: "네, 진행합니다" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
     const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit];
     expect(url).toBe("/assets/ASSET-OWNED/owned-file");
@@ -886,7 +900,6 @@ describe("AssetLibraryScreen", () => {
       "DELETE /assets/FOLDER-CHAR/folder": { assetId: "FOLDER-CHAR", removedChildAssetIds: [], deletedFiles: 0 },
     });
     vi.stubGlobal("fetch", fetchMock);
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -897,7 +910,9 @@ describe("AssetLibraryScreen", () => {
 
     fireEvent.click(within(folderDeleteSection).getByRole("button", { name: "폴더 삭제" }));
 
-    expect(confirmSpy.mock.calls.at(-1)?.[0]).toContain("Hero references");
+    const panel = await screen.findByTestId("asset-confirm-panel");
+    expect(panel.textContent).toContain("Hero references");
+    fireEvent.click(within(panel).getByRole("button", { name: "네, 진행합니다" }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => String(url) === "/assets/FOLDER-CHAR/folder" && (init as RequestInit | undefined)?.method === "DELETE")).toBe(true));
     await waitFor(() => expect(screen.queryByRole("region", { name: "에셋 상세" })).toBeNull());
   });
@@ -912,7 +927,6 @@ describe("AssetLibraryScreen", () => {
       "DELETE /assets/FOLDER-CHAR/folder?removeChildIndexes=true&deleteManualFiles=true": { assetId: "FOLDER-CHAR", removedChildAssetIds: ["CHAR-1"], deletedFiles: 1 },
     });
     vi.stubGlobal("fetch", fetchMock);
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -923,6 +937,7 @@ describe("AssetLibraryScreen", () => {
     expect((within(folderDeleteSection).getByLabelText("하위 항목 색인도 함께 삭제") as HTMLInputElement).checked).toBe(true);
 
     fireEvent.click(within(folderDeleteSection).getByRole("button", { name: "폴더 삭제" }));
+    confirmPanelProceed();
 
     await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => String(url).startsWith("/assets/FOLDER-CHAR/folder?") && (init as RequestInit | undefined)?.method === "DELETE")).toBe(true));
     const [url] = fetchMock.mock.calls.find(([callUrl, init]) => String(callUrl).startsWith("/assets/FOLDER-CHAR/folder?") && (init as RequestInit | undefined)?.method === "DELETE")! as [string];
@@ -937,13 +952,13 @@ describe("AssetLibraryScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { assets: [folder] }))
       .mockResolvedValueOnce(jsonResponse(200, { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false }));
     vi.stubGlobal("fetch", fetchMock);
-    vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
     fireEvent.click(within(list).getByText("Hero references"));
     const detail = await screen.findByRole("region", { name: "에셋 상세" });
     fireEvent.click(within(within(detail).getByRole("region", { name: "폴더 삭제" })).getByRole("button", { name: "폴더 삭제" }));
+    confirmPanelCancel();
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetchMock).toHaveBeenCalledTimes(2);

@@ -86,7 +86,7 @@ describe("LongProjectOutlineScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "이 프롬프트로 승인" }));
 
     const alert = await screen.findByTestId("validation-error");
-    expect(alert.textContent).toBe("아웃라인 프롬프트를 입력해야 합니다.");
+    expect(alert.textContent).toBe("스토리 개요 프롬프트를 입력해야 합니다.");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

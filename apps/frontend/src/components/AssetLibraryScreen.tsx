@@ -99,6 +99,11 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   const [folderLinkSearchError, setFolderLinkSearchError] = useState<{ code: string; message: string } | null>(null);
   const [folderMutationPending, setFolderMutationPending] = useState(false);
   const [folderMutationError, setFolderMutationError] = useState<{ code: string; message: string } | null>(null);
+  // In-screen confirmation for destructive/replacing actions — replaces window.confirm(), which blocks
+  // the whole renderer (and freezes automation/Electron flows) as a native modal.
+  const [confirmAction, setConfirmAction] = useState<"delete-asset" | "relink" | "delete-owned-file" | "delete-folder" | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [folderCreateOpen, setFolderCreateOpen] = useState(false);
   const listRequest = useRef(0);
   const detailRequest = useRef(0);
   const auditRequest = useRef(0);
@@ -135,7 +140,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
       if (requestId !== detailRequest.current) return; // superseded by a newer selection
       setSelected(response);
       setEditName(response.asset.displayName); setEditDescription(response.asset.description); setEditTags(response.asset.tags.join(", "));
-      setFolderRemoveChildIndexes(false); setFolderDeleteManualFiles(false);
+      setFolderRemoveChildIndexes(false); setFolderDeleteManualFiles(false); setConfirmAction(null);
     } catch (caught) {
       if (requestId !== detailRequest.current) return; // superseded by a newer selection
       setSelected(null); setDetailError(toAssetDisplayError(caught));
@@ -206,7 +211,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   async function remove() {
     if (!selected || deleteBusy.current || selected.usageProjectIds.length > 0) return;
     const targetId = selected.asset.assetId;
-    if (!window.confirm(`'${selected.asset.displayName}' 에셋을 라이브러리 목록에서 삭제할까요? 원본 파일은 삭제하지 않습니다.`)) return;
+    setConfirmAction(null);
     deleteBusy.current = true; setDeletePending(true);
     const listGenerationAtStart = listRequest.current;
     try {
@@ -234,11 +239,16 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
     finally { versionBusy.current = false; setVersionPending(false); }
   }
 
-  async function submitRelink(event: FormEvent) {
+  function submitRelink(event: FormEvent) {
     event.preventDefault();
     if (!selected || relinkBusy.current || !relinkFile) return;
+    setConfirmAction("relink");
+  }
+
+  async function confirmRelink() {
+    if (!selected || relinkBusy.current || !relinkFile) return;
     const targetId = selected.asset.assetId;
-    if (!window.confirm(`'${selected.asset.displayName}' 에셋의 현재 버전 파일을 교체할까요?`)) return;
+    setConfirmAction(null);
     relinkBusy.current = true; setRelinkPending(true);
     const listGenerationAtStart = listRequest.current;
     try {
@@ -254,7 +264,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   async function removeOwnedFile() {
     if (!selected || ownedFileDeleteBusy.current || !selected.canDeleteOwnedFile) return;
     const targetId = selected.asset.assetId;
-    if (!window.confirm(`'${selected.asset.displayName}' 에셋과 원본 이미지 파일을 함께 삭제할까요? 이 작업은 되돌릴 수 없습니다.`)) return;
+    setConfirmAction(null);
     ownedFileDeleteBusy.current = true; setOwnedFileDeletePending(true);
     const listGenerationAtStart = listRequest.current;
     try {
@@ -270,12 +280,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
     if (!selected || !selected.asset.isFolder || folderDeleteBusy.current) return;
     const targetId = selected.asset.assetId;
     const removeChildIndexes = folderRemoveChildIndexes || folderDeleteManualFiles;
-    const message = folderDeleteManualFiles
-      ? `'${selected.asset.displayName}' 폴더와 하위 항목, 원본 파일을 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.`
-      : removeChildIndexes
-        ? `'${selected.asset.displayName}' 폴더와 하위 항목 색인을 삭제할까요? 원본 파일은 삭제하지 않습니다.`
-        : `'${selected.asset.displayName}' 폴더만 삭제할까요? 하위 항목은 목록에 그대로 남습니다.`;
-    if (!window.confirm(message)) return;
+    setConfirmAction(null);
     folderDeleteBusy.current = true; setFolderDeletePending(true);
     const listGenerationAtStart = listRequest.current;
     try {
@@ -342,7 +347,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
     folderCreateBusy.current = true; setFolderCreatePending(true); setFolderCreateError(null);
     const listGenerationAtStart = listRequest.current;
     try {
-      const response = await createAssetFolder({ displayName: folderCreateName.trim() });
+      const response = await createAssetFolder({ assetType: "character", displayName: folderCreateName.trim() });
       setFolderCreateName("");
       if (listRequest.current === listGenerationAtStart) await load();
       await open(response.asset.assetId);
@@ -394,7 +399,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   }
 
   return (
-    <section className="mt-8 max-w-4xl space-y-5">
+    <section className="mt-8 max-w-6xl space-y-5">
       <header className="flex items-center justify-between">
         <button type="button" className={outlineButton} onClick={onBack}>
           프로젝트 목록으로
@@ -430,6 +435,24 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
         </label>
         <button type="submit" className={primaryButton}>
           검색
+        </button>
+        <button
+          type="button"
+          data-testid="import-toggle"
+          aria-expanded={importOpen}
+          className={outlineButton}
+          onClick={() => setImportOpen((current) => !current)}
+        >
+          새 에셋 등록
+        </button>
+        <button
+          type="button"
+          data-testid="folder-create-toggle"
+          aria-expanded={folderCreateOpen}
+          className={outlineButton}
+          onClick={() => setFolderCreateOpen((current) => !current)}
+        >
+          새 캐릭터 폴더 만들기
         </button>
       </form>
 
@@ -506,33 +529,49 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
         )}
       </div>
 
+      <div className="gap-5 space-y-5 lg:grid lg:grid-cols-[minmax(240px,320px)_minmax(0,1fr)] lg:items-start lg:space-y-0">
+      <div className="space-y-3">
       {loading && !assets && <Spinner label="에셋을 불러오는 중..." />}
       {assets && assets.length === 0 && !loading && <p className="text-sm text-slate-400">등록된 에셋이 없습니다.</p>}
       {assets && (
-        <ul aria-label="에셋 목록" className="grid gap-3 sm:grid-cols-2">
+        <ul aria-label="에셋 목록" className="max-h-[560px] space-y-2 overflow-y-auto pr-1">
           {assets.map((asset) => (
             <li key={asset.assetId}>
               <button
                 type="button"
                 onClick={() => void open(asset.assetId)}
-                className="w-full rounded-xl border border-white/10 bg-slate-900/70 p-3 text-left transition hover:border-violet-400/40 hover:bg-slate-900"
+                className={`flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition hover:border-violet-400/40 hover:bg-slate-900 ${
+                  selected?.asset.assetId === asset.assetId ? "border-violet-400/50 bg-slate-900" : "border-white/10 bg-slate-900/70"
+                }`}
               >
                 {asset.imageAvailable && asset.contentUrl ? (
-                  <img src={asset.contentUrl} alt="" className="h-24 w-full rounded-lg object-cover" />
+                  <img src={asset.contentUrl} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
                 ) : (
-                  <span className="flex h-24 w-full items-center justify-center rounded-lg border border-white/5 bg-slate-950/40 text-sm text-slate-500">
-                    이미지 없음
+                  <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/5 bg-slate-950/40 text-base text-slate-500">
+                    {asset.isFolder ? "📁" : "🖼"}
                   </span>
                 )}
-                <strong className="mt-2 block text-slate-100">{asset.displayName}</strong>
-                <span className="text-xs text-slate-400"> · {asset.assetType}</span>
-                <p className="mt-1 text-sm text-slate-400">{asset.description}</p>
+                <span className="min-w-0 flex-1">
+                  <strong className="block truncate text-sm text-slate-100">{asset.displayName}</strong>
+                  <span className="text-xs text-slate-400">
+                    {TYPES.find((item) => item.value === asset.assetType)?.label ?? asset.assetType}
+                    {asset.isFolder ? " 폴더" : ""}
+                  </span>
+                </span>
               </button>
             </li>
           ))}
         </ul>
       )}
+      </div>
 
+      <div className="space-y-4">
+      {!selected && !detailLoading && !detailError && !importOpen && !folderCreateOpen && (
+        <p className="rounded-2xl border border-dashed border-white/10 p-6 text-sm text-slate-500">
+          왼쪽 목록에서 항목을 선택하면 상세 정보가 여기에 표시됩니다. 새 항목은 위의 "새 에셋 등록" 또는 "새 캐릭터 폴더 만들기" 버튼으로 추가할 수 있습니다.
+        </p>
+      )}
+      {importOpen && (
       <form onSubmit={submitImport} aria-label="에셋 가져오기" className={cardSection}>
         <SectionHeading>새 에셋 등록</SectionHeading>
         <p className="text-sm text-slate-400">이미지를 업로드해 새 에셋으로 등록합니다.</p>
@@ -583,7 +622,9 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
           가져오기
         </button>
       </form>
+      )}
 
+      {folderCreateOpen && (
       <form onSubmit={createCharacterFolder} aria-label="캐릭터 폴더 만들기" className={cardSection}>
         <SectionHeading>새 캐릭터 폴더 만들기</SectionHeading>
         <p className="text-sm text-slate-400">
@@ -607,6 +648,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
           {folderCreatePending ? "만드는 중…" : "폴더 만들기"}
         </button>
       </form>
+      )}
 
       {detailLoading && <Spinner label="선택한 에셋 정보를 불러오는 중..." />}
       {detailError && (
@@ -798,12 +840,12 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
 
           {!selected.asset.isFolder && (
             <div className="flex flex-wrap items-center gap-3">
-              <button type="button" className={dangerOutlineButton} onClick={() => void remove()} disabled={selected.usageProjectIds.length > 0 || deletePending}>
+              <button type="button" className={dangerOutlineButton} onClick={() => setConfirmAction("delete-asset")} disabled={selected.usageProjectIds.length > 0 || deletePending}>
                 목록에서 삭제
               </button>
               {selected.usageProjectIds.length > 0 && <p className="text-sm text-slate-400">사용 중인 에셋은 삭제할 수 없습니다.</p>}
               {selected.canDeleteOwnedFile && (
-                <button type="button" className={dangerOutlineButton} onClick={() => void removeOwnedFile()} disabled={ownedFileDeletePending}>
+                <button type="button" className={dangerOutlineButton} onClick={() => setConfirmAction("delete-owned-file")} disabled={ownedFileDeletePending}>
                   에셋과 원본 파일 함께 삭제
                 </button>
               )}
@@ -839,7 +881,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
               <button
                 type="button"
                 className={dangerOutlineButton}
-                onClick={() => void removeFolder()}
+                onClick={() => setConfirmAction("delete-folder")}
                 disabled={selected.usageProjectIds.length > 0 || folderDeletePending}
               >
                 폴더 삭제
@@ -847,8 +889,48 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
               {selected.usageProjectIds.length > 0 && <p className="text-sm text-slate-400">사용 중인 폴더는 삭제할 수 없습니다.</p>}
             </section>
           )}
+
+          {confirmAction && (
+            <div
+              role="alertdialog"
+              aria-label="위험 동작 확인"
+              data-testid="asset-confirm-panel"
+              className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
+            >
+              <p className="text-sm text-slate-200">
+                {confirmAction === "delete-asset" && `'${selected.asset.displayName}' 에셋을 라이브러리 목록에서 삭제할까요? 원본 파일은 삭제하지 않습니다.`}
+                {confirmAction === "relink" && `'${selected.asset.displayName}' 에셋의 현재 버전 파일을 교체할까요?`}
+                {confirmAction === "delete-owned-file" && `'${selected.asset.displayName}' 에셋과 원본 이미지 파일을 함께 삭제할까요? 이 작업은 되돌릴 수 없습니다.`}
+                {confirmAction === "delete-folder" && (folderDeleteManualFiles
+                  ? `'${selected.asset.displayName}' 폴더와 하위 항목, 원본 파일을 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.`
+                  : folderRemoveChildIndexes || folderDeleteManualFiles
+                    ? `'${selected.asset.displayName}' 폴더와 하위 항목 색인을 삭제할까요? 원본 파일은 삭제하지 않습니다.`
+                    : `'${selected.asset.displayName}' 폴더만 삭제할까요? 하위 항목은 목록에 그대로 남습니다.`)}
+              </p>
+              <div className="flex gap-3">
+                <button type="button" className={outlineButton} onClick={() => setConfirmAction(null)}>
+                  취소
+                </button>
+                <button
+                  type="button"
+                  data-testid="asset-confirm-proceed"
+                  className={dangerOutlineButton}
+                  onClick={() => {
+                    if (confirmAction === "delete-asset") void remove();
+                    else if (confirmAction === "relink") void confirmRelink();
+                    else if (confirmAction === "delete-owned-file") void removeOwnedFile();
+                    else void removeFolder();
+                  }}
+                >
+                  네, 진행합니다
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       )}
+      </div>
+      </div>
     </section>
   );
 }

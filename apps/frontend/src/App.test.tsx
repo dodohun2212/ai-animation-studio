@@ -543,7 +543,7 @@ describe("App", () => {
     await screen.findByText(seed.title);
     expect(fetchMock.mock.calls.filter(([callUrl]) => String(callUrl) === "/long-projects/long_test")).toHaveLength(2);
 
-    fireEvent.click(screen.getByRole("button", { name: "아웃라인 확인" }));
+    fireEvent.click(screen.getByRole("button", { name: "스토리 개요 확인" }));
     await screen.findByDisplayValue(/Title: 우주 방랑자/);
 
     fireEvent.click(screen.getByRole("button", { name: "이 프롬프트로 승인" }));

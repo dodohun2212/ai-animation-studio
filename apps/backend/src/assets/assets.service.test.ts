@@ -77,8 +77,9 @@ describe("AssetsService", () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "asset-service-")); roots.push(root);
     const repository = new LocalAssetsRepository(root); const service = new AssetsService(repository);
 
-    await expect(service.createFolder({ displayName: "" })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
-    const folder = await service.createFolder({ displayName: "주인공", notes: "메인 캐릭터" });
+    await expect(service.createFolder({ assetType: "character", displayName: "" })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(service.createFolder({ displayName: "주인공" })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    const folder = await service.createFolder({ assetType: "character", displayName: "주인공", notes: "메인 캐릭터" });
     expect(folder.asset).toMatchObject({ isFolder: true, assetType: "character", displayName: "주인공", childAssetIds: [], contentUrl: null });
 
     const created = await service.create({ buffer: image, originalname: "front.png" }, { assetType: "general_reference", displayName: "정면" });
@@ -98,11 +99,23 @@ describe("AssetsService", () => {
     await expect(service.setParentFolder(created.asset.assetId, { parentFolderId: notAFolder.asset.assetId })).rejects.toMatchObject({ response: { code: "ASSET_MUTATION_UNSUPPORTED" } });
   });
 
+  it("supports a Folder of a non-character type without forcing character-only role/reference-image scaffolding onto its children", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "asset-service-")); roots.push(root);
+    const repository = new LocalAssetsRepository(root); const service = new AssetsService(repository);
+    const folder = await service.createFolder({ assetType: "background", displayName: "City skylines", description: "Neon-lit night skylines across the story" });
+    expect(folder.asset).toMatchObject({ isFolder: true, assetType: "background" });
+
+    const child = await service.create({ buffer: image, originalname: "night.png" }, { assetType: "background", displayName: "밤 스카이라인", description: "네온사인이 켜진 밤거리" });
+    const linked = await service.setParentFolder(child.asset.assetId, { parentFolderId: folder.asset.assetId });
+    expect(linked.asset).toMatchObject({ assetType: "background", parentFolderId: folder.asset.assetId, role: "", description: "네온사인이 켜진 밤거리" });
+    expect(linked.asset.referenceImages).toEqual([]);
+  });
+
   it("re-parents an Asset directly from one Character Folder to another", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "asset-service-")); roots.push(root);
     const repository = new LocalAssetsRepository(root); const service = new AssetsService(repository);
-    const folderA = await service.createFolder({ displayName: "A" });
-    const folderB = await service.createFolder({ displayName: "B" });
+    const folderA = await service.createFolder({ assetType: "character", displayName: "A" });
+    const folderB = await service.createFolder({ assetType: "character", displayName: "B" });
     const child = await service.create({ buffer: image, originalname: "front.png" }, { assetType: "character", displayName: "정면" });
 
     await service.setParentFolder(child.asset.assetId, { parentFolderId: folderA.asset.assetId });

@@ -4,7 +4,7 @@ import type { AssetMappingStatus } from "@ai-animation-studio/shared";
 /** Korean display labels for LongEpisodeStatus (packages/shared/src/api.ts), used across the Long Project screens. */
 export const LONG_EPISODE_STATUS_LABEL: Record<LongEpisodeStatus, string> = {
   planned: "계획됨",
-  outline_ready: "아웃라인 완료",
+  outline_ready: "스토리 개요 완료",
   script_review: "대본 검토 중",
   script_approved: "대본 승인됨",
   waiting_for_asset_mapping_review: "에셋 매핑 검토 대기",

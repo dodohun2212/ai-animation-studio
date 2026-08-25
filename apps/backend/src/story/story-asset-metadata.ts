@@ -10,17 +10,36 @@ const STORY_ASSET_TYPE_LABELS: Record<AssetType, string> = {
   general_reference: "일반 참고자료",
 };
 
+/**
+ * When the referenced Asset is a Folder, its own `description` is the shared/common description (handled by the
+ * caller as usual) but says nothing about what makes each child image different. This resolves each child's own
+ * `description` so both reach the prompt — the Folder's common description plus each child's individual one.
+ * Returns `[]` for a non-Folder Asset or a Folder with no described children.
+ */
+async function folderChildDescriptions(
+  assets: LocalAssetsRepository | undefined,
+  asset: { is_folder: boolean; child_asset_ids: string[] } | null | undefined,
+): Promise<string[]> {
+  if (!asset?.is_folder || !assets || asset.child_asset_ids.length === 0) return [];
+  const children = await Promise.all(asset.child_asset_ids.map((childId) => assets.get(childId).catch(() => null)));
+  return children
+    .filter((child): child is NonNullable<typeof child> => child !== null && !child.is_folder && child.description.trim().length > 0)
+    .map((child) => `${child.display_name}: ${child.description.trim()}`);
+}
+
 /** Mirrors Python's `describe_character_cast`: no tags, aliases or image paths reach the LLM prompt. */
 export async function describeCharacterCast(assets: LocalAssetsRepository | undefined, cast: ShortProjectCastMember[]): Promise<string> {
   if (cast.length === 0) return "등록된 Character Asset 없음";
   const blocks: string[] = [];
   for (const [index, member] of cast.entries()) {
     const asset = assets ? await assets.get(member.assetId).catch(() => null) : null;
+    const childLines = await folderChildDescriptions(assets, asset);
     blocks.push([
       `${index + 1}. 이름: ${asset?.display_name ?? member.assetId}`,
       `   구분: ${member.castRole === "protagonist" || member.castRole === "lead" ? "대표 캐릭터" : "서브 캐릭터"}`,
       `   이야기 역할: ${member.storyRole}`,
       `   설명: ${asset?.description || "별도 설명 없음"}`,
+      ...(childLines.length > 0 ? [`   하위 이미지별 개별 특징: ${childLines.join(" / ")}`] : []),
     ].join("\n"));
   }
   return blocks.join("\n\n");
@@ -32,10 +51,12 @@ export async function describeAtmosphereAssets(assets: LocalAssetsRepository | u
   for (const assetId of [...assetIds].sort()) {
     const asset = assets ? await assets.get(assetId).catch(() => null) : null;
     if (!asset) continue;
+    const childLines = await folderChildDescriptions(assets, asset);
     blocks.push([
       `- 이름: ${asset.display_name}`,
       `  유형: ${STORY_ASSET_TYPE_LABELS[asset.asset_type] ?? asset.asset_type}`,
       `  설명: ${asset.description || "별도 설명 없음"}`,
+      ...(childLines.length > 0 ? [`  하위 이미지별 개별 특징: ${childLines.join(" / ")}`] : []),
     ].join("\n"));
   }
   return blocks.join("\n\n") || "없음";
@@ -47,10 +68,12 @@ export async function describeSceneReferenceAssets(assets: LocalAssetsRepository
   for (const { assetId, purpose } of [...sceneReferences].sort((left, right) => left.assetId.localeCompare(right.assetId))) {
     const asset = assets ? await assets.get(assetId).catch(() => null) : null;
     if (!asset) continue;
+    const childLines = await folderChildDescriptions(assets, asset);
     blocks.push([
       `- 이름: ${asset.display_name}`,
       `  유형: ${STORY_ASSET_TYPE_LABELS[asset.asset_type] ?? asset.asset_type}`,
       `  설명: ${asset.description || "별도 설명 없음"}`,
+      ...(childLines.length > 0 ? [`  하위 이미지별 개별 특징: ${childLines.join(" / ")}`] : []),
       `  사용 목적: ${purpose.trim() || "장면 대본에 필요할 때 참고"}`,
     ].join("\n"));
   }

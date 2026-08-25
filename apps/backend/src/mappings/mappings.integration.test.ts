@@ -42,6 +42,21 @@ describe("ProjectAssetMappingsService", () => {
     expect(reopened.mappings[0]?.snapshot?.sha256).toMatch(/^[a-f0-9]{64}$/);
   });
 
+  it("maps a Folder Asset as follow_latest only, rejecting a pinned/snapshot policy since a Folder has no versions of its own", async () => {
+    const { service, assets, project } = await setup();
+    const folder = await assets.createFolder({ assetType: "style", displayName: "City moods" });
+    const child = await assets.create({ buffer: png, originalname: "night.png", mimetype: "image/png" }, { assetType: "style", displayName: "Night mood" });
+    await assets.setParentFolder(child.asset_id, folder.asset_id);
+
+    const created = await service.create(project.project_id, { assetId: folder.asset_id, usageRole: "style", sceneScope: { kind: "all" } });
+    expect(created.mapping).toMatchObject({ assetId: folder.asset_id, versionPolicy: "follow_latest" });
+
+    await expect(service.create(project.project_id, { assetId: folder.asset_id, usageRole: "style", sceneScope: { kind: "all" }, versionPolicy: "pinned_version" }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(service.update(project.project_id, created.mapping.mappingId, { versionPolicy: "pinned_version" }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
   it("invalidates review on mapping changes and on script fingerprint changes", async () => {
     const { service, asset, project } = await setup();
     const created = await service.create("short_mapping", { assetId: asset.asset_id, usageRole: "style", sceneScope: { kind: "all" } });

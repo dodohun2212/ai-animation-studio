@@ -53,13 +53,15 @@ export class ProjectAssetMappingsService {
       || !(body.selectedChildAssetIds === undefined || (Array.isArray(body.selectedChildAssetIds) && body.selectedChildAssetIds.every((item) => typeof item === "string" && item.length > 0)))) throw invalidMappingRequest("Asset Mapping request is invalid.");
     const request = body as unknown as CreateProjectAssetMappingRequest;
     const asset = await this.asset(request.assetId);
-    if (asset.is_folder) throw invalidMappingRequest("A folder cannot be mapped as an Asset.");
     const project = await this.repository.project(projectId);
     const sceneScope = scopeFromRequest(request.sceneScope, toShortProjectSettings(project).sceneCount);
-    const versionPolicy = request.versionPolicy ?? "pinned_version";
+    const versionPolicy = request.versionPolicy ?? (asset.is_folder ? "follow_latest" : "pinned_version");
     if (versionPolicy === "snapshot") throw invalidMappingRequest("Create a snapshot with the snapshot endpoint.");
+    // A Folder has no versions of its own — its bytes always come from whichever child is currently its
+    // representative image, so only follow_latest is meaningful (pinning/snapshotting a Folder makes no sense).
+    if (asset.is_folder && versionPolicy !== "follow_latest") throw invalidMappingRequest("A Folder Asset Mapping only supports follow_latest.");
     const pinnedVersion = request.pinnedVersion ?? asset.version;
-    if (!asset.versions.some((version) => version.version === pinnedVersion)) throw invalidMappingRequest("Pinned Asset version does not exist.");
+    if (!asset.is_folder && !asset.versions.some((version) => version.version === pinnedVersion)) throw invalidMappingRequest("Pinned Asset version does not exist.");
     const now = new Date().toISOString();
     const mapping: StoredAssetMapping = { mapping_id: `MAP-${crypto.randomBytes(8).toString("hex").toUpperCase()}`, project_id: projectId, asset_id: asset.asset_id, enabled: true, usage_role: request.usageRole.trim(), scene_scope: toStoredScope(sceneScope), assignment_source: "manual", confidence: null, match_reason: "manual_assignment", status: "confirmed", user_confirmed: true, version_policy: versionPolicy, pinned_version: pinnedVersion, candidate_only: false, created_at: now, updated_at: now, snapshot_path: null, snapshot_sha256: null, snapshot_source_version: null, selected_child_asset_ids: [...new Set(request.selectedChildAssetIds ?? [])] };
     const mappings = await this.repository.load(projectId); mappings.push(mapping); await this.repository.save(projectId, mappings);
@@ -78,7 +80,8 @@ export class ProjectAssetMappingsService {
     if (request.enabled !== undefined) mapping.enabled = request.enabled;
     if (request.versionPolicy !== undefined) {
       const asset = await this.asset(mapping.asset_id); const pin = request.pinnedVersion ?? asset.version;
-      if (!asset.versions.some((version) => version.version === pin)) throw invalidMappingRequest("Pinned Asset version does not exist.");
+      if (asset.is_folder && request.versionPolicy !== "follow_latest") throw invalidMappingRequest("A Folder Asset Mapping only supports follow_latest.");
+      if (!asset.is_folder && !asset.versions.some((version) => version.version === pin)) throw invalidMappingRequest("Pinned Asset version does not exist.");
       mapping.version_policy = request.versionPolicy; mapping.pinned_version = pin; mapping.snapshot_path = null; mapping.snapshot_sha256 = null; mapping.snapshot_source_version = null;
     }
     mapping.updated_at = new Date().toISOString(); const review = await this.repository.save(projectId, mappings);

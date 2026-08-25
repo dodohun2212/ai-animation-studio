@@ -105,15 +105,17 @@ describe("Asset Library contract", () => {
     >();
   });
 
-  it("supports creating an empty Character Folder and linking/unlinking a child into one", () => {
+  it("supports creating an empty Folder of any Asset type and linking/unlinking a child into one", () => {
     expect(API_ROUTES.createAssetFolder).toBe("/assets/folders");
     expect(API_ROUTES.assetParentFolder("ASSET-CHAR-1")).toBe("/assets/ASSET-CHAR-1/parent-folder");
     expect(API_ROUTES.assetParentFolder("ASSET/CHAR 1")).toBe("/assets/ASSET%2FCHAR%201/parent-folder");
 
-    expectTypeOf<keyof CreateAssetFolderRequest>().toEqualTypeOf<"displayName" | "description" | "notes">();
-    const folderRequest: CreateAssetFolderRequest = { displayName: "Hero" };
+    expectTypeOf<keyof CreateAssetFolderRequest>().toEqualTypeOf<"assetType" | "displayName" | "description" | "notes">();
+    const folderRequest: CreateAssetFolderRequest = { assetType: "character", displayName: "Hero" };
+    const backgroundFolderRequest: CreateAssetFolderRequest = { assetType: "background", displayName: "City skylines" };
     const folderResponse: CreateAssetFolderResponse = { asset: { ...legacyCompatibleAsset, isFolder: true } };
     expect(folderRequest.displayName).toBe("Hero");
+    expect(backgroundFolderRequest.assetType).toBe("background");
     expect(folderResponse.asset.isFolder).toBe(true);
 
     const link: SetAssetParentFolderRequest = { parentFolderId: "ASSET-FOLDER-1" };

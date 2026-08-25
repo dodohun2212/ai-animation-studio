@@ -143,7 +143,7 @@ describe.sequential("real AppModule Asset HTTP smoke", () => {
     const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
 
     const folderResponse = await fetch(`${base}/assets/folders`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ displayName: "주인공" }),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ assetType: "character", displayName: "주인공" }),
     });
     expect(folderResponse.status).toBe(201);
     const folder = await folderResponse.json() as { asset: { assetId: string; isFolder: boolean } };

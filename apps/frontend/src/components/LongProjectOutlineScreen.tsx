@@ -71,7 +71,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
     if (!preview) return;
     const trimmed = promptText.trim();
     if (!trimmed) {
-      setValidationError("아웃라인 프롬프트를 입력해야 합니다.");
+      setValidationError("스토리 개요 프롬프트를 입력해야 합니다.");
       return;
     }
     setValidationError(null);
@@ -89,7 +89,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
     const trimmed = promptText.trim();
     if (!trimmed) {
       setConfirmOpen(false);
-      setValidationError("아웃라인 프롬프트를 입력해야 합니다.");
+      setValidationError("스토리 개요 프롬프트를 입력해야 합니다.");
       return;
     }
     approveBusy.current = true;
@@ -133,7 +133,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
           aria-hidden="true"
           className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
         />
-        아웃라인 프롬프트 확인
+        스토리 개요 프롬프트 확인
       </h2>
 
       {previewLoading && !preview && <Spinner label="미리보기를 불러오는 중..." />}
@@ -147,7 +147,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
         <div className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
           <p className="text-sm text-slate-400">Episode 수: {preview.episodeCount}</p>
           <label className="block text-sm text-slate-300" htmlFor="outline-prompt">
-            아웃라인 프롬프트
+            스토리 개요 프롬프트
             <textarea
               id="outline-prompt"
               className="mt-1.5 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
@@ -195,11 +195,11 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
           {confirmOpen && (
             <div
               role="alertdialog"
-              aria-label="아웃라인 승인 확인"
+              aria-label="스토리 개요 승인 확인"
               data-testid="approve-confirm-panel"
               className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
             >
-              <p className="text-sm font-semibold text-amber-300">아웃라인을 승인할까요?</p>
+              <p className="text-sm font-semibold text-amber-300">스토리 개요을 승인할까요?</p>
               <p className="text-sm text-slate-300">
                 아직 승인되지 않았습니다. 확인을 누르면 위 프롬프트가 그대로 서버로 전송되어 승인 처리됩니다.
               </p>
@@ -235,7 +235,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
           )}
           {approved && (
             <div data-testid="episode-outline-list" className="space-y-2 rounded-xl border border-white/10 bg-slate-950/40 p-4">
-              <p className="text-sm font-semibold text-slate-200">Episode 아웃라인 상태</p>
+              <p className="text-sm font-semibold text-slate-200">Episode 스토리 개요 상태</p>
               <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-300">
                 {approved.episodes.map((episode) => (
                   <li key={episode.episodeNumber} data-testid={`episode-outline-${episode.episodeNumber}`} data-status={episode.status}>
