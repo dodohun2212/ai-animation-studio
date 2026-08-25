@@ -69,6 +69,8 @@ export interface Scene {
   generatedVideoPath?: string;
   imageReview: ReviewDecision;
   videoReview: ReviewDecision;
+  /** Short-project-only narration/subtitle sentence. Optional: absent on scenes stored before this field existed, and always absent for long-form Episodes (narration is out of that scope). Present regardless of ShortProjectSettings.narrationEnabled — only actually turned into TTS audio when that flag is on. */
+  narration?: string;
 }
 
 export interface ProjectSummary {

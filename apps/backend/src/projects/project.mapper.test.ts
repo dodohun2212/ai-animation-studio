@@ -54,6 +54,15 @@ describe("toApiSummary / toApiProject", () => {
     expect(project.finalVideoPath).toBe("videos/final/instagram_reel.mp4");
   });
 
+  it("passes each stored scene's narration through to the API scene untouched, and omits it when absent", () => {
+    const stored = createStoredProject("sample_project", "topic", "2026-08-21T00:00:00.000Z");
+    stored.scenes = [{ number: 1, description: "d", narration: "narration line" }, { number: 2, description: "d2" }];
+
+    const project = toApiProject(stored);
+    expect(project.scenes[0]?.narration).toBe("narration line");
+    expect("narration" in project.scenes[1]!).toBe(false);
+  });
+
   it("omits currentVideoJobId when no video generation record exists", () => {
     const stored = createStoredProject("sample_project", "topic", "2026-08-21T00:00:00.000Z");
     expect("currentVideoJobId" in toApiProject(stored)).toBe(false);
