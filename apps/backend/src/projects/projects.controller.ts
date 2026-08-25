@@ -21,13 +21,15 @@ import {
   type UpdateShortProjectCastResponse,
   type ArchiveProjectRequest,
   type ArchiveProjectResponse,
+  type UpdateSceneResponse,
 } from "@ai-animation-studio/shared";
 
 import { ProjectsService } from "./projects.service.js";
+import { SceneEditService } from "./scene-edit.service.js";
 
 @Controller()
 export class ProjectsController {
-  constructor(private readonly projectsService: ProjectsService) {}
+  constructor(private readonly projectsService: ProjectsService, private readonly sceneEditService: SceneEditService) {}
 
   @Post(API_ROUTES.projects)
   create(@Body() body: CreateProjectRequest): Promise<CreateProjectResponse> {
@@ -110,5 +112,10 @@ export class ProjectsController {
   @Delete(`${API_ROUTES.projects}/:projectId/archive`)
   deleteArchived(@Param("projectId") projectId: string, @Body() body: DeleteArchivedProjectRequest): Promise<DeleteArchivedProjectResponse> {
     return this.projectsService.deleteArchivedProject(projectId, body);
+  }
+
+  @Patch(`${API_ROUTES.projects}/:projectId/scenes/:sceneNumber`)
+  updateScene(@Param("projectId") projectId: string, @Param("sceneNumber") sceneNumber: string, @Body() body: unknown): Promise<UpdateSceneResponse> {
+    return this.sceneEditService.update(projectId, sceneNumber, body);
   }
 }

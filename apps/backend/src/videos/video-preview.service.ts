@@ -34,7 +34,7 @@ const SCENE_FIELDS = [
 const OPTIONAL_SCENE_FIELDS = ["narration"] as const;
 const UTF16_PROMPT_LIMIT = RUNWAY_PROMPT_MAX_LENGTH;
 
-type StoredScene = Record<(typeof SCENE_FIELDS)[number], string | number> & { narration?: string };
+export type StoredScene = Record<(typeof SCENE_FIELDS)[number], string | number> & { narration?: string };
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -60,14 +60,14 @@ function parseScenes(project: StoredProject, sceneNumbers: readonly SceneNumber[
   });
 }
 
-function ratioFor(project: StoredProject): "720:1280" | "1280:720" {
+export function ratioFor(project: StoredProject): "720:1280" | "1280:720" {
   const aspect = typeof project.style_profile.aspect === "string"
     ? project.style_profile.aspect.replaceAll(" ", "")
     : "";
   return aspect === "16:9" ? "1280:720" : "720:1280";
 }
 
-function promptFor(scene: StoredScene, previous: StoredScene | undefined, ratio: "720:1280" | "1280:720", clipDurationSeconds: number): string {
+export function promptFor(scene: StoredScene, previous: StoredScene | undefined, ratio: "720:1280" | "1280:720", clipDurationSeconds: number): string {
   const orientation = ratio === "1280:720" ? "horizontal" : "vertical";
   const continuity = previous
     ? [previous.end_motion, previous.continuity_hint].filter((value, index, values) => values.indexOf(value) === index).join(" ")

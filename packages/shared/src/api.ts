@@ -855,6 +855,36 @@ export interface MergeVideosResponse {
   finalVideoPath: "videos/final/instagram_reel.mp4";
 }
 
+/**
+ * Editing one scene's fields in place, instead of regenerating the whole Story. The server enforces its own
+ * whitelist of editable field names (unknown keys are rejected) — this type is deliberately a loose string map
+ * rather than naming every field, since the whitelist is a backend implementation detail (which scene-schema
+ * fields exist can already be seen in the Story response's raw scene objects).
+ */
+export interface UpdateSceneRequest {
+  scene: Record<string, string>;
+}
+
+/**
+ * Which already-generated artifacts no longer match this scene's current field values, computed by comparing
+ * the field values a fresh prompt/narration would use against what's recorded in that artifact's own generation
+ * record — never a separately stored flag, so there is nothing to keep in sync and nothing that can go stale on
+ * its own. A scene with no image/video/narration generated yet is never "stale" (there is nothing to be behind);
+ * it simply doesn't appear in these lists. `videoStale`/`imageStale` can include a scene whose own fields were
+ * not edited, when the edited scene is the *previous* one and its `end_motion`/`continuity_hint` feed the next
+ * scene's video prompt.
+ */
+export interface SceneStaleness {
+  imageStale: SceneNumber[];
+  videoStale: SceneNumber[];
+  narrationStale: SceneNumber[];
+}
+
+export interface UpdateSceneResponse {
+  project: Project;
+  staleness: SceneStaleness;
+}
+
 export const API_ROUTES = {
   health: "/health",
   projects: "/projects",
@@ -975,6 +1005,8 @@ export const API_ROUTES = {
     `/projects/${encodeURIComponent(projectId)}/narration/review/${sceneNumber}/regenerate`,
   narrationContent: (projectId: string, sceneNumber: SceneNumber) =>
     `/projects/${encodeURIComponent(projectId)}/narration/${sceneNumber}/content`,
+  sceneEdit: (projectId: string, sceneNumber: SceneNumber) =>
+    `/projects/${encodeURIComponent(projectId)}/scenes/${sceneNumber}`,
   assets: "/assets",
   asset: (assetId: string) => `/assets/${encodeURIComponent(assetId)}`,
   assetContent: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/content`,

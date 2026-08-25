@@ -7,6 +7,7 @@ import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { ProjectsController } from "./projects.controller.js";
 import { LocalProjectRepository } from "./projects.repository.js";
 import { ProjectsService } from "./projects.service.js";
+import { SceneEditService } from "./scene-edit.service.js";
 
 export const PROJECTS_ROOT = "PROJECTS_ROOT";
 
@@ -28,6 +29,11 @@ function defaultProjectsRoot(): string {
       provide: ProjectsService,
       useFactory: (repository: LocalProjectRepository, assets: LocalAssetsRepository) => new ProjectsService(repository, assets),
       inject: [LocalProjectRepository, LocalAssetsRepository],
+    },
+    {
+      provide: SceneEditService,
+      useFactory: (repository: LocalProjectRepository, projectsRoot: string) => new SceneEditService(repository, projectsRoot),
+      inject: [LocalProjectRepository, PROJECTS_ROOT],
     },
   ],
   exports: [LocalProjectRepository, PROJECTS_ROOT],
