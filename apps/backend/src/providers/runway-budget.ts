@@ -8,6 +8,8 @@ const DEFAULT_MONTHLY_LIMIT_USD = 10;
 interface UsageRecord {
   timestamp: string;
   project_id: string;
+  /** Absent on records written before per-scene tracking existed; such legacy records still count toward the monthly total but are excluded from {@link RunwayBudget.costsByScene}. */
+  scene_number?: number;
   api_type: string;
   estimated_cost_usd: number;
   actual_cost_usd: number;
@@ -16,7 +18,8 @@ interface UsageRecord {
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const isUsageRecord = (value: unknown): value is UsageRecord => isObject(value)
-  && typeof value.timestamp === "string" && typeof value.api_type === "string" && typeof value.actual_cost_usd === "number";
+  && typeof value.timestamp === "string" && typeof value.api_type === "string" && typeof value.actual_cost_usd === "number"
+  && (value.scene_number === undefined || typeof value.scene_number === "number");
 
 /**
  * Local monthly Runway spend tracker, mirroring OpenAiBudget's shape: a conservative preflight estimate is
@@ -63,14 +66,25 @@ export class RunwayBudget {
     }
   }
 
-  async record(projectId: string, apiType: string, succeeded: boolean, estimatedCostUsd: number, now = new Date()): Promise<void> {
+  async record(projectId: string, sceneNumber: number, apiType: string, succeeded: boolean, estimatedCostUsd: number, now = new Date()): Promise<void> {
     const records = await this.load();
     records.push({
-      timestamp: now.toISOString(), project_id: projectId, api_type: apiType,
+      timestamp: now.toISOString(), project_id: projectId, scene_number: sceneNumber, api_type: apiType,
       estimated_cost_usd: estimatedCostUsd, actual_cost_usd: estimatedCostUsd, succeeded,
     });
     await fs.mkdir(path.dirname(this.filePath), { recursive: true }).catch(() => undefined);
     await atomicWriteUtf8File(this.filePath, JSON.stringify(records, null, 2));
+  }
+
+  /** Sums actually-recorded cost per scene for one project, across every attempt (including past regenerations) and regardless of month — a review screen's "how much has this scene cost so far", not a monthly figure. */
+  async costsByScene(projectId: string): Promise<Partial<Record<number, number>>> {
+    const records = await this.load();
+    const result: Partial<Record<number, number>> = {};
+    for (const record of records) {
+      if (record.project_id !== projectId || record.scene_number === undefined) continue;
+      result[record.scene_number] = (result[record.scene_number] ?? 0) + record.actual_cost_usd;
+    }
+    return result;
   }
 }
 

@@ -258,6 +258,14 @@ export function videoReviewContentUrl(projectId: string, sceneNumber: SceneNumbe
   return `${API_ROUTES.videoContent(projectId, sceneNumber)}?v=${encodeURIComponent(cacheBuster)}`;
 }
 
+/**
+ * The approved source still that a scene's video was generated from. Shown beside the clip during review so the
+ * user can judge the result against its input, as the product spec requires.
+ */
+export function sceneImageContentUrl(projectId: string, sceneNumber: SceneNumber): string {
+  return API_ROUTES.imageContent(projectId, sceneNumber);
+}
+
 /** A review action is deliberately explicit and cannot be inferred from navigation. */
 export function approveVideoReview(
   projectId: string,

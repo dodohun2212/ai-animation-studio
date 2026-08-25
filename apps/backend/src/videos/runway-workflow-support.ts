@@ -25,7 +25,7 @@ export interface RunwaySceneInput {
 
 export interface RunwayAdvanceBudget {
   preflight(estimatedCostUsd: number): Promise<void>;
-  record(projectId: string, apiType: string, succeeded: boolean, estimatedCostUsd: number): Promise<void>;
+  record(projectId: string, sceneNumber: SceneNumber, apiType: string, succeeded: boolean, estimatedCostUsd: number): Promise<void>;
 }
 
 export interface RunwayAdapterCallOptions {
@@ -89,7 +89,7 @@ export async function advanceRunwayScene(
     if (running.submittedAt) {
       const elapsedSeconds = (nowDate.getTime() - new Date(running.submittedAt).getTime()) / 1000;
       if (elapsedSeconds > taskTimeoutSeconds) {
-        await deps.budget.record(deps.projectId, deps.apiType, false, deps.estimatedCostPerSceneUsd).catch(() => undefined);
+        await deps.budget.record(deps.projectId, running.sceneNumber, deps.apiType, false, deps.estimatedCostPerSceneUsd).catch(() => undefined);
         return { kind: "failed", sceneNumber: running.sceneNumber, error: "timeout" };
       }
     }
@@ -108,7 +108,7 @@ export async function advanceRunwayScene(
     if (task.status === "SUCCEEDED") {
       const url = task.outputUrls[0];
       if (!url) {
-        await deps.budget.record(deps.projectId, deps.apiType, false, deps.estimatedCostPerSceneUsd);
+        await deps.budget.record(deps.projectId, running.sceneNumber, deps.apiType, false, deps.estimatedCostPerSceneUsd);
         return { kind: "failed", sceneNumber: running.sceneNumber, error: "no_output" };
       }
       let bytes: Buffer;
@@ -118,11 +118,11 @@ export async function advanceRunwayScene(
         // The task itself succeeded on Runway's side; only our download attempt failed. Try again next check.
         return { kind: "check-error", sceneNumber: running.sceneNumber };
       }
-      await deps.budget.record(deps.projectId, deps.apiType, true, deps.estimatedCostPerSceneUsd);
+      await deps.budget.record(deps.projectId, running.sceneNumber, deps.apiType, true, deps.estimatedCostPerSceneUsd);
       return { kind: "succeeded", sceneNumber: running.sceneNumber, bytes };
     }
     if (task.status === "FAILED" || task.status === "CANCELLED") {
-      await deps.budget.record(deps.projectId, deps.apiType, false, deps.estimatedCostPerSceneUsd);
+      await deps.budget.record(deps.projectId, running.sceneNumber, deps.apiType, false, deps.estimatedCostPerSceneUsd);
       return { kind: "failed", sceneNumber: running.sceneNumber, error: task.failure || task.status };
     }
     return { kind: "still-running", sceneNumber: running.sceneNumber };
@@ -146,7 +146,7 @@ export async function advanceRunwayScene(
     // A submission-time failure (bad key, rejected prompt/image, Runway outage, ...) must become a failed scene
     // like every other failure path here — otherwise it would propagate uncaught out of advanceRunwayScene and
     // the scene would silently stay "created" forever with nothing for the user to act on.
-    await deps.budget.record(deps.projectId, deps.apiType, false, deps.estimatedCostPerSceneUsd).catch(() => undefined);
+    await deps.budget.record(deps.projectId, next.sceneNumber, deps.apiType, false, deps.estimatedCostPerSceneUsd).catch(() => undefined);
     const code = error instanceof RunwayAdapterError ? error.category : "unknown";
     return { kind: "failed", sceneNumber: next.sceneNumber, error: code };
   }

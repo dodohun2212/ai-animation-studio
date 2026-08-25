@@ -192,7 +192,8 @@ export interface LongEpisodeVideoProgress {
   /** Same meaning and scope as GenerationProgressResponse.sceneErrors (see that field's doc comment). */
   sceneErrors?: Record<SceneNumber, string>;
 }
-export interface LongEpisodeVideoReview { sceneNumber: SceneNumber; status: "pending" | "approved"; updatedAt: string; }
+/** costUsd: actual cost recorded for this scene's video across every attempt, including past regenerations; absent when nothing has been recorded. */
+export interface LongEpisodeVideoReview { sceneNumber: SceneNumber; status: "pending" | "approved"; updatedAt: string; costUsd?: number; }
 export interface GetLongEpisodeVideoReviewResponse { episode: LongEpisodeDetail; reviews: LongEpisodeVideoReview[]; }
 export interface ApproveLongEpisodeVideoReviewRequest { approved: true; }
 export interface ApproveLongEpisodeVideoReviewResponse extends GetLongEpisodeVideoReviewResponse {}
@@ -762,6 +763,8 @@ export interface VideoReview {
   sceneNumber: SceneNumber;
   status: "pending" | "approved";
   updatedAt: string;
+  /** Actual cost recorded for this scene's video across every attempt, including past regenerations; absent when nothing has been recorded (e.g. the local fake execution mode). */
+  costUsd?: number;
 }
 
 export interface GetVideoReviewResponse {

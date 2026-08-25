@@ -45,7 +45,7 @@ describe("advanceRunwayScene", () => {
       budget, adapterOptions: { fetchImpl, sleep: noSleep, maxRetries: 0 },
     });
     expect(result).toEqual({ kind: "failed", sceneNumber: 1, error: "authentication" });
-    expect(budget.record).toHaveBeenCalledWith("p1", "video", false, 0.25);
+    expect(budget.record).toHaveBeenCalledWith("p1", 1, "video", false, 0.25);
   });
 
   it("does not call Runway at all when the running scene was checked within the poll interval", async () => {
@@ -84,7 +84,7 @@ describe("advanceRunwayScene", () => {
     });
     expect(result.kind).toBe("succeeded");
     if (result.kind === "succeeded") expect(result.bytes.toString()).toBe("fake-mp4-bytes");
-    expect(budget.record).toHaveBeenCalledWith("p1", "video", true, 0.25);
+    expect(budget.record).toHaveBeenCalledWith("p1", 1, "video", true, 0.25);
   });
 
   it("records failure and stops when Runway explicitly reports FAILED", async () => {
@@ -96,7 +96,7 @@ describe("advanceRunwayScene", () => {
       budget, adapterOptions: { fetchImpl, sleep: noSleep },
     });
     expect(result).toMatchObject({ kind: "failed", sceneNumber: 1, error: "content policy violation" });
-    expect(budget.record).toHaveBeenCalledWith("p1", "video", false, 0.25);
+    expect(budget.record).toHaveBeenCalledWith("p1", 1, "video", false, 0.25);
   });
 
   it("treats a transient status-check failure as check-error, not a real failure, and never touches budget", async () => {
@@ -123,7 +123,7 @@ describe("advanceRunwayScene", () => {
     });
     expect(result).toEqual({ kind: "failed", sceneNumber: 1, error: "timeout" });
     expect(fetchImpl).not.toHaveBeenCalled();
-    expect(budget.record).toHaveBeenCalledWith("p1", "video", false, 0.25);
+    expect(budget.record).toHaveBeenCalledWith("p1", 1, "video", false, 0.25);
   });
 
   it("propagates a budget-exceeded preflight rejection without submitting anything to Runway", async () => {

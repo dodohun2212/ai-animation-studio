@@ -306,10 +306,11 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     }
   }
 
-  private toReviews(reviews: StoredReview[], timestamp: string, sceneNumbers: readonly SceneNumber[]): VideoReview[] {
+  private toReviews(reviews: StoredReview[], timestamp: string, sceneNumbers: readonly SceneNumber[], costsByScene: Partial<Record<number, number>>): VideoReview[] {
     return sceneNumbers.map((scene) => {
       const review = reviews.find((item) => item.scene_number === scene);
-      return { sceneNumber: scene, status: review?.status ?? "pending", updatedAt: review?.updated_at ?? timestamp };
+      const costUsd = costsByScene[scene];
+      return { sceneNumber: scene, status: review?.status ?? "pending", updatedAt: review?.updated_at ?? timestamp, ...(costUsd !== undefined ? { costUsd } : {}) };
     });
   }
 
@@ -422,7 +423,8 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     if (![WorkflowState.ReviewingVideos, WorkflowState.VideosReady, WorkflowState.VideosApproved].includes(project.workflow_state as WorkflowState)) throw videoWorkflowNotAllowed();
     if (!(await Promise.all(records.map((record) => this.hasCompletedFile(project.project_id, record.scene_number)))).every(Boolean)) throw videoWorkflowNotAllowed();
     const reviews = await this.loadReviews(project.project_id);
-    return { project: toApiProject(project), reviews: this.toReviews(reviews, project.updated_at, records.map((record) => record.scene_number)) };
+    const costsByScene = this.budget ? await this.budget.costsByScene(project.project_id) : {};
+    return { project: toApiProject(project), reviews: this.toReviews(reviews, project.updated_at, records.map((record) => record.scene_number), costsByScene) };
   }
 
   async approveReview(projectId: string, jobId: string, rawScene: string, body: unknown): Promise<ApproveVideoReviewResponse> {
@@ -437,6 +439,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     const updated = { ...project, workflow_state: allApproved ? WorkflowState.VideosApproved : WorkflowState.ReviewingVideos, updated_at: timestamp };
     try { await atomicWriteUtf8File(this.reviewFile(project.project_id), JSON.stringify(reviews.sort((a, b) => a.scene_number - b.scene_number), null, 2)); await this.projects.save(updated); }
     catch { throw videoStorageError(); }
-    return { project: toApiProject(updated), reviews: this.toReviews(reviews, timestamp, jobSceneNumbers) };
+    const costsByScene = this.budget ? await this.budget.costsByScene(project.project_id) : {};
+    return { project: toApiProject(updated), reviews: this.toReviews(reviews, timestamp, jobSceneNumbers, costsByScene) };
   }
 }

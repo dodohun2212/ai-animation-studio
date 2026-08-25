@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { GenerationProgressResponse, SceneNumber, VideoReview } from "@ai-animation-studio/shared";
+import type { GenerationProgressResponse, Scene, SceneNumber, VideoReview } from "@ai-animation-studio/shared";
 
 import {
   approveVideoReview,
@@ -9,6 +9,7 @@ import {
   regenerateVideoScene,
   restartVideoGeneration,
   sceneErrorMessage,
+  sceneImageContentUrl,
   stopVideoGeneration,
   toVideoWorkflowDisplayError,
   videoReviewContentUrl,
@@ -33,7 +34,9 @@ type ReviewLoadState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "error"; error: DisplayError }
-  | { status: "ready"; reviews: VideoReview[] };
+  // `scenes` comes from the same response's `project` — it carries the source image path and the final
+  // motion prompt each clip was generated from, both of which the review step must show.
+  | { status: "ready"; reviews: VideoReview[]; scenes: Scene[] };
 
 const POLL_INTERVAL_MS = 400;
 
@@ -142,7 +145,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
     getVideoReview(projectId, jobId)
       .then((response) => {
         if (requestId !== reviewRequest.current) return;
-        setReviewState({ status: "ready", reviews: response.reviews });
+        setReviewState({ status: "ready", reviews: response.reviews, scenes: response.project.scenes });
       })
       .catch((caught: unknown) => {
         if (requestId !== reviewRequest.current) return;
@@ -190,7 +193,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
     setApprovePendingScenes(new Set(approveBusy.current));
     try {
       const response = await approveVideoReview(projectId, jobId, sceneNumber);
-      setReviewState({ status: "ready", reviews: response.reviews });
+      setReviewState({ status: "ready", reviews: response.reviews, scenes: response.project.scenes });
       setApproveErrors((current) => {
         if (!(sceneNumber in current)) return current;
         const next = { ...current };
@@ -512,6 +515,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                       const regeneratePending = regeneratePendingScenes.has(review.sceneNumber);
                       const regenerateError = regenerateErrors[review.sceneNumber];
                       const regenerateConfirmOpen = regenerateConfirmScene === review.sceneNumber;
+                      const scene = reviewState.scenes.find((item) => item.number === review.sceneNumber);
                       return (
                         <li
                           key={review.sceneNumber}
@@ -519,6 +523,16 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                           data-status={review.status}
                           className="flex gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-3"
                         >
+                          {/* Source still beside the clip: the spec requires the original image, the final
+                              prompt, the status and the video to all be reviewable for each scene. */}
+                          {scene?.generatedImagePath && (
+                            <img
+                              src={sceneImageContentUrl(projectId, review.sceneNumber)}
+                              alt={`${review.sceneNumber}번 장면 원본 이미지`}
+                              data-testid={`video-review-source-image-${review.sceneNumber}`}
+                              className="h-28 w-16 flex-shrink-0 rounded-lg border border-white/10 bg-slate-800 object-cover"
+                            />
+                          )}
                           <video
                             src={videoReviewContentUrl(projectId, review.sceneNumber, review.updatedAt)}
                             data-testid={`video-review-clip-${review.sceneNumber}`}
@@ -541,6 +555,14 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                                 {review.status === "approved" ? "승인 완료" : pending ? "승인 중..." : "승인"}
                               </button>
                             </div>
+                            {scene?.motionPrompt && (
+                              <details data-testid={`video-review-prompt-${review.sceneNumber}`} className="text-xs text-slate-400">
+                                <summary className="cursor-pointer text-slate-300">이 영상을 만든 프롬프트 보기</summary>
+                                <p className="mt-1 whitespace-pre-wrap break-words rounded-lg border border-white/10 bg-slate-900/60 p-2 text-slate-300">
+                                  {scene.motionPrompt}
+                                </p>
+                              </details>
+                            )}
                             {approveError && (
                               <p
                                 role="alert"

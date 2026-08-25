@@ -82,14 +82,14 @@ describe("provider-free video prompt preview", () => {
 
   it("reflects real recorded spend from the shared RunwayBudget ledger instead of a hardcoded value", async () => {
     const { budget, service } = await setup();
-    await budget.record("some_other_project", "video", true, 4);
+    await budget.record("some_other_project", 1, "video", true, 4);
     const result = await service.preview("video_preview", undefined);
     expect(result.budget).toEqual({ monthlyLimitUsd: 10, spentUsd: 4, remainingUsd: 6, estimatedRequestCostUsd: 1.5, canSpend: true });
   });
 
   it("reports canSpend: false and the true remaining budget once spend nearly exhausts the monthly limit", async () => {
     const { budget, service } = await setup();
-    await budget.record("some_other_project", "video", true, 9);
+    await budget.record("some_other_project", 1, "video", true, 9);
     const result = await service.preview("video_preview", undefined);
     expect(result.budget).toEqual({ monthlyLimitUsd: 10, spentUsd: 9, remainingUsd: 1, estimatedRequestCostUsd: 1.5, canSpend: false });
   });

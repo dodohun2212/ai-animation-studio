@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { GenerationProgressResponse, GetVideoReviewResponse, VideoReview } from "@ai-animation-studio/shared";
+import type { GenerationProgressResponse, GetVideoReviewResponse, Scene, VideoReview } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { jsonResponse, makeProject } from "../api/testUtils.js";
@@ -36,8 +36,25 @@ function reviewsFor(sceneCount: number, approved: readonly number[] = []): Video
   }));
 }
 
+/** Scenes as the backend returns them alongside a review: each carries its source image and final motion prompt. */
+function scenesFor(sceneCount: number): Scene[] {
+  return Array.from({ length: sceneCount }, (_, index) => index + 1).map((number) => ({
+    number,
+    script: `Scene ${number} script`,
+    imagePrompt: `Scene ${number} image prompt`,
+    motionPrompt: `Scene ${number} motion prompt`,
+    generatedImagePath: `images/scene${number}.png`,
+    generatedVideoPath: `videos/runway/scene${number}.mp4`,
+    imageReview: "approved",
+    videoReview: "pending",
+  }));
+}
+
 function reviewResponse(reviews: VideoReview[]): GetVideoReviewResponse {
-  return { project: makeProject({ workflowState: WorkflowState.ReviewingVideos }), reviews };
+  return {
+    project: makeProject({ workflowState: WorkflowState.ReviewingVideos, scenes: scenesFor(reviews.length) }),
+    reviews,
+  };
 }
 
 function renderScreen(fetchMock: ReturnType<typeof vi.fn>) {
@@ -164,6 +181,33 @@ describe("VideoWorkflowScreen", () => {
     const clip = await screen.findByTestId("video-review-clip-1");
     expect(clip).toHaveAttribute("src", "/projects/sample_project/videos/1/content?v=2026-08-23T00%3A00%3A00.000Z");
     expect(screen.getByTestId("video-review-clip-6")).toHaveAttribute("src", "/projects/sample_project/videos/6/content?v=2026-08-23T00%3A00%3A00.000Z");
+  });
+
+  it("shows each scene's source image and the final prompt it was generated from, beside the clip", async () => {
+    const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, succeeded)).mockResolvedValueOnce(jsonResponse(200, reviewResponse(sixReviews())));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("video-review-1");
+    expect(screen.getByTestId("video-review-source-image-1")).toHaveAttribute("src", "/projects/sample_project/images/1/content");
+    expect(screen.getByTestId("video-review-source-image-6")).toHaveAttribute("src", "/projects/sample_project/images/6/content");
+    expect(screen.getByTestId("video-review-prompt-3").textContent).toContain("Scene 3 motion prompt");
+  });
+
+  it("omits the source image for a scene that has none rather than rendering a broken one", async () => {
+    const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+    const withoutImage = reviewResponse(sixReviews());
+    withoutImage.project.scenes = withoutImage.project.scenes.map((scene) =>
+      scene.number === 2 ? { ...scene, generatedImagePath: undefined } : scene,
+    );
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, succeeded)).mockResolvedValueOnce(jsonResponse(200, withoutImage));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("video-review-1");
+    expect(screen.getByTestId("video-review-source-image-1")).toBeTruthy();
+    expect(screen.queryByTestId("video-review-source-image-2")).toBeNull();
+    // The clip itself is still reviewable even without its source still.
+    expect(screen.getByTestId("video-review-clip-2")).toBeTruthy();
   });
 
   it("approves a single scene via POST .../review/:sceneNumber/approve and preserves the others as pending", async () => {

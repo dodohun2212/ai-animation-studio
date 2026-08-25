@@ -213,7 +213,7 @@ describe("real Runway video workflow", () => {
 
   it("surfaces a budget-exceeded preflight as a failed scene instead of an uncaught exception", async () => {
     const deps = await setupWithConnectedRunway();
-    await deps.budget.record("other-project", "video", true, 10, new Date("2026-08-23T00:00:00.000Z")); // exhaust the shared monthly budget
+    await deps.budget.record("other-project", 1, "video", true, 10, new Date("2026-08-23T00:00:00.000Z")); // exhaust the shared monthly budget
     const workflow = newWorkflow(deps);
     const fetchMock = runwayFetchMock();
     vi.stubGlobal("fetch", fetchMock);
@@ -221,5 +221,37 @@ describe("real Runway video workflow", () => {
     const progress = await workflow.run("video_workflow", deps.accepted.jobId);
     expect(progress).toMatchObject({ status: "failed", failedSceneNumbers: [1] });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("reports each scene's real recorded cost in the review response, accumulating across a regeneration", async () => {
+    const deps = await setupWithConnectedRunway();
+    const workflow = newWorkflow(deps);
+    const fetchMock = runwayFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+
+    let progress = await workflow.run("video_workflow", deps.accepted.jobId);
+    for (let scene = 1; scene <= 6; scene++) {
+      now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+      progress = await workflow.getProgress("video_workflow", deps.accepted.jobId);
+      now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+      progress = await workflow.getProgress("video_workflow", deps.accepted.jobId);
+    }
+    expect(progress.status).toBe("succeeded");
+
+    const firstReview = await workflow.getReview("video_workflow", deps.accepted.jobId);
+    expect(firstReview.reviews.every((review) => review.costUsd === 0.25)).toBe(true);
+
+    // Regenerate scene 1 and let it succeed again — its recorded cost should accumulate, not replace.
+    await workflow.regenerate("video_workflow", deps.accepted.jobId, [1]);
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    await workflow.getProgress("video_workflow", deps.accepted.jobId);
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    await workflow.getProgress("video_workflow", deps.accepted.jobId);
+
+    const secondReview = await workflow.getReview("video_workflow", deps.accepted.jobId);
+    expect(secondReview.reviews.find((review) => review.sceneNumber === 1)?.costUsd).toBeCloseTo(0.5, 8);
+    expect(secondReview.reviews.filter((review) => review.sceneNumber !== 1).every((review) => review.costUsd === 0.25)).toBe(true);
   });
 });

@@ -116,7 +116,7 @@ describe("real Runway episode video generation", () => {
 
   it("reflects real recorded spend from the shared RunwayBudget ledger instead of a hardcoded budget", async () => {
     const deps = await setupWithConnectedRunway();
-    await deps.budget.record("some_other_project", "video", true, 4);
+    await deps.budget.record("some_other_project", 1, "video", true, 4);
     const videos = newVideos(deps);
     const preview = await videos.preview("long", 1);
     expect(preview.maximumProviderCalls).toBe(6);
@@ -129,5 +129,38 @@ describe("real Runway episode video generation", () => {
     const preview = await videos.preview("long", 1);
     expect(preview.maximumProviderCalls).toBe(6);
     expect(preview.budget).toBeUndefined();
+  });
+
+  it("reports each scene's real recorded cost in the review response, accumulating across a regeneration, scoped per Episode", async () => {
+    const deps = await setupWithConnectedRunway();
+    const videos = newVideos(deps);
+    const fetchMock = runwayFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    let progress = await videos.run("long", 1, started.jobId);
+    for (let scene = 1; scene <= 6; scene++) {
+      now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+      progress = await videos.progress("long", 1, started.jobId);
+      now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+      progress = await videos.progress("long", 1, started.jobId);
+    }
+    expect(progress.status).toBe("succeeded");
+
+    const firstReview = await videos.review("long", 1, started.jobId);
+    expect(firstReview.reviews.every((review) => review.costUsd === 0.25)).toBe(true);
+
+    await videos.regenerate("long", 1, started.jobId, "1", { approved: true });
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    await videos.progress("long", 1, started.jobId);
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    await videos.progress("long", 1, started.jobId);
+
+    const secondReview = await videos.review("long", 1, started.jobId);
+    expect(secondReview.reviews.find((review) => review.sceneNumber === 1)?.costUsd).toBeCloseTo(0.5, 8);
+    expect(secondReview.reviews.filter((review) => review.sceneNumber !== 1).every((review) => review.costUsd === 0.25)).toBe(true);
   });
 });
