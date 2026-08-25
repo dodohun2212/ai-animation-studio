@@ -31,6 +31,7 @@ import { LongEpisodeContinuityScreen } from "./components/LongEpisodeContinuityS
 import { ArchiveScreen } from "./components/ArchiveScreen.js";
 import { WorkflowGuideScreen } from "./components/WorkflowGuideScreen.js";
 import { NarrationReviewScreen } from "./components/NarrationReviewScreen.js";
+import { SceneEditScreen } from "./components/SceneEditScreen.js";
 
 type Screen =
   | { name: "list" }
@@ -41,6 +42,7 @@ type Screen =
   | { name: "storyPrompt"; projectId: string }
   | { name: "imageGeneration"; projectId: string }
   | { name: "narrationReview"; projectId: string }
+  | { name: "sceneEdit"; projectId: string }
   | { name: "videoPreview"; projectId: string }
   | { name: "videoWorkflow"; projectId: string; jobId: string }
   | { name: "videoMerge"; projectId: string }
@@ -69,7 +71,7 @@ const LONG_PROJECT_SCREEN_NAMES = new Set<Screen["name"]>([
 
 const SHORT_PROJECT_SCREEN_NAMES = new Set<Screen["name"]>([
   "list", "create", "detail", "mappingReview", "settings", "storyPrompt",
-  "imageGeneration", "narrationReview", "videoPreview", "videoWorkflow", "videoMerge",
+  "imageGeneration", "narrationReview", "sceneEdit", "videoPreview", "videoWorkflow", "videoMerge",
 ]);
 
 type NavIconName = "home" | "long" | "library" | "archive" | "workflow" | "settings";
@@ -461,6 +463,7 @@ export function App() {
                 onOpenVideoMerge={(projectId) => setScreen({ name: "videoMerge", projectId })}
                 onOpenGallery={(projectId) => setScreen({ name: "assets", initialQuery: projectId })}
                 onOpenNarrationReview={(projectId) => setScreen({ name: "narrationReview", projectId })}
+                onOpenSceneEdit={(projectId) => setScreen({ name: "sceneEdit", projectId })}
                 onArchived={() => { setListRefreshToken((token) => token + 1); setScreen({ name: "list" }); }}
               />
             )}
@@ -514,6 +517,12 @@ export function App() {
               <ProviderSettingsScreen onBack={() => setScreen({ name: "list" })} />
             )}
             {screen.name === "assets" && <AssetLibraryScreen onBack={() => setScreen({ name: "list" })} initialQuery={screen.initialQuery} />}
+            {screen.name === "sceneEdit" && (
+              <SceneEditScreen
+                projectId={screen.projectId}
+                onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
+              />
+            )}
             {screen.name === "narrationReview" && (
               <NarrationReviewScreen
                 projectId={screen.projectId}
