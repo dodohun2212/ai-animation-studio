@@ -186,6 +186,45 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
               <option value="16:9">16:9</option>
             </select>
           </label>
+          <div className="md:col-span-2 space-y-3 rounded-xl border border-white/10 bg-slate-950/40 p-3.5">
+            <p className="text-sm font-semibold text-slate-200">내레이션</p>
+            <p className="text-xs leading-relaxed text-slate-400">
+              켜면 에피소드 대본에 장면마다 읽어줄 문장이 함께 들어갑니다. 등장인물이 입을 움직여 말하는 방식이 아니라
+              이야기를 읽어주는 방식이라, 입 모양이 어긋나 보이지 않습니다. 음성과 자막은 따로 켤 수 있고, 설정은
+              이 프로젝트의 모든 에피소드에 적용됩니다.
+            </p>
+            <label className="flex items-start gap-2.5 text-sm text-slate-200">
+              <input
+                type="checkbox"
+                data-testid="long-settings-narration-enabled"
+                className="mt-0.5 h-4 w-4 flex-shrink-0 accent-violet-500"
+                checked={state.settings.narrationEnabled}
+                onChange={(event) => setField("narrationEnabled", event.target.checked)}
+              />
+              <span>
+                음성 넣기
+                <span className="mt-1 block text-xs leading-relaxed text-slate-400">
+                  문장을 실제 목소리로 만들어 영상에 입힙니다. 에피소드마다, 장면마다 한 번씩 비용이 듭니다.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2.5 text-sm text-slate-200">
+              <input
+                type="checkbox"
+                data-testid="long-settings-subtitles-enabled"
+                className="mt-0.5 h-4 w-4 flex-shrink-0 accent-violet-500"
+                checked={state.settings.subtitlesEnabled}
+                onChange={(event) => setField("subtitlesEnabled", event.target.checked)}
+              />
+              <span>
+                자막 넣기
+                <span className="mt-1 block text-xs leading-relaxed text-slate-400">
+                  같은 문장을 영상에 글자로 얹습니다. <span className="text-slate-300">비용이 들지 않습니다.</span> 소리를 끄고
+                  보는 사람이 많은 곳에 올릴 거라면 음성 없이 자막만 켜도 됩니다.
+                </span>
+              </span>
+            </label>
+          </div>
           <Field label="타겟 시청자" value={state.settings.audience} onChange={(value) => setField("audience", value)} />
           <Field label="메모" value={state.settings.notes} onChange={(value) => setField("notes", value)} multiline />
           <Field label="시작 상태" value={state.settings.startingState} onChange={(value) => setField("startingState", value)} multiline />

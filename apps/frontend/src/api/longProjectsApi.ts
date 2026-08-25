@@ -64,6 +64,12 @@ import {
   type SaveLongEpisodeContinuityRequest,
   type SaveLongEpisodeContinuityResponse,
   type GetLongEpisodeContinuityReferenceResponse,
+  type LongEpisodeNarrationReview,
+  type GetLongEpisodeNarrationReviewResponse,
+  type StartLongEpisodeNarrationGenerationRequest,
+  type StartLongEpisodeNarrationGenerationResponse,
+  type RegenerateLongEpisodeNarrationRequest,
+  type RegenerateLongEpisodeNarrationResponse,
   type SceneNumber,
   type UpdateLongProjectSettingsRequest,
   type UpdateLongProjectSettingsResponse,
@@ -152,6 +158,35 @@ const LONG_EPISODE_MERGE_ERRORS: Record<string, string> = {
   LONG_EPISODE_FFMPEG_UNAVAILABLE: "이 컴퓨터에서 영상 병합 프로그램을 실행할 수 없습니다.",
   LONG_EPISODE_MERGE_FAILED: "최종 영상 만들기를 끝내지 못했습니다. 승인된 장면들은 그대로 남아 있습니다.",
 };
+/**
+ * Narration is the third place a long project can spend money (after Episode images and Episode videos), so
+ * these say plainly whether anything was billed. Same wording as the short project's narrationApi.ts, which the
+ * user may have seen first.
+ */
+const LONG_EPISODE_NARRATION_ERRORS: Record<string, string> = {
+  LONG_EPISODE_NARRATION_NOT_ALLOWED: "이 에피소드는 아직 음성을 만들 수 있는 단계가 아닙니다. 대본을 먼저 만들어 주세요.",
+  LONG_EPISODE_NARRATION_NOT_ENABLED: "장기 프로젝트 설정에서 \"음성 넣기\"를 먼저 켜야 음성을 만들 수 있습니다.",
+  LONG_EPISODE_NARRATION_MISSING_TEXT: "이 장면에는 읽어줄 문장이 없어 음성을 만들 수 없습니다. 대본 화면에서 문장을 채워 주세요.",
+  LONG_EPISODE_NARRATION_GENERATION_FAILED: "음성 파일을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.",
+  LONG_EPISODE_NARRATION_STORAGE_ERROR: "음성 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+  LONG_EPISODE_NARRATION_BUDGET_EXCEEDED: "이번 달 OpenAI 예산을 초과하여 요청을 보내지 않았습니다. 비용은 청구되지 않았습니다.",
+  LONG_EPISODE_NARRATION_CONTENT_UNAVAILABLE: "요청한 장면의 음성 파일을 찾을 수 없습니다.",
+};
+
+/**
+ * Provider failures arrive as one code with a `details.category`, so the category — not the backend's own
+ * message — decides what the user is told. Same categories and wording as narrationApi.ts's map.
+ */
+const LONG_EPISODE_NARRATION_PROVIDER_MESSAGES: Record<string, string> = {
+  authentication: "OpenAI 인증에 실패했습니다. API 설정에서 키를 다시 확인해 주세요.",
+  rate_limit: "OpenAI 요청이 일시적으로 제한되었습니다. 잠시 후 다시 시도해 주세요.",
+  context_length_exceeded: "읽어줄 문장이 모델이 처리할 수 있는 길이를 초과했습니다. 문장을 줄여서 다시 시도해 주세요.",
+  invalid_request: "OpenAI가 요청 형식을 지원하지 않습니다.",
+  server_error: "OpenAI 서버 오류로 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+  network: "OpenAI에 연결하지 못했습니다. 네트워크 상태를 확인해 주세요.",
+};
+const LONG_EPISODE_NARRATION_PROVIDER_FALLBACK = "OpenAI 음성 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+
 const LONG_EPISODE_CONTINUITY_ERRORS: Record<string, string> = {
   LONG_EPISODE_CONTINUITY_NOT_ALLOWED: "이 에피소드는 아직 연결 기억을 저장할 수 있는 단계가 아닙니다. 이미지 승인 이후부터 저장할 수 있습니다.",
   LONG_EPISODE_CONTINUITY_INVALID: "연결 기억을 저장하려면 검토한 값이 올바르게 채워져 있어야 합니다.",
@@ -165,6 +200,11 @@ export function toLongProjectDisplayError(error: unknown): { code: string; messa
   }
   if (Object.prototype.hasOwnProperty.call(LONG_EPISODE_MERGE_ERRORS, error.code)) return { code: error.code, message: LONG_EPISODE_MERGE_ERRORS[error.code]! };
   if (Object.prototype.hasOwnProperty.call(LONG_EPISODE_CONTINUITY_ERRORS, error.code)) return { code: error.code, message: LONG_EPISODE_CONTINUITY_ERRORS[error.code]! };
+  if (Object.prototype.hasOwnProperty.call(LONG_EPISODE_NARRATION_ERRORS, error.code)) return { code: error.code, message: LONG_EPISODE_NARRATION_ERRORS[error.code]! };
+  if (error.code === "LONG_EPISODE_NARRATION_PROVIDER_ERROR") {
+    const category = typeof error.details?.category === "string" ? error.details.category : "";
+    return { code: error.code, message: LONG_EPISODE_NARRATION_PROVIDER_MESSAGES[category] ?? LONG_EPISODE_NARRATION_PROVIDER_FALLBACK };
+  }
   if (error.code === NETWORK.code) return NETWORK;
   if (error.code === MALFORMED.code) return MALFORMED;
   return UNKNOWN;
@@ -197,6 +237,9 @@ function isLongProjectSettings(value: unknown): value is LongProjectSettings {
   if (!Number.isInteger(value.episodeDurationSeconds) || (value.episodeDurationSeconds as number) <= 0) return false;
   if (!PLATFORMS.has(value.platform as string)) return false;
   if (!ASPECT_RATIOS.has(value.aspectRatio as string)) return false;
+  // Checked rather than assumed: the settings screen binds these straight to checkbox `checked`, and an
+  // absent value would silently turn a controlled input into an uncontrolled one.
+  if (typeof value.narrationEnabled !== "boolean" || typeof value.subtitlesEnabled !== "boolean") return false;
   return true;
 }
 
@@ -229,8 +272,17 @@ function isLongEpisodeOutline(value: unknown): value is LongEpisodeOutline {
 
 function isLongEpisodeScript(value: unknown): value is LongEpisodeScript {
   if (!isRecord(value) || typeof value.title !== "string" || typeof value.synopsis !== "string" || typeof value.ending !== "string" || !Array.isArray(value.scenes) || value.scenes.length < MIN_SCENE_COUNT || value.scenes.length > MAX_SCENE_COUNT) return false;
+  // Deliberately hand-written rather than imported from utils/sceneFields.ts: this is the API layer's own
+  // check on an untrusted response, and it should not go green just because a UI constant was edited.
   const fields = ["description", "visualAction", "startMotion", "mainMotion", "endMotion", "shotSize", "cameraAngle", "composition", "lensFeel", "focusSubject", "cameraMotion", "environmentMotion", "motionSpeed", "motionIntensity", "expressionChange", "continuityHint"];
-  return value.scenes.every((scene, index) => isRecord(scene) && scene.number === index + 1 && fields.every((field) => typeof scene[field] === "string"));
+  // narration is separate because it is optional on the contract (LongEpisodeScene.narration?) — Episode
+  // scripts stored before it existed have no such key, and treating that as malformed would make this client
+  // refuse the user's own saved Episodes.
+  return value.scenes.every((scene, index) =>
+    isRecord(scene)
+    && scene.number === index + 1
+    && fields.every((field) => typeof scene[field] === "string")
+    && (scene.narration === undefined || typeof scene.narration === "string"));
 }
 
 function isLongEpisodeDetail(value: unknown): value is LongEpisodeDetail {
@@ -591,6 +643,67 @@ export function getLongEpisodeVideoReview(projectId: string, episodeNumber: numb
 export function approveLongEpisodeVideoReview(projectId: string, episodeNumber: number, jobId: string, sceneNumber: SceneNumber): Promise<ApproveLongEpisodeVideoReviewResponse> { return request(API_ROUTES.longEpisodeVideoReviewApproval(projectId, episodeNumber, jobId, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) }, isApproveEpisodeVideoReviewResponse); }
 /** Sends only the already explicitly confirmed Episode final-render request. */
 export function mergeLongEpisodeVideos(projectId: string, episodeNumber: number): Promise<MergeLongEpisodeVideosResponse> { return request(API_ROUTES.longEpisodeVideoMerge(projectId, episodeNumber), { method: "POST" }, isMergeLongEpisodeVideosResponse); }
+const isSceneNumberList = (value: unknown): value is SceneNumber[] => Array.isArray(value) && value.every(isSceneNumber);
+
+/** One scene's narration text and whether audio exists for it. `audioDurationSeconds` is never a non-number: the screen does arithmetic with it. */
+function isLongEpisodeNarrationReview(value: unknown): value is LongEpisodeNarrationReview {
+  return isRecord(value)
+    && isSceneNumber(value.sceneNumber)
+    && typeof value.narration === "string"
+    && typeof value.hasAudio === "boolean"
+    && (value.audioDurationSeconds === undefined || isFiniteNonNegative(value.audioDurationSeconds));
+}
+const isLongEpisodeNarrationReviewList = (value: unknown): value is LongEpisodeNarrationReview[] =>
+  Array.isArray(value) && value.every(isLongEpisodeNarrationReview);
+const isGetEpisodeNarrationReviewResponse = (value: unknown): value is GetLongEpisodeNarrationReviewResponse =>
+  isRecord(value) && isLongEpisodeDetail(value.episode) && isLongEpisodeNarrationReviewList(value.narrations) && isBudgetPreview(value.budget);
+const isStartEpisodeNarrationResponse = (value: unknown): value is StartLongEpisodeNarrationGenerationResponse =>
+  isRecord(value) && isLongEpisodeDetail(value.episode)
+  && isSceneNumberList(value.generatedSceneNumbers) && isSceneNumberList(value.reusedSceneNumbers) && isSceneNumberList(value.skippedSceneNumbers)
+  && isBudgetPreview(value.budget);
+const isRegenerateEpisodeNarrationResponse = (value: unknown): value is RegenerateLongEpisodeNarrationResponse =>
+  isRecord(value) && isLongEpisodeDetail(value.episode) && isLongEpisodeNarrationReviewList(value.narrations) && isSceneNumber(value.sceneNumber)
+  && (value.retryEstimate === undefined
+    || (isRecord(value.retryEstimate) && isFiniteNonNegative(value.retryEstimate.perSceneCostUsd) && isBudgetPreview(value.retryEstimate.budget)));
+
+/** Provider-free to read: a GET never synthesizes anything and never costs money. */
+export function getLongEpisodeNarrationReview(projectId: string, episodeNumber: number): Promise<GetLongEpisodeNarrationReviewResponse> {
+  return request(API_ROUTES.longEpisodeNarrationReview(projectId, episodeNumber), undefined, isGetEpisodeNarrationReviewResponse);
+}
+
+/** Synthesizes audio for every scene of this Episode that has narration text. Must only be called after explicit confirmation — this spends money. */
+export function startLongEpisodeNarrationGeneration(projectId: string, episodeNumber: number): Promise<StartLongEpisodeNarrationGenerationResponse> {
+  const requestBody: StartLongEpisodeNarrationGenerationRequest = { approved: true };
+  return request(
+    API_ROUTES.longEpisodeNarrationGeneration(projectId, episodeNumber),
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) },
+    isStartEpisodeNarrationResponse,
+  );
+}
+
+/** Replaces one scene's narration audio. Costs one more TTS call, so it needs its own confirmation. */
+export function regenerateLongEpisodeNarration(
+  projectId: string,
+  episodeNumber: number,
+  sceneNumber: SceneNumber,
+  additionalInstruction?: string,
+): Promise<RegenerateLongEpisodeNarrationResponse> {
+  // Blank instructions are omitted rather than sent as "": an empty string is a value the server would have to
+  // decide what to do with, and the contract already says whitespace-only means absent.
+  const trimmed = additionalInstruction?.trim();
+  const requestBody: RegenerateLongEpisodeNarrationRequest = trimmed ? { approved: true, additionalInstruction: trimmed } : { approved: true };
+  return request(
+    API_ROUTES.longEpisodeNarrationRegeneration(projectId, episodeNumber, sceneNumber),
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) },
+    isRegenerateEpisodeNarrationResponse,
+  );
+}
+
+/** `cacheBuster` forces the browser to refetch after a scene's audio is regenerated. */
+export function longEpisodeNarrationContentUrl(projectId: string, episodeNumber: number, sceneNumber: SceneNumber, cacheBuster: string): string {
+  return `${API_ROUTES.longEpisodeNarrationContent(projectId, episodeNumber, sceneNumber)}?v=${encodeURIComponent(cacheBuster)}`;
+}
+
 export function getLongEpisodeContinuity(projectId: string, episodeNumber: number): Promise<GetLongEpisodeContinuityResponse> { return request(API_ROUTES.longEpisodeContinuity(projectId, episodeNumber), undefined, isGetLongEpisodeContinuityResponse); }
 export function saveLongEpisodeContinuity(projectId: string, episodeNumber: number, requestBody: SaveLongEpisodeContinuityRequest): Promise<SaveLongEpisodeContinuityResponse> { return request(API_ROUTES.longEpisodeContinuity(projectId, episodeNumber), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isSaveLongEpisodeContinuityResponse); }
 export function getLongEpisodeContinuityReference(projectId: string, episodeNumber: number): Promise<GetLongEpisodeContinuityReferenceResponse> { return request(API_ROUTES.longEpisodeContinuityReference(projectId, episodeNumber), undefined, isGetLongEpisodeContinuityReferenceResponse); }

@@ -15,6 +15,7 @@ interface LongProjectDetailProps {
   onOpenVideoWorkflow?: (projectId: string, episodeNumber: number) => void;
   onOpenVideoMerge?: (projectId: string, episodeNumber: number) => void;
   onOpenContinuity?: (projectId: string, episodeNumber: number) => void;
+  onOpenNarrationReview?: (projectId: string, episodeNumber: number) => void;
   onOpenGallery?: (projectId: string) => void;
   onArchived?: () => void;
 }
@@ -42,10 +43,19 @@ function episodeResumeTarget(status: LongEpisodeStatus): EpisodeResumeTarget | n
   }
 }
 
+/**
+ * Whether this Episode already has a script, and therefore sentences to narrate. The two excluded statuses are
+ * the only ones reached before a script exists; the backend's own gate is the same condition (it answers
+ * LONG_EPISODE_NARRATION_NOT_ALLOWED otherwise), so this only avoids offering a link that would fail.
+ */
+function episodeHasScript(status: LongEpisodeStatus): boolean {
+  return status !== "planned" && status !== "outline_ready";
+}
+
 export function LongProjectDetail({
   projectId, onBack, onOpenSettings, onOpenOutline, onOpenStoryBible, onOpenEpisodeScript,
   onOpenMappingReview = () => {}, onOpenImageGeneration = () => {}, onOpenVideoWorkflow = () => {},
-  onOpenVideoMerge = () => {}, onOpenContinuity = () => {}, onOpenGallery = () => {}, onArchived = () => {},
+  onOpenVideoMerge = () => {}, onOpenContinuity = () => {}, onOpenNarrationReview = () => {}, onOpenGallery = () => {}, onArchived = () => {},
 }: LongProjectDetailProps) {
   const [state, setState] = useState<DetailState>({ status: "loading" });
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -58,6 +68,12 @@ export function LongProjectDetail({
   useEffect(() => { let cancelled = false; setState({ status: "loading" }); getLongProject(projectId).then((response) => { if (!cancelled) setState({ status: "success", project: response.project }); }).catch((error: unknown) => { if (!cancelled) setState({ status: "error", error: toLongProjectDisplayError(error) }); }); return () => { cancelled = true; }; }, [projectId]);
   const selectedEpisode = state.status === "success" ? state.project.episodes.find((episode) => episode.episodeNumber === selectedEpisodeNumber) ?? null : null;
   const editableTimeline = state.status === "success" && state.project.episodes.every((episode) => episode.status === "planned" || episode.status === "outline_ready");
+  /**
+   * True when this project's Episode narration sentences are used for anything — spoken, burned in as
+   * subtitles, or both. False while both settings are off, which is the default for every project made before
+   * narration existed.
+   */
+  const narrationInUse = state.status === "success" && (state.project.settings.narrationEnabled || state.project.settings.subtitlesEnabled);
   const filteredEpisodes = useMemo(() => { if (state.status !== "success") return []; const needle = query.trim().toLocaleLowerCase(); return state.project.episodes.filter((episode) => (statusFilter === "all" || episode.status === statusFilter) && (!needle || `${episode.episodeNumber} ${episode.title} ${episode.summary}`.toLocaleLowerCase().includes(needle))); }, [query, state, statusFilter]);
   async function updateTimeline(action: () => Promise<{ project: LongProject }>, select?: number): Promise<void> { if (timelinePending) return; setTimelinePending(true); setTimelineError(null); try { const result = await action(); setState({ status: "success", project: result.project }); setSelectedEpisodeNumber(select ?? null); setRemoveConfirmationOpen(false); setRemoveConfirmation(""); } catch (error: unknown) { setTimelineError(toLongProjectDisplayError(error)); } finally { setTimelinePending(false); } }
   function resumeEpisode(target: EpisodeResumeTarget, episodeNumber: number): void {
@@ -201,8 +217,22 @@ export function LongProjectDetail({
                       {episode.episodeNumber}. {episode.title}
                     </button>
                     <span className={episode.status === "outline_ready" ? "text-emerald-400" : "text-slate-400"}>{longEpisodeStatusLabel(episode.status)}</span>
+                    {/* Narration is a side channel, not a step in the fixed flow — it sits next to the resume
+                        link rather than replacing it, and it is only offered when the project actually uses
+                        these sentences for something (voice, subtitles, or both). With both off they are
+                        stored but unused, and a link to them would be an invitation to nothing. */}
+                    {narrationInUse && episodeHasScript(episode.status) && (
+                      <button
+                        type="button"
+                        data-testid={`open-episode-narration-${episode.episodeNumber}`}
+                        className="ml-auto text-slate-400 hover:text-slate-200"
+                        onClick={() => onOpenNarrationReview(projectId, episode.episodeNumber)}
+                      >
+                        내레이션
+                      </button>
+                    )}
                     {showResume && (
-                      <button type="button" className="ml-auto text-violet-300 hover:text-violet-200" onClick={() => resumeEpisode(target, episode.episodeNumber)}>
+                      <button type="button" className={`${narrationInUse && episodeHasScript(episode.status) ? "" : "ml-auto "}text-violet-300 hover:text-violet-200`} onClick={() => resumeEpisode(target, episode.episodeNumber)}>
                         {target.label}
                       </button>
                     )}

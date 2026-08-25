@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LongEpisodeStatus } from "@ai-animation-studio/shared";
 
-import { jsonResponse, makeLongEpisodeOutline, makeLongProject } from "../api/testUtils.js";
+import { jsonResponse, makeLongEpisodeOutline, makeLongProject, makeLongProjectSettings } from "../api/testUtils.js";
 import { LongProjectDetail } from "./LongProjectDetail.js";
 
 describe("LongProjectDetail", () => {
@@ -19,6 +19,48 @@ describe("LongProjectDetail", () => {
     expect(await screen.findByText("우주 방랑자")).toBeTruthy();
     expect(screen.getByText("귀환 이야기")).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledWith("/long-projects/long_test");
+  });
+
+  it("offers narration only for Episodes that have a script, and only when the project uses the sentences", async () => {
+    // Narration is a side channel, not a step in the fixed flow, so it sits next to the resume link instead of
+    // replacing it. An Episode with no script has nothing to narrate — the backend answers
+    // LONG_EPISODE_NARRATION_NOT_ALLOWED there, so offering the link would be offering a guaranteed failure.
+    const open = vi.fn();
+    const project = makeLongProject({
+      id: "long_test",
+      settings: makeLongProjectSettings({ narrationEnabled: true, subtitlesEnabled: false }),
+      episodes: [
+        makeLongEpisodeOutline({ episodeNumber: 1, title: "1화", status: "script_review" }),
+        makeLongEpisodeOutline({ episodeNumber: 2, title: "2화", status: "planned" }),
+        makeLongEpisodeOutline({ episodeNumber: 3, title: "3화", status: "outline_ready" }),
+      ],
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    render(<LongProjectDetail projectId="long_test" onBack={() => {}} onOpenSettings={() => {}} onOpenOutline={() => {}} onOpenNarrationReview={open} />);
+
+    fireEvent.click(await screen.findByTestId("open-episode-narration-1"));
+    expect(open).toHaveBeenCalledWith("long_test", 1);
+    expect(screen.queryByTestId("open-episode-narration-2")).toBeNull();
+    expect(screen.queryByTestId("open-episode-narration-3")).toBeNull();
+  });
+
+  it("hides narration entirely while both voice and subtitles are off", async () => {
+    // With both off the sentences are stored but never reach the video, so a link to them would invite
+    // someone to review something that will not be used. Turning either on in settings brings it back.
+    const project = makeLongProject({
+      id: "long_test",
+      settings: makeLongProjectSettings({ narrationEnabled: false, subtitlesEnabled: false }),
+      episodes: [makeLongEpisodeOutline({ episodeNumber: 1, title: "1화", status: "script_review" })],
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    // onOpenEpisodeScript is passed because the resume link for a script-stage Episode is only offered when a
+    // handler exists — without it this test would "pass" against a screen that rendered nothing at all.
+    render(<LongProjectDetail projectId="long_test" onBack={() => {}} onOpenSettings={() => {}} onOpenOutline={() => {}} onOpenEpisodeScript={() => {}} onOpenNarrationReview={() => {}} />);
+
+    await screen.findByTestId("episode-1");
+    expect(screen.queryByTestId("open-episode-narration-1")).toBeNull();
+    // The Episode itself is still reachable — only the narration link is gone.
+    expect(screen.getByText("대본 작성/편집")).toBeTruthy();
   });
 
   it("shows planned and outline_ready episodes distinctly", async () => {

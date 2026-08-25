@@ -2,10 +2,12 @@
  * The one definition of a scene's editable fields, shared by the short project and long-form Episodes.
  *
  * These are the same seventeen fields on both sides — the short project's scene-edit endpoint spells them in
- * snake_case, a long Episode's stored script spells them in camelCase, and `narration` exists only in short
- * projects (long-form Episodes have no narration or subtitles). Keeping one definition is what stops the two
- * screens from drifting apart again: they were built separately, and the long one ended up editing raw JSON
- * while the short one grew labelled fields and cost warnings.
+ * snake_case and a long Episode's stored script spells them in camelCase. Keeping one definition is what stops
+ * the two screens from drifting apart again: they were built separately, and the long one ended up editing raw
+ * JSON while the short one grew labelled fields and cost warnings.
+ *
+ * `narration` used to be short-only and is now on both sides, but it stays marked `longOptional`: every Episode
+ * script stored before narration existed simply has no such key, and those scripts must keep loading.
  *
  * The grouping is the substance, not decoration. The endpoints accept one flat set of fields, but editing them
  * does not cost the same: changing a composition field means paying to regenerate an image (and the video built
@@ -19,6 +21,12 @@ export interface SceneEditableField {
   longKey: string | null;
   label: string;
   multiline?: boolean;
+  /**
+   * True when a long Episode's stored script is allowed to omit this key entirely. Anything reading a script
+   * must accept `undefined` here, not just an empty string — a script written before the field existed has no
+   * key at all, and rejecting those would lock the user out of their own saved Episodes.
+   */
+  longOptional?: boolean;
 }
 
 export interface SceneFieldGroup {
@@ -40,7 +48,7 @@ export const SCENE_FIELD_GROUPS: SceneFieldGroup[] = [
   {
     title: "내레이션 문장",
     impact: "고치면 이 장면의 음성을 다시 만들어야 합니다.",
-    fields: [{ key: "narration", longKey: null, label: "읽어줄 문장", multiline: true }],
+    fields: [{ key: "narration", longKey: "narration", label: "읽어줄 문장", multiline: true, longOptional: true }],
   },
   {
     title: "구도",
@@ -82,18 +90,32 @@ export const SCENE_FIELD_KEYS = SCENE_FIELD_GROUPS.flatMap((group) => group.fiel
 
 /**
  * The same groups reduced to the fields a long Episode's script actually has, keyed the way that script spells
- * them. Groups that end up empty (narration) are dropped rather than shown with nothing in them.
+ * them. A group that ends up with no fields is dropped rather than shown empty — no group is in that position
+ * today, but the filter stays so that removing a field from long Episodes cannot leave a headed empty box.
+ *
+ * `optional` is carried through deliberately: callers validating a stored script must treat those keys as
+ * "absent or string", never "string". See SceneEditableField.longOptional.
  */
-export function longEpisodeFieldGroups(): { title: string; impact: string; free?: boolean; fields: { key: string; label: string; multiline?: boolean }[] }[] {
+export function longEpisodeFieldGroups(): { title: string; impact: string; free?: boolean; fields: { key: string; label: string; multiline?: boolean; optional?: boolean }[] }[] {
   return SCENE_FIELD_GROUPS.map((group) => ({
     title: group.title,
     impact: group.impact,
     ...(group.free === undefined ? {} : { free: group.free }),
     fields: group.fields
       .filter((field): field is SceneEditableField & { longKey: string } => field.longKey !== null)
-      .map((field) => ({ key: field.longKey, label: field.label, ...(field.multiline === undefined ? {} : { multiline: field.multiline }) })),
+      .map((field) => ({
+        key: field.longKey,
+        label: field.label,
+        ...(field.multiline === undefined ? {} : { multiline: field.multiline }),
+        ...(field.longOptional === undefined ? {} : { optional: field.longOptional }),
+      })),
   })).filter((group) => group.fields.length > 0);
 }
+
+/** The long-script keys a stored script may legally omit — the "absent or string" set. */
+export const LONG_EPISODE_OPTIONAL_FIELD_KEYS: string[] = SCENE_FIELD_GROUPS.flatMap((group) =>
+  group.fields.filter((field) => field.longKey !== null && field.longOptional).map((field) => field.longKey as string),
+);
 
 /**
  * Plain-language label for a Runway output ratio.

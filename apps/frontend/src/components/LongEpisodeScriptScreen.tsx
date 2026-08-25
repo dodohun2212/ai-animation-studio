@@ -14,7 +14,14 @@ type ErrorState = { code: string; message: string };
  * commas by hand and no warning at all about which edits force a paid regeneration.
  */
 const SCENE_GROUPS = longEpisodeFieldGroups();
-const SCENE_FIELDS = SCENE_GROUPS.flatMap((group) => group.fields.map((field) => field.key));
+/**
+ * Every long-script scene key this screen edits, split by whether a stored script is allowed to omit it.
+ * Derived from the shared definition rather than restated, so adding a field in one place cannot leave this
+ * screen validating an outdated set. The split matters: `narration` arrived after Episodes already existed, so
+ * requiring it would reject every script written before it and lock the user out of their own Episodes.
+ */
+const SCENE_FIELDS = SCENE_GROUPS.flatMap((group) => group.fields.filter((field) => !field.optional).map((field) => field.key));
+const OPTIONAL_SCENE_FIELDS = SCENE_GROUPS.flatMap((group) => group.fields.filter((field) => field.optional).map((field) => field.key));
 
 /**
  * Title, synopsis and ending describe the Episode, not a scene. The image and video prompt builders are handed
@@ -26,7 +33,7 @@ const SCRIPT_FIELDS: { key: "title" | "synopsis" | "ending"; label: string }[] =
   { key: "ending", label: "결말" },
 ];
 
-function isScript(value: unknown): value is LongEpisodeScript { if (!value || typeof value !== "object" || Array.isArray(value)) return false; const item = value as Record<string, unknown>; return typeof item.title === "string" && typeof item.synopsis === "string" && typeof item.ending === "string" && Array.isArray(item.scenes) && item.scenes.length >= MIN_SCENE_COUNT && item.scenes.length <= MAX_SCENE_COUNT && item.scenes.every((scene, index) => !!scene && typeof scene === "object" && !Array.isArray(scene) && (scene as Record<string, unknown>).number === index + 1 && SCENE_FIELDS.every((field) => typeof (scene as Record<string, unknown>)[field] === "string")); }
+function isScript(value: unknown): value is LongEpisodeScript { if (!value || typeof value !== "object" || Array.isArray(value)) return false; const item = value as Record<string, unknown>; return typeof item.title === "string" && typeof item.synopsis === "string" && typeof item.ending === "string" && Array.isArray(item.scenes) && item.scenes.length >= MIN_SCENE_COUNT && item.scenes.length <= MAX_SCENE_COUNT && item.scenes.every((scene, index) => !!scene && typeof scene === "object" && !Array.isArray(scene) && (scene as Record<string, unknown>).number === index + 1 && SCENE_FIELDS.every((field) => typeof (scene as Record<string, unknown>)[field] === "string") && OPTIONAL_SCENE_FIELDS.every((field) => { const value = (scene as Record<string, unknown>)[field]; return value === undefined || typeof value === "string"; })); }
 
 const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const primaryButton = "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";

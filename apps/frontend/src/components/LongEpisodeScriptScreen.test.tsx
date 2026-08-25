@@ -27,6 +27,51 @@ describe("LongEpisodeScriptScreen", () => {
     expect(JSON.parse(String((fetchMock.mock.calls[2]?.[1] as RequestInit).body))).toEqual({ approved: true });
   });
 
+  it("still loads a script written before narration existed, which has no such key at all", async () => {
+    // The field list this screen validates against is derived from the shared scene definition, so adding
+    // narration there silently made it required here — and every Episode script saved before narration existed
+    // has no narration key. Requiring it would have answered "대본을 해석하지 못했습니다" for all of them and
+    // locked people out of Episodes they already wrote. The fixture deliberately omits the key entirely
+    // (not an empty string): absent and empty are different things to a validator.
+    expect(script.scenes[0]).not.toHaveProperty("narration");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { episode: episode("script_review") })));
+    render(<LongEpisodeScriptScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    await waitFor(() => expect(screen.getByTestId("episode-script-field-description")).toHaveValue("Description"));
+    expect(screen.queryByText(/해석하지 못했습니다/)).toBeNull();
+    // The field is offered even though the stored script has no value for it — that is how one gets added.
+    expect(screen.getByTestId("episode-script-field-narration")).toHaveValue("");
+  });
+
+  it("edits the narration sentence like any other field, in its own group with its own consequence", async () => {
+    // Narration is grouped apart from composition and motion because editing it costs differently: it makes
+    // that scene's audio need remaking, and leaves the image and the video alone.
+    const withNarration = {
+      ...episode("script_review"),
+      script: { ...script, scenes: script.scenes.map((scene) => ({ ...scene, narration: "읽어줄 문장입니다." })) },
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: withNarration }))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: withNarration }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeScriptScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    const narration = await screen.findByTestId("episode-script-field-narration");
+    expect(narration).toHaveValue("읽어줄 문장입니다.");
+    const group = screen.getByTestId("episode-script-group-내레이션 문장");
+    expect(group.textContent).toContain("고치면 이 장면의 음성을 다시 만들어야 합니다");
+
+    fireEvent.change(narration, { target: { value: "고친 문장입니다." } });
+    fireEvent.click(screen.getByTestId("episode-script-save"));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const body = JSON.parse(String((fetchMock.mock.calls[1]?.[1] as RequestInit).body)) as { script: { scenes: Record<string, unknown>[] } };
+    expect(body.script.scenes[0]?.narration).toBe("고친 문장입니다.");
+    // Only the edited scene changed; the rest of the script goes back exactly as it came.
+    expect(body.script.scenes[1]?.narration).toBe("읽어줄 문장입니다.");
+    expect(body.script.scenes[0]?.shotSize).toBe("Medium");
+  });
+
   it("shows the Episode status in Korean instead of the raw stored value", async () => {
     // Every other Long Project screen runs the status through longEpisodeStatusLabel; this one printed the
     // enum itself, so a finished Episode read "videos_approved" here and "영상 승인됨" everywhere else.
@@ -95,8 +140,9 @@ describe("LongEpisodeScriptScreen", () => {
     expect((await screen.findByTestId("episode-script-group-구도")).textContent).toContain("이미지를 다시 만들어야");
     expect(screen.getByTestId("episode-script-group-움직임").textContent).toContain("영상을 다시 만들어야");
     expect(screen.getByTestId("episode-script-group-화면 대본").textContent).toContain("다시 만들 것이 없습니다");
-    // Long-form Episodes have no narration at all, so that group must not appear here.
-    expect(screen.queryByTestId("episode-script-group-내레이션 문장")).toBeNull();
+    // narration is now on both sides (see sceneFields.ts) — its group renders here too, with the same
+    // "regenerate audio" impact text the short project's scene editor shows.
+    expect(screen.getByTestId("episode-script-group-내레이션 문장").textContent).toContain("음성을 다시 만들어야");
   });
 
   it("shows an approved Episode read-only instead of pretending it can be edited", async () => {

@@ -66,6 +66,44 @@ describe("LongProjectSettingsScreen", () => {
     expect(alert).toHaveAttribute("data-error-code", "LONG_PROJECT_NOT_FOUND");
   });
 
+  it("turns voice and subtitles on independently and sends both flags", async () => {
+    // They are two separate settings on purpose: subtitles cost nothing and voice costs per scene per Episode,
+    // so "subtitles only" has to be reachable without paying for anything. A single combined toggle would
+    // quietly make every captioned Episode a paid one.
+    const settings = makeLongProjectSettings({ narrationEnabled: false, subtitlesEnabled: false });
+    const project = makeLongProject({ settings: { ...settings, subtitlesEnabled: true } });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { settings }))
+      .mockResolvedValueOnce(jsonResponse(200, { project }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongProjectSettingsScreen projectId="long_test" onBack={() => {}} />);
+
+    const voice = (await screen.findByTestId("long-settings-narration-enabled")) as HTMLInputElement;
+    const subtitles = screen.getByTestId("long-settings-subtitles-enabled") as HTMLInputElement;
+    expect(voice.checked).toBe(false);
+    expect(subtitles.checked).toBe(false);
+
+    fireEvent.click(subtitles);
+    fireEvent.click(screen.getByRole("button", { name: "설정 저장" }));
+
+    const [, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    const body = JSON.parse(String(init.body)) as { settings: Record<string, unknown> };
+    expect(body.settings).toMatchObject({ subtitlesEnabled: true, narrationEnabled: false });
+  });
+
+  it("says plainly which of the two costs money", async () => {
+    // This is the one place someone decides to spend per scene per Episode, and the cost has to be legible
+    // before the checkbox, not after the bill.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { settings: makeLongProjectSettings() })));
+    render(<LongProjectSettingsScreen projectId="long_test" onBack={() => {}} />);
+
+    const voiceLabel = (await screen.findByTestId("long-settings-narration-enabled")).closest("label");
+    expect(voiceLabel?.textContent).toContain("에피소드마다, 장면마다 한 번씩 비용이 듭니다");
+    const subtitleLabel = screen.getByTestId("long-settings-subtitles-enabled").closest("label");
+    expect(subtitleLabel?.textContent).toContain("비용이 들지 않습니다");
+  });
+
   it("edits scene count and clip duration, derives the displayed total, and sends both (never the derived field) on save", async () => {
     const settings = makeLongProjectSettings({ sceneCount: 6, clipDurationSeconds: 5, episodeDurationSeconds: 30 });
     const project = makeLongProject({ settings: { ...settings, sceneCount: 8, clipDurationSeconds: 10, episodeDurationSeconds: 80 } });

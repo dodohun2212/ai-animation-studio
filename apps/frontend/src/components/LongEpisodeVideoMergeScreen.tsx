@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { MergeLongEpisodeVideosResponse } from "@ai-animation-studio/shared";
 
-import { getLongEpisode, mergeLongEpisodeVideos, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { getLongEpisode, getLongProjectSettings, mergeLongEpisodeVideos, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 
 interface Props {
   projectId: string;
@@ -11,6 +11,37 @@ interface Props {
 }
 
 type DisplayError = { code: string; message: string };
+
+/** What the merge lays over the Episode's clips, as the two settings that decide it. */
+interface MediaMode {
+  narrationEnabled: boolean;
+  subtitlesEnabled: boolean;
+}
+
+/**
+ * One sentence describing what this merge lays over the clips.
+ *
+ * Mirrors episode-video-merge.service.ts, where both halves are gated the same way as the short project's
+ * merge — "off" means "not used", not "not made again": audio goes on only when narrationEnabled is on AND
+ * that scene's file exists, and a subtitle goes on only when subtitlesEnabled is on AND that scene has
+ * narration text. The two are otherwise independent, so subtitles-only (no TTS spend) is a real mode and the
+ * copy must never tie a subtitle to the presence of audio.
+ *
+ * Returns null when the settings could not be read: saying nothing beats promising something unconfirmed.
+ */
+function mergeContentSentence(mode: MediaMode | null): string | null {
+  if (!mode) return null;
+  if (mode.narrationEnabled && mode.subtitlesEnabled) {
+    return "음성을 만들어 둔 장면에는 그 음성이 입혀지고, 읽어줄 문장이 있는 장면에는 자막이 들어갑니다 — 음성이 아직 없는 장면에도 자막은 들어갑니다.";
+  }
+  if (mode.subtitlesEnabled) {
+    return "음성은 꺼져 있어 넣지 않습니다. 읽어줄 문장이 있는 장면에 자막만 입힙니다.";
+  }
+  if (mode.narrationEnabled) {
+    return "음성을 만들어 둔 장면에는 그 음성이 입혀지고, 자막은 넣지 않습니다.";
+  }
+  return "음성도 자막도 꺼져 있어 장면 영상만 이어 붙입니다.";
+}
 
 /** The explicit, final client gate for one Episode's already-approved videos. */
 export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, onOpenContinuity }: Props) {
@@ -25,6 +56,8 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
    * and the copy then omits the number rather than printing a guessed one.
    */
   const [sceneCount, setSceneCount] = useState<number | null>(null);
+  /** null until the project settings load, and stays null if they fail — the copy then claims nothing. */
+  const [mediaMode, setMediaMode] = useState<MediaMode | null>(null);
   const busy = useRef(false);
 
   // Only ever changes this screen's wording, so a failure here is not fatal and is deliberately swallowed.
@@ -35,10 +68,19 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
         if (!cancelled) setSceneCount(response.episode.script?.scenes.length ?? null);
       })
       .catch(() => {});
+    // Same treatment for the two media settings: wording only, so a failure drops the sentence rather than
+    // guessing at what will be laid over the clips.
+    getLongProjectSettings(projectId)
+      .then(({ settings }) => {
+        if (!cancelled) setMediaMode({ narrationEnabled: settings.narrationEnabled, subtitlesEnabled: settings.subtitlesEnabled });
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, [projectId, episodeNumber]);
+
+  const contentSentence = mergeContentSentence(mediaMode);
 
   function openConfirmation(): void {
     if (busy.current || result) return;
@@ -77,6 +119,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
       <p className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300" data-testid="episode-merge-scope-notice">
         이 단계는 비용이 들지 않습니다 — 유료 요청 없이, 이 컴퓨터에 설치된 영상 병합 프로그램만 실행합니다.
         {sceneCount !== null ? ` 승인된 에피소드 장면 영상 ${sceneCount}개를` : " 승인된 에피소드 장면 영상을"} 순서대로 이어 붙여 최종 영상을 만듭니다.
+        {contentSentence ? ` ${contentSentence}` : ""}
       </p>
       {!result && (
         <div className="space-y-3">
@@ -92,7 +135,8 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
           {confirmationOpen && (
             <div role="alertdialog" aria-label="에피소드 최종 영상 확인" data-testid="episode-merge-confirm-panel" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
               <p className="text-sm text-slate-300">
-                아직 시작되지 않았습니다. 확인을 눌러야 최종 영상 만들기가 시작됩니다. 유료 요청은 전송되지 않습니다.
+                아직 시작되지 않았습니다. 확인을 눌러야 최종 영상 만들기가 시작됩니다.
+                {contentSentence ? ` ${contentSentence}` : ""} 유료 요청은 전송되지 않습니다.
               </p>
               <div className="flex gap-3">
                 <button

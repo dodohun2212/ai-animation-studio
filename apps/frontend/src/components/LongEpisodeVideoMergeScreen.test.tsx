@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { jsonResponse } from "../api/testUtils.js";
+import { jsonResponse, makeLongProjectSettings } from "../api/testUtils.js";
 import { LongEpisodeVideoMergeScreen } from "./LongEpisodeVideoMergeScreen.js";
 
 const episode = (status = "completed") => ({ episodeNumber: 1, title: "Episode", summary: "summary", mainEvent: "event", conflict: "conflict", cliffhanger: "cliffhanger", nextEpisodeHook: "hook", status, approved: true, scriptRevision: 1, scriptHistoryCount: 1 });
@@ -25,6 +25,10 @@ const episodeWithScenes = (count: number) => ({
 });
 
 const EPISODE_URL = "/long-projects/long/episodes/1";
+const SETTINGS_URL = "/long-projects/long/settings";
+const mediaSettings = (narrationEnabled: boolean, subtitlesEnabled: boolean) => ({
+  settings: makeLongProjectSettings({ narrationEnabled, subtitlesEnabled }),
+});
 const MERGE_URL = "/long-projects/long/episodes/1/videos/merge";
 
 /** Keyed by "METHOD url" so the Episode GET and the merge POST cannot be mistaken for each other. */
@@ -44,7 +48,7 @@ describe("LongEpisodeVideoMergeScreen", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("does not request a merge when only opening the explicit confirmation", async () => {
-    const mergeFetch = stubFetchByRoute({ [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) } });
+    const mergeFetch = stubFetchByRoute({ [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) }, [`GET ${SETTINGS_URL}`]: mediaSettings(false, false) });
     vi.stubGlobal("fetch", mergeFetch);
     render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
@@ -61,7 +65,7 @@ describe("LongEpisodeVideoMergeScreen", () => {
     // measured. Four is deliberately not six: a screen that still hardcoded six would pass a six-scene
     // fixture. The cost line matters as much — this is the most final-looking button in the Episode flow and
     // the merge is local FFmpeg only, with no provider call behind it.
-    vi.stubGlobal("fetch", stubFetchByRoute({ [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) } }));
+    vi.stubGlobal("fetch", stubFetchByRoute({ [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) }, [`GET ${SETTINGS_URL}`]: mediaSettings(false, false) }));
     render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
     const notice = await screen.findByTestId("episode-merge-scope-notice");
@@ -76,7 +80,7 @@ describe("LongEpisodeVideoMergeScreen", () => {
   it("drops the count rather than guessing one when the Episode cannot be read", async () => {
     // A wrong number here would be read as a promise about what is about to be merged. Saying nothing is safe;
     // printing a default is not. The merge button stays available — the count is wording, not a precondition.
-    vi.stubGlobal("fetch", stubFetchByRoute({}, { [`GET ${EPISODE_URL}`]: { status: 500, body: { code: "LONG_PROJECT_STORAGE_ERROR", message: "x" } } }));
+    vi.stubGlobal("fetch", stubFetchByRoute({ [`GET ${SETTINGS_URL}`]: mediaSettings(false, false) }, { [`GET ${EPISODE_URL}`]: { status: 500, body: { code: "LONG_PROJECT_STORAGE_ERROR", message: "x" } } }));
     render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
     const notice = await screen.findByTestId("episode-merge-scope-notice");
@@ -85,9 +89,39 @@ describe("LongEpisodeVideoMergeScreen", () => {
     expect(screen.getByTestId("episode-open-merge-confirm")).toBeTruthy();
   });
 
+  it("says what will be laid over the clips, and never ties a subtitle to having audio", async () => {
+    // Subtitles-only is a real mode — no TTS spend, captions burned in — so the sentence must not imply that a
+    // scene needs audio before it can get a subtitle. The Episode merge is gated exactly like the short
+    // project's, and this line is the only place the user learns which of the two will happen.
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) },
+      [`GET ${SETTINGS_URL}`]: mediaSettings(false, true),
+    }));
+    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    const notice = await screen.findByTestId("episode-merge-scope-notice");
+    await waitFor(() => expect(notice.textContent).toContain("음성은 꺼져 있어 넣지 않습니다"));
+    expect(notice.textContent).toContain("자막만 입힙니다");
+  });
+
+  it("says nothing about audio or subtitles when the settings could not be read", async () => {
+    // A wrong claim here is worse than none: someone would confirm a merge expecting narration on it.
+    vi.stubGlobal("fetch", stubFetchByRoute(
+      { [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) } },
+      { [`GET ${SETTINGS_URL}`]: { status: 500, body: { code: "LONG_PROJECT_STORAGE_ERROR", message: "x" } } },
+    ));
+    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    const notice = await screen.findByTestId("episode-merge-scope-notice");
+    await waitFor(() => expect(notice.textContent).toContain("4개"));
+    expect(notice.textContent).not.toContain("자막");
+    expect(notice.textContent).not.toContain("음성");
+  });
+
   it("POSTs the exact Episode merge route without a body after final confirmation", async () => {
     const mergeFetch = stubFetchByRoute({
       [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) },
+      [`GET ${SETTINGS_URL}`]: mediaSettings(false, false),
       [`POST ${MERGE_URL}`]: response(),
     });
     vi.stubGlobal("fetch", mergeFetch);
@@ -107,7 +141,7 @@ describe("LongEpisodeVideoMergeScreen", () => {
 
   it("keeps a safe retryable error without exposing the backend message or an absolute path", async () => {
     vi.stubGlobal("fetch", stubFetchByRoute(
-      { [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) } },
+      { [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) }, [`GET ${SETTINGS_URL}`]: mediaSettings(false, false) },
       { [`POST ${MERGE_URL}`]: { status: 409, body: { code: "LONG_EPISODE_MERGE_NOT_ALLOWED", message: "raw C:\\private" } } },
     ));
     render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
