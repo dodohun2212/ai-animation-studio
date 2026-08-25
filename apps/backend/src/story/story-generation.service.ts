@@ -5,6 +5,8 @@ const SCENE_FIELDS = [
   "number", "description", "visual_action", "start_motion", "main_motion", "end_motion",
   "shot_size", "camera_angle", "composition", "lens_feel", "focus_subject", "camera_motion",
   "environment_motion", "motion_speed", "motion_intensity", "expression_change", "continuity_hint",
+  /** Read by narration TTS generation, gated by ShortProjectSettings.narrationEnabled — always generated regardless of that flag so enabling it later needs no story regeneration. Never read by video prompt assembly (video-preview.service.ts's own SCENE_FIELDS omits it and treats it as optional, for backward compatibility with scenes stored before this field existed). */
+  "narration",
 ] as const;
 
 export type StoredStory = {
@@ -70,6 +72,7 @@ export function generateLocalStory(stored: StoredProject, approvedPrompt: string
       motion_intensity: "moderate",
       expression_change: "focused to hopeful",
       continuity_hint: number === 1 ? "Establish the opening visual state." : "Continue the previous scene's ending pose and direction.",
+      narration: `Scene ${number} narration for ${topic}.`,
     };
   });
   const story: StoredStory = {

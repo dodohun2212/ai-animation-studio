@@ -107,4 +107,18 @@ describe("provider-free video prompt preview", () => {
     project.scenes = [{ number: 1 }]; await projects.save(project);
     await expect(service.preview("video_preview", undefined)).rejects.toMatchObject({ response: { code: "VIDEO_PREVIEW_DATA_INVALID" } });
   });
+
+  it("accepts newer scenes that carry a narration field, never lets it leak into the video prompt, and still rejects a non-string narration", async () => {
+    const { projects, service } = await setup();
+    const project = await projects.findById("video_preview");
+    project.scenes = project.scenes.map((scene, index) => ({ ...(scene as Record<string, unknown>), narration: `narration line ${index + 1}` }));
+    await projects.save(project);
+    const result = await service.preview("video_preview", undefined);
+    expect(result.previews).toHaveLength(6);
+    expect(result.previews.every((item) => !item.prompt.includes("narration"))).toBe(true);
+
+    project.scenes[0] = { ...(project.scenes[0] as Record<string, unknown>), narration: 42 };
+    await projects.save(project);
+    await expect(service.preview("video_preview", undefined)).rejects.toMatchObject({ response: { code: "VIDEO_PREVIEW_DATA_INVALID" } });
+  });
 });

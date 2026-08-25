@@ -47,7 +47,7 @@ const SCENE = (number: number) => ({
   number, description: `d${number}`, visual_action: "v", start_motion: "s", main_motion: "m", end_motion: "e",
   shot_size: "medium", camera_angle: "eye", composition: "centered", lens_feel: "natural", focus_subject: "hero",
   camera_motion: "forward", environment_motion: "ambient", motion_speed: "normal", motion_intensity: "moderate",
-  expression_change: "focused", continuity_hint: "continue",
+  expression_change: "focused", continuity_hint: "continue", narration: "narration line",
 });
 const VALID_STORY = { title: "t", synopsis: "s", ending: "e", scenes: [1, 2, 3, 4, 5, 6].map(SCENE) };
 function jsonResponse(status: number, body: unknown): Response {
@@ -87,6 +87,7 @@ describe("StoryPromptService", () => {
     const draftSettings = {
       projectName: "Draft Name", topic: "draft topic", genre: "", mood: "", character: "",
       lore: "", fullStory: "", sceneCount: 6, clipDurationSeconds: 5, additionalNotes: "", styleNotes: {},
+      narrationEnabled: false,
     };
     const result = await service.draftPreview("sample", { settings: draftSettings });
     expect(result).toEqual({ prompt: "name=Draft Name topic=draft topic count=6 literal=$ missing=$missing" });
@@ -222,7 +223,7 @@ describe("local Story generator", () => {
     expect(story.scenes).toHaveLength(6);
     story.scenes.forEach((scene, index) => {
       expect(Object.keys(scene).sort()).toEqual([
-        "camera_angle", "camera_motion", "composition", "continuity_hint", "description", "end_motion", "environment_motion", "expression_change", "focus_subject", "lens_feel", "main_motion", "motion_intensity", "motion_speed", "number", "shot_size", "start_motion", "visual_action",
+        "camera_angle", "camera_motion", "composition", "continuity_hint", "description", "end_motion", "environment_motion", "expression_change", "focus_subject", "lens_feel", "main_motion", "motion_intensity", "motion_speed", "narration", "number", "shot_size", "start_motion", "visual_action",
       ]);
       expect(scene.number).toBe(index + 1);
     });

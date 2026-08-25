@@ -15,7 +15,7 @@ function isValidClipDuration(value: unknown): value is number {
 }
 
 const STYLE_KEYS = ["visualStyle", "color", "lighting", "camera", "dialogue", "avoid", "aspect"] as const;
-const SETTINGS_KEYS = ["projectName", "topic", "genre", "mood", "character", "lore", "fullStory", "sceneCount", "clipDurationSeconds", "additionalNotes", "styleNotes"] as const;
+const SETTINGS_KEYS = ["projectName", "topic", "genre", "mood", "character", "lore", "fullStory", "sceneCount", "clipDurationSeconds", "additionalNotes", "styleNotes", "narrationEnabled"] as const;
 
 function asObject(value: unknown, field: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -80,6 +80,7 @@ export function toShortProjectSettings(stored: StoredProject): ShortProjectSetti
     clipDurationSeconds,
     additionalNotes: stringFrom(stored.lore_context.additional_notes),
     styleNotes: styleNotesFrom(stored.lore_context.style_notes),
+    narrationEnabled: stored.lore_context.narration_enabled === true,
   };
 }
 
@@ -106,6 +107,9 @@ export function parseShortProjectSettings(value: unknown): ShortProjectSettings 
   if (!isValidClipDuration(settings.clipDurationSeconds)) {
     throw invalidRequest(`settings.clipDurationSeconds must be one of: ${RUNWAY_CLIP_DURATIONS.join(", ")}.`, { field: "settings.clipDurationSeconds" });
   }
+  if (typeof settings.narrationEnabled !== "boolean") {
+    throw invalidRequest("settings.narrationEnabled must be a boolean.", { field: "settings.narrationEnabled" });
+  }
   return {
     projectName: requiredString(settings.projectName, "settings.projectName"),
     topic: requiredString(settings.topic, "settings.topic"),
@@ -120,6 +124,7 @@ export function parseShortProjectSettings(value: unknown): ShortProjectSettings 
     clipDurationSeconds: settings.clipDurationSeconds,
     additionalNotes: optionalString(settings.additionalNotes, "settings.additionalNotes"),
     styleNotes: normalizedStyleNotes,
+    narrationEnabled: settings.narrationEnabled,
   };
 }
 
@@ -147,6 +152,7 @@ export function applyShortProjectSettings(stored: StoredProject, settings: Short
       clip_duration_seconds: settings.clipDurationSeconds,
       additional_notes: settings.additionalNotes,
       style_notes: styleNotes,
+      narration_enabled: settings.narrationEnabled,
     },
   };
 }

@@ -25,9 +25,16 @@ const SCENE_FIELDS = [
   "shot_size", "camera_angle", "composition", "lens_feel", "focus_subject", "camera_motion",
   "environment_motion", "motion_speed", "motion_intensity", "expression_change", "continuity_hint",
 ] as const;
+/**
+ * "narration" is a scene field used only by narration/TTS generation, never by the video prompt (see promptFor
+ * below — it reads none of the fields here). It is deliberately NOT in SCENE_FIELDS: scenes stored before this
+ * field existed have exactly SCENE_FIELDS.length keys and must keep working. It is accepted here only so the
+ * strict "no unexpected keys" check below does not reject newer scenes that do carry it.
+ */
+const OPTIONAL_SCENE_FIELDS = ["narration"] as const;
 const UTF16_PROMPT_LIMIT = RUNWAY_PROMPT_MAX_LENGTH;
 
-type StoredScene = Record<(typeof SCENE_FIELDS)[number], string | number>;
+type StoredScene = Record<(typeof SCENE_FIELDS)[number], string | number> & { narration?: string };
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -41,9 +48,12 @@ export function utf16Length(value: string): number {
 function parseScenes(project: StoredProject, sceneNumbers: readonly SceneNumber[]): StoredScene[] {
   if (project.scenes.length !== sceneNumbers.length) throw videoPreviewDataInvalid();
   return project.scenes.map((raw, index) => {
-    if (!isObject(raw) || Object.keys(raw).length !== SCENE_FIELDS.length
+    const keys = Object.keys(raw as object);
+    if (!isObject(raw)
+      || keys.some((key) => !(SCENE_FIELDS as readonly string[]).includes(key) && !(OPTIONAL_SCENE_FIELDS as readonly string[]).includes(key))
       || SCENE_FIELDS.some((key) => !(key in raw)) || raw.number !== sceneNumbers[index]
-      || SCENE_FIELDS.filter((key) => key !== "number").some((key) => typeof raw[key] !== "string" || !raw[key].trim())) {
+      || SCENE_FIELDS.filter((key) => key !== "number").some((key) => typeof raw[key] !== "string" || !raw[key].trim())
+      || ("narration" in raw && typeof raw.narration !== "string")) {
       throw videoPreviewDataInvalid();
     }
     return raw as StoredScene;

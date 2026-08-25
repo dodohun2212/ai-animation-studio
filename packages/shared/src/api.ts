@@ -417,6 +417,8 @@ export interface ShortProjectSettings {
   clipDurationSeconds: number;
   additionalNotes: string;
   styleNotes: ShortProjectStyleNotes;
+  /** Off by default for existing projects. When on, the Story schema's `narration` field is used to generate per-scene TTS audio during Video merge instead of silence. */
+  narrationEnabled: boolean;
 }
 
 /** What a client actually sends: durationSeconds is derived server-side (sceneCount * clipDurationSeconds) and is rejected as an unsupported field if included. */

@@ -114,7 +114,8 @@ function isShortProjectSettings(value: unknown): value is ShortProjectSettings {
     value.sceneCount > MAX_SCENE_COUNT ||
     !(RUNWAY_CLIP_DURATIONS as readonly number[]).includes(value.clipDurationSeconds as number) ||
     !Number.isInteger(value.durationSeconds) ||
-    (value.durationSeconds as number) <= 0
+    (value.durationSeconds as number) <= 0 ||
+    typeof value.narrationEnabled !== "boolean"
   ) {
     return false;
   }

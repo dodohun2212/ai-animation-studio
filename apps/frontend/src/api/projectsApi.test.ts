@@ -48,7 +48,7 @@ describe("projectsApi", () => {
     const settings = {
       projectName: "별의 지도", topic: "별을 찾는 아이", genre: "판타지", mood: "따뜻함", character: "아이",
       lore: "별의 세계", fullStory: "별을 찾는다.", durationSeconds: 30, sceneCount: 6 as const, clipDurationSeconds: 5 as const,
-      additionalNotes: "", styleNotes: { aspect: "16:9" },
+      additionalNotes: "", styleNotes: { aspect: "16:9" }, narrationEnabled: false,
     };
     const project = makeProject({ topic: settings.topic });
     const fetchMock = vi.fn()

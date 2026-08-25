@@ -102,6 +102,7 @@ async function promptVariables(stored: StoredProject, assets?: LocalAssetsReposi
     aspect: notes.aspect ?? value(profile, "aspect", "9:16"),
     duration_seconds: String(settings.durationSeconds),
     scene_count: String(settings.sceneCount),
+    clip_duration_seconds: String(settings.clipDurationSeconds),
     additional_notes: settings.additionalNotes,
   };
 }

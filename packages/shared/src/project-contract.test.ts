@@ -79,6 +79,7 @@ describe("project routes and DTO shape", () => {
         clipDurationSeconds: 5,
         additionalNotes: "무서운 장면 제외",
         styleNotes: { aspect: "16:9", lighting: "달빛" },
+        narrationEnabled: false,
       },
     };
     // durationSeconds is derived server-side (sceneCount * clipDurationSeconds), so the response's full

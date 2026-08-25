@@ -5,7 +5,7 @@ const SCENE = (number: number) => ({
   number, description: `d${number}`, visual_action: "v", start_motion: "s", main_motion: "m", end_motion: "e",
   shot_size: "medium", camera_angle: "eye", composition: "centered", lens_feel: "natural", focus_subject: "hero",
   camera_motion: "forward", environment_motion: "ambient", motion_speed: "normal", motion_intensity: "moderate",
-  expression_change: "focused", continuity_hint: "continue",
+  expression_change: "focused", continuity_hint: "continue", narration: "narration line",
 });
 const VALID_STORY = { title: "t", synopsis: "s", ending: "e", scenes: [1, 2, 3, 4, 5, 6].map(SCENE) };
 

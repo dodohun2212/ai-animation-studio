@@ -27,7 +27,7 @@ function storySchema(sceneCount: number) {
             "number", "description", "visual_action", "start_motion", "main_motion", "end_motion",
             "shot_size", "camera_angle", "composition", "lens_feel", "focus_subject",
             "camera_motion", "environment_motion", "motion_speed", "motion_intensity",
-            "expression_change", "continuity_hint",
+            "expression_change", "continuity_hint", "narration",
           ],
           properties: {
             number: { type: "integer", minimum: 1, maximum: sceneCount },
@@ -37,6 +37,8 @@ function storySchema(sceneCount: number) {
             lens_feel: { type: "string" }, focus_subject: { type: "string" }, camera_motion: { type: "string" },
             environment_motion: { type: "string" }, motion_speed: { type: "string" }, motion_intensity: { type: "string" },
             expression_change: { type: "string" }, continuity_hint: { type: "string" },
+            // Narration/subtitle sentence, naturally readable within the scene's clip duration — no stage directions or camera language.
+            narration: { type: "string" },
           },
         },
       },

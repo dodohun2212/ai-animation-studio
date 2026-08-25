@@ -94,7 +94,7 @@ describe("ProjectsService", () => {
       projectName: "별의 지도", topic: "별을 찾는 아이", genre: "판타지", mood: "따뜻함",
       character: "아이", lore: "별의 세계", fullStory: "별을 찾는다.",
       sceneCount: 6 as const, clipDurationSeconds: 5 as const, additionalNotes: "무서운 장면 제외",
-      styleNotes: { lighting: "달빛", aspect: "16:9" },
+      styleNotes: { lighting: "달빛", aspect: "16:9" }, narrationEnabled: false,
     };
 
     const saved = await service.updateProjectSettings("wizard_project", { settings });

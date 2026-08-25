@@ -51,6 +51,7 @@ $previous_scene_context
 [8. 영상 구조]
 영상 길이: 약 $duration_seconds초
 장면 수: 정확히 $scene_count개
+장면당 클립 길이: $clip_duration_seconds초
 
 [9. 사용자 추가 지시사항]
 $additional_notes
@@ -77,6 +78,7 @@ $additional_notes
 - motion_intensity: 약함·보통·강함 중 하나인 움직임 강도
 - expression_change: 시작 표정에서 종료 표정까지의 변화
 - continuity_hint: 다음 장면이 이어받아야 할 종료 상태. 마지막 장면도 안정된 종료 상태를 작성
+- narration: 자막·음성으로 자연스럽게 읽힐 순수 내레이션 문장. 지문·카메라 지시·괄호 설명 없이 그대로 소리 내어 읽을 문장만 작성하고, 장면당 클립 길이($clip_duration_seconds초) 안에 자연스러운 속도로 읽을 수 있는 길이로 작성하십시오.
 움직임 항목은 영상 생성 AI가 그대로 이해할 수 있는 구체적인 현재형 문장으로 작성하고, 지시문을 작성하라는 메타 문장은 넣지 마십시오.
 장면별 shot_size, camera_angle, composition, lens_feel, focus_subject는 프로젝트의 전체 카메라 느낌을 바탕으로 정하되, 현재 장면의 서사와 감정을 우선하십시오.
 시작·전개·결말이 영상 길이 안에서 자연스럽게 이어지도록 구성하십시오.

@@ -58,6 +58,7 @@ function createFakeBackend(): ReturnType<typeof vi.fn<FakeFetch>> {
         settings: {
           projectName: project.id, topic: project.topic, genre: "미스터리", mood: "시네마틱", character: "", lore: "",
           fullStory: "", durationSeconds: 30, sceneCount: 6, clipDurationSeconds: 5, additionalNotes: "", styleNotes: { aspect: "16:9" },
+          narrationEnabled: false,
         },
       });
     }

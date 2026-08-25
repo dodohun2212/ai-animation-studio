@@ -18,6 +18,7 @@ const settings = {
   clipDurationSeconds: 5 as const,
   additionalNotes: "무서운 장면 제외",
   styleNotes: { visualStyle: "수채화", lighting: "달빛", aspect: "16:9" },
+  narrationEnabled: true,
 };
 
 // What a client actually sends in a request body: no durationSeconds field (SETTINGS_KEYS rejects it as unsupported).
@@ -33,6 +34,7 @@ const settingsRequest = {
   clipDurationSeconds: settings.clipDurationSeconds,
   additionalNotes: settings.additionalNotes,
   styleNotes: settings.styleNotes,
+  narrationEnabled: settings.narrationEnabled,
 };
 
 describe("short project settings", () => {
@@ -46,6 +48,7 @@ describe("short project settings", () => {
       durationSeconds: 30,
       sceneCount: 6,
       clipDurationSeconds: 5,
+      narrationEnabled: false,
     });
   });
 
@@ -79,6 +82,15 @@ describe("short project settings", () => {
     expect(() => parseShortProjectSettings({ ...settingsRequest, unexpected: true })).toThrow();
     expect(() => parseShortProjectSettings({ ...settingsRequest, durationSeconds: 30 })).toThrow();
     expect(() => parseShortProjectSettings({ ...settingsRequest, styleNotes: { unknown: "x" } })).toThrow();
+    expect(() => parseShortProjectSettings({ ...settingsRequest, narrationEnabled: "true" })).toThrow();
+    const { narrationEnabled, ...withoutNarration } = settingsRequest;
+    expect(() => parseShortProjectSettings(withoutNarration)).toThrow();
+  });
+
+  it("defaults narrationEnabled to false for existing projects and round-trips true/false through settings", () => {
+    expect(toShortProjectSettings(createStoredProject("sample", "topic", "2026-08-22T00:00:00.000Z")).narrationEnabled).toBe(false);
+    expect(parseShortProjectSettings({ ...settingsRequest, narrationEnabled: true }).narrationEnabled).toBe(true);
+    expect(parseShortProjectSettings({ ...settingsRequest, narrationEnabled: false }).narrationEnabled).toBe(false);
   });
 
   it("accepts a scene count anywhere in the supported 2-12 range, not just 6", () => {
