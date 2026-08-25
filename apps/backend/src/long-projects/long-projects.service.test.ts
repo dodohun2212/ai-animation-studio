@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { LongProjectsService } from "./long-projects.service.js";
 
 let root: string | undefined;
-const input = { projectId: "long_test", settings: { title: "A long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 3, sceneCount: 6, clipDurationSeconds: 5, platform: "YouTube Shorts" as const, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "" } };
+const input = { projectId: "long_test", settings: { title: "A long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 3, sceneCount: 6, clipDurationSeconds: 5, platform: "YouTube Shorts" as const, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false } };
 afterEach(async () => { if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 async function service(): Promise<LongProjectsService> { root = await fs.mkdtemp(path.join(os.tmpdir(), "long-project-")); return new LongProjectsService(path.join(root, "projects")); }
 
@@ -24,6 +24,34 @@ describe("LongProjectsService", () => {
     await expect(subject.create({ ...input, settings: { ...input.settings, episodeDurationSeconds: 45 as 30 } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     const created = await subject.create(input);
     expect(created.project.settings.episodeDurationSeconds).toBe(30);
+  });
+
+  it("rejects a non-boolean narrationEnabled or subtitlesEnabled on create", async () => {
+    const subject = await service();
+    await expect(subject.create({ ...input, settings: { ...input.settings, narrationEnabled: "yes" as unknown as boolean } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(subject.create({ ...input, settings: { ...input.settings, subtitlesEnabled: 1 as unknown as boolean } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
+  it("falls back subtitlesEnabled to narrationEnabled's own value for a project stored before subtitlesEnabled existed", async () => {
+    const subject = await service(); await subject.create(input);
+    const file = path.join(root!, "projects", "long_test", "long_story", "project.json");
+    const stored = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>;
+    stored.narration_enabled = true; delete stored.subtitles_enabled;
+    await fs.writeFile(file, JSON.stringify(stored, null, 2), "utf8");
+    const reloaded = new LongProjectsService(path.join(root!, "projects"));
+    const settings = (await reloaded.get("long_test")).project.settings;
+    expect(settings).toMatchObject({ narrationEnabled: true, subtitlesEnabled: true });
+  });
+
+  it("defaults both narrationEnabled and subtitlesEnabled to false for a project stored before either field existed", async () => {
+    const subject = await service(); await subject.create(input);
+    const file = path.join(root!, "projects", "long_test", "long_story", "project.json");
+    const stored = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>;
+    delete stored.narration_enabled; delete stored.subtitles_enabled;
+    await fs.writeFile(file, JSON.stringify(stored, null, 2), "utf8");
+    const reloaded = new LongProjectsService(path.join(root!, "projects"));
+    const settings = (await reloaded.get("long_test")).project.settings;
+    expect(settings).toMatchObject({ narrationEnabled: false, subtitlesEnabled: false });
   });
 
   it("requires an unchanged preview before local outline approval and creates no scripts or media", async () => {

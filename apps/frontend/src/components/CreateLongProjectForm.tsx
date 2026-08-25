@@ -35,6 +35,8 @@ const EMPTY_SETTINGS: LongProjectSettings = {
   midpoint: "",
   endingDirection: "",
   storyFlowSummary: "",
+  narrationEnabled: false,
+  subtitlesEnabled: false,
 };
 
 const fieldClassName =

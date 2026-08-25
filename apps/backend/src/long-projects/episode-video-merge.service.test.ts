@@ -14,7 +14,7 @@ import { EpisodeVideosService } from "./episode-videos.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
 
 let root: string | undefined;
-const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, platform: "YouTube Shorts" as const, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "" };
+const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, platform: "YouTube Shorts" as const, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false };
 
 function runner(options: { invalidProbe?: boolean; unavailable?: boolean; noOutput?: boolean } = {}, calls: string[][] = []): MediaCommandRunner {
   return async (arguments_) => {
@@ -72,6 +72,60 @@ describe("EpisodeVideoMergeService", () => {
     await expect(new EpisodeVideoMergeService(projectsRoot, runner({ unavailable: true })).merge("long", 1)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_FFMPEG_UNAVAILABLE" } });
     await expect(new EpisodeVideoMergeService(projectsRoot, runner({ invalidProbe: true })).merge("long", 1)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_MERGE_CLIPS_INVALID" } });
     const project = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "project.json"), "utf8")) as { state: string }; expect(project.state).toBe("videos_approved");
+  });
+
+  it("mixes in a scene's generated narration audio when narrationEnabled is on, and falls back to silence for the rest", async () => {
+    const { projectsRoot } = await setup();
+    const narrationFile = path.join(projectsRoot, "long", "long_story", "Episode01", "narration", "scene2.mp3");
+    await fs.mkdir(path.dirname(narrationFile), { recursive: true });
+    await fs.writeFile(narrationFile, Buffer.from("fake narration audio"));
+    const projects = new LongProjectsService(projectsRoot);
+    await projects.updateSettings("long", { settings: { ...settings, narrationEnabled: true } });
+
+    const calls: string[][] = [];
+    await new EpisodeVideoMergeService(projectsRoot, runner({}, calls)).merge("long", 1);
+    const normalizeCalls = calls.filter((args) => args[0] === "ffmpeg" && args.includes("-vf"));
+    expect(normalizeCalls).toHaveLength(6);
+    expect(normalizeCalls[1]).toContain(narrationFile);
+    for (const [index, call] of normalizeCalls.entries()) {
+      if (index === 1) continue;
+      expect(call).toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
+    }
+  });
+
+  it("does not burn in any subtitle when subtitlesEnabled is off, even for a scene with real narration audio", async () => {
+    const { projectsRoot } = await setup();
+    const narrationFile = path.join(projectsRoot, "long", "long_story", "Episode01", "narration", "scene1.mp3");
+    await fs.mkdir(path.dirname(narrationFile), { recursive: true });
+    await fs.writeFile(narrationFile, Buffer.from("fake narration audio"));
+    const projects = new LongProjectsService(projectsRoot);
+    await projects.updateSettings("long", { settings: { ...settings, narrationEnabled: true } }); // subtitlesEnabled stays off
+
+    const calls: string[][] = [];
+    await new EpisodeVideoMergeService(projectsRoot, runner({}, calls)).merge("long", 1);
+    const normalizeCalls = calls.filter((args) => args[0] === "ffmpeg" && args.includes("-vf"));
+    expect(normalizeCalls[0]!.find((arg) => arg.includes("subtitles="))).toBeUndefined();
+  });
+
+  it("burns in a subtitle for a scene with narration text when subtitlesEnabled is on, independent of whether narration audio exists", async () => {
+    const { projectsRoot } = await setup();
+    // The pipeline is already past script_review by this point (setup() runs it all the way to videos_approved),
+    // so scripts.update() would reject the edit — write the stored narration text directly, same as the "requires
+    // one persisted current job" test above edits generated_video_reviews.json directly.
+    const episodeProjectFile = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
+    const stored = JSON.parse(await fs.readFile(episodeProjectFile, "utf8")) as { script: { scenes: Array<Record<string, unknown>> } };
+    stored.script.scenes[0]!.narration = "장면 1 내레이션";
+    await fs.writeFile(episodeProjectFile, JSON.stringify(stored, null, 2), "utf8");
+    const projects = new LongProjectsService(projectsRoot);
+    await projects.updateSettings("long", { settings: { ...settings, subtitlesEnabled: true } }); // narrationEnabled stays off — captions-only
+
+    const calls: string[][] = [];
+    await new EpisodeVideoMergeService(projectsRoot, runner({}, calls)).merge("long", 1);
+    const normalizeCalls = calls.filter((args) => args[0] === "ffmpeg" && args.includes("-vf"));
+    expect(normalizeCalls[0]!.find((arg) => arg.includes("subtitles="))).toBeDefined();
+    expect(normalizeCalls[0]).toContain("anullsrc=channel_layout=stereo:sample_rate=48000"); // no audio was ever generated
+    const assContent = await fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "videos", "final", "normalized", "scene1.ass"), "utf8");
+    expect(assContent).toContain("장면 1 내레이션");
   });
 
   it("contains no provider or network client", async () => {

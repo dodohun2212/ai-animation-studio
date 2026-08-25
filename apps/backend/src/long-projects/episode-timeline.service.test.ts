@@ -7,7 +7,7 @@ import { LongProjectsService } from "./long-projects.service.js";
 import { EpisodeScriptsService } from "./episode-scripts.service.js";
 
 let root: string | undefined;
-const input = { projectId: "timeline_test", settings: { title: "Timeline story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, platform: "YouTube Shorts" as const, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "" } };
+const input = { projectId: "timeline_test", settings: { title: "Timeline story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, platform: "YouTube Shorts" as const, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false } };
 afterEach(async () => { if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 async function services() { root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-timeline-")); const projectsRoot = path.join(root, "projects"); const projects = new LongProjectsService(projectsRoot); await projects.create(input); return { projectsRoot, projects, timeline: new EpisodeTimelineService(projectsRoot) }; }
 

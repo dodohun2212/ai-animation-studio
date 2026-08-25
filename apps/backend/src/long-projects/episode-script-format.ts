@@ -20,7 +20,8 @@ export function toApiEpisodeScript(stored: unknown): LongEpisodeScript | undefin
     scenes: scenes.map((item) => {
       const scene = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
       const sourceKeys = "visualAction" in scene ? camelKeys : snakeKeys;
-      return Object.fromEntries(camelKeys.map((key, index) => [key, scene[sourceKeys[index]!]])) as unknown as LongEpisodeScene;
+      // "narration" is the same key both cased (no underscore) — optional, see LongEpisodeScene.narration's doc comment.
+      return Object.fromEntries([...camelKeys.map((key, index) => [key, scene[sourceKeys[index]!]]), ...(typeof scene.narration === "string" ? [["narration", scene.narration]] : [])]) as unknown as LongEpisodeScene;
     }),
   };
 }

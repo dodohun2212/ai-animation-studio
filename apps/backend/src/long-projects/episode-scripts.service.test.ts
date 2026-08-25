@@ -6,7 +6,7 @@ import { EpisodeScriptsService } from "./episode-scripts.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
 
 let root: string | undefined;
-const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, platform: "YouTube Shorts" as const, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "" };
+const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, platform: "YouTube Shorts" as const, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false };
 async function setup(episodeDurationSeconds: 30 | 60 = 30, sceneCount = 6) { root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-script-")); const projects = new LongProjectsService(path.join(root, "projects")); await projects.create({ projectId: "long", settings: { ...settings, sceneCount, clipDurationSeconds: episodeDurationSeconds === 60 ? 10 : 5 } }); const preview = await projects.preview("long"); await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 }); return new EpisodeScriptsService(path.join(root, "projects")); }
 afterEach(async () => { if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 
@@ -26,6 +26,19 @@ describe("EpisodeScriptsService", () => {
     const reloaded = new EpisodeScriptsService(path.join(root!, "projects"));
     expect((await reloaded.get("long", 1)).episode.script?.title).toBe("Edited");
     await expect(fs.access(path.join(root!, "projects", "long", "long_story", "Episode01", "script.json"))).resolves.toBeUndefined();
+  });
+
+  it("generates a template narration sentence for every scene, round-trips an edit, and rejects a non-string narration", async () => {
+    const subject = await setup();
+    const generated = await subject.generate("long", 1, {});
+    expect(generated.episode.script?.scenes.every((scene) => typeof scene.narration === "string" && scene.narration.length > 0)).toBe(true);
+    const script = generated.episode.script!;
+    script.scenes[0] = { ...script.scenes[0]!, narration: "고친 내레이션" };
+    const edited = await subject.update("long", 1, { script });
+    expect(edited.episode.script?.scenes[0]?.narration).toBe("고친 내레이션");
+    const reloaded = new EpisodeScriptsService(path.join(root!, "projects"));
+    expect((await reloaded.get("long", 1)).episode.script?.scenes[0]?.narration).toBe("고친 내레이션");
+    await expect(subject.update("long", 1, { script: { ...script, scenes: [{ ...script.scenes[0]!, narration: 5 as unknown as string }, ...script.scenes.slice(1)] } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
   it("snapshots the project's real episodeDurationSeconds onto a newly created episode, not a hardcoded 30", async () => {

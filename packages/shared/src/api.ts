@@ -42,6 +42,16 @@ export interface LongProjectSettings {
   midpoint: string;
   endingDirection: string;
   storyFlowSummary: string;
+  /** Same meaning as ShortProjectSettings.narrationEnabled: off by default for existing projects. When on, each Episode scene's narration text is used to generate per-scene TTS audio during final Episode merge instead of silence. */
+  narrationEnabled: boolean;
+  /**
+   * Same meaning and independence from narrationEnabled as ShortProjectSettings.subtitlesEnabled — a scene only
+   * gets a subtitle when this is on AND that scene has narration text, regardless of whether narration audio was
+   * actually generated. For a project stored before this field existed, the server falls back to
+   * narrationEnabled's value (see long-projects.service.ts), matching ShortProjectSettings.subtitlesEnabled's
+   * identical legacy fallback.
+   */
+  subtitlesEnabled: boolean;
 }
 
 /** What a client actually sends: episodeDurationSeconds is derived server-side (sceneCount * clipDurationSeconds) and is rejected as an unsupported field if included — same shape as ShortProjectSettingsInput. */
@@ -78,6 +88,15 @@ export interface LongEpisodeScene {
   motionIntensity: string;
   expressionChange: string;
   continuityHint: string;
+  /**
+   * Same meaning as Scene.narration (domain.ts), scoped to Long Episodes: present regardless of
+   * LongProjectSettings.narrationEnabled — only actually turned into TTS audio, or burned in as a subtitle, when
+   * that flag (or subtitlesEnabled) is on. Optional because every Episode script stored before this field
+   * existed has none. Long Episode script generation is local-fake only (episode-scripts.service.ts never calls
+   * a real Provider), so this text is a template sentence for now, not AI-written — the same as every other
+   * field on this type.
+   */
+  narration?: string;
 }
 
 export interface LongEpisodeScript {
@@ -228,6 +247,53 @@ export interface RegenerateLongEpisodeVideoResponse extends LongEpisodeVideoProg
 export interface MergeLongEpisodeVideosResponse {
   episode: LongEpisodeDetail;
   finalVideoPath: "videos/final/instagram_reel.mp4";
+}
+
+/**
+ * Long Episode narration: same shape and behavior as the short-project narration contract
+ * (StartNarrationGenerationRequest/Response, NarrationReview, GetNarrationReviewResponse,
+ * RegenerateNarrationRequest/Response), scoped to one Episode. Entry condition matches the short-project
+ * screen — "this scene has narration text" — never gated by LongEpisodeStatus; the only state-shaped gate is
+ * that the Episode must already have a script (nothing to narrate before then).
+ */
+export interface StartLongEpisodeNarrationGenerationRequest { approved: true; }
+export interface StartLongEpisodeNarrationGenerationResponse {
+  episode: LongEpisodeDetail;
+  /** Scenes that had narration text and were newly synthesized this call. */
+  generatedSceneNumbers: SceneNumber[];
+  /** Scenes that already had valid audio from a prior call and were left untouched (no cost incurred this call). */
+  reusedSceneNumbers: SceneNumber[];
+  /** Scenes with no narration text — not an error, simply nothing to synthesize. */
+  skippedSceneNumbers: SceneNumber[];
+  /** Same meaning and scope as StartLongEpisodeImageGenerationResponse.budget (see that field's doc comment). */
+  budget?: BudgetPreview;
+}
+/** One scene's narration text and whether audio has been synthesized for it yet — provider-free to read (no TTS call happens from a GET). */
+export interface LongEpisodeNarrationReview {
+  sceneNumber: SceneNumber;
+  narration: string;
+  hasAudio: boolean;
+  /** That scene's actual synthesized audio length, measured from the generated file. Omitted when hasAudio is false, or when the length could not be measured. */
+  audioDurationSeconds?: number;
+}
+export interface GetLongEpisodeNarrationReviewResponse {
+  episode: LongEpisodeDetail;
+  narrations: LongEpisodeNarrationReview[];
+  /** Same meaning and scope as StartLongEpisodeImageGenerationResponse.budget (see that field's doc comment). */
+  budget?: BudgetPreview;
+}
+/** Explicit, replacement synthesis of one scene's narration audio. Rejected (LONG_EPISODE_NARRATION_MISSING_TEXT) if that scene has no narration text. */
+export interface RegenerateLongEpisodeNarrationRequest {
+  approved: true;
+  /** One-off delivery direction for this single synthesis only — same meaning as RegenerateNarrationRequest.additionalInstruction. Trimmed; empty/whitespace-only is treated as absent. Ignored in the local fake execution mode. */
+  additionalInstruction?: string;
+}
+export interface RegenerateLongEpisodeNarrationResponse {
+  episode: LongEpisodeDetail;
+  narrations: LongEpisodeNarrationReview[];
+  sceneNumber: SceneNumber;
+  /** Same meaning as RegenerateImageReviewResponse.retryEstimate (see that field's doc comment). Absent in the local fake execution mode. */
+  retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview };
 }
 
 /** User-reviewed facts from a completed Episode, persisted before the next Episode is drafted. */
@@ -1028,6 +1094,14 @@ export const API_ROUTES = {
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/generations/${encodeURIComponent(jobId)}/review/${sceneNumber}/approve`,
   longEpisodeVideoMerge: (projectId: string, episodeNumber: number) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/merge`,
+  longEpisodeNarrationGeneration: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/narration/generations`,
+  longEpisodeNarrationReview: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/narration/review`,
+  longEpisodeNarrationRegeneration: (projectId: string, episodeNumber: number, sceneNumber: SceneNumber) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/narration/review/${sceneNumber}/regenerate`,
+  longEpisodeNarrationContent: (projectId: string, episodeNumber: number, sceneNumber: SceneNumber) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/narration/${sceneNumber}/content`,
   longEpisodeContinuity: (projectId: string, episodeNumber: number) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/continuity`,
   longProjectStoryBibleRelationshipAudit: (projectId: string) =>

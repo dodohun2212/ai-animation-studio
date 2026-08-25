@@ -140,6 +140,8 @@ export function makeLongProjectSettings(overrides: Partial<LongProjectSettings> 
     midpoint: "",
     endingDirection: "",
     storyFlowSummary: "",
+    narrationEnabled: false,
+    subtitlesEnabled: false,
     ...overrides,
   };
 }

@@ -76,7 +76,7 @@ export interface Scene {
   generatedVideoPath?: string;
   imageReview: ReviewDecision;
   videoReview: ReviewDecision;
-  /** Short-project-only narration/subtitle sentence. Optional: absent on scenes stored before this field existed, and always absent for long-form Episodes (narration is out of that scope). Present regardless of ShortProjectSettings.narrationEnabled — only actually turned into TTS audio when that flag is on. */
+  /** This project type's narration/subtitle sentence — Long Episodes have their own separate LongEpisodeScene.narration field (api.ts), not this one, since a long-form Episode never uses this Scene type at all. Optional: absent on scenes stored before this field existed. Present regardless of ShortProjectSettings.narrationEnabled — only actually turned into TTS audio when that flag is on. */
   narration?: string;
   /**
    * The 16 remaining short-project scene fields PATCH /projects/:id/scenes/:sceneNumber can edit

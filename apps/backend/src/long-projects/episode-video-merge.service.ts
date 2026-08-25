@@ -6,9 +6,10 @@ import { isSceneNumber, sceneNumbersFor, type LongEpisodeDetail, type LongEpisod
 
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
-import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner } from "../videos/ffmpeg-merge.service.js";
+import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "../videos/ffmpeg-merge.service.js";
 import { longEpisodeFfmpegUnavailable, longEpisodeMergeClipsInvalid, longEpisodeMergeFailed, longEpisodeMergeNotAllowed, longEpisodeNotFound, longInvalidData, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
+import { LongProjectsService } from "./long-projects.service.js";
 
 const FINAL_PATH = "videos/final/instagram_reel.mp4" as const;
 const statuses: readonly LongEpisodeStatus[] = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted", "rendering", "completed", "failed"];
@@ -26,15 +27,16 @@ const scene = (value: unknown): value is SceneNumber => Number.isInteger(value) 
 @Injectable()
 export class EpisodeVideoMergeService {
   private readonly engine: FfmpegMergeEngine;
+  private readonly projects: LongProjectsService;
 
-  constructor(private readonly projectsRoot: string, runner?: MediaCommandRunner) { this.engine = new FfmpegMergeEngine(runner); }
+  constructor(private readonly projectsRoot: string, runner?: MediaCommandRunner) { this.engine = new FfmpegMergeEngine(runner); this.projects = new LongProjectsService(projectsRoot); }
 
   private files(id: string, number: number) {
     if (!isSafeProjectId(id)) throw longUnsafeId();
     const root = path.join(resolveSafeProjectDirectory(this.projectsRoot, id), "long_story");
     const episode = path.join(root, `Episode${String(number).padStart(2, "0")}`);
     const videos = path.join(episode, "videos");
-    return { root, outlines: path.join(root, "episode_outlines.json"), longProject: path.join(root, "project.json"), project: path.join(episode, "project.json"), videos, records: path.join(episode, "video_generation_records.json"), reviews: path.join(episode, "generated_video_reviews.json") };
+    return { root, outlines: path.join(root, "episode_outlines.json"), longProject: path.join(root, "project.json"), episode, project: path.join(episode, "project.json"), videos, records: path.join(episode, "video_generation_records.json"), reviews: path.join(episode, "generated_video_reviews.json") };
   }
 
   private async json(file: string): Promise<unknown> {
@@ -66,6 +68,8 @@ export class EpisodeVideoMergeService {
 
   private clip(id: string, number: number, value: SceneNumber): string { return path.join(this.files(id, number).videos, `scene${value}.mp4`); }
   private final(id: string, number: number): string { return path.join(this.files(id, number).videos, "final", "instagram_reel.mp4"); }
+  /** Same path scheme as episode-narration.service.ts's narrationPath() — not shared to avoid a cross-service dependency, matching this file's existing "each service computes its own file paths" convention. */
+  private narrationAudio(id: string, number: number, scene: SceneNumber): string { return path.join(this.files(id, number).episode, "narration", `scene${scene}.mp3`); }
   /** Falls back to 6, matching every Episode stored before scene_count existed (see episode-scripts.service.ts's parseStored). */
   private sceneCount(episode: Episode): number { return Number.isInteger(episode.scene_count) ? episode.scene_count as number : 6; }
   /** Total episode duration_seconds divided by its own scene count — same derivation as episode-videos.service.ts's durationSecondsPerScene(). */
@@ -81,6 +85,26 @@ export class EpisodeVideoMergeService {
     try { await Promise.all(clips.map(async (file) => { if ((await fs.stat(file)).size <= 0) throw new Error("empty"); })); }
     catch { throw longEpisodeMergeClipsInvalid(); }
     return clips;
+  }
+
+  /**
+   * Exactly the same gating as video-merge.service.ts's identical mergeScenes() (see that doc comment for the
+   * full reasoning) — narrationAudioPath is gated on narrationEnabled AND file existence/validity (a stale or
+   * toggled-off file must never fail the merge, it just falls back to silence for that scene); subtitleText is
+   * independent, gated on subtitlesEnabled AND that scene having narration text, regardless of audio existence.
+   */
+  private async mergeScenes(id: string, number: number, episode: Episode, clips: readonly string[], sceneNumbers: readonly SceneNumber[]): Promise<MergeSceneInput[]> {
+    const projectSettings = (await this.projects.get(id)).project.settings;
+    const scenes = episode.script.scenes;
+    const scriptScenes = Array.isArray(scenes) ? scenes : [];
+    return Promise.all(sceneNumbers.map(async (sceneNumber, index) => {
+      const scene = scriptScenes[index];
+      const narrationText = object(scene) && typeof scene.narration === "string" ? scene.narration.trim() : "";
+      const file = this.narrationAudio(id, number, sceneNumber);
+      const narrationAudioPath = projectSettings.narrationEnabled && (await fs.stat(file).then((stat) => stat.size > 0).catch(() => false)) ? file : null;
+      const subtitleText = projectSettings.subtitlesEnabled ? (narrationText || null) : null;
+      return { clip: clips[index]!, narrationAudioPath, subtitleText };
+    }));
   }
 
   private async ratio(id: string, number: number): Promise<"9:16" | "16:9"> {
@@ -102,11 +126,8 @@ export class EpisodeVideoMergeService {
     await this.saveEpisode(id, number, rendering);
     try {
       const output = this.final(id, number); await fs.mkdir(path.dirname(output), { recursive: true });
-      // Long Episode has no narration or subtitles (out of that feature's scope) — every scene falls back to
-      // silence, same as before. clipDurationSeconds only matters for subtitle timing, so its exact value here
-      // is inert, but it's set to this Episode's own clip length (5s or 10s, see clipDurationSeconds()) for
-      // correctness regardless.
-      await this.engine.merge(clips.map((clip) => ({ clip, narrationAudioPath: null, subtitleText: null })), this.clipDurationSeconds(episode), output, await this.ratio(id, number));
+      const mergeScenes = await this.mergeScenes(id, number, episode, clips, sceneNumbersFor(this.sceneCount(episode)));
+      await this.engine.merge(mergeScenes, this.clipDurationSeconds(episode), output, await this.ratio(id, number));
       const completed = { ...rendering, state: "completed" as const, updated_at: new Date().toISOString(), final_video_path: FINAL_PATH };
       await this.saveEpisode(id, number, completed);
       return { episode: this.detail(completed), finalVideoPath: FINAL_PATH };
