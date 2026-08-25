@@ -15,12 +15,21 @@ function makeProgress(overrides: Partial<GenerationProgressResponse> = {}): Gene
     status: "running",
     completedSceneNumbers: [],
     failedSceneNumbers: [],
+    sceneNumbers: [1, 2, 3, 4, 5, 6],
     ...overrides,
   };
 }
 
 function sixReviews(approved: readonly number[] = []): VideoReview[] {
   return [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({
+    sceneNumber: sceneNumber as VideoReview["sceneNumber"],
+    status: approved.includes(sceneNumber) ? "approved" : "pending",
+    updatedAt: "2026-08-23T00:00:00.000Z",
+  }));
+}
+
+function reviewsFor(sceneCount: number, approved: readonly number[] = []): VideoReview[] {
+  return Array.from({ length: sceneCount }, (_, index) => index + 1).map((sceneNumber) => ({
     sceneNumber: sceneNumber as VideoReview["sceneNumber"],
     status: approved.includes(sceneNumber) ? "approved" : "pending",
     updatedAt: "2026-08-23T00:00:00.000Z",
@@ -319,6 +328,45 @@ describe("VideoWorkflowScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
     await screen.findByTestId("scene-progress-list");
     expect(fetchMock.mock.calls.filter(([url]) => url === PROGRESS_URL)).toHaveLength(2);
+  });
+
+  it("renders the job's actual scene count (not a fixed six) end to end for a four-scene project", async () => {
+    const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4], sceneNumbers: [1, 2, 3, 4] });
+    const regenerated = { ...succeeded, regeneratedSceneNumbers: [1, 2, 3, 4] };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, succeeded))
+      .mockResolvedValueOnce(jsonResponse(200, reviewResponse(reviewsFor(4))))
+      .mockResolvedValueOnce(jsonResponse(200, regenerated))
+      .mockResolvedValueOnce(jsonResponse(200, reviewResponse(reviewsFor(4))));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("scene-progress-4");
+    expect(screen.queryByTestId("scene-progress-5")).toBeNull();
+    expect(screen.queryByTestId("scene-progress-6")).toBeNull();
+
+    await screen.findByTestId("video-review-4");
+    expect(screen.queryByTestId("video-review-5")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("regenerate-all-button"));
+    const panel = await screen.findByTestId("regenerate-all-confirm-panel");
+    expect(panel.textContent).toContain("4개 장면 영상을 모두 다시 생성할까요?");
+    fireEvent.click(within(panel).getByRole("button", { name: "예, 로컬로 전체 재생성합니다" }));
+
+    await waitFor(() => expect(screen.getByTestId("video-review-1")).toHaveAttribute("data-status", "pending"));
+    const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit];
+    expect(url).toBe(`${PROGRESS_URL}/regenerate-all`);
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ approved: true });
+  });
+
+  it("shows the all-scenes-approved banner with the actual scene count for a four-scene project", async () => {
+    const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4], sceneNumbers: [1, 2, 3, 4] });
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, succeeded)).mockResolvedValueOnce(jsonResponse(200, reviewResponse(reviewsFor(4, [1, 2, 3, 4]))));
+    renderScreen(fetchMock);
+
+    const banner = await screen.findByTestId("all-scenes-approved");
+    expect(banner.textContent).toBe("4개 장면 영상이 모두 승인되었습니다.");
   });
 
   it("reloads the true persisted progress on remount instead of resetting to a blank state", async () => {

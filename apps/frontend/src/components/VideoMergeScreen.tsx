@@ -22,6 +22,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
   const [result, setResult] = useState<MergeVideosResponse | null>(null);
   const [openPending, setOpenPending] = useState(false);
   const [openFailed, setOpenFailed] = useState(false);
+  const [sceneCount, setSceneCount] = useState<number | null>(null);
   const busy = useRef(false);
 
   // A project that already finished merging (revisited later, e.g. from the dashboard) should
@@ -31,6 +32,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
     getProject(projectId)
       .then((response) => {
         if (cancelled) return;
+        setSceneCount(response.project.scenes.length);
         if (response.project.workflowState === WorkflowState.Completed && response.project.finalVideoPath === "videos/final/instagram_reel.mp4") {
           setResult({ project: response.project, finalVideoPath: response.project.finalVideoPath });
         }
@@ -105,7 +107,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
       </h2>
       <p className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300" data-testid="no-provider-notice">
         실제 유료 Runway나 OpenAI Provider를 호출하지 않습니다. 이 컴퓨터에 설치된 로컬 영상 병합 프로그램만 실행해
-        6개 승인 장면 영상을 순서대로 이어 붙입니다.
+        {sceneCount !== null ? ` ${sceneCount}개` : ""} 승인 장면 영상을 순서대로 이어 붙입니다.
       </p>
 
       {!result && (
@@ -128,7 +130,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
               className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
             >
               <p className="text-sm font-semibold text-amber-300">
-                6개 승인 장면 영상을 하나의 최종 영상으로 병합할까요?
+                {sceneCount !== null ? `${sceneCount}개 승인 장면 영상을` : "승인 장면 영상을"} 하나의 최종 영상으로 병합할까요?
               </p>
               <p className="text-sm text-slate-300">
                 아직 병합이 시작되지 않았습니다. 확인을 누르면 로컬 영상 병합 프로그램이 실행되며, 실제 유료

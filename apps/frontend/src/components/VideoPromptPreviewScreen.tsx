@@ -231,7 +231,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
             >
               <p className="text-sm font-semibold text-amber-300">이 프롬프트로 영상 생성 요청을 전송할까요?</p>
               <p className="text-sm text-slate-300">
-                아직 전송되지 않았습니다. 확인을 누르면 위 6개 프롬프트가 그대로 로컬 승인 요청으로 전송됩니다.
+                아직 전송되지 않았습니다. 확인을 누르면 위 {previews.length}개 프롬프트가 그대로 로컬 승인 요청으로 전송됩니다.
                 실제 유료 Runway 요청은 전송되지 않으며, 로컬 가짜 처리로만 기록됩니다.
               </p>
               <div className="flex gap-3">

@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse } from "../api/testUtils.js";
 import { VideoPromptPreviewScreen } from "./VideoPromptPreviewScreen.js";
 
-function makePreviews(): VideoPromptPreview[] {
-  return [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({
+function makePreviews(count = 6): VideoPromptPreview[] {
+  return Array.from({ length: count }, (_, index) => index + 1).map((sceneNumber) => ({
     sceneNumber: sceneNumber as VideoPromptPreview["sceneNumber"],
     prompt: `Scene ${sceneNumber} prompt`,
     model: "gen4_turbo",
@@ -124,7 +124,7 @@ describe("VideoPromptPreviewScreen", () => {
     renderScreen(fetchMock);
 
     const alert = await screen.findByTestId("preview-error");
-    expect(alert.textContent).toBe("영상 미리보기는 장면 이미지 6장이 모두 승인된 프로젝트에서만 가능합니다.");
+    expect(alert.textContent).toBe("영상 미리보기는 모든 장면 이미지가 승인된 프로젝트에서만 가능합니다.");
     expect(alert).toHaveAttribute("data-error-code", "VIDEO_PREVIEW_NOT_ALLOWED");
     expect(alert.textContent).not.toContain("raw backend detail");
 
@@ -168,6 +168,16 @@ describe("VideoPromptPreviewScreen", () => {
       expect(screen.getByTestId("submit-confirm-panel")).toBeTruthy();
       expect(screen.getByTestId("submit-confirm-panel").textContent).toContain("실제 유료 Runway 요청은 전송되지 않으며");
       expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows the actual prompt count (not a fixed six) for a four-scene project", async () => {
+      const response: GetVideoPromptPreviewResponse = { previews: makePreviews(4), confirmationId: "confirmation_1" };
+      const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, response));
+      renderScreen(fetchMock);
+      await screen.findByTestId("preview-list");
+
+      fireEvent.click(screen.getByTestId("open-confirm-button"));
+      expect(screen.getByTestId("submit-confirm-panel").textContent).toContain("위 4개 프롬프트가 그대로 로컬 승인 요청으로 전송됩니다.");
     });
 
     it("cancelling the confirmation panel closes it and never submits", async () => {
@@ -263,7 +273,7 @@ describe("VideoPromptPreviewScreen", () => {
       ["VIDEO_BUDGET_EXCEEDED", "설정된 예산을 초과하여 전송할 수 없습니다."],
       ["VIDEO_CALL_LIMIT_EXCEEDED", "허용된 Provider 호출 횟수를 초과했습니다."],
       ["VIDEO_REQUEST_ID_CONFLICT", "이전 요청과 내용이 달라 처리할 수 없습니다. 새로고침 후 다시 시도해 주세요."],
-      ["VIDEO_SUBMISSION_NOT_ALLOWED", "영상 생성 요청은 이미지 6장 승인과 영상 확인 대기 상태에서만 보낼 수 있습니다."],
+      ["VIDEO_SUBMISSION_NOT_ALLOWED", "영상 생성 요청은 모든 장면 이미지 승인과 영상 확인 대기 상태에서만 보낼 수 있습니다."],
     ])("shows a safe fixed error message for %s instead of the raw backend detail", async (code, expectedMessage) => {
       const fetchMock = vi
         .fn()

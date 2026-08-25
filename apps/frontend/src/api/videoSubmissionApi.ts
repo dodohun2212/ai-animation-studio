@@ -1,6 +1,7 @@
 import {
   API_ROUTES,
-  type SceneNumber,
+  MAX_SCENE_COUNT,
+  MIN_SCENE_COUNT,
   type StartVideoGenerationRequest,
   type StartVideoGenerationResponse,
 } from "@ai-animation-studio/shared";
@@ -20,7 +21,7 @@ export class VideoSubmissionApiError extends Error {
 const SAFE_ERRORS: Record<string, string> = {
   INVALID_REQUEST: "요청 형식이 올바르지 않습니다.",
   PROJECT_NOT_FOUND: "프로젝트를 찾을 수 없습니다.",
-  VIDEO_SUBMISSION_NOT_ALLOWED: "영상 생성 요청은 이미지 6장 승인과 영상 확인 대기 상태에서만 보낼 수 있습니다.",
+  VIDEO_SUBMISSION_NOT_ALLOWED: "영상 생성 요청은 모든 장면 이미지 승인과 영상 확인 대기 상태에서만 보낼 수 있습니다.",
   VIDEO_CONFIRMATION_STALE: "미리보기 내용이 그 사이에 변경되었습니다. 새로고침 후 다시 확인해 주세요.",
   VIDEO_REQUEST_ID_CONFLICT: "이전 요청과 내용이 달라 처리할 수 없습니다. 새로고침 후 다시 시도해 주세요.",
   VIDEO_BUDGET_EXCEEDED: "설정된 예산을 초과하여 전송할 수 없습니다.",
@@ -49,16 +50,15 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-const SCENE_NUMBERS = [1, 2, 3, 4, 5, 6] as const satisfies readonly SceneNumber[];
-
-/** Every acceptance response must cover exactly the six scenes in order — never fewer, never out of order. */
+/** Every acceptance response must cover every scene belonging to the project (2-12), 1..N in order — never fewer, never out of order. */
 function isStartVideoGenerationResponse(value: unknown): value is StartVideoGenerationResponse {
   return (
     isRecord(value) &&
     isNonEmptyString(value.jobId) &&
     Array.isArray(value.acceptedSceneNumbers) &&
-    value.acceptedSceneNumbers.length === SCENE_NUMBERS.length &&
-    value.acceptedSceneNumbers.every((sceneNumber, index) => sceneNumber === SCENE_NUMBERS[index])
+    value.acceptedSceneNumbers.length >= MIN_SCENE_COUNT &&
+    value.acceptedSceneNumbers.length <= MAX_SCENE_COUNT &&
+    value.acceptedSceneNumbers.every((sceneNumber, index) => sceneNumber === index + 1)
   );
 }
 

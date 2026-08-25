@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { MAX_SCENE_COUNT, sceneNumbersFor } from "@ai-animation-studio/shared";
 import type {
   Asset,
   AssetMappingSceneScope,
@@ -36,7 +37,9 @@ const STATUS_TEXT_TONE: Record<AssetMappingStatus, string> = {
 const TYPE_LABELS: Record<AssetType, string> = {
   character: "캐릭터", style: "스타일", background: "배경", object: "오브젝트", general_reference: "일반 참고",
 };
-const SCENE_NUMBERS: readonly SceneNumber[] = [1, 2, 3, 4, 5, 6];
+// A filter option list, not tied to any one project's actual scene count — offers the full supported range
+// (2-12, see docs/02_MIGRATION_PLAN.md) so it works regardless of which project is open.
+const SCENE_NUMBERS: readonly SceneNumber[] = sceneNumbersFor(MAX_SCENE_COUNT);
 
 const outlineButton =
   "rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50 disabled:hover:bg-transparent";

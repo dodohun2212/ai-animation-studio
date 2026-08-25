@@ -47,10 +47,24 @@ describe("videoSubmissionApi", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("rejects a response missing all six accepted scene numbers as malformed", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { jobId: "job_1", acceptedSceneNumbers: [1, 2, 3, 4, 5] })));
+  it("accepts a response with fewer than six accepted scene numbers for a project with fewer scenes", async () => {
+    const response = { jobId: "job_1", acceptedSceneNumbers: [1, 2, 3, 4] };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, response)));
+
+    await expect(startVideoSubmission("sample_project", makeRequest())).resolves.toEqual(response);
+  });
+
+  it("rejects a response with a gap in the accepted scene sequence as malformed", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { jobId: "job_1", acceptedSceneNumbers: [1, 2, 4, 5] })));
 
     await expect(startVideoSubmission("sample_project", makeRequest())).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+  });
+
+  it("accepts scene numbers beyond the old fixed six, up to the supported maximum of twelve", async () => {
+    const response = { jobId: "job_1", acceptedSceneNumbers: Array.from({ length: 10 }, (_, index) => index + 1) };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, response)));
+
+    await expect(startVideoSubmission("sample_project", makeRequest())).resolves.toEqual(response);
   });
 
   it("rejects a response with out-of-order accepted scene numbers as malformed", async () => {

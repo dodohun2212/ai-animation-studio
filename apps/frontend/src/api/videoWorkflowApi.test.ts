@@ -34,6 +34,7 @@ function makeProgress(overrides: Partial<GenerationProgressResponse> = {}): Gene
     status: "running",
     completedSceneNumbers: [1, 2],
     failedSceneNumbers: [],
+    sceneNumbers: [1, 2, 3, 4, 5, 6],
     ...overrides,
   };
 }
@@ -130,11 +131,33 @@ describe("videoWorkflowApi", () => {
     expect(JSON.parse(String(init.body))).toEqual({ approved: true });
   });
 
-  it("rejects a review response with fewer than six reviews as malformed", async () => {
-    const response = { project: makeProject(), reviews: sixReviews().slice(0, 5) };
+  it("accepts a review response with fewer than six reviews for a project with fewer scenes", async () => {
+    const response = { project: makeProject(), reviews: sixReviews().slice(0, 4) };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, response)));
+
+    expect(await getVideoReview("sample_project", "job_1")).toEqual(response);
+  });
+
+  it("rejects a review response with a gap in the scene sequence as malformed", async () => {
+    const response = { project: makeProject(), reviews: sixReviews().filter((review) => review.sceneNumber !== 3) };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, response)));
 
     await expect(getVideoReview("sample_project", "job_1")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+  });
+
+  it("rejects a progress response missing the job's scene numbers as malformed", async () => {
+    const { sceneNumbers: _omit, ...withoutSceneNumbers } = makeProgress();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, withoutSceneNumbers)));
+
+    await expect(getVideoProgress("sample_project", "job_1")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+  });
+
+  it("accepts scene numbers beyond the old fixed six, up to the supported maximum of twelve", async () => {
+    const tenScenes = Array.from({ length: 10 }, (_, index) => index + 1);
+    const response = makeProgress({ status: "running", completedSceneNumbers: tenScenes.slice(0, 9), currentSceneNumber: 10, sceneNumbers: tenScenes });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, response)));
+
+    expect(await getVideoProgress("sample_project", "job_1")).toEqual(response);
   });
 
   it("rejects a progress response with an unknown status as malformed", async () => {

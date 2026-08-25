@@ -34,7 +34,6 @@ type ReviewLoadState =
   | { status: "error"; error: DisplayError }
   | { status: "ready"; reviews: VideoReview[] };
 
-const SCENE_NUMBERS = [1, 2, 3, 4, 5, 6] as const satisfies readonly SceneNumber[];
 const POLL_INTERVAL_MS = 400;
 
 const STATUS_LABEL: Record<GenerationProgressResponse["status"], string> = {
@@ -275,6 +274,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
   const canRestart = progress?.status === "interrupted";
   const reviewable = progress?.status === "succeeded";
   const allApproved = reviewState.status === "ready" && reviewState.reviews.every((review) => review.status === "approved");
+  const totalScenes = progress?.sceneNumbers.length ?? 0;
 
   return (
     <section className="mt-8 max-w-3xl space-y-5">
@@ -314,7 +314,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
           </p>
 
           <ol className="grid gap-2 sm:grid-cols-2" data-testid="scene-progress-list">
-            {SCENE_NUMBERS.map((number) => {
+            {progress.sceneNumbers.map((number) => {
               const status = sceneStatus(number, progress);
               return (
                 <li
@@ -480,10 +480,10 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                       data-testid="regenerate-all-confirm-panel"
                       className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3"
                     >
-                      <p className="text-sm font-semibold text-amber-300">6개 장면 영상을 모두 다시 생성할까요?</p>
+                      <p className="text-sm font-semibold text-amber-300">{totalScenes}개 장면 영상을 모두 다시 생성할까요?</p>
                       <p className="text-xs text-slate-300">
-                        아직 재생성이 시작되지 않았습니다. 확인을 누르면 로컬 가짜 어댑터가 6개 장면 영상을 모두 다시
-                        생성하며, 실제 유료 요청은 전송되지 않습니다. 기존 승인 상태는 초기화됩니다.
+                        아직 재생성이 시작되지 않았습니다. 확인을 누르면 로컬 가짜 어댑터가 {totalScenes}개 장면 영상을 모두
+                        다시 생성하며, 실제 유료 요청은 전송되지 않습니다. 기존 승인 상태는 초기화됩니다.
                       </p>
                       <div className="flex gap-2">
                         <button type="button" className={smallOutlineButton} onClick={cancelRegenerateAllConfirmation} disabled={regenerateAllPending}>
@@ -614,7 +614,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                   {allApproved && (
                     <div className="space-y-3">
                       <p data-testid="all-scenes-approved" className="text-sm font-semibold text-emerald-400">
-                        6개 장면 영상이 모두 승인되었습니다.
+                        {totalScenes}개 장면 영상이 모두 승인되었습니다.
                       </p>
                       <button type="button" className={primaryButton} data-testid="open-video-merge-button" onClick={() => onOpenMerge?.(projectId)}>
                         최종 영상으로 병합하기

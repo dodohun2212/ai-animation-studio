@@ -1,4 +1,4 @@
-import type { MergeVideosResponse, Project } from "@ai-animation-studio/shared";
+import type { MergeVideosResponse, Project, Scene } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,20 +9,31 @@ import { VideoMergeScreen } from "./VideoMergeScreen.js";
 const PROJECT_URL = "/projects/sample_project";
 const MERGE_URL = "/projects/sample_project/videos/merge";
 
+function sixScenes(): Scene[] {
+  return [1, 2, 3, 4, 5, 6].map((number) => ({
+    number: number as Scene["number"],
+    script: `Scene ${number}`,
+    imagePrompt: `Image ${number}`,
+    motionPrompt: `Motion ${number}`,
+    imageReview: "approved",
+    videoReview: "approved",
+  }));
+}
+
 function makeResponse(overrides: Partial<MergeVideosResponse> = {}): MergeVideosResponse {
   return {
-    project: makeProject(),
+    project: makeProject({ scenes: sixScenes() }),
     finalVideoPath: "videos/final/instagram_reel.mp4",
     ...overrides,
   };
 }
 
-/** Routes GET /projects/:id (defaulting to VIDEOS_APPROVED, not yet merged) and lets the caller supply the merge-time fetch behavior. */
+/** Routes GET /projects/:id (defaulting to VIDEOS_APPROVED with six approved scenes, not yet merged) and lets the caller supply the merge-time fetch behavior. */
 function renderScreen(mergeFetch: ReturnType<typeof vi.fn>, project: Partial<Project> = {}) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input);
     if (url === PROJECT_URL && !init) {
-      return jsonResponse(200, { project: makeProject({ workflowState: WorkflowState.VideosApproved, ...project }) });
+      return jsonResponse(200, { project: makeProject({ workflowState: WorkflowState.VideosApproved, scenes: sixScenes(), ...project }) });
     }
     const call = mergeFetch as unknown as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
     return call(input, init);
@@ -42,6 +53,8 @@ describe("VideoMergeScreen", () => {
 
     expect(screen.getByTestId("no-provider-notice").textContent).toContain("실제 유료 Runway나 OpenAI Provider를 호출하지 않습니다");
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(PROJECT_URL));
+    // The scene count follows the project's actual scenes, not a fixed six.
+    await waitFor(() => expect(screen.getByTestId("no-provider-notice").textContent).toContain("6개 승인 장면 영상을 순서대로 이어 붙입니다."));
     expect(mergeFetch).not.toHaveBeenCalled();
   });
 
@@ -52,7 +65,18 @@ describe("VideoMergeScreen", () => {
     fireEvent.click(await screen.findByTestId("open-merge-confirm-button"));
     const panel = await screen.findByTestId("merge-confirm-panel");
     expect(panel.textContent).toContain("실제 유료 Provider 요청은 전송되지 않습니다");
+    await waitFor(() => expect(panel.textContent).toContain("6개 승인 장면 영상을 하나의 최종 영상으로 병합할까요?"));
     expect(mergeFetch).not.toHaveBeenCalled();
+  });
+
+  it("shows the project's actual scene count (not a fixed six) for a four-scene project", async () => {
+    const mergeFetch = vi.fn();
+    renderScreen(mergeFetch, { scenes: sixScenes().slice(0, 4) });
+
+    await waitFor(() => expect(screen.getByTestId("no-provider-notice").textContent).toContain("4개 승인 장면 영상을 순서대로 이어 붙입니다."));
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    const panel = await screen.findByTestId("merge-confirm-panel");
+    await waitFor(() => expect(panel.textContent).toContain("4개 승인 장면 영상을 하나의 최종 영상으로 병합할까요?"));
   });
 
   it("cancels the confirmation without ever calling the merge endpoint", async () => {
@@ -140,7 +164,7 @@ describe("VideoMergeScreen", () => {
   });
 
   it.each([
-    ["VIDEO_MERGE_NOT_ALLOWED", "6개 장면 영상이 모두 승인된 뒤에만 최종 병합을 진행할 수 있습니다."],
+    ["VIDEO_MERGE_NOT_ALLOWED", "모든 장면 영상이 승인된 뒤에만 최종 병합을 진행할 수 있습니다."],
     ["VIDEO_MERGE_CLIPS_INVALID", "승인된 장면 영상 파일을 확인할 수 없습니다. 영상 검토 화면에서 장면을 다시 확인해 주세요."],
     ["FFMPEG_UNAVAILABLE", "이 컴퓨터에서 로컬 영상 병합 프로그램을 사용할 수 없습니다. 설치 상태를 확인해 주세요."],
     ["VIDEO_MERGE_FAILED", "로컬 영상 병합에 실패했습니다. 승인된 장면 영상은 그대로 보존됩니다."],

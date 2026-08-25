@@ -149,7 +149,10 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       : failedSceneNumbers.length > 0 ? "failed"
       : completedSceneNumbers.length === records.length ? "succeeded"
         : current ? "running" : "created";
-    return { jobId, status, ...(current ? { currentSceneNumber: current } : {}), completedSceneNumbers, failedSceneNumbers };
+    return {
+      jobId, status, ...(current ? { currentSceneNumber: current } : {}), completedSceneNumbers, failedSceneNumbers,
+      sceneNumbers: records.map((record) => record.scene_number),
+    };
   }
 
   private replaceRecords(project: StoredProject, replacements: VideoRecord[]): StoredProject {

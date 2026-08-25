@@ -1,5 +1,7 @@
 import {
   API_ROUTES,
+  MAX_SCENE_COUNT,
+  MIN_SCENE_COUNT,
   type ApproveVideoReviewResponse,
   type GenerationProgressResponse,
   type GetVideoReviewResponse,
@@ -53,11 +55,21 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function isSceneNumber(value: unknown): value is SceneNumber {
-  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 6;
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= MAX_SCENE_COUNT;
 }
 
 function isSceneNumberArray(value: unknown): value is SceneNumber[] {
   return Array.isArray(value) && value.every(isSceneNumber);
+}
+
+/** A job's full scene list must be non-empty, within the supported range, and strictly 1..N in order. */
+function isJobSceneNumbers(value: unknown): value is SceneNumber[] {
+  return (
+    Array.isArray(value) &&
+    value.length >= MIN_SCENE_COUNT &&
+    value.length <= MAX_SCENE_COUNT &&
+    value.every((item, index) => item === index + 1)
+  );
 }
 
 const PROGRESS_STATUSES = ["created", "running", "succeeded", "failed", "interrupted"] as const;
@@ -69,7 +81,8 @@ function isGenerationProgressResponse(value: unknown): value is GenerationProgre
     (PROGRESS_STATUSES as readonly unknown[]).includes(value.status) &&
     (value.currentSceneNumber === undefined || isSceneNumber(value.currentSceneNumber)) &&
     isSceneNumberArray(value.completedSceneNumbers) &&
-    isSceneNumberArray(value.failedSceneNumbers)
+    isSceneNumberArray(value.failedSceneNumbers) &&
+    isJobSceneNumbers(value.sceneNumbers)
   );
 }
 
@@ -96,8 +109,6 @@ function isProject(value: unknown): value is GetVideoReviewResponse["project"] {
   );
 }
 
-const SCENE_NUMBERS = [1, 2, 3, 4, 5, 6] as const satisfies readonly SceneNumber[];
-
 function isVideoReview(value: unknown): value is VideoReview {
   return (
     isRecord(value) &&
@@ -107,12 +118,13 @@ function isVideoReview(value: unknown): value is VideoReview {
   );
 }
 
-/** Every review response must carry exactly the six scenes in order — never fewer, never out of order. */
+/** Every review response must carry every scene belonging to the project (2-12, MIN/MAX_SCENE_COUNT), 1..N in order — never fewer, never out of order. */
 function isVideoReviewList(value: unknown): value is VideoReview[] {
   return (
     Array.isArray(value) &&
-    value.length === SCENE_NUMBERS.length &&
-    value.every((item, index) => isVideoReview(item) && item.sceneNumber === SCENE_NUMBERS[index])
+    value.length >= MIN_SCENE_COUNT &&
+    value.length <= MAX_SCENE_COUNT &&
+    value.every((item, index) => isVideoReview(item) && item.sceneNumber === index + 1)
   );
 }
 
@@ -191,7 +203,7 @@ export function regenerateVideoScene(
 }
 
 /**
- * Explicit, provider-free replacement of all six generated scene videos. Must only be
+ * Explicit, provider-free replacement of every generated scene video in the job. Must only be
  * called after a second user confirmation, never on the first click.
  */
 export function regenerateAllVideoScenes(projectId: string, jobId: string): Promise<RegenerateVideoResponse> {

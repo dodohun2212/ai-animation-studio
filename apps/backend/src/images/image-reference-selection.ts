@@ -11,7 +11,8 @@ export const MAX_REFERENCE_IMAGES = 16;
  * Resolves the actual approved Reference image bytes for one scene: every confirmed, enabled Asset Mapping
  * scoped to this scene (character/background/object/style — usage_role is not restricted here, mirroring
  * Python's `resolver.image_pipeline_selection`, which does not filter by role either), plus — for scene 1 only —
- * the linked previous project's approved Scene 6 image, when present. Never trusts a client-supplied path; every
+ * the linked previous project's approved final-scene image (that project's own last scene, not a fixed Scene 6),
+ * when present. Never trusts a client-supplied path; every
  * file comes from already-validated stored data (Asset Library version resolution or an already-checked
  * continuity link). Files that no longer exist are skipped rather than failing the whole generation.
  */

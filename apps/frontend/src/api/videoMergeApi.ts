@@ -15,7 +15,7 @@ export class VideoMergeApiError extends Error {
 const SAFE_ERRORS: Record<string, string> = {
   INVALID_REQUEST: "요청 형식이 올바르지 않습니다.",
   PROJECT_NOT_FOUND: "프로젝트를 찾을 수 없습니다.",
-  VIDEO_MERGE_NOT_ALLOWED: "6개 장면 영상이 모두 승인된 뒤에만 최종 병합을 진행할 수 있습니다.",
+  VIDEO_MERGE_NOT_ALLOWED: "모든 장면 영상이 승인된 뒤에만 최종 병합을 진행할 수 있습니다.",
   VIDEO_MERGE_CLIPS_INVALID: "승인된 장면 영상 파일을 확인할 수 없습니다. 영상 검토 화면에서 장면을 다시 확인해 주세요.",
   FFMPEG_UNAVAILABLE: "이 컴퓨터에서 로컬 영상 병합 프로그램을 사용할 수 없습니다. 설치 상태를 확인해 주세요.",
   VIDEO_MERGE_FAILED: "로컬 영상 병합에 실패했습니다. 승인된 장면 영상은 그대로 보존됩니다.",

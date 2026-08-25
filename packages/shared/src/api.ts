@@ -1,4 +1,5 @@
 import type { Project, ProjectSummary, SceneNumber } from "./domain.js";
+import { MAX_SCENE_COUNT, MIN_SCENE_COUNT } from "./domain.js";
 import type { Asset, AssetOwnership, AssetType } from "./asset.js";
 import type {
   ApproveProjectAssetMappingReviewRequest,
@@ -698,6 +699,8 @@ export interface GenerationProgressResponse {
   currentSceneNumber?: SceneNumber;
   completedSceneNumbers: SceneNumber[];
   failedSceneNumbers: SceneNumber[];
+  /** Every scene number belonging to this job, 1..N in order — lets a caller render the full scene set without assuming a fixed count. */
+  sceneNumbers: SceneNumber[];
 }
 
 export interface VideoReview {
@@ -884,12 +887,12 @@ export function assertVideoGenerationApproval(request: StartVideoGenerationReque
   if (!request.confirmationId.trim() || !request.userRequestId.trim()) {
     throw new Error("Confirmation and unique user request IDs are required.");
   }
-  if (request.prompts.length !== 6) {
-    throw new Error("Six approved Runway prompts are required.");
+  if (request.prompts.length < MIN_SCENE_COUNT || request.prompts.length > MAX_SCENE_COUNT) {
+    throw new Error(`Between ${MIN_SCENE_COUNT} and ${MAX_SCENE_COUNT} approved Runway prompts are required.`);
   }
   request.prompts.forEach((item, index) => {
     if (item.sceneNumber !== index + 1 || !item.prompt.trim()) {
-      throw new Error("Approved prompts must cover scenes 1 through 6 in order.");
+      throw new Error("Approved prompts must cover every scene, 1 through N, in order.");
     }
   });
 }

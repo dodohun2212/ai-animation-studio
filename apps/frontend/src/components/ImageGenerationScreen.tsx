@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ImageReview, Project, SceneNumber, StartImageGenerationResponse } from "@ai-animation-studio/shared";
-import { WorkflowState } from "@ai-animation-studio/shared";
+import { WorkflowState, sceneNumbersFor } from "@ai-animation-studio/shared";
 
 import { getProject, toDisplayError } from "../api/projectsApi.js";
 import { startImageGeneration, toImageGenerationDisplayError } from "../api/imageGenerationApi.js";
@@ -30,8 +30,6 @@ type ReviewLoadState =
   | { status: "loading" }
   | { status: "error"; error: DisplayError }
   | { status: "ready"; reviews: ImageReview[] };
-
-const SCENE_NUMBERS = [1, 2, 3, 4, 5, 6] as const;
 
 const primaryButton =
   "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
@@ -87,6 +85,10 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
   }, [projectId]);
 
   const currentProject = projectOverride ?? result?.project ?? (state.status === "success" ? state.project : null);
+  // The scene grid/count follows the project's own scenes array (2-12, see docs/02_MIGRATION_PLAN.md) rather than
+  // an assumed fixed six.
+  const sceneNumbers = currentProject ? sceneNumbersFor(currentProject.scenes.length) : [];
+  const totalScenes = sceneNumbers.length;
   const allowed = currentProject?.workflowState === WorkflowState.AssetMappingApproved;
   const reviewable = currentProject?.workflowState === WorkflowState.ImagesReview;
   const videoConfirmationReached = currentProject?.workflowState === WorkflowState.WaitingForVideoConfirmation;
@@ -223,7 +225,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
       {currentProject && (
         <>
           <p className="text-sm text-amber-300" data-testid="no-paid-notice">
-            실제 유료 OpenAI 이미지 API를 호출하지 않습니다. 로컬 가짜(local fake) 어댑터로 장면 이미지 6장을 생성합니다.
+            실제 유료 OpenAI 이미지 API를 호출하지 않습니다. 로컬 가짜(local fake) 어댑터로 장면 이미지 {totalScenes}장을 생성합니다.
           </p>
 
           {!allowed && !reviewable && !videoConfirmationReached && !result && (
@@ -233,7 +235,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
           )}
 
           <ol className="grid gap-2 sm:grid-cols-2" data-testid="scene-results">
-            {SCENE_NUMBERS.map((number) => (
+            {sceneNumbers.map((number) => (
               <li
                 key={number}
                 data-testid={`scene-${number}`}
@@ -260,10 +262,10 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
               data-testid="generate-confirm-panel"
               className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
             >
-              <p className="text-sm font-semibold text-amber-300">장면 이미지 6장을 생성할까요?</p>
+              <p className="text-sm font-semibold text-amber-300">장면 이미지 {totalScenes}장을 생성할까요?</p>
               <p className="text-sm text-slate-300">
-                아직 생성이 시작되지 않았습니다. 확인을 누르면 로컬 가짜 어댑터가 이미지 6장을 생성하며, 실제 유료 요청은
-                전송되지 않습니다.
+                아직 생성이 시작되지 않았습니다. 확인을 누르면 로컬 가짜 어댑터가 이미지 {totalScenes}장을 생성하며, 실제 유료
+                요청은 전송되지 않습니다.
               </p>
               <div className="flex gap-3">
                 <button type="button" className={outlineButton} onClick={cancelConfirmation} disabled={generatePending}>
@@ -425,7 +427,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
 
           {videoConfirmationReached && (
             <p data-testid="video-confirmation-transition" className="text-sm font-semibold text-emerald-400">
-              장면 이미지 6장이 모두 승인되어 영상 생성 확인 단계로 이동했습니다.
+              장면 이미지 {totalScenes}장이 모두 승인되어 영상 생성 확인 단계로 이동했습니다.
             </p>
           )}
         </>

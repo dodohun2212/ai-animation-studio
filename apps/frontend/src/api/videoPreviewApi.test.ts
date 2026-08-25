@@ -4,8 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getVideoPromptPreview, toVideoPreviewDisplayError, VideoPreviewApiError } from "./videoPreviewApi.js";
 import { jsonResponse, nonJsonResponse } from "./testUtils.js";
 
-function makePreviews(): VideoPromptPreview[] {
-  return [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({
+function makePreviews(count = 6): VideoPromptPreview[] {
+  return Array.from({ length: count }, (_, index) => index + 1).map((sceneNumber) => ({
     sceneNumber: sceneNumber as VideoPromptPreview["sceneNumber"],
     prompt: `Scene ${sceneNumber} prompt`,
     model: "gen4_turbo",
@@ -50,11 +50,25 @@ describe("videoPreviewApi", () => {
     expect(totalCostUsd).toBeCloseTo(1.5, 5);
   });
 
-  it("rejects a response with fewer than six previews as malformed", async () => {
-    const response = { previews: makePreviews().slice(0, 5) };
+  it("accepts a response with fewer than six previews for a project with fewer scenes", async () => {
+    const response = { previews: makePreviews(4) };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, response)));
 
+    await expect(getVideoPromptPreview("sample_project")).resolves.toEqual(response);
+  });
+
+  it("rejects a response with a gap in the scene sequence as malformed", async () => {
+    const gapped = makePreviews().filter((preview) => preview.sceneNumber !== 3);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { previews: gapped })));
+
     await expect(getVideoPromptPreview("sample_project")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+  });
+
+  it("accepts scene numbers beyond the old fixed six, up to the supported maximum of twelve", async () => {
+    const response = { previews: makePreviews(10) };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, response)));
+
+    await expect(getVideoPromptPreview("sample_project")).resolves.toEqual(response);
   });
 
   it("rejects a response whose scenes are out of order as malformed", async () => {

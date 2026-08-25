@@ -238,9 +238,9 @@ export function StoryPromptScreen({ projectId, onBack }: Props) {
               승인되었습니다. ({approved.approvedAt})
             </p>
           )}
-          {approved && approved.workflowState === WorkflowState.WaitingForAssetMappingReview && approved.scenes.length === 6 && (
+          {approved && approved.workflowState === WorkflowState.WaitingForAssetMappingReview && approved.scenes.length > 0 && (
             <div data-testid="generated-scenes" className="space-y-2 rounded-xl border border-white/10 bg-slate-950/60 p-4">
-              <p className="text-sm font-semibold text-slate-200">대본에서 6개 장면이 생성되었습니다.</p>
+              <p className="text-sm font-semibold text-slate-200">대본에서 {approved.scenes.length}개 장면이 생성되었습니다.</p>
               <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-300">
                 {approved.scenes.map((scene) => (
                   <li key={scene.number} data-testid={`generated-scene-${scene.number}`}>

@@ -1,5 +1,7 @@
 import {
   API_ROUTES,
+  MAX_SCENE_COUNT,
+  MIN_SCENE_COUNT,
   type GetVideoPromptPreviewResponse,
   type SceneNumber,
   type VideoPromptPreview,
@@ -20,7 +22,7 @@ export class VideoPreviewApiError extends Error {
 const SAFE_ERRORS: Record<string, string> = {
   INVALID_REQUEST: "요청 형식이 올바르지 않습니다.",
   PROJECT_NOT_FOUND: "프로젝트를 찾을 수 없습니다.",
-  VIDEO_PREVIEW_NOT_ALLOWED: "영상 미리보기는 장면 이미지 6장이 모두 승인된 프로젝트에서만 가능합니다.",
+  VIDEO_PREVIEW_NOT_ALLOWED: "영상 미리보기는 모든 장면 이미지가 승인된 프로젝트에서만 가능합니다.",
   VIDEO_PREVIEW_IMAGES_INVALID: "승인된 장면 이미지가 유효하지 않습니다. 이미지를 다시 확인해 주세요.",
   VIDEO_PREVIEW_DATA_INVALID: "영상 프롬프트 데이터를 확인할 수 없습니다.",
 };
@@ -47,10 +49,8 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-const SCENE_NUMBERS = [1, 2, 3, 4, 5, 6] as const;
-
 function isSceneNumber(value: unknown): value is SceneNumber {
-  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 6;
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= MAX_SCENE_COUNT;
 }
 
 function isVideoPromptPreview(value: unknown): value is VideoPromptPreview {
@@ -66,13 +66,14 @@ function isVideoPromptPreview(value: unknown): value is VideoPromptPreview {
   );
 }
 
-/** Every preview response must carry exactly the six scenes in order — never fewer, never out of order. */
+/** Every preview response must carry every scene belonging to the project (2-12), 1..N in order — never fewer, never out of order. */
 function isGetVideoPromptPreviewResponse(value: unknown): value is GetVideoPromptPreviewResponse {
   return (
     isRecord(value) &&
     Array.isArray(value.previews) &&
-    value.previews.length === SCENE_NUMBERS.length &&
-    value.previews.every((item, index) => isVideoPromptPreview(item) && item.sceneNumber === SCENE_NUMBERS[index])
+    value.previews.length >= MIN_SCENE_COUNT &&
+    value.previews.length <= MAX_SCENE_COUNT &&
+    value.previews.every((item, index) => isVideoPromptPreview(item) && item.sceneNumber === index + 1)
   );
 }
 

@@ -233,6 +233,29 @@ describe("ProjectsService", () => {
     expect(await service.getProjectContinuity("current")).toEqual({ link: null });
   });
 
+  it("links a continuity source using its own actual final scene (not a fixed Scene 6) for a four-scene project", async () => {
+    await service.createProject({ projectId: "current", topic: "topic" });
+    const candidateId = "candidate_four";
+    const imagesDir = path.join(root, candidateId, "images");
+    await service.createProject({ projectId: candidateId, topic: "candidate topic" });
+    const repository = new LocalProjectRepository(root);
+    const candidate = await repository.findById(candidateId);
+    await repository.save({
+      ...candidate, workflow_state: WorkflowState.VideosReady,
+      scenes: Array.from({ length: 4 }, (_, i) => ({ number: i + 1, description: `Scene ${i + 1}` })),
+      story: { title: "Four Scene Story", synopsis: "s", ending: "ending" },
+      generated_images: Array.from({ length: 4 }, (_, i) => path.join(imagesDir, `scene${i + 1}.png`)),
+    });
+    await fsPromises.mkdir(imagesDir, { recursive: true });
+    await fsPromises.writeFile(path.join(imagesDir, "scene4.png"), "fake-png-bytes");
+
+    const options = await service.listProjectContinuityOptions("current");
+    expect(options.options).toEqual([{ projectId: candidateId, projectName: "Four Scene Story", label: "Four Scene Story · Scene 4" }]);
+
+    const linked = await service.updateProjectContinuity("current", { projectId: candidateId });
+    expect(linked).toEqual({ link: { projectId: candidateId, projectName: "Four Scene Story", label: "Four Scene Story · Scene 4" } });
+  });
+
   it("rejects linking to a project that is not eligible or does not exist", async () => {
     await service.createProject({ projectId: "current", topic: "topic" });
     await expect(service.updateProjectContinuity("current", { projectId: "missing" })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });

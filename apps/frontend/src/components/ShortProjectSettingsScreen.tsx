@@ -211,8 +211,9 @@ function CastEditor({ projectId }: { projectId: string }) {
 }
 
 /**
- * Wizard-time link to another approved short project's Scene 6 as this project's Story/Scene 1 continuity source
- * (Python's `lore_context.previous_scene_link`, opt-in only). Candidates are computed and re-validated
+ * Wizard-time link to another approved short project's final scene (that project's own last scene, not a fixed
+ * Scene 6 — see docs/02_MIGRATION_PLAN.md's scene-count generalization) as this project's Story/Scene 1 continuity
+ * source (Python's `lore_context.previous_scene_link`, opt-in only). Candidates are computed and re-validated
  * server-side on every save — this screen only ever sends a projectId, never the derived story text.
  */
 function ContinuityEditor({ projectId }: { projectId: string }) {

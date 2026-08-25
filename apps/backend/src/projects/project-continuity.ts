@@ -1,6 +1,6 @@
 import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
-import { WorkflowState } from "@ai-animation-studio/shared";
+import { MIN_SCENE_COUNT, WorkflowState } from "@ai-animation-studio/shared";
 import type { ShortProjectContinuityOption } from "@ai-animation-studio/shared";
 
 import type { LocalProjectRepository } from "./projects.repository.js";
@@ -23,14 +23,23 @@ const CONTINUITY_ALLOWED_STATES: ReadonlySet<string> = new Set([
 interface ContinuityCandidate extends ShortProjectContinuityOption {
   storyContext: string;
   imagePath: string;
+  /** The candidate project's own final scene number (its scene count, not a fixed 6) — persisted for `applyContinuityCandidate`. */
+  sceneNumber: number;
 }
 
-/** Mirrors Python's `short_scene_continuity_option`: eligibility, path-safety and Scene 6 text derivation. */
+/**
+ * Mirrors Python's `short_scene_continuity_option`: eligibility, path-safety and last-scene text derivation.
+ * The "last scene" is always the candidate project's own final scene (its actual scene count, 2-12), never a
+ * fixed index — see docs/02_MIGRATION_PLAN.md's scene-count generalization.
+ */
 async function deriveContinuityCandidate(repository: LocalProjectRepository, candidate: StoredProject): Promise<ContinuityCandidate | null> {
   if (!CONTINUITY_ALLOWED_STATES.has(candidate.workflow_state)) return null;
-  if (candidate.generated_images.length < 6 || candidate.scenes.length < 6) return null;
+  const totalScenes = candidate.scenes.length;
+  if (totalScenes < MIN_SCENE_COUNT || candidate.generated_images.length < totalScenes) return null;
 
-  const imagePath = candidate.generated_images[5];
+  const lastIndex = totalScenes - 1;
+  const lastSceneNumber = totalScenes;
+  const imagePath = candidate.generated_images[lastIndex];
   if (typeof imagePath !== "string" || !imagePath) return null;
   const resolvedPath = path.resolve(imagePath);
   const projectDir = repository.projectDirectory(candidate.project_id);
@@ -41,7 +50,7 @@ async function deriveContinuityCandidate(repository: LocalProjectRepository, can
     return null;
   }
 
-  const scene = candidate.scenes[5];
+  const scene = candidate.scenes[lastIndex];
   const sceneDescription = isObject(scene) ? trimmedString(scene.description) : "";
   const story = isObject(candidate.story) ? candidate.story : {};
   const ending = trimmedString(story.ending);
@@ -53,7 +62,14 @@ async function deriveContinuityCandidate(repository: LocalProjectRepository, can
     `이전 결말: ${ending || "별도 결말 설명 없음"}`,
     "위 마지막 상황과 자연스럽게 이어지는 첫 장면을 작성하십시오.",
   ].join("\n");
-  return { projectId: candidate.project_id, projectName, label: `${projectName} · Scene 6`, storyContext, imagePath: resolvedPath };
+  return {
+    projectId: candidate.project_id,
+    projectName,
+    sceneNumber: lastSceneNumber,
+    label: `${projectName} · Scene ${lastSceneNumber}`,
+    storyContext,
+    imagePath: resolvedPath,
+  };
 }
 
 /** Every other short project currently eligible to link as this project's Scene 1 continuity source. */
@@ -118,7 +134,7 @@ export function applyContinuityCandidate(stored: StoredProject, candidate: Conti
         project_id: candidate.projectId,
         project_name: candidate.projectName,
         label: candidate.label,
-        scene_number: 6,
+        scene_number: candidate.sceneNumber,
         story_context: candidate.storyContext,
         image_path: candidate.imagePath,
       } : {},

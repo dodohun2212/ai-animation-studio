@@ -24,14 +24,21 @@ const APPROVAL_RESPONSE = {
 };
 
 function sixScenes(): Scene[] {
-  return [1, 2, 3, 4, 5, 6].map((number) => ({
-    number: number as Scene["number"],
-    script: `Scene ${number}`,
-    imagePrompt: `Image ${number}`,
-    motionPrompt: `Motion ${number}`,
-    imageReview: "pending",
-    videoReview: "pending",
-  }));
+  return scenesOf(6);
+}
+
+function scenesOf(count: number): Scene[] {
+  return Array.from({ length: count }, (_, index) => {
+    const number = (index + 1) as Scene["number"];
+    return {
+      number,
+      script: `Scene ${number}`,
+      imagePrompt: `Image ${number}`,
+      motionPrompt: `Motion ${number}`,
+      imageReview: "pending",
+      videoReview: "pending",
+    };
+  });
 }
 
 const GENERATED_APPROVAL_RESPONSE = {
@@ -181,6 +188,32 @@ describe("StoryPromptScreen", () => {
     for (const number of [1, 2, 3, 4, 5, 6]) {
       expect(screen.getByTestId(`generated-scene-${number}`)).toBeTruthy();
     }
+  });
+
+  it("shows the actual generated scene count (not a fixed six) for a four-scene project", async () => {
+    const fourSceneResponse = {
+      ...APPROVAL_RESPONSE,
+      project: makeProject({ workflowState: WorkflowState.WaitingForAssetMappingReview, scenes: scenesOf(4) }),
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { preview: PREVIEW }))
+      .mockResolvedValueOnce(jsonResponse(200, fourSceneResponse));
+    renderScreen(fetchMock);
+
+    await screen.findByDisplayValue(PREVIEW.originalPrompt);
+    fireEvent.change(textarea(), { target: { value: "수정된 프롬프트" } });
+    fireEvent.click(screen.getByRole("button", { name: "이 프롬프트로 승인" }));
+    await screen.findByTestId("approve-confirm-panel");
+    fireEvent.click(screen.getByRole("button", { name: "네, 승인을 전송합니다" }));
+
+    await screen.findByTestId("approved-message");
+    const scenesPanel = await screen.findByTestId("generated-scenes");
+    expect(scenesPanel.textContent).toContain("대본에서 4개 장면이 생성되었습니다.");
+    for (const number of [1, 2, 3, 4]) {
+      expect(screen.getByTestId(`generated-scene-${number}`)).toBeTruthy();
+    }
+    expect(screen.queryByTestId("generated-scene-5")).toBeNull();
   });
 
   it("does not show a generated-scenes panel when the approval response has no six-scene workflow state", async () => {

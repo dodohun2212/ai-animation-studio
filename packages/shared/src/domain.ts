@@ -1,11 +1,8 @@
 import type { WorkflowState } from "./workflow.js";
 
-/** Kept at exactly six — still used by the not-yet-migrated screens/helpers below that assume a fixed 6-scene grid. */
-export const SCENE_NUMBERS = [1, 2, 3, 4, 5, 6] as const;
 /**
- * Deliberately widened to plain `number` rather than derived from SCENE_NUMBERS: a scene number is now bounded by
- * a project's own scene count (2-12, see MIN/MAX below), not a single fixed set. Nothing in this codebase does
- * exhaustive matching over the old 1-6 literal union, so this widening is backward compatible.
+ * Deliberately a plain `number` rather than a fixed literal union: a scene number is bounded by a project's own
+ * scene count (2-12, see MIN/MAX below), not a single fixed set.
  */
 export type SceneNumber = number;
 
@@ -96,16 +93,4 @@ export interface ProviderTaskRecord {
 /** Whether `value` is a plausible scene number for *some* project (2-12 scenes) — not tied to any one project's actual scene count. */
 export function isSceneNumber(value: number): value is SceneNumber {
   return Number.isInteger(value) && value >= 1 && value <= MAX_SCENE_COUNT;
-}
-
-export function assertExactlySixScenes(scenes: readonly Scene[]): void {
-  if (scenes.length !== SCENE_NUMBERS.length) {
-    throw new Error("The workflow requires exactly six scenes.");
-  }
-
-  scenes.forEach((scene, index) => {
-    if (scene.number !== SCENE_NUMBERS[index]) {
-      throw new Error("Scenes must be uniquely ordered from 1 through 6.");
-    }
-  });
 }

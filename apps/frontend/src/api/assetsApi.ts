@@ -1,5 +1,6 @@
 import {
   API_ROUTES,
+  MAX_SCENE_COUNT,
   type AddAssetVersionResponse,
   type Asset,
   type AssetFileAuditClassification,
@@ -79,7 +80,7 @@ const isUtcIsoTimestamp = (value: unknown): value is string =>
   isString(value) && UTC_TIMESTAMP_PATTERN.test(value) && Number.isFinite(Date.parse(value));
 const isVersionNumber = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= 1;
 const isSceneNumber = (value: unknown): value is number | null =>
-  value === null || (typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 6);
+  value === null || (typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= MAX_SCENE_COUNT);
 const isSortOrder = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value);
 /** Only the backend's own /assets/:id/content route for this exact asset may ever reach an <img src>. */
 const isBoundContentUrl = (assetId: string, imageAvailable: boolean, contentUrl: unknown): contentUrl is string | null =>

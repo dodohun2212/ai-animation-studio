@@ -19,12 +19,27 @@ describe("video generation approval", () => {
     expect(() => assertVideoGenerationApproval(approvedRequest())).not.toThrow();
   });
 
-  it("rejects incomplete prompts or missing request identity", () => {
-    const incomplete = approvedRequest();
-    incomplete.prompts.pop();
-    expect(() => assertVideoGenerationApproval(incomplete)).toThrow();
+  it("rejects a gap in the scene sequence, too few/too many prompts, or missing request identity", () => {
+    const gapped = approvedRequest();
+    gapped.prompts.splice(2, 1);
+    expect(() => assertVideoGenerationApproval(gapped)).toThrow();
+
+    const tooFew = approvedRequest();
+    tooFew.prompts = tooFew.prompts.slice(0, 1);
+    expect(() => assertVideoGenerationApproval(tooFew)).toThrow();
+
+    const tooMany = approvedRequest();
+    tooMany.prompts = Array.from({ length: 13 }, (_, index) => ({ sceneNumber: index + 1, prompt: `Prompt ${index + 1}` }));
+    expect(() => assertVideoGenerationApproval(tooMany)).toThrow();
+
     const unidentified = approvedRequest();
     unidentified.userRequestId = "";
     expect(() => assertVideoGenerationApproval(unidentified)).toThrow();
+  });
+
+  it("accepts a prompt count anywhere in the supported 2-12 range, not just six", () => {
+    const request = approvedRequest();
+    request.prompts = Array.from({ length: 4 }, (_, index) => ({ sceneNumber: index + 1, prompt: `Prompt ${index + 1}` }));
+    expect(() => assertVideoGenerationApproval(request)).not.toThrow();
   });
 });

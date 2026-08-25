@@ -273,11 +273,18 @@ describe("assetsApi", () => {
     await expect(listAssets()).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
   });
 
-  it("rejects a sourceSceneNumber outside the 1-6 scene range", async () => {
-    const malformed = { assets: [makeAsset({ sourceSceneNumber: 7 })] };
+  it("rejects a sourceSceneNumber outside the supported 1-12 scene range", async () => {
+    const malformed = { assets: [makeAsset({ sourceSceneNumber: 13 })] };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, malformed)));
 
     await expect(listAssets()).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+  });
+
+  it("accepts a sourceSceneNumber beyond the old fixed six, up to the supported maximum of twelve", async () => {
+    const response = { assets: [makeAsset({ sourceSceneNumber: 7 })] };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, response)));
+
+    await expect(listAssets()).resolves.toEqual(response);
   });
 
   it("accepts a null sourceSceneNumber", async () => {
