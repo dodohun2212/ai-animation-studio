@@ -5,6 +5,7 @@ import type { BudgetPreview, SceneNumber, StartVideoGenerationResponse, VideoPro
 import { getVideoPromptPreview, toVideoPreviewDisplayError } from "../api/videoPreviewApi.js";
 import { startVideoSubmission, toVideoSubmissionDisplayError } from "../api/videoSubmissionApi.js";
 import { Spinner } from "./Spinner.js";
+import { videoRatioLabel } from "../utils/sceneFields.js";
 
 interface Props {
   projectId: string;
@@ -164,7 +165,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
       {state.status === "ready" && previews.length > 0 && (
         <>
           <p className="text-sm text-slate-400" data-testid="preview-summary">
-            모델: {previews[0]!.model} · 비율: {previews[0]!.ratio} · 장면당 길이: {previews[0]!.durationSeconds}초
+            모델: {previews[0]!.model} · 비율: {videoRatioLabel(previews[0]!.ratio)} · 장면당 길이: {previews[0]!.durationSeconds}초
           </p>
           <ul className="space-y-4" data-testid="preview-list">
             {previews.map((preview) => {
@@ -275,7 +276,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
                 <dt className="text-slate-400">모델</dt>
                 <dd>{previews[0]!.model}</dd>
                 <dt className="text-slate-400">해상도 / 비율</dt>
-                <dd>{previews[0]!.ratio}</dd>
+                <dd>{videoRatioLabel(previews[0]!.ratio)}</dd>
                 <dt className="text-slate-400">장면 수 / 길이</dt>
                 <dd>
                   {previews.length}개 · 장면당 {previews[0]!.durationSeconds}초

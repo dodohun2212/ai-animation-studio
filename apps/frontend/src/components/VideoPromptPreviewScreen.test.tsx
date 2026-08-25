@@ -115,7 +115,9 @@ describe("VideoPromptPreviewScreen", () => {
       expect(screen.getByDisplayValue(`Scene ${sceneNumber} prompt`)).toBeTruthy();
       expect(screen.getByTestId(`cost-${sceneNumber}`).textContent).toBe("예상 비용: $0.25");
     }
-    expect(screen.getByTestId("preview-summary").textContent).toBe("모델: gen4_turbo · 비율: 720:1280 · 장면당 길이: 5초");
+    // The provider's value stays visible, but the shape the user chose in settings leads — "720:1280" alone
+    // gives them no way to notice an orientation that does not match the project.
+    expect(screen.getByTestId("preview-summary").textContent).toBe("모델: gen4_turbo · 비율: 세로형 9:16 (720:1280) · 장면당 길이: 5초");
     expect(screen.getByTestId("total-cost").textContent).toBe("총 예상 비용: $1.50");
   });
 
