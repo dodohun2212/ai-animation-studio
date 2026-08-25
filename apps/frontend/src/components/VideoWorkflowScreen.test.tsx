@@ -280,6 +280,24 @@ describe("VideoWorkflowScreen", () => {
     expect(JSON.parse(String(init.body))).toEqual({ approved: true });
   });
 
+  it("shows an actionable Korean reason for a known scene failure category, and a safe generic fallback for an opaque one", async () => {
+    const failed = makeProgress({
+      status: "failed",
+      completedSceneNumbers: [1],
+      failedSceneNumbers: [2, 3],
+      sceneErrors: { 2: "authentication", 3: "Runway rejected the prompt: explicit content detected" },
+    });
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, failed)));
+
+    await screen.findByTestId("failed-scenes-section");
+    expect(screen.getByTestId("failed-scene-reason-2").textContent).toContain("Runway API 키 인증에 실패했습니다");
+    // An unrecognized code — including Runway's own raw failure text — must never be shown verbatim.
+    const opaqueReason = screen.getByTestId("failed-scene-reason-3");
+    expect(opaqueReason.textContent).not.toContain("Runway rejected the prompt");
+    expect(opaqueReason.textContent).not.toContain("explicit content");
+    expect(opaqueReason.textContent).toContain("영상 생성에 실패했습니다");
+  });
+
   it("does not call the regenerate-all endpoint on the first click — only an explicit confirmation does", async () => {
     const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
     const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, succeeded)).mockResolvedValueOnce(jsonResponse(200, reviewResponse(sixReviews())));

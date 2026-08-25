@@ -8,6 +8,7 @@ import {
   regenerateAllVideoScenes,
   regenerateVideoScene,
   restartVideoGeneration,
+  sceneErrorMessage,
   stopVideoGeneration,
   toVideoWorkflowDisplayError,
   videoReviewContentUrl,
@@ -368,6 +369,9 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                           {regeneratePending ? "다시 시도 중..." : "다시 시도"}
                         </button>
                       </div>
+                      <p data-testid={`failed-scene-reason-${sceneNumber}`} className="text-xs text-rose-300">
+                        {sceneErrorMessage(progress.sceneErrors?.[sceneNumber])}
+                      </p>
                       {regenerateConfirmOpen && (
                         <div
                           role="alertdialog"
