@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { LongEpisodeDetail, LongEpisodeScript } from "@ai-animation-studio/shared";
+import { MAX_SCENE_COUNT, MIN_SCENE_COUNT, type LongEpisodeDetail, type LongEpisodeScript } from "@ai-animation-studio/shared";
 import { approveLongEpisodeScript, generateLongEpisodeScript, getLongEpisode, toLongProjectDisplayError, updateLongEpisodeScript } from "../api/longProjectsApi.js";
 import { Spinner } from "./Spinner.js";
 import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
@@ -26,7 +26,7 @@ const SCRIPT_FIELDS: { key: "title" | "synopsis" | "ending"; label: string }[] =
   { key: "ending", label: "결말" },
 ];
 
-function isScript(value: unknown): value is LongEpisodeScript { if (!value || typeof value !== "object" || Array.isArray(value)) return false; const item = value as Record<string, unknown>; return typeof item.title === "string" && typeof item.synopsis === "string" && typeof item.ending === "string" && Array.isArray(item.scenes) && item.scenes.length === 6 && item.scenes.every((scene, index) => !!scene && typeof scene === "object" && !Array.isArray(scene) && (scene as Record<string, unknown>).number === index + 1 && SCENE_FIELDS.every((field) => typeof (scene as Record<string, unknown>)[field] === "string")); }
+function isScript(value: unknown): value is LongEpisodeScript { if (!value || typeof value !== "object" || Array.isArray(value)) return false; const item = value as Record<string, unknown>; return typeof item.title === "string" && typeof item.synopsis === "string" && typeof item.ending === "string" && Array.isArray(item.scenes) && item.scenes.length >= MIN_SCENE_COUNT && item.scenes.length <= MAX_SCENE_COUNT && item.scenes.every((scene, index) => !!scene && typeof scene === "object" && !Array.isArray(scene) && (scene as Record<string, unknown>).number === index + 1 && SCENE_FIELDS.every((field) => typeof (scene as Record<string, unknown>)[field] === "string")); }
 
 const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const primaryButton = "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";

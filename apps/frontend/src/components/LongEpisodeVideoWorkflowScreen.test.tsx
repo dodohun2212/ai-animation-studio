@@ -5,7 +5,7 @@ import { LongEpisodeVideoWorkflowScreen } from "./LongEpisodeVideoWorkflowScreen
 
 const episode = (status: string) => ({ episodeNumber: 1, title: "Episode", summary: "s", mainEvent: "e", conflict: "c", cliffhanger: "h", nextEpisodeHook: "n", status, approved: true, scriptRevision: 1, scriptHistoryCount: 1 });
 const preview = { confirmationId: "confirm", model: "gen4_turbo", ratio: "720:1280", durationSecondsPerScene: 5, executionMode: "sequential", estimatedCostUsd: 1.5, scenes: [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, prompt: `prompt ${sceneNumber}`, estimatedCostUsd: .25 })) };
-const progress = (status: "created" | "running" | "succeeded" | "interrupted", completed: number[] = []) => ({ jobId: "job", status, completedSceneNumbers: completed, failedSceneNumbers: [], episode: episode(status === "succeeded" ? "videos_review" : "videos_generating") });
+const progress = (status: "created" | "running" | "succeeded" | "interrupted", completed: number[] = []) => ({ jobId: "job", status, completedSceneNumbers: completed, failedSceneNumbers: [], sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode(status === "succeeded" ? "videos_review" : "videos_generating") });
 describe("LongEpisodeVideoWorkflowScreen", () => {
   afterEach(() => vi.unstubAllGlobals());
 
@@ -73,10 +73,10 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
   });
   it("offers a retry for a scene Runway reported failed, only submitting after explicit confirmation, and shows an actionable reason", async () => {
     const failedJob = {
-      jobId: "job", status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2, 3], episode: episode("videos_generating"),
+      jobId: "job", status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2, 3], sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
       sceneErrors: { 2: "authentication", 3: "Runway rejected the prompt: explicit content detected" },
     };
-    const retriedJob = { jobId: "job", status: "running", completedSceneNumbers: [1], currentSceneNumber: 2, failedSceneNumbers: [], episode: episode("videos_generating") };
+    const retriedJob = { jobId: "job", status: "running", completedSceneNumbers: [1], currentSceneNumber: 2, failedSceneNumbers: [], sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") };
     const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, preview)).mockResolvedValueOnce(jsonResponse(200, { jobId: "job", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") })).mockResolvedValueOnce(jsonResponse(200, failedJob)).mockResolvedValueOnce(jsonResponse(200, retriedJob));
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);

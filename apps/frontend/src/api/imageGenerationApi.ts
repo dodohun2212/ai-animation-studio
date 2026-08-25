@@ -1,5 +1,6 @@
 import {
   API_ROUTES,
+  isSceneNumber,
   type Project,
   type SceneNumber,
   type StartImageGenerationRequest,
@@ -89,7 +90,7 @@ function isProject(value: unknown): value is Project {
 }
 
 function isSceneNumberArray(value: unknown): value is SceneNumber[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "number" && item >= 1 && item <= 6);
+  return Array.isArray(value) && value.every((item) => typeof item === "number" && isSceneNumber(item));
 }
 
 function isStartImageGenerationResponse(value: unknown): value is StartImageGenerationResponse {

@@ -1,5 +1,6 @@
 import {
   API_ROUTES,
+  isSceneNumber as isValidSceneNumber,
   type ApproveImageReviewRequest,
   type ApproveImageReviewResponse,
   type GetImageReviewResponse,
@@ -56,7 +57,7 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function isSceneNumber(value: unknown): value is SceneNumber {
-  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 6;
+  return typeof value === "number" && Number.isInteger(value) && isValidSceneNumber(value);
 }
 
 function isProject(value: unknown): value is Project {

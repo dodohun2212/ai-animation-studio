@@ -9,7 +9,6 @@ import { StatusChip } from "./ui/StatusChip.js";
 
 interface Props { projectId: string; episodeNumber: number; onBack: () => void; onOpenMerge: (projectId: string, episodeNumber: number) => void; }
 type DisplayError = { code: string; message: string };
-const SCENES = [1, 2, 3, 4, 5, 6] as const satisfies readonly SceneNumber[];
 const LIMIT = 1000;
 
 const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
@@ -109,7 +108,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
         <section data-testid="episode-video-progress" className={cardSection}>
           <p className="text-sm text-slate-300">작업 상태: {{ created: "생성됨", running: "진행 중", succeeded: "완료됨", failed: "실패", interrupted: "중단됨" }[job.status] ?? job.status}</p>
           <ol className="grid grid-cols-2 gap-2 text-sm text-slate-300 sm:grid-cols-3">
-            {SCENES.map((scene) => <li key={scene} data-testid={`episode-video-progress-${scene}`} className="rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2">{scene}: {job.completedSceneNumbers.includes(scene) ? "완료" : job.currentSceneNumber === scene ? "진행 중" : job.failedSceneNumbers.includes(scene) ? "실패" : "대기 중"}</li>)}
+            {job.sceneNumbers.map((scene) => <li key={scene} data-testid={`episode-video-progress-${scene}`} className="rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2">{scene}: {job.completedSceneNumbers.includes(scene) ? "완료" : job.currentSceneNumber === scene ? "진행 중" : job.failedSceneNumbers.includes(scene) ? "실패" : "대기 중"}</li>)}
           </ol>
           {(job.status === "created" || job.status === "running") && <button type="button" className={dangerOutlineButton} disabled={busy} onClick={() => void action(() => stopLongEpisodeVideoGeneration(projectId, episodeNumber, job.jobId))}>중단</button>}
           {job.status === "interrupted" && <button type="button" className={outlineButton} disabled={busy} onClick={() => void action(() => restartLongEpisodeVideoGeneration(projectId, episodeNumber, job.jobId))}>다시 시작</button>}

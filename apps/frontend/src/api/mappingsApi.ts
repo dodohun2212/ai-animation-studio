@@ -1,5 +1,6 @@
 import {
   API_ROUTES,
+  isSceneNumber as isValidSceneNumber,
   type ApproveProjectAssetMappingReviewRequest,
   type ApproveProjectAssetMappingReviewResponse,
   type AssetMappingAssignmentSource,
@@ -68,7 +69,7 @@ const REVIEW_STATUSES: readonly ProjectAssetMappingReviewStatus[] = ["waiting", 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const isString = (value: unknown): value is string => typeof value === "string";
 const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every(isString);
-const isSceneNumber = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 6;
+const isSceneNumber = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && isValidSceneNumber(value);
 const isSceneNumberArray = (value: unknown): value is number[] => Array.isArray(value) && value.every(isSceneNumber);
 const UTC_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]00:00)$/;
 const isUtcIsoTimestamp = (value: unknown): value is string => isString(value) && UTC_TIMESTAMP_PATTERN.test(value) && Number.isFinite(Date.parse(value));

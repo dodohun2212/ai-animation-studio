@@ -152,10 +152,17 @@ describe("mappingsApi", () => {
   });
 
   it("rejects a mapping list entry with an invalid scene scope shape", async () => {
-    const invalid = { ...makeMapping(), sceneScope: { kind: "scene", sceneNumber: 9 } };
+    const invalid = { ...makeMapping(), sceneScope: { kind: "scene", sceneNumber: 13 } };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { mappings: [invalid] })));
 
     await expect(listProjectAssetMappings("sample_project")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+  });
+
+  it("accepts a scene scope beyond the old fixed six, up to the supported maximum of twelve", async () => {
+    const beyondSix = { ...makeMapping(), sceneScope: { kind: "scene", sceneNumber: 9 } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { mappings: [beyondSix] })));
+
+    await expect(listProjectAssetMappings("sample_project")).resolves.toEqual({ mappings: [beyondSix] });
   });
 
   it("never renders or throws the raw backend message text through toMappingDisplayError for a known code", async () => {
