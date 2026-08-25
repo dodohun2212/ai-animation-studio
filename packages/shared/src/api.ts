@@ -191,6 +191,8 @@ export interface LongEpisodeVideoProgress {
   episode: LongEpisodeDetail;
   /** Same meaning and scope as GenerationProgressResponse.sceneErrors (see that field's doc comment). */
   sceneErrors?: Record<SceneNumber, string>;
+  /** Same meaning and scope as GenerationProgressResponse.retryEstimate (see that field's doc comment). */
+  retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview };
 }
 /** costUsd: actual cost recorded for this scene's video across every attempt, including past regenerations; absent when nothing has been recorded. */
 export interface LongEpisodeVideoReview { sceneNumber: SceneNumber; status: "pending" | "approved"; updatedAt: string; costUsd?: number; }
@@ -757,6 +759,16 @@ export interface GenerationProgressResponse {
    * fails.
    */
   sceneErrors?: Record<SceneNumber, string>;
+  /**
+   * Local guard information for a paid retry/regenerate action on this job — the same read-only, never-reserving
+   * principle as {@link GetVideoPromptPreviewResponse.budget}. `perSceneCostUsd` is the cost of retrying exactly
+   * one scene; regenerating N scenes at once costs `perSceneCostUsd * N`, which the caller computes itself rather
+   * than receiving a pre-multiplied total, since the number of scenes being retried is a UI choice this response
+   * has no way to know in advance. `budget` is the current ledger snapshot (`estimatedRequestCostUsd`/`canSpend`
+   * describe a single-scene retry specifically); comparing `perSceneCostUsd * N` against `budget.remainingUsd`
+   * covers the "regenerate all" case. Absent in the local fake execution mode, where nothing is charged.
+   */
+  retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview };
 }
 
 export interface VideoReview {

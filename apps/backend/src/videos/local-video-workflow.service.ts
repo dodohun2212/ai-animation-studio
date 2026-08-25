@@ -140,7 +140,19 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     return records;
   }
 
-  private progress(project: StoredProject, jobId: string): GenerationProgressResponse {
+  private async retryEstimate(): Promise<GenerationProgressResponse["retryEstimate"]> {
+    if (!this.budget) return undefined;
+    const [spentUsd, remainingUsd] = await Promise.all([this.budget.spentThisMonth(), this.budget.remaining()]);
+    return {
+      perSceneCostUsd: VIDEO_SCENE_ESTIMATED_COST_USD,
+      budget: {
+        monthlyLimitUsd: this.budget.monthlyLimitUsd, spentUsd, remainingUsd,
+        estimatedRequestCostUsd: VIDEO_SCENE_ESTIMATED_COST_USD, canSpend: VIDEO_SCENE_ESTIMATED_COST_USD <= remainingUsd,
+      },
+    };
+  }
+
+  private async progress(project: StoredProject, jobId: string): Promise<GenerationProgressResponse> {
     const records = this.records(project, jobId);
     const completedSceneNumbers = records.filter((record) => record.status === "succeeded").map((record) => record.scene_number);
     const failedRecords = records.filter((record) => record.status === "failed");
@@ -151,10 +163,13 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       : failedSceneNumbers.length > 0 ? "failed"
       : completedSceneNumbers.length === records.length ? "succeeded"
         : current ? "running" : "created";
+    // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.
+    const retryEstimate = records[0]?.execution_mode === "runway" ? await this.retryEstimate() : undefined;
     return {
       jobId, status, ...(current ? { currentSceneNumber: current } : {}), completedSceneNumbers, failedSceneNumbers,
       sceneNumbers: records.map((record) => record.scene_number),
       ...(Object.keys(sceneErrors).length > 0 ? { sceneErrors } : {}),
+      ...(retryEstimate ? { retryEstimate } : {}),
     };
   }
 

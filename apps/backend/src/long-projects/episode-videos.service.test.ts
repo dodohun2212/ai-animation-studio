@@ -27,7 +27,7 @@ describe("EpisodeVideosService", () => {
     expect(preview).toMatchObject({ model: "gen4_turbo", ratio: "720:1280", durationSecondsPerScene: 5, executionMode: "sequential", estimatedCostUsd: 1.5 });
     await expect(videos.start("long", 1, { approved: true, confirmationId: "old", userRequestId: "request_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) }); await videos.run("long", 1, started.jobId);
-    expect(started.episode.status).toBe("videos_generating"); expect((await videos.progress("long", 1, started.jobId)).completedSceneNumbers).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(started.episode.status).toBe("videos_generating"); const localFakeProgress = await videos.progress("long", 1, started.jobId); expect(localFakeProgress.completedSceneNumbers).toEqual([1, 2, 3, 4, 5, 6]); expect(localFakeProgress.retryEstimate).toBeUndefined();
     await expect(fs.access(path.join(projectsRoot, "long", "long_story", "Episode01", "videos", "scene6.mp4"))).resolves.toBeUndefined();
     const repeated = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) }); expect(repeated.jobId).toBe(started.jobId);
   });

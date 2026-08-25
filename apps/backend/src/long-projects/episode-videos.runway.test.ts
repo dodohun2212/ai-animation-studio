@@ -131,6 +131,29 @@ describe("real Runway episode video generation", () => {
     expect(preview.budget).toBeUndefined();
   });
 
+  it("reports a retry cost estimate reflecting real recorded spend during an in-progress Runway job", async () => {
+    const deps = await setupWithConnectedRunway();
+    await deps.budget.record("other-project", 1, "video", true, 4, new Date("2026-08-23T00:00:00.000Z"));
+    const videos = newVideos(deps);
+    const fetchMock = runwayFetchMock({ failTaskId: "task-1" });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    const progress = await videos.progress("long", 1, started.jobId);
+    expect(progress.status).toBe("failed");
+    // The recorded spend includes both the 4 injected above and scene 1's own real failed-attempt record (0.25) —
+    // a failure still records estimated cost as actual, per RunwayBudget's own contract.
+    expect(progress.retryEstimate).toEqual({
+      perSceneCostUsd: 0.25,
+      budget: { monthlyLimitUsd: 10, spentUsd: 4.25, remainingUsd: 5.75, estimatedRequestCostUsd: 0.25, canSpend: true },
+    });
+  });
+
   it("reports each scene's real recorded cost in the review response, accumulating across a regeneration, scoped per Episode", async () => {
     const deps = await setupWithConnectedRunway();
     const videos = newVideos(deps);

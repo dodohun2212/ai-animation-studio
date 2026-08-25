@@ -39,7 +39,8 @@ describe("local fake video workflow makes zero real Provider calls", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { accepted, workflow } = await setup();
-    await workflow.run("video_workflow", accepted.jobId);
+    const started = await workflow.run("video_workflow", accepted.jobId);
+    expect(started.retryEstimate).toBeUndefined(); // no budget wired in, nothing is ever charged
     await workflow.getProgress("video_workflow", accepted.jobId);
     await workflow.regenerate("video_workflow", accepted.jobId, [3]);
     await workflow.getReview("video_workflow", accepted.jobId);

@@ -129,6 +129,27 @@ describe("real Runway video workflow", () => {
     expect(project.workflow_state).toBe(WorkflowState.GeneratingVideos);
   });
 
+  it("reports a retry cost estimate reflecting real recorded spend for a Runway job", async () => {
+    const deps = await setupWithConnectedRunway();
+    await deps.budget.record("other-project", 1, "video", true, 4, new Date("2026-08-23T00:00:00.000Z"));
+    const workflow = newWorkflow(deps);
+    const fetchMock = runwayFetchMock({ failTaskId: "task-1" });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+
+    await workflow.run("video_workflow", deps.accepted.jobId);
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    const progress = await workflow.getProgress("video_workflow", deps.accepted.jobId);
+    expect(progress.status).toBe("failed");
+    // The recorded spend includes both the 4 injected above and scene 1's own real failed-attempt record (0.25) —
+    // a failure still records estimated cost as actual, per RunwayBudget's own contract.
+    expect(progress.retryEstimate).toEqual({
+      perSceneCostUsd: 0.25,
+      budget: { monthlyLimitUsd: 10, spentUsd: 4.25, remainingUsd: 5.75, estimatedRequestCostUsd: 0.25, canSpend: true },
+    });
+  });
+
   it("fails the scene with a category code instead of an uncaught exception when Runway rejects the submission itself", async () => {
     const deps = await setupWithConnectedRunway();
     const workflow = newWorkflow(deps);
