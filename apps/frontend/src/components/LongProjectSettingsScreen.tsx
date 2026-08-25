@@ -135,6 +135,14 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
               value={state.settings.episodeDurationSeconds}
               onChange={(event) => setField("episodeDurationSeconds", Number(event.target.value))}
             />
+            {/* This value is stored and put into the outline prompt text, but nothing downstream reads it:
+                Episode scripts are always six scenes (episode-scripts.service.ts) and the video step submits a
+                hardcoded durationSecondsPerScene: 5 (episode-videos.service.ts) — so the finished Episode is
+                always 30 seconds whatever is typed here. Saying so beats letting the number look like a
+                setting that shapes the result. */}
+            <span data-testid="episode-duration-effect-note" className="mt-1 block text-xs text-slate-400">
+              지금은 완성 영상 길이에 반영되지 않습니다 — 에피소드는 항상 6장면 × 5초 = 30초로 만들어집니다.
+            </span>
           </label>
           <label className="block text-sm text-slate-300">
             플랫폼

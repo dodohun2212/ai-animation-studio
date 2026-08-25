@@ -65,4 +65,17 @@ describe("LongProjectSettingsScreen", () => {
     expect(alert.textContent).not.toContain("raw backend detail");
     expect(alert).toHaveAttribute("data-error-code", "LONG_PROJECT_NOT_FOUND");
   });
+
+  it("says the Episode length field does not change the finished video", async () => {
+    // Nothing downstream reads episodeDurationSeconds: scripts are always six scenes and the video step
+    // submits a hardcoded 5 seconds per scene, so an Episode is always 30 seconds long. The field stays
+    // editable (it is part of the stored settings contract) but must not read as if it shapes the output.
+    const settings = makeLongProjectSettings({ episodeDurationSeconds: 90 });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { settings })));
+    render(<LongProjectSettingsScreen projectId="long_test" onBack={() => {}} />);
+
+    const note = await screen.findByTestId("episode-duration-effect-note");
+    expect(note.textContent).toContain("반영되지 않습니다");
+    expect(note.textContent).toContain("30초");
+  });
 });
