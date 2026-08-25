@@ -56,6 +56,14 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   const [selected, setSelected] = useState<GetAssetResponse | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<{ code: string; message: string } | null>(null);
+  /**
+   * Failures of the four confirmed actions, shown inside the confirmation panel itself.
+   *
+   * They used to close the panel first and then write the error into the detail-level slot near the top of a
+   * very long pane — hundreds of pixels above the button that was just pressed, and usually off-screen. The
+   * dialog vanished and the item stayed put, so a rejected delete looked exactly like a dead button.
+   */
+  const [confirmError, setConfirmError] = useState<{ code: string; message: string } | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [importName, setImportName] = useState("");
   const [importType, setImportType] = useState<AssetType>("general_reference");
@@ -146,7 +154,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
       if (requestId !== detailRequest.current) return; // superseded by a newer selection
       setSelected(response);
       setEditName(response.asset.displayName); setEditDescription(response.asset.description); setEditTags(response.asset.tags.join(", "));
-      setFolderRemoveChildIndexes(false); setFolderDeleteManualFiles(false); setConfirmAction(null);
+      setFolderRemoveChildIndexes(false); setFolderDeleteManualFiles(false); setConfirmAction(null); setConfirmError(null);
     } catch (caught) {
       if (requestId !== detailRequest.current) return; // superseded by a newer selection
       setSelected(null); setDetailError(toAssetDisplayError(caught));
@@ -219,15 +227,16 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   async function remove() {
     if (!selected || deleteBusy.current || selected.usageProjectIds.length > 0) return;
     const targetId = selected.asset.assetId;
-    setConfirmAction(null);
+    setConfirmError(null);
     deleteBusy.current = true; setDeletePending(true);
     const listGenerationAtStart = listRequest.current;
     try {
       await deleteAsset(targetId);
+      setConfirmAction(null);
       setSelected((current) => (current && current.asset.assetId === targetId ? null : current));
       setError(null);
       if (listRequest.current === listGenerationAtStart) await load();
-    } catch (caught) { setError(toAssetDisplayError(caught)); }
+    } catch (caught) { setConfirmError(toAssetDisplayError(caught)); }
     finally { deleteBusy.current = false; setDeletePending(false); }
   }
 
@@ -256,31 +265,33 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   async function confirmRelink() {
     if (!selected || relinkBusy.current || !relinkFile) return;
     const targetId = selected.asset.assetId;
-    setConfirmAction(null);
+    setConfirmError(null);
     relinkBusy.current = true; setRelinkPending(true);
     const listGenerationAtStart = listRequest.current;
     try {
       const response = await relinkAsset(targetId, relinkFile);
+      setConfirmAction(null);
       setSelected((current) => (current && current.asset.assetId === targetId ? { ...current, asset: response.asset } : current));
       setRelinkFile(null); setRelinkFileGeneration((current) => current + 1);
       setDetailError(null);
       if (listRequest.current === listGenerationAtStart) await load();
-    } catch (caught) { setDetailError(toAssetDisplayError(caught)); }
+    } catch (caught) { setConfirmError(toAssetDisplayError(caught)); }
     finally { relinkBusy.current = false; setRelinkPending(false); }
   }
 
   async function removeOwnedFile() {
     if (!selected || ownedFileDeleteBusy.current || !selected.canDeleteOwnedFile) return;
     const targetId = selected.asset.assetId;
-    setConfirmAction(null);
+    setConfirmError(null);
     ownedFileDeleteBusy.current = true; setOwnedFileDeletePending(true);
     const listGenerationAtStart = listRequest.current;
     try {
       await deleteAssetOwnedFile(targetId);
+      setConfirmAction(null);
       setSelected((current) => (current && current.asset.assetId === targetId ? null : current));
       setError(null);
       if (listRequest.current === listGenerationAtStart) await load();
-    } catch (caught) { setDetailError(toAssetDisplayError(caught)); }
+    } catch (caught) { setConfirmError(toAssetDisplayError(caught)); }
     finally { ownedFileDeleteBusy.current = false; setOwnedFileDeletePending(false); }
   }
 
@@ -288,15 +299,31 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
     if (!selected || !selected.asset.isFolder || folderDeleteBusy.current) return;
     const targetId = selected.asset.assetId;
     const removeChildIndexes = folderRemoveChildIndexes || folderDeleteManualFiles;
-    setConfirmAction(null);
+    const deleteManualFiles = folderDeleteManualFiles;
+    setConfirmError(null);
     folderDeleteBusy.current = true; setFolderDeletePending(true);
     const listGenerationAtStart = listRequest.current;
     try {
-      await deleteAssetFolder(targetId, { removeChildIndexes, deleteManualFiles: folderDeleteManualFiles });
+      await deleteAssetFolder(targetId, { removeChildIndexes, deleteManualFiles });
+      setConfirmAction(null);
       setSelected((current) => (current && current.asset.assetId === targetId ? null : current));
       setError(null);
       if (listRequest.current === listGenerationAtStart) await load();
-    } catch (caught) { setDetailError(toAssetDisplayError(caught)); }
+    } catch (caught) {
+      const displayed = toAssetDisplayError(caught);
+      // The generic "이 에셋은 현재 수정할 수 없습니다" is true but useless here: the backend refuses the whole
+      // delete when any child was not registered by hand (assets.repository.ts checks source_project_id
+      // against the manual library). Naming the cause is what makes the checkbox actionable.
+      setConfirmError(
+        displayed.code === "ASSET_MUTATION_UNSUPPORTED" && deleteManualFiles
+          ? {
+              code: displayed.code,
+              message:
+                "이 폴더에는 직접 등록하지 않은 항목(프로젝트가 만든 이미지 등)이 있어서 원본 파일까지 지울 수는 없습니다. '하위 항목의 원본 파일도 함께 삭제'를 끄고 다시 시도해 주세요.",
+            }
+          : displayed,
+      );
+    }
     finally { folderDeleteBusy.current = false; setFolderDeletePending(false); }
   }
 
@@ -424,6 +451,9 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
     } catch (caught) { setFolderMutationError(toAssetDisplayError(caught)); }
     finally { folderMutationBusy.current = false; setFolderMutationPending(false); }
   }
+
+  /** Any of the four confirmed actions being in flight — the panel stays put and its buttons go quiet. */
+  const confirmPending = deletePending || relinkPending || ownedFileDeletePending || folderDeletePending;
 
   return (
     <section className="mt-8 max-w-6xl space-y-5">
@@ -996,14 +1026,30 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                     ? `'${selected.asset.displayName}' 폴더와 하위 항목 색인을 삭제할까요? 원본 파일은 삭제하지 않습니다.`
                     : `'${selected.asset.displayName}' 폴더만 삭제할까요? 하위 항목은 목록에 그대로 남습니다.`)}
               </p>
+              {confirmError && (
+                <p
+                  role="alert"
+                  data-testid="asset-confirm-error"
+                  data-error-code={confirmError.code}
+                  className="text-sm text-rose-400"
+                >
+                  {confirmError.message}
+                </p>
+              )}
               <div className="flex gap-3">
-                <button type="button" className={outlineButton} onClick={() => setConfirmAction(null)}>
-                  취소
+                <button
+                  type="button"
+                  className={outlineButton}
+                  onClick={() => { setConfirmAction(null); setConfirmError(null); }}
+                  disabled={confirmPending}
+                >
+                  {confirmError ? "닫기" : "취소"}
                 </button>
                 <button
                   type="button"
                   data-testid="asset-confirm-proceed"
                   className={dangerOutlineButton}
+                  disabled={confirmPending}
                   onClick={() => {
                     if (confirmAction === "delete-asset") void remove();
                     else if (confirmAction === "relink") void confirmRelink();
@@ -1011,7 +1057,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                     else void removeFolder();
                   }}
                 >
-                  네, 진행합니다
+                  {confirmPending ? "처리 중..." : confirmError ? "다시 시도" : "네, 진행합니다"}
                 </button>
               </div>
             </div>

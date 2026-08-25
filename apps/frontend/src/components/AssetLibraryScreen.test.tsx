@@ -1031,6 +1031,70 @@ describe("AssetLibraryScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "프로젝트 목록으로" }));
     expect(onBack).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps the confirmation open and explains the refusal where the button was pressed", async () => {
+    // A rejected folder delete used to close the panel and write the reason into the detail-level slot near
+    // the top of a very long pane — far above the fold. The dialog vanished, the folder stayed, and it read as
+    // a dead button. The reason has to land next to the button that was just pressed.
+    const child = makeAsset({ assetId: "GEN-1", displayName: "생성된 이미지", parentFolderId: "FOLDER-GEN", sortOrder: 0 });
+    const folder = makeAsset({
+      assetId: "FOLDER-GEN", displayName: "생성 이미지 모음", isFolder: true, imageAvailable: false,
+      contentSha256: "", versions: [], referenceImages: [], childAssetIds: ["GEN-1"], thumbnailAssetId: "GEN-1",
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      if (method === "DELETE") return jsonResponse(409, { code: "ASSET_MUTATION_UNSUPPORTED", message: "raw backend detail" });
+      if (url === "/assets") return jsonResponse(200, { assets: [folder, child] });
+      if (url === "/assets/FOLDER-GEN") return jsonResponse(200, { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false });
+      return jsonResponse(200, { asset: child, usageProjectIds: [], ownership: "project_generated", canDeleteOwnedFile: false });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    const list = await screen.findByRole("list", { name: "에셋 목록" });
+    fireEvent.click(within(list).getByText("생성 이미지 모음"));
+    const detail = await screen.findByRole("region", { name: "에셋 상세" });
+    const folderDeleteSection = within(detail).getByRole("region", { name: "폴더 삭제" });
+    fireEvent.click(within(folderDeleteSection).getByLabelText("하위 항목의 원본 파일도 함께 삭제(수동 등록 항목만 가능)"));
+    fireEvent.click(within(folderDeleteSection).getByRole("button", { name: "폴더 삭제" }));
+    confirmPanelProceed();
+
+    const shown = await screen.findByTestId("asset-confirm-error");
+    // Names the actual rule instead of the generic "이 에셋은 현재 수정할 수 없습니다", and says what to undo.
+    expect(shown.textContent).toContain("직접 등록하지 않은 항목");
+    expect(shown.textContent).toContain("원본 파일도 함께 삭제");
+    expect(shown.textContent).not.toContain("raw backend detail");
+    // The panel stays put so the failure is visible at all, and the folder is still there.
+    expect(screen.getByTestId("asset-confirm-panel")).toBeTruthy();
+    expect(screen.getByRole("region", { name: "에셋 상세" })).toBeTruthy();
+    expect(within(screen.getByTestId("asset-confirm-panel")).getByRole("button", { name: "다시 시도" })).toBeTruthy();
+  });
+
+  it("shows a refused plain folder delete without inventing the manual-files reason", async () => {
+    const folder = makeAsset({
+      assetId: "FOLDER-USED", displayName: "사용 중 폴더", isFolder: true, imageAvailable: false,
+      contentSha256: "", versions: [], referenceImages: [], childAssetIds: [], thumbnailAssetId: "",
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if ((init?.method ?? "GET") === "DELETE") return jsonResponse(409, { code: "ASSET_MUTATION_UNSUPPORTED", message: "raw" });
+      if (String(input) === "/assets") return jsonResponse(200, { assets: [folder] });
+      return jsonResponse(200, { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    const list = await screen.findByRole("list", { name: "에셋 목록" });
+    fireEvent.click(within(list).getByText("사용 중 폴더"));
+    const detail = await screen.findByRole("region", { name: "에셋 상세" });
+    fireEvent.click(within(within(detail).getByRole("region", { name: "폴더 삭제" })).getByRole("button", { name: "폴더 삭제" }));
+    confirmPanelProceed();
+
+    // Without the owned-files option the manual-library rule is not what refused it, so the specific sentence
+    // would be a guess. The safe mapped message is shown instead.
+    const shown = await screen.findByTestId("asset-confirm-error");
+    expect(shown.textContent).toBe("이 에셋은 현재 수정할 수 없습니다.");
+  });
 });
 
 function _unusedTypeCheck(asset: Asset, response: GetAssetResponse): void {
