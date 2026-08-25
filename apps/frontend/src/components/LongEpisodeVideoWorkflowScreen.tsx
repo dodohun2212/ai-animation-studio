@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { LongEpisodeVideoProgress, LongEpisodeVideoReview, LongEpisodeVideoPreview, SceneNumber } from "@ai-animation-studio/shared";
+import type { BudgetPreview, LongEpisodeVideoProgress, LongEpisodeVideoReview, LongEpisodeVideoPreview, SceneNumber } from "@ai-animation-studio/shared";
 
 import { approveLongEpisodeVideoReview, episodeSceneErrorMessage, getLongEpisodeVideoPreview, getLongEpisodeVideoProgress, getLongEpisodeVideoReview, regenerateLongEpisodeVideo, restartLongEpisodeVideoGeneration, startLongEpisodeVideoGeneration, stopLongEpisodeVideoGeneration, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { Spinner } from "./Spinner.js";
+import { StatusChip } from "./ui/StatusChip.js";
 
 interface Props { projectId: string; episodeNumber: number; onBack: () => void; onOpenMerge: (projectId: string, episodeNumber: number) => void; }
 type DisplayError = { code: string; message: string };
@@ -19,7 +20,7 @@ const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/7
 const dot = <span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />;
 
 export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBack, onOpenMerge }: Props) {
-  const [preview, setPreview] = useState<{ confirmationId: string; scenes: LongEpisodeVideoPreview[]; estimatedCostUsd: number } | null>(null);
+  const [preview, setPreview] = useState<{ confirmationId: string; scenes: LongEpisodeVideoPreview[]; estimatedCostUsd: number; maximumProviderCalls?: number; budget?: BudgetPreview } | null>(null);
   const [prompts, setPrompts] = useState<Partial<Record<SceneNumber, string>>>({});
   const [job, setJob] = useState<LongEpisodeVideoProgress | null>(null);
   const [reviews, setReviews] = useState<LongEpisodeVideoReview[] | null>(null);
@@ -45,6 +46,33 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
       {preview && !job && (
         <div className={cardSection}>
           <p data-testid="episode-video-summary" className="text-sm text-slate-300">순차 진행 · ${preview.estimatedCostUsd.toFixed(2)}</p>
+          {/* Spec: the maximum call count and the remaining local budget must be visible before approval.
+              `budget` is omitted when no Runway credential is connected — then there is nothing to show. */}
+          <div
+            className={`space-y-1.5 rounded-xl border p-3 ${
+              preview.budget && (preview.estimatedCostUsd > preview.budget.remainingUsd || !preview.budget.canSpend)
+                ? "border-rose-400/40 bg-rose-950/20"
+                : "border-white/10 bg-slate-950/40"
+            }`}
+          >
+            <p className="text-sm text-slate-300 tabular-nums">총 예상 비용: ${preview.estimatedCostUsd.toFixed(2)}</p>
+            {preview.maximumProviderCalls !== undefined && (
+              <p className="text-sm text-slate-300 tabular-nums" data-testid="episode-video-max-calls">
+                최대 호출 수: {preview.maximumProviderCalls}회
+              </p>
+            )}
+            {preview.budget && (
+              <p className="text-sm text-slate-300 tabular-nums" data-testid="episode-video-budget">
+                이번 달 남은 예산: ${preview.budget.remainingUsd.toFixed(2)} (월 한도 ${preview.budget.monthlyLimitUsd.toFixed(2)} 중 $
+                {preview.budget.spentUsd.toFixed(2)} 사용)
+              </p>
+            )}
+            {preview.budget && (preview.estimatedCostUsd > preview.budget.remainingUsd || !preview.budget.canSpend) && (
+              <p role="alert" data-testid="episode-video-budget-exceeded" className="text-sm font-semibold text-rose-300">
+                이번 요청의 예상 비용이 남은 월 예산을 초과합니다. 그대로 전송하면 예산 한도에 막혀 실패할 수 있습니다.
+              </p>
+            )}
+          </div>
           <ol className="space-y-3">
             {preview.scenes.map((scene) => (
               <li key={scene.sceneNumber} className="space-y-1">
@@ -106,11 +134,37 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
       {job?.status === "succeeded" && reviews && (
         <section data-testid="episode-video-review" className={cardSection}>
           <h3 className="flex items-center gap-2.5 text-base font-semibold">{dot}영상 검토</h3>
+          {/* Design system §4.3: overall confirmation progress before the per-scene cards. */}
+          <p className="text-sm text-slate-300 tabular-nums" data-testid="episode-video-review-summary">
+            {reviews.length}장면 중 {reviews.filter((review) => review.status === "approved").length}장면 확정
+            {reviews.some((review) => review.costUsd !== undefined) && (
+              <>
+                {" · 이 작업에 쓴 비용 합계: $"}
+                {reviews.reduce((sum, review) => sum + (review.costUsd ?? 0), 0).toFixed(2)}
+              </>
+            )}
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
           {reviews.map((review) => (
-            <div key={review.sceneNumber} data-testid={`episode-video-review-${review.sceneNumber}`} data-status={review.status} className="space-y-2 border-t border-white/10 pt-3">
-              <p className="text-sm text-slate-300">{review.sceneNumber}번 장면: {review.status === "approved" ? "승인됨" : "검토 대기"}</p>
-              <div className="flex gap-3">
-                <button type="button" className={smallOutlineButton} disabled={review.status === "approved"} onClick={() => void approve(review.sceneNumber)}>{review.status === "approved" ? "승인됨" : "승인"}</button>
+            <div
+              key={review.sceneNumber}
+              data-testid={`episode-video-review-${review.sceneNumber}`}
+              data-status={review.status}
+              className={`space-y-2 rounded-xl border bg-slate-950/40 p-3 ${review.status === "approved" ? "border-emerald-400/30" : "border-white/10"}`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-semibold text-slate-100">{review.sceneNumber}번 장면</span>
+                <StatusChip tone={review.status === "approved" ? "success" : "neutral"}>
+                  {review.status === "approved" ? "확정됨" : "검토 대기"}
+                </StatusChip>
+              </div>
+              {review.costUsd !== undefined && (
+                <p className="text-xs text-slate-400 tabular-nums" data-testid={`episode-video-review-cost-${review.sceneNumber}`}>
+                  이 장면에 쓴 비용: ${review.costUsd.toFixed(2)}
+                </p>
+              )}
+              <div className="flex justify-end gap-3">
+                <button type="button" className={smallOutlineButton} disabled={review.status === "approved"} onClick={() => void approve(review.sceneNumber)}>{review.status === "approved" ? "확정 완료" : "이 영상으로 확정"}</button>
                 <button type="button" className={smallOutlineButton} onClick={() => setRegenerate(review.sceneNumber)}>다시 만들기</button>
               </div>
               {regenerate === review.sceneNumber && (
@@ -124,6 +178,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
               )}
             </div>
           ))}
+          </div>
         </section>
       )}
       {job?.episode.status === "videos_approved" && (

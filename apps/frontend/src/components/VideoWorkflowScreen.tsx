@@ -497,6 +497,12 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm text-slate-300 tabular-nums" data-testid="review-progress-summary">
                       {totalScenes}장면 중 {reviewState.reviews.filter((review) => review.status === "approved").length}장면 확정
+                      {reviewState.reviews.some((review) => review.costUsd !== undefined) && (
+                        <>
+                          {" · 이 작업에 쓴 비용 합계: $"}
+                          {reviewState.reviews.reduce((sum, review) => sum + (review.costUsd ?? 0), 0).toFixed(2)}
+                        </>
+                      )}
                     </p>
                     <button
                       type="button"
@@ -587,6 +593,13 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                               <figcaption className="text-xs text-slate-400">생성된 영상</figcaption>
                             </figure>
                           </div>
+                          {/* Cost actually charged for this scene, regenerations included (spec: "비용 기록").
+                              Omitted when nothing was charged — e.g. the local fake adapter. */}
+                          {review.costUsd !== undefined && (
+                            <p className="text-xs text-slate-400 tabular-nums" data-testid={`video-review-cost-${review.sceneNumber}`}>
+                              이 장면에 쓴 비용: ${review.costUsd.toFixed(2)}
+                            </p>
+                          )}
                           <div className="space-y-1.5">
                             <div className="flex items-center justify-end gap-3">
                               <button

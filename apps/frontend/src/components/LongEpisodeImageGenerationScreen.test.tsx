@@ -48,7 +48,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
 
     expect(await screen.findByTestId("episode-image-continuity-available")).toHaveTextContent("에피소드 1의 6번 장면");
     expect(await screen.findByTestId("episode-image-review-1")).toHaveAttribute("data-status", "pending");
-    fireEvent.click(screen.getAllByRole("button", { name: "승인" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "이 이미지로 확정" })[0]!);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
     expect(fetchMock.mock.calls[3]?.[0]).toBe("/long-projects/long/episodes/1/images/review/1/approve");
     expect(JSON.parse(String((fetchMock.mock.calls[3]?.[1] as RequestInit).body))).toEqual({ approved: true });

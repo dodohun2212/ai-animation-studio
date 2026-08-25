@@ -183,6 +183,34 @@ describe("VideoWorkflowScreen", () => {
     expect(screen.getByTestId("video-review-clip-6")).toHaveAttribute("src", "/projects/sample_project/videos/6/content?v=2026-08-23T00%3A00%3A00.000Z");
   });
 
+  it("shows the recorded cost per scene and their total, and omits the cost line for a scene that was never charged", async () => {
+    const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+    const withCosts = reviewResponse(sixReviews());
+    // Scene 2 was regenerated once, so its recorded cost is the accumulated total; scene 3 was never charged.
+    withCosts.reviews = withCosts.reviews.map((review) =>
+      review.sceneNumber === 3 ? review : { ...review, costUsd: review.sceneNumber === 2 ? 0.5 : 0.25 },
+    );
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, succeeded)).mockResolvedValueOnce(jsonResponse(200, withCosts));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("video-review-1");
+    expect(screen.getByTestId("video-review-cost-2").textContent).toContain("$0.50");
+    expect(screen.queryByTestId("video-review-cost-3")).toBeNull();
+    // 0.25 * 4 + 0.50 = 1.50
+    expect(screen.getByTestId("review-progress-summary").textContent).toContain("$1.50");
+  });
+
+  it("rejects a malformed per-scene cost rather than displaying a wrong number", async () => {
+    const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+    const broken = reviewResponse(sixReviews()) as unknown as { reviews: Array<Record<string, unknown>> };
+    broken.reviews = broken.reviews.map((review) => ({ ...review, costUsd: "0.25" }));
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, succeeded)).mockResolvedValueOnce(jsonResponse(200, broken));
+    renderScreen(fetchMock);
+
+    const alert = await screen.findByTestId("review-load-error");
+    expect(alert).toHaveAttribute("data-error-code", "CLIENT_MALFORMED_RESPONSE");
+  });
+
   it("shows each scene's source image and the final prompt it was generated from, beside the clip", async () => {
     const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
     const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, succeeded)).mockResolvedValueOnce(jsonResponse(200, reviewResponse(sixReviews())));

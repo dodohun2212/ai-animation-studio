@@ -12,6 +12,7 @@ import {
 } from "../api/longProjectsApi.js";
 import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { Spinner } from "./Spinner.js";
+import { StatusChip } from "./ui/StatusChip.js";
 
 interface Props { projectId: string; episodeNumber: number; onBack: () => void; onOpenVideoWorkflow?: (projectId: string, episodeNumber: number) => void; }
 type DisplayError = { code: string; message: string };
@@ -135,6 +136,11 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
       {reviewState.status === "ready" && (
         <section data-testid="episode-image-review-section" className={cardSection}>
           <h3 className="flex items-center gap-2.5 text-base font-semibold"><span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />이미지 검토</h3>
+          {/* Design system §4.3: overall confirmation progress before the per-scene cards. */}
+          <p className="text-sm text-slate-300 tabular-nums" data-testid="episode-image-review-summary">
+            {SCENES.length}장면 중 {SCENES.filter((sceneNumber) => reviewFor(sceneNumber)?.status === "approved").length}장면 확정
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {SCENES.map((sceneNumber) => {
             const review = reviewFor(sceneNumber);
             if (!review) return null;
@@ -142,10 +148,18 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
             const regenerating = regeneratePending.has(sceneNumber);
             const confirming = regenerateConfirm === sceneNumber;
             return (
-              <div key={sceneNumber} data-testid={`episode-image-review-${sceneNumber}`} data-status={review.status} className="space-y-2 border-t border-white/10 pt-3">
-                <p className="text-sm text-slate-300">장면 {sceneNumber}: {sceneSlotLabel(review.status)}</p>
-                <div className="flex gap-3">
-                  <button type="button" className={smallOutlineButton} disabled={review.status === "approved" || approving} onClick={() => void approveScene(sceneNumber)}>{approving ? "승인하는 중..." : review.status === "approved" ? "승인됨" : "승인"}</button>
+              <div
+                key={sceneNumber}
+                data-testid={`episode-image-review-${sceneNumber}`}
+                data-status={review.status}
+                className={`space-y-2 rounded-xl border bg-slate-950/40 p-3 ${review.status === "approved" ? "border-emerald-400/30" : "border-white/10"}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-slate-100">{sceneNumber}번 장면</span>
+                  <StatusChip tone={review.status === "approved" ? "success" : "neutral"}>{sceneSlotLabel(review.status)}</StatusChip>
+                </div>
+                <div className="flex flex-wrap justify-end gap-3">
+                  <button type="button" className={smallOutlineButton} disabled={review.status === "approved" || approving} onClick={() => void approveScene(sceneNumber)}>{approving ? "확정하는 중..." : review.status === "approved" ? "확정 완료" : "이 이미지로 확정"}</button>
                   <button type="button" className={smallOutlineButton} disabled={regenerating || confirming} onClick={() => setRegenerateConfirm(sceneNumber)}>{regenerating ? "다시 만드는 중..." : "다시 만들기"}</button>
                 </div>
                 {confirming && (
@@ -160,6 +174,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
               </div>
             );
           })}
+          </div>
         </section>
       )}
       {episode?.status === "waiting_for_video_confirmation" && (

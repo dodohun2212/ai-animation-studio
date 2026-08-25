@@ -2,6 +2,7 @@ import {
   API_ROUTES,
   type ArchiveProjectRequest,
   type ArchiveProjectResponse,
+  type BudgetPreview,
   type AddLongEpisodeRequest,
   type AddLongEpisodeResponse,
   type DuplicateLongEpisodeResponse,
@@ -338,10 +339,23 @@ const isRegenerateEpisodeImageReviewResponse = (value: unknown): value is Regene
 function isEpisodeVideoPreview(value: unknown): boolean {
   return isRecord(value) && isSceneNumber(value.sceneNumber) && typeof value.prompt === "string" && typeof value.estimatedCostUsd === "number";
 }
+const isFiniteNonNegative = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;
+/**
+ * The spend guard shown before a paid submission. Optional on the contract (omitted entirely when no Runway
+ * credential is connected), but a malformed one is rejected rather than displayed — showing a wrong budget
+ * number is worse than showing none.
+ */
+function isBudgetPreview(value: unknown): value is BudgetPreview {
+  if (value === undefined) return true;
+  return isRecord(value) && isFiniteNonNegative(value.monthlyLimitUsd) && isFiniteNonNegative(value.spentUsd)
+    && isFiniteNonNegative(value.remainingUsd) && isFiniteNonNegative(value.estimatedRequestCostUsd) && typeof value.canSpend === "boolean";
+}
 const isGetEpisodeVideoPreviewResponse = (value: unknown): value is GetLongEpisodeVideoPreviewResponse => isRecord(value)
   && isNonEmptyString(value.confirmationId) && value.model === "gen4_turbo" && (value.ratio === "720:1280" || value.ratio === "1280:720")
   && value.durationSecondsPerScene === 5 && value.executionMode === "sequential" && typeof value.estimatedCostUsd === "number"
-  && Array.isArray(value.scenes) && value.scenes.length === 6 && value.scenes.every(isEpisodeVideoPreview);
+  && Array.isArray(value.scenes) && value.scenes.length === 6 && value.scenes.every(isEpisodeVideoPreview)
+  && (value.maximumProviderCalls === undefined || isFiniteNonNegative(value.maximumProviderCalls))
+  && isBudgetPreview(value.budget);
 /** Keys arrive over JSON as numeric strings (object keys are always strings); each must resolve to a
  * valid scene number and every value must be a non-empty failure code string. */
 function isSceneErrorMap(value: unknown): value is Partial<Record<1 | 2 | 3 | 4 | 5 | 6, string>> {
@@ -356,7 +370,7 @@ function isEpisodeVideoProgress(value: unknown): value is LongEpisodeVideoProgre
     && Array.isArray(value.failedSceneNumbers) && value.failedSceneNumbers.every(isSceneNumber) && isLongEpisodeDetail(value.episode) && isSceneErrorMap(value.sceneErrors);
 }
 const isStartEpisodeVideoResponse = (value: unknown): value is StartLongEpisodeVideoGenerationResponse => isRecord(value) && isNonEmptyString(value.jobId) && Array.isArray(value.acceptedSceneNumbers) && value.acceptedSceneNumbers.length === 6 && value.acceptedSceneNumbers.every(isSceneNumber) && isLongEpisodeDetail(value.episode);
-function isEpisodeVideoReview(value: unknown): value is LongEpisodeVideoReview { return isRecord(value) && isSceneNumber(value.sceneNumber) && (value.status === "pending" || value.status === "approved") && isNonEmptyString(value.updatedAt); }
+function isEpisodeVideoReview(value: unknown): value is LongEpisodeVideoReview { return isRecord(value) && isSceneNumber(value.sceneNumber) && (value.status === "pending" || value.status === "approved") && isNonEmptyString(value.updatedAt) && (value.costUsd === undefined || isFiniteNonNegative(value.costUsd)); }
 const isGetEpisodeVideoReviewResponse = (value: unknown): value is GetLongEpisodeVideoReviewResponse => isRecord(value) && isLongEpisodeDetail(value.episode) && Array.isArray(value.reviews) && value.reviews.every(isEpisodeVideoReview);
 const isApproveEpisodeVideoReviewResponse = (value: unknown): value is ApproveLongEpisodeVideoReviewResponse => isGetEpisodeVideoReviewResponse(value);
 const isRegenerateEpisodeVideoResponse = (value: unknown): value is RegenerateLongEpisodeVideoResponse => {

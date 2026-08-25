@@ -149,7 +149,10 @@ function isVideoReview(value: unknown): value is VideoReview {
     isRecord(value) &&
     isSceneNumber(value.sceneNumber) &&
     (value.status === "pending" || value.status === "approved") &&
-    isNonEmptyString(value.updatedAt)
+    isNonEmptyString(value.updatedAt) &&
+    // Optional: omitted entirely when nothing was actually charged for this scene (e.g. local fake mode).
+    // A malformed value is rejected rather than displayed — a wrong cost is worse than no cost.
+    (value.costUsd === undefined || (typeof value.costUsd === "number" && Number.isFinite(value.costUsd) && value.costUsd >= 0))
   );
 }
 
