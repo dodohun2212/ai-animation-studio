@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { LongEpisodeAssetMappingReview, LongEpisodeAutomaticReferenceSummary, LongEpisodeDetail } from "@ai-animation-studio/shared";
+import type { LongEpisodeAssetMappingReview, LongEpisodeAutomaticReferenceSummary, LongEpisodeDetail, SceneNumber } from "@ai-animation-studio/shared";
 
 import {
   approveLongEpisodeAssetMappingReview,
@@ -149,7 +149,7 @@ export function LongEpisodeMappingReviewScreen({ projectId, episodeNumber, onBac
       {automaticSummary && <section data-testid="episode-automatic-reference-preview" aria-label="장면별 자동 Asset 미리보기" className="space-y-3 rounded-2xl border border-violet-400/30 bg-slate-900/70 p-5 text-sm">
         <SectionHeading>장면별 자동 Asset 미리보기</SectionHeading>
         <p className="text-slate-300">후보 Asset: {automaticSummary.candidateAssetIds.length}개 · 예상 이미지 API 호출 수: {automaticSummary.estimatedImageApiCalls}</p>
-        <ol className="list-decimal space-y-1 pl-5 text-slate-300">{([1, 2, 3, 4, 5, 6] as const).map((sceneNumber) => <li key={sceneNumber} data-testid={`episode-automatic-reference-scene-${sceneNumber}`}>장면 {sceneNumber}: {automaticSummary.selectedAssetIdsByScene[sceneNumber].length ? automaticSummary.selectedAssetIdsByScene[sceneNumber].join(", ") : "자동으로 선택된 Asset 없음"}</li>)}</ol>
+        <ol className="list-decimal space-y-1 pl-5 text-slate-300">{(Object.keys(automaticSummary.selectedAssetIdsByScene).map(Number).sort((a, b) => a - b) as SceneNumber[]).map((sceneNumber) => { const ids = automaticSummary.selectedAssetIdsByScene[sceneNumber] ?? []; return <li key={sceneNumber} data-testid={`episode-automatic-reference-scene-${sceneNumber}`}>장면 {sceneNumber}: {ids.length ? ids.join(", ") : "자동으로 선택된 Asset 없음"}</li>; })}</ol>
         <p className="text-slate-400">이 미리보기는 로컬에서 결정된 선택 결과만 보여줍니다. 이미지를 생성하거나 Provider에 요청을 보내지 않습니다.</p>
       </section>}
       {rerunOpen && (

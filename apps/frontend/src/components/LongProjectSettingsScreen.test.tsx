@@ -66,9 +66,9 @@ describe("LongProjectSettingsScreen", () => {
     expect(alert).toHaveAttribute("data-error-code", "LONG_PROJECT_NOT_FOUND");
   });
 
-  it("offers only 30s/60s for Episode length (the only durations Runway's 5s/10s clips can produce across 6 fixed scenes), and saves the chosen value", async () => {
-    const settings = makeLongProjectSettings({ episodeDurationSeconds: 30 });
-    const project = makeLongProject({ settings: { ...settings, episodeDurationSeconds: 60 } });
+  it("edits scene count and clip duration, derives the displayed total, and sends both (never the derived field) on save", async () => {
+    const settings = makeLongProjectSettings({ sceneCount: 6, clipDurationSeconds: 5, episodeDurationSeconds: 30 });
+    const project = makeLongProject({ settings: { ...settings, sceneCount: 8, clipDurationSeconds: 10, episodeDurationSeconds: 80 } });
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, { settings }))
@@ -76,12 +76,17 @@ describe("LongProjectSettingsScreen", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<LongProjectSettingsScreen projectId="long_test" onBack={() => {}} />);
 
-    const select = (await screen.findByDisplayValue("30초")) as HTMLSelectElement;
-    expect([...select.options].map((option) => option.value)).toEqual(["30", "60"]);
-    fireEvent.change(select, { target: { value: "60" } });
+    const sceneCountInput = (await screen.findByDisplayValue("6")) as HTMLInputElement;
+    fireEvent.change(sceneCountInput, { target: { value: "8" } });
+    const clipDurationSelect = (await screen.findByDisplayValue("5초")) as HTMLSelectElement;
+    expect([...clipDurationSelect.options].map((option) => option.value)).toEqual(["5", "10"]);
+    fireEvent.change(clipDurationSelect, { target: { value: "10" } });
+    expect(screen.getByText(/에피소드당 예상 영상 길이: 80초/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "설정 저장" }));
 
     const [, init] = fetchMock.mock.calls[1] as [string, RequestInit];
-    expect(JSON.parse(String(init.body))).toMatchObject({ settings: { episodeDurationSeconds: 60 } });
+    const body = JSON.parse(String(init.body)) as { settings: Record<string, unknown> };
+    expect(body.settings).toMatchObject({ sceneCount: 8, clipDurationSeconds: 10 });
+    expect(body.settings).not.toHaveProperty("episodeDurationSeconds");
   });
 });

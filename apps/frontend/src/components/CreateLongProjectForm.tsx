@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent } from "react";
-import type { LongProject, LongProjectSettings } from "@ai-animation-studio/shared";
+import { MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, type LongProject, type LongProjectSettings } from "@ai-animation-studio/shared";
 
 import { createLongProject, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { isSafeProjectId } from "../validation/projectId.js";
@@ -14,7 +14,6 @@ interface FieldErrors {
   title?: string;
   logline?: string;
   episodeCount?: string;
-  episodeDurationSeconds?: string;
 }
 
 const EMPTY_SETTINGS: LongProjectSettings = {
@@ -26,6 +25,8 @@ const EMPTY_SETTINGS: LongProjectSettings = {
   theme: "",
   episodeCount: 3,
   episodeDurationSeconds: 30,
+  sceneCount: 6,
+  clipDurationSeconds: 5,
   platform: "YouTube Shorts",
   aspectRatio: "9:16",
   audience: "",
@@ -101,9 +102,9 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
     if (!Number.isInteger(settings.episodeCount) || settings.episodeCount < 1) {
       errors.episodeCount = "에피소드 수는 1 이상의 정수여야 합니다.";
     }
-    if (settings.episodeDurationSeconds !== 30 && settings.episodeDurationSeconds !== 60) {
-      errors.episodeDurationSeconds = "에피소드 길이는 30초 또는 60초 중 하나여야 합니다.";
-    }
+    // sceneCount has no equivalent check here: its input's onChange already clamps to
+    // [MIN_SCENE_COUNT, MAX_SCENE_COUNT] on every keystroke (see below), so an out-of-range value can never reach
+    // this point — same reasoning as ShortProjectSettingsScreen's identical sceneCount field.
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) {
       return;
@@ -113,9 +114,12 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
     submittingRef.current = true;
     setSubmitting(true);
     try {
+      // episodeDurationSeconds is derived server-side (sceneCount * clipDurationSeconds) and is rejected as an
+      // unsupported field if included — same as ShortProjectSettingsInput's equivalent.
+      const { episodeDurationSeconds: _episodeDurationSeconds, ...settingsInput } = settings;
       const response = await createLongProject({
         projectId: trimmedId,
-        settings: { ...settings, title: trimmedTitle, logline: trimmedLogline },
+        settings: { ...settingsInput, title: trimmedTitle, logline: trimmedLogline },
       });
       onCreated(response.project);
     } catch (error) {
@@ -188,26 +192,49 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
         )}
       </div>
       <div>
-        <label className="block text-sm text-slate-300" htmlFor="episode-duration">
-          에피소드 길이(초)
+        <label className="block text-sm text-slate-300" htmlFor="episode-scene-count">
+          장면 수
         </label>
-        {/* A fixed choice, not free input: every Episode is 6 scenes and Runway only accepts a 5s or 10s clip, so 30 and 60 are the only two durations that can ever actually be produced. */}
-        <select
-          id="episode-duration"
+        <input
+          id="episode-scene-count"
+          type="number"
+          min={MIN_SCENE_COUNT}
+          max={MAX_SCENE_COUNT}
           className={fieldClassName}
-          value={settings.episodeDurationSeconds}
+          value={settings.sceneCount}
           disabled={submitting}
-          onChange={(event) => setField("episodeDurationSeconds", Number(event.target.value) as LongProjectSettings["episodeDurationSeconds"])}
-        >
-          <option value={30}>30초</option>
-          <option value={60}>60초</option>
-        </select>
-        {fieldErrors.episodeDurationSeconds && (
-          <p className="mt-1.5 text-sm text-rose-400" role="alert">
-            {fieldErrors.episodeDurationSeconds}
-          </p>
-        )}
+          onChange={(event) => {
+            const parsed = Number(event.target.value);
+            if (!Number.isInteger(parsed)) return;
+            const sceneCount = Math.min(MAX_SCENE_COUNT, Math.max(MIN_SCENE_COUNT, parsed));
+            setField("sceneCount", sceneCount);
+            setField("episodeDurationSeconds", sceneCount * settings.clipDurationSeconds);
+          }}
+        />
       </div>
+      <div>
+        <label className="block text-sm text-slate-300" htmlFor="episode-clip-duration">
+          클립 길이(초)
+        </label>
+        <select
+          id="episode-clip-duration"
+          className={fieldClassName}
+          value={settings.clipDurationSeconds}
+          disabled={submitting}
+          onChange={(event) => {
+            const clipDurationSeconds = Number(event.target.value);
+            setField("clipDurationSeconds", clipDurationSeconds);
+            setField("episodeDurationSeconds", settings.sceneCount * clipDurationSeconds);
+          }}
+        >
+          {RUNWAY_CLIP_DURATIONS.map((duration) => (
+            <option key={duration} value={duration}>{duration}초</option>
+          ))}
+        </select>
+      </div>
+      <p className="text-sm text-slate-400 md:col-span-2">
+        에피소드당 예상 영상 길이: {settings.sceneCount * settings.clipDurationSeconds}초 ({settings.sceneCount}장면 × {settings.clipDurationSeconds}초)
+      </p>
       <div>
         <label className="block text-sm text-slate-300" htmlFor="long-platform">
           플랫폼

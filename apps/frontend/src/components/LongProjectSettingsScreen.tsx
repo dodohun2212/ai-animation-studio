@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import type { LongProjectSettings } from "@ai-animation-studio/shared";
+import { MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, type LongProjectSettings } from "@ai-animation-studio/shared";
 
 import { getLongProjectSettings, toLongProjectDisplayError, updateLongProjectSettings } from "../api/longProjectsApi.js";
 import { Spinner } from "./Spinner.js";
@@ -64,18 +64,20 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
       setState((old) => ({ ...old, error: { code: "INVALID_REQUEST", message: "제목과 로그라인은 필수입니다." } }));
       return;
     }
-    if (
-      !Number.isInteger(settings.episodeCount) ||
-      settings.episodeCount < 1 ||
-      (settings.episodeDurationSeconds !== 30 && settings.episodeDurationSeconds !== 60)
-    ) {
-      setState((old) => ({ ...old, error: { code: "INVALID_REQUEST", message: "에피소드 수와 길이를 올바르게 입력하세요." } }));
+    if (!Number.isInteger(settings.episodeCount) || settings.episodeCount < 1) {
+      setState((old) => ({ ...old, error: { code: "INVALID_REQUEST", message: "에피소드 수를 올바르게 입력하세요." } }));
       return;
     }
+    // sceneCount has no equivalent check here: its input's onChange already clamps to
+    // [MIN_SCENE_COUNT, MAX_SCENE_COUNT] on every keystroke (see below), so an out-of-range value can never reach
+    // this point — same reasoning as ShortProjectSettingsScreen's identical sceneCount field.
     saving.current = true;
     setState((old) => ({ ...old, loading: true, error: null }));
     try {
-      const response = await updateLongProjectSettings(projectId, { settings });
+      // episodeDurationSeconds is derived server-side (sceneCount * clipDurationSeconds) and is rejected as an
+      // unsupported field if included — same as ShortProjectSettingsInput's equivalent.
+      const { episodeDurationSeconds: _episodeDurationSeconds, ...settingsInput } = settings;
+      const response = await updateLongProjectSettings(projectId, { settings: settingsInput });
       setState({ settings: response.project.settings, loading: false, error: null });
       setJustSaved(true);
       if (justSavedTimer.current) clearTimeout(justSavedTimer.current);
@@ -127,19 +129,41 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
             />
           </label>
           <label className="block text-sm text-slate-300">
-            에피소드 길이(초)
-            {/* A fixed choice, not free input: every Episode is 6 scenes and Runway only accepts a 5s or 10s
-                clip, so 30 and 60 are the only two durations that can ever actually be produced
-                (episode-videos.service.ts's durationSecondsPerScene()). */}
+            장면 수
+            <input
+              type="number"
+              min={MIN_SCENE_COUNT}
+              max={MAX_SCENE_COUNT}
+              className={fieldClassName}
+              value={state.settings.sceneCount}
+              onChange={(event) => {
+                const parsed = Number(event.target.value);
+                if (!Number.isInteger(parsed)) return;
+                const sceneCount = Math.min(MAX_SCENE_COUNT, Math.max(MIN_SCENE_COUNT, parsed));
+                setField("sceneCount", sceneCount);
+                setField("episodeDurationSeconds", sceneCount * state.settings!.clipDurationSeconds);
+              }}
+            />
+          </label>
+          <label className="block text-sm text-slate-300">
+            클립 길이(초)
             <select
               className={fieldClassName}
-              value={state.settings.episodeDurationSeconds}
-              onChange={(event) => setField("episodeDurationSeconds", Number(event.target.value) as LongProjectSettings["episodeDurationSeconds"])}
+              value={state.settings.clipDurationSeconds}
+              onChange={(event) => {
+                const clipDurationSeconds = Number(event.target.value);
+                setField("clipDurationSeconds", clipDurationSeconds);
+                setField("episodeDurationSeconds", state.settings!.sceneCount * clipDurationSeconds);
+              }}
             >
-              <option value={30}>30초</option>
-              <option value={60}>60초</option>
+              {RUNWAY_CLIP_DURATIONS.map((duration) => (
+                <option key={duration} value={duration}>{duration}초</option>
+              ))}
             </select>
           </label>
+          <p className="text-sm text-slate-400">
+            에피소드당 예상 영상 길이: {state.settings.sceneCount * state.settings.clipDurationSeconds}초 ({state.settings.sceneCount}장면 × {state.settings.clipDurationSeconds}초)
+          </p>
           <label className="block text-sm text-slate-300">
             플랫폼
             <select

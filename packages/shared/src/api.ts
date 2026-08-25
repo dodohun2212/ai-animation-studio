@@ -28,12 +28,12 @@ export interface LongProjectSettings {
   tone: string;
   theme: string;
   episodeCount: number;
-  /**
-   * Total final-video length per Episode. Only 30 or 60 are valid: every Episode is a fixed 6 scenes
-   * (EPISODE_SCENE_COUNT), and Runway's image-to-video generation only accepts a 5-second or 10-second duration
-   * per clip — so the only two per-scene durations that exist are 5s (6x5=30) and 10s (6x10=60).
-   */
-  episodeDurationSeconds: 30 | 60;
+  /** Derived, not user-set directly: sceneCount * clipDurationSeconds. The server recomputes this from those two fields on every save; a request's own episodeDurationSeconds value (if any) is ignored — see LongProjectSettingsInput. */
+  episodeDurationSeconds: number;
+  /** Per-Episode scene count — no longer fixed at 6. See MIN_SCENE_COUNT/MAX_SCENE_COUNT in domain.ts. */
+  sceneCount: number;
+  /** One of RUNWAY_CLIP_DURATIONS (domain.ts) — Runway is the only supported video Provider today, so this is not yet keyed by provider. Same constraint as ShortProjectSettings.clipDurationSeconds. */
+  clipDurationSeconds: number;
   platform: "YouTube Shorts" | "YouTube";
   aspectRatio: "9:16" | "16:9";
   audience: string;
@@ -43,6 +43,9 @@ export interface LongProjectSettings {
   endingDirection: string;
   storyFlowSummary: string;
 }
+
+/** What a client actually sends: episodeDurationSeconds is derived server-side (sceneCount * clipDurationSeconds) and is rejected as an unsupported field if included — same shape as ShortProjectSettingsInput. */
+export type LongProjectSettingsInput = Omit<LongProjectSettings, "episodeDurationSeconds">;
 
 export interface LongEpisodeOutline {
   episodeNumber: number;
@@ -134,9 +137,10 @@ export interface ApproveLongEpisodeAssetMappingReviewResponse { review: LongEpis
 /** Provider-free preview of the Asset IDs automatically selected per Episode scene. */
 export interface LongEpisodeAutomaticReferenceSummary {
   candidateAssetIds: string[];
-  /** Long Episode is still fixed at exactly six scenes, so this stays a literal-keyed map independent of the now-widened SceneNumber. */
-  selectedAssetIdsByScene: Record<1 | 2 | 3 | 4 | 5 | 6, string[]>;
-  estimatedImageApiCalls: 6;
+  /** Keyed by the Episode's actual scene numbers — no longer fixed at exactly six. See LongProjectSettings.sceneCount. */
+  selectedAssetIdsByScene: Partial<Record<SceneNumber, string[]>>;
+  /** Equal to the Episode's scene count (LongProjectSettings.sceneCount), not a fixed 6. */
+  estimatedImageApiCalls: number;
 }
 export interface GetLongEpisodeAutomaticReferenceSummaryResponse { summary: LongEpisodeAutomaticReferenceSummary; }
 /** Rebuilds only deterministic automatic scene selections and returns to mapping review. */
@@ -205,6 +209,8 @@ export interface LongEpisodeVideoProgress {
   currentSceneNumber?: SceneNumber;
   completedSceneNumbers: SceneNumber[];
   failedSceneNumbers: SceneNumber[];
+  /** Same meaning and scope as GenerationProgressResponse.sceneNumbers (see that field's doc comment) — lets the Frontend render the full scene set without a local scene-count constant. */
+  sceneNumbers: SceneNumber[];
   episode: LongEpisodeDetail;
   /** Same meaning and scope as GenerationProgressResponse.sceneErrors (see that field's doc comment). */
   sceneErrors?: Record<SceneNumber, string>;
@@ -261,7 +267,8 @@ export interface SearchLongStoryBibleItemsResponse { items: LongStoryBibleItem[]
 export interface DuplicateLongStoryBibleItemResponse { item: LongStoryBibleItem; storyBible: LongStoryBible; }
 export interface LongEpisodeContinuityReference {
   previousEpisodeNumber: number;
-  sourceSceneNumber: 6;
+  /** The previous Episode's actual last scene number (its own sceneCount) — no longer always 6. */
+  sourceSceneNumber: SceneNumber;
   available: boolean;
 }
 export interface GetLongEpisodeContinuityReferenceResponse { reference: LongEpisodeContinuityReference | null; }
@@ -298,7 +305,7 @@ export interface LongProject extends LongProjectSummary {
   episodes: LongEpisodeOutline[];
 }
 
-export interface CreateLongProjectRequest { projectId: string; settings: LongProjectSettings; }
+export interface CreateLongProjectRequest { projectId: string; settings: LongProjectSettingsInput; }
 export interface CreateLongProjectResponse { project: LongProject; }
 export interface ListLongProjectsResponse { projects: LongProjectSummary[]; }
 /** A long project currently sitting in the recoverable archive, listed on the "보관함" (Archive) screen. */
@@ -306,7 +313,7 @@ export interface ArchivedLongProjectSummary extends LongProjectSummary { archive
 export interface ListArchivedLongProjectsResponse { projects: ArchivedLongProjectSummary[]; }
 export interface GetLongProjectResponse { project: LongProject; }
 export interface GetLongProjectSettingsResponse { settings: LongProjectSettings; }
-export interface UpdateLongProjectSettingsRequest { settings: LongProjectSettings; }
+export interface UpdateLongProjectSettingsRequest { settings: LongProjectSettingsInput; }
 export interface UpdateLongProjectSettingsResponse { project: LongProject; }
 export interface LongProjectOutlinePromptPreview { projectId: string; prompt: string; promptSha256: string; episodeCount: number; }
 export interface CreateLongProjectOutlinePreviewResponse { preview: LongProjectOutlinePromptPreview; }

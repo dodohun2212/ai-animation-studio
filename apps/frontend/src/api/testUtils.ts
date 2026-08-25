@@ -130,6 +130,8 @@ export function makeLongProjectSettings(overrides: Partial<LongProjectSettings> 
     theme: "귀환",
     episodeCount: 3,
     episodeDurationSeconds: 30,
+    sceneCount: 6,
+    clipDurationSeconds: 5,
     platform: "YouTube Shorts",
     aspectRatio: "9:16",
     audience: "",

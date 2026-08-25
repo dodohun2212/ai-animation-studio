@@ -23,7 +23,8 @@ describe("CreateLongProjectForm", () => {
     expect(screen.getByLabelText("제목")).toBeTruthy();
     expect(screen.getByLabelText("로그라인")).toBeTruthy();
     expect(screen.getByLabelText("에피소드 수")).toBeTruthy();
-    expect(screen.getByLabelText("에피소드 길이(초)")).toBeTruthy();
+    expect(screen.getByLabelText("장면 수")).toBeTruthy();
+    expect(screen.getByLabelText("클립 길이(초)")).toBeTruthy();
     expect(screen.getByLabelText("플랫폼")).toBeTruthy();
     expect(screen.getByLabelText("화면 비율")).toBeTruthy();
   });
@@ -41,18 +42,28 @@ describe("CreateLongProjectForm", () => {
     expect(onCreated).not.toHaveBeenCalled();
   });
 
-  it("rejects a non-positive episode count or duration without calling fetch", async () => {
+  it("rejects a non-positive episode count without calling fetch", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     render(<CreateLongProjectForm onCreated={() => {}} onCancel={() => {}} />);
 
     fillRequiredFields("long_test", "제목", "로그라인");
     fireEvent.change(screen.getByLabelText("에피소드 수"), { target: { value: "0" } });
-    fireEvent.change(screen.getByLabelText("에피소드 길이(초)"), { target: { value: "0" } });
     fireEvent.click(screen.getByRole("button", { name: "장기 프로젝트 생성" }));
 
-    expect(await screen.findAllByRole("alert")).toHaveLength(2);
+    expect(await screen.findAllByRole("alert")).toHaveLength(1);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("clamps a typed scene count to the supported range instead of accepting an out-of-bounds value", () => {
+    vi.stubGlobal("fetch", vi.fn());
+    render(<CreateLongProjectForm onCreated={() => {}} onCancel={() => {}} />);
+
+    const sceneCountInput = screen.getByLabelText("장면 수") as HTMLInputElement;
+    fireEvent.change(sceneCountInput, { target: { value: "0" } });
+    expect(sceneCountInput.value).toBe("2");
+    fireEvent.change(sceneCountInput, { target: { value: "99" } });
+    expect(sceneCountInput.value).toBe("12");
   });
 
   it.each(["../outside", "a/b", "has space"])(

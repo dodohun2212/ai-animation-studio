@@ -10,7 +10,7 @@ import { EpisodeScriptsService } from "./episode-scripts.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
 
 let root: string | undefined;
-const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, episodeDurationSeconds: 30, platform: "YouTube Shorts" as const, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "" };
+const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, platform: "YouTube Shorts" as const, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "" };
 const episode = (number: number, file: string) => path.join(root!, "projects", "long", "long_story", `Episode${String(number).padStart(2, "0")}`, file);
 async function setup() {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-continuity-reference-")); const projectsRoot = path.join(root, "projects"); const projects = new LongProjectsService(projectsRoot);
