@@ -106,6 +106,7 @@ describe("real Runway episode video generation", () => {
     now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
     const progress = await videos.progress("long", 1, started.jobId);
     expect(progress).toMatchObject({ status: "failed", failedSceneNumbers: [1] });
+    expect(progress.sceneErrors).toEqual({ 1: "content policy violation" });
     const submitCalls = fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/v1/image_to_video")).length;
     expect(submitCalls).toBe(1); // scene 1 only — never skipped ahead to scene 2
 

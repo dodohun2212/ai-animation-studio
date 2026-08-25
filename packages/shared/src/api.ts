@@ -186,6 +186,8 @@ export interface LongEpisodeVideoProgress {
   completedSceneNumbers: SceneNumber[];
   failedSceneNumbers: SceneNumber[];
   episode: LongEpisodeDetail;
+  /** Same meaning and scope as GenerationProgressResponse.sceneErrors (see that field's doc comment). */
+  sceneErrors?: Record<SceneNumber, string>;
 }
 export interface LongEpisodeVideoReview { sceneNumber: SceneNumber; status: "pending" | "approved"; updatedAt: string; }
 export interface GetLongEpisodeVideoReviewResponse { episode: LongEpisodeDetail; reviews: LongEpisodeVideoReview[]; }
