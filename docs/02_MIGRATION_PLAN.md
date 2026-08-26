@@ -1223,4 +1223,8 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - **자가 발견 — 첫 수정이 불완전했음**: `assets.app-module.integration.test.ts`의 `it` 블록 4개 중 첫 번째에만 오버라이드를 넣고 나머지 3개를 빠뜨려서, 전체 스위트를 여러 번 돌릴 때마다 매번 다른 지점에서 워커가 native crash로 죽는 것처럼 보였다(사실은 파일 실행 순서에 따라 위치만 달라지는 같은 결정론적 버그) — 처음엔 이 머신의 알려진 병렬 실행 환경 플레이키니스(Round 152 기록)로 오인할 뻔했으나, `--no-file-parallelism`으로 순차 실행해 크래시 직전 파일을 정확히 특정하고 누락된 3곳을 마저 고쳐 재현이 완전히 사라짐을 확인.
   - 검증: root typecheck 전부 통과, Backend 690개 전부 통과(연속 3회 재실행으로 크래시 재현 없음 확인, 이 세션 중 1회 관찰된 `local-video-workflow.runway.test.ts`의 백그라운드 타이머 타이밍 실패는 Round 152에 이미 기록된 이 머신의 사전 존재 플레이키니스와 동일 증상), root build(shared/backend/frontend/desktop) 전부 통과. 유료 Provider 호출 없음.
   - 커밋: `0e02926`.
+- [x] **프런트 — 영상 프롬프트에서 길이 때문에 빠진 섹션을 화면에 표시(Round 157)**: Round 148(`198e7e2`)이 계약만 열어둔 `omittedSections`를 Cowork가 `VideoPromptPreviewScreen`에 붙임 — 잘린 장면에만 어떤 섹션(장면 연결/환경 움직임/표정·연기/움직임 속도, 한국어 라벨)이 빠졌는지 안내, 안 잘린 장면은 조용히 둠, 모르는 라벨은 원문 그대로 통과(숨기지 않음).
+  - **검증 중 발견 — Cowork 신규 테스트 1건의 설정 버그**: "모르는 라벨 통과" 테스트가 `makePreviews(1)`(장면 1개)로 응답을 만들었는데, 프런트 응답 검증기(`isGetVideoPromptPreviewResponse`)가 `previews.length >= MIN_SCENE_COUNT`(2)를 요구해 응답 자체가 무효 처리되어 항상 에러 화면으로 떨어지고 있었다 — 화면 로직이 아니라 테스트 설정의 최소 장면 수 미달, `makePreviews(2)`로 수정.
+  - 검증: root typecheck 전부 통과, frontend 801개 전부 통과(+2 신규), root build(shared/backend/frontend/desktop) 전부 통과. 백엔드·계약 미변경.
+  - 커밋: `af699ae`.
 
