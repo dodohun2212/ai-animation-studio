@@ -61,7 +61,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
     if (!state.settings || saving.current) return;
     const settings = { ...state.settings, title: state.settings.title.trim(), logline: state.settings.logline.trim() };
     if (!settings.title || !settings.logline) {
-      setState((old) => ({ ...old, error: { code: "INVALID_REQUEST", message: "제목과 로그라인은 필수입니다." } }));
+      setState((old) => ({ ...old, error: { code: "INVALID_REQUEST", message: "제목과 한 줄 줄거리는 필수입니다." } }));
       return;
     }
     if (!Number.isInteger(settings.episodeCount) || settings.episodeCount < 1) {
@@ -114,7 +114,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
       {state.settings && (
         <form className="grid gap-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6 md:grid-cols-2" onSubmit={submit} noValidate>
           <Field label="제목" value={state.settings.title} onChange={(value) => setField("title", value)} />
-          <Field label="로그라인" value={state.settings.logline} onChange={(value) => setField("logline", value)} />
+          <Field label="한 줄 줄거리" value={state.settings.logline} onChange={(value) => setField("logline", value)} />
           <Field label="개요" value={state.settings.overview} onChange={(value) => setField("overview", value)} multiline />
           <Field label="장르" value={state.settings.genre} onChange={(value) => setField("genre", value)} />
           <Field label="톤" value={state.settings.tone} onChange={(value) => setField("tone", value)} />
@@ -165,17 +165,6 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
             에피소드당 예상 영상 길이: {state.settings.sceneCount * state.settings.clipDurationSeconds}초 ({state.settings.sceneCount}장면 × {state.settings.clipDurationSeconds}초)
           </p>
           <label className="block text-sm text-slate-300">
-            플랫폼
-            <select
-              className={fieldClassName}
-              value={state.settings.platform}
-              onChange={(event) => setField("platform", event.target.value as LongProjectSettings["platform"])}
-            >
-              <option value="YouTube Shorts">YouTube Shorts</option>
-              <option value="YouTube">YouTube</option>
-            </select>
-          </label>
-          <label className="block text-sm text-slate-300">
             화면 비율
             <select
               className={fieldClassName}
@@ -225,7 +214,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
               </span>
             </label>
           </div>
-          <Field label="타겟 시청자" value={state.settings.audience} onChange={(value) => setField("audience", value)} />
+          <Field label="누가 볼 영상인가" value={state.settings.audience} onChange={(value) => setField("audience", value)} />
           <Field label="메모" value={state.settings.notes} onChange={(value) => setField("notes", value)} multiline />
           <Field label="시작 상태" value={state.settings.startingState} onChange={(value) => setField("startingState", value)} multiline />
           <Field label="중간 전개" value={state.settings.midpoint} onChange={(value) => setField("midpoint", value)} multiline />

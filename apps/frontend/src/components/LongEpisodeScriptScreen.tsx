@@ -123,7 +123,7 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
               a paid API, so without this line the two "make a script" buttons look identical and only one of
               them costs money. */}
           <p data-testid="episode-script-cost-notice" className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300">
-            이 단계는 비용이 들지 않습니다 — AI를 부르지 않고, 스토리 개요와 Story Bible의 내용으로 초안을 조립합니다.
+            이 단계는 비용이 들지 않습니다 — AI를 부르지 않고, 스토리 개요와 등장인물·설정집의 내용으로 초안을 조립합니다.
           </p>
           <button type="button" className={primaryButton} disabled={pending} onClick={() => void run(() => generateLongEpisodeScript(projectId, episodeNumber, {}))}>
             {pending ? "생성 중..." : "대본 초안 만들기"}

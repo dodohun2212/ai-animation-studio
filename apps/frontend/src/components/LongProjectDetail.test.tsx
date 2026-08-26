@@ -21,6 +21,45 @@ describe("LongProjectDetail", () => {
     expect(fetchMock).toHaveBeenCalledWith("/long-projects/long_test");
   });
 
+  it("says why archiving is unavailable instead of leaving a dead button", async () => {
+    // Only the last Episode can be archived. Before this, picking Episode 1 of 3 just disabled the button with
+    // no explanation — the user clicks, nothing happens, and reports that archiving is broken. The reason has
+    // to be on screen, and it has to name which Episode is actually selected.
+    const project = makeLongProject({
+      id: "long_test",
+      episodes: [
+        makeLongEpisodeOutline({ episodeNumber: 1, status: "planned" }),
+        makeLongEpisodeOutline({ episodeNumber: 2, status: "planned" }),
+        makeLongEpisodeOutline({ episodeNumber: 3, status: "planned" }),
+      ],
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    render(<LongProjectDetail projectId="long_test" onBack={() => {}} onOpenSettings={() => {}} onOpenOutline={() => {}} />);
+
+    // Nothing selected yet: the hint says to select one, not that archiving is impossible.
+    expect((await screen.findByTestId("episode-archive-hint")).textContent).toContain("먼저 선택해");
+
+    fireEvent.click(within(screen.getByTestId("episode-1")).getByRole("button", { name: /1\./ }));
+    const hint = screen.getByTestId("episode-archive-hint");
+    expect(hint.textContent).toContain("마지막 회차(3화)만");
+    expect(hint.textContent).toContain("1화입니다");
+
+    fireEvent.click(within(screen.getByTestId("episode-3")).getByRole("button", { name: /3\./ }));
+    // Last Episode selected — the obstacle is gone, so the hint goes away rather than staying as noise.
+    expect(screen.queryByTestId("episode-archive-hint")).toBeNull();
+  });
+
+  it("names the duplicate button by what it does, since it adds an Episode", async () => {
+    // Reported as "I pressed delete and it added an episode". There is no delete button — the three are
+    // create / duplicate / archive — and 복제 adds one. The label now says so on its face.
+    const project = makeLongProject({ id: "long_test", episodes: [makeLongEpisodeOutline({ episodeNumber: 1, status: "planned" })] });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    render(<LongProjectDetail projectId="long_test" onBack={() => {}} onOpenSettings={() => {}} onOpenOutline={() => {}} />);
+
+    expect(await screen.findByRole("button", { name: "선택한 에피소드 복제(하나 더 만들기)" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /삭제/ })).toBeNull();
+  });
+
   it("counts Episodes per stage cumulatively, so the numbers never go backwards as work progresses", async () => {
     // Python kept this panel permanently on the long-project screen. The counts are cumulative on purpose: an
     // Episode whose videos are approved has also finished its script, so it counts toward 대본 완료 too.
@@ -176,7 +215,7 @@ describe("LongProjectDetail", () => {
     expect(screen.queryByRole("button", { name: "1. Alpha" })).toBeNull();
     fireEvent.change(screen.getByLabelText("에피소드 검색"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "2. Beta" }));
-    fireEvent.click(screen.getByRole("button", { name: "선택한 에피소드 복제" }));
+    fireEvent.click(screen.getByRole("button", { name: "선택한 에피소드 복제(하나 더 만들기)" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(fetchMock.mock.calls[1]?.[0]).toBe("/long-projects/long_test/episodes/2/duplicate");
 

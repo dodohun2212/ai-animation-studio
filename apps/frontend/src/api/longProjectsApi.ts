@@ -21,6 +21,8 @@ import {
   type GetLongProjectSettingsResponse,
   type ListLongProjectsResponse,
   type LongEpisodeOutline,
+  type UpdateLongEpisodeOutlineRequest,
+  type UpdateLongEpisodeOutlineResponse,
   type LongProject,
   type LongProjectSettings,
   type LongProjectSummary,
@@ -373,6 +375,10 @@ function isDuplicateLongEpisodeResponse(value: unknown): value is DuplicateLongE
   return isAddLongEpisodeResponse(value);
 }
 
+function isUpdateLongEpisodeOutlineResponse(value: unknown): value is UpdateLongEpisodeOutlineResponse {
+  return isAddLongEpisodeResponse(value);
+}
+
 function isArchiveLongEpisodeResponse(value: unknown): value is ArchiveLongEpisodeResponse {
   return isRecord(value) && isLongProject(value.project) && Number.isInteger(value.archivedEpisodeNumber) && isNonEmptyString(value.archiveId);
 }
@@ -595,6 +601,15 @@ export function addLongEpisode(projectId: string, requestBody: AddLongEpisodeReq
 /** Duplicates outline metadata into a new planned Episode; generated work is not copied. */
 export function duplicateLongEpisode(projectId: string, episodeNumber: number): Promise<DuplicateLongEpisodeResponse> {
   return request(API_ROUTES.longProjectEpisodeDuplicate(projectId, episodeNumber), { method: "POST" }, isDuplicateLongEpisodeResponse);
+}
+
+/**
+ * Edits one Episode's own outline fields (제목·줄거리·핵심 사건·갈등·클리프행어·다음 화 연결). Send only the fields
+ * that actually changed: the server rejects an empty map, an unknown key, and any blank value, so a screen must
+ * never send an untouched-but-empty field along for the ride.
+ */
+export function updateLongEpisodeOutline(projectId: string, episodeNumber: number, requestBody: UpdateLongEpisodeOutlineRequest): Promise<UpdateLongEpisodeOutlineResponse> {
+  return request(API_ROUTES.longProjectEpisodeOutline(projectId, episodeNumber), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isUpdateLongEpisodeOutlineResponse);
 }
 
 /** The backend recoverably archives the final draft Episode after this explicit approval. */

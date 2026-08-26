@@ -532,7 +532,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "새 장기 프로젝트" }));
     fireEvent.change(screen.getByLabelText("프로젝트 ID"), { target: { value: "long_test" } });
     fireEvent.change(screen.getByLabelText("제목"), { target: { value: seed.title } });
-    fireEvent.change(screen.getByLabelText("로그라인"), { target: { value: seed.logline } });
+    fireEvent.change(screen.getByLabelText("한 줄 줄거리"), { target: { value: seed.logline } });
     fireEvent.click(screen.getByRole("button", { name: "장기 프로젝트 생성" }));
 
     await screen.findByText(seed.title);

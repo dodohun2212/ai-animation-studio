@@ -100,6 +100,8 @@ export function LongProjectDetail({
    * subtitles, or both. False while both settings are off, which is the default for every project made before
    * narration existed.
    */
+  /** The only episode the backend lets you archive — stated once so the button and its reason cannot drift. */
+  const lastEpisodeNumber = state.status === "success" ? state.project.episodes.length : 0;
   const narrationInUse = state.status === "success" && (state.project.settings.narrationEnabled || state.project.settings.subtitlesEnabled);
   const filteredEpisodes = useMemo(() => { if (state.status !== "success") return []; const needle = query.trim().toLocaleLowerCase(); return state.project.episodes.filter((episode) => (statusFilter === "all" || episode.status === statusFilter) && (!needle || `${episode.episodeNumber} ${episode.title} ${episode.summary}`.toLocaleLowerCase().includes(needle))); }, [query, state, statusFilter]);
   async function updateTimeline(action: () => Promise<{ project: LongProject }>, select?: number): Promise<void> { if (timelinePending) return; setTimelinePending(true); setTimelineError(null); try { const result = await action(); setState({ status: "success", project: result.project }); setSelectedEpisodeNumber(select ?? null); setRemoveConfirmationOpen(false); setRemoveConfirmation(""); } catch (error: unknown) { setTimelineError(toLongProjectDisplayError(error)); } finally { setTimelinePending(false); } }
@@ -143,7 +145,7 @@ export function LongProjectDetail({
           <dl className="grid grid-cols-1 gap-x-8 gap-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6 text-slate-100 sm:grid-cols-2">
             <div><dt className="text-xs uppercase tracking-wide text-slate-400">ID</dt><dd className="mt-0.5">{state.project.id}</dd></div>
             <div><dt className="text-xs uppercase tracking-wide text-slate-400">제목</dt><dd className="mt-0.5">{state.project.title}</dd></div>
-            <div className="sm:col-span-2"><dt className="text-xs uppercase tracking-wide text-slate-400">로그라인</dt><dd className="mt-0.5">{state.project.logline}</dd></div>
+            <div className="sm:col-span-2"><dt className="text-xs uppercase tracking-wide text-slate-400">한 줄 줄거리</dt><dd className="mt-0.5">{state.project.logline}</dd></div>
             <div><dt className="text-xs uppercase tracking-wide text-slate-400">스토리 개요 상태</dt><dd className="mt-0.5" data-testid="outline-status">{longEpisodeStatusLabel(state.project.outlineStatus)}</dd></div>
             <div><dt className="text-xs uppercase tracking-wide text-slate-400">장르</dt><dd className="mt-0.5">{state.project.settings.genre || "—"}</dd></div>
             <div><dt className="text-xs uppercase tracking-wide text-slate-400">화면 비율</dt><dd className="mt-0.5">{state.project.settings.aspectRatio}</dd></div>
@@ -192,21 +194,38 @@ export function LongProjectDetail({
               <button
                 type="button"
                 className={outlineButton}
+                title="선택한 회차와 같은 내용으로 새 회차를 하나 더 만듭니다."
                 onClick={() => selectedEpisode && void updateTimeline(() => duplicateLongEpisode(projectId, selectedEpisode.episodeNumber), state.project.episodes.length + 1)}
                 disabled={!editableTimeline || !selectedEpisode || timelinePending}
               >
-                선택한 에피소드 복제
+                선택한 에피소드 복제(하나 더 만들기)
               </button>
               <button
                 type="button"
                 className={outlineButton}
                 onClick={() => { setRemoveConfirmationOpen(true); setRemoveConfirmation(""); }}
-                disabled={!editableTimeline || !selectedEpisode || selectedEpisode.episodeNumber !== state.project.episodes.length || timelinePending}
+                disabled={!editableTimeline || !selectedEpisode || selectedEpisode.episodeNumber !== lastEpisodeNumber || timelinePending}
               >
                 선택한 에피소드 보관하기
               </button>
             </div>
             {!editableTimeline && <p className="text-sm text-slate-400">타임라인 편집은 대본 작업이나 미디어 작업을 시작하기 전에만 가능합니다.</p>}
+            {/*
+              A disabled button with no stated reason reads as "broken", not as "not allowed" — someone clicks
+              it, nothing happens, and they report that archiving does not work. Both conditions that disable it
+              are now said out loud, in the order the person hits them.
+            */}
+            {editableTimeline && !selectedEpisode && (
+              <p data-testid="episode-archive-hint" className="text-sm text-slate-400">
+                보관하거나 복제하려면 아래 목록에서 에피소드를 먼저 선택해 주세요.
+              </p>
+            )}
+            {editableTimeline && selectedEpisode && selectedEpisode.episodeNumber !== lastEpisodeNumber && (
+              <p data-testid="episode-archive-hint" className="text-sm text-amber-300">
+                보관은 마지막 회차({lastEpisodeNumber}화)만 할 수 있습니다. 중간 회차를 지우면 뒤 회차의 번호가 밀려서
+                이미 만들어 둔 이미지·영상과 어긋나기 때문입니다. 지금 선택한 것은 {selectedEpisode.episodeNumber}화입니다.
+              </p>
+            )}
             {timelineError && <p className="text-sm text-rose-400" role="alert" data-error-code={timelineError.code}>{timelineError.message}</p>}
             {removeConfirmationOpen && selectedEpisode && (
               <section className="rounded-xl border border-rose-400/30 bg-rose-950/20 p-4" aria-label="에피소드 보관 확인">

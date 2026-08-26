@@ -27,7 +27,6 @@ const EMPTY_SETTINGS: LongProjectSettings = {
   episodeDurationSeconds: 30,
   sceneCount: 6,
   clipDurationSeconds: 5,
-  platform: "YouTube Shorts",
   aspectRatio: "9:16",
   audience: "",
   notes: "",
@@ -99,7 +98,7 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
       errors.title = "제목을 입력하세요.";
     }
     if (!trimmedLogline) {
-      errors.logline = "로그라인을 입력하세요.";
+      errors.logline = "한 줄 줄거리를 입력하세요.";
     }
     if (!Number.isInteger(settings.episodeCount) || settings.episodeCount < 1) {
       errors.episodeCount = "에피소드 수는 1 이상의 정수여야 합니다.";
@@ -164,7 +163,7 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
         )}
       </div>
       <div className="md:col-span-2">
-        <Field label="로그라인" value={settings.logline} onChange={(value) => setField("logline", value)} disabled={submitting} multiline />
+        <Field label="한 줄 줄거리" value={settings.logline} onChange={(value) => setField("logline", value)} disabled={submitting} multiline />
         {fieldErrors.logline && (
           <p className="mt-1.5 text-sm text-rose-400" role="alert">
             {fieldErrors.logline}
@@ -238,21 +237,6 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
         에피소드당 예상 영상 길이: {settings.sceneCount * settings.clipDurationSeconds}초 ({settings.sceneCount}장면 × {settings.clipDurationSeconds}초)
       </p>
       <div>
-        <label className="block text-sm text-slate-300" htmlFor="long-platform">
-          플랫폼
-        </label>
-        <select
-          id="long-platform"
-          className={fieldClassName}
-          value={settings.platform}
-          disabled={submitting}
-          onChange={(event) => setField("platform", event.target.value as LongProjectSettings["platform"])}
-        >
-          <option value="YouTube Shorts">YouTube Shorts</option>
-          <option value="YouTube">YouTube</option>
-        </select>
-      </div>
-      <div>
         <label className="block text-sm text-slate-300" htmlFor="long-aspect-ratio">
           화면 비율
         </label>
@@ -267,7 +251,7 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
           <option value="16:9">16:9</option>
         </select>
       </div>
-      <Field label="타겟 시청자" value={settings.audience} onChange={(value) => setField("audience", value)} disabled={submitting} />
+      <Field label="누가 볼 영상인가" value={settings.audience} onChange={(value) => setField("audience", value)} disabled={submitting} />
       <Field label="메모" value={settings.notes} onChange={(value) => setField("notes", value)} disabled={submitting} multiline />
       <Field label="시작 상태" value={settings.startingState} onChange={(value) => setField("startingState", value)} disabled={submitting} multiline />
       <Field label="중간 전개" value={settings.midpoint} onChange={(value) => setField("midpoint", value)} disabled={submitting} multiline />

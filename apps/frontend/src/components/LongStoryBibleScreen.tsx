@@ -246,9 +246,16 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
           aria-hidden="true"
           className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
         />
-        Story Bible
+        등장인물·설정집
       </h2>
-      <p className="text-sm text-slate-400">이 장기 프로젝트의 캐릭터와 세계관 설정 자료를 로컬에서 정리합니다.</p>
+      {/* Was "Story Bible" — an English term with no on-screen explanation, sitting next to a screen called
+          스토리 개요. Renamed, and the difference stated as the question each store answers rather than left
+          for the user to infer. */}
+      <p className="text-sm text-slate-400">
+        등장인물·장소·소품·비밀이 <strong className="text-slate-200">무엇인지</strong> 적는 곳입니다 — 시간 순서와 무관한 설정집이에요.
+        "몇 화에 무슨 일이 일어나는가"는 여기가 아니라 <strong className="text-slate-200">스토리 개요</strong>에 적습니다.
+        여기 적은 내용은 회차마다 등장인물의 생김새·성격이 흔들리지 않게 붙잡아 주는 역할을 합니다.
+      </p>
       {error && (
         <p role="alert" data-error-code={error.code} className="text-sm text-rose-400">
           {error.message}
@@ -257,7 +264,7 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
 
       <section aria-label="기본·세계관 설정" className={cardSection}>
         <SectionHeading>기본·세계관 설정</SectionHeading>
-        <p className="text-sm text-slate-400">Story Bible의 맥락으로 쓰이는 로컬 JSON 데이터를 편집합니다. 저장해도 대본·이미지·영상은 생성되지 않습니다.</p>
+        <p className="text-sm text-slate-400">설정집의 맥락으로 쓰이는 로컬 JSON 데이터를 편집합니다. 저장해도 대본·이미지·영상은 생성되지 않습니다.</p>
         {contentValidationError && (
           <p role="alert" data-testid="story-bible-content-validation-error" className="text-sm text-rose-400">
             {contentValidationError}
@@ -336,17 +343,17 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
         </button>
       </section>
 
-      <section aria-label="Story Bible 연결 상태 점검" className={cardSection}>
+      <section aria-label="설정집 연결 상태 점검" className={cardSection}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <SectionHeading>연결 상태 점검</SectionHeading>
-            <p className="text-sm text-slate-400">Story Bible에서 빠진 연결이 없는지 조회만 하는 점검입니다.</p>
+            <p className="text-sm text-slate-400">설정집에서 빠진 연결이 없는지 조회만 하는 점검입니다.</p>
           </div>
           <button type="button" className={outlineButton} onClick={() => void loadRelationshipAudit()} disabled={relationshipAuditLoading}>
             {relationshipAuditLoading ? "확인하는 중..." : relationshipAudit === null ? "연결 상태 확인" : "다시 확인"}
           </button>
         </div>
-        {relationshipAuditLoading && <p className="text-sm text-slate-400">Story Bible 연결 상태를 확인하는 중...</p>}
+        {relationshipAuditLoading && <p className="text-sm text-slate-400">설정집 연결 상태를 확인하는 중...</p>}
         {relationshipAuditError && (
           <div className="space-y-2">
             <p role="alert" data-error-code={relationshipAuditError.code} className="text-sm text-rose-400">
@@ -359,7 +366,7 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
         )}
         {relationshipAudit && relationshipAudit.length === 0 && (
           <p data-testid="relationship-audit-healthy" className="text-sm text-emerald-300">
-            Story Bible 연결 상태에 문제가 없습니다.
+            설정집 연결 상태에 문제가 없습니다.
           </p>
         )}
         {relationshipAudit && relationshipAudit.length > 0 && (
@@ -376,7 +383,7 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
         )}
       </section>
 
-      <div role="tablist" aria-label="Story Bible collection" className="flex flex-wrap gap-2">
+      <div role="tablist" aria-label="설정집 항목 종류" className="flex flex-wrap gap-2">
         {TABS.map((tab) => (
           <button
             key={tab.value}
@@ -445,7 +452,7 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
         )}
       </section>
 
-      {loading && !bible && <Spinner label="Story Bible을 불러오는 중..." />}
+      {loading && !bible && <Spinner label="설정집을 불러오는 중..." />}
       {bible && items.length === 0 && (
         <p data-testid="story-bible-empty" className="text-sm text-slate-400">
           아직 등록된 {collectionLabel} 항목이 없습니다.
@@ -484,7 +491,7 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
       )}
 
       <form
-        aria-label={editing ? "Story Bible 항목 수정" : "Story Bible 항목 추가"}
+        aria-label={editing ? "설정집 항목 수정" : "설정집 항목 추가"}
         onSubmit={(event) => void submit(event)}
         className="space-y-3 rounded-2xl border border-violet-400/30 bg-slate-900/70 p-5"
       >
@@ -587,7 +594,7 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
       </form>
 
       {deleteTarget && (
-        <div role="alertdialog" aria-label="Story Bible 항목 삭제 확인" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
+        <div role="alertdialog" aria-label="설정집 항목 삭제 확인" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
           <p className="text-sm font-semibold text-amber-300">{deleteTarget.name || deleteTarget.id}을(를) 삭제할까요?</p>
           <p className="text-sm text-slate-300">삭제 전에 한 번 더 확인합니다.</p>
           <div className="flex gap-3">

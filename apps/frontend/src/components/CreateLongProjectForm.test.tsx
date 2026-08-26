@@ -7,7 +7,7 @@ import { CreateLongProjectForm } from "./CreateLongProjectForm.js";
 function fillRequiredFields(projectId: string, title: string, logline: string): void {
   fireEvent.change(screen.getByLabelText("프로젝트 ID"), { target: { value: projectId } });
   fireEvent.change(screen.getByLabelText("제목"), { target: { value: title } });
-  fireEvent.change(screen.getByLabelText("로그라인"), { target: { value: logline } });
+  fireEvent.change(screen.getByLabelText("한 줄 줄거리"), { target: { value: logline } });
 }
 
 describe("CreateLongProjectForm", () => {
@@ -21,11 +21,10 @@ describe("CreateLongProjectForm", () => {
 
     expect(screen.getByLabelText("프로젝트 ID")).toBeTruthy();
     expect(screen.getByLabelText("제목")).toBeTruthy();
-    expect(screen.getByLabelText("로그라인")).toBeTruthy();
+    expect(screen.getByLabelText("한 줄 줄거리")).toBeTruthy();
     expect(screen.getByLabelText("에피소드 수")).toBeTruthy();
     expect(screen.getByLabelText("장면 수")).toBeTruthy();
     expect(screen.getByLabelText("클립 길이(초)")).toBeTruthy();
-    expect(screen.getByLabelText("플랫폼")).toBeTruthy();
     expect(screen.getByLabelText("화면 비율")).toBeTruthy();
   });
 
@@ -99,7 +98,6 @@ describe("CreateLongProjectForm", () => {
     expect(body.projectId).toBe("long_test");
     expect(body.settings.title).toBe("우주 방랑자");
     expect(body.settings.logline).toBe("귀환 이야기");
-    expect(body.settings.platform).toBe("YouTube Shorts");
     expect(body.settings.aspectRatio).toBe("9:16");
   });
 

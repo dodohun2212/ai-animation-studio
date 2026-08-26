@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { jsonResponse, makeAsset, makeProject } from "../api/testUtils.js";
+import { jsonResponse, makeAsset, makeAssetFolder, makeProject } from "../api/testUtils.js";
 import { ShortProjectSettingsScreen } from "./ShortProjectSettingsScreen.js";
 
 const settings = {
@@ -196,7 +196,7 @@ describe("ShortProjectSettingsScreen", () => {
   });
 
   it("shows the current cast, adds a searched character, and removes a cast member", async () => {
-    const hero = makeAsset({ assetId: "ASSET-CHAR-1", displayName: "주인공", assetType: "character" });
+    const hero = makeAssetFolder({ assetId: "ASSET-CHAR-1", displayName: "주인공", assetType: "character" });
     const fetchMock = stubFetchByRoute({
       "GET /projects/sample_project/settings": { settings },
       "GET /projects/sample_project/settings/cast": { cast: [] },
@@ -217,7 +217,11 @@ describe("ShortProjectSettingsScreen", () => {
     await screen.findByText("주인공");
 
     fireEvent.click(within(castSection).getByRole("button", { name: "추가" }));
-    await screen.findByText("ASSET-CHAR-1");
+    // The added member now shows its NAME, not its id — the id only appears as a fallback for a member loaded
+    // from a saved cast with no search behind it. Scoped to the selected list because the search result below
+    // still renders the same name.
+    const selected = await within(castSection).findByRole("list", { name: "선택된 캐릭터 목록" });
+    expect(within(selected).getByText("주인공")).toBeTruthy();
     expect(fetchMock.mock.calls.some(([url, init]) => String(url) === "/projects/sample_project/settings/cast" && (init as RequestInit | undefined)?.method === "PUT")).toBe(true);
   });
 
@@ -239,6 +243,84 @@ describe("ShortProjectSettingsScreen", () => {
     await within(castSection).findByText("선택된 캐릭터가 없습니다.");
     const putCall = fetchMock.mock.calls.find(([url, init]) => String(url) === "/projects/sample_project/settings/cast" && (init as RequestInit | undefined)?.method === "PUT")!;
     expect(JSON.parse(String((putCall[1] as RequestInit).body))).toEqual({ cast: [] });
+  });
+
+  it("offers only character Folders in the cast search, so a single drawing cannot be added as a character", async () => {
+    const folder = makeAssetFolder({ assetId: "ASSET-CHAR-FOLDER", displayName: "주인공 폴더", assetType: "character" });
+    const loose = makeAsset({ assetId: "ASSET-CHAR-LOOSE", displayName: "주인공 옆모습", assetType: "character", isFolder: false });
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+      "GET /assets?query=%EC%A3%BC%EC%9D%B8%EA%B3%B5&assetType=character": { assets: [folder, loose] },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    const castSection = await screen.findByRole("region", { name: "등장 캐릭터" });
+    const searchForm = within(castSection).getByRole("form", { name: "캐릭터 Asset 검색" });
+    fireEvent.change(within(searchForm).getByLabelText("캐릭터 검색"), { target: { value: "주인공" } });
+    fireEvent.click(within(searchForm).getByRole("button", { name: "검색" }));
+
+    const results = await within(castSection).findByRole("list", { name: "캐릭터 검색 결과" });
+    expect(within(results).getByText("주인공 폴더")).toBeTruthy();
+    expect(within(results).queryByText("주인공 옆모습")).toBeNull();
+  });
+
+  it("promotes a member to 대표 in the spelling the prompt builder actually reads, and demotes the previous one", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings/cast": {
+        cast: [
+          { assetId: "ASSET-CHAR-1", castRole: "protagonist", storyRole: "대표 캐릭터" },
+          { assetId: "ASSET-CHAR-2", castRole: "supporting", storyRole: "복수를 노리는 동생" },
+        ],
+      },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+      "PUT /projects/sample_project/settings/cast": {
+        cast: [
+          { assetId: "ASSET-CHAR-1", castRole: "supporting", storyRole: "서브 캐릭터" },
+          { assetId: "ASSET-CHAR-2", castRole: "protagonist", storyRole: "복수를 노리는 동생" },
+        ],
+      },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    const castSection = await screen.findByRole("region", { name: "등장 캐릭터" });
+    await within(castSection).findByText("ASSET-CHAR-1");
+    const second = within(castSection).getByRole("group", { name: "ASSET-CHAR-2 구분" });
+    fireEvent.click(within(second).getByRole("button", { name: "대표" }));
+
+    const putCall = await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url, init]) => String(url) === "/projects/sample_project/settings/cast" && (init as RequestInit | undefined)?.method === "PUT");
+      expect(call).toBeTruthy();
+      return call!;
+    });
+    expect(JSON.parse(String((putCall[1] as RequestInit).body))).toEqual({
+      cast: [
+        // Demoted, and its auto-filled 대표 캐릭터 story role follows.
+        { assetId: "ASSET-CHAR-1", castRole: "supporting", storyRole: "서브 캐릭터" },
+        // Promoted, but the story role the user typed themselves is left exactly as written.
+        { assetId: "ASSET-CHAR-2", castRole: "protagonist", storyRole: "복수를 노리는 동생" },
+      ],
+    });
+  });
+
+  it("says so when no member is the 대표, since the prompt would then describe everyone as 서브", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "ASSET-CHAR-1", castRole: "supporting", storyRole: "서브 캐릭터" }] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    const hint = await screen.findByTestId("cast-representative-hint");
+    expect(hint.textContent).toContain("대표 캐릭터가 아직 없습니다");
   });
 
   it("shows a cast-load error without breaking the rest of the settings screen", async () => {

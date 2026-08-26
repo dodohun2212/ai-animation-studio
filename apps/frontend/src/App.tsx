@@ -212,7 +212,7 @@ function LongWorkspaceNav({ screen, onNavigate }: { screen: Screen; onNavigate: 
       {tab(screen.name, "longDetail", "프로젝트 개요", () => onNavigate({ name: "longDetail", projectId }))}
       {tab(screen.name, "longSettings", "설정", () => onNavigate({ name: "longSettings", projectId }))}
       {tab(screen.name, "longOutline", "스토리 개요", () => onNavigate({ name: "longOutline", projectId }))}
-      {tab(screen.name, "longStoryBible", "Story Bible", () => onNavigate({ name: "longStoryBible", projectId }))}
+      {tab(screen.name, "longStoryBible", "등장인물·설정집", () => onNavigate({ name: "longStoryBible", projectId }))}
       {episodeNumber !== undefined && (
         <>
           <span className="mx-1 text-sm text-slate-500">·</span>

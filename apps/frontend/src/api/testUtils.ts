@@ -96,6 +96,25 @@ export function makeAsset(overrides: Partial<Asset> = {}): Asset {
   };
 }
 
+/**
+ * A Folder Asset that satisfies the frontend's own `isAsset()` folder invariant (assetsApi.ts): no digest, no
+ * image, no versions, no reference images. `makeAsset({ isFolder: true })` alone does NOT — it keeps the
+ * non-folder defaults (a real digest, `imageAvailable: true`), producing an Asset the response validator
+ * rejects as malformed, which surfaces in a test as a confusing CLIENT_MALFORMED_RESPONSE banner instead of
+ * the data you thought you stubbed. Use this whenever a fixture needs to be a Folder.
+ */
+export function makeAssetFolder(overrides: Partial<Asset> = {}): Asset {
+  return makeAsset({
+    isFolder: true,
+    imageAvailable: false,
+    contentSha256: "",
+    contentUrl: null,
+    versions: [],
+    referenceImages: [],
+    ...overrides,
+  });
+}
+
 export function makeMapping(overrides: Partial<ProjectAssetMapping> = {}): ProjectAssetMapping {
   return {
     mappingId: "MAP-000000000001",
@@ -132,7 +151,6 @@ export function makeLongProjectSettings(overrides: Partial<LongProjectSettings> 
     episodeDurationSeconds: 30,
     sceneCount: 6,
     clipDurationSeconds: 5,
-    platform: "YouTube Shorts",
     aspectRatio: "9:16",
     audience: "",
     notes: "",

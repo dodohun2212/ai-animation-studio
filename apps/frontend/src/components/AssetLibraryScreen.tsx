@@ -108,6 +108,14 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   const [folderLinkSearchError, setFolderLinkSearchError] = useState<{ code: string; message: string } | null>(null);
   const [folderMutationPending, setFolderMutationPending] = useState(false);
   const [folderMutationError, setFolderMutationError] = useState<{ code: string; message: string } | null>(null);
+  // Registering a brand-new image straight into the open Folder — kept apart from the top-level import form's
+  // state so a half-typed entry in one is never clobbered by the other.
+  const [folderUploadFile, setFolderUploadFile] = useState<File | null>(null);
+  const [folderUploadName, setFolderUploadName] = useState("");
+  const [folderUploadDescription, setFolderUploadDescription] = useState("");
+  const [folderUploadPending, setFolderUploadPending] = useState(false);
+  const [folderUploadValidationError, setFolderUploadValidationError] = useState<string | null>(null);
+  const [folderUploadInputGeneration, setFolderUploadInputGeneration] = useState(0);
   // In-screen confirmation for destructive/replacing actions — replaces window.confirm(), which blocks
   // the whole renderer (and freezes automation/Electron flows) as a native modal.
   const [confirmAction, setConfirmAction] = useState<"delete-asset" | "relink" | "delete-owned-file" | "delete-folder" | null>(null);
@@ -133,6 +141,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   const folderDeleteBusy = useRef(false);
   const folderCreateBusy = useRef(false);
   const folderMutationBusy = useRef(false);
+  const folderUploadBusy = useRef(false);
 
   async function load(nextQuery = query, nextType = assetType) {
     const requestId = ++listRequest.current;
@@ -406,6 +415,40 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
     finally { setFolderLinkSearchLoading(false); }
   }
 
+  /**
+   * Registers a new image and drops it straight into the open Folder. It is two requests because
+   * `CreateAssetMetadata` has no `parentFolderId` — creation and filing are separate endpoints. If the second
+   * one fails the image is registered but unfiled, which is recoverable but invisible, so the error below says
+   * exactly that instead of the generic failure text; otherwise someone goes hunting for a file they think
+   * vanished. The Folder's own `assetType` is used, so a character Folder can only ever collect characters.
+   */
+  async function submitFolderUpload(event: FormEvent) {
+    event.preventDefault();
+    if (!selected || folderUploadBusy.current) return;
+    if (!folderUploadFile || !folderUploadName.trim()) { setFolderUploadValidationError(IMPORT_VALIDATION_MESSAGE); return; }
+    const folderId = selected.asset.assetId;
+    const assetType = selected.asset.assetType;
+    const attemptedName = folderUploadName.trim();
+    setFolderUploadValidationError(null);
+    folderUploadBusy.current = true; setFolderUploadPending(true); setFolderMutationError(null);
+    let createdAssetId: string | null = null;
+    try {
+      const response = await createAsset(folderUploadFile, { assetType, displayName: attemptedName, description: folderUploadDescription.trim() });
+      createdAssetId = response.asset.assetId;
+      await setAssetParentFolder(createdAssetId, { parentFolderId: folderId });
+      setFolderUploadFile(null); setFolderUploadName(""); setFolderUploadDescription("");
+      setFolderUploadInputGeneration((current) => current + 1);
+      await load();
+      await open(folderId);
+    } catch (caught) {
+      const displayed = toAssetDisplayError(caught);
+      setFolderMutationError(createdAssetId
+        ? { code: displayed.code, message: `이미지는 "${attemptedName}"(으)로 등록됐지만 이 폴더에 넣지는 못했습니다(${displayed.message}). 아래 "이미지 검색"에서 찾아 폴더에 넣어 주세요.` }
+        : displayed);
+    }
+    finally { folderUploadBusy.current = false; setFolderUploadPending(false); }
+  }
+
   async function linkAssetToFolder(assetId: string) {
     if (!selected || folderMutationBusy.current) return;
     const folderId = selected.asset.assetId;
@@ -669,6 +712,15 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
             ))}
           </select>
         </label>
+        {/* A loose character image is a dead end: the project's cast picker only accepts character Folders, so
+            this image would never appear there. Said here rather than blocked, because it is still a legitimate
+            way to stage an image you are about to file into a Folder. */}
+        {importType === "character" && (
+          <p data-testid="loose-character-hint" className="text-sm text-amber-300">
+            낱장으로 등록한 캐릭터 이미지는 프로젝트의 등장 캐릭터 목록에 나타나지 않습니다. 그 목록은 캐릭터 <strong className="text-amber-200">폴더</strong>만 받습니다.
+            먼저 "새 폴더 만들기"로 폴더를 만들고, 폴더 상세의 "이 폴더에 새 이미지 등록"을 쓰시는 편이 낫습니다.
+          </p>
+        )}
         <label className="block text-sm text-slate-300">
           설명
           <input value={importDescription} disabled={importPending} className={fieldClassName} onChange={(event) => setImportDescription(event.target.value)} />
@@ -851,7 +903,46 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                   {folderMutationError.message}
                 </p>
               )}
+              <form onSubmit={submitFolderUpload} aria-label="이 폴더에 새 이미지 등록" className="space-y-2 border-t border-white/10 pt-3">
+                <p className="text-sm font-semibold text-slate-200">이 폴더에 새 이미지 등록</p>
+                <p className="text-xs text-slate-400">
+                  아직 Asset Library에 없는 이미지를 바로 이 폴더 안으로 등록합니다. 유형은 이 폴더와 같은 것으로 들어갑니다.
+                </p>
+                {folderUploadValidationError && (
+                  <p role="alert" data-testid="folder-upload-validation-error" className="text-sm text-rose-400">
+                    {folderUploadValidationError}
+                  </p>
+                )}
+                <label className="block text-sm text-slate-300">
+                  이미지 파일
+                  <input
+                    key={folderUploadInputGeneration}
+                    type="file"
+                    accept="image/*"
+                    disabled={folderUploadPending}
+                    className="mt-1.5 block w-full text-sm text-slate-300 file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-slate-200 disabled:opacity-50"
+                    onChange={(event) => { setFolderUploadFile(event.target.files?.[0] ?? null); setFolderUploadValidationError(null); }}
+                  />
+                </label>
+                <label className="block text-sm text-slate-300">
+                  이름
+                  <input
+                    value={folderUploadName}
+                    disabled={folderUploadPending}
+                    className={fieldClassName}
+                    onChange={(event) => { setFolderUploadName(event.target.value); setFolderUploadValidationError(null); }}
+                  />
+                </label>
+                <label className="block text-sm text-slate-300">
+                  설명
+                  <input value={folderUploadDescription} disabled={folderUploadPending} className={fieldClassName} onChange={(event) => setFolderUploadDescription(event.target.value)} />
+                </label>
+                <button type="submit" disabled={folderUploadPending} className={smallAddButton}>
+                  {folderUploadPending ? "등록하는 중…" : "이 폴더에 등록"}
+                </button>
+              </form>
               <form onSubmit={searchFolderLinkCandidates} aria-label="폴더에 추가할 이미지 검색" className="space-y-2 border-t border-white/10 pt-3">
+                <p className="text-sm font-semibold text-slate-200">이미 등록된 이미지 넣기</p>
                 <p className="text-xs text-slate-400">Asset Library에 이미 등록된 같은 유형의 이미지를 검색해서 이 폴더에 추가할 수 있습니다.</p>
                 <div className="flex flex-wrap items-end gap-2">
                   <label className="flex flex-col gap-1 text-xs text-slate-400">

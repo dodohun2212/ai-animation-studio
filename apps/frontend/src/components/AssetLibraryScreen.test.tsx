@@ -1022,6 +1022,80 @@ describe("AssetLibraryScreen", () => {
     expect(screen.getByTestId("child-description-save-CHAR-1")).toBeDisabled(); // draft consumed after save
   });
 
+  it("registers a brand-new image straight into the open folder, then refiles it under that folder", async () => {
+    const folder = makeAsset({ assetId: "FOLDER-CHAR", assetType: "character", displayName: "주인공", isFolder: true, imageAvailable: false, contentSha256: "", versions: [], referenceImages: [], childAssetIds: [], thumbnailAssetId: "" });
+    const created = makeAsset({ assetId: "CHAR-NEW", assetType: "character", displayName: "정면", description: "웃는 표정" });
+    const filed = { ...created, parentFolderId: "FOLDER-CHAR" };
+    const folderWithChild = { ...folder, childAssetIds: ["CHAR-NEW"] };
+    const fetchMock = stubFetchByRoute({
+      "GET /assets": [{ assets: [folder] }, { assets: [folderWithChild, filed] }],
+      "GET /assets/FOLDER-CHAR": [
+        { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false },
+        { asset: folderWithChild, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false },
+      ],
+      "GET /assets/CHAR-NEW": { asset: filed, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
+      "POST /assets": { asset: created },
+      "PATCH /assets/CHAR-NEW/parent-folder": { asset: filed },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    const list = await screen.findByRole("list", { name: "에셋 목록" });
+    fireEvent.click(within(list).getByText("주인공"));
+    const detail = await screen.findByRole("region", { name: "에셋 상세" });
+
+    const uploadForm = within(detail).getByRole("form", { name: "이 폴더에 새 이미지 등록" });
+    fireEvent.change(within(uploadForm).getByLabelText("이미지 파일"), { target: { files: [new File(["x"], "front.png", { type: "image/png" })] } });
+    fireEvent.change(within(uploadForm).getByLabelText("이름"), { target: { value: "정면" } });
+    fireEvent.change(within(uploadForm).getByLabelText("설명"), { target: { value: "웃는 표정" } });
+    fireEvent.click(within(uploadForm).getByRole("button", { name: "이 폴더에 등록" }));
+
+    // Creation and filing are separate endpoints — the point of this screen is that one click does both.
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => String(url) === "/assets/CHAR-NEW/parent-folder" && (init as RequestInit | undefined)?.method === "PATCH")).toBe(true));
+    const [, patchInit] = fetchMock.mock.calls.find(([url, init]) => String(url) === "/assets/CHAR-NEW/parent-folder" && (init as RequestInit | undefined)?.method === "PATCH")! as [string, RequestInit];
+    expect(JSON.parse(String(patchInit.body))).toEqual({ parentFolderId: "FOLDER-CHAR" });
+  });
+
+  it("says the image survived when only the filing half failed, so nobody hunts for a file they think vanished", async () => {
+    const folder = makeAsset({ assetId: "FOLDER-CHAR", assetType: "character", displayName: "주인공", isFolder: true, imageAvailable: false, contentSha256: "", versions: [], referenceImages: [], childAssetIds: [], thumbnailAssetId: "" });
+    const created = makeAsset({ assetId: "CHAR-NEW", assetType: "character", displayName: "정면" });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      if (url === "/assets" && method === "GET") return jsonResponse(200, { assets: [folder] });
+      if (url === "/assets/FOLDER-CHAR" && method === "GET") return jsonResponse(200, { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false });
+      if (url === "/assets" && method === "POST") return jsonResponse(200, { asset: created });
+      if (url === "/assets/CHAR-NEW/parent-folder") return jsonResponse(500, { code: "ASSET_MUTATION_UNSUPPORTED", message: "수정할 수 없습니다." });
+      throw new Error(`Unexpected fetch call in test: ${method} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    const list = await screen.findByRole("list", { name: "에셋 목록" });
+    fireEvent.click(within(list).getByText("주인공"));
+    const detail = await screen.findByRole("region", { name: "에셋 상세" });
+
+    const uploadForm = within(detail).getByRole("form", { name: "이 폴더에 새 이미지 등록" });
+    fireEvent.change(within(uploadForm).getByLabelText("이미지 파일"), { target: { files: [new File(["x"], "front.png", { type: "image/png" })] } });
+    fireEvent.change(within(uploadForm).getByLabelText("이름"), { target: { value: "정면" } });
+    fireEvent.click(within(uploadForm).getByRole("button", { name: "이 폴더에 등록" }));
+
+    const failure = await screen.findByTestId("folder-mutation-error");
+    expect(failure.textContent).toContain("등록됐지만");
+    expect(failure.textContent).toContain("정면");
+  });
+
+  it("warns that a loose character image will never reach a project's cast list", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { assets: [] })));
+    render(<AssetLibraryScreen onBack={() => {}} />);
+    await screen.findByText("등록된 에셋이 없습니다.");
+
+    const form = importForm();
+    expect(screen.queryByTestId("loose-character-hint")).toBeNull();
+    fireEvent.change(within(form).getByLabelText("유형"), { target: { value: "character" } });
+    expect(screen.getByTestId("loose-character-hint").textContent).toContain("폴더");
+  });
+
   it("calls onBack when the back button is clicked", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { assets: [] })));
     const onBack = vi.fn();

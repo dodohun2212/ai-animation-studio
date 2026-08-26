@@ -136,6 +136,12 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
         />
         스토리 개요 프롬프트 확인
       </h2>
+      {/* The two long-project text stores are easy to confuse and the screens never said how they differ.
+          Stated as the question each one answers, since that is the only way to know which one to type into. */}
+      <p className="text-sm text-slate-400">
+        스토리 개요는 <strong className="text-slate-200">"몇 화에 무슨 일이 일어나는가"</strong>입니다 — 시간 순서를 따라가는 줄거리예요.
+        등장인물이 어떻게 생겼는지, 어떤 장소·소품·비밀이 있는지는 여기가 아니라 <strong className="text-slate-200">등장인물·설정집</strong>에 적습니다.
+      </p>
 
       {previewLoading && !preview && <Spinner label="미리보기를 불러오는 중..." />}
       {previewError && (

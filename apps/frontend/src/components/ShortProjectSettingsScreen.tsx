@@ -115,6 +115,23 @@ function Field({ label, value, onChange, multiline = false }: { label: string; v
 }
 
 /**
+ * The two spellings the backend itself treats as the representative — `describeCharacterCast()` in
+ * story-asset-metadata.ts decides "대표 캐릭터" vs "서브 캐릭터" by exactly this test. The screen used to offer a
+ * free-text 배역 box, so anything typed in Korean fell through to 서브 and the distinction never reached the
+ * prompt. Reading the same rule here is what makes the toggle below mean what it says.
+ */
+function isRepresentative(member: ShortProjectCastMember): boolean {
+  return member.castRole === "protagonist" || member.castRole === "lead";
+}
+
+/**
+ * `storyRole` is free text the user may have written themselves ("복수를 노리는 동생"). Promoting or demoting a
+ * member rewrites it only when it still holds one of the two values this screen fills in automatically —
+ * never when it holds something a person typed.
+ */
+const AUTO_STORY_ROLES = new Set(["대표 캐릭터", "서브 캐릭터", ""]);
+
+/**
  * Wizard-time representative/supporting Character Asset selection (Python's `character_profile.cast`). Saves
  * through its own endpoint, separate from the plain-text settings form above, so a search or a blur-save here
  * never depends on the settings form's own save state.
@@ -125,6 +142,13 @@ function CastEditor({ projectId }: { projectId: string }) {
   const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Asset[] | null>(null);
+  /**
+   * assetId -> display name, for the selected list. The cast contract stores only ids, so a name has to come
+   * from somewhere: every search result and every freshly added member contributes one. An id with no known
+   * name (a member saved in an earlier session, before any search ran) falls back to showing the id rather
+   * than showing nothing.
+   */
+  const [memberNames, setMemberNames] = useState<Record<string, string>>({});
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<{ code: string; message: string } | null>(null);
   const savingRef = useRef(false);
@@ -141,7 +165,15 @@ function CastEditor({ projectId }: { projectId: string }) {
     setSearchLoading(true); setSearchError(null);
     try {
       const response = await listAssets({ query: query || undefined, assetType: "character" });
-      setResults(response.assets);
+      /* Folders only. A loose image is one drawing of a character, not the character — and the prompt's
+         per-child description block (describeCharacterCast's `하위 이미지별 개별 특징`) has nothing to say
+         unless the cast member is a Folder. Filtering here keeps the /assets contract untouched. */
+      const folders = response.assets.filter((asset) => asset.isFolder);
+      setResults(folders);
+      setMemberNames((current) => ({
+        ...current,
+        ...Object.fromEntries(folders.map((asset) => [asset.assetId, asset.displayName])),
+      }));
     } catch (caught) { setSearchError(toAssetDisplayError(caught)); }
     finally { setSearchLoading(false); }
   }
@@ -158,11 +190,33 @@ function CastEditor({ projectId }: { projectId: string }) {
 
   function addMember(asset: Asset): void {
     if (!cast || cast.some((member) => member.assetId === asset.assetId)) return;
+    setMemberNames((current) => ({ ...current, [asset.assetId]: asset.displayName }));
     void persist([...cast, { assetId: asset.assetId, castRole: "supporting", storyRole: "서브 캐릭터" }]);
   }
   function removeMember(assetId: string): void {
     if (!cast) return;
     void persist(cast.filter((member) => member.assetId !== assetId));
+  }
+  /** Exactly one representative: promoting one demotes every other member in the same save. */
+  function setRepresentative(assetId: string): void {
+    if (!cast) return;
+    void persist(cast.map((member) => {
+      const representative = member.assetId === assetId;
+      return {
+        ...member,
+        castRole: representative ? "protagonist" : "supporting",
+        storyRole: AUTO_STORY_ROLES.has(member.storyRole.trim()) ? (representative ? "대표 캐릭터" : "서브 캐릭터") : member.storyRole,
+      };
+    }));
+  }
+  /** Demoting the current representative leaves none — the hint below says so rather than silently picking one. */
+  function setSupporting(assetId: string): void {
+    if (!cast) return;
+    void persist(cast.map((member) => member.assetId !== assetId ? member : {
+      ...member,
+      castRole: "supporting",
+      storyRole: AUTO_STORY_ROLES.has(member.storyRole.trim()) ? "서브 캐릭터" : member.storyRole,
+    }));
   }
   function updateMember(assetId: string, key: "castRole" | "storyRole", value: string): void {
     if (!cast) return;
@@ -178,7 +232,10 @@ function CastEditor({ projectId }: { projectId: string }) {
   return (
     <section aria-label="등장 캐릭터" className={cardSection}>
       <SectionHeading>등장 캐릭터</SectionHeading>
-      <p className="text-xs text-slate-400">검색 결과가 없다면 Asset Library에서 캐릭터를 먼저 등록해 주세요.</p>
+      <p className="text-xs text-slate-400">
+        대표는 한 명, 나머지는 모두 서브 캐릭터가 됩니다. 이 구분은 대본 AI에게 그대로 전달됩니다.
+        캐릭터형 <strong className="text-slate-300">폴더</strong>만 고를 수 있습니다 — 낱장 이미지 하나는 캐릭터가 아니라 그림 한 장이라서요.
+      </p>
       {error && (
         <p role="alert" data-testid="cast-error" data-error-code={error.code} className="text-sm text-rose-400">
           {error.message}
@@ -190,17 +247,32 @@ function CastEditor({ projectId }: { projectId: string }) {
         <ul aria-label="선택된 캐릭터 목록" className="space-y-2">
           {cast.map((member) => (
             <li key={member.assetId} className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-3">
-              <span className="text-sm font-medium text-slate-200">{member.assetId}</span>
-              <label className="flex items-center gap-1.5 text-xs text-slate-400">
-                배역
-                <input
-                  className={inlineInput}
-                  value={member.castRole}
+              {/* Was the raw asset id (ASSET-CHARACTER-000000000001). Nobody can tell who they added from that.
+                  The name comes from whichever search result was clicked; the id stays as the title attribute
+                  so it is still recoverable when something needs to be matched up by hand. */}
+              <span className="text-sm font-medium text-slate-200" title={member.assetId}>
+                {memberNames[member.assetId] ?? member.assetId}
+              </span>
+              <span role="group" aria-label={`${memberNames[member.assetId] ?? member.assetId} 구분`} className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  aria-pressed={isRepresentative(member)}
+                  className={isRepresentative(member) ? smallAddButton : smallOutlineButton}
                   disabled={saving}
-                  onChange={(event) => updateMember(member.assetId, "castRole", event.target.value)}
-                  onBlur={() => saveMember(member.assetId)}
-                />
-              </label>
+                  onClick={() => setRepresentative(member.assetId)}
+                >
+                  대표
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={!isRepresentative(member)}
+                  className={!isRepresentative(member) ? smallAddButton : smallOutlineButton}
+                  disabled={saving}
+                  onClick={() => setSupporting(member.assetId)}
+                >
+                  서브
+                </button>
+              </span>
               <label className="flex items-center gap-1.5 text-xs text-slate-400">
                 이야기 속 역할
                 <input
@@ -217,6 +289,13 @@ function CastEditor({ projectId }: { projectId: string }) {
             </li>
           ))}
         </ul>
+      )}
+      {cast && cast.length > 0 && cast.filter(isRepresentative).length !== 1 && (
+        <p data-testid="cast-representative-hint" className="text-sm text-amber-300">
+          {cast.some(isRepresentative)
+            ? "대표로 지정된 캐릭터가 둘 이상입니다. 하나만 남겨 주세요 — 대본 AI는 대표를 한 명으로 봅니다."
+            : "대표 캐릭터가 아직 없습니다. 이야기의 중심이 되는 캐릭터의 \"대표\"를 눌러 주세요."}
+        </p>
       )}
       <form onSubmit={search} aria-label="캐릭터 Asset 검색" className="flex flex-wrap items-end gap-2">
         <label className="flex flex-col gap-1 text-xs text-slate-400">
@@ -249,7 +328,9 @@ function CastEditor({ projectId }: { projectId: string }) {
           ))}
         </ul>
       )}
-      {results && results.length === 0 && !searchLoading && <p className="text-sm text-slate-400">검색 결과가 없습니다.</p>}
+      {results && results.length === 0 && !searchLoading && (
+        <p className="text-sm text-slate-400">캐릭터형 폴더가 없습니다. Asset Library에서 캐릭터 폴더를 먼저 만들어 주세요.</p>
+      )}
     </section>
   );
 }
@@ -867,9 +948,18 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
                 </p>
               )}
               {!promptPreviewLoading && !promptPreviewError && promptPreview && (
-                <pre data-testid="story-prompt-draft-preview" className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-xl border border-white/10 bg-slate-950/60 p-3 text-xs text-slate-300">
-                  {promptPreview}
-                </pre>
+                <>
+                  {/* Length is part of what the user is judging here: a prompt that grew past what the model
+                      handles well is not visible from reading it, and this is the screen where the inputs that
+                      made it long can still be trimmed. Counted in code points, not UTF-16 units, so an emoji
+                      or a surrogate pair counts once — the same way a person counts characters. */}
+                  <p data-testid="story-prompt-draft-preview-length" className="text-xs tabular-nums text-slate-400">
+                    {[...promptPreview].length.toLocaleString("ko-KR")}자 · 줄 {promptPreview.split("\n").length.toLocaleString("ko-KR")}
+                  </p>
+                  <pre data-testid="story-prompt-draft-preview" className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-xl border border-white/10 bg-slate-950/60 p-3 text-xs text-slate-300">
+                    {promptPreview}
+                  </pre>
+                </>
               )}
               {!promptPreviewLoading && !promptPreviewError && !promptPreview && (
                 <p className="text-xs text-slate-500">프로젝트 이름과 영상 주제를 채우면 미리보기가 표시됩니다.</p>
