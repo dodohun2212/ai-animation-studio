@@ -1065,4 +1065,18 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 자가 발견 stale 테스트: 기존 "prevents a duplicate PATCH..." 테스트가 확정 버튼이 사라지는 새 동작과 충돌(같은 버튼 노드가 다시 활성화되길 기다림) — CLI가 발견·보고, Cowork가 테스트 목적(중복 PATCH 방지)은 유지한 채 마지막 대기 어서션만 "버튼이 사라짐 + 같은 행 다른 버튼 잠금 해제"로 교체.
   - 검증: frontend typecheck·테스트 776개 전부 통과(+1 신규)·build 통과.
   - 커밋: `caf22c8`.
+- [x] **UI 전수 감사(사용자 요청: "쓸모없는·헷갈리는 버튼 정리, UI 보기 쉽게")**: 화면 33개, 45건 발견. 큰 항목(영어 용어 전면 한글화, Story Bible/Continuity 원시 JSON 편집창 제거, ProjectDetail 중복 버튼, 프로젝트 ID 직접 입력, 회차 보관 영문 타이핑)은 사용자 승인 받고 진행. 핵심:
+  - **돈 관련 거짓 안내(🔴)**: `VideoPromptPreviewScreen`이 상단 배너("실제 유료 요청 안 함")와 확인 패널("실제 유료 요청 전송됨")이 서로 반대로 말하고 있었다 — 조건을 정확히 말하도록 재작성(화면 여는 것만으론 무료, 확인까지 마쳐야 과금).
+  - **확인 없는 유료 버튼(🔴)**: `LongEpisodeVideoWorkflowScreen`의 `다시 시작`이 같은 화면 다른 유료 버튼과 달리 확인 패널 없이 바로 과금 요청을 보냈다 — 같은 확인 단계 추가.
+  - **데이터 유실 함정**: `StoryPromptScreen`/`VideoPromptPreviewScreen`의 `새로고침`이 편집 중인 내용을 말없이 덮어씀 — `처음 내용으로 되돌리기`로 개명(편집 대상이 있는 화면만).
+  - 하드코딩 `6`(`LongEpisodeImageGenerationScreen`) 재발 — `sceneNumbers.length`로.
+  - `LongProjectList`/`LongProjectOutlineScreen`/`LongEpisodeVideoWorkflowScreen`에서 내부 enum(`outlineStatus`/`workflowState`/`episode.status`)이 화면에 그대로 샘 — 이미 있던 라벨 헬퍼로 교체.
+  - `ImageGenerationScreen`/`VideoWorkflowScreen`의 영구 비활성 죽은 버튼 제거.
+  - 영어 내부 용어 20파일 일괄 한글화(Asset Mapping→참고 이미지 연결 등, `data-testid`는 안 건드림).
+  - `LongStoryBibleScreen`의 JSON 텍스트박스 두 개를 이름/내용 행 편집기(`PlainRecordEditor`)로 — 문자열이 아닌 값이 섞여 있으면 표를 안 그리고 JSON만 남겨 데이터 손실 방지, 원본 JSON은 `고급 편집` 안에 보존.
+  - `LongEpisodeContinuityScreen`은 표로 안 바꿈 — `characterChanges`/`itemChanges`에 고정 키 스키마가 있는지 CLI에 문의, **백엔드 검증기·프롬프트 빌더 어디에도 개별 키를 읽는 코드가 없음을 확인**(전체를 `JSON.stringify`해서 프롬프트에 통째로 넣음) — 스키마를 지어내지 않기로 한 판단이 맞았다고 CLI가 답변. JSON 유지, 라벨·안내만 개선.
+  - **자가 발견 — 버튼 이름 충돌**: `PlainRecordEditor`를 두 번 쓰면서 "항목 추가" 버튼이 화면에 3개(접근성 이름 동일) 생김 — CLI가 발견·보고, Cowork가 테스트가 아니라 화면 쪽을 고쳐(구역별 이름으로) 근본 해결.
+  - 검증 라운드마다 stale 테스트 다수 발견·수정(라벨 변경에 따른 원문/enum 조회, DOM 순서 의존, 새 라벨과 충돌하는 부정 조회 패턴 등) — 전부 "검사하려던 성질"은 유지한 채 검사 방법만 교체.
+  - 검증: frontend typecheck·테스트 775개 전부 통과·build 통과. 백엔드·계약 미변경.
+  - 커밋: `a019342`.
 
