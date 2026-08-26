@@ -1181,4 +1181,7 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 신규/수정 테스트 5건(`runway-video-adapter.test.ts` 3건 갱신 — 재시도 요청해도 무시됨 확인, `local-video-workflow.runway.test.ts` 1건 신규 — 지연된 fetch 응답으로 경합 재현해 경고·미덮어쓰기 확인).
   - 검증: root typecheck 전부 통과, Backend 679 통과(+1 순증, 무관한 사전 존재 실패 2건은 그대로 — Round 100에 전문), root build 전부 통과. 유료 Provider 호출 없음.
   - 커밋: `c85bd6c`.
+- [x] **크레딧 부족 프런트 문구 연결(Round 146)**: `SCENE_ERROR_CATEGORY_MESSAGES`에 `quota_or_permission` 추가, 백엔드 안전 문구와 동일한 문장으로 맞춤. 신규 테스트 1건(Runway 원문이 코드 자리에 와도 일반 폴백으로 떨어지는 것 회귀 방지 포함).
+  - 검증: frontend typecheck·테스트 796개 전부 통과(+1 신규)·build 통과. 백엔드·계약 미변경.
+  - 커밋: `0f9a443`.
 
