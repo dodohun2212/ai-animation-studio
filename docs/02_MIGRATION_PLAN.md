@@ -1058,4 +1058,7 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - **도중 사고 2건, 둘 다 복구**: (1) Cowork가 `CreateLongProjectForm.test.tsx`를 컨테이너 마운트 갱신 타이밍 문제로 스테일 사본으로 덮어씀 — CLI가 `git checkout --`로 커밋 상태 복구, Cowork가 의도한 두 줄만 재적용해 해결. (2) `LongProjectDetail.tsx` diff가 신고된 "한 줄"보다 훨씬 컸던 것 — 확인 결과 오염이 아니라 Round 91 #10 작업이 같은 배치에 같이 포함된 것으로 판단(코드 일관성·대응 테스트 존재로 확인), 되돌리지 않고 그대로 진행.
   - 검증: root 아님(프론트 전용 배치라 frontend typecheck·test·build만) — typecheck 통과, 테스트 772개 전부 통과, build 통과.
   - 커밋: `4abf806`.
+- [x] **#13 라우팅 배선 + #12 마지막 한 줄**: `App.tsx`에 `Screen`·`LONG_PROJECT_SCREEN_NAMES`·Episode 탭 라우팅 추가, `LongProjectDetail`에 `onOpenEpisodeOutline` prop. `episodeResumeTarget()`이 `planned` 상태에 링크가 없던 것도 같이 고쳐 개요 화면으로 이어하기 되게 함, `outline_ready`엔 대본 이어하기 옆에 별도 "회차 설정" 링크(서버 `draftStates` 편집 창을 벗어나면 사라짐). `LongProjectDetail.tsx`의 마지막 "Story Bible" 문자열도 "등장인물·설정집"으로. 신규 테스트 3건.
+  - 검증: frontend typecheck·테스트 775개 전부 통과(+3 신규)·build 통과.
+  - 커밋: `3275e0e`.
 
