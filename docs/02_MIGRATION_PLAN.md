@@ -1301,4 +1301,9 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 신규/수정 테스트: `audio-library.service.test.ts`에 라이선스 필수 검증 2건 + 속성 텍스트/출처 URL 왕복 1건 + 삭제 1건 추가(총 18건), `video-merge.service.test.ts`의 BGM 통합 테스트 1건에 라이선스 필드 보강, frontend `VideoMergeScreen.test.tsx` 기대값 수정.
   - 검증: root typecheck 전부 통과, Backend 762개·frontend 837개·shared 25개 전부 통과, root build 전부 통과. 유료 Provider 호출 없음.
   - 커밋: `934727d`.
+- [x] **프런트 — BGM 라이선스 종류 선택 UI + 삭제 확인(Round 170)**: Cowork가 Round 175에서 부착. 법률 용어 대신 상황으로 묻고(`CC0·퍼블릭 도메인` / `CC BY(출처 표시 필요)` / `구매·구독` / `직접 제작` / `그 밖의 경우`), 답이 정해진 종류는 `attributionRequired`를 다시 안 물음(`other`만 체크박스) — 같은 걸 두 번 물으면 정확도가 떨어진다는 근거. 삭제는 Round 169에서 합의한 대로 만들되 확인 패널에 "보관함에서만 사라지고 원본은 컴퓨터에 남는다"를 명시.
+  - Cowork가 자기 로컬 검사 방식도 이번에 고침: 기존 `tsc --noEmit --noResolve`는 모듈 해석을 꺼서 `packages/shared`의 필수 필드 누락(`TS2741`)을 구조적으로 못 잡았고, 게다가 노이즈 필터에 `TS2741` 자체가 들어 있어 계약 위반이 나도 걸러내고 있었다 — `paths` 매핑으로 모듈 해석을 켠 스크래치 tsconfig로 교체, 이번 라운드에서 바로 실제 파손 2건(`audioLibraryApi.test.ts`의 업로드 시그니처 불일치)을 스스로 잡아냈다고 보고.
+  - **자가 발견 — 내 라이선스 계약 변경(Round 169)이 만든 회귀**: `VideoMergeScreen.test.tsx`의 `makeTrack()` 픽스처가 `licenseKind`/`attributionRequired` 없이 남아 있었는데, `audioLibraryApi.ts`의 `isTrack()` 검증이 이제 그 두 필드를 요구해서 모킹한 트랙 목록이 조용히 빈 배열로 취급됨 — `narration+bgm` 테스트 2건이 "트랙 없음" 경로로 깨짐. 픽스처에 기본값 추가로 수정.
+  - 검증: root typecheck 전부 통과, frontend 841개 전부 통과(+4 신규), root build 전부 통과. 백엔드·계약 미변경.
+  - 커밋: `e45bfa3`.
 
