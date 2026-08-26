@@ -301,4 +301,46 @@ describe("real Runway video workflow", () => {
     expect(secondReview.reviews.find((review) => review.sceneNumber === 1)?.costUsd).toBeCloseTo(0.5, 8);
     expect(secondReview.reviews.filter((review) => review.sceneNumber !== 1).every((review) => review.costUsd === 0.25)).toBe(true);
   });
+
+  it("never overwrites a scene another advance already claimed while a submission was in flight — warns instead of silently losing the earlier (real, billed) task", async () => {
+    // Reproduces the shape of the real incident (`.claude-bridge` Round 145: two POSTs per scene, one task ever
+    // polled) without needing genuine OS-level concurrency — the fetch mock stalls scene 1's submission response
+    // just long enough for the test to write a conflicting "already running" record in between, the same window
+    // an actual race would need.
+    const deps = await setupWithConnectedRunway();
+    const workflow = newWorkflow(deps);
+    let resolveSubmit: (value: unknown) => void = () => {};
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/v1/image_to_video")) {
+        return new Promise((resolve) => { resolveSubmit = resolve; });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const runPromise = workflow.run("video_workflow", deps.accepted.jobId);
+    // Let run() reach the point where its POST is in flight (awaiting resolveSubmit) before racing it.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const inFlight = await deps.projects.findById("video_workflow");
+    const claimed = {
+      ...inFlight,
+      video_generation_records: inFlight.video_generation_records.map((raw) => {
+        const record = raw as Record<string, unknown>;
+        return record.scene_number === 1
+          ? { ...record, status: "running", runway_task_id: "task-other-winner", runway_submitted_at: "2026-08-27T00:00:00.000Z", runway_last_checked_at: "2026-08-27T00:00:00.000Z" }
+          : record;
+      }),
+    };
+    await deps.projects.save(claimed);
+
+    resolveSubmit({ ok: true, status: 200, json: async () => ({ id: "task-mine-orphaned" }), headers: { get: () => null } });
+    await runPromise;
+
+    const project = await deps.projects.findById("video_workflow");
+    const scene1 = project.video_generation_records.find((record) => (record as Record<string, unknown>).scene_number === 1) as Record<string, unknown>;
+    expect(scene1.runway_task_id).toBe("task-other-winner"); // the earlier, real submission is never overwritten
+    expect(project.warnings).toEqual([expect.stringContaining("1번 장면")]);
+    expect(project.warnings[0]).not.toContain("task-mine-orphaned"); // no raw task id leaked into user-facing text
+  });
 });

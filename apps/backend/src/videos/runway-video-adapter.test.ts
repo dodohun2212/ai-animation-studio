@@ -126,20 +126,24 @@ describe("createRunwayImageToVideoTask", () => {
       .rejects.toMatchObject({ category: "permission" });
   });
 
-  it("retries a 429, honoring Retry-After, then succeeds", async () => {
+  it("never retries a 429 even when the caller asks for retries — task creation is not idempotent", async () => {
+    // A real user's Runway dashboard showed exactly this call retried and duplicated: two POSTs per scene, one
+    // task ever polled, both billed (`.claude-bridge` Round 145). maxRetries here must have no effect.
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(429, {}, { "retry-after": "0" }))
       .mockResolvedValueOnce(jsonResponse(200, { id: "task-2" }));
     const sleep = vi.fn(noSleep);
-    const result = await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "p", { fetchImpl: fetchMock, sleep, maxRetries: 2 });
-    expect(result.taskId).toBe("task-2");
-    expect(sleep).toHaveBeenCalledTimes(1);
+    await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "p", { fetchImpl: fetchMock, sleep, maxRetries: 2 }))
+      .rejects.toMatchObject({ category: "rate_limit" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
   });
 
-  it("retries a 500 server error, then succeeds", async () => {
+  it("never retries a 500 server error, even when the caller asks for retries", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(500, {})).mockResolvedValueOnce(jsonResponse(200, { id: "task-3" }));
-    const result = await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "p", { fetchImpl: fetchMock, sleep: noSleep });
-    expect(result.taskId).toBe("task-3");
+    await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "p", { fetchImpl: fetchMock, sleep: noSleep, maxRetries: 2 }))
+      .rejects.toMatchObject({ category: "server" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("classifies a 400/404/409/422 as invalid_request and never retries", async () => {
@@ -151,10 +155,11 @@ describe("createRunwayImageToVideoTask", () => {
     }
   });
 
-  it("retries a network-level fetch rejection, then succeeds", async () => {
+  it("never retries a network-level fetch rejection, even when the caller asks for retries — a lost response does not mean Runway never received the request", async () => {
     const fetchMock = vi.fn().mockRejectedValueOnce(new TypeError("fetch failed")).mockResolvedValueOnce(jsonResponse(200, { id: "task-4" }));
-    const result = await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "p", { fetchImpl: fetchMock, sleep: noSleep });
-    expect(result.taskId).toBe("task-4");
+    await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "p", { fetchImpl: fetchMock, sleep: noSleep, maxRetries: 2 }))
+      .rejects.toMatchObject({ category: "network" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a response with no task ID as unknown", async () => {

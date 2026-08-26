@@ -271,8 +271,24 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       return updated;
     }
     if (result.kind === "submitted") {
-      const updated = this.replaceRecords(project, [{
-        ...record, status: "running", runway_task_id: result.taskId,
+      // Re-read fresh, right before persisting: `record` above can be stale by the length of the whole Runway
+      // round-trip we just awaited. If some other advance already moved this scene off "created" in that window,
+      // `result.taskId` names a real, billed Runway task we are about to lose track of forever if we overwrite
+      // silently — surface it as a warning instead (`.claude-bridge` Round 145: a real user's Runway dashboard
+      // showed a second, unpolled, but billed task per scene, invisible anywhere in our own data until then).
+      const fresh = await this.projects.findById(project.project_id);
+      const freshRecord = this.records(fresh, jobId).find((item) => item.scene_number === result.sceneNumber)!;
+      if (freshRecord.status !== "created") {
+        const warned: StoredProject = {
+          ...fresh,
+          warnings: [...fresh.warnings, `${result.sceneNumber}번 장면의 영상 요청이 중복 제출되어, 쓰이지 않는 작업이 하나 남았습니다. 진행 중인 작업은 그대로 이어집니다.`],
+          updated_at: nowIso,
+        };
+        await this.projects.save(warned).catch(() => undefined);
+        return warned;
+      }
+      const updated = this.replaceRecords(fresh, [{
+        ...freshRecord, status: "running", runway_task_id: result.taskId,
         runway_submitted_at: result.submittedAt, runway_last_checked_at: result.submittedAt,
       }]);
       updated.updated_at = nowIso;

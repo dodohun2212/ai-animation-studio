@@ -160,7 +160,13 @@ export async function createRunwayImageToVideoTask(
       ratio: options.ratio ?? "720:1280",
       duration: options.durationSeconds ?? 5,
     }),
-  }, options);
+    // Unlike a status check or a download, this call creates a paid, non-idempotent resource. A `fetch` throw
+    // (timeout, connection reset) is ambiguous — it does not tell us whether Runway ever received the request,
+    // only that we did not see its response — so retrying it can create a second real task for one scene, which
+    // Runway bills independently and which our own records then have no way to notice (`.claude-bridge`
+    // Round 145: a real user's Runway dashboard showed exactly this — two POSTs per scene, one task ever polled,
+    // both billed). `maxRetries: 0` overrides whatever the caller passed for every other call this adapter makes.
+  }, { ...options, maxRetries: 0 });
   const body: unknown = await response.json().catch(() => null);
   const taskId = isObject(body) && typeof body.id === "string" ? body.id.trim() : "";
   if (!taskId) throw new RunwayAdapterError("unknown", "Runway 응답에 task ID가 없습니다.");
