@@ -58,6 +58,16 @@ describe("videoWorkflowApi", () => {
     );
   });
 
+  it("says an interrupted submission may already have been accepted, rather than reading as a transient glitch", async () => {
+    // The backend stops here on purpose: the request went out, its outcome was never confirmed, and retrying
+    // for the user could create a second billed task for one scene. The message has to carry that, or someone
+    // reads "failed" and presses again — which is exactly the double charge the backend just refused to make.
+    const message = sceneErrorMessage("submit_interrupted");
+    expect(message).toContain("이미 접수");
+    expect(message).toContain("자동으로 다시 보내지 않았");
+    expect(message).not.toBe(sceneErrorMessage(undefined));
+  });
+
   it("fetches progress via GET /projects/:id/videos/generations/:jobId", async () => {
     const response = makeProgress({ currentSceneNumber: 3 });
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, response));

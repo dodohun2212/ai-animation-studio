@@ -56,6 +56,11 @@ const SCENE_ERROR_CATEGORY_MESSAGES: Record<string, string> = {
   no_output: "Runway가 영상 결과물을 반환하지 않았습니다. 다시 시도해 주세요.",
   invalid_state: "영상 작업 상태가 예상과 달라 처리하지 못했습니다. 다시 시도해 주세요.",
   budget_exceeded: "이번 달 Runway 예산을 초과하여 요청을 보내지 않았습니다.",
+  // The request went out but its outcome was never confirmed (the server stopped in between). Retrying on the
+  // user's behalf could create a second billed task for one scene, so the backend deliberately stops here and
+  // leaves the decision to the person paying — this message has to say that plainly, not read as a transient
+  // glitch, or they will assume nothing happened and press again.
+  submit_interrupted: "요청을 보낸 뒤 서버가 중단되어 결과를 확인하지 못했습니다. 요청이 이미 접수되었을 수 있어 자동으로 다시 보내지 않았습니다. Runway 계정에서 해당 작업이 생성되었는지 확인한 뒤 다시 시도해 주세요.",
 };
 const SCENE_ERROR_FALLBACK = "영상 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.";
 
