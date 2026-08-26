@@ -1133,4 +1133,10 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - **팀 절차 변경(Cowork 쪽)**: 이번 세션 다섯 번째 같은 사고(마운트 낡은 사본) 이후, "편집할 파일은 매번 편집 직전에 무조건 재스테이징"으로 규칙을 좁은 예외 없이 확정 — 크기 비교로는 이번처럼 3줄짜리 회귀를 못 걸러낸다는 것을 근거로 듦.
   - 검증: root typecheck 전부 통과, frontend 테스트 788개 전부 통과(+3 신규: 진행 중 표시 1건 등), root build 전부 통과. 백엔드·계약 미변경.
   - 커밋: `491b4d7`.
+- [x] **🔴 참고 이미지 연결 기능이 앱에 아예 없었음(실사용 중 발견, `.claude-bridge` Round 133)**: 사용자가 대표 캐릭터 이미지가 그림에 전달 안 된 것 같다고 신고 → Cowork가 조사해서 `mappingsApi.ts`에 `POST /projects/:id/assets/mappings`를 부르는 코드 자체가 프런트 어디에도 없었음을 확인(참고 이미지 연결 검토 화면은 기존 연결을 확인·제외만 가능, 만드는 수단이 없었음) — Cowork가 `createProjectAssetMapping()` + `MappingReviewScreen`에 검색·연결 섹션을 신설.
+  - **백엔드 쪽 나머지 절반 — `imagePromptFor()`가 매핑된 에셋의 텍스트 설명을 프롬프트에 전혀 안 넣고 있었음**: `collectReferenceImages()`가 확정된 매핑의 이미지 바이트는 그림 모델에 보내는데, 그 에셋이 누구인지·어떤 특징인지 텍스트는 프롬프트 어디에도 없었다 — 참고 사진은 가는데 이름도 설명도 안 감. `describeReferenceMappingsForScene()`(`image-reference-selection.ts`) 신설 — `collectReferenceImages`와 완전히 같은 필터(확정+활성+장면범위)로 골라서, 같은 매핑 집합에 대해 이미지와 텍스트가 절대 서로 다른 걸 가리키지 않도록 함. 폴더 매핑은 폴더 자체 설명 + 자식별 개별 특징까지(Story 프롬프트의 `describeCharacterCast`와 같은 모양 — `folderChildDescriptions` export해서 재사용). `imagePromptFor()`에 `referenceNotes` 선택 인자 추가(기본값 "", `styleLine`과 같은 패턴), `local-image-generation.service.ts`(최초 생성)·`image-review.service.ts`(재생성)에서 계산해서 전달.
+  - **의도적으로 범위에서 뺀 것**: `scene-staleness.ts`(장면 필드만 보는 순수 동기 함수라 매핑 접근이 없음, 확장하면 위험도 큼)와 장기 프로젝트(Long Episode) 이미지 경로는 이번 라운드에서 안 건드림 — 필요하면 별도 확인.
+  - 신규 테스트 4건(`image-reference-selection.test.ts`), 기존 3건 수정(`image-review.service.test.ts` — 실제 매핑이 있는 픽스처라 전송되는 프롬프트에 References 섹션이 새로 포함됨을 반영).
+  - 검증: root typecheck 전부 통과, Backend 661 통과(+4 순증, 무관한 사전 존재 실패 2건은 그대로 — Round 100에 전문), root build 전부 통과. 유료 Provider 호출 없음.
+  - 커밋: `0986494`.
 
