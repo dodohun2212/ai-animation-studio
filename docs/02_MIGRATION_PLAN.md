@@ -1148,4 +1148,11 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 신규 테스트 4건(`projects.service.test.ts`): 캐스트 자동 연결 생성·제거, 수동 매핑 있을 때 중복 안 만듦, 분위기+장면참고 자동 연결과 purpose 변경 시 같은 매핑을 갱신(새로 안 만듦).
   - 검증: root typecheck 전부 통과, Backend 665 통과(+4 순증, 무관한 사전 존재 실패 2건은 그대로 — Round 100에 전문), root build 전부 통과(위 build-break 수정 포함). 유료 Provider 호출 없음.
   - 커밋: `4a25beb`.
+- [x] **참고 이미지 연결 화면 버그 2건(Round 138)**: 프로젝트 자신이 만든 장면 이미지 폴더가 참고 후보로 떠서 자기 결과물이 자기 참고 자료로 들어가던 것을 `sourceProjectId === "_asset_library_manual"`만 후보로 남기게 수정(`AssetLibraryScreen`이 이미 쓰던 구분 재사용). 제외한 매핑이 계속 "연결됨"으로 보이던 것(`alreadyLinked`가 상태를 안 보고 assetId만 봄)을 `연결`/`연결됨`/`제외됨` 셋으로 분리하고 되돌리기는 그 행 자신의 `확인` 버튼으로 안내.
+  - 검증: frontend typecheck·테스트 793개 전부 통과(+2 신규)·build 통과. 백엔드·계약 미변경.
+  - 커밋: `03e6b0a`.
+- [x] **🔴 백엔드 — 복구 경고가 내부 상태명을 그대로 노출하고 영원히 안 사라짐(실사용 중 발견, `.claude-bridge` Round 137)**: 고아 상태 회수(Round 129)가 남기는 경고 문구에 `GENERATING_IMAGES`/`ASSET_MAPPING_APPROVED` 같은 `WorkflowState` 값이 그대로 박혀 있어 사용자가 "이건 뭐야"라고 물었다 — `ImageGenerationScreen`의 `현재 상태: READY`를 `준비됨`으로 바꾼 것과 같은 부류의 버그가 이번엔 프런트가 손댈 수 없는 백엔드 완성 문장으로 재발했다. 상태 이름을 아예 안 쓰는 고정 한국어 문장으로 교체(회수 종류별 4개, `orphaned-generation-recovery.service.ts`). 같이 발견된 구조적 문제 2건도 처리: (1) 같은 프로젝트가 반복해서 같은 상태로 죽으면 같은 문장이 계속 쌓이던 것 — 이미 있는 문장이면 다시 안 붙임. (2) 경고가 한번 붙으면 상황이 해결돼도 절대 안 없어지던 것(사용자 프로젝트가 실제로 영상 단계까지 갔는데 "이미지 만들다 멈췄다" 경고가 그대로 있었음) — `toApiProject()`가 매 응답마다 `workflow_state`를 보고, 그 경고가 가리키던 되돌림-전/되돌림-후 상태 구간을 실제로 벗어났으면 조용히 뺀다(`withoutStaleRecoveryWarnings`) — 이 서비스가 안 쓴 다른 경고는 절대 안 건드림, 매 downstream 서비스가 알아서 지우게 만들 필요도 없음.
+  - 신규 테스트 8건(`orphaned-generation-recovery.service.test.ts` 5건 — 문구에 대문자 상태명 없음 확인 포함, `project.mapper.test.ts` 1건 — 실제 배선 확인).
+  - 검증: root typecheck 전부 통과, Backend 670 통과(+8 순증, 무관한 사전 존재 실패 2건은 그대로 — Round 100에 전문), root build 전부 통과. 유료 Provider 호출 없음.
+  - 커밋: `0e524d9`.
 
