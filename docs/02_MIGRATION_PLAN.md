@@ -1314,4 +1314,14 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 신규 테스트 7건: `video-merge.service.test.ts` 2건(narration+bgm 병합 후 `usedAudio` 확인 + 트랙 삭제해도 프로젝트에 저장된 값은 그대로임을 확인, silent 병합의 attribution 필드 없음 확인), `video-library.service.test.ts` 2건(장면·최종 복원 양쪽 초기화), `project-storage.schema.test.ts` 3건(기본값 null, 전체/최소 필드 파싱, 잘못된 mode·비객체 거부), `audio-library.service.test.ts` 1건(`get()`).
   - 검증: root typecheck 전부 통과, Backend 769개(+7 신규)·frontend 841개(1회 `SceneEditScreen.test.tsx` 순서 의존 플레이키니스 재관찰, 재실행으로 무관함 재확인)·shared 25개 전부 통과, root build 전부 통과. 유료 Provider 호출 없음.
   - 커밋: `a6a033d`.
+- [x] **병합 화면 출처 문구 표시 + `VideoLibraryProjectSummary.attributionRequired/attributionText` + 인스타 게시물 준비 화면(사용자 승인, 게시 없음)(Round 172)**: Cowork Round 177(병합 화면)·178(인스타 화면) — 사용자가 "어 승인"으로 인스타 화면 착수를 직접 승인.
+  - **병합 화면**: `usedAudio`를 읽어 병합 완료 직후 출처 문구 + 복사 버튼 표시(`attributionRequired`일 때만), `attributionText`가 비어 있으면 "채워 주세요" 별도 상태, 클립보드 거부 시 "직접 선택해 복사" 대체 경로. 트랙 선택 중에도 미리 보여주게 함(병합 후에야 아는 것보다 낫다는 근거).
+  - **`VideoLibraryProjectSummary`에 두 필드 추가**: `attributionRequired?`/`attributionText?`, `ProjectSummary.usedAudio`에서 그대로 파생(트랙 ID·mode는 카드에 불필요해 제외) — `video-library.service.ts`의 `list()`에 배선. 다만 인스타 화면이 실제론 `GET /projects/:id`(전체 `usedAudio`)를 직접 읽어 이 필드 없이도 동작하게 돼서, 우선순위는 낮지만 보관함 카드 자체에도 여전히 유효한 계약이라 그대로 반영.
+  - **인스타 게시물 준비 화면(신규, 게시는 안 함)**: 계약 추가 없이(`GET /videos/library`, `GET /projects/:id`, `GET /projects/:id/settings` 셋 다 읽기 전용, Instagram/Meta API 호출 0건) 영상 선택 → 세로/길이(릴스 3분 한도, 2025-01 90초에서 상향된 값 확인 후 적용) 확인 → 캡션(본문+해시태그+AI 고지)+출처 문구 자동 삽입(수정 불가) → 복사. 캡션 글자 수(2,200)·해시태그 개수(30) 한도 초과 시 복사 차단, `attributionRequired`인데 문구가 비면 복사 자체를 막음.
+  - **화면 쪽 소스 스캔 테스트**: `graph.instagram.com`/`media_publish`/`access_token`/브라우저 저장소가 이 파일에 안 들어가게 고정 — 실수로 게시 기능이 섞여 들어가는 것을 스캔으로 막음.
+  - **판단 요청 받음 — 캡션 임시 저장**: Cowork가 `GET/PUT /projects/:id/post-draft` 계약을 제안(연재하는 사용자는 해시태그 세트가 거의 고정이라 반복 입력이 아깝다는 근거) — 다음 라운드에 검토·답변 예정, 이번엔 코드 변경 없음.
+  - Cowork가 이번에도 자기 로컬 검사 방식의 실제 구멍을 스스로 찾아 고침: 스크래치 tsconfig가 파일을 평평하게 복사해서 상대 경로 import(`../api/...`)가 전부 `TS2307`로 떨어지고 그걸 노이즈로 걸러내고 있었음 — 즉 로컬 import 자체가 지금까지 타입 검사가 안 되고 있었다는 뜻. 실제 디렉터리 구조 그대로 복사하도록 수정.
+  - 신규 테스트: 병합 화면 6건 + 인스타 화면 14건 + `App.test.tsx` 1건 + 백엔드 2건(`video-library.service.test.ts` — 파생 필드 존재/부재).
+  - 검증: root typecheck 전부 통과, Backend 771개(+1 순증, `project-lock.test.ts`의 동시성 테스트 1회 Windows 파일시스템 EPERM 관찰 — 재실행으로 무관한 플레이키니스 확인)·frontend 864개·shared 25개 전부 통과, root build 전부 통과. 유료 Provider 호출 없음, 실제 Instagram/Meta API 호출 없음.
+  - 커밋: `337f45e`.
 
