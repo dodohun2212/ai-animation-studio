@@ -1129,4 +1129,8 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
 - [x] **대본 재생성 UI 연결**: `storyPromptApi.ts`에 `regenerateStoryPrompt()` 추가(`{ approved: true }` 명시 opt-in), `StoryPromptScreen`이 이미 대본이 있는 화면을 이미지 0개(재생성 확인 패널 + 설정 먼저 고치기 링크)/1장 이상(버튼 없이 이유 설명)로 분기. 서버의 조건 검사를 프런트가 중복하지 않고 서버 응답을 그대로 신뢰하는 구조. 성공 후 설정이 바뀌었을 수 있어 미리보기를 다시 부름.
   - 검증: frontend typecheck 통과, 테스트 787개 중 786개 통과(신규 3건 포함). 남은 1개(`ImageGenerationScreen.test.tsx`)는 이번 라운드와 무관 — 이전 라운드(Round 128)에서 이미 커밋돼 있던 수정(`workflowStateLabel` 한국어 라벨 검증)이 되돌아간 회귀, `.claude-bridge`에 이미 두 차례 보고함. `apps/frontend/src/components/ImageGenerationScreen.tsx`/`.test.tsx`는 이번 커밋 범위에서 계속 제외.
   - 커밋: `dd030c5`.
+- [x] **이미지 생성 실시간 진행 표시(사용자 요청) + 이전 라운드 회귀 복구**: `ImageGenerationScreen`이 생성 요청이 도는 동안 3초마다 폴링해 `N/6장 완료` + 진행 막대 + 경과 시간을 보여주고, 장면 줄 문구를 생성 중엔 `대기` 대신 `만드는 중`으로 바꿈(Round 132의 `generatedImagePath` 매핑 수정 덕에 폴링이 실제로 값을 받게 됨). Round 128에서 이 파일을 마운트의 낡은 사본 기반으로 편집하면서 같은 파일에 이미 커밋돼 있던 3줄(`workflowStateLabel` 한국어 라벨 검증, Round 91)이 옛 형태로 되돌아간 회귀를 CLI가 두 라운드 연속 보고 → Cowork가 원래대로 복구.
+  - **팀 절차 변경(Cowork 쪽)**: 이번 세션 다섯 번째 같은 사고(마운트 낡은 사본) 이후, "편집할 파일은 매번 편집 직전에 무조건 재스테이징"으로 규칙을 좁은 예외 없이 확정 — 크기 비교로는 이번처럼 3줄짜리 회귀를 못 걸러낸다는 것을 근거로 듦.
+  - 검증: root typecheck 전부 통과, frontend 테스트 788개 전부 통과(+3 신규: 진행 중 표시 1건 등), root build 전부 통과. 백엔드·계약 미변경.
+  - 커밋: `491b4d7`.
 
