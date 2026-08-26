@@ -222,7 +222,14 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     finally { this.advancing.delete(jobId); }
   }
 
-  private async advanceRealCore(project: StoredProject, jobId: string): Promise<StoredProject> {
+  private async advanceRealCore(staleProject: StoredProject, jobId: string): Promise<StoredProject> {
+    // Re-read fresh, now that the `advancing` guard is actually held: `staleProject` can have been fetched
+    // before this call ever reached the guard (e.g. a caller queued behind another in-flight advance), so
+    // trusting it here would let a scene another advance already submitted still look "created" and get
+    // submitted again — a real, billed duplicate task (`.claude-bridge` Round 148, the remaining gap after
+    // Round 145's fix: the guard itself never lets two calls run at once, but neither call is required to be
+    // looking at current data going in).
+    const project = await this.projects.findById(staleProject.project_id);
     const records = this.records(project, jobId);
     if (records[0]!.execution_mode !== "runway") return project;
     if (project.workflow_state !== WorkflowState.GeneratingVideos) return project;
