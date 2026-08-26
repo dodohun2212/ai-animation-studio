@@ -65,6 +65,17 @@ export interface LongEpisodeOutline {
   cliffhanger: string;
   nextEpisodeHook: string;
   status: LongEpisodeStatus;
+  /**
+   * Plain-language notes about this Episode's own state that the user could not otherwise learn from `status`
+   * alone — e.g. a crash-recovery message after the backend reverted a stuck generating state on restart (see
+   * orphaned-episode-generation-recovery.service.ts). Optional and absent when empty (unlike the short-project
+   * Project.warnings, which is always present) — most Episodes never have one. Never contains a raw
+   * LongEpisodeStatus value (see the short-project OrphanedGenerationRecoveryService's own doc comment for why:
+   * a user was once shown "GENERATING_IMAGES" literally). A message disappears on its own once the condition it
+   * described no longer applies, the same self-clearing principle as the short-project's
+   * withoutStaleRecoveryWarnings.
+   */
+  warnings?: string[];
 }
 
 export type LongEpisodeStatus = "planned" | "outline_ready" | "script_review" | "script_approved" | "waiting_for_asset_mapping_review" | "asset_mapping_approved" | "generating_images" | "images_ready" | "images_review" | "waiting_for_video_confirmation" | "videos_generating" | "videos_ready" | "videos_review" | "videos_approved" | "interrupted" | "rendering" | "completed" | "failed";
@@ -169,6 +180,18 @@ export interface LongEpisodeImageReview {
   sceneNumber: SceneNumber;
   status: "pending" | "approved";
   updatedAt: string;
+  /**
+   * Present only when this scene's confirmed Reference images (plus, for scene 1, a linked previous project's
+   * continuity image) exceeded MAX_REFERENCE_IMAGES (16) and some had to be left out of the actual generation
+   * request — absent whenever nothing was left out, same "quiet unless it happened" principle as
+   * VideoPromptPreview.omittedSections. referencesUsedCount is the number actually sent (always 16 when
+   * referencesOmittedCount is present); reported explicitly rather than left for the frontend to hardcode the cap
+   * itself, so a future change to the backend's own limit cannot silently make this text wrong (see the image
+   * aspect-ratio size mismatch this app already shipped once from two places independently assuming the same
+   * constant — `.claude-bridge` Round 165/168).
+   */
+  referencesUsedCount?: number;
+  referencesOmittedCount?: number;
 }
 
 /** Explicit approval; calls the real OpenAI image adapter when a credential and budget ledger are connected, the same as the short-project path, and falls back to the local fake adapter otherwise. */
@@ -649,6 +672,9 @@ export interface ImageReview {
   sceneNumber: SceneNumber;
   status: "pending" | "approved";
   updatedAt: string;
+  /** Same meaning, scope, and "quiet unless it happened" principle as LongEpisodeImageReview.referencesUsedCount/referencesOmittedCount (see that field's doc comment). */
+  referencesUsedCount?: number;
+  referencesOmittedCount?: number;
 }
 
 export interface GetImageReviewResponse {

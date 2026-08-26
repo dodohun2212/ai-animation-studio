@@ -35,10 +35,11 @@ describe("collectReferenceImages with a Folder mapping", () => {
     await assets.updateCharacterFolderReferenceSet(folder.asset_id, { childAssetIds: [first.asset_id, second.asset_id], thumbnailAssetId: second.asset_id });
 
     const mapping = fixtureMapping({ asset_id: folder.asset_id, version_policy: "follow_latest", pinned_version: null });
-    const results = await collectReferenceImages(assets, [mapping], path.join(root, "projects"), "p1", 1, null);
+    const collected = await collectReferenceImages(assets, [mapping], path.join(root, "projects"), "p1", 1, null);
 
-    expect(results).toHaveLength(1);
-    expect(results[0]).toEqual(pngB);
+    expect(collected.images).toHaveLength(1);
+    expect(collected.images[0]).toEqual(pngB);
+    expect(collected.omittedCount).toBe(0);
   });
 
   it("skips a Folder mapping with no representative image rather than failing the whole scene", async () => {
@@ -47,8 +48,25 @@ describe("collectReferenceImages with a Folder mapping", () => {
     const emptyFolder = await assets.createFolder({ assetType: "style", displayName: "Empty" });
     const mapping = fixtureMapping({ asset_id: emptyFolder.asset_id, version_policy: "follow_latest", pinned_version: null });
 
-    const results = await collectReferenceImages(assets, [mapping], path.join(root, "projects"), "p1", 1, null);
-    expect(results).toEqual([]);
+    const collected = await collectReferenceImages(assets, [mapping], path.join(root, "projects"), "p1", 1, null);
+    expect(collected.images).toEqual([]);
+    expect(collected.omittedCount).toBe(0);
+  });
+
+  it("counts images left out once MAX_REFERENCE_IMAGES is reached, but never counts a mapping that never resolved to a file", async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "image-reference-selection-"));
+    const assets = new LocalAssetsRepository(root);
+    const created = await Promise.all(Array.from({ length: 17 }, (_, index) =>
+      assets.create({ buffer: index % 2 === 0 ? pngA : pngB, originalname: `ref${index}.png` }, { assetType: "style", displayName: `Ref ${index}` })));
+    const mappings = created.map((asset) => fixtureMapping({ mapping_id: `MAP-${asset.asset_id}`, asset_id: asset.asset_id, version_policy: "follow_latest", pinned_version: null }));
+    // An 18th mapping whose Asset was deleted after the mapping was made — never resolves to a file, so it must
+    // not count toward omittedCount even though it comes last in iteration order.
+    mappings.push(fixtureMapping({ mapping_id: "MAP-missing", asset_id: "ASSET-DOES-NOT-EXIST", version_policy: "follow_latest", pinned_version: null }));
+
+    const collected = await collectReferenceImages(assets, mappings, path.join(root, "projects"), "p1", 1, null);
+
+    expect(collected.images).toHaveLength(16);
+    expect(collected.omittedCount).toBe(1); // 17 real images - 16 sent = 1 left out; the missing-Asset mapping is not counted.
   });
 });
 

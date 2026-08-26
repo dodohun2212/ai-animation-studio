@@ -261,6 +261,37 @@ describe("real OpenAI image regeneration", () => {
     });
   });
 
+  it("reports how many Reference images were left out once the 16-image cap is hit, and getStatus reflects the same count afterward", async () => {
+    const base = await setupWithConnectedOpenAiAndConfirmedReference();
+    const mappings = new LocalProjectAssetMappingsRepository(base.projectsRoot);
+    const now = "2026-08-22T00:00:00.000Z";
+    const extra = await Promise.all(Array.from({ length: 16 }, (_, index) =>
+      base.assets.create({ buffer: PNG, originalname: `extra${index}.png`, mimetype: "image/png" }, { assetType: "style", displayName: `Extra ${index}` })));
+    await mappings.save("review", [
+      ...(await mappings.load("review")),
+      ...extra.map((asset, index) => ({
+        mapping_id: `MAP-EXTRA${String(index).padStart(4, "0")}`, project_id: "review", asset_id: asset.asset_id, enabled: true, usage_role: "style",
+        scene_scope: { mode: "all" as const }, assignment_source: "manual" as const, confidence: null, match_reason: "manual_assignment",
+        status: "confirmed" as const, user_confirmed: true, version_policy: "follow_latest" as const, pinned_version: null, candidate_only: false,
+        created_at: now, updated_at: now, snapshot_path: null, snapshot_sha256: null, snapshot_source_version: null, selected_child_asset_ids: [],
+      })),
+    ]);
+    // 1 (setup's own confirmed character) + 16 extra = 17 eligible, 1 over the 16-image cap.
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await base.service.regenerate("review", "3", { approved: true });
+
+    expect((result.reviews.find((review) => review.sceneNumber === 3))).toMatchObject({ referencesUsedCount: 16, referencesOmittedCount: 1 });
+    // Every other scene never hit the cap and must stay quiet.
+    for (const review of result.reviews.filter((item) => item.sceneNumber !== 3)) {
+      expect(review.referencesUsedCount).toBeUndefined();
+      expect(review.referencesOmittedCount).toBeUndefined();
+    }
+    const status = await base.service.getStatus("review");
+    expect(status.reviews.find((review) => review.sceneNumber === 3)).toMatchObject({ referencesUsedCount: 16, referencesOmittedCount: 1 });
+  });
+
   it("appends additionalInstruction as the prompt's last line without persisting it, so staleness stays unaffected", async () => {
     const { projectsRoot, service } = await setupWithConnectedOpenAiAndConfirmedReference();
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));

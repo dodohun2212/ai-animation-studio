@@ -28,7 +28,7 @@ import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../pr
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "./openai-image-adapter.js";
 import { collectReferenceImages, describeReferenceMappingsForScene } from "./image-reference-selection.js";
-import { imagePromptFor, styleLineFor } from "./image-prompt.js";
+import { imagePromptFor, imageSizeFor, styleLineFor } from "./image-prompt.js";
 import { previousSceneContinuityImagePath } from "../projects/project-continuity.js";
 import { computeSceneStaleness } from "../projects/scene-staleness.js";
 import {
@@ -87,11 +87,23 @@ function parseReviews(raw: unknown): StoredImageReview[] {
   return parsed;
 }
 
-function toApiReviews(reviews: StoredImageReview[], timestamp: string, sceneNumbers: readonly SceneNumber[]): ImageReview[] {
+/**
+ * referencesUsedCount/referencesOmittedCount live on the project's own image_generation_records (written at
+ * generate()/regenerate() time — see local-image-generation.service.ts and this file's own regenerate()), not on
+ * StoredImageReview: a review entry does not exist until the scene is first approved or regenerated, but the cap
+ * can already have applied at plain generation time. Reading both sources here keeps every GetImageReviewResponse
+ * caller (getStatus/approve/regenerate) in sync without needing three separate merges.
+ */
+function toApiReviews(reviews: StoredImageReview[], timestamp: string, sceneNumbers: readonly SceneNumber[], generationRecords: readonly unknown[] = []): ImageReview[] {
   const byScene = new Map(reviews.map((review) => [review.scene_number, review]));
+  const isObject = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
   return sceneNumbers.map((number) => {
     const review = byScene.get(number);
-    return { sceneNumber: number, status: review?.status === "approved" ? "approved" : "pending", updatedAt: review?.updated_at || timestamp };
+    const record = generationRecords[number - 1];
+    const omission = isObject(record) && typeof record.references_used_count === "number" && typeof record.references_omitted_count === "number"
+      ? { referencesUsedCount: record.references_used_count, referencesOmittedCount: record.references_omitted_count }
+      : {};
+    return { sceneNumber: number, status: review?.status === "approved" ? "approved" : "pending", updatedAt: review?.updated_at || timestamp, ...omission };
   });
 }
 
@@ -174,7 +186,7 @@ export class ImageReviewService {
     const mappings = await this.mappings.load(project.project_id);
     return {
       project: toApiProject(project),
-      reviews: toApiReviews(reviews, project.updated_at, scenesFor(project)),
+      reviews: toApiReviews(reviews, project.updated_at, scenesFor(project), project.image_generation_records),
       staleness: await computeSceneStaleness(project, { assets: this.assets, mappings }),
       ...(budget ? { budget } : {}),
     };
@@ -207,7 +219,7 @@ export class ImageReviewService {
       ? { ...project, workflow_state: WorkflowState.WaitingForVideoConfirmation, updated_at: timestamp }
       : { ...project, updated_at: timestamp };
     try { await this.projects.save(updated); } catch { throw imageReviewStorageError(); }
-    return { project: toApiProject(updated), reviews: toApiReviews(reviews, timestamp, scenes) };
+    return { project: toApiProject(updated), reviews: toApiReviews(reviews, timestamp, scenes, updated.image_generation_records) };
   }
 
   async regenerate(projectId: string, rawSceneNumber: string, body: unknown): Promise<RegenerateImageReviewResponse> {
@@ -235,6 +247,7 @@ export class ImageReviewService {
     let adapter = "local-fake-image-adapter";
     let apiCalls = 0;
     let retryEstimate: RegenerateImageReviewResponse["retryEstimate"];
+    let referenceOmission: { references_used_count: number; references_omitted_count: number } | undefined;
     if (apiKey && this.budget) {
       const mappings = await this.mappings.load(project.project_id);
       const referenceNotes = await describeReferenceMappingsForScene(this.assets, mappings, number);
@@ -242,13 +255,15 @@ export class ImageReviewService {
       const prompt = additionalInstruction ? `${basePrompt}\n${additionalInstruction}` : basePrompt;
       const continuityImagePath = previousSceneContinuityImagePath(project);
       const references = await collectReferenceImages(this.assets, mappings, this.projectsRoot, project.project_id, number, continuityImagePath);
+      if (references.omittedCount > 0) referenceOmission = { references_used_count: references.images.length, references_omitted_count: references.omittedCount };
       try {
+        const size = imageSizeFor(project);
         await this.budget.preflight(IMAGE_ESTIMATED_COST_USD);
         let succeeded = false;
         try {
-          const result = references.length > 0
-            ? await callOpenAiImageEditApi(apiKey, prompt, references)
-            : await callOpenAiImageApi(apiKey, prompt);
+          const result = references.images.length > 0
+            ? await callOpenAiImageEditApi(apiKey, prompt, references.images, { size })
+            : await callOpenAiImageApi(apiKey, prompt, { size });
           regenerated = result.bytes;
           succeeded = true;
         } finally {
@@ -259,7 +274,7 @@ export class ImageReviewService {
         if (error instanceof OpenAiAdapterError) throw imageReviewProviderError(error.category, error.message);
         throw imageReviewProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown);
       }
-      adapter = references.length > 0 ? `${OPENAI_IMAGE_MODEL}:edit` : OPENAI_IMAGE_MODEL;
+      adapter = references.images.length > 0 ? `${OPENAI_IMAGE_MODEL}:edit` : OPENAI_IMAGE_MODEL;
       apiCalls = 1;
       // Read-only, computed after the fact: reflects the ledger's state right after this regeneration's own record().
       retryEstimate = { perSceneCostUsd: IMAGE_ESTIMATED_COST_USD, budget: await budgetPreviewFor(this.budget, IMAGE_ESTIMATED_COST_USD) };
@@ -305,6 +320,7 @@ export class ImageReviewService {
       image_api_calls: apiCalls,
       regenerated: true,
       archived_previous_path: archive,
+      ...(referenceOmission ?? {}),
     };
     const records = [...project.image_generation_records];
     records[number - 1] = record;
@@ -319,6 +335,6 @@ export class ImageReviewService {
       await atomicWriteUtf8File(this.reviewFile(project.project_id), JSON.stringify(reviews, null, 2));
       await this.projects.save(updated);
     } catch { throw imageReviewStorageError(); }
-    return { project: toApiProject(updated), reviews: toApiReviews(reviews, timestamp, scenesFor(updated)), sceneNumber: number, ...(retryEstimate ? { retryEstimate } : {}) };
+    return { project: toApiProject(updated), reviews: toApiReviews(reviews, timestamp, scenesFor(updated), updated.image_generation_records), sceneNumber: number, ...(retryEstimate ? { retryEstimate } : {}) };
   }
 }

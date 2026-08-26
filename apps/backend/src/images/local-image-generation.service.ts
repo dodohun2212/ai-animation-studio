@@ -125,21 +125,23 @@ export class LocalImageGenerationService {
         let bytes: Buffer = PNG;
         let adapter = "local-fake-image-adapter";
         let apiCalls = 0;
+        let referenceOmission: { references_used_count: number; references_omitted_count: number } | undefined;
         if (apiKey && this.budget) {
           const references = await collectReferenceImages(this.assets, mappings, this.projectsRoot, current.project_id, number, continuityImagePath);
+          if (references.omittedCount > 0) referenceOmission = { references_used_count: references.images.length, references_omitted_count: references.omittedCount };
           await this.budget.preflight(IMAGE_ESTIMATED_COST_USD);
           let succeeded = false;
           try {
             const size = imageSizeFor(current);
-            const result = references.length > 0
-              ? await callOpenAiImageEditApi(apiKey, prompt, references, { size })
+            const result = references.images.length > 0
+              ? await callOpenAiImageEditApi(apiKey, prompt, references.images, { size })
               : await callOpenAiImageApi(apiKey, prompt, { size });
             bytes = result.bytes;
             succeeded = true;
           } finally {
             await this.budget.record(current.project_id, "image", succeeded, IMAGE_ESTIMATED_COST_USD);
           }
-          adapter = references.length > 0 ? `${OPENAI_IMAGE_MODEL}:edit` : OPENAI_IMAGE_MODEL;
+          adapter = references.images.length > 0 ? `${OPENAI_IMAGE_MODEL}:edit` : OPENAI_IMAGE_MODEL;
           apiCalls = 1;
         }
         await fs.mkdir(path.dirname(destination), { recursive: true });
@@ -150,7 +152,7 @@ export class LocalImageGenerationService {
           image_prompts: [...current.image_prompts.slice(0, number - 1), prompt],
           motion_prompts: [...current.motion_prompts.slice(0, number - 1), sceneValue(current.scenes[number - 1], "main_motion")],
           generated_images: [...current.generated_images.slice(0, number - 1), destination],
-          image_generation_records: [...current.image_generation_records.slice(0, number - 1), { scene_number: number, prompt, checkpoint: "completed", adapter, image_api_calls: apiCalls }],
+          image_generation_records: [...current.image_generation_records.slice(0, number - 1), { scene_number: number, prompt, checkpoint: "completed", adapter, image_api_calls: apiCalls, ...(referenceOmission ?? {}) }],
           updated_at: new Date().toISOString(),
         };
         await this.projects.save(current);

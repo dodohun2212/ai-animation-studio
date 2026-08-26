@@ -24,16 +24,38 @@ import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/projec
  *    Episode rendering failure is already modeled as a terminal, retryable state — matching that existing design
  *    is more correct than inventing a different one just for the orphaned path.
  *
- * No user-facing message is added here (unlike the short-project file's RECOVERY_MESSAGES): LongEpisodeOutline/
- * LongEpisodeDetail have no warnings-equivalent field in the shared contract today. The state transition alone is
- * the load-bearing fix — an Episode that can be retried beats one that is silently mislabeled but still stuck.
- * Surfacing *why* is a real follow-up, not a silent scope cut (flagged in `.claude-bridge`, not folded in here).
+ * A plain-language message is written into `warnings` on both the outline summary and the Episode's own detail
+ * file (`.claude-bridge` Round 165/166/168 — Cowork asked for this follow-up explicitly once the shared contract
+ * gained LongEpisodeOutline.warnings). Same principle as the short-project RECOVERY_MESSAGES: no raw
+ * LongEpisodeStatus value in the text, never stack the same sentence twice, and self-clears once the Episode has
+ * moved past the window this message was about (withoutStaleEpisodeRecoveryWarnings below) — every one of the
+ * several places across this directory that reads warnings back out (each service's own detail()/outline()
+ * parser; there is no single shared mapper the way project.mapper.ts is for short projects) filters through it.
  */
 const RECOVERY_TARGETS: ReadonlyMap<LongEpisodeStatus, LongEpisodeStatus> = new Map([
   ["generating_images", "asset_mapping_approved"],
   ["videos_generating", "interrupted"],
   ["rendering", "failed"],
 ]);
+
+const RECOVERY_MESSAGES: ReadonlyMap<LongEpisodeStatus, string> = new Map([
+  ["generating_images", "이전에 이미지를 만들다가 서버가 꺼져서 중간에 멈췄습니다. 이미 만들어진 것은 그대로 있고, 이어서 다시 만들 수 있습니다."],
+  ["videos_generating", "이전에 영상을 만들다가 서버가 꺼져서 중간에 멈췄습니다. 이미 만들어진 것은 그대로 있고, 이어서 다시 만들 수 있습니다."],
+  ["rendering", "이전에 최종 영상을 합치다가 서버가 꺼져서 중간에 멈췄습니다. 다시 시도할 수 있습니다."],
+]);
+
+/** Episode counterpart to orphaned-generation-recovery.service.ts's isRecoveryMessageStillRelevant — same "still between the from-state and the target state" rule, over LongEpisodeStatus instead of WorkflowState. */
+export function isEpisodeRecoveryMessageStillRelevant(message: string, currentState: string): boolean {
+  for (const [fromState, text] of RECOVERY_MESSAGES) {
+    if (text === message) return currentState === fromState || currentState === RECOVERY_TARGETS.get(fromState);
+  }
+  return true; // Not one of ours — never filter a message this service did not write.
+}
+
+/** Episode counterpart to withoutStaleRecoveryWarnings — see that function's doc comment. */
+export function withoutStaleEpisodeRecoveryWarnings(warnings: readonly string[], currentState: string): string[] {
+  return warnings.filter((message) => isEpisodeRecoveryMessageStillRelevant(message, currentState));
+}
 
 type ObjectMap = Record<string, unknown>;
 const object = (value: unknown): value is ObjectMap => Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -102,13 +124,15 @@ export class OrphanedEpisodeGenerationRecoveryService implements OnApplicationBo
       // rather than guess which one is stale; a human should look at this, not this pass.
       if (episode.state !== summary.status) continue;
 
+      const message = RECOVERY_MESSAGES.get(summary.status as LongEpisodeStatus)!;
+      const episodeWarnings = Array.isArray(episode.warnings) ? episode.warnings.filter((item): item is string => typeof item === "string") : [];
+      const outlineWarnings = Array.isArray(summary.warnings) ? summary.warnings.filter((item): item is string => typeof item === "string") : [];
       const updatedEpisode: ObjectMap = {
         ...episode,
         state: target,
         updated_at: new Date().toISOString(),
-        ...(target === "failed"
-          ? { errors: [...(Array.isArray(episode.errors) ? episode.errors : []), "Backend process exited while rendering. Recovered to a retryable state on restart."] }
-          : {}),
+        // Never stack the same sentence twice — an Episode crashing mid-run repeatedly must still show one line.
+        warnings: episodeWarnings.includes(message) ? episodeWarnings : [...episodeWarnings, message],
       };
 
       try {
@@ -117,7 +141,7 @@ export class OrphanedEpisodeGenerationRecoveryService implements OnApplicationBo
         this.logger.error(`Failed to recover orphaned Episode ${number} of Long Project "${projectId}" from ${String(summary.status)}.`, error as Error);
         continue;
       }
-      updatedOutlines[index] = { ...summary, status: target };
+      updatedOutlines[index] = { ...summary, status: target, warnings: outlineWarnings.includes(message) ? outlineWarnings : [...outlineWarnings, message] };
       outlinesChanged = true;
       recovered += 1;
     }

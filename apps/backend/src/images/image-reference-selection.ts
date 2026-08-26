@@ -44,6 +44,12 @@ export async function describeReferenceMappingsForScene(
   return blocks.length > 0 ? `References:\n${blocks.join("\n")}` : "";
 }
 
+/** collectReferenceImages's result: the bytes actually sent, plus how many otherwise-eligible images had to be left out to stay within MAX_REFERENCE_IMAGES — see ImageReview.referencesOmittedCount's doc comment (`.claude-bridge` Round 165/168). `omittedCount` counts only images that resolved to real bytes and would have been sent if there were room; a mapping that never resolves to a readable file (deleted Asset, moved folder) was never going to be sent regardless of the cap, so it is not "omitted by the cap" and does not count here. */
+export interface CollectedReferenceImages {
+  images: Buffer[];
+  omittedCount: number;
+}
+
 /**
  * Resolves the actual approved Reference image bytes for one scene: every confirmed, enabled Asset Mapping
  * scoped to this scene (character/background/object/style — usage_role is not restricted here, mirroring
@@ -61,11 +67,11 @@ export async function collectReferenceImages(
   projectId: string,
   sceneNumber: SceneNumber,
   continuityImagePath: string | null,
-): Promise<Buffer[]> {
+): Promise<CollectedReferenceImages> {
   const results: Buffer[] = [];
+  let omittedCount = 0;
 
   for (const mapping of relevantMappingsForScene(mappings, sceneNumber)) {
-    if (results.length >= MAX_REFERENCE_IMAGES) break;
     let filePath: string | null = null;
     if (mapping.version_policy === "snapshot" && mapping.snapshot_path) {
       filePath = path.join(projectsRoot, projectId, mapping.snapshot_path);
@@ -82,13 +88,18 @@ export async function collectReferenceImages(
     }
     if (!filePath) continue;
     const bytes = await fs.readFile(filePath).catch(() => null);
-    if (bytes) results.push(bytes);
+    if (!bytes) continue;
+    if (results.length >= MAX_REFERENCE_IMAGES) { omittedCount += 1; continue; }
+    results.push(bytes);
   }
 
-  if (sceneNumber === 1 && continuityImagePath && results.length < MAX_REFERENCE_IMAGES) {
+  if (sceneNumber === 1 && continuityImagePath) {
     const bytes = await fs.readFile(continuityImagePath).catch(() => null);
-    if (bytes) results.push(bytes);
+    if (bytes) {
+      if (results.length >= MAX_REFERENCE_IMAGES) omittedCount += 1;
+      else results.push(bytes);
+    }
   }
 
-  return results.slice(0, MAX_REFERENCE_IMAGES);
+  return { images: results, omittedCount };
 }

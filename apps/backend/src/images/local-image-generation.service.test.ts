@@ -263,6 +263,35 @@ describe("real OpenAI image generation", () => {
     }
   });
 
+  it("records how many Reference images were left out once the 16-image cap is hit, only on the scene it actually happened for", async () => {
+    const base = await setupWithConnectedOpenAiAndConfirmedReference();
+    const extra = await Promise.all(Array.from({ length: 16 }, (_, index) =>
+      new LocalAssetsRepository(path.dirname(base.projectsRoot)).create({ buffer: PNG_BYTES, originalname: `extra${index}.png`, mimetype: "image/png" }, { assetType: "style", displayName: `Extra ${index}` })));
+    const now = "2026-08-22T00:00:00.000Z";
+    await base.mappings.save("images", [
+      ...(await base.mappings.load("images")),
+      ...extra.map((asset, index) => ({
+        mapping_id: `MAP-EXTRA${String(index).padStart(4, "0")}`, project_id: "images", asset_id: asset.asset_id, enabled: true, usage_role: "style",
+        scene_scope: { mode: "all" as const }, assignment_source: "manual" as const, confidence: null, match_reason: "manual_assignment",
+        status: "confirmed" as const, user_confirmed: true, version_policy: "follow_latest" as const, pinned_version: null, candidate_only: false,
+        created_at: now, updated_at: now, snapshot_path: null, snapshot_sha256: null, snapshot_source_version: null, selected_child_asset_ids: [],
+      })),
+    ]);
+    // save() invalidates the prior approval (mappings.repository.ts's invalidateReview) — re-approve with the
+    // same script_fingerprint, same as any real re-review of an unchanged script.
+    await base.mappings.saveReview("images", { project_id: "images", mapping_revision: 2, script_revision: 1, script_fingerprint: scriptFingerprint((await base.projects.findById("images")).scenes), status: "approved", approved_at: now, approved_by: "user", text_only_confirmed: false, legacy_confirmed: false, reviewed_scenes: [1, 2, 3, 4, 5, 6] });
+    // 1 (setup's own confirmed character) + 16 extra = 17 eligible for every scene, 1 over the 16-image cap.
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await base.service.generate("images", { approved: true });
+
+    const reloaded = await new LocalProjectRepository(base.projectsRoot).findById("images");
+    for (const record of reloaded.image_generation_records as Array<Record<string, unknown>>) {
+      expect(record).toMatchObject({ references_used_count: 16, references_omitted_count: 1 });
+    }
+  });
+
   it("derives the requested image size for a Reference-backed images/edits call the same way as images/generations", async () => {
     const { projectsRoot, projects, service } = await setupWithConnectedOpenAiAndConfirmedReference();
     const project = await projects.findById("images");

@@ -18,19 +18,25 @@ export const MAX_REFERENCE_IMAGES = 16;
  * candidate here resolves to the Asset's current version, same as `"follow_latest"`. There is no actual snapshot
  * to pin to in this data model today.
  */
+/** Same shape and "only counts what would really have been sent" meaning as images/image-reference-selection.ts's CollectedReferenceImages — see that type's doc comment. */
+export interface CollectedEpisodeReferenceImages {
+  images: Buffer[];
+  omittedCount: number;
+}
+
 export async function collectEpisodeReferenceImages(
   assets: LocalAssetsRepository,
   candidates: readonly LongEpisodeAssetMappingCandidate[],
   episodeNumber: number,
   sceneNumber: number,
   continuityImagePath: string | null,
-): Promise<Buffer[]> {
+): Promise<CollectedEpisodeReferenceImages> {
   const results: Buffer[] = [];
+  let omittedCount = 0;
   const relevant = candidates.filter((candidate) =>
     candidate.status === "confirmed" && (candidate.episodeScope.mode === "all" || candidate.episodeScope.episode === episodeNumber));
 
   for (const candidate of relevant) {
-    if (results.length >= MAX_REFERENCE_IMAGES) break;
     const asset = await assets.get(candidate.assetId).catch(() => null);
     if (!asset) continue;
     const filePath = asset.is_folder
@@ -40,13 +46,18 @@ export async function collectEpisodeReferenceImages(
         : assets.resolveContentPath(asset);
     if (!filePath) continue;
     const bytes = await fs.readFile(filePath).catch(() => null);
-    if (bytes) results.push(bytes);
+    if (!bytes) continue;
+    if (results.length >= MAX_REFERENCE_IMAGES) { omittedCount += 1; continue; }
+    results.push(bytes);
   }
 
-  if (sceneNumber === 1 && continuityImagePath && results.length < MAX_REFERENCE_IMAGES) {
+  if (sceneNumber === 1 && continuityImagePath) {
     const bytes = await fs.readFile(continuityImagePath).catch(() => null);
-    if (bytes) results.push(bytes);
+    if (bytes) {
+      if (results.length >= MAX_REFERENCE_IMAGES) omittedCount += 1;
+      else results.push(bytes);
+    }
   }
 
-  return results.slice(0, MAX_REFERENCE_IMAGES);
+  return { images: results, omittedCount };
 }

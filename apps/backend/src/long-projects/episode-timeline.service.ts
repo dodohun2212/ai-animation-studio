@@ -6,6 +6,7 @@ import type { AddLongEpisodeRequest, AddLongEpisodeResponse, ArchiveLongEpisodeR
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { longEpisodeLimitReached, longEpisodeNotFound, longEpisodeTimelineNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
 
 const MAX_EPISODES = Number(process.env.APP_MAX_LONG_PROJECT_EPISODES ?? "60");
@@ -27,7 +28,8 @@ export class EpisodeTimelineService {
   private toOutline(value: unknown, number: number): LongEpisodeOutline {
     const item = object(value); const status = item.status;
     if (item.episode_number !== number || !draftStates.includes(status as LongEpisodeStatus) || ["title", "summary", "main_event", "conflict", "cliffhanger", "next_episode_hook"].some((key) => typeof item[key] !== "string")) throw longInvalidData();
-    return { episodeNumber: number, title: item.title as string, summary: item.summary as string, mainEvent: item.main_event as string, conflict: item.conflict as string, cliffhanger: item.cliffhanger as string, nextEpisodeHook: item.next_episode_hook as string, status: status as LongEpisodeStatus };
+    const warnings = withoutStaleEpisodeRecoveryWarnings(Array.isArray(item.warnings) ? item.warnings.filter((entry): entry is string => typeof entry === "string") : [], status as string);
+    return { episodeNumber: number, title: item.title as string, summary: item.summary as string, mainEvent: item.main_event as string, conflict: item.conflict as string, cliffhanger: item.cliffhanger as string, nextEpisodeHook: item.next_episode_hook as string, status: status as LongEpisodeStatus, ...(warnings.length > 0 ? { warnings } : {}) };
   }
   private async current(id: string): Promise<{ project: LongProject; rawProject: ObjectMap; rawOutlines: ObjectMap[] }> {
     const project = (await this.projects.get(id)).project;

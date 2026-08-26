@@ -56,6 +56,26 @@ describe("EpisodeImagesService", () => {
     await expect(images.generate("long", 1, { approved: true })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_NOT_ALLOWED" } });
   });
 
+  it("carries a persisted reference-cap count through get() and preserves it across approve(), but never for a scene that never had one", async () => {
+    const { images, projectsRoot } = await setup();
+    await images.generate("long", 1, { approved: true });
+    // Simulates what generate() itself would have written had this scene's real reference collection hit the
+    // 16-image cap (see episode-images.service.ts's referenceOmissions map) — writing it directly here avoids
+    // needing 17 real confirmed Asset Mapping candidates just to exercise the storage round-trip.
+    const reviewsFile = path.join(projectsRoot, "long", "long_story", "Episode01", "generated_image_reviews.json");
+    await fs.writeFile(reviewsFile, JSON.stringify([
+      { scene_number: 1, status: "pending", updated_at: "2026-08-26T00:00:00.000Z", regeneration_count: 0, history: [], references_used_count: 16, references_omitted_count: 2 },
+    ], null, 2), "utf8");
+
+    const beforeApproval = await images.get("long", 1);
+    expect(beforeApproval.reviews.find((review) => review.sceneNumber === 1)).toMatchObject({ referencesUsedCount: 16, referencesOmittedCount: 2 });
+    expect(beforeApproval.reviews.find((review) => review.sceneNumber === 2)?.referencesUsedCount).toBeUndefined();
+
+    const approved = await images.approve("long", 1, "1", { approved: true });
+
+    expect(approved.reviews.find((review) => review.sceneNumber === 1)).toMatchObject({ status: "approved", referencesUsedCount: 16, referencesOmittedCount: 2 });
+  });
+
   it("never calls fetch and omits budget/retryEstimate when no OpenAI credential or budget is wired in", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

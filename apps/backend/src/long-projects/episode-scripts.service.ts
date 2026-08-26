@@ -10,6 +10,7 @@ import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-
 import { callOpenAiStoryApi } from "../story/openai-story-adapter.js";
 import { buildEpisodeContext } from "./episode-context-builder.js";
 import { longEpisodeNotFound, longEpisodeScriptBudgetExceeded, longEpisodeScriptExists, longEpisodeScriptNotAllowed, longEpisodeScriptProviderError, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
 
 const snakeKeys = ["number", "description", "visual_action", "start_motion", "main_motion", "end_motion", "shot_size", "camera_angle", "composition", "lens_feel", "focus_subject", "camera_motion", "environment_motion", "motion_speed", "motion_intensity", "expression_change", "continuity_hint"] as const;
@@ -41,7 +42,8 @@ export class EpisodeScriptsService {
     if (number > raw.length) throw longEpisodeNotFound();
     const item = raw[number - 1]; const d = asObject(item);
     if (d.episode_number !== number || !statuses.includes(d.status as LongEpisodeStatus) || ["title", "summary", "main_event", "conflict", "cliffhanger", "next_episode_hook"].some((key) => typeof d[key] !== "string")) throw longInvalidData();
-    return { episodeNumber: number, title: d.title as string, summary: d.summary as string, mainEvent: d.main_event as string, conflict: d.conflict as string, cliffhanger: d.cliffhanger as string, nextEpisodeHook: d.next_episode_hook as string, status: d.status as LongEpisodeStatus };
+    const warnings = withoutStaleEpisodeRecoveryWarnings(Array.isArray(d.warnings) ? d.warnings.filter((item): item is string => typeof item === "string") : [], d.status as string);
+    return { episodeNumber: number, title: d.title as string, summary: d.summary as string, mainEvent: d.main_event as string, conflict: d.conflict as string, cliffhanger: d.cliffhanger as string, nextEpisodeHook: d.next_episode_hook as string, status: d.status as LongEpisodeStatus, ...(warnings.length > 0 ? { warnings } : {}) };
   }
   private parseScript(value: unknown, sceneCount: number, error = longInvalidData): LongEpisodeScript {
     const d = asObject(value, error); if (Object.keys(d).length !== 4 || typeof d.title !== "string" || typeof d.synopsis !== "string" || typeof d.ending !== "string" || !Array.isArray(d.scenes) || d.scenes.length !== sceneCount) throw error();

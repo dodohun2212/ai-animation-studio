@@ -8,6 +8,7 @@ import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/projec
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { longEpisodeMappingNotAllowed, longEpisodeMappingNotFound, longEpisodeMappingStale, longEpisodeMappingUnconfirmed, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
+import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 
 type StoredCandidate = { mapping_id: string; source_collection: "basic" | "characters" | "locations" | "props"; source_item_id: string; asset_id: string; usage_role: "character" | "background" | "object" | "style"; version_policy: "pinned_version" | "follow_latest" | "snapshot"; pinned_version: number | null; episode_scope: { mode: "all" } | { mode: "episode"; episode: number }; status: "suggested" | "confirmed" | "excluded"; user_confirmed: boolean; created_at: string; updated_at: string };
 type StoredReview = { project_id: string; episode_number: number; mapping_revision: number; script_revision: number; script_fingerprint: string; status: "waiting" | "approved"; text_only_confirmed: boolean; approved_at: string; candidates: StoredCandidate[] };
@@ -113,7 +114,7 @@ export class EpisodeAssetMappingsService {
     }
     return result;
   }
-  private detail(episode: StoredEpisode): LongEpisodeDetail { const script = toApiEpisodeScript(episode.script); return { episodeNumber: episode.number, title: String(episode.title), summary: String(episode.summary), mainEvent: String(episode.core_event), conflict: String(episode.conflict), cliffhanger: String(episode.cliffhanger), nextEpisodeHook: String(episode.next_connection), status: episode.state, approved: episode.approved, scriptRevision: episode.script_revision, ...(script ? { script } : {}), scriptHistoryCount: Array.isArray(episode.script_history) ? episode.script_history.length : 0 }; }
+  private detail(episode: StoredEpisode): LongEpisodeDetail { const script = toApiEpisodeScript(episode.script); const warnings = withoutStaleEpisodeRecoveryWarnings(Array.isArray(episode.warnings) ? episode.warnings.filter((item): item is string => typeof item === "string") : [], episode.state); return { episodeNumber: episode.number, title: String(episode.title), summary: String(episode.summary), mainEvent: String(episode.core_event), conflict: String(episode.conflict), cliffhanger: String(episode.cliffhanger), nextEpisodeHook: String(episode.next_connection), status: episode.state, approved: episode.approved, scriptRevision: episode.script_revision, ...(script ? { script } : {}), scriptHistoryCount: Array.isArray(episode.script_history) ? episode.script_history.length : 0, ...(warnings.length > 0 ? { warnings } : {}) }; }
 
   async get(projectId: string, number: number): Promise<GetLongEpisodeAssetMappingReviewResponse> {
     const id = projectId.trim(); await this.episode(id, number);

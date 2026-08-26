@@ -10,7 +10,7 @@ import { EpisodeScriptsService } from "./episode-scripts.service.js";
 import { EpisodeVideoMergeService } from "./episode-video-merge.service.js";
 import { EpisodeVideosService } from "./episode-videos.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
-import { OrphanedEpisodeGenerationRecoveryService } from "./orphaned-episode-generation-recovery.service.js";
+import { OrphanedEpisodeGenerationRecoveryService, withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 
 let root: string | undefined;
 const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 3, sceneCount: 6, clipDurationSeconds: 5, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false };
@@ -33,10 +33,10 @@ async function forceEpisodeStatus(projectsRoot: string, projectId: string, episo
   outlines[episodeNumber - 1]!.status = state;
   await fs.writeFile(outlinesPath, JSON.stringify(outlines, null, 2), "utf8");
 }
-async function readEpisodeState(projectsRoot: string, projectId: string, episodeNumber: number): Promise<{ state: unknown; outlineStatus: unknown; errors: unknown }> {
+async function readEpisodeState(projectsRoot: string, projectId: string, episodeNumber: number): Promise<{ state: unknown; outlineStatus: unknown; warnings: unknown; outlineWarnings: unknown }> {
   const episode = JSON.parse(await fs.readFile(await episodeFile(projectsRoot, projectId, episodeNumber), "utf8")) as Record<string, unknown>;
   const outlines = JSON.parse(await fs.readFile(await outlinesFile(projectsRoot, projectId), "utf8")) as Record<string, unknown>[];
-  return { state: episode.state, outlineStatus: outlines[episodeNumber - 1]!.status, errors: episode.errors };
+  return { state: episode.state, outlineStatus: outlines[episodeNumber - 1]!.status, warnings: episode.warnings, outlineWarnings: outlines[episodeNumber - 1]!.warnings };
 }
 
 /** Advances one Episode through script + asset-mapping approval — the common prefix every generating state needs. */
@@ -98,11 +98,18 @@ describe("OrphanedEpisodeGenerationRecoveryService", () => {
     expect(recovered).toBe(3);
     const one = await readEpisodeState(projectsRoot, "long", 1);
     expect(one).toMatchObject({ state: "asset_mapping_approved", outlineStatus: "asset_mapping_approved" });
+    expect(one.warnings).toEqual(["이전에 이미지를 만들다가 서버가 꺼져서 중간에 멈췄습니다. 이미 만들어진 것은 그대로 있고, 이어서 다시 만들 수 있습니다."]);
+    expect(one.outlineWarnings).toEqual(one.warnings);
     const two = await readEpisodeState(projectsRoot, "long", 2);
     expect(two).toMatchObject({ state: "interrupted", outlineStatus: "interrupted" });
+    expect(two.warnings).toEqual(["이전에 영상을 만들다가 서버가 꺼져서 중간에 멈췄습니다. 이미 만들어진 것은 그대로 있고, 이어서 다시 만들 수 있습니다."]);
     const three = await readEpisodeState(projectsRoot, "long", 3);
     expect(three).toMatchObject({ state: "failed", outlineStatus: "failed" });
-    expect(three.errors).toEqual(["Backend process exited while rendering. Recovered to a retryable state on restart."]);
+    expect(three.warnings).toEqual(["이전에 최종 영상을 합치다가 서버가 꺼져서 중간에 멈췄습니다. 다시 시도할 수 있습니다."]);
+    // Plain language only, no raw LongEpisodeStatus value like GENERATING_IMAGES in the sentence.
+    for (const warnings of [one.warnings, two.warnings, three.warnings] as string[][]) {
+      for (const warning of warnings) expect(warning).not.toMatch(/[A-Z_]{2,}/);
+    }
 
     // Episode 3's fully-approved videos are untouched by the recovery pass.
     for (const number of [1, 2, 3, 4, 5, 6]) {
@@ -129,6 +136,23 @@ describe("OrphanedEpisodeGenerationRecoveryService", () => {
     const second = await service.recoverAll();
 
     expect(second).toBe(0);
+  });
+
+  it("never stacks the same recovery message twice, even if the same Episode crashes mid-run again later", async () => {
+    const { projectsRoot, service } = await setup();
+    await toAssetMappingApproved(projectsRoot, 1);
+    await forceEpisodeStatus(projectsRoot, "long", 1, "generating_images");
+    await service.recoverAll();
+    const recoveredOnce = await readEpisodeState(projectsRoot, "long", 1);
+    expect(recoveredOnce.warnings).toHaveLength(1);
+    // Simulate the same Episode being re-entered into generating_images and crashing again.
+    await forceEpisodeStatus(projectsRoot, "long", 1, "generating_images");
+
+    await service.recoverAll();
+
+    const recoveredTwice = await readEpisodeState(projectsRoot, "long", 1);
+    expect(recoveredTwice.warnings).toEqual(recoveredOnce.warnings); // still exactly one line
+    expect(recoveredTwice.outlineWarnings).toEqual(recoveredOnce.warnings);
   });
 
   it("leaves an Episode alone when the outline summary and its own detail file disagree, rather than guessing which is stale", async () => {
@@ -162,5 +186,25 @@ describe("OrphanedEpisodeGenerationRecoveryService", () => {
     const service = new OrphanedEpisodeGenerationRecoveryService(path.join(root, "projects"));
 
     await expect(service.recoverAll()).resolves.toBe(0);
+  });
+});
+
+describe("withoutStaleEpisodeRecoveryWarnings", () => {
+  const IMAGE_MESSAGE = "이전에 이미지를 만들다가 서버가 꺼져서 중간에 멈췄습니다. 이미 만들어진 것은 그대로 있고, 이어서 다시 만들 수 있습니다.";
+
+  it("keeps a recovery message while the Episode is still in the from-state or the state it was reset to", () => {
+    expect(withoutStaleEpisodeRecoveryWarnings([IMAGE_MESSAGE], "asset_mapping_approved")).toEqual([IMAGE_MESSAGE]);
+    expect(withoutStaleEpisodeRecoveryWarnings([IMAGE_MESSAGE], "generating_images")).toEqual([IMAGE_MESSAGE]);
+  });
+
+  it("drops the message once the Episode has actually moved past the recovered step", () => {
+    expect(withoutStaleEpisodeRecoveryWarnings([IMAGE_MESSAGE], "images_review")).toEqual([]);
+    expect(withoutStaleEpisodeRecoveryWarnings([IMAGE_MESSAGE], "waiting_for_video_confirmation")).toEqual([]);
+  });
+
+  it("never touches a warning it did not write, regardless of state", () => {
+    const unrelated = "다른 이유로 남은 경고";
+    expect(withoutStaleEpisodeRecoveryWarnings([unrelated], "completed")).toEqual([unrelated]);
+    expect(withoutStaleEpisodeRecoveryWarnings([IMAGE_MESSAGE, unrelated], "images_review")).toEqual([unrelated]);
   });
 });
