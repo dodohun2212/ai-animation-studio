@@ -34,6 +34,8 @@ import { applyContinuityCandidate, listContinuityOptions, resolveContinuityCandi
 import { applyShortProjectSettings, parseShortProjectSettings, toShortProjectSettings } from "./project-settings.js";
 import { LocalProjectRepository } from "./projects.repository.js";
 import type { LocalAssetsRepository } from "../assets/assets.repository.js";
+import type { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
+import { syncAutoMappings } from "./project-asset-mapping-sync.js";
 
 const ATMOSPHERE_ASSET_TYPES = new Set(["style", "general_reference", "background"]);
 const SCENE_REFERENCE_ASSET_TYPES = new Set(["background", "object", "style", "general_reference"]);
@@ -51,7 +53,11 @@ function requireNonEmptyTrimmed(value: unknown, field: string): string {
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly repository: LocalProjectRepository, private readonly assets?: LocalAssetsRepository) {}
+  constructor(
+    private readonly repository: LocalProjectRepository,
+    private readonly assets?: LocalAssetsRepository,
+    private readonly mappings?: LocalProjectAssetMappingsRepository,
+  ) {}
 
   async createProject(request: CreateProjectRequest): Promise<CreateProjectResponse> {
     const projectId = requireNonEmptyTrimmed(request?.projectId, "projectId");
@@ -169,6 +175,9 @@ export class ProjectsService {
     }
     const updated = applyShortProjectCast(stored, cast, new Date().toISOString());
     await this.repository.save(updated);
+    if (this.assets && this.mappings) {
+      await syncAutoMappings(this.mappings, this.assets, updated.project_id, "auto_cast", cast.map((member) => ({ assetId: member.assetId, usageRole: "character" })));
+    }
     return { cast };
   }
 
@@ -198,6 +207,10 @@ export class ProjectsService {
     }
     const updated = applyShortProjectAssetReferences(stored, references, new Date().toISOString());
     await this.repository.save(updated);
+    if (this.assets && this.mappings) {
+      await syncAutoMappings(this.mappings, this.assets, updated.project_id, "auto_atmosphere", references.atmosphereAssetIds.map((assetId) => ({ assetId, usageRole: "atmosphere" })));
+      await syncAutoMappings(this.mappings, this.assets, updated.project_id, "auto_scene_reference", references.sceneReferenceAssets.map((member) => ({ assetId: member.assetId, usageRole: member.purpose })));
+    }
     return references;
   }
 

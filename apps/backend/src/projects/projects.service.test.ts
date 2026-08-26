@@ -6,6 +6,7 @@ import { WorkflowState } from "@ai-animation-studio/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
+import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import { LocalProjectRepository } from "./projects.repository.js";
 import { ProjectsService } from "./projects.service.js";
 
@@ -207,6 +208,79 @@ describe("ProjectsService", () => {
     await service.createProject({ projectId: "refs_project", topic: "topic" });
     const saved = await service.updateProjectAssetReferences("refs_project", { atmosphereAssetIds: ["ASSET-ANY"], sceneReferenceAssets: [] });
     expect(saved.atmosphereAssetIds).toEqual(["ASSET-ANY"]);
+  });
+
+  it("auto-links a cast member as a confirmed Asset Mapping, and removes it again once the cast member is removed", async () => {
+    const assets = new LocalAssetsRepository(root);
+    const mappings = new LocalProjectAssetMappingsRepository(root);
+    const withMappings = new ProjectsService(new LocalProjectRepository(root), assets, mappings);
+    await withMappings.createProject({ projectId: "cast_project", topic: "topic" });
+    const hero = await assets.createFolder({ assetType: "character", displayName: "Hero folder" });
+
+    await withMappings.updateProjectCast("cast_project", { cast: [{ assetId: hero.asset_id, castRole: "protagonist", storyRole: "대표 캐릭터" }] });
+
+    const created = await mappings.load("cast_project");
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({ asset_id: hero.asset_id, usage_role: "character", assignment_source: "auto", match_reason: "auto_cast", status: "confirmed", user_confirmed: true, enabled: true, scene_scope: { mode: "all" }, version_policy: "follow_latest" });
+
+    await withMappings.updateProjectCast("cast_project", { cast: [] });
+    expect(await mappings.load("cast_project")).toEqual([]);
+  });
+
+  it("does not auto-create a mapping alongside an existing manual mapping for the same Asset", async () => {
+    const assets = new LocalAssetsRepository(root);
+    const mappings = new LocalProjectAssetMappingsRepository(root);
+    const withMappings = new ProjectsService(new LocalProjectRepository(root), assets, mappings);
+    await withMappings.createProject({ projectId: "cast_project", topic: "topic" });
+    const hero = await assets.create({ buffer: CHAR_PNG, originalname: "hero.png" }, { assetType: "character", displayName: "Hero" });
+    const now = "2026-08-27T00:00:00.000Z";
+    await mappings.save("cast_project", [{
+      mapping_id: "MAP-MANUAL01", project_id: "cast_project", asset_id: hero.asset_id, enabled: true, usage_role: "hand-picked",
+      scene_scope: { mode: "all" }, assignment_source: "manual", confidence: null, match_reason: "manual_assignment",
+      status: "confirmed", user_confirmed: true, version_policy: "pinned_version", pinned_version: 1, candidate_only: false,
+      created_at: now, updated_at: now, snapshot_path: null, snapshot_sha256: null, snapshot_source_version: null, selected_child_asset_ids: [],
+    }]);
+
+    await withMappings.updateProjectCast("cast_project", { cast: [{ assetId: hero.asset_id, castRole: "protagonist", storyRole: "대표 캐릭터" }] });
+
+    const after = await mappings.load("cast_project");
+    expect(after).toHaveLength(1);
+    expect(after[0]).toMatchObject({ mapping_id: "MAP-MANUAL01", assignment_source: "manual" });
+  });
+
+  it("auto-links atmosphere Assets and scene reference Assets (usage role from the user's own purpose text), and updates the role when the purpose changes", async () => {
+    const assets = new LocalAssetsRepository(root);
+    const mappings = new LocalProjectAssetMappingsRepository(root);
+    const withMappings = new ProjectsService(new LocalProjectRepository(root), assets, mappings);
+    await withMappings.createProject({ projectId: "refs_project", topic: "topic" });
+    const style = await assets.create({ buffer: CHAR_PNG, originalname: "style.png" }, { assetType: "style", displayName: "Style" });
+    const key = await assets.create({ buffer: SECOND_PNG, originalname: "key.png" }, { assetType: "object", displayName: "Key" });
+
+    await withMappings.updateProjectAssetReferences("refs_project", {
+      atmosphereAssetIds: [style.asset_id],
+      sceneReferenceAssets: [{ assetId: key.asset_id, purpose: "주인공이 항상 들고 다니는 열쇠" }],
+    });
+
+    const created = await mappings.load("refs_project");
+    expect(created).toHaveLength(2);
+    expect(created.find((mapping) => mapping.asset_id === style.asset_id)).toMatchObject({ usage_role: "atmosphere", assignment_source: "auto", match_reason: "auto_atmosphere", status: "confirmed" });
+    expect(created.find((mapping) => mapping.asset_id === key.asset_id)).toMatchObject({ usage_role: "주인공이 항상 들고 다니는 열쇠", assignment_source: "auto", match_reason: "auto_scene_reference" });
+
+    await withMappings.updateProjectAssetReferences("refs_project", {
+      atmosphereAssetIds: [style.asset_id],
+      sceneReferenceAssets: [{ assetId: key.asset_id, purpose: "장면 3에서만 등장하는 열쇠" }],
+    });
+    const updated = await mappings.load("refs_project");
+    expect(updated).toHaveLength(2); // same mapping_id, not a new one
+    const keyMapping = updated.find((mapping) => mapping.asset_id === key.asset_id)!;
+    expect(keyMapping.usage_role).toBe("장면 3에서만 등장하는 열쇠");
+    expect(keyMapping.mapping_id).toBe(created.find((mapping) => mapping.asset_id === key.asset_id)!.mapping_id);
+  });
+
+  it("skips auto-linking entirely when no mappings repository is injected", async () => {
+    await service.createProject({ projectId: "cast_project", topic: "topic" });
+    const saved = await service.updateProjectCast("cast_project", { cast: [{ assetId: "ASSET-CHAR-ANY", castRole: "protagonist", storyRole: "대표 캐릭터" }] });
+    expect(saved.cast).toHaveLength(1); // no throw despite the missing repository
   });
 
   it("has no continuity link or options before any other project exists", async () => {

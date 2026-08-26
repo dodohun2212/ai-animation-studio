@@ -4,6 +4,7 @@ import { Module } from "@nestjs/common";
 
 import { AssetsModule } from "../assets/assets.module.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
+import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import { OrphanedGenerationRecoveryService } from "./orphaned-generation-recovery.service.js";
 import { ProjectsController } from "./projects.controller.js";
 import { LocalProjectRepository } from "./projects.repository.js";
@@ -27,9 +28,14 @@ function defaultProjectsRoot(): string {
       inject: [PROJECTS_ROOT],
     },
     {
+      provide: LocalProjectAssetMappingsRepository,
+      useFactory: (projectsRoot: string) => new LocalProjectAssetMappingsRepository(projectsRoot),
+      inject: [PROJECTS_ROOT],
+    },
+    {
       provide: ProjectsService,
-      useFactory: (repository: LocalProjectRepository, assets: LocalAssetsRepository) => new ProjectsService(repository, assets),
-      inject: [LocalProjectRepository, LocalAssetsRepository],
+      useFactory: (repository: LocalProjectRepository, assets: LocalAssetsRepository, mappings: LocalProjectAssetMappingsRepository) => new ProjectsService(repository, assets, mappings),
+      inject: [LocalProjectRepository, LocalAssetsRepository, LocalProjectAssetMappingsRepository],
     },
     {
       provide: SceneEditService,
