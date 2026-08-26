@@ -79,44 +79,28 @@ describe("callOpenAiStoryApi", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("retries a 429 up to maxRetries, honoring Retry-After, then succeeds", async () => {
+  it("never retries a 429, even with Retry-After present — Story generation is paid and non-idempotent", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(429, { error: { message: "slow down" } }, { "retry-after": "0" }))
       .mockResolvedValueOnce(jsonResponse(200, responsesBody(VALID_STORY)));
-    const sleep = vi.fn(noSleep);
-    const result = await callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock, sleep, maxRetries: 2 });
-    expect(result.story).toEqual(VALID_STORY);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(sleep).toHaveBeenCalledTimes(1);
+    await expect(callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock })).rejects.toMatchObject({ category: "rate_limit" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("gives up on a 429 after exhausting maxRetries", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(429, { error: {} }));
-    await expect(callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock, sleep: noSleep, maxRetries: 1 }))
-      .rejects.toMatchObject({ category: "rate_limit" });
-    expect(fetchMock).toHaveBeenCalledTimes(2); // initial + 1 retry
-  });
-
-  it("retries a 500 server error, then succeeds", async () => {
+  it("never retries a 500 server error", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(500, { error: {} }))
       .mockResolvedValueOnce(jsonResponse(200, responsesBody(VALID_STORY)));
-    const result = await callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock, sleep: noSleep });
-    expect(result.story).toEqual(VALID_STORY);
+    await expect(callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock })).rejects.toMatchObject({ category: "server" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("retries a network-level fetch rejection as network, then succeeds", async () => {
+  it("never retries a network-level fetch rejection — a lost response does not mean OpenAI never generated (and billed) a Story", async () => {
     const fetchMock = vi.fn()
       .mockRejectedValueOnce(new TypeError("fetch failed"))
       .mockResolvedValueOnce(jsonResponse(200, responsesBody(VALID_STORY)));
-    const result = await callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock, sleep: noSleep });
-    expect(result.story).toEqual(VALID_STORY);
-  });
-
-  it("classifies a persistent network failure as network after exhausting retries", async () => {
-    const fetchMock = vi.fn().mockRejectedValue(new TypeError("fetch failed"));
-    await expect(callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock, sleep: noSleep, maxRetries: 1 }))
-      .rejects.toMatchObject({ category: "network" });
+    await expect(callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock })).rejects.toMatchObject({ category: "network" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("rejects an empty output_text as empty_response", async () => {

@@ -1,7 +1,4 @@
-import {
-  OPENAI_DEFAULT_MAX_RETRIES, OPENAI_KOREAN_MESSAGES, OPENAI_RETRYABLE_CATEGORIES,
-  OpenAiAdapterError, backoffSeconds, classifyOpenAiHttpError, defaultSleep, parseRetryAfterSeconds,
-} from "../providers/openai-common.js";
+import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError, classifyOpenAiHttpError } from "../providers/openai-common.js";
 import { validateStory, type StoredStory } from "./story-generation.service.js";
 
 export const OPENAI_STORY_MODEL = "gpt-5.6-luna";
@@ -59,50 +56,42 @@ function extractOutputText(body: unknown): string {
 
 /**
  * Real OpenAI Responses API call for the strict six-scene Story JSON schema, using a plain fetch request
- * (no SDK dependency) so error classification and the bounded retry policy stay under direct, testable control.
+ * (no SDK dependency). Never retried — generation is paid and non-idempotent, and a `fetch` failure does not
+ * mean OpenAI never generated (and billed) a Story, only that we never saw the response (see
+ * OPENAI_DEFAULT_MAX_RETRIES's doc comment).
  */
 export async function callOpenAiStoryApi(
   apiKey: string,
   prompt: string,
-  options: { model?: string; maxRetries?: number; fetchImpl?: typeof fetch; sleep?: (seconds: number) => Promise<void>; sceneCount?: number } = {},
+  options: { model?: string; fetchImpl?: typeof fetch; sceneCount?: number } = {},
 ): Promise<{ story: StoredStory; requestId: string }> {
   const model = options.model ?? OPENAI_STORY_MODEL;
-  const maxRetries = options.maxRetries ?? OPENAI_DEFAULT_MAX_RETRIES;
   const fetchImpl = options.fetchImpl ?? fetch;
-  const sleep = options.sleep ?? defaultSleep;
   const sceneCount = options.sceneCount ?? 6;
 
-  let attempt = 0;
-  while (true) {
-    let response: Response;
-    try {
-      response = await fetchImpl("https://api.openai.com/v1/responses", {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({
-          model, input: prompt,
-          text: { format: { type: "json_schema", name: "animation_story", strict: true, schema: storySchema(sceneCount) } },
-        }),
-      });
-    } catch {
-      if (attempt >= maxRetries) throw new OpenAiAdapterError("network", OPENAI_KOREAN_MESSAGES.network);
-      await sleep(backoffSeconds(attempt));
-      attempt += 1; continue;
-    }
-    if (!response.ok) {
-      const category = await classifyOpenAiHttpError(response);
-      if (!OPENAI_RETRYABLE_CATEGORIES.has(category) || attempt >= maxRetries) throw new OpenAiAdapterError(category, OPENAI_KOREAN_MESSAGES[category]);
-      const retryAfter = parseRetryAfterSeconds(response);
-      await sleep(Math.max(0, Math.min(4, retryAfter ?? backoffSeconds(attempt))));
-      attempt += 1; continue;
-    }
-    const body: unknown = await response.json().catch(() => null);
-    const requestId = response.headers.get("x-request-id") ?? "";
-    const text = extractOutputText(body);
-    if (!text) throw new OpenAiAdapterError("empty_response", "대본 응답이 비어 있습니다.");
-    let parsed: unknown;
-    try { parsed = JSON.parse(text); } catch { throw new OpenAiAdapterError("invalid_response", "대본 응답 JSON을 해석할 수 없습니다."); }
-    try { validateStory(parsed, sceneCount); } catch { throw new OpenAiAdapterError("invalid_response", "대본 응답 JSON을 해석할 수 없습니다."); }
-    return { story: parsed, requestId };
+  let response: Response;
+  try {
+    response = await fetchImpl("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model, input: prompt,
+        text: { format: { type: "json_schema", name: "animation_story", strict: true, schema: storySchema(sceneCount) } },
+      }),
+    });
+  } catch {
+    throw new OpenAiAdapterError("network", OPENAI_KOREAN_MESSAGES.network);
   }
+  if (!response.ok) {
+    const category = await classifyOpenAiHttpError(response);
+    throw new OpenAiAdapterError(category, OPENAI_KOREAN_MESSAGES[category]);
+  }
+  const body: unknown = await response.json().catch(() => null);
+  const requestId = response.headers.get("x-request-id") ?? "";
+  const text = extractOutputText(body);
+  if (!text) throw new OpenAiAdapterError("empty_response", "대본 응답이 비어 있습니다.");
+  let parsed: unknown;
+  try { parsed = JSON.parse(text); } catch { throw new OpenAiAdapterError("invalid_response", "대본 응답 JSON을 해석할 수 없습니다."); }
+  try { validateStory(parsed, sceneCount); } catch { throw new OpenAiAdapterError("invalid_response", "대본 응답 JSON을 해석할 수 없습니다."); }
+  return { story: parsed, requestId };
 }

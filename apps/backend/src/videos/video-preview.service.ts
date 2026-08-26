@@ -67,7 +67,16 @@ export function ratioFor(project: StoredProject): "720:1280" | "1280:720" {
   return aspect === "16:9" ? "1280:720" : "720:1280";
 }
 
-export function promptFor(scene: StoredScene, previous: StoredScene | undefined, ratio: "720:1280" | "1280:720", clipDurationSeconds: number): string {
+export interface VideoPromptResult {
+  prompt: string;
+  /** Section labels actually dropped by the length-truncation loop below — never includes "Continuity cue" for
+   * scene 1, which is absent for an unrelated reason (there is no previous scene) rather than truncated. Lets a
+   * caller that cares (video-preview.service.ts's preview()) tell the user something was cut, instead of quietly
+   * shipping a prompt with content missing and no way to know (`.claude-bridge` Round 148). */
+  omittedSections: string[];
+}
+
+export function promptFor(scene: StoredScene, previous: StoredScene | undefined, ratio: "720:1280" | "1280:720", clipDurationSeconds: number): VideoPromptResult {
   const orientation = ratio === "1280:720" ? "horizontal" : "vertical";
   const continuity = previous
     ? [previous.end_motion, previous.continuity_hint].filter((value, index, values) => values.indexOf(value) === index).join(" ")
@@ -90,13 +99,16 @@ export function promptFor(scene: StoredScene, previous: StoredScene | undefined,
   // imagePromptFor's existing filter for the same class of empty-section bug on the image side.
   let included = sections.filter(([, value]) => value);
   const removable = ["Pacing", "Environment", "Performance", "Continuity cue"];
+  const omittedSections: string[] = [];
   while (utf16Length(render(included)) > UTF16_PROMPT_LIMIT && removable.length > 0) {
-    const label = removable.shift();
+    const label = removable.shift()!;
+    const before = included.length;
     included = included.filter(([candidate]) => candidate !== label);
+    if (included.length !== before) omittedSections.push(label);
   }
   const prompt = render(included);
   if (utf16Length(prompt) > UTF16_PROMPT_LIMIT) throw videoPreviewDataInvalid();
-  return prompt;
+  return { prompt, omittedSections };
 }
 
 @Injectable()
@@ -135,14 +147,18 @@ export class LocalVideoPreviewService {
     await this.assertApprovedImages(project, sceneNumbers);
     const scenes = parseScenes(project, sceneNumbers);
     const ratio = ratioFor(project);
-    const previews: VideoPromptPreview[] = scenes.map((scene, index) => ({
-      sceneNumber: sceneNumbers[index]!,
-      prompt: promptFor(scene, scenes[index - 1], ratio, clipDurationSeconds),
-      model: "gen4_turbo",
-      ratio,
-      durationSeconds: clipDurationSeconds,
-      estimatedCostUsd: VIDEO_SCENE_ESTIMATED_COST_USD,
-    }));
+    const previews: VideoPromptPreview[] = scenes.map((scene, index) => {
+      const { prompt, omittedSections } = promptFor(scene, scenes[index - 1], ratio, clipDurationSeconds);
+      return {
+        sceneNumber: sceneNumbers[index]!,
+        prompt,
+        model: "gen4_turbo",
+        ratio,
+        durationSeconds: clipDurationSeconds,
+        estimatedCostUsd: VIDEO_SCENE_ESTIMATED_COST_USD,
+        ...(omittedSections.length > 0 ? { omittedSections } : {}),
+      };
+    });
     // This is an opaque, deterministic snapshot of the reviewed images and
     // preflight settings. It is deliberately not persisted: generating a
     // preview must remain provider-free and side-effect-free.

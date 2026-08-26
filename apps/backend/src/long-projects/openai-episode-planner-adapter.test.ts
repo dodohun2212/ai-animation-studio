@@ -51,19 +51,18 @@ describe("callOpenAiEpisodePlannerApi", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("retries a 429 up to maxRetries, then succeeds", async () => {
+  it("never retries a 429, even with Retry-After present — outline generation is paid and non-idempotent", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(429, { error: { message: "slow down" } }, { "retry-after": "0" }))
       .mockResolvedValueOnce(jsonResponse(200, responsesBody(VALID_OUTLINE)));
-    const result = await callOpenAiEpisodePlannerApi("sk", "p", 2, { fetchImpl: fetchMock, sleep: vi.fn(noSleep), maxRetries: 2 });
-    expect(result.result).toEqual(VALID_OUTLINE);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await expect(callOpenAiEpisodePlannerApi("sk", "p", 2, { fetchImpl: fetchMock })).rejects.toMatchObject({ category: "rate_limit" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("retries a network-level fetch rejection, then succeeds", async () => {
+  it("never retries a network-level fetch rejection — a lost response does not mean OpenAI never generated (and billed) an outline", async () => {
     const fetchMock = vi.fn().mockRejectedValueOnce(new TypeError("fetch failed")).mockResolvedValueOnce(jsonResponse(200, responsesBody(VALID_OUTLINE)));
-    const result = await callOpenAiEpisodePlannerApi("sk", "p", 2, { fetchImpl: fetchMock, sleep: noSleep });
-    expect(result.result).toEqual(VALID_OUTLINE);
+    await expect(callOpenAiEpisodePlannerApi("sk", "p", 2, { fetchImpl: fetchMock })).rejects.toMatchObject({ category: "network" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("rejects an empty output_text as empty_response", async () => {

@@ -21,6 +21,15 @@ export const OPENAI_KOREAN_MESSAGES: Record<OpenAiErrorCategory, string> = {
 
 export const OPENAI_RETRYABLE_CATEGORIES = new Set<OpenAiErrorCategory>(["rate_limit", "server", "network"]);
 export const OPENAI_MAX_BACKOFF_SECONDS = 4;
+/**
+ * Still the default for every OpenAI call whose retry is actually safe (a status check, a read) — but every
+ * generation adapter (Image/Edit/Story/TTS/Episode-planner) forces `maxRetries: 0` on its own POST regardless of
+ * this default or whatever a caller passes, the same way runway-video-adapter.ts does for task creation. A
+ * `fetch` throw only means the response never reached us, never that OpenAI never received or acted on the
+ * request — generation is billed and non-idempotent, so retrying it can create and pay for a second real result
+ * while only ever tracking whichever attempt's response we happened to get (`.claude-bridge` Round 148, found
+ * by re-checking every OpenAI adapter against the same bug already confirmed and fixed for Runway).
+ */
 export const OPENAI_DEFAULT_MAX_RETRIES = 2;
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);

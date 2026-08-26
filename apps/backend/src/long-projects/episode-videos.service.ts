@@ -75,7 +75,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
    * that setting, so a 16:9 Long Project's Episodes were always rendered as vertical video.
    */
   private prompt(current: ObjectMap, previous: ObjectMap | undefined, durationSeconds: 5 | 10, ratio: "720:1280" | "1280:720"): string {
-    try { return promptFor(current as unknown as StoredScene, previous as unknown as StoredScene | undefined, ratio, durationSeconds); }
+    try { return promptFor(current as unknown as StoredScene, previous as unknown as StoredScene | undefined, ratio, durationSeconds).prompt; }
     catch { throw longInvalidData(); }
   }
   private async assertReady(id: string, number: number, episode: Episode) { const scenes = sceneNumbersFor(this.sceneCount(episode)); if (episode.state !== "waiting_for_video_confirmation") throw longEpisodeVideosNotAllowed(); if (!(await Promise.all(scenes.map((item) => this.validImage(this.image(id, number, item))))).every(Boolean)) throw longEpisodeVideosInvalid(); const raw = await this.json(path.join(this.files(id, number).videos, "..", "generated_image_reviews.json")); if (!Array.isArray(raw) || !scenes.every((item) => raw.some((review) => object(review) && review.scene_number === item && review.status === "approved"))) throw longEpisodeVideosInvalid(); }

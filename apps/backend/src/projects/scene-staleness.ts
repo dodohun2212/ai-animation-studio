@@ -1,5 +1,8 @@
 import { sceneNumbersFor, type SceneNumber, type SceneStaleness } from "@ai-animation-studio/shared";
 import { imagePromptFor, sceneValue, styleLineFor } from "../images/image-prompt.js";
+import { describeReferenceMappingsForScene } from "../images/image-reference-selection.js";
+import type { LocalAssetsRepository } from "../assets/assets.repository.js";
+import type { StoredAssetMapping } from "../mappings/mapping-storage.js";
 import { promptFor, ratioFor, type StoredScene } from "../videos/video-preview.service.js";
 import { toShortProjectSettings } from "./project-settings.js";
 import type { StoredProject } from "./project-storage.schema.js";
@@ -31,8 +34,17 @@ function latestRecordField(records: readonly unknown[], sceneNumber: number, key
  * needs the whole picture because one edit can make more than one scene stale (the propagation case above), and
  * every review GET endpoint (image/video/narration) needs the same full picture for a user opening that screen
  * cold, not only right after an edit.
+ *
+ * `referenceContext`, when supplied, lets the image-staleness check recompute the same `References:` block
+ * imagePromptFor() folds into a real generation (see image-reference-selection.ts). Omitting it recomputes
+ * without that block regardless of what actually shipped — which used to be the only option, and made every
+ * scene of any project with a confirmed Asset Mapping permanently, incorrectly imageStale (the recorded prompt
+ * had a References section this function could never reproduce to match against — `.claude-bridge` Round 148).
  */
-export function computeSceneStaleness(project: StoredProject): SceneStaleness {
+export async function computeSceneStaleness(
+  project: StoredProject,
+  referenceContext?: { assets: LocalAssetsRepository; mappings: readonly StoredAssetMapping[] },
+): Promise<SceneStaleness> {
   const scenes = scenesFor(project);
   const styleLine = styleLineFor(project);
   const ratio = ratioFor(project);
@@ -44,7 +56,10 @@ export function computeSceneStaleness(project: StoredProject): SceneStaleness {
     const scene = project.scenes[number - 1];
 
     const recordedImagePrompt = latestRecordField(project.image_generation_records, number, "prompt");
-    if (recordedImagePrompt !== undefined && imagePromptFor(scene, styleLine) !== recordedImagePrompt) imageStale.push(number);
+    if (recordedImagePrompt !== undefined) {
+      const referenceNotes = referenceContext ? await describeReferenceMappingsForScene(referenceContext.assets, referenceContext.mappings, number) : "";
+      if (imagePromptFor(scene, styleLine, referenceNotes) !== recordedImagePrompt) imageStale.push(number);
+    }
 
     const recordedNarration = latestRecordField(project.narration_generation_records, number, "narration");
     if (recordedNarration !== undefined && sceneValue(scene, "narration") !== recordedNarration) narrationStale.push(number);
@@ -53,7 +68,7 @@ export function computeSceneStaleness(project: StoredProject): SceneStaleness {
     if (recordedVideoPrompt !== undefined) {
       const previous = number > 1 ? (project.scenes[number - 2] as StoredScene) : undefined;
       let recomputed: string | undefined;
-      try { recomputed = promptFor(scene as StoredScene, previous, ratio, clipDurationSeconds); } catch { recomputed = undefined; }
+      try { recomputed = promptFor(scene as StoredScene, previous, ratio, clipDurationSeconds).prompt; } catch { recomputed = undefined; }
       if (recomputed !== undefined && recomputed !== recordedVideoPrompt) videoStale.push(number);
     }
   }

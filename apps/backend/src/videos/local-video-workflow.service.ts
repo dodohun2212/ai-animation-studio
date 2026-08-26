@@ -464,10 +464,12 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     if (!(await Promise.all(records.map((record) => this.hasCompletedFile(project.project_id, record.scene_number)))).every(Boolean)) throw videoWorkflowNotAllowed();
     const reviews = await this.loadReviews(project.project_id);
     const costsByScene = this.budget ? await this.budget.costsByScene(project.project_id) : {};
+    // TODO: no LocalAssetsRepository/mappings injected here yet — same gap as scene-edit.service.ts, see its
+    // comment (`.claude-bridge` Round 148).
     return {
       project: toApiProject(project),
       reviews: this.toReviews(reviews, project.updated_at, records.map((record) => record.scene_number), costsByScene),
-      staleness: computeSceneStaleness(project),
+      staleness: await computeSceneStaleness(project),
     };
   }
 

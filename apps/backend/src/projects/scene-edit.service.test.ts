@@ -128,7 +128,7 @@ describe("SceneEditService.update — staleness", () => {
     const project = await projects.findById("scenes");
     const { promptFor, ratioFor } = await import("../videos/video-preview.service.js");
     const ratio = ratioFor(project);
-    const scene2Prompt = promptFor(project.scenes[1] as never, project.scenes[0] as never, ratio, 5);
+    const scene2Prompt = promptFor(project.scenes[1] as never, project.scenes[0] as never, ratio, 5).prompt;
     project.video_generation_records = [{ scene_number: 2, prompt: scene2Prompt }];
     await projects.save(project);
 
@@ -141,7 +141,7 @@ describe("SceneEditService.update — staleness", () => {
     const project = await projects.findById("scenes");
     const { promptFor, ratioFor } = await import("../videos/video-preview.service.js");
     const ratio = ratioFor(project);
-    const scene1Prompt = promptFor(project.scenes[0] as never, undefined, ratio, 5);
+    const scene1Prompt = promptFor(project.scenes[0] as never, undefined, ratio, 5).prompt;
     project.video_generation_records = [{ scene_number: 1, prompt: scene1Prompt }];
     await projects.save(project);
 

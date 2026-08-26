@@ -57,22 +57,20 @@ describe("callOpenAiTtsApi", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("retries a 429 honoring Retry-After, then succeeds", async () => {
+  it("never retries a 429, even with Retry-After present — TTS generation is paid and non-idempotent", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(errorResponse(429, { error: {} }, { "retry-after": "0" }))
       .mockResolvedValueOnce(audioResponse(200, AUDIO_BYTES));
-    const sleep = vi.fn(noSleep);
-    const result = await callOpenAiTtsApi("sk", "line", { fetchImpl: fetchMock, sleep, maxRetries: 2 });
-    expect(result.bytes.length).toBeGreaterThan(0);
-    expect(sleep).toHaveBeenCalledTimes(1);
+    await expect(callOpenAiTtsApi("sk", "line", { fetchImpl: fetchMock })).rejects.toMatchObject({ category: "rate_limit" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("retries a network-level fetch rejection, then succeeds", async () => {
+  it("never retries a network-level fetch rejection — a lost response does not mean OpenAI never generated (and billed) audio", async () => {
     const fetchMock = vi.fn()
       .mockRejectedValueOnce(new TypeError("fetch failed"))
       .mockResolvedValueOnce(audioResponse(200, AUDIO_BYTES));
-    const result = await callOpenAiTtsApi("sk", "line", { fetchImpl: fetchMock, sleep: noSleep });
-    expect(result.bytes.length).toBeGreaterThan(0);
+    await expect(callOpenAiTtsApi("sk", "line", { fetchImpl: fetchMock })).rejects.toMatchObject({ category: "network" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("rejects an empty audio response body as empty_response", async () => {

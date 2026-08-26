@@ -36,22 +36,20 @@ describe("callOpenAiImageApi", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("retries a 429 honoring Retry-After, then succeeds", async () => {
+  it("never retries a 429, even with Retry-After present — generation is paid and non-idempotent", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(429, { error: {} }, { "retry-after": "0" }))
       .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
-    const sleep = vi.fn(noSleep);
-    const result = await callOpenAiImageApi("sk", "p", { fetchImpl: fetchMock, sleep, maxRetries: 2 });
-    expect(result.bytes.length).toBeGreaterThan(0);
-    expect(sleep).toHaveBeenCalledTimes(1);
+    await expect(callOpenAiImageApi("sk", "p", { fetchImpl: fetchMock })).rejects.toMatchObject({ category: "rate_limit" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("retries a network-level fetch rejection, then succeeds", async () => {
+  it("never retries a network-level fetch rejection — a lost response does not mean OpenAI never generated (and billed) an image", async () => {
     const fetchMock = vi.fn()
       .mockRejectedValueOnce(new TypeError("fetch failed"))
       .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
-    const result = await callOpenAiImageApi("sk", "p", { fetchImpl: fetchMock, sleep: noSleep });
-    expect(result.bytes.length).toBeGreaterThan(0);
+    await expect(callOpenAiImageApi("sk", "p", { fetchImpl: fetchMock })).rejects.toMatchObject({ category: "network" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a response with no b64_json as empty_response", async () => {
@@ -111,12 +109,12 @@ describe("callOpenAiImageEditApi", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("retries a network-level fetch rejection, then succeeds", async () => {
+  it("never retries a network-level fetch rejection — this call re-uploads every Reference image per attempt, so a retry would also double the upload", async () => {
     const fetchMock = vi.fn()
       .mockRejectedValueOnce(new TypeError("fetch failed"))
       .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
-    const result = await callOpenAiImageEditApi("sk", "p", [REFERENCE], { fetchImpl: fetchMock, sleep: noSleep });
-    expect(result.bytes.length).toBeGreaterThan(0);
+    await expect(callOpenAiImageEditApi("sk", "p", [REFERENCE], { fetchImpl: fetchMock })).rejects.toMatchObject({ category: "network" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a response with no b64_json as empty_response", async () => {

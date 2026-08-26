@@ -756,6 +756,14 @@ export interface VideoPromptPreview {
   ratio: "720:1280" | "1280:720";
   durationSeconds: number;
   estimatedCostUsd: number;
+  /**
+   * Section labels the server had to drop from `prompt` to stay under Runway's prompt length limit — present
+   * only when at least one was actually cut (never when a section is merely empty, e.g. scene 1's continuity
+   * cue). One of "Continuity cue" | "Environment" | "Performance" | "Pacing", the exact order the server removes
+   * them in when the prompt is still too long. Without this, a scene that had detail quietly cut carried no
+   * signal anywhere that anything was missing (`.claude-bridge` Round 148).
+   */
+  omittedSections?: string[];
 }
 
 /** Previewing prompts and cost never creates a provider task or writes project data. */

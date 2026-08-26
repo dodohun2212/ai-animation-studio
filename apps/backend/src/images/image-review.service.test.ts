@@ -85,6 +85,50 @@ describe("provider-free generated image review", () => {
     expect(result.staleness?.imageStale).toEqual([1]);
   });
 
+  it("does not flag imageStale for a project with a confirmed Asset Mapping, when nothing has actually changed", async () => {
+    // Before this, computeSceneStaleness always recomputed imagePromptFor() without a References block, so
+    // any project with a confirmed mapping (like this fixture's character) permanently mismatched the real
+    // recorded prompt (which does have one) and every scene showed imageStale forever (`.claude-bridge` Round 148).
+    const { projects, projectsRoot, assets, service } = await setupWithConnectedOpenAiAndConfirmedReference();
+    const project = await projects.findById("review");
+    const { imagePromptFor, styleLineFor } = await import("./image-prompt.js");
+    const { describeReferenceMappingsForScene } = await import("./image-reference-selection.js");
+    const mappingsRepo = new LocalProjectAssetMappingsRepository(projectsRoot);
+    const mappings = await mappingsRepo.load("review");
+    const styleLine = styleLineFor(project);
+    project.image_generation_records = await Promise.all([1, 2, 3, 4, 5, 6].map(async (number) => ({
+      scene_number: number,
+      prompt: imagePromptFor(project.scenes[number - 1], styleLine, await describeReferenceMappingsForScene(assets, mappings, number as never)),
+    })));
+    await projects.save(project);
+
+    const result = await service.getStatus("review");
+
+    expect(result.staleness?.imageStale).toEqual([]);
+  });
+
+  it("flags imageStale once the mapped Asset's own description changes, even though no scene field was touched", async () => {
+    const { projects, projectsRoot, assets, service } = await setupWithConnectedOpenAiAndConfirmedReference();
+    const project = await projects.findById("review");
+    const { imagePromptFor, styleLineFor } = await import("./image-prompt.js");
+    const { describeReferenceMappingsForScene } = await import("./image-reference-selection.js");
+    const mappingsRepo = new LocalProjectAssetMappingsRepository(projectsRoot);
+    const mappings = await mappingsRepo.load("review");
+    const styleLine = styleLineFor(project);
+    // Record the prompt as it was BEFORE the character's description was ever written — no mismatch yet.
+    project.image_generation_records = await Promise.all([1, 2, 3, 4, 5, 6].map(async (number) => ({
+      scene_number: number,
+      prompt: imagePromptFor(project.scenes[number - 1], styleLine, await describeReferenceMappingsForScene(assets, mappings, number as never)),
+    })));
+    await projects.save(project);
+    // Now the character gains a description — the same recomputation must diverge from the recorded prompt.
+    await assets.update(mappings[0]!.asset_id, { description: "은발 단발, 왼쪽 눈 흉터" });
+
+    const result = await service.getStatus("review");
+
+    expect(result.staleness?.imageStale).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
   it("reports the real budget ledger state when an OpenAI credential is connected", async () => {
     const { budget, service } = await setupWithConnectedOpenAiAndConfirmedReference();
     await budget.record("review", "image", true, 4, new Date());

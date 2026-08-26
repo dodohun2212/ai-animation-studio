@@ -171,10 +171,11 @@ export class ImageReviewService {
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.
     const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, IMAGE_ESTIMATED_COST_USD) : undefined;
+    const mappings = await this.mappings.load(project.project_id);
     return {
       project: toApiProject(project),
       reviews: toApiReviews(reviews, project.updated_at, scenesFor(project)),
-      staleness: computeSceneStaleness(project),
+      staleness: await computeSceneStaleness(project, { assets: this.assets, mappings }),
       ...(budget ? { budget } : {}),
     };
   }
