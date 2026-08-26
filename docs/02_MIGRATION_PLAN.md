@@ -1341,4 +1341,12 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 신규 테스트 12건(`postDraftApi.test.ts` 6건 + 인스타 화면 6건 + 영상 보관함 4건 — Cowork 집계 총 16건 중 일부는 이미 InstagramPostScreen.test.tsx 파일 자체에 포함).
   - 검증: root typecheck 전부 통과, Backend 786개·frontend 880개(+16 신규)·shared 25개 전부 통과, root build 전부 통과. 유료 Provider 호출 없음, 실제 Instagram/Meta API 호출 없음.
   - 커밋: `f06d924`.
+- [x] **🔴🔴 Long Episode 영상 생성의 교차 프로세스 중복 제출 경합 수정(Round 175)**: Cowork가 여러 라운드에 걸쳐 리마인드한 결함 2건 중 하나 — 조사해서 실제로 살아있는 위험임을 확인, 수정.
+  - **원인**: `EpisodeVideosService.advanceReal()`의 인메모리 `advancing` Set이 같은 프로세스 안에서만 중복 호출을 막고, `nest start --watch`가 파일 저장마다 프로세스를 재시작하며 신구 프로세스가 잠깐 겹치는 창에서는 각자 빈 Set을 가져 둘 다 같은 장면을 Runway에 제출할 수 있음 — **단편 프로젝트 쪽에서 이미 확정 실제 사고가 났던 것과(Round 152, 장면 3개 중복 제출, 실제 $3.00 청구) 완전히 같은 구조**를 롱 프로젝트(Episode) 쪽만 안 고친 채로 갖고 있었음.
+  - **수정**: `local-video-workflow.service.ts`가 이미 쓰는 `withProjectLock`(교차 프로세스 파일 락)을 `advanceReal`이 `advanceRealCore`를 감싸는 지점에 동일하게 배선 — 락 범위·키 구조(`${projectId}:${episodeNumber}:${jobId}`)까지 단편 쪽과 동일하게 맞춤.
+  - 신규 테스트 1건: 단편 쪽의 "두 프로세스 경합" 테스트를 그대로 이식(`EpisodeVideosService` 인스턴스 2개가 같은 디스크 프로젝트를 놓고 경합, 하나가 파일 락에 막혀 중복 제출이 실제로 0건임을 검증).
+  - **자가 발견 — 별개의 테스트 위생 결함**: 새 테스트가 전체 파일과 같이 돌 때만 5초 타임아웃으로 행(hang) — `episode-videos.runway.test.ts`의 `afterEach`가 `vi.unstubAllGlobals()`만 하고 `vi.useRealTimers()`를 안 불러서, 앞선 fake-timer 테스트가 다음 테스트(실제 타이머가 필요한 락의 재시도 루프 포함)의 `setTimeout`을 조용히 멈춰 세우고 있었음 — 단편 쪽 테스트 파일(`local-video-workflow.runway.test.ts`)의 동일한 `afterEach` 패턴과 맞춰 수정.
+  - **의도적으로 범위 밖으로 둔 것**: `start`/`stop`/`restart`/`regenerate`/`approve` 등 사용자 트리거 동기 호출은 단편 쪽도 락이 없어 그대로 둠 — 이번 수정은 단편 쪽 선례와 정확히 같은 범위(폴링 타이머 루프만)를 유지.
+  - 검증: root typecheck 전부 통과, Backend 787개(+1 신규) 전부 통과, root build 전부 통과. 유료 Provider 호출 없음.
+  - 커밋: `465c8f3`.
 
