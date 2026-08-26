@@ -87,6 +87,27 @@ export class LocalVideoMergeService {
     return clips;
   }
 
+  /**
+   * Preserves whatever final video already exists before this merge overwrites it — a project only reaches
+   * merge() again after a scene-video restore reopens VideosApproved (see video-library.service.ts's restore()),
+   * so without this, a user who restores an old scene and re-merges would silently lose the previous final cut
+   * (`.claude-bridge` Round 166). Mirrors local-video-workflow.service.ts's private archive(), generalized to the
+   * final video's own directory — see video-library.service.ts's historyFileName() for the matching read side.
+   */
+  private async archiveExistingFinal(projectId: string): Promise<void> {
+    const current = this.final(projectId);
+    const bytes = await fs.readFile(current).catch(() => undefined);
+    if (!bytes || bytes.length === 0) return;
+    const history = path.join(this.projectDirectory(projectId), "videos", "final", "history");
+    await fs.mkdir(history, { recursive: true });
+    const entries = await fs.readdir(history);
+    const versions = entries.map((name) => /^instagram_reel_v(\d{3})\.mp4$/.exec(name)).filter((match): match is RegExpExecArray => Boolean(match)).map((match) => Number(match[1]));
+    const next = (versions.length ? Math.max(...versions) : 0) + 1;
+    const temporary = path.join(history, `.instagram_reel_v${String(next).padStart(3, "0")}.mp4.tmp`);
+    await fs.writeFile(temporary, bytes);
+    await fs.rename(temporary, path.join(history, `instagram_reel_v${String(next).padStart(3, "0")}.mp4`));
+  }
+
   private async saveFailure(project: StoredProject): Promise<void> {
     const updated = { ...project, workflow_state: WorkflowState.Failed, updated_at: new Date().toISOString(), errors: [...project.errors, "Local video rendering failed."] };
     await this.projects.save(updated).catch(() => undefined);
@@ -105,6 +126,7 @@ export class LocalVideoMergeService {
     const rendering = { ...project, workflow_state: WorkflowState.Rendering, updated_at: new Date().toISOString() };
     try { await this.projects.save(rendering); } catch { throw videoMergeStorageError(); }
     try {
+      await this.archiveExistingFinal(project.project_id);
       await fs.mkdir(path.dirname(this.final(project.project_id)), { recursive: true });
       await this.engine.merge(mergeScenes, clipDurationSeconds, this.final(project.project_id), rendering.style_profile.aspect);
       const completed = { ...rendering, workflow_state: WorkflowState.Completed, updated_at: new Date().toISOString(), final_video_path: FINAL_VIDEO_PATH };

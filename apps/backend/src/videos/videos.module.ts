@@ -11,6 +11,7 @@ import { LocalVideoPreviewService } from "./video-preview.service.js";
 import { LocalVideoSubmissionService } from "./local-video-submission.service.js";
 import { LocalVideoWorkflowService } from "./local-video-workflow.service.js";
 import { LocalVideoMergeService } from "./video-merge.service.js";
+import { VideoLibraryService } from "./video-library.service.js";
 
 @Module({
   imports: [ProjectsModule, ProviderSettingsModule, AssetsModule],
@@ -18,6 +19,10 @@ import { LocalVideoMergeService } from "./video-merge.service.js";
   providers: [
     { provide: RunwayBudget, useFactory: (root: string) => new RunwayBudget(root), inject: [LEARNING_DATA_ROOT] },
     {
+    provide: VideoLibraryService,
+    useFactory: (projects: LocalProjectRepository, projectsRoot: string, budget: RunwayBudget) => new VideoLibraryService(projects, projectsRoot, budget),
+    inject: [LocalProjectRepository, PROJECTS_ROOT, RunwayBudget],
+  }, {
     provide: LocalVideoPreviewService,
     useFactory: (projects: LocalProjectRepository, projectsRoot: string, budget: RunwayBudget) => new LocalVideoPreviewService(projects, projectsRoot, budget),
     inject: [LocalProjectRepository, PROJECTS_ROOT, RunwayBudget],

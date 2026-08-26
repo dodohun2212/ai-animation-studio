@@ -36,6 +36,7 @@ describe("ProjectsService", () => {
       workflowState: WorkflowState.Ready,
       createdAt: response.project.createdAt,
       updatedAt: response.project.updatedAt,
+      aspectRatio: "9:16",
       scenes: [],
       warnings: [],
       errors: [],

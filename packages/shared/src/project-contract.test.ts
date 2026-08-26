@@ -24,6 +24,7 @@ describe("project summary contract", () => {
       workflowState: WorkflowState.Ready,
       createdAt: "2026-08-21T00:00:00.000Z",
       updatedAt: "2026-08-21T00:00:00.000Z",
+      aspectRatio: "9:16",
     };
     expect("userId" in summary).toBe(false);
   });
@@ -56,6 +57,7 @@ describe("project routes and DTO shape", () => {
         workflowState: WorkflowState.Ready,
         createdAt: "2026-08-21T00:00:00.000Z",
         updatedAt: "2026-08-21T00:00:00.000Z",
+        aspectRatio: "9:16",
         scenes: [],
         warnings: [],
         errors: [],

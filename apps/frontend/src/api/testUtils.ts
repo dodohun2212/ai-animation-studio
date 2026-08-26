@@ -40,6 +40,7 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     workflowState: WorkflowState.Ready,
     createdAt: "2026-08-21T00:00:00.000Z",
     updatedAt: "2026-08-21T00:00:00.000Z",
+    aspectRatio: "9:16",
     scenes: [],
     warnings: [],
     errors: [],

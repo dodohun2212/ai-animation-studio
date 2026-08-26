@@ -123,6 +123,15 @@ export interface ProjectSummary {
   workflowState: WorkflowState;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Same source and priority as video-preview.service.ts's ratioFor()/image-prompt.ts's imageSizeFor()
+   * (style_profile.aspect, "16:9" vs anything else defaulting to vertical) — added here so every screen that
+   * needs to know this project's shape (a review thumbnail's aspect box, a video library card) reads the one
+   * fact instead of assuming a default independently. Three screens/services had already done that
+   * independently and landed on three different wrong assumptions before this field existed
+   * (`.claude-bridge` Round 165/168/169).
+   */
+  aspectRatio: "9:16" | "16:9";
 }
 
 export interface Project extends ProjectSummary {

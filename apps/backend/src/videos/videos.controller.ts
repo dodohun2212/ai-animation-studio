@@ -1,13 +1,15 @@
 import * as fs from "node:fs/promises";
 import { Body, Controller, Get, HttpException, Param, Post, Res, StreamableFile } from "@nestjs/common";
-import { API_ROUTES, type ApproveVideoReviewResponse, type GenerationProgressResponse, type GetVideoPromptPreviewResponse, type GetVideoReviewResponse, type MergeVideosResponse, type RegenerateVideoResponse, type SceneNumber, type StartVideoGenerationResponse } from "@ai-animation-studio/shared";
+import { API_ROUTES, type ApproveVideoReviewResponse, type GenerationProgressResponse, type GetVideoLibraryResponse, type GetVideoPromptPreviewResponse, type GetVideoReviewResponse, type GetVideoVersionsResponse, type MergeVideosResponse, type RegenerateVideoResponse, type RestoreVideoVersionResponse, type SceneNumber, type StartVideoGenerationResponse } from "@ai-animation-studio/shared";
 
 import { videoContentUnavailable } from "./video-workflow-api.error.js";
 import { videoMergeContentUnavailable } from "./video-merge-api.error.js";
+import { videoLibraryContentUnavailable } from "./video-library-api.error.js";
 import { LocalVideoPreviewService } from "./video-preview.service.js";
 import { LocalVideoSubmissionService } from "./local-video-submission.service.js";
 import { LocalVideoWorkflowService } from "./local-video-workflow.service.js";
 import { LocalVideoMergeService } from "./video-merge.service.js";
+import { VideoLibraryService } from "./video-library.service.js";
 
 interface HttpResponse { type(value: string): void; setHeader(name: string, value: string): void }
 
@@ -24,7 +26,38 @@ function parseRegenerateBody(body: unknown): { additionalInstruction?: string } 
 
 @Controller()
 export class VideosController {
-  constructor(private readonly previews: LocalVideoPreviewService, private readonly submissions: LocalVideoSubmissionService, private readonly workflow: LocalVideoWorkflowService, private readonly mergeService: LocalVideoMergeService) {}
+  constructor(private readonly previews: LocalVideoPreviewService, private readonly submissions: LocalVideoSubmissionService, private readonly workflow: LocalVideoWorkflowService, private readonly mergeService: LocalVideoMergeService, private readonly library: VideoLibraryService) {}
+
+  @Get(API_ROUTES.videoLibrary)
+  videoLibrary(): Promise<GetVideoLibraryResponse> { return this.library.list(); }
+
+  @Get(`${API_ROUTES.projects}/:projectId/videos/:sceneNumber/versions`)
+  videoVersions(@Param("projectId") projectId: string, @Param("sceneNumber") sceneNumber: string): Promise<GetVideoVersionsResponse> {
+    return this.library.versions(projectId, sceneNumber);
+  }
+
+  @Get(`${API_ROUTES.projects}/:projectId/videos/:sceneNumber/versions/:versionId/content`)
+  async videoVersionContent(@Param("projectId") projectId: string, @Param("sceneNumber") sceneNumber: string, @Param("versionId") versionId: string, @Res({ passthrough: true }) response: HttpResponse): Promise<StreamableFile> {
+    const content = await this.library.content(projectId, sceneNumber, versionId);
+    try {
+      const handle = await fs.open(content.path, "r");
+      const stat = await handle.stat();
+      if (!stat.isFile()) { await handle.close(); throw videoLibraryContentUnavailable(); }
+      response.type("video/mp4");
+      response.setHeader("Content-Disposition", `inline; filename="${sceneNumber}_${versionId}.mp4"`);
+      response.setHeader("Content-Length", String(stat.size));
+      response.setHeader("X-Content-Type-Options", "nosniff");
+      return new StreamableFile(handle.createReadStream());
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw videoLibraryContentUnavailable();
+    }
+  }
+
+  @Post(`${API_ROUTES.projects}/:projectId/videos/:sceneNumber/versions/:versionId/restore`)
+  videoVersionRestore(@Param("projectId") projectId: string, @Param("sceneNumber") sceneNumber: string, @Param("versionId") versionId: string, @Body() body: unknown): Promise<RestoreVideoVersionResponse> {
+    return this.library.restore(projectId, sceneNumber, versionId, body);
+  }
 
   @Post(`${API_ROUTES.projects}/:projectId/videos/preview`)
   preview(@Param("projectId") projectId: string, @Body() body: unknown): Promise<GetVideoPromptPreviewResponse> {

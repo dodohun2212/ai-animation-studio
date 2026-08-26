@@ -49,6 +49,11 @@ export function createStoredProject(projectId: string, topic: string, timestamp:
   };
 }
 
+/** Same source/priority as video-preview.service.ts's ratioFor() and image-prompt.ts's imageSizeFor() — kept as its own tiny copy rather than an import from videos/ to avoid a projects/ -> videos/ layering inversion (videos/ already depends on projects/). */
+function aspectRatioFor(stored: StoredProject): "9:16" | "16:9" {
+  return stored.style_profile.aspect === "16:9" ? "16:9" : "9:16";
+}
+
 export function toApiSummary(stored: StoredProject): ProjectSummary {
   return {
     id: stored.project_id,
@@ -57,6 +62,7 @@ export function toApiSummary(stored: StoredProject): ProjectSummary {
     workflowState: stored.workflow_state as WorkflowState,
     createdAt: stored.created_at,
     updatedAt: stored.updated_at,
+    aspectRatio: aspectRatioFor(stored),
   };
 }
 

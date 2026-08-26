@@ -27,6 +27,7 @@ function createFakeBackend(): ReturnType<typeof vi.fn<FakeFetch>> {
         workflowState: WorkflowState.Ready,
         createdAt: "2026-08-21T00:00:00.000Z",
         updatedAt: "2026-08-21T00:00:00.000Z",
+        aspectRatio: "9:16",
         scenes: [],
         warnings: [],
         errors: [],
@@ -233,6 +234,7 @@ describe("App", () => {
       workflowState: WorkflowState.WaitingForVideoConfirmation,
       createdAt: "2026-08-21T00:00:00.000Z",
       updatedAt: "2026-08-21T00:00:00.000Z",
+      aspectRatio: "9:16",
       scenes: [],
       warnings: [],
       errors: [],
@@ -281,6 +283,7 @@ describe("App", () => {
       workflowState: WorkflowState.Ready,
       createdAt: "2026-08-21T00:00:00.000Z",
       updatedAt: "2026-08-21T00:00:00.000Z",
+      aspectRatio: "9:16",
       scenes: [],
       warnings: [],
       errors: [],
@@ -319,7 +322,7 @@ describe("App", () => {
   it("opens 이미지 보관함 pre-searched with the project ID from a project's 생성 이미지 모음 button", async () => {
     const project: Project = {
       id: "sample_project", topic: "우주를 여행하는 고양이", projectType: "short_project", workflowState: WorkflowState.Ready,
-      createdAt: "2026-08-21T00:00:00.000Z", updatedAt: "2026-08-21T00:00:00.000Z", scenes: [], warnings: [], errors: [],
+      createdAt: "2026-08-21T00:00:00.000Z", updatedAt: "2026-08-21T00:00:00.000Z", aspectRatio: "9:16", scenes: [], warnings: [], errors: [],
     };
     const fetchMock = vi.fn<FakeFetch>(async (input) => {
       const url = String(input);
@@ -348,6 +351,7 @@ describe("App", () => {
       workflowState: WorkflowState.WaitingForVideoConfirmation,
       createdAt: "2026-08-21T00:00:00.000Z",
       updatedAt: "2026-08-21T00:00:00.000Z",
+      aspectRatio: "9:16",
       scenes: [],
       warnings: [],
       errors: [],
@@ -415,6 +419,7 @@ describe("App", () => {
       workflowState: WorkflowState.WaitingForVideoConfirmation,
       createdAt: "2026-08-21T00:00:00.000Z",
       updatedAt: "2026-08-21T00:00:00.000Z",
+      aspectRatio: "9:16",
       scenes: [],
       warnings: [],
       errors: [],

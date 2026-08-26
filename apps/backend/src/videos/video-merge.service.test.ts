@@ -50,6 +50,36 @@ describe("local FFmpeg video merge", () => {
     expect(await fs.readFile(path.join(projectsRoot, "video_merge", "videos", "final", "instagram_reel.mp4"), "utf8")).toBe("rendered");
   });
 
+  it("archives the previous final video before a second merge overwrites it, rather than losing it", async () => {
+    const { projectsRoot, projects } = await setup();
+    let round = 1;
+    const runnerThatVariesOutput: MediaCommandRunner = async (arguments_) => {
+      const args = [...arguments_];
+      if (args[0] === "ffprobe") return { stdout: JSON.stringify({ streams: [{ codec_type: "video" }], format: { duration: "5.0" } }), stderr: "" };
+      await fs.writeFile(args.at(-1)!, Buffer.from(`rendered-${round}`));
+      return { stdout: "", stderr: "" };
+    };
+    const service = new LocalVideoMergeService(projects, projectsRoot, runnerThatVariesOutput);
+
+    await service.merge("video_merge");
+    // Simulate what video-library.service.ts's restore() does to reopen merging (a scene-version restore
+    // clears finalVideoPath and reverts Completed -> VideosApproved) — this file only asserts the merge-side
+    // archiving, not the restore-side state transition (covered by video-library.service.test.ts).
+    const reopened = await projects.findById("video_merge");
+    reopened.workflow_state = WorkflowState.VideosApproved;
+    reopened.final_video_path = null;
+    await projects.save(reopened);
+    round = 2;
+
+    await service.merge("video_merge");
+
+    expect(await fs.readFile(path.join(projectsRoot, "video_merge", "videos", "final", "instagram_reel.mp4"), "utf8")).toBe("rendered-2");
+    const historyDir = path.join(projectsRoot, "video_merge", "videos", "final", "history");
+    const archived = await fs.readdir(historyDir);
+    expect(archived).toEqual(["instagram_reel_v001.mp4"]);
+    expect(await fs.readFile(path.join(historyDir, "instagram_reel_v001.mp4"), "utf8")).toBe("rendered-1");
+  });
+
   it("serves the final merged video by canonical path once it exists, and rejects before that", async () => {
     const { projectsRoot, projects } = await setup();
     const service = new LocalVideoMergeService(projects, projectsRoot, runner({}));

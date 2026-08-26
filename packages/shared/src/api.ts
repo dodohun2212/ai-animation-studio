@@ -1055,6 +1055,52 @@ export interface MergeVideosResponse {
 }
 
 /**
+ * One short-project row in the cross-project video library (`.claude-bridge` Round 153/166) — an archive view of
+ * results, distinct from the Asset Library's input-material role (see AssetLibraryScreen). Only lists a project
+ * that has at least one generated scene video; a project that never reached video generation never appears here.
+ */
+export interface VideoLibraryProjectSummary {
+  projectId: string;
+  topic: string;
+  updatedAt: string;
+  sceneCount: number;
+  videosReadyCount: number;
+  finalVideoAvailable: boolean;
+  /** Sum of every recorded Runway spend for this project (RunwayBudget.costsByScene, across every attempt, not just this month) — 0 for a project that never used a real Runway credential (local-fake execution mode). */
+  totalActualCostUsd: number;
+  /** Same meaning and source as ProjectSummary.aspectRatio (see that field's doc comment) — lets a library card's thumbnail box match the shape this project's videos were actually rendered in. */
+  aspectRatio: "9:16" | "16:9";
+}
+export interface GetVideoLibraryResponse { projects: VideoLibraryProjectSummary[]; }
+
+/**
+ * One stored copy of a scene's video, or of the final merged video — the "current" file plus every version
+ * archive() displaced into `videos/history/` (or, for the final video, `videos/final/history/`). Ordered newest
+ * first by the caller; `isCurrent` marks the one actually served today, not necessarily the most recent by
+ * `createdAt` (restoring an older version makes it current again without changing its own creation time).
+ * `actualCostUsd` is deliberately not on this type: today's ledger has no versionId to tie a spend row to a
+ * specific archived file, and showing an approximate number (matched by timestamp) risked showing a wrong one —
+ * a real follow-up (`.claude-bridge` Round 153), not a silent omission.
+ */
+export interface VideoVersionSummary {
+  versionId: string;
+  createdAt: string;
+  bytes: number;
+  isCurrent: boolean;
+}
+export interface GetVideoVersionsResponse { versions: VideoVersionSummary[]; }
+
+/**
+ * Promotes a past version back to current. Always free (a local file copy, never a provider call) and never
+ * destructive: the version that was current before this call is archived first, so restoring is itself
+ * reversible, and no version is ever deleted. Restoring a scene version leaves the final merged video (if any)
+ * pointing at scene bytes it was not actually rendered from, so the server clears finalVideoPath and reopens
+ * VideosApproved for a fresh merge rather than leaving a stale final video looking current.
+ */
+export interface RestoreVideoVersionRequest { approved: true; }
+export interface RestoreVideoVersionResponse { project: Project; }
+
+/**
  * Editing one scene's fields in place, instead of regenerating the whole Story. The server enforces its own
  * whitelist of editable field names (unknown keys are rejected) — this type is deliberately a loose string map
  * rather than naming every field, since the whitelist is a backend implementation detail (which scene-schema
@@ -1249,6 +1295,10 @@ export const API_ROUTES = {
   videoMerge: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/videos/merge`,
   videoContent: (projectId: string, sceneNumber: SceneNumber) => `/projects/${encodeURIComponent(projectId)}/videos/${sceneNumber}/content`,
   videoFinalContent: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/videos/final/content`,
+  videoLibrary: "/videos/library",
+  videoVersions: (projectId: string, scene: SceneNumber | "final") => `/projects/${encodeURIComponent(projectId)}/videos/${scene}/versions`,
+  videoVersionContent: (projectId: string, scene: SceneNumber | "final", versionId: string) => `/projects/${encodeURIComponent(projectId)}/videos/${scene}/versions/${encodeURIComponent(versionId)}/content`,
+  videoVersionRestore: (projectId: string, scene: SceneNumber | "final", versionId: string) => `/projects/${encodeURIComponent(projectId)}/videos/${scene}/versions/${encodeURIComponent(versionId)}/restore`,
   projectAssetMappings: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/assets/mappings`,
   projectAssetMapping: (projectId: string, mappingId: string) =>
     `/projects/${encodeURIComponent(projectId)}/assets/mappings/${encodeURIComponent(mappingId)}`,
