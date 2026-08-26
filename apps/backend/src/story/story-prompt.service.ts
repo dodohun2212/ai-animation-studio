@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Injectable } from "@nestjs/common";
 import { STORY_ESTIMATED_COST_USD, WorkflowState } from "@ai-animation-studio/shared";
-import type { ApproveStoryPromptRequest, ApproveStoryPromptResponse, CreateStoryPromptDraftPreviewResponse, CreateStoryPromptPreviewResponse, StoryPromptPreview } from "@ai-animation-studio/shared";
+import type { ApproveStoryPromptRequest, ApproveStoryPromptResponse, CreateStoryPromptDraftPreviewResponse, CreateStoryPromptPreviewResponse, RegenerateStoryPromptResponse, StoryPromptPreview } from "@ai-animation-studio/shared";
 import { toApiProject } from "../projects/project.mapper.js";
 import { toShortProjectAssetReferences } from "../projects/project-asset-references.js";
 import { toShortProjectCast } from "../projects/project-cast.js";
@@ -20,7 +20,10 @@ import { generateLocalStory, type StoredStory } from "./story-generation.service
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_STORY_MODEL, OpenAiStoryAdapterError, callOpenAiStoryApi } from "./openai-story-adapter.js";
 import { describeAtmosphereAssets, describeCharacterCast, describeSceneReferenceAssets } from "./story-asset-metadata.js";
-import { invalidStoryRequest, storyBudgetExceeded, storyGenerationFailed, storyGenerationNotAllowed, storyPromptStale, storyProviderError, storyStorageError } from "./story-api.error.js";
+import { invalidStoryRequest, storyBudgetExceeded, storyGenerationFailed, storyGenerationNotAllowed, storyPromptStale, storyProviderError, storyRegenerationNotAllowed, storyStorageError } from "./story-api.error.js";
+
+/** The only states where a Story exists but no scene image has been generated for it yet — see RegenerateStoryPromptRequest's doc comment for why the cutoff is drawn there. */
+const REGENERATABLE_STATES: ReadonlySet<string> = new Set([WorkflowState.WaitingForAssetMappingReview, WorkflowState.AssetMappingApproved]);
 
 const sha256 = (value: string) => crypto.createHash("sha256").update(value, "utf8").digest("hex");
 const object = (value: unknown): Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -234,5 +237,36 @@ export class StoryPromptService {
       }
     } catch { throw storyStorageError(); }
     return { project: toApiProject(updated), originalPrompt, prompt, promptSha256: sha256(prompt), modified: prompt !== originalPrompt, approvedAt };
+  }
+
+  /**
+   * Resets a generated Story back to READY so `preview()`/`approve()` can run again from scratch, same as a
+   * first-time generation. Allowed only while a Story exists and no scene image has been generated for it yet
+   * (checked here again server-side — the client's own read of this is not trusted): once even one image exists,
+   * a script change would leave it orphaned, and the honest next step is a new project instead (product decision,
+   * see `.claude-bridge` Round 127). `scenes`/`story`/`image_prompts`/`motion_prompts` are cleared along with the
+   * state so a run that changes scene count starts from a clean slate; `script_revision` is left untouched, since
+   * `approve()` always advances it forward regardless of its current value.
+   */
+  async regenerate(projectId: string, request: unknown): Promise<RegenerateStoryPromptResponse> {
+    if (typeof request !== "object" || request === null || Array.isArray(request)
+      || Object.keys(request).length !== 1 || (request as Record<string, unknown>).approved !== true) {
+      throw invalidStoryRequest("Story regeneration request is invalid.");
+    }
+    const stored = await this.projects.findById(projectId.trim());
+    if (!REGENERATABLE_STATES.has(stored.workflow_state) || stored.scenes.length === 0 || stored.generated_images.length > 0) {
+      throw storyRegenerationNotAllowed();
+    }
+    const reset: StoredProject = {
+      ...stored,
+      workflow_state: WorkflowState.Ready,
+      scenes: [],
+      story: {},
+      image_prompts: [],
+      motion_prompts: [],
+      updated_at: new Date().toISOString(),
+    };
+    try { await this.projects.save(reset); } catch { throw storyStorageError(); }
+    return { project: toApiProject(reset) };
   }
 }

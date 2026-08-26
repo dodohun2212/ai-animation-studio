@@ -80,15 +80,35 @@ function latestVideoJobId(records: unknown[]): string | undefined {
   return records.some(looksLikeVideoRecord) ? LEGACY_VIDEO_JOB_ID : undefined;
 }
 
+/**
+ * `Scene.script`/`motionPrompt`/`generatedImagePath`/`generatedVideoPath` are documented in domain.ts as
+ * "computed, mapped fields", but this mapper used to hand the raw stored scene straight through and never
+ * computed any of them — so every consumer reading them (StoryPromptScreen's script text, VideoWorkflowScreen's
+ * source-image thumbnail and motion-prompt detail, ImageGenerationScreen's per-scene completion poll) always
+ * saw them as absent, not merely empty. `description`/`generated_images`/`generated_video_paths`/`motion_prompts`
+ * are the real data; this only adds the camelCase aliases the API contract promises, it does not remove the
+ * raw pass-through fields other screens still read directly (e.g. `narration`).
+ */
+function toApiScene(rawScene: unknown, index: number, stored: StoredProject): Scene {
+  const scene = rawScene && typeof rawScene === "object" && !Array.isArray(rawScene) ? rawScene as Record<string, unknown> : {};
+  const script = typeof scene.description === "string" ? scene.description : undefined;
+  const motionPrompt = stored.motion_prompts[index];
+  const generatedImagePath = stored.generated_images[index];
+  const generatedVideoPath = stored.generated_video_paths[index];
+  return {
+    ...scene,
+    ...(script !== undefined ? { script } : {}),
+    ...(motionPrompt ? { motionPrompt } : {}),
+    ...(generatedImagePath ? { generatedImagePath } : {}),
+    ...(generatedVideoPath ? { generatedVideoPath } : {}),
+  } as unknown as Scene;
+}
+
 export function toApiProject(stored: StoredProject): Project {
   const jobId = latestVideoJobId(stored.video_generation_records);
   return {
     ...toApiSummary(stored),
-    // Story/scene generation is out of this feature's scope: a freshly
-    // created project always has an empty array here, and legacy Python
-    // scene dicts use a different shape that the Story feature will
-    // validate and map when it is implemented.
-    scenes: stored.scenes as unknown as Scene[],
+    scenes: stored.scenes.map((scene, index) => toApiScene(scene, index, stored)),
     ...(stored.final_video_path !== null ? { finalVideoPath: stored.final_video_path } : {}),
     ...(jobId !== undefined ? { currentVideoJobId: jobId } : {}),
     warnings: [...stored.warnings],

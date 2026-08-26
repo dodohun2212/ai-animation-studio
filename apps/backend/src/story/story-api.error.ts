@@ -1,7 +1,7 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { ApiError } from "@ai-animation-studio/shared";
 
-type StoryErrorCode = "INVALID_REQUEST" | "PROJECT_NOT_FOUND" | "STORY_PROMPT_STALE" | "STORY_PROMPT_STORAGE_ERROR" | "STORY_GENERATION_NOT_ALLOWED" | "STORY_GENERATION_FAILED" | "STORY_BUDGET_EXCEEDED" | "STORY_PROVIDER_ERROR";
+type StoryErrorCode = "INVALID_REQUEST" | "PROJECT_NOT_FOUND" | "STORY_PROMPT_STALE" | "STORY_PROMPT_STORAGE_ERROR" | "STORY_GENERATION_NOT_ALLOWED" | "STORY_GENERATION_FAILED" | "STORY_BUDGET_EXCEEDED" | "STORY_PROVIDER_ERROR" | "STORY_REGENERATION_NOT_ALLOWED";
 
 class StoryApiException extends HttpException {
   constructor(code: StoryErrorCode, message: string, status: HttpStatus, details?: Record<string, unknown>) {
@@ -24,3 +24,5 @@ export const storyBudgetExceeded = (message: string) =>
   new StoryApiException("STORY_BUDGET_EXCEEDED", message, HttpStatus.CONFLICT);
 export const storyProviderError = (category: string, message: string) =>
   new StoryApiException("STORY_PROVIDER_ERROR", message, HttpStatus.BAD_GATEWAY, { category });
+export const storyRegenerationNotAllowed = () =>
+  new StoryApiException("STORY_REGENERATION_NOT_ALLOWED", "Story regeneration requires an existing Story and no generated scene images yet.", HttpStatus.CONFLICT);

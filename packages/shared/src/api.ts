@@ -623,6 +623,16 @@ export interface ApproveStoryPromptResponse {
   approvedAt: string;
 }
 
+/**
+ * Resets an already-generated Story so its prompt can be approved again from scratch, going through the same
+ * `story/approval` flow as the first generation. Allowed only up to the moment image generation actually starts
+ * (READY has nothing to regenerate; once even one scene image exists, the money already spent on it would be
+ * orphaned by a script change — see STORY_REGENERATION_NOT_ALLOWED). Requires no re-authored prompt of its own:
+ * the reset project goes back through `story/preview` and `story/approval` exactly like a first-time run.
+ */
+export interface RegenerateStoryPromptRequest { approved: true; }
+export interface RegenerateStoryPromptResponse { project: Project; }
+
 /** Explicit approval for the provider-free local image-generation adapter. */
 export interface StartImageGenerationRequest { approved: true; }
 
@@ -1150,6 +1160,8 @@ export const API_ROUTES = {
     `/projects/${encodeURIComponent(projectId)}/story/preview`,
   storyPromptApproval: (projectId: string) =>
     `/projects/${encodeURIComponent(projectId)}/story/approval`,
+  storyRegeneration: (projectId: string) =>
+    `/projects/${encodeURIComponent(projectId)}/story/regenerate`,
   storyPromptDraftPreview: (projectId: string) =>
     `/projects/${encodeURIComponent(projectId)}/story/draft-preview`,
   imageGeneration: (projectId: string) =>

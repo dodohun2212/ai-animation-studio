@@ -149,6 +149,53 @@ describe("StoryPromptService", () => {
     await expect(service.approve("sample", { originalPromptSha256: preview.preview.originalPromptSha256, prompt: "x", approved: true }))
       .rejects.toMatchObject({ response: { code: "STORY_GENERATION_NOT_ALLOWED" } });
   });
+
+  it("resets a generated Story back to READY so it can be approved again from scratch, as long as no scene image exists yet", async () => {
+    const { repository, service } = await setup();
+    const preview = await service.preview("sample");
+    await service.approve("sample", { originalPromptSha256: preview.preview.originalPromptSha256, prompt: preview.preview.originalPrompt, approved: true });
+    expect((await repository.findById("sample")).workflow_state).toBe(WorkflowState.WaitingForAssetMappingReview);
+
+    const result = await service.regenerate("sample", { approved: true });
+
+    expect(result.project.workflowState).toBe(WorkflowState.Ready);
+    expect(result.project.scenes).toEqual([]);
+    const persisted = await repository.findById("sample");
+    expect(persisted).toMatchObject({ workflow_state: WorkflowState.Ready, scenes: [], story: {}, image_prompts: [], motion_prompts: [] });
+
+    // The reset must be a genuine do-over, not a dead end: preview/approve must work again immediately.
+    const secondPreview = await service.preview("sample");
+    const secondApproval = await service.approve("sample", { originalPromptSha256: secondPreview.preview.originalPromptSha256, prompt: secondPreview.preview.originalPrompt, approved: true });
+    expect(secondApproval.project.workflowState).toBe(WorkflowState.WaitingForAssetMappingReview);
+    expect((await repository.findById("sample")).script_revision).toBe(2);
+  });
+
+  it("rejects regeneration before a Story exists, once a scene image has been generated, or with a malformed request", async () => {
+    const { repository, service } = await setup();
+    await expect(service.regenerate("sample", { approved: true })).rejects.toMatchObject({ response: { code: "STORY_REGENERATION_NOT_ALLOWED" } });
+
+    const preview = await service.preview("sample");
+    await service.approve("sample", { originalPromptSha256: preview.preview.originalPromptSha256, prompt: preview.preview.originalPrompt, approved: true });
+    await expect(service.regenerate("sample", { approved: false })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(service.regenerate("sample", { approved: true, extra: true })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+
+    const stored = await repository.findById("sample");
+    await repository.save({ ...stored, generated_images: ["images/scene1.png"] });
+    await expect(service.regenerate("sample", { approved: true })).rejects.toMatchObject({ response: { code: "STORY_REGENERATION_NOT_ALLOWED" } });
+  });
+
+  it("rejects regeneration outside the Story-exists-no-images-yet window (still generating, or already generating images)", async () => {
+    const { repository, service } = await setup();
+    const preview = await service.preview("sample");
+    await service.approve("sample", { originalPromptSha256: preview.preview.originalPromptSha256, prompt: preview.preview.originalPrompt, approved: true });
+    const stored = await repository.findById("sample");
+
+    await repository.save({ ...stored, workflow_state: WorkflowState.GeneratingStory });
+    await expect(service.regenerate("sample", { approved: true })).rejects.toMatchObject({ response: { code: "STORY_REGENERATION_NOT_ALLOWED" } });
+
+    await repository.save({ ...stored, workflow_state: WorkflowState.GeneratingImages });
+    await expect(service.regenerate("sample", { approved: true })).rejects.toMatchObject({ response: { code: "STORY_REGENERATION_NOT_ALLOWED" } });
+  });
 });
 
 describe("StoryPromptService real OpenAI generation", () => {

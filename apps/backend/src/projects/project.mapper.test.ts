@@ -63,6 +63,23 @@ describe("toApiSummary / toApiProject", () => {
     expect("narration" in project.scenes[1]!).toBe(false);
   });
 
+  it("computes script from each scene's description, motionPrompt/generatedImagePath/generatedVideoPath from the index-aligned arrays, and omits them when absent", () => {
+    const stored = createStoredProject("sample_project", "topic", "2026-08-21T00:00:00.000Z");
+    stored.scenes = [{ number: 1, description: "scene one text" }, { number: 2, description: "scene two text" }];
+    stored.motion_prompts = ["scene one motion"];
+    stored.generated_images = ["images/scene1.png"];
+    stored.generated_video_paths = ["", "videos/scene2.mp4"];
+
+    const project = toApiProject(stored);
+
+    expect(project.scenes[0]).toMatchObject({ script: "scene one text", motionPrompt: "scene one motion", generatedImagePath: "images/scene1.png" });
+    expect("generatedVideoPath" in project.scenes[0]!).toBe(false);
+
+    expect(project.scenes[1]).toMatchObject({ script: "scene two text", generatedVideoPath: "videos/scene2.mp4" });
+    expect("motionPrompt" in project.scenes[1]!).toBe(false);
+    expect("generatedImagePath" in project.scenes[1]!).toBe(false);
+  });
+
   it("omits currentVideoJobId when no video generation record exists", () => {
     const stored = createStoredProject("sample_project", "topic", "2026-08-21T00:00:00.000Z");
     expect("currentVideoJobId" in toApiProject(stored)).toBe(false);
