@@ -1273,4 +1273,22 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
 - [x] **`WORKFLOW_TRANSITIONS` 표를 실제 동작과 맞춤(Round 164)**: Cowork 요청(Round 171) — 영상 보관함 복원이 실제로 쓰는 `Completed → VideosApproved` 전환이 표엔 없었고(`Completed`는 문서상 종결), 이 표가 이 저장소 어디서도 런타임에 강제되지 않는다는 사실도 주석에 없었다. 둘 다 추가 — `terminalStates`/`isTerminalState`는 그대로(정상 파이프라인은 여전히 `Completed`에서 끝남, 복원은 그걸 여는 별개의 명시적 사용자 행동이라는 구분 유지).
   - 검증: root typecheck 전부 통과, shared 25개·Backend 733개 전부 통과, root build 전부 통과. 백엔드 코드·API 계약 미변경(문서성 타입 파일만).
   - 커밋: `b28e4a4`.
+- [x] **영상 프롬프트 캐릭터 정보/부정문 문서화(Round 165)**: Cowork가 "영상 프롬프트에 캐릭터 설명 없음"을 결함으로 올렸다가(Round 148) Runway 공식 Gen-4 문서 확인 후 스스로 철회(Round 172) — 첫 프레임 이미지가 이미 피사체 정보를 주므로 반복하면 "움직임 감소·예상 밖 결과"가 된다는 게 공식 지침, 의도된 설계였음. `video-preview.service.ts`의 `promptFor()`에 이 사실과, 같은 문서가 밝힌 인접 사실(Gen-4는 부정문 미지원 — 이미지 쪽 `styleNotes.avoid` 패턴을 영상에 절대 옮기면 안 됨)을 함께 주석으로 남김.
+  - 검증: `apps/backend/src/videos/video-preview.service.test.ts` 6개 통과(주석만 추가, 로직 미변경). 백엔드·계약 미변경.
+  - 커밋: `d43c478`.
+- [x] **🔴 BGM 보관함 착수 전 확인 — Pixabay엔 오디오 API가 없음(Round 166)**: Cowork의 BGM 계약 요청(4·5번, Pixabay 검색·가져오기) 구현 전에 공식 문서 두 곳(API 문서·이용약관) 교차 확인 — Pixabay REST API는 이미지·영상만 지원, 음악·효과음 엔드포인트가 아예 없고, 이용약관은 스크래핑을 명시적으로 금지. 대체 방법이 없어 해당 두 엔드포인트는 보류, Cowork에게 판단(다른 제공자로 교체 또는 업로드만 우선)을 요청하고 조용히 결정하지 않음. 코드 변경 없음 — 조사만.
+- [x] **BGM 보관함 백엔드(업로드·목록·스트림) + `ProjectSummary.narrationAvailable`(Round 167)**: Pixabay와 무관한 나머지(로컬 업로드·보관함 목록·스트림)부터 구현.
+  - `GET /audio/library`, `POST /audio/library/upload`(멀티파트, MP3/WAV/M4A/OGG, 50MB), `GET /audio/library/:trackId/content` — 이미지 검증처럼 포맷을 직접 파싱하지 않고 `ffprobe`(이미 영상 병합의 필수 의존성)로 실제 오디오 스트림·길이를 검증. 저장 구조는 `asset_library`와 동일한 모양(JSON 인덱스 + 파일), 동시 쓰기 보호는 `videos/project-lock.ts`의 프로세스 간 락을 재사용(이름과 달리 범용 — 두 번째 락 구현을 새로 안 만듦).
+  - `ProjectSummary.narrationAvailable` — `narrationEnabled` 설정이 아니라 실제 생성된 나레이션 파일이 있는지로 판정, 병합 화면이 "이 프로젝트가 실제로 가진 재료"에서 오디오 모드 기본값을 파생할 수 있게 함(Round 163 규칙).
+  - **의도적으로 이번엔 안 만든 것**: 외부 검색·가져오기(위 항목의 Pixabay 결론에 따라 보류), 병합 화면의 오디오 설정 통합(다음 항목).
+  - 신규 테스트 13건(`audio-library.service.test.ts`).
+  - 검증: root typecheck 전부 통과, Backend 746개 전부 통과(+13 신규), frontend 819개·shared 25개·root build 전부 통과. 유료 Provider 호출 없음.
+  - 커밋: `4b65262`.
+- [x] **BGM을 실제 병합 파이프라인에 배선(Round 168)**: `MergeVideosRequest.audio`로 한 번의 병합 호출이 `narration`/`narration+bgm`/`silent`를 선택 — 요청을 생략하면 기존 동작(narrationEnabled 토글 + 파일 존재 여부)을 정확히 그대로 유지하지만, **명시적으로** 모드를 지정하면 그 토글을 이번 한 번만 덮어씀(예: 이번엔 무음으로 내보내서 인스타에서 직접 음원을 붙이려는 의도적 선택).
+  - `FfmpegMergeEngine.mixBackgroundMusic()` 신설 — 기존 장면 합치기 뒤 2차 패스로 실행. BGM 입력에 `-stream_loop -1`(디먹서 단계 반복, `aloop` 필터의 샘플 수 계산 불필요)로 길이 제한 없이 반복시킨 뒤 병합 영상의 실제 길이(`ffprobe`)만큼 잘라내고, 양끝 페이드 + 볼륨 적용, `amix`의 자체 정규화는 꺼서(`normalize=0`) 나레이션 음량이 입력 개수 기준으로 임의로 줄어들지 않게 함.
+  - **의도적 범위 — 실시간 더킹 아님**: 나레이션과 겹칠 때 사이드체인 컴프레서로 동적으로 낮추는 것도 가능하지만(병합 영상 자체 오디오를 사이드체인 키로 쓸 수 있음), 실제 다중 트랙으로 검증하기 어려워 이번엔 고정 볼륨 감쇠만 구현 — Cowork가 "더킹 또는 볼륨 자동 조절 둘 다 괜찮다"고 명시.
+  - **자가 발견 — 회귀 1건**: 기본값 파생을 `narrationAvailable`(파일 존재)만으로 계산했다가 기존 테스트(`narrationEnabled`를 끄면 파일이 있어도 무음이어야 함)가 깨짐 — 요청 생략 시의 기본값은 `narrationAvailable && narrationEnabled` 둘 다로 되돌리고, 명시적 요청만 파일 존재 여부만으로 검증하도록 분리해 수정.
+  - 신규 테스트 10건(`video-merge.service.test.ts` 7건 + `ffmpeg-merge.service.test.ts` 3건 — 페이드 타이밍·클램프·`-stream_loop` 배치까지 커맨드 배열 직접 검증).
+  - 검증: root typecheck 전부 통과, Backend 757개 전부 통과(+10 신규, 연속 재실행 확인), root build 전부 통과. 유료 Provider 호출 없음.
+  - 커밋: `a4621cd`.
 
