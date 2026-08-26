@@ -1033,3 +1033,22 @@ Cowork가 실사용 브라우저 검증 중 발견(Round 83→84 정정): 장기
   - **알아둘 것 — 무관한 사전 존재 실패 2건**: `images.app-module.integration.test.ts`("requires explicit approval and writes six local PNGs without a provider")와 `videos.app-module.integration.test.ts`("serves a generated scene's mp4 ... independent of jobId")가 이번 세션 내내 재현 가능하게 실패한다(타임아웃). 이번 라운드가 건드린 파일과 무관하고, `git stash`로 이번 커밋 이전 상태에서 동일하게 재현돼 사전 존재 문제로 확인했다 — local-fake 워크플로우를 직접 부르는 단위 테스트(`local-video-workflow.service.test.ts` 등)는 통과하므로 로직 자체보다는 전체 앱(`NestFactory.create(AppModule)`)을 실제 HTTP로 띄우는 이 두 통합 테스트 특유의 문제로 보인다(원인 미확정 — 이 실행 환경의 타이밍/리소스 특성일 가능성). 별도로 조사가 필요하다.
 - [x] 커밋: `7a7db21`.
 
+## Round 92 사용자 결정 5건 — 백엔드 소관 2건(#9·#13)
+
+Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택을 전달했다(`.claude-bridge` Round 92). #3·5·6·12는 프론트 단독(라벨·화면 로직만, 계약 변경 없음) — Cowork 소관. 백엔드 소관은 #9(계약 필드 제거)·#13(신규 계약+엔드포인트) 두 건.
+
+- [x] **#9 — `LongProjectSettings.platform`("YouTube Shorts" | "YouTube") 필드 완전 제거**: 어디서도 실제로 읽히지 않는(프롬프트에도, 생성 로직에도 안 쓰이는) 순수 미사용 설정 필드였다. `packages/shared/src/api.ts`에서 제거, `long-projects.service.ts`의 `settingKeys`·`Stored`·`settings()`·`toSettings()`·`setStored()`에서 전부 제거. `episode-scripts.service.ts`의 Episode 대본 프롬프트 컨텍스트(`buildContext()`의 `projectOverview`)에서도 같이 제거(대본 생성 프롬프트에 실제로 들어가고 있었음).
+  - **하위 호환**: `parseStored()`의 `known` 키 집합에는 `"platform"`을 그대로 남겨뒀다 — 지금 디스크에 있는 모든 project.json이 이 필드를 갖고 있어서, 빼면 기존 장기 프로젝트가 전부 로드 실패했을 것이다(Cowork가 미리 짚어준 위험). 읽을 때는 조용히 버리고, 새로 쓸 때는 더 이상 내보내지 않는다. 새 클라이언트 요청이 `platform`을 보내면(구버전 캐시 등) `settingKeys`에 없는 키라 그대로 거부된다 — 저장된 데이터의 관대한 읽기와 새 요청의 엄격한 검증을 분리하는 이 파일의 기존 패턴 그대로.
+  - 테스트: `long-projects.service.test.ts`에 신규 회귀 테스트 1건(레거시 `platform` 필드가 있는 저장 파일이 여전히 로드되고, 재저장 시 필드가 사라짐을 확인). 기존 18개 테스트 파일의 fixture에서 `platform:` 리터럴 제거(전부 동일한 문자열이라 일괄 치환).
+  - **프론트 쪽 남은 일**: `apps/frontend/src/api/testUtils.ts`·`components/CreateLongProjectForm.tsx`·`components/LongProjectSettingsScreen.tsx` 3개 파일이 여전히 `platform`을 참조해 frontend build가 실패한다(확인함, 에러 8줄을 `.claude-bridge` 보고에 그대로 붙였다) — Cowork가 라벨 작업과 같이 처리하기로 함.
+  - 검증(백엔드만): root typecheck(shared 재빌드 후, backend+desktop 통과, frontend는 위 3파일 때문에 예상대로 실패)·Backend 648 통과(+1 skip, 신규 1건)·`npm run build --workspace @ai-animation-studio/backend` 통과. 유료 Provider 호출 없음.
+  - 커밋: `e05a741`.
+- [x] **#13 — 회차별(Episode) 개요 필드 편집 계약+엔드포인트 신설**: 사용자가 원하는 흐름의 앞부분(설정+화수 → 개요 승인 → AI가 화수만큼 쪼개 각 화 배정, 사용자가 채운 칸은 안 덮어씀)은 이미 동작 중이었다(Cowork 확인) — 없던 건 그 결과를 나중에 고치는 수단. `PATCH /long-projects/:id/episodes/:n/outline` 신설(`UpdateLongEpisodeOutlineRequest.outline: Record<string, string>` — `UpdateSceneRequest.scene`과 같은 느슨한 whitelist-map 형태, 서버가 필드명을 검증).
+  - **판단 1 — 편집 허용 상태**: `EpisodeTimelineService`가 `add`/`duplicate`/`archive`에 이미 쓰고 있던 `draftStates`("planned" | "outline_ready" — 대본 생성이 개요를 프롬프트 입력으로 소비하기 전) 그대로 재사용. 다만 그 셋과 다르게 **프로젝트 전체가 아니라 그 Episode 자신의 상태만** 본다 — add/duplicate/archive는 번호를 재배치해서 전체가 draft여야 하지만, 개요 필드 편집은 번호도 다른 Episode도 안 건드리므로 Episode 1의 대본이 이미 진행 중이어도 Episode 5의 요약은 계속 고칠 수 있어야 한다는 판단.
+  - **판단 2 — staleness 영향**: 없음(설계상). 편집은 그 Episode의 대본이 아직 없을 때만 허용되므로 애초에 stale해질 대상이 없다.
+  - `LongProjectsService`가 아니라 `EpisodeTimelineService`(`episode_outlines.json` 읽기/쓰기를 이미 소유)에 구현 — 기존 `files()`/`publish()`/`toOutline()` 헬퍼 재사용.
+  - 테스트 4건 신규(`episode-timeline.service.test.ts`): planned 상태에서 편집·outline_ready 상태에서 편집+디스크 반영 확인·"Episode 1 대본 시작 후에도 Episode 2는 편집 가능"(판단 1의 핵심 대조 테스트)·존재하지 않는 Episode 번호/모르는 필드/빈 값 거부.
+  - 검증: root typecheck(shared 재빌드 후, backend+desktop 통과, frontend는 #9와 같은 이유로 실패 — 이번 계약 추가 자체는 새 프론트 에러를 만들지 않음, 확인함)·Backend 652 통과(+1 skip, 신규 4건)·`npm run build --workspace @ai-animation-studio/backend` 통과. 유료 Provider 호출 없음.
+  - 커밋: `8f61f43`.
+- [x] **CLI 계약 랜딩 완료 보고**: 계약 반영 끝났으니 Cowork가 화면을 붙이면 된다 — `.claude-bridge`에 상세 보고.
+
