@@ -1008,3 +1008,13 @@ Cowork↔CLI 브리지 협업 중 캐릭터 폴더 계약 확장 작업을 하�
   - 재검증: Backend 614 통과(+1 skip), Frontend 752 통과(신규 batch + 기존 1건 수정), root typecheck/build 전부 통과. 유료 Provider 호출 없음.
   - 커밋: `47b4b10`.
 - [x] 이것으로 4번(음성·자막) 작업이 계약·백엔드·프론트 전부 완료됐다.
+
+## 쉰네 번째 이전 기능: 장기 프로젝트 텍스트 생성(개요·Episode 대본)을 실제 OpenAI에 연결
+
+Cowork가 실사용 브라우저 검증 중 발견(Round 83→84 정정): 장기 프로젝트의 개요(outline)와 Episode 대본이 **둘 다** local fake였다 — "열네 번째 이전 기능"이 명시했던 대본만이 아니라, 승인 절차까지 갖춘 개요도 실제로는 어디에도 전송되지 않고 있었다. 사용자가 "이 작업을 먼저 하라"고 승인해 착수. 파이썬 원본(`app/long_story/service.py`의 `generate_project_outline`/`render_project_outline_prompt`/`generate_episode_script`/`build_context`, `app/long_story/context_builder.py`, `app/adapters/openai_episode_planner_adapter.py`)을 직접 대조해 포팅한다. 범위가 커서 두 단계로 나눈다.
+
+- [x] **1단계 — 개요 생성**: `packages/shared`에 `LONG_OUTLINE_ESTIMATED_COST_USD`, `CreateLongProjectOutlinePreviewResponse.budget`, `LONG_OUTLINE_BUDGET_EXCEEDED`/`LONG_OUTLINE_PROVIDER_ERROR` 추가. 신규 `openai-episode-planner-adapter.ts`(`OpenAIEpisodePlannerAdapter.generate_outline`의 직접 포팅, 기존 `openai-story-adapter.ts`와 같은 fetch 기반 패턴·같은 모델 재사용). `long-projects.service.ts`의 `renderOutlinePrompt()`가 기존 한 줄짜리 placeholder 프롬프트를 파이썬의 `render_project_outline_prompt()`(Story Bible + 전체 프로젝트 설정, 한국어 라벨 섹션) 그대로로 교체. `approve()`가 연결돼 있으면 실제 adapter를 호출해 — 사용자가 이미 입력한 필드는 절대 덮어쓰지 않고 빈 필드만 채우고, Episode 번호가 1~episodeCount 연속인지 검증(파이썬과 동일) — 미연결 시엔 기존 local fake 템플릿 생성으로 그대로 폴백한다. `long-projects.no-provider-calls.test.ts`를 정적 grep에서 "미연결 시 fetch 0회" 동작 테스트로 교체(이제 이 파일이 정말로 provider adapter를 import하므로 기존 가드가 구조적으로 항상 걸림).
+- [x] 신규/수정 테스트: `openai-episode-planner-adapter.test.ts`(11건), `long-projects.openai.test.ts`(5건 — 실제 연결·미연결 폴백·예산초과·provider 오류·Episode 번호 불연속 거부), `longProjectsApi.ts`의 `isPreviewResponse()`가 신규 `budget` 필드를 검증 안 하던 것 발견해 함께 수정(+테스트 1건).
+- [x] 재검증: Backend 637 통과(+1 skip, 신규 24건), Frontend 754 통과(신규 1건), root typecheck/build, AppModule DI 부팅 전부 통과. 유료 Provider 호출 없음.
+- [x] 커밋: `a92bba8`.
+- [ ] **2단계(다음 라운드) — Episode 대본 생성**: `episode-context-builder.ts`(`StoryContextBuilder`의 포팅, 1단계와 함께 이미 작성·테스트 완료 — 7건 통과, 최근 3화 전문/이전 요약, 비밀 공개 회차 분기, 미해결 복선만, 18,000자 상한 축출 순서까지 파이썬과 동일)를 `episode-scripts.service.ts`에 실제로 연결한다. 대본 생성은 파이썬처럼 `story_adapter.generate()`를 재사용하므로(장기 전용 adapter가 따로 없음), 기존 `openai-story-adapter.ts`의 `callOpenAiStoryApi()`를 그대로 호출 — 5개 섹션 프롬프트(작업 목표/설정 우선순위/Episode 제작 Context/Asset 적용 규칙/출력 요구사항)만 새로 조립하면 된다(스키마·검증은 이미 narration 필드까지 포함해 동일).
