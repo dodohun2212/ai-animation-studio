@@ -1191,4 +1191,8 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 신규/수정 테스트 다수(5개 OpenAI 어댑터 각 재시도 테스트를 "무시됨" 형태로 갱신, `scene-edit.service.test.ts` 2건 수정, `image-review.service.test.ts` 2건 신규 — 매핑 있어도 오탐 없음 + 실제 변경 시 정확히 감지).
   - 검증: root typecheck 전부 통과, Backend 679 통과(무관한 사전 존재 실패 2건은 그대로 — Round 100에 전문), root build 전부 통과. 유료 Provider 호출 없음.
   - 커밋: `198e7e2`.
+- [x] **Round 148 🟡 남은 항목 중 — Runway stale-snapshot 제출 갭 마저 닫음**: `advancing` Set 가드는 같은 jobId의 동시 진입을 확실히 막지만, 대기하던 호출자가 가드 획득 전에 이미 읽어둔 낡은 프로젝트 스냅샷을 그대로 들고 들어오는 경우는 안 막았다 — Round 145의 2차 방어선(저장 직전 재확인)이 Runway 왕복 이후의 창을 닫았다면, 이건 그 이전의 창이다. `advanceRealCore`가 자기 자신의 첫 동작으로 프로젝트를 다시 읽도록 수정.
+  - **의도적으로 이번엔 안 건드린 것(Round 148 🟡 나머지)**: 장기 프로젝트(Long Episode) 영상 경로에 2차 방어선이 아직 없는 것, 2차 방어선 경고에 원시 task id를 안 넣는 것, 고아 task에 대해 `budget.record`가 아예 안 불려서 예산 행조차 안 생기는 것 — 셋 다 별도 판단·설계가 필요해 이번 라운드에서 안 건드림.
+  - 검증: root typecheck 전부 통과, Backend 679 통과(무관한 사전 존재 실패 2건은 그대로 — Round 100에 전문), root build 전부 통과. 유료 Provider 호출 없음.
+  - 커밋: `d53332d`.
 
