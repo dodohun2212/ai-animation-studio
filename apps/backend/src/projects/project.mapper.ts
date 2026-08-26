@@ -40,6 +40,7 @@ export function createStoredProject(projectId: string, topic: string, timestamp:
     generated_narrations: [],
     narration_generation_records: [],
     final_video_path: null,
+    used_audio: null,
     api_usage: [],
     warnings: [],
     errors: [],
@@ -59,6 +60,18 @@ function narrationAvailableFor(stored: StoredProject): boolean {
   return stored.generated_narrations.some((file) => typeof file === "string" && file.length > 0);
 }
 
+/** Snake_case-to-camelCase passthrough of the stored value — see ProjectSummary.usedAudio's own doc comment for what this represents and why it's a value copy. */
+function usedAudioFor(stored: StoredProject): ProjectSummary["usedAudio"] {
+  if (!stored.used_audio) return undefined;
+  const { mode, track_id, attribution_required, attribution_text } = stored.used_audio;
+  return {
+    mode,
+    ...(track_id !== undefined ? { trackId: track_id } : {}),
+    ...(attribution_required !== undefined ? { attributionRequired: attribution_required } : {}),
+    ...(attribution_text !== undefined ? { attributionText: attribution_text } : {}),
+  };
+}
+
 export function toApiSummary(stored: StoredProject): ProjectSummary {
   return {
     id: stored.project_id,
@@ -69,6 +82,7 @@ export function toApiSummary(stored: StoredProject): ProjectSummary {
     updatedAt: stored.updated_at,
     aspectRatio: aspectRatioFor(stored),
     narrationAvailable: narrationAvailableFor(stored),
+    ...(usedAudioFor(stored) !== undefined ? { usedAudio: usedAudioFor(stored) } : {}),
   };
 }
 

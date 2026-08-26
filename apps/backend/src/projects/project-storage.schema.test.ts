@@ -130,4 +130,23 @@ describe("parseStoredProject", () => {
     );
     expect(stored.generated_video_paths).toEqual(["current.mp4"]);
   });
+
+  it("defaults used_audio to null when absent", () => {
+    expect(parseStoredProject(baseProject()).used_audio).toBeNull();
+  });
+
+  it("parses a full used_audio object, and round-trips a minimal one with only mode", () => {
+    const full = parseStoredProject(baseProject({
+      used_audio: { mode: "narration+bgm", track_id: "TRACK-1", attribution_required: true, attribution_text: "Music by Jane Doe" },
+    }));
+    expect(full.used_audio).toEqual({ mode: "narration+bgm", track_id: "TRACK-1", attribution_required: true, attribution_text: "Music by Jane Doe" });
+
+    const minimal = parseStoredProject(baseProject({ used_audio: { mode: "silent" } }));
+    expect(minimal.used_audio).toEqual({ mode: "silent" });
+  });
+
+  it("rejects an invalid used_audio.mode and a non-object used_audio", () => {
+    expect(() => parseStoredProject(baseProject({ used_audio: { mode: "loud" } }))).toThrow();
+    expect(() => parseStoredProject(baseProject({ used_audio: "narration" }))).toThrow();
+  });
 });

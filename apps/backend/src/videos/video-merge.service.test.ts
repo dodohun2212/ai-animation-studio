@@ -289,7 +289,7 @@ describe("local FFmpeg video merge", () => {
       const audioLibrary = new AudioLibraryService(root, audioRunner);
       const uploaded = await audioLibrary.upload(
         { buffer: Buffer.from("fake mp3 bytes"), originalname: "bgm.mp3", mimetype: "audio/mpeg" },
-        { licenseKind: "self-made", attributionRequired: false },
+        { licenseKind: "cc-by", attributionRequired: true, attributionText: "Music by Jane Doe" },
       );
 
       const calls: string[][] = [];
@@ -316,6 +316,26 @@ describe("local FFmpeg video merge", () => {
       // -stream_loop -1 is the bgm input's own option, so it must sit right before that -i, not the video input's.
       const bgmInputIndex = bgmMixCall!.indexOf("-stream_loop");
       expect(bgmMixCall![bgmInputIndex + 2]).toBe("-i");
+
+      expect(result.project.usedAudio).toEqual({
+        mode: "narration+bgm", trackId: uploaded.track.trackId,
+        attributionRequired: true, attributionText: "Music by Jane Doe",
+      });
+
+      // Deleting the track afterward must not erase the credit line a published video still owes — the value was
+      // copied at merge time, not kept as a live reference (`.claude-bridge` Round 176).
+      await audioLibrary.remove(uploaded.track.trackId);
+      const reread = await projects.findById("video_merge");
+      expect(reread.used_audio).toEqual({
+        mode: "narration+bgm", track_id: uploaded.track.trackId,
+        attribution_required: true, attribution_text: "Music by Jane Doe",
+      });
+    });
+
+    it("records usedAudio for a plain silent/narration merge too, with no attribution fields", async () => {
+      const { projectsRoot, projects } = await setup();
+      const result = await new LocalVideoMergeService(projects, projectsRoot, runner()).merge("video_merge", { audio: { mode: "silent" } });
+      expect(result.project.usedAudio).toEqual({ mode: "silent" });
     });
   });
 });

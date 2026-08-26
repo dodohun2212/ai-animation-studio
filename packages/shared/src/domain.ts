@@ -140,6 +140,20 @@ export interface ProjectSummary {
    * trial that "narration" silently produces no narration.
    */
   narrationAvailable: boolean;
+  /**
+   * What audio the most recent completed merge actually used — set once by `merge()`, cleared by a Video
+   * Library restore (a restored scene invalidates the final video entirely; a restored final version's own
+   * audio was never separately recorded per-version, so it is cleared rather than shown as if still current).
+   * `attributionRequired`/`attributionText` are copied by value from the track at merge time, not a live
+   * reference, specifically so that deleting the track afterward (allowed — see AudioLibraryTrack's own doc
+   * comment) can never silently erase the credit line a published video still owes (`.claude-bridge` Round 176).
+   */
+  usedAudio?: {
+    mode: "narration" | "narration+bgm" | "silent";
+    trackId?: string;
+    attributionRequired?: boolean;
+    attributionText?: string;
+  };
 }
 
 export interface Project extends ProjectSummary {

@@ -7,7 +7,7 @@ import { sceneNumbersFor, WorkflowState, type MergeVideosResponse, type SceneNum
 import { toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
-import type { StoredProject } from "../projects/project-storage.schema.js";
+import type { StoredProject, StoredUsedAudio } from "../projects/project-storage.schema.js";
 import { sceneValue } from "../images/image-prompt.js";
 import { AudioLibraryService } from "../audio/audio-library.service.js";
 import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
@@ -167,9 +167,12 @@ export class LocalVideoMergeService {
     // Resolved before any state changes or rendering work starts — an unknown/unavailable track should fail
     // fast, the same as approvedClips() failing fast on invalid clips below, not mid-render.
     let bgmPath: string | undefined;
+    let bgmAttribution: { attributionRequired: boolean; attributionText?: string } | undefined;
     if (audio.mode === "narration+bgm") {
       if (!this.audioLibrary) throw videoMergeInvalidRequest("BGM is not available in this configuration.");
       bgmPath = (await this.audioLibrary.content(audio.trackId!)).path;
+      const track = await this.audioLibrary.get(audio.trackId!);
+      bgmAttribution = { attributionRequired: track.attributionRequired, ...(track.attributionText ? { attributionText: track.attributionText } : {}) };
     }
     const clips = await this.approvedClips(project);
     try { for (const clip of clips) await this.engine.probe(clip); }
@@ -189,7 +192,13 @@ export class LocalVideoMergeService {
       if (audio.mode === "narration+bgm" && bgmPath) {
         await this.engine.mixBackgroundMusic(finalPath, bgmPath, audio.volume, audio.fadeSeconds, finalPath);
       }
-      const completed = { ...rendering, workflow_state: WorkflowState.Completed, updated_at: new Date().toISOString(), final_video_path: FINAL_VIDEO_PATH };
+      const usedAudio: StoredUsedAudio = {
+        mode: audio.mode,
+        ...(audio.mode === "narration+bgm" ? { track_id: audio.trackId! } : {}),
+        ...(bgmAttribution?.attributionRequired !== undefined ? { attribution_required: bgmAttribution.attributionRequired } : {}),
+        ...(bgmAttribution?.attributionText !== undefined ? { attribution_text: bgmAttribution.attributionText } : {}),
+      };
+      const completed = { ...rendering, workflow_state: WorkflowState.Completed, updated_at: new Date().toISOString(), final_video_path: FINAL_VIDEO_PATH, used_audio: usedAudio };
       await this.projects.save(completed);
       return { project: toApiProject(completed), finalVideoPath: FINAL_VIDEO_PATH };
     } catch (error) {

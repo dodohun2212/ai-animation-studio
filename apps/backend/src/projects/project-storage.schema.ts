@@ -36,12 +36,21 @@ export interface StoredProject {
   generated_narrations: (string | null)[];
   narration_generation_records: unknown[];
   final_video_path: string | null;
+  used_audio: StoredUsedAudio | null;
   api_usage: unknown[];
   warnings: string[];
   errors: string[];
   project_type: string;
   script_revision: number;
   mapping_revision: number;
+}
+
+/** What the most recently completed merge actually used — see ProjectSummary.usedAudio's own doc comment for why attribution is copied by value here rather than kept as a live reference to the track. */
+export interface StoredUsedAudio {
+  mode: "narration" | "narration+bgm" | "silent";
+  track_id?: string;
+  attribution_required?: boolean;
+  attribution_text?: string;
 }
 
 export const KNOWN_STORED_PROJECT_FIELDS: ReadonlySet<string> = new Set([
@@ -69,6 +78,7 @@ export const KNOWN_STORED_PROJECT_FIELDS: ReadonlySet<string> = new Set([
   "generated_narrations",
   "narration_generation_records",
   "final_video_path",
+  "used_audio",
   "api_usage",
   "warnings",
   "errors",
@@ -192,6 +202,38 @@ function finalVideoPathField(data: Record<string, unknown>): string | null {
   return value;
 }
 
+const USED_AUDIO_MODES: ReadonlySet<string> = new Set(["narration", "narration+bgm", "silent"]);
+
+function usedAudioField(data: Record<string, unknown>): StoredUsedAudio | null {
+  const key = "used_audio";
+  if (!(key in data) || data[key] === null) {
+    return null;
+  }
+  const value = data[key];
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw dataInvalid(`Field "${key}" must be an object or null.`);
+  }
+  const record = value as Record<string, unknown>;
+  if (typeof record.mode !== "string" || !USED_AUDIO_MODES.has(record.mode)) {
+    throw dataInvalid(`Field "${key}.mode" must be narration, narration+bgm, or silent.`);
+  }
+  if (record.track_id !== undefined && typeof record.track_id !== "string") {
+    throw dataInvalid(`Field "${key}.track_id" must be a string.`);
+  }
+  if (record.attribution_required !== undefined && typeof record.attribution_required !== "boolean") {
+    throw dataInvalid(`Field "${key}.attribution_required" must be a boolean.`);
+  }
+  if (record.attribution_text !== undefined && typeof record.attribution_text !== "string") {
+    throw dataInvalid(`Field "${key}.attribution_text" must be a string.`);
+  }
+  return {
+    mode: record.mode as StoredUsedAudio["mode"],
+    ...(record.track_id !== undefined ? { track_id: record.track_id as string } : {}),
+    ...(record.attribution_required !== undefined ? { attribution_required: record.attribution_required as boolean } : {}),
+    ...(record.attribution_text !== undefined ? { attribution_text: record.attribution_text as string } : {}),
+  };
+}
+
 // Bounded by MAX_SCENE_COUNT (not a fixed six): these arrays hold one entry per scene, and a
 // project's scene count is variable (2-12, see MAX_SCENE_COUNT), so the bound must track it too.
 function requireAtMostMaxScenes(field: string, values: readonly unknown[]): void {
@@ -274,6 +316,7 @@ export function parseStoredProject(raw: unknown): StoredProject {
     generated_narrations: generatedNarrations,
     narration_generation_records: anyArrayField(data, "narration_generation_records", []),
     final_video_path: finalVideoPathField(data),
+    used_audio: usedAudioField(data),
     api_usage: anyArrayField(data, "api_usage", []),
     warnings: stringArrayField(data, "warnings", []),
     errors: stringArrayField(data, "errors", []),

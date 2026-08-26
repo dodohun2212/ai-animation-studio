@@ -216,7 +216,10 @@ export class VideoLibraryService {
         throw videoLibraryStorageError();
       }
 
-      let updated: StoredProject = { ...project, updated_at: new Date().toISOString() };
+      // Either branch invalidates ProjectSummary.usedAudio: a scene restore voids the final video entirely
+      // (must re-merge to get a new one), and a restored final version's own audio was never recorded
+      // per-history-version, so the project's single "most recent merge" record cannot correctly describe it.
+      let updated: StoredProject = { ...project, updated_at: new Date().toISOString(), used_audio: null };
       if (target.kind === "scene") {
         const hadFinal = updated.final_video_path !== null;
         updated = { ...updated, final_video_path: null };

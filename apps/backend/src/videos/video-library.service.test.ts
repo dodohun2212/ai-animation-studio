@@ -261,6 +261,36 @@ describe("VideoLibraryService.restore", () => {
     expect(versions.versions.map((item) => item.versionId)).toEqual(["current", "v002", "v001"]);
   });
 
+  it("clears usedAudio on a scene restore, since it invalidates the final video entirely", async () => {
+    const { projectsRoot, projects, service } = await setup();
+    await createProjectWithVideos(projectsRoot, projects, "p1", { scenes: [1], finalVideo: true, state: WorkflowState.Completed });
+    const project = await projects.findById("p1");
+    project.used_audio = { mode: "narration+bgm", track_id: "TRACK-1", attribution_required: true, attribution_text: "Music by Jane Doe" };
+    await projects.save(project);
+    const history = path.join(projectsRoot, "p1", "videos", "history");
+    await fs.mkdir(history, { recursive: true });
+    await fs.writeFile(path.join(history, "scene1_v001.mp4"), Buffer.from("older-version"));
+
+    await service.restore("p1", "1", "v001", { approved: true });
+
+    expect((await projects.findById("p1")).used_audio).toBeNull();
+  });
+
+  it("clears usedAudio on a final-version restore too, since per-version audio was never recorded", async () => {
+    const { projectsRoot, projects, service } = await setup();
+    await createProjectWithVideos(projectsRoot, projects, "p1", { scenes: [], finalVideo: true });
+    const project = await projects.findById("p1");
+    project.used_audio = { mode: "silent" };
+    await projects.save(project);
+    const history = path.join(projectsRoot, "p1", "videos", "final", "history");
+    await fs.mkdir(history, { recursive: true });
+    await fs.writeFile(path.join(history, "instagram_reel_v001.mp4"), Buffer.from("older-final"));
+
+    await service.restore("p1", "final", "v001", { approved: true });
+
+    expect((await projects.findById("p1")).used_audio).toBeNull();
+  });
+
   it("costs nothing — never touches the Runway budget ledger", async () => {
     const { projectsRoot, projects, budget, service } = await setup();
     await createProjectWithVideos(projectsRoot, projects, "p1", { scenes: [1] });

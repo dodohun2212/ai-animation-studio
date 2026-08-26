@@ -168,6 +168,17 @@ describe("AudioLibraryService", () => {
       .rejects.toMatchObject({ response: { code: "AUDIO_FILE_INVALID", message: expect.stringContaining("FFmpeg") } });
   });
 
+  it("gets a single track's full metadata by trackId, and 404s for an unknown one", async () => {
+    const { service } = await setup();
+    const { track } = await service.upload(
+      { buffer: MP3, originalname: "track.mp3" },
+      { licenseKind: "cc-by", attributionRequired: true, attributionText: "Music by Jane Doe" },
+    );
+
+    await expect(service.get(track.trackId)).resolves.toEqual(track);
+    await expect(service.get("TRACK-DOESNOTEXIST0")).rejects.toMatchObject({ response: { code: "AUDIO_TRACK_NOT_FOUND" } });
+  });
+
   it("removes a track and its underlying file, and 404s removing it again", async () => {
     const { root, service } = await setup();
     const { track } = await service.upload({ buffer: MP3, originalname: "track.mp3" }, { licenseKind: "self-made", attributionRequired: false });
