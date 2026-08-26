@@ -1234,4 +1234,10 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 신규 테스트 6건(`orphaned-episode-generation-recovery.service.test.ts`): 세 생성 상태 전부 복구 + 이미 만들어진 영상 파일 보존, 생성 중이 아닌 Episode는 무변경, 2회 연속 실행 시 두 번째는 아무것도 안 함(멱등), 요약·상세 상태 불일치 시 건드리지 않음, 장기 프로젝트가 아닌 디렉터리·`projects` 루트 자체가 없는 경우 예외 없이 스킵.
   - 검증: root typecheck 전부 통과, Backend 696개 전부 통과(연속 재실행 확인, +6 신규), root build(shared/backend/frontend/desktop) 전부 통과. 유료 Provider 호출 없음.
   - 커밋: `7071b62`.
+- [x] **🔴 백엔드 — 이미지 생성이 프로젝트 화면비를 전혀 안 쓰고 항상 세로로 나가던 것 + `avoid` 문구 유실(Round 159)**: Cowork가 코드를 읽다가 발견(`.claude-bridge` Round 165) — `OPENAI_IMAGE_SIZE`(세로 `1024x1536`) 기본값을 아무 호출부도 오버라이드하지 않아서, 영상 쪽은 이미 `ratioFor()`로 화면비를 반영하는데 이미지만 항상 세로로 생성되고 있었다. 가로(`16:9`) 프로젝트라면 세로 이미지를 첫 프레임으로 Runway에 가로 영상을 주문하는 셈이라, 잘리거나 레터박스가 생기고 장면당 $0.25는 그대로 청구됨(단편 프로젝트·장기 프로젝트(Episode) 둘 다 동일 결함).
+  - `image-prompt.ts`에 `imageSizeFor()` 신설 — `ratioFor()`와 완전히 같은 출처·우선순위(`project.style_profile.aspect`)로 OpenAI 사이즈 문자열(`16:9` → `1536x1024`, 그 외 → `1024x1536`)을 파생, `local-image-generation.service.ts`의 두 호출부(생성/재생성)에 배선. 장기 프로젝트는 프로젝트 단위 `style_profile`이 없어 `episode-images.service.ts`에 별도 `imageSize()`(episode-videos.service.ts의 `ratio()`가 이미 신뢰하는 같은 `aspect_ratio` 필드 사용)를 신설해 두 호출부(생성/재생성)에 배선.
+  - **같은 세션에서 함께 확인된 두 번째 결함**: `styleLineFor()`가 `visualStyle`/`color`/`lighting`만 읽고 `styleNotes.avoid`는 어디서도 안 읽어서, 설정 화면의 "피할 것" 입력란이 실제 프롬프트에 아무 효과가 없었다 — 같은 우선순위(사용자 설정 우선, `style_profile` 폴백)로 읽어 별도의 `Avoid: ...` 문장으로 추가(콤마 목록에 섞으면 "포함할 것"으로 읽히므로 분리).
+  - 신규 테스트 6건(단편: 화면비별 이미지/edits 두 경로 사이즈 3건 + avoid 문구 1건, 장기: 화면비별 사이즈 2건).
+  - 검증: root typecheck 전부 통과, Backend 701개 전부 통과(+6 신규), root build 전부 통과. 유료 Provider 호출 없음.
+  - 커밋: `5bebaa3`.
 
