@@ -10,12 +10,19 @@ import { serveFrontend } from "./static-frontend.js";
 
 let app: INestApplication | undefined;
 let frontendDirectory: string | undefined;
+let settingsRoot: string | undefined;
+let previousSettingsRoot: string | undefined;
 
 afterEach(async () => {
   await app?.close();
   app = undefined;
   if (frontendDirectory) await fs.rm(frontendDirectory, { recursive: true, force: true });
   frontendDirectory = undefined;
+  if (previousSettingsRoot === undefined) delete process.env.PROVIDER_SETTINGS_ROOT;
+  else process.env.PROVIDER_SETTINGS_ROOT = previousSettingsRoot;
+  previousSettingsRoot = undefined;
+  if (settingsRoot) await fs.rm(settingsRoot, { recursive: true, force: true });
+  settingsRoot = undefined;
 });
 
 describe.sequential("real AppModule with a static frontend bundle attached", () => {
@@ -23,6 +30,9 @@ describe.sequential("real AppModule with a static frontend bundle attached", () 
     frontendDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "desktop-shell-"));
     await fs.writeFile(path.join(frontendDirectory, "index.html"), "<html>desktop shell</html>", "utf8");
 
+    settingsRoot = await fs.mkdtemp(path.join(os.tmpdir(), "static-frontend-settings-"));
+    previousSettingsRoot = process.env.PROVIDER_SETTINGS_ROOT;
+    process.env.PROVIDER_SETTINGS_ROOT = settingsRoot;
     app = await NestFactory.create(AppModule, { logger: false });
     serveFrontend(app.getHttpAdapter().getInstance() as Express, frontendDirectory);
     await app.listen(0, "127.0.0.1");

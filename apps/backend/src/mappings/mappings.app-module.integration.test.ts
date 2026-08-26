@@ -10,15 +10,15 @@ import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
-let root: string | undefined; let app: INestApplication | undefined; let previous: string | undefined;
-afterEach(async () => { await app?.close(); app = undefined; if (previous === undefined) delete process.env.LEARNING_DATA_ROOT; else process.env.LEARNING_DATA_ROOT = previous; previous = undefined; if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
+let root: string | undefined; let app: INestApplication | undefined; let previous: string | undefined; let previousSettingsRoot: string | undefined;
+afterEach(async () => { await app?.close(); app = undefined; if (previous === undefined) delete process.env.LEARNING_DATA_ROOT; else process.env.LEARNING_DATA_ROOT = previous; previous = undefined; if (previousSettingsRoot === undefined) delete process.env.PROVIDER_SETTINGS_ROOT; else process.env.PROVIDER_SETTINGS_ROOT = previousSettingsRoot; previousSettingsRoot = undefined; if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 
 describe.sequential("Project Asset Mapping HTTP routes", () => {
   it("creates a mapping, snapshots it, and rejects approval before a review starts", async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "mapping-http-"));
     const projects = new LocalProjectRepository(path.join(root, "projects"));
     const project = createStoredProject("mapping_http", "Mapping HTTP", "2026-08-22T00:00:00.000Z"); project.workflow_state = WorkflowState.WaitingForAssetMappingReview; project.script_revision = 1; project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, description: String(number) })); await projects.create(project);
-    previous = process.env.LEARNING_DATA_ROOT; process.env.LEARNING_DATA_ROOT = root;
+    previous = process.env.LEARNING_DATA_ROOT; process.env.LEARNING_DATA_ROOT = root; previousSettingsRoot = process.env.PROVIDER_SETTINGS_ROOT; process.env.PROVIDER_SETTINGS_ROOT = root;
     app = await NestFactory.create(AppModule, { logger: false }); await app.listen(0, "127.0.0.1");
     const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
     const form = new FormData(); form.append("image", new Blob([png], { type: "image/png" }), "mapping.png"); form.append("metadata", JSON.stringify({ assetType: "style", displayName: "Mapping Style" }));
@@ -45,7 +45,7 @@ describe.sequential("Project Asset Mapping HTTP routes", () => {
       original_filename: "legacy.png", display_name: "Legacy HTTP Reference", source: "manual_upload", reference_type: "style",
       enabled: true, scene_scope: { mode: "all" }, episode_scope: { mode: "all" }, notes: "", character_id: null, face_baseline: false, content_sha256: "",
     }]), "utf8");
-    previous = process.env.LEARNING_DATA_ROOT; process.env.LEARNING_DATA_ROOT = root;
+    previous = process.env.LEARNING_DATA_ROOT; process.env.LEARNING_DATA_ROOT = root; previousSettingsRoot = process.env.PROVIDER_SETTINGS_ROOT; process.env.PROVIDER_SETTINGS_ROOT = root;
     app = await NestFactory.create(AppModule, { logger: false }); await app.listen(0, "127.0.0.1");
     const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
 

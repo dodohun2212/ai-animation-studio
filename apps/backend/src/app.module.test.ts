@@ -1,3 +1,6 @@
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 import { NestFactory } from "@nestjs/core";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -12,13 +15,23 @@ interface ExpressLayer {
 
 describe("AppModule", () => {
   let close: (() => Promise<void>) | undefined;
+  let settingsRoot: string | undefined;
+  let previousSettingsRoot: string | undefined;
 
   afterEach(async () => {
     await close?.();
     close = undefined;
+    if (previousSettingsRoot === undefined) delete process.env.PROVIDER_SETTINGS_ROOT;
+    else process.env.PROVIDER_SETTINGS_ROOT = previousSettingsRoot;
+    previousSettingsRoot = undefined;
+    if (settingsRoot) await fs.rm(settingsRoot, { recursive: true, force: true });
+    settingsRoot = undefined;
   });
 
   it("initializes Nest and registers all provider settings routes", async () => {
+    settingsRoot = await fs.mkdtemp(path.join(os.tmpdir(), "app-module-settings-"));
+    previousSettingsRoot = process.env.PROVIDER_SETTINGS_ROOT;
+    process.env.PROVIDER_SETTINGS_ROOT = settingsRoot;
     const app = await NestFactory.create(AppModule, { logger: false });
     close = () => app.close();
 

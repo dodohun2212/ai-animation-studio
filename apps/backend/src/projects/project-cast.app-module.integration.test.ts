@@ -13,11 +13,13 @@ let app: INestApplication | undefined;
 let root: string | undefined;
 let previousRoot: string | undefined;
 let previousPromptsRoot: string | undefined;
+let previousSettingsRoot: string | undefined;
 afterEach(async () => {
   await app?.close(); app = undefined;
   if (previousRoot === undefined) delete process.env.LEARNING_DATA_ROOT; else process.env.LEARNING_DATA_ROOT = previousRoot;
   if (previousPromptsRoot === undefined) delete process.env.PROMPTS_ROOT; else process.env.PROMPTS_ROOT = previousPromptsRoot;
-  previousRoot = undefined; previousPromptsRoot = undefined;
+  if (previousSettingsRoot === undefined) delete process.env.PROVIDER_SETTINGS_ROOT; else process.env.PROVIDER_SETTINGS_ROOT = previousSettingsRoot;
+  previousRoot = undefined; previousPromptsRoot = undefined; previousSettingsRoot = undefined;
   if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined;
 });
 
@@ -26,6 +28,8 @@ describe.sequential("real AppModule project cast/asset-reference/continuity HTTP
     root = await fs.mkdtemp(path.join(os.tmpdir(), "project-cast-app-module-"));
     previousRoot = process.env.LEARNING_DATA_ROOT;
     process.env.LEARNING_DATA_ROOT = root;
+    previousSettingsRoot = process.env.PROVIDER_SETTINGS_ROOT;
+    process.env.PROVIDER_SETTINGS_ROOT = root;
     app = await NestFactory.create(AppModule, { logger: false });
     await app.listen(0, "127.0.0.1");
     const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
@@ -68,6 +72,8 @@ describe.sequential("real AppModule project cast/asset-reference/continuity HTTP
     await fs.mkdir(promptsRoot, { recursive: true });
     await fs.writeFile(path.join(promptsRoot, "story_generation.txt"), "cast=$character_cast_metadata", "utf8");
     process.env.PROMPTS_ROOT = path.join(root, "prompts");
+    previousSettingsRoot = process.env.PROVIDER_SETTINGS_ROOT;
+    process.env.PROVIDER_SETTINGS_ROOT = root;
     app = await NestFactory.create(AppModule, { logger: false });
     await app.listen(0, "127.0.0.1");
     const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
@@ -96,6 +102,8 @@ describe.sequential("real AppModule project cast/asset-reference/continuity HTTP
     await fs.mkdir(promptsRoot, { recursive: true });
     await fs.writeFile(path.join(promptsRoot, "story_generation.txt"), "atmosphere=$atmosphere_asset_metadata\nscene_refs=$scene_reference_asset_metadata", "utf8");
     process.env.PROMPTS_ROOT = path.join(root, "prompts");
+    previousSettingsRoot = process.env.PROVIDER_SETTINGS_ROOT;
+    process.env.PROVIDER_SETTINGS_ROOT = root;
     app = await NestFactory.create(AppModule, { logger: false });
     await app.listen(0, "127.0.0.1");
     const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
@@ -150,6 +158,8 @@ describe.sequential("real AppModule project cast/asset-reference/continuity HTTP
     await fs.mkdir(promptsRoot, { recursive: true });
     await fs.writeFile(path.join(promptsRoot, "story_generation.txt"), "previous=$previous_scene_context", "utf8");
     process.env.PROMPTS_ROOT = path.join(root, "prompts");
+    previousSettingsRoot = process.env.PROVIDER_SETTINGS_ROOT;
+    process.env.PROVIDER_SETTINGS_ROOT = root;
     app = await NestFactory.create(AppModule, { logger: false });
     await app.listen(0, "127.0.0.1");
     const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;

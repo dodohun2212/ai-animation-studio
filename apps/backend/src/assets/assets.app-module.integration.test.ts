@@ -11,12 +11,16 @@ const secondPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC
 let app: INestApplication | undefined;
 let root: string | undefined;
 let previousRoot: string | undefined;
+let previousSettingsRoot: string | undefined;
 
 afterEach(async () => {
   await app?.close(); app = undefined;
   if (previousRoot === undefined) delete process.env.LEARNING_DATA_ROOT;
   else process.env.LEARNING_DATA_ROOT = previousRoot;
   previousRoot = undefined;
+  if (previousSettingsRoot === undefined) delete process.env.PROVIDER_SETTINGS_ROOT;
+  else process.env.PROVIDER_SETTINGS_ROOT = previousSettingsRoot;
+  previousSettingsRoot = undefined;
   if (root) await fs.rm(root, { recursive: true, force: true });
   root = undefined;
 });
@@ -26,6 +30,8 @@ describe.sequential("real AppModule Asset HTTP smoke", () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "asset-app-module-"));
     previousRoot = process.env.LEARNING_DATA_ROOT;
     process.env.LEARNING_DATA_ROOT = root;
+    previousSettingsRoot = process.env.PROVIDER_SETTINGS_ROOT;
+    process.env.PROVIDER_SETTINGS_ROOT = root;
     app = await NestFactory.create(AppModule, { logger: false });
     await app.listen(0, "127.0.0.1");
     const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
@@ -68,6 +74,8 @@ describe.sequential("real AppModule Asset HTTP smoke", () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "asset-app-module-"));
     previousRoot = process.env.LEARNING_DATA_ROOT;
     process.env.LEARNING_DATA_ROOT = root;
+    previousSettingsRoot = process.env.PROVIDER_SETTINGS_ROOT;
+    process.env.PROVIDER_SETTINGS_ROOT = root;
     app = await NestFactory.create(AppModule, { logger: false });
     await app.listen(0, "127.0.0.1");
     const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
@@ -106,6 +114,8 @@ describe.sequential("real AppModule Asset HTTP smoke", () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "asset-app-module-"));
     previousRoot = process.env.LEARNING_DATA_ROOT;
     process.env.LEARNING_DATA_ROOT = root;
+    previousSettingsRoot = process.env.PROVIDER_SETTINGS_ROOT;
+    process.env.PROVIDER_SETTINGS_ROOT = root;
     app = await NestFactory.create(AppModule, { logger: false });
     await app.listen(0, "127.0.0.1");
     const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
@@ -138,6 +148,8 @@ describe.sequential("real AppModule Asset HTTP smoke", () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "asset-app-module-"));
     previousRoot = process.env.LEARNING_DATA_ROOT;
     process.env.LEARNING_DATA_ROOT = root;
+    previousSettingsRoot = process.env.PROVIDER_SETTINGS_ROOT;
+    process.env.PROVIDER_SETTINGS_ROOT = root;
     app = await NestFactory.create(AppModule, { logger: false });
     await app.listen(0, "127.0.0.1");
     const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
