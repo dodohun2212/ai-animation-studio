@@ -95,7 +95,13 @@ export class LocalAssetsRepository {
       const assets = await this.load();
       const asset = assets.find((item) => item.asset_id === assetId);
       if (!asset) throw assetNotFound();
-      if (asset.is_folder) throw assetMutationUnsupported();
+      // A folder itself may only have its display name, description, and tags edited here — the description in
+      // particular feeds every child image's generation prompt, so it is not a cosmetic field. Fields that only
+      // make sense for a standalone asset (type, versions, character-reference wiring, ...) stay blocked.
+      if (asset.is_folder) {
+        const allowedFolderKeys = new Set(["displayName", "description", "tags"]);
+        if (Object.keys(changes).some((key) => !allowedFolderKeys.has(key))) throw assetMutationUnsupported();
+      }
       // A folder child (Character Reference Set member) may only have its per-child role and description edited
       // here — every other field belongs to the standalone-asset flow and stays blocked, same as before.
       if (asset.parent_folder_id) {

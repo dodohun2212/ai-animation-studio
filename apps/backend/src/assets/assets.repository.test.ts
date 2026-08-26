@@ -96,13 +96,15 @@ describe("LocalAssetsRepository", () => {
       thumbnail_asset_id: child.asset_id, role: "", sort_order: 0,
     });
     await fs.writeFile(indexPath, JSON.stringify(records), "utf8");
+    // notes is outside both the folder's (displayName/description/tags) and the child's (role/description)
+    // allowed sets, so it stays a clean "rejected either way" probe now that each has its own whitelist.
     for (const id of [child.asset_id, "FOLDER-ROOT"]) {
-      await expect(repository.update(id, { displayName: "변경 금지" })).rejects.toMatchObject({ response: { code: "ASSET_MUTATION_UNSUPPORTED" } });
+      await expect(repository.update(id, { notes: "변경 금지" })).rejects.toMatchObject({ response: { code: "ASSET_MUTATION_UNSUPPORTED" } });
       await expect(repository.remove(id)).rejects.toMatchObject({ response: { code: "ASSET_MUTATION_UNSUPPORTED" } });
     }
   });
 
-  it("allows only role and description for a parented (folder-child) asset, still rejects the folder itself", async () => {
+  it("allows only role and description for a parented (folder-child) asset, and only displayName/description/tags for the folder itself", async () => {
     const root = await makeRoot(); const repository = new LocalAssetsRepository(root);
     const child = await repository.create({ buffer: image, originalname: "하위.png", mimetype: "image/png" }, metadata);
     const indexPath = path.join(root, "asset_library", "assets.json");
@@ -124,8 +126,13 @@ describe("LocalAssetsRepository", () => {
     expect(descriptionUpdated.description).toBe("정면 참고 이미지");
 
     await expect(repository.update(child.asset_id, { role: "front", tags: ["x"] })).rejects.toMatchObject({ response: { code: "ASSET_MUTATION_UNSUPPORTED" } });
+
+    // The folder itself: displayName/description/tags are allowed (description in particular feeds every
+    // child image's generation prompt), but a field with no meaning for a folder (role, asset type, ...) is not.
     await expect(repository.update("FOLDER-ROOT-2", { role: "front" })).rejects.toMatchObject({ response: { code: "ASSET_MUTATION_UNSUPPORTED" } });
-    await expect(repository.update("FOLDER-ROOT-2", { description: "폴더 설명" })).rejects.toMatchObject({ response: { code: "ASSET_MUTATION_UNSUPPORTED" } });
+    await expect(repository.update("FOLDER-ROOT-2", { description: "폴더 설명", role: "front" })).rejects.toMatchObject({ response: { code: "ASSET_MUTATION_UNSUPPORTED" } });
+    const folderUpdated = await repository.update("FOLDER-ROOT-2", { displayName: "새 배경 폴더", description: "폴더 설명", tags: ["a", "b"] });
+    expect(folderUpdated).toMatchObject({ display_name: "새 배경 폴더", description: "폴더 설명", tags: ["a", "b"] });
   });
 
   it("never serves a legacy path outside the real learning-data root", async () => {
