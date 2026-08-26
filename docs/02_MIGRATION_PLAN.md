@@ -1160,4 +1160,11 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - **검증에서 걸린 두 충돌, 둘 다 확인·수정**: Round 139의 기본 숨김 변경이 "필터 없으면 다 보인다"를 전제하던 기존 테스트, Round 138에서 Cowork 스스로 추가한 테스트(제외 행의 텍스트를 준비 신호로 씀)를 각각 깼다 — 원래 동작으로 되돌리지 않고 새 의도한 동작에 맞게 단언을 갱신. `App.test.tsx`의 `GET /projects/:id` 정확히 2회 단언도 새 사이드바가 화면 전환마다 재조회하면서 깨진 것 — 정확한 총 횟수 대신 "재진입 이후에 최소 한 번 더 불렀는가"로 바꿔 그 보장의 실제 의도(재진입 시 새로 읽는다)만 남기고 무관한 이유로 깨지지 않게 함.
   - 검증: root typecheck 전부 통과, frontend 테스트 795개 전부 통과, root build 전부 통과. 백엔드·계약 미변경.
   - 커밋: `6a0a6a4`.
+- [x] **🔴 백엔드 — 1번 장면 영상 생성이 Runway에서 거부됐는데 원인을 알 방법이 없었음(실사용 중 발견, 유료 $0.25 손실, `.claude-bridge` Round 143)**: Cowork가 정황 증거로 좁혀서 3건을 보고 — 셋 다 확인 후 수정.
+  - **1) 1번 장면 프롬프트에 빈 라벨**: `video-preview.service.ts`의 `promptFor()`가 빈 값 섹션을 걸러내지 않아서, `previous`가 원래 없는 1번 장면마다 `Continuity cue: `(콜론 뒤 공백)가 그대로 전송되고 있었다 — 같은 저장소의 `imagePromptFor()`는 이미 이 걸러내기를 하고 있었는데 영상 쪽만 빠져 있었다. `sections.filter(([, value]) => value)`로 통일. (원인 단정은 못 함 — Runway의 실제 거부 사유는 본문에 있었는데 그동안 버려지고 있었어서, 아래 2번을 고치기 전까지는 확인 불가.)
+  - **2) Runway의 거부 사유 본문을 버리고 있었음**: `runway-video-adapter.ts`의 `requestWithRetry()`가 4xx/5xx 응답을 분류만 하고 본문을 한 번도 안 읽어서, 기록에 `"invalid_request"` 한 단어만 남았다. `RunwayAdapterError`에 `detail` 필드 신설(사용자에게 보여주는 `.message`와 분리 — `.message`는 여전히 고정된 안전한 한국어 문구) — 4xx 본문에서 뽑은 원문을 `video_generation_records[].error`에 `"category: detail"` 형태로 남긴다. **화면엔 절대 안 감**: `sceneErrorMessage()`가 알려진 카테고리 문자열과 정확히 일치할 때만 안전 문구를 붙이고, 그 외엔 이미 전부 일반 문구로 폴백하고 있었다(폴링 경로의 Runway 원문 실패 사유도 원래 같은 방식으로 보호돼 있었음) — 같은 안전장치를 제출 실패 경로까지 넓힌 것뿐, 새 위험 없음.
+  - **3) data-URI 크기 검사가 원본 바이트를 잰다**: `MAX_DATA_URI_BYTES`(5MB)를 base64 인코딩 전 원본 바이트에 적용하고 있었는데, Runway의 제한은 실제 전송되는 base64 텍스트 기준(원본의 약 4/3배)이라 3.5MB대 PNG가 로컬 검사는 통과하고 원격에서만 거부될 수 있었다. 실제 base64 문자열 길이로 검사하도록 수정.
+  - 신규/수정 테스트 7건(`video-preview.service.test.ts` 1건, `runway-video-adapter.test.ts` 3건 — detail 추출 3가지 응답 모양 + base64 크기 경계, `runway-workflow-support.test.ts` 2건, `local-video-workflow.runway.test.ts` 1건 — 기존 단언을 새 detail 포함 형태로 갱신).
+  - 검증: root typecheck 전부 통과, Backend 674 통과(+4 순증, 무관한 사전 존재 실패 2건은 그대로 — Round 100에 전문), root build 전부 통과. 유료 Provider 호출 없음.
+  - 커밋: `df280ca`.
 
