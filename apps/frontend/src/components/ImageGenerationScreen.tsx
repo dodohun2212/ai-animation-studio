@@ -480,16 +480,16 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                             </StatusChip>
                           </span>
                         </div>
-                        {/* The box stays 9:16 (the common case), but the image is contained rather than cropped:
-                            a project set to 16:9 now really does produce landscape images, and cover-cropping one
-                            into a portrait box would show the user a tall slice of a picture that is not tall —
-                            they would be reviewing something the model never made. Letterboxing inside the card is
-                            the honest rendering until the review contract carries the project's own shape. */}
+                        {/* The box takes the project's own shape rather than assuming portrait: a 16:9 project
+                            really does produce landscape images now, and cropping one into a portrait box showed
+                            the reviewer a tall slice of a picture that is not tall — a paid approve/regenerate
+                            decision made against something the model never produced. */}
                         <img
                           src={imageReviewContentUrl(projectId, review.sceneNumber, review.updatedAt)}
                           alt={`${review.sceneNumber}번 장면 이미지`}
                           data-testid={`review-image-${review.sceneNumber}`}
-                          className="aspect-[9/16] w-full rounded-xl border border-white/10 bg-slate-800 object-contain"
+                          data-aspect={currentProject?.aspectRatio ?? "9:16"}
+                          className={`${currentProject?.aspectRatio === "16:9" ? "aspect-video" : "aspect-[9/16]"} w-full rounded-xl border border-white/10 bg-slate-800 object-cover`}
                         />
                         {/* Silence unless it happened: the Backend sends both counts only when its own reference
                             cap actually dropped something, and sends the used count too so this sentence never has

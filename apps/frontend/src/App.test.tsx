@@ -224,6 +224,29 @@ describe("App", () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/settings/providers"))).toBe(false);
   });
 
+  it("reaches 영상 보관함 from the nav and asks only the library route", async () => {
+    // The results archive is a sibling of the image library in the nav, not a screen buried inside one project —
+    // past versions belong to no single project's flow, which is why they had no home before this.
+    const fetchMock = vi.fn<FakeFetch>(async (input) => {
+      const requestUrl = String(input);
+      if (requestUrl === "/projects") return jsonResponse(200, { projects: [] });
+      if (requestUrl === "/videos/library") return jsonResponse(200, { projects: [] });
+      throw new Error(`Unexpected fetch call in test: ${requestUrl}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    await screen.findByText("아직 생성된 프로젝트가 없습니다.");
+    fetchMock.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "영상 보관함" }));
+    await screen.findByTestId("library-empty");
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(["/videos/library"]);
+    // Opening an archive must never touch a provider route — nothing here costs anything.
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/settings/providers"))).toBe(false);
+  });
+
   it("lights the pipeline from the project's own progress, and navigating does not change it", async () => {
     // The filled dots used to come from the screen being viewed, so clicking a step visually "un-finished"
     // everything after it — the list looked like progress but answered a different question.
