@@ -1240,4 +1240,11 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 신규 테스트 6건(단편: 화면비별 이미지/edits 두 경로 사이즈 3건 + avoid 문구 1건, 장기: 화면비별 사이즈 2건).
   - 검증: root typecheck 전부 통과, Backend 701개 전부 통과(+6 신규), root build 전부 통과. 유료 Provider 호출 없음.
   - 커밋: `5bebaa3`.
+- [x] **참고 이미지 16장 캡 신호 + 장기 프로젝트(Episode) 복구 안내 문구 + Round 159가 놓친 재생성 경로(Round 160)**: Cowork가 확정한 계약 2건(Round 168)을 구현.
+  - **참고 이미지 캡**: `ImageReview`/`LongEpisodeImageReview`에 `referencesUsedCount`/`referencesOmittedCount` 추가(캡에 실제로 걸렸을 때만 포함, `omittedSections`와 같은 원칙 — 필드 하나 대신 둘로 나눈 건 Cowork 요청: 프런트가 백엔드의 캡 상수를 몰라도 되게). `collectReferenceImages()`/`collectEpisodeReferenceImages()`가 이제 잘린 개수를 같이 반환 — 파일로 실제 존재하는 것 중 자리가 없어서 못 보낸 것만 세고, 애초에 파일이 없어 못 보낸 건 캡과 무관하므로 안 셈. 단편은 이미 `generate()`가 채우는 `image_generation_records`에 얹고(장기와 달리 별도 저장 없이 재사용), 장기는 그런 배열이 없어 리뷰 항목에 캡 걸린 장면에만 새로 얹고 `approve()`를 거쳐도 보존되게 함.
+  - **자가 발견 — Round 159가 놓친 세 번째 호출부**: 화면비 수정 때 `local-image-generation.service.ts`의 두 호출부(생성/재생성)만 고쳤는데, 리뷰 화면의 재생성(`image-review.service.ts`의 `regenerate()`, 완전히 별개 파일)이 `size`를 안 넘기는 같은 결함을 그대로 갖고 있었다 — 이번에 캡 신호를 배선하다가 발견해서 같이 고침.
+  - **장기 프로젝트 복구 안내**: `LongEpisodeOutline.warnings?: string[]` 신설(단편의 `Project.warnings`와 다르게 선택적, 비어있으면 필드 자체 생략) — `orphaned-episode-generation-recovery.service.ts`가 자기 파일 주석으로 스스로 남겨뒀던 구멍("복구는 하지만 왜 멈췄는지는 못 알림")을 마저 닫음. 이 저장소엔 단편의 `project.mapper.ts` 같은 단일 매퍼가 없어서, Episode 상태를 읽어 내보내는 지점 9곳(서비스 6개의 `detail()`, `outline()` 파서 2개, `LongProjectsService.outlines()`) 전부에 `withoutStaleEpisodeRecoveryWarnings`(단편의 `withoutStaleRecoveryWarnings`와 동일 원리)를 배선.
+  - 신규 테스트 다수: `image-reference-selection.test.ts`/`episode-image-reference-selection.test.ts`(신규 파일) 각 캡 경계 테스트, `image-review.service.test.ts`/`local-image-generation.service.test.ts`/`episode-images.service.test.ts` 실제 캡 도달 시나리오, `orphaned-episode-generation-recovery.service.test.ts` 문구 검증 4건 추가.
+  - 검증: root typecheck 전부 통과, Backend 712개 전부 통과(연속 재실행 확인, +11 신규), root build 전부 통과. 유료 Provider 호출 없음.
+  - 커밋: `d607b60`.
 
