@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SceneNumber } from "@ai-animation-studio/shared";
-import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, RUNWAY_TASK_TIMEOUT_SECONDS, type RunwaySceneState } from "./runway-workflow-support.js";
+import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, RUNWAY_TASK_TIMEOUT_SECONDS, SUBMIT_CLAIM_TIMEOUT_SECONDS, type RunwaySceneState } from "./runway-workflow-support.js";
 
 const IMAGE_BYTES = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 const noSleep = async () => {};
@@ -175,6 +175,56 @@ describe("advanceRunwayScene", () => {
     });
     expect(result).toEqual({ kind: "unchanged" });
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("persists a claim via beforeSubmit before the paid Runway call, and in submission order", async () => {
+    // `.claude-bridge` Round 152: a crash between "Runway said yes" and "we saved that" left no trace on disk,
+    // so a later process (or the same one after a restart) still saw "created" and submitted the same scene
+    // again. beforeSubmit is the caller's chance to persist a trace first — this only works if it genuinely runs
+    // before the network call, not after.
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
+    const calls: string[] = [];
+    const beforeSubmit = vi.fn(async (scene: SceneNumber) => { calls.push(`claim:${scene}`); });
+    fetchImpl.mockImplementation(async () => { calls.push("fetch"); return jsonResponse(200, { id: "task-1" }); });
+    const result = await advanceRunwayScene(sixScenes(), input, {
+      apiSecret: "secret", projectId: "p1", apiType: "video", estimatedCostPerSceneUsd: 0.25,
+      budget: fakeBudget(), adapterOptions: { fetchImpl, sleep: noSleep }, beforeSubmit,
+    });
+    expect(result).toMatchObject({ kind: "submitted", sceneNumber: 1 });
+    expect(beforeSubmit).toHaveBeenCalledWith(1, expect.any(String));
+    expect(calls).toEqual(["claim:1", "fetch"]);
+  });
+
+  it("does not touch Runway or the budget for a scene still within its submit-claim window", async () => {
+    const now = new Date("2026-08-23T10:00:00.000Z");
+    const fetchImpl = vi.fn();
+    const budget = fakeBudget();
+    const states = sixScenes({ 1: { status: "submitting", claimedAt: new Date(now.getTime() - (SUBMIT_CLAIM_TIMEOUT_SECONDS - 5) * 1000).toISOString() } });
+    const result = await advanceRunwayScene(states, input, {
+      apiSecret: "secret", projectId: "p1", apiType: "video", estimatedCostPerSceneUsd: 0.25,
+      budget, now: () => now, adapterOptions: { fetchImpl, sleep: noSleep },
+    });
+    expect(result).toEqual({ kind: "unchanged" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(budget.record).not.toHaveBeenCalled();
+  });
+
+  it("fails (without resubmitting) a claim abandoned past the submit-claim timeout, and keeps it visible in the budget ledger", async () => {
+    // Unlike a rejected submission (actualCostUsd 0 — Runway never ran anything), here we genuinely don't know
+    // whether Runway created a task before whoever claimed this scene vanished, so the estimate is recorded as
+    // spent: better to overstate a near-miss than silently under-count a real charge (Round 152's own ledger gap
+    // was exactly this — $2.00 recorded against $3.00 actually billed).
+    const now = new Date("2026-08-23T10:00:00.000Z");
+    const fetchImpl = vi.fn();
+    const budget = fakeBudget();
+    const states = sixScenes({ 1: { status: "submitting", claimedAt: new Date(now.getTime() - (SUBMIT_CLAIM_TIMEOUT_SECONDS + 5) * 1000).toISOString() } });
+    const result = await advanceRunwayScene(states, input, {
+      apiSecret: "secret", projectId: "p1", apiType: "video", estimatedCostPerSceneUsd: 0.25,
+      budget, now: () => now, adapterOptions: { fetchImpl, sleep: noSleep },
+    });
+    expect(result).toEqual({ kind: "failed", sceneNumber: 1, error: "submit_interrupted" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(budget.record).toHaveBeenCalledWith("p1", 1, "video", false, 0.25);
   });
 
   it("reports unchanged once all six scenes have succeeded", async () => {

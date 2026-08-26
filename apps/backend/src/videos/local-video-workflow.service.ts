@@ -23,6 +23,7 @@ import { computeSceneStaleness } from "../projects/scene-staleness.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { RunwayBudget, RunwayBudgetExceededError } from "../providers/runway-budget.js";
 import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceResult, type RunwaySceneState } from "./runway-workflow-support.js";
+import { withProjectLock } from "./project-lock.js";
 import { LEGACY_VIDEO_JOB_ID } from "./legacy-job.js";
 import {
   invalidVideoWorkflowRequest,
@@ -35,10 +36,12 @@ import {
 
 const LOCAL_FAKE_MP4 = Buffer.from("000000186674797069736F6D0000020069736F6D69736F32617663316D703431", "hex");
 
-type VideoStatus = "created" | "running" | "succeeded" | "interrupted" | "failed";
+type VideoStatus = "created" | "submitting" | "running" | "succeeded" | "interrupted" | "failed";
 type VideoRecord = Record<string, unknown> & {
   scene_number: SceneNumber; job_id?: string; status: VideoStatus; execution_mode: "local_fake_no_provider" | "runway";
   runway_task_id?: string; runway_submitted_at?: string; runway_last_checked_at?: string; error?: string;
+  /** Set only while status is "submitting" — see claimSceneForSubmission. */
+  runway_claimed_at?: string;
   /** One-off regenerate() instruction, applied only to the Runway submission still pending for this record — see runwayInputForScene(). Never read for staleness (record.prompt alone is), and always overwritten (to a value or to undefined) on every regenerate() call so a stale instruction from an earlier regeneration can never leak into a later one that didn't ask for it. */
   additional_instruction?: string;
 };
@@ -63,7 +66,7 @@ function normalizeRecord(value: unknown): VideoRecord | undefined {
   if (!isObject(value)) return undefined;
   const scene = sceneNumber(value.scene_number);
   const status = String(value.status);
-  if (!scene || !["created", "running", "succeeded", "interrupted", "failed"].includes(status)) return undefined;
+  if (!scene || !["created", "submitting", "running", "succeeded", "interrupted", "failed"].includes(status)) return undefined;
   const jobId = typeof value.job_id === "string" ? value.job_id : undefined;
   const executionMode = value.execution_mode === "runway" || value.execution_mode === "local_fake_no_provider" ? value.execution_mode : "local_fake_no_provider";
   const runwayTaskId = typeof value.runway_task_id === "string" ? value.runway_task_id : typeof value.task_id === "string" ? value.task_id : undefined;
@@ -162,7 +165,9 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     const failedRecords = records.filter((record) => record.status === "failed");
     const failedSceneNumbers = failedRecords.map((record) => record.scene_number);
     const sceneErrors = Object.fromEntries(failedRecords.filter((record) => record.error).map((record) => [record.scene_number, record.error!]));
-    const current = records.find((record) => record.status === "running")?.scene_number;
+    // "submitting" (claimed, POST not yet resolved) reads to the user exactly like "running" — there is nothing
+    // for them to act on differently while either is in flight.
+    const current = records.find((record) => record.status === "running" || record.status === "submitting")?.scene_number;
     const status = project.workflow_state === WorkflowState.Interrupted ? "interrupted"
       : failedSceneNumbers.length > 0 ? "failed"
       : completedSceneNumbers.length === records.length ? "succeeded"
@@ -214,21 +219,34 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     };
   }
 
-  /** Guards against a timer tick and a concurrent GET poll both trying to advance the same job at once. */
+  /**
+   * Guards against a timer tick and a concurrent GET poll both trying to advance the same job at once — but only
+   * within this one process. `apps/backend`'s dev script (`nest start --watch`) restarts the whole process on
+   * every backend file save, and the old and new process can briefly both be alive, each with its own empty
+   * `advancing` Set; the cross-process file lock below is what actually closes that window
+   * (`.claude-bridge` Round 152 — see project-lock.ts).
+   */
   private async advanceReal(project: StoredProject, jobId: string): Promise<StoredProject> {
     if (this.advancing.has(jobId)) return project;
     this.advancing.add(jobId);
-    try { return await this.advanceRealCore(project, jobId); }
-    finally { this.advancing.delete(jobId); }
+    try {
+      return await withProjectLock(this.projects.projectDirectory(project.project_id), `${project.project_id}:${jobId}`, () => this.advanceRealCore(project, jobId));
+    } finally { this.advancing.delete(jobId); }
+  }
+
+  /** Claims a scene for submission on disk, before the paid Runway call — see runway-workflow-support.ts's `beforeSubmit`. */
+  private async claimSceneForSubmission(projectId: string, jobId: string, scene: SceneNumber, claimedAt: string): Promise<void> {
+    const project = await this.projects.findById(projectId);
+    const record = this.records(project, jobId).find((item) => item.scene_number === scene)!;
+    const claimed = this.replaceRecords(project, [{ ...record, status: "submitting", runway_claimed_at: claimedAt }]);
+    claimed.updated_at = claimedAt;
+    await this.projects.save(claimed);
   }
 
   private async advanceRealCore(staleProject: StoredProject, jobId: string): Promise<StoredProject> {
-    // Re-read fresh, now that the `advancing` guard is actually held: `staleProject` can have been fetched
-    // before this call ever reached the guard (e.g. a caller queued behind another in-flight advance), so
-    // trusting it here would let a scene another advance already submitted still look "created" and get
-    // submitted again — a real, billed duplicate task (`.claude-bridge` Round 148, the remaining gap after
-    // Round 145's fix: the guard itself never lets two calls run at once, but neither call is required to be
-    // looking at current data going in).
+    // Re-read fresh: `staleProject` can have been fetched before this call ever reached the lock (e.g. a caller
+    // queued behind another in-flight advance), so trusting it here would let a scene another advance already
+    // submitted still look "created" and get submitted again (`.claude-bridge` Round 148).
     const project = await this.projects.findById(staleProject.project_id);
     const records = this.records(project, jobId);
     if (records[0]!.execution_mode !== "runway") return project;
@@ -242,6 +260,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       taskId: record.runway_task_id,
       submittedAt: record.runway_submitted_at,
       lastCheckedAt: record.runway_last_checked_at,
+      claimedAt: record.runway_claimed_at,
     }));
 
     let result: RunwayAdvanceResult;
@@ -249,6 +268,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       result = await advanceRunwayScene(states, (scene) => this.runwayInputForScene(project, jobId, scene), {
         apiSecret: apiKey, projectId: project.project_id, apiType: "video",
         estimatedCostPerSceneUsd: VIDEO_SCENE_ESTIMATED_COST_USD, budget: this.budget,
+        beforeSubmit: (scene, claimedAt) => this.claimSceneForSubmission(project.project_id, jobId, scene, claimedAt),
       });
     } catch (error) {
       if (error instanceof RunwayBudgetExceededError) {
@@ -285,7 +305,10 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       // showed a second, unpolled, but billed task per scene, invisible anywhere in our own data until then).
       const fresh = await this.projects.findById(project.project_id);
       const freshRecord = this.records(fresh, jobId).find((item) => item.scene_number === result.sceneNumber)!;
-      if (freshRecord.status !== "created") {
+      // "submitting" is the expected pre-state now (claimSceneForSubmission sets it right before the POST this
+      // result came from); "created" is kept as a fallback for a caller that skips the claim step. Anything else
+      // means some other advance really did move this scene in the time this call held it.
+      if (freshRecord.status !== "created" && freshRecord.status !== "submitting") {
         const warned: StoredProject = {
           ...fresh,
           warnings: [...fresh.warnings, `${result.sceneNumber}번 장면의 영상 요청이 중복 제출되어, 쓰이지 않는 작업이 하나 남았습니다. 진행 중인 작업은 그대로 이어집니다.`],
@@ -295,7 +318,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
         return warned;
       }
       const updated = this.replaceRecords(fresh, [{
-        ...freshRecord, status: "running", runway_task_id: result.taskId,
+        ...freshRecord, status: "running", runway_task_id: result.taskId, runway_claimed_at: undefined,
         runway_submitted_at: result.submittedAt, runway_last_checked_at: result.submittedAt,
       }]);
       updated.updated_at = nowIso;
@@ -453,7 +476,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     const trimmedInstruction = additionalInstruction?.trim() || undefined;
     const reset = records.filter((record) => selected.includes(record.scene_number)).map((record) => ({
       ...record, status: "created" as const,
-      runway_task_id: undefined, runway_submitted_at: undefined, runway_last_checked_at: undefined, error: undefined,
+      runway_task_id: undefined, runway_submitted_at: undefined, runway_last_checked_at: undefined, runway_claimed_at: undefined, error: undefined,
       additional_instruction: trimmedInstruction,
     }));
     const updated = this.replaceRecords(project, reset); updated.workflow_state = WorkflowState.GeneratingVideos; updated.updated_at = new Date().toISOString();

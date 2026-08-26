@@ -10,7 +10,7 @@ import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { RunwayBudget } from "../providers/runway-budget.js";
-import { RUNWAY_POLL_INTERVAL_SECONDS } from "./runway-workflow-support.js";
+import { RUNWAY_POLL_INTERVAL_SECONDS, SUBMIT_CLAIM_TIMEOUT_SECONDS } from "./runway-workflow-support.js";
 import { LocalVideoPreviewService } from "./video-preview.service.js";
 import { LocalVideoSubmissionService } from "./local-video-submission.service.js";
 import { LocalVideoWorkflowService } from "./local-video-workflow.service.js";
@@ -310,8 +310,11 @@ describe("real Runway video workflow", () => {
     const deps = await setupWithConnectedRunway();
     const workflow = newWorkflow(deps);
     let resolveSubmit: (value: unknown) => void = () => {};
+    let notifyReachedSubmit: () => void = () => {};
+    const reachedSubmit = new Promise<void>((resolve) => { notifyReachedSubmit = resolve; });
     const fetchMock = vi.fn(async (url: string) => {
       if (url.endsWith("/v1/image_to_video")) {
+        notifyReachedSubmit();
         return new Promise((resolve) => { resolveSubmit = resolve; });
       }
       throw new Error(`unexpected fetch: ${url}`);
@@ -319,8 +322,10 @@ describe("real Runway video workflow", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const runPromise = workflow.run("video_workflow", deps.accepted.jobId);
-    // Let run() reach the point where its POST is in flight (awaiting resolveSubmit) before racing it.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Let run() reach the point where its POST is in flight (awaiting resolveSubmit) before racing it. A signal
+    // from the mock itself, not a fixed setTimeout, so this stays reliable regardless of how many real fs
+    // operations (claim persistence included) run before the call actually reaches fetch.
+    await reachedSubmit;
 
     const inFlight = await deps.projects.findById("video_workflow");
     const claimed = {
@@ -342,5 +347,86 @@ describe("real Runway video workflow", () => {
     expect(scene1.runway_task_id).toBe("task-other-winner"); // the earlier, real submission is never overwritten
     expect(project.warnings).toEqual([expect.stringContaining("1번 장면")]);
     expect(project.warnings[0]).not.toContain("task-mine-orphaned"); // no raw task id leaked into user-facing text
+  });
+
+  it("never double-submits the same scene when two independent service instances race — the shape of a nest-watch dev-server restart, not just a same-process double call", async () => {
+    // `.claude-bridge` Round 152: the in-memory `advancing` Set (asserted by the "two advance calls race" test
+    // above) only ever serializes calls within one process. `apps/backend`'s dev script restarts the whole
+    // process on every file save, and the old and new process can briefly overlap, each with its own empty Set —
+    // a real user's Runway dashboard showed exactly three scenes submitted twice, one second apart. Two separate
+    // `LocalVideoWorkflowService` instances against the same on-disk project reproduce that overlap without
+    // needing to actually spawn two OS processes.
+    const deps = await setupWithConnectedRunway();
+    const first = newWorkflow(deps);
+    const second = newWorkflow(deps);
+    let resolveStalledSubmit: (value: unknown) => void = () => {};
+    let notifyReachedSubmit: () => void = () => {};
+    const reachedSubmit = new Promise<void>((resolve) => { notifyReachedSubmit = resolve; });
+    let submitCalls = 0;
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/v1/image_to_video")) {
+        submitCalls += 1;
+        if (submitCalls === 1) { notifyReachedSubmit(); return new Promise((resolve) => { resolveStalledSubmit = resolve; }); }
+        return { ok: true, status: 200, json: async () => ({ id: `task-${submitCalls}` }), headers: { get: () => null } } as unknown as Response;
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const firstRun = first.run("video_workflow", deps.accepted.jobId);
+    // Whichever instance's call reaches fetch first stalls here, still holding the file lock — a deterministic
+    // signal from the mock itself, not a fixed setTimeout, so this stays reliable under real CPU contention.
+    await reachedSubmit;
+    const secondRun = second.run("video_workflow", deps.accepted.jobId); // a "second process" racing in
+    // Generous real wait so `second`'s own chain (fresh read, lock-acquisition attempt, retry loop) has ample
+    // time to actually reach and block on the lock before it's released — the window the test needs to prove
+    // mutual exclusion, not just "eventually only one submitCall happened by accident of ordering."
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    resolveStalledSubmit({ ok: true, status: 200, json: async () => ({ id: "task-1" }), headers: { get: () => null } });
+    await Promise.all([firstRun, secondRun]);
+
+    expect(submitCalls).toBe(1); // `second` was blocked on the file lock until `first` finished, then saw scene 1 already claimed/running and never submitted its own
+    const project = await deps.projects.findById("video_workflow");
+    const scene1 = project.video_generation_records.find((record) => (record as Record<string, unknown>).scene_number === 1) as Record<string, unknown>;
+    expect(scene1.status).toBe("running");
+    expect(scene1.runway_task_id).toBe("task-1");
+    expect(project.warnings).toEqual([]); // a clean handoff, not a detected conflict — `second` never got far enough to collide
+    first.onModuleDestroy(); second.onModuleDestroy();
+  });
+
+  it("never resubmits a scene claimed by a process that then vanished before recording any outcome — surfaces it as a failed scene instead of guessing", async () => {
+    // Simulates the residual crash window my two-phase claim narrows but cannot close entirely: a previous
+    // process persisted "submitting" (claimSceneForSubmission) and then disappeared (killed mid-flight) before
+    // ever learning whether Runway actually created a task. We cannot tell, so — unlike every other failure path
+    // — this must never auto-resubmit; the user has to check their Runway dashboard first (`.claude-bridge`
+    // Round 152, requirement D).
+    const deps = await setupWithConnectedRunway();
+    const workflow = newWorkflow(deps);
+    vi.useFakeTimers();
+    const now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+
+    const project = await deps.projects.findById("video_workflow");
+    const claimed = {
+      ...project,
+      video_generation_records: project.video_generation_records.map((raw) => {
+        const record = raw as Record<string, unknown>;
+        return record.scene_number === 1
+          ? { ...record, status: "submitting", runway_claimed_at: new Date(now.getTime() - (SUBMIT_CLAIM_TIMEOUT_SECONDS + 5) * 1000).toISOString() }
+          : record;
+      }),
+    };
+    await deps.projects.save(claimed);
+
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const progress = await workflow.getProgress("video_workflow", deps.accepted.jobId);
+
+    expect(progress).toMatchObject({ status: "failed", failedSceneNumbers: [1] });
+    expect(progress.sceneErrors).toEqual({ 1: "submit_interrupted" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    // The ledger stays honest even though we never learned the real outcome — this is exactly the $2.00-vs-$3.00
+    // under-count Round 152 found, closed by recording the estimate here rather than leaving no row at all.
+    expect(await deps.budget.spentThisMonth(now)).toBeCloseTo(0.25, 8);
+    workflow.onModuleDestroy();
   });
 });

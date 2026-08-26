@@ -5,13 +5,23 @@ import { createRunwayImageToVideoTask, downloadRunwayOutput, getRunwayTask, Runw
 export const RUNWAY_POLL_INTERVAL_SECONDS = 5;
 /** Matches Python's runway_task_timeout_seconds default. A scene stuck non-terminal past this is marked failed so the user can retry instead of waiting forever. */
 export const RUNWAY_TASK_TIMEOUT_SECONDS = 900;
+/**
+ * How long a "submitting" claim (persisted just before the Runway POST, so a crash between the claim and the
+ * final "running"+taskId record leaves a trace instead of silently reverting to "created") is trusted before it's
+ * treated as abandoned. A real POST resolves in low single-digit seconds; this stays far short of
+ * RUNWAY_TASK_TIMEOUT_SECONDS because nothing is actually running yet at this point, only being requested.
+ * Matches project-lock.ts's own stale-lock threshold, since both describe "how long can a legitimate submit take."
+ */
+export const SUBMIT_CLAIM_TIMEOUT_SECONDS = 60;
 
 export interface RunwaySceneState {
   sceneNumber: SceneNumber;
-  status: "created" | "running" | "succeeded" | "failed";
+  status: "created" | "submitting" | "running" | "succeeded" | "failed";
   taskId?: string;
   submittedAt?: string;
   lastCheckedAt?: string;
+  /** Set only for status "submitting": when the pre-POST claim was made, to detect an abandoned claim (see SUBMIT_CLAIM_TIMEOUT_SECONDS). */
+  claimedAt?: string;
 }
 
 export interface RunwaySceneInput {
@@ -44,7 +54,14 @@ export interface RunwayAdvanceDeps {
   now?: () => Date;
   pollIntervalSeconds?: number;
   taskTimeoutSeconds?: number;
+  submitClaimTimeoutSeconds?: number;
   adapterOptions?: RunwayAdapterCallOptions;
+  /**
+   * Called with the chosen scene right before the paid, non-idempotent create call — the caller's chance to
+   * persist a "submitting" claim first, so a crash between this call and the eventual "submitted"/"failed" result
+   * leaves a trace on disk instead of the scene silently looking untouched ("created") to whoever reads it next.
+   */
+  beforeSubmit?: (sceneNumber: SceneNumber, claimedAt: string) => Promise<void>;
 }
 
 export type RunwayAdvanceResult =
@@ -74,6 +91,8 @@ export async function advanceRunwayScene(
   const now = deps.now ?? (() => new Date());
   const pollIntervalSeconds = deps.pollIntervalSeconds ?? RUNWAY_POLL_INTERVAL_SECONDS;
   const taskTimeoutSeconds = deps.taskTimeoutSeconds ?? RUNWAY_TASK_TIMEOUT_SECONDS;
+  const submitClaimTimeoutSeconds = deps.submitClaimTimeoutSeconds ?? SUBMIT_CLAIM_TIMEOUT_SECONDS;
+  const nowDate = now();
 
   // Scenes are continuity-dependent (each prompt continues from the previous one's ending), so a failed scene
   // halts the pipeline entirely rather than skipping ahead. The caller surfaces this and the user must explicitly
@@ -86,7 +105,6 @@ export async function advanceRunwayScene(
       // Defensive: "running" with no taskId is an invalid/corrupted record. Fail it rather than looping forever.
       return { kind: "failed", sceneNumber: running.sceneNumber, error: "invalid_state" };
     }
-    const nowDate = now();
     if (running.submittedAt) {
       const elapsedSeconds = (nowDate.getTime() - new Date(running.submittedAt).getTime()) / 1000;
       if (elapsedSeconds > taskTimeoutSeconds) {
@@ -129,10 +147,27 @@ export async function advanceRunwayScene(
     return { kind: "still-running", sceneNumber: running.sceneNumber };
   }
 
+  const submitting = states.find((state) => state.status === "submitting");
+  if (submitting) {
+    const claimedAt = submitting.claimedAt ? new Date(submitting.claimedAt).getTime() : NaN;
+    const elapsedSeconds = Number.isFinite(claimedAt) ? (nowDate.getTime() - claimedAt) / 1000 : Infinity;
+    if (elapsedSeconds <= submitClaimTimeoutSeconds) return { kind: "unchanged" };
+    // The claim is older than a real submit call could plausibly still be running: whoever made it is gone
+    // (crashed, or the process that made it was killed by a `nest watch` restart) without ever recording an
+    // outcome. We cannot tell whether Runway actually created a task for this claim, so — unlike every other
+    // failure path here — do NOT resubmit automatically; surface it and let the user check their Runway dashboard
+    // first. actualCostUsd is left at the estimate (not 0): a task may really have been created and billed, and
+    // the ledger under-counting real spend is exactly the gap this closes (`.claude-bridge` Round 152).
+    await deps.budget.record(deps.projectId, submitting.sceneNumber, deps.apiType, false, deps.estimatedCostPerSceneUsd).catch(() => undefined);
+    return { kind: "failed", sceneNumber: submitting.sceneNumber, error: "submit_interrupted" };
+  }
+
   const next = states.find((state) => state.status === "created");
   if (!next) return { kind: "unchanged" };
 
   await deps.budget.preflight(deps.estimatedCostPerSceneUsd);
+  const claimedAt = now().toISOString();
+  if (deps.beforeSubmit) await deps.beforeSubmit(next.sceneNumber, claimedAt);
   const input = await inputForScene(next.sceneNumber);
   let taskId: string;
   try {
