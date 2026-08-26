@@ -21,6 +21,11 @@ export class ProviderSettingsApiError extends Error {
 
 const NETWORK_ERROR = { code: "CLIENT_NETWORK_ERROR", message: "서버에 연결하지 못했습니다. 네트워크 상태를 확인해주세요." };
 const MALFORMED_RESPONSE_ERROR = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 해석하지 못했습니다." };
+/** Same distinction as projectsApi: a 5xx with no backend error shape means the server never answered. */
+const SERVER_UNAVAILABLE_ERROR = {
+  code: "CLIENT_SERVER_UNAVAILABLE",
+  message: "서버가 응답하지 않습니다. 서버가 재시작 중이거나 꺼져 있을 수 있습니다. 잠시 후 다시 시도해 주세요.",
+};
 const UNKNOWN_ERROR = { code: "CLIENT_UNKNOWN_ERROR", message: "요청을 처리하지 못했습니다. 잠시 후 다시 시도해주세요." };
 
 const PROVIDER_KINDS: readonly ProviderCredentialKind[] = ["openai", "runway"];
@@ -39,6 +44,7 @@ const KNOWN_ERROR_MESSAGES: Record<string, string> = {
 const CLIENT_ERROR_MESSAGES: Record<string, string> = {
   [NETWORK_ERROR.code]: NETWORK_ERROR.message,
   [MALFORMED_RESPONSE_ERROR.code]: MALFORMED_RESPONSE_ERROR.message,
+  [SERVER_UNAVAILABLE_ERROR.code]: SERVER_UNAVAILABLE_ERROR.message,
   [UNKNOWN_ERROR.code]: UNKNOWN_ERROR.message,
 };
 
@@ -145,10 +151,17 @@ async function requestJson<T>(
 
   if (!response.ok) {
     const apiError = toApiErrorShape(body);
+    if (apiError.code === MALFORMED_RESPONSE_ERROR.code && response.status >= 500) {
+      throw new ProviderSettingsApiError(SERVER_UNAVAILABLE_ERROR.code, SERVER_UNAVAILABLE_ERROR.message);
+    }
     throw new ProviderSettingsApiError(apiError.code, apiError.message, apiError.details);
   }
 
   if (!isValidResponse(body)) {
+    // No diagnostic logging here, deliberately, and the word is spelled around on purpose: a guard test
+    // greps this file for that logging API by name, because the payloads it handles carry credential state
+    // and a log line is somewhere that state can leak — a browser extension, a screen share, a pasted bug
+    // report. projectsApi logs its equivalent case; this is the one module where that is not worth it.
     throw new ProviderSettingsApiError(MALFORMED_RESPONSE_ERROR.code, MALFORMED_RESPONSE_ERROR.message);
   }
 

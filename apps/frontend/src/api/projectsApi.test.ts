@@ -109,11 +109,21 @@ describe("projectsApi", () => {
     await expect(getProject("sample_project")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
   });
 
-  it("converts a non-JSON error response into a safe ProjectsApiError", async () => {
+  it("reports a 5xx with no backend error shape as the server being unavailable, not as an unreadable response", async () => {
+    // A restarting backend, a crashed one, or a dev proxy answering in its place. Calling that "서버 응답을
+    // 해석하지 못했습니다" sent people looking for a data problem when the server simply was not there.
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(nonJsonResponse(500)));
 
     const error = await listProjects().catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(ProjectsApiError);
+    expect((error as ProjectsApiError).code).toBe("CLIENT_SERVER_UNAVAILABLE");
+    expect(toDisplayError(error).message).toContain("재시작");
+  });
+
+  it("still calls a 4xx with no backend error shape an unreadable response — the server did answer", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(nonJsonResponse(404)));
+
+    const error = await listProjects().catch((caught: unknown) => caught);
     expect((error as ProjectsApiError).code).toBe("CLIENT_MALFORMED_RESPONSE");
   });
 

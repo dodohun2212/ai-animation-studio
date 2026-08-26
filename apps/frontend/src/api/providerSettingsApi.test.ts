@@ -123,8 +123,15 @@ describe("providerSettingsApi", () => {
     await expect(getProviderSettings()).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
   });
 
-  it("converts a non-JSON error response into a safe ProviderSettingsApiError", async () => {
+  it("reports a 5xx with no backend error shape as the server being unavailable, not as an unreadable response", async () => {
+    // Matches projectsApi: a 5xx that did not even carry `{ code, message }` means the server never answered.
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(nonJsonResponse(500)));
+
+    await expect(getProviderSettings()).rejects.toMatchObject({ code: "CLIENT_SERVER_UNAVAILABLE" });
+  });
+
+  it("still calls a 4xx with no backend error shape an unreadable response — the server did answer", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(nonJsonResponse(404)));
 
     await expect(getProviderSettings()).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
   });
