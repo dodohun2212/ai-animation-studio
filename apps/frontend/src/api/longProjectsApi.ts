@@ -235,7 +235,6 @@ function isNonEmptyString(value: unknown): value is string {
 const DIGEST_PATTERN = /^[a-f0-9]{64}$/;
 const isDigest = (value: unknown): value is string => typeof value === "string" && DIGEST_PATTERN.test(value);
 
-const PLATFORMS = new Set(["YouTube Shorts", "YouTube"]);
 const ASPECT_RATIOS = new Set(["9:16", "16:9"]);
 const OUTLINE_STATUSES = new Set(["planned", "outline_ready"]);
 const EPISODE_STATUSES = new Set(["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted", "rendering", "completed", "failed"]);
@@ -254,7 +253,6 @@ function isLongProjectSettings(value: unknown): value is LongProjectSettings {
   // absent or out-of-range value would silently misrender either control.
   if (!Number.isInteger(value.sceneCount) || (value.sceneCount as number) < MIN_SCENE_COUNT || (value.sceneCount as number) > MAX_SCENE_COUNT) return false;
   if (!(RUNWAY_CLIP_DURATIONS as readonly number[]).includes(value.clipDurationSeconds as number)) return false;
-  if (!PLATFORMS.has(value.platform as string)) return false;
   if (!ASPECT_RATIOS.has(value.aspectRatio as string)) return false;
   // Checked rather than assumed: the settings screen binds these straight to checkbox `checked`, and an
   // absent value would silently turn a controlled input into an uncontrolled one.
