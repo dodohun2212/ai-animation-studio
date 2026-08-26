@@ -14,6 +14,7 @@ import {
   regenerateAllVideoScenes,
   regenerateVideoScene,
   restartVideoGeneration,
+  sceneErrorMessage,
   stopVideoGeneration,
   toVideoWorkflowDisplayError,
   VideoWorkflowApiError,
@@ -42,6 +43,19 @@ function makeProgress(overrides: Partial<GenerationProgressResponse> = {}): Gene
 describe("videoWorkflowApi", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("tells someone out of Runway credits to top up, instead of blaming the request format", async () => {
+    // Runway answers "not enough credits" with a 400, so this used to arrive as `invalid_request` and the
+    // screen said 요청 형식이 지원되지 않습니다 — sending a person to look for a bug in the app when the fix
+    // was in their own account. The backend now splits this out; this is the message it lands on.
+    expect(sceneErrorMessage("quota_or_permission")).toContain("크레딧");
+    expect(sceneErrorMessage("quota_or_permission")).not.toContain("요청 형식");
+    // A genuine format problem still says so, and an unknown code still falls back rather than leaking.
+    expect(sceneErrorMessage("invalid_request")).toContain("요청 형식");
+    expect(sceneErrorMessage("You do not have enough credits to run this task.")).toBe(
+      sceneErrorMessage(undefined),
+    );
   });
 
   it("fetches progress via GET /projects/:id/videos/generations/:jobId", async () => {

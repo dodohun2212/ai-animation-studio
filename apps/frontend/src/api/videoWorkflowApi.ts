@@ -44,6 +44,10 @@ const UNKNOWN = { code: "CLIENT_UNKNOWN_ERROR", message: "요청을 처리하지
 const SCENE_ERROR_CATEGORY_MESSAGES: Record<string, string> = {
   authentication: "Runway API 키 인증에 실패했습니다. API 설정 화면에서 키가 올바른지 확인해 주세요.",
   permission: "Runway 사용 권한 문제로 요청이 거부되었습니다. Runway 계정 상태를 확인해 주세요.",
+  // Runway answers "not enough credits" with a 400, which used to land in `invalid_request` — so a person
+  // whose account simply needed topping up was told the request format was unsupported and to report a bug.
+  // The backend now re-reads the response body it already had and splits this out (Round 145).
+  quota_or_permission: "Runway 크레딧이 부족합니다. Runway 계정에서 크레딧을 충전한 뒤 다시 시도해 주세요.",
   rate_limit: "Runway 요청 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.",
   invalid_request: "요청 형식이 지원되지 않습니다. 문제가 계속되면 알려주세요.",
   server: "Runway 서버에 일시적인 오류가 있습니다. 잠시 후 다시 시도해 주세요.",
