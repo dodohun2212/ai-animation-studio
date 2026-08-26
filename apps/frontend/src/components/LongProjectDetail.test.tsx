@@ -148,6 +148,37 @@ describe("LongProjectDetail", () => {
     expect(second).toHaveAttribute("data-status", "planned");
   });
 
+  it("gives a planned Episode somewhere to go — its plan — instead of no link at all", async () => {
+    const onOpenEpisodeOutline = vi.fn();
+    const project = makeLongProject({ id: "long_test", episodes: [makeLongEpisodeOutline({ episodeNumber: 1, title: "1화", status: "planned" })] });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    render(<LongProjectDetail projectId="long_test" onBack={() => {}} onOpenSettings={() => {}} onOpenOutline={() => {}} onOpenEpisodeOutline={onOpenEpisodeOutline} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "회차 설정 적기" }));
+    expect(onOpenEpisodeOutline).toHaveBeenCalledWith("long_test", 1);
+  });
+
+  it("keeps the plan reachable once an Episode is outline_ready, alongside the link on to the script", async () => {
+    const onOpenEpisodeOutline = vi.fn();
+    const project = makeLongProject({ id: "long_test", episodes: [makeLongEpisodeOutline({ episodeNumber: 1, title: "1화", status: "outline_ready" })] });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    render(<LongProjectDetail projectId="long_test" onBack={() => {}} onOpenSettings={() => {}} onOpenOutline={() => {}} onOpenEpisodeOutline={onOpenEpisodeOutline} onOpenEpisodeScript={() => {}} />);
+
+    fireEvent.click(await screen.findByTestId("open-episode-outline-1"));
+    expect(onOpenEpisodeOutline).toHaveBeenCalledWith("long_test", 1);
+    // The script link is still the forward step; the plan link sits next to it, not instead of it.
+    expect(screen.getByRole("button", { name: "대본 작성/편집" })).toBeTruthy();
+  });
+
+  it("stops offering the plan once the Episode has moved past the editable window", async () => {
+    const project = makeLongProject({ id: "long_test", episodes: [makeLongEpisodeOutline({ episodeNumber: 1, title: "1화", status: "script_approved" })] });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    render(<LongProjectDetail projectId="long_test" onBack={() => {}} onOpenSettings={() => {}} onOpenOutline={() => {}} onOpenEpisodeOutline={() => {}} onOpenMappingReview={() => {}} />);
+
+    await screen.findByTestId("episode-1");
+    expect(screen.queryByTestId("open-episode-outline-1")).toBeNull();
+  });
+
   it("shows a safe error instead of the raw backend message when reopening fails", async () => {
     vi.stubGlobal(
       "fetch",

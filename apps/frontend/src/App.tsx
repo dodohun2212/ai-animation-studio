@@ -22,6 +22,7 @@ import { LongProjectList } from "./components/LongProjectList.js";
 import { LongProjectSettingsScreen } from "./components/LongProjectSettingsScreen.js";
 import { LongProjectOutlineScreen } from "./components/LongProjectOutlineScreen.js";
 import { LongStoryBibleScreen } from "./components/LongStoryBibleScreen.js";
+import { LongEpisodeOutlineScreen } from "./components/LongEpisodeOutlineScreen.js";
 import { LongEpisodeScriptScreen } from "./components/LongEpisodeScriptScreen.js";
 import { LongEpisodeMappingReviewScreen } from "./components/LongEpisodeMappingReviewScreen.js";
 import { LongEpisodeImageGenerationScreen } from "./components/LongEpisodeImageGenerationScreen.js";
@@ -57,6 +58,7 @@ type Screen =
   | { name: "longSettings"; projectId: string }
   | { name: "longOutline"; projectId: string }
   | { name: "longStoryBible"; projectId: string }
+  | { name: "longEpisodeOutline"; projectId: string; episodeNumber: number }
   | { name: "longEpisodeScript"; projectId: string; episodeNumber: number }
   | { name: "longEpisodeMappingReview"; projectId: string; episodeNumber: number }
   | { name: "longEpisodeImageGeneration"; projectId: string; episodeNumber: number }
@@ -67,7 +69,7 @@ type Screen =
 
 const LONG_PROJECT_SCREEN_NAMES = new Set<Screen["name"]>([
   "longDetail", "longSettings", "longOutline", "longStoryBible",
-  "longEpisodeScript", "longEpisodeMappingReview", "longEpisodeImageGeneration",
+  "longEpisodeOutline", "longEpisodeScript", "longEpisodeMappingReview", "longEpisodeImageGeneration",
   "longEpisodeVideoWorkflow", "longEpisodeVideoMerge", "longEpisodeNarrationReview", "longEpisodeContinuity",
 ]);
 
@@ -217,6 +219,7 @@ function LongWorkspaceNav({ screen, onNavigate }: { screen: Screen; onNavigate: 
         <>
           <span className="mx-1 text-sm text-slate-500">·</span>
           <span className="text-sm text-slate-400">Episode {episodeNumber}</span>
+          {tab(screen.name, "longEpisodeOutline", "회차 설정", () => onNavigate({ name: "longEpisodeOutline", projectId, episodeNumber }))}
           {tab(screen.name, "longEpisodeScript", "대본", () => onNavigate({ name: "longEpisodeScript", projectId, episodeNumber }))}
           {tab(screen.name, "longEpisodeMappingReview", "Asset Mapping", () => onNavigate({ name: "longEpisodeMappingReview", projectId, episodeNumber }))}
           {tab(screen.name, "longEpisodeImageGeneration", "이미지", () => onNavigate({ name: "longEpisodeImageGeneration", projectId, episodeNumber }))}
@@ -415,6 +418,7 @@ export function App() {
                 onOpenSettings={(projectId) => setScreen({ name: "longSettings", projectId })}
                 onOpenOutline={(projectId) => setScreen({ name: "longOutline", projectId })}
                 onOpenStoryBible={(projectId) => setScreen({ name: "longStoryBible", projectId })}
+                onOpenEpisodeOutline={(projectId, episodeNumber) => setScreen({ name: "longEpisodeOutline", projectId, episodeNumber })}
                 onOpenEpisodeScript={(projectId, episodeNumber) => setScreen({ name: "longEpisodeScript", projectId, episodeNumber })}
                 onOpenMappingReview={(projectId, episodeNumber) => setScreen({ name: "longEpisodeMappingReview", projectId, episodeNumber })}
                 onOpenImageGeneration={(projectId, episodeNumber) => setScreen({ name: "longEpisodeImageGeneration", projectId, episodeNumber })}
@@ -444,6 +448,7 @@ export function App() {
                 onBack={() => setScreen({ name: "longDetail", projectId: screen.projectId })}
               />
             )}
+            {screen.name === "longEpisodeOutline" && <LongEpisodeOutlineScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longDetail", projectId: screen.projectId })} onOpenScript={(projectId, episodeNumber) => setScreen({ name: "longEpisodeScript", projectId, episodeNumber })} />}
             {screen.name === "longEpisodeScript" && <LongEpisodeScriptScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longDetail", projectId: screen.projectId })} onOpenMappingReview={(projectId, episodeNumber) => setScreen({ name: "longEpisodeMappingReview", projectId, episodeNumber })} />}
             {screen.name === "longEpisodeMappingReview" && <LongEpisodeMappingReviewScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longEpisodeScript", projectId: screen.projectId, episodeNumber: screen.episodeNumber })} onOpenImageGeneration={(projectId, episodeNumber) => setScreen({ name: "longEpisodeImageGeneration", projectId, episodeNumber })} />}
             {screen.name === "longEpisodeImageGeneration" && <LongEpisodeImageGenerationScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longEpisodeMappingReview", projectId: screen.projectId, episodeNumber: screen.episodeNumber })} onOpenVideoWorkflow={(projectId, episodeNumber) => setScreen({ name: "longEpisodeVideoWorkflow", projectId, episodeNumber })} />}

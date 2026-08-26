@@ -9,6 +9,7 @@ import { Spinner } from "./Spinner.js";
 interface LongProjectDetailProps {
   projectId: string; onBack: () => void; onOpenSettings: (projectId: string) => void; onOpenOutline: (projectId: string) => void;
   onOpenStoryBible?: (projectId: string) => void;
+  onOpenEpisodeOutline?: (projectId: string, episodeNumber: number) => void;
   onOpenEpisodeScript?: (projectId: string, episodeNumber: number) => void;
   onOpenMappingReview?: (projectId: string, episodeNumber: number) => void;
   onOpenImageGeneration?: (projectId: string, episodeNumber: number) => void;
@@ -23,7 +24,8 @@ type DetailState = { status: "loading" } | { status: "error"; error: { code: str
 
 type EpisodeResumeTarget =
   | { screen: "script"; label: string } | { screen: "mappingReview"; label: string } | { screen: "imageGeneration"; label: string }
-  | { screen: "videoWorkflow"; label: string } | { screen: "videoMerge"; label: string } | { screen: "continuity"; label: string };
+  | { screen: "videoWorkflow"; label: string } | { screen: "videoMerge"; label: string } | { screen: "continuity"; label: string }
+  | { screen: "episodeOutline"; label: string };
 
 const secondaryButton = "rounded-full border border-violet-400/30 px-4 py-2 text-sm text-violet-300 hover:bg-violet-500/10";
 const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
@@ -39,7 +41,10 @@ function episodeResumeTarget(status: LongEpisodeStatus): EpisodeResumeTarget | n
     case "waiting_for_video_confirmation": case "videos_generating": case "videos_ready": case "videos_review": case "interrupted": return { screen: "videoWorkflow", label: "영상 생성/검토" };
     case "videos_approved": case "rendering": case "failed": return { screen: "videoMerge", label: "최종 영상 병합" };
     case "completed": return { screen: "continuity", label: "Continuity Memory" };
-    default: return null; // "planned" has no script yet
+    // "planned" has no script yet, but it does have a plan to write — before this screen existed it was the one
+    // status with no link at all, which read as "this episode is broken" rather than "this episode is next".
+    case "planned": return { screen: "episodeOutline", label: "회차 설정 적기" };
+    default: return null;
   }
 }
 
@@ -80,7 +85,7 @@ function episodeHasScript(status: LongEpisodeStatus): boolean {
 }
 
 export function LongProjectDetail({
-  projectId, onBack, onOpenSettings, onOpenOutline, onOpenStoryBible, onOpenEpisodeScript,
+  projectId, onBack, onOpenSettings, onOpenOutline, onOpenStoryBible, onOpenEpisodeOutline, onOpenEpisodeScript,
   onOpenMappingReview = () => {}, onOpenImageGeneration = () => {}, onOpenVideoWorkflow = () => {},
   onOpenVideoMerge = () => {}, onOpenContinuity = () => {}, onOpenNarrationReview = () => {}, onOpenGallery = () => {}, onArchived = () => {},
 }: LongProjectDetailProps) {
@@ -111,6 +116,7 @@ export function LongProjectDetail({
     else if (target.screen === "imageGeneration") onOpenImageGeneration(projectId, episodeNumber);
     else if (target.screen === "videoWorkflow") onOpenVideoWorkflow(projectId, episodeNumber);
     else if (target.screen === "videoMerge") onOpenVideoMerge(projectId, episodeNumber);
+    else if (target.screen === "episodeOutline") onOpenEpisodeOutline?.(projectId, episodeNumber);
     else onOpenContinuity(projectId, episodeNumber);
   }
 
@@ -124,7 +130,7 @@ export function LongProjectDetail({
           <div className="flex flex-wrap gap-3">
             <button type="button" className={secondaryButton} onClick={() => onOpenSettings(projectId)}>장기 프로젝트 설정</button>
             <button type="button" className={secondaryButton} onClick={() => onOpenOutline(projectId)}>스토리 개요 확인</button>
-            {onOpenStoryBible && <button type="button" className={secondaryButton} onClick={() => onOpenStoryBible(projectId)}>Story Bible</button>}
+            {onOpenStoryBible && <button type="button" className={secondaryButton} onClick={() => onOpenStoryBible(projectId)}>등장인물·설정집</button>}
             <button type="button" className={secondaryButton} onClick={() => onOpenGallery(projectId)}>생성 이미지 모음</button>
             <button
               type="button"
@@ -256,7 +262,7 @@ export function LongProjectDetail({
             <ol className="space-y-1.5 text-sm text-slate-300">
               {filteredEpisodes.map((episode) => {
                 const target = episodeResumeTarget(episode.status);
-                const showResume = target && (target.screen !== "script" || onOpenEpisodeScript);
+                const showResume = target && (target.screen !== "script" || onOpenEpisodeScript) && (target.screen !== "episodeOutline" || onOpenEpisodeOutline);
                 const selected = selectedEpisodeNumber === episode.episodeNumber;
                 return (
                   <li
@@ -287,6 +293,20 @@ export function LongProjectDetail({
                         onClick={() => onOpenNarrationReview(projectId, episode.episodeNumber)}
                       >
                         내레이션
+                      </button>
+                    )}
+                    {/* The plan stays reachable while it is still editable, even once the resume link has moved
+                        on to the script — "what happens in this episode" is the thing a person comes back to
+                        change. Hidden once the backend would refuse the edit, rather than offered and then
+                        refused. */}
+                    {onOpenEpisodeOutline && episode.status === "outline_ready" && (
+                      <button
+                        type="button"
+                        data-testid={`open-episode-outline-${episode.episodeNumber}`}
+                        className="text-slate-400 hover:text-slate-200"
+                        onClick={() => onOpenEpisodeOutline(projectId, episode.episodeNumber)}
+                      >
+                        회차 설정
                       </button>
                     )}
                     {showResume && (
