@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { jsonResponse, makeAsset, makeMapping, makeReview } from "../api/testUtils.js";
+import { jsonResponse, makeAsset, makeAssetFolder, makeMapping, makeReview } from "../api/testUtils.js";
 import { MappingReviewScreen } from "./MappingReviewScreen.js";
 
 function mappingList(): HTMLElement {
@@ -236,6 +236,77 @@ describe("MappingReviewScreen", () => {
     const definition = await screen.findByTestId("reference-image-definition");
     expect(definition.textContent).toContain("등장 캐릭터");
     expect(definition.textContent).toContain("대본을 쓸 때 글로만");
+  });
+
+  it("connects an Asset Library image to the project — the step that had no entry point at all", async () => {
+    // Until this existed nothing in the app called POST /assets/mappings, so every project generated its
+    // scene images with zero reference pictures attached.
+    const folder = makeAssetFolder({ assetId: "ASSET-CHAR-FOLDER", displayName: "이배드", assetType: "character", childAssetIds: ["ASSET-CHILD"] });
+    const child = makeAsset({ assetId: "ASSET-CHILD", displayName: "이배드_정면", assetType: "character", parentFolderId: folder.assetId });
+    const created = makeMapping({ mappingId: "MAP-NEW", assetId: folder.assetId });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input).split("?")[0]!;
+      const method = (init as RequestInit | undefined)?.method ?? "GET";
+      if (url === "/assets") return jsonResponse(200, { assets: [folder, child] });
+      if (url === "/projects/sample_project/assets/mappings" && method === "POST") return jsonResponse(201, { mapping: created });
+      if (url === "/projects/sample_project/assets/mappings") return jsonResponse(200, { mappings: [] });
+      if (url === "/projects/sample_project/assets/mapping-review") return jsonResponse(200, { review: makeReview({}) });
+      if (url === `/assets/${folder.assetId}`) return jsonResponse(200, { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false });
+      throw new Error(`Unexpected fetch: ${method} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
+
+    fireEvent.click(within(screen.getByRole("form", { name: "연결할 이미지 검색" })).getByRole("button", { name: "검색" }));
+    const candidates = await screen.findByRole("list", { name: "연결할 이미지 후보" });
+    // The folder is offered; the drawing inside it is not — a folder mapping already resolves to that child.
+    expect(within(candidates).queryByText("이배드_정면")).toBeNull();
+    expect(within(candidates).getByText("폴더 · 이미지 1장")).toBeTruthy();
+
+    fireEvent.click(within(candidates).getByRole("button", { name: "연결" }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) =>
+      String(url) === "/projects/sample_project/assets/mappings" && (init as RequestInit | undefined)?.method === "POST")).toBe(true));
+    const post = fetchMock.mock.calls.find(([url, init]) =>
+      String(url) === "/projects/sample_project/assets/mappings" && (init as RequestInit | undefined)?.method === "POST")!;
+    // No versionPolicy: the server decides it, since a Folder may only ever be follow_latest.
+    expect(JSON.parse(String((post[1] as RequestInit).body))).toEqual({
+      assetId: "ASSET-CHAR-FOLDER", usageRole: "character", sceneScope: { kind: "all" },
+    });
+  });
+
+  it("scopes a connection to one scene when asked to", async () => {
+    const asset = makeAsset({ assetId: "ASSET-BG", displayName: "지하 기록관", assetType: "background" });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input).split("?")[0]!;
+      const method = (init as RequestInit | undefined)?.method ?? "GET";
+      if (url === "/assets") return jsonResponse(200, { assets: [asset] });
+      if (url === "/projects/sample_project/assets/mappings" && method === "POST") return jsonResponse(201, { mapping: makeMapping({ mappingId: "MAP-BG", assetId: asset.assetId }) });
+      if (url === "/projects/sample_project/assets/mappings") return jsonResponse(200, { mappings: [] });
+      if (url === "/projects/sample_project/assets/mapping-review") return jsonResponse(200, { review: makeReview({}) });
+      if (url === `/assets/${asset.assetId}`) return jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false });
+      throw new Error(`Unexpected fetch: ${method} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
+
+    fireEvent.change(screen.getByLabelText("어떤 용도로 쓰나요"), { target: { value: "background" } });
+    fireEvent.change(screen.getByLabelText("어느 장면에"), { target: { value: "scene" } });
+    fireEvent.change(await screen.findByLabelText("연결할 장면 번호"), { target: { value: "3" } });
+    fireEvent.click(within(screen.getByRole("form", { name: "연결할 이미지 검색" })).getByRole("button", { name: "검색" }));
+    fireEvent.click(within(await screen.findByRole("list", { name: "연결할 이미지 후보" })).getByRole("button", { name: "연결" }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) =>
+      String(url) === "/projects/sample_project/assets/mappings" && (init as RequestInit | undefined)?.method === "POST")).toBe(true));
+    const post = fetchMock.mock.calls.find(([url, init]) =>
+      String(url) === "/projects/sample_project/assets/mappings" && (init as RequestInit | undefined)?.method === "POST")!;
+    expect(JSON.parse(String((post[1] as RequestInit).body))).toEqual({
+      assetId: "ASSET-BG", usageRole: "background", sceneScope: { kind: "scene", sceneNumber: 3 },
+    });
   });
 
   it("shows a safe mapped error with missing scene numbers when approval is blocked", async () => {

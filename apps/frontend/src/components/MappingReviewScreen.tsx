@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import { MAX_SCENE_COUNT, sceneNumbersFor } from "@ai-animation-studio/shared";
 import type {
   Asset,
@@ -10,10 +11,11 @@ import type {
   SceneNumber,
   UpdateProjectAssetMappingDecision,
 } from "@ai-animation-studio/shared";
-import { getAsset, toAssetDisplayError } from "../api/assetsApi.js";
+import { getAsset, listAssets, toAssetDisplayError } from "../api/assetsApi.js";
 import {
   approveProjectAssetMappingReview,
   beginProjectAssetMappingReview,
+  createProjectAssetMapping,
   getProjectAssetMappingReview,
   listProjectAssetMappings,
   snapshotProjectAssetMapping,
@@ -117,6 +119,22 @@ export function MappingReviewScreen({ projectId, onBack, onOpenImageGeneration }
   const [decisionErrors, setDecisionErrors] = useState<Record<string, DisplayError>>({});
   const [snapshotErrors, setSnapshotErrors] = useState<Record<string, DisplayError>>({});
 
+  /**
+   * The "connect a reference image" form. This screen could review connections but never make one, and
+   * nothing else in the app made them either — so `collectReferenceImages` always came up empty and every
+   * scene image was drawn from prompt text alone, with no character or background picture attached.
+   */
+  const [addQuery, setAddQuery] = useState("");
+  const [addResults, setAddResults] = useState<Asset[] | null>(null);
+  const [addSearchLoading, setAddSearchLoading] = useState(false);
+  const [addSearchError, setAddSearchError] = useState<DisplayError | null>(null);
+  const [addRole, setAddRole] = useState("character");
+  const [addScope, setAddScope] = useState<"all" | "scene">("all");
+  const [addScene, setAddScene] = useState<SceneNumber>(1 as SceneNumber);
+  const [addPendingIds, setAddPendingIds] = useState<Set<string>>(new Set());
+  const [addError, setAddError] = useState<DisplayError | null>(null);
+  const addBusy = useRef<Set<string>>(new Set());
+
   const loadRequest = useRef(0);
   const decisionBusy = useRef<Set<string>>(new Set());
   const snapshotBusy = useRef<Set<string>>(new Set());
@@ -165,6 +183,44 @@ export function MappingReviewScreen({ projectId, onBack, onOpenImageGeneration }
   }
 
   useEffect(() => { void load(); }, [projectId]);
+
+  async function searchAssets(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    setAddSearchLoading(true);
+    setAddSearchError(null);
+    try {
+      const response = await listAssets({ query: addQuery.trim() || undefined });
+      // Children of a Folder are not offered on their own: a Folder mapping already resolves to whichever
+      // child is its representative, so listing them separately would present the same picture twice under
+      // two names — and picking the child directly loses the Folder's shared description.
+      setAddResults(response.assets.filter((asset) => !asset.parentFolderId));
+    } catch (caught) {
+      setAddSearchError(toAssetDisplayError(caught));
+    } finally {
+      setAddSearchLoading(false);
+    }
+  }
+
+  async function addMapping(asset: Asset): Promise<void> {
+    if (addBusy.current.has(asset.assetId)) return;
+    addBusy.current.add(asset.assetId);
+    setAddPendingIds(new Set(addBusy.current));
+    setAddError(null);
+    try {
+      const sceneScope: AssetMappingSceneScope = addScope === "scene"
+        ? { kind: "scene", sceneNumber: addScene }
+        : { kind: "all" };
+      await createProjectAssetMapping(projectId, { assetId: asset.assetId, usageRole: addRole, sceneScope });
+      // Reload rather than splice the new row in: the created mapping needs its Asset details fetched, and
+      // the review's own counters change too.
+      await load();
+    } catch (caught) {
+      setAddError(toMappingDisplayError(caught));
+    } finally {
+      addBusy.current.delete(asset.assetId);
+      setAddPendingIds(new Set(addBusy.current));
+    }
+  }
 
   async function decide(mappingId: string, decision: UpdateProjectAssetMappingDecision) {
     if (decisionBusy.current.has(mappingId)) return;
@@ -325,6 +381,99 @@ export function MappingReviewScreen({ projectId, onBack, onOpenImageGeneration }
         아래 버튼이 하는 일은 두 가지입니다: <strong className="text-slate-200">빠진 장면이 없는지 검사</strong>하고, 통과하면 다음 단계로 넘깁니다.
         이미지가 하나도 안 붙은 장면이 있으면 몇 번 장면인지 알려주고 막습니다.
       </p>
+
+      <section aria-label="참고 이미지 연결 추가" className="space-y-3 rounded-2xl border border-violet-400/25 bg-violet-500/[0.06] p-5">
+        <h2 className="text-base font-semibold text-slate-100">참고 이미지 연결하기</h2>
+        <p className="text-xs text-slate-400">
+          이미지 보관함에서 골라 이 프로젝트의 장면에 붙입니다. 캐릭터는 <strong className="text-slate-300">폴더</strong>로
+          연결하면 그 폴더의 대표 이미지가 전달됩니다.
+        </p>
+
+        <form onSubmit={(event) => void searchAssets(event)} aria-label="연결할 이미지 검색" className="flex flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-1 text-xs text-slate-400">
+            이름으로 검색
+            <input
+              value={addQuery}
+              onChange={(event) => setAddQuery(event.target.value)}
+              placeholder="비워 두면 전체"
+              className="w-56 rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none"
+            />
+          </label>
+          <button type="submit" className={outlineButton} disabled={addSearchLoading}>
+            {addSearchLoading ? "찾는 중…" : "검색"}
+          </button>
+        </form>
+
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1 text-xs text-slate-400">
+            어떤 용도로 쓰나요
+            <select value={addRole} onChange={(event) => setAddRole(event.target.value)} className="rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100">
+              <option value="character">등장인물</option>
+              <option value="background">배경·장소</option>
+              <option value="object">소품</option>
+              <option value="style">그림체·분위기</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-slate-400">
+            어느 장면에
+            <select value={addScope} onChange={(event) => setAddScope(event.target.value as "all" | "scene")} className="rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100">
+              <option value="all">모든 장면</option>
+              <option value="scene">한 장면만</option>
+            </select>
+          </label>
+          {addScope === "scene" && (
+            <label className="flex flex-col gap-1 text-xs text-slate-400">
+              장면 번호
+              <select
+                aria-label="연결할 장면 번호"
+                value={addScene}
+                onChange={(event) => setAddScene(Number(event.target.value) as SceneNumber)}
+                className="rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100"
+              >
+                {SCENE_NUMBERS.map((number) => <option key={number} value={number}>{number}번 장면</option>)}
+              </select>
+            </label>
+          )}
+        </div>
+
+        {addSearchError && (
+          <p role="alert" data-testid="add-search-error" data-error-code={addSearchError.code} className="text-sm text-rose-400">{addSearchError.message}</p>
+        )}
+        {addError && (
+          <p role="alert" data-testid="add-mapping-error" data-error-code={addError.code} className="text-sm text-rose-400">{addError.message}</p>
+        )}
+        {addResults && addResults.length === 0 && !addSearchLoading && (
+          <p className="text-sm text-slate-400">검색 결과가 없습니다. 이미지 보관함에 먼저 등록해 주세요.</p>
+        )}
+        {addResults && addResults.length > 0 && (
+          <ul aria-label="연결할 이미지 후보" className="grid gap-2 sm:grid-cols-2">
+            {addResults.map((asset) => {
+              const alreadyLinked = (mappings ?? []).some((mapping) => mapping.assetId === asset.assetId);
+              return (
+                <li key={asset.assetId} className="flex items-center gap-3 rounded-lg border border-white/10 bg-slate-950/40 p-2.5">
+                  {asset.imageAvailable && asset.contentUrl
+                    ? <img src={asset.contentUrl} alt="" className="h-12 w-12 rounded object-cover" />
+                    : <span className="flex h-12 w-12 items-center justify-center rounded bg-slate-900 text-[10px] text-slate-500">{asset.isFolder ? "폴더" : "없음"}</span>}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-slate-200">{asset.displayName}</span>
+                    <span className="block text-xs text-slate-500">
+                      {asset.isFolder ? `폴더 · 이미지 ${asset.childAssetIds.length}장` : "이미지 1장"}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    className={outlineButton}
+                    disabled={alreadyLinked || addPendingIds.has(asset.assetId)}
+                    onClick={() => void addMapping(asset)}
+                  >
+                    {alreadyLinked ? "연결됨" : addPendingIds.has(asset.assetId) ? "연결하는 중…" : "연결"}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
 
       <section aria-label="검토 상태" className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6">
         {reviewLoading && !review && <Spinner label="검토 상태를 불러오는 중..." />}

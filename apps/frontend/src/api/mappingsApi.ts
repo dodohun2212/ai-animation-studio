@@ -9,6 +9,8 @@ import {
   type AssetMappingVersionPolicy,
   type BeginProjectAssetMappingReviewRequest,
   type BeginProjectAssetMappingReviewResponse,
+  type CreateProjectAssetMappingRequest,
+  type CreateProjectAssetMappingResponse,
   type GetProjectAssetMappingReviewResponse,
   type ListProjectAssetMappingsResponse,
   type ProjectAssetMapping,
@@ -125,6 +127,8 @@ function isReview(value: unknown): value is ProjectAssetMappingReview {
 
 const isListResponse = (value: unknown): value is ListProjectAssetMappingsResponse =>
   isRecord(value) && Array.isArray(value.mappings) && value.mappings.every(isMapping);
+const isCreateResponse = (value: unknown): value is CreateProjectAssetMappingResponse =>
+  isRecord(value) && isMapping(value.mapping);
 const isUpdateResponse = (value: unknown): value is UpdateProjectAssetMappingResponse =>
   isRecord(value) && isMapping(value.mapping) && isReview(value.review);
 const isGetReviewResponse = (value: unknown): value is GetProjectAssetMappingReviewResponse =>
@@ -171,6 +175,30 @@ async function request<T>(url: string, init: RequestInit | undefined, guard: (va
 
 export function listProjectAssetMappings(projectId: string): Promise<ListProjectAssetMappingsResponse> {
   return request(API_ROUTES.projectAssetMappings(projectId), undefined, isListResponse);
+}
+
+/**
+ * Links one Asset to this project's scenes as a reference image.
+ *
+ * This endpoint has existed since the mapping feature shipped, and until now nothing in the app called it —
+ * the review screen could list, confirm and exclude mappings, but there was no way to make one. The practical
+ * effect was that `collectReferenceImages` always found an empty list, so every scene image was generated
+ * from prompt text alone and no character or background reference ever reached the model.
+ *
+ * `versionPolicy` is deliberately not sent: the server picks `follow_latest` for a Folder (a Folder has no
+ * versions of its own; its bytes come from whichever child is currently its representative) and
+ * `pinned_version` for a single image, and it rejects a Folder pinned to a version. Letting the server decide
+ * keeps that rule in one place.
+ */
+export function createProjectAssetMapping(
+  projectId: string,
+  requestBody: CreateProjectAssetMappingRequest,
+): Promise<CreateProjectAssetMappingResponse> {
+  return request(
+    API_ROUTES.projectAssetMappings(projectId),
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) },
+    isCreateResponse,
+  );
 }
 
 export function getProjectAssetMappingReview(projectId: string): Promise<GetProjectAssetMappingReviewResponse> {
