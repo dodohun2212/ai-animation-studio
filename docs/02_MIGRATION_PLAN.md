@@ -1263,4 +1263,14 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 신규 테스트 20건(`video-library.service.test.ts`) + 병합 아카이빙 1건(`video-merge.service.test.ts`).
   - 검증: root typecheck 전부 통과, Backend 733개·frontend 803개·shared 25개 전부 통과, root build 전부 통과. 유료 Provider 호출 없음.
   - 커밋: `013d4ab`.
+- [x] **프런트 — 영상 보관함 화면 완성(Round 163)**: 계약 나온 지 얼마 안 돼 Cowork가 전부 부착. 신규 4파일 + 수정 3파일 — 내비게이션에 `이미지 보관함` 바로 다음 `영상 보관함`(입력 소재/결과물 구분), 프로젝트 카드(주제·최종 영상 유무·누적 비용·화면비), 장면·최종 버전 목록(인라인 재생, `preload="none"`), 되돌리기 확인 패널(무료지만 "저장된 작업물이 바뀐다"는 이유로 확인 — 밀려나는 버전 보관 안내 + 장면일 때만 재병합 필요 경고). 되돌린 뒤 버전 목록 재조회(밀려난 버전이 실제로 보관됐다는 증거를 화면이 직접 보여줌).
+  - `videoLibraryApi.ts`가 `totalActualCostUsd`(NaN/Infinity/음수/문자열)와 `aspectRatio`(`9:16`/`16:9` 외 값) 둘 다 응답 전체를 거부 — 알 수 없는 값에 기본 모양을 추측하지 않음(오늘 세 번 반복된 실수와 같은 종류).
+  - `ImageGenerationScreen.tsx`가 `Project.aspectRatio`로 썸네일 박스를 맞추고 `object-cover`로 복귀 — 이전 라운드의 `object-contain` 임시 처방 종료.
+  - **자가 발견 — 타입 오류 1건 직접 수정**: `videoLibraryApi.ts`의 `restoreVideoVersion` 반환 캐스트가 `Record<string, unknown>` → `RestoreVideoVersionResponse` 직접 캐스트라 타입 겹침 부족 오류 — 이 저장소의 다른 API 모듈이 이미 쓰는 `as unknown as` 이중 캐스트로 수정(빌드 깨짐 예외 범위).
+  - 신규 테스트 16건(API 8 + 화면 8, 특히 되돌린 뒤 밀려난 버전이 새로 나타나는지 + 최종 영상 되돌리기엔 재병합 경고가 안 뜨는지).
+  - 검증: root typecheck 전부 통과, frontend 819개 전부 통과(세션 중 1회 `SceneEditScreen.test.tsx` 순서 의존 플레이키니스 관찰 — 재실행으로 무관함 확인), root build 전부 통과. 백엔드·계약 미변경.
+  - 커밋: `27dec42`.
+- [x] **`WORKFLOW_TRANSITIONS` 표를 실제 동작과 맞춤(Round 164)**: Cowork 요청(Round 171) — 영상 보관함 복원이 실제로 쓰는 `Completed → VideosApproved` 전환이 표엔 없었고(`Completed`는 문서상 종결), 이 표가 이 저장소 어디서도 런타임에 강제되지 않는다는 사실도 주석에 없었다. 둘 다 추가 — `terminalStates`/`isTerminalState`는 그대로(정상 파이프라인은 여전히 `Completed`에서 끝남, 복원은 그걸 여는 별개의 명시적 사용자 행동이라는 구분 유지).
+  - 검증: root typecheck 전부 통과, shared 25개·Backend 733개 전부 통과, root build 전부 통과. 백엔드 코드·API 계약 미변경(문서성 타입 파일만).
+  - 커밋: `b28e4a4`.
 
