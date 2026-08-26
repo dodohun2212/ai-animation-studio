@@ -277,6 +277,53 @@ describe("MappingReviewScreen", () => {
     });
   });
 
+  it("keeps a project's own generated images out of the candidate list", async () => {
+    // The Library files each project's finished scene images into an auto-made folder. Offering that back as
+    // reference material means feeding a project's output in as its own input — the user saw a folder called
+    // "1 generated images" sitting next to their character.
+    const character = makeAssetFolder({ assetId: "ASSET-CHAR", displayName: "이배드", assetType: "character", childAssetIds: ["C1"] });
+    const generated = makeAssetFolder({ assetId: "ASSET-GEN", displayName: "1 generated images", assetType: "general_reference", sourceProjectId: "1", childAssetIds: ["G1"] });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input).split("?")[0]!;
+      if (url === "/assets") return jsonResponse(200, { assets: [character, generated] });
+      if (url === "/projects/sample_project/assets/mappings") return jsonResponse(200, { mappings: [] });
+      if (url === "/projects/sample_project/assets/mapping-review") return jsonResponse(200, { review: makeReview({}) });
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
+    fireEvent.click(within(screen.getByRole("form", { name: "연결할 이미지 검색" })).getByRole("button", { name: "검색" }));
+
+    const candidates = await screen.findByRole("list", { name: "연결할 이미지 후보" });
+    expect(within(candidates).getByText("이배드")).toBeTruthy();
+    expect(within(candidates).queryByText("1 generated images")).toBeNull();
+  });
+
+  it("says 제외됨, not 연결됨, for an asset whose connection the user turned off", async () => {
+    const asset = makeAsset({ assetId: "ASSET-OFF", displayName: "안 쓰기로 한 그림", assetType: "background" });
+    const excluded = makeMapping({ mappingId: "MAP-OFF", assetId: asset.assetId, status: "excluded" });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input).split("?")[0]!;
+      if (url === "/assets") return jsonResponse(200, { assets: [asset] });
+      if (url === "/projects/sample_project/assets/mappings") return jsonResponse(200, { mappings: [excluded] });
+      if (url === "/projects/sample_project/assets/mapping-review") return jsonResponse(200, { review: makeReview({}) });
+      if (url === `/assets/${asset.assetId}`) return jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false });
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    await screen.findByText("안 쓰기로 한 그림");
+    fireEvent.click(within(screen.getByRole("form", { name: "연결할 이미지 검색" })).getByRole("button", { name: "검색" }));
+
+    const candidates = await screen.findByRole("list", { name: "연결할 이미지 후보" });
+    // Calling an excluded connection "연결됨" told the user the opposite of what they had just chosen.
+    expect(within(candidates).getByRole("button", { name: "제외됨" })).toBeTruthy();
+    expect(within(candidates).queryByRole("button", { name: "연결됨" })).toBeNull();
+  });
+
   it("scopes a connection to one scene when asked to", async () => {
     const asset = makeAsset({ assetId: "ASSET-BG", displayName: "지하 기록관", assetType: "background" });
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
