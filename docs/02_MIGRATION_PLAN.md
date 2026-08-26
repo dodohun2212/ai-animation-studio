@@ -1331,4 +1331,14 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 신규 테스트 15건(`project-post-draft.test.ts` 13건 + `projects.service.test.ts` 2건 — 저장·재오픈 왕복, 유효성 검사 거부).
   - 검증: root typecheck 전부 통과, Backend 786개(+15 신규) 전부 통과, root build 전부 통과. 유료 Provider 호출 없음.
   - 커밋: `a1ee275`.
+- [x] **캡션 임시 저장 배선 + 영상 보관함 카드 출처 표시 + 최종 영상 복원 전 출처 경고(Round 174)**: Cowork Round 179 — 열려 있던 계약 3개(post-draft, `VideoLibraryProjectSummary` 출처 필드, 복원 시 안내) 전부 화면에 부착.
+  - **`post-draft` 저장 시점 — blur**: 키 입력마다는 낭비, 버튼은 사람이 안 눌러서 이 기능이 생긴 원인 그 자체(화면 이탈 시 유실)를 반복함 — blur가 "화면을 벗어나기 직전" 시점과 정확히 일치. 체크박스만 `onChange`(체크박스엔 의미 있는 blur가 없음). 세 필드 항상 전체 전송(PUT은 병합이 아니라 교체라는 계약을 정확히 지킴 — 부분 전송하면 나머지 필드가 조용히 지워짐).
+  - **저장 실패가 복사를 막지 않게 함**: 텍스트는 화면에 그대로 있으니 저장 실패는 손실이 아니라 경고 — 복사 버튼까지 잠그면 캡션을 꺼낼 유일한 경로를 저장 실패가 막아버리는 역효과.
+  - **영상 보관함 카드**: `attributionRequired`/`attributionText`를 `select-all`로 표시, 비어 있으면 "음원 보관함에서 채워 주세요" 안내 — Cowork가 지적한 대로 이 자리가 우선순위 낮다고 했던 예상과 달리 더 중요한 자리였음(병합 화면은 방금 만든 사람이 보고, 보관함은 몇 달 뒤 "잊어버린 사람"이 봄).
+  - **최종 영상 복원 확인 패널에 사전 경고**: 되돌린 뒤가 아니라 되돌리기 **전** — 확인 패널이 유일하게 손쓸 수 있는 순간이므로, 사라질 출처 문구를 그 자리에서 복사해 갈 수 있게 같이 표시.
+  - **자가 발견 — `InstagramPostScreen.test.tsx` 실제 타입 오류 2건 직접 수정**: `renderScreen()`의 `fetchMock`이 `input` 파라미터 하나만 갖도록 타입이 좁혀져 있어서, `init`을 구조분해하는 테스트 2건이 컴파일 실패 — `init?: RequestInit` 파라미터 추가로 수정(빌드 깨짐 예외 범위).
+  - **Cowork가 보고한 하니스 한계 하나 확인**: `LongProjectDetail.tsx(188)`의 `[...new Set(...)]`가 자기 스크래치 tsconfig에서만 `TS2345`로 뜬다고 보고 — 이 파일을 직접 확인, 실제 root typecheck는 clean. Cowork의 lib/DOM 설정이 실제 프로젝트와 다른 데서 오는 하니스 아티팩트로 확인, 실제 결함 아님을 회신.
+  - 신규 테스트 12건(`postDraftApi.test.ts` 6건 + 인스타 화면 6건 + 영상 보관함 4건 — Cowork 집계 총 16건 중 일부는 이미 InstagramPostScreen.test.tsx 파일 자체에 포함).
+  - 검증: root typecheck 전부 통과, Backend 786개·frontend 880개(+16 신규)·shared 25개 전부 통과, root build 전부 통과. 유료 Provider 호출 없음, 실제 Instagram/Meta API 호출 없음.
+  - 커밋: `f06d924`.
 
