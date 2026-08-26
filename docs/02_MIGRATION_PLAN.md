@@ -1126,4 +1126,7 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - **검증 중 걸림돌**: 새 파일의 주석에 "ffmpeg"이라는 단어가 있어서 이 디렉터리(`apps/backend/src/projects/`) 전체에 Provider/프로세스 도구 언급을 금지하는 기존 가드 테스트(`projects.no-provider-calls.test.ts` — 주석도 grep 대상)에 걸림. 단어를 우회해서 서술하는 쪽으로 수정(이번 세션에 Cowork가 credential 가드에서 겪은 것과 동일한 패턴).
   - 검증: root typecheck 전부 통과, Backend 657 통과(+3 순증, 무관한 사전 존재 실패 2건은 그대로 — Round 100에 전문), root build 전부 통과. 유료 Provider 호출 없음.
   - 커밋: `a6f258d`.
+- [x] **대본 재생성 UI 연결**: `storyPromptApi.ts`에 `regenerateStoryPrompt()` 추가(`{ approved: true }` 명시 opt-in), `StoryPromptScreen`이 이미 대본이 있는 화면을 이미지 0개(재생성 확인 패널 + 설정 먼저 고치기 링크)/1장 이상(버튼 없이 이유 설명)로 분기. 서버의 조건 검사를 프런트가 중복하지 않고 서버 응답을 그대로 신뢰하는 구조. 성공 후 설정이 바뀌었을 수 있어 미리보기를 다시 부름.
+  - 검증: frontend typecheck 통과, 테스트 787개 중 786개 통과(신규 3건 포함). 남은 1개(`ImageGenerationScreen.test.tsx`)는 이번 라운드와 무관 — 이전 라운드(Round 128)에서 이미 커밋돼 있던 수정(`workflowStateLabel` 한국어 라벨 검증)이 되돌아간 회귀, `.claude-bridge`에 이미 두 차례 보고함. `apps/frontend/src/components/ImageGenerationScreen.tsx`/`.test.tsx`는 이번 커밋 범위에서 계속 제외.
+  - 커밋: `dd030c5`.
 
