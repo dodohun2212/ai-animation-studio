@@ -14,6 +14,22 @@ interface ProjectListProps {
   onCreateNew: () => void;
 }
 
+/**
+ * The one-line dashboard summary Python always showed at the bottom of its window (`app/ui.py`'s
+ * `footer_status`): how many projects there are, and how many are sitting waiting for the user to confirm
+ * video generation. The waiting count is the point — it answers "is anything waiting on me right now" without
+ * scrolling the list, which is what someone opening the app wants to know. Counted the same way Python counted
+ * it (DashboardData.waiting_count): projects in WAITING_FOR_VIDEO_CONFIRMATION.
+ *
+ * Python's line had a third clause, the OpenAI key status, and this deliberately does not. Reading credential
+ * status needs GET /settings/providers, and App.test.tsx pins — in two separate tests — that browsing the
+ * project list never calls that route. That guard is worth more than the clause: credentials should not be
+ * read as a side effect of navigating. The key status has its own screen one click away in the sidebar.
+ */
+function waitingForVideoCount(projects: ProjectSummary[]): number {
+  return projects.filter((project) => project.workflowState === WorkflowState.WaitingForVideoConfirmation).length;
+}
+
 interface ListState {
   // null until the first successful load; a failed refresh never clears it.
   projects: ProjectSummary[] | null;
@@ -98,6 +114,9 @@ export function ProjectList({ refreshToken, onOpenProject, onCreateNew }: Projec
     };
   }, [refreshToken]);
 
+  const projects = state.projects ?? [];
+  const waitingCount = waitingForVideoCount(projects);
+
   return (
     <section className="mt-8">
       <header className="flex items-center justify-between">
@@ -166,6 +185,19 @@ export function ProjectList({ refreshToken, onOpenProject, onCreateNew }: Projec
             </li>
           ))}
         </ul>
+      )}
+
+      {state.projects !== null && (
+        <p
+          data-testid="dashboard-summary"
+          className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-white/10 pt-3 text-xs text-slate-400"
+        >
+          <span className="tabular-nums">단기 프로젝트 {projects.length}개</span>
+          <span aria-hidden="true" className="text-slate-600">·</span>
+          <span className={`tabular-nums ${waitingCount > 0 ? "text-amber-300" : ""}`} data-testid="dashboard-waiting-count">
+            영상 생성 확인 대기 {waitingCount}개
+          </span>
+        </p>
       )}
     </section>
   );

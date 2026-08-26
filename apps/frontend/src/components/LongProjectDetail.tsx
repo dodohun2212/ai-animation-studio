@@ -44,6 +44,33 @@ function episodeResumeTarget(status: LongEpisodeStatus): EpisodeResumeTarget | n
 }
 
 /**
+ * How many Episodes have reached each stage — the panel Python showed permanently on the long-project screen
+ * (`app/ui.py`'s inspector: 전체 에피소드 / 개요 완료 / 대본 완료 / 이미지 완료 / 영상 생성 확인 대기 / 프로젝트 완료).
+ *
+ * Each count is cumulative on purpose, matching Python: an Episode whose videos are done has also finished its
+ * script, so it counts toward 대본 완료 too. The alternative — counting only the current stage — makes the
+ * numbers drop as work progresses, which reads as regression. With twenty Episodes this panel is the
+ * difference between knowing where the project stands and scrolling a list to count by eye.
+ */
+const AFTER_OUTLINE = new Set<LongEpisodeStatus>(["outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted", "rendering", "completed"]);
+const AFTER_SCRIPT = new Set<LongEpisodeStatus>(["script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted", "rendering", "completed"]);
+const AFTER_IMAGES = new Set<LongEpisodeStatus>(["waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted", "rendering", "completed"]);
+
+function episodeStageCounts(episodes: { status: LongEpisodeStatus }[]): { label: string; value: number; highlight?: boolean }[] {
+  const count = (predicate: (status: LongEpisodeStatus) => boolean) => episodes.filter((episode) => predicate(episode.status)).length;
+  const waiting = count((status) => status === "waiting_for_video_confirmation");
+  return [
+    { label: "전체 에피소드", value: episodes.length },
+    { label: "개요 완료", value: count((status) => AFTER_OUTLINE.has(status)) },
+    { label: "대본 완료", value: count((status) => AFTER_SCRIPT.has(status)) },
+    { label: "이미지 완료", value: count((status) => AFTER_IMAGES.has(status)) },
+    // The only row that is a call to action rather than a tally — coloured when it is not zero.
+    { label: "영상 생성 확인 대기", value: waiting, highlight: waiting > 0 },
+    { label: "프로젝트 완료", value: count((status) => status === "completed") },
+  ];
+}
+
+/**
  * Whether this Episode already has a script, and therefore sentences to narrate. The two excluded statuses are
  * the only ones reached before a script exists; the backend's own gate is the same condition (it answers
  * LONG_EPISODE_NARRATION_NOT_ALLOWED otherwise), so this only avoids offering a link that would fail.
@@ -118,7 +145,19 @@ export function LongProjectDetail({
             <div><dt className="text-xs uppercase tracking-wide text-slate-400">제목</dt><dd className="mt-0.5">{state.project.title}</dd></div>
             <div className="sm:col-span-2"><dt className="text-xs uppercase tracking-wide text-slate-400">로그라인</dt><dd className="mt-0.5">{state.project.logline}</dd></div>
             <div><dt className="text-xs uppercase tracking-wide text-slate-400">스토리 개요 상태</dt><dd className="mt-0.5" data-testid="outline-status">{longEpisodeStatusLabel(state.project.outlineStatus)}</dd></div>
-            <div><dt className="text-xs uppercase tracking-wide text-slate-400">에피소드 수</dt><dd className="mt-0.5">{state.project.episodeCount}</dd></div>
+            <div><dt className="text-xs uppercase tracking-wide text-slate-400">장르</dt><dd className="mt-0.5">{state.project.settings.genre || "—"}</dd></div>
+            <div><dt className="text-xs uppercase tracking-wide text-slate-400">화면 비율</dt><dd className="mt-0.5">{state.project.settings.aspectRatio}</dd></div>
+          </dl>
+          {/* Episode 수 moved into this panel as "전체 에피소드" rather than being listed twice. */}
+          <dl data-testid="episode-stage-summary" className="grid grid-cols-2 gap-x-8 gap-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6 text-slate-100 sm:grid-cols-3">
+            {episodeStageCounts(state.project.episodes).map((entry) => (
+              <div key={entry.label} data-testid={`episode-stage-${entry.label}`}>
+                <dt className="text-xs uppercase tracking-wide text-slate-400">{entry.label}</dt>
+                <dd className={`mt-0.5 text-2xl font-semibold tabular-nums ${entry.highlight ? "text-amber-300" : "text-slate-100"}`}>
+                  {entry.value}
+                </dd>
+              </div>
+            ))}
           </dl>
           <div data-testid="episode-list" className="space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-6">
             <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-200">

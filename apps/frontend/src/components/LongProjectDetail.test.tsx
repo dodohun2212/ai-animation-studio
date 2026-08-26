@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LongEpisodeStatus } from "@ai-animation-studio/shared";
 
@@ -19,6 +19,35 @@ describe("LongProjectDetail", () => {
     expect(await screen.findByText("우주 방랑자")).toBeTruthy();
     expect(screen.getByText("귀환 이야기")).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledWith("/long-projects/long_test");
+  });
+
+  it("counts Episodes per stage cumulatively, so the numbers never go backwards as work progresses", async () => {
+    // Python kept this panel permanently on the long-project screen. The counts are cumulative on purpose: an
+    // Episode whose videos are approved has also finished its script, so it counts toward 대본 완료 too.
+    // Counting only the current stage would make 대본 완료 drop from 3 to 1 as Episodes move on, which reads
+    // as regression. With twenty Episodes this panel replaces scrolling the list and counting by eye.
+    const project = makeLongProject({
+      id: "long_test",
+      episodes: [
+        makeLongEpisodeOutline({ episodeNumber: 1, status: "videos_approved" }),
+        makeLongEpisodeOutline({ episodeNumber: 2, status: "waiting_for_video_confirmation" }),
+        makeLongEpisodeOutline({ episodeNumber: 3, status: "script_review" }),
+        makeLongEpisodeOutline({ episodeNumber: 4, status: "planned" }),
+      ],
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    render(<LongProjectDetail projectId="long_test" onBack={() => {}} onOpenSettings={() => {}} onOpenOutline={() => {}} />);
+
+    const panel = await screen.findByTestId("episode-stage-summary");
+    const row = (label: string) => within(panel).getByTestId(`episode-stage-${label}`).textContent ?? "";
+    expect(row("전체 에피소드")).toContain("4");
+    // 1·2·3 are past the outline; only the planned one is not.
+    expect(row("개요 완료")).toContain("3");
+    // script_review is still being written, so it does not count as finished.
+    expect(row("대본 완료")).toContain("2");
+    expect(row("이미지 완료")).toContain("2");
+    expect(row("영상 생성 확인 대기")).toContain("1");
+    expect(row("프로젝트 완료")).toContain("0");
   });
 
   it("offers narration only for Episodes that have a script, and only when the project uses the sentences", async () => {

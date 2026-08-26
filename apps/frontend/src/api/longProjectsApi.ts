@@ -164,6 +164,18 @@ const LONG_EPISODE_MERGE_ERRORS: Record<string, string> = {
  * these say plainly whether anything was billed. Same wording as the short project's narrationApi.ts, which the
  * user may have seen first.
  */
+/**
+ * The two text-generation steps that now call OpenAI for real (project outline, Episode script). Both say
+ * plainly whether money was spent — a budget refusal in particular must not read as a generic failure, because
+ * the one thing the user needs to know is that nothing was billed.
+ */
+const LONG_TEXT_GENERATION_ERRORS: Record<string, string> = {
+  LONG_OUTLINE_BUDGET_EXCEEDED: "이번 달 OpenAI 예산을 초과하여 요청을 보내지 않았습니다. 비용은 청구되지 않았습니다.",
+  LONG_OUTLINE_PROVIDER_ERROR: "스토리 개요 생성 요청이 실패했습니다. 잠시 후 다시 시도해 주세요.",
+  LONG_EPISODE_SCRIPT_BUDGET_EXCEEDED: "이번 달 OpenAI 예산을 초과하여 요청을 보내지 않았습니다. 비용은 청구되지 않았습니다.",
+  LONG_EPISODE_SCRIPT_PROVIDER_ERROR: "대본 생성 요청이 실패했습니다. 잠시 후 다시 시도해 주세요.",
+};
+
 const LONG_EPISODE_NARRATION_ERRORS: Record<string, string> = {
   LONG_EPISODE_NARRATION_NOT_ALLOWED: "이 에피소드는 아직 음성을 만들 수 있는 단계가 아닙니다. 대본을 먼저 만들어 주세요.",
   LONG_EPISODE_NARRATION_NOT_ENABLED: "장기 프로젝트 설정에서 \"음성 넣기\"를 먼저 켜야 음성을 만들 수 있습니다.",
@@ -201,6 +213,7 @@ export function toLongProjectDisplayError(error: unknown): { code: string; messa
   }
   if (Object.prototype.hasOwnProperty.call(LONG_EPISODE_MERGE_ERRORS, error.code)) return { code: error.code, message: LONG_EPISODE_MERGE_ERRORS[error.code]! };
   if (Object.prototype.hasOwnProperty.call(LONG_EPISODE_CONTINUITY_ERRORS, error.code)) return { code: error.code, message: LONG_EPISODE_CONTINUITY_ERRORS[error.code]! };
+  if (Object.prototype.hasOwnProperty.call(LONG_TEXT_GENERATION_ERRORS, error.code)) return { code: error.code, message: LONG_TEXT_GENERATION_ERRORS[error.code]! };
   if (Object.prototype.hasOwnProperty.call(LONG_EPISODE_NARRATION_ERRORS, error.code)) return { code: error.code, message: LONG_EPISODE_NARRATION_ERRORS[error.code]! };
   if (error.code === "LONG_EPISODE_NARRATION_PROVIDER_ERROR") {
     const category = typeof error.details?.category === "string" ? error.details.category : "";

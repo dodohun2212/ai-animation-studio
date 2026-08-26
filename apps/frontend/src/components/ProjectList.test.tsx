@@ -12,6 +12,38 @@ describe("ProjectList", () => {
     vi.unstubAllGlobals();
   });
 
+  it("counts the projects waiting on the user, which is the whole point of the summary line", async () => {
+    // Python kept this line pinned to the bottom of its window (ui.py's footer_status) and it answers one
+    // question without scrolling: is anything waiting on me. Two of these three projects are mid-flight and
+    // only one is actually waiting for a confirmation, so a naive "not finished" count would say two.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { projects: [
+      makeProject({ id: "a", workflowState: WorkflowState.WaitingForVideoConfirmation }),
+      makeProject({ id: "b", workflowState: WorkflowState.GeneratingImages }),
+      makeProject({ id: "c", workflowState: WorkflowState.Completed }),
+    ] })));
+    render(<ProjectList refreshToken={0} onOpenProject={() => {}} onCreateNew={() => {}} />);
+
+    const summary = await screen.findByTestId("dashboard-summary");
+    expect(summary.textContent).toContain("단기 프로젝트 3개");
+    expect(screen.getByTestId("dashboard-waiting-count").textContent).toContain("영상 생성 확인 대기 1개");
+  });
+
+  it("renders the summary without reading credential status", async () => {
+    // Python's version of this line also showed the OpenAI key state. This one does not, on purpose:
+    // App.test.tsx pins in two separate tests that browsing the project list never calls
+    // /settings/providers, and reading credentials as a side effect of navigation is the wrong trade. The
+    // stub throws on any other route, so a re-added fetch fails here instead of silently in App.test.
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) !== "/projects") throw new Error(`Unexpected fetch: ${String(input)}`);
+      return jsonResponse(200, { projects: [makeProject({ id: "a", workflowState: WorkflowState.Ready })] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ProjectList refreshToken={0} onOpenProject={() => {}} onCreateNew={() => {}} />);
+
+    expect((await screen.findByTestId("dashboard-summary")).textContent).toContain("단기 프로젝트 1개");
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(["/projects"]);
+  });
+
   it("shows a loading state, then an empty-store message", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { projects: [] })));
     render(<ProjectList refreshToken={0} onOpenProject={() => {}} onCreateNew={() => {}} />);
