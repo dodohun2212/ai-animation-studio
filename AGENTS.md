@@ -66,13 +66,13 @@ server deployment and user accounts without implementing those features now.
 
 ```text
 주제 및 프로젝트 설정
-→ 대본과 정확히 6개 장면 생성
-→ 장면 이미지 6장 생성
+→ 대본과 설정한 장면 수(2~12)만큼 장면 생성
+→ 장면 수만큼 이미지 생성
 → 사용자 이미지 검토
 → Runway 프롬프트와 예상 비용 확인·수정
 → 사용자의 명시적 전송 승인
 → 장면 영상 순차 생성
-→ 사용자 영상 검토 및 6개 장면 사용 확정
+→ 사용자 영상 검토 및 모든 장면 사용 확정
 → FFmpeg 순서 병합
 → Instagram Reels용 최종 MP4
 ```
