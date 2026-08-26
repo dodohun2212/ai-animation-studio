@@ -23,10 +23,16 @@ export function sceneValue(scene: unknown, key: string): string {
  * ShortProjectSettings.styleNotes/style_profile to draw from, but LongProjectSettings has no equivalent visual-
  * style fields today, so a Long Episode caller simply passes "".
  *
+ * `referenceNotes` is likewise a caller-supplied, already-formatted block (see
+ * image-reference-selection.ts's describeReferenceMappingsForScene) appended when non-empty — text for the same
+ * confirmed Asset Mappings whose image bytes collectReferenceImages sends alongside this prompt. Without it, the
+ * model receives a reference photo with no name or description attached to it, and anything a photo alone
+ * cannot convey (a stated personality, a Folder child's individual note) never reaches the model at all.
+ *
  * No length truncation: OpenAI's image prompt limit (32,000 chars) is far larger than anything a single scene's
  * fields could reach.
  */
-export function imagePromptFor(scene: unknown, styleLine: string): string {
+export function imagePromptFor(scene: unknown, styleLine: string, referenceNotes = ""): string {
   const sections: Array<[string, string]> = [
     ["Scene", sceneValue(scene, "visual_action")],
     ["Shot", [sceneValue(scene, "shot_size"), sceneValue(scene, "camera_angle")].filter(Boolean).join(", ")],
@@ -35,6 +41,7 @@ export function imagePromptFor(scene: unknown, styleLine: string): string {
     ["Focus", sceneValue(scene, "focus_subject")],
   ];
   const lines = sections.filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`);
+  if (referenceNotes) lines.push(referenceNotes);
   if (styleLine) lines.push(styleLine);
   return lines.join("\n");
 }

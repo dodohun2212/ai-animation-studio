@@ -14,7 +14,7 @@ import { ProviderSettingsService } from "../settings/provider-settings.service.j
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OpenAiAdapterError } from "../providers/openai-common.js";
 import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "./openai-image-adapter.js";
-import { collectReferenceImages } from "./image-reference-selection.js";
+import { collectReferenceImages, describeReferenceMappingsForScene } from "./image-reference-selection.js";
 import { imagePromptFor, sceneValue, styleLineFor } from "./image-prompt.js";
 import { previousSceneContinuityImagePath } from "../projects/project-continuity.js";
 import { imageBudgetExceeded, imageContentUnavailable, imageGenerationFailed, imageGenerationNotAllowed, imageProviderError, imageStorageError, invalidImageRequest, mappingReviewRequired } from "./image-api.error.js";
@@ -120,7 +120,8 @@ export class LocalImageGenerationService {
           reused.push(number);
           continue;
         }
-        const prompt = imagePromptFor(current.scenes[number - 1], styleLine);
+        const referenceNotes = await describeReferenceMappingsForScene(this.assets, mappings, number);
+        const prompt = imagePromptFor(current.scenes[number - 1], styleLine, referenceNotes);
         let bytes: Buffer = PNG;
         let adapter = "local-fake-image-adapter";
         let apiCalls = 0;

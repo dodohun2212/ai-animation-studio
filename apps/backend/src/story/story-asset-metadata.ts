@@ -16,7 +16,7 @@ const STORY_ASSET_TYPE_LABELS: Record<AssetType, string> = {
  * `description` so both reach the prompt — the Folder's common description plus each child's individual one.
  * Returns `[]` for a non-Folder Asset or a Folder with no described children.
  */
-async function folderChildDescriptions(
+export async function folderChildDescriptions(
   assets: LocalAssetsRepository | undefined,
   asset: { is_folder: boolean; child_asset_ids: string[] } | null | undefined,
 ): Promise<string[]> {

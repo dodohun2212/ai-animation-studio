@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { StoredAssetMapping } from "../mappings/mapping-storage.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
-import { collectReferenceImages } from "./image-reference-selection.js";
+import { collectReferenceImages, describeReferenceMappingsForScene } from "./image-reference-selection.js";
 
 const pngA = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 const pngB = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
@@ -49,5 +49,53 @@ describe("collectReferenceImages with a Folder mapping", () => {
 
     const results = await collectReferenceImages(assets, [mapping], path.join(root, "projects"), "p1", 1, null);
     expect(results).toEqual([]);
+  });
+});
+
+describe("describeReferenceMappingsForScene", () => {
+  it("describes a non-Folder mapping's name, usage role, and description", async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "image-reference-selection-"));
+    const assets = new LocalAssetsRepository(root);
+    const asset = await assets.create({ buffer: pngA, originalname: "hero.png" }, { assetType: "character", displayName: "이배드", description: "은발 단발, 왼쪽 눈 흉터" });
+    const mapping = fixtureMapping({ asset_id: asset.asset_id, usage_role: "character" });
+
+    const result = await describeReferenceMappingsForScene(assets, [mapping], 1);
+
+    expect(result).toBe("References:\n- 이배드 (character)\n  설명: 은발 단발, 왼쪽 눈 흉터");
+  });
+
+  it("adds a Folder's own description plus each described child's individual one", async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "image-reference-selection-"));
+    const assets = new LocalAssetsRepository(root);
+    const folder = await assets.createFolder({ assetType: "character", displayName: "이배드", description: "근미래 방랑자" });
+    const child = await assets.create({ buffer: pngA, originalname: "front.png" }, { assetType: "character", displayName: "정면", description: "정면 샷, 흉터 보임" });
+    await assets.setParentFolder(child.asset_id, folder.asset_id);
+    const mapping = fixtureMapping({ asset_id: folder.asset_id, usage_role: "character", version_policy: "follow_latest", pinned_version: null });
+
+    const result = await describeReferenceMappingsForScene(assets, [mapping], 1);
+
+    expect(result).toBe("References:\n- 이배드 (character)\n  설명: 근미래 방랑자\n  하위 이미지별 개별 특징: 정면: 정면 샷, 흉터 보임");
+  });
+
+  it("falls back to the Asset's own type when usage_role is blank, and to a placeholder when description is blank", async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "image-reference-selection-"));
+    const assets = new LocalAssetsRepository(root);
+    const asset = await assets.create({ buffer: pngA, originalname: "city.png" }, { assetType: "background", displayName: "폐허 기록관" });
+    const mapping = fixtureMapping({ asset_id: asset.asset_id, usage_role: " " });
+
+    const result = await describeReferenceMappingsForScene(assets, [mapping], 1);
+
+    expect(result).toBe("References:\n- 폐허 기록관 (background)\n  설명: 별도 설명 없음");
+  });
+
+  it("returns an empty string when no confirmed mapping is in scope for the scene, without an empty References heading", async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "image-reference-selection-"));
+    const assets = new LocalAssetsRepository(root);
+    const asset = await assets.create({ buffer: pngA, originalname: "hero.png" }, { assetType: "character", displayName: "이배드", description: "설명" });
+    const outOfScope = fixtureMapping({ asset_id: asset.asset_id, scene_scope: { mode: "scene", scene: 2 } });
+    const unconfirmed = fixtureMapping({ asset_id: asset.asset_id, status: "suggested" });
+
+    expect(await describeReferenceMappingsForScene(assets, [outOfScope, unconfirmed], 1)).toBe("");
+    expect(await describeReferenceMappingsForScene(assets, [], 1)).toBe("");
   });
 });

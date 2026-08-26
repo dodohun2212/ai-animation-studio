@@ -27,7 +27,7 @@ import { ProviderSettingsService } from "../settings/provider-settings.service.j
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "./openai-image-adapter.js";
-import { collectReferenceImages } from "./image-reference-selection.js";
+import { collectReferenceImages, describeReferenceMappingsForScene } from "./image-reference-selection.js";
 import { imagePromptFor, styleLineFor } from "./image-prompt.js";
 import { previousSceneContinuityImagePath } from "../projects/project-continuity.js";
 import { computeSceneStaleness } from "../projects/scene-staleness.js";
@@ -235,9 +235,10 @@ export class ImageReviewService {
     let apiCalls = 0;
     let retryEstimate: RegenerateImageReviewResponse["retryEstimate"];
     if (apiKey && this.budget) {
-      const basePrompt = imagePromptFor(project.scenes[number - 1], styleLineFor(project));
-      const prompt = additionalInstruction ? `${basePrompt}\n${additionalInstruction}` : basePrompt;
       const mappings = await this.mappings.load(project.project_id);
+      const referenceNotes = await describeReferenceMappingsForScene(this.assets, mappings, number);
+      const basePrompt = imagePromptFor(project.scenes[number - 1], styleLineFor(project), referenceNotes);
+      const prompt = additionalInstruction ? `${basePrompt}\n${additionalInstruction}` : basePrompt;
       const continuityImagePath = previousSceneContinuityImagePath(project);
       const references = await collectReferenceImages(this.assets, mappings, this.projectsRoot, project.project_id, number, continuityImagePath);
       try {
