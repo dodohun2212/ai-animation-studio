@@ -1119,4 +1119,11 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 검증: root typecheck(shared 재빌드 후, backend+desktop+frontend 전부 통과), Backend 654 통과(+4 순증, 무관한 사전 존재 실패 2건은 그대로 — Round 100에 전문), root build 전부 통과. 유료 Provider 호출 없음.
   - **주의**: 검증 중 `apps/frontend/src/components/ImageGenerationScreen.tsx`/`.test.tsx`에 Cowork의 별개 작업(생성 진행률 표시 UI)이 디스크에 올라와 있던 것을 발견 — 이번 커밋 범위에 포함하지 않고 그대로 둠(`.claude-bridge`에 보고).
   - 커밋: `859d96f`.
+- [x] **🔴🔴 백엔드 — 실제 사용자 프로젝트가 `GENERATING_IMAGES`에 갇혀 있었다(실사용 중 발견, `.claude-bridge` Round 129)**: 사용자가 이미지 생성을 시작한 뒤 서버가 중간에 내려가면서, 6장 중 3장(실제 유료 호출, 약 $0.30)은 이미 만들어져 디스크에 있는데 프로젝트가 `GENERATING_IMAGES`에 영구히 갇힌 실제 사례를 Cowork가 발견해 보고. 원인: 이 상태를 벗어나는 코드가 `local-image-generation.service.ts`의 `generate()` 자체가 던지는 JS 예외를 잡는 catch 블록 하나뿐이라, 프로세스가 예외 없이 그냥 죽으면(서버 종료 등) 되돌릴 방법이 앱 어디에도 없었음 — `GENERATING_STORY`/`GENERATING_VIDEOS`/`RENDERING`도 각자의 진행 루프 하나에만 복구를 의존하는 같은 구조라 동일한 위험이 있음을 확인.
+  - **해결**: 이 앱은 설치당 로컬 프로세스 1개로만 동작(클러스터·다중 인스턴스 없음)하므로, 새 프로세스가 뜨는 시점에 이 네 "생성 중" 상태 중 하나에 있는 프로젝트는 무조건 고아 상태라는 판정이 항상 안전하다(Cowork의 두 제안 중 시간 임계값이 필요 없는 2번 채택). `OrphanedGenerationRecoveryService`(`OnApplicationBootstrap`) 신설 — 서버 시작마다 각 프로젝트를 검사해 그 생성 루프가 원래 시작했던 상태로 되돌림: `GENERATING_STORY`→`READY`(기존 `StoryPromptService`의 실패 시 복구와 동일), `GENERATING_IMAGES`→`ASSET_MAPPING_APPROVED`(재클릭 시 이미 만들어진 장면은 `generate()`가 이미 무료로 재사용함, 신규 코드 불필요), `GENERATING_VIDEOS`→`INTERRUPTED`(기존 "이어서 생성"/`restart()` 재개 흐름을 그대로 재사용 — 새 UI 불필요), `RENDERING`→`VIDEOS_APPROVED`(로컬 병합은 저장된 진행분이 없고 Provider 비용도 없어 재시도만 허용하면 됨). 이미 만들어진 파일·기록은 그대로 두고, `project.warnings`에 한국어 안내를 추가해 `ProjectDetail`의 기존 경고 배너로 노출(사용자에게 무슨 일이 있었는지 화면에서 바로 보임).
+  - **의도적으로 범위에서 뺀 것**: 장기 프로젝트(Long Episode)의 회차별 생성 루프도 같은 단일 프로세스 위험을 가질 가능성이 높지만, 이번 라운드는 짧은 프로젝트 쪽만 조사·수정했다 — 별도 확인이 필요함을 보고에 남김.
+  - 신규 테스트 3건(`orphaned-generation-recovery.service.test.ts`): 네 상태 전부 정확히 되돌아가고 이미 만들어진 결과물은 그대로인지, 해당 없는 프로젝트는 안 건드리는지, 재실행해도 멱등인지.
+  - **검증 중 걸림돌**: 새 파일의 주석에 "ffmpeg"이라는 단어가 있어서 이 디렉터리(`apps/backend/src/projects/`) 전체에 Provider/프로세스 도구 언급을 금지하는 기존 가드 테스트(`projects.no-provider-calls.test.ts` — 주석도 grep 대상)에 걸림. 단어를 우회해서 서술하는 쪽으로 수정(이번 세션에 Cowork가 credential 가드에서 겪은 것과 동일한 패턴).
+  - 검증: root typecheck 전부 통과, Backend 657 통과(+3 순증, 무관한 사전 존재 실패 2건은 그대로 — Round 100에 전문), root build 전부 통과. 유료 Provider 호출 없음.
+  - 커밋: `a6f258d`.
 
