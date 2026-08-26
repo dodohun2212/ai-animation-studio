@@ -65,11 +65,19 @@ export class RunwayBudget {
     }
   }
 
-  async record(projectId: string, sceneNumber: number, apiType: string, succeeded: boolean, estimatedCostUsd: number, now = new Date()): Promise<void> {
+  /**
+   * `actualCostUsd` defaults to the estimate (every existing caller relies on this): once a task has actually
+   * started, Runway may have done paid work even on a failure, so the conservative estimate stands in for the
+   * real (unknowable to us) cost. It must be passed explicitly as 0 for a submission Runway rejected outright
+   * (a 4xx before any task existed) — nothing was ever run, so nothing was ever billed, and recording the
+   * estimate there let repeated submission failures (e.g. an exhausted Runway credit balance, `.claude-bridge`
+   * Round 144) eat the monthly budget for calls Runway never actually charged.
+   */
+  async record(projectId: string, sceneNumber: number, apiType: string, succeeded: boolean, estimatedCostUsd: number, now = new Date(), actualCostUsd: number = estimatedCostUsd): Promise<void> {
     const records = await this.load();
     records.push({
       timestamp: now.toISOString(), project_id: projectId, scene_number: sceneNumber, api_type: apiType,
-      estimated_cost_usd: estimatedCostUsd, actual_cost_usd: estimatedCostUsd, succeeded,
+      estimated_cost_usd: estimatedCostUsd, actual_cost_usd: actualCostUsd, succeeded,
     });
     await fs.mkdir(path.dirname(this.filePath), { recursive: true }).catch(() => undefined);
     await atomicWriteUtf8File(this.filePath, JSON.stringify(records, null, 2));

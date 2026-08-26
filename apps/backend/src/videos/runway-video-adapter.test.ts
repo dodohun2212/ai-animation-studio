@@ -98,6 +98,18 @@ describe("createRunwayImageToVideoTask", () => {
     }
   });
 
+  it("reclassifies a credit-shortage 400 as quota_or_permission instead of invalid_request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(400, { error: "You do not have enough credits to run this task." }));
+    await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "p", { fetchImpl: fetchMock, sleep: noSleep }))
+      .rejects.toMatchObject({ category: "quota_or_permission", detail: "You do not have enough credits to run this task." });
+  });
+
+  it("leaves a 400 with no credit/quota wording classified as invalid_request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(400, { error: "prompt is malformed" }));
+    await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "p", { fetchImpl: fetchMock, sleep: noSleep }))
+      .rejects.toMatchObject({ category: "invalid_request" });
+  });
+
   it("leaves detail undefined rather than throwing when the rejected response has no readable message", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(400, { code: "bad_request" })); // no error/message field
     try {

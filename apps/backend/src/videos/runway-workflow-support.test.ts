@@ -48,7 +48,11 @@ describe("advanceRunwayScene", () => {
     // sceneErrorMessage's exact-match-only lookup, which falls back to a generic message for anything outside
     // the known bare-category set, this string included).
     expect(result).toEqual({ kind: "failed", sceneNumber: 1, error: "authentication: invalid api key" });
-    expect(budget.record).toHaveBeenCalledWith("p1", 1, "video", false, 0.25);
+    // No Runway task was ever created — a rejected submission bills nothing, so actualCostUsd is 0 even though
+    // the estimate stays 0.25 (the failure is still visible in the ledger, just not counted toward the month).
+    const [, , , , estimatedCostUsd, , actualCostUsd] = (budget.record as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(estimatedCostUsd).toBe(0.25);
+    expect(actualCostUsd).toBe(0);
   });
 
   it("records only the bare category when Runway's rejected response has no readable detail", async () => {
@@ -59,6 +63,19 @@ describe("advanceRunwayScene", () => {
       budget, adapterOptions: { fetchImpl, sleep: noSleep, maxRetries: 0 },
     });
     expect(result).toEqual({ kind: "failed", sceneNumber: 1, error: "authentication" });
+  });
+
+  it("reclassifies a credit-shortage rejection to quota_or_permission even though Runway answers with a plain 400", async () => {
+    // The real incident this covers (`.claude-bridge` Round 143/144): Runway rejected scene 1 with a bare 400,
+    // classified as invalid_request and told the user to check their prompt — the actual cause, confirmed only
+    // once `detail` started being recorded, was an empty Runway credit balance.
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(400, { error: "You do not have enough credits to run this task." }));
+    const budget = fakeBudget();
+    const result = await advanceRunwayScene(sixScenes(), input, {
+      apiSecret: "secret", projectId: "p1", apiType: "video", estimatedCostPerSceneUsd: 0.25,
+      budget, adapterOptions: { fetchImpl, sleep: noSleep, maxRetries: 0 },
+    });
+    expect(result).toEqual({ kind: "failed", sceneNumber: 1, error: "quota_or_permission: You do not have enough credits to run this task." });
   });
 
   it("does not call Runway at all when the running scene was checked within the poll interval", async () => {

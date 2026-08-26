@@ -25,7 +25,8 @@ export interface RunwaySceneInput {
 
 export interface RunwayAdvanceBudget {
   preflight(estimatedCostUsd: number): Promise<void>;
-  record(projectId: string, sceneNumber: SceneNumber, apiType: string, succeeded: boolean, estimatedCostUsd: number): Promise<void>;
+  /** `actualCostUsd` (after `now`) defaults to `estimatedCostUsd` — see RunwayBudget.record's doc comment for when it must be passed as 0. */
+  record(projectId: string, sceneNumber: SceneNumber, apiType: string, succeeded: boolean, estimatedCostUsd: number, now?: Date, actualCostUsd?: number): Promise<void>;
 }
 
 export interface RunwayAdapterCallOptions {
@@ -145,8 +146,9 @@ export async function advanceRunwayScene(
   } catch (error) {
     // A submission-time failure (bad key, rejected prompt/image, Runway outage, ...) must become a failed scene
     // like every other failure path here — otherwise it would propagate uncaught out of advanceRunwayScene and
-    // the scene would silently stay "created" forever with nothing for the user to act on.
-    await deps.budget.record(deps.projectId, next.sceneNumber, deps.apiType, false, deps.estimatedCostPerSceneUsd).catch(() => undefined);
+    // the scene would silently stay "created" forever with nothing for the user to act on. No task was ever
+    // created, so nothing was ever billed — actualCostUsd 0 keeps the failure visible without eating the budget.
+    await deps.budget.record(deps.projectId, next.sceneNumber, deps.apiType, false, deps.estimatedCostPerSceneUsd, new Date(), 0).catch(() => undefined);
     const code = error instanceof RunwayAdapterError ? error.category : "unknown";
     // `detail`, when Runway's rejected response carried one, is never shown to the user — it only makes the
     // persisted record diagnosable without reproducing the paid call (see RunwayAdapterError's doc comment).

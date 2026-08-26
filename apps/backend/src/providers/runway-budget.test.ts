@@ -33,6 +33,17 @@ describe("RunwayBudget", () => {
     await expect(fs.access(path.join(root, "api_budget_usage.json"))).rejects.toThrow();
   });
 
+  it("records actual cost as 0 when told the submission was rejected outright, keeping the failure visible without spending monthly budget", async () => {
+    const root = await makeRoot();
+    const budget = new RunwayBudget(root, 10);
+    const now = new Date("2026-08-22T00:00:00.000Z");
+    await budget.record("p1", 1, "video", false, 0.25, now, 0);
+
+    expect(await budget.spentThisMonth(now)).toBe(0);
+    const raw = JSON.parse(await fs.readFile(path.join(root, "runway_budget_usage.json"), "utf8")) as Array<Record<string, unknown>>;
+    expect(raw).toEqual([expect.objectContaining({ project_id: "p1", scene_number: 1, estimated_cost_usd: 0.25, actual_cost_usd: 0, succeeded: false })]);
+  });
+
   it("only counts usage from the current UTC month", async () => {
     const root = await makeRoot();
     const budget = new RunwayBudget(root, 10);

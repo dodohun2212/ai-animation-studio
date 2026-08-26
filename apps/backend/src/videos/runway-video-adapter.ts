@@ -15,11 +15,12 @@ const MAX_DATA_URI_BYTES = 5 * 1024 * 1024;
 const DEFAULT_MAX_RETRIES = 2;
 const MAX_BACKOFF_SECONDS = 4;
 
-export type RunwayErrorCategory = "authentication" | "permission" | "rate_limit" | "invalid_request" | "server" | "network" | "unknown";
+export type RunwayErrorCategory = "authentication" | "permission" | "quota_or_permission" | "rate_limit" | "invalid_request" | "server" | "network" | "unknown";
 
 const RUNWAY_KOREAN_MESSAGES: Record<RunwayErrorCategory, string> = {
   authentication: "Runway API 키 인증에 실패했습니다.",
   permission: "Runway 프로젝트 권한을 확인하세요.",
+  quota_or_permission: "Runway 크레딧이 부족합니다. Runway 계정에서 크레딧을 충전한 뒤 다시 시도하세요.",
   rate_limit: "Runway 요청 한도를 초과했습니다. 잠시 후 다시 시도하세요.",
   invalid_request: "Runway 요청이 거부되었습니다. 모델, 비율 또는 프롬프트를 확인하세요.",
   server: "Runway 서버의 일시적인 오류가 반복되었습니다.",
@@ -84,6 +85,20 @@ async function errorDetailFrom(response: Response): Promise<string | undefined> 
   return trimmed ? trimmed.slice(0, 500) : undefined;
 }
 
+/**
+ * A credit-shortage rejection has no dedicated Runway status code — the real incident this reclassifies (Round
+ * 143/144) was a plain 400 whose body read "You do not have enough credits to run this task.", indistinguishable
+ * by status alone from any other invalid_request. Refines the status-based category using the same body already
+ * read for `detail`, once, only on the throw path (never on a retryable response, which never reaches here).
+ */
+function refineCategory(statusCategory: RunwayErrorCategory, detail: string | undefined): RunwayErrorCategory {
+  const lower = detail?.toLowerCase() ?? "";
+  if ((statusCategory === "invalid_request" || statusCategory === "permission") && (lower.includes("credit") || lower.includes("insufficient_quota") || lower.includes("quota"))) {
+    return "quota_or_permission";
+  }
+  return statusCategory;
+}
+
 async function requestWithRetry(url: string, init: RequestInit, options: RetryOptions): Promise<Response> {
   const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -100,7 +115,10 @@ async function requestWithRetry(url: string, init: RequestInit, options: RetryOp
     }
     if (response.ok) return response;
     const category = classifyStatus(response.status);
-    if (!RETRYABLE.has(category) || attempt >= maxRetries) throw new RunwayAdapterError(category, undefined, await errorDetailFrom(response));
+    if (!RETRYABLE.has(category) || attempt >= maxRetries) {
+      const detail = await errorDetailFrom(response);
+      throw new RunwayAdapterError(refineCategory(category, detail), undefined, detail);
+    }
     const retryAfter = Number(response.headers.get("retry-after"));
     await sleep(Math.max(0, Math.min(MAX_BACKOFF_SECONDS, Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 0.5 * 2 ** attempt)));
     attempt += 1;
