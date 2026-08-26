@@ -1174,4 +1174,11 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 신규/수정 테스트 6건(`runway-video-adapter.test.ts` 2건, `runway-workflow-support.test.ts` 3건, `runway-budget.test.ts` 1건).
   - 검증: root typecheck 전부 통과, Backend 678 통과(+4 순증, 무관한 사전 존재 실패 2건은 그대로 — Round 100에 전문), root build 전부 통과. 유료 Provider 호출 없음.
   - 커밋: `5957da0`.
+- [x] **🔴🔴 백엔드 — Runway 영상 제출이 이중으로 나가고 있었음(실사용 중 발견, 유료 이중 청구, `.claude-bridge` Round 145)**: 사용자가 Runway 대시보드 API 로그를 직접 확인해 "같은 초에 POST 2번 → task 1개만 폴링"이 대부분 장면에서(때로는 몇 시간 간격으로) 반복되는 걸 발견 — Runway는 둘 다 과금하는데 우리 기록엔 성공한 task 하나만 남아 있어서 아무도 못 봤던 버그.
+  - **조사**: Cowork가 제시한 in-process 경합 후보 3개(`advanceReal`의 `advancing` Set 가드가 뚫리는 경로)를 먼저 검증 — `run()`/`getProgress()`/타이머 틱이 실제 Promise 인터리빙(가짜 타이머 아님)으로 동시에 부딪히는 재현 하네스를 만들어 6장면 전체 흐름 동안 집중 폴링까지 걸어봤지만 가드가 모든 경우에 버텼다 — 가드 자체는 원인이 아님을 확인.
+  - **실제 원인**: `requestWithRetry()`가 네트워크 수준 실패(타임아웃·연결 끊김)나 429/5xx를 만나면 **작업 생성 POST까지 그대로 재시도**하고 있었다 — `fetch`가 예외를 던진다는 건 "응답을 못 받았다"는 뜻이지 "Runway가 요청을 못 받았다"는 뜻이 아닌데, 이 구분 없이 재시도하면 Runway 쪽엔 이미 만들어진 진짜 task가 있는 채로 우리가 새 task를 하나 더 만들 수 있다 — 우리는 나중에 받은 응답의 taskId만 기억하니 먼저 만든 쪽은 그대로 버려지고 청구만 남는다. `createRunwayImageToVideoTask()`가 호출자가 뭘 넘기든 `maxRetries: 0`으로 강제하도록 수정 — 작업 생성은 멱등이 아니라서 자동 재시도가 원천적으로 안전하지 않음. `getRunwayTask`/`downloadRunwayOutput`(둘 다 안전한 GET)은 그대로 재시도 유지.
+  - **2차 방어선(Cowork 제안 그대로)**: `applyRunwayAdvance`의 "submitted" 분기가 저장 직전에 프로젝트를 다시 읽어, 그 사이 다른 advance가 이미 해당 장면을 "created"에서 벗어나게 했다면(방금 만든 진짜 청구된 task를 잃어버리게 됨) 조용히 덮어쓰지 않고 평문 한국어 경고(원시 task id 없음)만 남기고 기존 기록은 그대로 둔다 — 근본 원인을 못 잡았더라도 다음엔 우리 데이터만으로 보이게.
+  - 신규/수정 테스트 5건(`runway-video-adapter.test.ts` 3건 갱신 — 재시도 요청해도 무시됨 확인, `local-video-workflow.runway.test.ts` 1건 신규 — 지연된 fetch 응답으로 경합 재현해 경고·미덮어쓰기 확인).
+  - 검증: root typecheck 전부 통과, Backend 679 통과(+1 순증, 무관한 사전 존재 실패 2건은 그대로 — Round 100에 전문), root build 전부 통과. 유료 Provider 호출 없음.
+  - 커밋: `c85bd6c`.
 
