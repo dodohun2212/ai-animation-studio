@@ -63,6 +63,14 @@ describe("toApiSummary / toApiProject", () => {
     expect("narration" in project.scenes[1]!).toBe(false);
   });
 
+  it("drops a stale orphaned-generation recovery warning once the project has moved past the step it was about, keeping any other warning untouched", () => {
+    const stored = createStoredProject("sample_project", "topic", "2026-08-21T00:00:00.000Z");
+    stored.warnings = ["이전에 이미지를 만들다가 서버가 꺼져서 중간에 멈췄습니다. 이미 만들어진 것은 그대로 있고, 이어서 다시 만들 수 있습니다.", "다른 이유로 남은 경고"];
+    stored.workflow_state = WorkflowState.ImagesReview;
+
+    expect(toApiProject(stored).warnings).toEqual(["다른 이유로 남은 경고"]);
+  });
+
   it("computes script from each scene's description, motionPrompt/generatedImagePath/generatedVideoPath from the index-aligned arrays, and omits them when absent", () => {
     const stored = createStoredProject("sample_project", "topic", "2026-08-21T00:00:00.000Z");
     stored.scenes = [{ number: 1, description: "scene one text" }, { number: 2, description: "scene two text" }];

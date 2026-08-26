@@ -44,6 +44,39 @@ const RECOVERY_TARGETS: ReadonlyMap<string, WorkflowState> = new Map([
   [WorkflowState.Rendering, WorkflowState.VideosApproved],
 ]);
 
+/**
+ * Plain language only, no `WorkflowState` value anywhere in the text — a project stuck in `GENERATING_IMAGES`
+ * being reverted to `ASSET_MAPPING_APPROVED` told a real user exactly that in those words, and they had no way
+ * to know what either name meant (`.claude-bridge` Round 137). The frontend already solved this once for a
+ * different string (`workflowStateLabel`), but a backend-composed sentence can't be patched into shape by a
+ * frontend label lookup after the fact — the fix has to be to never put the raw name in text in the first place.
+ */
+const RECOVERY_MESSAGES: ReadonlyMap<string, string> = new Map([
+  [WorkflowState.GeneratingStory, "이전에 대본을 만들다가 서버가 꺼져서 중간에 멈췄습니다. 다시 시도할 수 있습니다."],
+  [WorkflowState.GeneratingImages, "이전에 이미지를 만들다가 서버가 꺼져서 중간에 멈췄습니다. 이미 만들어진 것은 그대로 있고, 이어서 다시 만들 수 있습니다."],
+  [WorkflowState.GeneratingVideos, "이전에 영상을 만들다가 서버가 꺼져서 중간에 멈췄습니다. 이미 만들어진 것은 그대로 있고, 이어서 다시 만들 수 있습니다."],
+  [WorkflowState.Rendering, "이전에 최종 영상을 합치다가 서버가 꺼져서 중간에 멈췄습니다. 다시 시도할 수 있습니다."],
+]);
+
+/**
+ * A recovery message stays true only while the project is still somewhere between the state it was reset to and
+ * the state it was reset from (re-running the same step lands back in the "from" state, still unresolved; any
+ * other state means that work has since actually finished, or the project moved on some other way). Used both
+ * to decide whether to keep re-adding the same message (recoverAll below) and, read-only, to hide a stale one
+ * from the API without needing to touch every downstream service that might resolve it (project.mapper.ts).
+ */
+export function isRecoveryMessageStillRelevant(message: string, currentState: string): boolean {
+  for (const [fromState, text] of RECOVERY_MESSAGES) {
+    if (text === message) return currentState === fromState || currentState === RECOVERY_TARGETS.get(fromState);
+  }
+  return true; // Not one of ours — never filter a message this service did not write.
+}
+
+/** Drops this service's own recovery messages once they no longer apply to `currentState`; every other warning (including any this service didn't write) passes through untouched. */
+export function withoutStaleRecoveryWarnings(warnings: readonly string[], currentState: string): string[] {
+  return warnings.filter((message) => isRecoveryMessageStillRelevant(message, currentState));
+}
+
 @Injectable()
 export class OrphanedGenerationRecoveryService implements OnApplicationBootstrap {
   private readonly logger = new Logger(OrphanedGenerationRecoveryService.name);
@@ -64,14 +97,13 @@ export class OrphanedGenerationRecoveryService implements OnApplicationBootstrap
     for (const project of projects) {
       const target = RECOVERY_TARGETS.get(project.workflow_state);
       if (!target) continue;
+      const message = RECOVERY_MESSAGES.get(project.workflow_state)!;
       const updated: StoredProject = {
         ...project,
         workflow_state: target,
         updated_at: new Date().toISOString(),
-        warnings: [
-          ...project.warnings,
-          `이전 실행이 ${project.workflow_state} 상태에서 응답 없이 종료되어, 서버 시작 시 ${target} 상태로 되돌렸습니다. 이미 만들어진 결과물은 그대로 남아 있습니다.`,
-        ],
+        // Never stack the same sentence twice — a project crashing mid-run repeatedly must still show one line, not one per crash.
+        warnings: project.warnings.includes(message) ? project.warnings : [...project.warnings, message],
       };
       try {
         await this.projects.save(updated);

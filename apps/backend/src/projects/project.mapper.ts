@@ -3,6 +3,7 @@ import { WorkflowState, type Project, type ProjectSummary, type ProjectType, typ
 import { LEGACY_VIDEO_JOB_ID } from "../videos/legacy-job.js";
 
 import type { StoredProject } from "./project-storage.schema.js";
+import { withoutStaleRecoveryWarnings } from "./orphaned-generation-recovery.service.js";
 
 /**
  * Build a brand-new stored project with every Python `ProjectContext`
@@ -111,7 +112,7 @@ export function toApiProject(stored: StoredProject): Project {
     scenes: stored.scenes.map((scene, index) => toApiScene(scene, index, stored)),
     ...(stored.final_video_path !== null ? { finalVideoPath: stored.final_video_path } : {}),
     ...(jobId !== undefined ? { currentVideoJobId: jobId } : {}),
-    warnings: [...stored.warnings],
+    warnings: withoutStaleRecoveryWarnings(stored.warnings, stored.workflow_state),
     errors: [...stored.errors],
   };
 }
