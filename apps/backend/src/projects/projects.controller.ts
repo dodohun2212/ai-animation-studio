@@ -5,6 +5,7 @@ import {
   type CreateProjectResponse,
   type DeleteArchivedProjectRequest,
   type DeleteArchivedProjectResponse,
+  type GetPostDraftResponse,
   type GetProjectResponse,
   type GetProjectSettingsResponse,
   type GetShortProjectAssetReferencesResponse,
@@ -13,6 +14,7 @@ import {
   type ListArchivedProjectsResponse,
   type ListProjectsResponse,
   type ListShortProjectContinuityOptionsResponse,
+  type PutPostDraftResponse,
   type RestoreProjectResponse,
   type SetShortProjectContinuityResponse,
   type UpdateProjectSettingsRequest,
@@ -82,6 +84,16 @@ export class ProjectsController {
   @Put(`${API_ROUTES.projects}/:projectId/settings/asset-references`)
   updateAssetReferences(@Param("projectId") projectId: string, @Body() body: unknown): Promise<UpdateShortProjectAssetReferencesResponse> {
     return this.projectsService.updateProjectAssetReferences(projectId, body);
+  }
+
+  @Get(`${API_ROUTES.projects}/:projectId/post-draft`)
+  getPostDraft(@Param("projectId") projectId: string): Promise<GetPostDraftResponse> {
+    return this.projectsService.getProjectPostDraft(projectId);
+  }
+
+  @Put(`${API_ROUTES.projects}/:projectId/post-draft`)
+  updatePostDraft(@Param("projectId") projectId: string, @Body() body: unknown): Promise<PutPostDraftResponse> {
+    return this.projectsService.updateProjectPostDraft(projectId, body);
   }
 
   @Get(`${API_ROUTES.projects}/:projectId/settings/continuity-options`)

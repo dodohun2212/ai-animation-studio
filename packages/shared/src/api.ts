@@ -593,6 +593,22 @@ export type UpdateShortProjectAssetReferencesRequest = GetShortProjectAssetRefer
 export type UpdateShortProjectAssetReferencesResponse = GetShortProjectAssetReferencesResponse;
 
 /**
+ * A caption in progress on the Instagram post-prep screen, saved so a series creator whose hashtag set barely
+ * changes between episodes doesn't retype it every time. All fields optional — an unset one is simply blank on
+ * the screen, not an error. Never includes attribution text: that is always derived fresh from the current
+ * project's usedAudio, not saved, so an edited/deleted track can't leave a stale credit line sitting in a draft
+ * (`.claude-bridge` Round 178/179).
+ */
+export interface PostDraft {
+  body?: string;
+  hashtags?: string;
+  aiNotice?: boolean;
+}
+export type GetPostDraftResponse = PostDraft;
+export type PutPostDraftRequest = PostDraft;
+export type PutPostDraftResponse = PostDraft;
+
+/**
  * One other short project eligible to link as this project's Scene 1 continuity source, matching Python's
  * `short_scene_continuity_option`: its images must be approved (workflow state at video stage or later) and it
  * must have a full 6-scene script and 6 generated images. `storyContext` and the source image path are computed
@@ -1311,6 +1327,8 @@ export const API_ROUTES = {
     `/projects/${encodeURIComponent(projectId)}/settings/continuity-options`,
   projectContinuity: (projectId: string) =>
     `/projects/${encodeURIComponent(projectId)}/settings/continuity`,
+  projectPostDraft: (projectId: string) =>
+    `/projects/${encodeURIComponent(projectId)}/post-draft`,
   storyPromptPreview: (projectId: string) =>
     `/projects/${encodeURIComponent(projectId)}/story/preview`,
   storyPromptApproval: (projectId: string) =>

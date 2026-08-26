@@ -164,6 +164,23 @@ describe("ProjectsService", () => {
     expect(await service.getProjectAssetReferences("refs_project")).toEqual({ atmosphereAssetIds: [], sceneReferenceAssets: [] });
   });
 
+  it("returns an empty post draft for a project that has never saved one, saves one, and reopens it from a new backend instance", async () => {
+    await service.createProject({ projectId: "draft_project", topic: "topic" });
+    expect(await service.getProjectPostDraft("draft_project")).toEqual({});
+
+    const saved = await service.updateProjectPostDraft("draft_project", { body: "오늘의 영상입니다", hashtags: "#고양이", aiNotice: false });
+    expect(saved).toEqual({ body: "오늘의 영상입니다", hashtags: "#고양이", aiNotice: false });
+
+    const restarted = new ProjectsService(new LocalProjectRepository(root));
+    expect(await restarted.getProjectPostDraft("draft_project")).toEqual(saved);
+  });
+
+  it("rejects an invalid post draft field", async () => {
+    await service.createProject({ projectId: "draft_project", topic: "topic" });
+    await expect(service.updateProjectPostDraft("draft_project", { aiNotice: "yes" }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
   it("saves atmosphere and scene reference Asset selections, validates each Asset's type, and reopens them from a new backend instance", async () => {
     const assets = new LocalAssetsRepository(root);
     const withAssets = new ProjectsService(new LocalProjectRepository(root), assets);

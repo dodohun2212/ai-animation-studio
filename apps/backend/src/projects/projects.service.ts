@@ -7,6 +7,7 @@ import type {
   CreateProjectResponse,
   DeleteArchivedProjectRequest,
   DeleteArchivedProjectResponse,
+  GetPostDraftResponse,
   GetProjectResponse,
   GetProjectSettingsResponse,
   GetShortProjectAssetReferencesResponse,
@@ -15,6 +16,7 @@ import type {
   ListArchivedProjectsResponse,
   ListProjectsResponse,
   ListShortProjectContinuityOptionsResponse,
+  PutPostDraftResponse,
   RestoreProjectResponse,
   SetShortProjectContinuityRequest,
   SetShortProjectContinuityResponse,
@@ -29,6 +31,7 @@ import type {
 import { invalidRequest, projectArchiveCollision, projectArchiveNotAllowed, projectNotFound, projectRestoreCollision, storageError } from "./project-api.error.js";
 import { createStoredProject, toApiProject, toApiSummary } from "./project.mapper.js";
 import { applyShortProjectAssetReferences, parseShortProjectAssetReferences, toShortProjectAssetReferences } from "./project-asset-references.js";
+import { applyPostDraft, parsePostDraft, toPostDraft } from "./project-post-draft.js";
 import { applyShortProjectCast, parseShortProjectCast, toShortProjectCast } from "./project-cast.js";
 import { applyContinuityCandidate, listContinuityOptions, resolveContinuityCandidate, toShortProjectContinuityLink } from "./project-continuity.js";
 import { applyShortProjectSettings, parseShortProjectSettings, toShortProjectSettings } from "./project-settings.js";
@@ -212,6 +215,19 @@ export class ProjectsService {
       await syncAutoMappings(this.mappings, this.assets, updated.project_id, "auto_scene_reference", references.sceneReferenceAssets.map((member) => ({ assetId: member.assetId, usageRole: member.purpose })));
     }
     return references;
+  }
+
+  async getProjectPostDraft(projectId: string): Promise<GetPostDraftResponse> {
+    const stored = await this.repository.findById(projectId.trim());
+    return toPostDraft(stored);
+  }
+
+  async updateProjectPostDraft(projectId: string, request: unknown): Promise<PutPostDraftResponse> {
+    const stored = await this.repository.findById(projectId.trim());
+    const draft = parsePostDraft(request);
+    const updated = applyPostDraft(stored, draft, new Date().toISOString());
+    await this.repository.save(updated);
+    return draft;
   }
 
   async listProjectContinuityOptions(projectId: string): Promise<ListShortProjectContinuityOptionsResponse> {
