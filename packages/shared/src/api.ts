@@ -382,7 +382,11 @@ export interface GetLongProjectSettingsResponse { settings: LongProjectSettings;
 export interface UpdateLongProjectSettingsRequest { settings: LongProjectSettingsInput; }
 export interface UpdateLongProjectSettingsResponse { project: LongProject; }
 export interface LongProjectOutlinePromptPreview { projectId: string; prompt: string; promptSha256: string; episodeCount: number; }
-export interface CreateLongProjectOutlinePreviewResponse { preview: LongProjectOutlinePromptPreview; }
+export interface CreateLongProjectOutlinePreviewResponse {
+  preview: LongProjectOutlinePromptPreview;
+  /** Same meaning and scope as CreateStoryPromptPreviewResponse.budget (see that field's doc comment). */
+  budget?: BudgetPreview;
+}
 export interface ApproveLongProjectOutlineRequest { promptSha256: string; prompt: string; approved: true; }
 export interface ApproveLongProjectOutlineResponse { project: LongProject; approvedAt: string; promptSha256: string; modified: boolean; }
 

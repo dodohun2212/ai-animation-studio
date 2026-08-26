@@ -335,7 +335,8 @@ function isPreviewResponse(value: unknown): value is CreateLongProjectOutlinePre
     isNonEmptyString(preview.projectId) &&
     typeof preview.prompt === "string" &&
     isDigest(preview.promptSha256) &&
-    Number.isInteger(preview.episodeCount)
+    Number.isInteger(preview.episodeCount) &&
+    isBudgetPreview(value.budget)
   );
 }
 

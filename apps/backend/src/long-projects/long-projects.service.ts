@@ -2,11 +2,15 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import { MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, type ApproveLongProjectOutlineRequest, type ApproveLongProjectOutlineResponse, type ArchivedLongProjectSummary, type ArchiveProjectRequest, type ArchiveProjectResponse, type CreateLongProjectOutlinePreviewResponse, type CreateLongProjectRequest, type CreateLongProjectResponse, type DeleteArchivedProjectRequest, type DeleteArchivedProjectResponse, type GetLongProjectResponse, type GetLongProjectSettingsResponse, type ListArchivedLongProjectsResponse, type ListLongProjectsResponse, type LongEpisodeOutline, type LongProject, type LongProjectSettings, type LongProjectSummary, type RestoreProjectResponse, type UpdateLongProjectSettingsRequest, type UpdateLongProjectSettingsResponse } from "@ai-animation-studio/shared";
+import { LONG_OUTLINE_ESTIMATED_COST_USD, MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, type ApproveLongProjectOutlineRequest, type ApproveLongProjectOutlineResponse, type ArchivedLongProjectSummary, type ArchiveProjectRequest, type ArchiveProjectResponse, type CreateLongProjectOutlinePreviewResponse, type CreateLongProjectRequest, type CreateLongProjectResponse, type DeleteArchivedProjectRequest, type DeleteArchivedProjectResponse, type GetLongProjectResponse, type GetLongProjectSettingsResponse, type ListArchivedLongProjectsResponse, type ListLongProjectsResponse, type LongEpisodeOutline, type LongProject, type LongProjectSettings, type LongProjectSummary, type RestoreProjectResponse, type UpdateLongProjectSettingsRequest, type UpdateLongProjectSettingsResponse } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { archiveProjectDirectory, deleteArchivedProjectDirectory, listArchivedProjectDirectories, restoreProjectDirectory } from "../projects/project-archive.js";
 import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
-import { longArchiveCollision, longArchiveNotAllowed, longExists, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longOutlineNotAllowed, longOutlineStale, longRestoreCollision, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { ProviderSettingsService } from "../settings/provider-settings.service.js";
+import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
+import { OpenAiAdapterError } from "../providers/openai-common.js";
+import { callOpenAiEpisodePlannerApi, type OpenAiEpisodeOutlineResult } from "./openai-episode-planner-adapter.js";
+import { longArchiveCollision, longArchiveNotAllowed, longExists, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longOutlineBudgetExceeded, longOutlineNotAllowed, longOutlineProviderError, longOutlineStale, longRestoreCollision, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 
 const MAX_EPISODES = Number(process.env.APP_MAX_LONG_PROJECT_EPISODES ?? "60");
 const settingKeys = ["title", "logline", "overview", "genre", "tone", "theme", "episodeCount", "sceneCount", "clipDurationSeconds", "platform", "aspectRatio", "audience", "notes", "startingState", "midpoint", "endingDirection", "storyFlowSummary", "narrationEnabled", "subtitlesEnabled"] as const;
@@ -72,6 +76,8 @@ export class LongProjectsService {
     private readonly archiveDirectory: (projectsRoot: string, projectId: string) => Promise<void> = archiveProjectDirectory,
     private readonly restoreDirectory: (projectsRoot: string, projectId: string) => Promise<void> = restoreProjectDirectory,
     private readonly deleteArchivedDirectory: (projectsRoot: string, projectId: string) => Promise<void> = deleteArchivedProjectDirectory,
+    private readonly providerSettings?: ProviderSettingsService,
+    private readonly budget?: OpenAiBudget,
   ) {}
   private root(id: string): string { if (!isSafeProjectId(id)) throw longUnsafeId(); return path.join(resolveSafeProjectDirectory(this.projectsRoot, id), "long_story"); }
   private files(id: string) { const root = this.root(id); return { root, project: path.join(root, "project.json"), bible: path.join(root, "story_bible.json"), outlines: path.join(root, "episode_outlines.json") }; }
@@ -126,7 +132,101 @@ export class LongProjectsService {
   }
   async getSettings(id: string): Promise<GetLongProjectSettingsResponse> { return { settings: toSettings(await this.load(id.trim())) }; }
   async updateSettings(id: string, request: UpdateLongProjectSettingsRequest): Promise<UpdateLongProjectSettingsResponse> { const prior = await this.load(id.trim()); const updated = setStored(prior.project_id, settings(request?.settings), new Date().toISOString(), prior.created_at, prior.outline_status); updated.outline_prompt_request = prior.outline_prompt_request; try { await atomicWriteUtf8File(this.files(prior.project_id).project, JSON.stringify(updated, null, 2)); } catch { throw longStorageError(); } return { project: await this.project(prior.project_id) }; }
-  private prompt(s: Stored): string { return ["[Long project outline]", `Title: ${s.title}`, `Logline: ${s.logline}`, `Overview: ${s.overview || "unspecified"}`, `Genre: ${s.genre || "unspecified"}`, `Tone: ${s.tone || "unspecified"}`, `Episodes: ${s.episode_count}`, `Duration seconds: ${s.scene_count * s.clip_duration_seconds}`, "Generate only project overview and episode outlines. Do not generate scripts, images, or videos."].join("\n"); }
-  async preview(id: string): Promise<CreateLongProjectOutlinePreviewResponse> { const s = await this.load(id.trim()); const prompt = this.prompt(s); return { preview: { projectId: s.project_id, prompt, promptSha256: crypto.createHash("sha256").update(prompt, "utf8").digest("hex"), episodeCount: s.episode_count } }; }
-  async approve(id: string, request: ApproveLongProjectOutlineRequest): Promise<ApproveLongProjectOutlineResponse> { const s = await this.load(id.trim()); if (s.outline_status !== "planned") throw longOutlineNotAllowed(); const preview = await this.preview(s.project_id); if (!(request && request.approved === true && typeof request.prompt === "string" && request.prompt.trim() && request.promptSha256 === preview.preview.promptSha256)) throw longOutlineStale(); const modified = request.prompt !== preview.preview.prompt; const now = new Date().toISOString(); const fields = ["overview", "genre", "tone", "theme", "starting_state", "midpoint", "ending_direction", "story_flow_summary"] as const; for (const field of fields) if (!s[field]) s[field] = `${s.title} ${field.replaceAll("_", " ")}`; s.outline_status = "outline_ready"; s.updated_at = now; s.outline_prompt_request = { prompt_sha256: crypto.createHash("sha256").update(request.prompt, "utf8").digest("hex"), prompt: request.prompt, approved_at: now, modified }; const generated = Array.from({ length: s.episode_count }, (_, i) => ({ episode_number: i + 1, title: `Episode ${i + 1}: ${s.title}`, summary: `${s.logline} — episode ${i + 1}`, main_event: `Episode ${i + 1} main event`, conflict: "Unresolved conflict", cliffhanger: i + 1 === s.episode_count ? "Story conclusion approaches" : `Continue to episode ${i + 2}`, next_episode_hook: i + 1 === s.episode_count ? "" : `Episode ${i + 2}`, status: "outline_ready" })); try { await atomicWriteUtf8File(this.files(s.project_id).project, JSON.stringify(s, null, 2)); await atomicWriteUtf8File(this.files(s.project_id).outlines, JSON.stringify(generated, null, 2)); } catch { throw longStorageError(); } return { project: await this.project(s.project_id), approvedAt: now, promptSha256: s.outline_prompt_request.prompt_sha256, modified }; }
+  /** A direct port of Python's render_project_outline_prompt() — the exact prompt the real planner adapter (when connected) is sent, and the text a user reviews/edits before approval either way. */
+  private async renderOutlinePrompt(s: Stored): Promise<string> {
+    const bible = object(await this.readJson(this.files(s.project_id).bible));
+    const { updated_at: _updatedAt, ...bibleForPrompt } = bible;
+    const projectPayload = {
+      "작품 제목": s.title,
+      "한 줄 주제": s.logline || "자율",
+      "세계관·전체 줄거리": s.overview || "자율",
+      "장르": s.genre || "자율",
+      "전체 분위기": s.tone || "자율",
+      "핵심 주제": s.theme || "자율",
+      "시작 상태": s.starting_state || "자율",
+      "중간 전환점": s.midpoint || "자율",
+      "결말 방향": s.ending_direction || "자율",
+      "전체 이야기 흐름": s.story_flow_summary || "자율",
+      "대상 시청자": s.audience || "자율",
+      "추가 지시사항": s.notes || "없음",
+      "총 Episode 수": s.episode_count,
+      "Episode당 길이(초)": s.scene_count * s.clip_duration_seconds,
+    };
+    return [
+      "[1. 작업 목표]",
+      "장기 애니메이션의 전체 작품 개요와 모든 Episode Outline을 한 번에 작성하십시오.",
+      "",
+      "[2. 작품 전체 설정]",
+      JSON.stringify(projectPayload, null, 2),
+      "",
+      "[3. Story Bible]",
+      JSON.stringify(bibleForPrompt, null, 2),
+      "",
+      "[4. 출력 요구사항]",
+      `Episode를 정확히 ${s.episode_count}개 작성하십시오.`,
+      "전체 작품 개요와 각 Episode의 제목, 요약, 핵심 사건, 갈등, 클리프행어, 다음 Episode 연결을 서로 모순 없이 구성하십시오.",
+      "장면별 상세 대본, 이미지 프롬프트, 이미지, Reference 선택, 영상 생성 데이터는 생성하지 마십시오.",
+    ].join("\n");
+  }
+  async preview(id: string): Promise<CreateLongProjectOutlinePreviewResponse> {
+    const s = await this.load(id.trim());
+    const prompt = await this.renderOutlinePrompt(s);
+    const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
+    // Read-only, same as every other preview's budget field — never reserves anything, just reports the ledger's current state.
+    const outlineBudget = apiKey && this.budget ? await budgetPreviewFor(this.budget, LONG_OUTLINE_ESTIMATED_COST_USD) : undefined;
+    return { preview: { projectId: s.project_id, prompt, promptSha256: crypto.createHash("sha256").update(prompt, "utf8").digest("hex"), episodeCount: s.episode_count }, ...(outlineBudget ? { budget: outlineBudget } : {}) };
+  }
+  /** Applies the real adapter's response the same way Python's generate_project_outline() does: user-entered project fields are authoritative and only filled in when blank, never overwritten. */
+  private applyOutlineResult(s: Stored, result: OpenAiEpisodeOutlineResult): { project: Record<string, unknown>; episodes: Array<Record<string, unknown>> } {
+    const numbers = result.episodes.map((item) => item.episode_number).sort((a, b) => a - b);
+    if (numbers.length !== s.episode_count || numbers.some((value, index) => value !== index + 1)) throw new OpenAiAdapterError("invalid_response", "Episode 개요 번호가 연속적이지 않습니다.");
+    const projectFields = ["title", "logline", "overview", "genre", "tone", "theme", "starting_state", "midpoint", "ending_direction", "story_flow_summary"] as const;
+    const project: Record<string, unknown> = {};
+    for (const field of projectFields) project[field] = s[field]?.toString().trim() ? s[field] : result.project[field];
+    const byNumber = new Map(result.episodes.map((item) => [item.episode_number, item]));
+    const episodes = Array.from({ length: s.episode_count }, (_, index) => {
+      const item = byNumber.get(index + 1)!;
+      return { episode_number: index + 1, title: item.title, summary: item.summary, main_event: item.main_event, conflict: item.conflict, cliffhanger: item.cliffhanger, next_episode_hook: item.next_episode_hook, status: "outline_ready" as const };
+    });
+    return { project, episodes };
+  }
+  async approve(id: string, request: ApproveLongProjectOutlineRequest): Promise<ApproveLongProjectOutlineResponse> {
+    const s = await this.load(id.trim()); if (s.outline_status !== "planned") throw longOutlineNotAllowed();
+    const preview = await this.preview(s.project_id);
+    if (!(request && request.approved === true && typeof request.prompt === "string" && request.prompt.trim() && request.promptSha256 === preview.preview.promptSha256)) throw longOutlineStale();
+    const modified = request.prompt !== preview.preview.prompt;
+    const now = new Date().toISOString();
+    s.outline_prompt_request = { prompt_sha256: crypto.createHash("sha256").update(request.prompt, "utf8").digest("hex"), prompt: request.prompt, approved_at: now, modified };
+
+    const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
+    let generated: Array<Record<string, unknown>>;
+    if (apiKey && this.budget) {
+      try {
+        await this.budget.preflight(LONG_OUTLINE_ESTIMATED_COST_USD);
+        let succeeded = false;
+        let result: OpenAiEpisodeOutlineResult;
+        try {
+          result = (await callOpenAiEpisodePlannerApi(apiKey, request.prompt, s.episode_count)).result;
+          succeeded = true;
+        } finally { await this.budget.record(s.project_id, "long_story_outline", succeeded, LONG_OUTLINE_ESTIMATED_COST_USD); }
+        const applied = this.applyOutlineResult(s, result);
+        for (const [field, value] of Object.entries(applied.project)) (s as Record<string, unknown>)[field] = value;
+        generated = applied.episodes;
+      } catch (error) {
+        if (error instanceof OpenAiBudgetExceededError) throw longOutlineBudgetExceeded(error.message);
+        if (error instanceof OpenAiAdapterError) throw longOutlineProviderError(error.category, error.message);
+        throw error;
+      }
+    } else {
+      // Local-fake fallback: only used when no OpenAI credential is connected. Fills every field that render
+      // never blanked out (never generates blank ones — see the fields loop below).
+      const fields = ["overview", "genre", "tone", "theme", "starting_state", "midpoint", "ending_direction", "story_flow_summary"] as const;
+      for (const field of fields) if (!s[field]) s[field] = `${s.title} ${field.replaceAll("_", " ")}`;
+      generated = Array.from({ length: s.episode_count }, (_, i) => ({ episode_number: i + 1, title: `Episode ${i + 1}: ${s.title}`, summary: `${s.logline} — episode ${i + 1}`, main_event: `Episode ${i + 1} main event`, conflict: "Unresolved conflict", cliffhanger: i + 1 === s.episode_count ? "Story conclusion approaches" : `Continue to episode ${i + 2}`, next_episode_hook: i + 1 === s.episode_count ? "" : `Episode ${i + 2}`, status: "outline_ready" }));
+    }
+
+    s.outline_status = "outline_ready"; s.updated_at = now;
+    try { await atomicWriteUtf8File(this.files(s.project_id).project, JSON.stringify(s, null, 2)); await atomicWriteUtf8File(this.files(s.project_id).outlines, JSON.stringify(generated, null, 2)); } catch { throw longStorageError(); }
+    return { project: await this.project(s.project_id), approvedAt: now, promptSha256: s.outline_prompt_request.prompt_sha256, modified };
+  }
 }

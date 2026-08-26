@@ -1,14 +1,22 @@
 import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { LongProjectsService } from "./long-projects.service.js";
 
-describe("long-project outline storage", () => {
-  it("does not import a provider, network client, FFmpeg, or subprocess", async () => {
-    const raw = await fs.readFile(path.join(process.cwd(), "src", "long-projects", "long-projects.service.ts"), "utf8");
-    // RUNWAY_CLIP_DURATIONS/RunwayClipDurationSeconds are plain domain constants ([5, 10] seconds) describing a
-    // real-world Runway constraint used for clipDurationSeconds validation — not a provider import or API call.
-    // Stripped before matching so this guard stays meaningful for an actual provider dependency.
-    const source = raw.replaceAll(/RUNWAY_CLIP_DURATIONS|RunwayClipDurationSeconds/g, "");
-    expect(source).not.toMatch(/openai|runway|ffmpeg|child_process|fetch\s*\(/i);
+let root: string | undefined;
+const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, platform: "YouTube Shorts" as const, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false };
+afterEach(async () => { vi.unstubAllGlobals(); if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
+
+describe("LongProjectsService outline generation", () => {
+  it("never calls fetch across preview and approve when no OpenAI credential/budget is wired in", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "long-projects-no-provider-"));
+    const subject = new LongProjectsService(path.join(root, "projects"));
+    await subject.create({ projectId: "long", settings });
+    const preview = await subject.preview("long");
+    await subject.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

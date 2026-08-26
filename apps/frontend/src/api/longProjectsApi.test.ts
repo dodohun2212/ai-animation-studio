@@ -98,6 +98,16 @@ describe("longProjectsApi", () => {
     expect(init.body).toBeUndefined();
   });
 
+  it("carries a real budget alongside the outline preview when an OpenAI credential is connected, and rejects a malformed one", async () => {
+    const preview = { projectId: "reopen_me", prompt: "outline prompt text", promptSha256: "a".repeat(64), episodeCount: 3 };
+    const budget = { monthlyLimitUsd: 10, spentUsd: 0.1, remainingUsd: 9.9, estimatedRequestCostUsd: 0.1, canSpend: true };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { preview, budget })));
+    await expect(createLongProjectOutlinePreview("reopen_me")).resolves.toEqual({ preview, budget });
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { preview, budget: { ...budget, monthlyLimitUsd: "ten" } })));
+    await expect(createLongProjectOutlinePreview("reopen_me")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+  });
+
   it("approves the outline via POST /long-projects/:projectId/outline/approval with an explicit approved:true body", async () => {
     const project = makeLongProject({ id: "reopen_me", outlineStatus: "outline_ready" });
     const response = { project, approvedAt: "2026-08-23T00:00:00.000Z", promptSha256: "b".repeat(64), modified: true };

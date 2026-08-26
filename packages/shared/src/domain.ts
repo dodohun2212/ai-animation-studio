@@ -48,6 +48,16 @@ export const STORY_ESTIMATED_COST_USD = 0.05;
 export const IMAGE_ESTIMATED_COST_USD = 0.10;
 export const VIDEO_SCENE_ESTIMATED_COST_USD = 0.25;
 /**
+ * A Long Project outline call returns the whole-project overview plus every Episode's lightweight outline in
+ * one request — its output can span far more content than a single 6-scene short-project Story (a project can
+ * have dozens of Episodes), so this is set higher than STORY_ESTIMATED_COST_USD despite being the same one-call
+ * shape. Like the other constants here, it is a flat conservative local estimate, not a per-Episode-count
+ * calculation — the real per-request cost genuinely does grow with episodeCount, but Provider APIs never expose
+ * a way to know that ahead of the call, so every long-project outline preview shows this same flat number
+ * regardless of episode count, same as Story/Image/Video before it.
+ */
+export const LONG_OUTLINE_ESTIMATED_COST_USD = 0.10;
+/**
  * One narration TTS call per scene (matching Image/Video's per-scene pattern, since each scene has distinct
  * narration text). Based on gpt-4o-mini-tts's real per-minute rate (~$0.015/min as of 2026-08, from
  * $0.60/1M input text tokens + $12/1M audio output tokens) applied to the longest supported clip
