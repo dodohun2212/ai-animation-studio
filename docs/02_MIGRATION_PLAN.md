@@ -1227,4 +1227,11 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - **검증 중 발견 — Cowork 신규 테스트 1건의 설정 버그**: "모르는 라벨 통과" 테스트가 `makePreviews(1)`(장면 1개)로 응답을 만들었는데, 프런트 응답 검증기(`isGetVideoPromptPreviewResponse`)가 `previews.length >= MIN_SCENE_COUNT`(2)를 요구해 응답 자체가 무효 처리되어 항상 에러 화면으로 떨어지고 있었다 — 화면 로직이 아니라 테스트 설정의 최소 장면 수 미달, `makePreviews(2)`로 수정.
   - 검증: root typecheck 전부 통과, frontend 801개 전부 통과(+2 신규), root build(shared/backend/frontend/desktop) 전부 통과. 백엔드·계약 미변경.
   - 커밋: `af699ae`.
+- [x] **🔴 백엔드 — 장기 프로젝트(Episode) 생성 중단 시 복구 경로가 아예 없던 것을 마저 닫음(Round 158)**: `orphaned-generation-recovery.service.ts`가 스스로 "Long-project generation loops carry the same single-process risk and are not covered here"라고 명시해 둔 구멍을 Cowork가 재확인(`.claude-bridge` Round 164) — 백엔드가 `generating_images`/`videos_generating`/`rendering` 도중 죽으면 그 Episode는 영원히 그 상태에 갇힌다(같은 workflow-state 게이트가 이후 모든 재시도를 영구히 거부, 이미 결제된 장면도 함께 묶임 — Round 129 사고와 정확히 같은 모양).
+  - **신규 `OrphanedEpisodeGenerationRecoveryService`**(`long-projects/`) — 단편 프로젝트 파일과 같은 설계 원칙(각 생성 루프 자신의 catch가 이미 착지하는 상태로만 되돌림, 새 상태를 만들지 않음): `generating_images` → `asset_mapping_approved`(`EpisodeImagesService`의 실패 catch와 동일), `videos_generating` → `interrupted`(`EpisodeVideosService.stop()`과 동일, 기존 `restart()` 그대로 재사용), `rendering` → `failed`(단편 프로젝트의 `Rendering → VideosApproved`와 다르게, `EpisodeVideoMergeService`가 이미 렌더 실패를 `failed`로 모델링하고 있어 그 기존 설계를 그대로 따름).
+  - **의도적으로 이번엔 안 만든 것**: 사용자에게 "왜 멈췄는지" 보여주는 메시지 — `LongEpisodeOutline`/`LongEpisodeDetail` 계약에 단편 프로젝트의 `warnings` 같은 필드가 아직 없어서, 이번엔 상태 전환(재시도 가능하게 만드는 것)만 처리하고 문구는 다음 라운드 후보로 `.claude-bridge`에 남김 — 조용히 범위를 줄인 게 아니라 명시적으로 flag.
+  - 각 Episode는 `episode_outlines.json`(요약 배열)과 `Episode{NN}/project.json`(상세) 두 파일에 상태가 중복 저장되는데, 두 값이 이미 어긋나 있으면(예: 이전 부분 쓰기) 어느 쪽이 맞는지 추측하지 않고 그 Episode는 건드리지 않고 넘어감.
+  - 신규 테스트 6건(`orphaned-episode-generation-recovery.service.test.ts`): 세 생성 상태 전부 복구 + 이미 만들어진 영상 파일 보존, 생성 중이 아닌 Episode는 무변경, 2회 연속 실행 시 두 번째는 아무것도 안 함(멱등), 요약·상세 상태 불일치 시 건드리지 않음, 장기 프로젝트가 아닌 디렉터리·`projects` 루트 자체가 없는 경우 예외 없이 스킵.
+  - 검증: root typecheck 전부 통과, Backend 696개 전부 통과(연속 재실행 확인, +6 신규), root build(shared/backend/frontend/desktop) 전부 통과. 유료 Provider 호출 없음.
+  - 커밋: `7071b62`.
 
