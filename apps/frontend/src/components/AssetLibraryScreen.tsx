@@ -132,6 +132,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   const [folderUploadFile, setFolderUploadFile] = useState<File | null>(null);
   const [folderUploadName, setFolderUploadName] = useState("");
   const [folderUploadDescription, setFolderUploadDescription] = useState("");
+  const [folderUploadRole, setFolderUploadRole] = useState("other");
   const [folderUploadPending, setFolderUploadPending] = useState(false);
   const [folderUploadValidationError, setFolderUploadValidationError] = useState<string | null>(null);
   const [folderUploadInputGeneration, setFolderUploadInputGeneration] = useState(0);
@@ -471,7 +472,10 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
       const response = await createAsset(folderUploadFile, { assetType, displayName: attemptedName, description: folderUploadDescription.trim() });
       createdAssetId = response.asset.assetId;
       await setAssetParentFolder(createdAssetId, { parentFolderId: folderId });
-      setFolderUploadFile(null); setFolderUploadName(""); setFolderUploadDescription("");
+      if (assetType === "character" && folderUploadRole && folderUploadRole !== "other") {
+        await updateAsset(createdAssetId, { role: folderUploadRole });
+      }
+      setFolderUploadFile(null); setFolderUploadName(""); setFolderUploadDescription(""); setFolderUploadRole("other");
       setFolderUploadInputGeneration((current) => current + 1);
       await load();
       await open(folderId);
@@ -863,6 +867,44 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
           <p className="text-sm text-slate-300">소유권: {selected.ownership}</p>
           <p className="text-sm text-slate-300">사용 프로젝트: {selected.usageProjectIds.length ? selected.usageProjectIds.join(", ") : "없음"}</p>
 
+          {/* A folder's shared description is the thing it exists to carry — it reaches the prompt for every
+              image inside it. It was sitting in the collapsed 이름·설명·태그 form together with the name and
+              tags, which put the folder's most important field behind a disclosure. Surfaced here as its own
+              field; it saves through the same handler, so there is one source of truth for the value. */}
+          {selected.asset.isFolder && (
+            <form onSubmit={submitEdit} aria-label="에셋 정보 편집" className="space-y-2 rounded-xl border border-violet-400/25 bg-violet-500/[0.06] p-3.5">
+              <label className="block text-sm text-slate-300">
+                폴더 이름
+                <input value={editName} required disabled={editPending} className={fieldClassName} onChange={(event) => setEditName(event.target.value)} />
+              </label>
+              <h4 className="pt-1 text-sm font-semibold text-slate-200">이 폴더 전체의 특징</h4>
+              <p className="text-xs text-slate-400">
+                {selected.asset.assetType === "character"
+                  ? "이 캐릭터가 어떻게 생겼는지, 어떤 성격인지 적어 주세요. 이 폴더 안의 모든 이미지에 공통으로 적용되고, 그림을 만들 때마다 AI에게 함께 전달됩니다."
+                  : "이 폴더 전체에 공통으로 해당하는 특징을 적어 주세요. 폴더 안의 모든 이미지에 함께 적용되어 AI에게 전달됩니다."}
+              </p>
+              <textarea
+                aria-label="이 폴더 전체의 특징"
+                rows={3}
+                value={editDescription}
+                disabled={editPending}
+                className={fieldClassName}
+                onChange={(event) => setEditDescription(event.target.value)}
+                placeholder={selected.asset.assetType === "character" ? "예: 20대 초반 여성, 은발 단발, 왼쪽 눈에 흉터, 낡은 가죽 코트" : "예: 밤의 대나무 숲, 안개, 푸른 달빛"}
+              />
+              <p className="text-xs text-slate-500">
+                낱장마다 다른 점(정면·옆모습 등)은 아래 목록의 <span className="text-slate-400">개별 특징</span>에 적습니다.
+              </p>
+              <label className="block text-sm text-slate-300">
+                태그(쉼표 구분)
+                <input value={editTags} disabled={editPending} className={fieldClassName} onChange={(event) => setEditTags(event.target.value)} />
+              </label>
+              <button type="submit" className={smallOutlineButton} disabled={editPending}>
+                {editPending ? "저장하는 중…" : "폴더 정보 저장"}
+              </button>
+            </form>
+          )}
+
           {selected.asset.isFolder && (
             <section aria-label="폴더 구성" className="space-y-3 rounded-xl border border-white/10 bg-slate-950/30 p-3.5">
               <h4 className="text-sm font-semibold text-slate-200">폴더 구성</h4>
@@ -872,7 +914,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                 {selected.asset.assetType === "character"
                   ? "이 폴더 안에 정면·옆모습·뒷모습 등 캐릭터의 여러 모습을 이미지로 모아두면, 프로젝트에 이 캐릭터를 등장시킬 때 모습을 확실하게 전달할 수 있습니다."
                   : "이 폴더 안에 같은 장소·물건·스타일의 여러 참고 이미지를 모아두면, AI 생성 시 폴더 하나로 함께 전달할 수 있습니다."}{" "}
-                대표 이미지가 목록·썸네일에 표시됩니다. 아래 폴더 설명(공통 특징)과 각 이미지의 개별 특징이 AI에게 함께 전달됩니다.
+                대표 이미지가 목록·썸네일에 표시됩니다. 위의 폴더 전체 특징과 각 이미지의 개별 특징이 AI에게 함께 전달됩니다.
               </p>
               </details>
               {(folderChildrenLoading || referenceSetPending) && <Spinner label="불러오는 중..." />}
@@ -1001,9 +1043,32 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                     onChange={(event) => { setFolderUploadName(event.target.value); setFolderUploadValidationError(null); }}
                   />
                 </label>
+                {selected.asset.assetType === "character" && (
+                  <label className="block text-sm text-slate-300">
+                    역할
+                    <select
+                      value={folderUploadRole}
+                      disabled={folderUploadPending}
+                      className={fieldClassName}
+                      onChange={(event) => setFolderUploadRole(event.target.value)}
+                    >
+                      {CHARACTER_ROLE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {/* Named apart from the child rows' own 개별 특징 inputs: this form sits inside the same
+                    폴더 구성 region, so a shared label leaves two different controls answering to one name. */}
                 <label className="block text-sm text-slate-300">
-                  설명
-                  <input value={folderUploadDescription} disabled={folderUploadPending} className={fieldClassName} onChange={(event) => setFolderUploadDescription(event.target.value)} />
+                  새 이미지의 개별 특징
+                  <input
+                    value={folderUploadDescription}
+                    disabled={folderUploadPending}
+                    className={fieldClassName}
+                    placeholder="이 이미지에만 해당하는 점 (예: 왼쪽 45도, 웃는 표정)"
+                    onChange={(event) => setFolderUploadDescription(event.target.value)}
+                  />
                 </label>
                 <button type="submit" disabled={folderUploadPending} className={smallAddButton}>
                   {folderUploadPending ? "등록하는 중…" : "이 폴더에 등록"}
@@ -1049,26 +1114,30 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
             </section>
           )}
 
-          <details className="rounded-xl border border-white/10 bg-slate-950/30 p-3.5">
-          <summary className="cursor-pointer text-sm font-medium text-slate-300 hover:text-slate-200">이름·설명·태그 고치기</summary>
-          <form onSubmit={submitEdit} aria-label="에셋 정보 편집" className="mt-2 space-y-3">
-            <label className="block text-sm text-slate-300">
-              이름
-              <input value={editName} required disabled={editPending} className={fieldClassName} onChange={(event) => setEditName(event.target.value)} />
-            </label>
-            <label className="block text-sm text-slate-300">
-              {selected.asset.isFolder ? "공통 특징(폴더 설명)" : "설명"}
-              <input value={editDescription} disabled={editPending} className={fieldClassName} onChange={(event) => setEditDescription(event.target.value)} />
-            </label>
-            <label className="block text-sm text-slate-300">
-              태그(쉼표 구분)
-              <input value={editTags} disabled={editPending} className={fieldClassName} onChange={(event) => setEditTags(event.target.value)} />
-            </label>
-            <button type="submit" disabled={editPending} className={primaryButton}>
-              변경 저장
-            </button>
-          </form>
-          </details>
+          {/* One editor per asset. A folder gets the open form above, where its shared description is the
+              point of the screen; a single image keeps this compact form, which is the only place its name,
+              description and tags can be changed. Rendering both for folders put the same three fields on
+              screen twice, one of them behind a disclosure. */}
+          {!selected.asset.isFolder && (
+            <form onSubmit={submitEdit} aria-label="에셋 정보 편집" className="space-y-3 rounded-xl border border-white/10 bg-slate-950/30 p-3.5">
+              <h4 className="text-sm font-semibold text-slate-200">이미지 정보</h4>
+              <label className="block text-sm text-slate-300">
+                이름
+                <input value={editName} required disabled={editPending} className={fieldClassName} onChange={(event) => setEditName(event.target.value)} />
+              </label>
+              <label className="block text-sm text-slate-300">
+                설명
+                <input value={editDescription} disabled={editPending} className={fieldClassName} onChange={(event) => setEditDescription(event.target.value)} />
+              </label>
+              <label className="block text-sm text-slate-300">
+                태그(쉼표 구분)
+                <input value={editTags} disabled={editPending} className={fieldClassName} onChange={(event) => setEditTags(event.target.value)} />
+              </label>
+              <button type="submit" disabled={editPending} className={primaryButton}>
+                변경 저장
+              </button>
+            </form>
+          )}
 
           {!selected.asset.isFolder && (
             <section aria-label="버전 기록" className="space-y-3 rounded-xl border border-white/10 bg-slate-950/30 p-3.5">

@@ -64,12 +64,27 @@ function scopeLabel(scope: AssetMappingSceneScope): string {
 function errorDetailLabel(details: Record<string, unknown> | undefined): string | null {
   if (!details) return null;
   if (Array.isArray(details.missingSceneNumbers) && details.missingSceneNumbers.length > 0) {
-    return `누락된 장면: ${details.missingSceneNumbers.join(", ")}`;
+    return `이미지가 안 붙은 장면: ${details.missingSceneNumbers.join(", ")}번`;
   }
   if (Array.isArray(details.mappingIds) && details.mappingIds.length > 0) {
-    return `확인이 필요한 Mapping: ${details.mappingIds.join(", ")}`;
+    return `아직 확인 안 한 연결 ${details.mappingIds.length}개`;
   }
   return null;
+}
+
+/**
+ * The backend answers all three blocking situations with one code, so the screen — which knows the mapping
+ * list — says which one it is. Without this, a project with nothing connected got told that "확인이 필요한
+ * Mapping이 남아 있습니다" while the list right below it said there were none.
+ */
+function blockedReason(mappings: ProjectAssetMapping[] | null, details: Record<string, unknown> | undefined): string | null {
+  if (Array.isArray(details?.missingSceneNumbers) && details!.missingSceneNumbers.length > 0) {
+    return "이미지가 하나도 안 붙은 장면이 있습니다. 그 장면에 이미지를 연결하거나, 아래 \"특별한 경우\"에서 이미지 없이 진행하도록 켜 주세요.";
+  }
+  if (mappings && mappings.length === 0) {
+    return "참고 이미지를 하나도 연결하지 않았습니다. 글만으로 그림을 만들려면 아래 \"참고 이미지 없이 진행하기\"를 눌러 주세요.";
+  }
+  return "아직 확인하지 않은 연결이 남아 있습니다. 아래 목록에서 확인 또는 제외를 눌러 주세요.";
 }
 
 export function MappingReviewScreen({ projectId, onBack }: Props) {
@@ -209,6 +224,29 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
     }
   }
 
+  /**
+   * The whole "nothing to connect" path in one press. It used to require finding a checkbox called
+   * "텍스트만 사용(매핑 없음) 확인", ticking it, pressing 검토 시작, then pressing 최종 승인 — four steps to say
+   * "I have no reference images". The two requests still happen, just not as two things to figure out.
+   */
+  async function proceedWithoutImages() {
+    if (beginBusy.current || approveBusy.current) return;
+    beginBusy.current = true; setBeginPending(true); setReviewMutationError(null);
+    try {
+      const begun = await beginProjectAssetMappingReview(projectId, {
+        scriptRevision: review?.scriptRevision ?? 0,
+        textOnlyConfirmed: true,
+        legacyConfirmed,
+      });
+      setReview(begun.review);
+      setTextOnlyConfirmed(true);
+      const approved = await approveProjectAssetMappingReview(projectId, { scriptFingerprint: begun.review.scriptFingerprint });
+      setReview(approved.review);
+    } catch (caught) {
+      setReviewMutationError(toMappingDisplayError(caught));
+    } finally { beginBusy.current = false; setBeginPending(false); }
+  }
+
   async function approve() {
     if (approveBusy.current || !review) return;
     approveBusy.current = true;
@@ -289,8 +327,22 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
             </details>
           </>
         )}
-        <div className="space-y-1.5">
-          <label className="flex items-center gap-2 text-sm text-slate-300">
+        {mappings && mappings.length === 0 && review?.status !== "approved" && (
+          <div data-testid="mapping-no-images" className="space-y-2 rounded-xl border border-amber-400/30 bg-amber-500/5 p-3.5">
+            <p className="text-sm text-amber-200">참고할 이미지를 하나도 연결하지 않았습니다.</p>
+            <p className="text-xs text-slate-400">
+              이대로 진행하면 그림은 글 설명만으로 만들어집니다. 특정 캐릭터·배경을 그대로 쓰고 싶으면 먼저 이미지를 연결해 주세요.
+            </p>
+            <button type="button" className={outlineButton} disabled={beginPending || approvePending} onClick={() => void proceedWithoutImages()}>
+              {beginPending ? "진행하는 중…" : "참고 이미지 없이 진행하기"}
+            </button>
+          </div>
+        )}
+
+        {/* Rare paths. Leaving them open as the first two controls made every visit look like a form to fill in. */}
+        <details className="space-y-1.5 text-sm">
+          <summary className="cursor-pointer text-slate-400 hover:text-slate-300">특별한 경우</summary>
+          <label className="mt-2 flex items-center gap-2 text-sm text-slate-300">
             <input type="checkbox" className="accent-violet-500" checked={textOnlyConfirmed} disabled={beginPending} onChange={(event) => setTextOnlyConfirmed(event.target.checked)} /> 이미지 없이 진행하겠습니다
           </label>
           <p className="pl-6 text-xs text-slate-500">참고할 이미지를 하나도 안 붙이고 글만으로 그림을 만들 때 켜세요. 켜면 빠진 장면 검사를 건너뜁니다.</p>
@@ -298,7 +350,7 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
             <input type="checkbox" className="accent-violet-500" checked={legacyConfirmed} disabled={beginPending} onChange={(event) => setLegacyConfirmed(event.target.checked)} /> 예전 프로젝트에서 옮겨온 연결을 그대로 쓰겠습니다
           </label>
           <p className="pl-6 text-xs text-slate-500">예전 버전에서 만들어 둔 연결이 이미 있을 때만 씁니다. 새로 만든 프로젝트라면 끈 채로 두세요.</p>
-        </div>
+        </details>
         <div className="flex flex-wrap items-center gap-3">
           <button type="button" className={outlineButton} onClick={() => void beginReview()} disabled={beginPending}>지금 대본 기준으로 다시 맞추기</button>
           <span className="text-xs text-slate-500">대본을 고쳤다면 눌러 주세요. 바뀐 대본에 맞춰 검사 기준을 새로 잡습니다.</span>
@@ -315,10 +367,17 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
           <span className="text-xs text-slate-500">빠진 장면이 없는지 검사하고 다음 단계로 넘어갑니다.</span>
         </div>
         {reviewMutationError && (
-          <p role="alert" data-testid="review-mutation-error" data-error-code={reviewMutationError.code} className="text-sm text-rose-400">
-            {reviewMutationError.message}
-            {errorDetailLabel(reviewMutationError.details) && <span> ({errorDetailLabel(reviewMutationError.details)})</span>}
-          </p>
+          <div role="alert" data-testid="review-mutation-error" data-error-code={reviewMutationError.code}>
+            <p className="text-sm text-rose-400">
+              {reviewMutationError.message}
+              {errorDetailLabel(reviewMutationError.details) && <span> ({errorDetailLabel(reviewMutationError.details)})</span>}
+            </p>
+            {reviewMutationError.code === "ASSET_MAPPING_APPROVAL_BLOCKED" && (
+              <p data-testid="review-blocked-reason" className="mt-1 text-sm text-amber-300">
+                {blockedReason(mappings, reviewMutationError.details)}
+              </p>
+            )}
+          </div>
         )}
       </section>
 

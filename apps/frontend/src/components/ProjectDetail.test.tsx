@@ -91,28 +91,42 @@ describe("ProjectDetail", () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
-  it("calls onOpenMappingReview with the project ID when the 참고 이미지 연결 button is clicked", async () => {
-    const project = makeProject({ id: "sample_project" });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
-    const onOpenMappingReview = vi.fn();
-    render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={onOpenMappingReview} />);
+  it("hides the narration link when the project uses neither voice nor subtitles", async () => {
+    const project = makeProject({
+      id: "sample_project",
+      scenes: [{ number: 1, prompt: "", motionPrompt: "", narration: "읽어줄 문장" } as never],
+    });
+    const settings = {
+      projectName: "sample", topic: "주제", genre: "판타지", mood: "따뜻함", character: "", lore: "", fullStory: "",
+      durationSeconds: 30, sceneCount: 6, clipDurationSeconds: 5, additionalNotes: "",
+      styleNotes: { aspect: "16:9", lighting: "달빛" },
+      narrationEnabled: false, subtitlesEnabled: false,
+    };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/settings")) return jsonResponse(200, { settings });
+      return jsonResponse(200, { project });
+    }));
+    render(<ProjectDetail projectId="sample_project" onBack={() => {}} onOpenMappingReview={() => {}} />);
 
     await screen.findByText("sample_project");
-    fireEvent.click(screen.getByRole("button", { name: "참고 이미지 연결 검토" }));
-
-    expect(onOpenMappingReview).toHaveBeenCalledWith("sample_project");
+    // The sentences are stored but never spoken and never burned in — reviewing them changes nothing.
+    await waitFor(() => expect(screen.queryByTestId("open-narration-review")).toBeNull());
   });
 
-  it("calls onOpenStoryPrompt with the project ID when the 대본 지시문 확인 button is clicked", async () => {
+  it("does not repeat pipeline steps as standalone buttons — the progress bar and the resume button own those", async () => {
     const project = makeProject({ id: "sample_project" });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
-    const onOpenStoryPrompt = vi.fn();
-    render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} onOpenStoryPrompt={onOpenStoryPrompt} />);
+    render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} onOpenStoryPrompt={() => {}} />);
 
     await screen.findByText("sample_project");
-    fireEvent.click(screen.getByRole("button", { name: "대본 지시문 확인" }));
-
-    expect(onOpenStoryPrompt).toHaveBeenCalledWith("sample_project");
+    // Both were also the pipeline bar's step 1 and step 2, and one of them was the resume button's
+    // destination too — the same step named three times on one screen.
+    expect(screen.queryByRole("button", { name: "참고 이미지 연결 검토" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "대본 지시문 확인" })).toBeNull();
+    // What stays is what is not a step at all.
+    expect(screen.getByRole("button", { name: "프로젝트 설정" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "생성 이미지 모음" })).toBeTruthy();
   });
 
   it("calls onOpenGallery with the project ID when the 생성 이미지 모음 button is clicked", async () => {
@@ -186,20 +200,24 @@ describe("ProjectDetail", () => {
 
   it("archives only after the exact topic is entered, then returns to the list", async () => {
     const project = makeProject({ id: "sample_project", topic: "Exact project topic" });
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { project }))
-      .mockResolvedValueOnce(jsonResponse(200, { archivedProjectId: project.id }));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/archive")) return jsonResponse(200, { archivedProjectId: project.id });
+      if (url.endsWith("/settings")) return jsonResponse(500, { code: "PROJECT_NOT_FOUND", message: "" });
+      return jsonResponse(200, { project });
+    });
     vi.stubGlobal("fetch", fetchMock);
     const onArchived = vi.fn();
     render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} onArchived={onArchived} />);
 
     await screen.findByText(project.id);
     fireEvent.click(screen.getByRole("button", { name: "프로젝트 보관하기" }));
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const archiveCalls = () => fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/archive")).length;
+    expect(archiveCalls()).toBe(0);
     const input = screen.getByLabelText("위 내용 그대로 입력");
     fireEvent.change(input, { target: { value: "wrong" } });
     expect(screen.getByRole("button", { name: "보관하기" })).toBeDisabled();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(archiveCalls()).toBe(0);
     fireEvent.change(input, { target: { value: project.topic } });
     fireEvent.click(screen.getByRole("button", { name: "보관하기" }));
     await waitFor(() => expect(onArchived).toHaveBeenCalledTimes(1));
@@ -210,9 +228,12 @@ describe("ProjectDetail", () => {
 
   it("keeps the archive dialog open with a safe error when archiving fails", async () => {
     const project = makeProject({ id: "sample_project", topic: "Exact project topic" });
-    vi.stubGlobal("fetch", vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { project }))
-      .mockResolvedValueOnce(jsonResponse(409, { code: "PROJECT_ARCHIVE_NOT_ALLOWED", message: "raw local path C:\\private" })));
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/archive")) return jsonResponse(409, { code: "PROJECT_ARCHIVE_NOT_ALLOWED", message: "raw local path C:\\private" });
+      if (url.endsWith("/settings")) return jsonResponse(500, { code: "PROJECT_NOT_FOUND", message: "" });
+      return jsonResponse(200, { project });
+    }));
     render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} />);
     await screen.findByText(project.id);
     fireEvent.click(screen.getByRole("button", { name: "프로젝트 보관하기" }));

@@ -246,7 +246,8 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: /sample_project/ }));
-    fireEvent.click(await screen.findByRole("button", { name: "참고 이미지 연결 검토" }));
+    // The detail screen no longer repeats pipeline steps as its own buttons — the progress bar owns them.
+    fireEvent.click(await screen.findByRole("button", { name: "참고 이미지 연결" }));
 
     expect(await screen.findByText("등록된 참고 이미지 연결이 없습니다.")).toBeTruthy();
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/videos/"))).toBe(false);

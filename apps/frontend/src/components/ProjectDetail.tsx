@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { Project } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
-import { archiveProject, getProject, toDisplayError } from "../api/projectsApi.js";
+import { archiveProject, getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { projectTypeLabel, workflowStateLabel } from "../utils/workflowStateLabels.js";
 import { ArchiveProjectDialog } from "./ArchiveProjectDialog.js";
@@ -116,6 +116,28 @@ export function ProjectDetail({
     else onOpenVideoMerge(projectId);
   }
 
+  /**
+   * Whether this project uses its narration sentences for anything. Both off means the sentences are stored
+   * but never spoken and never burned in, so a link to review them is an invitation to nothing — the long
+   * project's timeline already hides its narration link on exactly this rule.
+   *
+   * These two flags live in the settings resource, not on the project, so this is a second request. It fails
+   * soft on purpose: if settings cannot be read the link falls back to its old condition (the script has
+   * narration text at all) rather than disappearing on a project that does use it.
+   */
+  const [narrationInUse, setNarrationInUse] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setNarrationInUse(null);
+    getProjectSettings(projectId)
+      .then((response) => {
+        if (!cancelled) setNarrationInUse(response.settings.narrationEnabled || response.settings.subtitlesEnabled);
+      })
+      .catch(() => { if (!cancelled) setNarrationInUse(null); });
+    return () => { cancelled = true; };
+  }, [projectId]);
+
   useEffect(() => {
     let cancelled = false;
     setState({ status: "loading" });
@@ -174,20 +196,15 @@ export function ProjectDetail({
               {resumeTarget(state.project)!.label}
             </button>
           )}
+          {/* This row used to mix pipeline steps with side tools, so the same step appeared three times on one
+              screen: in the progress bar, in the resume button, and here. The bar owns the ordered steps and is
+              always on screen for this project; the resume button owns the next one. What is left here is only
+              what is NOT a step — hence the heading, which says so. */}
+          <p className="text-xs text-slate-500">순서와 상관없이 언제든 볼 수 있는 것</p>
           <div className="flex flex-wrap gap-3">
-            <button type="button" className={secondaryButton} onClick={() => onOpenMappingReview(projectId)}>
-              참고 이미지 연결 검토
-            </button>
             <button type="button" className={secondaryButton} onClick={() => onOpenSettings(projectId)}>
               프로젝트 설정
             </button>
-            <button type="button" className={secondaryButton} onClick={() => onOpenStoryPrompt(projectId)}>
-              대본 지시문 확인
-            </button>
-            {/* Removed: 장면 이미지 생성 / 영상 프롬프트 및 비용 확인. Each was rendered only in the one state
-                where the resume button above already reads "이어서 진행하기 · <같은 화면>" and calls the same
-                handler — two buttons, one destination, names similar enough ("생성" vs "생성/검토") to suggest
-                they did different things. The resume button is the single forward step. */}
             {state.project.scenes.length > 0 && (
               <button
                 type="button"
@@ -198,7 +215,7 @@ export function ProjectDetail({
                 장면 편집
               </button>
             )}
-            {state.project.scenes.some((scene) => typeof scene.narration === "string" && scene.narration.trim()) && (
+            {narrationInUse !== false && state.project.scenes.some((scene) => typeof scene.narration === "string" && scene.narration.trim()) && (
               <button
                 type="button"
                 data-testid="open-narration-review"

@@ -1047,7 +1047,7 @@ describe("AssetLibraryScreen", () => {
     const uploadForm = within(detail).getByRole("form", { name: "이 폴더에 새 이미지 등록" });
     fireEvent.change(within(uploadForm).getByLabelText("이미지 파일"), { target: { files: [new File(["x"], "front.png", { type: "image/png" })] } });
     fireEvent.change(within(uploadForm).getByLabelText("이름"), { target: { value: "정면" } });
-    fireEvent.change(within(uploadForm).getByLabelText("설명"), { target: { value: "웃는 표정" } });
+    fireEvent.change(within(uploadForm).getByLabelText("새 이미지의 개별 특징"), { target: { value: "웃는 표정" } });
     fireEvent.click(within(uploadForm).getByRole("button", { name: "이 폴더에 등록" }));
 
     // Creation and filing are separate endpoints — the point of this screen is that one click does both.
