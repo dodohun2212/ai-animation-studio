@@ -1061,4 +1061,8 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
 - [x] **#13 라우팅 배선 + #12 마지막 한 줄**: `App.tsx`에 `Screen`·`LONG_PROJECT_SCREEN_NAMES`·Episode 탭 라우팅 추가, `LongProjectDetail`에 `onOpenEpisodeOutline` prop. `episodeResumeTarget()`이 `planned` 상태에 링크가 없던 것도 같이 고쳐 개요 화면으로 이어하기 되게 함, `outline_ready`엔 대본 이어하기 옆에 별도 "회차 설정" 링크(서버 `draftStates` 편집 창을 벗어나면 사라짐). `LongProjectDetail.tsx`의 마지막 "Story Bible" 문자열도 "등장인물·설정집"으로. 신규 테스트 3건.
   - 검증: frontend typecheck·테스트 775개 전부 통과(+3 신규)·build 통과.
   - 커밋: `3275e0e`.
+- [x] **#6(Asset Mapping 검토 간소화)**: 화면 첫 문단이 "자동으로 연결해 둔"이라고 주장하고 있었는데 이 저장소엔 자동 매칭이 없다(Round 92 확인) — 실제로는 연결하는 순간 이미 확정(`mappings.service.ts:64`)인데, 이 문장 때문에 버튼이 "AI 추천을 승인하는 자리"로 읽혔다(실사용자가 실제로 이 지점에서 헷갈림). 문구를 정직하게 재작성(연결=즉시 확정, 버튼은 빠진 장면 검사+다음 단계 전이 두 가지만), 버튼 이름을 하는 일 그대로(`최종 승인`→`연결 다 했음 · 다음 단계로`, `검토 시작`→`지금 대본 기준으로 다시 맞추기`), 이미 확정된 행에서 아무 일도 안 하던 `확인` 버튼 제거(`제외`는 유지), 기술 정보(Revision·Fingerprint 등)를 지우지 않고 `<details>`로 접음, 체크박스 두 개 한국어화. 백엔드 미변경.
+  - 자가 발견 stale 테스트: 기존 "prevents a duplicate PATCH..." 테스트가 확정 버튼이 사라지는 새 동작과 충돌(같은 버튼 노드가 다시 활성화되길 기다림) — CLI가 발견·보고, Cowork가 테스트 목적(중복 PATCH 방지)은 유지한 채 마지막 대기 어서션만 "버튼이 사라짐 + 같은 행 다른 버튼 잠금 해제"로 교체.
+  - 검증: frontend typecheck·테스트 776개 전부 통과(+1 신규)·build 통과.
+  - 커밋: `caf22c8`.
 
