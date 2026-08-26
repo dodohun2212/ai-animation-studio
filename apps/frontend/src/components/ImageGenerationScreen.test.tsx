@@ -554,6 +554,22 @@ describe("ImageGenerationScreen", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("quotes only the scenes that still need making, and warns that existing ones are not redrawn", async () => {
+    // `generate()` reuses a valid existing image for free, so quoting six scenes on a project that already has
+    // three overstates the cost — and, more importantly, hides that pressing this will not redraw those three.
+    const project = makeProject({ workflowState: WorkflowState.AssetMappingApproved, scenes: sixScenes([1, 2, 3]) });
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { project }));
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByRole("button", { name: "이미지 생성 시작" }));
+
+    expect(screen.getByTestId("generate-cost-estimate").textContent).toContain("$0.30");
+    expect(screen.getByTestId("generate-cost-estimate").textContent).not.toContain("$0.60");
+    const reuse = screen.getByTestId("reuse-notice");
+    expect(reuse.textContent).toContain("3장");
+    expect(reuse.textContent).toContain("재생성");
+  });
+
   it("shows the budget the generation response reported", async () => {
     const project = makeProject({ workflowState: WorkflowState.AssetMappingApproved, scenes: sixScenes() });
     const generated = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });

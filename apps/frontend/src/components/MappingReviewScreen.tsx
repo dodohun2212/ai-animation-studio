@@ -624,6 +624,15 @@ export function MappingReviewScreen({ projectId, onBack, onOpenImageGeneration }
                   <Spinner label="에셋 정보를 불러오는 중..." />
                 )}
                 <div className="space-y-0.5 text-sm text-slate-400">
+                  {/* `auto` means the link came from what was chosen in 프로젝트 설정, not from this screen.
+                      That difference is worth showing plainly: removing such a row here only affects this
+                      list, while the settings choice it came from stays where it was. Rows made by hand or
+                      migrated from the old data keep their existing, quieter treatment. */}
+                  {mapping.assignmentSource === "auto" && (
+                    <p data-testid={`mapping-origin-${mapping.mappingId}`} className="text-xs text-violet-300">
+                      프로젝트 설정에서 자동으로 연결된 항목입니다.
+                    </p>
+                  )}
                   <p>역할: {mapping.usageRole}</p>
                   <p>범위: {scopeLabel(mapping.sceneScope)}</p>
                   <p className={STATUS_TEXT_TONE[mapping.status]}>상태: {STATUS_LABELS[mapping.status]}</p>

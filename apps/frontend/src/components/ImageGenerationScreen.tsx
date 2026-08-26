@@ -110,6 +110,19 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
   // The scene grid/count follows the project's own scenes array (2-12, see docs/02_MIGRATION_PLAN.md) rather than
   // an assumed fixed six.
   const sceneNumbers = currentProject ? sceneNumbersFor(currentProject.scenes.length) : [];
+  /**
+   * Scenes that already have an image. `generate()` skips these for free — it compares the recorded path with
+   * the file it would write and reuses a valid one — so quoting the full six-scene price on a project that has
+   * five of them already is wrong in the direction that makes people hesitate.
+   *
+   * The flip side matters just as much and is why the panel says it out loud: reuse means pressing this again
+   * does NOT redraw anything that exists. Someone who just connected a reference image and expects new
+   * pictures needs the per-scene 재생성 below instead.
+   */
+  const alreadyMadeCount = (currentProject?.scenes ?? []).filter(
+    (scene) => typeof scene?.generatedImagePath === "string" && scene.generatedImagePath.length > 0,
+  ).length;
+  const toMakeCount = Math.max(0, (currentProject?.scenes.length ?? 0) - alreadyMadeCount);
   const totalScenes = sceneNumbers.length;
   const allowed = currentProject?.workflowState === WorkflowState.AssetMappingApproved;
   const reviewable = currentProject?.workflowState === WorkflowState.ImagesReview;
@@ -361,13 +374,22 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
               data-testid="generate-confirm-panel"
               className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
             >
-              <p className="text-sm font-semibold text-amber-300">장면 이미지 {totalScenes}장을 생성할까요?</p>
+              <p className="text-sm font-semibold text-amber-300">
+                {alreadyMadeCount > 0 ? `남은 장면 이미지 ${toMakeCount}장을 생성할까요?` : `장면 이미지 ${totalScenes}장을 생성할까요?`}
+              </p>
               <p className="text-sm text-slate-300">
-                아직 생성이 시작되지 않았습니다. OpenAI 키가 연결되어 있으면 확인을 누르는 순간 이미지 {totalScenes}장에 대한
+                아직 생성이 시작되지 않았습니다. OpenAI 키가 연결되어 있으면 확인을 누르는 순간 이미지 {toMakeCount}장에 대한
                 실제 유료 요청이 전송됩니다. 키가 연결되어 있지 않으면 비용 없이 임시 이미지로 생성됩니다.
               </p>
+              {alreadyMadeCount > 0 && (
+                <p data-testid="reuse-notice" className="text-sm text-slate-300">
+                  이미 만들어진 <strong className="text-slate-100">{alreadyMadeCount}장</strong>은 그대로 두고 다시 만들지 않습니다 —
+                  비용도 안 듭니다. 이미 있는 그림을 <strong className="text-slate-100">새로 뽑고 싶다면</strong> 이 버튼이 아니라
+                  아래 목록에서 장면마다 <span className="text-slate-100">재생성</span>을 눌러 주세요.
+                </p>
+              )}
               <p data-testid="generate-cost-estimate" className="text-xs text-slate-300 tabular-nums">
-                예상 비용: ${(totalScenes * IMAGE_ESTIMATED_COST_USD).toFixed(2)} ({totalScenes}장 × $
+                예상 비용: ${(toMakeCount * IMAGE_ESTIMATED_COST_USD).toFixed(2)} ({toMakeCount}장 × $
                 {IMAGE_ESTIMATED_COST_USD.toFixed(2)}) · 키가 연결되어 있을 때만 청구됩니다
               </p>
               <div className="flex gap-3">
