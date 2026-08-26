@@ -1306,4 +1306,12 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - **자가 발견 — 내 라이선스 계약 변경(Round 169)이 만든 회귀**: `VideoMergeScreen.test.tsx`의 `makeTrack()` 픽스처가 `licenseKind`/`attributionRequired` 없이 남아 있었는데, `audioLibraryApi.ts`의 `isTrack()` 검증이 이제 그 두 필드를 요구해서 모킹한 트랙 목록이 조용히 빈 배열로 취급됨 — `narration+bgm` 테스트 2건이 "트랙 없음" 경로로 깨짐. 픽스처에 기본값 추가로 수정.
   - 검증: root typecheck 전부 통과, frontend 841개 전부 통과(+4 신규), root build 전부 통과. 백엔드·계약 미변경.
   - 커밋: `e45bfa3`.
+- [x] **`ProjectSummary.usedAudio` — 출처 표시 문장이 캡션까지 도달할 경로 마련(Round 171)**: Cowork가 Round 176에서 지적 — 라이선스 필수 입력(Round 169)의 원래 목적("반년 뒤 출처를 못 쓰는 사고 방지")이 보관함 목록·병합 화면까지는 닿지만, 실제로 그 문장이 필요한 자리(게시 시점, 캡션)까지는 못 간다는 구조적 빈틈. 요청한 계약 그대로 구현.
+  - `ProjectSummary.usedAudio?: { mode, trackId?, attributionRequired?, attributionText? }` 신설, `merge()`가 병합 완료 시점에 채움. `AudioLibraryService.get(trackId)` 신설(기존 `content()`는 재생 파일 경로만 반환, 메타데이터 전체가 필요해 별도 메서드로).
+  - **판단 — `attributionRequired`/`attributionText`는 참조가 아니라 값으로 복사**: Cowork가 정확히 요청한 이유대로(Round 169에서 트랙 삭제를 허용했으므로, 트랙을 지운 뒤에도 그 음원이 들어간 영상의 출처 표시 의무는 남는다) `merge()` 시점에 `AudioLibraryTrack`에서 값을 읽어 `StoredProject.used_audio`에 그대로 박아 넣음 — 트랙 삭제와 완전히 독립.
+  - **판단 — Video Library 복원 시 `usedAudio`는 양방향 모두 초기화**: 장면 복원은 최종 영상 자체를 무효화(재병합 필요)하니 당연히 지움. 최종 영상 자체를 과거 버전으로 복원하는 경우도 지움 — 버전별 오디오 이력을 따로 저장하지 않아서, 프로젝트에 하나뿐인 "가장 최근 병합" 기록을 복원된 과거 버전의 것인 양 보여주면 틀린 정보가 됨. 완벽한 정확도(버전별 이력)는 이번 범위 밖.
+  - **경미한 계약 차이 — mode 값**: Cowork 제안은 `"narration" | "bgm" | "narration+bgm" | "silent"`(`bgm` 단독 포함)였지만, 백엔드에 `bgm` 단독 모드가 실제로 없어(`MergeAudioSettings["mode"]`와 동일하게) 기존 3개 값(`narration`/`narration+bgm`/`silent`)만 사용 — `.claude-bridge`에 보고.
+  - 신규 테스트 7건: `video-merge.service.test.ts` 2건(narration+bgm 병합 후 `usedAudio` 확인 + 트랙 삭제해도 프로젝트에 저장된 값은 그대로임을 확인, silent 병합의 attribution 필드 없음 확인), `video-library.service.test.ts` 2건(장면·최종 복원 양쪽 초기화), `project-storage.schema.test.ts` 3건(기본값 null, 전체/최소 필드 파싱, 잘못된 mode·비객체 거부), `audio-library.service.test.ts` 1건(`get()`).
+  - 검증: root typecheck 전부 통과, Backend 769개(+7 신규)·frontend 841개(1회 `SceneEditScreen.test.tsx` 순서 의존 플레이키니스 재관찰, 재실행으로 무관함 재확인)·shared 25개 전부 통과, root build 전부 통과. 유료 Provider 호출 없음.
+  - 커밋: `a6a033d`.
 
