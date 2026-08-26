@@ -250,10 +250,16 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
         </div>
       </header>
 
+      {/* The old copy said these connections were made "자동으로" — nothing in this codebase auto-matches an
+          Asset to a scene. Every row here was connected by hand (or migrated from the old Python data), and a
+          hand-made connection is already confirmed the moment it is saved. Saying otherwise made the button
+          below read as "confirm what the AI guessed", which is why it felt like a pointless second step. */}
       <p className="text-sm text-slate-400">
-        대본에 등장하는 캐릭터·배경·오브젝트 등의 문구를 Asset Library의 실제 이미지와 자동으로 연결해 둔 목록입니다.
-        이미지·영상 생성 시 각 장면에서 어떤 이미지를 참고할지가 여기서 결정되므로, 대본이 바뀌었거나 처음 이 프로젝트를 진행할 때는
-        아래에서 각 연결이 맞는지 확인한 뒤 최종 승인해야 다음 단계로 넘어갈 수 있습니다.
+        각 장면이 어떤 이미지를 참고할지 정해둔 목록입니다. <strong className="text-slate-200">직접 연결한 것은 연결하는 순간 확정</strong>됩니다 — 여기서 다시 승인할 필요는 없습니다.
+      </p>
+      <p className="text-sm text-slate-400">
+        아래 버튼이 하는 일은 두 가지입니다: <strong className="text-slate-200">빠진 장면이 없는지 검사</strong>하고, 통과하면 다음 단계로 넘깁니다.
+        이미지가 하나도 안 붙은 장면이 있으면 몇 번 장면인지 알려주고 막습니다.
       </p>
 
       <section aria-label="검토 상태" className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6">
@@ -262,30 +268,40 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
           <p role="alert" data-testid="review-error" data-error-code={reviewError.code} className="text-sm text-rose-400">{reviewError.message}</p>
         )}
         {review && (
-          <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
-            <div><dt className="inline text-slate-400">Mapping Revision: </dt><dd className="inline font-medium text-slate-100">{review.mappingRevision}</dd></div>
-            <div><dt className="inline text-slate-400">Script Revision: </dt><dd className="inline font-medium text-slate-100">{review.scriptRevision}</dd></div>
-            <div className="sm:col-span-2"><dt className="inline text-slate-400">Fingerprint: </dt><dd className="inline break-all font-medium text-slate-100">{review.scriptFingerprint || "없음"}</dd></div>
-            <div><dt className="inline text-slate-400">상태: </dt><dd className="inline font-medium text-slate-100">{review.status === "approved" ? "승인됨" : "대기 중"}</dd></div>
-            {review.status === "approved" && review.approvedAt && (
-              <div><dt className="inline text-slate-400">승인 시각: </dt><dd className="inline font-medium text-slate-100 tabular-nums" title={review.approvedAt}>{formatDateTime(review.approvedAt)}</dd></div>
-            )}
-            <div className="sm:col-span-2"><dt className="inline text-slate-400">검토된 장면: </dt><dd className="inline font-medium text-slate-100">{review.reviewedScenes.join(", ") || "없음"}</dd></div>
-          </dl>
+          <>
+            <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+              <div><dt className="inline text-slate-400">상태: </dt><dd className="inline font-medium text-slate-100">{review.status === "approved" ? "승인됨" : "대기 중"}</dd></div>
+              {review.status === "approved" && review.approvedAt && (
+                <div><dt className="inline text-slate-400">승인 시각: </dt><dd className="inline font-medium text-slate-100 tabular-nums" title={review.approvedAt}>{formatDateTime(review.approvedAt)}</dd></div>
+              )}
+              <div className="sm:col-span-2"><dt className="inline text-slate-400">검토된 장면: </dt><dd className="inline font-medium text-slate-100">{review.reviewedScenes.join(", ") || "없음"}</dd></div>
+            </dl>
+            {/* Revision numbers and the script fingerprint are how the backend decides whether an approval is
+                stale. Real, and worth having when something goes wrong — but nothing a person acts on, and
+                four lines of hex at the top of a screen makes the screen look like a debugger. Kept, folded. */}
+            <details className="text-sm">
+              <summary className="cursor-pointer text-slate-400 hover:text-slate-300">자세한 기술 정보</summary>
+              <dl className="mt-2 grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
+                <div><dt className="inline text-slate-400">Mapping Revision: </dt><dd className="inline font-medium text-slate-100">{review.mappingRevision}</dd></div>
+                <div><dt className="inline text-slate-400">Script Revision: </dt><dd className="inline font-medium text-slate-100">{review.scriptRevision}</dd></div>
+                <div className="sm:col-span-2"><dt className="inline text-slate-400">Fingerprint: </dt><dd className="inline break-all font-medium text-slate-100">{review.scriptFingerprint || "없음"}</dd></div>
+              </dl>
+            </details>
+          </>
         )}
         <div className="space-y-1.5">
           <label className="flex items-center gap-2 text-sm text-slate-300">
-            <input type="checkbox" className="accent-violet-500" checked={textOnlyConfirmed} disabled={beginPending} onChange={(event) => setTextOnlyConfirmed(event.target.checked)} /> 텍스트만 사용(매핑 없음) 확인
+            <input type="checkbox" className="accent-violet-500" checked={textOnlyConfirmed} disabled={beginPending} onChange={(event) => setTextOnlyConfirmed(event.target.checked)} /> 이미지 없이 진행하겠습니다
           </label>
-          <p className="pl-6 text-xs text-slate-500">연결할 이미지가 없어도 괜찮으며, 이 장면들은 이미지 참고 없이 텍스트만으로 진행하겠다는 확인입니다.</p>
+          <p className="pl-6 text-xs text-slate-500">참고할 이미지를 하나도 안 붙이고 글만으로 그림을 만들 때 켜세요. 켜면 빠진 장면 검사를 건너뜁니다.</p>
           <label className="flex items-center gap-2 text-sm text-slate-300">
-            <input type="checkbox" className="accent-violet-500" checked={legacyConfirmed} disabled={beginPending} onChange={(event) => setLegacyConfirmed(event.target.checked)} /> 기존 방식(legacy) 확인
+            <input type="checkbox" className="accent-violet-500" checked={legacyConfirmed} disabled={beginPending} onChange={(event) => setLegacyConfirmed(event.target.checked)} /> 예전 프로젝트에서 옮겨온 연결을 그대로 쓰겠습니다
           </label>
-          <p className="pl-6 text-xs text-slate-500">예전 방식으로 이미 연결되어 있던 매핑을 새로 검토하지 않고 그대로 사용하겠다는 확인입니다.</p>
+          <p className="pl-6 text-xs text-slate-500">예전 버전에서 만들어 둔 연결이 이미 있을 때만 씁니다. 새로 만든 프로젝트라면 끈 채로 두세요.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <button type="button" className={outlineButton} onClick={() => void beginReview()} disabled={beginPending}>검토 시작</button>
-          <span className="text-xs text-slate-500">현재 대본 기준으로 새 검토 라운드를 시작합니다.</span>
+          <button type="button" className={outlineButton} onClick={() => void beginReview()} disabled={beginPending}>지금 대본 기준으로 다시 맞추기</button>
+          <span className="text-xs text-slate-500">대본을 고쳤다면 눌러 주세요. 바뀐 대본에 맞춰 검사 기준을 새로 잡습니다.</span>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button
@@ -294,9 +310,9 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
             onClick={() => void approve()}
             disabled={approvePending || !review}
           >
-            최종 승인
+            연결 다 했음 · 다음 단계로
           </button>
-          <span className="text-xs text-slate-500">아래 매핑 확인이 끝났으면 눌러서 확정합니다 — 승인해야 다음 단계로 넘어갈 수 있습니다.</span>
+          <span className="text-xs text-slate-500">빠진 장면이 없는지 검사하고 다음 단계로 넘어갑니다.</span>
         </div>
         {reviewMutationError && (
           <p role="alert" data-testid="review-mutation-error" data-error-code={reviewMutationError.code} className="text-sm text-rose-400">
@@ -356,19 +372,33 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
                   <Spinner label="에셋 정보를 불러오는 중..." />
                 )}
                 <div className="space-y-0.5 text-sm text-slate-400">
-                  <p>Mapping ID: {mapping.mappingId}</p>
                   <p>역할: {mapping.usageRole}</p>
                   <p>범위: {scopeLabel(mapping.sceneScope)}</p>
                   <p className={STATUS_TEXT_TONE[mapping.status]}>상태: {STATUS_LABELS[mapping.status]}</p>
-                  <p>출처: {mapping.assignmentSource}</p>
-                  <p>버전 정책: {mapping.versionPolicy}{mapping.pinnedVersion !== null ? ` (v${mapping.pinnedVersion})` : ""}</p>
-                  <p>스냅샷: {mapping.snapshot ? `v${mapping.snapshot.sourceVersion} · ${mapping.snapshot.sha256.slice(0, 12)}...` : "없음"}</p>
+                  {/* Mapping id, assignment source and version policy are storage-level facts. They matter when
+                      something has to be matched up by hand; they are noise on every other row. */}
+                  <details>
+                    <summary className="cursor-pointer text-xs text-slate-500 hover:text-slate-400">자세한 기술 정보</summary>
+                    <div className="mt-1 space-y-0.5 text-xs">
+                      <p>Mapping ID: {mapping.mappingId}</p>
+                      <p>출처: {mapping.assignmentSource}</p>
+                      <p>버전 정책: {mapping.versionPolicy}{mapping.pinnedVersion !== null ? ` (v${mapping.pinnedVersion})` : ""}</p>
+                      <p>스냅샷: {mapping.snapshot ? `v${mapping.snapshot.sourceVersion} · ${mapping.snapshot.sha256.slice(0, 12)}...` : "없음"}</p>
+                    </div>
+                  </details>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <button type="button" className={`${outlineButton} border-emerald-400/30 text-emerald-300`} onClick={() => void decide(mapping.mappingId, "confirm")} disabled={decisionBusyNow}>확인</button>
+                  {/* A row you connected yourself arrives already confirmed, so this button would change nothing
+                      — offering it is what made the screen feel like it was asking twice. It stays for rows that
+                      really are unresolved (migrated data, or a mapping invalidated by a script change). */}
+                  {mapping.status !== "confirmed" && (
+                    <button type="button" className={`${outlineButton} border-emerald-400/30 text-emerald-300`} onClick={() => void decide(mapping.mappingId, "confirm")} disabled={decisionBusyNow}>확인</button>
+                  )}
                   <button type="button" className={`${outlineButton} border-rose-400/30 text-rose-300`} onClick={() => void decide(mapping.mappingId, "exclude")} disabled={decisionBusyNow}>제외</button>
                   <button type="button" className={outlineButton} onClick={() => void createSnapshot(mapping.mappingId)} disabled={snapshotBusyNow}>스냅샷 생성</button>
-                  <span className="text-xs text-slate-500">확인: 이 연결을 그대로 사용 · 제외: 이 연결을 쓰지 않음 · 스냅샷 생성: 지금 이미지 버전을 이 장면에 고정</span>
+                  <span className="text-xs text-slate-500">
+                    {mapping.status === "confirmed" ? "제외: 이 연결을 쓰지 않음" : "확인: 이 연결을 그대로 사용 · 제외: 이 연결을 쓰지 않음"} · 스냅샷 생성: 지금 이미지 버전을 이 장면에 고정
+                  </span>
                 </div>
                 {decisionErrors[mapping.mappingId] && (
                   <p role="alert" data-testid={`decision-error-${mapping.mappingId}`} data-error-code={decisionErrors[mapping.mappingId]!.code} className="text-sm text-rose-400">

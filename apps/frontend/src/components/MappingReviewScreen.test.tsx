@@ -127,8 +127,13 @@ describe("MappingReviewScreen", () => {
     fireEvent.click(confirmButton);
 
     expect(fetchMock).toHaveBeenCalledTimes(4); // 3 initial loads + exactly one PATCH
+
     resolveDecision(jsonResponse(200, { mapping: { ...mapping, status: "confirmed" }, review: makeReview() }));
-    await waitFor(() => expect(confirmButton).not.toBeDisabled());
+    // The button does not come back re-enabled — once the mapping is confirmed there is nothing left for it to
+    // do, so the row drops it. Waiting on the old node would wait forever. The in-flight guard is what this
+    // test is about, and the single PATCH above is what proves it.
+    await waitFor(() => expect(within(mappingList()).queryByRole("button", { name: "확인" })).toBeNull());
+    expect(within(mappingList()).getByRole("button", { name: "제외" })).not.toBeDisabled();
   });
 
   it("creates a snapshot via POST and shows the resulting snapshot info", async () => {
@@ -171,13 +176,13 @@ describe("MappingReviewScreen", () => {
     render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
     await screen.findByText("등록된 Asset Mapping이 없습니다.");
 
-    fireEvent.click(screen.getByRole("button", { name: "검토 시작" }));
+    fireEvent.click(screen.getByRole("button", { name: "지금 대본 기준으로 다시 맞추기" }));
     await screen.findByText("a".repeat(64));
     const [beginUrl, beginInit] = fetchMock.mock.calls[2] as [string, RequestInit];
     expect(beginUrl).toBe("/projects/sample_project/assets/mapping-review");
     expect(JSON.parse(String(beginInit.body))).toEqual({ scriptRevision: 0, textOnlyConfirmed: false, legacyConfirmed: false });
 
-    fireEvent.click(screen.getByRole("button", { name: "최종 승인" }));
+    fireEvent.click(screen.getByRole("button", { name: "연결 다 했음 · 다음 단계로" }));
     await screen.findByText("승인됨");
     const [approveUrl, approveInit] = fetchMock.mock.calls[3] as [string, RequestInit];
     expect(approveUrl).toBe("/projects/sample_project/assets/mapping-review/approve");
@@ -200,7 +205,7 @@ describe("MappingReviewScreen", () => {
     const rendered = render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
     await screen.findByText("등록된 Asset Mapping이 없습니다.");
 
-    fireEvent.click(screen.getByRole("button", { name: "최종 승인" }));
+    fireEvent.click(screen.getByRole("button", { name: "연결 다 했음 · 다음 단계로" }));
 
     const alert = await screen.findByTestId("review-mutation-error");
     expect(alert).toHaveAttribute("data-error-code", "ASSET_MAPPING_APPROVAL_BLOCKED");
@@ -219,7 +224,7 @@ describe("MappingReviewScreen", () => {
     render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
     await screen.findByText("등록된 Asset Mapping이 없습니다.");
 
-    fireEvent.click(screen.getByRole("button", { name: "최종 승인" }));
+    fireEvent.click(screen.getByRole("button", { name: "연결 다 했음 · 다음 단계로" }));
 
     const alert = await screen.findByTestId("review-mutation-error");
     expect(alert).toHaveAttribute("data-error-code", "ASSET_MAPPING_FINGERPRINT_MISMATCH");
@@ -256,6 +261,24 @@ describe("MappingReviewScreen", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "프로젝트로 돌아가기" }));
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops the per-row 확인 button once a mapping is already confirmed, since confirming it again changes nothing", async () => {
+    const mapping = makeMapping({ mappingId: "MAP-A", assetId: "ASSET-A", status: "confirmed" });
+    const asset = makeAsset({ assetId: "ASSET-A", displayName: "직접 연결한 자산" });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { mappings: [mapping] }))
+      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview() }))
+      .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    await screen.findByText("직접 연결한 자산");
+
+    // A mapping you made yourself is saved as confirmed — the button would be a no-op.
+    expect(within(mappingList()).queryByRole("button", { name: "확인" })).toBeNull();
+    // 제외 stays: changing your mind about a connection is a real action.
+    expect(within(mappingList()).getByRole("button", { name: "제외" })).toBeTruthy();
   });
 
   it("never issues a request to a provider, video, or FFmpeg-related route across the full mapping-review flow", async () => {
