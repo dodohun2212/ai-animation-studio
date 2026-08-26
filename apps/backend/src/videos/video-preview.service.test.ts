@@ -66,6 +66,9 @@ describe("provider-free video prompt preview", () => {
     expect(result.previews[1]?.prompt).toContain("Continuity cue: end 1 opening state");
     expect(result.previews[1]?.prompt).toContain("Opening movement: start 2");
     expect(result.previews[1]?.prompt).toContain("Main action: main 2");
+    // Scene 1 has no previous scene by definition, so its continuity cue is always empty — a bare
+    // "Continuity cue: " line with nothing after the colon was sent to Runway for every project's scene 1.
+    expect(result.previews[0]?.prompt).not.toContain("Continuity cue");
     expect(result.previews.every((item) => utf16Length(item.prompt) <= 1_000)).toBe(true);
     expect(result.maximumProviderCalls).toBe(6);
     expect(result.budget).toEqual({ monthlyLimitUsd: 10, spentUsd: 0, remainingUsd: 10, estimatedRequestCostUsd: 1.5, canSpend: true });

@@ -37,15 +37,28 @@ describe("advanceRunwayScene", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it("fails the scene with the adapter's error category instead of throwing when submission itself is rejected", async () => {
+  it("fails the scene with the adapter's error category and Runway's own rejection detail instead of throwing when submission itself is rejected", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(401, { error: "invalid api key" }));
     const budget = fakeBudget();
     const result = await advanceRunwayScene(sixScenes(), input, {
       apiSecret: "bad-secret", projectId: "p1", apiType: "video", estimatedCostPerSceneUsd: 0.25,
       budget, adapterOptions: { fetchImpl, sleep: noSleep, maxRetries: 0 },
     });
-    expect(result).toEqual({ kind: "failed", sceneNumber: 1, error: "authentication" });
+    // The detail is appended for diagnosability — never shown to the user (see toVideoWorkflowDisplayError /
+    // sceneErrorMessage's exact-match-only lookup, which falls back to a generic message for anything outside
+    // the known bare-category set, this string included).
+    expect(result).toEqual({ kind: "failed", sceneNumber: 1, error: "authentication: invalid api key" });
     expect(budget.record).toHaveBeenCalledWith("p1", 1, "video", false, 0.25);
+  });
+
+  it("records only the bare category when Runway's rejected response has no readable detail", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(401, {}));
+    const budget = fakeBudget();
+    const result = await advanceRunwayScene(sixScenes(), input, {
+      apiSecret: "bad-secret", projectId: "p1", apiType: "video", estimatedCostPerSceneUsd: 0.25,
+      budget, adapterOptions: { fetchImpl, sleep: noSleep, maxRetries: 0 },
+    });
+    expect(result).toEqual({ kind: "failed", sceneNumber: 1, error: "authentication" });
   });
 
   it("does not call Runway at all when the running scene was checked within the poll interval", async () => {

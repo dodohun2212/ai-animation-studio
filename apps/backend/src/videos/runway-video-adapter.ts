@@ -30,7 +30,15 @@ const RUNWAY_KOREAN_MESSAGES: Record<RunwayErrorCategory, string> = {
 const RETRYABLE = new Set<RunwayErrorCategory>(["rate_limit", "server", "network"]);
 
 export class RunwayAdapterError extends Error {
-  constructor(public readonly category: RunwayErrorCategory, message: string = RUNWAY_KOREAN_MESSAGES[category]) {
+  /**
+   * `message` is always the fixed, safe Korean text for `category` — never Runway's own words, the same rule
+   * every other provider-error class in this codebase follows. `detail`, when present, is Runway's own error
+   * text pulled from a rejected response body: never shown to the user, but worth persisting into
+   * `video_generation_records[].error` so a real rejection can be diagnosed without reproducing the paid call —
+   * a $0.25 scene-1 failure with only the category "invalid_request" recorded left no way to tell what Runway
+   * actually objected to (`.claude-bridge` Round 143).
+   */
+  constructor(public readonly category: RunwayErrorCategory, message: string = RUNWAY_KOREAN_MESSAGES[category], public readonly detail?: string) {
     super(message);
   }
 }
@@ -63,6 +71,19 @@ function classifyStatus(status: number): RunwayErrorCategory {
   return "unknown";
 }
 
+/** Best-effort: Runway's own rejection reason from a non-ok response body, for the persisted record only (see RunwayAdapterError's `detail`). Never throws — an unreadable or unexpected body just means no detail is available. */
+async function errorDetailFrom(response: Response): Promise<string | undefined> {
+  let body: unknown;
+  try { body = await response.json(); } catch { return undefined; }
+  if (!isObject(body)) return undefined;
+  const message = typeof body.error === "string" ? body.error
+    : isObject(body.error) && typeof body.error.message === "string" ? body.error.message
+    : typeof body.message === "string" ? body.message
+    : undefined;
+  const trimmed = message?.trim();
+  return trimmed ? trimmed.slice(0, 500) : undefined;
+}
+
 async function requestWithRetry(url: string, init: RequestInit, options: RetryOptions): Promise<Response> {
   const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -79,7 +100,7 @@ async function requestWithRetry(url: string, init: RequestInit, options: RetryOp
     }
     if (response.ok) return response;
     const category = classifyStatus(response.status);
-    if (!RETRYABLE.has(category) || attempt >= maxRetries) throw new RunwayAdapterError(category);
+    if (!RETRYABLE.has(category) || attempt >= maxRetries) throw new RunwayAdapterError(category, undefined, await errorDetailFrom(response));
     const retryAfter = Number(response.headers.get("retry-after"));
     await sleep(Math.max(0, Math.min(MAX_BACKOFF_SECONDS, Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 0.5 * 2 ** attempt)));
     attempt += 1;
@@ -88,9 +109,13 @@ async function requestWithRetry(url: string, init: RequestInit, options: RetryOp
 
 function imageDataUri(bytes: Buffer, mimeType: string): string {
   if (bytes.length === 0) throw new RunwayAdapterError("invalid_request", "Reference 이미지가 비어 있습니다.");
-  if (bytes.length > MAX_DATA_URI_BYTES) throw new RunwayAdapterError("invalid_request", "Reference 이미지가 Runway의 5MB data-URI 제한을 초과했습니다.");
   if (!mimeType.startsWith("image/")) throw new RunwayAdapterError("invalid_request", "Reference 파일은 이미지여야 합니다.");
-  return `data:${mimeType};base64,${bytes.toString("base64")}`;
+  // Runway's 5MB limit applies to the base64 text actually sent, not the source bytes — base64 inflates size by
+  // ~4/3, so a 3.5MB PNG (well under the old raw-byte check) becomes a 4.7MB string here and was rejected only
+  // remotely, after the request had already gone out.
+  const base64 = bytes.toString("base64");
+  if (base64.length > MAX_DATA_URI_BYTES) throw new RunwayAdapterError("invalid_request", "Reference 이미지가 Runway의 5MB data-URI 제한을 초과했습니다.");
+  return `data:${mimeType};base64,${base64}`;
 }
 
 /** Create one paid image-to-video task and immediately return its persistent ID; never polls itself. */

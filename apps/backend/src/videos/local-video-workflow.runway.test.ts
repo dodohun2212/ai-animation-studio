@@ -174,7 +174,7 @@ describe("real Runway video workflow", () => {
     });
   });
 
-  it("fails the scene with a category code instead of an uncaught exception when Runway rejects the submission itself", async () => {
+  it("fails the scene with a category code plus Runway's own rejection detail instead of an uncaught exception when Runway rejects the submission itself", async () => {
     const deps = await setupWithConnectedRunway();
     const workflow = newWorkflow(deps);
     const fetchMock = vi.fn(async (url: string) => {
@@ -188,7 +188,9 @@ describe("real Runway video workflow", () => {
     await workflow.run("video_workflow", deps.accepted.jobId);
     const progress = await workflow.getProgress("video_workflow", deps.accepted.jobId);
     expect(progress).toMatchObject({ status: "failed", failedSceneNumbers: [1] });
-    expect(progress.sceneErrors).toEqual({ 1: "authentication" });
+    // The appended detail is only for the persisted record — sceneErrorMessage's exact-match lookup falls back
+    // to a generic message for anything outside the known bare-category set, so this never reaches the screen.
+    expect(progress.sceneErrors).toEqual({ 1: "authentication: invalid api key" });
   });
 
   it("keeps advancing on its own background timer even when nothing polls getProgress", async () => {

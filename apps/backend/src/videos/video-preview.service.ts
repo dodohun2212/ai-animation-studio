@@ -85,7 +85,10 @@ export function promptFor(scene: StoredScene, previous: StoredScene | undefined,
   const prefix = `Create one continuous cinematic ${clipDurationSeconds}-second ${orientation} image-to-video shot from the supplied exact first frame.`;
   const suffix = "Maintain stable identity, anatomy, clothing, essential objects, lighting and scene continuity throughout the shot.";
   const render = (included: readonly [string, string][]) => [prefix, ...included.map(([label, value]) => `${label}: ${value}`), suffix].join("\n");
-  let included = [...sections];
+  // Scene 1 has no `previous` by definition, so "Continuity cue" is always "" there — sent unfiltered, every
+  // project's scene 1 prompt carried a bare "Continuity cue: " line with nothing after the colon. Matches
+  // imagePromptFor's existing filter for the same class of empty-section bug on the image side.
+  let included = sections.filter(([, value]) => value);
   const removable = ["Pacing", "Environment", "Performance", "Continuity cue"];
   while (utf16Length(render(included)) > UTF16_PROMPT_LIMIT && removable.length > 0) {
     const label = removable.shift();

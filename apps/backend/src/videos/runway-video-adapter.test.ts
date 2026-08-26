@@ -59,11 +59,53 @@ describe("createRunwayImageToVideoTask", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("rejects an image whose base64-encoded text exceeds 5MB even though its raw bytes do not", async () => {
+    // base64 inflates size by ~4/3 — 3.75MB of raw bytes already encodes to just over 5MB of base64 text, the
+    // actual thing Runway's data-URI limit applies to. The old check compared raw bytes and let this through
+    // locally, only for Runway to reject it remotely after a real request went out.
+    const fetchMock = vi.fn();
+    const underRawLimitOverBase64Limit = Buffer.alloc(3_932_200);
+    expect(underRawLimitOverBase64Limit.length).toBeLessThan(5 * 1024 * 1024);
+    expect(underRawLimitOverBase64Limit.toString("base64").length).toBeGreaterThan(5 * 1024 * 1024);
+    await expect(createRunwayImageToVideoTask("secret", underRawLimitOverBase64Limit, "image/png", "p", { fetchImpl: fetchMock, sleep: noSleep }))
+      .rejects.toMatchObject({ category: "invalid_request" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("classifies a 401 as authentication and never retries", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { error: { message: "bad key" } }));
     await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "p", { fetchImpl: fetchMock, sleep: noSleep }))
       .rejects.toMatchObject({ category: "authentication" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("carries Runway's own rejection text as detail, in every response shape it might arrive in, without changing the safe Korean message", async () => {
+    const shapes: Array<[unknown, string]> = [
+      [{ error: { message: "bad key" } }, "bad key"],
+      [{ error: "prompt rejected" }, "prompt rejected"],
+      [{ message: "top-level message" }, "top-level message"],
+    ];
+    for (const [body, expectedDetail] of shapes) {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, body));
+      try {
+        await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "p", { fetchImpl: fetchMock, sleep: noSleep });
+        throw new Error("expected to throw");
+      } catch (error) {
+        expect(error).toBeInstanceOf(RunwayAdapterError);
+        expect((error as RunwayAdapterError).detail).toBe(expectedDetail);
+        expect((error as RunwayAdapterError).message).toContain("인증"); // the safe Korean text, untouched by detail
+      }
+    }
+  });
+
+  it("leaves detail undefined rather than throwing when the rejected response has no readable message", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(400, { code: "bad_request" })); // no error/message field
+    try {
+      await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "p", { fetchImpl: fetchMock, sleep: noSleep });
+      throw new Error("expected to throw");
+    } catch (error) {
+      expect((error as RunwayAdapterError).detail).toBeUndefined();
+    }
   });
 
   it("classifies a 403 as permission and never retries", async () => {

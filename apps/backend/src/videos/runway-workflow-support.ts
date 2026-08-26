@@ -148,7 +148,10 @@ export async function advanceRunwayScene(
     // the scene would silently stay "created" forever with nothing for the user to act on.
     await deps.budget.record(deps.projectId, next.sceneNumber, deps.apiType, false, deps.estimatedCostPerSceneUsd).catch(() => undefined);
     const code = error instanceof RunwayAdapterError ? error.category : "unknown";
-    return { kind: "failed", sceneNumber: next.sceneNumber, error: code };
+    // `detail`, when Runway's rejected response carried one, is never shown to the user — it only makes the
+    // persisted record diagnosable without reproducing the paid call (see RunwayAdapterError's doc comment).
+    const detail = error instanceof RunwayAdapterError ? error.detail : undefined;
+    return { kind: "failed", sceneNumber: next.sceneNumber, error: detail ? `${code}: ${detail}` : code };
   }
   return { kind: "submitted", sceneNumber: next.sceneNumber, taskId, submittedAt: now().toISOString() };
 }
