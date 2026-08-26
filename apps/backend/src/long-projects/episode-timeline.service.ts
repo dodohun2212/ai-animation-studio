@@ -2,7 +2,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import type { AddLongEpisodeRequest, AddLongEpisodeResponse, ArchiveLongEpisodeRequest, ArchiveLongEpisodeResponse, DuplicateLongEpisodeResponse, LongEpisodeOutline, LongEpisodeStatus, LongProject } from "@ai-animation-studio/shared";
+import type { AddLongEpisodeRequest, AddLongEpisodeResponse, ArchiveLongEpisodeRequest, ArchiveLongEpisodeResponse, DuplicateLongEpisodeResponse, LongEpisodeOutline, LongEpisodeStatus, LongProject, UpdateLongEpisodeOutlineRequest, UpdateLongEpisodeOutlineResponse } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { longEpisodeLimitReached, longEpisodeNotFound, longEpisodeTimelineNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
@@ -84,5 +84,38 @@ export class EpisodeTimelineService {
     catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw longEpisodeNotFound(); throw longStorageError(); }
     try { const project = await this.publish(id, rawProject, rawOutlines.slice(0, -1)); return { project, archivedEpisodeNumber: rawNumber, archiveId }; }
     catch (error) { await fs.rename(destination, files.episode).catch(() => undefined); throw error; }
+  }
+  private static readonly outlineFieldMap = { title: "title", summary: "summary", mainEvent: "main_event", conflict: "conflict", cliffhanger: "cliffhanger", nextEpisodeHook: "next_episode_hook" } as const;
+  /**
+   * Edits one Episode's own outline fields in place — the per-Episode plan whole-project outline approval
+   * assigned, before script generation has consumed it as a prompt input. Deliberately gated on only this one
+   * Episode's own status (not project-wide, unlike add/duplicate/archive above, which reshuffle numbering and so
+   * need every Episode to still be a draft) — editing Episode 5's summary must stay possible even after Episode
+   * 1's script has already moved on, since nothing here touches numbering or any other Episode's data.
+   */
+  async updateOutline(projectId: string, rawNumber: number, request: UpdateLongEpisodeOutlineRequest): Promise<UpdateLongEpisodeOutlineResponse> {
+    const id = projectId.trim();
+    const rawProject = object(await this.json(this.files(id).project));
+    const rawOutlinesValue = await this.json(this.files(id).outlines);
+    if (!Array.isArray(rawOutlinesValue)) throw longInvalidData();
+    const rawOutlines = rawOutlinesValue.map((item) => object(item));
+    if (!Number.isInteger(rawNumber) || rawNumber < 1 || rawNumber > rawOutlines.length) throw longEpisodeNotFound();
+    const entry = rawOutlines[rawNumber - 1]!;
+    if (entry.episode_number !== rawNumber) throw longInvalidData();
+    if (!draftStates.includes(entry.status as LongEpisodeStatus)) throw longEpisodeTimelineNotAllowed();
+
+    const changes = object(request?.outline, longInvalidRequest);
+    const keys = Object.keys(changes);
+    const fieldMap: Record<string, string> = EpisodeTimelineService.outlineFieldMap;
+    if (keys.length === 0 || keys.some((key) => !(key in fieldMap))) throw longInvalidRequest();
+    const updatedEntry = { ...entry };
+    for (const key of keys) {
+      const value = changes[key];
+      if (typeof value !== "string" || !value.trim()) throw longInvalidRequest();
+      updatedEntry[fieldMap[key]!] = value.trim();
+    }
+    const newRawOutlines = rawOutlines.map((item, index) => index === rawNumber - 1 ? updatedEntry : item);
+    const project = await this.publish(id, rawProject, newRawOutlines);
+    return { project, episode: this.toOutline(updatedEntry, rawNumber) };
   }
 }

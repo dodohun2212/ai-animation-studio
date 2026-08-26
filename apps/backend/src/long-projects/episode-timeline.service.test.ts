@@ -46,4 +46,42 @@ describe("EpisodeTimelineService", () => {
     await new EpisodeScriptsService(projectsRoot).generate("timeline_test", 1, {});
     await expect(timeline.add("timeline_test", {})).rejects.toMatchObject({ response: { code: "LONG_EPISODE_TIMELINE_NOT_ALLOWED" } });
   });
+
+  describe("updateOutline", () => {
+    it("edits an Episode's outline fields while still planned (before whole-project outline approval)", async () => {
+      const { timeline } = await services();
+      const result = await timeline.updateOutline("timeline_test", 1, { outline: { title: "  다시 쓴 제목  ", cliffhanger: "새 클리프행어" } });
+      expect(result.episode).toMatchObject({ episodeNumber: 1, title: "다시 쓴 제목", cliffhanger: "새 클리프행어", status: "planned" });
+      expect(result.episode.summary).toBe("");
+      expect(result.project.episodes[0]).toMatchObject({ title: "다시 쓴 제목", cliffhanger: "새 클리프행어" });
+    });
+
+    it("edits an Episode's outline fields once outline_ready (after whole-project outline approval), and persists to disk", async () => {
+      const { projectsRoot, projects, timeline } = await services();
+      const preview = await projects.preview("timeline_test");
+      await projects.approve("timeline_test", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 });
+      const result = await timeline.updateOutline("timeline_test", 2, { outline: { summary: "수정된 요약", mainEvent: "수정된 핵심 사건", conflict: "수정된 갈등", nextEpisodeHook: "수정된 다음 화 연결" } });
+      expect(result.episode).toMatchObject({ episodeNumber: 2, summary: "수정된 요약", mainEvent: "수정된 핵심 사건", conflict: "수정된 갈등", nextEpisodeHook: "수정된 다음 화 연결", status: "outline_ready" });
+      const stored = JSON.parse(await fs.readFile(path.join(projectsRoot, "timeline_test", "long_story", "episode_outlines.json"), "utf8")) as Array<Record<string, unknown>>;
+      expect(stored[1]).toMatchObject({ summary: "수정된 요약", main_event: "수정된 핵심 사건", conflict: "수정된 갈등", next_episode_hook: "수정된 다음 화 연결" });
+    });
+
+    it("blocks editing one Episode's outline once its own script workflow has started, but not a sibling Episode still outline_ready", async () => {
+      const { projectsRoot, projects, timeline } = await services();
+      const preview = await projects.preview("timeline_test");
+      await projects.approve("timeline_test", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 });
+      await new EpisodeScriptsService(projectsRoot).generate("timeline_test", 1, {});
+      await expect(timeline.updateOutline("timeline_test", 1, { outline: { title: "너무 늦음" } })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_TIMELINE_NOT_ALLOWED" } });
+      const stillEditable = await timeline.updateOutline("timeline_test", 2, { outline: { title: "아직 됨" } });
+      expect(stillEditable.episode.title).toBe("아직 됨");
+    });
+
+    it("rejects an unknown episode number, an unknown field, and a blank value", async () => {
+      const { timeline } = await services();
+      await expect(timeline.updateOutline("timeline_test", 3, { outline: { title: "x" } })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_NOT_FOUND" } });
+      await expect(timeline.updateOutline("timeline_test", 1, { outline: { status: "outline_ready" } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+      await expect(timeline.updateOutline("timeline_test", 1, { outline: { title: "   " } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+      await expect(timeline.updateOutline("timeline_test", 1, { outline: {} })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    });
+  });
 });

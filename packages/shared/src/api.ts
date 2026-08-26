@@ -399,6 +399,17 @@ export interface DuplicateLongEpisodeResponse { project: LongProject; episode: L
 export interface ArchiveLongEpisodeRequest { approved: true; }
 export interface ArchiveLongEpisodeResponse { project: LongProject; archivedEpisodeNumber: number; archiveId: string; }
 
+/**
+ * Editing one Episode's own outline fields (the per-Episode plan the whole-project outline approval assigned —
+ * title/summary/mainEvent/conflict/cliffhanger/nextEpisodeHook) in place, without regenerating anything. Only
+ * allowed while that Episode's own status is still "planned" or "outline_ready" — the same window
+ * EpisodeTimelineService already uses for add/duplicate/archive, i.e. before script generation has consumed the
+ * outline as a prompt input. A loose partial string map for the same reason as UpdateSceneRequest.scene: the
+ * server enforces its own field whitelist, and unknown keys are rejected.
+ */
+export interface UpdateLongEpisodeOutlineRequest { outline: Record<string, string>; }
+export interface UpdateLongEpisodeOutlineResponse { project: LongProject; episode: LongEpisodeOutline; }
+
 /** Provider-free editable records stored in a long project's Story Bible. */
 export type LongStoryBibleCollection = "characters" | "locations" | "props" | "secrets" | "foreshadowing";
 
@@ -1053,6 +1064,8 @@ export const API_ROUTES = {
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/duplicate`,
   longProjectEpisodeArchive: (projectId: string, episodeNumber: number) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}`,
+  longProjectEpisodeOutline: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/outline`,
   longEpisode: (projectId: string, episodeNumber: number) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}`,
   longEpisodeScriptGeneration: (projectId: string, episodeNumber: number) =>
