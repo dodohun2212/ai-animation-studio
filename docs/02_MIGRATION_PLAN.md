@@ -1021,3 +1021,15 @@ Cowork가 실사용 브라우저 검증 중 발견(Round 83→84 정정): 장기
 - [x] 신규 테스트: `episode-scripts.openai.test.ts`(7건 — 실제 연결 호출·프롬프트 5개 섹션·narration 포함, Story Bible 내용이 프롬프트에 반영되는지, 미연결 시 로컬 폴백, 예산초과 차단, provider 오류 분류·실패 예산 기록, 응답 장면 수 불일치 거부, 프로젝트별 장면 수 스키마 반영).
 - [x] 재검증: root typecheck, Backend 645 통과, Frontend 754 통과, root build, AppModule DI 부팅 전부 통과. 유료 Provider 호출 없음.
 - [x] 커밋: `0ad3e32`.
+
+## 실사용 1차 발견 버그 수정 (Round 91, 8번·1번)
+
+사용자가 개발 빌드로 처음 실제 사용해봤고 13건을 보고했다(`.claude-bridge` Round 91). Cowork가 코드로 1차 원인 분석해 그중 백엔드 소관 2건을 우선순위대로 넘겼다 — 사용자와 합의된 순서는 8번(치명적 차단) → 7번(정책 결정) → 1번(단순 수정) → 나머지(Cowork 소관).
+
+- [x] **8번 — 키를 연결해도 "요청을 처리하지 못했습니다"(`CLIENT_UNKNOWN_ERROR`)만 뜨는 문제**: `long-projects.service.ts`(개요 승인)·`episode-scripts.service.ts`(Episode 대본)·`episode-images.service.ts`·`episode-narration.service.ts`·`images/image-review.service.ts`·`narration/narration-review.service.ts` 여섯 서비스 모두 `catch (error) { ... instanceof OpenAiAdapterError ... ; throw error; }` 형태로, OpenAI 어댑터가 던진 에러가 아니면 원본을 그대로 rethrow하고 있었다. NestJS 기본 예외 필터가 이런 raw 에러를 `code` 필드 없는 500으로 응답하면, 프론트는 해당 화면의 안전한 provider-error 문구가 아니라 가장 일반적인 `CLIENT_UNKNOWN_ERROR` 폴백만 보여줄 수 있다 — 이미 오래 쓰인 Runway 영상 경로(`runway-workflow-support.ts`)는 이 문제를 이미 피하고 있었다(`OpenAiAdapterError`가 아니면 `"unknown"` 카테고리로 처리). 실제 재현은 브라우저가 끊겨 있어 코드 분석만으로 판단했다 — 여섯 곳 모두 각자의 `xxxProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown)`으로 폴백하도록 통일.
+- [x] **7번 — 미연결 시 조용히 local-fake로 넘어가는 문제(정책 결정, 구현은 다음 라운드로)**: Cowork 제안(미연결 시 명시적 거부 에러, 폴백은 테스트 전용으로 유지)에 동의한다. 다만 현재 구조상 프로덕션과 테스트가 정확히 같은 조건(`apiKey && this.budget` truthy 여부)으로 이 분기를 타므로, 안전하게 분리하려면 각 서비스에 명시적 플래그를 추가하고 로컬 폴백에 의존하는 기존 테스트들(Cowork 추정 750개 이상)을 갱신해야 한다 — 범위가 큰 별도 작업으로 다음 라운드에서 진행한다.
+- [x] **1번 — 폴더 안 캐릭터 이미지의 "역할"·개별 설명을 저장할 수 없는 문제**: `assets.repository.ts`의 `update()`가 `asset.is_folder || asset.parent_folder_id`면 무조건 거부했는데, 역할 드롭다운·개별 설명 저장 UI는 정의상 폴더 자식(`parent_folder_id` 있음)에만 뜬다 — 즉 이 두 컨트롤은 성공률 0%였다. 폴더 자체(`is_folder`)는 그대로 거부하고, 폴더 자식은 `role`/`description` 두 필드만 허용하도록(그 외 필드가 섞이면 여전히 거부) 좁혀서 열었다. 신규 테스트 1건 추가(자식 role/description 허용, 자식의 다른 필드·폴더 자체는 여전히 거부).
+- [x] 검증: root typecheck, Backend 647 통과(+1 skip, 신규 1건), Frontend typecheck 통과(Cowork 진행 중인 프론트 변경분 포함, 이번 커밋 대상 아님), root build 전부 통과. 유료 Provider 호출 없음.
+  - **알아둘 것 — 무관한 사전 존재 실패 2건**: `images.app-module.integration.test.ts`("requires explicit approval and writes six local PNGs without a provider")와 `videos.app-module.integration.test.ts`("serves a generated scene's mp4 ... independent of jobId")가 이번 세션 내내 재현 가능하게 실패한다(타임아웃). 이번 라운드가 건드린 파일과 무관하고, `git stash`로 이번 커밋 이전 상태에서 동일하게 재현돼 사전 존재 문제로 확인했다 — local-fake 워크플로우를 직접 부르는 단위 테스트(`local-video-workflow.service.test.ts` 등)는 통과하므로 로직 자체보다는 전체 앱(`NestFactory.create(AppModule)`)을 실제 HTTP로 띄우는 이 두 통합 테스트 특유의 문제로 보인다(원인 미확정 — 이 실행 환경의 타이밍/리소스 특성일 가능성). 별도로 조사가 필요하다.
+- [x] 커밋: `7a7db21`.
+
