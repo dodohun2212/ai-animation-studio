@@ -12,9 +12,11 @@ import { LocalVideoSubmissionService } from "./local-video-submission.service.js
 import { LocalVideoWorkflowService } from "./local-video-workflow.service.js";
 import { LocalVideoMergeService } from "./video-merge.service.js";
 import { VideoLibraryService } from "./video-library.service.js";
+import { AudioModule } from "../audio/audio.module.js";
+import { AudioLibraryService } from "../audio/audio-library.service.js";
 
 @Module({
-  imports: [ProjectsModule, ProviderSettingsModule, AssetsModule],
+  imports: [ProjectsModule, ProviderSettingsModule, AssetsModule, AudioModule],
   controllers: [VideosController],
   providers: [
     { provide: RunwayBudget, useFactory: (root: string) => new RunwayBudget(root), inject: [LEARNING_DATA_ROOT] },
@@ -38,8 +40,8 @@ import { VideoLibraryService } from "./video-library.service.js";
     inject: [LocalProjectRepository, PROJECTS_ROOT, ProviderSettingsService, RunwayBudget],
   }, {
     provide: LocalVideoMergeService,
-    useFactory: (projects: LocalProjectRepository, projectsRoot: string) => new LocalVideoMergeService(projects, projectsRoot),
-    inject: [LocalProjectRepository, PROJECTS_ROOT],
+    useFactory: (projects: LocalProjectRepository, projectsRoot: string, audioLibrary: AudioLibraryService) => new LocalVideoMergeService(projects, projectsRoot, undefined, audioLibrary),
+    inject: [LocalProjectRepository, PROJECTS_ROOT, AudioLibraryService],
   }],
 })
 export class VideosModule {}

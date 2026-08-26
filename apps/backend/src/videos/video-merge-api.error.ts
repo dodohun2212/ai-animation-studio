@@ -2,6 +2,7 @@ import { HttpException, HttpStatus } from "@nestjs/common";
 import type { ApiError } from "@ai-animation-studio/shared";
 
 type VideoMergeErrorCode =
+  | "INVALID_REQUEST"
   | "VIDEO_MERGE_NOT_ALLOWED"
   | "VIDEO_MERGE_CLIPS_INVALID"
   | "FFMPEG_UNAVAILABLE"
@@ -16,6 +17,8 @@ class VideoMergeApiException extends HttpException {
   }
 }
 
+export const videoMergeInvalidRequest = (message = "Request is invalid.") =>
+  new VideoMergeApiException("INVALID_REQUEST", message, HttpStatus.BAD_REQUEST);
 export const videoMergeNotAllowed = () =>
   new VideoMergeApiException("VIDEO_MERGE_NOT_ALLOWED", "Final rendering requires six approved scene videos.", HttpStatus.CONFLICT);
 export const videoMergeClipsInvalid = () =>

@@ -90,3 +90,66 @@ describe("FfmpegMergeEngine.merge subtitle burn-in", () => {
     expect(filterArg).toContain(`fontsdir='${escapeForFfmpegFilterPath(fontsDir)}'`);
   });
 });
+
+describe("FfmpegMergeEngine.mixBackgroundMusic", () => {
+  function probeThenWriteRunner(durationSeconds: number, calls: string[][]): MediaCommandRunner {
+    return async (arguments_) => {
+      const args = [...arguments_]; calls.push(args);
+      if (args[0] === "ffprobe") return { stdout: JSON.stringify({ format: { duration: String(durationSeconds) } }), stderr: "" };
+      await fs.writeFile(args.at(-1)!, Buffer.from("mixed"));
+      return { stdout: "", stderr: "" };
+    };
+  }
+
+  it("loops the bgm input, trims it to the merged video's own duration, fades both ends, applies volume, and mixes without amix's own normalization", async () => {
+    const calls: string[][] = [];
+    const { root } = await setup();
+    const inputPath = path.join(root, "instagram_reel.mp4");
+    await fs.mkdir(path.dirname(inputPath), { recursive: true });
+    await fs.writeFile(inputPath, Buffer.from("existing final"));
+    const outputPath = path.join(root, "mixed.mp4");
+    const engine = new FfmpegMergeEngine(probeThenWriteRunner(20, calls));
+
+    await engine.mixBackgroundMusic(inputPath, "bgm.mp3", 0.4, 2, outputPath);
+
+    const ffmpegCall = calls.find((args) => args[0] === "ffmpeg")!;
+    expect(ffmpegCall).toContain("-stream_loop");
+    expect(ffmpegCall[ffmpegCall.indexOf("-stream_loop") + 1]).toBe("-1");
+    expect(ffmpegCall[ffmpegCall.indexOf("-stream_loop") + 2]).toBe("-i");
+    expect(ffmpegCall[ffmpegCall.indexOf("-stream_loop") + 3]).toBe("bgm.mp3");
+    const filter = ffmpegCall[ffmpegCall.indexOf("-filter_complex") + 1]!;
+    expect(filter).toContain("atrim=0:20.000");
+    expect(filter).toContain("afade=t=in:st=0:d=2.000");
+    expect(filter).toContain("afade=t=out:st=18.000:d=2.000"); // fades out starting 2s before the 20s end
+    expect(filter).toContain("volume=0.4");
+    expect(filter).toContain("amix=inputs=2:duration=first:dropout_transition=0:normalize=0");
+    expect(ffmpegCall).toContain("-c:v"); expect(ffmpegCall[ffmpegCall.indexOf("-c:v") + 1]).toBe("copy");
+    await expect(fs.readFile(outputPath, "utf8")).resolves.toBe("mixed");
+    await expect(fs.readFile(inputPath, "utf8")).resolves.toBe("existing final"); // never overwritten mid-command
+  });
+
+  it("clamps a fadeSeconds longer than half the video to avoid negative fade-out timing on a very short clip", async () => {
+    const calls: string[][] = [];
+    const { root } = await setup();
+    const inputPath = path.join(root, "instagram_reel.mp4");
+    await fs.mkdir(path.dirname(inputPath), { recursive: true });
+    await fs.writeFile(inputPath, Buffer.from("existing final"));
+    const engine = new FfmpegMergeEngine(probeThenWriteRunner(3, calls));
+
+    await engine.mixBackgroundMusic(inputPath, "bgm.mp3", 0.25, 10, path.join(root, "mixed.mp4"));
+
+    const filter = calls.find((args) => args[0] === "ffmpeg")![calls.find((args) => args[0] === "ffmpeg")!.indexOf("-filter_complex") + 1]!;
+    expect(filter).toContain("afade=t=in:st=0:d=1.500"); // clamped to half of the 3s duration
+    expect(filter).toContain("afade=t=out:st=1.500:d=1.500");
+  });
+
+  it("reports an unusable input the same way an invalid clip is reported elsewhere", async () => {
+    const { root } = await setup();
+    const engine = new FfmpegMergeEngine(async (arguments_) => {
+      if (arguments_[0] === "ffprobe") return { stdout: JSON.stringify({ format: { duration: "not-a-number" } }), stderr: "" };
+      throw new Error("should not reach ffmpeg");
+    });
+    await expect(engine.mixBackgroundMusic(path.join(root, "in.mp4"), "bgm.mp3", 0.25, 2, path.join(root, "out.mp4")))
+      .rejects.toMatchObject({ kind: "invalid" });
+  });
+});

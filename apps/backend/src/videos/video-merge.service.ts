@@ -9,11 +9,18 @@ import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
 import { sceneValue } from "../images/image-prompt.js";
+import { AudioLibraryService } from "../audio/audio-library.service.js";
 import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
-import { ffmpegUnavailable, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
+import { ffmpegUnavailable, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeInvalidRequest, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
 
 const FINAL_VIDEO_PATH = "videos/final/instagram_reel.mp4" as const;
+const DEFAULT_BGM_VOLUME = 0.25;
+const DEFAULT_BGM_FADE_SECONDS = 2;
 type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved" };
+type AudioMode = "narration" | "narration+bgm" | "silent";
+interface ResolvedAudioSettings { mode: AudioMode; trackId?: string; volume: number; fadeSeconds: number }
+
+const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
 function scenesFor(project: StoredProject): SceneNumber[] {
   return sceneNumbersFor(toShortProjectSettings(project).sceneCount);
@@ -26,11 +33,52 @@ function isApprovedReviews(value: unknown, scenes: readonly SceneNumber[]): valu
     && new Set(value.map((item) => item.scene_number)).size === scenes.length;
 }
 
+/** Same "real files exist" meaning as project.mapper.ts's narrationAvailableFor() — kept as its own copy per this codebase's convention (see that function's own doc comment for why a projects/ -> videos/ layering inversion is avoided by not importing it). */
+function narrationAvailableFor(project: StoredProject): boolean {
+  return project.generated_narrations.some((file) => typeof file === "string" && file.length > 0);
+}
+
+/**
+ * `request` is the raw, unvalidated POST body. Omitted (or `audio` omitted within it) falls back to
+ * narrationEnabled's own on/off (matching this function's pre-audio.mode behavior exactly — "off" means "don't
+ * use it" even if old narration files are still on disk, the same as this file's mergeScenes() doc comment
+ * already established for subtitlesEnabled) gated by whether narration actually exists at all. An *explicit*
+ * `audio.mode: "narration"` request is different: it only requires narrationAvailable (real files exist), not
+ * the toggle — a caller asking for narration by name is overriding the project-level default for this one
+ * merge, the same way audio.mode is allowed to override it toward "silent" too.
+ *
+ * "narration" and "narration+bgm" both require real narration audio to exist; requesting either without it is
+ * rejected rather than silently falling back, so a client bug can't ship a merge whose audio doesn't match what
+ * the user asked for.
+ */
+function resolveAudioSettings(project: StoredProject, request: unknown): ResolvedAudioSettings {
+  const narrationAvailable = narrationAvailableFor(project);
+  const defaultMode: AudioMode = narrationAvailable && toShortProjectSettings(project).narrationEnabled ? "narration" : "silent";
+  const fallback: ResolvedAudioSettings = { mode: defaultMode, volume: DEFAULT_BGM_VOLUME, fadeSeconds: DEFAULT_BGM_FADE_SECONDS };
+  if (request === undefined) return fallback;
+  if (!isObject(request) || Object.keys(request).some((key) => key !== "audio")) throw videoMergeInvalidRequest();
+  if (request.audio === undefined) return fallback;
+  const audio = request.audio;
+  if (!isObject(audio) || Object.keys(audio).some((key) => !["mode", "trackId", "volume", "fadeSeconds"].includes(key))) throw videoMergeInvalidRequest();
+  if (audio.mode !== "narration" && audio.mode !== "narration+bgm" && audio.mode !== "silent") throw videoMergeInvalidRequest("audio.mode must be narration, narration+bgm, or silent.");
+  if ((audio.mode === "narration" || audio.mode === "narration+bgm") && !narrationAvailable) throw videoMergeInvalidRequest("This project has no narration audio to include.");
+  if (audio.mode === "narration+bgm" && (typeof audio.trackId !== "string" || !audio.trackId.trim())) throw videoMergeInvalidRequest("audio.trackId is required for narration+bgm.");
+  if (audio.trackId !== undefined && typeof audio.trackId !== "string") throw videoMergeInvalidRequest();
+  if (audio.volume !== undefined && (typeof audio.volume !== "number" || !Number.isFinite(audio.volume) || audio.volume < 0 || audio.volume > 1)) throw videoMergeInvalidRequest("audio.volume must be between 0 and 1.");
+  if (audio.fadeSeconds !== undefined && (typeof audio.fadeSeconds !== "number" || !Number.isFinite(audio.fadeSeconds) || audio.fadeSeconds < 0)) throw videoMergeInvalidRequest("audio.fadeSeconds must be a non-negative number.");
+  return {
+    mode: audio.mode,
+    ...(audio.mode === "narration+bgm" ? { trackId: audio.trackId as string } : {}),
+    volume: typeof audio.volume === "number" ? audio.volume : DEFAULT_BGM_VOLUME,
+    fadeSeconds: typeof audio.fadeSeconds === "number" ? audio.fadeSeconds : DEFAULT_BGM_FADE_SECONDS,
+  };
+}
+
 @Injectable()
 export class LocalVideoMergeService {
   private readonly engine: FfmpegMergeEngine;
 
-  constructor(private readonly projects: LocalProjectRepository, private readonly projectsRoot: string, runner?: MediaCommandRunner) {
+  constructor(private readonly projects: LocalProjectRepository, private readonly projectsRoot: string, runner?: MediaCommandRunner, private readonly audioLibrary?: AudioLibraryService) {
     this.engine = new FfmpegMergeEngine(runner);
   }
 
@@ -43,20 +91,20 @@ export class LocalVideoMergeService {
    * (see image-review.service.ts's identical caution about stale generated_images entries) must never fail the
    * merge — narration is supplementary, the video is not. Any such scene simply falls back to silence.
    *
-   * narrationAudioPath is also gated on narrationEnabled, not just file existence: if a user generated narration
-   * audio and later turned narrationEnabled off (e.g. switching to subtitles-only to stop spending on TTS), the
-   * old audio file can still be sitting on disk — using it anyway would silently ignore the toggle the user just
-   * set. "off" means "don't use it", the same as subtitlesEnabled below, not just "don't make more of it".
+   * `includeNarration` is this merge's own resolved audio.mode ("narration"/"narration+bgm" vs "silent") — not
+   * ShortProjectSettings.narrationEnabled directly. The two usually agree, but audio.mode is what the user
+   * explicitly asked this specific merge to produce (e.g. a deliberate silent export to add music in Instagram
+   * itself), so it must be able to override the project-level setting for one merge without changing it.
    *
    * subtitleText is independent of narrationAudioPath (subtitles-only, no TTS spend, is a deliberate mode — see
    * ShortProjectSettings.subtitlesEnabled's doc comment): a scene gets a subtitle whenever subtitlesEnabled is on
    * AND that scene has narration text, regardless of whether narration audio exists for it.
    */
-  private async mergeScenes(project: StoredProject, clips: readonly string[], scenes: readonly SceneNumber[]): Promise<MergeSceneInput[]> {
+  private async mergeScenes(project: StoredProject, clips: readonly string[], scenes: readonly SceneNumber[], includeNarration: boolean): Promise<MergeSceneInput[]> {
     const settings = toShortProjectSettings(project);
     return Promise.all(scenes.map(async (scene, index) => {
       const file = project.generated_narrations[scene - 1];
-      const narrationAudioPath = settings.narrationEnabled && typeof file === "string" && (await fs.stat(file).then((stat) => stat.size > 0).catch(() => false)) ? file : null;
+      const narrationAudioPath = includeNarration && typeof file === "string" && (await fs.stat(file).then((stat) => stat.size > 0).catch(() => false)) ? file : null;
       const subtitleText = settings.subtitlesEnabled ? sceneValue(project.scenes[scene - 1], "narration") || null : null;
       return { clip: clips[index]!, narrationAudioPath, subtitleText };
     }));
@@ -113,22 +161,34 @@ export class LocalVideoMergeService {
     await this.projects.save(updated).catch(() => undefined);
   }
 
-  async merge(projectId: string): Promise<MergeVideosResponse> {
+  async merge(projectId: string, request?: unknown): Promise<MergeVideosResponse> {
     const project = await this.projects.findById(projectId.trim());
+    const audio = resolveAudioSettings(project, request);
+    // Resolved before any state changes or rendering work starts — an unknown/unavailable track should fail
+    // fast, the same as approvedClips() failing fast on invalid clips below, not mid-render.
+    let bgmPath: string | undefined;
+    if (audio.mode === "narration+bgm") {
+      if (!this.audioLibrary) throw videoMergeInvalidRequest("BGM is not available in this configuration.");
+      bgmPath = (await this.audioLibrary.content(audio.trackId!)).path;
+    }
     const clips = await this.approvedClips(project);
     try { for (const clip of clips) await this.engine.probe(clip); }
     catch (error) {
       if (error instanceof MediaToolError && error.kind === "unavailable") throw ffmpegUnavailable();
       throw videoMergeClipsInvalid();
     }
-    const mergeScenes = await this.mergeScenes(project, clips, scenesFor(project));
+    const mergeScenes = await this.mergeScenes(project, clips, scenesFor(project), audio.mode !== "silent");
     const clipDurationSeconds = toShortProjectSettings(project).clipDurationSeconds;
     const rendering = { ...project, workflow_state: WorkflowState.Rendering, updated_at: new Date().toISOString() };
     try { await this.projects.save(rendering); } catch { throw videoMergeStorageError(); }
     try {
       await this.archiveExistingFinal(project.project_id);
-      await fs.mkdir(path.dirname(this.final(project.project_id)), { recursive: true });
-      await this.engine.merge(mergeScenes, clipDurationSeconds, this.final(project.project_id), rendering.style_profile.aspect);
+      const finalPath = this.final(project.project_id);
+      await fs.mkdir(path.dirname(finalPath), { recursive: true });
+      await this.engine.merge(mergeScenes, clipDurationSeconds, finalPath, rendering.style_profile.aspect);
+      if (audio.mode === "narration+bgm" && bgmPath) {
+        await this.engine.mixBackgroundMusic(finalPath, bgmPath, audio.volume, audio.fadeSeconds, finalPath);
+      }
       const completed = { ...rendering, workflow_state: WorkflowState.Completed, updated_at: new Date().toISOString(), final_video_path: FINAL_VIDEO_PATH };
       await this.projects.save(completed);
       return { project: toApiProject(completed), finalVideoPath: FINAL_VIDEO_PATH };

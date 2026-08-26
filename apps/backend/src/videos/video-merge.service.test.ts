@@ -8,6 +8,7 @@ import { WorkflowState } from "@ai-animation-studio/shared";
 import { MediaToolError, type MediaCommandRunner } from "./ffmpeg-merge.service.js";
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
+import { AudioLibraryService } from "../audio/audio-library.service.js";
 import { LocalVideoMergeService } from "./video-merge.service.js";
 
 const roots: string[] = [];
@@ -210,5 +211,108 @@ describe("local FFmpeg video merge", () => {
     const normalizeCalls = calls.filter((args) => args[0] === "ffmpeg" && args.includes("-vf"));
     expect(normalizeCalls[0]).not.toContain(narrationFile);
     expect(normalizeCalls[0]).toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
+  });
+
+  describe("audio request", () => {
+    async function withNarration(projects: LocalProjectRepository, projectsRoot: string, enabled = true) {
+      const narrationFile = path.join(projectsRoot, "video_merge", "narration", "scene1.mp3");
+      await fs.mkdir(path.dirname(narrationFile), { recursive: true });
+      await fs.writeFile(narrationFile, Buffer.from("fake narration audio"));
+      const project = await projects.findById("video_merge");
+      project.generated_narrations = [narrationFile];
+      project.lore_context = { ...project.lore_context, narration_enabled: enabled };
+      await projects.save(project);
+      return narrationFile;
+    }
+
+    it("an explicit silent request overrides narrationEnabled=true", async () => {
+      const { projectsRoot, projects } = await setup();
+      const narrationFile = await withNarration(projects, projectsRoot, true);
+      const calls: string[][] = [];
+      await new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge", { audio: { mode: "silent" } });
+      const normalizeCalls = calls.filter((args) => args[0] === "ffmpeg" && args.includes("-vf"));
+      expect(normalizeCalls[0]).not.toContain(narrationFile);
+      expect(normalizeCalls[0]).toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
+    });
+
+    it("an explicit narration request overrides narrationEnabled=false, since the caller is choosing it deliberately", async () => {
+      const { projectsRoot, projects } = await setup();
+      const narrationFile = await withNarration(projects, projectsRoot, false);
+      const calls: string[][] = [];
+      await new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge", { audio: { mode: "narration" } });
+      const normalizeCalls = calls.filter((args) => args[0] === "ffmpeg" && args.includes("-vf"));
+      expect(normalizeCalls[0]).toContain(narrationFile);
+    });
+
+    it("rejects an explicit narration request when the project has no narration audio at all", async () => {
+      const { projectsRoot, projects } = await setup();
+      await expect(new LocalVideoMergeService(projects, projectsRoot, runner()).merge("video_merge", { audio: { mode: "narration" } }))
+        .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    });
+
+    it("rejects an unknown audio.mode value", async () => {
+      const { projectsRoot, projects } = await setup();
+      await expect(new LocalVideoMergeService(projects, projectsRoot, runner()).merge("video_merge", { audio: { mode: "loud" } }))
+        .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    });
+
+    it("rejects narration+bgm without a trackId", async () => {
+      const { projectsRoot, projects } = await setup();
+      await withNarration(projects, projectsRoot, true);
+      await expect(new LocalVideoMergeService(projects, projectsRoot, runner()).merge("video_merge", { audio: { mode: "narration+bgm" } }))
+        .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    });
+
+    it("rejects a volume or fadeSeconds outside their valid range", async () => {
+      const { projectsRoot, projects } = await setup();
+      await expect(new LocalVideoMergeService(projects, projectsRoot, runner()).merge("video_merge", { audio: { mode: "silent", volume: 1.5 } }))
+        .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+      await expect(new LocalVideoMergeService(projects, projectsRoot, runner()).merge("video_merge", { audio: { mode: "silent", fadeSeconds: -1 } }))
+        .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    });
+
+    it("rejects narration+bgm when no AudioLibraryService is configured", async () => {
+      const { projectsRoot, projects } = await setup();
+      await withNarration(projects, projectsRoot, true);
+      await expect(new LocalVideoMergeService(projects, projectsRoot, runner()).merge("video_merge", { audio: { mode: "narration+bgm", trackId: "TRACK-MISSING" } }))
+        .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    });
+
+    it("mixes in a real BGM track from the audio library, keeping narration in the base merge", async () => {
+      const { projectsRoot, projects, root } = await setup();
+      await withNarration(projects, projectsRoot, true);
+      const audioRunner: MediaCommandRunner = async (arguments_) => {
+        const args = [...arguments_];
+        if (args[0] === "ffprobe") return { stdout: JSON.stringify({ streams: [{ codec_type: "audio" }], format: { duration: "10.0" } }), stderr: "" };
+        throw new Error("unexpected audio command");
+      };
+      const audioLibrary = new AudioLibraryService(root, audioRunner);
+      const uploaded = await audioLibrary.upload({ buffer: Buffer.from("fake mp3 bytes"), originalname: "bgm.mp3", mimetype: "audio/mpeg" }, undefined);
+
+      const calls: string[][] = [];
+      const mergeRunner: MediaCommandRunner = async (arguments_) => {
+        const args = [...arguments_];
+        calls.push(args);
+        if (args[0] === "ffprobe") {
+          // First call in merge() probes each scene clip (needs a video stream); mixBackgroundMusic() later
+          // probes the already-merged final video's duration (needs only format.duration).
+          return { stdout: JSON.stringify({ streams: [{ codec_type: "video" }], format: { duration: "30.0" } }), stderr: "" };
+        }
+        const output = args.at(-1)!;
+        await fs.writeFile(output, Buffer.from("rendered"));
+        return { stdout: "", stderr: "" };
+      };
+      const service = new LocalVideoMergeService(projects, projectsRoot, mergeRunner, audioLibrary);
+
+      const result = await service.merge("video_merge", { audio: { mode: "narration+bgm", trackId: uploaded.track.trackId, volume: 0.4, fadeSeconds: 3 } });
+
+      expect(result.finalVideoPath).toBe("videos/final/instagram_reel.mp4");
+      const bgmMixCall = calls.find((args) => args[0] === "ffmpeg" && args.includes("-stream_loop"));
+      expect(bgmMixCall).toBeDefined();
+      expect(bgmMixCall!.join(" ")).toContain("volume=0.4");
+      // -stream_loop -1 is the bgm input's own option, so it must sit right before that -i, not the video input's.
+      const bgmInputIndex = bgmMixCall!.indexOf("-stream_loop");
+      expect(bgmMixCall![bgmInputIndex + 2]).toBe("-i");
+    });
   });
 });

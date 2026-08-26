@@ -141,5 +141,5 @@ export class VideosController {
   approveReview(@Param("projectId") projectId: string, @Param("jobId") jobId: string, @Param("sceneNumber") sceneNumber: string, @Body() body: unknown): Promise<ApproveVideoReviewResponse> { return this.workflow.approveReview(projectId, jobId, sceneNumber, body); }
 
   @Post(`${API_ROUTES.projects}/:projectId/videos/merge`)
-  merge(@Param("projectId") projectId: string): Promise<MergeVideosResponse> { return this.mergeService.merge(projectId); }
+  merge(@Param("projectId") projectId: string, @Body() body: unknown): Promise<MergeVideosResponse> { return this.mergeService.merge(projectId, body); }
 }

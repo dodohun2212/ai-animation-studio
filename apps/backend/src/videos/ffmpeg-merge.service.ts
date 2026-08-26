@@ -135,4 +135,43 @@ export class FfmpegMergeEngine {
       await fs.rename(temporaryFinal, finalPath);
     } finally { await fs.unlink(temporaryFinal).catch(() => undefined); }
   }
+
+  /**
+   * Mixes a background-music track under `inputPath`'s existing audio (narration, or silence — merge() above
+   * always produces one audio stream either way) and writes the result to `outputPath`, leaving `inputPath`
+   * itself untouched so the caller decides when/whether to replace it. `-stream_loop -1` on the bgm input loops
+   * it indefinitely at the demuxer level (simpler than an `aloop` filter needing a sample-count) and `atrim` cuts
+   * the loop down to `inputPath`'s own duration, so a bgm track shorter OR longer than the video both just work.
+   * `amix`'s default loudness normalization is turned off (`normalize=0`) so narration keeps its own recorded
+   * level — only `volume` (this call's own parameter) controls the bgm's level, not amix's input-count-based
+   * guess.
+   *
+   * Deliberately constant attenuation, not sidechain-triggered ducking against narration: real ducking is
+   * feasible here (inputPath's own audio track could drive a sidechaincompress key against the bgm) and is a
+   * reasonable follow-up, but a fixed, conservative default volume is simpler to get right without a live
+   * multi-track test rig, and still keeps narration intelligible (`.claude-bridge` Round 172 — Cowork flagged
+   * ducking OR automatic volume adjustment as either acceptable approach).
+   */
+  async mixBackgroundMusic(inputPath: string, bgmPath: string, volume: number, fadeSeconds: number, outputPath: string): Promise<void> {
+    let duration: number;
+    try {
+      const result = await this.command(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", inputPath]);
+      const data = JSON.parse(result.stdout) as { format?: { duration?: unknown } };
+      duration = Number(data.format?.duration);
+      if (!Number.isFinite(duration) || duration <= 0) throw new Error("invalid");
+    } catch (error) {
+      if (error instanceof MediaToolError && error.kind === "unavailable") throw error;
+      throw new MediaToolError("invalid", "Merged video duration could not be determined.");
+    }
+    const fade = Math.max(0, Math.min(fadeSeconds, duration / 2));
+    const fadeOutStart = Math.max(0, duration - fade);
+    const filter = `[1:a]atrim=0:${duration.toFixed(3)},afade=t=in:st=0:d=${fade.toFixed(3)},afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${fade.toFixed(3)},volume=${volume}[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]`;
+    const temporary = path.join(path.dirname(outputPath), `.${path.basename(outputPath)}.${crypto.randomUUID()}.tmp.mp4`);
+    try {
+      await this.command(["ffmpeg", "-y", "-i", inputPath, "-stream_loop", "-1", "-i", bgmPath, "-filter_complex", filter, "-map", "0:v:0", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", temporary]);
+      const stat = await fs.stat(temporary);
+      if (stat.size <= 0) throw new MediaToolError("failed", "BGM mix output is empty.");
+      await fs.rename(temporary, outputPath);
+    } finally { await fs.unlink(temporary).catch(() => undefined); }
+  }
 }
