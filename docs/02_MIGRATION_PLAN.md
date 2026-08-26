@@ -1051,4 +1051,7 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 검증: root typecheck(shared 재빌드 후, backend+desktop 통과, frontend는 #9와 같은 이유로 실패 — 이번 계약 추가 자체는 새 프론트 에러를 만들지 않음, 확인함)·Backend 652 통과(+1 skip, 신규 4건)·`npm run build --workspace @ai-animation-studio/backend` 통과. 유료 Provider 호출 없음.
   - 커밋: `8f61f43`.
 - [x] **CLI 계약 랜딩 완료 보고**: 계약 반영 끝났으니 Cowork가 화면을 붙이면 된다 — `.claude-bridge`에 상세 보고.
+- [x] **자가 발견 회귀 — `apps/frontend/src/api/longProjectsApi.ts`의 `isLongProjectSettings()`가 `platform` 필드를 여전히 강제**: #9로 백엔드가 `platform`을 응답에서 아예 안 보내게 된 뒤, 이 프론트 자체 응답 검증기(`PLATFORMS.has(value.platform)`)가 모든 장기 프로젝트 설정 응답을 `CLIENT_MALFORMED_RESPONSE`로 거부하고 있었다. Cowork의 Round 93~94 화면 작업(`ShortProjectSettingsScreen`/#9 라벨/#2)을 검증하던 중 프론트 테스트 37개(`App.test.tsx`·`longProjectsApi.test.ts`·`CreateLongProjectForm.test.tsx`·`LongProjectDetail.test.tsx`·`LongProjectOutlineScreen.test.tsx`·`LongProjectSettingsScreen.test.tsx`·`LongStoryBibleScreen.test.tsx`·`LongEpisodeNarrationReviewScreen.test.tsx`·`LongEpisodeVideoMergeScreen.test.tsx`)가 이걸로 실패하는 걸 발견했다. UI/디자인 판단이 필요 없는 순수 응답 검증기라(Round 81과 같은 범주) CLI가 직접 고쳤다 — `platform` 체크 한 줄 제거로 37개 전부 해결.
+  - 검증: frontend typecheck·build 통과, 프론트 테스트 764개 중 760개 통과(남은 4개는 이 수정과 무관, Cowork의 다른 진행 중 작업 관련 — `.claude-bridge`에 보고).
+  - 커밋: `50d3ff3`.
 
