@@ -59,6 +59,36 @@ export function ProviderSettingsScreen({ onBack }: Props) {
         <div className="space-y-4">
           <ProviderCredentialCard label="OpenAI" status={state.statuses.openai} onStatusChange={update} acquireMutation={() => acquireMutation("openai")} releaseMutation={() => releaseMutation("openai")}/>
           <ProviderCredentialCard label="Runway" status={state.statuses.runway} onStatusChange={update} acquireMutation={() => acquireMutation("runway")} releaseMutation={() => releaseMutation("runway")}/>
+
+          {/* The screen listed two provider names and nothing about what either one is for, so there was no way
+              to tell which key a stuck step needs — or what stops working if you disconnect one. */}
+          <section aria-label="어떤 AI가 어디에 쓰이나" className="space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
+            <h3 className="text-sm font-semibold text-slate-200">어떤 AI가 어디에 쓰이나</h3>
+            <div className="space-y-2">
+              <div className="rounded-xl border border-violet-400/25 bg-violet-500/5 p-3">
+                <p className="text-sm font-semibold text-violet-200">OpenAI — 글과 그림, 목소리</p>
+                <ul className="mt-1.5 space-y-1 text-xs text-slate-400">
+                  <li>· 단기 프로젝트 <span className="text-slate-300">대본</span> 만들기</li>
+                  <li>· 장기 프로젝트 <span className="text-slate-300">전체 개요</span>와 <span className="text-slate-300">회차별 대본</span> 만들기</li>
+                  <li>· 장면 <span className="text-slate-300">이미지</span> 만들기</li>
+                  <li>· 읽어줄 문장 <span className="text-slate-300">목소리(음성)</span> 만들기</li>
+                </ul>
+                <p className="mt-1.5 text-xs text-slate-500">이 키가 없으면 대본·이미지·목소리 단계가 모두 멈춥니다.</p>
+              </div>
+              <div className="rounded-xl border border-rose-400/25 bg-rose-500/5 p-3">
+                <p className="text-sm font-semibold text-rose-200">Runway — 움직이는 영상</p>
+                <ul className="mt-1.5 space-y-1 text-xs text-slate-400">
+                  <li>· 완성된 장면 이미지를 <span className="text-slate-300">영상 클립</span>으로 움직이기</li>
+                  <li>· 실패한 장면 <span className="text-slate-300">다시 만들기</span></li>
+                </ul>
+                <p className="mt-1.5 text-xs text-slate-500">이 키가 없으면 대본·이미지까지는 되지만 영상이 안 만들어집니다.</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-500">
+              최종 영상 합치기는 컴퓨터 안에서 처리해서 어느 키도 필요 없고 비용도 들지 않습니다.
+              단계별 호출 횟수와 예상 비용은 <span className="text-slate-300">작업 워크플로우</span> 화면에 있습니다.
+            </p>
+          </section>
         </div>
       )}
     </section>

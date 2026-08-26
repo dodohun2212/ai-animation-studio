@@ -11,6 +11,24 @@ const TYPES: Array<{ value: AssetType; label: string }> = [
   { value: "general_reference", label: "일반 참고" },
 ];
 const splitList = (value: string) => value.split(",").map((item) => item.trim()).filter(Boolean);
+/**
+ * How the left list is grouped. The library used to be one flat list holding folders, the images inside those
+ * folders, and everything the projects generated — so a handful of characters filled the screen and the folders
+ * a person actually organises by were lost among their own contents. Children are excluded from every group
+ * (see the render), so the top level is only the things you choose between.
+ *
+ * A project-generated image is told apart by `sourceProjectId`: the backend writes the literal
+ * "_asset_library_manual" for anything registered by hand (assets.repository.ts) and the real project id for
+ * anything a project produced. No new asset type is needed — the distinction is already in the data.
+ */
+const MANUAL_SOURCE_PROJECT_ID = "_asset_library_manual";
+
+const ASSET_GROUPS: { key: string; label: string; match: (asset: Asset) => boolean }[] = [
+  { key: "folders", label: "폴더", match: (asset) => asset.isFolder },
+  { key: "loose", label: "폴더에 안 넣은 이미지", match: (asset) => !asset.isFolder && asset.sourceProjectId === MANUAL_SOURCE_PROJECT_ID },
+  { key: "generated", label: "프로젝트가 만든 이미지", match: (asset) => !asset.isFolder && asset.sourceProjectId !== MANUAL_SOURCE_PROJECT_ID },
+];
+
 const IMPORT_VALIDATION_MESSAGE = "이미지 파일과 이름을 모두 입력해 주세요.";
 // Mirrors the backend's CHARACTER_ROLES (apps/backend/src/assets/assets.repository.ts) in a stable, labeled order.
 const CHARACTER_ROLE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
@@ -52,7 +70,8 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState(initialQuery);
-  const [assetType, setAssetType] = useState<AssetType | "">("");
+  /** "__project" is a screen-level filter, not a stored type — the backend has no project asset type. */
+  const [assetType, setAssetType] = useState<AssetType | "" | "__project">("");
   const [selected, setSelected] = useState<GetAssetResponse | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<{ code: string; message: string } | null>(null);
@@ -147,16 +166,32 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
     const requestId = ++listRequest.current;
     setLoading(true);
     try {
-      const response = await listAssets({ query: nextQuery || undefined, assetType: nextType || undefined });
+      const response = await listAssets({ query: nextQuery || undefined, assetType: nextType && nextType !== "__project" ? nextType : undefined });
       if (requestId === listRequest.current) { setAssets(response.assets); setError(null); }
     } catch (caught) {
       if (requestId === listRequest.current) setError(toAssetDisplayError(caught));
     } finally { if (requestId === listRequest.current) setLoading(false); }
   }
   useEffect(() => { void load(initialQuery, ""); }, []);
+  // The source filter is applied on the rendered list, so switching it needs no refetch.
 
-  async function open(assetId: string) {
+  /**
+   * `toggle` is passed only by the list row. Every other caller (after an upload, after linking a child, after
+   * a rename) re-opens the SAME asset to refresh it — toggling there would close the panel the user is working
+   * in the moment their edit succeeds.
+   */
+  async function open(assetId: string, { toggle = false }: { toggle?: boolean } = {}) {
+    // Second click on the row you are already looking at closes the panel. Without this the detail stays on
+    // screen no matter what you do, which is half of why the page kept growing downward.
+    if (toggle && selected?.asset.assetId === assetId) {
+      ++detailRequest.current;
+      setSelected(null); setDetailError(null); setDetailLoading(false);
+      return;
+    }
     const requestId = ++detailRequest.current;
+    // Picking something to look at closes the "make a new one" forms — leaving them open is what stacked
+    // three full-height blocks on top of each other and pushed the detail panel off the screen.
+    setImportOpen(false); setFolderCreateOpen(false);
     setDetailLoading(true); setDetailError(null);
     try {
       const response = await getAsset(assetId);
@@ -526,13 +561,16 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
         </label>
         <label className="text-sm text-slate-300">
           유형
-          <select className={fieldClassName} value={assetType} onChange={(event) => setAssetType(event.target.value as AssetType | "")}>
+          <select className={fieldClassName} value={assetType} onChange={(event) => setAssetType(event.target.value as AssetType | "" | "__project")}>
             <option value="">전체</option>
             {TYPES.map((item) => (
               <option key={item.value} value={item.value}>
                 {item.label}
               </option>
             ))}
+            {/* Project output is its own thing, not a kind of character or background — picking 캐릭터 must not
+                drag it along, and there has to be a way to look at only it. */}
+            <option value="__project">프로젝트가 만든 이미지</option>
           </select>
         </label>
         <button type="submit" className={primaryButton}>
@@ -543,7 +581,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
           data-testid="import-toggle"
           aria-expanded={importOpen}
           className={outlineButton}
-          onClick={() => setImportOpen((current) => !current)}
+          onClick={() => { setImportOpen((current) => !current); setFolderCreateOpen(false); setSelected(null); setDetailError(null); }}
         >
           새 에셋 등록
         </button>
@@ -552,7 +590,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
           data-testid="folder-create-toggle"
           aria-expanded={folderCreateOpen}
           className={outlineButton}
-          onClick={() => setFolderCreateOpen((current) => !current)}
+          onClick={() => { setFolderCreateOpen((current) => !current); setImportOpen(false); setSelected(null); setDetailError(null); }}
         >
           새 폴더 만들기
         </button>
@@ -637,11 +675,24 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
       {assets && assets.length === 0 && !loading && <p className="text-sm text-slate-400">등록된 에셋이 없습니다.</p>}
       {assets && (
         <ul aria-label="에셋 목록" className="max-h-[560px] space-y-2 overflow-y-auto pr-1">
-          {assets.map((asset) => (
+          {ASSET_GROUPS.flatMap((group) => {
+            const members = assets.filter((asset) => {
+              if (asset.parentFolderId || !group.match(asset)) return false;
+              const generated = asset.sourceProjectId !== MANUAL_SOURCE_PROJECT_ID;
+              if (assetType === "__project") return generated;
+              if (assetType) return !generated; // a type filter means the library's own images, not project output
+              return true;
+            });
+            if (members.length === 0) return [];
+            return [
+              <li key={`group-${group.key}`} role="presentation" className="px-1 pt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                {group.label} · {members.length}
+              </li>,
+              ...members.map((asset) => (
             <li key={asset.assetId}>
               <button
                 type="button"
-                onClick={() => void open(asset.assetId)}
+                onClick={() => void open(asset.assetId, { toggle: true })}
                 className={`flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition hover:border-violet-400/40 hover:bg-slate-900 ${
                   selected?.asset.assetId === asset.assetId ? "border-violet-400/50 bg-slate-900" : "border-white/10 bg-slate-900/70"
                 }`}
@@ -656,13 +707,22 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                 <span className="min-w-0 flex-1">
                   <strong className="block truncate text-sm text-slate-100">{asset.displayName}</strong>
                   <span className="text-xs text-slate-400">
-                    {TYPES.find((item) => item.value === asset.assetType)?.label ?? asset.assetType}
+                    {asset.sourceProjectId !== MANUAL_SOURCE_PROJECT_ID
+                      ? "프로젝트"
+                      : TYPES.find((item) => item.value === asset.assetType)?.label ?? asset.assetType}
                     {asset.isFolder ? " 폴더" : ""}
                   </span>
                 </span>
               </button>
             </li>
-          ))}
+              )),
+            ];
+          })}
+          {assets.some((asset) => asset.parentFolderId) && (
+            <li role="presentation" className="px-1 pt-2 text-xs text-slate-500">
+              폴더 안에 들어 있는 이미지 {assets.filter((asset) => asset.parentFolderId).length}개는 여기 없습니다 — 폴더를 열면 보입니다.
+            </li>
+          )}
         </ul>
       )}
       </div>
@@ -806,12 +866,15 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
           {selected.asset.isFolder && (
             <section aria-label="폴더 구성" className="space-y-3 rounded-xl border border-white/10 bg-slate-950/30 p-3.5">
               <h4 className="text-sm font-semibold text-slate-200">폴더 구성</h4>
-              <p className="text-xs text-slate-500">
+              <details>
+              <summary className="cursor-pointer text-xs text-slate-500 hover:text-slate-400">이 폴더가 하는 일</summary>
+              <p className="mt-1 text-xs text-slate-500">
                 {selected.asset.assetType === "character"
                   ? "이 폴더 안에 정면·옆모습·뒷모습 등 캐릭터의 여러 모습을 이미지로 모아두면, 프로젝트에 이 캐릭터를 등장시킬 때 모습을 확실하게 전달할 수 있습니다."
                   : "이 폴더 안에 같은 장소·물건·스타일의 여러 참고 이미지를 모아두면, AI 생성 시 폴더 하나로 함께 전달할 수 있습니다."}{" "}
                 대표 이미지가 목록·썸네일에 표시됩니다. 아래 폴더 설명(공통 특징)과 각 이미지의 개별 특징이 AI에게 함께 전달됩니다.
               </p>
+              </details>
               {(folderChildrenLoading || referenceSetPending) && <Spinner label="불러오는 중..." />}
               {folderChildrenError && (
                 <p role="alert" data-testid="folder-children-error" data-error-code={folderChildrenError.code} className="text-sm text-rose-400">
@@ -903,7 +966,12 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                   {folderMutationError.message}
                 </p>
               )}
-              <form onSubmit={submitFolderUpload} aria-label="이 폴더에 새 이미지 등록" className="space-y-2 border-t border-white/10 pt-3">
+              {/* Folded: the panel used to stack five full-height sections, so choosing a folder pushed
+                  everything below it off the screen. Content stays in the DOM — a closed <details> hides it
+                  visually without removing it. */}
+              <details className="border-t border-white/10 pt-3">
+              <summary className="cursor-pointer text-sm font-medium text-slate-300 hover:text-slate-200">이 폴더에 새 이미지 등록</summary>
+              <form onSubmit={submitFolderUpload} aria-label="이 폴더에 새 이미지 등록" className="mt-2 space-y-2">
                 <p className="text-sm font-semibold text-slate-200">이 폴더에 새 이미지 등록</p>
                 <p className="text-xs text-slate-400">
                   아직 이미지 보관함에 없는 이미지를 바로 이 폴더 안으로 등록합니다. 유형은 이 폴더와 같은 것으로 들어갑니다.
@@ -941,7 +1009,10 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                   {folderUploadPending ? "등록하는 중…" : "이 폴더에 등록"}
                 </button>
               </form>
-              <form onSubmit={searchFolderLinkCandidates} aria-label="폴더에 추가할 이미지 검색" className="space-y-2 border-t border-white/10 pt-3">
+              </details>
+              <details className="border-t border-white/10 pt-3">
+              <summary className="cursor-pointer text-sm font-medium text-slate-300 hover:text-slate-200">이미 등록된 이미지 넣기</summary>
+              <form onSubmit={searchFolderLinkCandidates} aria-label="폴더에 추가할 이미지 검색" className="mt-2 space-y-2">
                 <p className="text-sm font-semibold text-slate-200">이미 등록된 이미지 넣기</p>
                 <p className="text-xs text-slate-400">이미지 보관함에 이미 등록된 같은 유형의 이미지를 검색해서 이 폴더에 추가할 수 있습니다.</p>
                 <div className="flex flex-wrap items-end gap-2">
@@ -974,10 +1045,13 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                 )}
                 {folderLinkResults && folderLinkResults.length === 0 && !folderLinkSearchLoading && <p className="text-sm text-slate-400">검색 결과가 없습니다.</p>}
               </form>
+              </details>
             </section>
           )}
 
-          <form onSubmit={submitEdit} aria-label="에셋 정보 편집" className="space-y-3 rounded-xl border border-white/10 bg-slate-950/30 p-3.5">
+          <details className="rounded-xl border border-white/10 bg-slate-950/30 p-3.5">
+          <summary className="cursor-pointer text-sm font-medium text-slate-300 hover:text-slate-200">이름·설명·태그 고치기</summary>
+          <form onSubmit={submitEdit} aria-label="에셋 정보 편집" className="mt-2 space-y-3">
             <label className="block text-sm text-slate-300">
               이름
               <input value={editName} required disabled={editPending} className={fieldClassName} onChange={(event) => setEditName(event.target.value)} />
@@ -994,6 +1068,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
               변경 저장
             </button>
           </form>
+          </details>
 
           {!selected.asset.isFolder && (
             <section aria-label="버전 기록" className="space-y-3 rounded-xl border border-white/10 bg-slate-950/30 p-3.5">
@@ -1062,8 +1137,10 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
             </div>
           )}
           {selected.asset.isFolder && (
-            <section aria-label="폴더 삭제" className="space-y-2 rounded-xl border border-rose-400/20 bg-rose-950/10 p-3.5">
-              <h4 className="text-sm font-semibold text-slate-200">폴더 삭제</h4>
+            <section aria-label="폴더 삭제" className="rounded-xl border border-rose-400/20 bg-rose-950/10 p-3.5">
+              <details>
+              <summary className="cursor-pointer text-sm font-semibold text-slate-200 hover:text-rose-200">폴더 삭제</summary>
+              <div className="mt-2 space-y-2">
               <label className="flex items-center gap-2 text-sm text-slate-300">
                 <input
                   type="checkbox"
@@ -1097,6 +1174,8 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                 폴더 삭제
               </button>
               {selected.usageProjectIds.length > 0 && <p className="text-sm text-slate-400">사용 중인 폴더는 삭제할 수 없습니다.</p>}
+              </div>
+              </details>
             </section>
           )}
 

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   IMAGE_ESTIMATED_COST_USD,
+  LONG_OUTLINE_ESTIMATED_COST_USD,
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
   RUNWAY_CLIP_DURATIONS,
@@ -123,6 +124,52 @@ function StageCard({
   );
 }
 
+/**
+ * The pipeline drawn as a row of boxes instead of described in a paragraph. The order of the stages is the one
+ * thing every question about this app comes back to ("why is my image ignoring the setting I changed?"), and a
+ * picture answers it in one glance where the prose below took four.
+ */
+function PipelineDiagram({ steps, testId }: { steps: { icon: string; title: string; note: string; tone: StageTone | "local" }[]; testId: string }) {
+  const toneClass = (tone: StageTone | "local") =>
+    tone === "local"
+      ? "border-white/15 bg-slate-800/50 text-slate-300"
+      : `${STAGE_STYLES[tone].border} bg-slate-900/70 ${STAGE_STYLES[tone].accent}`;
+  return (
+    <ol data-testid={testId} className="flex flex-wrap items-stretch gap-1.5">
+      {steps.map((step, index) => (
+        <li key={step.title} className="flex items-stretch gap-1.5">
+          <div className={`flex w-28 flex-col items-center rounded-xl border px-2 py-2.5 text-center ${toneClass(step.tone)}`}>
+            <span aria-hidden="true" className="text-xl leading-none">{step.icon}</span>
+            <span className="mt-1 text-xs font-semibold leading-tight">{step.title}</span>
+            <span className="mt-0.5 text-[10px] leading-tight text-slate-500">{step.note}</span>
+          </div>
+          {index < steps.length - 1 && (
+            <span aria-hidden="true" className="self-center text-slate-600">→</span>
+          )}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+const SHORT_STEPS: { icon: string; title: string; note: string; tone: StageTone | "local" }[] = [
+  { icon: "📝", title: "설정 입력", note: "내가 적는 것", tone: "local" },
+  { icon: "🤖", title: "대본", note: "OpenAI · 1회", tone: "story" },
+  { icon: "🖼", title: "장면 이미지", note: "OpenAI · 장면마다", tone: "image" },
+  { icon: "🎬", title: "영상 클립", note: "Runway · 장면마다", tone: "video" },
+  { icon: "📼", title: "합치기", note: "내 컴퓨터 · 무료", tone: "local" },
+];
+
+const LONG_STEPS: { icon: string; title: string; note: string; tone: StageTone | "local" }[] = [
+  { icon: "📚", title: "작품 설정", note: "내가 적는 것", tone: "local" },
+  { icon: "🗺", title: "전체 개요", note: "OpenAI · 1회", tone: "story" },
+  { icon: "📄", title: "회차 설정", note: "내가 고침 · 무료", tone: "local" },
+  { icon: "🤖", title: "회차 대본", note: "OpenAI · 회차마다", tone: "story" },
+  { icon: "🖼", title: "장면 이미지", note: "OpenAI · 장면마다", tone: "image" },
+  { icon: "🎬", title: "영상 클립", note: "Runway · 장면마다", tone: "video" },
+  { icon: "📼", title: "합치기", note: "내 컴퓨터 · 무료", tone: "local" },
+];
+
 function FlowArrow({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-3 px-1 py-0.5">
@@ -142,6 +189,9 @@ function FlowArrow({ label }: { label: string }) {
 export function WorkflowGuideScreen({ onBack }: Props) {
   const [sceneCount, setSceneCount] = useState(6);
   const [clipDurationSeconds, setClipDurationSeconds] = useState<RunwayClipDurationSeconds>(5);
+  /** Short is the default so the screen opens on the simpler of the two. */
+  const [projectKind, setProjectKind] = useState<"short" | "long">("short");
+  const [episodeCount, setEpisodeCount] = useState(5);
   const [narrationEnabled, setNarrationEnabled] = useState(false);
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(false);
 
@@ -157,6 +207,13 @@ export function WorkflowGuideScreen({ onBack }: Props) {
   const totalCalls = storyCalls + imageCalls + videoCalls + narrationCalls;
   const totalCost = storyTotal + imageTotal + videoTotal + narrationTotal;
   const runtimeSeconds = sceneCount * clipDurationSeconds;
+
+  // Long projects pay for the whole-work outline once, then repeat the short-project pipeline per episode.
+  const longPerEpisodeCalls = 1 + imageCalls + videoCalls + narrationCalls;
+  const longPerEpisodeCost = STORY_ESTIMATED_COST_USD + imageTotal + videoTotal + narrationTotal;
+  const longTotalCalls = 1 + episodeCount * longPerEpisodeCalls;
+  const longTotalCost = LONG_OUTLINE_ESTIMATED_COST_USD + episodeCount * longPerEpisodeCost;
+  const longRuntimeSeconds = episodeCount * runtimeSeconds;
 
   const sceneOptions = Array.from(
     { length: MAX_SCENE_COUNT - MIN_SCENE_COUNT + 1 },
@@ -182,8 +239,91 @@ export function WorkflowGuideScreen({ onBack }: Props) {
         드는지 바로 계산됩니다.
       </p>
 
+      {/* The two project kinds run different pipelines and were explained as one, so the long-project flow
+          (a whole-work outline first, then the short pipeline repeated per episode) was nowhere on screen. */}
+      <div role="tablist" aria-label="프로젝트 종류" className="flex gap-2">
+        {([["short", "단기 프로젝트"], ["long", "장기 프로젝트"]] as const).map(([kind, label]) => (
+          <button
+            key={kind}
+            type="button"
+            role="tab"
+            aria-selected={projectKind === kind}
+            data-testid={`workflow-guide-kind-${kind}`}
+            className={`rounded-full border px-4 py-1.5 text-sm ${
+              projectKind === kind
+                ? "border-violet-400/50 bg-violet-500/15 font-semibold text-violet-200"
+                : "border-white/10 text-slate-400 hover:bg-white/5"
+            }`}
+            onClick={() => setProjectKind(kind)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <section aria-label="전체 흐름 그림" className="space-y-2 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
+        <h2 className="text-sm font-semibold text-slate-200">
+          {projectKind === "short" ? "단기 프로젝트 — 영상 하나" : "장기 프로젝트 — 여러 회차"}
+        </h2>
+        <PipelineDiagram
+          testId={`workflow-guide-diagram-${projectKind}`}
+          steps={projectKind === "short" ? SHORT_STEPS : LONG_STEPS}
+        />
+        <p className="text-xs text-slate-500">
+          {projectKind === "short"
+            ? "왼쪽에서 오른쪽으로 한 번만 지나갑니다. 내가 적은 설정은 대본 AI에게만 가고, 그림과 영상은 대본이 정리한 결과를 받습니다."
+            : "전체 개요는 맨 앞에서 딱 한 번입니다. 그 뒤 회차마다 오른쪽 네 칸(회차 대본 → 이미지 → 영상 → 합치기)이 반복됩니다."}
+        </p>
+      </section>
+
+      {projectKind === "long" && (
+        <section aria-label="장기 프로젝트 계산" data-testid="workflow-guide-long" className="space-y-3 rounded-2xl border border-violet-400/25 bg-violet-500/[0.07] p-5">
+          <h2 className="text-sm font-semibold text-slate-200">회차 수를 곱하면 이렇게 됩니다</h2>
+          <label className="text-sm text-slate-300" htmlFor="workflow-guide-episode-count">
+            회차 수
+            <select
+              id="workflow-guide-episode-count"
+              className="ml-2 rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none"
+              value={episodeCount}
+              onChange={(event) => setEpisodeCount(Number(event.target.value))}
+            >
+              {[3, 5, 8, 10, 12, 20].map((count) => (
+                <option key={count} value={count}>{count}화</option>
+              ))}
+            </select>
+            <span className="ml-2 text-xs text-slate-500">장면 수·길이·음성은 아래 조건을 따릅니다</span>
+          </label>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <div className="rounded-xl border border-white/10 bg-slate-950/50 p-3">
+              <p className="text-xs text-slate-400">맨 앞 전체 개요</p>
+              <p className="mt-0.5 text-lg font-semibold tabular-nums text-violet-200">1회 · {usd(LONG_OUTLINE_ESTIMATED_COST_USD)}</p>
+              <p className="mt-1 text-xs text-slate-500">회차가 몇 개든 한 번뿐입니다</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-slate-950/50 p-3">
+              <p className="text-xs text-slate-400">회차 하나당</p>
+              <p data-testid="workflow-guide-long-per-episode" className="mt-0.5 text-lg font-semibold tabular-nums text-slate-200">
+                {longPerEpisodeCalls}회 · {usd(longPerEpisodeCost)}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">대본 1 + 이미지 {imageCalls} + 영상 {videoCalls}{narrationEnabled ? ` + 음성 ${narrationCalls}` : ""}</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-slate-950/50 p-3">
+              <p className="text-xs text-slate-400">{episodeCount}화 전체</p>
+              <p data-testid="workflow-guide-long-total" className="mt-0.5 text-lg font-semibold tabular-nums text-violet-200">
+                {longTotalCalls}회 · {usd(longTotalCost)}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">완성 길이 {longRuntimeSeconds}초</p>
+            </div>
+          </div>
+          <ul className="space-y-1 text-xs text-slate-400">
+            <li>· <span className="text-slate-300">회차 설정을 고치는 건 무료입니다.</span> AI를 부르지 않습니다 — 대본을 만들기 전에 고쳐두는 편이 쌉니다.</li>
+            <li>· <span className="text-slate-300">회차는 한꺼번에 안 만들어집니다.</span> 한 회차씩 대본 → 이미지 → 영상 순으로 진행하고, 중간에 멈춰도 다음에 이어서 하면 됩니다.</li>
+            <li>· <span className="text-slate-300">아래 단계 설명은 회차 하나 기준입니다.</span> 단기 프로젝트 한 편을 만드는 것과 같은 흐름이 회차마다 반복됩니다.</li>
+          </ul>
+        </section>
+      )}
+
       <section aria-label="계산 조건" className="space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
-        <h2 className="text-sm font-semibold text-slate-200">계산 조건</h2>
+        <h2 className="text-sm font-semibold text-slate-200">계산 조건{projectKind === "long" ? " (회차 하나 기준)" : ""}</h2>
         <div className="flex flex-wrap gap-4">
           <label className="text-sm text-slate-300" htmlFor="workflow-guide-scene-count">
             장면 수
@@ -257,7 +397,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
         className="grid gap-3 rounded-2xl border border-violet-400/25 bg-violet-500/[0.07] p-5 sm:grid-cols-2"
       >
         <div>
-          <p className="text-xs text-slate-400">AI 호출 총 횟수</p>
+          <p className="text-xs text-slate-400">AI 호출 총 횟수{projectKind === "long" ? " (회차 하나)" : ""}</p>
           <p data-testid="workflow-guide-total-calls" className="mt-0.5 text-2xl font-semibold tabular-nums text-slate-100">
             {totalCalls}회
           </p>
@@ -267,7 +407,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
           </p>
         </div>
         <div>
-          <p className="text-xs text-slate-400">예상 총 비용</p>
+          <p className="text-xs text-slate-400">예상 총 비용{projectKind === "long" ? " (회차 하나)" : ""}</p>
           <p data-testid="workflow-guide-total-cost" className="mt-0.5 text-2xl font-semibold tabular-nums text-slate-100">
             {usd(totalCost)}
           </p>
