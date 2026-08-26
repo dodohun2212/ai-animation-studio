@@ -130,6 +130,16 @@ describe("ProjectsService", () => {
       .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
+  it("accepts a Folder character Asset as a cast member — the cast search screen only ever offers Folders", async () => {
+    const assets = new LocalAssetsRepository(root);
+    const withAssets = new ProjectsService(new LocalProjectRepository(root), assets);
+    await withAssets.createProject({ projectId: "cast_project", topic: "topic" });
+    const folder = await assets.createFolder({ assetType: "character", displayName: "Hero folder" });
+
+    const saved = await withAssets.updateProjectCast("cast_project", { cast: [{ assetId: folder.asset_id, castRole: "protagonist", storyRole: "대표 캐릭터" }] });
+    expect(saved).toEqual({ cast: [{ assetId: folder.asset_id, castRole: "protagonist", storyRole: "대표 캐릭터" }] });
+  });
+
   it("rejects a cast selection referencing a non-character Asset", async () => {
     const assets = new LocalAssetsRepository(root);
     const withAssets = new ProjectsService(new LocalProjectRepository(root), assets);

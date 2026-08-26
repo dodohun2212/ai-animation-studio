@@ -158,8 +158,12 @@ export class ProjectsService {
       for (const member of cast) {
         let asset;
         try { asset = await this.assets.get(member.assetId); } catch { throw invalidRequest(`Character Asset "${member.assetId}" was not found.`, { field: "assetId" }); }
-        if (asset.is_folder || asset.asset_type !== "character") {
-          throw invalidRequest(`Asset "${member.assetId}" must be a non-folder character Asset.`, { field: "assetId" });
+        // The cast search screen only ever offers Folders (a loose image is one drawing of a character, not the
+        // character — see ShortProjectSettingsScreen's search()), and describeCharacterCast() already resolves a
+        // Folder's own description plus each child's individual one for the prompt. A Folder is the expected
+        // shape here, not an exception to reject.
+        if (asset.asset_type !== "character") {
+          throw invalidRequest(`Asset "${member.assetId}" must be a character Asset.`, { field: "assetId" });
         }
       }
     }
