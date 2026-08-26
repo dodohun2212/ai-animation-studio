@@ -322,6 +322,20 @@ export function LongProjectDetail({
                         {target.label}
                       </button>
                     )}
+                    {/* An episode whose generation was interrupted is put back a step so it can be retried, but
+                        without a sentence saying so the person just finds it sitting somewhere they did not
+                        leave it — the same confusion short projects had before they carried this line
+                        (`.claude-bridge` Round 137). `w-full` puts it on its own row inside this wrapping flex
+                        item so it reads as a note about the episode, not another control beside the buttons. */}
+                    {episode.warnings?.map((warning) => (
+                      <p
+                        key={warning}
+                        data-testid={`episode-warning-${episode.episodeNumber}`}
+                        className="w-full text-xs text-amber-300"
+                      >
+                        {warning}
+                      </p>
+                    ))}
                   </li>
                 );
               })}

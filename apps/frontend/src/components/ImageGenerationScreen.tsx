@@ -480,13 +480,29 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                             </StatusChip>
                           </span>
                         </div>
-                        {/* 9:16 keeps the thumbnail in the aspect ratio the Reel is actually produced in (§4.2). */}
+                        {/* The box stays 9:16 (the common case), but the image is contained rather than cropped:
+                            a project set to 16:9 now really does produce landscape images, and cover-cropping one
+                            into a portrait box would show the user a tall slice of a picture that is not tall —
+                            they would be reviewing something the model never made. Letterboxing inside the card is
+                            the honest rendering until the review contract carries the project's own shape. */}
                         <img
                           src={imageReviewContentUrl(projectId, review.sceneNumber, review.updatedAt)}
                           alt={`${review.sceneNumber}번 장면 이미지`}
                           data-testid={`review-image-${review.sceneNumber}`}
-                          className="aspect-[9/16] w-full rounded-xl border border-white/10 bg-slate-800 object-cover"
+                          className="aspect-[9/16] w-full rounded-xl border border-white/10 bg-slate-800 object-contain"
                         />
+                        {/* Silence unless it happened: the Backend sends both counts only when its own reference
+                            cap actually dropped something, and sends the used count too so this sentence never has
+                            to hardcode that cap (`.claude-bridge` Round 168). */}
+                        {typeof review.referencesOmittedCount === "number" && review.referencesOmittedCount > 0 && (
+                          <p
+                            data-testid={`review-references-omitted-${review.sceneNumber}`}
+                            className="text-xs text-amber-300"
+                          >
+                            연결한 참고 이미지 중 {(review.referencesUsedCount ?? 0) + review.referencesOmittedCount}장 가운데
+                            {" "}{review.referencesUsedCount ?? 0}장만 사용됐습니다. 연결을 줄이면 남은 것이 반영됩니다.
+                          </p>
+                        )}
                         <div className="space-y-1.5">
                           <div className="flex items-center justify-end gap-3">
                             {/* Once approved the chip above already says 확정됨; a greyed-out button repeating it

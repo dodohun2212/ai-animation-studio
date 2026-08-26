@@ -195,6 +195,15 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
                   <span className="text-sm font-semibold text-slate-100">{sceneNumber}번 장면</span>
                   <StatusChip tone={review.status === "approved" ? "success" : "neutral"}>{sceneSlotLabel(review.status)}</StatusChip>
                 </div>
+                {/* Quiet unless the Backend's reference cap actually dropped something. The total is derived from
+                    both counts it sends, so this line never hardcodes that cap — the same split the short-project
+                    screen uses (`.claude-bridge` Round 168). */}
+                {typeof review.referencesOmittedCount === "number" && review.referencesOmittedCount > 0 && (
+                  <p data-testid={`episode-image-references-omitted-${sceneNumber}`} className="text-xs text-amber-300">
+                    연결한 참고 이미지 중 {(review.referencesUsedCount ?? 0) + review.referencesOmittedCount}장 가운데
+                    {" "}{review.referencesUsedCount ?? 0}장만 사용됐습니다. 연결을 줄이면 남은 것이 반영됩니다.
+                  </p>
+                )}
                 <div className="flex flex-wrap justify-end gap-3">
                   <button type="button" className={smallOutlineButton} disabled={review.status === "approved" || approving} onClick={() => void approveScene(sceneNumber)}>{approving ? "확정하는 중..." : review.status === "approved" ? "확정 완료" : "이 이미지로 확정"}</button>
                   <button type="button" className={smallOutlineButton} disabled={regenerating || confirming} onClick={() => setRegenerateConfirm(sceneNumber)}>{regenerating ? "다시 만드는 중..." : "다시 만들기"}</button>

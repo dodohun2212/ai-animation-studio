@@ -294,6 +294,28 @@ describe("ImageGenerationScreen", () => {
     expect(screen.getByTestId("review-image-6")).toHaveAttribute("src", "/projects/sample_project/images/6/content?v=2026-08-22T00%3A00%3A00.000Z");
   });
 
+  // Regression: the Backend caps how many Reference images one request may carry and used to drop the rest with
+  // no signal at all — a character folder past the cap simply stopped influencing the picture, and the only
+  // symptom was that the result looked wrong for reasons nothing on screen explained.
+  it("says how many reference images were actually used when the cap dropped some, and stays quiet otherwise", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const reviews = sixReviews();
+    reviews[0] = { ...reviews[0]!, referencesUsedCount: 16, referencesOmittedCount: 4 };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, reviews }));
+    renderScreen(fetchMock);
+
+    const notice = await screen.findByTestId("review-references-omitted-1");
+    // Both halves matter: the total is what the user recognises as "what I linked", the used count is what
+    // actually reached the model. Neither number is derived from a cap this screen knows on its own.
+    expect(notice.textContent).toContain("20");
+    expect(notice.textContent).toContain("16");
+    // A scene the cap never touched must stay silent — a notice on every card teaches people to ignore it.
+    expect(screen.queryByTestId("review-references-omitted-2")).toBeNull();
+  });
+
   it("shows no not-allowed message once the project has reached IMAGES_REVIEW or later", async () => {
     const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
     const fetchMock = vi

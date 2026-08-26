@@ -21,6 +21,31 @@ describe("LongProjectDetail", () => {
     expect(fetchMock).toHaveBeenCalledWith("/long-projects/long_test");
   });
 
+  // Regression: an episode whose generation was interrupted gets put back a step so it can be retried. Without
+  // the sentence explaining that, the person finds the episode somewhere they did not leave it and assumes they
+  // broke something — short projects already learned this once.
+  it("shows an interrupted episode's explanation on its own row, and leaves untouched episodes unmarked", async () => {
+    const project = makeLongProject({
+      id: "long_test",
+      episodes: [
+        makeLongEpisodeOutline({
+          episodeNumber: 1,
+          status: "planned",
+          warnings: ["이전에 영상을 만들다가 서버가 꺼져서 중간에 멈췄습니다. 이미 만들어진 것은 그대로 있고, 이어서 다시 만들 수 있습니다."],
+        }),
+        makeLongEpisodeOutline({ episodeNumber: 2, status: "planned" }),
+      ],
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    render(<LongProjectDetail projectId="long_test" onBack={() => {}} onOpenSettings={() => {}} onOpenOutline={() => {}} />);
+
+    const warning = await screen.findByTestId("episode-warning-1");
+    expect(warning.textContent).toContain("서버가 꺼져서");
+    // Plain language only — a state name here would tell the reader nothing they can act on.
+    expect(warning.textContent).not.toContain("_");
+    expect(screen.queryByTestId("episode-warning-2")).toBeNull();
+  });
+
   it("says why archiving is unavailable instead of leaving a dead button", async () => {
     // Only the last Episode can be archived. Before this, picking Episode 1 of 3 just disabled the button with
     // no explanation — the user clicks, nothing happens, and reports that archiving is broken. The reason has
