@@ -39,7 +39,15 @@ function newVideos(deps: Awaited<ReturnType<typeof setupWithConnectedRunway>>) {
   return new EpisodeVideosService(deps.projectsRoot, deps.providerSettings, deps.budget);
 }
 
-afterEach(async () => { vi.unstubAllGlobals(); if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
+afterEach(async () => {
+  vi.unstubAllGlobals();
+  // Matches local-video-workflow.runway.test.ts's identical afterEach: without this, a fake-timer test earlier in
+  // this file leaves vi.useFakeTimers() active for whichever test runs next, silently starving any real setTimeout
+  // (including project-lock.ts's own retry loop) — the race test below only needs real timers and hung until this
+  // was added, purely from running after an unrelated fake-timer test, not from anything wrong in that test itself.
+  vi.useRealTimers();
+  if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined;
+});
 
 /** Routes fetch calls by URL: POST submit -> a fresh task id; GET task -> RUNNING on the 1st check, SUCCEEDED after; GET output URL -> fixed bytes. */
 function runwayFetchMock(options: { failTaskId?: string } = {}) {
@@ -182,6 +190,49 @@ describe("real Runway episode video generation", () => {
       perSceneCostUsd: 0.25,
       budget: { monthlyLimitUsd: 10, spentUsd: 4.25, remainingUsd: 5.75, estimatedRequestCostUsd: 0.25, canSpend: true },
     });
+  });
+
+  it("never double-submits the same scene when two independent service instances race — the shape of a nest-watch dev-server restart, not just a same-process double call", async () => {
+    // `.claude-bridge` Round 176/179: the same in-memory `advancing` Set race local-video-workflow.service.ts
+    // already had a confirmed real-money incident for (Round 152) existed here too, just never fixed — see
+    // episode-videos.service.ts's advanceReal() doc comment. Two separate EpisodeVideosService instances against
+    // the same on-disk project reproduce a nest-watch restart's brief process overlap without spawning two
+    // actual OS processes, mirroring local-video-workflow.runway.test.ts's identical test for the short-project side.
+    const deps = await setupWithConnectedRunway();
+    const first = newVideos(deps);
+    const second = newVideos(deps);
+    let resolveStalledSubmit: (value: unknown) => void = () => {};
+    let notifyReachedSubmit: () => void = () => {};
+    const reachedSubmit = new Promise<void>((resolve) => { notifyReachedSubmit = resolve; });
+    let submitCalls = 0;
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/v1/image_to_video")) {
+        submitCalls += 1;
+        if (submitCalls === 1) { notifyReachedSubmit(); return new Promise((resolve) => { resolveStalledSubmit = resolve; }); }
+        return { ok: true, status: 200, json: async () => ({ id: `task-${submitCalls}` }), headers: { get: () => null } } as unknown as Response;
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const preview = await first.preview("long", 1);
+    const started = await first.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+
+    const firstRun = first.run("long", 1, started.jobId);
+    // Whichever instance's call reaches fetch first stalls here, still holding the file lock.
+    await reachedSubmit;
+    const secondRun = second.run("long", 1, started.jobId); // a "second process" racing in
+    // Generous real wait so `second`'s own chain (fresh read, lock-acquisition attempt, retry loop) has ample
+    // time to actually reach and block on the lock before it's released.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    resolveStalledSubmit({ ok: true, status: 200, json: async () => ({ id: "task-1" }), headers: { get: () => null } });
+    await Promise.all([firstRun, secondRun]);
+
+    expect(submitCalls).toBe(1); // `second` was blocked on the file lock until `first` finished, then saw scene 1 already running and never submitted its own
+    const progress = await first.progress("long", 1, started.jobId);
+    expect(progress.status).toBe("running");
+    expect(progress.currentSceneNumber).toBe(1);
+    first.onModuleDestroy(); second.onModuleDestroy();
   });
 
   it("reports each scene's real recorded cost in the review response, accumulating across a regeneration, scoped per Episode", async () => {

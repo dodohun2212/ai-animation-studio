@@ -9,6 +9,7 @@ import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/projec
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { RunwayBudget, RunwayBudgetExceededError } from "../providers/runway-budget.js";
 import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceResult, type RunwaySceneState } from "../videos/runway-workflow-support.js";
+import { withProjectLock } from "../videos/project-lock.js";
 import { promptFor, type StoredScene } from "../videos/video-preview.service.js";
 import { longEpisodeNotFound, longEpisodeVideoJobNotFound, longEpisodeVideosInvalid, longEpisodeVideosNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
@@ -105,12 +106,19 @@ export class EpisodeVideosService implements OnModuleDestroy {
     return { imageBytes, imageMimeType: "image/png", prompt: record.prompt, durationSeconds: this.durationSecondsPerScene(episode), ratio };
   }
 
-  /** Guards against a timer tick and a concurrent GET poll both trying to advance the same job at once. */
+  /**
+   * Guards against a timer tick and a concurrent GET poll both trying to advance the same job at once — but the
+   * in-memory `advancing` Set only serializes calls within one Node process. `withProjectLock` additionally
+   * guards the same race across two processes, exactly like local-video-workflow.service.ts's advanceReal() does
+   * for short projects — see that lock's own doc comment for the confirmed incident (Round 152: a real, separately
+   * -billed duplicate Runway task neither process's own polling noticed) this same architecture is exposed to on
+   * the Long Episode side too (`.claude-bridge` Round 176/179).
+   */
   private async advanceReal(id: string, number: number, job: string): Promise<VideoRecord[]> {
     const jobKey = `${id}:${number}:${job}`;
     if (this.advancing.has(jobKey)) return this.records(id, number, this.sceneCount(await this.loadEpisode(id, number)), job);
     this.advancing.add(jobKey);
-    try { return await this.advanceRealCore(id, number, job); }
+    try { return await withProjectLock(resolveSafeProjectDirectory(this.projectsRoot, id), jobKey, () => this.advanceRealCore(id, number, job)); }
     finally { this.advancing.delete(jobKey); }
   }
 
