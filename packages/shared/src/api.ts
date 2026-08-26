@@ -1136,6 +1136,15 @@ export interface VideoLibraryProjectSummary {
   totalActualCostUsd: number;
   /** Same meaning and source as ProjectSummary.aspectRatio (see that field's doc comment) — lets a library card's thumbnail box match the shape this project's videos were actually rendered in. */
   aspectRatio: "9:16" | "16:9";
+  /**
+   * Derived from ProjectSummary.usedAudio — trimmed to just the two fields a library card actually needs
+   * (whether to show a credit-line notice, and what it says), not the full mode/trackId shape, since a
+   * "someone comes back later to finally publish this" reader has no use for either (`.claude-bridge` Round
+   * 177). Absent whenever usedAudio itself is (never merged, or a Video Library restore invalidated it — see
+   * that field's own doc comment for why restore clears it rather than showing a stale credit line).
+   */
+  attributionRequired?: boolean;
+  attributionText?: string;
 }
 export interface GetVideoLibraryResponse { projects: VideoLibraryProjectSummary[]; }
 

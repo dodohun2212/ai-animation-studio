@@ -47,6 +47,22 @@ function makeResponse(overrides: Partial<MergeVideosResponse> = {}): MergeVideos
   };
 }
 
+/**
+ * Swaps in a clipboard for one test and puts the real descriptor back afterwards. Defined on the existing
+ * navigator rather than replacing the whole object, so nothing else that reads navigator during render
+ * (userAgent, and whatever the testing library reaches for) disappears for the duration.
+ */
+async function withClipboard(writeText: ReturnType<typeof vi.fn>, body: () => Promise<void>): Promise<void> {
+  const original = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  try {
+    await body();
+  } finally {
+    if (original) Object.defineProperty(navigator, "clipboard", original);
+    else Reflect.deleteProperty(navigator as unknown as Record<string, unknown>, "clipboard");
+  }
+}
+
 /** Routes GET /projects/:id (defaulting to VIDEOS_APPROVED with six approved scenes, not yet merged) and lets the caller supply the merge-time fetch behavior. */
 function renderScreen(
   mergeFetch: ReturnType<typeof vi.fn>,
@@ -69,6 +85,15 @@ function renderScreen(
   });
   vi.stubGlobal("fetch", fetchMock);
   return { fetchMock, render: render(<VideoMergeScreen projectId="sample_project" onBack={() => {}} />) };
+}
+
+/** A completed project whose merge used a track that requires credit — the state the notice exists for. */
+function renderCredited() {
+  return renderScreen(vi.fn(), {
+    workflowState: WorkflowState.Completed,
+    finalVideoPath: "videos/final/instagram_reel.mp4",
+    usedAudio: { mode: "narration+bgm", attributionRequired: true, attributionText: "Music by ○○○" },
+  });
 }
 
 describe("VideoMergeScreen", () => {
@@ -200,6 +225,96 @@ describe("VideoMergeScreen", () => {
     expect(mergeFetch).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("final-video-path").textContent).toBe("저장 위치: videos/final/instagram_reel.mp4");
     expect(screen.queryByTestId("open-merge-confirm-button")).toBeNull();
+  });
+
+  // The whole point of collecting a licence at upload was to stop a credit line going missing at publish time.
+  // It was being shown in the library and while picking a track, but not where the caption is actually written —
+  // by then the sentence was two screens behind the user (`.claude-bridge` Round 176).
+  it("shows the credit line the finished video owes, with the sentence itself", async () => {
+    const response = makeResponse({
+      project: makeProject({
+        scenes: sixScenes(),
+        usedAudio: { mode: "narration+bgm", trackId: "t1", attributionRequired: true, attributionText: "Music by ○○○ (CC BY 4.0)" },
+      }),
+    });
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, response));
+    renderScreen(mergeFetch);
+
+    fireEvent.click(await screen.findByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+
+    await screen.findByTestId("merge-success");
+    expect(screen.getByTestId("merge-attribution-text").textContent).toBe("Music by ○○○ (CC BY 4.0)");
+  });
+
+  // Reads usedAudio rather than the track on purpose: the sentence is copied by value at merge time so that
+  // deleting the track afterwards cannot erase what an already-published video still owes.
+  it("shows the credit line on a completed project even with the audio library empty", async () => {
+    renderScreen(
+      vi.fn(),
+      {
+        workflowState: WorkflowState.Completed,
+        finalVideoPath: "videos/final/instagram_reel.mp4",
+        usedAudio: { mode: "narration+bgm", attributionRequired: true, attributionText: "Music by ○○○" },
+      },
+      { narrationEnabled: false, subtitlesEnabled: false },
+      [],
+    );
+
+    await screen.findByTestId("merge-success");
+    expect(screen.getByTestId("merge-attribution-text").textContent).toBe("Music by ○○○");
+  });
+
+  it("says nothing about credit when the track did not require it", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    renderScreen(mergeFetch);
+
+    fireEvent.click(await screen.findByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+
+    await screen.findByTestId("merge-success");
+    expect(screen.queryByTestId("merge-attribution")).toBeNull();
+  });
+
+  // "Credit this" without saying what to write leaves the user inventing wording the licence may be specific
+  // about, so the blank case points back at the one screen where it can be fixed.
+  it("points back to the library when credit is required but the sentence is blank", async () => {
+    renderScreen(
+      vi.fn(),
+      {
+        workflowState: WorkflowState.Completed,
+        finalVideoPath: "videos/final/instagram_reel.mp4",
+        usedAudio: { mode: "narration+bgm", attributionRequired: true },
+      },
+    );
+
+    await screen.findByTestId("merge-success");
+    expect(screen.getByTestId("merge-attribution-missing").textContent).toContain("음원 보관함");
+    expect(screen.queryByTestId("merge-attribution-copy")).toBeNull();
+  });
+
+  it("copies the sentence to the clipboard", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    await withClipboard(writeText, async () => {
+      renderCredited();
+      fireEvent.click(await screen.findByTestId("merge-attribution-copy"));
+
+      await screen.findByTestId("merge-attribution-copied");
+      expect(writeText).toHaveBeenCalledWith("Music by ○○○");
+    });
+  });
+
+  // A refused clipboard (no permission, insecure origin) must not become a dead end: the sentence is on screen
+  // either way, so the button degrades to "select it yourself" rather than failing silently.
+  it("tells the reader to copy by hand when the clipboard refuses", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"));
+    await withClipboard(writeText, async () => {
+      renderCredited();
+      fireEvent.click(await screen.findByTestId("merge-attribution-copy"));
+
+      await screen.findByTestId("merge-attribution-copy-failed");
+      expect(screen.getByTestId("merge-attribution-text").textContent).toBe("Music by ○○○");
+    });
   });
 
   it("shows the existing result immediately when reopened for an already-completed project, without re-merging", async () => {

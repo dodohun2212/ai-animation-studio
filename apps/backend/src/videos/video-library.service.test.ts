@@ -88,6 +88,28 @@ describe("VideoLibraryService.list", () => {
 
     expect(result.projects.map((item) => item.projectId)).toEqual(["newer", "older"]);
   });
+
+  it("carries attributionRequired/attributionText from usedAudio, trimmed to just those two fields", async () => {
+    const { projectsRoot, projects, service } = await setup();
+    await createProjectWithVideos(projectsRoot, projects, "credited", { scenes: [1], finalVideo: true });
+    const project = await projects.findById("credited");
+    project.used_audio = { mode: "narration+bgm", track_id: "TRACK-1", attribution_required: true, attribution_text: "Music by Jane Doe" };
+    await projects.save(project);
+
+    const result = await service.list();
+
+    expect(result.projects[0]).toMatchObject({ attributionRequired: true, attributionText: "Music by Jane Doe" });
+  });
+
+  it("omits attributionRequired/attributionText entirely when usedAudio is absent", async () => {
+    const { projectsRoot, projects, service } = await setup();
+    await createProjectWithVideos(projectsRoot, projects, "uncredited", { scenes: [1], finalVideo: true });
+
+    const result = await service.list();
+
+    expect(result.projects[0]).not.toHaveProperty("attributionRequired");
+    expect(result.projects[0]).not.toHaveProperty("attributionText");
+  });
 });
 
 describe("VideoLibraryService.versions", () => {

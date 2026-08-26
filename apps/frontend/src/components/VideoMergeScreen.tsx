@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { AudioLibraryTrack, MergeAudioSettings, MergeVideosResponse } from "@ai-animation-studio/shared";
+import type { AudioLibraryTrack, MergeAudioSettings, MergeVideosResponse, ProjectSummary } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
@@ -54,6 +54,70 @@ const AUDIO_MODE_LABELS: Record<AudioMode, string> = {
   "narration+bgm": "나레이션 + 배경음악",
   silent: "무음",
 };
+
+/**
+ * The credit line a finished video owes, shown at the one moment it is actually usable.
+ *
+ * Attribution was collected at upload and shown in the library and again while choosing a track, but neither of
+ * those is where it has to end up: a CC BY licence requires the credit to appear *where the work is published*,
+ * and the user's next move after this screen is to paste a caption into Instagram. Up to now the sentence lived
+ * two screens behind them at that moment (`.claude-bridge` Round 176).
+ *
+ * Reads `usedAudio`, not the track, on purpose — the backend copies the sentence by value at merge time, so a
+ * track deleted afterwards cannot silently erase what an already-published video still owes.
+ */
+function AttributionNotice({ usedAudio }: { usedAudio: ProjectSummary["usedAudio"] }) {
+  const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
+
+  if (!usedAudio?.attributionRequired) return null;
+  const text = usedAudio.attributionText?.trim() ?? "";
+
+  async function copy(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied("done");
+    } catch {
+      // Clipboard access can be refused outright (no permission, insecure origin). The sentence is on screen
+      // either way, so this degrades to "select it yourself" rather than to a dead end.
+      setCopied("failed");
+    }
+  }
+
+  return (
+    <div data-testid="merge-attribution" className="space-y-2 rounded-xl border border-amber-400/30 bg-amber-500/5 p-4">
+      <p className="text-sm font-semibold text-amber-300">이 영상은 캡션에 출처를 함께 적어야 합니다.</p>
+      {text ? (
+        <>
+          <p data-testid="merge-attribution-text" className="select-all rounded-lg bg-slate-950/60 px-3 py-2 text-sm text-slate-200">
+            {text}
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              data-testid="merge-attribution-copy"
+              className="rounded-full border border-amber-400/30 px-4 py-2 text-sm text-amber-200 hover:bg-amber-400/10"
+              onClick={() => void copy()}
+            >
+              문구 복사
+            </button>
+            {copied === "done" && <span data-testid="merge-attribution-copied" className="text-xs text-emerald-400">복사했습니다.</span>}
+            {copied === "failed" && (
+              <span data-testid="merge-attribution-copy-failed" className="text-xs text-slate-400">
+                복사하지 못했습니다. 위 문구를 직접 선택해 복사해 주세요.
+              </span>
+            )}
+          </div>
+        </>
+      ) : (
+        // Required but blank: saying "credit it" without saying what to write leaves the user to guess wording
+        // the licence may be specific about, so this points back to the one place the wording can be fixed.
+        <p data-testid="merge-attribution-missing" className="text-sm text-slate-300">
+          적어야 할 문구가 비어 있습니다. 음원 보관함에서 이 음원의 출처 문구를 채운 뒤 캡션에 넣어 주세요.
+        </p>
+      )}
+    </div>
+  );
+}
 
 export function VideoMergeScreen({ projectId, onBack }: Props) {
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
@@ -247,6 +311,9 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
           {selectedTrack?.attributionRequired && (
             <p data-testid="merge-audio-attribution" className="text-xs text-amber-300">
               이 음원은 캡션에 출처를 적어야 합니다.
+              {selectedTrack.attributionText?.trim()
+                ? ` 병합이 끝나면 문구를 복사할 수 있습니다: ${selectedTrack.attributionText.trim()}`
+                : " 적을 문구가 비어 있습니다 — 음원 보관함에서 먼저 채워 주세요."}
             </p>
           )}
         </fieldset>
@@ -319,6 +386,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
           <p className="text-sm font-semibold text-emerald-400">
             최종 영상 병합이 완료되었습니다. 이 단계에서는 유료 요청이 전송되지 않았습니다.
           </p>
+          <AttributionNotice usedAudio={result.project.usedAudio} />
           <video
             src={finalVideoContentUrl(projectId)}
             data-testid="final-video-player"

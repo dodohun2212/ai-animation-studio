@@ -146,6 +146,8 @@ export class VideoLibraryService {
         finalVideoAvailable: Boolean(finalFile),
         totalActualCostUsd,
         aspectRatio: aspectRatioFor(project),
+        ...(project.used_audio?.attribution_required !== undefined ? { attributionRequired: project.used_audio.attribution_required } : {}),
+        ...(project.used_audio?.attribution_text !== undefined ? { attributionText: project.used_audio.attribution_text } : {}),
       });
     }
     rows.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
