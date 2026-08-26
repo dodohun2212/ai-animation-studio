@@ -7,6 +7,8 @@ import {
   type CreateStoryPromptDraftPreviewResponse,
   type CreateStoryPromptPreviewResponse,
   type Project,
+  type RegenerateStoryPromptRequest,
+  type RegenerateStoryPromptResponse,
   type ShortProjectSettingsInput,
   type StoryPromptPreview,
 } from "@ai-animation-studio/shared";
@@ -29,6 +31,10 @@ const SAFE_ERRORS: Record<string, string> = {
   STORY_PROMPT_STALE: "Story 프롬프트가 그 사이에 변경되었습니다. 미리보기를 다시 불러와 주세요.",
   STORY_BUDGET_EXCEEDED: "이번 달 OpenAI 예산을 초과하여 요청을 보내지 않았습니다.",
   STORY_PROVIDER_ERROR: "OpenAI Story 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+  // The server re-checks the same precondition the screen checks, and is the authority: the two can disagree
+  // when another tab generated images in the meantime. Says what to do, not just what failed.
+  STORY_REGENERATION_NOT_ALLOWED:
+    "장면 이미지를 이미 만든 뒤에는 대본을 다시 만들 수 없습니다. 장면 편집에서 고치거나 새 프로젝트를 만들어 주세요.",
 };
 // The backend classifies every OpenAI provider failure into one of these closed categories (see
 // openai-common.ts's OpenAiErrorCategory) and sends it back as details.category alongside
@@ -116,6 +122,10 @@ function isDraftPreviewResponse(value: unknown): value is CreateStoryPromptDraft
   return isRecord(value) && typeof value.prompt === "string";
 }
 
+function isRegenerationResponse(value: unknown): value is RegenerateStoryPromptResponse {
+  return isRecord(value) && isProject(value.project);
+}
+
 function isApprovalResponse(value: unknown): value is ApproveStoryPromptResponse {
   return (
     isRecord(value) &&
@@ -185,5 +195,21 @@ export function approveStoryPrompt(
     API_ROUTES.storyPromptApproval(projectId),
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) },
     isApprovalResponse,
+  );
+}
+
+/**
+ * Clears this project's Story so it can be written again, and does nothing else — no provider is called and
+ * nothing is charged here. The new Story costs money only when the prompt is approved afterwards, exactly
+ * like the first time. The server re-checks the precondition (a Story exists, no scene images yet) and is
+ * the authority on it; `approved: true` is the same explicit opt-in the approval endpoint requires, so a
+ * destructive call can never be a stray request.
+ */
+export function regenerateStoryPrompt(projectId: string): Promise<RegenerateStoryPromptResponse> {
+  const requestBody: RegenerateStoryPromptRequest = { approved: true };
+  return request(
+    API_ROUTES.storyRegeneration(projectId),
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) },
+    isRegenerationResponse,
   );
 }

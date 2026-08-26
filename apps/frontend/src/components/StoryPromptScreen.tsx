@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { BudgetPreview, Scene, StoryPromptPreview } from "@ai-animation-studio/shared";
 import { WorkflowState, STORY_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 
-import { approveStoryPrompt, createStoryPromptPreview, toStoryDisplayError } from "../api/storyPromptApi.js";
+import { approveStoryPrompt, createStoryPromptPreview, regenerateStoryPrompt, toStoryDisplayError } from "../api/storyPromptApi.js";
 import { getProject } from "../api/projectsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
@@ -13,7 +13,13 @@ interface Props {
   onBack: () => void;
   /** The next pipeline step. Optional so the screen still renders standalone in tests that do not navigate. */
   onOpenMappingReview?: (projectId: string) => void;
+  /** Where to change what the Story is written from. Offered next to 다시 만들기, since the usual reason a
+   *  Story disappoints is the settings behind it, not the roll of the dice. */
+  onOpenSettings?: (projectId: string) => void;
 }
+
+const secondaryButton = "rounded-full border border-white/15 px-3 py-1.5 text-xs text-slate-200 hover:bg-white/5 disabled:opacity-50";
+const dangerButton = "rounded-full border border-rose-400/40 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-200 hover:bg-rose-500/15 disabled:opacity-50";
 
 type DisplayError = { code: string; message: string; details?: Record<string, unknown> };
 
@@ -26,7 +32,7 @@ interface ApprovedState {
   scenes: Scene[];
 }
 
-export function StoryPromptScreen({ projectId, onBack, onOpenMappingReview }: Props) {
+export function StoryPromptScreen({ projectId, onBack, onOpenMappingReview, onOpenSettings }: Props) {
   const [preview, setPreview] = useState<StoryPromptPreview | null>(null);
   /** Absent in the local fake execution mode, where the story call costs nothing. */
   const [budget, setBudget] = useState<BudgetPreview | undefined>(undefined);
@@ -53,8 +59,13 @@ export function StoryPromptScreen({ projectId, onBack, onOpenMappingReview }: Pr
    */
   const [existing, setExisting] = useState<{ workflowState: WorkflowState; scenes: Scene[] } | null>(null);
 
+  const [regenerateConfirmOpen, setRegenerateConfirmOpen] = useState(false);
+  const [regeneratePending, setRegeneratePending] = useState(false);
+  const [regenerateError, setRegenerateError] = useState<DisplayError | null>(null);
+
   const loadRequest = useRef(0);
   const approveBusy = useRef(false);
+  const regenerateBusy = useRef(false);
 
   async function load() {
     const requestId = ++loadRequest.current;
@@ -152,10 +163,40 @@ export function StoryPromptScreen({ projectId, onBack, onOpenMappingReview }: Pr
     }
   }
 
+  /**
+   * Clears the Story so it can be written again. Costs nothing by itself — the charge happens later, when the
+   * new prompt is approved, exactly like the first run. Allowed only before any scene image exists: past that
+   * point a new Story would leave paid images describing a story that no longer exists. The server enforces
+   * the same rule and is the authority; this only decides what to offer.
+   */
+  async function regenerate(): Promise<void> {
+    if (regenerateBusy.current) return;
+    regenerateBusy.current = true;
+    setRegeneratePending(true);
+    setRegenerateError(null);
+    try {
+      const response = await regenerateStoryPrompt(projectId);
+      setExisting({ workflowState: response.project.workflowState, scenes: response.project.scenes });
+      setRegenerateConfirmOpen(false);
+      // The prompt is rendered from the project's current settings, so it has to be re-fetched rather than
+      // reused — the whole point of coming back here is usually that the settings changed.
+      await load();
+    } catch (caught) {
+      setRegenerateError(toStoryDisplayError(caught));
+    } finally {
+      regenerateBusy.current = false;
+      setRegeneratePending(false);
+    }
+  }
+
   const isStale = approveError?.code === "STORY_PROMPT_STALE";
   /** Already ran, and cannot run again — see the `existing` comment above. */
   const alreadyGenerated = existing !== null && existing.workflowState !== WorkflowState.Ready
     && Array.isArray(existing.scenes) && existing.scenes.length > 0 && approved === null;
+  /** One paid image is enough to close the door — the run does not have to have finished. */
+  const hasGeneratedImages = (existing?.scenes ?? []).some(
+    (scene) => typeof scene?.generatedImagePath === "string" && scene.generatedImagePath.length > 0,
+  );
 
   /**
    * `Scene` is a claim, not a guarantee: `project.mapper.ts` hands the stored scene objects to the API with
@@ -251,14 +292,86 @@ export function StoryPromptScreen({ projectId, onBack, onOpenMappingReview }: Pr
           at this point is to read what was written and move on, so that is what the screen becomes. */}
       {alreadyGenerated && existing && (
         <div data-testid="story-already-generated" className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6">
+          {/* Two different situations, and the difference is whether paid images exist yet. Before any image,
+              rewriting the Story costs nothing but the new Story itself. After, the images would describe a
+              story that no longer exists — so that door is closed and the screen says why. */}
           <div className="rounded-xl border border-amber-400/30 bg-amber-500/[0.07] p-3.5">
             <p className="text-sm font-semibold text-amber-200">이 프로젝트는 대본이 이미 만들어졌습니다.</p>
-            <p className="mt-1 text-sm text-slate-300">
-              대본 생성은 프로젝트당 한 번만 됩니다. 같은 프로젝트에서 대본을 다시 만들 수는 없습니다 —
-              내용을 바꾸려면 아래 장면을 <span className="text-slate-200">장면 편집</span>에서 직접 고치거나,
-              설정을 바꿔 <span className="text-slate-200">새 프로젝트</span>를 만들어 주세요.
-            </p>
-            <p className="mt-1 text-xs text-slate-500">다시 만들 수 없으니 이 화면에서 비용이 나갈 일도 없습니다.</p>
+            {hasGeneratedImages ? (
+              <>
+                <p className="mt-1 text-sm text-slate-300">
+                  장면 이미지를 이미 만들어서 대본은 다시 만들 수 없습니다. 지금 대본을 갈아엎으면 이미 만든 이미지가
+                  없는 이야기를 그린 것이 됩니다. 내용을 바꾸려면 아래 장면을 <span className="text-slate-200">장면 편집</span>에서
+                  고치거나, 설정을 바꿔 <span className="text-slate-200">새 프로젝트</span>를 만들어 주세요.
+                </p>
+                <p className="mt-1 text-xs text-slate-500">이 화면에서 비용이 나갈 일은 없습니다.</p>
+              </>
+            ) : (
+              <>
+                <p className="mt-1 text-sm text-slate-300">
+                  아직 장면 이미지를 만들기 전이라 <span className="text-slate-200">대본을 다시 만들 수 있습니다.</span>{" "}
+                  같은 설정으로 다시 뽑으면 비슷한 이야기가 나오니, 마음에 안 든 부분이 설정에서 온 것이라면
+                  프로젝트 설정을 먼저 고치는 편이 낫습니다.
+                </p>
+                {!regenerateConfirmOpen && (
+                  <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      data-testid="open-regenerate-confirm"
+                      className={secondaryButton}
+                      disabled={regeneratePending}
+                      onClick={() => { setRegenerateError(null); setRegenerateConfirmOpen(true); }}
+                    >
+                      대본 다시 만들기
+                    </button>
+                    {onOpenSettings && (
+                      <button type="button" className={secondaryButton} onClick={() => onOpenSettings(projectId)}>
+                        프로젝트 설정 먼저 고치기
+                      </button>
+                    )}
+                  </div>
+                )}
+                {regenerateConfirmOpen && (
+                  <div
+                    role="alertdialog"
+                    aria-label="대본 다시 만들기 확인"
+                    data-testid="regenerate-confirm-panel"
+                    className="mt-2.5 space-y-2 rounded-lg border border-amber-400/40 bg-slate-950/60 p-3"
+                  >
+                    <p className="text-sm font-semibold text-amber-300">지금 대본을 지우고 다시 만들까요?</p>
+                    <p className="text-sm text-slate-300">
+                      지금 장면 {existing.scenes.length}개가 <strong className="text-slate-200">모두 지워집니다.</strong>{" "}
+                      되돌릴 수 없습니다. 지우기 자체는 비용이 들지 않고, 새 대본을 만들 때 다시 승인 단계를 거칩니다
+                      (그때 ${STORY_ESTIMATED_COST_USD.toFixed(2)}).
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className={secondaryButton}
+                        disabled={regeneratePending}
+                        onClick={() => setRegenerateConfirmOpen(false)}
+                      >
+                        돌아가기
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="confirm-regenerate"
+                        className={dangerButton}
+                        disabled={regeneratePending}
+                        onClick={() => void regenerate()}
+                      >
+                        {regeneratePending ? "지우는 중…" : "네, 지우고 다시 만듭니다"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {regenerateError && (
+                  <p role="alert" data-testid="regenerate-error" data-error-code={regenerateError.code} className="mt-2 text-sm text-rose-400">
+                    {regenerateError.message}
+                  </p>
+                )}
+              </>
+            )}
           </div>
           <p className="text-sm font-semibold text-slate-200">지금 대본 · 장면 {existing.scenes.length}개</p>
           <SceneList scenes={existing.scenes} testId="existing-scene-list" />

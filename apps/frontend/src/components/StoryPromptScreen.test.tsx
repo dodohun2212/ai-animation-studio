@@ -51,6 +51,7 @@ const GENERATED_APPROVAL_RESPONSE = {
 
 const PROJECT_URL = "/projects/sample_project";
 const APPROVAL_URL = "/projects/sample_project/story/approval";
+const REGENERATE_URL = "/projects/sample_project/story/regenerate";
 
 /**
  * Routes by URL instead of call order. The screen issues two independent requests on entry — the prompt
@@ -63,9 +64,14 @@ const APPROVAL_URL = "/projects/sample_project/story/approval";
 function stubByRoute(options: {
   approval?: { status: number; body: unknown } | Promise<Response>;
   project?: { status: number; body: unknown };
+  regenerate?: { status: number; body: unknown };
 } = {}): ReturnType<typeof vi.fn> {
   return vi.fn((input: RequestInfo | URL) => {
     const url = String(input);
+    if (url === REGENERATE_URL) {
+      if (!options.regenerate) throw new Error("Unexpected regenerate fetch");
+      return Promise.resolve(jsonResponse(options.regenerate.status, options.regenerate.body));
+    }
     if (url === APPROVAL_URL) {
       if (!options.approval) throw new Error("Unexpected approval fetch");
       return options.approval instanceof Promise
@@ -348,6 +354,63 @@ describe("StoryPromptScreen", () => {
     const panel = await screen.findByTestId("story-already-generated");
     expect(panel.textContent).toContain("이 장면에는 대본 문장이 비어 있습니다.");
     expect(panel.textContent).toContain("있는 문장");
+  });
+
+  it("offers a rewrite while no scene image exists, and only after an explicit confirmation", async () => {
+    const withStory = makeProject({ workflowState: WorkflowState.WaitingForAssetMappingReview, scenes: sixScenes() });
+    const cleared = makeProject({ workflowState: WorkflowState.Ready, scenes: [] });
+    const fetchMock = stubByRoute({
+      project: { status: 200, body: { project: withStory } },
+      regenerate: { status: 200, body: { project: cleared } },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} />);
+
+    await screen.findByTestId("story-already-generated");
+    // One click is not enough — this destroys the whole Story.
+    fireEvent.click(screen.getByTestId("open-regenerate-confirm"));
+    const panel = await screen.findByTestId("regenerate-confirm-panel");
+    expect(panel.textContent).toContain("모두 지워집니다");
+    expect(fetchMock.mock.calls.some(([url]) => String(url) === REGENERATE_URL)).toBe(false);
+
+    fireEvent.click(screen.getByTestId("confirm-regenerate"));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url) === REGENERATE_URL)).toBe(true));
+    const init = fetchMock.mock.calls.find(([url]) => String(url) === REGENERATE_URL)![1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual({ approved: true });
+  });
+
+  it("does not offer a rewrite once a scene image exists, and says why", async () => {
+    // A paid image describes the current Story. Replacing the Story would orphan it, so the door is closed.
+    const withImage = makeProject({
+      workflowState: WorkflowState.ImagesReview,
+      scenes: sixScenes().map((scene, index) => (index === 0 ? { ...scene, generatedImagePath: "images/scene1.png" } : scene)),
+    });
+    const fetchMock = stubByRoute({ project: { status: 200, body: { project: withImage } } });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} />);
+
+    const panel = await screen.findByTestId("story-already-generated");
+    expect(panel.textContent).toContain("장면 이미지를 이미 만들어서");
+    expect(screen.queryByTestId("open-regenerate-confirm")).toBeNull();
+  });
+
+  it("keeps the screen usable and explains it when the server refuses the rewrite", async () => {
+    const withStory = makeProject({ workflowState: WorkflowState.WaitingForAssetMappingReview, scenes: sixScenes() });
+    const fetchMock = stubByRoute({
+      project: { status: 200, body: { project: withStory } },
+      regenerate: { status: 409, body: { code: "STORY_REGENERATION_NOT_ALLOWED", message: "internal detail" } },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} />);
+
+    await screen.findByTestId("story-already-generated");
+    fireEvent.click(screen.getByTestId("open-regenerate-confirm"));
+    fireEvent.click(await screen.findByTestId("confirm-regenerate"));
+
+    const failure = await screen.findByTestId("regenerate-error");
+    expect(failure).toHaveAttribute("data-error-code", "STORY_REGENERATION_NOT_ALLOWED");
+    expect(failure.textContent).not.toContain("internal detail");
+    expect(failure.textContent).toContain("장면 편집");
   });
 
   it("shows what the story call costs before it is approved", async () => {
