@@ -657,14 +657,18 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                           )}
                           <div className="space-y-1.5">
                             <div className="flex items-center justify-end gap-3">
+                              {/* Once approved the chip above already says 확정됨; a greyed-out button repeating
+                                  it invites a click that does nothing. */}
+                              {review.status !== "approved" && (
                               <button
                                 type="button"
                                 className={smallApproveButton}
                                 onClick={() => void approve(review.sceneNumber)}
-                                disabled={review.status === "approved" || pending}
+                                disabled={pending}
                               >
-                                {review.status === "approved" ? "확정 완료" : pending ? "확정 중..." : "이 영상으로 확정"}
+                                {pending ? "확정 중..." : "이 영상으로 확정"}
                               </button>
+                              )}
                             </div>
                             {scene?.motionPrompt && (
                               <details data-testid={`video-review-prompt-${review.sceneNumber}`} className="text-xs text-slate-400">

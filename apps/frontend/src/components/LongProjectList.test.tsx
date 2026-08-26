@@ -32,8 +32,10 @@ describe("LongProjectList", () => {
     const card = await screen.findByRole("button", { name: /우주 방랑자/ });
     expect(within(card).getByText("우주 방랑자")).toBeTruthy();
     expect(within(card).getByText("떠도는 항해사가 고향 별을 되찾는다.")).toBeTruthy();
-    expect(within(card).getByText(/planned/)).toBeTruthy();
-    expect(within(card).getByText(/5개/)).toBeTruthy();
+    // The card shows the Korean label now, not the stored enum — that was the point of the change.
+    expect(within(card).getByText(/계획됨/)).toBeTruthy();
+    expect(within(card).queryByText(/planned/)).toBeNull();
+    expect(within(card).getByText(/5화/)).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledWith("/long-projects");
   });
 

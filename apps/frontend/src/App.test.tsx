@@ -96,7 +96,7 @@ describe("App", () => {
     await screen.findByText("아직 생성된 프로젝트가 없습니다.");
 
     fireEvent.click(screen.getByRole("button", { name: "새 프로젝트" }));
-    fireEvent.change(screen.getByLabelText("프로젝트 ID"), { target: { value: "sample_project" } });
+    fireEvent.change(screen.getByLabelText("폴더 이름 (영문·숫자)"), { target: { value: "sample_project" } });
     fireEvent.change(screen.getByLabelText("영상 주제"), { target: { value: "우주를 여행하는 고양이" } });
     fireEvent.click(screen.getByRole("button", { name: "프로젝트 생성" }));
 
@@ -168,7 +168,7 @@ describe("App", () => {
     expect(await screen.findByText("아직 생성된 프로젝트가 없습니다.")).toBeTruthy();
   });
 
-  it("keeps the main nav (단기/장기 프로젝트, Asset Library, API 설정) reachable from a deep screen, not just the dashboard", async () => {
+  it("keeps the main nav (단기/장기 프로젝트, 이미지 보관함, API 설정) reachable from a deep screen, not just the dashboard", async () => {
     const fetchMock = vi.fn<FakeFetch>(async (input) => {
       const requestUrl = String(input);
       if (requestUrl === "/projects") return jsonResponse(200, { projects: [] });
@@ -180,18 +180,18 @@ describe("App", () => {
     render(<App />);
 
     await screen.findByText("아직 생성된 프로젝트가 없습니다.");
-    fireEvent.click(screen.getByRole("button", { name: "Asset Library" }));
+    fireEvent.click(screen.getByRole("button", { name: "이미지 보관함" }));
     await screen.findByText("등록된 에셋이 없습니다.");
 
     // From inside a screen several hops away from the dashboard, the same nav is still there.
     fireEvent.click(screen.getByRole("button", { name: "장기 프로젝트" }));
     await screen.findByText("아직 생성된 장기 프로젝트가 없습니다.");
     expect(screen.getByRole("button", { name: "단기 프로젝트" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Asset Library" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "이미지 보관함" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "API 설정" })).toBeTruthy();
   });
 
-  it("entering Asset Library issues only /assets, and back restores the project list without any provider route call", async () => {
+  it("entering 이미지 보관함 issues only /assets, and back restores the project list without any provider route call", async () => {
     const fetchMock = vi.fn<FakeFetch>(async (input) => {
       const requestUrl = String(input);
       if (requestUrl === "/projects") return jsonResponse(200, { projects: [] });
@@ -204,7 +204,7 @@ describe("App", () => {
     await screen.findByText("아직 생성된 프로젝트가 없습니다.");
     fetchMock.mockClear();
 
-    fireEvent.click(screen.getByRole("button", { name: "Asset Library" }));
+    fireEvent.click(screen.getByRole("button", { name: "이미지 보관함" }));
     await screen.findByText("등록된 에셋이 없습니다.");
 
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(["/assets"]);
@@ -215,7 +215,7 @@ describe("App", () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/settings/providers"))).toBe(false);
   });
 
-  it("opens Asset Mapping 검토 from a project's detail view and returns to that same detail on back", async () => {
+  it("opens 참고 이미지 연결 검토 from a project's detail view and returns to that same detail on back", async () => {
     const project: Project = {
       id: "sample_project",
       topic: "우주를 여행하는 고양이",
@@ -246,9 +246,9 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: /sample_project/ }));
-    fireEvent.click(await screen.findByRole("button", { name: "Asset Mapping 검토" }));
+    fireEvent.click(await screen.findByRole("button", { name: "참고 이미지 연결 검토" }));
 
-    expect(await screen.findByText("등록된 Asset Mapping이 없습니다.")).toBeTruthy();
+    expect(await screen.findByText("등록된 참고 이미지 연결이 없습니다.")).toBeTruthy();
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/videos/"))).toBe(false);
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/settings/providers"))).toBe(false);
 
@@ -257,7 +257,7 @@ describe("App", () => {
     expect(screen.getByText("우주를 여행하는 고양이")).toBeTruthy();
   });
 
-  it("opens Asset Library pre-searched with the project ID from a project's 생성 이미지 모음 button", async () => {
+  it("opens 이미지 보관함 pre-searched with the project ID from a project's 생성 이미지 모음 button", async () => {
     const project: Project = {
       id: "sample_project", topic: "우주를 여행하는 고양이", projectType: "short_project", workflowState: WorkflowState.Ready,
       createdAt: "2026-08-21T00:00:00.000Z", updatedAt: "2026-08-21T00:00:00.000Z", scenes: [], warnings: [], errors: [],
@@ -333,7 +333,7 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: /sample_project/ }));
-    fireEvent.click(await screen.findByRole("button", { name: "영상 프롬프트 및 비용 확인" }));
+    fireEvent.click(await screen.findByRole("button", { name: "이어서 진행하기 · 영상 프롬프트 및 비용 확인" }));
     await screen.findByTestId("preview-list");
 
     fireEvent.click(screen.getByTestId("open-confirm-button"));
@@ -404,7 +404,7 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: /sample_project/ }));
-    fireEvent.click(await screen.findByRole("button", { name: "영상 프롬프트 및 비용 확인" }));
+    fireEvent.click(await screen.findByRole("button", { name: "이어서 진행하기 · 영상 프롬프트 및 비용 확인" }));
     await screen.findByTestId("preview-list");
     fireEvent.click(screen.getByTestId("open-confirm-button"));
     fireEvent.click(screen.getByTestId("confirm-submit-button"));
@@ -530,7 +530,7 @@ describe("App", () => {
     await screen.findByText("아직 생성된 장기 프로젝트가 없습니다.");
 
     fireEvent.click(screen.getByRole("button", { name: "새 장기 프로젝트" }));
-    fireEvent.change(screen.getByLabelText("프로젝트 ID"), { target: { value: "long_test" } });
+    fireEvent.change(screen.getByLabelText("폴더 이름 (영문·숫자)"), { target: { value: "long_test" } });
     fireEvent.change(screen.getByLabelText("제목"), { target: { value: seed.title } });
     fireEvent.change(screen.getByLabelText("한 줄 줄거리"), { target: { value: seed.logline } });
     fireEvent.click(screen.getByRole("button", { name: "장기 프로젝트 생성" }));

@@ -17,6 +17,98 @@ const ASSET_LINK_COLLECTIONS: readonly LongStoryBibleCollection[] = ["characters
 const compactField =
   "rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 const fieldClassName = `mt-1.5 w-full ${compactField}`;
+
+/**
+ * `basic` and `world` are free-form string maps, and this screen used to hand them to the user as two raw JSON
+ * textareas — brackets, quotes and commas to get right, with "JSON 객체 형식이어야 합니다" as the only feedback.
+ * A person writing a character's world cannot author that. These two helpers translate between the stored JSON
+ * text and a plain 항목 이름 / 내용 table, so the same data can be edited without typing punctuation.
+ *
+ * `rowsFrom` returns null when the object holds anything but strings (nested objects, arrays, numbers). That
+ * data is real and must not be flattened away, so those drafts keep the JSON editor as their only surface —
+ * never silently rewritten into a shape the table can express.
+ */
+type BibleRow = { key: string; value: string };
+
+function rowsFrom(draft: string): BibleRow[] | null {
+  try {
+    const parsed: unknown = JSON.parse(draft);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+    const entries = Object.entries(parsed as Record<string, unknown>);
+    if (entries.some(([, value]) => typeof value !== "string")) return null;
+    return entries.map(([key, value]) => ({ key, value: value as string }));
+  } catch { return null; }
+}
+
+/** Empty names are dropped on the way out, so a blank row can exist while it is being filled in. */
+function draftFromRows(rows: BibleRow[]): string {
+  const record: Record<string, string> = {};
+  for (const row of rows) if (row.key.trim()) record[row.key.trim()] = row.value;
+  return JSON.stringify(record, null, 2);
+}
+
+function PlainRecordEditor({ heading, hint, rows, disabled, onChange, testId }: {
+  heading: string; hint: string; rows: BibleRow[] | null; disabled: boolean;
+  onChange: (rows: BibleRow[]) => void; testId: string;
+}) {
+  if (rows === null) {
+    return (
+      <div data-testid={`${testId}-unsupported`} className="rounded-xl border border-white/10 bg-slate-950/40 p-3 text-sm text-slate-400">
+        <p className="font-medium text-slate-300">{heading}</p>
+        <p className="mt-1">이 항목에는 표로 보여줄 수 없는 형태의 내용이 들어 있습니다. 아래 "고급 편집"에서 확인해 주세요.</p>
+      </div>
+    );
+  }
+  return (
+    <div data-testid={testId} className="space-y-2 rounded-xl border border-white/10 bg-slate-950/40 p-3">
+      <p className="text-sm font-medium text-slate-300">{heading}</p>
+      <p className="text-xs text-slate-500">{hint}</p>
+      {rows.length === 0 && <p className="text-sm text-slate-400">아직 적은 내용이 없습니다.</p>}
+      {rows.map((row, index) => (
+        <div key={index} className="flex flex-wrap items-start gap-2">
+          <label className="flex flex-col gap-1 text-xs text-slate-400">
+            항목 이름
+            <input
+              className={fieldClassName}
+              value={row.key}
+              disabled={disabled}
+              onChange={(event) => onChange(rows.map((item, position) => position === index ? { ...item, key: event.target.value } : item))}
+            />
+          </label>
+          <label className="flex flex-1 flex-col gap-1 text-xs text-slate-400">
+            내용
+            <input
+              className={fieldClassName}
+              value={row.value}
+              disabled={disabled}
+              onChange={(event) => onChange(rows.map((item, position) => position === index ? { ...item, value: event.target.value } : item))}
+            />
+          </label>
+          <button
+            type="button"
+            className="mt-5 rounded-full border border-rose-400/30 px-3 py-1.5 text-xs text-rose-300 hover:bg-rose-500/10 disabled:opacity-50"
+            disabled={disabled}
+            onClick={() => onChange(rows.filter((_, position) => position !== index))}
+          >
+            지우기
+          </button>
+        </div>
+      ))}
+      {/* Named after its own section: this screen already has an "항목 추가" button for the collection form
+          below, and a second and third one with the same accessible name leaves both a screen reader and a
+          person scanning the page unable to tell which list a button appends to. */}
+      <button
+        type="button"
+        className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50"
+        disabled={disabled}
+        onClick={() => onChange([...rows, { key: "", value: "" }])}
+      >
+        {heading}에 항목 추가
+      </button>
+    </div>
+  );
+}
+
 const jsonFieldClassName =
   "mt-1.5 min-h-28 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 font-mono text-xs text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 const primaryButton =
@@ -165,7 +257,7 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
   async function saveStyleAssetLink(): Promise<void> {
     if (busy.current) return;
     const asset = selectedStyleAsset();
-    if (styleAssetId && !asset) { setContentValidationError("사용 가능한 스타일 Asset Library 항목을 선택하세요."); return; }
+    if (styleAssetId && !asset) { setContentValidationError("이미지 보관함에서 쓸 수 있는 스타일 항목을 선택하세요."); return; }
     setContentValidationError(null); busy.current = true; setPending(true);
     try {
       const assetLink = asset ? { assetId: asset.assetId, versionPolicy: styleVersionPolicy, pinnedVersion: asset.version } : null;
@@ -264,38 +356,61 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
 
       <section aria-label="기본·세계관 설정" className={cardSection}>
         <SectionHeading>기본·세계관 설정</SectionHeading>
-        <p className="text-sm text-slate-400">설정집의 맥락으로 쓰이는 로컬 JSON 데이터를 편집합니다. 저장해도 대본·이미지·영상은 생성되지 않습니다.</p>
+        <p className="text-sm text-slate-400">작품 전체에 걸쳐 변하지 않는 설정을 적습니다. 저장해도 대본·이미지·영상은 만들어지지 않습니다.</p>
         {contentValidationError && (
           <p role="alert" data-testid="story-bible-content-validation-error" className="text-sm text-rose-400">
             {contentValidationError}
           </p>
         )}
-        <label className="block text-sm text-slate-300">
-          기본 설정 JSON
-          <textarea
-            aria-label="기본 설정 JSON"
-            value={basicDraft}
-            disabled={pending}
-            onChange={(event) => { setBasicDraft(event.target.value); setContentValidationError(null); }}
-            className={jsonFieldClassName}
-          />
-        </label>
-        <label className="block text-sm text-slate-300">
-          세계관 설정 JSON
-          <textarea
-            aria-label="세계관 설정 JSON"
-            value={worldDraft}
-            disabled={pending}
-            onChange={(event) => { setWorldDraft(event.target.value); setContentValidationError(null); }}
-            className={jsonFieldClassName}
-          />
-        </label>
+        <PlainRecordEditor
+          testId="story-bible-basic-rows"
+          heading="작품 기본 정보"
+          hint='예: 항목 이름 "작품 제목", 내용 "별의 지도" / 항목 이름 "분위기", 내용 "따뜻하고 조용함"'
+          rows={rowsFrom(basicDraft)}
+          disabled={pending}
+          onChange={(rows) => { setBasicDraft(draftFromRows(rows)); setContentValidationError(null); }}
+        />
+        <PlainRecordEditor
+          testId="story-bible-world-rows"
+          heading="세계관 설명"
+          hint='예: 항목 이름 "시대", 내용 "20년 뒤 미래" / 항목 이름 "지역", 내용 "바다 위 도시"'
+          rows={rowsFrom(worldDraft)}
+          disabled={pending}
+          onChange={(rows) => { setWorldDraft(draftFromRows(rows)); setContentValidationError(null); }}
+        />
+        {/* The raw text stays reachable — it is still the stored form, and the table cannot express nested
+            data. Folded, so it is available without being the thing a person is first asked to type into. */}
+        <details className="text-sm">
+          <summary className="cursor-pointer text-slate-400 hover:text-slate-300">고급 편집 (직접 수정)</summary>
+          <div className="mt-2 space-y-3">
+            <label className="block text-sm text-slate-300">
+              기본 설정 JSON
+              <textarea
+                aria-label="기본 설정 JSON"
+                value={basicDraft}
+                disabled={pending}
+                onChange={(event) => { setBasicDraft(event.target.value); setContentValidationError(null); }}
+                className={jsonFieldClassName}
+              />
+            </label>
+            <label className="block text-sm text-slate-300">
+              세계관 설정 JSON
+              <textarea
+                aria-label="세계관 설정 JSON"
+                value={worldDraft}
+                disabled={pending}
+                onChange={(event) => { setWorldDraft(event.target.value); setContentValidationError(null); }}
+                className={jsonFieldClassName}
+              />
+            </label>
+          </div>
+        </details>
         <button type="button" className={outlineButton} onClick={() => void saveContent()} disabled={pending}>
           {pending ? "저장하는 중..." : "기본·세계관 설정 저장"}
         </button>
       </section>
 
-      <section aria-label="전체 비주얼 스타일 Asset Library 연결" className={cardSection}>
+      <section aria-label="전체 비주얼 스타일 이미지 연결" className={cardSection}>
         <SectionHeading>전체 비주얼 스타일</SectionHeading>
         <p className="text-sm text-slate-400">원하면 이 프로젝트 전체에 적용할 승인된 스타일 에셋 하나를 연결할 수 있습니다.</p>
         {assetLoading && <p className="text-sm text-slate-400">사용 가능한 스타일 에셋을 불러오는 중...</p>}
@@ -525,13 +640,13 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
         </label>
         {supportsAssetLink && (
           <fieldset className="space-y-3 rounded-xl border border-white/10 bg-slate-950/30 p-3.5 disabled:opacity-50" disabled={pending || assetLoading}>
-            <legend className="px-1 text-sm text-slate-300">Asset Library 연결(선택 사항)</legend>
+            <legend className="px-1 text-sm text-slate-300">이미지 보관함에서 연결(선택 사항)</legend>
             {assetLoading && <p className="text-sm text-slate-400">사용 가능한 에셋을 불러오는 중...</p>}
-            {!assetLoading && assets.length === 0 && <p className="text-sm text-slate-400">승인되고 사용 설정된 Asset Library 항목이 없습니다.</p>}
+            {!assetLoading && assets.length === 0 && <p className="text-sm text-slate-400">승인되고 사용 설정된 이미지 보관함 항목이 없습니다.</p>}
             <label className="block text-sm text-slate-300">
               에셋
               <select aria-label="연결할 에셋" value={assetId} onChange={(event) => setAssetId(event.target.value)} className={fieldClassName}>
-                <option value="">Asset Library 연결 없음</option>
+                <option value="">연결 안 함</option>
                 {assets.map((asset) => (
                   <option key={asset.assetId} value={asset.assetId}>
                     {asset.displayName} ({asset.assetId}) · v{asset.version}

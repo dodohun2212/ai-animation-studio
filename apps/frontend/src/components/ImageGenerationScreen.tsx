@@ -12,6 +12,7 @@ import {
   toImageReviewDisplayError,
 } from "../api/imageReviewApi.js";
 import { Spinner } from "./Spinner.js";
+import { workflowStateLabel } from "../utils/workflowStateLabels.js";
 import { StatusChip } from "./ui/StatusChip.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { BudgetLine } from "./ui/BudgetLine.js";
@@ -257,7 +258,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
 
           {!allowed && !reviewable && !videoConfirmationReached && !result && (
             <p className="text-sm text-slate-400" data-testid="not-allowed">
-              이미지 생성은 Asset Mapping이 승인된 프로젝트에서만 가능합니다. 현재 상태: {currentProject.workflowState}
+              이미지 생성은 참고 이미지 연결이 승인된 프로젝트에서만 가능합니다. 현재 상태: {workflowStateLabel(currentProject.workflowState)}
             </p>
           )}
 
@@ -395,14 +396,18 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                         />
                         <div className="space-y-1.5">
                           <div className="flex items-center justify-end gap-3">
+                            {/* Once approved the chip above already says 확정됨; a greyed-out button repeating it
+                                invites a click that does nothing. */}
+                            {review.status !== "approved" && (
                             <button
                               type="button"
                               className={smallApproveButton}
                               onClick={() => void approveScene(review.sceneNumber)}
-                              disabled={review.status === "approved" || pending}
+                              disabled={pending}
                             >
-                              {review.status === "approved" ? "확정 완료" : pending ? "확정 중..." : "이 이미지로 확정"}
+                              {pending ? "확정 중..." : "이 이미지로 확정"}
                             </button>
+                            )}
                           </div>
                           {approveError && (
                             <p

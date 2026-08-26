@@ -153,13 +153,13 @@ function navSectionFor(name: Screen["name"]): NavSection | null {
   return null;
 }
 
-/** Always visible so a section (Asset Library, API 설정, 장기 프로젝트) is never more than one click away, no matter how deep the current screen is. */
+/** Always visible so a section (이미지 보관함, API 설정, 장기 프로젝트) is never more than one click away, no matter how deep the current screen is. */
 function NavBar({ current, onNavigate }: { current: Screen["name"]; onNavigate: (screen: Screen) => void }) {
   const section = navSectionFor(current);
   const items: { key: NavSection; icon: NavIconName; label: string; target: Screen }[] = [
     { key: "short", icon: "home", label: "단기 프로젝트", target: { name: "list" } },
     { key: "long", icon: "long", label: "장기 프로젝트", target: { name: "longList" } },
-    { key: "assets", icon: "library", label: "Asset Library", target: { name: "assets" } },
+    { key: "assets", icon: "library", label: "이미지 보관함", target: { name: "assets" } },
     { key: "archive", icon: "archive", label: "보관함", target: { name: "archive" } },
     { key: "workflowGuide", icon: "workflow", label: "작업 워크플로우", target: { name: "workflowGuide" } },
     { key: "providerSettings", icon: "settings", label: "API 설정", target: { name: "providerSettings" } },
@@ -221,7 +221,7 @@ function LongWorkspaceNav({ screen, onNavigate }: { screen: Screen; onNavigate: 
           <span className="text-sm text-slate-400">Episode {episodeNumber}</span>
           {tab(screen.name, "longEpisodeOutline", "회차 설정", () => onNavigate({ name: "longEpisodeOutline", projectId, episodeNumber }))}
           {tab(screen.name, "longEpisodeScript", "대본", () => onNavigate({ name: "longEpisodeScript", projectId, episodeNumber }))}
-          {tab(screen.name, "longEpisodeMappingReview", "Asset Mapping", () => onNavigate({ name: "longEpisodeMappingReview", projectId, episodeNumber }))}
+          {tab(screen.name, "longEpisodeMappingReview", "참고 이미지 연결", () => onNavigate({ name: "longEpisodeMappingReview", projectId, episodeNumber }))}
           {tab(screen.name, "longEpisodeImageGeneration", "이미지", () => onNavigate({ name: "longEpisodeImageGeneration", projectId, episodeNumber }))}
           {tab(screen.name, "longEpisodeVideoWorkflow", "영상", () => onNavigate({ name: "longEpisodeVideoWorkflow", projectId, episodeNumber }))}
           {tab(screen.name, "longEpisodeVideoMerge", "병합", () => onNavigate({ name: "longEpisodeVideoMerge", projectId, episodeNumber }))}

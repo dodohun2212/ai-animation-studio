@@ -147,7 +147,8 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
         영상 프롬프트 및 비용 확인
       </h1>
       <p className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300" data-testid="no-provider-notice">
-        실제 유료 Runway API를 호출하지 않습니다. 아래 수정 내용은 이 화면에만 유지되며 저장되지 않습니다.
+        지금 이 화면을 여는 것만으로는 아무 요청도 나가지 않습니다. 아래 "이 프롬프트로 전송 승인"을 누르고 확인까지 마쳐야
+        실제 요청이 전송되고 비용이 발생합니다. 여기서 고친 프롬프트는 이 화면에서만 쓰이고 저장되지 않습니다.
       </p>
 
       {state.status === "loading" && <Spinner label="미리보기를 불러오는 중..." />}
@@ -252,7 +253,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
               </button>
               {isStale && (
                 <button type="button" className={outlineButton} onClick={() => void load()}>
-                  새로고침
+                  처음 내용으로 되돌리기
                 </button>
               )}
             </div>

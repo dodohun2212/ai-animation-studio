@@ -91,26 +91,26 @@ describe("ProjectDetail", () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
-  it("calls onOpenMappingReview with the project ID when the Asset Mapping button is clicked", async () => {
+  it("calls onOpenMappingReview with the project ID when the 참고 이미지 연결 button is clicked", async () => {
     const project = makeProject({ id: "sample_project" });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
     const onOpenMappingReview = vi.fn();
     render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={onOpenMappingReview} />);
 
     await screen.findByText("sample_project");
-    fireEvent.click(screen.getByRole("button", { name: "Asset Mapping 검토" }));
+    fireEvent.click(screen.getByRole("button", { name: "참고 이미지 연결 검토" }));
 
     expect(onOpenMappingReview).toHaveBeenCalledWith("sample_project");
   });
 
-  it("calls onOpenStoryPrompt with the project ID when the Story 프롬프트 확인 button is clicked", async () => {
+  it("calls onOpenStoryPrompt with the project ID when the 대본 지시문 확인 button is clicked", async () => {
     const project = makeProject({ id: "sample_project" });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
     const onOpenStoryPrompt = vi.fn();
     render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} onOpenStoryPrompt={onOpenStoryPrompt} />);
 
     await screen.findByText("sample_project");
-    fireEvent.click(screen.getByRole("button", { name: "Story 프롬프트 확인" }));
+    fireEvent.click(screen.getByRole("button", { name: "대본 지시문 확인" }));
 
     expect(onOpenStoryPrompt).toHaveBeenCalledWith("sample_project");
   });
@@ -127,16 +127,7 @@ describe("ProjectDetail", () => {
     expect(onOpenGallery).toHaveBeenCalledWith("sample_project");
   });
 
-  it("does not show the 장면 이미지 생성 button when the project is not Asset-Mapping-approved", async () => {
-    const project = makeProject({ id: "sample_project", workflowState: WorkflowState.Ready });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
-    render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} />);
-
-    await screen.findByText("sample_project");
-    expect(screen.queryByRole("button", { name: "장면 이미지 생성" })).toBeNull();
-  });
-
-  it("shows and wires the 장면 이미지 생성 button when the project is Asset-Mapping-approved", async () => {
+  it("offers exactly one way forward from an Asset-Mapping-approved project, not a duplicate pair", async () => {
     const project = makeProject({ id: "sample_project", workflowState: WorkflowState.AssetMappingApproved });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
     const onOpenImageGeneration = vi.fn();
@@ -150,16 +141,18 @@ describe("ProjectDetail", () => {
     );
 
     await screen.findByText("sample_project");
-    fireEvent.click(screen.getByRole("button", { name: "장면 이미지 생성" }));
+    // The standalone shortcut is gone; the resume button is the one forward step.
+    expect(screen.queryByRole("button", { name: "장면 이미지 생성" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "이어서 진행하기 · 장면 이미지 생성/검토" }));
 
     expect(onOpenImageGeneration).toHaveBeenCalledWith("sample_project");
   });
 
   it("resumes into the screen matching each workflow state, and shows no resume button once the project is terminal", async () => {
     const cases: Array<{ workflowState: WorkflowState; currentVideoJobId?: string; label: string; button: "onOpenStoryPrompt" | "onOpenMappingReview" | "onOpenImageGeneration" | "onOpenVideoPreview" | "onOpenVideoWorkflow" | "onOpenVideoMerge"; args: unknown[] }> = [
-      { workflowState: WorkflowState.Ready, label: "이어서 진행하기 · Story 프롬프트 확인", button: "onOpenStoryPrompt", args: ["sample_project"] },
-      { workflowState: WorkflowState.GeneratingStory, label: "이어서 진행하기 · Story 프롬프트 확인", button: "onOpenStoryPrompt", args: ["sample_project"] },
-      { workflowState: WorkflowState.WaitingForAssetMappingReview, label: "이어서 진행하기 · Asset Mapping 검토", button: "onOpenMappingReview", args: ["sample_project"] },
+      { workflowState: WorkflowState.Ready, label: "이어서 진행하기 · 대본 지시문 확인", button: "onOpenStoryPrompt", args: ["sample_project"] },
+      { workflowState: WorkflowState.GeneratingStory, label: "이어서 진행하기 · 대본 지시문 확인", button: "onOpenStoryPrompt", args: ["sample_project"] },
+      { workflowState: WorkflowState.WaitingForAssetMappingReview, label: "이어서 진행하기 · 참고 이미지 연결 검토", button: "onOpenMappingReview", args: ["sample_project"] },
       { workflowState: WorkflowState.AssetMappingApproved, label: "이어서 진행하기 · 장면 이미지 생성/검토", button: "onOpenImageGeneration", args: ["sample_project"] },
       { workflowState: WorkflowState.ImagesReview, label: "이어서 진행하기 · 장면 이미지 생성/검토", button: "onOpenImageGeneration", args: ["sample_project"] },
       { workflowState: WorkflowState.WaitingForVideoConfirmation, label: "이어서 진행하기 · 영상 프롬프트 및 비용 확인", button: "onOpenVideoPreview", args: ["sample_project"] },

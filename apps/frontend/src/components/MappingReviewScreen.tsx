@@ -244,7 +244,7 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
             aria-hidden="true"
             className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
           />
-            Asset Mapping 검토
+            참고 이미지 연결 검토
           </h1>
           <button type="button" className={outlineButton} onClick={() => void load()}>새로고침</button>
         </div>
@@ -347,7 +347,7 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
       {mappingsError && (
         <p role="alert" data-testid="mappings-error" data-error-code={mappingsError.code} className="text-sm text-rose-400">{mappingsError.message}</p>
       )}
-      {mappings && mappings.length === 0 && !mappingsLoading && <p className="text-slate-400">등록된 Asset Mapping이 없습니다.</p>}
+      {mappings && mappings.length === 0 && !mappingsLoading && <p className="text-slate-400">등록된 참고 이미지 연결이 없습니다.</p>}
 
       {mappings && mappings.length > 0 && (
         <ul aria-label="Mapping 목록" className="space-y-3">

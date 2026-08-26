@@ -329,7 +329,7 @@ function CastEditor({ projectId }: { projectId: string }) {
         </ul>
       )}
       {results && results.length === 0 && !searchLoading && (
-        <p className="text-sm text-slate-400">캐릭터형 폴더가 없습니다. Asset Library에서 캐릭터 폴더를 먼저 만들어 주세요.</p>
+        <p className="text-sm text-slate-400">캐릭터형 폴더가 없습니다. 이미지 보관함에서 캐릭터 폴더를 먼저 만들어 주세요.</p>
       )}
     </section>
   );
@@ -516,7 +516,7 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
   return (
     <section aria-label="분위기·장면 참고 Asset" className={cardSection}>
       <SectionHeading>전체 분위기 및 장면 참고 Asset</SectionHeading>
-      <p className="text-xs text-slate-400">검색 결과가 없다면 Asset Library에서 배경·소품·스타일 이미지를 먼저 등록해 주세요.</p>
+      <p className="text-xs text-slate-400">검색 결과가 없다면 이미지 보관함에서 배경·소품·스타일 이미지를 먼저 등록해 주세요.</p>
       {error && (
         <p role="alert" data-testid="asset-reference-error" data-error-code={error.code} className="text-sm text-rose-400">
           {error.message}
@@ -807,7 +807,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
                   </p>
                 )}
                 {characterOptions && characterOptions.length === 0 && !characterOptionsLoading && (
-                  <p className="text-sm text-slate-400">Asset Library에 등록된 캐릭터가 없습니다. 먼저 캐릭터 이미지를 등록해 주세요.</p>
+                  <p className="text-sm text-slate-400">이미지 보관함에 등록된 캐릭터가 없습니다. 먼저 캐릭터 이미지를 등록해 주세요.</p>
                 )}
                 {characterOptions && characterOptions.length > 0 && (
                   <ul aria-label="캐릭터 이미지 선택" className="grid grid-cols-3 gap-2 sm:grid-cols-4">

@@ -510,7 +510,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
             aria-hidden="true"
             className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
           />
-            Asset Library
+            이미지 보관함
           </h1>
         </div>
       </header>
@@ -906,7 +906,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
               <form onSubmit={submitFolderUpload} aria-label="이 폴더에 새 이미지 등록" className="space-y-2 border-t border-white/10 pt-3">
                 <p className="text-sm font-semibold text-slate-200">이 폴더에 새 이미지 등록</p>
                 <p className="text-xs text-slate-400">
-                  아직 Asset Library에 없는 이미지를 바로 이 폴더 안으로 등록합니다. 유형은 이 폴더와 같은 것으로 들어갑니다.
+                  아직 이미지 보관함에 없는 이미지를 바로 이 폴더 안으로 등록합니다. 유형은 이 폴더와 같은 것으로 들어갑니다.
                 </p>
                 {folderUploadValidationError && (
                   <p role="alert" data-testid="folder-upload-validation-error" className="text-sm text-rose-400">
@@ -943,7 +943,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
               </form>
               <form onSubmit={searchFolderLinkCandidates} aria-label="폴더에 추가할 이미지 검색" className="space-y-2 border-t border-white/10 pt-3">
                 <p className="text-sm font-semibold text-slate-200">이미 등록된 이미지 넣기</p>
-                <p className="text-xs text-slate-400">Asset Library에 이미 등록된 같은 유형의 이미지를 검색해서 이 폴더에 추가할 수 있습니다.</p>
+                <p className="text-xs text-slate-400">이미지 보관함에 이미 등록된 같은 유형의 이미지를 검색해서 이 폴더에 추가할 수 있습니다.</p>
                 <div className="flex flex-wrap items-end gap-2">
                   <label className="flex flex-col gap-1 text-xs text-slate-400">
                     이미지 검색

@@ -132,7 +132,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
 
   return (
     <section className="mt-8 space-y-5">
-      <button type="button" className={outlineButton} onClick={onBack}>Asset Mapping 검토로</button>
+      <button type="button" className={outlineButton} onClick={onBack}>참고 이미지 연결 검토로</button>
       <header className="space-y-1">
         <h2 className="flex items-center gap-2.5 text-lg font-semibold"><span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />{`에피소드 ${episodeNumber} 이미지 생성`}</h2>
         <p data-testid="episode-image-cost-notice" className="text-sm text-amber-300">OpenAI 키가 연결되어 있으면 장면마다 실제 유료 요청이 전송됩니다. 연결되어 있지 않으면 비용 없이 임시 이미지로 생성됩니다.</p>
@@ -144,7 +144,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
       {/* Episode 1 has no previous Episode by definition — saying a reference is "missing" there reads as a
           prerequisite the user failed to meet, when nothing is wrong at all. */}
       {!continuityReferenceLoading && !continuityReference?.available && <p data-testid="episode-image-continuity-unavailable" className="text-sm text-slate-400">{episodeNumber <= 1 ? "첫 에피소드라 이어받을 이전 장면이 없습니다. 이 에피소드부터 새로 시작합니다." : "이전 에피소드의 마지막 장면 자료가 아직 없어서, 이어받지 않고 이 에피소드만으로 만듭니다."}</p>}
-      {episode && !eligible && !reviewable && <p data-testid="episode-image-not-eligible" className="text-sm text-amber-300">에피소드 이미지 생성을 시작하려면 먼저 Asset Mapping을 승인하세요.</p>}
+      {episode && !eligible && !reviewable && <p data-testid="episode-image-not-eligible" className="text-sm text-amber-300">에피소드 이미지 생성을 시작하려면 먼저 참고 이미지 연결을 승인하세요.</p>}
       <ol data-testid="episode-image-scenes" className="list-decimal space-y-1 pl-5 text-sm text-slate-300">
         {sceneNumbers.map((sceneNumber) => <li key={sceneNumber} data-testid={`episode-image-scene-${sceneNumber}`} data-status={reviewFor(sceneNumber)?.status ?? (generation ? "generated" : "waiting")}>장면 {sceneNumber}: {sceneSlotLabel(reviewFor(sceneNumber)?.status ?? (generation ? "generated" : "waiting"))}</li>)}
       </ol>
@@ -221,7 +221,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
       )}
       {episode?.status === "waiting_for_video_confirmation" && (
         <div className="space-y-2">
-          <p data-testid="episode-video-confirmation-transition" className="text-sm text-emerald-400">6개 장면 이미지가 모두 승인되었습니다. 별도의 영상 확인 단계로 이어서 진행하세요.</p>
+          <p data-testid="episode-video-confirmation-transition" className="text-sm text-emerald-400">{sceneNumbers.length}개 장면 이미지가 모두 승인되었습니다. 별도의 영상 확인 단계로 이어서 진행하세요.</p>
           {onOpenVideoWorkflow && <button type="button" data-testid="episode-open-video-workflow" className={outlineButton} onClick={() => onOpenVideoWorkflow(projectId, episodeNumber)}>에피소드 영상 작업 열기</button>}
         </div>
       )}

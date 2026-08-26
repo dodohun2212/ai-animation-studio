@@ -78,7 +78,7 @@ export function StoryPromptScreen({ projectId, onBack }: Props) {
     if (!preview) return;
     const trimmed = promptText.trim();
     if (!trimmed) {
-      setValidationError("Story 프롬프트를 입력해야 합니다.");
+      setValidationError("대본 지시문를 입력해야 합니다.");
       return;
     }
     setValidationError(null);
@@ -96,7 +96,7 @@ export function StoryPromptScreen({ projectId, onBack }: Props) {
     const trimmed = promptText.trim();
     if (!trimmed) {
       setConfirmOpen(false);
-      setValidationError("Story 프롬프트를 입력해야 합니다.");
+      setValidationError("대본 지시문를 입력해야 합니다.");
       return;
     }
     approveBusy.current = true;
@@ -141,7 +141,7 @@ export function StoryPromptScreen({ projectId, onBack }: Props) {
           aria-hidden="true"
           className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
         />
-        Story 프롬프트 확인
+        대본 지시문 확인
       </h1>
 
       {previewLoading && !preview && <Spinner label="미리보기를 불러오는 중..." />}
@@ -157,7 +157,7 @@ export function StoryPromptScreen({ projectId, onBack }: Props) {
             글자 수: {preview.characterCount} · 장면 수: {preview.sceneCount}
           </p>
           <label className="block text-sm text-slate-300" htmlFor="story-prompt">
-            Story 프롬프트
+            대본 지시문
             <textarea
               id="story-prompt"
               className="mt-1.5 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
@@ -193,7 +193,7 @@ export function StoryPromptScreen({ projectId, onBack }: Props) {
                 className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
                 onClick={() => void load()}
               >
-                새로고침
+                처음 내용으로 되돌리기
               </button>
             )}
           </div>
@@ -205,7 +205,7 @@ export function StoryPromptScreen({ projectId, onBack }: Props) {
           {confirmOpen && (
             <div
               role="alertdialog"
-              aria-label="Story 프롬프트 전송 확인"
+              aria-label="대본 지시문 전송 확인"
               data-testid="approve-confirm-panel"
               className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-950/60 p-4"
             >

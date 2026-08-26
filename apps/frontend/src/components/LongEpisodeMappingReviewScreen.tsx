@@ -98,13 +98,13 @@ export function LongEpisodeMappingReviewScreen({ projectId, episodeNumber, onBac
         <button type="button" className={outlineButton} onClick={onBack}>에피소드 대본으로</button>
       </div>
       <header className="space-y-1">
-        <h2 className="flex items-center gap-2.5 text-lg font-semibold"><span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />{`에피소드 ${episodeNumber} Asset Mapping 검토`}</h2>
+        <h2 className="flex items-center gap-2.5 text-lg font-semibold"><span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />{`에피소드 ${episodeNumber} 참고 이미지 연결 검토`}</h2>
         <p className="text-sm text-slate-400">후보를 검토하는 것만으로는 이미지 생성이 시작되지 않습니다.</p>
       </header>
       {loading && <Spinner label="매핑 검토 내용을 불러오는 중…" />}
       {episode && <p data-testid="episode-mapping-status" className="text-sm text-slate-400">에피소드 상태: {longEpisodeStatusLabel(episode.status)} · 대본 리비전 {episode.scriptRevision}</p>}
-      {episode && !isEligible && beforeMappingStage && <p role="alert" data-testid="episode-mapping-not-eligible" className="text-sm text-amber-300">Asset Mapping 검토를 열려면 먼저 이 에피소드의 대본을 승인해야 합니다.</p>}
-      {episode && !isEligible && !beforeMappingStage && <p data-testid="episode-mapping-already-done" className="text-sm text-slate-400">이 에피소드는 Asset Mapping을 이미 마치고 다음 단계로 넘어갔습니다. 여기서는 결과만 볼 수 있습니다.</p>}
+      {episode && !isEligible && beforeMappingStage && <p role="alert" data-testid="episode-mapping-not-eligible" className="text-sm text-amber-300">참고 이미지 연결 검토를 열려면 먼저 이 에피소드의 대본을 승인해야 합니다.</p>}
+      {episode && !isEligible && !beforeMappingStage && <p data-testid="episode-mapping-already-done" className="text-sm text-slate-400">이 에피소드는 참고 이미지 연결을 이미 마치고 다음 단계로 넘어갔습니다. 여기서는 결과만 볼 수 있습니다.</p>}
       {review && (
         <section aria-label="매핑 검토 상태" className={`${cardSection} text-sm`}>
           <p>매핑 리비전: {review.mappingRevision}</p>
@@ -163,7 +163,7 @@ export function LongEpisodeMappingReviewScreen({ projectId, episodeNumber, onBac
       )}
       {approvalOpen && review && (
         <div role="alertdialog" data-testid="episode-mapping-approval-confirm" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
-          <p className="text-sm text-amber-200">검토된 이 Asset Mapping을 승인할까요? 매핑 결정만 기록하며 이미지는 생성하지 않습니다.</p>
+          <p className="text-sm text-amber-200">검토된 이 참고 이미지 연결을 승인할까요? 매핑 결정만 기록하며 이미지는 생성하지 않습니다.</p>
           <div className="flex gap-3">
             <button type="button" className={outlineButton} disabled={pending} onClick={() => setApprovalOpen(false)}>돌아가기</button>
             <button type="button" className={primaryButton} disabled={pending} onClick={() => void run(async () => { const response = await approveLongEpisodeAssetMappingReview(projectId, episodeNumber, { approved: true, scriptFingerprint: review.scriptFingerprint }); setReview(response.review); setEpisode(response.episode); setApprovalOpen(false); })}>매핑 승인</button>
@@ -172,7 +172,7 @@ export function LongEpisodeMappingReviewScreen({ projectId, episodeNumber, onBac
       )}
       {review?.status === "approved" && (
         <div className="space-y-2">
-          <p className="text-sm text-emerald-400">Asset Mapping이 승인되었습니다. 이미지 생성은 이후 별도 단계로 진행됩니다.</p>
+          <p className="text-sm text-emerald-400">참고 이미지 연결이 승인되었습니다. 이미지 생성은 이후 별도 단계로 진행됩니다.</p>
           {onOpenImageGeneration && <button type="button" className={violetOutlineButton} onClick={() => onOpenImageGeneration(projectId, episodeNumber)}>이미지 생성 열기</button>}
         </div>
       )}

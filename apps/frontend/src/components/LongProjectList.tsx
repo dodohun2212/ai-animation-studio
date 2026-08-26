@@ -3,6 +3,7 @@ import type { LongProjectSummary } from "@ai-animation-studio/shared";
 
 import { listLongProjects, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
+import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { Spinner } from "./Spinner.js";
 
 interface LongProjectListProps {
@@ -127,7 +128,7 @@ export function LongProjectList({ refreshToken, onOpenProject, onCreateNew }: Lo
                   <span className="block truncate text-sm text-slate-300">{project.logline}</span>
                   <span className="mt-1.5 flex flex-wrap items-center gap-2">
                     <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-xs font-medium text-violet-300">
-                      {project.outlineStatus} · Episode {project.episodeCount}개
+                      {longEpisodeStatusLabel(project.outlineStatus)} · {project.episodeCount}화
                     </span>
                     <span className="text-xs text-slate-400 tabular-nums" title={project.updatedAt}>{formatDateTime(project.updatedAt)}</span>
                   </span>

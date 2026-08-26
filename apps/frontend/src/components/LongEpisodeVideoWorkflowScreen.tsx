@@ -26,6 +26,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
   const [job, setJob] = useState<LongEpisodeVideoProgress | null>(null);
   const [reviews, setReviews] = useState<LongEpisodeVideoReview[] | null>(null);
   const [confirmStart, setConfirmStart] = useState(false); const [regenerate, setRegenerate] = useState<SceneNumber | null>(null);
+  const [restartConfirm, setRestartConfirm] = useState(false);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<DisplayError | null>(null);
   const busyRef = useRef(false);
   const loadPreview = async () => { setError(null); try { const response = await getLongEpisodeVideoPreview(projectId, episodeNumber); setPreview(response); setPrompts(Object.fromEntries(response.scenes.map((scene) => [scene.sceneNumber, scene.prompt]))); } catch (caught) { setError(toLongProjectDisplayError(caught)); } };
@@ -106,12 +107,22 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
       )}
       {job && (
         <section data-testid="episode-video-progress" className={cardSection}>
-          <p className="text-sm text-slate-300">작업 상태: {{ created: "생성됨", running: "진행 중", succeeded: "완료됨", failed: "실패", interrupted: "중단됨" }[job.status] ?? job.status}</p>
+          <p className="text-sm text-slate-300">작업 상태: {{ created: "생성됨", running: "진행 중", succeeded: "완료됨", failed: "실패", interrupted: "중단됨" }[job.status] ?? "상태 확인 중"}</p>
           <ol className="grid grid-cols-2 gap-2 text-sm text-slate-300 sm:grid-cols-3">
             {job.sceneNumbers.map((scene) => <li key={scene} data-testid={`episode-video-progress-${scene}`} className="rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2">{scene}: {job.completedSceneNumbers.includes(scene) ? "완료" : job.currentSceneNumber === scene ? "진행 중" : job.failedSceneNumbers.includes(scene) ? "실패" : "대기 중"}</li>)}
           </ol>
           {(job.status === "created" || job.status === "running") && <button type="button" className={dangerOutlineButton} disabled={busy} onClick={() => void action(() => stopLongEpisodeVideoGeneration(projectId, episodeNumber, job.jobId))}>중단</button>}
-          {job.status === "interrupted" && <button type="button" className={outlineButton} disabled={busy} onClick={() => void action(() => restartLongEpisodeVideoGeneration(projectId, episodeNumber, job.jobId))}>다시 시작</button>}
+          {/* Every other paid button on this screen confirms first; this one spent money on a single click. */}
+          {job.status === "interrupted" && <button type="button" data-testid="episode-video-restart" className={outlineButton} disabled={busy} onClick={() => setRestartConfirm(true)}>남은 장면 이어서 만들기</button>}
+          {restartConfirm && (
+            <div role="alertdialog" data-testid="episode-video-restart-confirm" className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
+              <p className="text-sm text-amber-200">중단된 지점부터 남은 장면 영상을 이어서 만들까요? Runway 키가 연결되어 있으면 만드는 장면 수만큼 실제로 청구됩니다.</p>
+              <div className="flex gap-2">
+                <button type="button" className={smallOutlineButton} onClick={() => setRestartConfirm(false)}>취소</button>
+                <button type="button" className={smallAmberButton} disabled={busy} onClick={() => { setRestartConfirm(false); void action(() => restartLongEpisodeVideoGeneration(projectId, episodeNumber, job.jobId)); }}>네, 이어서 만들기</button>
+              </div>
+            </div>
+          )}
         </section>
       )}
       {job?.status === "failed" && (

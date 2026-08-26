@@ -36,11 +36,11 @@ const fieldClassName =
 function episodeResumeTarget(status: LongEpisodeStatus): EpisodeResumeTarget | null {
   switch (status) {
     case "outline_ready": case "script_review": return { screen: "script", label: "대본 작성/편집" };
-    case "script_approved": case "waiting_for_asset_mapping_review": return { screen: "mappingReview", label: "Asset Mapping 검토" };
+    case "script_approved": case "waiting_for_asset_mapping_review": return { screen: "mappingReview", label: "참고 이미지 연결 검토" };
     case "asset_mapping_approved": case "generating_images": case "images_ready": case "images_review": return { screen: "imageGeneration", label: "이미지 생성/검토" };
     case "waiting_for_video_confirmation": case "videos_generating": case "videos_ready": case "videos_review": case "interrupted": return { screen: "videoWorkflow", label: "영상 생성/검토" };
     case "videos_approved": case "rendering": case "failed": return { screen: "videoMerge", label: "최종 영상 병합" };
-    case "completed": return { screen: "continuity", label: "Continuity Memory" };
+    case "completed": return { screen: "continuity", label: "이어쓰기 메모" };
     // "planned" has no script yet, but it does have a plan to write — before this screen existed it was the one
     // status with no link at all, which read as "this episode is broken" rather than "this episode is next".
     case "planned": return { screen: "episodeOutline", label: "회차 설정 적기" };
@@ -235,12 +235,20 @@ export function LongProjectDetail({
             {timelineError && <p className="text-sm text-rose-400" role="alert" data-error-code={timelineError.code}>{timelineError.message}</p>}
             {removeConfirmationOpen && selectedEpisode && (
               <section className="rounded-xl border border-rose-400/30 bg-rose-950/20 p-4" aria-label="에피소드 보관 확인">
+                {/* Was: type "ARCHIVE EPISODE 3" — an English command string, demanded of a Korean creator, for
+                    an action that is reversible (the episode goes to the archive and can be restored). The
+                    typing gate belongs on the project-level archive above, which takes the whole project with
+                    it; here it was ceremony that made a recoverable action feel destructive. The number is
+                    still asked for, so the wrong episode cannot be archived by a mis-click. */}
                 <p className="text-sm text-slate-300">
-                  에피소드 {selectedEpisode.episodeNumber}을(를) 보관함으로 옮깁니다(나중에 다시 꺼낼 수 있어요). 계속하려면 <strong className="text-slate-100">ARCHIVE EPISODE {selectedEpisode.episodeNumber}</strong>를 입력하세요.
+                  {selectedEpisode.episodeNumber}화를 보관함으로 옮깁니다. <strong className="text-slate-100">지워지는 게 아니라 나중에 다시 꺼낼 수 있습니다.</strong>
                 </p>
-                <label className="mt-3 block text-sm text-slate-200" htmlFor="episode-archive-confirmation">위 내용 그대로 입력</label>
+                <label className="mt-3 block text-sm text-slate-200" htmlFor="episode-archive-confirmation">
+                  맞으면 회차 번호 <strong className="text-slate-100">{selectedEpisode.episodeNumber}</strong>을(를) 입력해 주세요
+                </label>
                 <input
                   id="episode-archive-confirmation"
+                  inputMode="numeric"
                   className={`mt-1.5 w-full ${fieldClassName}`}
                   value={removeConfirmation}
                   onChange={(event) => setRemoveConfirmation(event.target.value)}
@@ -252,9 +260,9 @@ export function LongProjectDetail({
                     type="button"
                     className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                     onClick={() => void updateTimeline(() => archiveLongEpisode(projectId, selectedEpisode.episodeNumber))}
-                    disabled={timelinePending || removeConfirmation !== `ARCHIVE EPISODE ${selectedEpisode.episodeNumber}`}
+                    disabled={timelinePending || removeConfirmation.trim() !== String(selectedEpisode.episodeNumber)}
                   >
-                    보관하기
+                    보관함으로 옮기기
                   </button>
                 </div>
               </section>

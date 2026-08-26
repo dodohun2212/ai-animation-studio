@@ -368,7 +368,7 @@ describe("VideoPromptPreviewScreen", () => {
       fireEvent.click(screen.getByTestId("confirm-submit-button"));
       await screen.findByTestId("submit-error");
 
-      fireEvent.click(screen.getByRole("button", { name: "새로고침" }));
+      fireEvent.click(screen.getByRole("button", { name: "처음 내용으로 되돌리기" }));
       await screen.findByTestId("preview-list");
       expect(fetchMock).toHaveBeenCalledTimes(3);
       expect(screen.queryByTestId("submit-error")).toBeNull();

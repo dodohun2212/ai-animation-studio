@@ -38,9 +38,9 @@ export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProp
     const trimmedTopic = topic.trim();
     const errors: FieldErrors = {};
     if (!trimmedId) {
-      errors.projectId = "프로젝트 ID를 입력하세요.";
+      errors.projectId = "폴더 이름을 입력하세요.";
     } else if (!isSafeProjectId(trimmedId)) {
-      errors.projectId = "프로젝트 ID는 문자, 숫자, '_', '-'만 사용할 수 있습니다.";
+      errors.projectId = "폴더 이름에는 영문, 숫자, '_', '-'만 쓸 수 있습니다. 한글과 띄어쓰기는 폴더 이름으로 쓸 수 없습니다.";
     }
     if (!trimmedTopic) {
       errors.topic = "영상 주제를 입력하세요.";
@@ -72,8 +72,14 @@ export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProp
     >
       <div>
         <label className="block text-sm text-slate-300" htmlFor="projectId">
-          프로젝트 ID
+          폴더 이름 (영문·숫자)
         </label>
+        {/* Was labelled "프로젝트 ID" with no explanation — the first field of the app asked a creator to invent
+            a machine identifier and obey a charset rule. It is really the folder this project gets on disk, so
+            it is named that, and the constraint is stated before it can be violated rather than after. */}
+        <p className="mt-1 text-xs text-slate-500">
+          이 이름으로 컴퓨터에 프로젝트 폴더가 만들어집니다. 영문·숫자와 _ - 만 쓸 수 있고, 만든 뒤에는 바꿀 수 없습니다.
+        </p>
         <input
           id="projectId"
           className={fieldClassName}

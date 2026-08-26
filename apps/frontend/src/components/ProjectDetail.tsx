@@ -59,9 +59,9 @@ function resumeTarget(project: Project): ResumeTarget | null {
     case WorkflowState.Init:
     case WorkflowState.Ready:
     case WorkflowState.GeneratingStory:
-      return { screen: "storyPrompt", label: "이어서 진행하기 · Story 프롬프트 확인" };
+      return { screen: "storyPrompt", label: "이어서 진행하기 · 대본 지시문 확인" };
     case WorkflowState.WaitingForAssetMappingReview:
-      return { screen: "mappingReview", label: "이어서 진행하기 · Asset Mapping 검토" };
+      return { screen: "mappingReview", label: "이어서 진행하기 · 참고 이미지 연결 검토" };
     case WorkflowState.AssetMappingApproved:
     case WorkflowState.GeneratingImages:
     case WorkflowState.ImagesReady:
@@ -176,24 +176,18 @@ export function ProjectDetail({
           )}
           <div className="flex flex-wrap gap-3">
             <button type="button" className={secondaryButton} onClick={() => onOpenMappingReview(projectId)}>
-              Asset Mapping 검토
+              참고 이미지 연결 검토
             </button>
             <button type="button" className={secondaryButton} onClick={() => onOpenSettings(projectId)}>
               프로젝트 설정
             </button>
             <button type="button" className={secondaryButton} onClick={() => onOpenStoryPrompt(projectId)}>
-              Story 프롬프트 확인
+              대본 지시문 확인
             </button>
-            {state.project.workflowState === WorkflowState.AssetMappingApproved && (
-              <button type="button" className={secondaryButton} onClick={() => onOpenImageGeneration(projectId)}>
-                장면 이미지 생성
-              </button>
-            )}
-            {state.project.workflowState === WorkflowState.WaitingForVideoConfirmation && (
-              <button type="button" className={secondaryButton} onClick={() => onOpenVideoPreview(projectId)}>
-                영상 프롬프트 및 비용 확인
-              </button>
-            )}
+            {/* Removed: 장면 이미지 생성 / 영상 프롬프트 및 비용 확인. Each was rendered only in the one state
+                where the resume button above already reads "이어서 진행하기 · <같은 화면>" and calls the same
+                handler — two buttons, one destination, names similar enough ("생성" vs "생성/검토") to suggest
+                they did different things. The resume button is the single forward step. */}
             {state.project.scenes.length > 0 && (
               <button
                 type="button"

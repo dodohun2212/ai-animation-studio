@@ -3,6 +3,7 @@ import type { LongEpisodeOutline, LongProjectOutlinePromptPreview } from "@ai-an
 
 import { approveLongProjectOutline, createLongProjectOutlinePreview, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
+import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { Spinner } from "./Spinner.js";
 
 interface Props {
@@ -247,11 +248,11 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
           )}
           {approved && (
             <div data-testid="episode-outline-list" className="space-y-2 rounded-xl border border-white/10 bg-slate-950/40 p-4">
-              <p className="text-sm font-semibold text-slate-200">Episode 스토리 개요 상태</p>
+              <p className="text-sm font-semibold text-slate-200">회차별 개요 상태</p>
               <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-300">
                 {approved.episodes.map((episode) => (
                   <li key={episode.episodeNumber} data-testid={`episode-outline-${episode.episodeNumber}`} data-status={episode.status}>
-                    {episode.title} — {episode.status}
+                    {episode.title} — {longEpisodeStatusLabel(episode.status)}
                   </li>
                 ))}
               </ol>

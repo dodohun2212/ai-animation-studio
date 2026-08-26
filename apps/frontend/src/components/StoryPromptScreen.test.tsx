@@ -107,7 +107,7 @@ describe("StoryPromptScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "이 프롬프트로 승인" }));
 
     const alert = await screen.findByTestId("validation-error");
-    expect(alert.textContent).toBe("Story 프롬프트를 입력해야 합니다.");
+    expect(alert.textContent).toBe("대본 지시문를 입력해야 합니다.");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -249,7 +249,7 @@ describe("StoryPromptScreen", () => {
     const alert = await screen.findByTestId("approve-error");
     expect(alert).toHaveAttribute("data-error-code", "STORY_PROMPT_STALE");
     expect(alert.textContent).not.toContain("raw backend detail");
-    expect(screen.getByRole("button", { name: "새로고침" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "처음 내용으로 되돌리기" })).toBeTruthy();
   });
 
   it("prevents a duplicate approval POST while one is already in flight", async () => {

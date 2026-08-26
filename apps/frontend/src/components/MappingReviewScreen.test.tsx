@@ -174,7 +174,7 @@ describe("MappingReviewScreen", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
-    await screen.findByText("등록된 Asset Mapping이 없습니다.");
+    await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
 
     fireEvent.click(screen.getByRole("button", { name: "지금 대본 기준으로 다시 맞추기" }));
     await screen.findByText("a".repeat(64));
@@ -203,7 +203,7 @@ describe("MappingReviewScreen", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const rendered = render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
-    await screen.findByText("등록된 Asset Mapping이 없습니다.");
+    await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
 
     fireEvent.click(screen.getByRole("button", { name: "연결 다 했음 · 다음 단계로" }));
 
@@ -222,7 +222,7 @@ describe("MappingReviewScreen", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
-    await screen.findByText("등록된 Asset Mapping이 없습니다.");
+    await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
 
     fireEvent.click(screen.getByRole("button", { name: "연결 다 했음 · 다음 단계로" }));
 
@@ -257,7 +257,7 @@ describe("MappingReviewScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { review: makeReview() })));
     const onBack = vi.fn();
     render(<MappingReviewScreen projectId="sample_project" onBack={onBack} />);
-    await screen.findByText("등록된 Asset Mapping이 없습니다.");
+    await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
 
     fireEvent.click(screen.getByRole("button", { name: "프로젝트로 돌아가기" }));
     expect(onBack).toHaveBeenCalledTimes(1);

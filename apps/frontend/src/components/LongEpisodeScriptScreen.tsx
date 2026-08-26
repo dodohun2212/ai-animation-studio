@@ -236,7 +236,7 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
             )}
             {confirming && (
               <div role="alertdialog" data-testid="episode-script-approve-confirm" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
-                <p className="text-sm text-amber-300">이 대본을 승인할까요? 다음 Asset Mapping 단계는 아직 시작하지 않습니다.</p>
+                <p className="text-sm text-amber-300">이 대본을 승인할까요? 다음 참고 이미지 연결 단계는 아직 시작하지 않습니다.</p>
                 <div className="flex gap-3">
                   <button type="button" className={outlineButton} disabled={pending} onClick={() => setConfirming(false)}>돌아가기</button>
                   <button type="button" className={primaryButton} disabled={pending} onClick={() => void run(async () => { const response = await approveLongEpisodeScript(projectId, episodeNumber, { approved: true }); setConfirming(false); return response; })}>최종 승인</button>
@@ -246,7 +246,7 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
             {episode?.status === "script_approved" && (
               <div className="space-y-2">
                 <p className="text-sm text-emerald-400">대본이 승인되었습니다.</p>
-                {onOpenMappingReview && <button type="button" className={violetOutlineButton} onClick={() => onOpenMappingReview(projectId, episodeNumber)}>Asset Mapping 검토</button>}
+                {onOpenMappingReview && <button type="button" className={violetOutlineButton} onClick={() => onOpenMappingReview(projectId, episodeNumber)}>참고 이미지 연결 검토</button>}
               </div>
             )}
           </div>

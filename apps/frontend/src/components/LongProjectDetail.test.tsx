@@ -253,8 +253,8 @@ describe("LongProjectDetail", () => {
     fireEvent.click(screen.getByRole("button", { name: "3. Beta copy" }));
     fireEvent.click(screen.getByRole("button", { name: "선택한 에피소드 보관하기" }));
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    fireEvent.change(screen.getByLabelText("위 내용 그대로 입력"), { target: { value: "ARCHIVE EPISODE 3" } });
-    fireEvent.click(screen.getByRole("button", { name: "보관하기" }));
+    fireEvent.change(screen.getByLabelText(/회차 번호/), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "보관함으로 옮기기" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect((fetchMock.mock.calls[2]?.[1] as RequestInit).method).toBe("DELETE");
   });
@@ -271,15 +271,15 @@ describe("LongProjectDetail", () => {
     const cases: Array<{ status: LongEpisodeStatus; label: string; handler: "onOpenEpisodeScript" | "onOpenMappingReview" | "onOpenImageGeneration" | "onOpenVideoWorkflow" | "onOpenVideoMerge" | "onOpenContinuity" }> = [
       { status: "outline_ready", label: "대본 작성/편집", handler: "onOpenEpisodeScript" },
       { status: "script_review", label: "대본 작성/편집", handler: "onOpenEpisodeScript" },
-      { status: "script_approved", label: "Asset Mapping 검토", handler: "onOpenMappingReview" },
-      { status: "waiting_for_asset_mapping_review", label: "Asset Mapping 검토", handler: "onOpenMappingReview" },
+      { status: "script_approved", label: "참고 이미지 연결 검토", handler: "onOpenMappingReview" },
+      { status: "waiting_for_asset_mapping_review", label: "참고 이미지 연결 검토", handler: "onOpenMappingReview" },
       { status: "asset_mapping_approved", label: "이미지 생성/검토", handler: "onOpenImageGeneration" },
       { status: "images_review", label: "이미지 생성/검토", handler: "onOpenImageGeneration" },
       { status: "waiting_for_video_confirmation", label: "영상 생성/검토", handler: "onOpenVideoWorkflow" },
       { status: "interrupted", label: "영상 생성/검토", handler: "onOpenVideoWorkflow" },
       { status: "videos_approved", label: "최종 영상 병합", handler: "onOpenVideoMerge" },
       { status: "failed", label: "최종 영상 병합", handler: "onOpenVideoMerge" },
-      { status: "completed", label: "Continuity Memory", handler: "onOpenContinuity" },
+      { status: "completed", label: "이어쓰기 메모", handler: "onOpenContinuity" },
     ];
     for (const testCase of cases) {
       const project = makeLongProject({ id: "long_test", episodes: [makeLongEpisodeOutline({ episodeNumber: 1, title: "Alpha", status: testCase.status })] });

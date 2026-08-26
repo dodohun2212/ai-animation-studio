@@ -5,7 +5,7 @@ import { jsonResponse, makeProject } from "../api/testUtils.js";
 import { CreateProjectForm } from "./CreateProjectForm.js";
 
 function fillForm(projectId: string, topic: string): void {
-  fireEvent.change(screen.getByLabelText("프로젝트 ID"), { target: { value: projectId } });
+  fireEvent.change(screen.getByLabelText("폴더 이름 (영문·숫자)"), { target: { value: projectId } });
   fireEvent.change(screen.getByLabelText("영상 주제"), { target: { value: topic } });
 }
 
@@ -18,10 +18,13 @@ describe("CreateProjectForm", () => {
     vi.stubGlobal("fetch", vi.fn());
     render(<CreateProjectForm onCreated={() => {}} onCancel={() => {}} />);
 
-    expect(screen.getByLabelText("프로젝트 ID")).toBeTruthy();
+    expect(screen.getByLabelText("폴더 이름 (영문·숫자)")).toBeTruthy();
     expect(screen.getByLabelText("영상 주제")).toBeTruthy();
     expect(screen.queryByLabelText("프로젝트 이름")).toBeNull();
-    expect(screen.queryByLabelText(/이름/)).toBeNull();
+    // Was queryByLabelText(/이름/) — a stand-in for "no separate display-name field". The folder field is now
+    // itself called 폴더 이름, so the loose pattern matched it. The property is unchanged; it is stated by
+    // counting the fields instead of by a substring that a legitimate label can collide with.
+    expect(screen.getAllByRole("textbox")).toHaveLength(2);
   });
 
   it("rejects empty required fields without calling fetch", async () => {
@@ -145,7 +148,7 @@ describe("CreateProjectForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "프로젝트 생성" }));
 
     await screen.findByRole("alert");
-    expect(screen.getByLabelText("프로젝트 ID")).toHaveValue("dup_project");
+    expect(screen.getByLabelText("폴더 이름 (영문·숫자)")).toHaveValue("dup_project");
     expect(screen.getByLabelText("영상 주제")).toHaveValue("우주를 여행하는 고양이");
   });
 

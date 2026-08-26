@@ -98,10 +98,10 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
     <section className="mt-8 space-y-5" data-testid="episode-continuity-screen">
       <button type="button" className={outlineButton} onClick={onBack}>최종 에피소드 영상으로</button>
       <header className="space-y-1">
-        <h2 className="flex items-center gap-2.5 text-lg font-semibold"><span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />{`에피소드 ${episodeNumber} Continuity Memory`}</h2>
+        <h2 className="flex items-center gap-2.5 text-lg font-semibold"><span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />{`에피소드 ${episodeNumber} 이어쓰기 메모`}</h2>
         <p className="text-sm text-slate-400">다음 에피소드를 준비하기 전에 이 내용을 검토하고 직접 저장하세요. 이 화면을 여는 것만으로는 아무것도 저장되지 않습니다.</p>
       </header>
-      {loading && <Spinner label="저장된 Continuity Memory를 불러오는 중..." />}
+      {loading && <Spinner label="저장된 이어쓰기 메모를 불러오는 중..." />}
       {!loading && (
         <div className={cardSection}>
           <label className="block text-sm text-slate-300">
@@ -112,16 +112,31 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
             <label key={key} className="block text-sm text-slate-300">
               {label}
               <textarea data-testid={`continuity-${key}`} className={fieldClassName} value={toLines(form[key])} disabled={pending} placeholder="한 줄에 하나씩 입력" onChange={(event) => setForm((current) => ({ ...current, [key]: fromLines(event.target.value) }))} />
+              {key.endsWith("Ids") && (
+                <span className="mt-1 block text-xs text-slate-500">등장인물·설정집에 등록된 항목의 번호를 적는 칸입니다. 잘 모르겠으면 비워 두셔도 됩니다.</span>
+              )}
             </label>
           ))}
-          <label className="block text-sm text-slate-300">
-            캐릭터 변화(JSON 배열)
-            <textarea data-testid="continuity-character-changes" className={`${fieldClassName} font-mono text-xs`} value={form.characterChanges} disabled={pending} onChange={(event) => update("characterChanges", event.target.value)} />
-          </label>
-          <label className="block text-sm text-slate-300">
-            아이템 변화(JSON 배열)
-            <textarea data-testid="continuity-item-changes" className={`${fieldClassName} font-mono text-xs`} value={form.itemChanges} disabled={pending} onChange={(event) => update("itemChanges", event.target.value)} />
-          </label>
+          {/* These two are stored as free-form object arrays with no agreed key set, so there is no honest way
+              to turn them into fixed fields without inventing a schema the prompt builder may not read. What is
+              fixed here is that raw JSON is no longer the first thing a person meets: the fields are named in
+              plain Korean, said to be optional, and folded away. */}
+          <details className="text-sm">
+            <summary className="cursor-pointer text-slate-400 hover:text-slate-300">이번 화에서 달라진 캐릭터·물건 (고급, 비워둬도 됩니다)</summary>
+            <div className="mt-2 space-y-3">
+              <p className="text-xs text-slate-500">
+                자동으로 채워진 내용이 있으면 그대로 두시면 됩니다. 직접 적을 때는 아래 형식을 그대로 흉내 내 주세요 — 형식이 어긋나면 저장할 때 알려드립니다.
+              </p>
+              <label className="block text-sm text-slate-300">
+                이번 화에서 달라진 캐릭터
+                <textarea data-testid="continuity-character-changes" className={`${fieldClassName} font-mono text-xs`} value={form.characterChanges} disabled={pending} onChange={(event) => update("characterChanges", event.target.value)} />
+              </label>
+              <label className="block text-sm text-slate-300">
+                이번 화에서 달라진 물건
+                <textarea data-testid="continuity-item-changes" className={`${fieldClassName} font-mono text-xs`} value={form.itemChanges} disabled={pending} onChange={(event) => update("itemChanges", event.target.value)} />
+              </label>
+            </div>
+          </details>
           <label className="block text-sm text-slate-300">
             경과 시간
             <input data-testid="continuity-time-elapsed" className={fieldClassName} value={form.timeElapsed} disabled={pending} onChange={(event) => update("timeElapsed", event.target.value)} />

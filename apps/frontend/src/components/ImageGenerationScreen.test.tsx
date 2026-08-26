@@ -4,6 +4,7 @@ import type { ImageReview, Scene } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { jsonResponse, makeProject } from "../api/testUtils.js";
+import { workflowStateLabel } from "../utils/workflowStateLabels.js";
 import { ImageGenerationScreen } from "./ImageGenerationScreen.js";
 
 function sixScenes(withImages: readonly number[] = []): Scene[] {
@@ -86,7 +87,9 @@ describe("ImageGenerationScreen", () => {
     renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { project })));
 
     const notAllowed = await screen.findByTestId("not-allowed");
-    expect(notAllowed.textContent).toContain(WorkflowState.Ready);
+    // Shows the Korean label now — the enum reaching the screen was the bug.
+    expect(notAllowed.textContent).toContain(workflowStateLabel(WorkflowState.Ready));
+    expect(notAllowed.textContent).not.toContain(WorkflowState.Ready);
     expect(screen.queryByRole("button", { name: "이미지 생성 시작" })).toBeNull();
   });
 
@@ -233,9 +236,12 @@ describe("ImageGenerationScreen", () => {
     expect(await screen.findByTestId("review-1")).toHaveAttribute("data-status", "approved");
     expect(screen.getByTestId("review-2")).toHaveAttribute("data-status", "approved");
     expect(screen.getByTestId("review-3")).toHaveAttribute("data-status", "pending");
-    // Already-approved scenes cannot be re-submitted.
+    // Already-approved scenes cannot be re-submitted. This used to read "the row's first button is disabled",
+    // which only held because a permanently-disabled 확정 완료 button happened to be first; that dead button is
+    // gone, so the property is now stated directly — the row offers no approve control at all.
     const approvedRow = screen.getByTestId("review-1");
-    expect(approvedRow.querySelector("button")).toBeDisabled();
+    expect(within(approvedRow).queryByRole("button", { name: "이 이미지로 확정" })).toBeNull();
+    expect(within(approvedRow).queryByRole("button", { name: "확정 완료" })).toBeNull();
     // No absolute or relative file path is ever rendered on screen.
     expect(document.body.textContent).not.toContain("images/scene1.png");
   });

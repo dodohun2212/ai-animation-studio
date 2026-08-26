@@ -41,7 +41,7 @@ describe("LongEpisodeMappingReviewScreen", () => {
     expect(await screen.findByTestId("episode-mapping-approval-confirm")).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledTimes(5);
     fireEvent.click(screen.getByRole("button", { name: "매핑 승인" }));
-    await waitFor(() => expect(screen.getByText(/Asset Mapping이 승인되었습니다/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/참고 이미지 연결이 승인되었습니다/)).toBeTruthy());
     expect(fetchMock.mock.calls[2]?.[0]).toBe("/long-projects/long/episodes/1/asset-mapping-review");
     expect(fetchMock.mock.calls[3]?.[0]).toBe("/long-projects/long/episodes/1/asset-mapping-review/automatic-selection");
     expect(JSON.parse(String((fetchMock.mock.calls[4]?.[1] as RequestInit).body))).toEqual({ decision: "confirm" });
