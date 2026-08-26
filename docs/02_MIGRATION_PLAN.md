@@ -1208,4 +1208,11 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - **테스트 환경 노트**: 백엔드 전체 스위트를 이 머신에서 병렬로 돌리면 `images.app-module.integration.test.ts`/`videos.app-module.integration.test.ts`(둘 다 이번 변경과 무관, local-fake 경로)가 간헐적으로 타임아웃 — 이번 변경 적용 전 `HEAD`(`git stash`)에서도 동일하게 재현되는 것을 확인해 이 세션의 사전 존재 환경 이슈임을 확인함, 이번 수정으로 만든 문제 아님.
   - 검증: root typecheck 전부 통과, Backend(실패 무관 2개 제외 전부 통과, 신규 9건 포함), frontend 798개 전부 통과, root build(shared/backend/frontend/desktop) 전부 통과. 유료 Provider 호출 없음(모든 테스트는 `fetch` mock 사용).
   - 커밋: `ced4baa`.
+- [x] **🚨🚨 백엔드 — "앱을 거치지 않는 실제 유료 호출"의 진짜 경로: 통합 테스트 2개가 실제 자격증명으로 실제 Runway/OpenAI를 호출하고 있었음(`.claude-bridge` Round 154)**: 위 Round 152 수정 직후 Cowork가 "지금 실제 키로 유료 POST가 나가고 있다, 앱 파일 어디에도 흔적이 없다"를 대시보드 로그로 확정 — 원인을 찾음.
+  - **원인**: `ProviderSettingsModule`의 `PROVIDER_SETTINGS_ROOT`가 안 정해지면 `process.cwd()`로 떨어지는데(`apps/backend`에서 테스트를 돌리면 정확히 `apps/backend/.env` — 실제 저장된 자격증명 파일), provider를 건드리는 `*.app-module.integration.test.ts` 대부분은 이걸 자기 임시 디렉터리로 오버라이드하는 반면 `images.app-module.integration.test.ts`의 첫 테스트("...without a provider")와 `videos.app-module.integration.test.ts`의 테스트 3개는 전혀 오버라이드를 안 했다 — 진짜 `AppModule`을 진짜 HTTP 서버로 띄우면서 fetch도 안 막은 채로. `apps/backend/.env`에 실제로 연결된 키가 있는 머신에서 이 테스트를 돌리면(`npm test`든 CI든) 진짜, mock 안 된 네트워크 호출이 그대로 나간다.
+  - **수정**: `no-test-network.guard.ts` 신설 — vitest 아래에서 resolve된 `fetchImpl`이 mock(`.mock` 속성 있음)이 아니면 무조건 throw, Runway `requestWithRetry` 1곳 + OpenAI 어댑터 5곳 전부에 배선(프로덕션에서는 완전 no-op). 두 통합 테스트 파일도 `PROVIDER_SETTINGS_ROOT`를 자기 임시 디렉터리로 오버라이드하도록 고침.
+  - **검증 방식이 결론을 증명함**: 가드만 넣은 상태로 돌리자 이 2개 파일의 실패 양상이 "타임아웃"에서 "즉시 500/failed"로 바뀜 — 가드가 실제로 뭔가를 막았다는 뜻. 격리까지 고친 뒤엔 이 2개 파일이 10~16초(간헐적 타임아웃 포함)에서 **1.44초**(전부 통과)로, 전체 스위트도 이전보다 빠르고 690개 전부 통과 — 실제 네트워크 왕복이 사라졌다는 강한 정황.
+  - **정직하게 기록**: 이 세션 초반 사용자가 "지금 유료 호출 중이냐"고 두 번 물었을 때 "아니다"로 답했으나, 그때 감사 범위는 새로 만든 Runway 관련 단위 테스트뿐이었고 이 2개 통합 테스트 파일은 포함되지 않았었다 — `.env` 파일 mtime이 이 세션보다 훨씬 이전이라, 이 세션 중 여러 번 돌린 전체 스위트 실행이 이 구멍에 걸렸을 가능성을 완전히 배제할 수 없음(Cowork가 찾은 특정 4건과의 일치 여부는 로그만으로 확정 불가).
+  - 검증: root typecheck 전부 통과, Backend 690개 전부 통과(스위트 전체 정상 속도), root build 전부 통과. 이 커밋 이후로는 테스트에서 유료 Provider 호출이 구조적으로 불가능 — 이전엔 그렇지 않았다는 것이 이번 발견의 핵심.
+  - 커밋: `2bd166d`.
 
