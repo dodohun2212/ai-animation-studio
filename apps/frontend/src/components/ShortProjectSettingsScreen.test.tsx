@@ -127,22 +127,27 @@ describe("ShortProjectSettingsScreen", () => {
     expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PATCH")).toBe(false);
   });
 
-  it("lets you pick the representative character from an existing Asset Library character image", async () => {
-    const hero = makeAsset({ assetId: "ASSET-CHAR-2", displayName: "은빛 늑대", assetType: "character" });
+  it("picks the representative character from a Folder, not from one of its drawings", async () => {
+    // A Folder carries no image of its own, so its tile has to borrow the 대표 이미지 from among its children.
+    const side = makeAsset({ assetId: "ASSET-CHAR-SIDE", displayName: "은빛 늑대_옆모습", assetType: "character", parentFolderId: "ASSET-CHAR-2", contentUrl: "/assets/ASSET-CHAR-SIDE/content", imageAvailable: true });
+    const hero = makeAssetFolder({ assetId: "ASSET-CHAR-2", displayName: "은빛 늑대", assetType: "character", childAssetIds: [side.assetId], thumbnailAssetId: side.assetId });
     const fetchMock = stubFetchByRoute({
       "GET /projects/sample_project/settings": { settings },
       "GET /projects/sample_project/settings/cast": { cast: [] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
-      "GET /assets?assetType=character": { assets: [hero] },
+      "GET /assets?assetType=character": { assets: [hero, side] },
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
 
     await screen.findByDisplayValue("별의 지도");
-    fireEvent.click(screen.getByRole("button", { name: "이미지에서 캐릭터 선택" }));
+    fireEvent.click(screen.getByRole("button", { name: "폴더에서 캐릭터 선택" }));
 
-    const picker = await screen.findByRole("list", { name: "캐릭터 이미지 선택" });
+    const picker = await screen.findByRole("list", { name: "캐릭터 폴더 선택" });
+    // The one drawing inside the folder is not offered on its own — "은빛 늑대_옆모습" is a pose, not the character.
+    expect(within(picker).queryByText("은빛 늑대_옆모습")).toBeNull();
+    expect(within(picker).getByText("이미지 1장")).toBeTruthy();
     fireEvent.click(within(picker).getByText("은빛 늑대"));
 
     expect((screen.getByDisplayValue("은빛 늑대") as HTMLInputElement).value).toBe("은빛 늑대");

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { jsonResponse, makeAsset, makeLongProject } from "../api/testUtils.js";
+import { jsonResponse, makeAsset, makeAssetFolder, makeLongProject } from "../api/testUtils.js";
 import { LongStoryBibleScreen } from "./LongStoryBibleScreen.js";
 
 const emptyBible = { basic: {}, world: {}, characters: [], locations: [], props: [], secrets: [], foreshadowing: [], updatedAt: "2026-08-23T00:00:00.000Z" };
@@ -94,7 +94,9 @@ describe("LongStoryBibleScreen", () => {
   });
 
   it("saves an approved Asset Library link with a pinned version and one-episode scope", async () => {
-    const asset = makeAsset({ assetId: "ASSET-CHAR-1", displayName: "Mina reference", assetType: "character", version: 4, enabled: true, approved: true });
+    // 등장인물 links to a Folder. Folders are created with `approved: false` and the backend cannot flip that
+    // flag on one, so the enabled/approved gate deliberately does not apply to them here.
+    const asset = makeAssetFolder({ assetId: "ASSET-CHAR-1", displayName: "Mina reference", assetType: "character", version: 4, enabled: true, approved: false, childAssetIds: ["ASSET-CHAR-1-FRONT"] });
     const linkedItem = {
       ...characterBible.characters[0], assetLink: {
         assetId: asset.assetId, versionPolicy: "pinned_version" as const, pinnedVersion: 4,
@@ -124,13 +126,33 @@ describe("LongStoryBibleScreen", () => {
     expect(screen.getByTestId("asset-link-CHAR-1").textContent).toContain("에피소드 2");
   });
 
+  it("does not offer a loose character drawing as a 등장인물 link — only the Folder it belongs to", async () => {
+    const folder = makeAssetFolder({ assetId: "ASSET-CHAR-FOLDER", displayName: "Mina", assetType: "character", childAssetIds: ["ASSET-CHAR-SIDE"] });
+    const child = makeAsset({ assetId: "ASSET-CHAR-SIDE", displayName: "Mina 옆모습", assetType: "character", parentFolderId: folder.assetId, approved: true });
+    const loose = makeAsset({ assetId: "ASSET-CHAR-LOOSE", displayName: "이름 없는 스케치", assetType: "character", approved: true });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { storyBible: emptyBible }))
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [folder, child, loose] }))
+      .mockResolvedValueOnce(jsonResponse(200, { project: makeLongProject({ id: "long_test" }) }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongStoryBibleScreen projectId="long_test" onBack={() => {}} />);
+
+    await screen.findByTestId("story-bible-empty");
+    const select = screen.getByLabelText("연결할 에셋");
+    // The folder is offered, and its option says how many drawings are inside it.
+    expect(within(select).getByRole("option", { name: /Mina \(폴더 · 이미지 1장\)/ })).toBeTruthy();
+    // Neither the drawing inside the folder nor a folderless one is a character on its own.
+    expect(within(select).queryByRole("option", { name: /Mina 옆모습/ })).toBeNull();
+    expect(within(select).queryByRole("option", { name: /이름 없는 스케치/ })).toBeNull();
+  });
+
   it("sends an explicit null link when clearing an existing link", async () => {
     const linkedItem = { ...characterBible.characters[0], assetLink: { assetId: "ASSET-1", versionPolicy: "follow_latest" as const, pinnedVersion: null, episodeScope: { mode: "all" as const } } };
     const linkedBible = { ...characterBible, characters: [linkedItem] };
     const clearedBible = { ...characterBible };
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { storyBible: linkedBible }))
-      .mockResolvedValueOnce(jsonResponse(200, { assets: [makeAsset({ assetId: "ASSET-1", approved: true })] }))
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [makeAssetFolder({ assetId: "ASSET-1", assetType: "character" })] }))
       .mockResolvedValueOnce(jsonResponse(200, { project: makeLongProject({ id: "long_test" }) }))
       .mockResolvedValueOnce(jsonResponse(200, { item: clearedBible.characters[0], storyBible: clearedBible }));
     vi.stubGlobal("fetch", fetchMock);

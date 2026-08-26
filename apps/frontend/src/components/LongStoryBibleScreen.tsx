@@ -196,7 +196,14 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
       }
       else setError(toLongStoryBibleDisplayError(bibleResult.reason));
       if (assetsResult.status === "fulfilled") {
-        setAssets(assetsResult.value.assets.filter((asset) => asset.enabled && asset.approved && !asset.isFolder));
+        /* Folders are now the linkable unit, so two things changed here.
+           `!asset.isFolder` is gone — it excluded exactly the thing a 등장인물 entry should point at.
+           `approved` is asked of images only: a Folder has no file to approve and the backend cannot set the
+           flag on one (`assets.repository.ts` creates Folders with `approved: false` and its update
+           whitelist covers displayName/description/tags), so requiring it would hide every Folder forever.
+           Child images stay out — they belong to a Folder and are reached through it. */
+        setAssets(assetsResult.value.assets.filter((asset) =>
+          asset.enabled && !asset.parentFolderId && (asset.isFolder || asset.approved)));
       } else setError(toAssetDisplayError(assetsResult.reason));
       setAssetLoading(false);
       if (projectResult.status === "fulfilled") setEpisodeCount(projectResult.value.project.episodeCount);
@@ -326,7 +333,17 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
   const items = bible?.[collection] ?? [];
   const collectionLabel = TABS.find((tab) => tab.value === collection)?.label ?? collection;
   const supportsAssetLink = ASSET_LINK_COLLECTIONS.includes(collection);
-  const styleAssets = assets.filter((asset) => asset.assetType === "style");
+  const styleAssets = assets.filter((asset) => asset.assetType === "style" && !asset.isFolder);
+  /**
+   * 등장인물 links to a Folder and nothing else — the same rule the short project's 등장 캐릭터 list follows.
+   * A single drawing is one pose of a character, not the character, and the per-child description block the
+   * image prompt builds has nothing to read unless the link points at a Folder.
+   * 장소·소품 accept either: a Folder when several angles of one place exist, a single image when it is just
+   * the one picture.
+   */
+  const linkableAssets = collection === "characters"
+    ? assets.filter((asset) => asset.isFolder && asset.assetType === "character")
+    : assets;
 
   return (
     <section className="mt-8 max-w-3xl space-y-5">
@@ -642,32 +659,49 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
           <fieldset className="space-y-3 rounded-xl border border-white/10 bg-slate-950/30 p-3.5 disabled:opacity-50" disabled={pending || assetLoading}>
             <legend className="px-1 text-sm text-slate-300">이미지 보관함에서 연결(선택 사항)</legend>
             {assetLoading && <p className="text-sm text-slate-400">사용 가능한 에셋을 불러오는 중...</p>}
-            {!assetLoading && assets.length === 0 && <p className="text-sm text-slate-400">승인되고 사용 설정된 이미지 보관함 항목이 없습니다.</p>}
+            {!assetLoading && linkableAssets.length === 0 && (
+              <p className="text-sm text-slate-400">
+                {collection === "characters"
+                  ? "이미지 보관함에 캐릭터 폴더가 없습니다. 보관함에서 캐릭터 폴더를 먼저 만들고 그 안에 이미지를 넣어 주세요."
+                  : "쓸 수 있는 이미지 보관함 항목이 없습니다."}
+              </p>
+            )}
+            {collection === "characters" && (
+              <p className="text-xs text-slate-400">
+                캐릭터 <strong className="text-slate-300">폴더</strong>만 고를 수 있습니다 — 낱장 이미지 하나는 캐릭터가 아니라
+                그 캐릭터의 한 모습이라서요. 폴더를 고르면 그 안의 정면·옆모습·뒷모습이 함께 전달됩니다.
+              </p>
+            )}
             <label className="block text-sm text-slate-300">
-              에셋
+              {collection === "characters" ? "캐릭터 폴더" : "에셋"}
               <select aria-label="연결할 에셋" value={assetId} onChange={(event) => setAssetId(event.target.value)} className={fieldClassName}>
                 <option value="">연결 안 함</option>
-                {assets.map((asset) => (
+                {linkableAssets.map((asset) => (
                   <option key={asset.assetId} value={asset.assetId}>
-                    {asset.displayName} ({asset.assetId}) · v{asset.version}
+                    {asset.displayName}
+                    {asset.isFolder ? ` (폴더 · 이미지 ${asset.childAssetIds.length}장)` : ` (${asset.assetId}) · v${asset.version}`}
                   </option>
                 ))}
               </select>
             </label>
             {assetId && (
               <>
-                <label className="block text-sm text-slate-300">
-                  버전 정책
-                  <select
-                    aria-label="에셋 버전 정책"
-                    value={versionPolicy}
-                    onChange={(event) => setVersionPolicy(event.target.value as LongStoryBibleAssetLink["versionPolicy"])}
-                    className={fieldClassName}
-                  >
-                    <option value="pinned_version">현재 버전 고정</option>
-                    <option value="follow_latest">최신 버전 따라가기</option>
-                  </select>
-                </label>
+                {/* A Folder has no versions of its own — its children carry those — so the pin/follow choice
+                    has nothing to act on and only invites a decision that changes nothing. Images keep it. */}
+                {!selectedAsset()?.isFolder && (
+                  <label className="block text-sm text-slate-300">
+                    버전 정책
+                    <select
+                      aria-label="에셋 버전 정책"
+                      value={versionPolicy}
+                      onChange={(event) => setVersionPolicy(event.target.value as LongStoryBibleAssetLink["versionPolicy"])}
+                      className={fieldClassName}
+                    >
+                      <option value="pinned_version">현재 버전 고정</option>
+                      <option value="follow_latest">최신 버전 따라가기</option>
+                    </select>
+                  </label>
+                )}
                 <label className="block text-sm text-slate-300">
                   적용 범위
                   <select

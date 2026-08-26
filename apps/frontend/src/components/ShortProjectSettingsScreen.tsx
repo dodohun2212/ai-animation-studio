@@ -738,6 +738,22 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
     setCharacterPickerOpen(false);
   }
 
+  /**
+   * Folders only — the same rule the 등장 캐릭터 list already follows. A loose drawing is one pose of a
+   * character, not the character: picking "이배드_옆모습" as 대표 캐릭터 tells the story AI the protagonist is
+   * a side view. The folder is the character; its children are the angles.
+   *
+   * `listAssets` returns the children too, and that is deliberate here — a Folder carries no image of its own
+   * (`imageAvailable` is false for every Folder), so its 대표 이미지 has to be looked up by `thumbnailAssetId`
+   * among those children. Without this the picker showed every folder as a grey "이미지 없음" tile.
+   */
+  const characterFolders = (characterOptions ?? []).filter((asset) => asset.isFolder);
+  function folderThumbnail(folder: Asset): Asset | undefined {
+    const children = (characterOptions ?? []).filter((asset) => asset.parentFolderId === folder.assetId);
+    return children.find((child) => child.assetId === folder.thumbnailAssetId && child.imageAvailable)
+      ?? children.find((child) => child.imageAvailable);
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (!state.settings || saving.current) return;
@@ -796,37 +812,47 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
           <Field label="대표 캐릭터" value={state.settings.character} onChange={(value) => setField("character", value)} />
           <div className="text-sm text-slate-300 md:col-span-2">
             <button type="button" className={smallOutlineButton} onClick={() => void openCharacterPicker()}>
-              {characterPickerOpen ? "이미지에서 선택 닫기" : "이미지에서 캐릭터 선택"}
+              {characterPickerOpen ? "폴더에서 선택 닫기" : "폴더에서 캐릭터 선택"}
             </button>
             {characterPickerOpen && (
               <div className="mt-2 space-y-2 rounded-xl border border-white/10 bg-slate-950/40 p-3">
-                {characterOptionsLoading && <Spinner label="캐릭터 이미지를 불러오는 중..." />}
+                <p className="text-xs text-slate-400">
+                  캐릭터 <strong className="text-slate-300">폴더</strong>를 고릅니다. 폴더 안의 정면·옆모습·뒷모습이 함께 전달되므로,
+                  낱장 이미지 하나를 고를 때보다 캐릭터가 일관되게 나옵니다.
+                </p>
+                {characterOptionsLoading && <Spinner label="캐릭터 폴더를 불러오는 중..." />}
                 {characterOptionsError && (
                   <p role="alert" data-testid="character-picker-error" data-error-code={characterOptionsError.code} className="text-sm text-rose-400">
                     {characterOptionsError.message}
                   </p>
                 )}
-                {characterOptions && characterOptions.length === 0 && !characterOptionsLoading && (
-                  <p className="text-sm text-slate-400">이미지 보관함에 등록된 캐릭터가 없습니다. 먼저 캐릭터 이미지를 등록해 주세요.</p>
+                {characterOptions && characterFolders.length === 0 && !characterOptionsLoading && (
+                  <p className="text-sm text-slate-400">
+                    이미지 보관함에 캐릭터 폴더가 없습니다. 보관함에서 캐릭터 폴더를 먼저 만들고 그 안에 이미지를 넣어 주세요.
+                  </p>
                 )}
-                {characterOptions && characterOptions.length > 0 && (
-                  <ul aria-label="캐릭터 이미지 선택" className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                    {characterOptions.map((asset) => (
-                      <li key={asset.assetId}>
-                        <button
-                          type="button"
-                          className="w-full rounded-lg border border-white/10 bg-slate-900/70 p-1.5 text-left hover:border-violet-400/40"
-                          onClick={() => pickCharacter(asset)}
-                        >
-                          {asset.imageAvailable && asset.contentUrl ? (
-                            <img src={asset.contentUrl} alt="" className="h-16 w-full rounded object-cover" />
-                          ) : (
-                            <span className="flex h-16 w-full items-center justify-center rounded bg-slate-950/40 text-xs text-slate-500">이미지 없음</span>
-                          )}
-                          <span className="mt-1 block truncate text-xs text-slate-200">{asset.displayName}</span>
-                        </button>
-                      </li>
-                    ))}
+                {characterFolders.length > 0 && (
+                  <ul aria-label="캐릭터 폴더 선택" className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                    {characterFolders.map((folder) => {
+                      const thumbnail = folderThumbnail(folder);
+                      return (
+                        <li key={folder.assetId}>
+                          <button
+                            type="button"
+                            className="w-full rounded-lg border border-white/10 bg-slate-900/70 p-1.5 text-left hover:border-violet-400/40"
+                            onClick={() => pickCharacter(folder)}
+                          >
+                            {thumbnail?.contentUrl ? (
+                              <img src={thumbnail.contentUrl} alt="" className="h-16 w-full rounded object-cover" />
+                            ) : (
+                              <span className="flex h-16 w-full items-center justify-center rounded bg-slate-950/40 text-xs text-slate-500">이미지 없음</span>
+                            )}
+                            <span className="mt-1 block truncate text-xs text-slate-200">{folder.displayName}</span>
+                            <span className="block text-[11px] text-slate-500">이미지 {folder.childAssetIds.length}장</span>
+                          </button>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </div>
