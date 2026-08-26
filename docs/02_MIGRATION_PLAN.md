@@ -1291,4 +1291,14 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 신규 테스트 10건(`video-merge.service.test.ts` 7건 + `ffmpeg-merge.service.test.ts` 3건 — 페이드 타이밍·클램프·`-stream_loop` 배치까지 커맨드 배열 직접 검증).
   - 검증: root typecheck 전부 통과, Backend 757개 전부 통과(+10 신규, 연속 재실행 확인), root build 전부 통과. 유료 Provider 호출 없음.
   - 커밋: `a4621cd`.
+- [x] **BGM 라이선스 메타데이터 필수화 + 삭제 엔드포인트 + 병합 화면 오디오 설정 배선(Round 169)**: Cowork의 계약 역제안(Round 173/174) — `AudioLibraryTrack.licenseKind`/`attributionRequired`를 업로드 시점에 선택이 아니라 필수로. 동의하고 구현.
+  - **판단 — 왜 업로드 시점에 필수인가**: 업로드하는 순간이 업로더가 출처를 정확히 기억하는 유일한 시점이라, 처음에 선택으로 뒀다가 나중에 채워 넣게 하는 방식은 거의 항상 공란으로 남는다는 게 Cowork의 근거 — 동의. `licenseKind`(`cc0`/`cc-by`/`purchased`/`self-made`/`other`)와 `attributionRequired`(boolean)는 필수, `attributionText`/`sourceUrl`은 선택 유지.
+  - **판단 — 삭제 허용(Cowork 질문에 답)**: 영상 보관함은 유료 AI 생성 결과물이라 삭제를 의도적으로 막았지만, BGM은 사용자 자신이 올린 파일이라 원본이 로컬에 그대로 있고 잘못 올렸을 때 되돌리는 비용이 0에 가까움 — Asset Library의 기존 삭제 선례와 같은 모델이 맞다고 판단, "보관함에서 숨기기" 대신 실제 삭제로 결정. `AudioLibraryService.remove()` + `DELETE /audio/library/:trackId` 신설.
+  - `packages/shared/src/api.ts`의 `AudioLibraryTrack` 주석에 BGM 외부 검색·가져오기를 보류가 아니라 영구 포기로 확정한 근거를 정리(Pixabay: 오디오 API 자체 없음+스크래핑 금지, Freesound: CC-BY 위주+효과음 중심, Jamendo: 상업적 사용에 별도 유료 라이선스, Meta Sound Collection: 인스타그램 내 사용만 허용·다운로드 불가) — 검색 기능을 넣으면 "나중에야 저작권 조건을 알게 되는" 이 기능 영역 전체가 막으려던 실패를 스스로 재현하게 됨.
+  - **자가 발견 — Cowork의 최근 `App.test.tsx` 편집이 자체 회귀**: Cowork의 로컬 typecheck(`tsc --noEmit --noResolve`)가 `--noResolve`라 `packages/shared`에 정의된 필수 필드 누락을 못 잡음 — `narrationAvailable` 누락 6곳을 빌드 깨짐 예외로 직접 수정.
+  - 프런트(Cowork, Round 174): 병합 화면에 나레이션/나레이션+BGM/무음 라디오 선택 추가(`narrationAvailable`로 기본값 유도), BGM 보관함 화면(업로드·목록, 라이선스 필드 입력) 신설.
+  - **자가 발견 — 병합 화면 테스트 1건이 새 기본 동작과 불일치**: "본문 없이 병합" 테스트가 예전 동작(요청 생략) 가정 그대로였는데, 새 UI는 항상 명시적으로 오디오 모드를 선택해 보내므로(기본 `narrationAvailable=false`→`silent`) 실제로는 `{"audio":{"mode":"silent"}}` 본문이 감. 의도된 새 동작에 맞춰 테스트 기대값 수정.
+  - 신규/수정 테스트: `audio-library.service.test.ts`에 라이선스 필수 검증 2건 + 속성 텍스트/출처 URL 왕복 1건 + 삭제 1건 추가(총 18건), `video-merge.service.test.ts`의 BGM 통합 테스트 1건에 라이선스 필드 보강, frontend `VideoMergeScreen.test.tsx` 기대값 수정.
+  - 검증: root typecheck 전부 통과, Backend 762개·frontend 837개·shared 25개 전부 통과, root build 전부 통과. 유료 Provider 호출 없음.
+  - 커밋: `934727d`.
 
