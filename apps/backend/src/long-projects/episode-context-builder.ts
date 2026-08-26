@@ -23,7 +23,7 @@ const dedupe = (items: readonly Record<string, unknown>[]): Record<string, unkno
 
 export interface EpisodeContextInput {
   storyBible: { basic: Record<string, unknown>; world: Record<string, unknown> };
-  /** snake_case project fields, matching Python's project_overview payload exactly (title/logline/overview/genre/tone/theme/episode_count/episode_duration_seconds/ending_direction/platform/aspect_ratio/audience/notes/starting_state/midpoint/story_flow_summary). */
+  /** snake_case project fields, matching Python's project_overview payload except platform (removed — the product no longer models a target-platform field; title/logline/overview/genre/tone/theme/episode_count/episode_duration_seconds/ending_direction/aspect_ratio/audience/notes/starting_state/midpoint/story_flow_summary). */
   projectOverview: Record<string, unknown>;
   /** snake_case episode outline (number/title/summary/core_event/conflict/cliffhanger/next_connection), matching Python's episode.outline shape. */
   episodeOutline: Record<string, unknown>;

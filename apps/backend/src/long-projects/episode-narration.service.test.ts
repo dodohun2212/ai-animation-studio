@@ -7,7 +7,7 @@ import { EpisodeScriptsService } from "./episode-scripts.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
 
 let root: string | undefined;
-const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 4, clipDurationSeconds: 5, platform: "YouTube Shorts" as const, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: true, subtitlesEnabled: false };
+const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 4, clipDurationSeconds: 5, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: true, subtitlesEnabled: false };
 
 async function setup(narrationEnabled = true) {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-narration-"));

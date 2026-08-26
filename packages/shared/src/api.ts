@@ -34,7 +34,6 @@ export interface LongProjectSettings {
   sceneCount: number;
   /** One of RUNWAY_CLIP_DURATIONS (domain.ts) — Runway is the only supported video Provider today, so this is not yet keyed by provider. Same constraint as ShortProjectSettings.clipDurationSeconds. */
   clipDurationSeconds: number;
-  platform: "YouTube Shorts" | "YouTube";
   aspectRatio: "9:16" | "16:9";
   audience: string;
   notes: string;

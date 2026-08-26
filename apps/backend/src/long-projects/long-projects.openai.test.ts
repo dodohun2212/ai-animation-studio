@@ -8,7 +8,7 @@ import { ProviderSettingsService } from "../settings/provider-settings.service.j
 import { OpenAiBudget } from "../providers/openai-budget.js";
 
 let root: string | undefined;
-const settings = { title: "Long story", logline: "A hero changes", overview: "already written overview", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, platform: "YouTube Shorts" as const, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false };
+const settings = { title: "Long story", logline: "A hero changes", overview: "already written overview", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false };
 const PROJECT_RESULT = { title: "AI title", logline: "AI logline", overview: "AI overview", genre: "AI genre", tone: "AI tone", theme: "AI theme", starting_state: "AI starting state", midpoint: "AI midpoint", ending_direction: "AI ending", story_flow_summary: "AI flow" };
 const episode = (number: number) => ({
   episode_number: number, title: `AI Episode ${number}`, summary: "AI summary", main_event: "AI event", conflict: "AI conflict",

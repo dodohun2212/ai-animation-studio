@@ -14,7 +14,7 @@ import { EpisodeVideosService } from "./episode-videos.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
 
 let root: string | undefined;
-const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, platform: "YouTube Shorts" as const, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false };
+const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false };
 
 function runner(options: { invalidProbe?: boolean; unavailable?: boolean; noOutput?: boolean } = {}, calls: string[][] = []): MediaCommandRunner {
   return async (arguments_) => {

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { LongProjectsService } from "./long-projects.service.js";
 
 let root: string | undefined;
-const input = { projectId: "long_test", settings: { title: "A long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 3, sceneCount: 6, clipDurationSeconds: 5, platform: "YouTube Shorts" as const, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false } };
+const input = { projectId: "long_test", settings: { title: "A long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 3, sceneCount: 6, clipDurationSeconds: 5, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false } };
 afterEach(async () => { if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 async function service(): Promise<LongProjectsService> { root = await fs.mkdtemp(path.join(os.tmpdir(), "long-project-")); return new LongProjectsService(path.join(root, "projects")); }
 
@@ -52,6 +52,21 @@ describe("LongProjectsService", () => {
     const reloaded = new LongProjectsService(path.join(root!, "projects"));
     const settings = (await reloaded.get("long_test")).project.settings;
     expect(settings).toMatchObject({ narrationEnabled: false, subtitlesEnabled: false });
+  });
+
+  it("still loads a project stored before `platform` was removed, and no longer writes it back", async () => {
+    const subject = await service(); await subject.create(input);
+    const file = path.join(root!, "projects", "long_test", "long_story", "project.json");
+    const stored = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>;
+    expect(stored).not.toHaveProperty("platform");
+    stored.platform = "YouTube Shorts";
+    await fs.writeFile(file, JSON.stringify(stored, null, 2), "utf8");
+    const reloaded = new LongProjectsService(path.join(root!, "projects"));
+    const settings = (await reloaded.get("long_test")).project.settings;
+    expect(settings).not.toHaveProperty("platform");
+    await reloaded.updateSettings("long_test", { settings: { ...input.settings, title: "renamed" } });
+    const resaved = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>;
+    expect(resaved).not.toHaveProperty("platform");
   });
 
   it("requires an unchanged preview before local outline approval and creates no scripts or media", async () => {

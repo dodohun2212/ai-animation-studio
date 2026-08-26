@@ -7,7 +7,7 @@ import { StoryBibleService } from "./story-bible.service.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 
 let root: string | undefined;
-const settings = { title: "Long project", logline: "A local story", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, platform: "YouTube Shorts" as const, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false };
+const settings = { title: "Long project", logline: "A local story", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false };
 afterEach(async () => { if (root) await fs.rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 25 }); root = undefined; });
 const image = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 async function services(): Promise<{ long: LongProjectsService; bible: StoryBibleService; assets: LocalAssetsRepository }> { root = await fs.mkdtemp(path.join(os.tmpdir(), "story-bible-")); const projectsRoot = path.join(root, "projects"); const long = new LongProjectsService(projectsRoot); await long.create({ projectId: "long_bible", settings }); const assets = new LocalAssetsRepository(root); return { long, bible: new StoryBibleService(projectsRoot, assets), assets }; }

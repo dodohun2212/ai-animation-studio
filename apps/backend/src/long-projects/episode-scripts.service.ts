@@ -76,7 +76,7 @@ export class EpisodeScriptsService {
       title: projectSettings.title, logline: projectSettings.logline, overview: projectSettings.overview,
       genre: projectSettings.genre, tone: projectSettings.tone, theme: projectSettings.theme,
       episode_count: projectSettings.episodeCount, episode_duration_seconds: projectSettings.episodeDurationSeconds,
-      ending_direction: projectSettings.endingDirection, platform: projectSettings.platform, aspect_ratio: projectSettings.aspectRatio,
+      ending_direction: projectSettings.endingDirection, aspect_ratio: projectSettings.aspectRatio,
       audience: projectSettings.audience, notes: projectSettings.notes, starting_state: projectSettings.startingState,
       midpoint: projectSettings.midpoint, story_flow_summary: projectSettings.storyFlowSummary,
     };
