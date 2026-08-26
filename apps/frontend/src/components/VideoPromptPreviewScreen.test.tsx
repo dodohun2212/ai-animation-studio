@@ -30,6 +30,29 @@ describe("VideoPromptPreviewScreen", () => {
     vi.unstubAllGlobals();
   });
 
+  // Regression: the Backend trims sections to fit Runway's prompt limit. It used to do that silently, so a scene
+  // could lose its continuity or performance direction with the wrong finished video as the only symptom.
+  it("names the sections the server had to drop, and leaves untouched scenes unmarked", async () => {
+    const previews = makePreviews(2);
+    previews[0] = { ...previews[0]!, omittedSections: ["Continuity cue", "Pacing"] };
+    const response: GetVideoPromptPreviewResponse = { previews, confirmationId: "confirmation_1" };
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, response)));
+
+    const notice = await screen.findByTestId("prompt-omitted-1");
+    expect(notice.textContent).toContain("장면 연결");
+    expect(notice.textContent).toContain("움직임 속도");
+    // A scene that lost nothing must stay quiet — a notice on every scene teaches people to ignore it.
+    expect(screen.queryByTestId("prompt-omitted-2")).toBeNull();
+  });
+
+  it("passes through a dropped section it has no Korean name for, rather than hiding it", async () => {
+    const previews = makePreviews(2);
+    previews[0] = { ...previews[0]!, omittedSections: ["Some New Section"] };
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { previews, confirmationId: "c1" })));
+
+    expect((await screen.findByTestId("prompt-omitted-1")).textContent).toContain("Some New Section");
+  });
+
   it("shows the remaining monthly budget and maximum provider calls alongside the cost", async () => {
     const response: GetVideoPromptPreviewResponse = {
       ...makePreviewResponse(),

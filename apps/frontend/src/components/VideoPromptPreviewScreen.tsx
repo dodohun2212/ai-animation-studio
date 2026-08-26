@@ -30,6 +30,20 @@ function utf16Length(value: string): number {
   return value.length;
 }
 
+/** The server names the sections it drops in its own vocabulary; the screen shows the same names the rest of
+ * the app uses for those fields. An unknown label passes through rather than disappearing — a section we cannot
+ * name is still a section the user needs to know is missing. */
+const OMITTED_SECTION_LABELS: Record<string, string> = {
+  "Continuity cue": "장면 연결",
+  Environment: "환경 움직임",
+  Performance: "표정·연기",
+  Pacing: "움직임 속도",
+};
+
+function omittedSectionLabel(section: string): string {
+  return OMITTED_SECTION_LABELS[section] ?? section;
+}
+
 export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () => {} }: Props) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [editedPrompts, setEditedPrompts] = useState<Partial<Record<SceneNumber, string>>>({});
@@ -202,6 +216,19 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
                   >
                     {length} / {PROMPT_UTF16_LIMIT}
                   </p>
+                  {/* The Backend drops sections in a fixed order to fit Runway's prompt limit, and used to do it
+                      with no signal anywhere — a scene quietly lost its continuity or performance direction and
+                      the only way to notice was that the finished video was wrong. This describes the prompt the
+                      Backend built; anything edited above is the user's own text on top of it. */}
+                  {preview.omittedSections && preview.omittedSections.length > 0 && (
+                    <p
+                      data-testid={`prompt-omitted-${preview.sceneNumber}`}
+                      className="text-xs text-amber-300"
+                    >
+                      길이 제한 때문에 이 장면에서 {preview.omittedSections.map(omittedSectionLabel).join(", ")} 설명이 빠졌습니다.
+                      꼭 필요하면 위 프롬프트에 직접 짧게 적어 주세요.
+                    </p>
+                  )}
                   {overLimit && (
                     <p
                       role="alert"
