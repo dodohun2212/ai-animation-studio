@@ -1167,4 +1167,11 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 신규/수정 테스트 7건(`video-preview.service.test.ts` 1건, `runway-video-adapter.test.ts` 3건 — detail 추출 3가지 응답 모양 + base64 크기 경계, `runway-workflow-support.test.ts` 2건, `local-video-workflow.runway.test.ts` 1건 — 기존 단언을 새 detail 포함 형태로 갱신).
   - 검증: root typecheck 전부 통과, Backend 674 통과(+4 순증, 무관한 사전 존재 실패 2건은 그대로 — Round 100에 전문), root build 전부 통과. 유료 Provider 호출 없음.
   - 커밋: `df280ca`.
+- [x] **Runway 크레딧 부족을 "요청 형식 오류"로 안내 + 거부된 제출이 예산을 갉아먹던 문제(Round 144)**: `detail` 필드(`df280ca`) 덕분에 사용자가 재시도 한 번 만에 실제 원인(Runway 크레딧 소진, 정황 추론이었던 빈 Continuity cue는 원인이 아니었음)이 확인됐다 — 그 과정에서 드러난 2건.
+  - **1) 크레딧 부족이 `invalid_request`로 뭉개져서 "요청 형식 오류"로 안내되고 있었음**: OpenAI 쪽에 이미 있는 `quota_or_permission` 카테고리를 Runway에도 추가. `refineCategory()`가 `detail` 추출에 이미 읽은 본문을 재사용해(추가 비용 없음, throw 직전에만 동작) `credit`/`quota` 계열 문구가 있으면 `invalid_request`/`permission`을 `quota_or_permission`으로 재분류. 프런트 한국어 문구는 Cowork가 백엔드 카테고리에 맞춰 붙이기로 함.
+  - **2) 제출 자체가 거부돼 아무 작업도 안 일어난 경우도 예산에서 전액 차감되고 있었음**: `RunwayBudget.record()`가 성공·실패 구분 없이 항상 `actual_cost_usd = estimated_cost_usd`로 기록하는 게 원래 의도된 보수적 설계인데(생성 도중 실패는 이 판단이 맞음), Runway가 작업 자체를 시작 안 한 4xx 제출 거부는 실제 청구가 0이라 다른 경우다. `record()`에 `actualCostUsd` 선택 인자 추가(기본값은 추정치 그대로라 기존 호출부 전부 무변경), 제출 거부 경로에서만 `0`으로 명시 — 실패 이력은 그대로 남고 월 한도만 안 깎임.
+  - **판단 — 사용자 데이터에 이미 들어간 $0.50(실패 2건)**: 손대지 않음. `runway_budget_usage.json`은 실제 사용자 금전 기록이라 코드 변경 김에 임의로 재작성하지 않는 게 맞다고 판단 — 필요하면 사용자가 직접 요청.
+  - 신규/수정 테스트 6건(`runway-video-adapter.test.ts` 2건, `runway-workflow-support.test.ts` 3건, `runway-budget.test.ts` 1건).
+  - 검증: root typecheck 전부 통과, Backend 678 통과(+4 순증, 무관한 사전 존재 실패 2건은 그대로 — Round 100에 전문), root build 전부 통과. 유료 Provider 호출 없음.
+  - 커밋: `5957da0`.
 
