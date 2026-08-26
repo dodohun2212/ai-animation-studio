@@ -37,15 +37,20 @@ function renderScreen(options: {
   projects?: ReturnType<typeof libraryProject>[];
   project?: Parameters<typeof makeProject>[0];
   durationSeconds?: number | "fails";
+  draft?: { body?: string; hashtags?: string; aiNotice?: boolean } | "fails";
 } = {}) {
   const projects = options.projects ?? [libraryProject()];
-  const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input);
     if (url === LIBRARY_URL) return jsonResponse(200, { projects });
     if (url === "/projects/p1") return jsonResponse(200, { project: makeProject({ id: "p1", ...options.project }) });
     if (url === "/projects/p1/settings") {
       if (options.durationSeconds === "fails") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "raw" });
       return jsonResponse(200, { settings: makeSettings(options.durationSeconds ?? 30) });
+    }
+    if (url === "/projects/p1/post-draft") {
+      if (options.draft === "fails") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "raw" });
+      return jsonResponse(200, options.draft ?? {});
     }
     throw new Error(`unexpected fetch: ${url}`);
   });
@@ -194,6 +199,86 @@ describe("InstagramPostScreen", () => {
 
     expect(screen.queryByTestId("post-credit")).toBeNull();
     expect(screen.queryByTestId("post-credit-missing")).toBeNull();
+  });
+
+  // The draft exists because a caption was being lost by walking away from the screen. A series creator whose
+  // hashtag set barely changes between episodes should find it already there.
+  it("fills the caption from the saved draft", async () => {
+    renderScreen({ draft: { body: "지난 회차 본문", hashtags: "애니 단편", aiNotice: false } });
+    await pickProject();
+
+    expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value).toBe("지난 회차 본문");
+    expect((screen.getByTestId("post-hashtags") as HTMLInputElement).value).toBe("애니 단편");
+    expect((screen.getByTestId("post-ai-notice") as HTMLInputElement).checked).toBe(false);
+  });
+
+  it("starts blank with the AI notice on when nothing was ever drafted", async () => {
+    renderScreen();
+    await pickProject();
+
+    expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value).toBe("");
+    expect((screen.getByTestId("post-ai-notice") as HTMLInputElement).checked).toBe(true);
+  });
+
+  // Saving on blur, not per keystroke and not behind a button people forget. The endpoint replaces rather than
+  // merges, so a save has to carry all three fields or it deletes the other two.
+  it("saves the whole draft when a field is left", async () => {
+    const { fetchMock } = renderScreen();
+    await pickProject();
+
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "본문" } });
+    fireEvent.change(screen.getByTestId("post-hashtags"), { target: { value: "태그" } });
+    fireEvent.blur(screen.getByTestId("post-hashtags"));
+
+    await screen.findByTestId("post-draft-saved");
+    const put = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
+    expect(JSON.parse(String((put?.[1] as RequestInit).body))).toEqual({ body: "본문", hashtags: "태그", aiNotice: true });
+  });
+
+  // A checkbox has no meaningful blur — the click is the whole interaction.
+  it("saves as soon as the AI notice is toggled", async () => {
+    const { fetchMock } = renderScreen();
+    await pickProject();
+
+    fireEvent.click(screen.getByTestId("post-ai-notice"));
+
+    await screen.findByTestId("post-draft-saved");
+    const put = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
+    expect(JSON.parse(String((put?.[1] as RequestInit).body)).aiNotice).toBe(false);
+  });
+
+  // The text is still in the box, so a failed save is a warning — never a reason to block the one action that
+  // actually gets the caption out of here.
+  it("warns but still lets the caption be copied when the save fails", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = String(input);
+      if (url === LIBRARY_URL) return jsonResponse(200, { projects: [libraryProject()] });
+      if (url === "/projects/p1") return jsonResponse(200, { project: makeProject({ id: "p1" }) });
+      if (url === "/projects/p1/settings") return jsonResponse(200, { settings: makeSettings(30) });
+      if (url === "/projects/p1/post-draft" && init?.method === "PUT") {
+        return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "raw backend detail" });
+      }
+      if (url === "/projects/p1/post-draft") return jsonResponse(200, {});
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<InstagramPostScreen onBack={() => {}} />);
+    await pickProject();
+
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "본문" } });
+    fireEvent.blur(screen.getByTestId("post-body"));
+
+    const error = await screen.findByTestId("post-draft-error");
+    expect(error.textContent).not.toContain("raw backend detail");
+    expect(screen.getByTestId("post-copy")).not.toBeDisabled();
+    expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value).toBe("본문");
+  });
+
+  // Losing the draft read must not cost the screen — the caption is simply blank, as it is for a new project.
+  it("still opens when the draft read fails", async () => {
+    renderScreen({ draft: "fails" });
+    await pickProject();
+    expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value).toBe("");
   });
 
   it("copies the composed caption", async () => {

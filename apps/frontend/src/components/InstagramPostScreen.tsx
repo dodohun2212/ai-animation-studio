@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Project, VideoLibraryProjectSummary } from "@ai-animation-studio/shared";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
+import { getPostDraft, putPostDraft, toPostDraftDisplayError } from "../api/postDraftApi.js";
 import { getVideoLibrary, toVideoLibraryDisplayError } from "../api/videoLibraryApi.js";
 import { finalVideoContentUrl } from "../api/videoMergeApi.js";
 import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBridge.js";
@@ -85,6 +86,8 @@ export function InstagramPostScreen({ onBack }: Props) {
   const [hashtagsRaw, setHashtagsRaw] = useState("");
   const [aiNoticeOn, setAiNoticeOn] = useState(true);
   const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [saveError, setSaveError] = useState<DisplayError | null>(null);
   const [openPending, setOpenPending] = useState(false);
   const [openFailed, setOpenFailed] = useState(false);
 
@@ -109,11 +112,20 @@ export function InstagramPostScreen({ onBack }: Props) {
     setPicked({ status: "loading" });
     setCopied("idle");
     // The project itself carries usedAudio (the credit line, copied by value at merge time); the settings carry
-    // the planned length. A settings failure only costs the length check, so it degrades to "unknown" rather
-    // than failing the whole screen.
-    Promise.all([getProject(projectId), getProjectSettings(projectId).catch(() => null)])
-      .then(([projectResponse, settingsResponse]) => {
+    // the planned length; the draft carries whatever was typed last time. Only the project is essential — the
+    // other two degrade to "unknown length" and "blank caption" rather than failing the whole screen.
+    Promise.all([
+      getProject(projectId),
+      getProjectSettings(projectId).catch(() => null),
+      getPostDraft(projectId).catch(() => null),
+    ])
+      .then(([projectResponse, settingsResponse, draft]) => {
         if (cancelled) return;
+        setBody(draft?.body ?? "");
+        setHashtagsRaw(draft?.hashtags ?? "");
+        setAiNoticeOn(draft?.aiNotice ?? true);
+        setSaveState("idle");
+        setSaveError(null);
         setPicked({
           status: "ready",
           project: projectResponse.project,
@@ -127,6 +139,35 @@ export function InstagramPostScreen({ onBack }: Props) {
       cancelled = true;
     };
   }, [projectId]);
+
+  /**
+   * Saves on blur rather than on a button, and rather than on every keystroke.
+   *
+   * A save button is a button people forget, and the whole reason this draft exists is that a caption was being
+   * lost by walking away from the screen — leaving on any real navigation blurs the field first. Per-keystroke
+   * saving would put a request behind every character for no benefit the person can see.
+   *
+   * Sends the whole draft every time because the endpoint replaces rather than merges: an omitted field is a
+   * deleted field, so a partial save would quietly erase the other two.
+   */
+  async function saveDraft(next: { body?: string; hashtags?: string; aiNotice?: boolean } = {}): Promise<void> {
+    if (!projectId) return;
+    setSaveState("saving");
+    setSaveError(null);
+    try {
+      await putPostDraft(projectId, {
+        body: next.body ?? body,
+        hashtags: next.hashtags ?? hashtagsRaw,
+        aiNotice: next.aiNotice ?? aiNoticeOn,
+      });
+      setSaveState("saved");
+    } catch (caught) {
+      // The text is still in the box, so a failed save is a warning, not a loss — never a reason to block the
+      // copy button, which is the one action that actually gets the caption out of here.
+      setSaveState("idle");
+      setSaveError(toPostDraftDisplayError(caught));
+    }
+  }
 
   async function openInExplorer(): Promise<void> {
     if (openPending || !projectId) return;
@@ -189,7 +230,7 @@ export function InstagramPostScreen({ onBack }: Props) {
         올리는 것은 인스타그램 앱에서 직접 하시면 됩니다.
       </p>
       <p className="text-sm text-slate-400" data-testid="post-draft-notice">
-        작성한 캡션은 저장되지 않습니다 — 다 쓰면 복사해서 쓰세요.
+        쓰던 캡션은 프로젝트별로 저장돼서, 다음에 들어오면 그대로 이어서 쓸 수 있습니다.
       </p>
 
       {list.status === "loading" && <Spinner label="영상 목록을 불러오는 중..." />}
@@ -307,6 +348,7 @@ export function InstagramPostScreen({ onBack }: Props) {
                 placeholder="첫 줄이 미리보기에 보입니다."
                 value={body}
                 onChange={(event) => setBody(event.target.value)}
+                onBlur={() => void saveDraft()}
               />
             </label>
 
@@ -319,12 +361,20 @@ export function InstagramPostScreen({ onBack }: Props) {
                 placeholder="쉼표나 띄어쓰기로 구분 · # 은 안 붙여도 됩니다"
                 value={hashtagsRaw}
                 onChange={(event) => setHashtagsRaw(event.target.value)}
+                onBlur={() => void saveDraft()}
               />
             </label>
             <p className={`text-xs tabular-nums ${hashtagsOver ? "text-rose-400" : "text-slate-400"}`} data-testid="post-hashtag-count">
               해시태그 {hashtags.length}/{HASHTAG_MAX}
               {hashtagsOver && " — 인스타그램이 받아주는 한도를 넘었습니다."}
             </p>
+            {saveState === "saving" && <p data-testid="post-draft-saving" className="text-xs text-slate-400">저장 중...</p>}
+            {saveState === "saved" && <p data-testid="post-draft-saved" className="text-xs text-emerald-400">저장했습니다.</p>}
+            {saveError && (
+              <p role="alert" data-testid="post-draft-error" data-error-code={saveError.code} className="text-xs text-rose-400">
+                {saveError.message} 쓰던 캡션은 화면에 그대로 있으니 복사해 두세요.
+              </p>
+            )}
 
             <label className="flex items-start gap-2 text-sm text-slate-300" htmlFor="post-ai-notice">
               <input
@@ -333,7 +383,11 @@ export function InstagramPostScreen({ onBack }: Props) {
                 type="checkbox"
                 className="mt-1"
                 checked={aiNoticeOn}
-                onChange={(event) => setAiNoticeOn(event.target.checked)}
+                onChange={(event) => {
+                  setAiNoticeOn(event.target.checked);
+                  // A checkbox has no meaningful blur of its own — the click is the whole interaction.
+                  void saveDraft({ aiNotice: event.target.checked });
+                }}
               />
               <span>
                 캡션에 AI 생성 고지 넣기

@@ -140,4 +140,51 @@ describe("VideoLibraryScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
     expect(await screen.findByTestId("library-project-1")).toBeTruthy();
   });
+
+  // The merge screen's reader made the video seconds ago; this list's reader is the one coming back months
+  // later to finally publish it — the one who has forgotten what the licence asks for.
+  it("shows the credit line a project's video owes, on the card itself", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, {
+      projects: [libraryProject({ attributionRequired: true, attributionText: "Music by ○○○ (CC BY 4.0)" })],
+    })));
+
+    const credit = await screen.findByTestId("library-credit-1");
+    expect(credit.textContent).toContain("Music by ○○○ (CC BY 4.0)");
+  });
+
+  it("says nothing about credit for a project that owes none", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { projects: [libraryProject()] })));
+    await screen.findByTestId("library-cost-1");
+    expect(screen.queryByTestId("library-credit-1")).toBeNull();
+  });
+
+  it("points at the audio library when credit is required but the sentence is blank", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { projects: [libraryProject({ attributionRequired: true })] })));
+    expect((await screen.findByTestId("library-credit-1")).textContent).toContain("음원 보관함");
+  });
+
+  // Versions are per file, but which audio a merge used is stored once per project — so after a restore the app
+  // cannot say what this older file carried. Showing the last merge's line would be worse than showing none,
+  // so the warning goes where the person can still act on it: before they press restore.
+  it("warns before restoring that the credit line will no longer be known", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, {
+        projects: [libraryProject({ attributionRequired: true, attributionText: "Music by ○○○" })],
+      }))
+      .mockResolvedValue(jsonResponse(200, {
+        versions: [
+          { versionId: "v002", createdAt: "2026-08-26T17:18:30.000Z", bytes: 2103543, isCurrent: true },
+          { versionId: "v001", createdAt: "2026-08-26T16:02:10.000Z", bytes: 2011002, isCurrent: false },
+        ],
+      }));
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByText("이배드의 탄생"));
+    fireEvent.click(await screen.findByTestId("version-restore-v001"));
+
+    const warning = await screen.findByTestId("version-restore-credit-warning-v001");
+    expect(warning.textContent).toContain("더 이상 알 수 없습니다");
+    expect(warning.textContent).toContain("Music by ○○○");
+  });
 });

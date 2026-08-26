@@ -197,6 +197,18 @@ export function VideoLibraryScreen({ onBack }: Props) {
                   <p className="text-xs text-slate-400 tabular-nums">
                     장면 {project.videosReadyCount}/{project.sceneCount} · {project.aspectRatio} · 마지막 변경 {dateTime(project.updatedAt)}
                   </p>
+                  {/* The card, not just the merge screen, is where the credit line has to appear: the person
+                      reading a merge result made it seconds ago, while the person reading this list is the one
+                      coming back months later to finally publish it — the one who has forgotten
+                      (`.claude-bridge` Round 177). */}
+                  {project.attributionRequired && (
+                    <p data-testid={`library-credit-${project.projectId}`} className="rounded-lg border border-amber-400/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-300">
+                      올릴 때 캡션에 출처를 적어야 합니다
+                      {project.attributionText?.trim()
+                        ? <span className="mt-1 block select-all text-slate-200">{project.attributionText.trim()}</span>
+                        : <span className="mt-1 block text-slate-300">적을 문구가 비어 있습니다 — 음원 보관함에서 채워 주세요.</span>}
+                    </p>
+                  )}
 
                   {open && (
                     <div className="space-y-3" data-testid={`library-slots-${project.projectId}`}>
@@ -295,6 +307,20 @@ export function VideoLibraryScreen({ onBack }: Props) {
                                       비용은 들지 않습니다. 지금 쓰고 있는 영상도 지워지지 않고 이전 버전으로 함께 보관됩니다.
                                       {openSlot !== "final" && " 이미 합쳐 둔 최종 영상은 이 장면과 맞지 않게 되므로 다시 합쳐야 합니다."}
                                     </p>
+                                    {/* Versions are stored per file, but which audio a merge used is stored once
+                                        per project — so after a restore the app genuinely cannot say which track
+                                        this older file carried. Showing the last merge's credit line here would
+                                        be worse than showing none: the user would paste it believing it.
+                                        Said at the moment of the action, since that is the only moment they can
+                                        still connect the loss to what they did (`.claude-bridge` Round 178). */}
+                                    {project.attributionRequired && (
+                                      <p data-testid={`version-restore-credit-warning-${version.versionId}`} className="text-xs text-amber-300">
+                                        되돌리고 나면 이 영상에 출처 표시가 필요한지 앱이 더 이상 알 수 없습니다. 지금 문구를 적어 두세요:
+                                        <span className="mt-1 block select-all text-slate-200">
+                                          {project.attributionText?.trim() || "(문구가 비어 있습니다 — 음원 보관함에서 확인하세요)"}
+                                        </span>
+                                      </p>
+                                    )}
                                     <div className="flex gap-2">
                                       <button
                                         type="button"
