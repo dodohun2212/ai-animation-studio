@@ -559,7 +559,7 @@ describe("App", () => {
     // The workspace nav jumps straight back to the project overview from Outline —
     // no need to know which screen originally opened Outline to get back.
     const callsBeforeJump = fetchMock.mock.calls.filter(([callUrl]) => String(callUrl) === "/long-projects/long_test").length;
-    fireEvent.click(screen.getByRole("button", { name: "프로젝트 개요" }));
+    fireEvent.click(screen.getByRole("button", { name: "작품 한눈에 보기" }));
     await screen.findByText(seed.title);
     expect(fetchMock.mock.calls.filter(([callUrl]) => String(callUrl) === "/long-projects/long_test").length).toBe(callsBeforeJump + 1);
   });

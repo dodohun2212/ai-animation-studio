@@ -135,7 +135,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
           aria-hidden="true"
           className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
         />
-        스토리 개요 프롬프트 확인
+        회차 나누기 — AI에게 보낼 내용 확인
       </h2>
       {/* The two long-project text stores are easy to confuse and the screens never said how they differ.
           Stated as the question each one answers, since that is the only way to know which one to type into. */}

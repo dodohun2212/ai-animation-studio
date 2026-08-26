@@ -211,21 +211,21 @@ function LongWorkspaceNav({ screen, onNavigate }: { screen: Screen; onNavigate: 
   const episodeNumber = "episodeNumber" in screen ? screen.episodeNumber : undefined;
   return (
     <nav aria-label="장편 프로젝트 작업공간" className="mt-4 flex flex-col items-start gap-1 border-b border-white/10 pb-4">
-      {tab(screen.name, "longDetail", "프로젝트 개요", () => onNavigate({ name: "longDetail", projectId }))}
-      {tab(screen.name, "longSettings", "설정", () => onNavigate({ name: "longSettings", projectId }))}
-      {tab(screen.name, "longOutline", "스토리 개요", () => onNavigate({ name: "longOutline", projectId }))}
+      {tab(screen.name, "longDetail", "작품 한눈에 보기", () => onNavigate({ name: "longDetail", projectId }))}
+      {tab(screen.name, "longSettings", "작품 기본 설정", () => onNavigate({ name: "longSettings", projectId }))}
+      {tab(screen.name, "longOutline", "회차 나누기(AI)", () => onNavigate({ name: "longOutline", projectId }))}
       {tab(screen.name, "longStoryBible", "등장인물·설정집", () => onNavigate({ name: "longStoryBible", projectId }))}
       {episodeNumber !== undefined && (
         <>
           <span className="mx-1 text-sm text-slate-500">·</span>
-          <span className="text-sm text-slate-400">Episode {episodeNumber}</span>
-          {tab(screen.name, "longEpisodeOutline", "회차 설정", () => onNavigate({ name: "longEpisodeOutline", projectId, episodeNumber }))}
-          {tab(screen.name, "longEpisodeScript", "대본", () => onNavigate({ name: "longEpisodeScript", projectId, episodeNumber }))}
+          <span className="text-sm text-slate-400">{episodeNumber}화</span>
+          {tab(screen.name, "longEpisodeOutline", "이 회차 내용", () => onNavigate({ name: "longEpisodeOutline", projectId, episodeNumber }))}
+          {tab(screen.name, "longEpisodeScript", "장면 대본", () => onNavigate({ name: "longEpisodeScript", projectId, episodeNumber }))}
           {tab(screen.name, "longEpisodeMappingReview", "참고 이미지 연결", () => onNavigate({ name: "longEpisodeMappingReview", projectId, episodeNumber }))}
-          {tab(screen.name, "longEpisodeImageGeneration", "이미지", () => onNavigate({ name: "longEpisodeImageGeneration", projectId, episodeNumber }))}
-          {tab(screen.name, "longEpisodeVideoWorkflow", "영상", () => onNavigate({ name: "longEpisodeVideoWorkflow", projectId, episodeNumber }))}
-          {tab(screen.name, "longEpisodeVideoMerge", "병합", () => onNavigate({ name: "longEpisodeVideoMerge", projectId, episodeNumber }))}
-          {tab(screen.name, "longEpisodeContinuity", "Continuity", () => onNavigate({ name: "longEpisodeContinuity", projectId, episodeNumber }))}
+          {tab(screen.name, "longEpisodeImageGeneration", "장면 이미지", () => onNavigate({ name: "longEpisodeImageGeneration", projectId, episodeNumber }))}
+          {tab(screen.name, "longEpisodeVideoWorkflow", "장면 영상", () => onNavigate({ name: "longEpisodeVideoWorkflow", projectId, episodeNumber }))}
+          {tab(screen.name, "longEpisodeVideoMerge", "최종 영상 합치기", () => onNavigate({ name: "longEpisodeVideoMerge", projectId, episodeNumber }))}
+          {tab(screen.name, "longEpisodeContinuity", "이어쓰기 메모", () => onNavigate({ name: "longEpisodeContinuity", projectId, episodeNumber }))}
         </>
       )}
     </nav>

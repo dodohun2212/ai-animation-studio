@@ -124,13 +124,13 @@ export function LongEpisodeOutlineScreen({ projectId, episodeNumber, onBack, onO
   }
 
   return (
-    <section aria-label="회차 설정" className="space-y-5">
+    <section aria-label="이 회차 내용" className="space-y-5">
       <button type="button" className={backButton} onClick={onBack}>
         목록으로
       </button>
       <h2 className="flex items-center gap-2.5 text-lg font-semibold">
         <span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />
-        {episodeNumber}화 설정
+        {episodeNumber}화 내용
       </h2>
       <p className="text-sm text-slate-400">
         이 회차가 어떤 이야기인지 직접 적는 자리입니다. 개요를 승인하면 AI가 회차마다 이 칸들을 채워 두는데, 여기서 마음에 안 드는
@@ -140,7 +140,7 @@ export function LongEpisodeOutlineScreen({ projectId, episodeNumber, onBack, onO
       {error && (
         <p role="alert" data-testid="episode-outline-error" data-error-code={error.code} className="text-sm text-rose-400">
           {error.code === "LONG_EPISODE_TIMELINE_NOT_ALLOWED"
-            ? "이 회차는 이미 대본 작업이 시작돼서 회차 설정을 고칠 수 없습니다."
+            ? "이 회차는 이미 대본 작업이 시작돼서 이 회차 내용을 고칠 수 없습니다."
             : error.message}
         </p>
       )}
@@ -154,7 +154,7 @@ export function LongEpisodeOutlineScreen({ projectId, episodeNumber, onBack, onO
           </p>
           {!editable && (
             <p data-testid="episode-outline-locked" className="text-sm text-amber-300">
-              이 회차는 대본 작업이 시작돼서 더 고칠 수 없습니다. 회차 설정은 대본을 만들기 전까지만 고칠 수 있습니다 — 다른 회차는
+              이 회차는 대본 작업이 시작돼서 더 고칠 수 없습니다. 회차 내용은 대본을 만들기 전까지만 고칠 수 있습니다 — 다른 회차는
               그대로 고칠 수 있으니, 아직 시작 안 한 회차를 선택해 주세요.
             </p>
           )}
@@ -194,7 +194,7 @@ export function LongEpisodeOutlineScreen({ projectId, episodeNumber, onBack, onO
 
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" className={primaryButton} disabled={!editable || saving || changed.length === 0} onClick={() => void save()}>
-              {saving ? "저장하는 중…" : "회차 설정 저장"}
+              {saving ? "저장하는 중…" : "이 회차 내용 저장"}
             </button>
             <button type="button" className={backButton} disabled={!editable || saving || changed.length === 0} onClick={reset}>
               고친 것 되돌리기

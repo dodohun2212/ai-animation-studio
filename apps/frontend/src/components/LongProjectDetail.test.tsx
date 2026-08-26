@@ -154,7 +154,7 @@ describe("LongProjectDetail", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
     render(<LongProjectDetail projectId="long_test" onBack={() => {}} onOpenSettings={() => {}} onOpenOutline={() => {}} onOpenEpisodeOutline={onOpenEpisodeOutline} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "회차 설정 적기" }));
+    fireEvent.click(await screen.findByRole("button", { name: "이 회차 내용 적기" }));
     expect(onOpenEpisodeOutline).toHaveBeenCalledWith("long_test", 1);
   });
 

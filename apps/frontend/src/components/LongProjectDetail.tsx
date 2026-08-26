@@ -43,7 +43,7 @@ function episodeResumeTarget(status: LongEpisodeStatus): EpisodeResumeTarget | n
     case "completed": return { screen: "continuity", label: "이어쓰기 메모" };
     // "planned" has no script yet, but it does have a plan to write — before this screen existed it was the one
     // status with no link at all, which read as "this episode is broken" rather than "this episode is next".
-    case "planned": return { screen: "episodeOutline", label: "회차 설정 적기" };
+    case "planned": return { screen: "episodeOutline", label: "이 회차 내용 적기" };
     default: return null;
   }
 }
@@ -314,7 +314,7 @@ export function LongProjectDetail({
                         className="text-slate-400 hover:text-slate-200"
                         onClick={() => onOpenEpisodeOutline(projectId, episode.episodeNumber)}
                       >
-                        회차 설정
+                        이 회차 내용
                       </button>
                     )}
                     {showResume && (

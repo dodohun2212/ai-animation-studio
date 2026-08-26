@@ -69,7 +69,7 @@ describe("LongEpisodeOutlineScreen", () => {
 
     const summary = await screen.findByDisplayValue("주인공이 고향에 돌아온다.");
     fireEvent.change(summary, { target: { value: "주인공이 고향에 돌아오지만 아무도 알아보지 못한다." } });
-    fireEvent.click(screen.getByRole("button", { name: "회차 설정 저장" }));
+    fireEvent.click(screen.getByRole("button", { name: "이 회차 내용 저장" }));
 
     await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => String(url) === OUTLINE_URL && (init as RequestInit | undefined)?.method === "PATCH")).toBe(true));
     const [, init] = fetchMock.mock.calls.find(([url, init]) => String(url) === OUTLINE_URL && (init as RequestInit | undefined)?.method === "PATCH")! as [string, RequestInit];
@@ -84,7 +84,7 @@ describe("LongEpisodeOutlineScreen", () => {
 
     const conflict = await screen.findByDisplayValue("동료는 이미 반대편에 서 있다.");
     fireEvent.change(conflict, { target: { value: "   " } });
-    fireEvent.click(screen.getByRole("button", { name: "회차 설정 저장" }));
+    fireEvent.click(screen.getByRole("button", { name: "이 회차 내용 저장" }));
 
     expect((await screen.findByTestId("episode-outline-validation-error")).textContent).toContain("갈등");
     expect(fetchMock.mock.calls.some(([url, init]) => String(url) === OUTLINE_URL && (init as RequestInit | undefined)?.method === "PATCH")).toBe(false);
@@ -97,7 +97,7 @@ describe("LongEpisodeOutlineScreen", () => {
     const title = await screen.findByDisplayValue("돌아온 자");
     expect(title).toBeDisabled();
     expect(screen.getByTestId("episode-outline-locked").textContent).toContain("다른 회차는");
-    expect(screen.getByRole("button", { name: "회차 설정 저장" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "이 회차 내용 저장" })).toBeDisabled();
   });
 
   it("explains the conflict in this screen's own terms when the server refuses the edit", async () => {
@@ -109,7 +109,7 @@ describe("LongEpisodeOutlineScreen", () => {
 
     const title = await screen.findByDisplayValue("돌아온 자");
     fireEvent.change(title, { target: { value: "돌아온 자들" } });
-    fireEvent.click(screen.getByRole("button", { name: "회차 설정 저장" }));
+    fireEvent.click(screen.getByRole("button", { name: "이 회차 내용 저장" }));
 
     // The shared message for this code also talks about archiving the last episode, which has nothing to do
     // with editing a plan — this screen says the part that is actually true here.
@@ -137,6 +137,6 @@ describe("LongEpisodeOutlineScreen", () => {
 
     const failure = await screen.findByTestId("episode-outline-error");
     expect(failure.getAttribute("data-error-code")).toBe("LONG_EPISODE_NOT_FOUND");
-    expect(screen.queryByRole("button", { name: "회차 설정 저장" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "이 회차 내용 저장" })).toBeNull();
   });
 });
