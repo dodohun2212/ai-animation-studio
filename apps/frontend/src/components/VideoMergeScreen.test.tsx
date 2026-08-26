@@ -14,7 +14,8 @@ const AUDIO_LIBRARY_URL = "/audio/library";
 function makeTrack(overrides: Record<string, unknown> = {}) {
   return {
     trackId: "t1", title: "기록관의 밤", durationSeconds: 95, bytes: 2_400_000,
-    source: "upload", addedAt: "2026-08-26T18:00:00.000Z", ...overrides,
+    source: "upload", licenseKind: "self-made", attributionRequired: false,
+    addedAt: "2026-08-26T18:00:00.000Z", ...overrides,
   };
 }
 

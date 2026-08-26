@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AudioLibraryTrack } from "@ai-animation-studio/shared";
 
-import { audioTrackContentUrl, getAudioLibrary, toAudioLibraryDisplayError, uploadAudioTrack } from "../api/audioLibraryApi.js";
+import { audioTrackContentUrl, deleteAudioTrack, getAudioLibrary, toAudioLibraryDisplayError, uploadAudioTrack } from "../api/audioLibraryApi.js";
 import { Spinner } from "./Spinner.js";
 
 interface Props {
@@ -24,6 +24,21 @@ const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/7
 
 /** Accepted by the server; stated here too so the picker does not offer files it will reject. */
 const ACCEPTED = ".mp3,.wav,.m4a,.ogg,audio/mpeg,audio/wav,audio/mp4,audio/ogg";
+
+type LicenseKind = AudioLibraryTrack["licenseKind"];
+
+/**
+ * Plain descriptions rather than licence jargon: the person filling this in is not a lawyer, and picking wrong
+ * is worse than picking slowly. `attributionRequired` follows from the choice for every kind whose answer is
+ * fixed — only "other" is genuinely unknowable from the label alone, so only that one asks.
+ */
+const LICENSE_OPTIONS: { value: LicenseKind; label: string; attribution: boolean | "ask" }[] = [
+  { value: "cc0", label: "CC0 · 퍼블릭 도메인 (조건 없음)", attribution: false },
+  { value: "cc-by", label: "CC BY (출처 표시 필요)", attribution: true },
+  { value: "purchased", label: "구매하거나 구독으로 받은 음원", attribution: false },
+  { value: "self-made", label: "직접 만든 음원", attribution: false },
+  { value: "other", label: "그 밖의 경우", attribution: "ask" },
+];
 
 export function trackDuration(seconds: number): string {
   const whole = Math.max(0, Math.round(seconds));
@@ -49,9 +64,16 @@ export function AudioLibraryScreen({ onBack }: Props) {
   const [title, setTitle] = useState("");
   const [artist, setArtist] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [licenseKind, setLicenseKind] = useState<LicenseKind | "">("");
+  const [attributionRequired, setAttributionRequired] = useState(false);
+  const [attributionText, setAttributionText] = useState("");
+  const [sourceUrl, setSourceUrl] = useState("");
   const [uploadPending, setUploadPending] = useState(false);
   const [uploadError, setUploadError] = useState<DisplayError | null>(null);
   const [uploadedTitle, setUploadedTitle] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [deletePending, setDeletePending] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<DisplayError | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
 
   function load(): void {
@@ -66,15 +88,19 @@ export function AudioLibraryScreen({ onBack }: Props) {
   }, []);
 
   async function upload(): Promise<void> {
-    if (!file || uploadPending) return;
+    if (!file || !licenseKind || uploadPending) return;
     setUploadPending(true);
     setUploadError(null);
     setUploadedTitle(null);
     try {
-      const response = await uploadAudioTrack(file, { title, artist });
+      const response = await uploadAudioTrack(file, { title, artist, licenseKind, attributionRequired, attributionText, sourceUrl });
       setUploadedTitle(response.track.title);
       setTitle("");
       setArtist("");
+      setLicenseKind("");
+      setAttributionRequired(false);
+      setAttributionText("");
+      setSourceUrl("");
       setFile(null);
       if (fileInput.current) fileInput.current.value = "";
       load();
@@ -85,7 +111,23 @@ export function AudioLibraryScreen({ onBack }: Props) {
     }
   }
 
+  async function removeTrack(trackId: string): Promise<void> {
+    if (deletePending) return;
+    setDeletePending(trackId);
+    setDeleteError(null);
+    try {
+      await deleteAudioTrack(trackId);
+      setDeleteConfirm(null);
+      load();
+    } catch (caught) {
+      setDeleteError(toAudioLibraryDisplayError(caught));
+    } finally {
+      setDeletePending(null);
+    }
+  }
+
   const tracks = state.status === "ready" ? state.tracks : [];
+  const selectedLicense = LICENSE_OPTIONS.find((option) => option.value === licenseKind);
 
   return (
     <section className="mt-8 max-w-3xl space-y-5">
@@ -150,15 +192,81 @@ export function AudioLibraryScreen({ onBack }: Props) {
             onChange={(event) => setArtist(event.target.value)}
           />
         </label>
+        <label className="block text-sm text-slate-300" htmlFor="audio-license">
+          이 음원을 어떻게 구하셨나요?
+          <select
+            id="audio-license"
+            data-testid="audio-license-select"
+            className={fieldClassName}
+            value={licenseKind}
+            disabled={uploadPending}
+            onChange={(event) => {
+              const next = event.target.value as LicenseKind | "";
+              setLicenseKind(next);
+              const option = LICENSE_OPTIONS.find((candidate) => candidate.value === next);
+              // Every kind but "other" has a fixed answer, so it is filled in rather than asked twice.
+              if (option && option.attribution !== "ask") setAttributionRequired(option.attribution);
+            }}
+          >
+            <option value="">고르지 않음</option>
+            {LICENSE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+        {selectedLicense?.attribution === "ask" && (
+          <label className="flex items-center gap-2 text-sm text-slate-300" htmlFor="audio-attribution-required">
+            <input
+              id="audio-attribution-required"
+              data-testid="audio-attribution-required"
+              type="checkbox"
+              checked={attributionRequired}
+              disabled={uploadPending}
+              onChange={(event) => setAttributionRequired(event.target.checked)}
+            />
+            출처를 표시해야 하는 음원입니다
+          </label>
+        )}
+        {attributionRequired && (
+          <label className="block text-sm text-slate-300" htmlFor="audio-attribution-text">
+            캡션에 적을 문구
+            <input
+              id="audio-attribution-text"
+              data-testid="audio-attribution-text"
+              className={fieldClassName}
+              placeholder="예: Music: 「Night Archive」 by ○○○ (CC BY 4.0)"
+              value={attributionText}
+              disabled={uploadPending}
+              onChange={(event) => setAttributionText(event.target.value)}
+            />
+          </label>
+        )}
+        <label className="block text-sm text-slate-300" htmlFor="audio-source-url">
+          받은 곳 주소 (선택)
+          <input
+            id="audio-source-url"
+            data-testid="audio-source-url"
+            className={fieldClassName}
+            placeholder="나중에 출처를 다시 확인할 수 있게 적어두면 좋습니다"
+            value={sourceUrl}
+            disabled={uploadPending}
+            onChange={(event) => setSourceUrl(event.target.value)}
+          />
+        </label>
         <button
           type="button"
           data-testid="audio-upload-button"
           className={primaryButton}
-          disabled={!file || uploadPending}
+          disabled={!file || !licenseKind || uploadPending}
           onClick={() => void upload()}
         >
           {uploadPending ? "올리는 중..." : "보관함에 추가"}
         </button>
+        {file && !licenseKind && (
+          <p data-testid="audio-license-required" className="text-xs text-amber-300">
+            음원을 어떻게 구하셨는지 골라야 올릴 수 있습니다. 지금이 출처를 아는 유일한 시점입니다.
+          </p>
+        )}
         {uploadError && (
           <p role="alert" data-testid="audio-upload-error" data-error-code={uploadError.code} className="text-sm text-rose-400">
             {uploadError.message}
@@ -206,6 +314,11 @@ export function AudioLibraryScreen({ onBack }: Props) {
                   이 음원은 캡션에 출처를 적어야 합니다.
                 </p>
               )}
+              {track.attributionText && (
+                <p data-testid={`audio-track-attribution-text-${track.trackId}`} className="text-xs text-slate-400">
+                  캡션 문구: {track.attributionText}
+                </p>
+              )}
               {/* eslint-disable-next-line jsx-a11y/media-has-caption -- music has no spoken content to caption */}
               <audio
                 data-testid={`audio-track-player-${track.trackId}`}
@@ -214,9 +327,60 @@ export function AudioLibraryScreen({ onBack }: Props) {
                 preload="none"
                 src={audioTrackContentUrl(track.trackId)}
               />
+              {/* Deleting is offered here (unlike the video archive) because the original file is still on the
+                  uploader's own machine — a wrong upload costs one re-drag to undo, not a paid regeneration.
+                  It still asks first, since the copy in the app is the one projects point at. */}
+              {deleteConfirm === track.trackId ? (
+                <div
+                  role="alertdialog"
+                  aria-label={`${track.title} 삭제 확인`}
+                  data-testid={`audio-track-delete-confirm-${track.trackId}`}
+                  className="space-y-2 rounded-lg border border-rose-400/40 bg-slate-900/70 p-3"
+                >
+                  <p className="text-sm font-semibold text-rose-300">이 음원을 보관함에서 지울까요?</p>
+                  <p className="text-xs text-slate-300">보관함에서만 사라집니다. 원본 파일은 컴퓨터에 그대로 있습니다.</p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className={outlineButton}
+                      disabled={deletePending === track.trackId}
+                      onClick={() => setDeleteConfirm(null)}
+                    >
+                      취소
+                    </button>
+                    <button
+                      type="button"
+                      data-testid={`audio-track-delete-confirm-button-${track.trackId}`}
+                      className="rounded-full border border-rose-400/30 px-3 py-1 text-xs font-semibold text-rose-300 hover:bg-rose-500/10 disabled:opacity-50"
+                      disabled={deletePending === track.trackId}
+                      onClick={() => void removeTrack(track.trackId)}
+                    >
+                      {deletePending === track.trackId ? "지우는 중..." : "네, 지웁니다"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  data-testid={`audio-track-delete-${track.trackId}`}
+                  className="self-start rounded-full border border-white/10 px-3 py-1 text-xs text-slate-400 hover:bg-white/5 disabled:opacity-50"
+                  disabled={Boolean(deletePending)}
+                  onClick={() => {
+                    setDeleteError(null);
+                    setDeleteConfirm(track.trackId);
+                  }}
+                >
+                  지우기
+                </button>
+              )}
             </li>
           ))}
         </ul>
+      )}
+      {deleteError && (
+        <p role="alert" data-testid="audio-delete-error" data-error-code={deleteError.code} className="text-sm text-rose-400">
+          {deleteError.message}
+        </p>
       )}
     </section>
   );

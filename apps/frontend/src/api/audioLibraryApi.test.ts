@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { audioTrackContentUrl, getAudioLibrary, toAudioLibraryDisplayError, uploadAudioTrack } from "./audioLibraryApi.js";
+import { audioTrackContentUrl, deleteAudioTrack, getAudioLibrary, toAudioLibraryDisplayError, uploadAudioTrack } from "./audioLibraryApi.js";
 import { jsonResponse } from "./testUtils.js";
 
 function track(overrides: Record<string, unknown> = {}) {
@@ -10,6 +10,8 @@ function track(overrides: Record<string, unknown> = {}) {
     durationSeconds: 95,
     bytes: 2_400_000,
     source: "upload",
+    licenseKind: "cc0",
+    attributionRequired: false,
     addedAt: "2026-08-26T18:00:00.000Z",
     ...overrides,
   };
@@ -45,7 +47,9 @@ describe("audioLibraryApi", () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { track: track() }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await uploadAudioTrack(new File(["bytes"], "night.mp3", { type: "audio/mpeg" }), { title: "  기록관의 밤  ", artist: "" });
+    await uploadAudioTrack(new File(["bytes"], "night.mp3", { type: "audio/mpeg" }), {
+      title: "  기록관의 밤  ", artist: "", licenseKind: "cc-by", attributionRequired: true, attributionText: " Music by ○○○ ", sourceUrl: "",
+    });
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/audio/library/upload");
@@ -57,12 +61,18 @@ describe("audioLibraryApi", () => {
     expect(form.get("title")).toBe("기록관의 밤");
     // An empty optional field is left out rather than sent blank, so the server's own fallback applies.
     expect(form.get("artist")).toBeNull();
+    // Required by the server and by the point of the field: where a track came from is only knowable while the
+    // person still has the file in hand.
+    expect(form.get("licenseKind")).toBe("cc-by");
+    expect(form.get("attributionRequired")).toBe("true");
+    expect(form.get("attributionText")).toBe("Music by ○○○");
   });
 
   it("maps a known backend code to a fixed message and never leaks the raw one", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(413, { code: "AUDIO_FILE_TOO_LARGE", message: "raw backend detail" })));
 
-    const caught = await uploadAudioTrack(new File(["x"], "big.wav")).catch((error: unknown) => error);
+    const caught = await uploadAudioTrack(new File(["x"], "big.wav"), { licenseKind: "self-made", attributionRequired: false })
+      .catch((error: unknown) => error);
     const display = toAudioLibraryDisplayError(caught);
 
     expect(display.code).toBe("AUDIO_FILE_TOO_LARGE");
@@ -74,6 +84,18 @@ describe("audioLibraryApi", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
     const caught = await getAudioLibrary().catch((error: unknown) => error);
     expect(toAudioLibraryDisplayError(caught).code).toBe("CLIENT_NETWORK_ERROR");
+  });
+
+  it("deletes a track via DELETE and returns which one went", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { trackId: "t1" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await deleteAudioTrack("t1");
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/audio/library/t1");
+    expect(init.method).toBe("DELETE");
+    expect(response.trackId).toBe("t1");
   });
 
   it("builds a playback URL without fetching anything", () => {
