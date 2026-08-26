@@ -8,7 +8,7 @@ import { archiveProjectDirectory, deleteArchivedProjectDirectory, listArchivedPr
 import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
-import { OpenAiAdapterError } from "../providers/openai-common.js";
+import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiEpisodePlannerApi, type OpenAiEpisodeOutlineResult } from "./openai-episode-planner-adapter.js";
 import { longArchiveCollision, longArchiveNotAllowed, longExists, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longOutlineBudgetExceeded, longOutlineNotAllowed, longOutlineProviderError, longOutlineStale, longRestoreCollision, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 
@@ -215,7 +215,10 @@ export class LongProjectsService {
       } catch (error) {
         if (error instanceof OpenAiBudgetExceededError) throw longOutlineBudgetExceeded(error.message);
         if (error instanceof OpenAiAdapterError) throw longOutlineProviderError(error.category, error.message);
-        throw error;
+        // Any other failure (a bug, an unclassified network edge case) must still land as a coded ApiError —
+        // an uncaught rethrow here would surface as a bare 500 with no `code`, which the frontend can only
+        // show as its most generic client-side fallback instead of this screen's own provider-error message.
+        throw longOutlineProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown);
       }
     } else {
       // Local-fake fallback: only used when no OpenAI credential is connected. Fills every field that render

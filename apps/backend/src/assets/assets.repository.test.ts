@@ -102,6 +102,32 @@ describe("LocalAssetsRepository", () => {
     }
   });
 
+  it("allows only role and description for a parented (folder-child) asset, still rejects the folder itself", async () => {
+    const root = await makeRoot(); const repository = new LocalAssetsRepository(root);
+    const child = await repository.create({ buffer: image, originalname: "하위.png", mimetype: "image/png" }, metadata);
+    const indexPath = path.join(root, "asset_library", "assets.json");
+    const records = JSON.parse(await fs.readFile(indexPath, "utf8")) as Array<Record<string, unknown>>;
+    records[0]!.parent_folder_id = "FOLDER-ROOT-2";
+    records.push({
+      asset_id: "FOLDER-ROOT-2", asset_type: "background", display_name: "배경 폴더", description: "", stored_path: "",
+      original_filename: "", content_sha256: "", tags: [], aliases: [], enabled: true, approved: false, face_baseline: false,
+      character_key: null, version: 1, versions: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      notes: "", legacy_asset_ids: [], status: "manual", source_project_id: "", source_scene_number: null,
+      reference_images: [], reference_roles: [], is_folder: true, parent_folder_id: "", child_asset_ids: [child.asset_id],
+      thumbnail_asset_id: child.asset_id, role: "", sort_order: 0,
+    });
+    await fs.writeFile(indexPath, JSON.stringify(records), "utf8");
+
+    const roleUpdated = await repository.update(child.asset_id, { role: "front" });
+    expect(roleUpdated.role).toBe("front");
+    const descriptionUpdated = await repository.update(child.asset_id, { description: "정면 참고 이미지" });
+    expect(descriptionUpdated.description).toBe("정면 참고 이미지");
+
+    await expect(repository.update(child.asset_id, { role: "front", tags: ["x"] })).rejects.toMatchObject({ response: { code: "ASSET_MUTATION_UNSUPPORTED" } });
+    await expect(repository.update("FOLDER-ROOT-2", { role: "front" })).rejects.toMatchObject({ response: { code: "ASSET_MUTATION_UNSUPPORTED" } });
+    await expect(repository.update("FOLDER-ROOT-2", { description: "폴더 설명" })).rejects.toMatchObject({ response: { code: "ASSET_MUTATION_UNSUPPORTED" } });
+  });
+
   it("never serves a legacy path outside the real learning-data root", async () => {
     const root = await makeRoot(); const outside = await makeRoot();
     const repository = new LocalAssetsRepository(root);

@@ -6,7 +6,7 @@ import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
-import { OpenAiAdapterError } from "../providers/openai-common.js";
+import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiStoryApi } from "../story/openai-story-adapter.js";
 import { buildEpisodeContext } from "./episode-context-builder.js";
 import { longEpisodeNotFound, longEpisodeScriptBudgetExceeded, longEpisodeScriptExists, longEpisodeScriptNotAllowed, longEpisodeScriptProviderError, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
@@ -148,7 +148,7 @@ export class EpisodeScriptsService {
       } catch (error) {
         if (error instanceof OpenAiBudgetExceededError) throw longEpisodeScriptBudgetExceeded(error.message);
         if (error instanceof OpenAiAdapterError) throw longEpisodeScriptProviderError(error.category, error.message);
-        throw error;
+        throw longEpisodeScriptProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown);
       }
       historyEntry = { created_at: new Date().toISOString(), source: "openai_generation", script: this.storedScript(script!), context };
     } else {

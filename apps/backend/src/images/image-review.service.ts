@@ -25,7 +25,7 @@ import type { StoredProject } from "../projects/project-storage.schema.js";
 import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
-import { OpenAiAdapterError } from "../providers/openai-common.js";
+import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "./openai-image-adapter.js";
 import { collectReferenceImages } from "./image-reference-selection.js";
 import { imagePromptFor, styleLineFor } from "./image-prompt.js";
@@ -255,7 +255,7 @@ export class ImageReviewService {
       } catch (error) {
         if (error instanceof OpenAiBudgetExceededError) throw imageReviewBudgetExceeded(error.message);
         if (error instanceof OpenAiAdapterError) throw imageReviewProviderError(error.category, error.message);
-        throw error;
+        throw imageReviewProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown);
       }
       adapter = references.length > 0 ? `${OPENAI_IMAGE_MODEL}:edit` : OPENAI_IMAGE_MODEL;
       apiCalls = 1;

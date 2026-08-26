@@ -95,7 +95,13 @@ export class LocalAssetsRepository {
       const assets = await this.load();
       const asset = assets.find((item) => item.asset_id === assetId);
       if (!asset) throw assetNotFound();
-      if (asset.is_folder || asset.parent_folder_id) throw assetMutationUnsupported();
+      if (asset.is_folder) throw assetMutationUnsupported();
+      // A folder child (Character Reference Set member) may only have its per-child role and description edited
+      // here — every other field belongs to the standalone-asset flow and stays blocked, same as before.
+      if (asset.parent_folder_id) {
+        const allowedChildKeys = new Set(["role", "description"]);
+        if (Object.keys(changes).some((key) => !allowedChildKeys.has(key))) throw assetMutationUnsupported();
+      }
       if (changes.assetType !== undefined && changes.assetType !== "character" && asset.reference_images.length > 0) throw assetMutationUnsupported();
       if (changes.assetType === "character" && asset.asset_type !== "character") {
         asset.reference_images = ["thumbnail", "front"].map((role) => ({ role, path: asset.stored_path, content_sha256: asset.content_sha256, original_filename: asset.original_filename }));

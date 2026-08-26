@@ -7,7 +7,7 @@ import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
-import { OpenAiAdapterError } from "../providers/openai-common.js";
+import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiTtsApi } from "../narration/openai-narration-adapter.js";
 import { probeAudioDurationSeconds } from "../narration/audio-duration.js";
 import { longEpisodeNarrationBudgetExceeded, longEpisodeNarrationContentUnavailable, longEpisodeNarrationGenerationFailed, longEpisodeNarrationMissingText, longEpisodeNarrationNotAllowed, longEpisodeNarrationNotEnabled, longEpisodeNarrationProviderError, longEpisodeNarrationStorageError, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
@@ -176,7 +176,7 @@ export class EpisodeNarrationService {
       } catch (error) {
         if (error instanceof OpenAiBudgetExceededError) throw longEpisodeNarrationBudgetExceeded(error.message);
         if (error instanceof OpenAiAdapterError) throw longEpisodeNarrationProviderError(error.category, error.message);
-        throw error;
+        throw longEpisodeNarrationProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown);
       }
       adapter = "gpt-4o-mini-tts"; apiCalls = 1;
       // Read-only, computed after the fact: reflects the ledger's state right after this regeneration's own record().

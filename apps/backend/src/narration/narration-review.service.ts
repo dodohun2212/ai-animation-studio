@@ -16,7 +16,7 @@ import type { StoredProject } from "../projects/project-storage.schema.js";
 import { sceneValue } from "../images/image-prompt.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
-import { OpenAiAdapterError } from "../providers/openai-common.js";
+import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiTtsApi } from "./openai-narration-adapter.js";
 import { invalidNarrationRequest, narrationBudgetExceeded, narrationMissingText, narrationNotEnabled, narrationProviderError, narrationStorageError } from "./narration-api.error.js";
 import { computeSceneStaleness } from "../projects/scene-staleness.js";
@@ -102,7 +102,7 @@ export class NarrationReviewService {
       } catch (error) {
         if (error instanceof OpenAiBudgetExceededError) throw narrationBudgetExceeded(error.message);
         if (error instanceof OpenAiAdapterError) throw narrationProviderError(error.category, error.message);
-        throw error;
+        throw narrationProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown);
       }
       adapter = "gpt-4o-mini-tts";
       apiCalls = 1;
