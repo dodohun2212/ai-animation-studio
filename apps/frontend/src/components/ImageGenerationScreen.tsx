@@ -64,6 +64,20 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
   const [regenerateInstruction, setRegenerateInstruction] = useState("");
   const [regeneratePendingScenes, setRegeneratePendingScenes] = useState<Set<SceneNumber>>(new Set());
   const [regenerateErrors, setRegenerateErrors] = useState<Partial<Record<SceneNumber, DisplayError>>>({});
+  /**
+   * Live progress while the generation request is in flight.
+   *
+   * `startImageGeneration` is one blocking POST that returns only when every scene is done — several minutes
+   * with a real key — and until it returned, this screen showed six rows all reading 대기 and a button reading
+   * 생성 중. Nothing said whether anything was happening at all.
+   *
+   * The backend does save the project after every single scene (`local-image-generation.service.ts`), so
+   * progress is readable by polling. `elapsedSeconds` is the honest floor: it needs nothing from the server
+   * and proves the app is alive. `completedScenes` fills in per scene as soon as the API actually reports it
+   * — see the note on `sceneStatus`.
+   */
+  const [completedScenes, setCompletedScenes] = useState<Set<number>>(new Set());
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const generateBusy = useRef(false);
   const approveBusy = useRef<Set<SceneNumber>>(new Set());
   const regenerateBusy = useRef<Set<SceneNumber>>(new Set());
@@ -194,7 +208,35 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
     }
   }
 
+  useEffect(() => {
+    if (!generatePending) return;
+    const started = Date.now();
+    const ticker = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - started) / 1000)), 1000);
+    // Polled, not streamed: there is no progress endpoint, and the project is the only thing that changes
+    // while the run is in flight. A read every 3s is cheap next to an image call that takes tens of seconds.
+    const poll = setInterval(() => {
+      void getProject(projectId)
+        .then((response) => {
+          const done = response.project.scenes
+            .filter((scene) => typeof scene.generatedImagePath === "string" && scene.generatedImagePath)
+            .map((scene) => scene.number as number);
+          setCompletedScenes(new Set(done));
+        })
+        // Silent: this is a progress hint. A failed poll must never replace the run's own error handling.
+        .catch(() => undefined);
+    }, 3000);
+    return () => { clearInterval(ticker); clearInterval(poll); };
+  }, [generatePending, projectId]);
+
+  /**
+   * `generatedImagePath` is the only per-scene signal the API exposes for "this one is done". The backend
+   * currently keeps finished images in a parallel `generated_images` array that `toApiProject` does not map
+   * onto the scenes, so this reads false for every scene even after a successful run — which is why the rows
+   * below stayed 대기 forever. The moment that mapping exists, both the finished state and the live count
+   * light up with no change here; until then the elapsed clock carries the screen.
+   */
   function sceneStatus(number: number): "completed" | "pending" {
+    if (completedScenes.has(number)) return "completed";
     const scene = currentProject?.scenes.find((item) => item.number === number);
     return scene?.generatedImagePath ? "completed" : "pending";
   }
@@ -216,6 +258,8 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
     generateBusy.current = true;
     setGeneratePending(true);
     setGenerateError(null);
+    setCompletedScenes(new Set());
+    setElapsedSeconds(0);
     try {
       const response = await startImageGeneration(projectId);
       setResult(response);
@@ -262,19 +306,46 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
             </p>
           )}
 
+          {generatePending && (
+            <div data-testid="generation-progress" role="status" className="space-y-1.5 rounded-xl border border-violet-400/30 bg-violet-500/[0.07] p-3.5">
+              <p className="text-sm font-semibold text-violet-200">
+                이미지를 만드는 중입니다 — {completedScenes.size}/{totalScenes}장 완료
+              </p>
+              <div aria-hidden="true" className="h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-violet-400 to-fuchsia-400 transition-[width] duration-500"
+                  style={{ width: `${totalScenes ? Math.round((completedScenes.size / totalScenes) * 100) : 0}%` }}
+                />
+              </div>
+              <p className="text-xs text-slate-400 tabular-nums">
+                {Math.floor(elapsedSeconds / 60)}분 {elapsedSeconds % 60}초째 진행 중 · 한 장에 보통 십수 초에서 1분쯤 걸립니다.
+              </p>
+              <p className="text-xs text-slate-500">
+                이 화면을 벗어나거나 새로고침해도 서버에서 만드는 것은 계속됩니다. 다만 진행 상황은 다시 들어와야 보입니다.
+              </p>
+            </div>
+          )}
+
           <ol className="grid gap-2 sm:grid-cols-2" data-testid="scene-results">
-            {sceneNumbers.map((number) => (
-              <li
-                key={number}
-                data-testid={`scene-${number}`}
-                data-status={sceneStatus(number)}
-                className={`rounded-lg border p-2.5 text-sm ${
-                  sceneStatus(number) === "completed" ? "border-emerald-400/30 text-emerald-300" : "border-white/10 text-slate-300"
-                }`}
-              >
-                {number}번 장면 · {sceneStatus(number) === "completed" ? "완료" : "대기"}
-              </li>
-            ))}
+            {sceneNumbers.map((number) => {
+              const done = sceneStatus(number) === "completed";
+              // While a run is in flight, a row that is not finished is not "waiting" in any useful sense —
+              // it is either being worked on now or is next. Saying 대기 next to a spinning button was the
+              // part that read as "nothing is happening".
+              const label = done ? "완료" : generatePending ? "만드는 중" : "대기";
+              return (
+                <li
+                  key={number}
+                  data-testid={`scene-${number}`}
+                  data-status={sceneStatus(number)}
+                  className={`rounded-lg border p-2.5 text-sm ${
+                    done ? "border-emerald-400/30 text-emerald-300" : generatePending ? "border-violet-400/25 text-violet-200" : "border-white/10 text-slate-300"
+                  }`}
+                >
+                  {number}번 장면 · {label}
+                </li>
+              );
+            })}
           </ol>
 
           {allowed && !result && (

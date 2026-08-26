@@ -4,8 +4,8 @@ import type { ImageReview, Scene } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { jsonResponse, makeProject } from "../api/testUtils.js";
-import { workflowStateLabel } from "../utils/workflowStateLabels.js";
 import { ImageGenerationScreen } from "./ImageGenerationScreen.js";
+import { workflowStateLabel } from "../utils/workflowStateLabels.js";
 
 function sixScenes(withImages: readonly number[] = []): Scene[] {
   return [1, 2, 3, 4, 5, 6].map((number) => ({
@@ -80,6 +80,41 @@ describe("ImageGenerationScreen", () => {
     expect(screen.getByTestId("scene-1")).toHaveAttribute("data-status", "completed");
     expect(screen.getByTestId("scene-2")).toHaveAttribute("data-status", "completed");
     expect(screen.getByTestId("scene-3")).toHaveAttribute("data-status", "pending");
+  });
+
+  it("shows live progress while the blocking generation request is in flight, not six rows saying 대기", async () => {
+    // `startImageGeneration` is one POST that does not return until every scene is done. Until it did, the
+    // screen showed 대기 six times next to a 생성 중 button — indistinguishable from a frozen app.
+    const project = makeProject({ workflowState: WorkflowState.AssetMappingApproved, scenes: sixScenes() });
+    const midRun = makeProject({ workflowState: WorkflowState.AssetMappingApproved, scenes: sixScenes([1, 2]) });
+    let finishGeneration: (response: Response) => void = () => {};
+    let projectReads = 0;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/images") && (init as RequestInit | undefined)?.method === "POST") {
+        return new Promise<Response>((resolve) => { finishGeneration = resolve; });
+      }
+      // The first read is the screen's own load; later reads are the progress poll, by which time the
+      // backend has finished two scenes.
+      projectReads += 1;
+      return Promise.resolve(jsonResponse(200, { project: projectReads === 1 ? project : midRun }));
+    });
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("provider-mode-notice");
+    fireEvent.click(screen.getByRole("button", { name: "이미지 생성 시작" }));
+    await screen.findByTestId("generate-confirm-panel");
+    fireEvent.click(screen.getByRole("button", { name: "예, 이미지 생성을 시작합니다" }));
+
+    const progress = await screen.findByTestId("generation-progress");
+    expect(progress.textContent).toContain("0/6장 완료");
+    // No row claims to be waiting while the run is going.
+    expect(screen.getByTestId("scene-1").textContent).toContain("만드는 중");
+
+    await waitFor(() => expect(screen.getByTestId("generation-progress").textContent).toContain("2/6장 완료"), { timeout: 5000 });
+    expect(screen.getByTestId("scene-1")).toHaveAttribute("data-status", "completed");
+
+    finishGeneration(jsonResponse(200, { project: midRun, generatedSceneNumbers: [1, 2], reusedSceneNumbers: [] }));
   });
 
   it("blocks generation and hides the start button when the project is not Asset-Mapping-approved", async () => {
