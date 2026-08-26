@@ -1,6 +1,6 @@
 import type { CreateLongProjectRequest, CreateProjectRequest, LongProject, Project } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App.js";
@@ -112,13 +112,21 @@ describe("App", () => {
 
     // The list must have refreshed to include the project just created.
     const projectButton = await screen.findByRole("button", { name: /sample_project/ });
+    const callsBeforeReopen = fetchMock.mock.calls.length;
     fireEvent.click(projectButton);
 
-    // Reopening goes through GET /projects/:projectId again — once when
-    // leaving initial setup for detail, once more when reopened from the list.
+    // Reopening reads the project again rather than showing whatever was on screen before.
+    //
+    // This used to assert an exact total of two GETs. That number was never the point — it was a stand-in for
+    // "reopening refetches" — and it broke the moment anything else on the page also needed the project (the
+    // pipeline sidebar now reads it to show how far the project has got). Counting only what happens after
+    // the click keeps the guarantee and stops the assertion from failing for unrelated reasons.
     await screen.findByText("sample_project");
     expect(screen.getByText("우주를 여행하는 고양이")).toBeTruthy();
-    expect(fetchMock.mock.calls.filter(([url]) => String(url) === "/projects/sample_project")).toHaveLength(2);
+    const reopenReads = fetchMock.mock.calls
+      .slice(callsBeforeReopen)
+      .filter(([url]) => String(url) === "/projects/sample_project");
+    expect(reopenReads.length).toBeGreaterThan(0);
   });
 
   it("re-fetches GET /projects on a freshly rendered App instance and shows a project the Backend already knows about", async () => {
@@ -213,6 +221,56 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "프로젝트 목록으로" }));
     expect(await screen.findByText("아직 생성된 프로젝트가 없습니다.")).toBeTruthy();
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/settings/providers"))).toBe(false);
+  });
+
+  it("lights the pipeline from the project's own progress, and navigating does not change it", async () => {
+    // The filled dots used to come from the screen being viewed, so clicking a step visually "un-finished"
+    // everything after it — the list looked like progress but answered a different question.
+    const project: Project = {
+      id: "sample_project",
+      topic: "우주를 여행하는 고양이",
+      projectType: "short_project",
+      workflowState: WorkflowState.WaitingForVideoConfirmation,
+      createdAt: "2026-08-21T00:00:00.000Z",
+      updatedAt: "2026-08-21T00:00:00.000Z",
+      scenes: [],
+      warnings: [],
+      errors: [],
+    };
+    const fetchMock = vi.fn<FakeFetch>(async (input) => {
+      const url = String(input).split("?")[0]!;
+      if (url === "/projects") return jsonResponse(200, { projects: [project] });
+      if (url === "/projects/sample_project") return jsonResponse(200, { project });
+      if (url === "/projects/sample_project/assets/mappings") return jsonResponse(200, { mappings: [] });
+      if (url === "/projects/sample_project/assets/mapping-review") {
+        return jsonResponse(200, {
+          review: {
+            projectId: "sample_project", mappingRevision: 0, scriptRevision: 0, scriptFingerprint: "",
+            status: "waiting", approvedAt: null, approvedBy: null, textOnlyConfirmed: false, legacyConfirmed: false, reviewedScenes: [],
+          },
+        });
+      }
+      if (url === "/projects/sample_project/settings") return jsonResponse(404, { code: "PROJECT_NOT_FOUND", message: "" });
+      return jsonResponse(404, { code: "PROJECT_NOT_FOUND", message: "" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /sample_project/ }));
+
+    const stepStates = async () => {
+      const nav = await screen.findByRole("navigation", { name: "단기 프로젝트 진행 단계" });
+      return [...nav.querySelectorAll("button")].map((button) => button.getAttribute("data-step-state"));
+    };
+
+    // WAITING_FOR_VIDEO_CONFIRMATION: 대본·참고 이미지 연결·장면 이미지 done, 영상 보내기 전 확인 current.
+    await waitFor(async () =>
+      expect(await stepStates()).toEqual(["done", "done", "done", "current", "upcoming", "upcoming"]));
+
+    fireEvent.click(screen.getByRole("button", { name: "참고 이미지 연결" }));
+    await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
+    // Same lights after moving backwards through the list.
+    expect(await stepStates()).toEqual(["done", "done", "done", "current", "upcoming", "upcoming"]);
   });
 
   it("opens 참고 이미지 연결 검토 from a project's detail view and returns to that same detail on back", async () => {

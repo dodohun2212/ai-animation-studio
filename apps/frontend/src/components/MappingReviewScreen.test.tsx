@@ -64,8 +64,11 @@ describe("MappingReviewScreen", () => {
 
     render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
     await screen.findByText("캐릭터 자산");
-    expect(within(mappingList()).getAllByRole("listitem")).toHaveLength(2);
+    // `mappingB` is excluded, and excluded connections are out of the list by default — "제외" that leaves the
+    // row looking exactly as present as the ones in use reads as if it had not taken effect.
+    expect(within(mappingList()).getAllByRole("listitem")).toHaveLength(1);
 
+    // Asking for 제외됨 by name is an explicit request to see them, so it overrides that default.
     fireEvent.change(screen.getByLabelText("상태"), { target: { value: "excluded" } });
     await waitFor(() => expect(within(mappingList()).getAllByRole("listitem")).toHaveLength(1));
     expect(screen.getByText("배경 자산")).toBeTruthy();
@@ -75,8 +78,13 @@ describe("MappingReviewScreen", () => {
     await waitFor(() => expect(within(mappingList()).getAllByRole("listitem")).toHaveLength(1));
     expect(screen.getByText("캐릭터 자산")).toBeTruthy();
 
+    // Scene 3 matches only the excluded one, so the list is empty until 보기 is pressed — and the line above
+    // the list is what says so, rather than leaving the filter looking broken.
     fireEvent.change(screen.getByLabelText("유형"), { target: { value: "" } });
     fireEvent.change(screen.getByLabelText("장면"), { target: { value: "3" } });
+    await waitFor(() => expect(within(mappingList()).queryAllByRole("listitem")).toHaveLength(0));
+
+    fireEvent.click(screen.getByTestId("toggle-excluded"));
     await waitFor(() => expect(within(mappingList()).getAllByRole("listitem")).toHaveLength(1));
     expect(screen.getByText("배경 자산")).toBeTruthy();
   });
@@ -235,7 +243,35 @@ describe("MappingReviewScreen", () => {
     render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
     const definition = await screen.findByTestId("reference-image-definition");
     expect(definition.textContent).toContain("등장 캐릭터");
-    expect(definition.textContent).toContain("대본을 쓸 때 글로만");
+    // The settings choices now DO seed this list (syncAutoMappings), so the old "자동으로 올라오지 않습니다"
+    // wording became false the moment that shipped. What stays true is the two-channel split.
+    expect(definition.textContent).toContain("자동으로 올라옵니다");
+    expect(definition.textContent).toContain("그림에는 이미지로, 대본에는 글로");
+  });
+
+  it("keeps excluded connections out of the list until asked for, since there is no delete", async () => {
+    const kept = makeAsset({ assetId: "ASSET-KEEP", displayName: "쓰는 그림" });
+    const dropped = makeAsset({ assetId: "ASSET-DROP", displayName: "안 쓰는 그림" });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input).split("?")[0]!;
+      if (url === "/projects/sample_project/assets/mappings") return jsonResponse(200, { mappings: [
+        makeMapping({ mappingId: "MAP-KEEP", assetId: kept.assetId, status: "confirmed" }),
+        makeMapping({ mappingId: "MAP-DROP", assetId: dropped.assetId, status: "excluded" }),
+      ] });
+      if (url === "/projects/sample_project/assets/mapping-review") return jsonResponse(200, { review: makeReview({}) });
+      if (url === `/assets/${kept.assetId}`) return jsonResponse(200, { asset: kept, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false });
+      if (url === `/assets/${dropped.assetId}`) return jsonResponse(200, { asset: dropped, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false });
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    await screen.findByText("쓰는 그림");
+    // Leaving it in the list made 제외 look like it had not worked.
+    expect(screen.queryByText("안 쓰는 그림")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("toggle-excluded"));
+    expect(await screen.findByText("안 쓰는 그림")).toBeTruthy();
   });
 
   it("connects an Asset Library image to the project — the step that had no entry point at all", async () => {
@@ -315,7 +351,8 @@ describe("MappingReviewScreen", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
-    await screen.findByText("안 쓰기로 한 그림");
+    // The excluded row itself is hidden by default now, so wait on the line that reports it instead.
+    await screen.findByTestId("toggle-excluded");
     fireEvent.click(within(screen.getByRole("form", { name: "연결할 이미지 검색" })).getByRole("button", { name: "검색" }));
 
     const candidates = await screen.findByRole("list", { name: "연결할 이미지 후보" });

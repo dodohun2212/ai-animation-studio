@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { LongProject, Project } from "@ai-animation-studio/shared";
+import { WorkflowState } from "@ai-animation-studio/shared";
+import { getProject } from "./api/projectsApi.js";
 
 import heroRing from "./assets/hero-ring.png";
 import heroLandscape from "./assets/hero-landscape.png";
@@ -273,35 +275,86 @@ function shortPipelineTarget(stepName: ShortPipelineStepName, projectId: string,
   }
 }
 
-/** A vertical read of where the current project sits in the fixed short-project pipeline — position only, not a claim about backend-verified completion (ProjectDetail's WorkflowProgressBar is the source of truth for that). */
+/**
+ * How far the project itself has actually got, as an index into SHORT_PROJECT_PIPELINE. `-1` means nothing has
+ * started. Several states share a step because they are phases of the same one (making images, images ready,
+ * reviewing images are all "장면 이미지"). Failure states light nothing: whatever the run reached, it is not a
+ * position the person can read progress from.
+ */
+const PIPELINE_REACH: Readonly<Record<WorkflowState, number>> = {
+  [WorkflowState.Init]: -1,
+  [WorkflowState.Ready]: 0,
+  [WorkflowState.GeneratingStory]: 0,
+  [WorkflowState.WaitingForAssetMappingReview]: 1,
+  [WorkflowState.AssetMappingApproved]: 2,
+  [WorkflowState.GeneratingImages]: 2,
+  [WorkflowState.ImagesReady]: 2,
+  [WorkflowState.ImagesReview]: 2,
+  [WorkflowState.WaitingForVideoConfirmation]: 3,
+  [WorkflowState.GeneratingVideos]: 4,
+  [WorkflowState.Interrupted]: 4,
+  [WorkflowState.VideosReady]: 4,
+  [WorkflowState.ReviewingVideos]: 4,
+  [WorkflowState.VideosApproved]: 5,
+  [WorkflowState.Rendering]: 5,
+  [WorkflowState.Completed]: 5,
+  [WorkflowState.Failed]: -1,
+  [WorkflowState.Cancelled]: -1,
+};
+
+/**
+ * Where the project stands in the fixed short-project pipeline.
+ *
+ * The filled dots used to be derived from the screen being viewed, which meant simply clicking a step
+ * "un-completed" everything after it and "completed" everything before it — the list answered "where am I
+ * looking" while looking exactly like an answer to "how far have I got". Now the dots come from the project's
+ * own workflow state and do not move when you navigate; the row you are viewing is marked separately.
+ */
 function ShortProjectPipeline({ screen, onNavigate }: { screen: Screen; onNavigate: (screen: Screen) => void }) {
-  if (!SHORT_PIPELINE_CONTEXT_SCREENS.has(screen.name) || !("projectId" in screen)) return null;
-  const projectId = screen.projectId;
-  const currentIndex = SHORT_PROJECT_PIPELINE.findIndex((step) => step.name === screen.name);
+  const inContext = SHORT_PIPELINE_CONTEXT_SCREENS.has(screen.name) && "projectId" in screen;
+  const projectId = inContext ? (screen as { projectId: string }).projectId : null;
+  const [reached, setReached] = useState(-1);
+
+  useEffect(() => {
+    if (!projectId) { setReached(-1); return; }
+    let cancelled = false;
+    getProject(projectId)
+      .then((response) => { if (!cancelled) setReached(PIPELINE_REACH[response.project.workflowState] ?? -1); })
+      // Silent: this only decides how many dots are filled. A failed read leaves the list unlit rather than
+      // replacing the sidebar with an error nobody can act on from here.
+      .catch(() => { if (!cancelled) setReached(-1); });
+    return () => { cancelled = true; };
+    // Re-read on every screen change too: finishing a step is exactly what moves this, and the user lands on
+    // another screen the moment it happens.
+  }, [projectId, screen.name]);
+
+  if (!inContext || !projectId) return null;
   return (
     <nav aria-label="단기 프로젝트 진행 단계" className="mt-6 flex flex-col gap-0.5 border-t border-white/10 pt-6">
       {SHORT_PROJECT_PIPELINE.map((step, index) => {
-        const isCurrent = step.name === screen.name;
-        const isPast = currentIndex >= 0 && index < currentIndex;
+        const viewing = step.name === screen.name;
+        const done = index < reached;
+        const inProgress = index === reached;
         return (
           <button
             key={step.name}
             type="button"
-            aria-current={isCurrent ? "step" : undefined}
+            aria-current={viewing ? "step" : undefined}
+            data-step-state={done ? "done" : inProgress ? "current" : "upcoming"}
             onClick={() => onNavigate(shortPipelineTarget(step.name, projectId, screen))}
-            className="flex items-center gap-3 rounded-lg px-2 py-1.5 text-left text-sm"
+            className={`flex items-center gap-3 rounded-lg px-2 py-1.5 text-left text-sm ${viewing ? "bg-white/[0.07]" : "hover:bg-white/[0.04]"}`}
           >
             <span
               aria-hidden="true"
               className={
-                isCurrent
+                inProgress
                   ? "h-2.5 w-2.5 flex-shrink-0 rounded-full bg-violet-400 shadow-[0_0_0_4px_rgba(167,139,250,0.25)]"
-                  : isPast
-                    ? "h-2.5 w-2.5 flex-shrink-0 rounded-full bg-slate-400"
+                  : done
+                    ? "h-2.5 w-2.5 flex-shrink-0 rounded-full bg-violet-300/70"
                     : "h-2.5 w-2.5 flex-shrink-0 rounded-full border border-slate-600"
               }
             />
-            <span className={isCurrent ? "font-medium text-white" : isPast ? "text-slate-300" : "text-slate-500"}>
+            <span className={done || inProgress ? (viewing ? "font-medium text-white" : "text-slate-200") : viewing ? "font-medium text-slate-300" : "text-slate-500"}>
               {step.label}
             </span>
           </button>

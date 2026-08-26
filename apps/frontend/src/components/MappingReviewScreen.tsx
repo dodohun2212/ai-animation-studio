@@ -107,6 +107,12 @@ export function MappingReviewScreen({ projectId, onBack, onOpenImageGeneration }
   const [assetErrors, setAssetErrors] = useState<Record<string, DisplayError>>({});
 
   const [statusFilter, setStatusFilter] = useState<AssetMappingStatus | "">("");
+  /**
+   * "제외" means "do not use this one", and there is no delete — the row stayed in the list looking exactly
+   * as present as the ones in use, which reads as if the exclusion did not take. Out of the way by default,
+   * still reachable, because an excluded row is the record of a decision and sometimes gets undone.
+   */
+  const [showExcluded, setShowExcluded] = useState(false);
   const [typeFilter, setTypeFilter] = useState<AssetType | "">("");
   const [sceneFilter, setSceneFilter] = useState<SceneNumber | "">("");
 
@@ -339,7 +345,10 @@ export function MappingReviewScreen({ projectId, onBack, onOpenImageGeneration }
     }
   }
 
+  const excludedCount = (mappings ?? []).filter((mapping) => mapping.status === "excluded").length;
   const filteredMappings = (mappings ?? []).filter((mapping) => {
+    // Asking for 제외됨 in the status filter is an explicit request to see them, so it wins over the default.
+    if (mapping.status === "excluded" && !showExcluded && statusFilter !== "excluded") return false;
     if (statusFilter && mapping.status !== statusFilter) return false;
     if (typeFilter && assets[mapping.assetId]?.assetType !== typeFilter) return false;
     if (sceneFilter && !scopeIncludesScene(mapping.sceneScope, sceneFilter)) return false;
@@ -383,10 +392,13 @@ export function MappingReviewScreen({ projectId, onBack, onOpenImageGeneration }
           그림을 만들 때 AI에게 <strong className="text-slate-200">실제 이미지 파일로 함께 보내는 것</strong>입니다. 장면마다 따로 정합니다.
         </p>
         <p className="mt-2">
-          프로젝트 설정의 <span className="text-slate-300">등장 캐릭터</span>·<span className="text-slate-300">전체 분위기 Asset</span>·
-          <span className="text-slate-300">장면 참고 Asset</span>은 <strong className="text-slate-200">이것과 다릅니다</strong> —
-          그쪽은 <strong className="text-slate-200">대본을 쓸 때 글로만</strong> 전달되고, 그림 만들 때 이미지로 붙지는 않습니다.
-          설정에서 골랐다고 이 목록에 자동으로 올라오지 않습니다.
+          프로젝트 설정에서 고른 <span className="text-slate-300">등장 캐릭터</span>·<span className="text-slate-300">전체 분위기 Asset</span>·
+          <span className="text-slate-300">장면 참고 Asset</span>은 <strong className="text-slate-200">설정을 저장할 때 이 목록에 자동으로 올라옵니다</strong>
+          (<span className="text-violet-300">자동으로 연결된 항목</span>이라고 표시됩니다). 같은 선택이 그림에는 이미지로, 대본에는 글로 함께 전달됩니다.
+        </p>
+        <p className="mt-2">
+          그래서 이 화면에서 할 일은 <strong className="text-slate-200">조정</strong>입니다 — 특정 장면에만 붙이거나, 설정에 없는 것을 더하거나,
+          쓰지 않을 연결을 빼는 것.
         </p>
       </div>
       <p className="text-sm text-slate-400">
@@ -618,6 +630,19 @@ export function MappingReviewScreen({ projectId, onBack, onOpenImageGeneration }
       {mappingsLoading && !mappings && <Spinner label="Mapping을 불러오는 중..." />}
       {mappingsError && (
         <p role="alert" data-testid="mappings-error" data-error-code={mappingsError.code} className="text-sm text-rose-400">{mappingsError.message}</p>
+      )}
+      {excludedCount > 0 && statusFilter !== "excluded" && (
+        <p className="text-xs text-slate-500">
+          쓰지 않기로 한 연결 {excludedCount}개는 {showExcluded ? "함께 보이고 있습니다" : "목록에서 숨겼습니다"}.{" "}
+          <button
+            type="button"
+            data-testid="toggle-excluded"
+            className="text-slate-300 underline underline-offset-2 hover:text-slate-100"
+            onClick={() => setShowExcluded((shown) => !shown)}
+          >
+            {showExcluded ? "숨기기" : "보기"}
+          </button>
+        </p>
       )}
       {mappings && mappings.length === 0 && !mappingsLoading && <p className="text-slate-400">등록된 참고 이미지 연결이 없습니다.</p>}
 
