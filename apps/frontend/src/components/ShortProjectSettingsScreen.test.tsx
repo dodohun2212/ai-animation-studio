@@ -94,7 +94,7 @@ describe("ShortProjectSettingsScreen", () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
-  it("omits the setup banner and finish button when reopened later for an existing project", async () => {
+  it("omits the setup banner when reopened later, but still offers a way out at the bottom", async () => {
     const fetchMock = stubFetchByRoute({
       "GET /projects/sample_project/settings": { settings },
       "GET /projects/sample_project/settings/cast": { cast: [] },
@@ -106,8 +106,12 @@ describe("ShortProjectSettingsScreen", () => {
 
     await screen.findByDisplayValue("별의 지도");
     expect(screen.queryByTestId("just-created-notice")).toBeNull();
+    // The first-run wording is gone...
     expect(screen.queryByTestId("finish-setup-button")).toBeNull();
     expect(screen.getByRole("button", { name: "프로젝트로 돌아가기" })).toBeTruthy();
+    // ...but the page still ends on a way out. Four sections sit below the save button, and without this the
+    // only exit was scrolling all the way back to the top.
+    expect(screen.getByTestId("settings-done-button")).toBeTruthy();
   });
 
   it("blocks empty project name before sending PATCH", async () => {

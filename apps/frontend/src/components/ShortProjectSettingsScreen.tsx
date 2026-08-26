@@ -998,11 +998,25 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
       {state.settings && <CastEditor projectId={projectId} />}
       {state.settings && <AssetReferenceEditor projectId={projectId} />}
       {state.settings && <ContinuityEditor projectId={projectId} />}
-      {state.settings && justCreated && (
-        <div className="flex justify-end">
-          <button type="button" data-testid="finish-setup-button" className={primaryButton} onClick={onBack}>
-            설정 완료 · 계속 진행하기
-          </button>
+      {/* The page used to end here with nothing — the only way out was scrolling back past four sections to the
+          돌아가기 at the top. Worse, the finish button existed only right after creation, so anyone reopening
+          settings later hit a dead end. The bar now always renders; only its wording changes.
+          The note is not filler: the three sections above save on every click, the form at the top does not. */}
+      {state.settings && (
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-white/10 pt-4">
+          <p className="mr-auto max-w-md text-xs text-slate-500">
+            등장 캐릭터·참고 Asset·이전 장면 연결은 고칠 때마다 바로 저장됩니다. 맨 위 상자는{" "}
+            <span className="text-slate-400">설정 저장</span>을 눌러야 반영됩니다.
+          </p>
+          {justCreated ? (
+            <button type="button" data-testid="finish-setup-button" className={primaryButton} onClick={onBack}>
+              설정 완료 · 계속 진행하기
+            </button>
+          ) : (
+            <button type="button" data-testid="settings-done-button" className={primaryButton} onClick={onBack}>
+              설정 마치고 프로젝트로
+            </button>
+          )}
         </div>
       )}
     </section>
