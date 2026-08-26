@@ -76,6 +76,19 @@ export interface VideoPromptResult {
   omittedSections: string[];
 }
 
+/**
+ * Deliberately sends no character/subject description at all — the first-frame image already carries that, and
+ * Runway's own Gen-4 Video Prompting Guide warns that "reiterating elements that exist within the image in high
+ * detail can lead to reduced motion or unexpected results." This function's sections are all motion/camera/
+ * pacing description for exactly that reason; `suffix` below ("Maintain stable identity...") is what actually
+ * holds identity steady, not a redundant physical description (`.claude-bridge` Round 172 — raised as a possible
+ * gap, verified against Runway's own docs, and closed as intentional design instead).
+ *
+ * Also never add negative phrasing here (an `Avoid: ...` line, the way image-prompt.ts's styleLineFor() does for
+ * OpenAI) — the same guide: "Gen-4 is designed to interpret prompts that describe what should happen... Negative
+ * phrasing is not supported and may produce unpredictable or even opposite results." The image side's Avoid
+ * pattern does not transfer here; Runway is a different model with the opposite behavior for negatives.
+ */
 export function promptFor(scene: StoredScene, previous: StoredScene | undefined, ratio: "720:1280" | "1280:720", clipDurationSeconds: number): VideoPromptResult {
   const orientation = ratio === "1280:720" ? "horizontal" : "vertical";
   const continuity = previous
