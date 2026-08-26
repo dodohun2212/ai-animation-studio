@@ -49,6 +49,41 @@ const GENERATED_APPROVAL_RESPONSE = {
   }),
 };
 
+const PROJECT_URL = "/projects/sample_project";
+const APPROVAL_URL = "/projects/sample_project/story/approval";
+
+/**
+ * Routes by URL instead of call order. The screen issues two independent requests on entry — the prompt
+ * preview and `GET /projects/:id` (which decides whether this project already has a script) — and their
+ * completion order is not fixed. An order-keyed `mockResolvedValueOnce` queue hands one caller the other's
+ * response, which surfaces as a malformed-response error rather than as the thing under test.
+ *
+ * The project defaults to Ready with no scenes: the first-run state every test below is written for.
+ */
+function stubByRoute(options: {
+  approval?: { status: number; body: unknown } | Promise<Response>;
+  project?: { status: number; body: unknown };
+} = {}): ReturnType<typeof vi.fn> {
+  return vi.fn((input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === APPROVAL_URL) {
+      if (!options.approval) throw new Error("Unexpected approval fetch");
+      return options.approval instanceof Promise
+        ? options.approval
+        : Promise.resolve(jsonResponse(options.approval.status, options.approval.body));
+    }
+    if (url === PROJECT_URL) {
+      const project = options.project ?? { status: 200, body: { project: makeProject() } };
+      return Promise.resolve(jsonResponse(project.status, project.body));
+    }
+    return Promise.resolve(jsonResponse(200, { preview: PREVIEW }));
+  });
+}
+
+function approvalCalls(fetchMock: ReturnType<typeof vi.fn>): unknown[][] {
+  return fetchMock.mock.calls.filter(([url]) => String(url) === APPROVAL_URL);
+}
+
 function renderScreen(fetchMock: ReturnType<typeof vi.fn>) {
   vi.stubGlobal("fetch", fetchMock);
   return render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} />);
@@ -70,9 +105,9 @@ describe("StoryPromptScreen", () => {
     expect(screen.getByText("미리보기를 불러오는 중...")).toBeTruthy();
     await screen.findByDisplayValue(PREVIEW.originalPrompt);
 
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/projects/sample_project/story/preview");
-    expect(init.method).toBe("POST");
+    const previewCall = fetchMock.mock.calls.find(([url]) => String(url) === "/projects/sample_project/story/preview");
+    expect(previewCall).toBeTruthy();
+    expect((previewCall![1] as RequestInit).method).toBe("POST");
   });
 
   it("shows a safe error instead of the raw backend message when the preview request fails", async () => {
@@ -108,7 +143,7 @@ describe("StoryPromptScreen", () => {
 
     const alert = await screen.findByTestId("validation-error");
     expect(alert.textContent).toBe("대본 지시문를 입력해야 합니다.");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(approvalCalls(fetchMock)).toHaveLength(0);
   });
 
   it("does not call the approval endpoint on the first click — it only opens an explicit confirmation panel", async () => {
@@ -122,8 +157,8 @@ describe("StoryPromptScreen", () => {
     const panel = await screen.findByTestId("approve-confirm-panel");
     expect(panel).toBeTruthy();
     expect(screen.getByRole("button", { name: "네, 승인을 전송합니다" })).toBeTruthy();
-    // Only the preview POST has happened — the first click never sent an approval request.
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // The first click never sent an approval request — it only opened the panel.
+    expect(approvalCalls(fetchMock)).toHaveLength(0);
   });
 
   it("returns to editing without sending anything when the confirmation panel is cancelled", async () => {
@@ -138,29 +173,25 @@ describe("StoryPromptScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "돌아가기" }));
 
     expect(screen.queryByTestId("approve-confirm-panel")).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(approvalCalls(fetchMock)).toHaveLength(0);
     expect(textarea()).not.toBeDisabled();
   });
 
   it("submits an explicit approved:true POST only after the second, final confirmation click", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { preview: PREVIEW }))
-      .mockResolvedValueOnce(jsonResponse(200, APPROVAL_RESPONSE));
+    const fetchMock = stubByRoute({ approval: { status: 200, body: APPROVAL_RESPONSE } });
     renderScreen(fetchMock);
 
     await screen.findByDisplayValue(PREVIEW.originalPrompt);
     fireEvent.change(textarea(), { target: { value: "수정된 프롬프트" } });
     fireEvent.click(screen.getByRole("button", { name: "이 프롬프트로 승인" }));
     await screen.findByTestId("approve-confirm-panel");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(approvalCalls(fetchMock)).toHaveLength(0);
 
     fireEvent.click(screen.getByRole("button", { name: "네, 승인을 전송합니다" }));
 
     await screen.findByTestId("approved-message");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
-    expect(url).toBe("/projects/sample_project/story/approval");
+    expect(approvalCalls(fetchMock)).toHaveLength(1);
+    const init = approvalCalls(fetchMock)[0]![1] as RequestInit;
     expect(init.method).toBe("POST");
     expect(JSON.parse(String(init.body))).toEqual({
       originalPromptSha256: PREVIEW.originalPromptSha256,
@@ -170,10 +201,7 @@ describe("StoryPromptScreen", () => {
   });
 
   it("shows the generated six scene numbers after final approval produces WAITING_FOR_ASSET_MAPPING_REVIEW", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { preview: PREVIEW }))
-      .mockResolvedValueOnce(jsonResponse(200, GENERATED_APPROVAL_RESPONSE));
+    const fetchMock = stubByRoute({ approval: { status: 200, body: GENERATED_APPROVAL_RESPONSE } });
     renderScreen(fetchMock);
 
     await screen.findByDisplayValue(PREVIEW.originalPrompt);
@@ -195,10 +223,7 @@ describe("StoryPromptScreen", () => {
       ...APPROVAL_RESPONSE,
       project: makeProject({ workflowState: WorkflowState.WaitingForAssetMappingReview, scenes: scenesOf(4) }),
     };
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { preview: PREVIEW }))
-      .mockResolvedValueOnce(jsonResponse(200, fourSceneResponse));
+    const fetchMock = stubByRoute({ approval: { status: 200, body: fourSceneResponse } });
     renderScreen(fetchMock);
 
     await screen.findByDisplayValue(PREVIEW.originalPrompt);
@@ -217,10 +242,7 @@ describe("StoryPromptScreen", () => {
   });
 
   it("does not show a generated-scenes panel when the approval response has no six-scene workflow state", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { preview: PREVIEW }))
-      .mockResolvedValueOnce(jsonResponse(200, APPROVAL_RESPONSE));
+    const fetchMock = stubByRoute({ approval: { status: 200, body: APPROVAL_RESPONSE } });
     renderScreen(fetchMock);
 
     await screen.findByDisplayValue(PREVIEW.originalPrompt);
@@ -234,10 +256,7 @@ describe("StoryPromptScreen", () => {
   });
 
   it("shows a stale-hash error with a refresh action and never leaks the raw backend message", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { preview: PREVIEW }))
-      .mockResolvedValueOnce(jsonResponse(409, { code: "STORY_PROMPT_STALE", message: "raw backend detail" }));
+    const fetchMock = stubByRoute({ approval: { status: 409, body: { code: "STORY_PROMPT_STALE", message: "raw backend detail" } } });
     renderScreen(fetchMock);
 
     await screen.findByDisplayValue(PREVIEW.originalPrompt);
@@ -254,14 +273,11 @@ describe("StoryPromptScreen", () => {
 
   it("prevents a duplicate approval POST while one is already in flight", async () => {
     let resolveApproval: (response: Response) => void = () => {};
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { preview: PREVIEW }))
-      .mockReturnValueOnce(
-        new Promise<Response>((resolve) => {
-          resolveApproval = resolve;
-        }),
-      );
+    const fetchMock = stubByRoute({
+      approval: new Promise<Response>((resolve) => {
+        resolveApproval = resolve;
+      }),
+    });
     renderScreen(fetchMock);
 
     await screen.findByDisplayValue(PREVIEW.originalPrompt);
@@ -274,9 +290,64 @@ describe("StoryPromptScreen", () => {
     expect(confirmButton).toBeDisabled();
     fireEvent.click(confirmButton);
 
-    expect(fetchMock).toHaveBeenCalledTimes(2); // 1 preview POST + exactly one approval POST
+    expect(approvalCalls(fetchMock)).toHaveLength(1); // the second click was swallowed, not queued
     resolveApproval(jsonResponse(200, APPROVAL_RESPONSE));
     await waitFor(() => expect(screen.queryByTestId("approve-confirm-panel")).toBeNull());
+  });
+
+  it("shows each scene's actual text and a way forward, not just the scene numbers", async () => {
+    const fetchMock = stubByRoute({ approval: { status: 200, body: GENERATED_APPROVAL_RESPONSE } });
+    const onOpenMappingReview = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} onOpenMappingReview={onOpenMappingReview} />);
+
+    await screen.findByDisplayValue(PREVIEW.originalPrompt);
+    fireEvent.click(screen.getByRole("button", { name: "이 프롬프트로 승인" }));
+    await screen.findByTestId("approve-confirm-panel");
+    fireEvent.click(screen.getByRole("button", { name: "네, 승인을 전송합니다" }));
+
+    // The script itself — the one thing a person wants to see here — used to be dropped on the floor.
+    const panel = await screen.findByTestId("generated-scenes");
+    expect(panel.textContent).toContain("Scene 1");
+    expect(panel.textContent).toContain("Scene 6");
+
+    fireEvent.click(screen.getByTestId("continue-to-mapping-review"));
+    expect(onOpenMappingReview).toHaveBeenCalledWith("sample_project");
+  });
+
+  it("replaces the prompt form with the existing script when this project's story already ran", async () => {
+    // The backend refuses a second story run (workflow_state must be Ready), and nothing ever resets it —
+    // so offering the prompt box again could only ever produce an error.
+    const fetchMock = stubByRoute({
+      project: { status: 200, body: { project: makeProject({ workflowState: WorkflowState.WaitingForAssetMappingReview, scenes: sixScenes() }) } },
+    });
+    const onOpenMappingReview = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} onOpenMappingReview={onOpenMappingReview} />);
+
+    const panel = await screen.findByTestId("story-already-generated");
+    expect(panel.textContent).toContain("대본이 이미 만들어졌습니다");
+    expect(panel.textContent).toContain("Scene 1");
+    // No dead end and no dead button.
+    expect(screen.queryByRole("button", { name: "이 프롬프트로 승인" })).toBeNull();
+    fireEvent.click(screen.getByTestId("existing-continue-to-mapping-review"));
+    expect(onOpenMappingReview).toHaveBeenCalledWith("sample_project");
+  });
+
+  it("renders a scene that is missing its script instead of crashing the whole screen", async () => {
+    // `project.mapper.ts` casts stored scenes to `Scene[]` unchecked and `isProject` never validates an
+    // element, so a scene with no `script` really does reach this component. It used to throw during render,
+    // which unmounts the app and leaves a blank page — the worst possible failure for a missing string.
+    const brokenScenes = [{ number: 1 }, { number: 2, script: "있는 문장" }] as unknown as Scene[];
+    const fetchMock = stubByRoute({
+      project: { status: 200, body: { project: makeProject({ workflowState: WorkflowState.WaitingForAssetMappingReview, scenes: brokenScenes }) } },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} />);
+
+    const panel = await screen.findByTestId("story-already-generated");
+    expect(panel.textContent).toContain("이 장면에는 대본 문장이 비어 있습니다.");
+    expect(panel.textContent).toContain("있는 문장");
   });
 
   it("shows what the story call costs before it is approved", async () => {
@@ -290,8 +361,8 @@ describe("StoryPromptScreen", () => {
     expect(estimate.textContent).toContain("$0.05");
     // The story call is per project, not per scene — the copy has to say so.
     expect(estimate.textContent).toContain("프로젝트당 1회");
-    // Opening the panel still sent nothing beyond the initial preview.
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Opening the panel still sent no approval request.
+    expect(approvalCalls(fetchMock)).toHaveLength(0);
   });
 
   it("shows the remaining monthly budget alongside the estimate when a credential is connected", async () => {

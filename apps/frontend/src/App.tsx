@@ -491,6 +491,7 @@ export function App() {
               <MappingReviewScreen
                 projectId={screen.projectId}
                 onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
+                onOpenImageGeneration={(projectId) => setScreen({ name: "imageGeneration", projectId })}
               />
             )}
             {screen.name === "settings" && (
@@ -504,6 +505,7 @@ export function App() {
               <StoryPromptScreen
                 projectId={screen.projectId}
                 onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
+                onOpenMappingReview={(projectId) => setScreen({ name: "mappingReview", projectId })}
               />
             )}
             {screen.name === "imageGeneration" && (

@@ -190,6 +190,54 @@ describe("MappingReviewScreen", () => {
     expect(screen.getByText("1, 2, 3, 4, 5, 6")).toBeTruthy();
   });
 
+  it("moves on to the image step once approval succeeds, instead of only refreshing a status line", async () => {
+    const review = makeReview({ scriptFingerprint: "a".repeat(64) });
+    const approved = makeReview({ scriptFingerprint: "a".repeat(64), status: "approved", approvedAt: "2026-08-22T00:00:00.000Z", approvedBy: "user", reviewedScenes: [1, 2] });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { mappings: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { review }))
+      .mockResolvedValueOnce(jsonResponse(200, { review: approved }));
+    vi.stubGlobal("fetch", fetchMock);
+    const onOpenImageGeneration = vi.fn();
+
+    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} onOpenImageGeneration={onOpenImageGeneration} />);
+    await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
+
+    fireEvent.click(screen.getByRole("button", { name: "연결 다 했음 · 다음 단계로" }));
+    await waitFor(() => expect(onOpenImageGeneration).toHaveBeenCalledWith("sample_project"));
+  });
+
+  it("offers a plain way forward when the review is already approved, and says the check is optional", async () => {
+    const approved = makeReview({ scriptFingerprint: "a".repeat(64), status: "approved", approvedAt: "2026-08-22T00:00:00.000Z", approvedBy: "user", reviewedScenes: [1, 2] });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { mappings: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { review: approved }));
+    vi.stubGlobal("fetch", fetchMock);
+    const onOpenImageGeneration = vi.fn();
+
+    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} onOpenImageGeneration={onOpenImageGeneration} />);
+    await screen.findByText("승인됨");
+
+    // Re-running the check is still offered, but its label no longer claims work that is already done.
+    expect(screen.getByTestId("approve-review-button").textContent).toBe("다시 검사하고 다음 단계로");
+    fireEvent.click(screen.getByTestId("skip-to-image-generation"));
+    expect(onOpenImageGeneration).toHaveBeenCalledWith("sample_project");
+    // Moving on this way sends nothing — only the two initial loads happened.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("separates 참고 이미지 from the Story-prompt-only settings, which is what made the name ambiguous", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { mappings: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview({}) }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    const definition = await screen.findByTestId("reference-image-definition");
+    expect(definition.textContent).toContain("등장 캐릭터");
+    expect(definition.textContent).toContain("대본을 쓸 때 글로만");
+  });
+
   it("shows a safe mapped error with missing scene numbers when approval is blocked", async () => {
     const review = makeReview({ scriptFingerprint: "a".repeat(64) });
     const fetchMock = vi.fn()

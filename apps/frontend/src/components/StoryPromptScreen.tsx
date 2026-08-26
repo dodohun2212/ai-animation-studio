@@ -3,6 +3,7 @@ import type { BudgetPreview, Scene, StoryPromptPreview } from "@ai-animation-stu
 import { WorkflowState, STORY_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 
 import { approveStoryPrompt, createStoryPromptPreview, toStoryDisplayError } from "../api/storyPromptApi.js";
+import { getProject } from "../api/projectsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
 import { BudgetLine } from "./ui/BudgetLine.js";
@@ -10,6 +11,8 @@ import { BudgetLine } from "./ui/BudgetLine.js";
 interface Props {
   projectId: string;
   onBack: () => void;
+  /** The next pipeline step. Optional so the screen still renders standalone in tests that do not navigate. */
+  onOpenMappingReview?: (projectId: string) => void;
 }
 
 type DisplayError = { code: string; message: string; details?: Record<string, unknown> };
@@ -23,7 +26,7 @@ interface ApprovedState {
   scenes: Scene[];
 }
 
-export function StoryPromptScreen({ projectId, onBack }: Props) {
+export function StoryPromptScreen({ projectId, onBack, onOpenMappingReview }: Props) {
   const [preview, setPreview] = useState<StoryPromptPreview | null>(null);
   /** Absent in the local fake execution mode, where the story call costs nothing. */
   const [budget, setBudget] = useState<BudgetPreview | undefined>(undefined);
@@ -37,6 +40,18 @@ export function StoryPromptScreen({ projectId, onBack }: Props) {
   const [approveError, setApproveError] = useState<DisplayError | null>(null);
   const [approved, setApproved] = useState<ApprovedState | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  /**
+   * The scenes this project ALREADY has, loaded on entry.
+   *
+   * Without this the screen looked identical on a second visit: same prompt box, same 승인 button — except the
+   * backend refuses. `StoryPromptService.approve` guards on `workflow_state !== WorkflowState.Ready`
+   * (story-prompt.service.ts), and nothing in the codebase ever sets a project back to `Ready` after the
+   * story runs. So on a project that already has a script, pressing 승인 could only ever produce an error.
+   * `null` = not loaded or unreadable; the screen then behaves exactly as it did before rather than
+   * blocking on a fetch that failed.
+   */
+  const [existing, setExisting] = useState<{ workflowState: WorkflowState; scenes: Scene[] } | null>(null);
 
   const loadRequest = useRef(0);
   const approveBusy = useRef(false);
@@ -65,6 +80,18 @@ export function StoryPromptScreen({ projectId, onBack }: Props) {
 
   useEffect(() => {
     void load();
+  }, [projectId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getProject(projectId)
+      .then((response) => {
+        if (!cancelled) setExisting({ workflowState: response.project.workflowState, scenes: response.project.scenes });
+      })
+      // Deliberately silent: this only decides which of two wordings to show. A failure here must not
+      // replace the screen with an error the user cannot act on.
+      .catch(() => { if (!cancelled) setExisting(null); });
+    return () => { cancelled = true; };
   }, [projectId]);
 
   function restoreOriginal(): void {
@@ -126,6 +153,73 @@ export function StoryPromptScreen({ projectId, onBack }: Props) {
   }
 
   const isStale = approveError?.code === "STORY_PROMPT_STALE";
+  /** Already ran, and cannot run again — see the `existing` comment above. */
+  const alreadyGenerated = existing !== null && existing.workflowState !== WorkflowState.Ready
+    && Array.isArray(existing.scenes) && existing.scenes.length > 0 && approved === null;
+
+  /**
+   * `Scene` is a claim, not a guarantee: `project.mapper.ts` hands the stored scene objects to the API with
+   * `stored.scenes as unknown as Scene[]`, and the client's `isProject` only checks `Array.isArray(scenes)` —
+   * no element is ever validated. So a scene saved before a field existed, or written by a different code
+   * path, can arrive without `script`, and `scene.script.trim()` then throws during render and takes the
+   * whole app down to a blank page. Read every field defensively; a missing one is a display problem, never
+   * a crash. (`ProjectDetail` already guards `narration` with the same `typeof` check, for the same reason.)
+   */
+  function textOf(value: unknown): string {
+    return typeof value === "string" ? value : "";
+  }
+
+  function SceneList({ scenes, testId }: { scenes: Scene[]; testId: string }) {
+    return (
+      <ol data-testid={testId} className="space-y-3">
+        {scenes.map((scene, index) => {
+          const number = typeof scene?.number === "number" ? scene.number : index + 1;
+          const script = textOf(scene?.script);
+          const narration = textOf(scene?.narration);
+          return (
+            <li key={number} data-testid={`generated-scene-${number}`} className="rounded-lg border border-white/5 bg-slate-900/50 p-3">
+              <p className="text-xs font-semibold text-violet-300">{number}번 장면</p>
+              {script.trim() ? (
+                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-300">{script}</p>
+              ) : (
+                <p className="mt-1 text-sm text-slate-500">이 장면에는 대본 문장이 비어 있습니다.</p>
+              )}
+              {narration.trim() && (
+                <p className="mt-2 border-t border-white/5 pt-2 text-sm text-slate-400">
+                  <span className="text-xs text-slate-500">읽어줄 문장 · </span>
+                  {narration}
+                </p>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    );
+  }
+
+  function NextSteps({ testId }: { testId: string }) {
+    return (
+      <div className="flex flex-wrap items-center gap-3 border-t border-white/10 pt-3">
+        {onOpenMappingReview && (
+          <button
+            type="button"
+            data-testid={testId}
+            className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)]"
+            onClick={() => onOpenMappingReview(projectId)}
+          >
+            다음: 참고 이미지 연결
+          </button>
+        )}
+        <button
+          type="button"
+          className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
+          onClick={onBack}
+        >
+          프로젝트 화면으로
+        </button>
+      </div>
+    );
+  }
 
   return (
     <section className="mt-8 max-w-3xl space-y-5">
@@ -151,7 +245,28 @@ export function StoryPromptScreen({ projectId, onBack }: Props) {
         </p>
       )}
 
-      {preview && (
+      {/* Second visit to a project whose script already exists. The prompt box and 승인 button are not shown at
+          all here — not disabled, not hidden behind a warning: pressing them can only produce
+          STORY_GENERATION_NOT_ALLOWED, so offering them is offering a dead end. What the person actually wants
+          at this point is to read what was written and move on, so that is what the screen becomes. */}
+      {alreadyGenerated && existing && (
+        <div data-testid="story-already-generated" className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6">
+          <div className="rounded-xl border border-amber-400/30 bg-amber-500/[0.07] p-3.5">
+            <p className="text-sm font-semibold text-amber-200">이 프로젝트는 대본이 이미 만들어졌습니다.</p>
+            <p className="mt-1 text-sm text-slate-300">
+              대본 생성은 프로젝트당 한 번만 됩니다. 같은 프로젝트에서 대본을 다시 만들 수는 없습니다 —
+              내용을 바꾸려면 아래 장면을 <span className="text-slate-200">장면 편집</span>에서 직접 고치거나,
+              설정을 바꿔 <span className="text-slate-200">새 프로젝트</span>를 만들어 주세요.
+            </p>
+            <p className="mt-1 text-xs text-slate-500">다시 만들 수 없으니 이 화면에서 비용이 나갈 일도 없습니다.</p>
+          </div>
+          <p className="text-sm font-semibold text-slate-200">지금 대본 · 장면 {existing.scenes.length}개</p>
+          <SceneList scenes={existing.scenes} testId="existing-scene-list" />
+          <NextSteps testId="existing-continue-to-mapping-review" />
+        </div>
+      )}
+
+      {preview && !alreadyGenerated && (
         <div className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6">
           <p className="text-sm text-slate-400">
             글자 수: {preview.characterCount} · 장면 수: {preview.sceneCount}
@@ -253,16 +368,19 @@ export function StoryPromptScreen({ projectId, onBack }: Props) {
               승인되었습니다. (<span className="tabular-nums" title={approved.approvedAt}>{formatDateTime(approved.approvedAt)}</span>)
             </p>
           )}
+          {/* This block used to list "1번 장면 … 6번 장면" and stop there. The approval response carries every
+              scene's actual text, so the one question a person has at this moment — "what did it write?" —
+              was answerable and went unanswered; the only way to read the script was to guess that 장면 편집
+              on the project screen holds it. And there was no way forward at all: no next button, just the
+              돌아가기 at the top of the page. Both are fixed here. */}
           {approved && approved.workflowState === WorkflowState.WaitingForAssetMappingReview && approved.scenes.length > 0 && (
-            <div data-testid="generated-scenes" className="space-y-2 rounded-xl border border-white/10 bg-slate-950/60 p-4">
+            <div data-testid="generated-scenes" className="space-y-3 rounded-xl border border-white/10 bg-slate-950/60 p-4">
               <p className="text-sm font-semibold text-slate-200">대본에서 {approved.scenes.length}개 장면이 생성되었습니다.</p>
-              <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-300">
-                {approved.scenes.map((scene) => (
-                  <li key={scene.number} data-testid={`generated-scene-${scene.number}`}>
-                    {scene.number}번 장면
-                  </li>
-                ))}
-              </ol>
+              <SceneList scenes={approved.scenes} testId="generated-scene-list" />
+              <p className="text-xs text-slate-500">
+                내용을 고치려면 프로젝트 화면의 <span className="text-slate-400">장면 편집</span>에서 장면마다 바꿀 수 있습니다.
+              </p>
+              <NextSteps testId="continue-to-mapping-review" />
             </div>
           )}
         </div>

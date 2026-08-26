@@ -23,7 +23,12 @@ import {
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
 
-interface Props { projectId: string; onBack: () => void }
+interface Props {
+  projectId: string;
+  onBack: () => void;
+  /** The next pipeline step (장면 이미지). Optional so the screen still renders standalone in tests. */
+  onOpenImageGeneration?: (projectId: string) => void;
+}
 
 type DisplayError = { code: string; message: string; details?: Record<string, unknown> };
 
@@ -87,7 +92,7 @@ function blockedReason(mappings: ProjectAssetMapping[] | null, details: Record<s
   return "아직 확인하지 않은 연결이 남아 있습니다. 아래 목록에서 확인 또는 제외를 눌러 주세요.";
 }
 
-export function MappingReviewScreen({ projectId, onBack }: Props) {
+export function MappingReviewScreen({ projectId, onBack, onOpenImageGeneration }: Props) {
   const [mappings, setMappings] = useState<ProjectAssetMapping[] | null>(null);
   const [mappingsError, setMappingsError] = useState<DisplayError | null>(null);
   const [mappingsLoading, setMappingsLoading] = useState(true);
@@ -255,6 +260,9 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
     try {
       const response = await approveProjectAssetMappingReview(projectId, { scriptFingerprint: review.scriptFingerprint });
       setReview(response.review);
+      // The button said "다음 단계로" and then went nowhere — it only refreshed a status line that, on a
+      // second visit, already read 승인됨. Nothing on screen changed, so it read as a dead button.
+      if (response.review.status === "approved") onOpenImageGeneration?.(projectId);
     } catch (caught) {
       setReviewMutationError(toMappingDisplayError(caught));
     } finally {
@@ -295,6 +303,24 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
       <p className="text-sm text-slate-400">
         각 장면이 어떤 이미지를 참고할지 정해둔 목록입니다. <strong className="text-slate-200">직접 연결한 것은 연결하는 순간 확정</strong>됩니다 — 여기서 다시 승인할 필요는 없습니다.
       </p>
+      {/* "참고 이미지"가 프로젝트 설정의 등장 캐릭터·분위기 Asset과 같은 것인지 헷갈린다는 지적을 받았다. 실제로
+          둘은 완전히 다른 경로다: 설정 쪽 셋은 대본 프롬프트의 텍스트 자리표시자로만 들어가고
+          (story-prompt.service.ts의 character_cast_metadata / atmosphere_asset_metadata /
+          scene_reference_asset_metadata), 그림을 만들 때 실제 이미지 파일로 붙는 것은 이 화면의 연결뿐이다
+          (image-reference-selection.ts가 confirmed·enabled 매핑만 읽는다). 이름이 비슷해서 생긴 오해라
+          화면에서 직접 구분해 준다. */}
+      <div data-testid="reference-image-definition" className="rounded-xl border border-white/10 bg-slate-950/40 p-3.5 text-sm text-slate-400">
+        <p className="font-medium text-slate-300">여기서 말하는 &quot;참고 이미지&quot;란</p>
+        <p className="mt-1">
+          그림을 만들 때 AI에게 <strong className="text-slate-200">실제 이미지 파일로 함께 보내는 것</strong>입니다. 장면마다 따로 정합니다.
+        </p>
+        <p className="mt-2">
+          프로젝트 설정의 <span className="text-slate-300">등장 캐릭터</span>·<span className="text-slate-300">전체 분위기 Asset</span>·
+          <span className="text-slate-300">장면 참고 Asset</span>은 <strong className="text-slate-200">이것과 다릅니다</strong> —
+          그쪽은 <strong className="text-slate-200">대본을 쓸 때 글로만</strong> 전달되고, 그림 만들 때 이미지로 붙지는 않습니다.
+          설정에서 골랐다고 이 목록에 자동으로 올라오지 않습니다.
+        </p>
+      </div>
       <p className="text-sm text-slate-400">
         아래 버튼이 하는 일은 두 가지입니다: <strong className="text-slate-200">빠진 장면이 없는지 검사</strong>하고, 통과하면 다음 단계로 넘깁니다.
         이미지가 하나도 안 붙은 장면이 있으면 몇 번 장면인지 알려주고 막습니다.
@@ -358,13 +384,31 @@ export function MappingReviewScreen({ projectId, onBack }: Props) {
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
+            data-testid="approve-review-button"
             className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-3.5 py-1.5 text-xs font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
             onClick={() => void approve()}
             disabled={approvePending || !review}
           >
-            연결 다 했음 · 다음 단계로
+            {approvePending ? "검사하는 중…" : review?.status === "approved" ? "다시 검사하고 다음 단계로" : "연결 다 했음 · 다음 단계로"}
           </button>
-          <span className="text-xs text-slate-500">빠진 장면이 없는지 검사하고 다음 단계로 넘어갑니다.</span>
+          {/* Already approved once: re-running the check is a choice, not a requirement. Moving on needs its
+              own button, or the only way forward is one whose label implies work that is already done. */}
+          {review?.status === "approved" && onOpenImageGeneration && (
+            <button
+              type="button"
+              data-testid="skip-to-image-generation"
+              className={outlineButton}
+              disabled={approvePending}
+              onClick={() => onOpenImageGeneration(projectId)}
+            >
+              그냥 다음 단계로
+            </button>
+          )}
+          <span className="text-xs text-slate-500">
+            {review?.status === "approved"
+              ? "이미 승인된 상태입니다. 연결을 고쳤다면 다시 검사하고, 아니면 그냥 넘어가면 됩니다."
+              : "빠진 장면이 없는지 검사하고 다음 단계로 넘어갑니다."}
+          </span>
         </div>
         {reviewMutationError && (
           <div role="alert" data-testid="review-mutation-error" data-error-code={reviewMutationError.code}>
