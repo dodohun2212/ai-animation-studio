@@ -287,7 +287,10 @@ describe("local FFmpeg video merge", () => {
         throw new Error("unexpected audio command");
       };
       const audioLibrary = new AudioLibraryService(root, audioRunner);
-      const uploaded = await audioLibrary.upload({ buffer: Buffer.from("fake mp3 bytes"), originalname: "bgm.mp3", mimetype: "audio/mpeg" }, undefined);
+      const uploaded = await audioLibrary.upload(
+        { buffer: Buffer.from("fake mp3 bytes"), originalname: "bgm.mp3", mimetype: "audio/mpeg" },
+        { licenseKind: "self-made", attributionRequired: false },
+      );
 
       const calls: string[][] = [];
       const mergeRunner: MediaCommandRunner = async (arguments_) => {

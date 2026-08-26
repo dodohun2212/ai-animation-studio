@@ -1077,7 +1077,19 @@ export interface MergeVideosResponse {
   finalVideoPath: "videos/final/instagram_reel.mp4";
 }
 
-/** One track in the BGM library — a project-independent, user-supplied resource (distinct from both the Asset Library's input-material role and the Video Library's results-archive role; see VideoLibraryProjectSummary's doc comment for that distinction). Only "upload" exists today; source/license/attributionRequired/sourceUrl are already shaped for a future imported-track source without needing a later contract break (`.claude-bridge` Round 172 — Pixabay's own API covers images/video only, no music/audio endpoint, and its Terms of Service explicitly prohibits scraping the site to work around that, so external search/import is deferred pending a provider that actually has one). */
+/**
+ * One track in the BGM library — a project-independent, user-supplied resource (distinct from both the Asset
+ * Library's input-material role and the Video Library's results-archive role; see VideoLibraryProjectSummary's
+ * doc comment for that distinction). "upload" is the only source, permanently — not a placeholder for a later
+ * external search/import. Every clean, checked candidate provider failed for a different reason (`.claude-bridge`
+ * Round 172/173): Pixabay has no music/audio API at all and its Terms of Service prohibits scraping around that;
+ * Freesound's API exists but its catalog is overwhelmingly CC-BY (attribution required) and sound-effect-
+ * oriented, not music; Jamendo requires a separate paid license for commercial use; Meta Sound Collection's
+ * license covers using a track inside Instagram itself, not downloading it into a file uploaded elsewhere. A
+ * search feature over any CC source risks a user picking a track that turns out to require attribution only
+ * *after* they've already published a video with it — exactly the "found out too late" failure this whole
+ * feature area has been working to prevent everywhere else, not something to introduce here.
+ */
 export interface AudioLibraryTrack {
   trackId: string;
   title: string;
@@ -1085,9 +1097,13 @@ export interface AudioLibraryTrack {
   durationSeconds: number;
   bytes: number;
   source: "upload";
-  /** Present only for a future imported track — always absent for "upload" (the uploader owns the file and states no external license). */
-  license?: string;
-  attributionRequired?: boolean;
+  /** What the uploader themselves states about where this track came from — the app never verifies it (there is no provider integration to check against). Always present: required at upload time specifically because the moment of upload is the only point the uploader reliably still remembers this (`.claude-bridge` Round 173 — left optional at first, but a field left blank at upload almost never gets filled in later). */
+  licenseKind: "cc0" | "cc-by" | "purchased" | "self-made" | "other";
+  /** Whether publishing a video using this track requires crediting it (e.g. in the caption) — true for "cc-by", user-declared for "other", false otherwise. Read by both the BGM library (a persistent notice on the track) and the merge screen (surfaced again at the moment that matters — right before publishing, not just once at upload). */
+  attributionRequired: boolean;
+  /** The exact sentence the uploader wants used as the credit line, when attributionRequired is true — the app does not compose one on the uploader's behalf, since it cannot know the source's own required wording. */
+  attributionText?: string;
+  /** Free-text "where I got this" the uploader can optionally record, for their own future reference — never a live link the app fetches from. */
   sourceUrl?: string;
   addedAt: string;
 }
@@ -1095,8 +1111,14 @@ export interface GetAudioLibraryResponse { tracks: AudioLibraryTrack[]; }
 export interface UploadAudioTrackRequest {
   title?: string;
   artist?: string;
+  licenseKind: "cc0" | "cc-by" | "purchased" | "self-made" | "other";
+  attributionRequired: boolean;
+  attributionText?: string;
+  sourceUrl?: string;
 }
 export interface UploadAudioTrackResponse { track: AudioLibraryTrack; }
+/** BGM tracks are the user's own uploaded files, not paid AI-generation results (contrast the Video Library's deliberate no-delete policy) — mistakenly uploading the wrong file is common and low-stakes to undo, and the source file is still on the uploader's own machine. Matches the Asset Library's existing removal precedent rather than inventing a "hide" pseudo-state for the one library that doesn't need it. */
+export interface DeleteAudioTrackResponse { trackId: string; }
 
 /**
  * One short-project row in the cross-project video library (`.claude-bridge` Round 153/166) — an archive view of
@@ -1346,6 +1368,7 @@ export const API_ROUTES = {
   audioLibrary: "/audio/library",
   audioLibraryUpload: "/audio/library/upload",
   audioLibraryContent: (trackId: string) => `/audio/library/${encodeURIComponent(trackId)}/content`,
+  audioLibraryTrack: (trackId: string) => `/audio/library/${encodeURIComponent(trackId)}`,
   projectAssetMappings: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/assets/mappings`,
   projectAssetMapping: (projectId: string, mappingId: string) =>
     `/projects/${encodeURIComponent(projectId)}/assets/mappings/${encodeURIComponent(mappingId)}`,

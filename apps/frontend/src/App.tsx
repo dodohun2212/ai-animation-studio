@@ -12,6 +12,7 @@ import { ProjectList } from "./components/ProjectList.js";
 import { ProviderSettingsScreen } from "./components/ProviderSettingsScreen.js";
 import { AssetLibraryScreen } from "./components/AssetLibraryScreen.js";
 import { VideoLibraryScreen } from "./components/VideoLibraryScreen.js";
+import { AudioLibraryScreen } from "./components/AudioLibraryScreen.js";
 import { MappingReviewScreen } from "./components/MappingReviewScreen.js";
 import { ShortProjectSettingsScreen } from "./components/ShortProjectSettingsScreen.js";
 import { StoryPromptScreen } from "./components/StoryPromptScreen.js";
@@ -54,6 +55,7 @@ type Screen =
   | { name: "providerSettings" }
   | { name: "assets"; initialQuery?: string }
   | { name: "videoLibrary" }
+  | { name: "audioLibrary" }
   | { name: "archive" }
   | { name: "workflowGuide" }
   | { name: "longList" }
@@ -82,7 +84,7 @@ const SHORT_PROJECT_SCREEN_NAMES = new Set<Screen["name"]>([
   "imageGeneration", "narrationReview", "sceneEdit", "videoPreview", "videoWorkflow", "videoMerge",
 ]);
 
-type NavIconName = "home" | "long" | "library" | "film" | "archive" | "workflow" | "settings";
+type NavIconName = "home" | "long" | "library" | "film" | "music" | "archive" | "workflow" | "settings";
 
 function NavIcon({ name }: { name: NavIconName }) {
   const shared = {
@@ -125,6 +127,14 @@ function NavIcon({ name }: { name: NavIconName }) {
           <path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4" />
         </svg>
       );
+    case "music":
+      return (
+        <svg {...shared}>
+          <path d="M9 18V5l12-2v13" />
+          <circle cx="6" cy="18" r="3" />
+          <circle cx="18" cy="16" r="3" />
+        </svg>
+      );
     case "archive":
       return (
         <svg {...shared}>
@@ -152,11 +162,12 @@ function NavIcon({ name }: { name: NavIconName }) {
   }
 }
 
-type NavSection = "short" | "long" | "assets" | "videoLibrary" | "archive" | "workflowGuide" | "providerSettings";
+type NavSection = "short" | "long" | "assets" | "videoLibrary" | "audioLibrary" | "archive" | "workflowGuide" | "providerSettings";
 
 function navSectionFor(name: Screen["name"]): NavSection | null {
   if (name === "assets") return "assets";
   if (name === "videoLibrary") return "videoLibrary";
+  if (name === "audioLibrary") return "audioLibrary";
   if (name === "archive") return "archive";
   if (name === "workflowGuide") return "workflowGuide";
   if (name === "providerSettings") return "providerSettings";
@@ -173,6 +184,7 @@ function NavBar({ current, onNavigate }: { current: Screen["name"]; onNavigate: 
     { key: "long", icon: "long", label: "장기 프로젝트", target: { name: "longList" } },
     { key: "assets", icon: "library", label: "이미지 보관함", target: { name: "assets" } },
     { key: "videoLibrary", icon: "film", label: "영상 보관함", target: { name: "videoLibrary" } },
+    { key: "audioLibrary", icon: "music", label: "음원 보관함", target: { name: "audioLibrary" } },
     { key: "archive", icon: "archive", label: "보관함", target: { name: "archive" } },
     { key: "workflowGuide", icon: "workflow", label: "작업 워크플로우", target: { name: "workflowGuide" } },
     { key: "providerSettings", icon: "settings", label: "API 설정", target: { name: "providerSettings" } },
@@ -604,6 +616,7 @@ export function App() {
             )}
             {screen.name === "assets" && <AssetLibraryScreen onBack={() => setScreen({ name: "list" })} initialQuery={screen.initialQuery} />}
             {screen.name === "videoLibrary" && <VideoLibraryScreen onBack={() => setScreen({ name: "list" })} />}
+            {screen.name === "audioLibrary" && <AudioLibraryScreen onBack={() => setScreen({ name: "list" })} />}
             {screen.name === "sceneEdit" && (
               <SceneEditScreen
                 projectId={screen.projectId}

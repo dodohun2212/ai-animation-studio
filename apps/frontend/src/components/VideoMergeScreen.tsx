@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { MergeVideosResponse } from "@ai-animation-studio/shared";
+import type { AudioLibraryTrack, MergeAudioSettings, MergeVideosResponse } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
+import { getAudioLibrary } from "../api/audioLibraryApi.js";
 import { finalVideoContentUrl, mergeVideos, toVideoMergeDisplayError } from "../api/videoMergeApi.js";
 import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBridge.js";
 
@@ -45,6 +46,15 @@ function mergeContentSentence(mode: MediaMode | null): string | null {
   return "음성도 자막도 꺼져 있어 장면 영상만 이어 붙입니다.";
 }
 
+type AudioMode = MergeAudioSettings["mode"];
+
+/** Fixed labels, so the button below can say exactly what it is about to produce. */
+const AUDIO_MODE_LABELS: Record<AudioMode, string> = {
+  narration: "나레이션만",
+  "narration+bgm": "나레이션 + 배경음악",
+  silent: "무음",
+};
+
 export function VideoMergeScreen({ projectId, onBack }: Props) {
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -56,6 +66,11 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
   const [sceneCount, setSceneCount] = useState<number | null>(null);
   /** null until the project settings load, and stays null if they fail — the copy then claims nothing. */
   const [mediaMode, setMediaMode] = useState<MediaMode | null>(null);
+  /** null until the project loads: the default mode is derived from what this project actually has, never assumed. */
+  const [narrationAvailable, setNarrationAvailable] = useState<boolean | null>(null);
+  const [audioMode, setAudioMode] = useState<AudioMode | null>(null);
+  const [tracks, setTracks] = useState<AudioLibraryTrack[]>([]);
+  const [trackId, setTrackId] = useState("");
   const busy = useRef(false);
 
   // A project that already finished merging (revisited later, e.g. from the dashboard) should
@@ -66,6 +81,10 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
       .then((response) => {
         if (cancelled) return;
         setSceneCount(response.project.scenes.length);
+        // Derived, not assumed: a project that never generated narration cannot merge "narration only", and
+        // defaulting to it would label a silent video as a narrated one (`.claude-bridge` Round 163).
+        setNarrationAvailable(response.project.narrationAvailable);
+        setAudioMode(response.project.narrationAvailable ? "narration" : "silent");
         if (response.project.workflowState === WorkflowState.Completed && response.project.finalVideoPath === "videos/final/instagram_reel.mp4") {
           setResult({ project: response.project, finalVideoPath: response.project.finalVideoPath });
         }
@@ -80,6 +99,12 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
       .then(({ settings }) => {
         if (cancelled) return;
         setMediaMode({ narrationEnabled: settings.narrationEnabled, subtitlesEnabled: settings.subtitlesEnabled });
+      })
+      .catch(() => {});
+    // An empty library simply means the bgm option stays unavailable — never a reason to block merging.
+    getAudioLibrary()
+      .then((response) => {
+        if (!cancelled) setTracks(response.tracks);
       })
       .catch(() => {});
     return () => {
@@ -119,7 +144,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
     setPending(true);
     setError(null);
     try {
-      const response = await mergeVideos(projectId);
+      const response = await mergeVideos(projectId, audioSettings ?? undefined);
       setResult(response);
       setConfirmOpen(false);
     } catch (caught) {
@@ -131,6 +156,16 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
   }
 
   const contentSentence = mergeContentSentence(mediaMode);
+  const bgmSelectable = tracks.length > 0;
+  const selectedTrack = tracks.find((track) => track.trackId === trackId);
+  /** Undefined until the project has loaded — merging before then would send a mode derived from nothing. */
+  const audioSettings: MergeAudioSettings | null =
+    audioMode === null
+      ? null
+      : audioMode === "narration+bgm"
+        ? (trackId ? { mode: audioMode, trackId } : null)
+        : { mode: audioMode };
+  const modeUnready = audioMode === "narration+bgm" && !trackId;
 
   return (
     <section className="mt-8 max-w-2xl space-y-5">
@@ -154,6 +189,69 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
         {contentSentence ? ` ${contentSentence}` : ""}
       </p>
 
+      {/* An open setting, not a question: merging is free and takes seconds, so a confirmation dialog asking about
+          audio would train people to click through confirmations — the habit that costs money on the paid steps.
+          The button below says what the current choice will produce instead. */}
+      {!result && audioMode !== null && (
+        <fieldset data-testid="merge-audio-settings" className="space-y-2 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
+          <legend className="px-1 text-sm font-semibold text-slate-200">오디오</legend>
+          {(["narration", "narration+bgm", "silent"] as AudioMode[]).map((mode) => {
+            // Only offered when the project can actually produce it: narration needs generated narration audio,
+            // and bgm needs at least one uploaded track. An option that would fail is not an option.
+            const unavailable = (mode === "narration" && narrationAvailable === false)
+              || (mode === "narration+bgm" && !bgmSelectable);
+            return (
+              <label key={mode} className="flex items-start gap-2 text-sm text-slate-300" htmlFor={`merge-audio-${mode}`}>
+                <input
+                  id={`merge-audio-${mode}`}
+                  data-testid={`merge-audio-${mode}`}
+                  type="radio"
+                  name="merge-audio-mode"
+                  className="mt-1"
+                  checked={audioMode === mode}
+                  disabled={unavailable || pending || confirmOpen}
+                  onChange={() => setAudioMode(mode)}
+                />
+                <span>
+                  {AUDIO_MODE_LABELS[mode]}
+                  {mode === "silent" && <span className="text-slate-500"> — 인스타그램 앱에서 직접 음원을 붙일 때</span>}
+                  {mode === "narration" && narrationAvailable === false && (
+                    <span data-testid="merge-audio-narration-unavailable" className="text-slate-500"> — 이 프로젝트에는 나레이션이 아직 없습니다</span>
+                  )}
+                  {mode === "narration+bgm" && !bgmSelectable && (
+                    <span data-testid="merge-audio-bgm-unavailable" className="text-slate-500"> — 음원 보관함에 올린 음악이 없습니다</span>
+                  )}
+                </span>
+              </label>
+            );
+          })}
+          {audioMode === "narration+bgm" && bgmSelectable && (
+            <label className="block text-sm text-slate-300" htmlFor="merge-audio-track">
+              배경음악
+              <select
+                id="merge-audio-track"
+                data-testid="merge-audio-track"
+                className="mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                value={trackId}
+                disabled={pending || confirmOpen}
+                onChange={(event) => setTrackId(event.target.value)}
+              >
+                <option value="">고르지 않음</option>
+                {tracks.map((track) => (
+                  <option key={track.trackId} value={track.trackId}>{track.title}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          {/* Carried through to the merge screen so the reminder lands while the caption is still being written. */}
+          {selectedTrack?.attributionRequired && (
+            <p data-testid="merge-audio-attribution" className="text-xs text-amber-300">
+              이 음원은 캡션에 출처를 적어야 합니다.
+            </p>
+          )}
+        </fieldset>
+      )}
+
       {!result && (
         <div className="space-y-3">
           <button
@@ -161,10 +259,15 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
             className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
             data-testid="open-merge-confirm-button"
             onClick={openConfirmation}
-            disabled={confirmOpen || pending}
+            disabled={confirmOpen || pending || modeUnready}
           >
-            최종 영상으로 병합
+            {audioMode ? `${AUDIO_MODE_LABELS[audioMode]}으로 병합` : "최종 영상으로 병합"}
           </button>
+          {modeUnready && (
+            <p data-testid="merge-audio-track-required" className="text-xs text-amber-300">
+              배경음악을 고르면 병합할 수 있습니다.
+            </p>
+          )}
 
           {confirmOpen && (
             <div

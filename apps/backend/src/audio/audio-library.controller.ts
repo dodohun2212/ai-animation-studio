@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
-import { ArgumentsHost, BadRequestException, Catch, Controller, ExceptionFilter, Get, HttpException, Param, PayloadTooLargeException, Post, Body, UploadedFile, UseFilters, UseInterceptors, StreamableFile, Res } from "@nestjs/common";
+import { ArgumentsHost, BadRequestException, Catch, Controller, Delete, ExceptionFilter, Get, HttpException, Param, PayloadTooLargeException, Post, Body, UploadedFile, UseFilters, UseInterceptors, StreamableFile, Res } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { API_ROUTES, type GetAudioLibraryResponse, type UploadAudioTrackResponse } from "@ai-animation-studio/shared";
+import { API_ROUTES, type DeleteAudioTrackResponse, type GetAudioLibraryResponse, type UploadAudioTrackResponse } from "@ai-animation-studio/shared";
 
 import { AudioLibraryService } from "./audio-library.service.js";
 import { AudioApiException, audioContentUnavailable, audioStorageError, invalidAudioFile } from "./audio-api.error.js";
@@ -39,9 +39,14 @@ export class AudioLibraryController {
 
   @Post(API_ROUTES.audioLibraryUpload)
   @UseFilters(AudioUploadExceptionFilter)
-  @UseInterceptors(FileInterceptor("audio", { limits: { fileSize: 50 * 1024 * 1024, files: 1, fields: 2, parts: 4, fieldSize: 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor("audio", { limits: { fileSize: 50 * 1024 * 1024, files: 1, fields: 6, parts: 8, fieldSize: 1024 * 1024 } }))
   upload(@UploadedFile() file: MemoryUpload | undefined, @Body() body: unknown): Promise<UploadAudioTrackResponse> {
     return this.audio.upload(file, body);
+  }
+
+  @Delete(`${API_ROUTES.audioLibrary}/:trackId`)
+  remove(@Param("trackId") trackId: string): Promise<DeleteAudioTrackResponse> {
+    return this.audio.remove(trackId);
   }
 
   @Get(`${API_ROUTES.audioLibrary}/:trackId/content`)

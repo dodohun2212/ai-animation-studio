@@ -1,4 +1,4 @@
-import { API_ROUTES, type MergeVideosResponse } from "@ai-animation-studio/shared";
+import { API_ROUTES, type MergeAudioSettings, type MergeVideosResponse } from "@ai-animation-studio/shared";
 
 export class VideoMergeApiError extends Error {
   readonly code: string;
@@ -86,10 +86,15 @@ function toApiErrorShape(body: unknown): { code: string; message: string; detail
  * the six approved scene videos. This never contacts Runway, OpenAI, or any paid provider.
  * Only call this from the final step of an explicit user confirmation, never automatically.
  */
-export async function mergeVideos(projectId: string): Promise<MergeVideosResponse> {
+export async function mergeVideos(projectId: string, audio?: MergeAudioSettings): Promise<MergeVideosResponse> {
   let response: Response;
   try {
-    response = await fetch(API_ROUTES.videoMerge(projectId), { method: "POST" });
+    // Omitting the body entirely is not the same as sending an empty one: the server then keeps the project's
+    // own narration/subtitle toggles, which is the right behaviour for a caller that has no opinion. Only a
+    // caller that actually asked the user sends `audio`.
+    response = await fetch(API_ROUTES.videoMerge(projectId), audio
+      ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ audio }) }
+      : { method: "POST" });
   } catch {
     throw new VideoMergeApiError(NETWORK.code, NETWORK.message);
   }

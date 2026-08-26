@@ -248,6 +248,26 @@ describe("App", () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/settings/providers"))).toBe(false);
   });
 
+  it("reaches 음원 보관함 from the nav and asks only the audio library route", async () => {
+    const fetchMock = vi.fn<FakeFetch>(async (input) => {
+      const requestUrl = String(input);
+      if (requestUrl === "/projects") return jsonResponse(200, { projects: [] });
+      if (requestUrl === "/audio/library") return jsonResponse(200, { tracks: [] });
+      throw new Error(`Unexpected fetch call in test: ${requestUrl}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    await screen.findByText("아직 생성된 프로젝트가 없습니다.");
+    fetchMock.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "음원 보관함" }));
+    await screen.findByTestId("audio-library-empty");
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(["/audio/library"]);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/settings/providers"))).toBe(false);
+  });
+
   it("lights the pipeline from the project's own progress, and navigating does not change it", async () => {
     // The filled dots used to come from the screen being viewed, so clicking a step visually "un-finished"
     // everything after it — the list looked like progress but answered a different question.

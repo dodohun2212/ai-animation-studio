@@ -9,6 +9,14 @@ import { VideoMergeScreen } from "./VideoMergeScreen.js";
 const PROJECT_URL = "/projects/sample_project";
 const MERGE_URL = "/projects/sample_project/videos/merge";
 const SETTINGS_URL = "/projects/sample_project/settings";
+const AUDIO_LIBRARY_URL = "/audio/library";
+
+function makeTrack(overrides: Record<string, unknown> = {}) {
+  return {
+    trackId: "t1", title: "기록관의 밤", durationSeconds: 95, bytes: 2_400_000,
+    source: "upload", addedAt: "2026-08-26T18:00:00.000Z", ...overrides,
+  };
+}
 
 /** Only narrationEnabled/subtitlesEnabled matter to this screen; the rest is filler the response type requires. */
 function makeSettings(narrationEnabled: boolean, subtitlesEnabled: boolean) {
@@ -43,6 +51,7 @@ function renderScreen(
   mergeFetch: ReturnType<typeof vi.fn>,
   project: Partial<Project> = {},
   settings: { narrationEnabled: boolean; subtitlesEnabled: boolean } | "fails" = { narrationEnabled: false, subtitlesEnabled: false },
+  tracks: ReturnType<typeof makeTrack>[] = [],
 ) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input);
@@ -53,6 +62,7 @@ function renderScreen(
       if (settings === "fails") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "raw" });
       return jsonResponse(200, { settings: makeSettings(settings.narrationEnabled, settings.subtitlesEnabled) });
     }
+    if (url === AUDIO_LIBRARY_URL && !init) return jsonResponse(200, { tracks });
     const call = mergeFetch as unknown as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
     return call(input, init);
   });
@@ -63,6 +73,69 @@ function renderScreen(
 describe("VideoMergeScreen", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  // Regression: the default used to be "narration only" regardless of whether the project had any. A project
+  // that never generated narration would then be labelled as narrated while producing a silent video — the
+  // screen saying one thing and the file being another (`.claude-bridge` Round 163).
+  it("defaults to silent for a project with no narration, and refuses to offer the narration mode at all", async () => {
+    renderScreen(vi.fn(), { narrationAvailable: false });
+
+    await screen.findByTestId("merge-audio-settings");
+    expect(screen.getByTestId("merge-audio-silent")).toBeChecked();
+    expect(screen.getByTestId("merge-audio-narration")).toBeDisabled();
+    expect(screen.getByTestId("merge-audio-narration-unavailable")).toBeTruthy();
+    // The button states the outcome, so no confirmation dialog has to ask about audio.
+    expect(screen.getByTestId("open-merge-confirm-button").textContent).toContain("무음");
+  });
+
+  it("defaults to narration when the project actually has it", async () => {
+    renderScreen(vi.fn(), { narrationAvailable: true });
+
+    await screen.findByTestId("merge-audio-settings");
+    expect(screen.getByTestId("merge-audio-narration")).toBeChecked();
+    expect(screen.getByTestId("open-merge-confirm-button").textContent).toContain("나레이션만");
+  });
+
+  it("offers background music only once a track exists, and sends the chosen one with the merge", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    renderScreen(mergeFetch, { narrationAvailable: true }, { narrationEnabled: true, subtitlesEnabled: false }, [makeTrack()]);
+
+    await screen.findByTestId("merge-audio-settings");
+    expect(screen.getByTestId("merge-audio-narration+bgm")).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId("merge-audio-narration+bgm"));
+
+    // A mode that needs a track cannot merge until one is picked — the button would otherwise send an
+    // incomplete request and the server would reject it after the click.
+    expect(screen.getByTestId("open-merge-confirm-button")).toBeDisabled();
+    expect(screen.getByTestId("merge-audio-track-required")).toBeTruthy();
+
+    fireEvent.change(screen.getByTestId("merge-audio-track"), { target: { value: "t1" } });
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+
+    await waitFor(() => expect(mergeFetch).toHaveBeenCalled());
+    const [, init] = mergeFetch.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({ audio: { mode: "narration+bgm", trackId: "t1" } });
+  });
+
+  it("says why background music is unavailable instead of leaving a dead option", async () => {
+    renderScreen(vi.fn(), { narrationAvailable: true });
+
+    await screen.findByTestId("merge-audio-settings");
+    expect(screen.getByTestId("merge-audio-narration+bgm")).toBeDisabled();
+    expect(screen.getByTestId("merge-audio-bgm-unavailable").textContent).toContain("음원 보관함");
+  });
+
+  // The reminder has to reach the person while they are still writing the caption, not only on the library screen.
+  it("repeats the attribution requirement of the selected track on the merge screen", async () => {
+    renderScreen(vi.fn(), { narrationAvailable: true }, undefined, [makeTrack({ attributionRequired: true })]);
+
+    await screen.findByTestId("merge-audio-settings");
+    fireEvent.click(screen.getByTestId("merge-audio-narration+bgm"));
+    fireEvent.change(screen.getByTestId("merge-audio-track"), { target: { value: "t1" } });
+
+    expect(screen.getByTestId("merge-audio-attribution").textContent).toContain("출처");
   });
 
   it("shows the no-provider notice and never calls the merge endpoint before any confirmation", async () => {
@@ -109,7 +182,7 @@ describe("VideoMergeScreen", () => {
     expect(mergeFetch).not.toHaveBeenCalled();
   });
 
-  it("merges via POST /projects/:id/videos/merge with no body only after explicit confirmation, then shows the completed state", async () => {
+  it("merges via POST /projects/:id/videos/merge with the selected audio mode only after explicit confirmation, then shows the completed state", async () => {
     const response = makeResponse();
     const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, response));
     renderScreen(mergeFetch);
@@ -122,7 +195,7 @@ describe("VideoMergeScreen", () => {
     const [url, init] = mergeFetch.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(MERGE_URL);
     expect(init.method).toBe("POST");
-    expect(init.body).toBeUndefined();
+    expect(init.body).toBe(JSON.stringify({ audio: { mode: "silent" } }));
     expect(mergeFetch).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("final-video-path").textContent).toBe("저장 위치: videos/final/instagram_reel.mp4");
     expect(screen.queryByTestId("open-merge-confirm-button")).toBeNull();
