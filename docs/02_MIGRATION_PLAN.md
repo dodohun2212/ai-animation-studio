@@ -1218,4 +1218,9 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
 - [x] **`submit_interrupted` 전용 안내 문구(Round 155)**: 위 항목이 만든 새 실패 카테고리(`submit_interrupted`)가 프런트 일반 폴백("영상 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.")으로 떨어지면, 백엔드가 "모르면 재시도하지 않는다"로 일부러 멈춘 상태를 사용자가 일시적 오류로 오해해 직접 다시 눌러 이중 과금을 스스로 만들 위험이 있었다 — 전용 문구("요청이 이미 접수되었을 수 있어 자동으로 다시 보내지 않았습니다. Runway 계정에서 확인 후 다시 시도해 주세요.") 추가.
   - 검증: root typecheck 전부 통과, frontend 799개 전부 통과(+1 신규), root build 전부 통과. 백엔드·계약 미변경.
   - 커밋: `c5a5277`.
+- [x] **🔴 백엔드 — `PROVIDER_SETTINGS_ROOT` 미설정 시 fail-closed(Round 156)**: Round 154(`2bd166d`)가 고친 "process.cwd()가 실제 자격증명 디렉터리로 조용히 떨어지는" 근본 위험을 마저 닫음 — 그 라운드는 문제를 일으킨 통합 테스트 2개만 격리했을 뿐, `ProviderSettingsModule`의 기본값 자체(`process.env.PROVIDER_SETTINGS_ROOT ?? process.cwd()`)는 그대로 남아 있어서 다음 스크립트·디버그 도구·격리를 잊은 새 테스트가 같은 구멍에 다시 빠질 수 있었다. `requiredProviderSettingsRoot()`로 교체 — 환경변수가 없으면 조용히 `cwd()`로 떨어지지 않고 즉시 throw. 유일한 정당한 예외인 `main.ts`(실제 백엔드 부팅)만 부트스트랩 진입점에서 명시적으로 `process.cwd()`를 설정.
+  - **부수 효과 — 실제 `AppModule`을 부팅하는 테스트 파일 8개 전부 점검**: `PROVIDER_SETTINGS_ROOT`를 이미 오버라이드하던 3개(images/videos/story-generation, Round 154)는 무변경. 나머지 5개(`app.module.test.ts`, `assets`/`mappings`/`project-cast`/`static-frontend` 각 `*.app-module.integration.test.ts`)는 오버라이드가 전혀 없어 fail-closed 도입 즉시 워커가 죽었다 — 각자 자기만의 임시 디렉터리를 `PROVIDER_SETTINGS_ROOT`로 설정하도록 수정.
+  - **자가 발견 — 첫 수정이 불완전했음**: `assets.app-module.integration.test.ts`의 `it` 블록 4개 중 첫 번째에만 오버라이드를 넣고 나머지 3개를 빠뜨려서, 전체 스위트를 여러 번 돌릴 때마다 매번 다른 지점에서 워커가 native crash로 죽는 것처럼 보였다(사실은 파일 실행 순서에 따라 위치만 달라지는 같은 결정론적 버그) — 처음엔 이 머신의 알려진 병렬 실행 환경 플레이키니스(Round 152 기록)로 오인할 뻔했으나, `--no-file-parallelism`으로 순차 실행해 크래시 직전 파일을 정확히 특정하고 누락된 3곳을 마저 고쳐 재현이 완전히 사라짐을 확인.
+  - 검증: root typecheck 전부 통과, Backend 690개 전부 통과(연속 3회 재실행으로 크래시 재현 없음 확인, 이 세션 중 1회 관찰된 `local-video-workflow.runway.test.ts`의 백그라운드 타이머 타이밍 실패는 Round 152에 이미 기록된 이 머신의 사전 존재 플레이키니스와 동일 증상), root build(shared/backend/frontend/desktop) 전부 통과. 유료 Provider 호출 없음.
+  - 커밋: `0e02926`.
 
