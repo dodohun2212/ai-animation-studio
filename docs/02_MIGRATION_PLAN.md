@@ -1324,4 +1324,11 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 신규 테스트: 병합 화면 6건 + 인스타 화면 14건 + `App.test.tsx` 1건 + 백엔드 2건(`video-library.service.test.ts` — 파생 필드 존재/부재).
   - 검증: root typecheck 전부 통과, Backend 771개(+1 순증, `project-lock.test.ts`의 동시성 테스트 1회 Windows 파일시스템 EPERM 관찰 — 재실행으로 무관한 플레이키니스 확인)·frontend 864개·shared 25개 전부 통과, root build 전부 통과. 유료 Provider 호출 없음, 실제 Instagram/Meta API 호출 없음.
   - 커밋: `337f45e`.
+- [x] **`GET/PUT /projects/:id/post-draft` — 인스타 캡션 임시 저장(Round 173)**: Cowork Round 178에서 판단 요청 받은 계약 — 연재하는 사용자는 해시태그 세트가 매번 거의 같으니 반복 입력을 줄이자는 근거에 동의해 구현.
+  - `project-asset-references.ts`와 같은 패턴으로 `lore_context.post_draft`(자유 형식 필드)에 저장 — 새 스키마 필드·Python 호환성 변경 없이 이렇게 좁은 범위의 값을 넣기엔 이 패턴이 이미 있는 선례라 그대로 따름.
+  - **판단 — 출처 문구는 절대 저장 안 함**: 캡션 본문/해시태그/AI 고지만 저장하고 출처 문구는 저장하지 않음 — 항상 그 프로젝트의 현재 `usedAudio`에서 새로 가져오게 해서, 트랙을 수정·삭제해도 임시 저장된 캡션에 오래된 출처 문구가 남는 사고를 원천 차단.
+  - **판단 — PUT은 병합이 아니라 전체 교체**: 필드 생략 시 지워짐(유지 아님) — 화면이 항상 현재 상태 전체를 한 번에 저장하는 방식과 맞춤.
+  - 신규 테스트 15건(`project-post-draft.test.ts` 13건 + `projects.service.test.ts` 2건 — 저장·재오픈 왕복, 유효성 검사 거부).
+  - 검증: root typecheck 전부 통과, Backend 786개(+15 신규) 전부 통과, root build 전부 통과. 유료 Provider 호출 없음.
+  - 커밋: `a1ee275`.
 
