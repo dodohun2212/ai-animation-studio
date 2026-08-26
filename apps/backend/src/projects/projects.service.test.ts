@@ -37,6 +37,7 @@ describe("ProjectsService", () => {
       createdAt: response.project.createdAt,
       updatedAt: response.project.updatedAt,
       aspectRatio: "9:16",
+      narrationAvailable: false,
       scenes: [],
       warnings: [],
       errors: [],

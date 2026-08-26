@@ -54,6 +54,11 @@ function aspectRatioFor(stored: StoredProject): "9:16" | "16:9" {
   return stored.style_profile.aspect === "16:9" ? "16:9" : "9:16";
 }
 
+/** Whether real narration audio exists today, not merely whether the setting is on — see ProjectSummary.narrationAvailable's doc comment. */
+function narrationAvailableFor(stored: StoredProject): boolean {
+  return stored.generated_narrations.some((file) => typeof file === "string" && file.length > 0);
+}
+
 export function toApiSummary(stored: StoredProject): ProjectSummary {
   return {
     id: stored.project_id,
@@ -63,6 +68,7 @@ export function toApiSummary(stored: StoredProject): ProjectSummary {
     createdAt: stored.created_at,
     updatedAt: stored.updated_at,
     aspectRatio: aspectRatioFor(stored),
+    narrationAvailable: narrationAvailableFor(stored),
   };
 }
 

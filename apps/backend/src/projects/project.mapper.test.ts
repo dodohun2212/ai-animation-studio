@@ -34,6 +34,7 @@ describe("toApiSummary / toApiProject", () => {
       createdAt: "2026-08-21T00:00:00.000Z",
       updatedAt: "2026-08-21T00:00:00.000Z",
       aspectRatio: "9:16",
+      narrationAvailable: false,
     });
     expect("userId" in summary).toBe(false);
 

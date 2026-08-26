@@ -132,6 +132,14 @@ export interface ProjectSummary {
    * (`.claude-bridge` Round 165/168/169).
    */
   aspectRatio: "9:16" | "16:9";
+  /**
+   * Whether this project has at least one real generated narration audio file today — not simply whether
+   * ShortProjectSettings.narrationEnabled is on, since a project can have the setting on with nothing generated
+   * yet (or narration later disabled after generating). Lets the merge screen derive its audio mode's default
+   * from what the project actually has (`.claude-bridge` Round 163) rather than the user needing to discover by
+   * trial that "narration" silently produces no narration.
+   */
+  narrationAvailable: boolean;
 }
 
 export interface Project extends ProjectSummary {

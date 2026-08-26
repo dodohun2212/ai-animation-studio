@@ -1048,11 +1048,55 @@ export interface RegenerateVideoResponse extends GenerationProgressResponse {
   regeneratedSceneNumbers: SceneNumber[];
 }
 
+/**
+ * `mode` decides what audio the final merge actually carries — never inferred from whether a BGM track happens
+ * to be selected, so switching mode away from "narration+bgm" without clearing trackId can't accidentally leave
+ * a track silently attached. "narration" requires the project to actually have narration audio
+ * (ProjectSummary.narrationAvailable) — a project with none must default to "silent" and cannot request
+ * "narration" at all, since there is nothing to mix (`.claude-bridge` Round 163's "derive the default from what
+ * the project actually has" rule). trackId is required when (and only meaningful when) mode is "narration+bgm".
+ * volume/fadeSeconds apply only to the bgm track — narration is never faded or attenuated by this setting.
+ */
+export interface MergeAudioSettings {
+  mode: "narration" | "narration+bgm" | "silent";
+  trackId?: string;
+  /** 0 (silent) to 1 (full volume) — the bgm track's own level, independent of narration's. Server default when omitted: 0.25 (bgm audible but clearly secondary to narration). */
+  volume?: number;
+  /** Fade-in at the start and fade-out at the end of the whole final video, in seconds. Server default when omitted: 2. */
+  fadeSeconds?: number;
+}
+
+/** Omitted entirely (not just `audio` omitted) falls back to the same narrationAvailable-derived default as an explicit request would compute server-side — see MergeAudioSettings's doc comment. */
+export interface MergeVideosRequest {
+  audio?: MergeAudioSettings;
+}
+
 /** The local FFmpeg render result never exposes an absolute filesystem path. */
 export interface MergeVideosResponse {
   project: Project;
   finalVideoPath: "videos/final/instagram_reel.mp4";
 }
+
+/** One track in the BGM library — a project-independent, user-supplied resource (distinct from both the Asset Library's input-material role and the Video Library's results-archive role; see VideoLibraryProjectSummary's doc comment for that distinction). Only "upload" exists today; source/license/attributionRequired/sourceUrl are already shaped for a future imported-track source without needing a later contract break (`.claude-bridge` Round 172 — Pixabay's own API covers images/video only, no music/audio endpoint, and its Terms of Service explicitly prohibits scraping the site to work around that, so external search/import is deferred pending a provider that actually has one). */
+export interface AudioLibraryTrack {
+  trackId: string;
+  title: string;
+  artist?: string;
+  durationSeconds: number;
+  bytes: number;
+  source: "upload";
+  /** Present only for a future imported track — always absent for "upload" (the uploader owns the file and states no external license). */
+  license?: string;
+  attributionRequired?: boolean;
+  sourceUrl?: string;
+  addedAt: string;
+}
+export interface GetAudioLibraryResponse { tracks: AudioLibraryTrack[]; }
+export interface UploadAudioTrackRequest {
+  title?: string;
+  artist?: string;
+}
+export interface UploadAudioTrackResponse { track: AudioLibraryTrack; }
 
 /**
  * One short-project row in the cross-project video library (`.claude-bridge` Round 153/166) — an archive view of
@@ -1299,6 +1343,9 @@ export const API_ROUTES = {
   videoVersions: (projectId: string, scene: SceneNumber | "final") => `/projects/${encodeURIComponent(projectId)}/videos/${scene}/versions`,
   videoVersionContent: (projectId: string, scene: SceneNumber | "final", versionId: string) => `/projects/${encodeURIComponent(projectId)}/videos/${scene}/versions/${encodeURIComponent(versionId)}/content`,
   videoVersionRestore: (projectId: string, scene: SceneNumber | "final", versionId: string) => `/projects/${encodeURIComponent(projectId)}/videos/${scene}/versions/${encodeURIComponent(versionId)}/restore`,
+  audioLibrary: "/audio/library",
+  audioLibraryUpload: "/audio/library/upload",
+  audioLibraryContent: (trackId: string) => `/audio/library/${encodeURIComponent(trackId)}/content`,
   projectAssetMappings: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/assets/mappings`,
   projectAssetMapping: (projectId: string, mappingId: string) =>
     `/projects/${encodeURIComponent(projectId)}/assets/mappings/${encodeURIComponent(mappingId)}`,
