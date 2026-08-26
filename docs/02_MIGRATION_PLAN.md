@@ -1139,4 +1139,13 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 신규 테스트 4건(`image-reference-selection.test.ts`), 기존 3건 수정(`image-review.service.test.ts` — 실제 매핑이 있는 픽스처라 전송되는 프롬프트에 References 섹션이 새로 포함됨을 반영).
   - 검증: root typecheck 전부 통과, Backend 661 통과(+4 순증, 무관한 사전 존재 실패 2건은 그대로 — Round 100에 전문), root build 전부 통과. 유료 Provider 호출 없음.
   - 커밋: `0986494`.
+- [x] **예상 비용 문구 정정 + 재사용 함정 안내(Round 134)**: 이미지 재생성 확인 패널이 이미 만들어진 장면을 빼지 않고 항상 6장 전체 비용을 표기하던 것을 남은 장면 기준으로 수정(`generatedImagePath` 매핑이 붙어서 가능해짐). 더 중요한 문제도 같이 짚음 — `generate()`가 유효한 기존 이미지를 무료로 건너뛰기 때문에, 참고 이미지를 새로 연결한 뒤 다시 눌러도 이미 있는 장면은 절대 다시 그려지지 않는다(에러도 비용도 없이 조용히 아무 일도 안 일어남). 재사용이 걸리는 장면 수를 패널이 직접 안내하고, 실제로 반영되는 경로는 장면별 재생성(`collectReferenceImages`를 호출하는 유일한 경로)이라고 알려줌 — 일괄 재생성 기능 자체는 이번엔 안 만들고 제품 판단으로 남김.
+  - 검증: frontend typecheck·테스트 791개 전부 통과·build 통과. 백엔드·계약 미변경.
+  - 커밋: `b655375`.
+- [x] **설정에서 고른 캐릭터·분위기·장면 참고 Asset을 참고 이미지로 자동 연결(사용자 결정, Round 135)**: Round 133이 만든 연결 기능이 오히려 중복을 하나 더 늘렸다는 사용자 지적(같은 캐릭터를 설정과 참고 이미지 연결 화면에서 두 번 고름) — 제시된 3안 중 사용자가 "자동 연결"을 선택. `syncAutoMappings()`(`project-asset-mapping-sync.ts`) 신설, `updateProjectCast()`/`updateProjectAssetReferences()` 저장 직후 호출. 기존에 있었지만 아무도 안 만들던 `assignment_source: "auto"` 값을 실제로 사용, `match_reason`을 태그로 써서(`auto_cast`/`auto_atmosphere`/`auto_scene_reference`) 설정 섹션 하나를 저장해도 다른 섹션이 만든 매핑은 안 건드림. 캐스트→`usage_role: "character"`, 분위기→`"atmosphere"`, 장면 참고→사용자가 적은 `purpose` 그대로, 셋 다 모든 장면 범위(셋 다 장면 번호 개념이 없음). `status: "confirmed"`/`user_confirmed: true`로 바로 생성(사용자가 이미 설정에서 이름으로 직접 고른 것이라 재확인은 같은 질문을 두 번 하는 것 — 이번 신고의 핵심). 같은 에셋에 수동(또는 다른 태그의 자동) 매핑이 이미 있으면 새로 안 만듦(`collectReferenceImages`가 중복 제거를 안 해서 같은 그림이 두 번 전송되는 것을 방지).
+  - **판단 — 기존 프로젝트 처리**: Cowork가 제시한 두 옵션(부팅 시 일괄 채움 / 다음 설정 저장 때 자연스럽게 채움) 중 후자를 택함 — 침습 범위를 "사용자가 실제로 다시 저장한 것"으로 한정.
+  - **build-break 1건 직접 수정**: 검증 중 `MappingReviewScreen.test.tsx`(Cowork의 별개 진행 중 작업, 아직 미보고)의 `assetType: "general"`이 존재하지 않는 값이라 frontend build가 막혀 있던 것을 확인 — 명백한 오타(`general_reference`)라 AGENTS.md 예외대로 그 한 줄만 직접 고침, 나머지 diff는 그대로 두고 커밋하지 않음(`.claude-bridge`에 보고).
+  - 신규 테스트 4건(`projects.service.test.ts`): 캐스트 자동 연결 생성·제거, 수동 매핑 있을 때 중복 안 만듦, 분위기+장면참고 자동 연결과 purpose 변경 시 같은 매핑을 갱신(새로 안 만듦).
+  - 검증: root typecheck 전부 통과, Backend 665 통과(+4 순증, 무관한 사전 존재 실패 2건은 그대로 — Round 100에 전문), root build 전부 통과(위 build-break 수정 포함). 유료 Provider 호출 없음.
+  - 커밋: `4a25beb`.
 
