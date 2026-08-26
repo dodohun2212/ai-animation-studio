@@ -1247,4 +1247,20 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 신규 테스트 다수: `image-reference-selection.test.ts`/`episode-image-reference-selection.test.ts`(신규 파일) 각 캡 경계 테스트, `image-review.service.test.ts`/`local-image-generation.service.test.ts`/`episode-images.service.test.ts` 실제 캡 도달 시나리오, `orphaned-episode-generation-recovery.service.test.ts` 문구 검증 4건 추가.
   - 검증: root typecheck 전부 통과, Backend 712개 전부 통과(연속 재실행 확인, +11 신규), root build 전부 통과. 유료 Provider 호출 없음.
   - 커밋: `d607b60`.
+- [x] **프런트 — 참고 이미지 캡 신호 + 장기 프로젝트 경고 문구 화면 부착(Round 161)**: Cowork가 Round 169~170에서 세 계약(`omittedSections`는 이미 별도 커밋, 참고 이미지 캡 두 필드, `LongEpisodeOutline.warnings`)을 단편·장기 화면 양쪽에 부착. 문구·총량 계산식을 두 화면에서 동일하게 맞춤(같은 사실을 다르게 말하면 사용자가 뭘 믿어야 할지 모르게 됨).
+  - **같이 온 결함 수정**: 화면비 수정(`5bebaa3`) 이후 가로 프로젝트가 실제로 가로 이미지를 만들게 됐는데, 리뷰 썸네일이 `aspect-[9/16]` + `object-cover`로 고정돼 있어 가로 이미지의 좌우를 잘라내고 있었다 — 돈이 걸린 승인/재생성 판단을 모델이 만들지 않은 슬라이스를 보고 내리게 됨. 임시로 `object-contain`(레터박스, 최소한 잘리지 않음)으로 전환 — 근본 수정은 아래 `aspectRatio` 계약 필요.
+  - 검증: root typecheck 전부 통과, frontend 803개 전부 통과, root build 전부 통과. 백엔드·계약 미변경(이미 열려있던 계약 소비).
+  - 커밋: `6b93dc0`.
+- [x] **영상 보관함 백엔드 4개 + `ProjectSummary.aspectRatio`(Round 153/166, Round 162)**: Cowork의 원래 요청(Round 153) — 결과물 아카이브, 이미지 보관함(입력 소재)과 성격이 다름. `local-video-workflow.service.ts`의 `archive()`가 이미 만들던 `videos/history/scene{n}_v{NNN}.mp4`를 노출·복원 가능하게 함.
+  - `GET /videos/library` — 영상 1개 이상 있는 프로젝트 목록(장면/최종 준비 수, 누적 Runway 실비용).
+  - `GET /projects/:id/videos/:sceneOrFinal/versions` — 현재+전체 버전, 최신순. `:sceneOrFinal`이 장면 번호 또는 리터럴 `"final"`을 둘 다 받아 장면·최종 영상 아카이브를 같은 서비스·라우트 하나로 처리.
+  - `GET .../versions/:versionId/content` — 스트림.
+  - `POST .../versions/:versionId/restore` — 과거 버전을 현재로 승격. 항상 무료(provider 호출·예산 행 없음), 항상 비파괴적(교체당할 파일을 먼저 `archiveCurrent()`로 보관 — 복원 자체가 되돌리기 가능, 삭제 없음).
+  - **판단 — 복원이 `Completed`를 `VideosApproved`로 되돌리는 것**: 장면 복원은 `finalVideoPath`를 비우고, 프로젝트가 `Completed`였다면 `VideosApproved`로 되돌려 재병합을 실제로 가능하게 함. `WORKFLOW_TRANSITIONS`(`shared/workflow.ts`)엔 `Completed`발 전환이 하나도 없다고 적혀 있지만, 이 표는 이 저장소 어디서도 런타임에 강제되지 않는 문서일 뿐임을 확인 — 강제됐다면 복원해도 재병합이 영원히 안 되는 막다른 골목이 됐을 것. Cowork에게 판단 근거와 함께 보고, 조용히 결정하지 않음.
+  - **Round 166 요구사항**: `video-merge.service.ts`의 `merge()`가 이제 최종 영상을 덮어쓰기 전에 기존 파일을 `videos/final/history/`로 먼저 보관(장면 영상의 `archive()`와 같은 패턴) — 복원 후 재병합이 이전 최종본을 조용히 지우지 않게.
+  - **의도적으로 미룬 것(Cowork 요청)**: 버전별 `actualCostUsd`는 이번엔 안 실음 — 현재 예산 장부엔 지출 행을 특정 보관 파일에 묶을 versionId가 없어서, 근사치를 보이면 틀린 숫자를 보일 위험이 있음.
+  - **함께 반영 — `ProjectSummary.aspectRatio`**: 오늘 세 번째로 "두 곳이 각자 화면비를 추측해서 갈라진" 사례(이미지 사이즈, 참고 캡 총량, 이제 리뷰 썸네일)라 Cowork 요청대로 `project.mapper.ts`의 `toApiSummary()`에 추가 — 영상 보관함 카드도 어차피 필요해질 것이라 이 라운드에 함께 넣음.
+  - 신규 테스트 20건(`video-library.service.test.ts`) + 병합 아카이빙 1건(`video-merge.service.test.ts`).
+  - 검증: root typecheck 전부 통과, Backend 733개·frontend 803개·shared 25개 전부 통과, root build 전부 통과. 유료 Provider 호출 없음.
+  - 커밋: `013d4ab`.
 
