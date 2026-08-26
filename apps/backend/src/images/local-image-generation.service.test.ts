@@ -136,6 +136,20 @@ describe("provider-free local image generation", () => {
     }
   });
 
+  it("includes styleNotes.avoid as its own Avoid sentence, preferring styleNotes over style_profile the same way the other style fields do", async () => {
+    const { projectsRoot, projects, mappings } = await setup();
+    const project = await projects.findById("images");
+    project.style_profile = { avoid: "profile avoid" };
+    project.lore_context = { style_notes: { avoid: "text, watermarks" } };
+    await projects.save(project);
+    await new LocalImageGenerationService(projects, mappings, projectsRoot).generate("images", { approved: true });
+    const reloaded = await new LocalProjectRepository(projectsRoot).findById("images");
+    for (const prompt of reloaded.image_prompts) {
+      expect(prompt).toContain("Avoid: text, watermarks");
+      expect(prompt).not.toContain("profile avoid");
+    }
+  });
+
   it("omits the Style line entirely when no project style setting is present", async () => {
     const { projectsRoot, projects, mappings } = await setup();
     await new LocalImageGenerationService(projects, mappings, projectsRoot).generate("images", { approved: true });
@@ -217,6 +231,53 @@ describe("real OpenAI image generation", () => {
     expect(result.budget?.remainingUsd).toBeCloseTo(9.4, 8);
     expect(result.budget?.estimatedRequestCostUsd).toBeCloseTo(0.6, 8);
     expect(result.budget?.canSpend).toBe(true);
+  });
+
+  it("derives the requested image size from the project's own aspect setting instead of always hardcoding portrait", async () => {
+    const { projectsRoot, projects, service } = await setupWithConnectedOpenAi();
+    const project = await projects.findById("images");
+    project.style_profile = { aspect: "16:9" };
+    await projects.save(project);
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await service.generate("images", { approved: true });
+
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    for (const call of fetchMock.mock.calls) {
+      const [, init] = call as [string, RequestInit];
+      expect(JSON.parse(init.body as string)).toMatchObject({ size: "1536x1024" });
+    }
+  });
+
+  it("defaults the requested image size to portrait when the project has no aspect setting (matching the vertical default everywhere else)", async () => {
+    const { service } = await setupWithConnectedOpenAi();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await service.generate("images", { approved: true });
+
+    for (const call of fetchMock.mock.calls) {
+      const [, init] = call as [string, RequestInit];
+      expect(JSON.parse(init.body as string)).toMatchObject({ size: "1024x1536" });
+    }
+  });
+
+  it("derives the requested image size for a Reference-backed images/edits call the same way as images/generations", async () => {
+    const { projectsRoot, projects, service } = await setupWithConnectedOpenAiAndConfirmedReference();
+    const project = await projects.findById("images");
+    project.style_profile = { aspect: "16:9" };
+    await projects.save(project);
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await service.generate("images", { approved: true });
+
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    for (const call of fetchMock.mock.calls) {
+      const [, init] = call as [string, RequestInit];
+      expect((init.body as FormData).get("size")).toBe("1536x1024");
+    }
   });
 
   it("falls back to the local fake adapter, never calling fetch, when no OpenAI credential is configured", async () => {

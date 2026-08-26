@@ -49,9 +49,21 @@ export class EpisodeImagesService {
     const root = path.join(resolveSafeProjectDirectory(this.projectsRoot, projectId), "long_story");
     const episode = path.join(root, `Episode${String(number).padStart(2, "0")}`);
     const images = path.join(episode, "images");
-    return { root, outlines: path.join(root, "episode_outlines.json"), episode, project: path.join(episode, "project.json"), mapping: path.join(episode, "asset_mapping_review.json"), images, reviews: path.join(episode, "generated_image_reviews.json"), continuityMetadata: path.join(episode, "image_generation_metadata.json") };
+    return { root, outlines: path.join(root, "episode_outlines.json"), episode, project: path.join(episode, "project.json"), longProject: path.join(root, "project.json"), mapping: path.join(episode, "asset_mapping_review.json"), images, reviews: path.join(episode, "generated_image_reviews.json"), continuityMetadata: path.join(episode, "image_generation_metadata.json") };
   }
   private async json(file: string): Promise<unknown> { try { return JSON.parse(await fs.readFile(file, "utf8")); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw longNotFound(); if (error instanceof SyntaxError) throw longMalformed(); throw longStorageError(); } }
+  /**
+   * Same source as episode-videos.service.ts's ratio() (project.aspect_ratio), translated into OpenAI's own
+   * image-generation size vocabulary instead of a Runway ratio string — see image-prompt.ts's imageSizeFor doc
+   * comment for why this was missing entirely (`.claude-bridge` Round 165). The short-project side reads this
+   * from style_profile.aspect on the project itself; a Long Episode has no such per-project style_profile, so
+   * this reads the same aspect_ratio field episode-videos.service.ts already trusts for the same Episode.
+   */
+  private async imageSize(projectId: string, number: number): Promise<"1024x1536" | "1536x1024"> {
+    const raw = await this.json(this.files(projectId, number).longProject);
+    if (!object(raw) || (raw.aspect_ratio !== "9:16" && raw.aspect_ratio !== "16:9")) throw longInvalidData();
+    return raw.aspect_ratio === "16:9" ? "1536x1024" : "1024x1536";
+  }
   private async episode(projectId: string, number: number): Promise<StoredEpisode> {
     if (!Number.isInteger(number) || number < 1) throw longEpisodeNotFound();
     const files = this.files(projectId, number); const outlines = await this.json(files.outlines);
@@ -127,10 +139,11 @@ export class EpisodeImagesService {
         if (apiKey && this.budget) {
           const prompt = imagePromptFor(scenes[scene - 1], "");
           const references = await collectEpisodeReferenceImages(this.assets, candidates, number, scene, continuityPath);
+          const size = await this.imageSize(id, number);
           await this.budget.preflight(IMAGE_ESTIMATED_COST_USD);
           let succeeded = false;
           try {
-            const result = references.length > 0 ? await callOpenAiImageEditApi(apiKey, prompt, references) : await callOpenAiImageApi(apiKey, prompt);
+            const result = references.length > 0 ? await callOpenAiImageEditApi(apiKey, prompt, references, { size }) : await callOpenAiImageApi(apiKey, prompt, { size });
             bytes = result.bytes; succeeded = true;
           } finally { await this.budget.record(id, "image", succeeded, IMAGE_ESTIMATED_COST_USD); }
         }
@@ -179,10 +192,11 @@ export class EpisodeImagesService {
       const continuityPath = await this.continuityImagePath(id, number);
       const references = await collectEpisodeReferenceImages(this.assets, candidates, number, scene, continuityPath);
       try {
+        const size = await this.imageSize(id, number);
         await this.budget.preflight(IMAGE_ESTIMATED_COST_USD);
         let succeeded = false;
         try {
-          const result = references.length > 0 ? await callOpenAiImageEditApi(apiKey, prompt, references) : await callOpenAiImageApi(apiKey, prompt);
+          const result = references.length > 0 ? await callOpenAiImageEditApi(apiKey, prompt, references, { size }) : await callOpenAiImageApi(apiKey, prompt, { size });
           regenerated = result.bytes; succeeded = true;
         } finally { await this.budget.record(id, "image", succeeded, IMAGE_ESTIMATED_COST_USD); }
       } catch (error) {

@@ -47,6 +47,22 @@ export function imagePromptFor(scene: unknown, styleLine: string, referenceNotes
 }
 
 /**
+ * Same source and priority as video-preview.service.ts's ratioFor() (project.style_profile.aspect, "16:9" vs
+ * anything else defaulting to vertical) — but returns one of OpenAI's own image-generation size strings rather
+ * than a Runway ratio string, since the two providers take the shape in different vocabularies. Nothing derived
+ * this before (`.claude-bridge` Round 165): every call site let the adapter's own OPENAI_IMAGE_SIZE default
+ * apply unconditionally, so a landscape (16:9) project's first-frame image was generated portrait regardless of
+ * its own setting, and that mismatched image was then paid for again by Runway before the shape mismatch showed
+ * up as a cropped or letterboxed finished video.
+ */
+export function imageSizeFor(project: StoredProject): "1024x1536" | "1536x1024" {
+  const aspect = typeof project.style_profile.aspect === "string"
+    ? project.style_profile.aspect.replaceAll(" ", "")
+    : "";
+  return aspect === "16:9" ? "1536x1024" : "1024x1536";
+}
+
+/**
  * Deterministic, not routed through the Story AI's own translation — same source and priority as the Story
  * prompt's own style fields (project styleNotes override, falling back to the AI-set style_profile). Keeping
  * this line identical across every scene's prompt (unlike the AI-authored fields above) is what gives scene-to-
@@ -60,5 +76,11 @@ export function styleLineFor(project: StoredProject): string {
   const fromProfile = (key: string): string => typeof profile[key] === "string" ? (profile[key] as string).trim() : "";
   const parts = [notes.visualStyle ?? fromProfile("visual_style"), notes.color ?? fromProfile("color"), notes.lighting ?? fromProfile("lighting")]
     .filter((part) => part.trim().length > 0);
-  return parts.length > 0 ? `Style: ${parts.join(", ")}` : "";
+  const style = parts.length > 0 ? `Style: ${parts.join(", ")}` : "";
+  // Same source/priority as the other style fields above (user setting overrides the AI-set profile), kept as
+  // its own labeled sentence rather than folded into the Style list — an item in a comma-separated style list
+  // reads as something to include, and "avoid" is the opposite of that.
+  const avoid = (notes.avoid ?? fromProfile("avoid")).trim();
+  const avoidLine = avoid ? `Avoid: ${avoid}` : "";
+  return [style, avoidLine].filter(Boolean).join(". ");
 }

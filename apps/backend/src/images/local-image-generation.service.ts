@@ -15,7 +15,7 @@ import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../pr
 import { OpenAiAdapterError } from "../providers/openai-common.js";
 import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "./openai-image-adapter.js";
 import { collectReferenceImages, describeReferenceMappingsForScene } from "./image-reference-selection.js";
-import { imagePromptFor, sceneValue, styleLineFor } from "./image-prompt.js";
+import { imagePromptFor, imageSizeFor, sceneValue, styleLineFor } from "./image-prompt.js";
 import { previousSceneContinuityImagePath } from "../projects/project-continuity.js";
 import { imageBudgetExceeded, imageContentUnavailable, imageGenerationFailed, imageGenerationNotAllowed, imageProviderError, imageStorageError, invalidImageRequest, mappingReviewRequired } from "./image-api.error.js";
 
@@ -130,9 +130,10 @@ export class LocalImageGenerationService {
           await this.budget.preflight(IMAGE_ESTIMATED_COST_USD);
           let succeeded = false;
           try {
+            const size = imageSizeFor(current);
             const result = references.length > 0
-              ? await callOpenAiImageEditApi(apiKey, prompt, references)
-              : await callOpenAiImageApi(apiKey, prompt);
+              ? await callOpenAiImageEditApi(apiKey, prompt, references, { size })
+              : await callOpenAiImageApi(apiKey, prompt, { size });
             bytes = result.bytes;
             succeeded = true;
           } finally {

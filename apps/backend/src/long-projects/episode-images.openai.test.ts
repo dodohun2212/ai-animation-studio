@@ -60,8 +60,9 @@ describe("real OpenAI Episode image generation", () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     // No confirmed Asset Mapping candidates in this minimal setup, so this goes through the plain
     // images/generations JSON path rather than images/edits FormData (no reference images to attach).
-    const { prompt } = JSON.parse(init.body as string) as { prompt: string };
+    const { prompt, size } = JSON.parse(init.body as string) as { prompt: string; size: string };
     expect(prompt).toContain("Scene:");
+    expect(size).toBe("1024x1536"); // default 9:16 project — portrait, matching every other vertical default.
     // All five composition fields (not just visual_action/description) — confirms the shared imagePromptFor()
     // is genuinely reading them for a Long Episode scene, not just for a short-project one.
     expect(prompt).toContain("Shot: medium shot, eye level");
@@ -73,6 +74,37 @@ describe("real OpenAI Episode image generation", () => {
     expect(result.budget?.spentUsd).toBeCloseTo(0.6, 8);
     expect(result.budget?.remainingUsd).toBeCloseTo(9.4, 8);
     expect(result.budget?.canSpend).toBe(true);
+  });
+
+  it("derives the requested image size from the Long Project's own aspectRatio setting instead of always hardcoding portrait", async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-images-openai-"));
+    const projectsRoot = path.join(root, "projects");
+    const projects = new LongProjectsService(projectsRoot);
+    await projects.create({ projectId: "long", settings: { ...settings, aspectRatio: "16:9" } });
+    const preview = await projects.preview("long");
+    await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 });
+    const scripts = new EpisodeScriptsService(projectsRoot);
+    await scripts.generate("long", 1, {});
+    await scripts.approve("long", 1, { approved: true });
+    const assets = new LocalAssetsRepository(root);
+    const mappingsService = new EpisodeAssetMappingsService(projectsRoot, assets);
+    const mapping = await mappingsService.begin("long", 1, { textOnlyConfirmed: true });
+    await mappingsService.approve("long", 1, { approved: true, scriptFingerprint: mapping.review.scriptFingerprint });
+    const settingsRepository = new ProviderSettingsRepository(root);
+    const providerSettings = new ProviderSettingsService(settingsRepository);
+    await providerSettings.save("openai", { value: "sk-test-key-1234567890" });
+    const budget = new OpenAiBudget(root, 10);
+    const images = new EpisodeImagesService(projectsRoot, assets, mappingsService, providerSettings, budget);
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await images.generate("long", 1, { approved: true });
+
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    for (const call of fetchMock.mock.calls) {
+      const [, init] = call as [string, RequestInit];
+      expect(JSON.parse(init.body as string)).toMatchObject({ size: "1536x1024" });
+    }
   });
 
   it("falls back to the local fake adapter, never calling fetch, when no OpenAI credential is configured", async () => {
