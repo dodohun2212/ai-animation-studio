@@ -1,4 +1,5 @@
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError, classifyOpenAiHttpError } from "../providers/openai-common.js";
+import { assertRealNetworkCallAllowed } from "../providers/no-test-network.guard.js";
 import { OPENAI_STORY_MODEL } from "../story/openai-story-adapter.js";
 
 export { OpenAiAdapterError as OpenAiEpisodePlannerAdapterError };
@@ -90,6 +91,7 @@ export async function callOpenAiEpisodePlannerApi(
   if (!Number.isInteger(episodeCount) || episodeCount < 1 || episodeCount > 365) throw new OpenAiAdapterError("invalid_request", "Episode 개요 수는 1~365 사이여야 합니다.");
   const model = options.model ?? OPENAI_STORY_MODEL;
   const fetchImpl = options.fetchImpl ?? fetch;
+  assertRealNetworkCallAllowed("OpenAI", fetchImpl);
 
   // Never retried — generation is paid and non-idempotent (see OPENAI_DEFAULT_MAX_RETRIES's doc comment).
   let response: Response;

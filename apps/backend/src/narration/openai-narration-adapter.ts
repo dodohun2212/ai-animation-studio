@@ -1,4 +1,5 @@
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError, classifyOpenAiHttpError } from "../providers/openai-common.js";
+import { assertRealNetworkCallAllowed } from "../providers/no-test-network.guard.js";
 
 /** Cheapest real-time TTS model; supports `instructions` for tone/delivery — see TTS_ESTIMATED_COST_USD's doc comment for the pricing basis. */
 export const OPENAI_TTS_MODEL = "gpt-4o-mini-tts";
@@ -27,6 +28,7 @@ export async function callOpenAiTtsApi(
   const voice = options.voice ?? OPENAI_TTS_VOICE;
   const responseFormat = options.responseFormat ?? OPENAI_TTS_FORMAT;
   const fetchImpl = options.fetchImpl ?? fetch;
+  assertRealNetworkCallAllowed("OpenAI", fetchImpl);
 
   // Never retried — generation is paid and non-idempotent (see OPENAI_DEFAULT_MAX_RETRIES's doc comment).
   let response: Response;

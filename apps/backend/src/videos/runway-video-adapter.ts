@@ -1,4 +1,5 @@
 import { RUNWAY_PROMPT_MAX_LENGTH } from "@ai-animation-studio/shared";
+import { assertRealNetworkCallAllowed } from "../providers/no-test-network.guard.js";
 import { utf16Length } from "./video-preview.service.js";
 
 /**
@@ -102,6 +103,7 @@ function refineCategory(statusCategory: RunwayErrorCategory, detail: string | un
 async function requestWithRetry(url: string, init: RequestInit, options: RetryOptions): Promise<Response> {
   const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
   const fetchImpl = options.fetchImpl ?? fetch;
+  assertRealNetworkCallAllowed("Runway", fetchImpl);
   const sleep = options.sleep ?? defaultSleep;
   let attempt = 0;
   while (true) {

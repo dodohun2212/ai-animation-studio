@@ -38,6 +38,12 @@ describe.sequential("local image generation HTTP route", () => {
     await mappings.saveReview("image_http", { project_id: "image_http", mapping_revision: 1, script_revision: 1, script_fingerprint: scriptFingerprint(project.scenes), status: "approved", approved_at: "2026-08-22T00:00:00.000Z", approved_by: "user", text_only_confirmed: true, legacy_confirmed: false, reviewed_scenes: [1, 2, 3, 4, 5, 6] });
     previousLearningRoot = process.env.LEARNING_DATA_ROOT; previousProjectsRoot = process.env.PROJECTS_ROOT;
     process.env.LEARNING_DATA_ROOT = root; delete process.env.PROJECTS_ROOT;
+    // Isolated even though this test never intends to touch a real provider: PROVIDER_SETTINGS_ROOT defaults to
+    // process.cwd(), and this app is the real AppModule over a real HTTP server — without this, "no provider
+    // connected" is only true by accident of whatever real credentials happen to sit in apps/backend/.env on
+    // whichever machine runs this suite (`.claude-bridge` Round 154: real, unmocked Runway/OpenAI calls from this
+    // exact test shape, on this exact gap, are the leading suspect for real unexplained provider charges).
+    previousSettingsRoot = process.env.PROVIDER_SETTINGS_ROOT; process.env.PROVIDER_SETTINGS_ROOT = root;
     app = await NestFactory.create(AppModule, { logger: false }); await app.listen(0, "127.0.0.1");
     const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
     const denied = await fetch(`${base}/projects/image_http/images/generations`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });

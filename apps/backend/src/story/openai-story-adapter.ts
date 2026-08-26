@@ -1,4 +1,5 @@
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError, classifyOpenAiHttpError } from "../providers/openai-common.js";
+import { assertRealNetworkCallAllowed } from "../providers/no-test-network.guard.js";
 import { validateStory, type StoredStory } from "./story-generation.service.js";
 
 export const OPENAI_STORY_MODEL = "gpt-5.6-luna";
@@ -67,6 +68,7 @@ export async function callOpenAiStoryApi(
 ): Promise<{ story: StoredStory; requestId: string }> {
   const model = options.model ?? OPENAI_STORY_MODEL;
   const fetchImpl = options.fetchImpl ?? fetch;
+  assertRealNetworkCallAllowed("OpenAI", fetchImpl);
   const sceneCount = options.sceneCount ?? 6;
 
   let response: Response;

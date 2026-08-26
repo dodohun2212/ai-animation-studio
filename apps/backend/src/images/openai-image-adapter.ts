@@ -1,4 +1,5 @@
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError, classifyOpenAiHttpError } from "../providers/openai-common.js";
+import { assertRealNetworkCallAllowed } from "../providers/no-test-network.guard.js";
 
 export const OPENAI_IMAGE_MODEL = "gpt-image-2";
 export const OPENAI_IMAGE_SIZE = "1024x1536";
@@ -24,6 +25,7 @@ export async function callOpenAiImageApi(
   const quality = options.quality ?? OPENAI_IMAGE_QUALITY;
   const outputFormat = options.outputFormat ?? OPENAI_IMAGE_FORMAT;
   const fetchImpl = options.fetchImpl ?? fetch;
+  assertRealNetworkCallAllowed("OpenAI", fetchImpl);
 
   // Never retried — generation is paid and non-idempotent (see OPENAI_DEFAULT_MAX_RETRIES's doc comment). A
   // single attempt only; a failure here is the caller's own provider-error path to surface and let the user
@@ -74,6 +76,7 @@ export async function callOpenAiImageEditApi(
   const quality = options.quality ?? OPENAI_IMAGE_QUALITY;
   const outputFormat = options.outputFormat ?? OPENAI_IMAGE_FORMAT;
   const fetchImpl = options.fetchImpl ?? fetch;
+  assertRealNetworkCallAllowed("OpenAI", fetchImpl);
 
   const form = new FormData();
   form.append("model", model);
