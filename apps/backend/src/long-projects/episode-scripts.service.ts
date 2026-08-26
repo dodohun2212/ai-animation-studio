@@ -1,10 +1,15 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import type { ApproveLongEpisodeScriptRequest, ApproveLongEpisodeScriptResponse, GenerateLongEpisodeScriptRequest, GenerateLongEpisodeScriptResponse, GetLongEpisodeResponse, LongEpisodeDetail, LongEpisodeOutline, LongEpisodeScene, LongEpisodeScript, LongEpisodeStatus, SceneNumber, UpdateLongEpisodeScriptRequest, UpdateLongEpisodeScriptResponse } from "@ai-animation-studio/shared";
+import { STORY_ESTIMATED_COST_USD, type ApproveLongEpisodeScriptRequest, type ApproveLongEpisodeScriptResponse, type GenerateLongEpisodeScriptRequest, type GenerateLongEpisodeScriptResponse, type GetLongEpisodeResponse, type LongEpisodeDetail, type LongEpisodeOutline, type LongEpisodeScene, type LongEpisodeScript, type LongEpisodeStatus, type SceneNumber, type UpdateLongEpisodeScriptRequest, type UpdateLongEpisodeScriptResponse } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
-import { longEpisodeNotFound, longEpisodeScriptExists, longEpisodeScriptNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { ProviderSettingsService } from "../settings/provider-settings.service.js";
+import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
+import { OpenAiAdapterError } from "../providers/openai-common.js";
+import { callOpenAiStoryApi } from "../story/openai-story-adapter.js";
+import { buildEpisodeContext } from "./episode-context-builder.js";
+import { longEpisodeNotFound, longEpisodeScriptBudgetExceeded, longEpisodeScriptExists, longEpisodeScriptNotAllowed, longEpisodeScriptProviderError, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { LongProjectsService } from "./long-projects.service.js";
 
 const snakeKeys = ["number", "description", "visual_action", "start_motion", "main_motion", "end_motion", "shot_size", "camera_angle", "composition", "lens_feel", "focus_subject", "camera_motion", "environment_motion", "motion_speed", "motion_intensity", "expression_change", "continuity_hint"] as const;
@@ -12,6 +17,7 @@ const camelKeys = ["number", "description", "visualAction", "startMotion", "main
 type StoredEpisode = { episode_id: string; number: number; title: string; summary: string; core_event: string; conflict: string; cliffhanger: string; next_connection: string; duration_seconds: number; scene_count: number; approved: boolean; state: LongEpisodeStatus; script: Record<string, unknown>; script_history: unknown[]; script_revision: number; outline: Record<string, unknown>; updated_at: string };
 
 const asObject = (value: unknown, error = longInvalidData): Record<string, unknown> => { if (!value || typeof value !== "object" || Array.isArray(value)) throw error(); return value as Record<string, unknown>; };
+const isObj = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const asText = (value: unknown, error = longInvalidData): string => { if (typeof value !== "string") throw error(); return value.trim(); };
 const asNumber = (value: unknown, error = longInvalidData): number => { if (!Number.isInteger(value)) throw error(); return value as number; };
 const statuses: readonly LongEpisodeStatus[] = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted"];
@@ -19,7 +25,11 @@ const statuses: readonly LongEpisodeStatus[] = ["planned", "outline_ready", "scr
 @Injectable()
 export class EpisodeScriptsService {
   private readonly projects: LongProjectsService;
-  constructor(private readonly projectsRoot: string) { this.projects = new LongProjectsService(projectsRoot); }
+  constructor(
+    private readonly projectsRoot: string,
+    private readonly providerSettings?: ProviderSettingsService,
+    private readonly budget?: OpenAiBudget,
+  ) { this.projects = new LongProjectsService(projectsRoot); }
 
   private root(projectId: string): string { if (!isSafeProjectId(projectId)) throw longUnsafeId(); return path.join(resolveSafeProjectDirectory(this.projectsRoot, projectId), "long_story"); }
   private files(projectId: string, number: number) { const root = this.root(projectId); const episode = path.join(root, `Episode${String(number).padStart(2, "0")}`); return { root, project: path.join(root, "project.json"), outlines: path.join(root, "episode_outlines.json"), bible: path.join(root, "story_bible.json"), episode, episodeProject: path.join(episode, "project.json"), outline: path.join(episode, "outline.json"), script: path.join(episode, "script.json") }; }
@@ -58,9 +68,99 @@ export class EpisodeScriptsService {
   private async save(projectId: string, outline: LongEpisodeOutline, stored: StoredEpisode): Promise<LongEpisodeDetail> { const files = this.files(projectId, outline.episodeNumber); const outlines = await this.json(files.outlines); if (!Array.isArray(outlines)) throw longInvalidData(); const copy = [...outlines]; const current = asObject(copy[outline.episodeNumber - 1]); current.status = stored.state; copy[outline.episodeNumber - 1] = current; try { await fs.mkdir(files.episode, { recursive: true }); await Promise.all([atomicWriteUtf8File(files.episodeProject, JSON.stringify(stored, null, 2)), atomicWriteUtf8File(files.outline, JSON.stringify(stored.outline, null, 2)), atomicWriteUtf8File(files.script, JSON.stringify(stored.script, null, 2)), atomicWriteUtf8File(files.outlines, JSON.stringify(copy, null, 2))]); } catch { throw longStorageError(); } return this.toApi({ ...outline, status: stored.state }, stored); }
   private async bibleContext(projectId: string): Promise<string> { const bible = asObject(await this.json(this.files(projectId, 1).bible)); const names = ["characters", "locations", "props"].flatMap((collection) => Array.isArray(bible[collection]) ? bible[collection].map((item) => asObject(item).name).filter((name): name is string => typeof name === "string" && Boolean(name.trim())) : []); return names.join(", "); }
   private async continuityContext(projectId: string, episodeNumber: number): Promise<Record<string, unknown>> { const recent: unknown[] = []; const older: unknown[] = []; for (let number = 1; number < episodeNumber; number += 1) { try { const raw = asObject(await this.json(path.join(this.files(projectId, number).episode, "continuity.json"))); const record = { episodeNumber: number, summary: typeof raw.episode_summary === "string" ? raw.episode_summary : "", events: Array.isArray(raw.events) ? raw.events.filter((value): value is string => typeof value === "string") : [], characterChanges: Array.isArray(raw.character_changes) ? raw.character_changes.filter((value) => value && typeof value === "object" && !Array.isArray(value)) : [], nextActions: Array.isArray(raw.next_actions) ? raw.next_actions.filter((value): value is string => typeof value === "string") : [] }; (number >= episodeNumber - 3 ? recent : older).push(record); } catch (error) { if (!(error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404)) throw error; } } return { recentContinuity: recent, olderCompressedSummaries: older.map((value) => ({ episodeNumber: (value as { episodeNumber: number }).episodeNumber, summary: (value as { summary: string }).summary })) }; }
+  /** A direct port of Python's build_context()/StoryContextBuilder.build() call site — assembles the same payload episode-context-builder.ts's buildEpisodeContext() truncates and returns. candidate_assets is deliberately omitted: Asset Mapping review only ever begins after a script is script_approved (generate()'s own allowed-state list ends there), so at every point this can run there are never any candidates yet — matching Python's own `if asset_context:` being empty in that same window, not a TS gap. */
+  private async buildContext(projectId: string, outline: LongEpisodeOutline, stored: StoredEpisode, userInstruction = ""): Promise<Record<string, unknown>> {
+    const bible = asObject(await this.json(this.files(projectId, 1).bible));
+    const projectSettings = (await this.projects.get(projectId)).project.settings;
+    const projectOverview = {
+      title: projectSettings.title, logline: projectSettings.logline, overview: projectSettings.overview,
+      genre: projectSettings.genre, tone: projectSettings.tone, theme: projectSettings.theme,
+      episode_count: projectSettings.episodeCount, episode_duration_seconds: projectSettings.episodeDurationSeconds,
+      ending_direction: projectSettings.endingDirection, platform: projectSettings.platform, aspect_ratio: projectSettings.aspectRatio,
+      audience: projectSettings.audience, notes: projectSettings.notes, starting_state: projectSettings.startingState,
+      midpoint: projectSettings.midpoint, story_flow_summary: projectSettings.storyFlowSummary,
+    };
+    const continuity = await this.continuityContext(projectId, outline.episodeNumber);
+    const recentContinuity = (continuity.recentContinuity as Array<{ episodeNumber: number; summary: string; events: string[]; characterChanges: unknown[]; nextActions: string[] }>)
+      .map((item) => ({ episode_number: item.episodeNumber, summary: item.summary, events: item.events, character_changes: item.characterChanges, next_actions: item.nextActions }));
+    const olderCompressedSummaries = (continuity.olderCompressedSummaries as Array<{ episodeNumber: number; summary: string }>)
+      .map((item) => ({ episode_number: item.episodeNumber, summary: item.summary }));
+    return buildEpisodeContext({
+      storyBible: { basic: isObj(bible.basic) ? bible.basic : {}, world: isObj(bible.world) ? bible.world : {} },
+      projectOverview,
+      episodeOutline: stored.outline,
+      recentContinuity,
+      olderCompressedSummaries,
+      secrets: Array.isArray(bible.secrets) ? bible.secrets.filter(isObj) : [],
+      foreshadowing: Array.isArray(bible.foreshadowing) ? bible.foreshadowing.filter(isObj) : [],
+      episodeNumber: outline.episodeNumber,
+      userInstruction,
+    });
+  }
+  /** A direct port of Python's generate_episode_script()'s inline prompt, generalized from a fixed "6" scene count to this Episode's own scene_count (see the "장면 수 가변화" work this session already did to the rest of this file), and with a narration output requirement added — the schema this now sends to callOpenAiStoryApi() requires narration on every scene, which Python's original prompt (written before Long Episode had narration) never mentioned. "Episode Wizard 수정값" is dropped from Python's priority list: Long Episode has no per-Episode Wizard concept to reference. */
+  private buildScriptPrompt(context: Record<string, unknown>, sceneCount: number, clipDurationSeconds: number): string {
+    return [
+      "[1. 작업 목표]",
+      "다음 장기 애니메이션에서 선택한 Episode 한 편의 상세 대본만 작성하십시오.",
+      "",
+      "[2. 설정 우선순위]",
+      "Story Bible > 장기 프로젝트 전체 설정(project_overview) > Episode Outline > Continuity > 사용자 추가 지시사항",
+      "설정이 충돌하면 앞쪽 설정을 우선하며 뒤쪽 입력으로 덮어쓰지 마십시오.",
+      "",
+      "[3. Episode 제작 Context]",
+      JSON.stringify(context, null, 2),
+      "",
+      "[4. Asset 적용 규칙]",
+      "candidate_assets는 Asset Library에서 가져온 이름·유형·설명의 텍스트 정보입니다. Story API에는 이미지가 첨부되지 않습니다.",
+      "Asset의 핵심 특징을 대본 전체에서 일관되게 유지하십시오.",
+      "",
+      "[5. 출력 요구사항]",
+      "이번 Episode만 작성하고 다른 Episode의 상세 대본은 생성하지 마십시오.",
+      "공개 금지 정보를 노출하지 마십시오.",
+      `정확히 ${sceneCount}개 장면을 지정된 JSON 형식으로만 반환하십시오.`,
+      "각 장면에는 description과 함께 visual_action, start_motion, main_motion, end_motion, camera_motion, environment_motion, motion_speed, motion_intensity, expression_change, continuity_hint를 구체적인 현재형 문장으로 작성하십시오.",
+      "대사 문장을 움직임으로 복사하지 말고 화면에 보이는 행동으로 변환하며, 다음 장면은 이전 장면의 end_motion을 자연스럽게 이어받게 하십시오.",
+      `narration에는 장면당 ${clipDurationSeconds}초 안에 자연스럽게 읽을 수 있는 내레이션/자막 문장을 카메라 지시나 지문 없이 작성하십시오.`,
+    ].join("\n");
+  }
   private generated(outline: LongEpisodeOutline, bibleNames: string, continuity: Record<string, unknown>, sceneCount: number): LongEpisodeScript { const subject = outline.title || `Episode ${outline.episodeNumber}`; const latest = (continuity.recentContinuity as Array<{ summary: string }>).at(-1)?.summary; const scenes = Array.from({ length: sceneCount }, (_, index) => { const number = index + 1; return { number: number as SceneNumber, description: `${subject} scene ${number}: ${outline.summary || outline.mainEvent || "the episode progresses"}.`, visualAction: `The central action develops in scene ${number}.`, startMotion: "A still opening pose shifts into motion.", mainMotion: "The character advances the episode conflict.", endMotion: "The movement settles into the next scene.", shotSize: "medium shot", cameraAngle: "eye level", composition: "centered subject with readable background", lensFeel: "natural perspective", focusSubject: bibleNames || subject, cameraMotion: "gentle forward movement", environmentMotion: "subtle ambient movement", motionSpeed: "normal", motionIntensity: "moderate", expressionChange: "focused to hopeful", continuityHint: number === 1 && latest ? `Continue from prior Episode: ${latest}` : number === 1 ? "Establish the opening visual state." : "Continue the previous scene's ending pose and direction.", narration: `Scene ${number} narration for ${subject}.` }; }); return { title: `${subject} — Local Episode Script`, synopsis: `A local ${sceneCount}-scene draft for ${subject}.${latest ? ` It continues: ${latest}` : ""}`, ending: outline.cliffhanger || "The episode reaches its next turning point.", scenes }; }
   async get(projectId: string, number: number): Promise<GetLongEpisodeResponse> { const outline = await this.outline(projectId.trim(), number); return { episode: this.toApi(outline, await this.stored(projectId.trim(), outline)) }; }
-  async generate(projectId: string, number: number, request: GenerateLongEpisodeScriptRequest): Promise<GenerateLongEpisodeScriptResponse> { const id = projectId.trim(); const outline = await this.outline(id, number); const stored = await this.stored(id, outline); if (!["outline_ready", "script_review", "script_approved"].includes(stored.state)) throw longEpisodeScriptNotAllowed(); if (Object.keys(stored.script).length && request?.regenerate !== true) throw longEpisodeScriptExists(); if (Object.keys(stored.script).length) stored.script_history.push({ created_at: new Date().toISOString(), source: "before_regeneration", script: stored.script }); const continuity = await this.continuityContext(id, number); const script = this.generated(outline, await this.bibleContext(id), continuity, stored.scene_count); stored.script = this.storedScript(script); stored.script_history.push({ created_at: new Date().toISOString(), source: "local_fake_generation", script: stored.script, continuity_context: continuity }); stored.script_revision += 1; stored.approved = false; stored.state = "script_review"; stored.updated_at = new Date().toISOString(); return { episode: await this.save(id, outline, stored) }; }
+  async generate(projectId: string, number: number, request: GenerateLongEpisodeScriptRequest): Promise<GenerateLongEpisodeScriptResponse> {
+    const id = projectId.trim(); const outline = await this.outline(id, number); const stored = await this.stored(id, outline);
+    if (!["outline_ready", "script_review", "script_approved"].includes(stored.state)) throw longEpisodeScriptNotAllowed();
+    if (Object.keys(stored.script).length && request?.regenerate !== true) throw longEpisodeScriptExists();
+    if (Object.keys(stored.script).length) stored.script_history.push({ created_at: new Date().toISOString(), source: "before_regeneration", script: stored.script });
+
+    const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
+    let script: LongEpisodeScript; let historyEntry: Record<string, unknown>;
+    if (apiKey && this.budget) {
+      const context = await this.buildContext(id, outline, stored);
+      const clipDurationSeconds = stored.duration_seconds / stored.scene_count;
+      const prompt = this.buildScriptPrompt(context, stored.scene_count, clipDurationSeconds);
+      try {
+        await this.budget.preflight(STORY_ESTIMATED_COST_USD);
+        let succeeded = false;
+        try {
+          const result = await callOpenAiStoryApi(apiKey, prompt, { sceneCount: stored.scene_count });
+          script = this.parseScript(result.story, stored.scene_count);
+          succeeded = true;
+        } finally { await this.budget.record(id, "episode_story", succeeded, STORY_ESTIMATED_COST_USD); }
+      } catch (error) {
+        if (error instanceof OpenAiBudgetExceededError) throw longEpisodeScriptBudgetExceeded(error.message);
+        if (error instanceof OpenAiAdapterError) throw longEpisodeScriptProviderError(error.category, error.message);
+        throw error;
+      }
+      historyEntry = { created_at: new Date().toISOString(), source: "openai_generation", script: this.storedScript(script!), context };
+    } else {
+      const continuity = await this.continuityContext(id, number);
+      script = this.generated(outline, await this.bibleContext(id), continuity, stored.scene_count);
+      historyEntry = { created_at: new Date().toISOString(), source: "local_fake_generation", script: this.storedScript(script), continuity_context: continuity };
+    }
+    stored.script = this.storedScript(script);
+    stored.script_history.push(historyEntry);
+    stored.script_revision += 1; stored.approved = false; stored.state = "script_review"; stored.updated_at = new Date().toISOString();
+    return { episode: await this.save(id, outline, stored) };
+  }
   async update(projectId: string, number: number, request: UpdateLongEpisodeScriptRequest): Promise<UpdateLongEpisodeScriptResponse> { const id = projectId.trim(); const outline = await this.outline(id, number); const stored = await this.stored(id, outline); if (stored.state !== "script_review" || !Object.keys(stored.script).length) throw longEpisodeScriptNotAllowed(); const script = this.parseScript(request?.script, stored.scene_count, longInvalidRequest); stored.script_history.push({ created_at: new Date().toISOString(), source: "before_user_edit", script: stored.script }); stored.script = this.storedScript(script); stored.script_revision += 1; stored.approved = false; stored.updated_at = new Date().toISOString(); return { episode: await this.save(id, outline, stored) }; }
   async approve(projectId: string, number: number, request: ApproveLongEpisodeScriptRequest): Promise<ApproveLongEpisodeScriptResponse> { const id = projectId.trim(); const outline = await this.outline(id, number); const stored = await this.stored(id, outline); if (request?.approved !== true || stored.state !== "script_review" || !Object.keys(stored.script).length) throw longEpisodeScriptNotAllowed(); stored.approved = true; stored.state = "script_approved"; stored.updated_at = new Date().toISOString(); return { episode: await this.save(id, outline, stored) }; }
 }

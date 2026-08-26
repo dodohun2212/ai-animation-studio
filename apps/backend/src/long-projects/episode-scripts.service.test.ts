@@ -1,14 +1,14 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EpisodeScriptsService } from "./episode-scripts.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
 
 let root: string | undefined;
 const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, platform: "YouTube Shorts" as const, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false };
 async function setup(episodeDurationSeconds: 30 | 60 = 30, sceneCount = 6) { root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-script-")); const projects = new LongProjectsService(path.join(root, "projects")); await projects.create({ projectId: "long", settings: { ...settings, sceneCount, clipDurationSeconds: episodeDurationSeconds === 60 ? 10 : 5 } }); const preview = await projects.preview("long"); await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 }); return new EpisodeScriptsService(path.join(root, "projects")); }
-afterEach(async () => { if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
+afterEach(async () => { vi.unstubAllGlobals(); if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 
 describe("EpisodeScriptsService", () => {
   it("creates, edits, preserves history, and approves one six-scene local episode script", async () => {
@@ -58,10 +58,16 @@ describe("EpisodeScriptsService", () => {
     await expect(subject.update("long", 1, { script: { ...script, scenes: script.scenes.slice(0, 6) } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
-  it("rejects malformed user edits and never imports a provider or media runner", async () => {
+  it("rejects malformed user edits", async () => {
     const subject = await setup(); await subject.generate("long", 1, {});
     await expect(subject.update("long", 1, { script: { title: "x", synopsis: "x", ending: "x", scenes: [] } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
-    const source = await fs.readFile(path.join(process.cwd(), "src", "long-projects", "episode-scripts.service.ts"), "utf8");
-    expect(source).not.toMatch(/openai|runway|ffmpeg|child_process|fetch\s*\(/i);
+  });
+
+  it("never calls fetch when no OpenAI credential/budget is wired in", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const subject = await setup();
+    await subject.generate("long", 1, {});
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
