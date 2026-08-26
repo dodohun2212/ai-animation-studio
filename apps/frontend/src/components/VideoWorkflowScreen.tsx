@@ -200,6 +200,8 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
     restartBusy.current = true;
     setRestartPending(true);
     setRestartError(null);
+    // Restarting supersedes every per-scene attempt that failed before the job stopped, so their messages go too.
+    setRegenerateErrors({});
     try {
       const progress = await restartVideoGeneration(projectId, jobId);
       setProgressState({ status: "ready", progress });
@@ -234,14 +236,27 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
   }
 
   /** Opens the explicit per-scene confirmation panel. Never calls the network by itself. */
+  /** A previous attempt's message describes an attempt that is over — leaving it on screen next to a fresh
+      confirmation reads as if the new attempt already failed, so opening or cancelling clears it. */
+  function clearRegenerateError(sceneNumber: SceneNumber): void {
+    setRegenerateErrors((current) => {
+      if (!(sceneNumber in current)) return current;
+      const next = { ...current };
+      delete next[sceneNumber];
+      return next;
+    });
+  }
+
   function openRegenerateConfirmation(sceneNumber: SceneNumber): void {
     if (regenerateBusy.current.has(sceneNumber)) return;
+    clearRegenerateError(sceneNumber);
     setRegenerateInstruction("");
     setRegenerateConfirmScene(sceneNumber);
   }
 
   function cancelRegenerateConfirmation(sceneNumber: SceneNumber): void {
     if (regenerateBusy.current.has(sceneNumber)) return;
+    clearRegenerateError(sceneNumber);
     setRegenerateInstruction("");
     setRegenerateConfirmScene((current) => (current === sceneNumber ? null : current));
   }
@@ -388,10 +403,16 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
             </p>
           )}
 
-          {progress.status === "failed" && (
+          {/* Gated on the failed scenes themselves, not on the aggregate status: the server reports "interrupted"
+              whenever the project is in that state regardless of how many scenes failed, so keying off
+              `status === "failed"` hid this whole section — and every failure reason in it — exactly when the job
+              had both stopped and failed. */}
+          {progress.failedSceneNumbers.length > 0 && (
             <div className="space-y-3 rounded-2xl border border-rose-400/30 bg-rose-950/10 p-5" data-testid="failed-scenes-section">
               <p className="text-sm font-semibold text-rose-300">
-                일부 장면 생성에 실패했습니다. 아래에서 실패한 장면을 다시 시도할 수 있습니다.
+                {canRestart
+                  ? "일부 장면 생성에 실패했습니다. 아래 \"이어서 생성\"으로 재개한 뒤 다시 시도할 수 있습니다."
+                  : "일부 장면 생성에 실패했습니다. 아래에서 실패한 장면을 다시 시도할 수 있습니다."}
               </p>
               <ul className="space-y-2" data-testid="failed-scenes-list">
                 {progress.failedSceneNumbers.map((sceneNumber) => {
@@ -407,7 +428,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                           data-testid={`failed-scene-retry-${sceneNumber}`}
                           className={smallOutlineButton}
                           onClick={() => openRegenerateConfirmation(sceneNumber)}
-                          disabled={regeneratePending || regenerateConfirmOpen}
+                          disabled={regeneratePending || regenerateConfirmOpen || canRestart}
                         >
                           {regeneratePending ? "다시 시도 중..." : "다시 시도"}
                         </button>
@@ -415,6 +436,13 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                       <p data-testid={`failed-scene-reason-${sceneNumber}`} className="text-xs text-rose-300">
                         {sceneErrorMessage(progress.sceneErrors?.[sceneNumber])}
                       </p>
+                      {/* While the job is interrupted the server rejects a per-scene retry outright, so offering it
+                          here — with a price attached — only produces a confusing error after the click. */}
+                      {canRestart && (
+                        <p data-testid={`failed-scene-retry-blocked-${sceneNumber}`} className="text-xs text-amber-300">
+                          지금은 생성이 멈춘 상태라 이 장면만 따로 다시 시도할 수 없습니다. 아래 &quot;이어서 생성&quot;으로 먼저 재개해 주세요.
+                        </p>
+                      )}
                       {regenerateConfirmOpen && (
                         <div
                           role="alertdialog"
@@ -657,18 +685,14 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                           )}
                           <div className="space-y-1.5">
                             <div className="flex items-center justify-end gap-3">
-                              {/* Once approved the chip above already says 확정됨; a greyed-out button repeating
-                                  it invites a click that does nothing. */}
-                              {review.status !== "approved" && (
                               <button
                                 type="button"
                                 className={smallApproveButton}
                                 onClick={() => void approve(review.sceneNumber)}
-                                disabled={pending}
+                                disabled={review.status === "approved" || pending}
                               >
-                                {pending ? "확정 중..." : "이 영상으로 확정"}
+                                {review.status === "approved" ? "확정 완료" : pending ? "확정 중..." : "이 영상으로 확정"}
                               </button>
-                              )}
                             </div>
                             {scene?.motionPrompt && (
                               <details data-testid={`video-review-prompt-${review.sceneNumber}`} className="text-xs text-slate-400">

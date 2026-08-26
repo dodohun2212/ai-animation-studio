@@ -229,6 +229,25 @@ describe("VideoWorkflowScreen", () => {
     expect(screen.queryByTestId("failed-scene-retry-cost-2")).toBeNull();
   });
 
+  // Regression: the server rejects a per-scene retry unless the job is actively generating, so while the job is
+  // interrupted the retry button must not open a paid confirmation that can only end in a state error.
+  it("blocks a per-scene retry while the job is interrupted and points at restart instead", async () => {
+    const interrupted = makeProgress({
+      status: "interrupted",
+      completedSceneNumbers: [],
+      failedSceneNumbers: [1],
+      retryEstimate: { perSceneCostUsd: 0.25, budget: { monthlyLimitUsd: 10, spentUsd: 0.5, remainingUsd: 9.5, estimatedRequestCostUsd: 0.25, canSpend: true } },
+    });
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, interrupted)));
+
+    await screen.findByTestId("failed-scenes-section");
+    expect(screen.getByTestId("failed-scene-retry-1")).toBeDisabled();
+    expect(screen.getByTestId("failed-scene-retry-blocked-1").textContent).toContain("이어서 생성");
+    fireEvent.click(screen.getByTestId("failed-scene-retry-1"));
+    expect(screen.queryByTestId("failed-scene-retry-confirm-1")).toBeNull();
+    expect(screen.getByTestId("restart-button")).toBeInTheDocument();
+  });
+
   it("shows the recorded cost per scene and their total, and omits the cost line for a scene that was never charged", async () => {
     const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
     const withCosts = reviewResponse(sixReviews());
@@ -374,6 +393,27 @@ describe("VideoWorkflowScreen", () => {
     for (const number of [1, 3, 4, 5, 6]) {
       expect(screen.getByTestId(`video-review-${number}`)).toHaveAttribute("data-status", "approved");
     }
+  });
+
+  // Regression: a rejected retry left its message on screen after the confirmation was cancelled, so the scene
+  // looked like it had just failed again every time the panel was reopened.
+  it("clears a rejected retry's message when the confirmation is cancelled", async () => {
+    const failed = makeProgress({ status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2] });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, failed))
+      .mockResolvedValueOnce(jsonResponse(409, { code: "VIDEO_WORKFLOW_NOT_ALLOWED", message: "raw backend detail" }))
+      .mockResolvedValue(jsonResponse(200, failed));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("failed-scenes-section");
+    fireEvent.click(screen.getByTestId("failed-scene-retry-2"));
+    const panel = await screen.findByTestId("failed-scene-retry-confirm-2");
+    fireEvent.click(within(panel).getByRole("button", { name: "예, 다시 시도합니다" }));
+    await screen.findByTestId("failed-scene-retry-error-2");
+
+    fireEvent.click(within(panel).getByRole("button", { name: "취소" }));
+    await waitFor(() => expect(screen.queryByTestId("failed-scene-retry-error-2")).toBeNull());
   });
 
   it("shows a retry action for a scene Runway reported failed, and retries only after explicit confirmation", async () => {
