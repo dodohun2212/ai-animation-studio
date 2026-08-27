@@ -9,7 +9,8 @@ import type {
 import { InstagramConnectionStore } from "./instagram-connection.store.js";
 import { InstagramAdapterError, type RetryOptions } from "./instagram-request.js";
 import {
-  exchangeCodeForToken, exchangeForLongLivedToken, instagramLoginDialogUrl, readOAuthCallback,
+  DESKTOP_REDIRECT_URI, exchangeCodeForToken, exchangeForLongLivedToken, extractOAuthResult,
+  instagramLoginDialogUrl, readOAuthCallback, type OAuthRedirectResult,
 } from "./instagram-oauth.js";
 import { instagramNotConnected, instagramProviderError, invalidInstagramRequest } from "./instagram-api.error.js";
 
@@ -27,13 +28,21 @@ const STATE_LIFETIME_MS = 10 * 60 * 1000;
  */
 @Injectable()
 export class InstagramLoginService {
-  /** In memory on purpose: an unfinished login must not survive a restart — the user simply presses the button again. */
-  private pending: { state: string; issuedAt: number } | null = null;
+  /**
+   * In memory on purpose: an unfinished login must not survive a restart — the user simply presses the button
+   * again. (In development that is not rare, because `nest start --watch` restarts on every edit; the callback
+   * route logs the reason, since the two failures are indistinguishable from outside.)
+   *
+   * The redirect URI is remembered here rather than held on the instance because Meta requires the identical
+   * string at the dialog and at the exchange. Tying it to the attempt makes that structural: there is no way to
+   * complete a login against a different address from the one it was started with.
+   */
+  private pending: { state: string; issuedAt: number; redirectUri: string } | null = null;
 
   constructor(
     private readonly connection: InstagramConnectionStore,
-    /** This backend's own callback address — see instagramCallbackUrl. Meta must be given the identical string at both the dialog and the exchange. */
-    private readonly redirectUri: string,
+    /** This backend's own callback address — see instagramCallbackUrl. Unreachable today (D-020) and used only if a login is ever started against it. */
+    private readonly callbackUri: string,
     private readonly requestOptions: RetryOptions = {},
     private readonly now: () => number = Date.now,
   ) {}
@@ -66,13 +75,42 @@ export class InstagramLoginService {
     return this.statusOf();
   }
 
-  /** Issues the login URL and remembers the state it embedded. Starting again replaces any earlier attempt — only the most recent window can complete. */
-  async start(): Promise<StartInstagramLoginResponse> {
+  /**
+   * Issues the login URL and remembers the state it embedded. Starting again replaces any earlier attempt —
+   * only the most recent window can complete.
+   *
+   * `flow` picks which redirect Meta is asked to use, and the two are not interchangeable. "desktop" sends the
+   * window to Meta's own page and the shell reads the code off it; "callback" sends the browser to this backend
+   * and needs no window watched — but no `http://` address can be registered with Meta at all (D-020), so it is
+   * unreachable until this app has a public HTTPS domain. The screen only ever asks for "desktop".
+   */
+  async start(flow: "desktop" | "callback" = "desktop"): Promise<StartInstagramLoginResponse> {
     const app = await this.connection.appCredentials();
     if (!app) throw invalidInstagramRequest("Enter the Meta app ID and secret before signing in.");
     const state = crypto.randomBytes(16).toString("hex");
-    this.pending = { state, issuedAt: this.now() };
-    return { url: instagramLoginDialogUrl(app.appId, state, this.redirectUri) };
+    const redirectUri = flow === "desktop" ? DESKTOP_REDIRECT_URI : this.callbackUri;
+    this.pending = { state, issuedAt: this.now(), redirectUri };
+    return {
+      url: instagramLoginDialogUrl(app.appId, state, redirectUri),
+      ...(flow === "desktop" ? { redirectPrefix: DESKTOP_REDIRECT_URI } : {}),
+    };
+  }
+
+  /**
+   * Completes a desktop login from the URL the window landed on, unparsed.
+   *
+   * The shell hands the whole URL over rather than picking it apart, so code extraction and the state check stay
+   * in this one tested place. A URL that is not the redirect target is refused rather than treated as a failed
+   * login: the shell should not have called at all, and calling it a denial would spend the issued state.
+   */
+  async completeFromRedirect(request: unknown): Promise<CompleteInstagramLoginResponse> {
+    if (!isObject(request) || Object.keys(request).length !== 1
+      || typeof request.redirectedUrl !== "string" || !request.redirectedUrl.trim()) {
+      throw invalidInstagramRequest("Request body must contain only redirectedUrl.");
+    }
+    const result = extractOAuthResult(request.redirectedUrl);
+    if (result.kind === "pending") throw invalidInstagramRequest("That is not the address a completed sign-in lands on.");
+    return this.finish(result);
   }
 
   /**
@@ -80,7 +118,16 @@ export class InstagramLoginService {
    * consumed exactly once — a code that arrives without it is not proof of anything this app asked for, so it is
    * refused rather than exchanged.
    */
-  async complete(params: Record<string, string | undefined>): Promise<CompleteInstagramLoginResponse> {
+  complete(params: Record<string, string | undefined>): Promise<CompleteInstagramLoginResponse> {
+    return this.finish(readOAuthCallback(params));
+  }
+
+  /**
+   * The half both flows share, and deliberately the only place a token is ever written: whichever way the code
+   * arrived, the state check and the exchange happen here once. Splitting them would leave two paths to a stored
+   * token, and only one of them would stay checked.
+   */
+  private async finish(result: OAuthRedirectResult): Promise<CompleteInstagramLoginResponse> {
     const app = await this.connection.appCredentials();
     if (!app) throw invalidInstagramRequest("Enter the Meta app ID and secret before signing in.");
 
@@ -91,12 +138,13 @@ export class InstagramLoginService {
       throw invalidInstagramRequest("This sign-in attempt is no longer valid. Start it again.");
     }
 
-    const result = readOAuthCallback(params);
     if (result.kind !== "code") throw invalidInstagramRequest("Sign-in did not complete.");
     if (result.state !== pending.state) throw invalidInstagramRequest("Sign-in could not be verified. Start it again.");
 
     try {
-      const short = await exchangeCodeForToken(app.appId, app.appSecret, result.code, this.redirectUri, this.requestOptions);
+      // The redirect this attempt was started with, not whatever the service was constructed with — Meta rejects
+      // an exchange whose redirect_uri differs by even a character from the one the dialog was given.
+      const short = await exchangeCodeForToken(app.appId, app.appSecret, result.code, pending.redirectUri, this.requestOptions);
       const long = await exchangeForLongLivedToken(app.appId, app.appSecret, short.accessToken, this.requestOptions);
       // Turned into an absolute instant here, once, at the moment Meta stated the lifetime — storing the
       // duration would quietly mean something different every time it was read.

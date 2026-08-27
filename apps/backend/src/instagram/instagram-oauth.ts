@@ -17,18 +17,26 @@ import {
  */
 
 /**
- * Where Meta sends the browser back to after login: this app's own backend.
+ * Meta's documented redirect for a login hosted inside a desktop app's webview: "If you are using this in a
+ * webview within a desktop app, this must be set to https://www.facebook.com/connect/login_success.html".
  *
- * An earlier version used Meta's documented desktop-webview page and read the code off the window's URL, which
- * only a shell that can inspect its own windows could do. The user works in a browser, so that path could not be
- * used at all — and keeping both would mean maintaining two login routes for one feature. A callback the backend
- * serves works the same way in either place, because nobody has to look inside the window.
+ * This is the only redirect this app can actually use, and the reason is not a preference (docs/06_DECISIONS.md
+ * D-020). Meta refuses to register any `http://` redirect — "모든 리디렉션 URL에는 HTTPS가 필요합니다" — and the
+ * HTTPS-enforcement toggle that used to allow an exception cannot be turned off on an app created after 2018.
+ * A local backend has no HTTPS address, so a callback it serves cannot be registered at all.
  *
- * Meta permits http://127.0.0.1 redirects for an app in development mode, which is where this app stays: it
- * publishes only to its owner's own account, so it never needs review or a public domain.
+ * This page is Meta's own and already HTTPS, so it registers with no certificate, no domain, and no tunnel. The
+ * cost is that only a window this app can inspect may be used, because reading the code means reading the URL
+ * the window landed on — which is why the login lives in the desktop shell.
+ */
+export const DESKTOP_REDIRECT_URI = "https://www.facebook.com/connect/login_success.html";
+
+/**
+ * Where Meta would send the browser back to if this app ever had an address Meta accepts.
  *
- * The port is the backend's own, so the browser dev server and the packaged shell each produce their own address
- * and both are registered once in the Meta app settings.
+ * Kept, unused, because it is the correct shape the moment there is a public HTTPS domain: nobody has to look
+ * inside a window, so one route would serve the browser and the packaged shell alike. It is unreachable today
+ * for the registration reason above, and the screen never offers it — see InstagramLoginService.start.
  */
 export function instagramCallbackUrl(port: number): string {
   return `http://127.0.0.1:${port}/settings/instagram/callback`;
@@ -70,9 +78,9 @@ export type OAuthRedirectResult =
   | { kind: "denied"; detail?: string };
 
 /**
- * Reads what Meta put on the callback request. A code without the matching state is refused rather than used —
- * state is the only thing proving the code answers a login this app started, and that stays true whichever way
- * the code arrives.
+ * Reads what Meta put on a redirect. A code without the matching state is refused rather than used — state is
+ * the only thing proving the code answers a login this app started, and that stays true whichever way the code
+ * arrives, so both flows go through this one function.
  */
 export function readOAuthCallback(params: Record<string, string | undefined>): OAuthRedirectResult {
   const code = params.code?.trim();
@@ -80,6 +88,29 @@ export function readOAuthCallback(params: Record<string, string | undefined>): O
   if (code && state) return { kind: "code", code, state };
   const error = params.error_description?.trim() || params.error?.trim();
   return { kind: "denied", ...(error ? { detail: error } : {}) };
+}
+
+/** Distinguishes "this window has not arrived yet" from "it arrived and here is the answer". */
+export type OAuthNavigationResult = OAuthRedirectResult | { kind: "pending" };
+
+/**
+ * Reads one navigation URL from the desktop login window. Returns "pending" for every URL that is not the
+ * redirect target, so the shell can call this on each navigation event without deciding anything itself.
+ *
+ * Never throws on a malformed URL: a login window navigates through URLs this app does not control, and one
+ * that fails to parse is simply not the redirect. Everything past the parse is delegated to readOAuthCallback,
+ * so the state rule cannot end up written twice and drift.
+ */
+export function extractOAuthResult(url: string): OAuthNavigationResult {
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return { kind: "pending" }; }
+  if (`${parsed.origin}${parsed.pathname}` !== DESKTOP_REDIRECT_URI) return { kind: "pending" };
+  const params: Record<string, string | undefined> = {};
+  for (const key of ["code", "state", "error", "error_description"]) {
+    const value = parsed.searchParams.get(key);
+    if (value !== null) params[key] = value;
+  }
+  return readOAuthCallback(params);
 }
 
 interface TokenResponse { accessToken: string; expiresInSeconds: number | null }

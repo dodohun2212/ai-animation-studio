@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  INSTAGRAM_PUBLISH_SCOPES, exchangeCodeForToken, exchangeForLongLivedToken,
-  inspectInstagramToken, instagramCallbackUrl, instagramLoginDialogUrl, readOAuthCallback,
+  DESKTOP_REDIRECT_URI, INSTAGRAM_PUBLISH_SCOPES, exchangeCodeForToken, exchangeForLongLivedToken,
+  extractOAuthResult, inspectInstagramToken, instagramCallbackUrl, instagramLoginDialogUrl, readOAuthCallback,
 } from "./instagram-oauth.js";
 
 const REDIRECT = instagramCallbackUrl(4317);
@@ -60,6 +60,49 @@ describe("readOAuthCallback", () => {
 
   it("reports an empty callback as a denial rather than throwing", () => {
     expect(readOAuthCallback({})).toEqual({ kind: "denied" });
+  });
+});
+
+describe("extractOAuthResult", () => {
+  it("reports pending for any URL that is not the redirect target", () => {
+    expect(extractOAuthResult("https://www.facebook.com/login.php?next=whatever")).toEqual({ kind: "pending" });
+    expect(extractOAuthResult(`${DESKTOP_REDIRECT_URI.replace("login_success", "other")}?code=c&state=s`)).toEqual({ kind: "pending" });
+  });
+
+  it("reports pending, never throws, for a malformed URL", () => {
+    // A login window navigates through URLs this app does not control.
+    expect(extractOAuthResult("not a url")).toEqual({ kind: "pending" });
+  });
+
+  it("returns the code and state from a successful redirect", () => {
+    expect(extractOAuthResult(`${DESKTOP_REDIRECT_URI}?code=the-code&state=the-state`))
+      .toEqual({ kind: "code", code: "the-code", state: "the-state" });
+  });
+
+  it("reports a denial with Meta's description when the user refuses", () => {
+    expect(extractOAuthResult(`${DESKTOP_REDIRECT_URI}?error=access_denied&error_description=Permissions+error`))
+      .toMatchObject({ kind: "denied", detail: "Permissions error" });
+  });
+
+  it("refuses a redirect carrying a code but no state, rather than trusting it", () => {
+    // state is the only thing proving the code answers this app's own request.
+    expect(extractOAuthResult(`${DESKTOP_REDIRECT_URI}?code=the-code`)).toMatchObject({ kind: "denied" });
+  });
+
+  it("applies the same rules the callback does, because it defers to the same function", () => {
+    // Two readers of one redirect would drift, and the half that drifted would be the one deciding whether a
+    // code without state is acceptable.
+    const query = "?code=c&state=s";
+    expect(extractOAuthResult(`${DESKTOP_REDIRECT_URI}${query}`)).toEqual(readOAuthCallback({ code: "c", state: "s" }));
+  });
+});
+
+describe("DESKTOP_REDIRECT_URI", () => {
+  it("is Meta's own HTTPS page, which is why it needs no domain or certificate (D-020)", () => {
+    // Pinned because the alternative was tried and refused outright: Meta registers no http:// redirect, and
+    // the HTTPS enforcement cannot be switched off on an app made after 2018.
+    expect(DESKTOP_REDIRECT_URI).toBe("https://www.facebook.com/connect/login_success.html");
+    expect(new URL(DESKTOP_REDIRECT_URI).protocol).toBe("https:");
   });
 });
 

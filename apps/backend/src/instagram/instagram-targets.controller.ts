@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Header, Logger, type LoggerService, Optional, Param, Post, Put, Query } from "@nestjs/common";
 import {
-  API_ROUTES, type ApiError,
+  API_ROUTES, type ApiError, type CompleteInstagramLoginResponse,
   type GetInstagramTargetsResponse, type InstagramConnectionStatus,
   type PublishToInstagramResponse,
   type SetInstagramAppResponse, type SetInstagramTargetResponse, type StartInstagramLoginResponse,
@@ -72,6 +72,12 @@ export class InstagramTargetsController {
   @Post(API_ROUTES.instagramLoginStart)
   startLogin(): Promise<StartInstagramLoginResponse> {
     return this.login.start();
+  }
+
+  /** Takes the URL the desktop login window landed on, whole and unparsed — the code is read and the state checked here. */
+  @Post(API_ROUTES.instagramLoginComplete)
+  completeLoginFromRedirect(@Body() body: unknown): Promise<CompleteInstagramLoginResponse> {
+    return this.login.completeFromRedirect(body);
   }
 
   /**

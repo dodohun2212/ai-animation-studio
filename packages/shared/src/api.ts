@@ -1181,14 +1181,22 @@ export interface InstagramConnectionStatus {
 export interface SetInstagramAppRequest { appId: string; appSecret: string; }
 export type SetInstagramAppResponse = InstagramConnectionStatus;
 export interface StartInstagramLoginResponse {
-  /**
-   * The Meta login page to open. Nothing needs to watch the window afterwards: Meta redirects back to this
-   * app's own backend, which completes the login on its own. The screen finds out by reading the connection
-   * status again.
-   */
+  /** The Meta login page to open in a window. */
   url: string;
+  /**
+   * The window has arrived once its URL starts with this; hand that whole URL back to complete the login.
+   *
+   * Present only for the desktop flow, which is the only one Meta will register an address for — no `http://`
+   * redirect can be registered at all, and a local backend has no HTTPS address (docs/06_DECISIONS.md D-020).
+   * Its absence means no window needs watching, which today can only happen if a login was started against the
+   * dormant callback route.
+   */
+  redirectPrefix?: string;
 }
-/** What completing a login yields. No client receives it — the callback answers Meta's browser with a page, and the screen learns the outcome by reading the connection status again. Kept named because that is what the completion produces. */
+export interface CompleteInstagramLoginRequest {
+  /** The full URL the login window landed on, unparsed — the server reads the code and verifies the state it issued. */
+  redirectedUrl: string;
+}
 export type CompleteInstagramLoginResponse = InstagramConnectionStatus;
 
 /**
@@ -1475,7 +1483,9 @@ export const API_ROUTES = {
   instagramConnection: "/settings/instagram/connection",
   instagramApp: "/settings/instagram/app",
   instagramLoginStart: "/settings/instagram/login/start",
-  /** Meta redirects the browser here; the screen never calls it. */
+  /** The desktop shell hands back the URL its login window landed on. */
+  instagramLoginComplete: "/settings/instagram/login/complete",
+  /** Where Meta would redirect a browser. Dormant: no address this app can serve is registrable (D-020). */
   instagramLoginCallback: "/settings/instagram/callback",
   instagramPublish: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/instagram/publish`,
   projectAssetMappings: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/assets/mappings`,

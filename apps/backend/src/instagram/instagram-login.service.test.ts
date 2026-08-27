@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { InstagramConnectionStore } from "./instagram-connection.store.js";
 import { InstagramLoginService } from "./instagram-login.service.js";
-import { instagramCallbackUrl } from "./instagram-oauth.js";
+import { DESKTOP_REDIRECT_URI, instagramCallbackUrl } from "./instagram-oauth.js";
 
 const REDIRECT = instagramCallbackUrl(4317);
 
@@ -98,13 +98,27 @@ describe("InstagramLoginService.start", () => {
     await expect(service.start()).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
-  it("returns a login URL pointing back at this backend's callback", async () => {
+  it("sends the login to Meta's own success page, the only address this app can register (D-020)", async () => {
     const { service } = await setup();
     const started = await service.start();
     const url = new URL(started.url);
-    expect(url.searchParams.get("redirect_uri")).toBe(REDIRECT);
+    expect(url.searchParams.get("redirect_uri")).toBe(DESKTOP_REDIRECT_URI);
     expect(url.searchParams.get("client_id")).toBe("app-1");
     expect(url.searchParams.get("state")).toBeTruthy();
+    expect(started.redirectPrefix).toBe(DESKTOP_REDIRECT_URI);
+  });
+
+  it("defaults to the desktop flow, so no caller can reach the unregistrable one by forgetting an argument", async () => {
+    // The callback flow exists but cannot be registered with Meta at all. Reaching it has to be a decision.
+    const { service } = await setup();
+    expect(new URL((await service.start()).url).searchParams.get("redirect_uri")).toBe(DESKTOP_REDIRECT_URI);
+  });
+
+  it("uses this backend's callback, and names no window to watch, when that flow is asked for explicitly", async () => {
+    const { service } = await setup();
+    const started = await service.start("callback");
+    expect(new URL(started.url).searchParams.get("redirect_uri")).toBe(REDIRECT);
+    expect(started.redirectPrefix).toBeUndefined();
   });
 
   it("issues a different state every time", async () => {
@@ -112,6 +126,52 @@ describe("InstagramLoginService.start", () => {
     const first = new URL((await service.start()).url).searchParams.get("state");
     const second = new URL((await service.start()).url).searchParams.get("state");
     expect(first).not.toBe(second);
+  });
+});
+
+describe("InstagramLoginService.completeFromRedirect", () => {
+  /** Drives a desktop sign-in the way the shell does: start, then hand back the URL the window landed on. */
+  async function signInFromWindow(service: InstagramLoginService, extra = "") {
+    const started = await service.start();
+    const state = new URL(started.url).searchParams.get("state")!;
+    return service.completeFromRedirect({ redirectedUrl: `${DESKTOP_REDIRECT_URI}?code=the-code&state=${state}${extra}` });
+  }
+
+  it("reads the code off the landed URL and stores the long-lived token", async () => {
+    const { service, connection } = await setup({ fetchImpl: exchangeFetch() });
+    await expect(signInFromWindow(service)).resolves.toMatchObject({ tokenStored: true });
+    await expect(connection.token()).resolves.toMatchObject({ accessToken: "long-token" });
+  });
+
+  it("exchanges against the same redirect the dialog was given, which Meta requires to match exactly", async () => {
+    const fetchImpl = exchangeFetch();
+    const { service } = await setup({ fetchImpl });
+    await signInFromWindow(service);
+    const exchangeUrl = new URL(String((fetchImpl.mock.calls[0] as [string, RequestInit])[0]));
+    expect(exchangeUrl.searchParams.get("redirect_uri")).toBe(DESKTOP_REDIRECT_URI);
+  });
+
+  it("refuses a URL that is not the redirect target rather than spending the issued state", async () => {
+    // The shell should not have called at all. Treating it as a denial would burn the state and force the
+    // person to start over for a navigation this app merely passed through.
+    const { service } = await setup({ fetchImpl: exchangeFetch() });
+    await service.start();
+    await expect(service.completeFromRedirect({ redirectedUrl: "https://www.facebook.com/login.php" }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
+  it("refuses a state that does not match the one it issued", async () => {
+    const { service } = await setup({ fetchImpl: exchangeFetch() });
+    await service.start();
+    await expect(service.completeFromRedirect({ redirectedUrl: `${DESKTOP_REDIRECT_URI}?code=c&state=not-issued` }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
+  it("rejects a malformed request body", async () => {
+    const { service } = await setup();
+    for (const body of [undefined, {}, { redirectedUrl: "" }, { redirectedUrl: "u", extra: 1 }]) {
+      await expect(service.completeFromRedirect(body)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    }
   });
 });
 

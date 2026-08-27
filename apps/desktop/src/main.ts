@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, dialog, ipcMain, shell, utilityProcess } from "electron";
 
 import { BackendProcessManager, type ChildLike } from "./backend-process.ts";
+import { isAllowedLoginUrl, openInstagramLoginWindow, type LoginWindowLike } from "./instagram-login-window.ts";
 import { resolveProjectPath } from "./project-path.ts";
 import { resolveRuntimeRoots } from "./runtime-roots.ts";
 import { migrateUserDataFolder } from "./userdata-migration.ts";
@@ -104,6 +105,49 @@ function registerOpenProjectPathHandler(): void {
   });
 }
 
+/**
+ * Opens the Meta login page in its own window and hands the landed URL back to the renderer, which passes it to
+ * the backend to be parsed and verified. Nothing about the code or the app secret passes through here.
+ *
+ * This exists because Meta will not register any address this app can serve: every redirect URL must be HTTPS,
+ * and the enforcement cannot be switched off (docs/06_DECISIONS.md D-020). Meta's own success page is HTTPS and
+ * needs no registration, but only a window this app can inspect can read the code off it — so the login lives
+ * here even though everything else about this feature works in a browser.
+ *
+ * The window runs with no preload and no Node access: it displays a real login form on a third-party page, so
+ * it gets the least authority this app can give it.
+ */
+function registerInstagramLoginHandler(): void {
+  ipcMain.handle("instagram-login", async (_event, payload: unknown) => {
+    const request = payload as { url?: unknown; redirectPrefix?: unknown } | null;
+    const url = typeof request?.url === "string" ? request.url : "";
+    const redirectPrefix = typeof request?.redirectPrefix === "string" ? request.redirectPrefix : "";
+    if (!isAllowedLoginUrl(url) || !isAllowedLoginUrl(redirectPrefix)) return { kind: "cancelled" };
+
+    return openInstagramLoginWindow(url, redirectPrefix, {
+      createWindow: (): LoginWindowLike => {
+        const window = new BrowserWindow({
+          width: 520,
+          height: 720,
+          title: "Instagram 로그인",
+          autoHideMenuBar: true,
+          webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+        });
+        return {
+          loadURL: (target) => { void window.loadURL(target); },
+          onNavigate: (listener) => {
+            // will-redirect catches the hop to the success page; did-navigate covers a direct landing.
+            window.webContents.on("will-redirect", (_navigationEvent, target) => listener(target));
+            window.webContents.on("did-navigate", (_navigationEvent, target) => listener(target));
+          },
+          onClosed: (listener) => window.on("closed", listener),
+          close: () => { if (!window.isDestroyed()) window.close(); },
+        };
+      },
+    });
+  });
+}
+
 async function createProductionWindow(): Promise<BrowserWindow> {
   const port = Number(process.env.BACKEND_PORT ?? DEFAULT_BACKEND_PORT);
   backend = startBackend(port);
@@ -159,6 +203,7 @@ function createWindow(): void {
 void app.whenReady().then(async () => {
   await renameAppAndMigrateUserData();
   registerOpenProjectPathHandler();
+  registerInstagramLoginHandler();
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
