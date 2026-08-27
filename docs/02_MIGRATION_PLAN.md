@@ -1379,4 +1379,16 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 신규 테스트 24건(`instagram-graph-adapter.test.ts`) + settings 관련 기존 테스트 3곳 fixture 갱신(3-provider 배열로).
   - 검증: root typecheck 전부 통과, Backend 812개(+24 신규)·frontend 887개·root build 전부 통과. 실제 Instagram/Meta API 호출 없음, 유료 Provider 호출 없음.
   - 커밋: `8ff332c`(위 "연결됨" 문구 수정과 같은 커밋).
+- [x] **인스타그램 토큰 확보 경로 확정 및 구현 — 앱 내 로그인(A) 채택(Round 181)**: Cowork가 판단을 넘긴 두 갈래(A: 앱 안 OAuth / B: 사용자가 토큰 직접 붙여넣기)를 **문서로 결정**. 취향이 아니라 사실이 갈랐음.
+  - **결정 근거**: 장기 토큰은 약 60일이고, Meta 문서에 **이미 발급된 장기 토큰을 만료 전에 갱신하는 경로가 없음**(`.../access-tokens/refreshing/` 직접 확인). 문서가 제시하는 유일한 복구책이 *"the person will have to go through the login flow again to get a new token."* → B를 고르면 그 "login flow"가 사용자에게는 Graph API Explorer를 다시 찾아가는 개발자 도구 절차가 되고, 반년에 한 번 그걸 기억해내야 함. A를 고르면 문서가 말하는 복구책이 **최초에 눌렀던 그 버튼 그대로**임.
+  - **A가 예상보다 가볍다는 사실도 문서로 확인**: Meta가 데스크톱 웹뷰 전용 리디렉트 값을 문서화하고 있음 — *"If you are using this in a webview within a desktop app, this must be set to `https://www.facebook.com/connect/login_success.html`"*. 덕분에 localhost 리디렉트 등록·HTTPS 예외·로컬 백엔드 콜백 라우트가 **전부 불필요**. Cowork가 "구현이 더 무겁다"고 본 전제가 실제로는 성립하지 않음.
+  - `instagram-oauth.ts` 신규(순수 함수, 저장·창 띄우기 없음): 로그인 대화창 URL 생성, 리디렉트 URL 파싱(`code`만 있고 `state`가 없으면 **신뢰하지 않고 거부** — state가 이 코드가 우리 요청에 대한 응답임을 증명하는 유일한 근거), `code`→단기 토큰, 단기→장기 토큰, `debug_token` 검사.
+  - **재시도 정책을 호출별로 분리**: `code` 교환은 `maxRetries: 0`(코드가 1회용이라 재시도하면 이미 소진된 코드를 보내 "로그인 거부"처럼 보이는 실패가 됨), 장기 토큰 교환은 입력이 1회용이 아니므로 재시도 허용.
+  - **권한 범위(scope)를 문서로 확정**: `instagram_basic`·`instagram_content_publish`·`pages_read_engagement`(문서상 필수 3종) + `pages_show_list`(사용자가 Instagram Business Account ID를 직접 찾아 손으로 옮겨 적는 단계를 없애기 위해 페이지 목록 조회용). `ads_management`/`ads_read`는 **의도적으로 요청 안 함** — Business Manager 경유 역할일 때만 필요하다고 문서에 적혀 있고, 쓰지도 않을 광고 계정 권한을 요구하는 건 과요구. scope 목록이 조용히 넓어지면 테스트가 실패하도록 문자열째 고정.
+  - **Cowork의 두 번째 질문(유효성 확인 버튼)도 같은 호출로 해결됨**: `debug_token`이 `is_valid`와 실제 만료 시각을 무료·읽기 전용으로 반환 — Round 184에서 문구만 정직하게 고쳤던 "이 키 아직 살아있나"에 앱이 실제로 답할 수 있게 됨. 만료 시각이 0/부재일 때는 문서에 의미가 명시돼 있지 않으므로 `null`("명시된 만료 없음")로 두고 뜻을 단정하지 않음.
+  - **공유 기계 분리**: 요청·재시도·Graph 에러 분류를 `instagram-request.ts`로 추출해 두 어댑터가 공유 — 복제해두면 분류 표가 갈라지고, 그게 이 세션에서 반복해 잡아온 실패 유형이라 처음부터 차단.
+  - **아직 안 만든 것**: Electron 로그인 창 배선, 토큰·앱 시크릿 저장 서비스, 컨트롤러/엔드포인트, 실제 게시 orchestration — 다음 라운드.
+  - 신규 테스트 21건(`instagram-oauth.test.ts`). 기존 24건은 리팩터링 회귀 검증으로 그대로 사용.
+  - 검증: root typecheck 전부 통과, Backend 833개(+21 신규) 전부 통과, root build 전부 통과. 실제 Meta API 호출 없음.
+  - 커밋: `c0bb9ee`.
 
