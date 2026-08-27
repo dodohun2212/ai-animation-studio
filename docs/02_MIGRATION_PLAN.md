@@ -1356,4 +1356,9 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 신규 테스트 5건(`userdata-migration.test.ts`, `node --test`) — 동일 경로, 옛 경로 없음, 새 경로에 이미 존재(옛 경로 안 건드림 확인), rename 성공, rename 실패 시 copy 대체(옛 경로 보존 확인).
   - 검증: root typecheck 전부 통과, desktop 13개(+5 신규) 전부 통과, root build 전부 통과. 유료 Provider 호출 없음.
   - 커밋: `a5fef82`.
+- [x] **락이 걸렸을 때 전용 에러 코드 `PROJECT_LOCKED` 신설(Round 177)**: Cowork Round 181 질문 — 두 프로세스가 경합할 때 락이 "기다리는지 거절하는지" 프런트가 알 방법이 없었음. 조사해서 답함: 평소엔 기다림(락 보유자가 문서화된 대로 수초 안에 끝남, 클라이언트에 보이는 에러 없음)이 맞지만, 실제 경합이 `ACQUIRE_TIMEOUT_MS`(10초)를 넘으면 `ProjectLockTimeoutError`가 던져지는데 **단편·롱 어느 쪽 호출부도 이걸 안 잡고 있었음** — `code` 없는 맨 500으로 떨어져 프런트가 응답 자체를 파싱 못 함(`CLIENT_MALFORMED_RESPONSE`). Round 152 사고를 막으려던 락이, 정작 걸렸을 때는 "다시 시도"를 유도하는 정반대 문구를 보여줄 뻔했음.
+  - `video-workflow-api.error.ts`/`long-project-api.error.ts` 양쪽에 `PROJECT_LOCKED` 코드 신설(Cowork 요청대로 **같은 문자열 코드**를 공유 — 프런트 안전 메시지 표 하나로 양쪽 다 처리 가능). `advanceReal()` 두 곳(단편·Episode) 모두 `ProjectLockTimeoutError`를 잡아 새 에러로 재던짐.
+  - `withProjectLock`에 선택적 `timeoutMs` 오버라이드 추가(실제 호출부는 전부 기본값 사용, 테스트 전용) — 진짜 10초를 기다리지 않고도 타임아웃 경로가 실제로 `ProjectLockTimeoutError`를 던지는지 검증하는 신규 테스트 1건 추가.
+  - 검증: root typecheck 전부 통과, Backend 788개(+1 신규) 전부 통과, root build 전부 통과. 유료 Provider 호출 없음.
+  - 커밋: `e782d96`.
 
