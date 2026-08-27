@@ -36,9 +36,23 @@ export const instagramTargetNotFound = () =>
 export const instagramStorageError = () =>
   new InstagramApiException("INSTAGRAM_STORAGE_ERROR", "Instagram settings storage operation failed.", HttpStatus.INTERNAL_SERVER_ERROR);
 
-/** Meta rejected the request for a reason that is not an expired login — category is carried in details for the frontend to branch on, never Meta's own wording. */
-export const instagramProviderError = (category: string, message: string) =>
-  new InstagramApiException("INSTAGRAM_PROVIDER_ERROR", message, HttpStatus.BAD_GATEWAY, { category });
+/**
+ * Meta rejected the request for a reason that is not an expired login — category is carried in details for the
+ * frontend to branch on, never Meta's own wording.
+ *
+ * `diagnostics` carries only numbers Meta answered with (HTTP status, Graph code and subcode). They travel
+ * because a category that looks wrong can only be told apart from a real outage by the values it came from, and
+ * unlike Meta's message text there is nothing in them to leak.
+ */
+// `object` rather than a named shape: this only ever forwards numbers, and typing it to one caller's
+// interface would make the next caller's shape a compile error for no reason the reader could act on.
+export const instagramProviderError = (category: string, message: string, diagnostics?: object) => {
+  const numbers = Object.entries(diagnostics ?? {}).filter((entry): entry is [string, number] => typeof entry[1] === "number");
+  return new InstagramApiException("INSTAGRAM_PROVIDER_ERROR", message, HttpStatus.BAD_GATEWAY, {
+    category,
+    ...(numbers.length ? { diagnostics: Object.fromEntries(numbers) } : {}),
+  });
+};
 
 /**
  * This project's final video has already been posted. Refused rather than posted again: a duplicate charge can

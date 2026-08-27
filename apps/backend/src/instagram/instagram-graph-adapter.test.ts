@@ -56,6 +56,44 @@ describe("createInstagramResumableContainer", () => {
       .rejects.toMatchObject({ category: "rate_limit" });
   });
 
+  it("does not call error.code 1 a server problem — Meta documents it as two different situations", async () => {
+    // Code 1 is "possibly downtime, and if it recurs check you are requesting an existing API". Reporting one of
+    // those as fact is how a login refused over a credential was described as a Meta outage, which told the
+    // person to wait for something that was never going to pass on its own.
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(400, { error: { message: "Error validating client secret.", code: 1 } }));
+    await expect(createInstagramResumableContainer("token", "id", { fetchImpl: fetchMock, sleep: noSleep }))
+      .rejects.toMatchObject({ category: "unknown" });
+  });
+
+  it("still calls error.code 2 a server problem — that one Meta documents as downtime alone", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(400, { error: { message: "API Service", code: 2 } }));
+    await expect(createInstagramResumableContainer("token", "id", { fetchImpl: fetchMock, sleep: noSleep }))
+      .rejects.toMatchObject({ category: "server" });
+  });
+
+  it("carries the numbers the category was derived from", async () => {
+    // Without these a category is an assertion with nothing to check it against, which is exactly the position
+    // the first real login failure left us in.
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(400, { error: { message: "nope", code: 100, error_subcode: 33 } }));
+    await expect(createInstagramResumableContainer("token", "id", { fetchImpl: fetchMock, sleep: noSleep }))
+      .rejects.toMatchObject({ diagnostics: { status: 400, graphCode: 100, graphSubcode: 33 } });
+  });
+
+  it("carries the status even when the body cannot be read at all", async () => {
+    // The unreadable-body branch is one of the answers to "which branch classified this", so it has to be
+    // distinguishable from the others rather than reported as nothing.
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false, status: 502,
+      json: async () => { throw new Error("not json"); },
+      headers: { get: () => null },
+    } as unknown as Response);
+    const caught = await createInstagramResumableContainer("token", "id", { fetchImpl: fetchMock, sleep: noSleep })
+      .catch((error: unknown) => error);
+    expect(caught).toBeInstanceOf(InstagramAdapterError);
+    expect((caught as InstagramAdapterError).diagnostics).toEqual({ status: 502 });
+    expect((caught as InstagramAdapterError).detail).toBeUndefined();
+  });
+
   it("falls back to status-based classification when the body has no parseable error object", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(403, {}));
     await expect(createInstagramResumableContainer("token", "id", { fetchImpl: fetchMock, sleep: noSleep }))

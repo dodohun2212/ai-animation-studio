@@ -23,8 +23,26 @@ import { InstagramTargetsService } from "./instagram-targets.service.js";
 function describeLoginFailure(error: unknown): string {
   if (!(error instanceof InstagramApiException)) return "unrecognised error";
   const body = error.getResponse() as ApiError;
-  const category = (body.details as { category?: unknown } | undefined)?.category;
-  return typeof category === "string" ? `${body.code} (${category}): ${body.message}` : `${body.code}: ${body.message}`;
+  const details = body.details as { category?: unknown; diagnostics?: unknown } | undefined;
+  const category = details?.category;
+  const head = typeof category === "string" ? `${body.code} (${category}): ${body.message}` : `${body.code}: ${body.message}`;
+  return `${head}${describeDiagnostics(details?.diagnostics)}`;
+}
+
+/**
+ * The numbers the category was derived from, appended so a wrong-looking category can be told from a real one.
+ *
+ * Numbers only, and only ones this app already reads to classify with — the fixed-vocabulary rule above is
+ * unchanged, since an HTTP status and a Graph error code carry nothing of Meta's wording and nothing of the
+ * login. Without them a category is an assertion with no way to check it, which is how a login refused over a
+ * credential came to be reported as a Meta outage and left the person waiting for it to pass.
+ */
+function describeDiagnostics(diagnostics: unknown): string {
+  if (typeof diagnostics !== "object" || diagnostics === null) return "";
+  const parts = Object.entries(diagnostics)
+    .filter((entry): entry is [string, number] => typeof entry[1] === "number")
+    .map(([name, value]) => `${name}=${value}`);
+  return parts.length ? ` [${parts.join(", ")}]` : "";
 }
 
 /** Deliberately plain: no scripts, no styling that could load anything, nothing but the two sentences. */

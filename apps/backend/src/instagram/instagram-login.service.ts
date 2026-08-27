@@ -180,7 +180,7 @@ export class InstagramLoginService {
       const expiresAt = long.expiresInSeconds === null ? null : new Date(this.now() + long.expiresInSeconds * 1000).toISOString();
       await this.connection.saveToken({ accessToken: long.accessToken, expiresAt });
     } catch (error) {
-      if (error instanceof InstagramAdapterError) throw instagramProviderError(error.category, error.message);
+      if (error instanceof InstagramAdapterError) throw instagramProviderError(error.category, error.message, error.diagnostics);
       throw error;
     }
     return this.statusOf();

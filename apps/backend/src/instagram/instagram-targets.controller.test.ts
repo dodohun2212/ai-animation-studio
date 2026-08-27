@@ -128,6 +128,22 @@ describe("InstagramTargetsController login callback", () => {
     expect(logged()).not.toContain("raw meta detail");
   });
 
+  it("writes the numbers the category came from, so a wrong-looking category can be checked", async () => {
+    // The first real login failure was classified "server" and reported as a Meta outage, and there was no way
+    // from outside to tell that reading from an actual outage. These are the values that would have told us.
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(400, { error: { message: "raw meta detail", code: 1, error_subcode: 33 } }));
+    const { controller, login, logged } = await setup(fetchImpl);
+    const state = await startedState(login);
+
+    await controller.completeLogin({ code: "the-code", state });
+
+    expect(logged()).toContain("status=400");
+    expect(logged()).toContain("graphCode=1");
+    expect(logged()).toContain("graphSubcode=33");
+    // Numbers only. The rule that Meta's own wording never reaches the log is unchanged by adding them.
+    expect(logged()).not.toContain("raw meta detail");
+  });
+
   it("logs nothing at all when the login succeeds", async () => {
     const { controller, login, warn } = await setup();
     const state = await startedState(login);
