@@ -1,17 +1,22 @@
 import { useEffect, useRef, useState } from "react";
-import type { ProviderCredentialKind, ProviderCredentialStatus } from "@ai-animation-studio/shared";
+import type { InstagramConnectionStatus, ProviderCredentialKind, ProviderCredentialStatus } from "@ai-animation-studio/shared";
+import { getInstagramConnection } from "../api/instagramConnectionApi.js";
 import { getProviderSettings, toDisplayError } from "../api/providerSettingsApi.js";
+import { InstagramConnectionCard } from "./InstagramConnectionCard.js";
 import { ProviderCredentialCard } from "./ProviderCredentialCard.js";
 import { Spinner } from "./Spinner.js";
 
 interface Props { onBack: () => void }
 type StatusMap = Record<ProviderCredentialKind, ProviderCredentialStatus>;
 interface State { statuses: StatusMap | null; error: { code: string; message: string } | null; loading: boolean }
+/** null while unknown: a failed read must not be rendered as "not connected", which is a different fact. */
+type InstagramState = InstagramConnectionStatus | null;
 
 const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
 
 export function ProviderSettingsScreen({ onBack }: Props) {
   const [state, setState] = useState<State>({ statuses: null, error: null, loading: true });
+  const [instagram, setInstagram] = useState<InstagramState>(null);
   const refreshInFlight = useRef(true);
   const activeMutations = useRef(new Set<ProviderCredentialKind>());
   async function load(acquired = false) {
@@ -26,6 +31,8 @@ export function ProviderSettingsScreen({ onBack }: Props) {
       setState({ statuses, error: null, loading: false });
     } catch (error) { setState((old) => ({ ...old, error: toDisplayError(error), loading: false })); }
     finally { refreshInFlight.current = false; }
+    // A separate store with its own failure mode — losing it costs the Instagram card, not the whole screen.
+    try { setInstagram(await getInstagramConnection()); } catch { setInstagram(null); }
   }
   useEffect(() => { void load(true); }, []);
   const acquireMutation = (provider: ProviderCredentialKind) => {
@@ -59,6 +66,7 @@ export function ProviderSettingsScreen({ onBack }: Props) {
         <div className="space-y-4">
           <ProviderCredentialCard label="OpenAI" status={state.statuses.openai} onStatusChange={update} acquireMutation={() => acquireMutation("openai")} releaseMutation={() => releaseMutation("openai")}/>
           <ProviderCredentialCard label="Runway" status={state.statuses.runway} onStatusChange={update} acquireMutation={() => acquireMutation("runway")} releaseMutation={() => releaseMutation("runway")}/>
+          {instagram && <InstagramConnectionCard status={instagram} onStatusChange={setInstagram} />}
 
           {/* The screen listed two provider names and nothing about what either one is for, so there was no way
               to tell which key a stuck step needs — or what stops working if you disconnect one. */}
@@ -82,6 +90,14 @@ export function ProviderSettingsScreen({ onBack }: Props) {
                   <li>· 실패한 장면 <span className="text-slate-300">다시 만들기</span></li>
                 </ul>
                 <p className="mt-1.5 text-xs text-slate-500">이 키가 없으면 대본·이미지까지는 되지만 영상이 안 만들어집니다.</p>
+              </div>
+              <div className="rounded-xl border border-sky-400/25 bg-sky-500/5 p-3">
+                <p className="text-sm font-semibold text-sky-200">Instagram — 완성한 영상 올리기</p>
+                <ul className="mt-1.5 space-y-1 text-xs text-slate-400">
+                  <li>· 올릴 <span className="text-slate-300">계정</span> 목록 가져오기</li>
+                  <li>· 완성된 영상을 <span className="text-slate-300">릴스로 게시</span>하기</li>
+                </ul>
+                <p className="mt-1.5 text-xs text-slate-500">이 연결이 없어도 영상은 다 만들어집니다 — 올리는 것만 직접 하시게 됩니다. 비용은 들지 않습니다.</p>
               </div>
             </div>
             <p className="text-xs text-slate-500">

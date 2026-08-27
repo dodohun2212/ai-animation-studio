@@ -1,5 +1,14 @@
 export interface ElectronBridge {
   openProjectPath(projectId: string, relativePath?: string): Promise<{ opened: boolean }>;
+  /**
+   * Opens the Meta login page in a window and resolves once it lands on `redirectPrefix`, handing back that URL
+   * whole for the server to read.
+   *
+   * `cancelled` is an answer, not a failure — closing the window is an ordinary thing to do, and treating it as
+   * an error would accuse the user of a mistake they did not make.
+   */
+  openInstagramLogin(url: string, redirectPrefix: string):
+    Promise<{ kind: "redirected"; url: string } | { kind: "cancelled" }>;
 }
 
 declare global {
@@ -16,4 +25,10 @@ export function hasElectronBridge(): boolean {
 /** Resolves to whether the OS actually opened the path. Returns undefined outside Electron. */
 export function openProjectPathInExplorer(projectId: string, relativePath?: string): Promise<{ opened: boolean }> | undefined {
   return window.electronAPI?.openProjectPath(projectId, relativePath);
+}
+
+/** Returns undefined outside Electron — a browser tab cannot open the login window, and callers must say so. */
+export function openInstagramLoginWindow(url: string, redirectPrefix: string):
+Promise<{ kind: "redirected"; url: string } | { kind: "cancelled" }> | undefined {
+  return window.electronAPI?.openInstagramLogin(url, redirectPrefix);
 }

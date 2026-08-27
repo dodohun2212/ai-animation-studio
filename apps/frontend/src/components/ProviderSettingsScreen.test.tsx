@@ -4,6 +4,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, makeProviderStatus } from "../api/testUtils.js";
 import { ProviderSettingsScreen } from "./ProviderSettingsScreen.js";
 
+/**
+ * Answers the Instagram connection read this screen also makes on mount, so a test's sequenced responses stay
+ * about provider settings alone. Without it, adding a second kind of card to the screen silently shifts every
+ * mockResolvedValueOnce by one and every call count by one — a failure that looks like the provider logic broke.
+ * Assertions keep using the inner mock, which therefore still sees only provider-settings calls.
+ */
+function routingInstagramAside(providerFetch: (url: RequestInfo | URL, init?: RequestInit) => Promise<Response>) {
+  return vi.fn((url: RequestInfo | URL, init?: RequestInit) => (
+    String(url).startsWith("/settings/instagram")
+      ? Promise.resolve(jsonResponse(200, { appConfigured: false, tokenStored: false }))
+      : providerFetch(url, init)
+  ));
+}
+
 describe("ProviderSettingsScreen", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -54,7 +68,7 @@ describe("ProviderSettingsScreen", () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse(500, { code: "SETTINGS_STORAGE_ERROR", message: "실패" }))
       .mockResolvedValueOnce(jsonResponse(200, { providers }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", routingInstagramAside(fetchMock));
     render(<ProviderSettingsScreen onBack={() => {}} />);
 
     await screen.findByRole("alert");
@@ -70,7 +84,7 @@ describe("ProviderSettingsScreen", () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, { providers }))
       .mockResolvedValueOnce(jsonResponse(500, { code: "SETTINGS_STORAGE_ERROR", message: "internal detail, not shown" }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", routingInstagramAside(fetchMock));
     render(<ProviderSettingsScreen onBack={() => {}} />);
 
     await screen.findByText("OpenAI");
@@ -99,7 +113,7 @@ describe("ProviderSettingsScreen", () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, { providers: initial }))
       .mockResolvedValueOnce(jsonResponse(200, { provider: disconnectedOpenAi }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", routingInstagramAside(fetchMock));
     render(<ProviderSettingsScreen onBack={() => {}} />);
 
     await screen.findByText("OpenAI");
@@ -125,7 +139,7 @@ describe("ProviderSettingsScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { providers: initial }))
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveOpenAi = resolve; }))
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveRunway = resolve; }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", routingInstagramAside(fetchMock));
     render(<ProviderSettingsScreen onBack={() => {}} />);
 
     const openAiCard = (await screen.findByText("OpenAI")).closest("div") as HTMLElement;
@@ -159,7 +173,7 @@ describe("ProviderSettingsScreen", () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { providers }))
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveRefresh = resolve; }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", routingInstagramAside(fetchMock));
     render(<ProviderSettingsScreen onBack={() => {}} />);
 
     await screen.findByText("OpenAI");
@@ -181,7 +195,7 @@ describe("ProviderSettingsScreen", () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { providers }))
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveMutation = resolve; }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", routingInstagramAside(fetchMock));
     render(<ProviderSettingsScreen onBack={() => {}} />);
 
     await screen.findByText("OpenAI");
