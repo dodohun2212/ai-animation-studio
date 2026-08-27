@@ -1349,4 +1349,11 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - **의도적으로 범위 밖으로 둔 것**: `start`/`stop`/`restart`/`regenerate`/`approve` 등 사용자 트리거 동기 호출은 단편 쪽도 락이 없어 그대로 둠 — 이번 수정은 단편 쪽 선례와 정확히 같은 범위(폴링 타이머 루프만)를 유지.
   - 검증: root typecheck 전부 통과, Backend 787개(+1 신규) 전부 통과, root build 전부 통과. 유료 Provider 호출 없음.
   - 커밋: `465c8f3`.
+- [x] **`userData` 폴더명을 사람이 찾을 수 있게 수정 + 기존 데이터 자동 이전(Round 176)**: 리마인드받은 결함 2건 중 나머지 하나. Electron이 `app.getPath("userData")`를 패키지의 원본 npm 이름(`@ai-animation-studio/desktop`)으로 기본 설정해서, Windows에서 `%APPDATA%\@ai-animation-studio\desktop`처럼 실제로 찾기 어려운 중첩 경로가 됨 — Runway 크레딧 조사 때 사용자가 실제로 겪은 문제(`.claude-bridge` Round 176/179에 걸쳐 리마인드).
+  - `app.setName("AI Animation Studio")`로 새 설치는 바로 사람이 찾을 수 있는 이름을 씀.
+  - **판단 — 이미 패키지 설치가 있고 그 안에 실제 데이터가 있을 가능성**: 이름만 바꾸면 다음 실행부터 앱이 새 경로를 보게 되어, 옛 경로에 있던 실제 데이터가 사라진 것처럼 보이는 위험이 있음 — `migrateUserDataFolder()`(신규, 단위 테스트 완비)로 앱 시작 시 자동 이전. rename 우선 시도, 드라이브가 다르면 copy로 대체. **양방향으로 비파괴적**: 옛 경로에 아무것도 없으면 아무 일도 안 함, 새 경로에 이미 뭔가 있으면(이전에 이미 이전했거나 우연히 새 이름으로 설치됨) 옛 경로를 절대 안 건드림 — copy 성공 후에도 옛 경로를 지우지 않아, 부분 실패가 데이터 손실처럼 보이는 일이 없게 함.
+  - `oldPath`는 `app.setName()` 호출 **전에** 캡처해서 이름 변경 전 기본 경로를 정확히 반영.
+  - 신규 테스트 5건(`userdata-migration.test.ts`, `node --test`) — 동일 경로, 옛 경로 없음, 새 경로에 이미 존재(옛 경로 안 건드림 확인), rename 성공, rename 실패 시 copy 대체(옛 경로 보존 확인).
+  - 검증: root typecheck 전부 통과, desktop 13개(+5 신규) 전부 통과, root build 전부 통과. 유료 Provider 호출 없음.
+  - 커밋: `a5fef82`.
 
