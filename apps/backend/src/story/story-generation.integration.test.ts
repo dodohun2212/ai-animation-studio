@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ProjectAssetMappingsService } from "../mappings/mappings.service.js";
+import { ShortProjectMappingOwners } from "../mappings/short-project-mapping-owner.js";
 import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
@@ -25,7 +26,7 @@ describe("local Story generation persistence", () => {
     const projects = new LocalProjectRepository(projectsRoot);
     await projects.create(createStoredProject("six_scenes", "rainy night", "2026-08-22T00:00:00.000Z"));
     const mappingRepository = new LocalProjectAssetMappingsRepository(projectsRoot);
-    const mappings = new ProjectAssetMappingsService(mappingRepository, {} as never);
+    const mappings = new ProjectAssetMappingsService(mappingRepository, {} as never, new ShortProjectMappingOwners(mappingRepository));
     const service = new StoryPromptService(projects, templateRoot, mappings);
 
     const preview = await service.preview("six_scenes");

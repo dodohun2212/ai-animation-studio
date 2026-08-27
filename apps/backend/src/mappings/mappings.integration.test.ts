@@ -6,6 +6,7 @@ import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { ProjectAssetMappingsService } from "./mappings.service.js";
+import { ShortProjectMappingOwners } from "./short-project-mapping-owner.js";
 import { LocalProjectAssetMappingsRepository } from "./mappings.repository.js";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
@@ -22,7 +23,7 @@ async function setup() {
   const assets = new LocalAssetsRepository(root);
   const asset = await assets.create({ buffer: png, originalname: "fixture.png", mimetype: "image/png" }, { assetType: "style", displayName: "Fixture style" });
   const mappings = new LocalProjectAssetMappingsRepository(projectsRoot);
-  return { assets, asset, mappings, service: new ProjectAssetMappingsService(mappings, assets), project };
+  return { assets, asset, mappings, service: new ProjectAssetMappingsService(mappings, assets, new ShortProjectMappingOwners(mappings)), project };
 }
 
 describe("ProjectAssetMappingsService", () => {
@@ -38,7 +39,7 @@ describe("ProjectAssetMappingsService", () => {
     const begun = await service.beginReview("short_mapping", { scriptRevision: 1 });
     const approved = await service.approveReview("short_mapping", { scriptFingerprint: begun.review.scriptFingerprint });
     expect(approved.review).toMatchObject({ status: "approved", reviewedScenes: [1, 2, 3, 4, 5, 6] });
-    const reopened = await new ProjectAssetMappingsService(mappings, assets).list("short_mapping");
+    const reopened = await new ProjectAssetMappingsService(mappings, assets, new ShortProjectMappingOwners(mappings)).list("short_mapping");
     expect(reopened.mappings[0]?.snapshot?.sha256).toMatch(/^[a-f0-9]{64}$/);
   });
 
