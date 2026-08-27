@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { LONG_OUTLINE_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 import type { LongEpisodeOutline, LongProjectOutlinePromptPreview } from "@ai-animation-studio/shared";
 
 import { approveLongProjectOutline, createLongProjectOutlinePreview, toLongProjectDisplayError } from "../api/longProjectsApi.js";
@@ -210,11 +211,21 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
               <p className="text-sm font-semibold text-amber-300">스토리 개요를 승인할까요?</p>
               <p className="text-sm text-slate-300">
                 아직 승인되지 않았습니다. 확인을 누르면 위 프롬프트가 그대로 서버로 전송되어 승인 처리됩니다.{" "}
-                {/* The short project's story-prompt approval does call a paid API at this exact moment, so a
-                    user arriving from that flow has every reason to expect the same here. LongProjectsService
-                    is constructed with only a projects root — no ProviderSettingsService, no budget — so this
-                    approval cannot reach a provider (see long-projects.module.ts). */}
-                <span className="text-slate-300">이 단계는 비용이 들지 않습니다 — AI를 부르지 않고 프롬프트만 저장합니다.</span>
+                {/* This notice used to read "비용이 들지 않습니다", on the stated grounds that LongProjectsService
+                    was constructed with only a projects root. That has not been true since the Episode planner
+                    was wired up: long-projects.module.ts injects ProviderSettingsService and OpenAiBudget, and
+                    approve() calls callOpenAiEpisodePlannerApi and records LONG_OUTLINE_ESTIMATED_COST_USD
+                    against the budget. So the screen was telling people a paid step was free — the exact harm
+                    the original notice existed to prevent, pointed the other way.
+
+                    The cost is read from the shared constant rather than typed here, so a rate change cannot
+                    leave this sentence behind; and it is named as an estimate because the real per-request
+                    charge grows with episodeCount and no Provider API discloses it before the call (see
+                    LONG_OUTLINE_ESTIMATED_COST_USD's own doc comment). */}
+                <span data-testid="approve-cost-notice" className="text-amber-300">
+                  이 단계는 <span className="font-semibold">비용이 발생합니다</span> — AI가 {"에피소드 개요를 실제로 작성하며, 약 "}
+                  {`$${LONG_OUTLINE_ESTIMATED_COST_USD.toFixed(2)}`}이 청구됩니다(회차 수가 많을수록 실제 금액은 커질 수 있는 추정치입니다).
+                </span>
               </p>
               <div className="flex gap-3">
                 <button

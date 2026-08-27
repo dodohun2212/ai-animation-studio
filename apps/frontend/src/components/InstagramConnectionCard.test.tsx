@@ -297,6 +297,11 @@ describe("InstagramConnectionCard", () => {
     renderCard({ callbackLoginAvailable: true });
     fireEvent.click(screen.getByTestId("instagram-login-button"));
 
+    // This one assertion is tied to real wall-clock time: the card polls every 1.5s and this budget is 4s,
+    // so the refusal has ~2.6x of headroom. Fake timers would cut the tie, but findBy and the timer queue
+    // then have to be advanced in lockstep, and the test stops reading like the sequence it describes.
+    // The trade was made knowingly. If this ever goes red on a slow machine, this is the reason — raise the
+    // budget or switch to fake timers; do not weaken the assertions below.
     const error = await screen.findByTestId("instagram-connection-error", undefined, { timeout: 4000 });
     expect(error).toHaveAttribute("data-error-code", "INSTAGRAM_PROVIDER_ERROR");
     expect(error.textContent).toContain("앱 ID와 시크릿");

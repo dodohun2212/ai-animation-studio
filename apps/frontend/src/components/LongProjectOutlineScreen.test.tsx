@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { jsonResponse, makeLongEpisodeOutline, makeLongProject } from "../api/testUtils.js";
+import { LONG_OUTLINE_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 import { LongProjectOutlineScreen } from "./LongProjectOutlineScreen.js";
 
 const PREVIEW = {
@@ -101,9 +102,14 @@ describe("LongProjectOutlineScreen", () => {
     const panel = await screen.findByTestId("approve-confirm-panel");
     expect(panel).toBeTruthy();
     expect(screen.getByRole("button", { name: "네, 승인합니다" })).toBeTruthy();
-    // The short project's story-prompt approval spends money at this exact step; this one cannot
-    // (LongProjectsService is built with no provider or budget), so the panel has to say so.
-    expect(panel.textContent).toContain("비용이 들지 않습니다");
+    // This assertion used to read toContain("비용이 들지 않습니다") and was the reason the screen went on
+    // saying a paid step was free long after it stopped being one: the claim was pinned by a test, so every
+    // run went green while the sentence was false. The panel must name the charge, and the amount must come
+    // from the shared constant rather than a literal — a test that hardcodes "$0.10" would silently outlive
+    // the next rate change exactly the way its predecessor outlived the planner being wired up.
+    expect(panel.textContent).toContain("비용이 발생합니다");
+    expect(panel.textContent).toContain(`$${LONG_OUTLINE_ESTIMATED_COST_USD.toFixed(2)}`);
+    expect(panel.textContent).not.toContain("비용이 들지 않습니다");
     // Only the preview POST has happened — the first click never sent an approval request.
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

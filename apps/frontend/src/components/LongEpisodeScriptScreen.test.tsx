@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse } from "../api/testUtils.js";
 import { LongEpisodeScriptScreen } from "./LongEpisodeScriptScreen.js";
+import { STORY_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 
 const script = { title: "Draft", synopsis: "Summary", ending: "Ending", scenes: Array.from({ length: 6 }, (_, index) => ({ number: index + 1, description: "Description", visualAction: "Action", startMotion: "Start", mainMotion: "Main", endMotion: "End", shotSize: "Medium", cameraAngle: "Eye", composition: "Center", lensFeel: "Natural", focusSubject: "Hero", cameraMotion: "Slow", environmentMotion: "Wind", motionSpeed: "Normal", motionIntensity: "Moderate", expressionChange: "Calm", continuityHint: "Continue" })) };
 const episode = (status: "outline_ready" | "script_review" | "script_approved", withScript = status !== "outline_ready") => ({ episodeNumber: 1, title: "Episode 1", summary: "Summary", mainEvent: "Event", conflict: "Conflict", cliffhanger: "Hook", nextEpisodeHook: "Next", status, approved: status === "script_approved", scriptRevision: withScript ? 1 : 0, scriptHistoryCount: withScript ? 1 : 0, ...(withScript ? { script } : {}) });
@@ -12,9 +13,14 @@ describe("LongEpisodeScriptScreen", () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { episode: episode("outline_ready", false) })).mockResolvedValueOnce(jsonResponse(200, { episode: episode("script_review") })).mockResolvedValueOnce(jsonResponse(200, { episode: episode("script_approved") }));
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeScriptScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
-    // This step is local-only by design (EpisodeScriptsService gets no provider or budget injected), and the
-    // short project's story step is not — so the difference has to be on screen before the button is pressed.
-    expect((await screen.findByTestId("episode-script-cost-notice")).textContent).toContain("비용이 들지 않습니다");
+    // This asserted toContain("비용이 들지 않습니다") and was what kept the false claim alive: the notice went
+    // stale when EpisodeScriptsService gained a provider and a budget, and the test went on passing because it
+    // was pinned to the words rather than to the fact. Assert the charge and take the amount from the shared
+    // constant, so the next rate change reaches the assertion instead of outliving it.
+    const costNotice = await screen.findByTestId("episode-script-cost-notice");
+    expect(costNotice.textContent).toContain("비용이 발생합니다");
+    expect(costNotice.textContent).toContain(`$${STORY_ESTIMATED_COST_USD.toFixed(2)}`);
+    expect(costNotice.textContent).not.toContain("비용이 들지 않습니다");
     fireEvent.click(screen.getByRole("button", { name: "대본 초안 만들기" }));
     // The script arrives as labelled fields now, not a JSON blob the user has to keep syntactically valid.
     await waitFor(() => expect(screen.getByTestId("episode-script-field-description")).toHaveValue("Description"));

@@ -1551,3 +1551,14 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 신규 테스트 2건: 폴러가 거절에 즉시 종료(읽기 2회로 확인), 카드가 거절을 `SAFE_ERRORS` 문구 그대로 표시하며 **timeout·cancelled 표시는 뜨지 않음** — 시계 탓도 사용자 탓도 하지 않는다는 것을 고정. 어제 화면이 한 게 정확히 그 둘이었음.
   - **Cowork이 못 돌린 것을 못 돌렸다고 보고함**(Round 214의 반대) — 새 카드 테스트가 실제 폴링 인터벌 1.5초를 기다리므로 `findBy` 4초가 이 환경에서 충분한지 미확인. CLI가 실행: 충분함(frontend 956개 전부 통과).
   - 검증: root typecheck 전부 통과, frontend 956개(+2 신규) 전부 통과, Backend 941개 전부 통과, root build 전부 통과.
+  - 커밋: `0d94b9b`.
+- [x] **🔴 유료 단계를 "비용이 들지 않습니다"라고 말하던 화면 2건 + "무료" 주장 전수 감사(Round 202)**: Cowork Round 219~223. **사용자가 실제로 과금된 상태에서 두 번 "돈 안 나갔다"는 말을 들었음.**
+  - `LongProjectOutlineScreen.tsx:217` — "이 단계는 비용이 들지 않습니다 — AI를 부르지 않고 프롬프트만 저장합니다." **거짓.** `LongProjectsService`는 `ProviderSettingsService`·`OpenAiBudget`을 주입받고 `approve()`가 OpenAI를 호출하며 `LONG_OUTLINE_ESTIMATED_COST_USD`를 예산에 기록함.
+  - `LongEpisodeScriptScreen.tsx:126` — "AI를 부르지 않고 … 조립합니다." **거짓.** `EpisodeScriptsService`도 provider·budget 주입, `callOpenAiStoryApi` + `preflight(STORY_ESTIMATED_COST_USD)`. $0.05 유료.
+  - **🔴 문구·주석·테스트가 셋 다 같은 낡은 사실을 붙들고 있었음**: 두 화면 모두 근거 주석("constructed with only a projects root … cannot reach a provider")이 같이 낡았고, 테스트가 `toContain("비용이 들지 않습니다")`로 **그 거짓말을 고정**하고 있었음. 그래서 기능이 틀린 채 초록이었고 아무도 못 잡았음 — D-021·D-017과 같은 계열(테스트의 존재가 안전 신호가 되지 못함).
+  - 수정: 문구를 사실대로, **금액은 공유 상수에서 읽음**(리터럴 금지 — 요율이 바뀌면 또 뒤처짐). 테스트 단언도 청구 문구 + 상수 기반 금액 + **옛 문장 부재**를 함께 검사.
+  - **"무료"라고 말하는 화면 13곳 전수 감사**(모듈 주입과 대조): 거짓 2건(위), 참 10건. provider를 든 서비스 = `LongProjectsService`/`EpisodeScriptsService`/`EpisodeImagesService`/`EpisodeVideosService`/`EpisodeNarrationService`.
+  - **Round 221은 Cowork이 전면 철회**(`LongProjectsService` 배선 누락 보고 → 마운트의 낡은 사본을 읽은 것. 실제 배선 정상). CLI는 그 기준으로 아무것도 고치지 않았음.
+  - **🟠 Round 220의 회귀 테스트가 유실됨**: 대본 화면의 `planned` 상태 안내(`episode-script-needs-outline`)는 화면에 들어왔으나, 보고된 회귀 테스트가 작업 트리에 없음(테스트 헬퍼의 status 유니온에 `"planned"` 미추가, 신규 `it` 블록 없음). **새 안내 분기가 무테스트 상태** — Cowork에 반환.
+  - 검증: root typecheck 전부 통과, frontend 956개 전부 통과, Backend 941개 전부 통과, root build 전부 통과.
+  - **다음 항목으로 이월**: Cowork 요청 — "provider를 든 서비스의 화면이 무료라고 말하는 것"은 프런트에서 표현할 수 없으므로 백엔드 가드 필요. 설계는 CLI.
