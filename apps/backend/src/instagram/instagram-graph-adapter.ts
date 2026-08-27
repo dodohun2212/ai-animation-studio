@@ -64,6 +64,57 @@ export async function uploadInstagramResumableVideo(accessToken: string, contain
   if (!isObject(body) || body.success !== true) throw new InstagramAdapterError("unknown", undefined, "Instagram 업로드 응답이 성공을 나타내지 않습니다.");
 }
 
+export interface InstagramPublishTargetRecord { igUserId: string; username: string; pageName: string }
+
+/**
+ * Lists the Instagram professional accounts this token can publish to, by walking the user's Facebook Pages.
+ *
+ * The nested-field traversal (`instagram_business_account{id,username}`) fetches the handle in the same round
+ * trip, but that syntax is not part of Meta's own documented field list for this edge, so a page whose account
+ * comes back with an id and no username is treated as expected rather than impossible: the handle is then read
+ * directly. Falling back matters because the handle is the only name a person recognises their account by, and
+ * the publish confirmation names the destination account — degrading to a numeric id there is precisely how
+ * someone publishes to the wrong account (docs/06_DECISIONS.md D-006).
+ *
+ * A page with no connected Instagram account simply has no `instagram_business_account` and is skipped.
+ */
+export async function listInstagramPublishTargets(accessToken: string, options: RetryOptions = {}): Promise<InstagramPublishTargetRecord[]> {
+  const response = await requestWithRetry(
+    `${GRAPH_BASE_URL}/${GRAPH_API_VERSION}/me/accounts?fields=${encodeURIComponent("name,instagram_business_account{id,username}")}`,
+    { method: "GET", headers: { authorization: `Bearer ${accessToken}` } },
+    options,
+  );
+  const body: unknown = await response.json().catch(() => null);
+  const pages = isObject(body) && Array.isArray(body.data) ? body.data : [];
+  const targets: InstagramPublishTargetRecord[] = [];
+  for (const page of pages) {
+    if (!isObject(page)) continue;
+    const account = isObject(page.instagram_business_account) ? page.instagram_business_account : undefined;
+    const igUserId = typeof account?.id === "string" ? account.id.trim() : "";
+    if (!igUserId) continue;
+    const pageName = typeof page.name === "string" ? page.name.trim() : "";
+    const inlineUsername = typeof account?.username === "string" ? account.username.trim() : "";
+    targets.push({ igUserId, username: inlineUsername || await readInstagramUsername(accessToken, igUserId, options), pageName });
+  }
+  return targets;
+}
+
+/** Second-choice path for the handle — see listInstagramPublishTargets. Never fails the whole listing: an account whose handle cannot be read is still offered, labelled by its id, rather than silently vanishing from the list of places the user can publish. */
+async function readInstagramUsername(accessToken: string, igUserId: string, options: RetryOptions): Promise<string> {
+  try {
+    const response = await requestWithRetry(
+      `${GRAPH_BASE_URL}/${GRAPH_API_VERSION}/${encodeURIComponent(igUserId)}?fields=username`,
+      { method: "GET", headers: { authorization: `Bearer ${accessToken}` } },
+      options,
+    );
+    const body: unknown = await response.json().catch(() => null);
+    const username = isObject(body) && typeof body.username === "string" ? body.username.trim() : "";
+    return username || igUserId;
+  } catch {
+    return igUserId;
+  }
+}
+
 export type InstagramContainerStatus = "IN_PROGRESS" | "FINISHED" | "ERROR" | "EXPIRED" | "PUBLISHED";
 const KNOWN_STATUSES = new Set<InstagramContainerStatus>(["IN_PROGRESS", "FINISHED", "ERROR", "EXPIRED", "PUBLISHED"]);
 

@@ -1144,6 +1144,34 @@ export interface UploadAudioTrackResponse { track: AudioLibraryTrack; }
 export interface DeleteAudioTrackResponse { trackId: string; }
 
 /**
+ * One Instagram professional account this user could publish to, discovered live from the Facebook Pages their
+ * access token can see. Deliberately not part of ProviderCredentialKind: a credential answers "can we act at
+ * all?" and belongs in settings, while this answers "where does it go?" and has to be visible at the moment of
+ * publishing (`.claude-bridge` Round 186).
+ */
+export interface InstagramPublishTarget {
+  igUserId: string;
+  /** The @handle, without the @. The only name a person recognises their own account by — a numeric ID cannot serve as the confirmation panel's account name (docs/06_DECISIONS.md D-006). */
+  username: string;
+  /** The connected Facebook Page's name, shown to tell apart accounts whose handles look alike. */
+  pageName: string;
+}
+
+export interface GetInstagramTargetsResponse {
+  targets: InstagramPublishTarget[];
+  /**
+   * Present only when a previously stored choice is actually still in `targets` this time. A page can be
+   * disconnected, deleted, or have its permission revoked between sessions, so echoing a stored id back without
+   * checking would be the app asserting something it never verified (docs/06_DECISIONS.md D-006). Absent means
+   * the screen should ask the user to choose again rather than silently publishing somewhere else.
+   */
+  selectedIgUserId?: string;
+}
+
+export interface SetInstagramTargetRequest { igUserId: string; }
+export type SetInstagramTargetResponse = GetInstagramTargetsResponse;
+
+/**
  * One short-project row in the cross-project video library (`.claude-bridge` Round 153/166) — an archive view of
  * results, distinct from the Asset Library's input-material role (see AssetLibraryScreen). Only lists a project
  * that has at least one generated scene video; a project that never reached video generation never appears here.
@@ -1403,6 +1431,8 @@ export const API_ROUTES = {
   audioLibraryUpload: "/audio/library/upload",
   audioLibraryContent: (trackId: string) => `/audio/library/${encodeURIComponent(trackId)}/content`,
   audioLibraryTrack: (trackId: string) => `/audio/library/${encodeURIComponent(trackId)}`,
+  instagramTargets: "/settings/instagram/targets",
+  instagramTarget: "/settings/instagram/target",
   projectAssetMappings: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/assets/mappings`,
   projectAssetMapping: (projectId: string, mappingId: string) =>
     `/projects/${encodeURIComponent(projectId)}/assets/mappings/${encodeURIComponent(mappingId)}`,

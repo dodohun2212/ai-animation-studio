@@ -1,0 +1,94 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+
+import { Injectable } from "@nestjs/common";
+import type { GetInstagramTargetsResponse, SetInstagramTargetResponse } from "@ai-animation-studio/shared";
+
+import { atomicWriteUtf8File } from "../projects/atomic-file.js";
+import { ProviderSettingsService } from "../settings/provider-settings.service.js";
+import { listInstagramPublishTargets, type InstagramPublishTargetRecord } from "./instagram-graph-adapter.js";
+import { InstagramAdapterError, type RetryOptions } from "./instagram-request.js";
+import { instagramNotConnected, instagramProviderError, instagramStorageError, instagramTargetNotFound, invalidInstagramRequest } from "./instagram-api.error.js";
+
+const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * Which Instagram account this computer publishes to. Stored beside the budget ledgers in learning_data rather
+ * than with the provider credentials: it is a destination, not a secret, and it is never masked — hiding it
+ * would stop the user confirming where a post is about to go (`.claude-bridge` Round 186).
+ */
+@Injectable()
+export class InstagramTargetsService {
+  constructor(
+    private readonly learningDataRoot: string,
+    private readonly providerSettings: ProviderSettingsService,
+    private readonly requestOptions: RetryOptions = {},
+  ) {}
+
+  private get filePath(): string {
+    return path.join(this.learningDataRoot, "instagram_target.json");
+  }
+
+  private async readStoredSelection(): Promise<string | null> {
+    let text: string;
+    try { text = await fs.readFile(this.filePath, "utf8"); } catch { return null; }
+    try {
+      const parsed: unknown = JSON.parse(text);
+      return isObject(parsed) && typeof parsed.ig_user_id === "string" && parsed.ig_user_id.trim() ? parsed.ig_user_id.trim() : null;
+    } catch {
+      // A corrupt selection file means "we do not know where to publish", which is exactly the state that must
+      // make the screen ask again — never a reason to fail the whole listing.
+      return null;
+    }
+  }
+
+  private async writeStoredSelection(igUserId: string): Promise<void> {
+    try {
+      await fs.mkdir(this.learningDataRoot, { recursive: true });
+      await atomicWriteUtf8File(this.filePath, JSON.stringify({ ig_user_id: igUserId }, null, 2));
+    } catch {
+      throw instagramStorageError();
+    }
+  }
+
+  /** Fetches the accounts this token can publish to right now. An expired or missing login is reported as not-connected rather than as an empty list — see instagramNotConnected. */
+  private async liveTargets(): Promise<InstagramPublishTargetRecord[]> {
+    const token = await this.providerSettings.rawCredentialIfConnected("instagram");
+    if (!token) throw instagramNotConnected();
+    try {
+      return await listInstagramPublishTargets(token, this.requestOptions);
+    } catch (error) {
+      if (error instanceof InstagramAdapterError) {
+        if (error.category === "authentication") throw instagramNotConnected();
+        throw instagramProviderError(error.category, error.message);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * `selectedIgUserId` is echoed back only when the stored choice is genuinely present in this fetch. A page can
+   * be disconnected, deleted, or have its permission revoked between sessions, and publishing to a remembered id
+   * without checking would be the app acting on something it never verified (docs/06_DECISIONS.md D-006). The
+   * check lives here rather than in the screen so no caller can forget it.
+   */
+  async list(): Promise<GetInstagramTargetsResponse> {
+    const targets = await this.liveTargets();
+    const stored = await this.readStoredSelection();
+    const selected = stored !== null && targets.some((target) => target.igUserId === stored) ? stored : undefined;
+    return { targets, ...(selected !== undefined ? { selectedIgUserId: selected } : {}) };
+  }
+
+  async select(request: unknown): Promise<SetInstagramTargetResponse> {
+    if (!isObject(request) || Object.keys(request).length !== 1 || typeof request.igUserId !== "string" || !request.igUserId.trim()) {
+      throw invalidInstagramRequest("Request body must contain only igUserId.");
+    }
+    const igUserId = request.igUserId.trim();
+    const targets = await this.liveTargets();
+    // Validated against a live fetch, not against whatever the client believed was available: storing an id that
+    // is not really publishable would surface later as an unexplained publish failure, or worse, silently.
+    if (!targets.some((target) => target.igUserId === igUserId)) throw instagramTargetNotFound();
+    await this.writeStoredSelection(igUserId);
+    return { targets, selectedIgUserId: igUserId };
+  }
+}

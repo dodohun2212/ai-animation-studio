@@ -11,6 +11,7 @@ import { VideosModule } from "./videos/videos.module.js";
 import { LongProjectsModule } from "./long-projects/long-projects.module.js";
 import { NarrationModule } from "./narration/narration.module.js";
 import { AudioModule } from "./audio/audio.module.js";
+import { InstagramModule } from "./instagram/instagram.module.js";
 
-@Module({ imports: [ProjectsModule, ProviderSettingsModule, AssetsModule, ProjectAssetMappingsModule, StoryModule, ImagesModule, VideosModule, LongProjectsModule, NarrationModule, AudioModule], controllers: [HealthController] })
+@Module({ imports: [ProjectsModule, ProviderSettingsModule, AssetsModule, ProjectAssetMappingsModule, StoryModule, ImagesModule, VideosModule, LongProjectsModule, NarrationModule, AudioModule, InstagramModule], controllers: [HealthController] })
 export class AppModule {}

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   InstagramAdapterError, createInstagramResumableContainer, uploadInstagramResumableVideo,
-  getInstagramContainerStatus, publishInstagramContainer,
+  getInstagramContainerStatus, listInstagramPublishTargets, publishInstagramContainer,
 } from "./instagram-graph-adapter.js";
 
 const VIDEO_BYTES = Buffer.from("fake mp4 bytes");
@@ -145,6 +145,63 @@ describe("getInstagramContainerStatus", () => {
     const result = await getInstagramContainerStatus("token", "container-1", { fetchImpl: fetchMock, sleep: noSleep, maxRetries: 2 });
     expect(result.statusCode).toBe("FINISHED");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("listInstagramPublishTargets", () => {
+  it("walks the user's pages and returns each connected account with its handle", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {
+      data: [
+        { name: "이배드 스튜디오", instagram_business_account: { id: "178000001", username: "ibad_studio" } },
+        { name: "두 번째 페이지", instagram_business_account: { id: "178000002", username: "second_one" } },
+      ],
+    }));
+    const targets = await listInstagramPublishTargets("token", { fetchImpl: fetchMock, sleep: noSleep });
+    expect(targets).toEqual([
+      { igUserId: "178000001", username: "ibad_studio", pageName: "이배드 스튜디오" },
+      { igUserId: "178000002", username: "second_one", pageName: "두 번째 페이지" },
+    ]);
+    const url = new URL(String((fetchMock.mock.calls[0] as [string, RequestInit])[0]));
+    expect(`${url.origin}${url.pathname}`).toBe("https://graph.facebook.com/v26.0/me/accounts");
+    expect(url.searchParams.get("fields")).toBe("name,instagram_business_account{id,username}");
+  });
+
+  it("skips a page that has no Instagram account connected", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {
+      data: [{ name: "연결 안 된 페이지" }, { name: "연결됨", instagram_business_account: { id: "178000003", username: "connected" } }],
+    }));
+    await expect(listInstagramPublishTargets("token", { fetchImpl: fetchMock, sleep: noSleep }))
+      .resolves.toEqual([{ igUserId: "178000003", username: "connected", pageName: "연결됨" }]);
+  });
+
+  it("reads the handle separately when the nested traversal does not return it", async () => {
+    // The nested-field syntax is not in Meta's documented field list for this edge, so an id arriving without a
+    // username is handled rather than assumed impossible — a numeric id cannot name the destination account.
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ name: "페이지", instagram_business_account: { id: "178000004" } }] }))
+      .mockResolvedValueOnce(jsonResponse(200, { id: "178000004", username: "recovered_handle" }));
+    const targets = await listInstagramPublishTargets("token", { fetchImpl: fetchMock, sleep: noSleep });
+    expect(targets).toEqual([{ igUserId: "178000004", username: "recovered_handle", pageName: "페이지" }]);
+    const second = new URL(String((fetchMock.mock.calls[1] as [string, RequestInit])[0]));
+    expect(`${second.origin}${second.pathname}`).toBe("https://graph.facebook.com/v26.0/178000004");
+    expect(second.searchParams.get("fields")).toBe("username");
+  });
+
+  it("still offers an account whose handle cannot be read at all, rather than dropping it from the list", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ name: "페이지", instagram_business_account: { id: "178000005" } }] }))
+      .mockResolvedValueOnce(jsonResponse(500, {}));
+    await expect(listInstagramPublishTargets("token", { fetchImpl: fetchMock, sleep: noSleep, maxRetries: 0 }))
+      .resolves.toEqual([{ igUserId: "178000005", username: "178000005", pageName: "페이지" }]);
+  });
+
+  it("returns an empty list for a user with no pages, and surfaces an expired token as authentication", async () => {
+    const empty = vi.fn().mockResolvedValue(jsonResponse(200, { data: [] }));
+    await expect(listInstagramPublishTargets("token", { fetchImpl: empty, sleep: noSleep })).resolves.toEqual([]);
+
+    const expired = vi.fn().mockResolvedValue(jsonResponse(400, { error: { message: "Session has expired", code: 190 } }));
+    await expect(listInstagramPublishTargets("token", { fetchImpl: expired, sleep: noSleep }))
+      .rejects.toMatchObject({ category: "authentication" });
   });
 });
 
