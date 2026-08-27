@@ -283,6 +283,94 @@ describe("InstagramLoginService.complete", () => {
   });
 });
 
+describe("InstagramLoginService.lastLoginError", () => {
+  /** Drives a sign-in that Meta refuses, the way the callback route does. */
+  async function refusedSignIn(service: InstagramLoginService) {
+    const started = await service.start({ flow: "callback" });
+    const state = new URL(started.url).searchParams.get("state")!;
+    await expect(service.complete({ code: "the-code", state })).rejects.toMatchObject({});
+  }
+
+  it("reports a refused sign-in, so the screen watching for a token stops instead of waiting out its timeout", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(400, { error: { message: "Error validating client secret.", code: 1 } }));
+    const { service } = await setup({ fetchImpl });
+    await refusedSignIn(service);
+
+    // The same code the failed request itself carries, so the screen reuses the message table it already has.
+    await expect(service.status()).resolves.toMatchObject({ lastLoginError: { code: "INSTAGRAM_PROVIDER_ERROR" } });
+  });
+
+  it("says nothing at all before anything has been attempted", async () => {
+    // Absence has to mean "no attempt has anything to report" rather than "nothing has ever failed".
+    const { service } = await setup();
+    expect(await service.status()).not.toHaveProperty("lastLoginError");
+  });
+
+  it("forgets the refusal the moment a new sign-in starts", async () => {
+    // 🔴 D-018: a failure kept independently of an attempt is one that eventually appears beside a login that
+    // has just succeeded. Starting again is the person saying the last outcome is no longer the question.
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(400, { error: { message: "no", code: 1 } }));
+    const { service } = await setup({ fetchImpl });
+    await refusedSignIn(service);
+    expect(await service.status()).toHaveProperty("lastLoginError");
+
+    await service.start({ flow: "callback" });
+
+    expect(await service.status()).not.toHaveProperty("lastLoginError");
+  });
+
+  it("forgets the refusal once a sign-in succeeds", async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(jsonResponse(400, { error: { message: "no", code: 1 } }));
+    const { service } = await setup({ fetchImpl });
+    await refusedSignIn(service);
+
+    fetchImpl.mockImplementation(exchangeFetch());
+    await signIn(service);
+
+    const status = await service.status();
+    expect(status.tokenStored).toBe(true);
+    expect(status).not.toHaveProperty("lastLoginError");
+  });
+
+  it("reports a refused state check too, not only a refusal by Meta", async () => {
+    // The screen is waiting either way, and "your sign-in could not be verified" is as much an answer as
+    // Meta refusing the exchange.
+    const { service } = await setup();
+    await service.start({ flow: "callback" });
+    await expect(service.complete({ code: "c", state: "not-the-issued-one" })).rejects.toMatchObject({});
+
+    await expect(service.status()).resolves.toMatchObject({ lastLoginError: { code: "INVALID_REQUEST" } });
+  });
+
+  it("invents nothing for a callback that no attempt was waiting on", async () => {
+    const { service } = await setup();
+    await expect(service.complete({ code: "c", state: "never-issued" })).rejects.toMatchObject({});
+    expect(await service.status()).not.toHaveProperty("lastLoginError");
+  });
+
+  it("does not answer about the sign-in in progress with the outcome of the one before it", async () => {
+    // Everything in the failing path is asynchronous, so a second press can land while the first is still
+    // failing. The newer attempt owns the slot.
+    const { service } = await setup({
+      fetchImpl: vi.fn().mockImplementation(async () => {
+        await service.start({ flow: "callback" });
+        return jsonResponse(400, { error: { message: "no", code: 1 } });
+      }),
+    });
+    await refusedSignIn(service);
+
+    expect(await service.status()).not.toHaveProperty("lastLoginError");
+  });
+
+  it("is cleared by signing out", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(400, { error: { message: "no", code: 1 } }));
+    const { service } = await setup({ fetchImpl });
+    await refusedSignIn(service);
+
+    expect(await service.signOut()).not.toHaveProperty("lastLoginError");
+  });
+});
+
 describe("InstagramLoginService.signOut", () => {
   it("forgets the token but keeps the app registration", async () => {
     const { service } = await setup({ fetchImpl: exchangeFetch() });

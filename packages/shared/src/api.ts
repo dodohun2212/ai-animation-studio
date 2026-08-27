@@ -1190,6 +1190,21 @@ export interface InstagramConnectionStatus {
    * is what tells a plain browser tab whether it is on a working path, before the button is pressed.
    */
   callbackLoginAvailable: boolean;
+  /**
+   * Why the sign-in currently being waited on was refused, when it was — so the screen watching for a token can
+   * stop and say what happened instead of waiting out its timeout and blaming the clock.
+   *
+   * Tied to one attempt, never to the app. It appears only while the attempt it belongs to is the open one, and
+   * a new sign-in or a successful one removes it. Absence therefore means "no attempt has anything to report",
+   * not "nothing has ever failed" — a stored last-failure would eventually be shown next to a login that had
+   * just succeeded (docs/06_DECISIONS.md D-018).
+   *
+   * `code` is the same error code the failed request itself would have returned, so the screen reuses the
+   * message table it already has rather than building a second one keyed on something else. Two tables deciding
+   * one thing is how they come to disagree. Meta's own wording and the diagnostic numbers stay out: the numbers
+   * answer a question only the log asks, and the wording never leaves this app at all.
+   */
+  lastLoginError?: { code: string };
 }
 export interface SetInstagramAppRequest { appId: string; appSecret: string; }
 export type SetInstagramAppResponse = InstagramConnectionStatus;

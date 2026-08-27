@@ -2,7 +2,7 @@ import * as crypto from "node:crypto";
 
 import { Injectable } from "@nestjs/common";
 import type {
-  CompleteInstagramLoginResponse, InstagramConnectionStatus,
+  ApiError, CompleteInstagramLoginResponse, InstagramConnectionStatus,
   SetInstagramAppResponse, StartInstagramLoginResponse,
 } from "@ai-animation-studio/shared";
 
@@ -12,12 +12,23 @@ import {
   DESKTOP_REDIRECT_URI, exchangeCodeForToken, exchangeForLongLivedToken, extractOAuthResult,
   instagramLoginDialogUrl, readOAuthCallback, type OAuthRedirectResult,
 } from "./instagram-oauth.js";
-import { instagramNotConnected, instagramProviderError, invalidInstagramRequest } from "./instagram-api.error.js";
+import { InstagramApiException, instagramNotConnected, instagramProviderError, invalidInstagramRequest } from "./instagram-api.error.js";
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** A login attempt is answered once, soon, or not at all — a window left open for hours is abandoned, not pending. */
 const STATE_LIFETIME_MS = 10 * 60 * 1000;
+
+/**
+ * A sign-in that can still be completed, or one that was refused and has not been replaced yet.
+ *
+ * `failed` deliberately carries the error code and nothing else. That is what the screen already has a message
+ * table for, so it needs no second table keyed on something else — and Meta's own wording, which the diagnostic
+ * path keeps for the log, has no business travelling to a browser.
+ */
+type LoginAttempt =
+  | { phase: "pending"; state: string; issuedAt: number; redirectUri: string }
+  | { phase: "failed"; code: string };
 
 /**
  * Signing this computer in to Instagram. Owns the one-time `state` that ties a returned code to a login this
@@ -29,6 +40,8 @@ const STATE_LIFETIME_MS = 10 * 60 * 1000;
 @Injectable()
 export class InstagramLoginService {
   /**
+   * The one sign-in this service is currently willing to talk about: either waiting to be completed, or refused.
+   *
    * In memory on purpose: an unfinished login must not survive a restart — the user simply presses the button
    * again. (In development that is not rare, because `nest start --watch` restarts on every edit; the callback
    * route logs the reason, since the two failures are indistinguishable from outside.)
@@ -36,8 +49,14 @@ export class InstagramLoginService {
    * The redirect URI is remembered here rather than held on the instance because Meta requires the identical
    * string at the dialog and at the exchange. Tying it to the attempt makes that structural: there is no way to
    * complete a login against a different address from the one it was started with.
+   *
+   * A refusal is kept in the same field rather than beside it, and that is the point of the union. The screen
+   * needs to know a login was refused, but only about the attempt it is watching — a failure remembered
+   * independently of an attempt is one that eventually gets shown next to a login that has just succeeded
+   * (docs/06_DECISIONS.md D-018). One field cannot drift from itself: starting a sign-in replaces whatever was
+   * here, and completing one empties it.
    */
-  private pending: { state: string; issuedAt: number; redirectUri: string } | null = null;
+  private attempt: LoginAttempt | null = null;
 
   constructor(
     private readonly connection: InstagramConnectionStore,
@@ -61,6 +80,7 @@ export class InstagramLoginService {
       // The listener and this answer come out of one resolution, so "a browser can sign in here" cannot be true
       // while the door it names is shut.
       callbackLoginAvailable: this.callbackUri !== null,
+      ...(this.attempt?.phase === "failed" ? { lastLoginError: { code: this.attempt.code } } : {}),
     };
   }
 
@@ -118,7 +138,9 @@ export class InstagramLoginService {
     }
 
     const state = crypto.randomBytes(16).toString("hex");
-    this.pending = { state, issuedAt: this.now(), redirectUri };
+    // Replaces any earlier attempt, including a refused one — the question this answers is always about the
+    // sign-in now in progress, and the one before it is no longer something anybody is waiting on.
+    this.attempt = { phase: "pending", state, issuedAt: this.now(), redirectUri };
     return {
       url: instagramLoginDialogUrl(app.appId, state, redirectUri),
       ...(flow === "desktop" ? { redirectPrefix: DESKTOP_REDIRECT_URI } : {}),
@@ -157,40 +179,63 @@ export class InstagramLoginService {
    * token, and only one of them would stay checked.
    */
   private async finish(result: OAuthRedirectResult): Promise<CompleteInstagramLoginResponse> {
-    const app = await this.connection.appCredentials();
-    if (!app) throw invalidInstagramRequest("Enter the Meta app ID and secret before signing in.");
-
-    const pending = this.pending;
-    // Cleared before anything can go wrong, so one issued state can never be spent twice.
-    this.pending = null;
-    if (!pending || this.now() - pending.issuedAt > STATE_LIFETIME_MS) {
-      throw invalidInstagramRequest("This sign-in attempt is no longer valid. Start it again.");
-    }
-
-    if (result.kind !== "code") throw invalidInstagramRequest("Sign-in did not complete.");
-    if (result.state !== pending.state) throw invalidInstagramRequest("Sign-in could not be verified. Start it again.");
-
+    const attempt = this.attempt;
+    // Spent before anything can go wrong, so one issued state can never be used twice. A refusal is written back
+    // afterwards as a different phase, never by leaving this one alive.
+    this.attempt = null;
     try {
-      // The redirect this attempt was started with, not whatever the service was constructed with — Meta rejects
-      // an exchange whose redirect_uri differs by even a character from the one the dialog was given.
-      const short = await exchangeCodeForToken(app.appId, app.appSecret, result.code, pending.redirectUri, this.requestOptions);
-      const long = await exchangeForLongLivedToken(app.appId, app.appSecret, short.accessToken, this.requestOptions);
-      // Turned into an absolute instant here, once, at the moment Meta stated the lifetime — storing the
-      // duration would quietly mean something different every time it was read.
-      const expiresAt = long.expiresInSeconds === null ? null : new Date(this.now() + long.expiresInSeconds * 1000).toISOString();
-      await this.connection.saveToken({ accessToken: long.accessToken, expiresAt });
+      const app = await this.connection.appCredentials();
+      if (!app) throw invalidInstagramRequest("Enter the Meta app ID and secret before signing in.");
+
+      if (attempt?.phase !== "pending" || this.now() - attempt.issuedAt > STATE_LIFETIME_MS) {
+        throw invalidInstagramRequest("This sign-in attempt is no longer valid. Start it again.");
+      }
+      if (result.kind !== "code") throw invalidInstagramRequest("Sign-in did not complete.");
+      if (result.state !== attempt.state) throw invalidInstagramRequest("Sign-in could not be verified. Start it again.");
+
+      try {
+        // The redirect this attempt was started with, not whatever the service was constructed with — Meta rejects
+        // an exchange whose redirect_uri differs by even a character from the one the dialog was given.
+        const short = await exchangeCodeForToken(app.appId, app.appSecret, result.code, attempt.redirectUri, this.requestOptions);
+        const long = await exchangeForLongLivedToken(app.appId, app.appSecret, short.accessToken, this.requestOptions);
+        // Turned into an absolute instant here, once, at the moment Meta stated the lifetime — storing the
+        // duration would quietly mean something different every time it was read.
+        const expiresAt = long.expiresInSeconds === null ? null : new Date(this.now() + long.expiresInSeconds * 1000).toISOString();
+        await this.connection.saveToken({ accessToken: long.accessToken, expiresAt });
+      } catch (error) {
+        if (error instanceof InstagramAdapterError) throw instagramProviderError(error.category, error.message, error.diagnostics);
+        throw error;
+      }
+      return this.statusOf();
     } catch (error) {
-      if (error instanceof InstagramAdapterError) throw instagramProviderError(error.category, error.message, error.diagnostics);
+      this.rememberRefusal(attempt, error);
       throw error;
     }
-    return this.statusOf();
+  }
+
+  /**
+   * Records that the attempt just consumed was refused, so the screen waiting on it stops instead of timing out.
+   *
+   * Only for an attempt that was actually open. A callback that arrives with nothing pending has no screen
+   * waiting on it, and inventing a refusal for it would put an error next to a login nobody started — absence
+   * has to keep meaning "no attempt has anything to report".
+   *
+   * The re-check of `this.attempt` is not defensive noise: everything above is asynchronous, so a person can
+   * press the button again while this one is still failing. The newer attempt owns the slot, and overwriting it
+   * would answer a question about the sign-in now in progress with the outcome of the one before it.
+   */
+  private rememberRefusal(attempt: LoginAttempt | null, error: unknown): void {
+    if (attempt?.phase !== "pending" || this.attempt !== null) return;
+    if (!(error instanceof InstagramApiException)) return;
+    const { code } = error.getResponse() as ApiError;
+    this.attempt = { phase: "failed", code };
   }
 
   /** Forgets the token but keeps the app registration, so signing back in does not mean re-entering the app id and secret. */
   async signOut(): Promise<InstagramConnectionStatus> {
     const app = await this.connection.appCredentials();
     if (!app) throw instagramNotConnected();
-    this.pending = null;
+    this.attempt = null;
     await this.connection.clearToken();
     return this.statusOf();
   }
