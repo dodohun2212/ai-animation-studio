@@ -81,7 +81,9 @@ export interface PollDeps {
  * in fact signed in, and a flow whose only path had just expired would be worse than one with an extra click.
  *
  * The one thing that counts as success is the server saying a token is stored. Not a closed window, not time
- * passing — reading success off anything else is how a screen claims a connection it never had (D-006).
+ * passing — reading success off anything else is how a screen claims a connection it never had (D-006). And a
+ * closed window is especially weak evidence here, because a person closes it whenever they feel like it: before
+ * signing in, halfway through, or long after it finished.
  */
 export async function pollUntilTokenStored(deps: PollDeps): Promise<InstagramConnectionStatus | null> {
   const intervalMs = deps.intervalMs ?? LOGIN_POLL_INTERVAL_MS;
@@ -92,10 +94,13 @@ export async function pollUntilTokenStored(deps: PollDeps): Promise<InstagramCon
     await deps.wait(intervalMs);
     if (deps.abandoned()) return null;
 
-    // Read whether the window is gone BEFORE asking the server, so the answer that follows is never older than
-    // the close. The callback page closes its own window once the server has the token, so on a success the
-    // close and the token arrive together — checked the other way round, a real login would stop the polling
-    // about half the time and look like nothing happened.
+    // Read whether the window is gone BEFORE asking the server, so the status is never older than the close.
+    //
+    // The callback page is static HTML with no script in it — it cannot close anything, and asks the person to
+    // close the window themselves. So the close lands at an arbitrary moment, which is what makes this order
+    // necessary rather than merely tidy: read first and the "not stored yet" answer can already be stale by the
+    // time the window shuts, and `closedBeforeRead` then ends the wait on a login that had in fact completed.
+    // Nothing about that is reliable to reproduce, which is the kind of bug that survives a long time.
     const closedBeforeRead = deps.isWindowClosed();
 
     let status: InstagramConnectionStatus | undefined;
@@ -148,10 +153,14 @@ export function InstagramConnectionCard({ status, onStatusChange }: Props) {
   }
 
   /**
-   * The whole sign-in, end to end: ask the server for the page, open it, hand back whatever URL it landed on.
+   * Starts a sign-in: ask the server for the page, open it, and stop there.
    *
-   * The screen never parses that URL — the server reads the code out of it and checks the state it issued, so a
-   * redirect that did not come from our own request cannot be turned into a login here.
+   * There is no URL to hand back any more. Meta redirects the window to this app's own backend, which reads the
+   * code and checks it against the `state` it issued — so this screen never sees the code at all. It is not
+   * declining to parse a redirect; there is nothing here to parse, which is a stronger position to be in.
+   *
+   * What the window does afterwards is watched only to know when to stop waiting (see pollUntilTokenStored).
+   * The outcome itself always comes from asking the server.
    */
   async function login(): Promise<void> {
     if (pending) return;
@@ -160,8 +169,8 @@ export function InstagramConnectionCard({ status, onStatusChange }: Props) {
     setAwaitingLogin(false);
     try {
       const started = await startInstagramLogin();
-      // Meta redirects the window back to this app's own backend, which completes the login by itself. Nothing
-      // here watches that window — it may even be closed — so the only way to learn the outcome is to ask.
+      // Kept so the wait can tell whether the window is still open. It is a stopping condition and nothing more:
+      // an open window never means success, and a closed one never does either.
       const opened = window.open(started.url, "instagram-login", "width=520,height=720");
       loginWindow.current = opened;
       if (!opened) {

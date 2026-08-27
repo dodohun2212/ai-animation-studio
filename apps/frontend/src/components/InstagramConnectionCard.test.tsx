@@ -72,10 +72,13 @@ describe("pollUntilTokenStored", () => {
   });
 
   /**
-   * The one that decides whether watching is worth having. The callback page closes its own window the moment
-   * the server has the token, so on a real login the close and the token land together. Were the closed window
-   * checked after the read instead of before, a completed sign-in would stop the polling and show nothing — and
-   * the person would be left pressing the fallback button on an account that was already connected.
+   * The one that decides whether watching is worth having.
+   *
+   * The callback page has no script and closes nothing — it asks the person to close the window — so the close
+   * arrives whenever they get round to it, including right after a sign-in that already succeeded. Check the
+   * closed window after the read instead of before and that read can be stale, ending the wait on a login that
+   * completed; the person is then left pressing the fallback button on an account already connected. Because it
+   * turns on human timing it would reproduce only sometimes, which is the worst way for it to be found.
    */
   it("treats a window that closed on success as a success", async () => {
     const result = await pollUntilTokenStored({
