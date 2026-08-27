@@ -259,6 +259,7 @@ describe("longProjectsApi", () => {
     "LONG_EPISODE_CONTINUITY_NOT_ALLOWED",
     "STORY_BIBLE_ITEM_NOT_FOUND",
     "STORY_BIBLE_ITEM_ALREADY_EXISTS",
+    "PROJECT_LOCKED",
   ] as const;
 
   it("gives every backend error code its own message instead of the generic retry fallback", () => {
@@ -267,6 +268,15 @@ describe("longProjectsApi", () => {
       (code) => toLongProjectDisplayError(new LongProjectsApiError(code, "raw")).message === generic.message,
     );
     expect(fellBack).toEqual([]);
+  });
+
+  // Same reasoning as the budget stop below, but sharper: here "다시 시도" would be an instruction to make the
+  // exact double submission the lock exists to prevent (`.claude-bridge` Round 152/181).
+  it("tells the reader not to press again when another window holds the Episode", () => {
+    const displayed = toLongProjectDisplayError(new LongProjectsApiError("PROJECT_LOCKED", "raw"));
+
+    expect(displayed.message).toContain("다시 누르지 마세요");
+    expect(displayed.message).not.toContain("다시 시도");
   });
 
   it("never tells the user to wait and retry a budget stop", () => {

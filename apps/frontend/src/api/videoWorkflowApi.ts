@@ -31,6 +31,12 @@ const SAFE_ERRORS: Record<string, string> = {
   VIDEO_REVIEW_DATA_INVALID: "영상 검토 데이터를 확인할 수 없습니다.",
   VIDEO_STORAGE_ERROR: "영상 작업 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
   VIDEO_CONTENT_UNAVAILABLE: "영상을 불러올 수 없습니다.",
+  // Two windows on the same project, both advancing video generation. Wording matters more here than in any
+  // other message on this screen: the generic fallback ("잠시 후 다시 시도해 주세요") tells the reader to press
+  // the button again, and pressing it again is exactly the double submission this lock exists to prevent — the
+  // one that actually charged $3.00 twice (`.claude-bridge` Round 152/181). So it says the opposite, plainly,
+  // and says the wait resolves itself.
+  PROJECT_LOCKED: "다른 창에서 이 프로젝트를 처리하는 중입니다. 다시 누르지 마세요 — 그쪽 작업이 끝나면 자동으로 반영됩니다.",
 };
 const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };

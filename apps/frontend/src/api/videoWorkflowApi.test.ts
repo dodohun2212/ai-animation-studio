@@ -233,6 +233,7 @@ describe("videoWorkflowApi", () => {
     "VIDEO_WORKFLOW_NOT_ALLOWED",
     "VIDEO_REVIEW_DATA_INVALID",
     "VIDEO_STORAGE_ERROR",
+    "PROJECT_LOCKED",
   ])("never surfaces the backend's raw message for %s — only a fixed, safe message", async (code) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(409, { code, message: "raw backend detail" })));
 
@@ -245,6 +246,17 @@ describe("videoWorkflowApi", () => {
     const displayError = toVideoWorkflowDisplayError(caught);
     expect(displayError.code).toBe(code);
     expect(displayError.message).not.toContain("raw backend detail");
+  });
+
+  // The whole point of this code. The generic fallback tells the reader to press the button again, and
+  // pressing it again is the double submission the lock exists to prevent — the one that charged $3.00 twice
+  // (`.claude-bridge` Round 152/181). A message here that says "retry" would be worse than no message.
+  it("tells the reader not to press again when another window holds the project", () => {
+    const displayed = toVideoWorkflowDisplayError(new VideoWorkflowApiError("PROJECT_LOCKED", "raw"));
+
+    expect(displayed.code).toBe("PROJECT_LOCKED");
+    expect(displayed.message).toContain("다시 누르지 마세요");
+    expect(displayed.message).not.toContain("다시 시도");
   });
 
   it("falls back to a generic unknown error for an unrecognized code", () => {
