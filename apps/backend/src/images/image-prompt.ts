@@ -1,5 +1,6 @@
 import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
+import { imageSizeForAspect } from "../projects/project-aspect.js";
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -47,20 +48,15 @@ export function imagePromptFor(scene: unknown, styleLine: string, referenceNotes
 }
 
 /**
- * Same source and priority as video-preview.service.ts's ratioFor() (project.style_profile.aspect, "16:9" vs
- * anything else defaulting to vertical) — but returns one of OpenAI's own image-generation size strings rather
- * than a Runway ratio string, since the two providers take the shape in different vocabularies. Nothing derived
- * this before: every call site let the adapter's own OPENAI_IMAGE_SIZE default
- * apply unconditionally, so a landscape (16:9) project's first-frame image was generated portrait regardless of
- * its own setting, and that mismatched image was then paid for again by Runway before the shape mismatch showed
- * up as a cropped or letterboxed finished video.
+ * The image size a scene is generated at, in OpenAI's own vocabulary (Runway takes the same shape in a different
+ * one — see project-aspect.ts, which owns the single reading of the setting).
+ *
+ * This derivation was added to fix exactly the symptom it then still produced: a 16:9 project's first-frame
+ * image was generated portrait regardless of its setting, and that mismatched image was paid for again by Runway
+ * before the shape showed up as a cropped or letterboxed video. Adding the function was not enough, because it
+ * read `style_profile.aspect` and the setting is stored at `lore_context.style_notes.aspect`.
  */
-export function imageSizeFor(project: StoredProject): "1024x1536" | "1536x1024" {
-  const aspect = typeof project.style_profile.aspect === "string"
-    ? project.style_profile.aspect.replaceAll(" ", "")
-    : "";
-  return aspect === "16:9" ? "1536x1024" : "1024x1536";
-}
+export const imageSizeFor = imageSizeForAspect;
 
 /**
  * Deterministic, not routed through the Story AI's own translation — same source and priority as the Story

@@ -236,7 +236,7 @@ describe("real OpenAI image generation", () => {
   it("derives the requested image size from the project's own aspect setting instead of always hardcoding portrait", async () => {
     const { projectsRoot, projects, service } = await setupWithConnectedOpenAi();
     const project = await projects.findById("images");
-    project.style_profile = { aspect: "16:9" };
+    project.lore_context = { ...project.lore_context, style_notes: { aspect: "16:9" } };
     await projects.save(project);
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);
@@ -295,7 +295,7 @@ describe("real OpenAI image generation", () => {
   it("derives the requested image size for a Reference-backed images/edits call the same way as images/generations", async () => {
     const { projectsRoot, projects, service } = await setupWithConnectedOpenAiAndConfirmedReference();
     const project = await projects.findById("images");
-    project.style_profile = { aspect: "16:9" };
+    project.lore_context = { ...project.lore_context, style_notes: { aspect: "16:9" } };
     await projects.save(project);
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);

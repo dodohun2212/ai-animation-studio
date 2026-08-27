@@ -16,6 +16,7 @@ import {
   videoPreviewImagesInvalid,
   videoPreviewNotAllowed,
 } from "./video-preview-api.error.js";
+import { runwayRatioForAspect } from "../projects/project-aspect.js";
 
 function scenesFor(project: StoredProject): SceneNumber[] {
   return sceneNumbersFor(toShortProjectSettings(project).sceneCount);
@@ -60,12 +61,8 @@ function parseScenes(project: StoredProject, sceneNumbers: readonly SceneNumber[
   });
 }
 
-export function ratioFor(project: StoredProject): "720:1280" | "1280:720" {
-  const aspect = typeof project.style_profile.aspect === "string"
-    ? project.style_profile.aspect.replaceAll(" ", "")
-    : "";
-  return aspect === "16:9" ? "1280:720" : "720:1280";
-}
+/** See project-aspect.ts — this used to read a field nothing writes, so every project rendered portrait. */
+export const ratioFor = runwayRatioForAspect;
 
 export interface VideoPromptResult {
   prompt: string;

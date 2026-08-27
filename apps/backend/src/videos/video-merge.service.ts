@@ -12,6 +12,7 @@ import { sceneValue } from "../images/image-prompt.js";
 import { AudioLibraryService } from "../audio/audio-library.service.js";
 import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
 import { ffmpegUnavailable, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeInvalidRequest, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
+import { shortProjectAspectRatio } from "../projects/project-aspect.js";
 
 const FINAL_VIDEO_PATH = "videos/final/instagram_reel.mp4" as const;
 const DEFAULT_BGM_VOLUME = 0.25;
@@ -188,7 +189,10 @@ export class LocalVideoMergeService {
       await this.archiveExistingFinal(project.project_id);
       const finalPath = this.final(project.project_id);
       await fs.mkdir(path.dirname(finalPath), { recursive: true });
-      await this.engine.merge(mergeScenes, clipDurationSeconds, finalPath, rendering.style_profile.aspect);
+      // The project's own setting, read from where it is actually stored (project-aspect.ts). This passed
+      // `style_profile.aspect` until that field turned out to be written by nothing, so every merge padded to a
+      // portrait canvas — including landscape footage, which came out pillarboxed.
+      await this.engine.merge(mergeScenes, clipDurationSeconds, finalPath, shortProjectAspectRatio(rendering));
       if (audio.mode === "narration+bgm" && bgmPath) {
         await this.engine.mixBackgroundMusic(finalPath, bgmPath, audio.volume, audio.fadeSeconds, finalPath);
       }

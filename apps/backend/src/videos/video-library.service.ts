@@ -26,6 +26,7 @@ import {
   videoLibraryStorageError,
   videoLibraryVersionNotFound,
 } from "./video-library-api.error.js";
+import { shortProjectAspectRatio } from "../projects/project-aspect.js";
 
 const FINAL_VIDEO_PATH = "videos/final/instagram_reel.mp4" as const;
 
@@ -33,10 +34,8 @@ function scenesFor(project: StoredProject): SceneNumber[] {
   return sceneNumbersFor(toShortProjectSettings(project).sceneCount);
 }
 
-/** Same source/priority as project.mapper.ts's aspectRatioFor() (and video-preview.service.ts's ratioFor()) — kept as its own tiny copy rather than a cross-import, matching this codebase's per-file convention for a one-line derivation like this. */
-function aspectRatioFor(project: StoredProject): "9:16" | "16:9" {
-  return project.style_profile.aspect === "16:9" ? "16:9" : "9:16";
-}
+/** See project-aspect.ts for why this is one shared function rather than the per-file copy it used to be. */
+const aspectRatioFor = shortProjectAspectRatio;
 
 type Target = { kind: "scene"; scene: SceneNumber } | { kind: "final" };
 

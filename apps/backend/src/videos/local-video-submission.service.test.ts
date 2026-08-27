@@ -64,7 +64,7 @@ describe("local video submission approval gate", () => {
     const body = await request(previews);
     await expect(service.start("video_submit", { ...body, approved: false })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     await expect(service.start("video_submit", { ...body, userRequestId: "contains space" })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
-    const changed = await projects.findById("video_submit"); changed.style_profile = { aspect: "16:9" }; await projects.save(changed);
+    const changed = await projects.findById("video_submit"); changed.lore_context = { ...changed.lore_context, style_notes: { aspect: "16:9" } }; await projects.save(changed);
     await expect(service.start("video_submit", body)).rejects.toMatchObject({ response: { code: "VIDEO_CONFIRMATION_STALE" } });
 
     const fresh = await request(previews);

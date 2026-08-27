@@ -45,7 +45,7 @@ async function setup() {
   const project = createStoredProject("video_preview", "topic", "2026-08-22T00:00:00.000Z");
   project.workflow_state = WorkflowState.WaitingForVideoConfirmation;
   project.scenes = scenes();
-  project.style_profile = { aspect: "16:9" };
+  project.lore_context = { ...project.lore_context, style_notes: { aspect: "16:9" } };
   const images = path.join(projectsRoot, project.project_id, "images");
   await projects.create(project);
   await fs.mkdir(images, { recursive: true });
@@ -77,7 +77,10 @@ describe("provider-free video prompt preview", () => {
 
   it("uses portrait as the Python fallback and counts non-BMP characters as two UTF-16 units", async () => {
     const { projects, projectsRoot, learningDataRoot } = await setup();
-    const project = await projects.findById("video_preview"); project.style_profile = {}; await projects.save(project);
+    // Clears the choice where it is actually stored — setup() seeds 16:9, and this test is about what happens
+    // when a project has recorded nothing. Clearing style_profile instead used to "work" only because nothing
+    // read the real field.
+    const project = await projects.findById("video_preview"); project.lore_context = { ...project.lore_context, style_notes: {} }; await projects.save(project);
     const result = await new LocalVideoPreviewService(new LocalProjectRepository(projectsRoot), projectsRoot, new RunwayBudget(learningDataRoot)).preview("video_preview", {});
     expect(result.previews.every((item) => item.ratio === "720:1280")).toBe(true);
     expect(utf16Length("A😀B")).toBe(4);
