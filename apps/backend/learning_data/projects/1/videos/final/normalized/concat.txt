@@ -1,0 +1,6 @@
+file 'C:\dev\AI-Animation-Studio-Workspace\main\apps\backend\learning_data\projects\1\videos\final\normalized\scene1.mp4'
+file 'C:\dev\AI-Animation-Studio-Workspace\main\apps\backend\learning_data\projects\1\videos\final\normalized\scene2.mp4'
+file 'C:\dev\AI-Animation-Studio-Workspace\main\apps\backend\learning_data\projects\1\videos\final\normalized\scene3.mp4'
+file 'C:\dev\AI-Animation-Studio-Workspace\main\apps\backend\learning_data\projects\1\videos\final\normalized\scene4.mp4'
+file 'C:\dev\AI-Animation-Studio-Workspace\main\apps\backend\learning_data\projects\1\videos\final\normalized\scene5.mp4'
+file 'C:\dev\AI-Animation-Studio-Workspace\main\apps\backend\learning_data\projects\1\videos\final\normalized\scene6.mp4'

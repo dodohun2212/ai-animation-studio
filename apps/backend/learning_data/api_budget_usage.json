@@ -1,0 +1,58 @@
+[
+  {
+    "timestamp": "2026-08-26T13:51:38.137Z",
+    "project_id": "1",
+    "api_type": "story",
+    "estimated_cost_usd": 0.05,
+    "actual_cost_usd": 0.05,
+    "succeeded": true
+  },
+  {
+    "timestamp": "2026-08-26T14:38:31.994Z",
+    "project_id": "1",
+    "api_type": "image",
+    "estimated_cost_usd": 0.1,
+    "actual_cost_usd": 0.1,
+    "succeeded": true
+  },
+  {
+    "timestamp": "2026-08-26T14:39:18.716Z",
+    "project_id": "1",
+    "api_type": "image",
+    "estimated_cost_usd": 0.1,
+    "actual_cost_usd": 0.1,
+    "succeeded": true
+  },
+  {
+    "timestamp": "2026-08-26T14:40:01.677Z",
+    "project_id": "1",
+    "api_type": "image",
+    "estimated_cost_usd": 0.1,
+    "actual_cost_usd": 0.1,
+    "succeeded": true
+  },
+  {
+    "timestamp": "2026-08-26T15:02:16.914Z",
+    "project_id": "1",
+    "api_type": "image",
+    "estimated_cost_usd": 0.1,
+    "actual_cost_usd": 0.1,
+    "succeeded": true
+  },
+  {
+    "timestamp": "2026-08-26T15:03:07.204Z",
+    "project_id": "1",
+    "api_type": "image",
+    "estimated_cost_usd": 0.1,
+    "actual_cost_usd": 0.1,
+    "succeeded": true
+  },
+  {
+    "timestamp": "2026-08-26T15:03:56.250Z",
+    "project_id": "1",
+    "api_type": "image",
+    "estimated_cost_usd": 0.1,
+    "actual_cost_usd": 0.1,
+    "succeeded": true
+  }
+]

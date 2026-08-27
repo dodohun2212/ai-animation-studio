@@ -1,0 +1,32 @@
+[
+  {
+    "scene_number": 1,
+    "status": "approved",
+    "updated_at": "2026-08-26T17:29:13.725Z"
+  },
+  {
+    "scene_number": 2,
+    "status": "approved",
+    "updated_at": "2026-08-26T17:29:14.790Z"
+  },
+  {
+    "scene_number": 3,
+    "status": "approved",
+    "updated_at": "2026-08-26T17:29:16.139Z"
+  },
+  {
+    "scene_number": 4,
+    "status": "approved",
+    "updated_at": "2026-08-26T17:29:17.849Z"
+  },
+  {
+    "scene_number": 5,
+    "status": "approved",
+    "updated_at": "2026-08-26T17:29:19.162Z"
+  },
+  {
+    "scene_number": 6,
+    "status": "approved",
+    "updated_at": "2026-08-26T17:29:20.384Z"
+  }
+]

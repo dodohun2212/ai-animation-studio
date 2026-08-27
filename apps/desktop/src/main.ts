@@ -14,7 +14,7 @@ const DEFAULT_BACKEND_PORT = 4317;
 // Electron's userData path otherwise defaults to the raw npm package name from package.json
 // ("@ai-animation-studio/desktop"), which nests unusably on Windows as
 // `%APPDATA%\@ai-animation-studio\desktop` — a real problem when a user actually needs to find this folder
-// (`.claude-bridge` Round 176/179, during a Runway credit investigation).
+// (a real problem during a Runway credit investigation).
 const APP_DISPLAY_NAME = "AI Animation Studio";
 
 function backendModulePath(): string {

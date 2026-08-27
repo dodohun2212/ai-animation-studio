@@ -1,0 +1,74 @@
+[
+  {
+    "scene_number": 1,
+    "status": "approved",
+    "updated_at": "2026-08-24T18:05:47.470Z",
+    "regeneration_count": 0,
+    "history": [
+      {
+        "event": "approved",
+        "timestamp": "2026-08-24T18:05:47.470Z"
+      }
+    ]
+  },
+  {
+    "scene_number": 2,
+    "status": "approved",
+    "updated_at": "2026-08-24T18:06:54.816Z",
+    "regeneration_count": 0,
+    "history": [
+      {
+        "event": "approved",
+        "timestamp": "2026-08-24T18:06:54.816Z"
+      }
+    ]
+  },
+  {
+    "scene_number": 3,
+    "status": "approved",
+    "updated_at": "2026-08-24T18:07:06.837Z",
+    "regeneration_count": 0,
+    "history": [
+      {
+        "event": "approved",
+        "timestamp": "2026-08-24T18:07:06.837Z"
+      }
+    ]
+  },
+  {
+    "scene_number": 4,
+    "status": "approved",
+    "updated_at": "2026-08-24T18:07:11.852Z",
+    "regeneration_count": 0,
+    "history": [
+      {
+        "event": "approved",
+        "timestamp": "2026-08-24T18:07:11.852Z"
+      }
+    ]
+  },
+  {
+    "scene_number": 5,
+    "status": "approved",
+    "updated_at": "2026-08-24T18:08:54.452Z",
+    "regeneration_count": 0,
+    "history": [
+      {
+        "event": "approved",
+        "timestamp": "2026-08-24T18:08:54.452Z"
+      }
+    ]
+  },
+  {
+    "scene_number": 6,
+    "status": "approved",
+    "updated_at": "2026-08-24T18:09:01.822Z",
+    "regeneration_count": 0,
+    "history": [
+      {
+        "event": "approved",
+        "timestamp": "2026-08-24T18:09:01.822Z"
+      }
+    ]
+  }
+]

@@ -1,0 +1,50 @@
+[
+  {
+    "enabled": true,
+    "confidence": null,
+    "match_reason": "manual_assignment",
+    "status": "confirmed",
+    "user_confirmed": true,
+    "version_policy": "follow_latest",
+    "pinned_version": 1,
+    "candidate_only": false,
+    "snapshot_path": null,
+    "snapshot_sha256": null,
+    "snapshot_source_version": null,
+    "selected_child_asset_ids": [],
+    "mapping_id": "MAP-833B0274224D2053",
+    "project_id": "1",
+    "asset_id": "FOLDER-A6A2645FE495",
+    "usage_role": "character",
+    "scene_scope": {
+      "mode": "all"
+    },
+    "assignment_source": "manual",
+    "created_at": "2026-08-26T15:11:32.548Z",
+    "updated_at": "2026-08-26T15:11:32.548Z"
+  },
+  {
+    "enabled": false,
+    "confidence": null,
+    "match_reason": "manual_assignment",
+    "status": "excluded",
+    "user_confirmed": false,
+    "version_policy": "follow_latest",
+    "pinned_version": 1,
+    "candidate_only": false,
+    "snapshot_path": null,
+    "snapshot_sha256": null,
+    "snapshot_source_version": null,
+    "selected_child_asset_ids": [],
+    "mapping_id": "MAP-6DDA67D1BED38FFC",
+    "project_id": "1",
+    "asset_id": "FOLDER-87F847BF0E2B",
+    "usage_role": "character",
+    "scene_scope": {
+      "mode": "all"
+    },
+    "assignment_source": "manual",
+    "created_at": "2026-08-26T15:12:04.026Z",
+    "updated_at": "2026-08-26T15:31:11.476Z"
+  }
+]

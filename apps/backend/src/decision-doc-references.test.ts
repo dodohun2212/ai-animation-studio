@@ -19,6 +19,7 @@ import { describe, expect, it } from "vitest";
  */
 
 const CURRENT_DIRECTORY = fileURLToPath(new URL(".", import.meta.url));
+const THIS_FILE = fileURLToPath(import.meta.url);
 const REPOSITORY_ROOT = path.resolve(CURRENT_DIRECTORY, "../../..");
 const DECISIONS_DOC = path.join(REPOSITORY_ROOT, "docs", "06_DECISIONS.md");
 
@@ -73,7 +74,7 @@ async function collectReferences(): Promise<Reference[]> {
   const files = (await Promise.all(SOURCE_ROOTS.map(collectSourceFiles))).flat();
   const references: Reference[] = [];
   for (const file of files) {
-    if (file === path.join(CURRENT_DIRECTORY, "decision-doc-references.test.ts")) continue; // this file's own pattern literals
+    if (file === THIS_FILE) continue; // this file's own pattern literals
     const lines = (await fs.readFile(file, "utf8")).split(/\r?\n/);
     lines.forEach((text, index) => {
       for (const match of text.matchAll(REFERENCE_PATTERN)) {
@@ -115,6 +116,22 @@ describe("decision document references", () => {
     ].join("\n");
     expect(headingLinesOutsideCodeFences(document).map((line) => HEADING_PATTERN.exec(line)?.[1]).filter(Boolean))
       .toEqual(["D-001"]);
+  });
+
+  it("has no source comment left pointing at the uncommitted mailbox", async () => {
+    // The lock this whole exercise was working toward. Every rationale that used to live behind a round number
+    // is now either in the decision document or written out in the comment itself, so a new pointer at the
+    // gitignored mailbox can only recreate the gap — and unlike last time, it cannot accumulate unnoticed.
+    const files = (await Promise.all(SOURCE_ROOTS.map(collectSourceFiles))).flat();
+    const offenders: string[] = [];
+    for (const file of files) {
+      if (file === THIS_FILE) continue; // the check may name what it forbids
+      const lines = (await fs.readFile(file, "utf8")).split(/\r?\n/);
+      lines.forEach((text, index) => {
+        if (text.includes(".claude-bridge")) offenders.push(`${path.relative(REPOSITORY_ROOT, file)}:${index + 1}`);
+      });
+    }
+    expect(offenders).toEqual([]);
   });
 
   it("scans every workspace, not just this one", async () => {

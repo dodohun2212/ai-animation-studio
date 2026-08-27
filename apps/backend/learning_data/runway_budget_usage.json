@@ -1,0 +1,83 @@
+[
+  {
+    "timestamp": "2026-08-26T15:47:23.385Z",
+    "project_id": "1",
+    "scene_number": 1,
+    "api_type": "video",
+    "estimated_cost_usd": 0.25,
+    "actual_cost_usd": 0.25,
+    "succeeded": false
+  },
+  {
+    "timestamp": "2026-08-26T16:14:10.993Z",
+    "project_id": "1",
+    "scene_number": 1,
+    "api_type": "video",
+    "estimated_cost_usd": 0.25,
+    "actual_cost_usd": 0.25,
+    "succeeded": false
+  },
+  {
+    "timestamp": "2026-08-26T16:47:44.212Z",
+    "project_id": "1",
+    "scene_number": 1,
+    "api_type": "video",
+    "estimated_cost_usd": 0.25,
+    "actual_cost_usd": 0,
+    "succeeded": false
+  },
+  {
+    "timestamp": "2026-08-26T17:18:38.015Z",
+    "project_id": "1",
+    "scene_number": 1,
+    "api_type": "video",
+    "estimated_cost_usd": 0.25,
+    "actual_cost_usd": 0.25,
+    "succeeded": true
+  },
+  {
+    "timestamp": "2026-08-26T17:19:05.912Z",
+    "project_id": "1",
+    "scene_number": 2,
+    "api_type": "video",
+    "estimated_cost_usd": 0.25,
+    "actual_cost_usd": 0.25,
+    "succeeded": true
+  },
+  {
+    "timestamp": "2026-08-26T17:19:34.062Z",
+    "project_id": "1",
+    "scene_number": 3,
+    "api_type": "video",
+    "estimated_cost_usd": 0.25,
+    "actual_cost_usd": 0.25,
+    "succeeded": true
+  },
+  {
+    "timestamp": "2026-08-26T17:20:15.233Z",
+    "project_id": "1",
+    "scene_number": 4,
+    "api_type": "video",
+    "estimated_cost_usd": 0.25,
+    "actual_cost_usd": 0.25,
+    "succeeded": true
+  },
+  {
+    "timestamp": "2026-08-26T17:20:43.963Z",
+    "project_id": "1",
+    "scene_number": 5,
+    "api_type": "video",
+    "estimated_cost_usd": 0.25,
+    "actual_cost_usd": 0.25,
+    "succeeded": true
+  },
+  {
+    "timestamp": "2026-08-26T17:21:13.780Z",
+    "project_id": "1",
+    "scene_number": 6,
+    "api_type": "video",
+    "estimated_cost_usd": 0.25,
+    "actual_cost_usd": 0.25,
+    "succeeded": true
+  }
+]
