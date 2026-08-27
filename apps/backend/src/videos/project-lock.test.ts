@@ -70,7 +70,7 @@ describe("withProjectLock", () => {
       });
     });
     await firstStarted;
-    // `.claude-bridge` Round 181: a real call site never overrides timeoutMs — only this test does, so it can
+    // A real call site never overrides timeoutMs — only this test does, so it can
     // exercise the timeout path in milliseconds instead of the real 10s ACQUIRE_TIMEOUT_MS.
     await expect(withProjectLock(directory, "busy_job", async () => "should not run", { timeoutMs: 100 }))
       .rejects.toThrow(ProjectLockTimeoutError);

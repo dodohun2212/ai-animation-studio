@@ -44,7 +44,7 @@ export async function describeReferenceMappingsForScene(
   return blocks.length > 0 ? `References:\n${blocks.join("\n")}` : "";
 }
 
-/** collectReferenceImages's result: the bytes actually sent, plus how many otherwise-eligible images had to be left out to stay within MAX_REFERENCE_IMAGES — see ImageReview.referencesOmittedCount's doc comment (`.claude-bridge` Round 165/168). `omittedCount` counts only images that resolved to real bytes and would have been sent if there were room; a mapping that never resolves to a readable file (deleted Asset, moved folder) was never going to be sent regardless of the cap, so it is not "omitted by the cap" and does not count here. */
+/** collectReferenceImages's result: the bytes actually sent, plus how many otherwise-eligible images had to be left out to stay within MAX_REFERENCE_IMAGES — see ImageReview.referencesOmittedCount's doc comment. `omittedCount` counts only images that resolved to real bytes and would have been sent if there were room; a mapping that never resolves to a readable file (deleted Asset, moved folder) was never going to be sent regardless of the cap, so it is not "omitted by the cap" and does not count here. */
 export interface CollectedReferenceImages {
   images: Buffer[];
   omittedCount: number;

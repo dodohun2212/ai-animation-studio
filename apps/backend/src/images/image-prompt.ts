@@ -50,7 +50,7 @@ export function imagePromptFor(scene: unknown, styleLine: string, referenceNotes
  * Same source and priority as video-preview.service.ts's ratioFor() (project.style_profile.aspect, "16:9" vs
  * anything else defaulting to vertical) — but returns one of OpenAI's own image-generation size strings rather
  * than a Runway ratio string, since the two providers take the shape in different vocabularies. Nothing derived
- * this before (`.claude-bridge` Round 165): every call site let the adapter's own OPENAI_IMAGE_SIZE default
+ * this before: every call site let the adapter's own OPENAI_IMAGE_SIZE default
  * apply unconditionally, so a landscape (16:9) project's first-frame image was generated portrait regardless of
  * its own setting, and that mismatched image was then paid for again by Runway before the shape mismatch showed
  * up as a cropped or letterboxed finished video.

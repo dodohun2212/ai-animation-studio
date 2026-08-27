@@ -66,7 +66,7 @@ describe("advanceRunwayScene", () => {
   });
 
   it("reclassifies a credit-shortage rejection to quota_or_permission even though Runway answers with a plain 400", async () => {
-    // The real incident this covers (`.claude-bridge` Round 143/144): Runway rejected scene 1 with a bare 400,
+    // The real incident this covers: Runway rejected scene 1 with a bare 400,
     // classified as invalid_request and told the user to check their prompt — the actual cause, confirmed only
     // once `detail` started being recorded, was an empty Runway credit balance.
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(400, { error: "You do not have enough credits to run this task." }));
@@ -178,7 +178,7 @@ describe("advanceRunwayScene", () => {
   });
 
   it("persists a claim via beforeSubmit before the paid Runway call, and in submission order", async () => {
-    // `.claude-bridge` Round 152: a crash between "Runway said yes" and "we saved that" left no trace on disk,
+    // docs/06_DECISIONS.md D-005: a crash between "Runway said yes" and "we saved that" left no trace on disk,
     // so a later process (or the same one after a restart) still saw "created" and submitted the same scene
     // again. beforeSubmit is the caller's chance to persist a trace first — this only works if it genuinely runs
     // before the network call, not after.

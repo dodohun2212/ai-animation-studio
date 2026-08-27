@@ -72,7 +72,7 @@ export class SceneEditService {
     await this.projects.save(updated);
     // TODO: no LocalAssetsRepository injected here yet, so this still recomputes the image-staleness check
     // without a References block — a project with a confirmed Asset Mapping can show a wrong imageStale here
-    // even though image-review.service.ts's own GET now gets it right (`.claude-bridge` Round 148, same gap).
+    // even though image-review.service.ts's own GET now gets it right (same gap).
     return { project: toApiProject(updated), staleness: await computeSceneStaleness(updated) };
   }
 }

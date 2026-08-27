@@ -27,7 +27,7 @@ export const OPENAI_MAX_BACKOFF_SECONDS = 4;
  * this default or whatever a caller passes, the same way runway-video-adapter.ts does for task creation. A
  * `fetch` throw only means the response never reached us, never that OpenAI never received or acted on the
  * request — generation is billed and non-idempotent, so retrying it can create and pay for a second real result
- * while only ever tracking whichever attempt's response we happened to get (`.claude-bridge` Round 148, found
+ * while only ever tracking whichever attempt's response we happened to get (found
  * by re-checking every OpenAI adapter against the same bug already confirmed and fixed for Runway).
  */
 export const OPENAI_DEFAULT_MAX_RETRIES = 2;

@@ -88,7 +88,7 @@ describe("provider-free generated image review", () => {
   it("does not flag imageStale for a project with a confirmed Asset Mapping, when nothing has actually changed", async () => {
     // Before this, computeSceneStaleness always recomputed imagePromptFor() without a References block, so
     // any project with a confirmed mapping (like this fixture's character) permanently mismatched the real
-    // recorded prompt (which does have one) and every scene showed imageStale forever (`.claude-bridge` Round 148).
+    // recorded prompt (which does have one) and every scene showed imageStale forever.
     const { projects, projectsRoot, assets, service } = await setupWithConnectedOpenAiAndConfirmedReference();
     const project = await projects.findById("review");
     const { imagePromptFor, styleLineFor } = await import("./image-prompt.js");

@@ -149,8 +149,8 @@ export class FfmpegMergeEngine {
    * Deliberately constant attenuation, not sidechain-triggered ducking against narration: real ducking is
    * feasible here (inputPath's own audio track could drive a sidechaincompress key against the bgm) and is a
    * reasonable follow-up, but a fixed, conservative default volume is simpler to get right without a live
-   * multi-track test rig, and still keeps narration intelligible (`.claude-bridge` Round 172 — Cowork flagged
-   * ducking OR automatic volume adjustment as either acceptable approach).
+   * multi-track test rig, and still keeps narration intelligible (ducking or automatic volume adjustment were both
+   * acceptable approaches).
    */
   async mixBackgroundMusic(inputPath: string, bgmPath: string, volume: number, fadeSeconds: number, outputPath: string): Promise<void> {
     let duration: number;

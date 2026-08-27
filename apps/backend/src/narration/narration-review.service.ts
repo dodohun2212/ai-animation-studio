@@ -67,7 +67,7 @@ export class NarrationReviewService {
     // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.
     const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, TTS_ESTIMATED_COST_USD) : undefined;
     // TODO: no LocalAssetsRepository/mappings injected here yet — same gap as scene-edit.service.ts, see its
-    // comment (`.claude-bridge` Round 148). This screen doesn't act on imageStale directly, but the field is
+    // comment. This screen doesn't act on imageStale directly, but the field is
     // still part of the shared staleness shape returned here.
     return { project: toApiProject(project), narrations, staleness: await computeSceneStaleness(project), ...(budget ? { budget } : {}) };
   }

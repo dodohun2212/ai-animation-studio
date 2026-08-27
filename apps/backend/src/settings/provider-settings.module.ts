@@ -12,7 +12,7 @@ export const PROVIDER_SETTINGS_ROOT = "PROVIDER_SETTINGS_ROOT";
  * Deliberately fails closed instead of defaulting to process.cwd(): this directory holds the real, saved Runway/
  * OpenAI credential. A silent process.cwd() fallback meant anything run from apps/backend -- a one-off script, a
  * debug tool, a migration, `node -e`, a test that forgot to isolate itself -- picked up the real key with no
- * warning (`.claude-bridge` Round 156/157/158: this is exactly how a backend test suite run ended up making real,
+ * warning (docs/06_DECISIONS.md D-016: this is exactly how a backend test suite run ended up making real,
  * billed Runway calls). The one legitimate entry point, main.ts, sets this env var explicitly before bootstrap;
  * every other entry point (including every test that boots the real AppModule) must now do the same or fail
  * loudly, instead of silently reaching a real credential.

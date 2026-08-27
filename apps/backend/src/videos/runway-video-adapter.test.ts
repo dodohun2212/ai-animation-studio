@@ -128,7 +128,7 @@ describe("createRunwayImageToVideoTask", () => {
 
   it("never retries a 429 even when the caller asks for retries — task creation is not idempotent", async () => {
     // A real user's Runway dashboard showed exactly this call retried and duplicated: two POSTs per scene, one
-    // task ever polled, both billed (`.claude-bridge` Round 145). maxRetries here must have no effect.
+    // task ever polled, both billed (docs/06_DECISIONS.md D-005). maxRetries here must have no effect.
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(429, {}, { "retry-after": "0" }))
       .mockResolvedValueOnce(jsonResponse(200, { id: "task-2" }));

@@ -41,7 +41,7 @@ describe.sequential("local image generation HTTP route", () => {
     // Isolated even though this test never intends to touch a real provider: PROVIDER_SETTINGS_ROOT defaults to
     // process.cwd(), and this app is the real AppModule over a real HTTP server — without this, "no provider
     // connected" is only true by accident of whatever real credentials happen to sit in apps/backend/.env on
-    // whichever machine runs this suite (`.claude-bridge` Round 154: real, unmocked Runway/OpenAI calls from this
+    // whichever machine runs this suite (docs/06_DECISIONS.md D-016: real, unmocked Runway/OpenAI calls from this
     // exact test shape, on this exact gap, are the leading suspect for real unexplained provider charges).
     previousSettingsRoot = process.env.PROVIDER_SETTINGS_ROOT; process.env.PROVIDER_SETTINGS_ROOT = root;
     app = await NestFactory.create(AppModule, { logger: false }); await app.listen(0, "127.0.0.1");

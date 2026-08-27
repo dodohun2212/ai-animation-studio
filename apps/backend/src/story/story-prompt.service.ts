@@ -243,8 +243,7 @@ export class StoryPromptService {
    * Resets a generated Story back to READY so `preview()`/`approve()` can run again from scratch, same as a
    * first-time generation. Allowed only while a Story exists and no scene image has been generated for it yet
    * (checked here again server-side — the client's own read of this is not trusted): once even one image exists,
-   * a script change would leave it orphaned, and the honest next step is a new project instead (product decision,
-   * see `.claude-bridge` Round 127). `scenes`/`story`/`image_prompts`/`motion_prompts` are cleared along with the
+   * a script change would leave it orphaned, and the honest next step is a new project instead (product decision). `scenes`/`story`/`image_prompts`/`motion_prompts` are cleared along with the
    * state so a run that changes scene count starts from a clean slate; `script_revision` is left untouched, since
    * `approve()` always advances it forward regardless of its current value.
    */

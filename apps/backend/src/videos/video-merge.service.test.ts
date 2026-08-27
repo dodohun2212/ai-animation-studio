@@ -323,7 +323,7 @@ describe("local FFmpeg video merge", () => {
       });
 
       // Deleting the track afterward must not erase the credit line a published video still owes — the value was
-      // copied at merge time, not kept as a live reference (`.claude-bridge` Round 176).
+      // copied at merge time, not kept as a live reference (docs/06_DECISIONS.md D-003).
       await audioLibrary.remove(uploaded.track.trackId);
       const reread = await projects.findById("video_merge");
       expect(reread.used_audio).toEqual({

@@ -37,7 +37,7 @@ it("serves a restart-safe local video preview and explicit fake submission witho
   project.generated_images = await Promise.all([1, 2, 3, 4, 5, 6].map(async (number) => { const file = path.join(images, `scene${number}.png`); await fs.writeFile(file, PNG); return file; }));
   await projects.save(project);
   previousLearningRoot = process.env.LEARNING_DATA_ROOT; process.env.LEARNING_DATA_ROOT = root;
-  // See images.app-module.integration.test.ts's identical comment (`.claude-bridge` Round 154) — this real
+  // See images.app-module.integration.test.ts's identical comment — this real
   // AppModule must never see whatever real provider credential happens to sit in apps/backend/.env.
   previousSettingsRoot = process.env.PROVIDER_SETTINGS_ROOT; process.env.PROVIDER_SETTINGS_ROOT = root;
   app = await NestFactory.create(AppModule, { logger: false }); await app.listen(0, "127.0.0.1");
@@ -74,7 +74,7 @@ it("serves a generated scene's mp4 over HTTP once the local fake workflow comple
   project.generated_images = await Promise.all([1, 2, 3, 4, 5, 6].map(async (number) => { const file = path.join(images, `scene${number}.png`); await fs.writeFile(file, PNG); return file; }));
   await projects.save(project);
   previousLearningRoot = process.env.LEARNING_DATA_ROOT; process.env.LEARNING_DATA_ROOT = root;
-  // See images.app-module.integration.test.ts's identical comment (`.claude-bridge` Round 154) — this real
+  // See images.app-module.integration.test.ts's identical comment — this real
   // AppModule must never see whatever real provider credential happens to sit in apps/backend/.env.
   previousSettingsRoot = process.env.PROVIDER_SETTINGS_ROOT; process.env.PROVIDER_SETTINGS_ROOT = root;
   app = await NestFactory.create(AppModule, { logger: false }); await app.listen(0, "127.0.0.1");
@@ -116,7 +116,7 @@ it("serves the final merged video at /videos/final/content, matched ahead of the
   await fs.mkdir(finalDirectory, { recursive: true });
   await fs.writeFile(path.join(finalDirectory, "instagram_reel.mp4"), Buffer.from("final reel bytes"));
   previousLearningRoot = process.env.LEARNING_DATA_ROOT; process.env.LEARNING_DATA_ROOT = root;
-  // See images.app-module.integration.test.ts's identical comment (`.claude-bridge` Round 154) — this real
+  // See images.app-module.integration.test.ts's identical comment — this real
   // AppModule must never see whatever real provider credential happens to sit in apps/backend/.env.
   previousSettingsRoot = process.env.PROVIDER_SETTINGS_ROOT; process.env.PROVIDER_SETTINGS_ROOT = root;
   app = await NestFactory.create(AppModule, { logger: false }); await app.listen(0, "127.0.0.1");

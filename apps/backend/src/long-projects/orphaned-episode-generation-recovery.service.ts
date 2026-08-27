@@ -9,7 +9,7 @@ import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/projec
 /**
  * Episode counterpart to projects/orphaned-generation-recovery.service.ts — see that file's doc comment for the
  * full single-process-loop reasoning, which applies identically here. That file explicitly flagged Long Episodes
- * as uncovered rather than folding them in silently; this closes that gap (`.claude-bridge` Round 164 — a real
+ * as uncovered rather than folding them in silently; this closes that gap (a real
  * user project stuck in a "generating" Episode state with no way out, same shape as the Round 129 incident that
  * created the short-project version of this file).
  *
@@ -25,7 +25,7 @@ import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/projec
  *    is more correct than inventing a different one just for the orphaned path.
  *
  * A plain-language message is written into `warnings` on both the outline summary and the Episode's own detail
- * file (`.claude-bridge` Round 165/166/168 — Cowork asked for this follow-up explicitly once the shared contract
+ * file (asked for explicitly once the shared contract
  * gained LongEpisodeOutline.warnings). Same principle as the short-project RECOVERY_MESSAGES: no raw
  * LongEpisodeStatus value in the text, never stack the same sentence twice, and self-clears once the Episode has
  * moved past the window this message was about (withoutStaleEpisodeRecoveryWarnings below) — every one of the

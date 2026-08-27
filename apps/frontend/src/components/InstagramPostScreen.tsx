@@ -88,12 +88,14 @@ function composeCaption(parts: { body: string; attribution: string; aiNotice: st
 }
 
 /**
- * Everything that has to happen before a finished video becomes a post, except the posting itself.
+ * Everything that turns a finished video into a post: which video, what the caption says, whether the shape and
+ * length are within what a reel accepts, the credit line the audio licence requires, which account it goes to —
+ * and finally the posting itself.
  *
- * The publishing step needs a Creator account and Meta's Content Publishing API, and is deliberately not here
- * (docs/06_DECISIONS.md D-012). Everything before it — which video, what the caption says, whether the shape
- * and length are within what a reel accepts, and the credit line the audio licence requires — does not, and
- * that part is what the user is otherwise doing by hand each time.
+ * Publishing is the one irreversible, public action in this app, so it is never one press away: the confirmation
+ * names the account it is about to go out on, and `approved: true` is defaulted nowhere in the chain
+ * (docs/06_DECISIONS.md D-015). This screen never talks to Meta directly — the token lives on the server and
+ * never reaches the page.
  */
 export function InstagramPostScreen({ onBack }: Props) {
   const [list, setList] = useState<ListState>({ status: "loading" });

@@ -12,8 +12,7 @@ export interface DesiredAutoMapping {
 /**
  * Before this, a user chose a character/atmosphere/reference Asset twice: once in Project Settings (feeds only
  * the Story prompt's text metadata) and again in Asset Mapping review (feeds the image model's Reference bytes)
- * — the two systems never told each other anything, so "설정에서 골랐다"이 그림에 반영되지 않았다 (see
- * `.claude-bridge` Round 135). This keeps one tag's worth of `assignment_source: "auto"` mappings in sync with
+ * — the two systems never told each other anything, so "설정에서 골랐다"이 그림에 반영되지 않았다. This keeps one tag's worth of `assignment_source: "auto"` mappings in sync with
  * whatever the caller now considers "desired" for that tag (one call site per settings section — cast,
  * atmosphere, scene references — each with its own `tag` so saving one section never touches another's mappings).
  *

@@ -12,7 +12,7 @@ import { LocalProjectRepository } from "./projects.repository.js";
  * checking `workflow_state`) then rejects every future attempt to continue or retry — forever, since nothing
  * else in the app ever writes that state away. This was found from a real user project stuck exactly this way
  * (`GENERATING_IMAGES`, three of six scenes already paid for and on disk, no error recorded — the server was
- * stopped mid-run) — see `.claude-bridge` Round 129.
+ * stopped mid-run).
  *
  * This app runs as a single local process per install (no clustering, no multiple simultaneous Backend
  * instances against the same `learning_data/projects`), so at the moment a fresh process starts, any project
@@ -47,7 +47,7 @@ const RECOVERY_TARGETS: ReadonlyMap<string, WorkflowState> = new Map([
 /**
  * Plain language only, no `WorkflowState` value anywhere in the text — a project stuck in `GENERATING_IMAGES`
  * being reverted to `ASSET_MAPPING_APPROVED` told a real user exactly that in those words, and they had no way
- * to know what either name meant (`.claude-bridge` Round 137). The frontend already solved this once for a
+ * to know what either name meant. The frontend already solved this once for a
  * different string (`workflowStateLabel`), but a backend-composed sentence can't be patched into shape by a
  * frontend label lookup after the fact — the fix has to be to never put the raw name in text in the first place.
  */

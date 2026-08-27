@@ -39,7 +39,7 @@ function latestRecordField(records: readonly unknown[], sceneNumber: number, key
  * imagePromptFor() folds into a real generation (see image-reference-selection.ts). Omitting it recomputes
  * without that block regardless of what actually shipped — which used to be the only option, and made every
  * scene of any project with a confirmed Asset Mapping permanently, incorrectly imageStale (the recorded prompt
- * had a References section this function could never reproduce to match against — `.claude-bridge` Round 148).
+ * had a References section this function could never reproduce to match against).
  */
 export async function computeSceneStaleness(
   project: StoredProject,

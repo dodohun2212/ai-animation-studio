@@ -193,7 +193,7 @@ describe("real Runway episode video generation", () => {
   });
 
   it("never double-submits the same scene when two independent service instances race — the shape of a nest-watch dev-server restart, not just a same-process double call", async () => {
-    // `.claude-bridge` Round 176/179: the same in-memory `advancing` Set race local-video-workflow.service.ts
+    // docs/06_DECISIONS.md D-005: the same in-memory `advancing` Set race local-video-workflow.service.ts
     // already had a confirmed real-money incident for (Round 152) existed here too, just never fixed — see
     // episode-videos.service.ts's advanceReal() doc comment. Two separate EpisodeVideosService instances against
     // the same on-disk project reproduce a nest-watch restart's brief process overlap without spawning two

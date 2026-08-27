@@ -72,7 +72,7 @@ export interface VideoPromptResult {
   /** Section labels actually dropped by the length-truncation loop below — never includes "Continuity cue" for
    * scene 1, which is absent for an unrelated reason (there is no previous scene) rather than truncated. Lets a
    * caller that cares (video-preview.service.ts's preview()) tell the user something was cut, instead of quietly
-   * shipping a prompt with content missing and no way to know (`.claude-bridge` Round 148). */
+   * shipping a prompt with content missing and no way to know. */
   omittedSections: string[];
 }
 
@@ -81,7 +81,7 @@ export interface VideoPromptResult {
  * Runway's own Gen-4 Video Prompting Guide warns that "reiterating elements that exist within the image in high
  * detail can lead to reduced motion or unexpected results." This function's sections are all motion/camera/
  * pacing description for exactly that reason; `suffix` below ("Maintain stable identity...") is what actually
- * holds identity steady, not a redundant physical description (`.claude-bridge` Round 172 — raised as a possible
+ * holds identity steady, not a redundant physical description (raised as a possible
  * gap, verified against Runway's own docs, and closed as intentional design instead).
  *
  * Also never add negative phrasing here (an `Avoid: ...` line, the way image-prompt.ts's styleLineFor() does for

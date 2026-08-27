@@ -5,7 +5,7 @@
  * codebase's tests) exposes a `.mock` property the real, native `fetch` never does. Anything that reaches here
  * with a plain, unmocked `fetch` while running under vitest is about to hit the real API with whatever real
  * credential happens to sit on disk at `process.cwd()`-relative paths (`ProviderSettingsModule`'s own default) —
- * refuse it outright instead of letting it silently go out. `.claude-bridge` Round 154: real, unexplained Runway
+ * refuse it outright instead of letting it silently go out. docs/06_DECISIONS.md D-016: real, unexplained Runway
  * charges (four tasks, ~$1.00, no trace in any project.json or budget ledger) traced to exactly this gap — a real
  * backend API key sitting at `apps/backend/.env` (process.cwd()'s default) with nothing structurally stopping a
  * test process's real `fetch` from reaching it.

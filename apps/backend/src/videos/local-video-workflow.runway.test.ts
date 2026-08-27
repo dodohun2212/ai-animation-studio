@@ -303,7 +303,7 @@ describe("real Runway video workflow", () => {
   });
 
   it("never overwrites a scene another advance already claimed while a submission was in flight — warns instead of silently losing the earlier (real, billed) task", async () => {
-    // Reproduces the shape of the real incident (`.claude-bridge` Round 145: two POSTs per scene, one task ever
+    // Reproduces the shape of the real incident (docs/06_DECISIONS.md D-005: two POSTs per scene, one task ever
     // polled) without needing genuine OS-level concurrency — the fetch mock stalls scene 1's submission response
     // just long enough for the test to write a conflicting "already running" record in between, the same window
     // an actual race would need.
@@ -350,7 +350,7 @@ describe("real Runway video workflow", () => {
   });
 
   it("never double-submits the same scene when two independent service instances race — the shape of a nest-watch dev-server restart, not just a same-process double call", async () => {
-    // `.claude-bridge` Round 152: the in-memory `advancing` Set (asserted by the "two advance calls race" test
+    // docs/06_DECISIONS.md D-005: the in-memory `advancing` Set (asserted by the "two advance calls race" test
     // above) only ever serializes calls within one process. `apps/backend`'s dev script restarts the whole
     // process on every file save, and the old and new process can briefly overlap, each with its own empty Set —
     // a real user's Runway dashboard showed exactly three scenes submitted twice, one second apart. Two separate
@@ -398,8 +398,7 @@ describe("real Runway video workflow", () => {
     // Simulates the residual crash window my two-phase claim narrows but cannot close entirely: a previous
     // process persisted "submitting" (claimSceneForSubmission) and then disappeared (killed mid-flight) before
     // ever learning whether Runway actually created a task. We cannot tell, so — unlike every other failure path
-    // — this must never auto-resubmit; the user has to check their Runway dashboard first (`.claude-bridge`
-    // Round 152, requirement D).
+    // — this must never auto-resubmit; the user has to check their Runway dashboard first (docs/06_DECISIONS.md D-005).
     const deps = await setupWithConnectedRunway();
     const workflow = newWorkflow(deps);
     vi.useFakeTimers();

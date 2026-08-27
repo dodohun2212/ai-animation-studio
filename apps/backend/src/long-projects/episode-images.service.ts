@@ -56,7 +56,7 @@ export class EpisodeImagesService {
   /**
    * Same source as episode-videos.service.ts's ratio() (project.aspect_ratio), translated into OpenAI's own
    * image-generation size vocabulary instead of a Runway ratio string — see image-prompt.ts's imageSizeFor doc
-   * comment for why this was missing entirely (`.claude-bridge` Round 165). The short-project side reads this
+   * comment for why this was missing entirely. The short-project side reads this
    * from style_profile.aspect on the project itself; a Long Episode has no such per-project style_profile, so
    * this reads the same aspect_ratio field episode-videos.service.ts already trusts for the same Episode.
    */

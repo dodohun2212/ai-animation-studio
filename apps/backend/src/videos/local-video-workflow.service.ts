@@ -309,7 +309,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       // Re-read fresh, right before persisting: `record` above can be stale by the length of the whole Runway
       // round-trip we just awaited. If some other advance already moved this scene off "created" in that window,
       // `result.taskId` names a real, billed Runway task we are about to lose track of forever if we overwrite
-      // silently — surface it as a warning instead (`.claude-bridge` Round 145: a real user's Runway dashboard
+      // silently — surface it as a warning instead (docs/06_DECISIONS.md D-005: a real user's Runway dashboard
       // showed a second, unpolled, but billed task per scene, invisible anywhere in our own data until then).
       const fresh = await this.projects.findById(project.project_id);
       const freshRecord = this.records(fresh, jobId).find((item) => item.scene_number === result.sceneNumber)!;
@@ -503,7 +503,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     const reviews = await this.loadReviews(project.project_id);
     const costsByScene = this.budget ? await this.budget.costsByScene(project.project_id) : {};
     // TODO: no LocalAssetsRepository/mappings injected here yet — same gap as scene-edit.service.ts, see its
-    // comment (`.claude-bridge` Round 148).
+    // comment.
     return {
       project: toApiProject(project),
       reviews: this.toReviews(reviews, project.updated_at, records.map((record) => record.scene_number), costsByScene),
