@@ -39,6 +39,7 @@ function renderScreen(options: {
   durationSeconds?: number | "fails";
   draft?: { body?: string; hashtags?: string; aiNotice?: boolean } | "fails";
   targets?: { targets: { igUserId: string; username: string; pageName: string }[]; selectedIgUserId?: string } | "not-connected";
+  publish?: "ok" | "INSTAGRAM_ALREADY_PUBLISHED" | "INSTAGRAM_PUBLISH_FAILED" | "INSTAGRAM_NOT_CONNECTED";
 } = {}) {
   const projects = options.projects ?? [libraryProject()];
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -48,6 +49,16 @@ function renderScreen(options: {
     if (url === "/projects/p1/settings") {
       if (options.durationSeconds === "fails") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "raw" });
       return jsonResponse(200, { settings: makeSettings(options.durationSeconds ?? 30) });
+    }
+    if (url === "/projects/p1/instagram/publish") {
+      if (options.publish && options.publish !== "ok") {
+        return jsonResponse(409, { code: options.publish, message: "raw backend detail" });
+      }
+      return jsonResponse(200, {
+        mediaId: "media_1",
+        publishedAt: "2026-08-27T10:00:00.000Z",
+        project: makeProject({ id: "p1", ...options.project, instagramPost: { mediaId: "media_1", igUserId: "1", publishedAt: "2026-08-27T10:00:00.000Z" } }),
+      });
     }
     if (url === "/settings/instagram/targets" || url === "/settings/instagram/target") {
       if (options.targets === "not-connected") {
@@ -87,12 +98,10 @@ describe("InstagramPostScreen", () => {
     vi.unstubAllGlobals();
   });
 
-  // "Prepare a post" could mean either thing, and only one of them is true here. Said before anything else on
-  // the screen, because a person who assumes the other one finds out by not finding their post.
-  it("says up front that it publishes nothing", async () => {
+  it("says up front that the account is confirmed before anything goes out", async () => {
     renderScreen();
     const notice = await screen.findByTestId("post-scope-notice");
-    expect(notice.textContent).toContain("올리지 않습니다");
+    expect(notice.textContent).toContain("어느 계정으로 나가는지");
   });
 
   // A project with no merged result has nothing to post, so offering it would be a dead choice.
@@ -356,6 +365,95 @@ describe("InstagramPostScreen", () => {
     expect(screen.getByTestId("post-target-handle-missing")).toBeTruthy();
   });
 
+  // Publishing is the only action here that cannot be undone by anyone, so it is never one press away and the
+  // panel names the account — including when there is only one, because the day a second appears is the day a
+  // wrong destination costs something permanent.
+  it("does not publish on the first press, and names the account in the confirmation", async () => {
+    const { fetchMock } = renderScreen({ targets: { targets: [{ igUserId: "1", username: "ibad_studio", pageName: "이배드" }], selectedIgUserId: "1" } });
+    await pickProject();
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "본문" } });
+
+    fireEvent.click(await screen.findByTestId("post-publish-button"));
+
+    const panel = await screen.findByTestId("post-publish-confirm");
+    expect(screen.getByTestId("post-publish-confirm-account").textContent).toBe("@ibad_studio");
+    expect(panel.textContent).toContain("되돌릴 수 없습니다");
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/instagram/publish"))).toBe(false);
+  });
+
+  it("sends approved with the account the panel named, and the caption it showed", async () => {
+    const { fetchMock } = renderScreen({ targets: { targets: [{ igUserId: "1", username: "ibad_studio", pageName: "이배드" }], selectedIgUserId: "1" } });
+    await pickProject();
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "본문" } });
+    const caption = screen.getByTestId("post-caption-preview").textContent;
+
+    fireEvent.click(await screen.findByTestId("post-publish-button"));
+    fireEvent.click(await screen.findByTestId("post-publish-confirm-button"));
+
+    await screen.findByTestId("post-published");
+    const call = fetchMock.mock.calls.find(([url]) => String(url).includes("/instagram/publish"));
+    expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({ approved: true, caption, igUserId: "1" });
+  });
+
+  // Already out in the world: there is no state of this screen in which pressing again is wanted, so the button
+  // is gone rather than disabled.
+  it("offers no publish button at all once the project has been published", async () => {
+    renderScreen({
+      targets: { targets: [{ igUserId: "1", username: "ibad_studio", pageName: "이배드" }], selectedIgUserId: "1" },
+      project: { instagramPost: { mediaId: "m1", igUserId: "1", publishedAt: "2026-08-27T10:00:00.000Z" } },
+    });
+    await pickProject();
+
+    expect(await screen.findByTestId("post-published")).toBeTruthy();
+    expect(screen.queryByTestId("post-publish-button")).toBeNull();
+  });
+
+  it("will not offer to publish before an account is chosen", async () => {
+    renderScreen({ targets: { targets: [{ igUserId: "1", username: "ibad_studio", pageName: "이배드" }] } });
+    await pickProject();
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "본문" } });
+
+    expect(screen.getByTestId("post-publish-button")).toBeDisabled();
+    expect(screen.getByTestId("post-publish-needs-target").textContent).toContain("계정을 먼저");
+  });
+
+  // These two say opposite things about the world. "Failed" means nothing went out and retrying is safe;
+  // "already published" means retrying does the one thing that cannot be taken back.
+  it("says a failed publish is safe to retry", async () => {
+    renderScreen({ targets: { targets: [{ igUserId: "1", username: "ibad_studio", pageName: "이배드" }], selectedIgUserId: "1" }, publish: "INSTAGRAM_PUBLISH_FAILED" });
+    await pickProject();
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "본문" } });
+    fireEvent.click(await screen.findByTestId("post-publish-button"));
+    fireEvent.click(await screen.findByTestId("post-publish-confirm-button"));
+
+    const error = await screen.findByTestId("post-publish-error");
+    expect(error.textContent).toContain("아무것도 게시되지 않았");
+    expect(error.textContent).not.toContain("raw backend detail");
+  });
+
+  it("never tells the reader to retry a publish that already went out", async () => {
+    renderScreen({ targets: { targets: [{ igUserId: "1", username: "ibad_studio", pageName: "이배드" }], selectedIgUserId: "1" }, publish: "INSTAGRAM_ALREADY_PUBLISHED" });
+    await pickProject();
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "본문" } });
+    fireEvent.click(await screen.findByTestId("post-publish-button"));
+    fireEvent.click(await screen.findByTestId("post-publish-confirm-button"));
+
+    const error = await screen.findByTestId("post-publish-error");
+    expect(error.textContent).toContain("이미 게시");
+    expect(error.textContent).not.toContain("다시 시도");
+  });
+
+  it("backs out of the confirmation without sending anything", async () => {
+    const { fetchMock } = renderScreen({ targets: { targets: [{ igUserId: "1", username: "ibad_studio", pageName: "이배드" }], selectedIgUserId: "1" } });
+    await pickProject();
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "본문" } });
+    fireEvent.click(await screen.findByTestId("post-publish-button"));
+    fireEvent.click(await screen.findByTestId("post-publish-cancel"));
+
+    expect(screen.queryByTestId("post-publish-confirm")).toBeNull();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/instagram/publish"))).toBe(false);
+  });
+
   it("copies the composed caption", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     await withClipboard(writeText, async () => {
@@ -383,10 +481,10 @@ describe("InstagramPostScreen", () => {
 });
 
 describe("InstagramPostScreen source", () => {
-  // The one thing this screen must never grow by accident: a call that actually publishes, or any provider
-  // credential handling. Posting needs a Creator account and Meta's Content Publishing API, and is out of scope
-  // by decision, not by oversight (docs/06_DECISIONS.md D-012).
-  it("never reaches Instagram, a provider, or client-side storage", async () => {
+  // This screen publishes now, but it must never do so by talking to Meta itself. The token lives on the server
+  // and never reaches the browser, so every call here goes to our own backend — a fetch to graph.facebook.com
+  // from this file could only work by having a token in the page, which is the one thing that must never happen.
+  it("publishes only through our own backend, never Meta directly, and never touches a token", async () => {
     const fsPromises = await import("node:fs/promises");
     const path = await import("node:path");
     const url = await import("node:url");

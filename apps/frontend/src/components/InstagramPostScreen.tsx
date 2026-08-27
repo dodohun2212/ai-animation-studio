@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { InstagramPublishTarget, Project, VideoLibraryProjectSummary } from "@ai-animation-studio/shared";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
+import { publishToInstagram, toInstagramPublishDisplayError } from "../api/instagramPublishApi.js";
 import { getInstagramTargets, setInstagramTarget, targetLabel, toInstagramTargetsDisplayError } from "../api/instagramTargetsApi.js";
 import { getPostDraft, putPostDraft, toPostDraftDisplayError } from "../api/postDraftApi.js";
 import { getVideoLibrary, toVideoLibraryDisplayError } from "../api/videoLibraryApi.js";
@@ -61,6 +62,11 @@ function parseHashtags(raw: string): string[] {
     .map((token) => `#${token}`);
 }
 
+function dateOnly(value: string): string {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString("ko-KR");
+}
+
 function durationLabel(seconds: number): string {
   const whole = Math.round(seconds);
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
@@ -97,6 +103,9 @@ export function InstagramPostScreen({ onBack }: Props) {
   const [hashtagsRaw, setHashtagsRaw] = useState("");
   const [aiNoticeOn, setAiNoticeOn] = useState(true);
   const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
+  const [confirmPublish, setConfirmPublish] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState<DisplayError | null>(null);
   const [targets, setTargets] = useState<TargetsState>({ status: "loading" });
   const [targetPending, setTargetPending] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
@@ -240,6 +249,31 @@ export function InstagramPostScreen({ onBack }: Props) {
   const tooLong = plannedSeconds !== null && plannedSeconds > REEL_MAX_SECONDS;
   const notVertical = project?.aspectRatio === "16:9";
   const copyBlocked = captionOver || hashtagsOver || creditMissing;
+  const published = project?.instagramPost;
+  // Pressing and being refused is worse than not being able to press: the reasons are all knowable here
+  // (no account chosen, caption over the limit, credit line missing, already out in the world).
+  const publishBlocked = copyBlocked || !caption || !selectedTarget || Boolean(published);
+
+  /**
+   * The one irreversible, public action in this app. Reached only from a panel that named the account, and the
+   * account it names travels with the request so the two provably match.
+   */
+  async function publish(): Promise<void> {
+    if (publishing || !projectId || !selectedTarget) return;
+    setPublishing(true);
+    setPublishError(null);
+    try {
+      const response = await publishToInstagram(projectId, caption, selectedTarget.igUserId);
+      setConfirmPublish(false);
+      // The response carries the project with instagramPost set, so the screen switches to "already published"
+      // from the server's own record rather than from a local flag that a refresh would forget.
+      setPicked((current) => (current.status === "ready" ? { ...current, project: response.project } : current));
+    } catch (caught) {
+      setPublishError(toInstagramPublishDisplayError(caught));
+    } finally {
+      setPublishing(false);
+    }
+  }
 
   async function copyCaption(): Promise<void> {
     try {
@@ -265,8 +299,8 @@ export function InstagramPostScreen({ onBack }: Props) {
       {/* Said once, plainly, at the top: this screen never reaches Instagram. Nothing else on it would tell a
           person that, and "prepare" is a word that could mean either. */}
       <p className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300" data-testid="post-scope-notice">
-        이 화면은 인스타그램에 아무것도 올리지 않습니다. 올릴 영상을 고르고, 캡션을 만들어 복사해 가는 곳입니다.
-        올리는 것은 인스타그램 앱에서 직접 하시면 됩니다.
+        올릴 영상을 고르고 캡션을 만든 뒤, 여기서 바로 올릴 수 있습니다. 올리기 전에 어느 계정으로 나가는지 한 번 더 확인합니다.
+        캡션만 복사해서 인스타그램 앱에서 직접 올리셔도 됩니다.
       </p>
       <p className="text-sm text-slate-400" data-testid="post-draft-notice">
         쓰던 캡션은 프로젝트별로 저장돼서, 다음에 들어오면 그대로 이어서 쓸 수 있습니다.
@@ -552,6 +586,97 @@ export function InstagramPostScreen({ onBack }: Props) {
                 </span>
               )}
             </div>
+          </div>
+
+          <div className={cardSection} data-testid="post-publish">
+            {published ? (
+              // Already out in the world. The button is gone rather than disabled: there is no state of this
+              // screen in which pressing it again is something the person wants.
+              <>
+                <p className="text-sm font-semibold text-emerald-400" data-testid="post-published">
+                  이미 게시했습니다 · {dateOnly(published.publishedAt)}
+                </p>
+                <p className="text-xs text-slate-400">
+                  같은 영상을 또 올리면 계정에 같은 게시물이 두 개가 됩니다. 새로 올리려면 새 영상을 만들어 주세요.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-semibold text-slate-200">인스타그램에 올리기</p>
+
+                {!confirmPublish && (
+                  <button
+                    type="button"
+                    data-testid="post-publish-button"
+                    className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+                    disabled={publishBlocked || publishing}
+                    onClick={() => {
+                      setPublishError(null);
+                      setConfirmPublish(true);
+                    }}
+                  >
+                    올리기
+                  </button>
+                )}
+
+                {!selectedTarget && !published && (
+                  <p data-testid="post-publish-needs-target" className="text-xs text-amber-300">
+                    올릴 계정을 먼저 골라 주세요.
+                  </p>
+                )}
+
+                {confirmPublish && selectedLabel && (
+                  <div
+                    role="alertdialog"
+                    aria-label="인스타그램 게시 확인"
+                    data-testid="post-publish-confirm"
+                    className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
+                  >
+                    {/* The account is named here, always — including when there is only one. A mistaken charge
+                        can be argued about afterwards; a mistaken post cannot be unseen by whoever saw it. */}
+                    <p className="text-sm font-semibold text-amber-300">
+                      <span data-testid="post-publish-confirm-account">{selectedLabel.name}</span> 계정에 이 영상을 게시합니다.
+                    </p>
+                    <p className="text-sm text-slate-300">
+                      게시하면 되돌릴 수 없습니다. 지운다고 해도 이미 본 사람에게서는 사라지지 않습니다.
+                      {selectedLabel.handleUnavailable && " 이 계정의 @핸들을 읽지 못해 페이지 이름으로 표시하고 있습니다 — 맞는 계정인지 다시 확인해 주세요."}
+                    </p>
+                    <p className="text-xs text-slate-400">올리는 데 몇 분까지 걸릴 수 있습니다.</p>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        className={outlineButton}
+                        data-testid="post-publish-cancel"
+                        disabled={publishing}
+                        onClick={() => setConfirmPublish(false)}
+                      >
+                        돌아가기
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+                        data-testid="post-publish-confirm-button"
+                        disabled={publishing}
+                        onClick={() => void publish()}
+                      >
+                        {publishing ? "올리는 중입니다..." : "네, 게시합니다"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {publishError && (
+              <p
+                role="alert"
+                data-testid="post-publish-error"
+                data-error-code={publishError.code}
+                className="text-sm text-rose-400"
+              >
+                {publishError.message}
+              </p>
+            )}
           </div>
         </>
       )}

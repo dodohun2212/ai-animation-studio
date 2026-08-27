@@ -1,0 +1,96 @@
+import { API_ROUTES, type PublishToInstagramResponse } from "@ai-animation-studio/shared";
+
+export class InstagramPublishApiError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "InstagramPublishApiError";
+    this.code = code;
+  }
+}
+
+/**
+ * Two of these say opposite things about the world and must never be blurred together.
+ *
+ * `INSTAGRAM_ALREADY_PUBLISHED` means it is out there — pressing again cannot help and a duplicate post cannot
+ * be taken back from whoever saw it. `INSTAGRAM_PUBLISH_FAILED` means nothing went out and no record was kept,
+ * so trying again is safe. A shared "잠시 후 다시 시도" for both would tell the first case to do the one thing
+ * it must not (docs/06_DECISIONS.md D-010's reasoning, applied to a public action instead of a paid one).
+ */
+const SAFE_ERRORS: Record<string, string> = {
+  INVALID_REQUEST: "요청 형식이 올바르지 않습니다.",
+  INSTAGRAM_ALREADY_PUBLISHED: "이 영상은 이미 게시되었습니다. 다시 올리면 같은 영상이 두 번 올라갑니다.",
+  INSTAGRAM_VIDEO_UNAVAILABLE: "올릴 최종 영상이 없습니다. 영상을 먼저 합쳐 주세요.",
+  INSTAGRAM_NOT_CONNECTED: "인스타그램 로그인이 만료되었습니다. API 설정에서 다시 로그인해 주세요.",
+  INSTAGRAM_TARGET_NOT_FOUND: "고른 계정으로는 지금 올릴 수 없습니다. 계정을 다시 골라 주세요.",
+  INSTAGRAM_PUBLISH_FAILED: "올리지 못했습니다. 아무것도 게시되지 않았으니 다시 시도해도 됩니다.",
+};
+const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };
+const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };
+const UNKNOWN = { code: "CLIENT_UNKNOWN_ERROR", message: "요청을 처리하지 못했습니다." };
+
+/** Never surfaces the backend's raw message or any Meta detail — only a fixed, safe message per code. */
+export function toInstagramPublishDisplayError(error: unknown): { code: string; message: string } {
+  if (!(error instanceof InstagramPublishApiError)) return UNKNOWN;
+  if (Object.prototype.hasOwnProperty.call(SAFE_ERRORS, error.code)) {
+    return { code: error.code, message: SAFE_ERRORS[error.code]! };
+  }
+  if (error.code === NETWORK.code) return NETWORK;
+  if (error.code === MALFORMED.code) return MALFORMED;
+  return UNKNOWN;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+/**
+ * Publishes this project's final video. Irreversible and public — the only call in this app whose mistake cannot
+ * be undone by anyone, including Instagram.
+ *
+ * `approved: true` is sent explicitly and is never defaulted anywhere in the chain, so no code path can reach a
+ * publish without a person having said yes to a panel that named the account.
+ *
+ * `igUserId` travels with the request rather than being read from the stored selection server-side: that is what
+ * makes "the account the confirmation named" and "the account published to" provably the same one.
+ */
+export async function publishToInstagram(
+  projectId: string,
+  caption: string,
+  igUserId: string,
+): Promise<PublishToInstagramResponse> {
+  let response: Response;
+  try {
+    response = await fetch(API_ROUTES.instagramPublish(projectId), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ approved: true, caption, igUserId }),
+    });
+  } catch {
+    throw new InstagramPublishApiError(NETWORK.code, NETWORK.message);
+  }
+
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    body = undefined;
+  }
+
+  if (!response.ok) {
+    if (isRecord(body) && isNonEmptyString(body.code) && isNonEmptyString(body.message)) {
+      throw new InstagramPublishApiError(body.code, body.message);
+    }
+    throw new InstagramPublishApiError(MALFORMED.code, MALFORMED.message);
+  }
+
+  if (!isRecord(body) || !isNonEmptyString(body.mediaId) || !isNonEmptyString(body.publishedAt) || !isRecord(body.project)) {
+    throw new InstagramPublishApiError(MALFORMED.code, MALFORMED.message);
+  }
+  return body as unknown as PublishToInstagramResponse;
+}
