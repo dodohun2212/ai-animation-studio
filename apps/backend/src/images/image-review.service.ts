@@ -254,7 +254,7 @@ export class ImageReviewService {
       const basePrompt = imagePromptFor(project.scenes[number - 1], styleLineFor(project), referenceNotes);
       const prompt = additionalInstruction ? `${basePrompt}\n${additionalInstruction}` : basePrompt;
       const continuityImagePath = previousSceneContinuityImagePath(project);
-      const references = await collectReferenceImages(this.assets, mappings, this.projectsRoot, project.project_id, number, continuityImagePath);
+      const references = await collectReferenceImages(this.assets, mappings, this.mappings.projectLocation(project.project_id).directory, number, continuityImagePath);
       if (references.omittedCount > 0) referenceOmission = { references_used_count: references.images.length, references_omitted_count: references.omittedCount };
       try {
         const size = imageSizeFor(project);

@@ -127,7 +127,7 @@ export class LocalImageGenerationService {
         let apiCalls = 0;
         let referenceOmission: { references_used_count: number; references_omitted_count: number } | undefined;
         if (apiKey && this.budget) {
-          const references = await collectReferenceImages(this.assets, mappings, this.projectsRoot, current.project_id, number, continuityImagePath);
+          const references = await collectReferenceImages(this.assets, mappings, this.mappings.projectLocation(current.project_id).directory, number, continuityImagePath);
           if (references.omittedCount > 0) referenceOmission = { references_used_count: references.images.length, references_omitted_count: references.omittedCount };
           await this.budget.preflight(IMAGE_ESTIMATED_COST_USD);
           let succeeded = false;

@@ -63,8 +63,14 @@ export interface CollectedReferenceImages {
 export async function collectReferenceImages(
   assets: LocalAssetsRepository,
   mappings: readonly StoredAssetMapping[],
-  projectsRoot: string,
-  projectId: string,
+  /**
+   * The directory the mappings belong to, which is where a snapshot's relative path is resolved from.
+   *
+   * A directory rather than a root plus an id, because an Episode's mappings live under its own directory and
+   * not under a project id at all — the same reason the storage layer is told where to write instead of working
+   * it out (MappingLocation).
+   */
+  directory: string,
   sceneNumber: SceneNumber,
   continuityImagePath: string | null,
 ): Promise<CollectedReferenceImages> {
@@ -74,7 +80,7 @@ export async function collectReferenceImages(
   for (const mapping of relevantMappingsForScene(mappings, sceneNumber)) {
     let filePath: string | null = null;
     if (mapping.version_policy === "snapshot" && mapping.snapshot_path) {
-      filePath = path.join(projectsRoot, projectId, mapping.snapshot_path);
+      filePath = path.join(directory, mapping.snapshot_path);
     } else {
       const asset = await assets.get(mapping.asset_id).catch(() => null);
       if (!asset) continue;
