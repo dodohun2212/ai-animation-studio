@@ -41,8 +41,12 @@ export class InstagramLoginService {
 
   constructor(
     private readonly connection: InstagramConnectionStore,
-    /** This backend's own callback address — see instagramCallbackUrl. Unreachable today (D-020) and used only if a login is ever started against it. */
-    private readonly callbackUri: string,
+    /**
+     * This backend's own callback address, or `null` where it is not serving one — see instagramCallbackUrl and
+     * instagram-callback-tls.ts. Null is the packaged app and anything without a certificate, and it is the one
+     * fact behind `callbackLoginAvailable`, so the screen and this service cannot disagree about which flows exist.
+     */
+    private readonly callbackUri: string | null,
     private readonly requestOptions: RetryOptions = {},
     private readonly now: () => number = Date.now,
   ) {}
@@ -53,6 +57,10 @@ export class InstagramLoginService {
       appConfigured: app !== null,
       tokenStored: token !== null,
       ...(token?.expiresAt ? { tokenExpiresAt: token.expiresAt } : {}),
+      // Derived from the address this service was built with, not from a separate reading of the environment.
+      // The listener and this answer come out of one resolution, so "a browser can sign in here" cannot be true
+      // while the door it names is shut.
+      callbackLoginAvailable: this.callbackUri !== null,
     };
   }
 
@@ -79,16 +87,37 @@ export class InstagramLoginService {
    * Issues the login URL and remembers the state it embedded. Starting again replaces any earlier attempt —
    * only the most recent window can complete.
    *
-   * `flow` picks which redirect Meta is asked to use, and the two are not interchangeable. "desktop" sends the
-   * window to Meta's own page and the shell reads the code off it; "callback" sends the browser to this backend
-   * and needs no window watched — but no `http://` address can be registered with Meta at all (D-020), so it is
-   * unreachable until this app has a public HTTPS domain. The screen only ever asks for "desktop".
+   * `flow` is required and has no default. Both flows are real and both are used — a browser signs in through
+   * this backend's callback, a packaged shell through the window it can read — so there is no environment this
+   * service could infer it from: only the caller knows whether it can look inside a window (D-022).
+   *
+   * A default is what this cost us once already. The default was "desktop" while the screen was still written
+   * for the callback, and the mismatch produced no error anywhere: the window went to Meta's page, nothing read
+   * it, and the screen waited out five minutes and said nothing. Requiring the field turns that into a rejected
+   * request at the first call instead of a silence at the end.
    */
-  async start(flow: "desktop" | "callback" = "desktop"): Promise<StartInstagramLoginResponse> {
+  async start(request: unknown): Promise<StartInstagramLoginResponse> {
+    if (!isObject(request) || Object.keys(request).length !== 1
+      || (request.flow !== "desktop" && request.flow !== "callback")) {
+      throw invalidInstagramRequest('Request body must contain only flow, either "desktop" or "callback".');
+    }
+    const flow = request.flow;
     const app = await this.connection.appCredentials();
     if (!app) throw invalidInstagramRequest("Enter the Meta app ID and secret before signing in.");
+
+    let redirectUri: string;
+    if (flow === "desktop") {
+      redirectUri = DESKTOP_REDIRECT_URI;
+    } else {
+      // Refused rather than quietly served against the desktop address: a caller that asked for the callback
+      // cannot read a window, so handing it the other flow would produce a login that can never be completed.
+      if (this.callbackUri === null) {
+        throw invalidInstagramRequest("이 백엔드는 인스타그램 콜백을 HTTPS로 제공하고 있지 않습니다. 데스크톱 앱에서 로그인해 주세요.");
+      }
+      redirectUri = this.callbackUri;
+    }
+
     const state = crypto.randomBytes(16).toString("hex");
-    const redirectUri = flow === "desktop" ? DESKTOP_REDIRECT_URI : this.callbackUri;
     this.pending = { state, issuedAt: this.now(), redirectUri };
     return {
       url: instagramLoginDialogUrl(app.appId, state, redirectUri),

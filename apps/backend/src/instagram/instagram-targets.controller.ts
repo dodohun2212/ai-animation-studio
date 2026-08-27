@@ -68,10 +68,15 @@ export class InstagramTargetsController {
     return this.login.saveApp(body);
   }
 
-  /** Returns the URL to open and the prefix that marks arrival; the window itself is the desktop shell's job. */
+  /**
+   * Returns the URL to open, and — for the desktop flow only — the prefix that marks the window's arrival.
+   *
+   * The body carries which flow to use, because only the caller knows whether it can read the URL its window
+   * landed on: a browser tab cannot, a desktop shell can (D-022).
+   */
   @Post(API_ROUTES.instagramLoginStart)
-  startLogin(): Promise<StartInstagramLoginResponse> {
-    return this.login.start();
+  startLogin(@Body() body: unknown): Promise<StartInstagramLoginResponse> {
+    return this.login.start(body);
   }
 
   /** Takes the URL the desktop login window landed on, whole and unparsed — the code is read and the state checked here. */

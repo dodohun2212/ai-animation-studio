@@ -1177,19 +1177,43 @@ export interface InstagramConnectionStatus {
   /** Whether a token is stored. Says nothing about whether Meta still accepts it — that requires asking (D-006). */
   tokenStored: boolean;
   tokenExpiresAt?: string;
+  /**
+   * Whether a login can be started against this backend's own callback address — that is, whether a browser tab
+   * can finish a sign-in without a window anyone has to watch (docs/06_DECISIONS.md D-022).
+   *
+   * True means only that this process is serving the callback over HTTPS. It does not claim the address is
+   * registered in the Meta app, nor that this browser trusts the certificate — neither is knowable here, and
+   * both surface as a failure at Meta's own page rather than as something to report in advance (D-006).
+   *
+   * The screen needs the other half of the answer itself: inside the desktop shell the desktop flow is always
+   * available regardless of this field, because that shell can read the URL its own window landed on. So this
+   * is what tells a plain browser tab whether it is on a working path, before the button is pressed.
+   */
+  callbackLoginAvailable: boolean;
 }
 export interface SetInstagramAppRequest { appId: string; appSecret: string; }
 export type SetInstagramAppResponse = InstagramConnectionStatus;
+/**
+ * Which address Meta is asked to send the browser back to. Required, with no default, because the two flows are
+ * not interchangeable and a wrong guess fails silently: the window simply lands somewhere nobody is reading and
+ * the screen waits out its timeout with nothing to report (docs/06_DECISIONS.md D-022).
+ *
+ * "desktop" sends the window to Meta's own success page, which only a shell that can inspect its own window can
+ * read. "callback" sends the browser to this backend, which needs no window watched but exists only where the
+ * HTTPS callback is being served — see InstagramConnectionStatus.callbackLoginAvailable.
+ */
+export interface StartInstagramLoginRequest {
+  flow: "desktop" | "callback";
+}
 export interface StartInstagramLoginResponse {
   /** The Meta login page to open in a window. */
   url: string;
   /**
    * The window has arrived once its URL starts with this; hand that whole URL back to complete the login.
    *
-   * Present only for the desktop flow, which is the only one Meta will register an address for — no `http://`
-   * redirect can be registered at all, and a local backend has no HTTPS address (docs/06_DECISIONS.md D-020).
-   * Its absence means no window needs watching, which today can only happen if a login was started against the
-   * dormant callback route.
+   * Present only for the desktop flow, and its absence is the signal that nothing needs watching: the callback
+   * flow completes on the server, so the screen finishes by reading the connection status rather than by
+   * reading a URL it was never going to be allowed to see.
    */
   redirectPrefix?: string;
 }

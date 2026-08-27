@@ -4,6 +4,7 @@ import { AssetsModule, LEARNING_DATA_ROOT } from "../assets/assets.module.js";
 import { PROVIDER_SETTINGS_ROOT, ProviderSettingsModule } from "../settings/provider-settings.module.js";
 import { InstagramConnectionStore } from "./instagram-connection.store.js";
 import { InstagramLoginService } from "./instagram-login.service.js";
+import { resolveCallbackTls } from "./instagram-callback-tls.js";
 import { instagramCallbackUrl } from "./instagram-oauth.js";
 import { InstagramTargetsController } from "./instagram-targets.controller.js";
 import { InstagramPublishService } from "./instagram-publish.service.js";
@@ -33,11 +34,14 @@ import { LocalProjectRepository } from "../projects/projects.repository.js";
       inject: [LocalProjectRepository, PROJECTS_ROOT, InstagramConnectionStore],
     },
     {
-      // Built from this process's own port so the browser dev server and the packaged shell each produce their
-      // own address; both are registered once in the Meta app settings.
+      // The callback address exists only where a certificate does, and its port comes from the same resolution
+      // that the TLS listener is started from — so the address this service hands to Meta and the door that
+      // answers it are the same one by construction, not by two places agreeing on a number (D-022).
       provide: InstagramLoginService,
-      useFactory: (connection: InstagramConnectionStore) =>
-        new InstagramLoginService(connection, instagramCallbackUrl(Number(process.env.PORT ?? 3000))),
+      useFactory: (connection: InstagramConnectionStore) => {
+        const tls = resolveCallbackTls(process.env);
+        return new InstagramLoginService(connection, tls === null ? null : instagramCallbackUrl(tls.port));
+      },
       inject: [InstagramConnectionStore],
     },
   ],

@@ -42,9 +42,9 @@ async function setup(fetchImpl: ReturnType<typeof vi.fn> = exchangeFetch()) {
   return { controller, login, connection, warn, logged: () => warn.mock.calls.flat().join("\n") };
 }
 
-/** Starts a login the way the screen does and returns the state the service put in the URL. */
+/** Starts a login the way a browser does — the callback flow, since this file exercises the route Meta returns to. */
 async function startedState(login: InstagramLoginService): Promise<string> {
-  const { url } = await login.start();
+  const { url } = await login.start({ flow: "callback" });
   return new URL(url).searchParams.get("state")!;
 }
 

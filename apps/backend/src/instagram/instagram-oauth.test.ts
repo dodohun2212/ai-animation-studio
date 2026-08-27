@@ -24,7 +24,7 @@ describe("instagramLoginDialogUrl", () => {
     expect(url.searchParams.get("response_type")).toBe("code");
     // Points back at this app's own backend, so no window has to be watched — the same flow works in a browser
     // tab and in the packaged shell.
-    expect(url.searchParams.get("redirect_uri")).toBe("http://127.0.0.1:4317/settings/instagram/callback");
+    expect(url.searchParams.get("redirect_uri")).toBe("https://127.0.0.1:4317/settings/instagram/callback");
   });
 
   it("requests exactly the documented publishing permissions and nothing more", () => {
@@ -108,8 +108,8 @@ describe("DESKTOP_REDIRECT_URI", () => {
 
 describe("instagramCallbackUrl", () => {
   it("uses the backend's own port, so each environment registers its own address", () => {
-    expect(instagramCallbackUrl(3000)).toBe("http://127.0.0.1:3000/settings/instagram/callback");
-    expect(instagramCallbackUrl(4317)).toBe("http://127.0.0.1:4317/settings/instagram/callback");
+    expect(instagramCallbackUrl(3000)).toBe("https://127.0.0.1:3000/settings/instagram/callback");
+    expect(instagramCallbackUrl(4317)).toBe("https://127.0.0.1:4317/settings/instagram/callback");
   });
 });
 

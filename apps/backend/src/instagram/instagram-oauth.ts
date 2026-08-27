@@ -32,14 +32,18 @@ import {
 export const DESKTOP_REDIRECT_URI = "https://www.facebook.com/connect/login_success.html";
 
 /**
- * Where Meta would send the browser back to if this app ever had an address Meta accepts.
+ * Where Meta sends the browser back to when this process is serving the callback over TLS.
  *
- * Kept, unused, because it is the correct shape the moment there is a public HTTPS domain: nobody has to look
- * inside a window, so one route would serve the browser and the packaged shell alike. It is unreachable today
- * for the registration reason above, and the screen never offers it — see InstagramLoginService.start.
+ * HTTPS is not a preference here, it is the whole reason this address exists in this shape: Meta rejects every
+ * `http://` redirect outright, and `https://127.0.0.1:<port>` is accepted — confirmed by registering it, not
+ * inferred from anyone's description of the rule (docs/06_DECISIONS.md D-020).
+ *
+ * This is the flow a browser needs, because nobody has to look inside a window: the code arrives at this backend
+ * and the login finishes server-side. It exists only where a certificate has been configured, which is a
+ * development machine and never a packaged app — see instagram-callback-tls.ts and D-022.
  */
 export function instagramCallbackUrl(port: number): string {
-  return `http://127.0.0.1:${port}/settings/instagram/callback`;
+  return `https://127.0.0.1:${port}/settings/instagram/callback`;
 }
 
 /**

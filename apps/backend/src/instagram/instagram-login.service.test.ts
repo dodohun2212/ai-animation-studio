@@ -27,13 +27,15 @@ function exchangeFetch(longLivedSeconds: number | null = 5_184_000) {
     }));
 }
 
-async function setup(options: { app?: boolean; fetchImpl?: ReturnType<typeof vi.fn>; now?: () => number } = {}) {
+async function setup(
+  options: { app?: boolean; fetchImpl?: ReturnType<typeof vi.fn>; now?: () => number; callbackUri?: string | null } = {},
+) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "instagram-login-")); roots.push(root);
   const connection = new InstagramConnectionStore(root);
   if (options.app !== false) await connection.saveAppCredentials({ appId: "app-1", appSecret: "secret-1" });
   const service = new InstagramLoginService(
     connection,
-    REDIRECT,
+    options.callbackUri === undefined ? REDIRECT : options.callbackUri,
     { fetchImpl: options.fetchImpl ?? vi.fn(), sleep: async () => {} },
     options.now ?? Date.now,
   );
@@ -42,7 +44,7 @@ async function setup(options: { app?: boolean; fetchImpl?: ReturnType<typeof vi.
 
 /** Drives a full successful sign-in and returns the state the service issued. */
 async function signIn(service: InstagramLoginService) {
-  const started = await service.start();
+  const started = await service.start({ flow: "desktop" });
   const state = new URL(started.url).searchParams.get("state")!;
   return { state, result: await service.complete({ code: "the-code", state }) };
 }
@@ -50,12 +52,27 @@ async function signIn(service: InstagramLoginService) {
 describe("InstagramLoginService.status", () => {
   it("reports nothing configured on a fresh install", async () => {
     const { service } = await setup({ app: false });
-    await expect(service.status()).resolves.toEqual({ appConfigured: false, tokenStored: false });
+    await expect(service.status()).resolves.toEqual({ appConfigured: false, tokenStored: false, callbackLoginAvailable: true });
   });
 
   it("separates having the app registered from being signed in", async () => {
     const { service } = await setup();
-    await expect(service.status()).resolves.toEqual({ appConfigured: true, tokenStored: false });
+    await expect(service.status()).resolves.toEqual({ appConfigured: true, tokenStored: false, callbackLoginAvailable: true });
+  });
+
+  it("reports no browser login where this backend serves no callback", async () => {
+    // The packaged app, and any development machine without a certificate. The screen needs this before the
+    // button is pressed, because the alternative is a browser starting a login it has no way to finish.
+    const { service } = await setup({ callbackUri: null });
+    await expect(service.status()).resolves.toEqual({ appConfigured: true, tokenStored: false, callbackLoginAvailable: false });
+  });
+
+  it("answers about the callback from the same address it would hand to Meta", async () => {
+    // Not a second reading of the environment: if these could be derived separately, the app could report a
+    // browser login as available while the address behind it did not exist.
+    const { service } = await setup();
+    expect((await service.status()).callbackLoginAvailable).toBe(true);
+    expect(new URL((await service.start({ flow: "callback" })).url).searchParams.get("redirect_uri")).toBe(REDIRECT);
   });
 });
 
@@ -63,7 +80,7 @@ describe("InstagramLoginService.saveApp", () => {
   it("stores the app credentials and reports them configured", async () => {
     const { service } = await setup({ app: false });
     await expect(service.saveApp({ appId: "app-9", appSecret: "secret-9" }))
-      .resolves.toEqual({ appConfigured: true, tokenStored: false });
+      .resolves.toEqual({ appConfigured: true, tokenStored: false, callbackLoginAvailable: true });
   });
 
   it("rejects a malformed request body", async () => {
@@ -81,7 +98,7 @@ describe("InstagramLoginService.saveApp", () => {
     expect((await service.status()).tokenStored).toBe(true);
 
     await service.saveApp({ appId: "different-app", appSecret: "different-secret" });
-    await expect(service.status()).resolves.toEqual({ appConfigured: true, tokenStored: false });
+    await expect(service.status()).resolves.toEqual({ appConfigured: true, tokenStored: false, callbackLoginAvailable: true });
   });
 
   it("keeps the token when the same app credentials are saved again", async () => {
@@ -95,12 +112,12 @@ describe("InstagramLoginService.saveApp", () => {
 describe("InstagramLoginService.start", () => {
   it("refuses to start before the app id and secret are entered", async () => {
     const { service } = await setup({ app: false });
-    await expect(service.start()).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(service.start({ flow: "desktop" })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
   it("sends the login to Meta's own success page, the only address this app can register (D-020)", async () => {
     const { service } = await setup();
-    const started = await service.start();
+    const started = await service.start({ flow: "desktop" });
     const url = new URL(started.url);
     expect(url.searchParams.get("redirect_uri")).toBe(DESKTOP_REDIRECT_URI);
     expect(url.searchParams.get("client_id")).toBe("app-1");
@@ -108,23 +125,34 @@ describe("InstagramLoginService.start", () => {
     expect(started.redirectPrefix).toBe(DESKTOP_REDIRECT_URI);
   });
 
-  it("defaults to the desktop flow, so no caller can reach the unregistrable one by forgetting an argument", async () => {
-    // The callback flow exists but cannot be registered with Meta at all. Reaching it has to be a decision.
+  it("refuses a start that names no flow, rather than picking one", async () => {
+    // There is no default to fall back to on purpose. Both flows are real, and the wrong one fails silently —
+    // the window lands where nobody is reading and the screen waits out its timeout with nothing to report.
     const { service } = await setup();
-    expect(new URL((await service.start()).url).searchParams.get("redirect_uri")).toBe(DESKTOP_REDIRECT_URI);
+    await expect(service.start({})).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(service.start(undefined)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(service.start({ flow: "browser" })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
+  it("refuses the callback flow where this backend serves no callback, instead of quietly using the other one", async () => {
+    // Substituting the desktop flow here would hand a browser a login it has no way to finish: it cannot read
+    // the URL Meta's page arrives at, so the sign-in would succeed at Meta and never land anywhere.
+    const { service } = await setup({ callbackUri: null });
+    await expect(service.start({ flow: "callback" })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    expect((await service.start({ flow: "desktop" })).redirectPrefix).toBe(DESKTOP_REDIRECT_URI);
   });
 
   it("uses this backend's callback, and names no window to watch, when that flow is asked for explicitly", async () => {
     const { service } = await setup();
-    const started = await service.start("callback");
+    const started = await service.start({ flow: "callback" });
     expect(new URL(started.url).searchParams.get("redirect_uri")).toBe(REDIRECT);
     expect(started.redirectPrefix).toBeUndefined();
   });
 
   it("issues a different state every time", async () => {
     const { service } = await setup();
-    const first = new URL((await service.start()).url).searchParams.get("state");
-    const second = new URL((await service.start()).url).searchParams.get("state");
+    const first = new URL((await service.start({ flow: "desktop" })).url).searchParams.get("state");
+    const second = new URL((await service.start({ flow: "desktop" })).url).searchParams.get("state");
     expect(first).not.toBe(second);
   });
 });
@@ -132,7 +160,7 @@ describe("InstagramLoginService.start", () => {
 describe("InstagramLoginService.completeFromRedirect", () => {
   /** Drives a desktop sign-in the way the shell does: start, then hand back the URL the window landed on. */
   async function signInFromWindow(service: InstagramLoginService, extra = "") {
-    const started = await service.start();
+    const started = await service.start({ flow: "desktop" });
     const state = new URL(started.url).searchParams.get("state")!;
     return service.completeFromRedirect({ redirectedUrl: `${DESKTOP_REDIRECT_URI}?code=the-code&state=${state}${extra}` });
   }
@@ -155,14 +183,14 @@ describe("InstagramLoginService.completeFromRedirect", () => {
     // The shell should not have called at all. Treating it as a denial would burn the state and force the
     // person to start over for a navigation this app merely passed through.
     const { service } = await setup({ fetchImpl: exchangeFetch() });
-    await service.start();
+    await service.start({ flow: "desktop" });
     await expect(service.completeFromRedirect({ redirectedUrl: "https://www.facebook.com/login.php" }))
       .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
   it("refuses a state that does not match the one it issued", async () => {
     const { service } = await setup({ fetchImpl: exchangeFetch() });
-    await service.start();
+    await service.start({ flow: "desktop" });
     await expect(service.completeFromRedirect({ redirectedUrl: `${DESKTOP_REDIRECT_URI}?code=c&state=not-issued` }))
       .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
@@ -185,6 +213,7 @@ describe("InstagramLoginService.complete", () => {
       appConfigured: true,
       tokenStored: true,
       tokenExpiresAt: new Date(now + 5_184_000 * 1000).toISOString(),
+      callbackLoginAvailable: true,
     });
     await expect(connection.token()).resolves.toMatchObject({ accessToken: "long-token" });
   });
@@ -199,7 +228,7 @@ describe("InstagramLoginService.complete", () => {
   it("refuses a code whose state does not match the one it issued", async () => {
     const fetchImpl = exchangeFetch();
     const { service } = await setup({ fetchImpl });
-    await service.start();
+    await service.start({ flow: "desktop" });
     await expect(service.complete({ code: "c", state: "not-the-issued-state" }))
       .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     expect(fetchImpl).not.toHaveBeenCalled(); // never exchanged
@@ -207,7 +236,7 @@ describe("InstagramLoginService.complete", () => {
 
   it("spends an issued state exactly once", async () => {
     const { service } = await setup({ fetchImpl: exchangeFetch() });
-    const started = await service.start();
+    const started = await service.start({ flow: "desktop" });
     const state = new URL(started.url).searchParams.get("state")!;
     await service.complete({ code: "the-code", state });
     await expect(service.complete({ code: "the-code", state })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
@@ -216,7 +245,7 @@ describe("InstagramLoginService.complete", () => {
   it("refuses a state that has gone stale", async () => {
     let now = Date.parse("2026-08-27T00:00:00.000Z");
     const { service } = await setup({ fetchImpl: exchangeFetch(), now: () => now });
-    const started = await service.start();
+    const started = await service.start({ flow: "desktop" });
     const state = new URL(started.url).searchParams.get("state")!;
     now += 11 * 60 * 1000;
     await expect(service.complete({ code: "c", state }))
@@ -231,7 +260,7 @@ describe("InstagramLoginService.complete", () => {
 
   it("reports a refused sign-in rather than treating it as an exchange failure", async () => {
     const { service } = await setup({ fetchImpl: exchangeFetch() });
-    const started = await service.start();
+    const started = await service.start({ flow: "desktop" });
     const state = new URL(started.url).searchParams.get("state")!;
     await expect(service.complete({ error: "access_denied", state }))
       .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
@@ -240,7 +269,7 @@ describe("InstagramLoginService.complete", () => {
   it("surfaces a rejected exchange as a provider error, leaving no token behind", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(400, { error: { message: "bad code", code: 100 } }));
     const { service } = await setup({ fetchImpl });
-    const started = await service.start();
+    const started = await service.start({ flow: "desktop" });
     const state = new URL(started.url).searchParams.get("state")!;
     await expect(service.complete({ code: "c", state }))
       .rejects.toMatchObject({ response: { code: "INSTAGRAM_PROVIDER_ERROR" } });
@@ -249,7 +278,7 @@ describe("InstagramLoginService.complete", () => {
 
   it("refuses a callback carrying nothing usable", async () => {
     const { service } = await setup();
-    await service.start();
+    await service.start({ flow: "desktop" });
     await expect(service.complete({})).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 });
@@ -258,7 +287,7 @@ describe("InstagramLoginService.signOut", () => {
   it("forgets the token but keeps the app registration", async () => {
     const { service } = await setup({ fetchImpl: exchangeFetch() });
     await signIn(service);
-    await expect(service.signOut()).resolves.toEqual({ appConfigured: true, tokenStored: false });
+    await expect(service.signOut()).resolves.toEqual({ appConfigured: true, tokenStored: false, callbackLoginAvailable: true });
   });
 
   it("reports not-connected when there is nothing registered to sign out of", async () => {
