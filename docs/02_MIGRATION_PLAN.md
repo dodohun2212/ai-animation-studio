@@ -1365,4 +1365,18 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - **질문 답변 — 제출(POST) 경로는 이 코드를 못 던진다, 확인**: `videos.controller.ts`/`episode-videos.controller.ts` 둘 다 `POST .../generations`가 `submissions.start()`(락 없음) 뒤에 `this.workflow.run(...)`를 `.catch(() => undefined)`로 fire-and-forget 호출 — `run()`(락을 잡는 진짜 지점) 안의 어떤 에러든 POST 응답과 완전히 분리되어 클라이언트에 절대 안 감. `PROJECT_LOCKED`는 이후 폴링(`GET .../generations/:jobId`)이나 `restart`에서만 나올 수 있음. `videoSubmissionApi.ts`엔 추가 안 하는 게 맞다고 확인 — 코드 변경 없음, 조사만.
   - 검증: root typecheck 전부 통과, frontend 885개(+5 신규) 전부 통과, root build 전부 통과. 백엔드·계약 미변경.
   - 커밋: `84323b4`.
+- [x] **프런트 — "연결됨" 문구가 한 번도 확인한 적 없는 주장이었던 것 수정(Round 179)**: 사용자가 실사용 중 잡은 결함(Round 184) — Runway 크레딧 유출 조사 때 대시보드에서 키를 직접 폐기했는데 카드는 계속 "연결됨"을 표시. `connected`는 순수 로컬 스위치일 뿐 이 앱이 제공사에 유효성을 물어본 적이 한 번도 없었는데, 화면 문구가 확인한 것처럼 주장하고 있었음 — 하필 사용자가 "이 키 아직 살아있나"를 가장 알아야 했던 순간에 틀린 확신을 줬음.
+  - "키 저장됨 · 이 앱에서 사용"/"· 사용 안 함"으로 로컬 상태만 정직하게 표현, 버튼도 "이 앱에서 사용 안 함"/"다시 사용"으로 개명. 키가 저장돼 있을 때만 "제공사에서 지웠거나 만료됐는지는 실제로 요청을 보내봐야 안다"는 설명 문구 추가.
+  - 신규 테스트 2건("연결됨" 문자열 부재 확인 + 설명 문구 노출 확인) + 기존 문자열 테스트 전부 갱신.
+  - 검증: root typecheck 전부 통과, frontend 887개 전부 통과, root build 전부 통과. 백엔드·계약 미변경.
+  - 커밋: `8ff332c`(아래 인스타그램 백엔드 기반 작업과 같은 커밋에 함께 들어감 — 커밋 메시지는 이 항목만 설명하지만 실제로는 둘 다 포함).
+- [x] **인스타그램 게시 — 백엔드 기반 작업 착수: `ProviderCredentialKind`에 "instagram" 추가 + Graph API 어댑터(Round 180)**: 사용자가 "문 2"(Facebook Login for Business)를 확정(Round 183)한 뒤 조사·구현 착수. 착수 전에 Meta 공식 문서를 직접 확인(WebFetch) — 서드파티 요약이 아니라 `developers.facebook.com`의 `content-publishing`/`resumable-uploads` 페이지, 표준 Graph API 에러 응답 형태를 직접 인용해 프로토콜을 검증.
+  - `ProviderCredentialKind`에 `"instagram"` 추가 — 토큰 하나만 저장(OpenAI·Runway와 동일한 단일 문자열 credential 모델), 사용자가 직접 붙여넣기(Cowork 요청: "토큰은 내가 절대 안 다뤄"). Instagram Business Account ID는 별도 비밀 아닌 설정으로 둘 계획 — 어디에 저장할지는 아직 미정, Cowork에게 열어둔 질문으로 보고.
+  - `instagram-graph-adapter.ts` 신규(`runway-video-adapter.ts`와 동일한 순수 함수 패턴) — 컨테이너 생성(`POST /media`, `media_type=REELS`, `upload_type=resumable`) → 영상 업로드(`POST rupload.facebook.com/ig-api-upload/...`, `Authorization: OAuth` 헤더가 다른 단계와 다름을 실제 문서로 확인) → 상태 확인(`GET /<container>?fields=status_code`, `IN_PROGRESS`/`FINISHED`/`ERROR`/`EXPIRED`/`PUBLISHED` 5개 값) → 게시(`POST /media_publish`, `creation_id`). 컨테이너 생성·업로드·게시 3곳 모두 `maxRetries: 0` 강제 — Runway 유료 작업 생성과 같은 이유(모호한 네트워크 실패를 재시도하면 중복 생성/중복 게시 위험), 특히 게시는 되돌릴 수 없는 공개 행위라 가장 엄격하게 적용.
+  - 에러 분류는 Graph API 표준 에러 코드(190=인증 만료, 4/17/613=요청 한도, 1/2=일시적 서버 오류, 10·200-299=권한) 우선, 없으면 HTTP 상태로 폴백 — Meta 원문 메시지는 절대 노출 안 하고 고정 한국어 문구만, 원문은 `detail`로만 보존(Runway 패턴과 동일).
+  - `assertRealNetworkCallAllowed`(Round 154 유출 사고 이후 만든 테스트 프로세스 실제 네트워크 호출 차단 가드)를 그대로 재사용 — 새 Provider도 처음부터 같은 안전장치 적용.
+  - **아직 안 만든 것**: 실제 발행 서비스(orchestration)·확인 게이트·컨트롤러·엔드포인트는 이번 라운드에 포함 안 함 — 토큰 전략(수동 붙여넣기 vs 앱 내 OAuth) 결정이 먼저 필요해 Cowork에게 판단 결과와 함께 다음 라운드에 이어감.
+  - 신규 테스트 24건(`instagram-graph-adapter.test.ts`) + settings 관련 기존 테스트 3곳 fixture 갱신(3-provider 배열로).
+  - 검증: root typecheck 전부 통과, Backend 812개(+24 신규)·frontend 887개·root build 전부 통과. 실제 Instagram/Meta API 호출 없음, 유료 Provider 호출 없음.
+  - 커밋: `8ff332c`(위 "연결됨" 문구 수정과 같은 커밋).
 
