@@ -9,9 +9,9 @@ import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/projec
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { RunwayBudget, RunwayBudgetExceededError } from "../providers/runway-budget.js";
 import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceResult, type RunwaySceneState } from "../videos/runway-workflow-support.js";
-import { withProjectLock } from "../videos/project-lock.js";
+import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { promptFor, type StoredScene } from "../videos/video-preview.service.js";
-import { longEpisodeNotFound, longEpisodeVideoJobNotFound, longEpisodeVideosInvalid, longEpisodeVideosNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { longEpisodeLocked, longEpisodeNotFound, longEpisodeVideoJobNotFound, longEpisodeVideosInvalid, longEpisodeVideosNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 
@@ -118,8 +118,15 @@ export class EpisodeVideosService implements OnModuleDestroy {
     const jobKey = `${id}:${number}:${job}`;
     if (this.advancing.has(jobKey)) return this.records(id, number, this.sceneCount(await this.loadEpisode(id, number)), job);
     this.advancing.add(jobKey);
-    try { return await withProjectLock(resolveSafeProjectDirectory(this.projectsRoot, id), jobKey, () => this.advanceRealCore(id, number, job)); }
-    finally { this.advancing.delete(jobKey); }
+    try {
+      return await withProjectLock(resolveSafeProjectDirectory(this.projectsRoot, id), jobKey, () => this.advanceRealCore(id, number, job));
+    } catch (error) {
+      // Normally the lock just waits — this only fires after real contention exceeds ACQUIRE_TIMEOUT_MS (10s),
+      // which would otherwise surface as an unhandled exception instead of a proper API error the frontend can
+      // show a specific, non-retry-encouraging message for (`.claude-bridge` Round 181).
+      if (error instanceof ProjectLockTimeoutError) throw longEpisodeLocked();
+      throw error;
+    } finally { this.advancing.delete(jobKey); }
   }
 
   private async advanceRealCore(id: string, number: number, job: string): Promise<VideoRecord[]> {

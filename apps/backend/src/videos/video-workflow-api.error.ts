@@ -7,7 +7,8 @@ type VideoWorkflowErrorCode =
   | "VIDEO_WORKFLOW_NOT_ALLOWED"
   | "VIDEO_REVIEW_DATA_INVALID"
   | "VIDEO_STORAGE_ERROR"
-  | "VIDEO_CONTENT_UNAVAILABLE";
+  | "VIDEO_CONTENT_UNAVAILABLE"
+  | "PROJECT_LOCKED";
 
 class VideoWorkflowApiException extends HttpException {
   constructor(code: VideoWorkflowErrorCode, message: string, status: HttpStatus) {
@@ -28,3 +29,12 @@ export const videoStorageError = () =>
   new VideoWorkflowApiException("VIDEO_STORAGE_ERROR", "Local video workflow storage failed.", HttpStatus.INTERNAL_SERVER_ERROR);
 export const videoContentUnavailable = () =>
   new VideoWorkflowApiException("VIDEO_CONTENT_UNAVAILABLE", "The requested scene video is unavailable.", HttpStatus.NOT_FOUND);
+/**
+ * project-lock.ts's ProjectLockTimeoutError, mapped to a proper API error instead of falling through as an
+ * unhandled exception (a generic 500 with no `code`, read by the frontend as a malformed response) — see
+ * local-video-workflow.service.ts's advanceReal() call site. Shares its literal `code` value with
+ * long-project-api.error.ts's own factory for the same condition, so the frontend needs only one safe-message
+ * table entry for both short and Long Episode video generation (`.claude-bridge` Round 181).
+ */
+export const videoWorkflowLocked = () =>
+  new VideoWorkflowApiException("PROJECT_LOCKED", "Another process is currently advancing this project's video generation.", HttpStatus.CONFLICT);

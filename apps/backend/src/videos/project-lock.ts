@@ -24,10 +24,12 @@ export class ProjectLockTimeoutError extends Error {
  * confirmed incident, $3.00 actually charged against $2.00 our ledger recorded, three scenes submitted twice each
  * within the same second). A lock file, unlike an in-memory Set, is visible to both processes.
  */
-export async function withProjectLock<T>(projectDirectory: string, key: string, fn: () => Promise<T>): Promise<T> {
+export async function withProjectLock<T>(projectDirectory: string, key: string, fn: () => Promise<T>, options?: { timeoutMs?: number }): Promise<T> {
   const lockFile = path.join(projectDirectory, `.lock-${key.replace(/[^a-zA-Z0-9_-]/g, "_")}`);
   await fs.mkdir(projectDirectory, { recursive: true });
-  const deadline = Date.now() + ACQUIRE_TIMEOUT_MS;
+  // Overridable only so a test can exercise the timeout path in milliseconds instead of really waiting
+  // ACQUIRE_TIMEOUT_MS out — every real call site relies on the default.
+  const deadline = Date.now() + (options?.timeoutMs ?? ACQUIRE_TIMEOUT_MS);
   for (;;) {
     try {
       await fs.writeFile(lockFile, JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }), { flag: "wx" });

@@ -23,7 +23,7 @@ import { computeSceneStaleness } from "../projects/scene-staleness.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { RunwayBudget, RunwayBudgetExceededError } from "../providers/runway-budget.js";
 import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceResult, type RunwaySceneState } from "./runway-workflow-support.js";
-import { withProjectLock } from "./project-lock.js";
+import { ProjectLockTimeoutError, withProjectLock } from "./project-lock.js";
 import { LEGACY_VIDEO_JOB_ID } from "./legacy-job.js";
 import {
   invalidVideoWorkflowRequest,
@@ -31,6 +31,7 @@ import {
   videoJobNotFound,
   videoReviewDataInvalid,
   videoStorageError,
+  videoWorkflowLocked,
   videoWorkflowNotAllowed,
 } from "./video-workflow-api.error.js";
 
@@ -231,6 +232,13 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     this.advancing.add(jobId);
     try {
       return await withProjectLock(this.projects.projectDirectory(project.project_id), `${project.project_id}:${jobId}`, () => this.advanceRealCore(project, jobId));
+    } catch (error) {
+      // Normally the lock just waits — the holder's own critical section is documented to resolve in low
+      // single-digit seconds. This only fires after ACQUIRE_TIMEOUT_MS (10s) of real contention, which would
+      // otherwise surface as an unhandled exception (a bare 500 with no `code`) instead of a proper API error the
+      // frontend can show a specific, non-retry-encouraging message for (`.claude-bridge` Round 181).
+      if (error instanceof ProjectLockTimeoutError) throw videoWorkflowLocked();
+      throw error;
     } finally { this.advancing.delete(jobId); }
   }
 

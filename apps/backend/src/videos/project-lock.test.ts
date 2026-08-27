@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { withProjectLock } from "./project-lock.js";
+import { ProjectLockTimeoutError, withProjectLock } from "./project-lock.js";
 
 let directory: string;
 
@@ -59,6 +59,22 @@ describe("withProjectLock", () => {
     await fs.utimes(lockFile, old, old);
     const result = await withProjectLock(directory, "stale_job", async () => "ran");
     expect(result).toBe("ran");
+  });
+
+  it("throws ProjectLockTimeoutError, never waiting forever, when a holder keeps the lock past the acquire timeout", async () => {
+    let releaseFirst!: () => void;
+    const firstStarted = new Promise<void>((resolve) => {
+      void withProjectLock(directory, "busy_job", async () => {
+        resolve();
+        await new Promise<void>((r) => { releaseFirst = r; });
+      });
+    });
+    await firstStarted;
+    // `.claude-bridge` Round 181: a real call site never overrides timeoutMs — only this test does, so it can
+    // exercise the timeout path in milliseconds instead of the real 10s ACQUIRE_TIMEOUT_MS.
+    await expect(withProjectLock(directory, "busy_job", async () => "should not run", { timeoutMs: 100 }))
+      .rejects.toThrow(ProjectLockTimeoutError);
+    releaseFirst();
   });
 
   it("releases the lock file even when the wrapped function throws", async () => {
