@@ -1,6 +1,5 @@
 import {
   API_ROUTES,
-  type CompleteInstagramLoginResponse,
   type InstagramConnectionStatus,
   type SetInstagramAppResponse,
   type StartInstagramLoginResponse,
@@ -112,25 +111,17 @@ export async function setInstagramApp(appId: string, appSecret: string): Promise
   });
 }
 
-/** The Meta login page to open, plus the prefix that tells the caller the window has arrived. */
+/**
+ * The Meta login page to open. Nothing has to watch the window afterwards — Meta redirects back to this app's
+ * own backend, which reads the code and checks the state it issued. The screen finds out the login finished by
+ * reading the connection status again.
+ */
 export async function startInstagramLogin(): Promise<StartInstagramLoginResponse> {
   const body = await request(API_ROUTES.instagramLoginStart, { method: "POST" });
-  if (!isRecord(body) || !isNonEmptyString(body.url) || !isNonEmptyString(body.redirectPrefix)) {
+  if (!isRecord(body) || !isNonEmptyString(body.url)) {
     throw new InstagramConnectionApiError(MALFORMED.code, MALFORMED.message);
   }
-  return { url: body.url, redirectPrefix: body.redirectPrefix };
-}
-
-/**
- * Hands the landed URL back whole. The server reads the code out of it and checks the state it issued — the
- * screen parses nothing, so a redirect that did not come from our own request cannot be laundered into a login.
- */
-export async function completeInstagramLogin(redirectedUrl: string): Promise<CompleteInstagramLoginResponse> {
-  return requestStatus(API_ROUTES.instagramLoginComplete, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ redirectedUrl }),
-  });
+  return { url: body.url };
 }
 
 /** Signs out: drops the stored token. The app id and secret stay, so signing back in needs no re-entry. */

@@ -17,12 +17,22 @@ import {
  */
 
 /**
- * Meta's documented value for a login flow hosted inside a desktop app's webview: "If you are using this in a
- * webview within a desktop app, this must be set to https://www.facebook.com/connect/login_success.html".
- * Using it means this app needs no localhost redirect registration, no HTTPS-vs-HTTP exception, and no callback
- * route on the local backend — Facebook redirects the webview to its own page and we read the code off the URL.
+ * Where Meta sends the browser back to after login: this app's own backend.
+ *
+ * An earlier version used Meta's documented desktop-webview page and read the code off the window's URL, which
+ * only a shell that can inspect its own windows could do. The user works in a browser, so that path could not be
+ * used at all — and keeping both would mean maintaining two login routes for one feature. A callback the backend
+ * serves works the same way in either place, because nobody has to look inside the window.
+ *
+ * Meta permits http://127.0.0.1 redirects for an app in development mode, which is where this app stays: it
+ * publishes only to its owner's own account, so it never needs review or a public domain.
+ *
+ * The port is the backend's own, so the browser dev server and the packaged shell each produce their own address
+ * and both are registered once in the Meta app settings.
  */
-export const DESKTOP_REDIRECT_URI = "https://www.facebook.com/connect/login_success.html";
+export function instagramCallbackUrl(port: number): string {
+  return `http://127.0.0.1:${port}/settings/instagram/callback`;
+}
 
 /**
  * The three permissions Meta documents as required to publish through the Content Publishing API, plus
@@ -41,12 +51,13 @@ export const INSTAGRAM_PUBLISH_SCOPES = ["instagram_basic", "instagram_content_p
  * must be compared against the value that comes back (see extractOAuthResult) — cheap, and the only thing
  * standing between this flow and accepting a code that did not originate from this app's own request.
  */
-export function instagramLoginDialogUrl(appId: string, state: string): string {
+export function instagramLoginDialogUrl(appId: string, state: string, redirectUri: string): string {
   if (!appId.trim()) throw new InstagramAdapterError("invalid_request", "Meta 앱 ID가 필요합니다.");
   if (!state.trim()) throw new InstagramAdapterError("invalid_request", "OAuth state 값이 필요합니다.");
+  if (!redirectUri.trim()) throw new InstagramAdapterError("invalid_request", "리디렉션 주소가 필요합니다.");
   const query = new URLSearchParams({
     client_id: appId.trim(),
-    redirect_uri: DESKTOP_REDIRECT_URI,
+    redirect_uri: redirectUri,
     state: state.trim(),
     response_type: "code",
     scope: INSTAGRAM_PUBLISH_SCOPES.join(","),
@@ -55,27 +66,19 @@ export function instagramLoginDialogUrl(appId: string, state: string): string {
 }
 
 export type OAuthRedirectResult =
-  | { kind: "pending" }
   | { kind: "code"; code: string; state: string }
   | { kind: "denied"; detail?: string };
 
 /**
- * Reads one navigation URL from the login window. Returns "pending" for every URL that is not the redirect
- * target, so the desktop shell can call this on every navigation event without deciding anything itself.
- *
- * Never throws on a malformed URL — a login window navigates through URLs this app does not control, and one
- * that fails to parse is simply not the redirect.
+ * Reads what Meta put on the callback request. A code without the matching state is refused rather than used —
+ * state is the only thing proving the code answers a login this app started, and that stays true whichever way
+ * the code arrives.
  */
-export function extractOAuthResult(url: string): OAuthRedirectResult {
-  let parsed: URL;
-  try { parsed = new URL(url); } catch { return { kind: "pending" }; }
-  if (`${parsed.origin}${parsed.pathname}` !== DESKTOP_REDIRECT_URI) return { kind: "pending" };
-  const code = parsed.searchParams.get("code");
-  const state = parsed.searchParams.get("state");
+export function readOAuthCallback(params: Record<string, string | undefined>): OAuthRedirectResult {
+  const code = params.code?.trim();
+  const state = params.state?.trim();
   if (code && state) return { kind: "code", code, state };
-  const error = parsed.searchParams.get("error_description") ?? parsed.searchParams.get("error");
-  // Reached the redirect but carries no usable code — a denial, or a response missing `state` (which this app
-  // refuses rather than trusting, since state is what proves the code answers this app's own request).
+  const error = params.error_description?.trim() || params.error?.trim();
   return { kind: "denied", ...(error ? { detail: error } : {}) };
 }
 
@@ -97,9 +100,10 @@ function readTokenResponse(body: unknown): TokenResponse {
  * HTTPS-only and must never be logged — see ProviderSettingsLogger for the redaction this codebase already
  * applies to stored credentials.
  */
-export async function exchangeCodeForToken(appId: string, appSecret: string, code: string, options: RetryOptions = {}): Promise<TokenResponse> {
+export async function exchangeCodeForToken(appId: string, appSecret: string, code: string, redirectUri: string, options: RetryOptions = {}): Promise<TokenResponse> {
   if (!code.trim()) throw new InstagramAdapterError("invalid_request", "로그인 코드가 비어 있습니다.");
-  const query = new URLSearchParams({ client_id: appId, redirect_uri: DESKTOP_REDIRECT_URI, client_secret: appSecret, code: code.trim() });
+  // Meta requires this to be byte-identical to the redirect_uri the dialog was opened with.
+  const query = new URLSearchParams({ client_id: appId, redirect_uri: redirectUri, client_secret: appSecret, code: code.trim() });
   const response = await requestWithRetry(
     `${GRAPH_BASE_URL}/${GRAPH_API_VERSION}/oauth/access_token?${query.toString()}`,
     { method: "GET" },

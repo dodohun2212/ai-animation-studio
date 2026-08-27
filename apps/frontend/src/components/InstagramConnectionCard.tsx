@@ -1,10 +1,9 @@
 import { useState, type FormEvent } from "react";
 import type { InstagramConnectionStatus } from "@ai-animation-studio/shared";
 
-import { hasElectronBridge, openInstagramLoginWindow } from "../api/electronBridge.js";
 import {
-  completeInstagramLogin,
   disconnectInstagram,
+  getInstagramConnection,
   setInstagramApp,
   startInstagramLogin,
   toInstagramConnectionDisplayError,
@@ -70,10 +69,9 @@ export function InstagramConnectionCard({ status, onStatusChange }: Props) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [fieldError, setFieldError] = useState<string | null>(null);
-  const [cancelled, setCancelled] = useState(false);
+  const [awaitingLogin, setAwaitingLogin] = useState(false);
 
   const line = tokenLine(status, Date.now());
-  const canOpenWindow = hasElectronBridge();
 
   async function run(action: () => Promise<InstagramConnectionStatus>): Promise<void> {
     if (pending) return;
@@ -98,22 +96,35 @@ export function InstagramConnectionCard({ status, onStatusChange }: Props) {
     if (pending) return;
     setPending(true);
     setError(null);
-    setCancelled(false);
+    setAwaitingLogin(false);
     try {
       const started = await startInstagramLogin();
-      const outcome = await openInstagramLoginWindow(started.url, started.redirectPrefix);
-      if (!outcome) {
-        setError({ code: "CLIENT_NO_DESKTOP_BRIDGE", message: "로그인 창을 열 수 없습니다. 데스크톱 앱에서 시도해 주세요." });
+      // Meta redirects the window back to this app's own backend, which completes the login by itself. Nothing
+      // here watches that window — it may even be closed — so the only way to learn the outcome is to ask.
+      const opened = window.open(started.url, "instagram-login", "width=520,height=720");
+      if (!opened) {
+        setError({ code: "CLIENT_POPUP_BLOCKED", message: "로그인 창이 차단되었습니다. 팝업을 허용한 뒤 다시 시도해 주세요." });
         return;
       }
-      // Closing the window is an ordinary change of mind, not a failure — an error banner here would accuse the
-      // user of a mistake they did not make. It is still acknowledged, because a button press that visibly does
-      // nothing reads as broken.
-      if (outcome.kind === "cancelled") {
-        setCancelled(true);
-        return;
-      }
-      onStatusChange(await completeInstagramLogin(outcome.url));
+      setAwaitingLogin(true);
+    } catch (caught) {
+      setError(toInstagramConnectionDisplayError(caught));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  /**
+   * Pressed after finishing in the login window. Deliberately a button rather than a poll: a timer would keep
+   * asking on a screen nobody is looking at, and the person is the one who knows the login is done.
+   */
+  async function refreshAfterLogin(): Promise<void> {
+    if (pending) return;
+    setPending(true);
+    setError(null);
+    try {
+      onStatusChange(await getInstagramConnection());
+      setAwaitingLogin(false);
     } catch (caught) {
       setError(toInstagramConnectionDisplayError(caught));
     } finally {
@@ -166,18 +177,12 @@ export function InstagramConnectionCard({ status, onStatusChange }: Props) {
         <button
           type="button"
           className={primaryButton}
-          disabled={pending || !status.appConfigured || !canOpenWindow}
+          disabled={pending || !status.appConfigured}
           data-testid="instagram-login-button"
           onClick={() => void login()}
         >
           {pending ? "로그인 중..." : status.tokenStored ? "다시 로그인" : "페이스북으로 로그인"}
         </button>
-        {/* A browser tab has no window to open. Saying which app can do it beats a button that does nothing. */}
-        {!canOpenWindow && (
-          <span className="text-xs text-slate-500" data-testid="instagram-login-unavailable">
-            로그인은 데스크톱 앱에서만 할 수 있습니다.
-          </span>
-        )}
         {status.tokenStored && (
           <button
             type="button"
@@ -191,10 +196,21 @@ export function InstagramConnectionCard({ status, onStatusChange }: Props) {
         )}
       </div>
 
-      {cancelled && (
-        <p data-testid="instagram-login-cancelled" className="text-xs text-slate-400">
-          로그인을 취소했습니다.
-        </p>
+      {awaitingLogin && (
+        <div className="space-y-2 rounded-xl border border-white/10 bg-slate-950/40 p-3" data-testid="instagram-login-awaiting">
+          <p className="text-xs text-slate-400">
+            새 창에서 페이스북 로그인을 마친 뒤 아래를 눌러 주세요. 창은 닫으셔도 됩니다.
+          </p>
+          <button
+            type="button"
+            className={outlineButton}
+            disabled={pending}
+            data-testid="instagram-login-refresh"
+            onClick={() => void refreshAfterLogin()}
+          >
+            로그인 완료 확인
+          </button>
+        </div>
       )}
 
       <form className="space-y-2" onSubmit={submitApp}>

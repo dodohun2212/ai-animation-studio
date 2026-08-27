@@ -9,7 +9,7 @@ import type {
 import { InstagramConnectionStore } from "./instagram-connection.store.js";
 import { InstagramAdapterError, type RetryOptions } from "./instagram-request.js";
 import {
-  DESKTOP_REDIRECT_URI, exchangeCodeForToken, exchangeForLongLivedToken, extractOAuthResult, instagramLoginDialogUrl,
+  exchangeCodeForToken, exchangeForLongLivedToken, instagramLoginDialogUrl, readOAuthCallback,
 } from "./instagram-oauth.js";
 import { instagramNotConnected, instagramProviderError, invalidInstagramRequest } from "./instagram-api.error.js";
 
@@ -32,6 +32,8 @@ export class InstagramLoginService {
 
   constructor(
     private readonly connection: InstagramConnectionStore,
+    /** This backend's own callback address — see instagramCallbackUrl. Meta must be given the identical string at both the dialog and the exchange. */
+    private readonly redirectUri: string,
     private readonly requestOptions: RetryOptions = {},
     private readonly now: () => number = Date.now,
   ) {}
@@ -70,18 +72,15 @@ export class InstagramLoginService {
     if (!app) throw invalidInstagramRequest("Enter the Meta app ID and secret before signing in.");
     const state = crypto.randomBytes(16).toString("hex");
     this.pending = { state, issuedAt: this.now() };
-    return { url: instagramLoginDialogUrl(app.appId, state), redirectPrefix: DESKTOP_REDIRECT_URI };
+    return { url: instagramLoginDialogUrl(app.appId, state, this.redirectUri) };
   }
 
   /**
-   * Completes the login from the URL the window landed on. The state must match the one issued and be consumed
-   * exactly once — a code that arrives without it is not proof of anything this app asked for, so it is refused
-   * rather than exchanged.
+   * Completes the login from the query Meta put on the callback. The state must match the one issued and be
+   * consumed exactly once — a code that arrives without it is not proof of anything this app asked for, so it is
+   * refused rather than exchanged.
    */
-  async complete(request: unknown): Promise<CompleteInstagramLoginResponse> {
-    if (!isObject(request) || Object.keys(request).length !== 1 || typeof request.redirectedUrl !== "string" || !request.redirectedUrl.trim()) {
-      throw invalidInstagramRequest("Request body must contain only redirectedUrl.");
-    }
+  async complete(params: Record<string, string | undefined>): Promise<CompleteInstagramLoginResponse> {
     const app = await this.connection.appCredentials();
     if (!app) throw invalidInstagramRequest("Enter the Meta app ID and secret before signing in.");
 
@@ -92,12 +91,12 @@ export class InstagramLoginService {
       throw invalidInstagramRequest("This sign-in attempt is no longer valid. Start it again.");
     }
 
-    const result = extractOAuthResult(request.redirectedUrl);
+    const result = readOAuthCallback(params);
     if (result.kind !== "code") throw invalidInstagramRequest("Sign-in did not complete.");
     if (result.state !== pending.state) throw invalidInstagramRequest("Sign-in could not be verified. Start it again.");
 
     try {
-      const short = await exchangeCodeForToken(app.appId, app.appSecret, result.code, this.requestOptions);
+      const short = await exchangeCodeForToken(app.appId, app.appSecret, result.code, this.redirectUri, this.requestOptions);
       const long = await exchangeForLongLivedToken(app.appId, app.appSecret, short.accessToken, this.requestOptions);
       // Turned into an absolute instant here, once, at the moment Meta stated the lifetime — storing the
       // duration would quietly mean something different every time it was read.

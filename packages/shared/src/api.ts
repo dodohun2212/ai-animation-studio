@@ -1181,14 +1181,12 @@ export interface InstagramConnectionStatus {
 export interface SetInstagramAppRequest { appId: string; appSecret: string; }
 export type SetInstagramAppResponse = InstagramConnectionStatus;
 export interface StartInstagramLoginResponse {
-  /** The Meta login page to open in a window. */
+  /**
+   * The Meta login page to open. Nothing needs to watch the window afterwards: Meta redirects back to this
+   * app's own backend, which completes the login on its own. The screen finds out by reading the connection
+   * status again.
+   */
   url: string;
-  /** The window has arrived once its URL starts with this; hand that whole URL back to complete the login. */
-  redirectPrefix: string;
-}
-export interface CompleteInstagramLoginRequest {
-  /** The full URL the login window landed on, unparsed — the server reads the code and verifies the state it issued. */
-  redirectedUrl: string;
 }
 export type CompleteInstagramLoginResponse = InstagramConnectionStatus;
 
@@ -1476,7 +1474,8 @@ export const API_ROUTES = {
   instagramConnection: "/settings/instagram/connection",
   instagramApp: "/settings/instagram/app",
   instagramLoginStart: "/settings/instagram/login/start",
-  instagramLoginComplete: "/settings/instagram/login/complete",
+  /** Meta redirects the browser here; the screen never calls it. */
+  instagramLoginCallback: "/settings/instagram/callback",
   instagramPublish: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/instagram/publish`,
   projectAssetMappings: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/assets/mappings`,
   projectAssetMapping: (projectId: string, mappingId: string) =>

@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  completeInstagramLogin,
   disconnectInstagram,
   getInstagramConnection,
   setInstagramApp,
@@ -17,68 +16,21 @@ describe("instagramConnectionApi", () => {
     vi.unstubAllGlobals();
   });
 
-  it("reads the connection state", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, CONNECTED));
+  // Meta redirects back to the backend, which completes the login on its own — the screen only needs somewhere
+  // to send the person, and never sees the code at all.
+  it("asks for a login url and accepts one without a redirect prefix", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { url: "https://www.facebook.com/v26.0/dialog/oauth?x=1" }));
     vi.stubGlobal("fetch", fetchMock);
-
-    const status = await getInstagramConnection();
-
-    expect(fetchMock).toHaveBeenCalledWith("/settings/instagram/connection", undefined);
-    expect(status.tokenStored).toBe(true);
-  });
-
-  // A connection with no token yet is the normal first state, not a malformed answer.
-  it("accepts a state with no token and no expiry", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { appConfigured: true, tokenStored: false })));
-
-    const status = await getInstagramConnection();
-
-    expect(status.tokenStored).toBe(false);
-    expect(status.tokenExpiresAt).toBeUndefined();
-  });
-
-  it("rejects a state whose fields are the wrong type", async () => {
-    for (const bad of [{ appConfigured: "yes", tokenStored: false }, { appConfigured: true, tokenStored: 1 }, { appConfigured: true, tokenStored: true, tokenExpiresAt: 5 }]) {
-      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, bad)));
-      await expect(getInstagramConnection()).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
-    }
-  });
-
-  it("saves the app id and secret via PUT", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { appConfigured: true, tokenStored: false }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    await setInstagramApp("  1234  ", "  secret  ");
-
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/settings/instagram/app");
-    expect(init.method).toBe("PUT");
-    expect(JSON.parse(String(init.body))).toEqual({ appId: "1234", appSecret: "secret" });
-  });
-
-  it("asks for a login url", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, {
-      url: "https://www.facebook.com/v21.0/dialog/oauth?client_id=1234",
-      redirectPrefix: "https://www.facebook.com/connect/login_success.html",
-    })));
 
     const started = await startInstagramLogin();
 
-    expect(started.redirectPrefix).toContain("login_success.html");
+    expect(started).toEqual({ url: "https://www.facebook.com/v26.0/dialog/oauth?x=1" });
+    expect((fetchMock.mock.calls[0] as [string, RequestInit])[0]).toBe("/settings/instagram/login/start");
   });
 
-  // The screen parses nothing out of the landed URL — the server reads the code and checks the state it issued,
-  // so a redirect that did not come from our own request cannot be laundered into a login.
-  it("hands the landed url back whole", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, CONNECTED));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const landed = "https://www.facebook.com/connect/login_success.html?code=abc&state=xyz";
-    await completeInstagramLogin(landed);
-
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/settings/instagram/login/complete");
-    expect(JSON.parse(String(init.body))).toEqual({ redirectedUrl: landed });
+  it("rejects a login start response with no url", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, {})));
+    await expect(startInstagramLogin()).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
   });
 
   it("signs out via DELETE", async () => {

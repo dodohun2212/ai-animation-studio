@@ -4,6 +4,7 @@ import { AssetsModule, LEARNING_DATA_ROOT } from "../assets/assets.module.js";
 import { PROVIDER_SETTINGS_ROOT, ProviderSettingsModule } from "../settings/provider-settings.module.js";
 import { InstagramConnectionStore } from "./instagram-connection.store.js";
 import { InstagramLoginService } from "./instagram-login.service.js";
+import { instagramCallbackUrl } from "./instagram-oauth.js";
 import { InstagramTargetsController } from "./instagram-targets.controller.js";
 import { InstagramPublishService } from "./instagram-publish.service.js";
 import { InstagramTargetsService } from "./instagram-targets.service.js";
@@ -32,8 +33,11 @@ import { LocalProjectRepository } from "../projects/projects.repository.js";
       inject: [LocalProjectRepository, PROJECTS_ROOT, InstagramConnectionStore],
     },
     {
+      // Built from this process's own port so the browser dev server and the packaged shell each produce their
+      // own address; both are registered once in the Meta app settings.
       provide: InstagramLoginService,
-      useFactory: (connection: InstagramConnectionStore) => new InstagramLoginService(connection),
+      useFactory: (connection: InstagramConnectionStore) =>
+        new InstagramLoginService(connection, instagramCallbackUrl(Number(process.env.PORT ?? 3000))),
       inject: [InstagramConnectionStore],
     },
   ],

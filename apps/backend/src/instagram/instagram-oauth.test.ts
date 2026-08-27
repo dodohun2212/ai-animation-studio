@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  DESKTOP_REDIRECT_URI, INSTAGRAM_PUBLISH_SCOPES, exchangeCodeForToken, exchangeForLongLivedToken,
-  extractOAuthResult, inspectInstagramToken, instagramLoginDialogUrl,
+  INSTAGRAM_PUBLISH_SCOPES, exchangeCodeForToken, exchangeForLongLivedToken,
+  inspectInstagramToken, instagramCallbackUrl, instagramLoginDialogUrl, readOAuthCallback,
 } from "./instagram-oauth.js";
+
+const REDIRECT = instagramCallbackUrl(4317);
 
 function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}): Response {
   return {
@@ -14,19 +16,19 @@ function jsonResponse(status: number, body: unknown, headers: Record<string, str
 const noSleep = async () => {};
 
 describe("instagramLoginDialogUrl", () => {
-  it("builds the documented authorization dialog URL with the desktop webview redirect", () => {
-    const url = new URL(instagramLoginDialogUrl("app-1", "state-1"));
+  it("builds the documented authorization dialog URL pointing back at this backend", () => {
+    const url = new URL(instagramLoginDialogUrl("app-1", "state-1", REDIRECT));
     expect(`${url.origin}${url.pathname}`).toBe("https://www.facebook.com/v26.0/dialog/oauth");
     expect(url.searchParams.get("client_id")).toBe("app-1");
     expect(url.searchParams.get("state")).toBe("state-1");
     expect(url.searchParams.get("response_type")).toBe("code");
-    // Meta's documented value for a login flow inside a desktop app's webview — using it is what lets this app
-    // skip localhost redirect registration and a local callback route entirely.
-    expect(url.searchParams.get("redirect_uri")).toBe("https://www.facebook.com/connect/login_success.html");
+    // Points back at this app's own backend, so no window has to be watched — the same flow works in a browser
+    // tab and in the packaged shell.
+    expect(url.searchParams.get("redirect_uri")).toBe("http://127.0.0.1:4317/settings/instagram/callback");
   });
 
   it("requests exactly the documented publishing permissions and nothing more", () => {
-    const url = new URL(instagramLoginDialogUrl("app-1", "state-1"));
+    const url = new URL(instagramLoginDialogUrl("app-1", "state-1", REDIRECT));
     expect(url.searchParams.get("scope")?.split(",")).toEqual([
       "instagram_basic", "instagram_content_publish", "pages_read_engagement", "pages_show_list",
     ]);
@@ -35,67 +37,69 @@ describe("instagramLoginDialogUrl", () => {
   });
 
   it("rejects an empty app ID or state rather than building a URL that cannot be verified", () => {
-    expect(() => instagramLoginDialogUrl("  ", "state-1")).toThrow();
-    expect(() => instagramLoginDialogUrl("app-1", "  ")).toThrow();
+    expect(() => instagramLoginDialogUrl("  ", "state-1", REDIRECT)).toThrow();
+    expect(() => instagramLoginDialogUrl("app-1", "  ", REDIRECT)).toThrow();
   });
 });
 
-describe("extractOAuthResult", () => {
-  it("reports pending for any URL that is not the redirect target", () => {
-    expect(extractOAuthResult("https://www.facebook.com/login.php?next=whatever")).toEqual({ kind: "pending" });
-    expect(extractOAuthResult(`${DESKTOP_REDIRECT_URI.replace("login_success", "other")}?code=c&state=s`)).toEqual({ kind: "pending" });
-  });
-
-  it("reports pending, never throws, for a malformed URL", () => {
-    expect(extractOAuthResult("not a url")).toEqual({ kind: "pending" });
-  });
-
-  it("returns the code and state from a successful redirect", () => {
-    expect(extractOAuthResult(`${DESKTOP_REDIRECT_URI}?code=the-code&state=the-state`))
+describe("readOAuthCallback", () => {
+  it("returns the code and state Meta put on the callback", () => {
+    expect(readOAuthCallback({ code: "the-code", state: "the-state" }))
       .toEqual({ kind: "code", code: "the-code", state: "the-state" });
   });
 
   it("reports a denial with Meta's description when the user refuses", () => {
-    const result = extractOAuthResult(`${DESKTOP_REDIRECT_URI}?error=access_denied&error_description=Permissions+error`);
-    expect(result).toMatchObject({ kind: "denied", detail: "Permissions error" });
+    expect(readOAuthCallback({ error: "access_denied", error_description: "Permissions error" }))
+      .toMatchObject({ kind: "denied", detail: "Permissions error" });
   });
 
-  it("refuses a redirect carrying a code but no state, rather than trusting it", () => {
-    // state is the only thing proving the code answers this app's own request.
-    expect(extractOAuthResult(`${DESKTOP_REDIRECT_URI}?code=the-code`)).toMatchObject({ kind: "denied" });
+  it("refuses a code that arrives without state, rather than trusting it", () => {
+    // state is the only thing proving the code answers a login this app started.
+    expect(readOAuthCallback({ code: "the-code" })).toMatchObject({ kind: "denied" });
+  });
+
+  it("reports an empty callback as a denial rather than throwing", () => {
+    expect(readOAuthCallback({})).toEqual({ kind: "denied" });
+  });
+});
+
+describe("instagramCallbackUrl", () => {
+  it("uses the backend's own port, so each environment registers its own address", () => {
+    expect(instagramCallbackUrl(3000)).toBe("http://127.0.0.1:3000/settings/instagram/callback");
+    expect(instagramCallbackUrl(4317)).toBe("http://127.0.0.1:4317/settings/instagram/callback");
   });
 });
 
 describe("exchangeCodeForToken", () => {
   it("calls the documented token endpoint with the same redirect_uri used for the dialog", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { access_token: "short-1", expires_in: 3600 }));
-    const result = await exchangeCodeForToken("app-1", "secret-1", "code-1", { fetchImpl: fetchMock, sleep: noSleep });
+    const result = await exchangeCodeForToken("app-1", "secret-1", "code-1", REDIRECT, { fetchImpl: fetchMock, sleep: noSleep });
     expect(result).toEqual({ accessToken: "short-1", expiresInSeconds: 3600 });
     const url = new URL(String((fetchMock.mock.calls[0] as [string, RequestInit])[0]));
     expect(`${url.origin}${url.pathname}`).toBe("https://graph.facebook.com/v26.0/oauth/access_token");
     expect(url.searchParams.get("client_id")).toBe("app-1");
     expect(url.searchParams.get("client_secret")).toBe("secret-1");
     expect(url.searchParams.get("code")).toBe("code-1");
-    expect(url.searchParams.get("redirect_uri")).toBe(DESKTOP_REDIRECT_URI);
+    expect(url.searchParams.get("redirect_uri")).toBe(REDIRECT);
   });
 
   it("never retries — a login code is single-use, so a retry would send an already-consumed code", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(500, {})).mockResolvedValueOnce(jsonResponse(200, { access_token: "short-2" }));
-    await expect(exchangeCodeForToken("app-1", "secret-1", "code-1", { fetchImpl: fetchMock, sleep: noSleep, maxRetries: 2 }))
+    await expect(exchangeCodeForToken("app-1", "secret-1", "code-1", REDIRECT, { fetchImpl: fetchMock, sleep: noSleep, maxRetries: 2 }))
       .rejects.toMatchObject({ category: "server" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("rejects an empty code without calling fetch", async () => {
     const fetchMock = vi.fn();
-    await expect(exchangeCodeForToken("app-1", "secret-1", "  ", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(exchangeCodeForToken("app-1", "secret-1", "  ", REDIRECT, { fetchImpl: fetchMock, sleep: noSleep }))
       .rejects.toMatchObject({ category: "invalid_request" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("rejects a response with no access_token as unknown", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {}));
-    await expect(exchangeCodeForToken("app-1", "secret-1", "code-1", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(exchangeCodeForToken("app-1", "secret-1", "code-1", REDIRECT, { fetchImpl: fetchMock, sleep: noSleep }))
       .rejects.toMatchObject({ category: "unknown" });
   });
 });

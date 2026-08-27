@@ -6,7 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { InstagramConnectionStore } from "./instagram-connection.store.js";
 import { InstagramLoginService } from "./instagram-login.service.js";
-import { DESKTOP_REDIRECT_URI } from "./instagram-oauth.js";
+import { instagramCallbackUrl } from "./instagram-oauth.js";
+
+const REDIRECT = instagramCallbackUrl(4317);
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true }))); });
@@ -31,6 +33,7 @@ async function setup(options: { app?: boolean; fetchImpl?: ReturnType<typeof vi.
   if (options.app !== false) await connection.saveAppCredentials({ appId: "app-1", appSecret: "secret-1" });
   const service = new InstagramLoginService(
     connection,
+    REDIRECT,
     { fetchImpl: options.fetchImpl ?? vi.fn(), sleep: async () => {} },
     options.now ?? Date.now,
   );
@@ -41,7 +44,7 @@ async function setup(options: { app?: boolean; fetchImpl?: ReturnType<typeof vi.
 async function signIn(service: InstagramLoginService) {
   const started = await service.start();
   const state = new URL(started.url).searchParams.get("state")!;
-  return { state, result: await service.complete({ redirectedUrl: `${DESKTOP_REDIRECT_URI}?code=the-code&state=${state}` }) };
+  return { state, result: await service.complete({ code: "the-code", state }) };
 }
 
 describe("InstagramLoginService.status", () => {
@@ -95,11 +98,11 @@ describe("InstagramLoginService.start", () => {
     await expect(service.start()).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
-  it("returns the login URL and the prefix that marks arrival", async () => {
+  it("returns a login URL pointing back at this backend's callback", async () => {
     const { service } = await setup();
     const started = await service.start();
-    expect(started.redirectPrefix).toBe(DESKTOP_REDIRECT_URI);
     const url = new URL(started.url);
+    expect(url.searchParams.get("redirect_uri")).toBe(REDIRECT);
     expect(url.searchParams.get("client_id")).toBe("app-1");
     expect(url.searchParams.get("state")).toBeTruthy();
   });
@@ -137,7 +140,7 @@ describe("InstagramLoginService.complete", () => {
     const fetchImpl = exchangeFetch();
     const { service } = await setup({ fetchImpl });
     await service.start();
-    await expect(service.complete({ redirectedUrl: `${DESKTOP_REDIRECT_URI}?code=c&state=not-the-issued-state` }))
+    await expect(service.complete({ code: "c", state: "not-the-issued-state" }))
       .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     expect(fetchImpl).not.toHaveBeenCalled(); // never exchanged
   });
@@ -146,9 +149,8 @@ describe("InstagramLoginService.complete", () => {
     const { service } = await setup({ fetchImpl: exchangeFetch() });
     const started = await service.start();
     const state = new URL(started.url).searchParams.get("state")!;
-    const url = `${DESKTOP_REDIRECT_URI}?code=the-code&state=${state}`;
-    await service.complete({ redirectedUrl: url });
-    await expect(service.complete({ redirectedUrl: url })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await service.complete({ code: "the-code", state });
+    await expect(service.complete({ code: "the-code", state })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
   it("refuses a state that has gone stale", async () => {
@@ -157,13 +159,13 @@ describe("InstagramLoginService.complete", () => {
     const started = await service.start();
     const state = new URL(started.url).searchParams.get("state")!;
     now += 11 * 60 * 1000;
-    await expect(service.complete({ redirectedUrl: `${DESKTOP_REDIRECT_URI}?code=c&state=${state}` }))
+    await expect(service.complete({ code: "c", state }))
       .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
   it("refuses a completion that was never started", async () => {
     const { service } = await setup({ fetchImpl: exchangeFetch() });
-    await expect(service.complete({ redirectedUrl: `${DESKTOP_REDIRECT_URI}?code=c&state=whatever` }))
+    await expect(service.complete({ code: "c", state: "whatever" }))
       .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
@@ -171,7 +173,7 @@ describe("InstagramLoginService.complete", () => {
     const { service } = await setup({ fetchImpl: exchangeFetch() });
     const started = await service.start();
     const state = new URL(started.url).searchParams.get("state")!;
-    await expect(service.complete({ redirectedUrl: `${DESKTOP_REDIRECT_URI}?error=access_denied&state=${state}` }))
+    await expect(service.complete({ error: "access_denied", state }))
       .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
@@ -180,16 +182,15 @@ describe("InstagramLoginService.complete", () => {
     const { service } = await setup({ fetchImpl });
     const started = await service.start();
     const state = new URL(started.url).searchParams.get("state")!;
-    await expect(service.complete({ redirectedUrl: `${DESKTOP_REDIRECT_URI}?code=c&state=${state}` }))
+    await expect(service.complete({ code: "c", state }))
       .rejects.toMatchObject({ response: { code: "INSTAGRAM_PROVIDER_ERROR" } });
     expect((await service.status()).tokenStored).toBe(false);
   });
 
-  it("rejects a malformed request body", async () => {
+  it("refuses a callback carrying nothing usable", async () => {
     const { service } = await setup();
-    for (const body of [undefined, {}, { redirectedUrl: "" }, { redirectedUrl: "x", extra: 1 }]) {
-      await expect(service.complete(body)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
-    }
+    await service.start();
+    await expect(service.complete({})).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 });
 

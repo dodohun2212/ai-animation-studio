@@ -79,59 +79,52 @@ describe("InstagramConnectionCard", () => {
     expect(screen.queryByTestId("instagram-token-line")).toBeNull();
   });
 
-  // A browser tab has no window to open, so the button says which app can do it rather than doing nothing.
-  it("says login needs the desktop app when there is no shell to open a window", () => {
+  // Login now works wherever the app runs: Meta redirects back to the backend, so nothing has to inspect a
+  // window. The browser is the environment the user actually works in.
+  it("offers login in a plain browser tab, with no desktop shell present", () => {
     renderCard();
+    expect(screen.getByTestId("instagram-login-button")).not.toBeDisabled();
+    expect(screen.queryByTestId("instagram-login-unavailable")).toBeNull();
+  });
+
+  it("cannot start a login before the app details exist", () => {
+    renderCard({ appConfigured: false });
     expect(screen.getByTestId("instagram-login-button")).toBeDisabled();
-    expect(screen.getByTestId("instagram-login-unavailable").textContent).toContain("데스크톱 앱");
   });
 
-  it("cannot start a login before the app details exist", async () => {
-    await withElectron(vi.fn(), async () => {
-      renderCard({ appConfigured: false });
-      expect(screen.getByTestId("instagram-login-button")).toBeDisabled();
-    });
-  });
-
-  it("opens the login page, then hands the landed url straight back to the server", async () => {
-    const landed = "https://www.facebook.com/connect/login_success.html?code=abc&state=xyz";
-    const openInstagramLogin = vi.fn().mockResolvedValue({ kind: "redirected", url: landed });
+  it("opens the login page and then asks the server what happened, never reading the code itself", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { url: "https://www.facebook.com/dialog/oauth?x=1", redirectPrefix: "https://www.facebook.com/connect/login_success.html" }))
+      .mockResolvedValueOnce(jsonResponse(200, { url: "https://www.facebook.com/dialog/oauth?x=1" }))
       .mockResolvedValueOnce(jsonResponse(200, { appConfigured: true, tokenStored: true, tokenExpiresAt: new Date(NOW + 60 * DAY).toISOString() }));
     vi.stubGlobal("fetch", fetchMock);
+    const open = vi.fn().mockReturnValue({});
+    vi.stubGlobal("open", open);
 
-    await withElectron(openInstagramLogin, async () => {
-      const onStatusChange = vi.fn();
-      renderCard({}, onStatusChange);
+    const onStatusChange = vi.fn();
+    renderCard({}, onStatusChange);
 
-      fireEvent.click(screen.getByTestId("instagram-login-button"));
+    fireEvent.click(screen.getByTestId("instagram-login-button"));
+    await screen.findByTestId("instagram-login-awaiting");
+    expect(open).toHaveBeenCalledWith("https://www.facebook.com/dialog/oauth?x=1", "instagram-login", expect.any(String));
 
-      await waitFor(() => expect(onStatusChange).toHaveBeenCalled());
-      expect(openInstagramLogin).toHaveBeenCalledWith("https://www.facebook.com/dialog/oauth?x=1", "https://www.facebook.com/connect/login_success.html");
-      const complete = fetchMock.mock.calls[1] as [string, RequestInit];
-      expect(String(complete[0])).toBe("/settings/instagram/login/complete");
-      // The screen reads nothing out of the URL — the server checks the state it issued against it.
-      expect(JSON.parse(String(complete[1].body))).toEqual({ redirectedUrl: landed });
-    });
+    fireEvent.click(screen.getByTestId("instagram-login-refresh"));
+    await waitFor(() => expect(onStatusChange).toHaveBeenCalled());
+    // The second call reads status; the code never passes through this screen at all.
+    expect(String((fetchMock.mock.calls[1] as [string, RequestInit])[0])).toBe("/settings/instagram/connection");
   });
 
-  // Closing the window is an ordinary change of mind. It must not look like a failure — but a button press that
-  // visibly does nothing reads as broken, so it is acknowledged quietly instead.
-  it("treats a closed window as a cancellation, not an error", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { url: "https://www.facebook.com/dialog/oauth", redirectPrefix: "https://www.facebook.com/connect/login_success.html" }));
-    vi.stubGlobal("fetch", fetchMock);
+  // A blocked popup is the one case where pressing the button really does nothing, so it has to be said.
+  it("says so when the login window is blocked", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { url: "https://www.facebook.com/dialog/oauth" })));
+    vi.stubGlobal("open", vi.fn().mockReturnValue(null));
 
-    await withElectron(vi.fn().mockResolvedValue({ kind: "cancelled" }), async () => {
-      renderCard();
-      fireEvent.click(screen.getByTestId("instagram-login-button"));
+    renderCard();
+    fireEvent.click(screen.getByTestId("instagram-login-button"));
 
-      await screen.findByTestId("instagram-login-cancelled");
-      expect(screen.queryByTestId("instagram-connection-error")).toBeNull();
-      // Nothing was sent to complete a login that never happened.
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-    });
+    const error = await screen.findByTestId("instagram-connection-error");
+    expect(error.textContent).toContain("팝업");
+    expect(screen.queryByTestId("instagram-login-awaiting")).toBeNull();
   });
 
   it("shows a rejected login start without leaking the raw backend text", async () => {
