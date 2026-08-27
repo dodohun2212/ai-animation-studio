@@ -40,3 +40,7 @@ output/archive/*
 
 # Agent-to-agent mailbox (local coordination, never committed)
 .claude-bridge/
+
+# Local project data the app writes at runtime (projects, budget ledgers, asset library).
+# Never committed: it is the user machine every install builds up, not source.
+learning_data/
