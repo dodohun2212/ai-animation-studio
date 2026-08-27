@@ -35,7 +35,7 @@ describe.sequential("local image generation HTTP route", () => {
     project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, description: `scene ${number}`, main_motion: `motion ${number}`, visual_action: `action ${number}` }));
     await projects.create(project);
     const mappings = new LocalProjectAssetMappingsRepository(projectsRoot);
-    await mappings.saveReview("image_http", { project_id: "image_http", mapping_revision: 1, script_revision: 1, script_fingerprint: scriptFingerprint(project.scenes), status: "approved", approved_at: "2026-08-22T00:00:00.000Z", approved_by: "user", text_only_confirmed: true, legacy_confirmed: false, reviewed_scenes: [1, 2, 3, 4, 5, 6] });
+    await mappings.saveReview(mappings.projectLocation("image_http"), { project_id: "image_http", mapping_revision: 1, script_revision: 1, script_fingerprint: scriptFingerprint(project.scenes), status: "approved", approved_at: "2026-08-22T00:00:00.000Z", approved_by: "user", text_only_confirmed: true, legacy_confirmed: false, reviewed_scenes: [1, 2, 3, 4, 5, 6] });
     previousLearningRoot = process.env.LEARNING_DATA_ROOT; previousProjectsRoot = process.env.PROJECTS_ROOT;
     process.env.LEARNING_DATA_ROOT = root; delete process.env.PROJECTS_ROOT;
     // Isolated even though this test never intends to touch a real provider: PROVIDER_SETTINGS_ROOT defaults to
@@ -74,7 +74,7 @@ describe.sequential("local image generation HTTP route", () => {
     project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, description: `scene ${number}`, main_motion: `motion ${number}`, visual_action: `action ${number}` }));
     await projects.create(project);
     const mappings = new LocalProjectAssetMappingsRepository(projectsRoot);
-    await mappings.saveReview("image_http_real", { project_id: "image_http_real", mapping_revision: 1, script_revision: 1, script_fingerprint: scriptFingerprint(project.scenes), status: "approved", approved_at: "2026-08-22T00:00:00.000Z", approved_by: "user", text_only_confirmed: true, legacy_confirmed: false, reviewed_scenes: [1, 2, 3, 4, 5, 6] });
+    await mappings.saveReview(mappings.projectLocation("image_http_real"), { project_id: "image_http_real", mapping_revision: 1, script_revision: 1, script_fingerprint: scriptFingerprint(project.scenes), status: "approved", approved_at: "2026-08-22T00:00:00.000Z", approved_by: "user", text_only_confirmed: true, legacy_confirmed: false, reviewed_scenes: [1, 2, 3, 4, 5, 6] });
     previousLearningRoot = process.env.LEARNING_DATA_ROOT; previousProjectsRoot = process.env.PROJECTS_ROOT;
     process.env.LEARNING_DATA_ROOT = root; delete process.env.PROJECTS_ROOT;
     previousSettingsRoot = process.env.PROVIDER_SETTINGS_ROOT; process.env.PROVIDER_SETTINGS_ROOT = root;

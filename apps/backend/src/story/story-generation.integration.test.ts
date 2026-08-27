@@ -41,6 +41,6 @@ describe("local Story generation persistence", () => {
     expect(raw.story).toMatchObject({ title: "rainy night — Local Story" });
     expect(raw.scenes).toHaveLength(6);
     expect((raw.scenes as Array<Record<string, unknown>>).map((scene) => scene.number)).toEqual([1, 2, 3, 4, 5, 6]);
-    expect(await mappingRepository.loadReview("six_scenes")).toMatchObject({ mapping_revision: 1, script_revision: 1, status: "waiting" });
+    expect(await mappingRepository.loadReview(mappingRepository.projectLocation("six_scenes"))).toMatchObject({ mapping_revision: 1, script_revision: 1, status: "waiting" });
   });
 });

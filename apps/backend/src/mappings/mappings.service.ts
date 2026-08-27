@@ -39,10 +39,10 @@ export class ProjectAssetMappingsService {
   constructor(private readonly repository: LocalProjectAssetMappingsRepository, private readonly assets: LocalAssetsRepository, private readonly owners: MappingOwners) {}
 
   async list(projectId: string): Promise<ListProjectAssetMappingsResponse> {
-    return { mappings: (await this.repository.load(projectId)).map(toPublicMapping) };
+    return { mappings: (await this.repository.load(await this.owners.get(projectId))).map(toPublicMapping) };
   }
   async review(projectId: string): Promise<GetProjectAssetMappingReviewResponse> {
-    return { review: toPublicReview(await this.repository.loadReview(projectId)) };
+    return { review: toPublicReview(await this.repository.loadReview(await this.owners.get(projectId))) };
   }
   async create(projectId: string, body: unknown): Promise<CreateProjectAssetMappingResponse> {
     if (!isObject(body) || Object.keys(body).some((key) => !["assetId", "usageRole", "sceneScope", "versionPolicy", "pinnedVersion", "selectedChildAssetIds"].includes(key))
@@ -62,7 +62,7 @@ export class ProjectAssetMappingsService {
     if (!asset.is_folder && !asset.versions.some((version) => version.version === pinnedVersion)) throw invalidMappingRequest("Pinned Asset version does not exist.");
     const now = new Date().toISOString();
     const mapping: StoredAssetMapping = { mapping_id: `MAP-${crypto.randomBytes(8).toString("hex").toUpperCase()}`, project_id: projectId, asset_id: asset.asset_id, enabled: true, usage_role: request.usageRole.trim(), scene_scope: toStoredScope(sceneScope), assignment_source: "manual", confidence: null, match_reason: "manual_assignment", status: "confirmed", user_confirmed: true, version_policy: versionPolicy, pinned_version: pinnedVersion, candidate_only: false, created_at: now, updated_at: now, snapshot_path: null, snapshot_sha256: null, snapshot_source_version: null, selected_child_asset_ids: [...new Set(request.selectedChildAssetIds ?? [])] };
-    const mappings = await this.repository.load(projectId); mappings.push(mapping); await this.repository.save(projectId, mappings);
+    const mappings = await this.repository.load(owner); mappings.push(mapping); await this.repository.save(owner, mappings);
     return { mapping: toPublicMapping(mapping) };
   }
   async update(projectId: string, mappingId: string, body: unknown): Promise<UpdateProjectAssetMappingResponse> {
@@ -71,7 +71,8 @@ export class ProjectAssetMappingsService {
       || !(body.versionPolicy === undefined || policy(body.versionPolicy)) || !(body.pinnedVersion === undefined || body.pinnedVersion === null || (Number.isInteger(body.pinnedVersion) && Number(body.pinnedVersion) >= 1))) throw invalidMappingRequest("Asset Mapping update is invalid.");
     const request = body as unknown as UpdateProjectAssetMappingRequest;
     if (request.versionPolicy === "snapshot") throw invalidMappingRequest("Create a snapshot with the snapshot endpoint.");
-    const mappings = await this.repository.load(projectId); const mapping = mappings.find((item) => item.mapping_id === mappingId);
+    const owner = await this.owners.get(projectId);
+    const mappings = await this.repository.load(owner); const mapping = mappings.find((item) => item.mapping_id === mappingId);
     if (!mapping) return Promise.reject((await import("./mapping-api.error.js")).mappingNotFound());
     if (request.decision === "confirm") { mapping.status = "confirmed"; mapping.user_confirmed = true; mapping.candidate_only = false; }
     if (request.decision === "exclude") { mapping.status = "excluded"; mapping.user_confirmed = false; mapping.enabled = false; }
@@ -82,7 +83,7 @@ export class ProjectAssetMappingsService {
       if (!asset.is_folder && !asset.versions.some((version) => version.version === pin)) throw invalidMappingRequest("Pinned Asset version does not exist.");
       mapping.version_policy = request.versionPolicy; mapping.pinned_version = pin; mapping.snapshot_path = null; mapping.snapshot_sha256 = null; mapping.snapshot_source_version = null;
     }
-    mapping.updated_at = new Date().toISOString(); const review = await this.repository.save(projectId, mappings);
+    mapping.updated_at = new Date().toISOString(); const review = await this.repository.save(owner, mappings);
     return { mapping: toPublicMapping(mapping), review: toPublicReview(review) };
   }
   async beginReview(projectId: string, body: unknown): Promise<BeginProjectAssetMappingReviewResponse> {
@@ -92,14 +93,14 @@ export class ProjectAssetMappingsService {
     const request = body as unknown as BeginProjectAssetMappingReviewRequest; const owner = await this.owners.get(projectId); const scenes = mappingsScenes(owner); const sceneList = scenesFor(owner);
     if (!(request.reviewedScenes === undefined || request.reviewedScenes.every((number) => sceneList.includes(number)))) throw invalidMappingRequest("Asset Mapping review request is invalid.");
     if (request.scriptRevision !== owner.scriptRevision) throw invalidMappingRequest("scriptRevision must match the current project script revision.");
-    const previous = await this.repository.loadReview(projectId); const review: StoredMappingReview = { project_id: projectId, mapping_revision: previous.mapping_revision + 1, script_revision: owner.scriptRevision, script_fingerprint: scriptFingerprint(scenes), status: "waiting", approved_at: "", approved_by: "", text_only_confirmed: request.textOnlyConfirmed ?? false, legacy_confirmed: request.legacyConfirmed ?? false, reviewed_scenes: [...(request.reviewedScenes ?? [])] };
-    await this.repository.saveReview(projectId, review); return { review: toPublicReview(review) };
+    const previous = await this.repository.loadReview(owner); const review: StoredMappingReview = { project_id: projectId, mapping_revision: previous.mapping_revision + 1, script_revision: owner.scriptRevision, script_fingerprint: scriptFingerprint(scenes), status: "waiting", approved_at: "", approved_by: "", text_only_confirmed: request.textOnlyConfirmed ?? false, legacy_confirmed: request.legacyConfirmed ?? false, reviewed_scenes: [...(request.reviewedScenes ?? [])] };
+    await this.repository.saveReview(owner, review); return { review: toPublicReview(review) };
   }
   async approveReview(projectId: string, body: unknown): Promise<ApproveProjectAssetMappingReviewResponse> {
     if (!isObject(body) || Object.keys(body).some((key) => !["scriptFingerprint", "approvedBy"].includes(key)) || typeof body.scriptFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(body.scriptFingerprint) || !(body.approvedBy === undefined || (typeof body.approvedBy === "string" && body.approvedBy.trim().length > 0 && body.approvedBy.length <= 80))) throw invalidMappingRequest("Asset Mapping approval request is invalid.");
-    const request = body as unknown as ApproveProjectAssetMappingReviewRequest; const owner = await this.owners.get(projectId); const scenes = mappingsScenes(owner); const sceneList = scenesFor(owner); const currentFingerprint = scriptFingerprint(scenes); const review = await this.repository.loadReview(projectId);
-    if (review.script_revision !== owner.scriptRevision || review.script_fingerprint !== currentFingerprint || request.scriptFingerprint !== currentFingerprint) { const invalidated = { ...review, mapping_revision: review.mapping_revision + 1, script_revision: owner.scriptRevision, script_fingerprint: currentFingerprint, status: "waiting" as const, approved_at: "", approved_by: "", reviewed_scenes: [] }; await this.repository.saveReview(projectId, invalidated); throw fingerprintMismatch(); }
-    const mappings = (await this.repository.load(projectId)).filter((mapping) => !mapping.candidate_only);
+    const request = body as unknown as ApproveProjectAssetMappingReviewRequest; const owner = await this.owners.get(projectId); const scenes = mappingsScenes(owner); const sceneList = scenesFor(owner); const currentFingerprint = scriptFingerprint(scenes); const review = await this.repository.loadReview(owner);
+    if (review.script_revision !== owner.scriptRevision || review.script_fingerprint !== currentFingerprint || request.scriptFingerprint !== currentFingerprint) { const invalidated = { ...review, mapping_revision: review.mapping_revision + 1, script_revision: owner.scriptRevision, script_fingerprint: currentFingerprint, status: "waiting" as const, approved_at: "", approved_by: "", reviewed_scenes: [] }; await this.repository.saveReview(owner, invalidated); throw fingerprintMismatch(); }
+    const mappings = (await this.repository.load(owner)).filter((mapping) => !mapping.candidate_only);
     const blocked = mappings.filter((mapping) => mapping.status === "suggested" || mapping.status === "ambiguous" || mapping.status === "invalid" || (mapping.status === "unmatched" && !mapping.user_confirmed));
     if (blocked.length) throw approvalBlocked("Unconfirmed Asset Mappings must be resolved before approval.", { mappingIds: blocked.map((item) => item.mapping_id) });
     if (!mappings.length && !review.text_only_confirmed && !review.legacy_confirmed) throw approvalBlocked("Text-only or legacy confirmation is required when no Asset Mapping exists.");
@@ -108,18 +109,19 @@ export class ProjectAssetMappingsService {
       if (covered.length !== sceneList.length) throw approvalBlocked("Every scene requires a confirmed, excluded, or explicitly unmatched mapping.", { missingSceneNumbers: sceneList.filter((number) => !covered.includes(number)) });
     }
     const approved: StoredMappingReview = { ...review, status: "approved", approved_at: new Date().toISOString(), approved_by: request.approvedBy?.trim() || "user", reviewed_scenes: [...sceneList] };
-    await this.repository.saveReview(projectId, approved);
+    await this.repository.saveReview(owner, approved);
     await owner.markMappingApproved(approved.mapping_revision);
     return { review: toPublicReview(approved) };
   }
   async snapshot(projectId: string, mappingId: string): Promise<SnapshotProjectAssetMappingResponse> {
-    const mappings = await this.repository.load(projectId); const mapping = mappings.find((item) => item.mapping_id === mappingId);
+    const owner = await this.owners.get(projectId);
+    const mappings = await this.repository.load(owner); const mapping = mappings.find((item) => item.mapping_id === mappingId);
     if (!mapping) return Promise.reject((await import("./mapping-api.error.js")).mappingNotFound());
     const asset = await this.asset(mapping.asset_id); const version = mapping.pinned_version ?? asset.version; const storedVersion = asset.versions.find((item) => item.version === version);
     if (!storedVersion) throw snapshotInvalid();
     const source = this.assets.resolveVersionContentPath(asset, storedVersion.version);
     if (!source) throw snapshotInvalid();
-    await this.repository.snapshot(projectId, mapping, source, version); await this.repository.save(projectId, mappings); return { mapping: toPublicMapping(mapping) };
+    await this.repository.snapshot(owner, mapping, source, version); await this.repository.save(owner, mappings); return { mapping: toPublicMapping(mapping) };
   }
   private async asset(assetId: string) { try { return await this.assets.get(assetId); } catch { throw mappingAssetNotFound(); } }
 }

@@ -64,9 +64,9 @@ export class SceneEditService {
     // picking, no field here feeds automatic matching). Re-stamping the approved review's own fingerprint to
     // match the post-edit scenes keeps that decision local to this one call site: the general story-regeneration
     // path never touches this, so its own mapping-invalidation safety net is untouched.
-    const review = await this.mappings.loadReview(project.project_id);
+    const review = await this.mappings.loadReview(this.mappings.projectLocation(project.project_id));
     if (review.status === "approved") {
-      await this.mappings.saveReview(project.project_id, { ...review, script_fingerprint: scriptFingerprint(updated.scenes) });
+      await this.mappings.saveReview(this.mappings.projectLocation(project.project_id), { ...review, script_fingerprint: scriptFingerprint(updated.scenes) });
     }
 
     await this.projects.save(updated);

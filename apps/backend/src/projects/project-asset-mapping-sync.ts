@@ -33,7 +33,7 @@ export async function syncAutoMappings(
   tag: string,
   desired: readonly DesiredAutoMapping[],
 ): Promise<void> {
-  const existing = await mappings.load(projectId);
+  const existing = await mappings.load(mappings.projectLocation(projectId));
   const managed = existing.filter((mapping) => mapping.assignment_source === "auto" && mapping.match_reason === tag);
   const other = existing.filter((mapping) => !(mapping.assignment_source === "auto" && mapping.match_reason === tag));
 
@@ -76,5 +76,5 @@ export async function syncAutoMappings(
     const previous = managed.find((item) => item.asset_id === mapping.asset_id);
     return !previous || previous.mapping_id !== mapping.mapping_id || previous.usage_role !== mapping.usage_role;
   });
-  if (changed) await mappings.save(projectId, [...other, ...next]);
+  if (changed) await mappings.save(mappings.projectLocation(projectId), [...other, ...next]);
 }

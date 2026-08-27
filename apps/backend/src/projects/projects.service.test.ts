@@ -238,12 +238,12 @@ describe("ProjectsService", () => {
 
     await withMappings.updateProjectCast("cast_project", { cast: [{ assetId: hero.asset_id, castRole: "protagonist", storyRole: "대표 캐릭터" }] });
 
-    const created = await mappings.load("cast_project");
+    const created = await mappings.load(mappings.projectLocation("cast_project"));
     expect(created).toHaveLength(1);
     expect(created[0]).toMatchObject({ asset_id: hero.asset_id, usage_role: "character", assignment_source: "auto", match_reason: "auto_cast", status: "confirmed", user_confirmed: true, enabled: true, scene_scope: { mode: "all" }, version_policy: "follow_latest" });
 
     await withMappings.updateProjectCast("cast_project", { cast: [] });
-    expect(await mappings.load("cast_project")).toEqual([]);
+    expect(await mappings.load(mappings.projectLocation("cast_project"))).toEqual([]);
   });
 
   it("does not auto-create a mapping alongside an existing manual mapping for the same Asset", async () => {
@@ -253,7 +253,7 @@ describe("ProjectsService", () => {
     await withMappings.createProject({ projectId: "cast_project", topic: "topic" });
     const hero = await assets.create({ buffer: CHAR_PNG, originalname: "hero.png" }, { assetType: "character", displayName: "Hero" });
     const now = "2026-08-27T00:00:00.000Z";
-    await mappings.save("cast_project", [{
+    await mappings.save(mappings.projectLocation("cast_project"), [{
       mapping_id: "MAP-MANUAL01", project_id: "cast_project", asset_id: hero.asset_id, enabled: true, usage_role: "hand-picked",
       scene_scope: { mode: "all" }, assignment_source: "manual", confidence: null, match_reason: "manual_assignment",
       status: "confirmed", user_confirmed: true, version_policy: "pinned_version", pinned_version: 1, candidate_only: false,
@@ -262,7 +262,7 @@ describe("ProjectsService", () => {
 
     await withMappings.updateProjectCast("cast_project", { cast: [{ assetId: hero.asset_id, castRole: "protagonist", storyRole: "대표 캐릭터" }] });
 
-    const after = await mappings.load("cast_project");
+    const after = await mappings.load(mappings.projectLocation("cast_project"));
     expect(after).toHaveLength(1);
     expect(after[0]).toMatchObject({ mapping_id: "MAP-MANUAL01", assignment_source: "manual" });
   });
@@ -280,7 +280,7 @@ describe("ProjectsService", () => {
       sceneReferenceAssets: [{ assetId: key.asset_id, purpose: "주인공이 항상 들고 다니는 열쇠" }],
     });
 
-    const created = await mappings.load("refs_project");
+    const created = await mappings.load(mappings.projectLocation("refs_project"));
     expect(created).toHaveLength(2);
     expect(created.find((mapping) => mapping.asset_id === style.asset_id)).toMatchObject({ usage_role: "atmosphere", assignment_source: "auto", match_reason: "auto_atmosphere", status: "confirmed" });
     expect(created.find((mapping) => mapping.asset_id === key.asset_id)).toMatchObject({ usage_role: "주인공이 항상 들고 다니는 열쇠", assignment_source: "auto", match_reason: "auto_scene_reference" });
@@ -289,7 +289,7 @@ describe("ProjectsService", () => {
       atmosphereAssetIds: [style.asset_id],
       sceneReferenceAssets: [{ assetId: key.asset_id, purpose: "장면 3에서만 등장하는 열쇠" }],
     });
-    const updated = await mappings.load("refs_project");
+    const updated = await mappings.load(mappings.projectLocation("refs_project"));
     expect(updated).toHaveLength(2); // same mapping_id, not a new one
     const keyMapping = updated.find((mapping) => mapping.asset_id === key.asset_id)!;
     expect(keyMapping.usage_role).toBe("장면 3에서만 등장하는 열쇠");

@@ -155,7 +155,7 @@ describe("SceneEditService.update — mapping review fingerprint re-stamping", (
     const { service, projects, mappings } = await setup();
     const project = await projects.findById("scenes");
     const now = "2026-08-26T00:00:00.000Z";
-    await mappings.saveReview("scenes", {
+    await mappings.saveReview(mappings.projectLocation("scenes"), {
       project_id: "scenes", mapping_revision: 1, script_revision: project.script_revision,
       script_fingerprint: scriptFingerprint(project.scenes), status: "approved", approved_at: now, approved_by: "user",
       text_only_confirmed: true, legacy_confirmed: false, reviewed_scenes: [1, 2, 3],
@@ -164,7 +164,7 @@ describe("SceneEditService.update — mapping review fingerprint re-stamping", (
     await service.update("scenes", "1", { scene: { narration: "고친 내레이션" } });
 
     const reloadedProject = await projects.findById("scenes");
-    const reloadedReview = await mappings.loadReview("scenes");
+    const reloadedReview = await mappings.loadReview(mappings.projectLocation("scenes"));
     expect(reloadedReview.status).toBe("approved");
     expect(reloadedReview.script_fingerprint).toBe(scriptFingerprint(reloadedProject.scenes));
   });
@@ -172,7 +172,7 @@ describe("SceneEditService.update — mapping review fingerprint re-stamping", (
   it("leaves a non-approved (waiting) review's fingerprint alone", async () => {
     const { service, mappings } = await setup();
     await service.update("scenes", "1", { scene: { narration: "고친 내레이션" } });
-    const review = await mappings.loadReview("scenes");
+    const review = await mappings.loadReview(mappings.projectLocation("scenes"));
     expect(review.status).toBe("waiting");
     expect(review.script_fingerprint).toBe("");
   });

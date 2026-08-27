@@ -17,7 +17,20 @@ class ShortProjectMappingOwner implements MappingOwner {
     private readonly project: StoredProject,
     /** Absent in the contexts that never approve anything, exactly as before — see markMappingApproved. */
     private readonly projects: LocalProjectRepository | undefined,
+    readonly directory: string,
   ) {}
+
+  get id(): string {
+    return this.project.project_id;
+  }
+
+  /**
+   * Already true, and known to be, because loading the project is how this owner came to exist.
+   *
+   * The repository asks every location this before it reads, which is right for one built ahead of use. Asking
+   * again here would re-read and re-parse the same file to learn something we are holding the answer to.
+   */
+  async ensureExists(): Promise<void> {}
 
   get sceneCount(): number {
     return toShortProjectSettings(this.project).sceneCount;
@@ -62,6 +75,7 @@ export class ShortProjectMappingOwners implements MappingOwners {
   ) {}
 
   async get(projectId: string): Promise<MappingOwner> {
-    return new ShortProjectMappingOwner(await this.repository.project(projectId), this.projects);
+    const { directory } = this.repository.projectLocation(projectId);
+    return new ShortProjectMappingOwner(await this.repository.project(projectId), this.projects, directory);
   }
 }

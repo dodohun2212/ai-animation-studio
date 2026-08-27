@@ -183,7 +183,7 @@ export class ImageReviewService {
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.
     const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, IMAGE_ESTIMATED_COST_USD) : undefined;
-    const mappings = await this.mappings.load(project.project_id);
+    const mappings = await this.mappings.load(this.mappings.projectLocation(project.project_id));
     return {
       project: toApiProject(project),
       reviews: toApiReviews(reviews, project.updated_at, scenesFor(project), project.image_generation_records),
@@ -249,7 +249,7 @@ export class ImageReviewService {
     let retryEstimate: RegenerateImageReviewResponse["retryEstimate"];
     let referenceOmission: { references_used_count: number; references_omitted_count: number } | undefined;
     if (apiKey && this.budget) {
-      const mappings = await this.mappings.load(project.project_id);
+      const mappings = await this.mappings.load(this.mappings.projectLocation(project.project_id));
       const referenceNotes = await describeReferenceMappingsForScene(this.assets, mappings, number);
       const basePrompt = imagePromptFor(project.scenes[number - 1], styleLineFor(project), referenceNotes);
       const prompt = additionalInstruction ? `${basePrompt}\n${additionalInstruction}` : basePrompt;

@@ -56,19 +56,19 @@ describe("LegacyReferenceMigrationService", () => {
     expect(libraryAssets).toHaveLength(1);
     expect(libraryAssets[0]).toMatchObject({ display_name: "레거시 캐릭터", character_key: "hero", face_baseline: true, legacy_asset_ids: ["RA-000000000001"] });
 
-    const storedMappings = await mappings.load("legacy_project");
+    const storedMappings = await mappings.load(mappings.projectLocation("legacy_project"));
     expect(storedMappings).toHaveLength(1);
     expect(storedMappings[0]).toMatchObject({
       project_id: "legacy_project", asset_id: libraryAssets[0]!.asset_id, assignment_source: "migrated",
       status: "confirmed", user_confirmed: true, version_policy: "pinned_version", pinned_version: 1, usage_role: "character",
     });
-    const review = await mappings.loadReview("legacy_project");
+    const review = await mappings.loadReview(mappings.projectLocation("legacy_project"));
     expect(review.mapping_revision).toBeGreaterThan(0);
 
     const secondReport = await service.migrateAll();
     expect(secondReport).toEqual({ projectsScanned: 1, migratedAssets: 0, deduplicatedAssets: 0, failedAssets: 0 });
     expect(await assets.list()).toHaveLength(1);
-    expect(await mappings.load("legacy_project")).toHaveLength(1);
+    expect(await mappings.load(mappings.projectLocation("legacy_project"))).toHaveLength(1);
   });
 
   it("deduplicates identical bytes across two projects into one Asset while giving each project its own mapping", async () => {
@@ -84,8 +84,8 @@ describe("LegacyReferenceMigrationService", () => {
     const report = await service.migrateAll();
     expect(report).toEqual({ projectsScanned: 2, migratedAssets: 2, deduplicatedAssets: 1, failedAssets: 0 });
     expect(await assets.list()).toHaveLength(1);
-    expect((await mappings.load("project_a"))).toHaveLength(1);
-    expect((await mappings.load("project_b"))).toHaveLength(1);
+    expect((await mappings.load(mappings.projectLocation("project_a")))).toHaveLength(1);
+    expect((await mappings.load(mappings.projectLocation("project_b")))).toHaveLength(1);
   });
 
   it("skips a project with no legacy reference file and never touches its mappings", async () => {
@@ -93,7 +93,7 @@ describe("LegacyReferenceMigrationService", () => {
     await createProject(projectsRoot, "plain_project");
     const report = await service.migrateAll();
     expect(report).toEqual({ projectsScanned: 0, migratedAssets: 0, deduplicatedAssets: 0, failedAssets: 0 });
-    expect(await mappings.load("plain_project")).toEqual([]);
+    expect(await mappings.load(mappings.projectLocation("plain_project"))).toEqual([]);
   });
 
   it("does not let one project's damaged legacy file block migration for another project", async () => {
@@ -124,7 +124,7 @@ describe("LegacyReferenceMigrationService", () => {
     const report = await service.migrateAll();
     expect(report).toEqual({ projectsScanned: 1, migratedAssets: 0, deduplicatedAssets: 0, failedAssets: 1 });
     expect(await assets.list()).toEqual([]);
-    expect(await mappings.load("escape_project")).toEqual([]);
+    expect(await mappings.load(mappings.projectLocation("escape_project"))).toEqual([]);
   });
 
   it("imports a non-character legacy Reference and reuses the second image's bytes to import a distinct Asset", async () => {
@@ -143,6 +143,6 @@ describe("LegacyReferenceMigrationService", () => {
     expect(report).toEqual({ projectsScanned: 1, migratedAssets: 2, deduplicatedAssets: 0, failedAssets: 0 });
     const libraryAssets = await assets.list();
     expect(libraryAssets.map((asset) => asset.asset_type).sort()).toEqual(["background", "style"]);
-    expect((await mappings.load("style_project")).map((mapping) => mapping.usage_role).sort()).toEqual(["background", "style"]);
+    expect((await mappings.load(mappings.projectLocation("style_project"))).map((mapping) => mapping.usage_role).sort()).toEqual(["background", "style"]);
   });
 });

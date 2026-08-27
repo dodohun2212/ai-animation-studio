@@ -32,7 +32,7 @@ async function setup() {
   }));
   await projects.create(project);
   const mappings = new LocalProjectAssetMappingsRepository(projectsRoot);
-  await mappings.saveReview("images", { project_id: "images", mapping_revision: 3, script_revision: 1, script_fingerprint: scriptFingerprint(project.scenes), status: "approved", approved_at: "2026-08-22T00:00:00.000Z", approved_by: "user", text_only_confirmed: true, legacy_confirmed: false, reviewed_scenes: [1, 2, 3, 4, 5, 6] });
+  await mappings.saveReview(mappings.projectLocation("images"), { project_id: "images", mapping_revision: 3, script_revision: 1, script_fingerprint: scriptFingerprint(project.scenes), status: "approved", approved_at: "2026-08-22T00:00:00.000Z", approved_by: "user", text_only_confirmed: true, legacy_confirmed: false, reviewed_scenes: [1, 2, 3, 4, 5, 6] });
   return { root, projectsRoot, projects, mappings };
 }
 
@@ -58,13 +58,13 @@ async function setupWithConnectedOpenAiAndConfirmedReference() {
   const assets = new LocalAssetsRepository(path.dirname(base.projectsRoot));
   const character = await assets.create({ buffer: PNG_BYTES, originalname: "hero.png", mimetype: "image/png" }, { assetType: "character", displayName: "Hero", approved: true });
   const now = "2026-08-22T00:00:00.000Z";
-  await base.mappings.save("images", [{
+  await base.mappings.save(base.mappings.projectLocation("images"), [{
     mapping_id: "MAP-TEST0001", project_id: "images", asset_id: character.asset_id, enabled: true, usage_role: "character",
     scene_scope: { mode: "all" }, assignment_source: "manual", confidence: null, match_reason: "manual_assignment",
     status: "confirmed", user_confirmed: true, version_policy: "follow_latest", pinned_version: null, candidate_only: false,
     created_at: now, updated_at: now, snapshot_path: null, snapshot_sha256: null, snapshot_source_version: null, selected_child_asset_ids: [],
   }]);
-  await base.mappings.saveReview("images", { project_id: "images", mapping_revision: 1, script_revision: 1, script_fingerprint: scriptFingerprint((await base.projects.findById("images")).scenes), status: "approved", approved_at: now, approved_by: "user", text_only_confirmed: false, legacy_confirmed: false, reviewed_scenes: [1, 2, 3, 4, 5, 6] });
+  await base.mappings.saveReview(base.mappings.projectLocation("images"), { project_id: "images", mapping_revision: 1, script_revision: 1, script_fingerprint: scriptFingerprint((await base.projects.findById("images")).scenes), status: "approved", approved_at: now, approved_by: "user", text_only_confirmed: false, legacy_confirmed: false, reviewed_scenes: [1, 2, 3, 4, 5, 6] });
   return { ...base, character };
 }
 
@@ -76,7 +76,7 @@ describe("provider-free local image generation", () => {
     const state = await projects.findById("images"); state.workflow_state = WorkflowState.WaitingForAssetMappingReview; await projects.save(state);
     await expect(service.generate("images", { approved: true })).rejects.toMatchObject({ response: { code: "IMAGE_GENERATION_NOT_ALLOWED" } });
     state.workflow_state = WorkflowState.AssetMappingApproved; await projects.save(state);
-    await mappings.saveReview("images", { ...(await mappings.loadReview("images")), script_fingerprint: "a".repeat(64) });
+    await mappings.saveReview(mappings.projectLocation("images"), { ...(await mappings.loadReview(mappings.projectLocation("images"))), script_fingerprint: "a".repeat(64) });
     await expect(service.generate("images", { approved: true })).rejects.toMatchObject({ response: { code: "ASSET_MAPPING_REVIEW_REQUIRED" } });
   });
 
@@ -112,7 +112,7 @@ describe("provider-free local image generation", () => {
       visual_action: `walks toward the ${number} gate`, shot_size: "", camera_angle: "", composition: "", lens_feel: "", focus_subject: "",
     }));
     await projects.save(project);
-    await mappings.saveReview("images", { ...(await mappings.loadReview("images")), script_fingerprint: scriptFingerprint(project.scenes) });
+    await mappings.saveReview(mappings.projectLocation("images"), { ...(await mappings.loadReview(mappings.projectLocation("images"))), script_fingerprint: scriptFingerprint(project.scenes) });
     await new LocalImageGenerationService(projects, mappings, projectsRoot).generate("images", { approved: true });
     const reloaded = await new LocalProjectRepository(projectsRoot).findById("images");
     for (const [index, prompt] of reloaded.image_prompts.entries()) {
@@ -268,8 +268,8 @@ describe("real OpenAI image generation", () => {
     const extra = await Promise.all(Array.from({ length: 16 }, (_, index) =>
       new LocalAssetsRepository(path.dirname(base.projectsRoot)).create({ buffer: PNG_BYTES, originalname: `extra${index}.png`, mimetype: "image/png" }, { assetType: "style", displayName: `Extra ${index}` })));
     const now = "2026-08-22T00:00:00.000Z";
-    await base.mappings.save("images", [
-      ...(await base.mappings.load("images")),
+    await base.mappings.save(base.mappings.projectLocation("images"), [
+      ...(await base.mappings.load(base.mappings.projectLocation("images"))),
       ...extra.map((asset, index) => ({
         mapping_id: `MAP-EXTRA${String(index).padStart(4, "0")}`, project_id: "images", asset_id: asset.asset_id, enabled: true, usage_role: "style",
         scene_scope: { mode: "all" as const }, assignment_source: "manual" as const, confidence: null, match_reason: "manual_assignment",
@@ -279,7 +279,7 @@ describe("real OpenAI image generation", () => {
     ]);
     // save() invalidates the prior approval (mappings.repository.ts's invalidateReview) — re-approve with the
     // same script_fingerprint, same as any real re-review of an unchanged script.
-    await base.mappings.saveReview("images", { project_id: "images", mapping_revision: 2, script_revision: 1, script_fingerprint: scriptFingerprint((await base.projects.findById("images")).scenes), status: "approved", approved_at: now, approved_by: "user", text_only_confirmed: false, legacy_confirmed: false, reviewed_scenes: [1, 2, 3, 4, 5, 6] });
+    await base.mappings.saveReview(base.mappings.projectLocation("images"), { project_id: "images", mapping_revision: 2, script_revision: 1, script_fingerprint: scriptFingerprint((await base.projects.findById("images")).scenes), status: "approved", approved_at: now, approved_by: "user", text_only_confirmed: false, legacy_confirmed: false, reviewed_scenes: [1, 2, 3, 4, 5, 6] });
     // 1 (setup's own confirmed character) + 16 extra = 17 eligible for every scene, 1 over the 16-image cap.
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);

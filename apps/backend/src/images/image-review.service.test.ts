@@ -52,13 +52,13 @@ async function setupWithConnectedOpenAiAndConfirmedReference() {
   const character = await base.assets.create({ buffer: PNG, originalname: "hero.png", mimetype: "image/png" }, { assetType: "character", displayName: "Hero", approved: true });
   const mappings = new LocalProjectAssetMappingsRepository(base.projectsRoot);
   const now = "2026-08-22T00:00:00.000Z";
-  await mappings.save("review", [{
+  await mappings.save(mappings.projectLocation("review"), [{
     mapping_id: "MAP-TEST0001", project_id: "review", asset_id: character.asset_id, enabled: true, usage_role: "character",
     scene_scope: { mode: "all" }, assignment_source: "manual", confidence: null, match_reason: "manual_assignment",
     status: "confirmed", user_confirmed: true, version_policy: "follow_latest", pinned_version: null, candidate_only: false,
     created_at: now, updated_at: now, snapshot_path: null, snapshot_sha256: null, snapshot_source_version: null, selected_child_asset_ids: [],
   }]);
-  await mappings.saveReview("review", { project_id: "review", mapping_revision: 1, script_revision: 0, script_fingerprint: scriptFingerprint((await base.projects.findById("review")).scenes), status: "approved", approved_at: now, approved_by: "user", text_only_confirmed: false, legacy_confirmed: false, reviewed_scenes: [1, 2, 3, 4, 5, 6] });
+  await mappings.saveReview(mappings.projectLocation("review"), { project_id: "review", mapping_revision: 1, script_revision: 0, script_fingerprint: scriptFingerprint((await base.projects.findById("review")).scenes), status: "approved", approved_at: now, approved_by: "user", text_only_confirmed: false, legacy_confirmed: false, reviewed_scenes: [1, 2, 3, 4, 5, 6] });
   const service = new ImageReviewService(base.projects, base.projectsRoot, base.assets, mappings, providerSettings, budget);
   return { ...base, providerSettings, budget, service };
 }
@@ -94,7 +94,7 @@ describe("provider-free generated image review", () => {
     const { imagePromptFor, styleLineFor } = await import("./image-prompt.js");
     const { describeReferenceMappingsForScene } = await import("./image-reference-selection.js");
     const mappingsRepo = new LocalProjectAssetMappingsRepository(projectsRoot);
-    const mappings = await mappingsRepo.load("review");
+    const mappings = await mappingsRepo.load(mappingsRepo.projectLocation("review"));
     const styleLine = styleLineFor(project);
     project.image_generation_records = await Promise.all([1, 2, 3, 4, 5, 6].map(async (number) => ({
       scene_number: number,
@@ -113,7 +113,7 @@ describe("provider-free generated image review", () => {
     const { imagePromptFor, styleLineFor } = await import("./image-prompt.js");
     const { describeReferenceMappingsForScene } = await import("./image-reference-selection.js");
     const mappingsRepo = new LocalProjectAssetMappingsRepository(projectsRoot);
-    const mappings = await mappingsRepo.load("review");
+    const mappings = await mappingsRepo.load(mappingsRepo.projectLocation("review"));
     const styleLine = styleLineFor(project);
     // Record the prompt as it was BEFORE the character's description was ever written — no mismatch yet.
     project.image_generation_records = await Promise.all([1, 2, 3, 4, 5, 6].map(async (number) => ({
@@ -267,8 +267,8 @@ describe("real OpenAI image regeneration", () => {
     const now = "2026-08-22T00:00:00.000Z";
     const extra = await Promise.all(Array.from({ length: 16 }, (_, index) =>
       base.assets.create({ buffer: PNG, originalname: `extra${index}.png`, mimetype: "image/png" }, { assetType: "style", displayName: `Extra ${index}` })));
-    await mappings.save("review", [
-      ...(await mappings.load("review")),
+    await mappings.save(mappings.projectLocation("review"), [
+      ...(await mappings.load(mappings.projectLocation("review"))),
       ...extra.map((asset, index) => ({
         mapping_id: `MAP-EXTRA${String(index).padStart(4, "0")}`, project_id: "review", asset_id: asset.asset_id, enabled: true, usage_role: "style",
         scene_scope: { mode: "all" as const }, assignment_source: "manual" as const, confidence: null, match_reason: "manual_assignment",

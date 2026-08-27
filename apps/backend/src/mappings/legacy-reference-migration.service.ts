@@ -77,7 +77,7 @@ export class LegacyReferenceMigrationService {
     try { raw = JSON.parse(await fsPromises.readFile(legacyPath, "utf8")); } catch { report.failedAssets += 1; return; }
     if (!Array.isArray(raw)) { report.failedAssets += 1; return; }
     let mappings: StoredAssetMapping[];
-    try { mappings = await this.mappings.load(projectId); } catch { report.failedAssets += 1; return; }
+    try { mappings = await this.mappings.load(this.mappings.projectLocation(projectId)); } catch { report.failedAssets += 1; return; }
     let changed = false;
     for (const rawEntry of raw) {
       const legacy = parseLegacyReference(rawEntry);
@@ -112,6 +112,6 @@ export class LegacyReferenceMigrationService {
       changed = true;
       report.migratedAssets += 1;
     }
-    if (changed) { try { await this.mappings.save(projectId, mappings); } catch { report.failedAssets += 1; } }
+    if (changed) { try { await this.mappings.save(this.mappings.projectLocation(projectId), mappings); } catch { report.failedAssets += 1; } }
   }
 }

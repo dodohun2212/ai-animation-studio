@@ -88,7 +88,7 @@ export class LocalImageGenerationService {
   }
 
   private async approvedMapping(project: StoredProject): Promise<void> {
-    const review = await this.mappings.loadReview(project.project_id);
+    const review = await this.mappings.loadReview(this.mappings.projectLocation(project.project_id));
     if (review.status !== "approved" || review.script_revision !== project.script_revision || review.script_fingerprint !== scriptFingerprint(project.scenes)) {
       throw mappingReviewRequired();
     }
@@ -107,7 +107,7 @@ export class LocalImageGenerationService {
     try { await this.projects.save(current); } catch { throw imageStorageError(); }
 
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
-    const mappings = apiKey && this.budget ? await this.mappings.load(current.project_id) : [];
+    const mappings = apiKey && this.budget ? await this.mappings.load(this.mappings.projectLocation(current.project_id)) : [];
     const continuityImagePath = previousSceneContinuityImagePath(current);
     const styleLine = styleLineFor(current);
     const generated: SceneNumber[] = [];
