@@ -5,7 +5,7 @@ import type { LongEpisodeStatus } from "@ai-animation-studio/shared";
 
 import type { MappingOwner, MappingOwners } from "../mappings/mapping-owner.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
-import { longEpisodeNotFound, longInvalidData, longMalformed, longNotFound, longStorageError } from "./long-project-api.error.js";
+import { longEpisodeMappingNotAllowed, longEpisodeNotFound, longInvalidData, longMalformed, longNotFound, longStorageError } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 
 /**
@@ -47,6 +47,7 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 
 interface StoredEpisode extends Record<string, unknown> {
   number: number;
+  approved?: boolean;
   state: LongEpisodeStatus;
   script: Record<string, unknown>;
   script_revision: number;
@@ -79,13 +80,48 @@ class EpisodeMappingOwner implements MappingOwner {
     return Number.isInteger(this.episode.scene_count) ? this.episode.scene_count as number : DEFAULT_SCENE_COUNT;
   }
 
+  /**
+   * The Episode's scenes, with each one's narration left out.
+   *
+   * The mapping flow hashes these to decide whether a review still describes the script it was approved
+   * against, and narration is the one part of a scene that says nothing about which assets appear in it. Leaving
+   * it in would invalidate an approved mapping every time someone reworded a line — the Episode pipeline already
+   * knew that and stripped it before hashing, in two copies of the same helper.
+   *
+   * Answering it here rather than hashing differently downstream is what makes the two sides agree by
+   * construction. They used to agree only because two functions in two files happened to match, and the moment
+   * this flow started producing the review they stopped matching: an approved mapping would have left image
+   * generation refusing forever, with nothing to point at.
+   */
   get scenes(): readonly unknown[] {
     const scenes = this.episode.script.scenes;
-    return Array.isArray(scenes) ? scenes : [];
+    if (!Array.isArray(scenes)) return [];
+    return scenes.map((scene) => {
+      if (typeof scene !== "object" || scene === null || Array.isArray(scene)) return scene;
+      const { narration: _narration, ...rest } = scene as Record<string, unknown>;
+      return rest;
+    });
   }
 
   get scriptRevision(): number {
     return this.episode.script_revision;
+  }
+
+  /**
+   * Moves the Episode into "waiting for asset mapping review", and refuses when that would make no sense.
+   *
+   * An Episode reaches this step from an approved script, and the implementation this replaces did the same
+   * transition inside its own begin(). Dropping it left approved reviews sitting on an Episode still in
+   * script_approved, which image generation's gate reads as not ready — the mapping would have looked done and
+   * generation would have refused, with the two facts in different files and nothing connecting them.
+   *
+   * Starting again from "waiting" is allowed and changes nothing: re-confirming a review is an ordinary thing
+   * to do, and it is the same state either way.
+   */
+  async markMappingReviewBegun(): Promise<void> {
+    if (this.episode.state === "waiting_for_asset_mapping_review") return;
+    if (this.episode.state !== "script_approved" || this.episode.approved !== true) throw longEpisodeMappingNotAllowed();
+    await this.write({ state: "waiting_for_asset_mapping_review" satisfies LongEpisodeStatus });
   }
 
   /**
@@ -97,14 +133,14 @@ class EpisodeMappingOwner implements MappingOwner {
    */
   async markMappingApproved(mappingRevision: number): Promise<void> {
     if (this.episode.state !== "waiting_for_asset_mapping_review") return;
-    const updated = {
-      ...this.episode,
-      state: "asset_mapping_approved" satisfies LongEpisodeStatus,
-      mapping_revision: mappingRevision,
-      updated_at: new Date().toISOString(),
-    };
+    await this.write({ state: "asset_mapping_approved" satisfies LongEpisodeStatus, mapping_revision: mappingRevision });
+  }
+
+  /** One writer, so the in-memory Episode and the file cannot disagree about what this owner has already done. */
+  private async write(changes: Record<string, unknown>): Promise<void> {
+    Object.assign(this.episode, changes, { updated_at: new Date().toISOString() });
     try {
-      await atomicWriteUtf8File(this.projectFile, JSON.stringify(updated, null, 2));
+      await atomicWriteUtf8File(this.projectFile, JSON.stringify(this.episode, null, 2));
     } catch {
       throw longStorageError();
     }

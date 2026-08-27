@@ -2,7 +2,9 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { EpisodeAssetMappingsService } from "./episode-asset-mappings.service.js";
+import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
+import { ProjectAssetMappingsService } from "../mappings/mappings.service.js";
+import { EpisodeMappingOwners, type EpisodeMappingKey } from "./episode-mapping-owner.js";
 import { EpisodeImagesService } from "./episode-images.service.js";
 import { EpisodeScriptsService } from "./episode-scripts.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
@@ -31,15 +33,21 @@ async function setupWithConnectedOpenAi() {
   await scripts.generate("long", 1, {});
   await scripts.approve("long", 1, { approved: true });
   const assets = new LocalAssetsRepository(root);
-  const mappingsService = new EpisodeAssetMappingsService(projectsRoot, assets);
-  const mapping = await mappingsService.begin("long", 1, { textOnlyConfirmed: true });
-  await mappingsService.approve("long", 1, { approved: true, scriptFingerprint: mapping.review.scriptFingerprint });
+  // Approved through the flow the app actually serves now, not a second implementation of it. That makes this
+  // setup part of the test: if the review this writes and the fingerprint image generation checks ever stopped
+  // agreeing, every case below would fail at the gate instead of passing while the feature was unreachable.
+  const mappingStore = new LocalProjectAssetMappingsRepository(projectsRoot);
+  const mappingOwners = new EpisodeMappingOwners(projectsRoot);
+  const mappingsService = new ProjectAssetMappingsService<EpisodeMappingKey>(mappingStore, assets, mappingOwners);
+  const episodeKey: EpisodeMappingKey = { projectId: "long", episodeNumber: 1 };
+  const begun = await mappingsService.beginReview(episodeKey, { scriptRevision: (await mappingOwners.get(episodeKey)).scriptRevision, textOnlyConfirmed: true });
+  await mappingsService.approveReview(episodeKey, { scriptFingerprint: begun.review.scriptFingerprint });
   const settingsRepository = new ProviderSettingsRepository(root);
   const providerSettings = new ProviderSettingsService(settingsRepository);
   await providerSettings.save("openai", { value: "sk-test-key-1234567890" });
   const budget = new OpenAiBudget(root, 10);
-  const images = new EpisodeImagesService(projectsRoot, assets, mappingsService, providerSettings, budget);
-  return { root, projectsRoot, assets, mappingsService, providerSettings, budget, images };
+  const images = new EpisodeImagesService(projectsRoot, assets, mappingStore, mappingOwners, providerSettings, budget);
+  return { root, projectsRoot, assets, mappingStore, mappingOwners, providerSettings, budget, images };
 }
 
 afterEach(async () => {
@@ -87,14 +95,17 @@ describe("real OpenAI Episode image generation", () => {
     await scripts.generate("long", 1, {});
     await scripts.approve("long", 1, { approved: true });
     const assets = new LocalAssetsRepository(root);
-    const mappingsService = new EpisodeAssetMappingsService(projectsRoot, assets);
-    const mapping = await mappingsService.begin("long", 1, { textOnlyConfirmed: true });
-    await mappingsService.approve("long", 1, { approved: true, scriptFingerprint: mapping.review.scriptFingerprint });
+    const mappingStore = new LocalProjectAssetMappingsRepository(projectsRoot);
+    const mappingOwners = new EpisodeMappingOwners(projectsRoot);
+    const mappingsService = new ProjectAssetMappingsService<EpisodeMappingKey>(mappingStore, assets, mappingOwners);
+    const episodeKey: EpisodeMappingKey = { projectId: "long", episodeNumber: 1 };
+    const begun = await mappingsService.beginReview(episodeKey, { scriptRevision: (await mappingOwners.get(episodeKey)).scriptRevision, textOnlyConfirmed: true });
+    await mappingsService.approveReview(episodeKey, { scriptFingerprint: begun.review.scriptFingerprint });
     const settingsRepository = new ProviderSettingsRepository(root);
     const providerSettings = new ProviderSettingsService(settingsRepository);
     await providerSettings.save("openai", { value: "sk-test-key-1234567890" });
     const budget = new OpenAiBudget(root, 10);
-    const images = new EpisodeImagesService(projectsRoot, assets, mappingsService, providerSettings, budget);
+    const images = new EpisodeImagesService(projectsRoot, assets, mappingStore, mappingOwners, providerSettings, budget);
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -118,13 +129,16 @@ describe("real OpenAI Episode image generation", () => {
     await scripts.generate("long", 1, {});
     await scripts.approve("long", 1, { approved: true });
     const assets = new LocalAssetsRepository(root);
-    const mappingsService = new EpisodeAssetMappingsService(projectsRoot, assets);
-    const mapping = await mappingsService.begin("long", 1, { textOnlyConfirmed: true });
-    await mappingsService.approve("long", 1, { approved: true, scriptFingerprint: mapping.review.scriptFingerprint });
+    const mappingStore = new LocalProjectAssetMappingsRepository(projectsRoot);
+    const mappingOwners = new EpisodeMappingOwners(projectsRoot);
+    const mappingsService = new ProjectAssetMappingsService<EpisodeMappingKey>(mappingStore, assets, mappingOwners);
+    const episodeKey: EpisodeMappingKey = { projectId: "long", episodeNumber: 1 };
+    const begun = await mappingsService.beginReview(episodeKey, { scriptRevision: (await mappingOwners.get(episodeKey)).scriptRevision, textOnlyConfirmed: true });
+    await mappingsService.approveReview(episodeKey, { scriptFingerprint: begun.review.scriptFingerprint });
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const images = new EpisodeImagesService(projectsRoot, assets, mappingsService);
+    const images = new EpisodeImagesService(projectsRoot, assets, mappingStore, mappingOwners);
     const result = await images.generate("long", 1, { approved: true });
 
     expect(fetchMock).not.toHaveBeenCalled();

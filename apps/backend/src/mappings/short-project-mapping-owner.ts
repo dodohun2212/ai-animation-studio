@@ -45,6 +45,13 @@ class ShortProjectMappingOwner implements MappingOwner {
   }
 
   /**
+   * Nothing to do. A short project is already in "waiting for asset mapping review" by the time a review can be
+   * begun — the story step puts it there — so there is no transition here to make, and inventing one would be a
+   * second place deciding a state this owner does not own at this point.
+   */
+  async markMappingReviewBegun(): Promise<void> {}
+
+  /**
    * Advances the project, and only from the one state that means "this approval is what it was waiting for".
    *
    * The guard is not defensive tidiness: a review can be approved again after the project has already moved on,

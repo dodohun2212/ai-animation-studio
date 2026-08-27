@@ -57,6 +57,17 @@ export interface MappingOwner extends MappingLocation {
   /** Which revision of the script those scenes came from. A review is only valid against the revision it was begun on. */
   readonly scriptRevision: number;
   /**
+   * Told that a review has been started, so the owner can move into the state that means "waiting for this",
+   * and can refuse if starting one makes no sense yet.
+   *
+   * Symmetric with markMappingApproved and there for the same reason: beginning a review means something
+   * different to each owner. A short project is already put into "waiting for asset mapping review" by the step
+   * before, so it has nothing to do; an Episode is not, and starting a review is what moves it. Leaving that out
+   * is what made an approved Episode review stop short of the state its own image generation gate looks for.
+   */
+  markMappingReviewBegun(): Promise<void>;
+
+  /**
    * Told that a review was approved, so the owner can move itself along.
    *
    * The owner decides whether that means anything: a short project advances its workflow state, but only from

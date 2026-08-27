@@ -17,7 +17,9 @@ import { toApiEpisodeScript } from "./episode-script-format.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 import { EpisodeAssetMappingsService } from "./episode-asset-mappings.service.js";
 import { EpisodeContinuityReferenceService } from "./episode-continuity-reference.service.js";
-import { collectEpisodeReferenceImages } from "./episode-image-reference-selection.js";
+import { collectReferenceImages } from "../images/image-reference-selection.js";
+import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
+import { EpisodeMappingOwners } from "./episode-mapping-owner.js";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 const statuses: readonly LongEpisodeStatus[] = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted"];
@@ -40,7 +42,13 @@ export class EpisodeImagesService {
   constructor(
     private readonly projectsRoot: string,
     private readonly assets: LocalAssetsRepository = new LocalAssetsRepository(path.dirname(projectsRoot)),
-    private readonly mappings: EpisodeAssetMappingsService = new EpisodeAssetMappingsService(projectsRoot, assets),
+    /**
+     * The short project's mapping store and this Episode's owner, rather than the Episode's own mapping
+     * service. Reference images now come from the same mappings a person can create by hand, with the same
+     * per-scene scope — the reimplementation this replaces had neither.
+     */
+    private readonly mappingStore: LocalProjectAssetMappingsRepository = new LocalProjectAssetMappingsRepository(projectsRoot),
+    private readonly mappingOwners: EpisodeMappingOwners = new EpisodeMappingOwners(projectsRoot),
     private readonly providerSettings?: ProviderSettingsService,
     private readonly budget?: OpenAiBudget,
   ) {}
@@ -127,7 +135,8 @@ export class EpisodeImagesService {
     episode.state = "generating_images"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode);
     const generated: SceneNumber[] = []; const reused: SceneNumber[] = [];
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
-    const candidates = apiKey && this.budget ? (await this.mappings.get(id, number)).review.candidates : [];
+    const owner = apiKey && this.budget ? await this.mappingOwners.get({ projectId: id, episodeNumber: number }) : null;
+    const mappings = owner ? await this.mappingStore.load(owner) : [];
     const referenceOmissions = new Map<SceneNumber, { references_used_count: number; references_omitted_count: number }>();
     try {
       await fs.mkdir(this.files(id, number).images, { recursive: true });
@@ -139,7 +148,7 @@ export class EpisodeImagesService {
         let bytes: Buffer = PNG;
         if (apiKey && this.budget) {
           const prompt = imagePromptFor(scenes[scene - 1], "");
-          const references = await collectEpisodeReferenceImages(this.assets, candidates, number, scene, continuityPath);
+          const references = await collectReferenceImages(this.assets, mappings, owner!.directory, scene, continuityPath);
           if (references.omittedCount > 0) referenceOmissions.set(scene, { references_used_count: references.images.length, references_omitted_count: references.omittedCount });
           const size = await this.imageSize(id, number);
           await this.budget.preflight(IMAGE_ESTIMATED_COST_USD);
@@ -202,9 +211,10 @@ export class EpisodeImagesService {
     if (apiKey && this.budget) {
       const scenes = this.scenes(episode);
       const prompt = imagePromptFor(scenes[scene - 1], "");
-      const candidates = (await this.mappings.get(id, number)).review.candidates;
+      const owner = await this.mappingOwners.get({ projectId: id, episodeNumber: number });
+      const mappings = await this.mappingStore.load(owner);
       const continuityPath = await this.continuityImagePath(id, number);
-      const references = await collectEpisodeReferenceImages(this.assets, candidates, number, scene, continuityPath);
+      const references = await collectReferenceImages(this.assets, mappings, owner.directory, scene, continuityPath);
       if (references.omittedCount > 0) referenceOmission = { references_used_count: references.images.length, references_omitted_count: references.omittedCount };
       try {
         const size = await this.imageSize(id, number);
