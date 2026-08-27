@@ -124,7 +124,9 @@ export class LocalVideoMergeService {
   }
 
   private async approvedClips(project: StoredProject): Promise<string[]> {
-    if (project.workflow_state !== WorkflowState.VideosApproved) throw videoMergeNotAllowed();
+    // Same as the Episode side: Failed is written in one place, by a merge that did not finish, and nothing
+    // was published when it did not. Retrying is the only sensible thing left, and it was refused.
+    if (project.workflow_state !== WorkflowState.VideosApproved && project.workflow_state !== WorkflowState.Failed) throw videoMergeNotAllowed();
     let reviews: unknown;
     try { reviews = JSON.parse(await fs.readFile(path.join(this.projectDirectory(project.project_id), "generated_video_reviews.json"), "utf8")); }
     catch { throw videoMergeClipsInvalid(); }

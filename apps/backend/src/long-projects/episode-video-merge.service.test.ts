@@ -64,7 +64,13 @@ describe("EpisodeVideoMergeService", () => {
     await expect(new EpisodeVideoMergeService(projectsRoot, runner({ noOutput: true })).merge("long", 1)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_MERGE_FAILED" } });
     const project = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "project.json"), "utf8")) as { state: string; errors: string[] }; expect(project.state).toBe("failed"); expect(project.errors).toContain("Episode video rendering failed.");
     await expect(fs.stat(path.join(projectsRoot, "long", "long_story", "Episode01", "videos", "scene1.mp4"))).resolves.toBeTruthy();
-    await expect(new EpisodeVideoMergeService(projectsRoot, runner({ unavailable: true })).merge("long", 1)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_MERGE_NOT_ALLOWED" } });
+    // A second attempt is allowed, and fails for the reason it actually fails for rather than being refused
+    // as not-allowed. This line used to assert the refusal, which pinned the dead end as intended behaviour:
+    // the merge is the only thing that writes `failed`, nothing was published when it did, and the approved
+    // clips are still on disk one line above — there was never anything to do from there except try again.
+    await expect(new EpisodeVideoMergeService(projectsRoot, runner({ unavailable: true })).merge("long", 1)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_FFMPEG_UNAVAILABLE" } });
+    // And it succeeds once the thing that broke is working, which is the whole point of letting it start.
+    await expect(new EpisodeVideoMergeService(projectsRoot, runner()).merge("long", 1)).resolves.toMatchObject({ episode: { status: "completed" } });
   });
 
   it("reports unavailable and invalid probe errors without moving an approved Episode to rendering", async () => {

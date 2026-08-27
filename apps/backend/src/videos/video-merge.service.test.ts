@@ -111,7 +111,10 @@ describe("local FFmpeg video merge", () => {
     const failed = await projects.findById("video_merge");
     expect(failed.workflow_state).toBe(WorkflowState.Failed); expect(failed.errors).toContain("Local video rendering failed.");
     await expect(fs.stat(path.join(projectsRoot, "video_merge", "videos", "runway", "scene1.mp4"))).resolves.toBeTruthy();
-    failed.workflow_state = WorkflowState.VideosApproved; failed.errors = []; await projects.save(failed);
+    // No hand-editing the state back first. This line used to set VideosApproved and clear the errors before
+    // retrying, which is the dead end written down as a workaround: the only way past a failed merge was to
+    // rewrite the project file, and a person has no way to do that. FAILED is written by one thing — a merge
+    // that did not finish — and nothing was published when it did not, so it is a state to start again from.
     await expect(new LocalVideoMergeService(new LocalProjectRepository(projectsRoot), projectsRoot, runner()).merge("video_merge")).resolves.toMatchObject({ finalVideoPath: "videos/final/instagram_reel.mp4" });
   });
 

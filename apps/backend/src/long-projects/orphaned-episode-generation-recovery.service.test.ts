@@ -104,7 +104,7 @@ describe("OrphanedEpisodeGenerationRecoveryService", () => {
     expect(two).toMatchObject({ state: "interrupted", outlineStatus: "interrupted" });
     expect(two.warnings).toEqual(["이전에 영상을 만들다가 서버가 꺼져서 중간에 멈췄습니다. 이미 만들어진 것은 그대로 있고, 이어서 다시 만들 수 있습니다."]);
     const three = await readEpisodeState(projectsRoot, "long", 3);
-    expect(three).toMatchObject({ state: "failed", outlineStatus: "failed" });
+    expect(three).toMatchObject({ state: "videos_approved", outlineStatus: "videos_approved" });
     expect(three.warnings).toEqual(["이전에 최종 영상을 합치다가 서버가 꺼져서 중간에 멈췄습니다. 다시 시도할 수 있습니다."]);
     // Plain language only, no raw LongEpisodeStatus value like GENERATING_IMAGES in the sentence.
     for (const warnings of [one.warnings, two.warnings, three.warnings] as string[][]) {

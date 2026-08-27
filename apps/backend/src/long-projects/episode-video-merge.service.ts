@@ -77,7 +77,11 @@ export class EpisodeVideoMergeService {
   private clipDurationSeconds(episode: Episode): 5 | 10 { return Number(episode.duration_seconds) / this.sceneCount(episode) >= 7.5 ? 10 : 5; }
 
   private async approvedClips(id: string, number: number, episode: Episode): Promise<string[]> {
-    if (episode.state !== "videos_approved") throw longEpisodeMergeNotAllowed();
+    // `failed` is reachable from exactly one place — a merge that did not finish — and a merge that did not
+    // finish published nothing. So it is a state to try again from, not a state to be stuck in. Without
+    // this the app tells the person their approved scenes are still there and to try again, and then
+    // refuses; the paid work behind those scenes stays reachable only by editing a file by hand.
+    if (episode.state !== "videos_approved" && episode.state !== "failed") throw longEpisodeMergeNotAllowed();
     const sceneNumbers = sceneNumbersFor(this.sceneCount(episode));
     const [rawReviews, rawRecords] = await Promise.all([this.json(this.files(id, number).reviews).catch(() => { throw longEpisodeMergeClipsInvalid(); }), this.json(this.files(id, number).records).catch(() => { throw longEpisodeMergeClipsInvalid(); })]);
     if (!Array.isArray(rawReviews) || rawReviews.length !== sceneNumbers.length || !rawReviews.every((item) => object(item) && scene(item.scene_number) && item.status === "approved" && typeof item.updated_at === "string") || new Set(rawReviews.map((item) => (item as Review).scene_number)).size !== sceneNumbers.length) throw longEpisodeMergeClipsInvalid();

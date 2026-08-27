@@ -36,7 +36,11 @@ import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 const RECOVERY_TARGETS: ReadonlyMap<LongEpisodeStatus, LongEpisodeStatus> = new Map([
   ["generating_images", "asset_mapping_approved"],
   ["videos_generating", "interrupted"],
-  ["rendering", "failed"],
+  // Back to where it was, not to "failed". The server being stopped mid-merge is an interruption, not a
+  // failure of the merge, and the warning below is what says so. Recording it as a failure also used to
+  // make this table's own message untrue: it promised the person they could try again, into a state the
+  // merge refused to start from. Matches the short project's Rendering -> VideosApproved.
+  ["rendering", "videos_approved"],
 ]);
 
 const RECOVERY_MESSAGES: ReadonlyMap<LongEpisodeStatus, string> = new Map([
