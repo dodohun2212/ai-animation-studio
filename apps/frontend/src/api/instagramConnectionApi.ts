@@ -1,7 +1,9 @@
 import {
   API_ROUTES,
+  type CompleteInstagramLoginResponse,
   type InstagramConnectionStatus,
   type SetInstagramAppResponse,
+  type StartInstagramLoginRequest,
   type StartInstagramLoginResponse,
 } from "@ai-animation-studio/shared";
 
@@ -49,6 +51,10 @@ function isStatus(value: unknown): value is InstagramConnectionStatus {
     isRecord(value)
     && typeof value.appConfigured === "boolean"
     && typeof value.tokenStored === "boolean"
+    // Required, deliberately: this decides whether the browser is offered a sign-in at all, and defaulting a
+    // missing value would pick one of the two wrong answers silently — either hiding a working path or
+    // offering one that cannot complete.
+    && typeof value.callbackLoginAvailable === "boolean"
     && (value.tokenExpiresAt === undefined || isNonEmptyString(value.tokenExpiresAt))
   );
 }
@@ -112,16 +118,45 @@ export async function setInstagramApp(appId: string, appSecret: string): Promise
 }
 
 /**
- * The Meta login page to open. Nothing has to watch the window afterwards — Meta redirects back to this app's
- * own backend, which reads the code and checks the state it issued. The screen finds out the login finished by
- * reading the connection status again.
+ * The Meta login page to open, and — for the desktop flow — the address whose arrival means the login is done.
+ *
+ * The caller names its own flow because only the caller knows it: the server sees the same request from a
+ * browser tab and from the shell, and cannot tell which one can read its own window. A wrong guess here does
+ * not fail loudly — it opens a window nobody watches and waits — so it is asked for rather than inferred.
+ *
+ * `redirectPrefix` is optional in the contract and its absence is meaningful rather than a defect: it marks a
+ * flow that needs no window watched, which today only the dormant callback route produces. So this validates
+ * the field's *shape* and hands its presence to the caller to act on — rejecting a response for lacking it
+ * would reject a response the contract calls valid.
  */
-export async function startInstagramLogin(): Promise<StartInstagramLoginResponse> {
-  const body = await request(API_ROUTES.instagramLoginStart, { method: "POST" });
+export async function startInstagramLogin(flow: StartInstagramLoginRequest["flow"]): Promise<StartInstagramLoginResponse> {
+  const body = await request(API_ROUTES.instagramLoginStart, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ flow }),
+  });
   if (!isRecord(body) || !isNonEmptyString(body.url)) {
     throw new InstagramConnectionApiError(MALFORMED.code, MALFORMED.message);
   }
-  return { url: body.url };
+  if (body.redirectPrefix !== undefined && !isNonEmptyString(body.redirectPrefix)) {
+    throw new InstagramConnectionApiError(MALFORMED.code, MALFORMED.message);
+  }
+  return isNonEmptyString(body.redirectPrefix)
+    ? { url: body.url, redirectPrefix: body.redirectPrefix }
+    : { url: body.url };
+}
+
+/**
+ * Hands the landed URL back whole. The server reads the code out of it and checks it against the `state` it
+ * issued — the screen parses nothing, so a URL that did not come from our own request cannot be laundered into
+ * a login here. It is also why the screen can pass along an address it does not understand.
+ */
+export async function completeInstagramLogin(redirectedUrl: string): Promise<CompleteInstagramLoginResponse> {
+  return requestStatus(API_ROUTES.instagramLoginComplete, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ redirectedUrl }),
+  });
 }
 
 /** Signs out: drops the stored token. The app id and secret stay, so signing back in needs no re-entry. */

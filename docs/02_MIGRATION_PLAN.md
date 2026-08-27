@@ -1510,3 +1510,12 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 신규 테스트: TLS 해석 7건(반쪽 설정 거부, 빈 파일 거부, 포트 검증, **에러에 개인키 내용이 실리지 않음** 포함), `flow` 필수·잘못된 값 거부, 콜백 미제공 시 거부, `callbackLoginAvailable` 양쪽 값, 상태와 실제 발급 주소가 한 해석에서 나오는지.
   - **프런트는 Cowork 몫이고 이 커밋에 없음** — 계약이 이 커밋으로 확정되므로 Cowork이 `callbackLoginAvailable`로 안내를 갈라 쓰고 콜백 흐름 폴링을 되살리면 완료. 그때까지 커밋된 화면은 `flow` 없이 start를 호출해 400을 받는다(기존의 조용한 5분 대기보다는 나은 실패). Cowork의 미커밋 프런트 작업은 건드리지 않음.
   - 검증: root typecheck 전부 통과, Backend 928개(+12 신규) 전부 통과, frontend 945개 전부 통과, root build 전부 통과.
+  - 커밋: `3ef0087`.
+- [x] **프런트 — 두 로그인 흐름 배선 완료, 브라우저가 정상 경로가 됨(Round 198)**: Cowork Round 214. 계약(`3ef0087`)의 프런트 절반.
+  - 흐름 결정을 화면이 한다 — 서버는 호출자가 브라우저인지 셸인지 모르기 때문: Electron 셸이면 `"desktop"`(`callbackLoginAvailable`과 무관), 브라우저 + available이면 `"callback"`, 브라우저 + 아니면 **버튼 비활성 + 이유 명시**. 버튼을 살려두면 실패가 **메타 페이지에서** 나는데 그건 우리 화면 밖이라 문구를 고를 수 없고 사용자는 자기 앱 설정을 의심하게 됨.
+  - `canOpenInstagramLogin()`을 `hasElectronBridge()`와 분리 유지 — 옛 셸은 브리지가 있고 창 기능이 없음. 그 경우 브라우저와 같이 취급(테스트로 고정).
+  - **`callbackLoginAvailable: true`일 때 화면은 아무 말도 하지 않는다** — "로그인 준비 완료" 배지 없음. 등록 여부도 인증서 신뢰도 앱이 모르는데 초록 배지가 있으면 메타 페이지에서 실패했을 때 사용자가 그 배지를 믿고 엉뚱한 데를 뒤짐(D-006).
+  - `pollUntilTokenStored` 되살림(Round 211에서 지운 것) — 지운 이유(그 흐름이 없어짐)가 사라졌으므로. 창 닫힘 검사를 상태 읽기 **앞**에 두는 순서와 그 근거(D-019)를 그대로 유지. 콜백 흐름의 끝을 셋으로 구분: 저장됨 / 창 닫음(취소) / 5분(시간 초과) — 사람이 한 일과 안 한 일을 같은 문구로 묶지 않음.
+  - `isStatus`가 `callbackLoginAvailable`을 **필수로** 검사 — 기본값이 없는 이유는 없을 때 고를 수 있는 값이 둘 다 틀리기 때문(`false`면 멀쩡한 콜백을 숨기고, `true`면 완료될 수 없는 로그인을 권함). 계약이 깨지면 카드가 "불러오지 못했습니다"로 떨어지는 게 맞음.
+  - **🔴 CLI가 직접 고친 빌드 깨짐**: `instagramConnectionApi.test.ts`가 갱신되지 않아 typecheck 3건(TS2554 — `startInstagramLogin()` 인자 누락)과 테스트 1건(status fixture에 `callbackLoginAvailable` 누락)이 깨져 있었음. Cowork 보고의 "타입체크 통과 / 누락 fixture 0건"과 실제가 달랐음 — 우편함 규칙의 기계적 빌드 깨짐 예외로 CLI가 고치고 보고에 명시. 실제 검증은 항상 CLI가 돌린다는 구역 분담이 여기서 값을 함.
+  - 검증: root typecheck 전부 통과, frontend 954개 전부 통과, Backend 928개 전부 통과, root build 전부 통과.

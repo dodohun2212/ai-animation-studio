@@ -5,15 +5,44 @@ import { jsonResponse } from "../api/testUtils.js";
 import { InstagramConnectionCard, pollUntilTokenStored, tokenLine } from "./InstagramConnectionCard.js";
 
 function status(overrides: Record<string, unknown> = {}) {
-  return { appConfigured: true, tokenStored: false, ...overrides } as never;
+  return { appConfigured: true, tokenStored: false, callbackLoginAvailable: false, ...overrides } as never;
+}
+
+/**
+ * Stands in for the packaged shell for one test and puts the real value back afterwards. A plain browser tab
+ * has no `electronAPI` at all, and an older shell has one without `openInstagramLogin` — both are states this
+ * card has to handle, so the fake is built from whatever the test passes rather than a fixed shape.
+ */
+async function withElectron(bridge: Record<string, unknown>, body: () => Promise<void>): Promise<void> {
+  const original = Object.getOwnPropertyDescriptor(window, "electronAPI");
+  Object.defineProperty(window, "electronAPI", {
+    value: { openProjectPath: vi.fn(), ...bridge },
+    configurable: true,
+  });
+  try {
+    await body();
+  } finally {
+    if (original) Object.defineProperty(window, "electronAPI", original);
+    else Reflect.deleteProperty(window as unknown as Record<string, unknown>, "electronAPI");
+  }
 }
 
 function renderCard(overrides: Record<string, unknown> = {}, onStatusChange = () => {}) {
   return render(<InstagramConnectionCard status={status(overrides)} onStatusChange={onStatusChange} />);
 }
 
+/** A clock that only moves when the flow waits, so a five-minute timeout costs a test no time at all. */
+function clock() {
+  let current = 0;
+  return { now: () => current, wait: async (ms: number) => { current += ms; } };
+}
+
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.parse("2026-08-27T00:00:00.000Z");
+const PREFIX = "https://www.facebook.com/connect/login_success.html";
+const PAGE = "https://www.facebook.com/dialog/oauth?client_id=1";
+const STORED = { appConfigured: true, tokenStored: true, callbackLoginAvailable: true } as never;
+const NOT_STORED = { appConfigured: true, tokenStored: false, callbackLoginAvailable: true } as never;
 
 describe("tokenLine", () => {
   // "Stored" is not "works": this app has never asked Meta whether a stored token is still accepted, and saying
@@ -47,17 +76,8 @@ describe("tokenLine", () => {
   });
 });
 
-/** A clock that only moves when the flow waits, so a five-minute timeout costs a test no time at all. */
-function clock() {
-  let current = 0;
-  return { now: () => current, wait: async (ms: number) => { current += ms; } };
-}
-
-const STORED = { appConfigured: true, tokenStored: true } as never;
-const NOT_STORED = { appConfigured: true, tokenStored: false } as never;
-
 describe("pollUntilTokenStored", () => {
-  const open = () => false;
+  const openWindow = () => false;
 
   it("succeeds only once the server says a token is stored", async () => {
     const readStatus = vi.fn()
@@ -65,20 +85,20 @@ describe("pollUntilTokenStored", () => {
       .mockResolvedValueOnce(NOT_STORED)
       .mockResolvedValueOnce(STORED);
     const result = await pollUntilTokenStored({
-      isWindowClosed: open, readStatus, abandoned: () => false, ...clock(), intervalMs: 10, timeoutMs: 10_000,
+      isWindowClosed: openWindow, readStatus, abandoned: () => false, ...clock(), intervalMs: 10, timeoutMs: 10_000,
     });
     expect(result).toBe(STORED);
     expect(readStatus).toHaveBeenCalledTimes(3);
   });
 
   /**
-   * The one that decides whether watching is worth having.
+   * The one that decides whether this flow works at all.
    *
    * The callback page has no script and closes nothing — it asks the person to close the window — so the close
    * arrives whenever they get round to it, including right after a sign-in that already succeeded. Check the
-   * closed window after the read instead of before and that read can be stale, ending the wait on a login that
-   * completed; the person is then left pressing the fallback button on an account already connected. Because it
-   * turns on human timing it would reproduce only sometimes, which is the worst way for it to be found.
+   * closed window after the read instead of before and that read can be stale, ending the wait on a completed
+   * login; the person is then told nothing happened on an account that is in fact connected. Because it turns
+   * on human timing it would reproduce only sometimes, which is the worst way for it to be found.
    */
   it("treats a window that closed on success as a success", async () => {
     const result = await pollUntilTokenStored({
@@ -88,7 +108,6 @@ describe("pollUntilTokenStored", () => {
     expect(result).toBe(STORED);
   });
 
-  // Giving up is not a failure state here: the button below still finishes the job, so this only has to stop.
   it("stops when the window closed with no token", async () => {
     const result = await pollUntilTokenStored({
       isWindowClosed: () => true, readStatus: async () => NOT_STORED, abandoned: () => false,
@@ -100,7 +119,7 @@ describe("pollUntilTokenStored", () => {
   it("stops once the cap is reached", async () => {
     const readStatus = vi.fn().mockResolvedValue(NOT_STORED);
     const result = await pollUntilTokenStored({
-      isWindowClosed: open, readStatus, abandoned: () => false, ...clock(), intervalMs: 100, timeoutMs: 250,
+      isWindowClosed: openWindow, readStatus, abandoned: () => false, ...clock(), intervalMs: 100, timeoutMs: 250,
     });
     expect(result).toBeNull();
     expect(readStatus).toHaveBeenCalledTimes(3);
@@ -112,17 +131,17 @@ describe("pollUntilTokenStored", () => {
       .mockRejectedValueOnce(new Error("boom"))
       .mockResolvedValueOnce(STORED);
     const result = await pollUntilTokenStored({
-      isWindowClosed: open, readStatus, abandoned: () => false, ...clock(), intervalMs: 10, timeoutMs: 10_000,
+      isWindowClosed: openWindow, readStatus, abandoned: () => false, ...clock(), intervalMs: 10, timeoutMs: 10_000,
     });
     expect(result).toBe(STORED);
   });
 
-  // Every await here can outlive the card that started it — a status that arrives after the screen moved on
-  // must not be pushed into a component that is no longer listening.
+  // Every await here can outlive the card that started it — a status arriving after the screen moved on must
+  // not be pushed into a component that is no longer listening.
   it("reports nothing once abandoned, even holding a stored token", async () => {
     let abandoned = false;
     const result = await pollUntilTokenStored({
-      isWindowClosed: open,
+      isWindowClosed: openWindow,
       readStatus: async () => { abandoned = true; return STORED; },
       abandoned: () => abandoned,
       ...clock(), intervalMs: 10, timeoutMs: 10_000,
@@ -142,65 +161,153 @@ describe("InstagramConnectionCard", () => {
     expect(screen.queryByTestId("instagram-token-line")).toBeNull();
   });
 
-  // Login now works wherever the app runs: Meta redirects back to the backend, so nothing has to inspect a
-  // window. The browser is the environment the user actually works in.
-  it("offers login in a plain browser tab, with no desktop shell present", () => {
-    renderCard();
+  /**
+   * Neither side can decide this alone: the server knows whether it is serving the HTTPS callback, and only the
+   * screen knows whether it sits in a shell that can read its own window. These three pin the combination.
+   */
+  it("offers the browser sign-in when the server is serving the callback", () => {
+    renderCard({ callbackLoginAvailable: true });
     expect(screen.getByTestId("instagram-login-button")).not.toBeDisabled();
     expect(screen.queryByTestId("instagram-login-unavailable")).toBeNull();
   });
 
-  it("cannot start a login before the app details exist", () => {
-    renderCard({ appConfigured: false });
-    expect(screen.getByTestId("instagram-login-button")).toBeDisabled();
+  it("prefers the shell's own window whenever there is one, callback or not", async () => {
+    await withElectron({ openInstagramLogin: vi.fn() }, async () => {
+      renderCard({ callbackLoginAvailable: false });
+      expect(screen.getByTestId("instagram-login-button")).not.toBeDisabled();
+    });
   });
 
-  it("opens the login page and then asks the server what happened, never reading the code itself", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { url: "https://www.facebook.com/dialog/oauth?x=1" }))
-      .mockResolvedValueOnce(jsonResponse(200, { appConfigured: true, tokenStored: true, tokenExpiresAt: new Date(NOW + 60 * DAY).toISOString() }));
+  /**
+   * A browser tab with no callback listener has no way to sign in at all — Meta will not redirect to an address
+   * this app cannot offer. The button must not be pressable, and the notice has to name the missing piece
+   * rather than leave the person hunting for a setting inside this app.
+   */
+  it("says why a plain browser tab cannot sign in yet", () => {
+    renderCard({ callbackLoginAvailable: false });
+    expect(screen.getByTestId("instagram-login-button")).toBeDisabled();
+    const notice = screen.getByTestId("instagram-login-unavailable");
+    expect(notice.textContent).toContain("HTTPS");
+    expect(notice.textContent).toContain("인증서");
+  });
+
+  /**
+   * A shell built before the login window existed has `electronAPI` and no `openInstagramLogin`. Gating on the
+   * bridge's presence alone would send it down the desktop path and then call `undefined`.
+   */
+  it("does not take the desktop path in a shell that cannot open the window", async () => {
+    await withElectron({}, async () => {
+      renderCard({ callbackLoginAvailable: false });
+      expect(screen.getByTestId("instagram-login-button")).toBeDisabled();
+      expect(screen.getByTestId("instagram-login-unavailable")).toBeTruthy();
+    });
+  });
+
+  it("cannot start a login before the app details exist", async () => {
+    await withElectron({ openInstagramLogin: vi.fn() }, async () => {
+      renderCard({ appConfigured: false });
+      expect(screen.getByTestId("instagram-login-button")).toBeDisabled();
+    });
+  });
+
+  /**
+   * The flow is named in the request because the server cannot tell a browser tab from the shell, and a wrong
+   * guess does not fail loudly — it opens a window nobody watches. So which name is sent is worth pinning on
+   * both branches.
+   */
+  it("names the desktop flow, then hands the landed url straight back to the server", async () => {
+    const landed = `${PREFIX}?code=abc&state=xyz`;
+    const openInstagramLogin = vi.fn().mockResolvedValue({ kind: "redirected", url: landed });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { url: PAGE, redirectPrefix: PREFIX }))
+      .mockResolvedValueOnce(jsonResponse(200, { appConfigured: true, tokenStored: true, callbackLoginAvailable: false }));
     vi.stubGlobal("fetch", fetchMock);
-    const open = vi.fn().mockReturnValue({});
+
+    await withElectron({ openInstagramLogin }, async () => {
+      const onStatusChange = vi.fn();
+      renderCard({}, onStatusChange);
+      fireEvent.click(screen.getByTestId("instagram-login-button"));
+
+      await waitFor(() => expect(onStatusChange).toHaveBeenCalled());
+      const [startUrl, startInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(String(startUrl)).toBe("/settings/instagram/login/start");
+      expect(JSON.parse(String(startInit.body))).toEqual({ flow: "desktop" });
+      // Opened on the server's page and watched for the server's prefix — the screen invents neither, so it
+      // cannot open a dialog carrying a `state` the server will not recognise.
+      expect(openInstagramLogin).toHaveBeenCalledWith(PAGE, PREFIX);
+      const complete = fetchMock.mock.calls[1] as [string, RequestInit];
+      expect(String(complete[0])).toBe("/settings/instagram/login/complete");
+      // Handed over whole: the screen reads nothing out of it, so a URL from anywhere else cannot be dressed up
+      // as a login here.
+      expect(JSON.parse(String(complete[1].body))).toEqual({ redirectedUrl: landed });
+    });
+  });
+
+  it("names the callback flow and opens the page the server gave, without waiting on a window it never got", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { url: PAGE }));
+    vi.stubGlobal("fetch", fetchMock);
+    const open = vi.fn().mockReturnValue(null);
     vi.stubGlobal("open", open);
 
-    const onStatusChange = vi.fn();
-    renderCard({}, onStatusChange);
-
-    fireEvent.click(screen.getByTestId("instagram-login-button"));
-    await screen.findByTestId("instagram-login-awaiting");
-    expect(open).toHaveBeenCalledWith("https://www.facebook.com/dialog/oauth?x=1", "instagram-login", expect.any(String));
-
-    fireEvent.click(screen.getByTestId("instagram-login-refresh"));
-    await waitFor(() => expect(onStatusChange).toHaveBeenCalled());
-    // The second call reads status; the code never passes through this screen at all.
-    expect(String((fetchMock.mock.calls[1] as [string, RequestInit])[0])).toBe("/settings/instagram/connection");
-  });
-
-  // A blocked popup is the one case where pressing the button really does nothing, so it has to be said.
-  it("says so when the login window is blocked", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { url: "https://www.facebook.com/dialog/oauth" })));
-    vi.stubGlobal("open", vi.fn().mockReturnValue(null));
-
-    renderCard();
+    renderCard({ callbackLoginAvailable: true });
     fireEvent.click(screen.getByTestId("instagram-login-button"));
 
     const error = await screen.findByTestId("instagram-connection-error");
-    expect(error.textContent).toContain("팝업");
-    expect(screen.queryByTestId("instagram-login-awaiting")).toBeNull();
+    // A blocked popup is not a server error and not something pressing again fixes, so it names the setting.
+    expect(error).toHaveAttribute("data-error-code", "CLIENT_POPUP_BLOCKED");
+    expect(error.textContent).toContain("팝업 차단");
+    const [, startInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(startInit.body))).toEqual({ flow: "callback" });
+    expect(String((open.mock.calls[0] as unknown[])[0])).toBe(PAGE);
   });
 
-  // Run in a plain tab, like every other test here: signing in no longer involves the shell at all, so putting a
-  // fake `electronAPI` on the window would exercise a state the app no longer has.
+  /**
+   * Closing the window is an ordinary change of mind, and in the desktop flow it is also a complete answer —
+   * the code is only exchanged by the completion call, so nothing was stored and nothing is left to confirm.
+   */
+  it("treats a closed desktop window as a cancellation, and sends nothing", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { url: PAGE, redirectPrefix: PREFIX }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await withElectron({ openInstagramLogin: vi.fn().mockResolvedValue({ kind: "cancelled" }) }, async () => {
+      renderCard();
+      fireEvent.click(screen.getByTestId("instagram-login-button"));
+
+      await screen.findByTestId("instagram-login-cancelled");
+      expect(screen.queryByTestId("instagram-connection-error")).toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  /**
+   * The desktop flow is finished by watching for an address, so a start without one leaves nothing to watch.
+   * It cannot happen against a matching backend — which is why it is reported as a build problem — but silence
+   * would leave the button looking broken, and opening a window against an undefined prefix would be worse.
+   */
+  it("says so when a desktop start arrives with no address to watch", async () => {
+    const openInstagramLogin = vi.fn();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { url: PAGE })));
+
+    await withElectron({ openInstagramLogin }, async () => {
+      renderCard();
+      fireEvent.click(screen.getByTestId("instagram-login-button"));
+
+      const error = await screen.findByTestId("instagram-connection-error");
+      expect(error).toHaveAttribute("data-error-code", "CLIENT_UNSUPPORTED_LOGIN_FLOW");
+      expect(openInstagramLogin).not.toHaveBeenCalled();
+    });
+  });
+
   it("shows a rejected login start without leaking the raw backend text", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(400, { code: "INSTAGRAM_PROVIDER_ERROR", message: "raw backend detail" })));
-    vi.stubGlobal("open", vi.fn());
 
-    renderCard();
-    fireEvent.click(screen.getByTestId("instagram-login-button"));
+    await withElectron({ openInstagramLogin: vi.fn() }, async () => {
+      renderCard();
+      fireEvent.click(screen.getByTestId("instagram-login-button"));
 
-    const error = await screen.findByTestId("instagram-connection-error");
-    expect(error.textContent).not.toContain("raw backend detail");
+      const error = await screen.findByTestId("instagram-connection-error");
+      expect(error.textContent).not.toContain("raw backend detail");
+    });
   });
 
   // Saving new app details throws the stored token away, so it is said before it happens rather than discovered
@@ -219,7 +326,7 @@ describe("InstagramConnectionCard", () => {
   });
 
   it("saves on the second press, once the warning has been seen", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { appConfigured: true, tokenStored: false }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { appConfigured: true, tokenStored: false, callbackLoginAvailable: false }));
     vi.stubGlobal("fetch", fetchMock);
     renderCard({ tokenStored: true, tokenExpiresAt: new Date(NOW + 60 * DAY).toISOString() });
 
@@ -235,7 +342,7 @@ describe("InstagramConnectionCard", () => {
 
   // No token stored means nothing to invalidate, so the extra press would be a confirmation of nothing.
   it("saves straight away when there is no token to lose", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { appConfigured: true, tokenStored: false }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { appConfigured: true, tokenStored: false, callbackLoginAvailable: false }));
     vi.stubGlobal("fetch", fetchMock);
     renderCard();
 
@@ -254,7 +361,7 @@ describe("InstagramConnectionCard", () => {
   });
 
   it("signs out via the connection endpoint", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { appConfigured: true, tokenStored: false }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { appConfigured: true, tokenStored: false, callbackLoginAvailable: false }));
     vi.stubGlobal("fetch", fetchMock);
     renderCard({ tokenStored: true, tokenExpiresAt: new Date(NOW + 60 * DAY).toISOString() });
 

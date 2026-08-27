@@ -247,7 +247,7 @@ describe("ProviderSettingsScreen", () => {
     const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" })];
     vi.stubGlobal("fetch", vi.fn().mockImplementation((url: unknown) => Promise.resolve(
       String(url).includes("/instagram/")
-        ? jsonResponse(200, { appConfigured: true, tokenStored: false })
+        ? jsonResponse(200, { appConfigured: true, tokenStored: false, callbackLoginAvailable: false })
         : jsonResponse(200, { providers }),
     )));
     render(<ProviderSettingsScreen onBack={() => {}} />);

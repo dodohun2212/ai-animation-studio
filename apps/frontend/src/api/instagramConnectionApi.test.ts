@@ -22,7 +22,7 @@ describe("instagramConnectionApi", () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { url: "https://www.facebook.com/v26.0/dialog/oauth?x=1" }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const started = await startInstagramLogin();
+    const started = await startInstagramLogin("callback");
 
     expect(started).toEqual({ url: "https://www.facebook.com/v26.0/dialog/oauth?x=1" });
     expect((fetchMock.mock.calls[0] as [string, RequestInit])[0]).toBe("/settings/instagram/login/start");
@@ -30,11 +30,11 @@ describe("instagramConnectionApi", () => {
 
   it("rejects a login start response with no url", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, {})));
-    await expect(startInstagramLogin()).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+    await expect(startInstagramLogin("callback")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
   });
 
   it("signs out via DELETE", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { appConfigured: true, tokenStored: false }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { appConfigured: true, tokenStored: false, callbackLoginAvailable: true }));
     vi.stubGlobal("fetch", fetchMock);
 
     const status = await disconnectInstagram();
@@ -46,7 +46,7 @@ describe("instagramConnectionApi", () => {
   it("maps a known code to a fixed message and never leaks the raw one", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(400, { code: "INSTAGRAM_PROVIDER_ERROR", message: "raw backend detail" })));
 
-    const caught = await startInstagramLogin().catch((error: unknown) => error);
+    const caught = await startInstagramLogin("callback").catch((error: unknown) => error);
     const display = toInstagramConnectionDisplayError(caught);
 
     expect(display.code).toBe("INSTAGRAM_PROVIDER_ERROR");

@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import type { InstagramConnectionStatus } from "@ai-animation-studio/shared";
 
+import { canOpenInstagramLogin, openInstagramLoginWindow } from "../api/electronBridge.js";
 import {
+  completeInstagramLogin,
   disconnectInstagram,
   getInstagramConnection,
   setInstagramApp,
@@ -22,10 +24,6 @@ const fieldClass =
   "w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const LOGIN_POLL_INTERVAL_MS = 1500;
-// Long enough to cover finding a password, a 2FA prompt, and choosing which accounts to grant. Past this the
-// polling stops and the button below is what finishes the job — nothing is lost, it just stops asking.
-const LOGIN_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * What the app can say about the stored token, and nothing more.
@@ -59,10 +57,19 @@ export function tokenLine(status: InstagramConnectionStatus, now: number): {
   return { text: `토큰 저장됨 · ${when} 만료`, tone: "ok", expired: false };
 }
 
-const TONE_CLASS = { ok: "text-emerald-300", warn: "text-amber-300", none: "text-slate-400" } as const;
+const LOGIN_POLL_INTERVAL_MS = 1500;
+// Long enough to cover finding a password, a 2FA prompt, and choosing which accounts to grant. Past this the
+// waiting stops; the person can press the button again, which costs them nothing.
+const LOGIN_POLL_TIMEOUT_MS = 5 * 60 * 1000;
+
+/** Only what this flow needs from an opened window: whether it is gone, and how to get rid of it. */
+export interface LoginWindowHandle {
+  readonly closed: boolean;
+  close(): void;
+}
 
 export interface PollDeps {
-  /** Read afresh each round: the login window may be closed by the callback page, or by the person. */
+  /** Read afresh each round — the person may close the window at any moment, including after succeeding. */
   isWindowClosed: () => boolean;
   readStatus: () => Promise<InstagramConnectionStatus>;
   wait: (ms: number) => Promise<void>;
@@ -74,16 +81,14 @@ export interface PollDeps {
 }
 
 /**
- * Watches for a sign-in finishing in the other window, so the usual case needs no second button press.
- *
- * The button stays regardless — this only removes a step, it does not become the thing the flow depends on.
- * That matters because polling can legitimately give up (window closed, five minutes gone) while the person is
- * in fact signed in, and a flow whose only path had just expired would be worse than one with an extra click.
+ * How the callback flow learns it finished. Meta redirects the window to this app's own HTTPS listener, which
+ * stores the token by itself, so nothing comes back through the window — the only way to find out is to ask
+ * the server again.
  *
  * The one thing that counts as success is the server saying a token is stored. Not a closed window, not time
- * passing — reading success off anything else is how a screen claims a connection it never had (D-006). And a
- * closed window is especially weak evidence here, because a person closes it whenever they feel like it: before
- * signing in, halfway through, or long after it finished.
+ * passing — reading success off either would be claiming a connection this app never confirmed (D-006). A
+ * closed window is especially weak evidence, because a person closes it whenever they feel like it: before
+ * signing in, halfway through, or well after it finished.
  */
 export async function pollUntilTokenStored(deps: PollDeps): Promise<InstagramConnectionStatus | null> {
   const intervalMs = deps.intervalMs ?? LOGIN_POLL_INTERVAL_MS;
@@ -95,17 +100,15 @@ export async function pollUntilTokenStored(deps: PollDeps): Promise<InstagramCon
     if (deps.abandoned()) return null;
 
     // Read whether the window is gone BEFORE asking the server, so the status is never older than the close.
-    //
-    // The callback page is static HTML with no script in it — it cannot close anything, and asks the person to
-    // close the window themselves. So the close lands at an arbitrary moment, which is what makes this order
-    // necessary rather than merely tidy: read first and the "not stored yet" answer can already be stale by the
-    // time the window shuts, and `closedBeforeRead` then ends the wait on a login that had in fact completed.
-    // Nothing about that is reliable to reproduce, which is the kind of bug that survives a long time.
+    // The callback page has no script and closes nothing — it asks the person to close the window — so the
+    // close lands at an arbitrary moment. Read first and the "not stored yet" answer can already be stale by
+    // the time the window shuts, ending the wait on a login that had in fact completed. That failure depends
+    // on human timing, so it would reproduce only sometimes.
     const closedBeforeRead = deps.isWindowClosed();
 
     let status: InstagramConnectionStatus | undefined;
-    // A failed poll is not a failed login. The sign-in is happening in another window and does not care that one
-    // of our reads did not land; giving up on it would abandon something still in progress.
+    // A failed poll is not a failed login: the sign-in is happening in another window and does not care that
+    // one of our reads did not land. The timeout is what ends this, not one bad read.
     try {
       status = await deps.readStatus();
     } catch {
@@ -117,6 +120,8 @@ export async function pollUntilTokenStored(deps: PollDeps): Promise<InstagramCon
     if (deps.now() - startedAt >= timeoutMs) return null;
   }
 }
+
+const TONE_CLASS = { ok: "text-emerald-300", warn: "text-amber-300", none: "text-slate-400" } as const;
 
 /**
  * Instagram's connection lives here, beside the other credentials, because it answers the same question they do
@@ -130,14 +135,17 @@ export function InstagramConnectionCard({ status, onStatusChange }: Props) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [fieldError, setFieldError] = useState<string | null>(null);
-  const [awaitingLogin, setAwaitingLogin] = useState(false);
-  const loginWindow = useRef<{ closed: boolean } | null>(null);
-  // Held in a ref because the parent passes a fresh closure on every render; in the effect's dependency list it
-  // would restart the polling constantly.
-  const notifyStatus = useRef(onStatusChange);
-  notifyStatus.current = onStatusChange;
+  const [cancelled, setCancelled] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
 
   const line = tokenLine(status, Date.now());
+  // Which sign-in this screen can run, decided here because neither side knows alone: the server knows whether
+  // it is serving the HTTPS callback, and only the screen knows whether it sits in a shell that can read its
+  // own window. "none" is a real answer — a browser tab with no callback listener has no way to sign in, and
+  // saying so beats a button that always fails.
+  const flow: "desktop" | "callback" | "none" = canOpenInstagramLogin()
+    ? "desktop"
+    : status.callbackLoginAvailable ? "callback" : "none";
 
   async function run(action: () => Promise<InstagramConnectionStatus>): Promise<void> {
     if (pending) return;
@@ -153,73 +161,84 @@ export function InstagramConnectionCard({ status, onStatusChange }: Props) {
   }
 
   /**
-   * Starts a sign-in: ask the server for the page, open it, and stop there.
+   * The whole sign-in, end to end: ask the server for the page, open it in a window the shell owns, and hand
+   * back whatever URL that window landed on.
    *
-   * There is no URL to hand back any more. Meta redirects the window to this app's own backend, which reads the
-   * code and checks it against the `state` it issued — so this screen never sees the code at all. It is not
-   * declining to parse a redirect; there is nothing here to parse, which is a stronger position to be in.
+   * The screen never reads that URL — the server takes the code out of it and checks it against the `state` it
+   * issued, so a URL that did not come from our own request cannot be turned into a login here. That is also
+   * what lets this pass along an address it does not understand.
    *
-   * What the window does afterwards is watched only to know when to stop waiting (see pollUntilTokenStored).
-   * The outcome itself always comes from asking the server.
+   * Meta only accepts an HTTPS redirect address, and its documented one for a desktop window is a page on
+   * facebook.com. A local backend has no HTTPS address to offer instead, which is why this path needs the shell
+   * and a browser tab cannot stand in for it (docs/06_DECISIONS.md D-020).
    */
   async function login(): Promise<void> {
-    if (pending) return;
+    if (pending || flow === "none") return;
     setPending(true);
     setError(null);
-    setAwaitingLogin(false);
+    setCancelled(false);
+    setTimedOut(false);
     try {
-      const started = await startInstagramLogin();
-      // Kept so the wait can tell whether the window is still open. It is a stopping condition and nothing more:
-      // an open window never means success, and a closed one never does either.
-      const opened = window.open(started.url, "instagram-login", "width=520,height=720");
-      loginWindow.current = opened;
-      if (!opened) {
-        setError({ code: "CLIENT_POPUP_BLOCKED", message: "로그인 창이 차단되었습니다. 팝업을 허용한 뒤 다시 시도해 주세요." });
+      const started = await startInstagramLogin(flow);
+
+      if (flow === "desktop") {
+        if (!started.redirectPrefix) {
+          // The desktop flow is finished by watching for this address, so its absence leaves nothing to watch
+          // for. It cannot happen against a matching backend, which is why it is reported as a build problem
+          // rather than something the person did — but silence here would read as a broken button.
+          setError({
+            code: "CLIENT_UNSUPPORTED_LOGIN_FLOW",
+            message: "이 앱이 처리할 수 없는 로그인 방식입니다. 앱을 다시 빌드해야 할 수 있습니다.",
+          });
+          return;
+        }
+        const outcome = await openInstagramLoginWindow(started.url, started.redirectPrefix);
+        if (!outcome) {
+          setError({
+            code: "CLIENT_NO_DESKTOP_BRIDGE",
+            message: "로그인 창을 열 수 없습니다. 데스크톱 앱에서 시도해 주세요.",
+          });
+          return;
+        }
+        // Closing the window is an ordinary change of mind, not a failure — an error banner here would accuse
+        // the user of a mistake they did not make. It is also a complete answer in this flow: the code is only
+        // exchanged by the call below, so nothing was stored and nothing is left to confirm.
+        if (outcome.kind === "cancelled") {
+          setCancelled(true);
+          return;
+        }
+        onStatusChange(await completeInstagramLogin(outcome.url));
         return;
       }
-      setAwaitingLogin(true);
-    } catch (caught) {
-      setError(toInstagramConnectionDisplayError(caught));
-    } finally {
-      setPending(false);
-    }
-  }
 
-  useEffect(() => {
-    if (!awaitingLogin) return;
-    let abandoned = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-
-    void pollUntilTokenStored({
-      isWindowClosed: () => loginWindow.current?.closed ?? true,
-      readStatus: getInstagramConnection,
-      wait: (ms) => new Promise((resolve) => { timer = setTimeout(resolve, ms); }),
-      now: () => Date.now(),
-      abandoned: () => abandoned,
-    }).then((status) => {
-      if (abandoned || !status) return;
-      setAwaitingLogin(false);
-      notifyStatus.current(status);
-    });
-
-    return () => {
-      abandoned = true;
-      if (timer !== undefined) clearTimeout(timer);
-    };
-  }, [awaitingLogin]);
-
-  /**
-   * The way to finish when watching did not manage it — the window was closed early, five minutes passed, or
-   * the sign-in happened somewhere this screen could not see. Kept as a button, not replaced by the polling,
-   * because polling gives up while a person who knows they are signed in does not.
-   */
-  async function refreshAfterLogin(): Promise<void> {
-    if (pending) return;
-    setPending(true);
-    setError(null);
-    try {
-      onStatusChange(await getInstagramConnection());
-      setAwaitingLogin(false);
+      // Callback flow: the server receives the code itself, so this window is opened and then only watched for
+      // whether it is still there. Everything about the outcome comes from asking the server.
+      const opened = window.open(started.url, "instagram-login", "width=520,height=760");
+      if (!opened) {
+        setError({
+          code: "CLIENT_POPUP_BLOCKED",
+          message: "로그인 창이 열리지 않았습니다. 이 주소의 팝업 차단을 해제한 뒤 다시 눌러 주세요.",
+        });
+        return;
+      }
+      const stored = await pollUntilTokenStored({
+        isWindowClosed: () => opened.closed,
+        readStatus: getInstagramConnection,
+        wait: (ms) => new Promise((resolve) => { setTimeout(resolve, ms); }),
+        now: () => Date.now(),
+        abandoned: () => false,
+      });
+      if (stored) {
+        onStatusChange(stored);
+        return;
+      }
+      // Nothing was stored. Which of the two ways it ended is worth distinguishing: a closed window is a choice
+      // the person made, and a five-minute silence is not.
+      if (opened.closed) setCancelled(true);
+      else {
+        opened.close();
+        setTimedOut(true);
+      }
     } catch (caught) {
       setError(toInstagramConnectionDisplayError(caught));
     } finally {
@@ -272,7 +291,7 @@ export function InstagramConnectionCard({ status, onStatusChange }: Props) {
         <button
           type="button"
           className={primaryButton}
-          disabled={pending || !status.appConfigured}
+          disabled={pending || !status.appConfigured || flow === "none"}
           data-testid="instagram-login-button"
           onClick={() => void login()}
         >
@@ -291,22 +310,34 @@ export function InstagramConnectionCard({ status, onStatusChange }: Props) {
         )}
       </div>
 
-      {awaitingLogin && (
-        <div className="space-y-2 rounded-xl border border-white/10 bg-slate-950/40 p-3" data-testid="instagram-login-awaiting">
+      {/*
+        Says why, not only that. The reason is not "this is unfinished" — Meta accepts only an HTTPS redirect
+        address, and a plain browser tab has none to offer until the local callback listener is running. Naming
+        that spares the person hunting for a setting inside this app. It is deliberately not phrased as "ready
+        to sign in" when the listener IS running: whether that address is registered with the Meta app, and
+        whether this browser trusts the certificate, are things this screen cannot know and that only show up
+        as a failure on Meta's page.
+      */}
+      {flow === "none" && (
+        <div className="space-y-1 rounded-xl border border-white/10 bg-slate-950/40 p-3" data-testid="instagram-login-unavailable">
           <p className="text-xs text-slate-400">
-            새 창에서 페이스북 로그인을 마치면 이 화면이 저절로 바뀝니다. 창은 닫으셔도 됩니다.
-            바뀌지 않으면 아래를 눌러 주세요.
+            지금은 로그인할 수 없습니다 — 인스타그램은 HTTPS 주소로만 로그인을 돌려보내는데, 이 주소는 아직 준비돼 있지 않습니다.
           </p>
-          <button
-            type="button"
-            className={outlineButton}
-            disabled={pending}
-            data-testid="instagram-login-refresh"
-            onClick={() => void refreshAfterLogin()}
-          >
-            로그인 완료 확인
-          </button>
+          <p className="text-xs text-slate-500">
+            로컬 인증서를 설정해 콜백 주소를 켜거나, 데스크톱 앱에서 로그인하면 됩니다. 어느 쪽이든 한 번만 하면 약 60일간 유지됩니다.
+          </p>
         </div>
+      )}
+
+      {cancelled && (
+        <p data-testid="instagram-login-cancelled" className="text-xs text-slate-400">
+          로그인을 취소했습니다.
+        </p>
+      )}
+      {timedOut && (
+        <p data-testid="instagram-login-timeout" className="text-xs text-slate-400">
+          로그인이 끝나지 않아 기다리기를 멈췄습니다. 로그인을 마쳤다면 새로고침해 주세요.
+        </p>
       )}
 
       <form className="space-y-2" onSubmit={submitApp}>
