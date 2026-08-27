@@ -1188,6 +1188,7 @@ export interface StartInstagramLoginResponse {
    */
   url: string;
 }
+/** What completing a login yields. No client receives it — the callback answers Meta's browser with a page, and the screen learns the outcome by reading the connection status again. Kept named because that is what the completion produces. */
 export type CompleteInstagramLoginResponse = InstagramConnectionStatus;
 
 /**

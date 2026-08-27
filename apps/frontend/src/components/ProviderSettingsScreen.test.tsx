@@ -6,13 +6,16 @@ import { ProviderSettingsScreen } from "./ProviderSettingsScreen.js";
 
 /**
  * Answers the Instagram connection read this screen also makes on mount, so a test's sequenced responses stay
- * about provider settings alone. Without it, adding a second kind of card to the screen silently shifts every
- * mockResolvedValueOnce by one and every call count by one — a failure that looks like the provider logic broke.
- * Assertions keep using the inner mock, which therefore still sees only provider-settings calls.
+ * about provider settings alone. Without it, that extra read shifts every mockResolvedValueOnce after it by one
+ * and every call count by one — and the failure surfaces as "OpenAI is missing", which points nowhere near the
+ * cause. Assertions keep using the inner mock, so they still count only provider-settings calls
+ * (docs/06_DECISIONS.md D-013).
+ *
+ * Tests that are about the Instagram card itself route by URL instead and do not use this.
  */
 function routingInstagramAside(providerFetch: (url: RequestInfo | URL, init?: RequestInit) => Promise<Response>) {
   return vi.fn((url: RequestInfo | URL, init?: RequestInit) => (
-    String(url).startsWith("/settings/instagram")
+    String(url).includes("/instagram/")
       ? Promise.resolve(jsonResponse(200, { appConfigured: false, tokenStored: false }))
       : providerFetch(url, init)
   ));
@@ -217,5 +220,39 @@ describe("ProviderSettingsScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "목록으로" }));
 
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+  /**
+   * The Instagram store is separate and can fail on its own. Until now that failure removed the card from the
+   * page entirely, which is the one outcome that leaves the person with nothing to go on — an absent card reads
+   * as "this app has no such feature", not as "this could not be read". Say which it is.
+   */
+  it("says the Instagram store could not be read instead of dropping its card", async () => {
+    const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" })];
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: unknown) => Promise.resolve(
+      String(url).includes("/instagram/")
+        ? jsonResponse(500, { code: "INSTAGRAM_STORAGE_ERROR", message: "raw backend detail" })
+        : jsonResponse(200, { providers }),
+    )));
+    render(<ProviderSettingsScreen onBack={() => {}} />);
+
+    const notice = await screen.findByTestId("instagram-unavailable");
+    expect(notice.textContent).toContain("불러오지 못했습니다");
+    expect(notice.textContent).not.toContain("raw backend detail");
+    expect(screen.queryByTestId("instagram-connection")).toBeNull();
+    // The other cards are unaffected — one store failing must not be read as the screen failing.
+    expect(screen.getByText("OpenAI")).toBeTruthy();
+  });
+
+  it("shows the Instagram card, and no failure notice, when the store reads back", async () => {
+    const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" })];
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: unknown) => Promise.resolve(
+      String(url).includes("/instagram/")
+        ? jsonResponse(200, { appConfigured: true, tokenStored: false })
+        : jsonResponse(200, { providers }),
+    )));
+    render(<ProviderSettingsScreen onBack={() => {}} />);
+
+    expect(await screen.findByTestId("instagram-connection")).toBeTruthy();
+    expect(screen.queryByTestId("instagram-unavailable")).toBeNull();
   });
 });

@@ -2,31 +2,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { jsonResponse } from "../api/testUtils.js";
-import { InstagramConnectionCard, tokenLine } from "./InstagramConnectionCard.js";
+import { InstagramConnectionCard, pollUntilTokenStored, tokenLine } from "./InstagramConnectionCard.js";
 
 function status(overrides: Record<string, unknown> = {}) {
   return { appConfigured: true, tokenStored: false, ...overrides } as never;
-}
-
-/**
- * Stands in for the packaged shell for one test and puts the real value back afterwards. A plain browser tab has
- * no `electronAPI`, which is itself one of the states this card has to handle.
- */
-async function withElectron(
-  openInstagramLogin: ReturnType<typeof vi.fn>,
-  body: () => Promise<void>,
-): Promise<void> {
-  const original = Object.getOwnPropertyDescriptor(window, "electronAPI");
-  Object.defineProperty(window, "electronAPI", {
-    value: { openProjectPath: vi.fn(), openInstagramLogin },
-    configurable: true,
-  });
-  try {
-    await body();
-  } finally {
-    if (original) Object.defineProperty(window, "electronAPI", original);
-    else Reflect.deleteProperty(window as unknown as Record<string, unknown>, "electronAPI");
-  }
 }
 
 function renderCard(overrides: Record<string, unknown> = {}, onStatusChange = () => {}) {
@@ -65,6 +44,87 @@ describe("tokenLine", () => {
 
   it("says the expiry is unknown rather than inventing a reading of it", () => {
     expect(tokenLine(status({ tokenStored: true }), NOW).text).toContain("확인되지 않았습니다");
+  });
+});
+
+/** A clock that only moves when the flow waits, so a five-minute timeout costs a test no time at all. */
+function clock() {
+  let current = 0;
+  return { now: () => current, wait: async (ms: number) => { current += ms; } };
+}
+
+const STORED = { appConfigured: true, tokenStored: true } as never;
+const NOT_STORED = { appConfigured: true, tokenStored: false } as never;
+
+describe("pollUntilTokenStored", () => {
+  const open = () => false;
+
+  it("succeeds only once the server says a token is stored", async () => {
+    const readStatus = vi.fn()
+      .mockResolvedValueOnce(NOT_STORED)
+      .mockResolvedValueOnce(NOT_STORED)
+      .mockResolvedValueOnce(STORED);
+    const result = await pollUntilTokenStored({
+      isWindowClosed: open, readStatus, abandoned: () => false, ...clock(), intervalMs: 10, timeoutMs: 10_000,
+    });
+    expect(result).toBe(STORED);
+    expect(readStatus).toHaveBeenCalledTimes(3);
+  });
+
+  /**
+   * The one that decides whether watching is worth having. The callback page closes its own window the moment
+   * the server has the token, so on a real login the close and the token land together. Were the closed window
+   * checked after the read instead of before, a completed sign-in would stop the polling and show nothing — and
+   * the person would be left pressing the fallback button on an account that was already connected.
+   */
+  it("treats a window that closed on success as a success", async () => {
+    const result = await pollUntilTokenStored({
+      isWindowClosed: () => true, readStatus: async () => STORED, abandoned: () => false,
+      ...clock(), intervalMs: 10, timeoutMs: 10_000,
+    });
+    expect(result).toBe(STORED);
+  });
+
+  // Giving up is not a failure state here: the button below still finishes the job, so this only has to stop.
+  it("stops when the window closed with no token", async () => {
+    const result = await pollUntilTokenStored({
+      isWindowClosed: () => true, readStatus: async () => NOT_STORED, abandoned: () => false,
+      ...clock(), intervalMs: 10, timeoutMs: 10_000,
+    });
+    expect(result).toBeNull();
+  });
+
+  it("stops once the cap is reached", async () => {
+    const readStatus = vi.fn().mockResolvedValue(NOT_STORED);
+    const result = await pollUntilTokenStored({
+      isWindowClosed: open, readStatus, abandoned: () => false, ...clock(), intervalMs: 100, timeoutMs: 250,
+    });
+    expect(result).toBeNull();
+    expect(readStatus).toHaveBeenCalledTimes(3);
+  });
+
+  // The sign-in is happening elsewhere and does not care that one read did not land.
+  it("keeps waiting through a failed read", async () => {
+    const readStatus = vi.fn()
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValueOnce(STORED);
+    const result = await pollUntilTokenStored({
+      isWindowClosed: open, readStatus, abandoned: () => false, ...clock(), intervalMs: 10, timeoutMs: 10_000,
+    });
+    expect(result).toBe(STORED);
+  });
+
+  // Every await here can outlive the card that started it — a status that arrives after the screen moved on
+  // must not be pushed into a component that is no longer listening.
+  it("reports nothing once abandoned, even holding a stored token", async () => {
+    let abandoned = false;
+    const result = await pollUntilTokenStored({
+      isWindowClosed: open,
+      readStatus: async () => { abandoned = true; return STORED; },
+      abandoned: () => abandoned,
+      ...clock(), intervalMs: 10, timeoutMs: 10_000,
+    });
+    expect(result).toBeNull();
   });
 });
 
@@ -127,16 +187,17 @@ describe("InstagramConnectionCard", () => {
     expect(screen.queryByTestId("instagram-login-awaiting")).toBeNull();
   });
 
+  // Run in a plain tab, like every other test here: signing in no longer involves the shell at all, so putting a
+  // fake `electronAPI` on the window would exercise a state the app no longer has.
   it("shows a rejected login start without leaking the raw backend text", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(400, { code: "INSTAGRAM_PROVIDER_ERROR", message: "raw backend detail" })));
+    vi.stubGlobal("open", vi.fn());
 
-    await withElectron(vi.fn(), async () => {
-      renderCard();
-      fireEvent.click(screen.getByTestId("instagram-login-button"));
+    renderCard();
+    fireEvent.click(screen.getByTestId("instagram-login-button"));
 
-      const error = await screen.findByTestId("instagram-connection-error");
-      expect(error.textContent).not.toContain("raw backend detail");
-    });
+    const error = await screen.findByTestId("instagram-connection-error");
+    expect(error.textContent).not.toContain("raw backend detail");
   });
 
   // Saving new app details throws the stored token away, so it is said before it happens rather than discovered

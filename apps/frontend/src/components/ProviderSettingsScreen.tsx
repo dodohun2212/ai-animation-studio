@@ -9,14 +9,23 @@ import { Spinner } from "./Spinner.js";
 interface Props { onBack: () => void }
 type StatusMap = Record<ProviderCredentialKind, ProviderCredentialStatus>;
 interface State { statuses: StatusMap | null; error: { code: string; message: string } | null; loading: boolean }
-/** null while unknown: a failed read must not be rendered as "not connected", which is a different fact. */
-type InstagramState = InstagramConnectionStatus | null;
+/**
+ * A failed read must not be rendered as "not connected", which is a different fact — but it must not be
+ * rendered as nothing either. Hiding the card on failure is what this screen used to do, and it produced the
+ * worst version of the problem: the card was simply absent, with nothing on the page saying so or why. Someone
+ * looking for it had no way to tell "this app has no such feature" from "this feature could not be reached".
+ * Three states, so the screen can say which one it is.
+ */
+type InstagramState =
+  | { kind: "loading" }
+  | { kind: "ready"; status: InstagramConnectionStatus }
+  | { kind: "unavailable" };
 
 const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
 
 export function ProviderSettingsScreen({ onBack }: Props) {
   const [state, setState] = useState<State>({ statuses: null, error: null, loading: true });
-  const [instagram, setInstagram] = useState<InstagramState>(null);
+  const [instagram, setInstagram] = useState<InstagramState>({ kind: "loading" });
   const refreshInFlight = useRef(true);
   const activeMutations = useRef(new Set<ProviderCredentialKind>());
   async function load(acquired = false) {
@@ -32,7 +41,7 @@ export function ProviderSettingsScreen({ onBack }: Props) {
     } catch (error) { setState((old) => ({ ...old, error: toDisplayError(error), loading: false })); }
     finally { refreshInFlight.current = false; }
     // A separate store with its own failure mode — losing it costs the Instagram card, not the whole screen.
-    try { setInstagram(await getInstagramConnection()); } catch { setInstagram(null); }
+    try { setInstagram({ kind: "ready", status: await getInstagramConnection() }); } catch { setInstagram({ kind: "unavailable" }); }
   }
   useEffect(() => { void load(true); }, []);
   const acquireMutation = (provider: ProviderCredentialKind) => {
@@ -66,7 +75,24 @@ export function ProviderSettingsScreen({ onBack }: Props) {
         <div className="space-y-4">
           <ProviderCredentialCard label="OpenAI" status={state.statuses.openai} onStatusChange={update} acquireMutation={() => acquireMutation("openai")} releaseMutation={() => releaseMutation("openai")}/>
           <ProviderCredentialCard label="Runway" status={state.statuses.runway} onStatusChange={update} acquireMutation={() => acquireMutation("runway")} releaseMutation={() => releaseMutation("runway")}/>
-          {instagram && <InstagramConnectionCard status={instagram} onStatusChange={setInstagram} />}
+          {instagram.kind === "ready" && (
+            <InstagramConnectionCard status={instagram.status} onStatusChange={(status) => setInstagram({ kind: "ready", status })} />
+          )}
+          {instagram.kind === "unavailable" && (
+            // Deliberately not role="alert": the Instagram store being unreachable does not stop the rest of
+            // this screen working, and announcing it as an alert would rank it with the failures that do.
+            <div className="space-y-2 rounded-2xl border border-white/10 bg-slate-900/70 p-5" data-testid="instagram-unavailable">
+              <h3 className="text-base font-semibold text-slate-100">Instagram — 게시</h3>
+              <p className="text-sm text-amber-300">인스타그램 연결 정보를 불러오지 못했습니다.</p>
+              {/* Named because it is the cause that leaves no other trace: the packaged shell runs a
+                  pre-built backend bundle, so a shell built before this feature existed answers as though the
+                  feature does not exist — which looks identical to a bug in this screen. */}
+              <p className="text-xs text-slate-500">
+                이 기능이 없는 오래된 빌드로 실행 중일 수 있습니다. 나머지 설정은 정상입니다.
+              </p>
+              <button type="button" className={outlineButton} onClick={() => void load()} disabled={state.loading}>다시 시도</button>
+            </div>
+          )}
 
           {/* The screen listed two provider names and nothing about what either one is for, so there was no way
               to tell which key a stuck step needs — or what stops working if you disconnect one. */}

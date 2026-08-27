@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { InstagramConnectionStatus } from "@ai-animation-studio/shared";
 
 import {
@@ -22,6 +22,10 @@ const fieldClass =
   "w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const LOGIN_POLL_INTERVAL_MS = 1500;
+// Long enough to cover finding a password, a 2FA prompt, and choosing which accounts to grant. Past this the
+// polling stops and the button below is what finishes the job — nothing is lost, it just stops asking.
+const LOGIN_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * What the app can say about the stored token, and nothing more.
@@ -57,6 +61,58 @@ export function tokenLine(status: InstagramConnectionStatus, now: number): {
 
 const TONE_CLASS = { ok: "text-emerald-300", warn: "text-amber-300", none: "text-slate-400" } as const;
 
+export interface PollDeps {
+  /** Read afresh each round: the login window may be closed by the callback page, or by the person. */
+  isWindowClosed: () => boolean;
+  readStatus: () => Promise<InstagramConnectionStatus>;
+  wait: (ms: number) => Promise<void>;
+  now: () => number;
+  /** True once the screen has moved on — every await here can outlive the thing that started it. */
+  abandoned: () => boolean;
+  intervalMs?: number;
+  timeoutMs?: number;
+}
+
+/**
+ * Watches for a sign-in finishing in the other window, so the usual case needs no second button press.
+ *
+ * The button stays regardless — this only removes a step, it does not become the thing the flow depends on.
+ * That matters because polling can legitimately give up (window closed, five minutes gone) while the person is
+ * in fact signed in, and a flow whose only path had just expired would be worse than one with an extra click.
+ *
+ * The one thing that counts as success is the server saying a token is stored. Not a closed window, not time
+ * passing — reading success off anything else is how a screen claims a connection it never had (D-006).
+ */
+export async function pollUntilTokenStored(deps: PollDeps): Promise<InstagramConnectionStatus | null> {
+  const intervalMs = deps.intervalMs ?? LOGIN_POLL_INTERVAL_MS;
+  const timeoutMs = deps.timeoutMs ?? LOGIN_POLL_TIMEOUT_MS;
+  const startedAt = deps.now();
+
+  for (;;) {
+    await deps.wait(intervalMs);
+    if (deps.abandoned()) return null;
+
+    // Read whether the window is gone BEFORE asking the server, so the answer that follows is never older than
+    // the close. The callback page closes its own window once the server has the token, so on a success the
+    // close and the token arrive together — checked the other way round, a real login would stop the polling
+    // about half the time and look like nothing happened.
+    const closedBeforeRead = deps.isWindowClosed();
+
+    let status: InstagramConnectionStatus | undefined;
+    // A failed poll is not a failed login. The sign-in is happening in another window and does not care that one
+    // of our reads did not land; giving up on it would abandon something still in progress.
+    try {
+      status = await deps.readStatus();
+    } catch {
+      status = undefined;
+    }
+    if (deps.abandoned()) return null;
+    if (status?.tokenStored) return status;
+    if (closedBeforeRead) return null;
+    if (deps.now() - startedAt >= timeoutMs) return null;
+  }
+}
+
 /**
  * Instagram's connection lives here, beside the other credentials, because it answers the same question they do
  * — "can we act at all?". Which account a post goes to is a different question and lives on the post screen
@@ -70,6 +126,11 @@ export function InstagramConnectionCard({ status, onStatusChange }: Props) {
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [awaitingLogin, setAwaitingLogin] = useState(false);
+  const loginWindow = useRef<{ closed: boolean } | null>(null);
+  // Held in a ref because the parent passes a fresh closure on every render; in the effect's dependency list it
+  // would restart the polling constantly.
+  const notifyStatus = useRef(onStatusChange);
+  notifyStatus.current = onStatusChange;
 
   const line = tokenLine(status, Date.now());
 
@@ -102,6 +163,7 @@ export function InstagramConnectionCard({ status, onStatusChange }: Props) {
       // Meta redirects the window back to this app's own backend, which completes the login by itself. Nothing
       // here watches that window — it may even be closed — so the only way to learn the outcome is to ask.
       const opened = window.open(started.url, "instagram-login", "width=520,height=720");
+      loginWindow.current = opened;
       if (!opened) {
         setError({ code: "CLIENT_POPUP_BLOCKED", message: "로그인 창이 차단되었습니다. 팝업을 허용한 뒤 다시 시도해 주세요." });
         return;
@@ -114,9 +176,33 @@ export function InstagramConnectionCard({ status, onStatusChange }: Props) {
     }
   }
 
+  useEffect(() => {
+    if (!awaitingLogin) return;
+    let abandoned = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    void pollUntilTokenStored({
+      isWindowClosed: () => loginWindow.current?.closed ?? true,
+      readStatus: getInstagramConnection,
+      wait: (ms) => new Promise((resolve) => { timer = setTimeout(resolve, ms); }),
+      now: () => Date.now(),
+      abandoned: () => abandoned,
+    }).then((status) => {
+      if (abandoned || !status) return;
+      setAwaitingLogin(false);
+      notifyStatus.current(status);
+    });
+
+    return () => {
+      abandoned = true;
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [awaitingLogin]);
+
   /**
-   * Pressed after finishing in the login window. Deliberately a button rather than a poll: a timer would keep
-   * asking on a screen nobody is looking at, and the person is the one who knows the login is done.
+   * The way to finish when watching did not manage it — the window was closed early, five minutes passed, or
+   * the sign-in happened somewhere this screen could not see. Kept as a button, not replaced by the polling,
+   * because polling gives up while a person who knows they are signed in does not.
    */
   async function refreshAfterLogin(): Promise<void> {
     if (pending) return;
@@ -199,7 +285,8 @@ export function InstagramConnectionCard({ status, onStatusChange }: Props) {
       {awaitingLogin && (
         <div className="space-y-2 rounded-xl border border-white/10 bg-slate-950/40 p-3" data-testid="instagram-login-awaiting">
           <p className="text-xs text-slate-400">
-            새 창에서 페이스북 로그인을 마친 뒤 아래를 눌러 주세요. 창은 닫으셔도 됩니다.
+            새 창에서 페이스북 로그인을 마치면 이 화면이 저절로 바뀝니다. 창은 닫으셔도 됩니다.
+            바뀌지 않으면 아래를 눌러 주세요.
           </p>
           <button
             type="button"
