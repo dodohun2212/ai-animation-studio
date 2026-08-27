@@ -8,8 +8,9 @@ Before changing code, read:
 2. `docs/01_CURRENT_PRODUCT_SPEC.md`
 3. `docs/02_MIGRATION_PLAN.md`
 4. `docs/03_TEAM_WORKFLOW.md`
-5. `docs/04_INTERNAL_API_CONTRACT.md` when changing shared or API code
-6. `docs/05_DESIGN_SYSTEM.md` when changing anything in `apps/frontend`
+5. `docs/06_DECISIONS.md` — why the code is shaped this way, especially which paths were tried and abandoned
+6. `docs/04_INTERNAL_API_CONTRACT.md` when changing shared or API code
+7. `docs/05_DESIGN_SYSTEM.md` when changing anything in `apps/frontend`
 
 Project-specific rules in this file take precedence over shared guidelines.
 

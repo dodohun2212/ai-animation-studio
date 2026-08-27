@@ -76,10 +76,18 @@ Lead Agent가 작업 분석(Python 기준 또는 개선 과제)
 AGENTS.md, AI_GUIDELINES.md,
 docs/01_CURRENT_PRODUCT_SPEC.md,
 docs/02_MIGRATION_PLAN.md,
-docs/03_TEAM_WORKFLOW.md를 읽고,
+docs/03_TEAM_WORKFLOW.md,
+docs/06_DECISIONS.md를 읽고,
 공유/API 변경이면 docs/04_INTERNAL_API_CONTRACT.md도 읽는다.
+협업 우편함이 있으면 .claude-bridge/from-cli.md 와 from-cowork.md 의
+최근 라운드를 읽는다. 두 파일 모두 맨 위가 최신이므로
+위에서부터 필요한 만큼만 읽으면 된다.
 현재 worktree와 Git 상태를 확인하고,
 이번 세션에 지정된 역할과 worktree 범위 안에서 작업한다.
 ```
+
+`docs/06_DECISIONS.md`는 코드가 지금의 모양인 이유 — 특히 **근거를 대고 접은 길** — 을 담는다. 이걸 안 읽고 시작하면 이미 폐기된 접근을 다시 제안하게 된다.
+
+협업 우편함은 커밋되지 않으므로 저장소를 클론한 사람에게는 없을 수 있다. 그래서 **우편함의 라운드 번호는 근거의 출처 표시일 뿐이고, 근거 자체는 주석 안이나 `docs/06_DECISIONS.md`에 있어야 한다.** 우편함이 없어도 이유가 전달되어야 한다.
 
 문서에 없는 결정을 추측하지 않는다. 장기 요구사항과 검증 결과는 대화에만 남기지 않고 현재 문서 또는 마이그레이션 계획에 반영한다.
