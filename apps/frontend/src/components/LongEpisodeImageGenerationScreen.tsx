@@ -197,7 +197,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
                 </div>
                 {/* Quiet unless the Backend's reference cap actually dropped something. The total is derived from
                     both counts it sends, so this line never hardcodes that cap — the same split the short-project
-                    screen uses (`.claude-bridge` Round 168). */}
+                    screen uses. */}
                 {typeof review.referencesOmittedCount === "number" && review.referencesOmittedCount > 0 && (
                   <p data-testid={`episode-image-references-omitted-${sceneNumber}`} className="text-xs text-amber-300">
                     연결한 참고 이미지 중 {(review.referencesUsedCount ?? 0) + review.referencesOmittedCount}장 가운데

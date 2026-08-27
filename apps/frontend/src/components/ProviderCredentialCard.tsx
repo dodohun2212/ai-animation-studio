@@ -15,7 +15,7 @@ interface Props {
  * This used to read "연결됨", and a user who had just revoked their Runway key on Runway's own dashboard still
  * saw it — reasonably reading it as "this key works". Nothing in this app ever asks the provider whether a
  * stored key is still valid, so "연결" was a claim about a relationship the app has never once checked
- * (`.claude-bridge` Round 184). The wording now describes the local switch it really is.
+ * (docs/06_DECISIONS.md D-006). The wording now describes the local switch it really is.
  */
 const statusText = (status: ProviderCredentialStatus) =>
   !status.configured ? "저장된 키 없음" : status.connected ? "키 저장됨 · 이 앱에서 사용" : "키 저장됨 · 사용 안 함";

@@ -103,7 +103,7 @@ describe("VideoMergeScreen", () => {
 
   // Regression: the default used to be "narration only" regardless of whether the project had any. A project
   // that never generated narration would then be labelled as narrated while producing a silent video — the
-  // screen saying one thing and the file being another (`.claude-bridge` Round 163).
+  // screen saying one thing and the file being another (docs/06_DECISIONS.md D-011).
   it("defaults to silent for a project with no narration, and refuses to offer the narration mode at all", async () => {
     renderScreen(vi.fn(), { narrationAvailable: false });
 
@@ -229,7 +229,7 @@ describe("VideoMergeScreen", () => {
 
   // The whole point of collecting a licence at upload was to stop a credit line going missing at publish time.
   // It was being shown in the library and while picking a track, but not where the caption is actually written —
-  // by then the sentence was two screens behind the user (`.claude-bridge` Round 176).
+  // by then the sentence was two screens behind the user (docs/06_DECISIONS.md D-003).
   it("shows the credit line the finished video owes, with the sentence itself", async () => {
     const response = makeResponse({
       project: makeProject({

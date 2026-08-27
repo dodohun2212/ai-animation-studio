@@ -250,7 +250,7 @@ describe("videoWorkflowApi", () => {
 
   // The whole point of this code. The generic fallback tells the reader to press the button again, and
   // pressing it again is the double submission the lock exists to prevent — the one that charged $3.00 twice
-  // (`.claude-bridge` Round 152/181). A message here that says "retry" would be worse than no message.
+  // (docs/06_DECISIONS.md D-010). A message here that says "retry" would be worse than no message.
   it("tells the reader not to press again when another window holds the project", () => {
     const displayed = toVideoWorkflowDisplayError(new VideoWorkflowApiError("PROJECT_LOCKED", "raw"));
 

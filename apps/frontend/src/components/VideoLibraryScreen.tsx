@@ -56,7 +56,7 @@ function dateTime(value: string): string {
  * The results archive: finished videos across every project, and — the part that has no other home — the past
  * versions each regeneration displaced. Those files already exist on disk, one paid regeneration each, with no
  * way to see or recover them until now. Distinct from the Asset Library, which holds input material fed *into*
- * generation; nothing here is ever sent to a provider (`.claude-bridge` Round 153).
+ * generation; nothing here is ever sent to a provider.
  */
 export function VideoLibraryScreen({ onBack }: Props) {
   const [state, setState] = useState<LibraryState>({ status: "loading" });
@@ -200,7 +200,7 @@ export function VideoLibraryScreen({ onBack }: Props) {
                   {/* The card, not just the merge screen, is where the credit line has to appear: the person
                       reading a merge result made it seconds ago, while the person reading this list is the one
                       coming back months later to finally publish it — the one who has forgotten
-                      (`.claude-bridge` Round 177). */}
+                      (docs/06_DECISIONS.md D-003). */}
                   {project.attributionRequired && (
                     <p data-testid={`library-credit-${project.projectId}`} className="rounded-lg border border-amber-400/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-300">
                       올릴 때 캡션에 출처를 적어야 합니다
@@ -312,7 +312,7 @@ export function VideoLibraryScreen({ onBack }: Props) {
                                         this older file carried. Showing the last merge's credit line here would
                                         be worse than showing none: the user would paste it believing it.
                                         Said at the moment of the action, since that is the only moment they can
-                                        still connect the loss to what they did (`.claude-bridge` Round 178). */}
+                                        still connect the loss to what they did (docs/06_DECISIONS.md D-003). */}
                                     {project.attributionRequired && (
                                       <p data-testid={`version-restore-credit-warning-${version.versionId}`} className="text-xs text-amber-300">
                                         되돌리고 나면 이 영상에 출처 표시가 필요한지 앱이 더 이상 알 수 없습니다. 지금 문구를 적어 두세요:

@@ -61,7 +61,7 @@ const AUDIO_MODE_LABELS: Record<AudioMode, string> = {
  * Attribution was collected at upload and shown in the library and again while choosing a track, but neither of
  * those is where it has to end up: a CC BY licence requires the credit to appear *where the work is published*,
  * and the user's next move after this screen is to paste a caption into Instagram. Up to now the sentence lived
- * two screens behind them at that moment (`.claude-bridge` Round 176).
+ * two screens behind them at that moment (docs/06_DECISIONS.md D-003).
  *
  * Reads `usedAudio`, not the track, on purpose — the backend copies the sentence by value at merge time, so a
  * track deleted afterwards cannot silently erase what an already-published video still owes.
@@ -146,7 +146,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
         if (cancelled) return;
         setSceneCount(response.project.scenes.length);
         // Derived, not assumed: a project that never generated narration cannot merge "narration only", and
-        // defaulting to it would label a silent video as a narrated one (`.claude-bridge` Round 163).
+        // defaulting to it would label a silent video as a narrated one (docs/06_DECISIONS.md D-011).
         setNarrationAvailable(response.project.narrationAvailable);
         setAudioMode(response.project.narrationAvailable ? "narration" : "silent");
         if (response.project.workflowState === WorkflowState.Completed && response.project.finalVideoPath === "videos/final/instagram_reel.mp4") {

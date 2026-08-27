@@ -128,7 +128,7 @@ export async function uploadAudioTrack(file: File, fields: UploadAudioTrackReque
   if (fields.title?.trim()) form.append("title", fields.title.trim());
   if (fields.artist?.trim()) form.append("artist", fields.artist.trim());
   // Required by the server: where the track came from is only knowable while the person still has the file in
-  // hand, so it is collected now rather than left to be reconstructed later (`.claude-bridge` Round 174).
+  // hand, so it is collected now rather than left to be reconstructed later (docs/06_DECISIONS.md D-002).
   form.append("licenseKind", fields.licenseKind);
   form.append("attributionRequired", String(fields.attributionRequired));
   if (fields.attributionText?.trim()) form.append("attributionText", fields.attributionText.trim());

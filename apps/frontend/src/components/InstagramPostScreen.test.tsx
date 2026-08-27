@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { jsonResponse, makeProject } from "../api/testUtils.js";
@@ -38,6 +38,7 @@ function renderScreen(options: {
   project?: Parameters<typeof makeProject>[0];
   durationSeconds?: number | "fails";
   draft?: { body?: string; hashtags?: string; aiNotice?: boolean } | "fails";
+  targets?: { targets: { igUserId: string; username: string; pageName: string }[]; selectedIgUserId?: string } | "not-connected";
 } = {}) {
   const projects = options.projects ?? [libraryProject()];
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -47,6 +48,12 @@ function renderScreen(options: {
     if (url === "/projects/p1/settings") {
       if (options.durationSeconds === "fails") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "raw" });
       return jsonResponse(200, { settings: makeSettings(options.durationSeconds ?? 30) });
+    }
+    if (url === "/settings/instagram/targets" || url === "/settings/instagram/target") {
+      if (options.targets === "not-connected") {
+        return jsonResponse(409, { code: "INSTAGRAM_NOT_CONNECTED", message: "raw backend detail" });
+      }
+      return jsonResponse(200, options.targets ?? { targets: [] });
     }
     if (url === "/projects/p1/post-draft") {
       if (options.draft === "fails") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "raw" });
@@ -281,6 +288,74 @@ describe("InstagramPostScreen", () => {
     expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value).toBe("");
   });
 
+  // Where it goes belongs beside what goes, not two screens away in settings: a credential answers "can we act
+  // at all?" and this answers "where does it land?".
+  it("shows the chosen account by its handle", async () => {
+    renderScreen({
+      targets: { targets: [{ igUserId: "17841400000000000", username: "ibad_studio", pageName: "이배드" }], selectedIgUserId: "17841400000000000" },
+    });
+
+    const chosen = await screen.findByTestId("post-target-selected");
+    expect(chosen.textContent).toContain("@ibad_studio");
+    expect(screen.queryByTestId("post-target-unset")).toBeNull();
+  });
+
+  // The server only echoes a stored choice back when it is actually still in this list, so its absence means
+  // the page was disconnected or lost its permission since. Saying so beats an empty selector.
+  it("asks the user to choose again when the stored account is no longer listed", async () => {
+    renderScreen({ targets: { targets: [{ igUserId: "1", username: "other", pageName: "다른 페이지" }] } });
+
+    expect((await screen.findByTestId("post-target-unset")).textContent).toContain("다시 골라");
+    expect(screen.queryByTestId("post-target-selected")).toBeNull();
+  });
+
+  it("saves the pick and shows it as the destination", async () => {
+    const { fetchMock } = renderScreen({
+      targets: { targets: [{ igUserId: "1", username: "ibad_studio", pageName: "이배드" }] },
+    });
+
+    fireEvent.change(await screen.findByTestId("post-target-select"), { target: { value: "1" } });
+
+    const put = await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
+      if (!call) throw new Error("no PUT yet");
+      return call;
+    });
+    expect(String(put[0])).toBe("/settings/instagram/target");
+    expect(JSON.parse(String((put[1] as RequestInit).body))).toEqual({ igUserId: "1" });
+  });
+
+  // An empty list is neither an error nor "log in" — the account exists but no Page is linked, which is a
+  // different thing for the user to go fix.
+  it("separates having no linked account from not being logged in", async () => {
+    renderScreen({ targets: { targets: [] } });
+    expect((await screen.findByTestId("post-target-none")).textContent).toContain("페이스북 페이지");
+    expect(screen.queryByTestId("post-target-error")).toBeNull();
+  });
+
+  it("says to log in when the token is missing or expired, without leaking the raw message", async () => {
+    renderScreen({ targets: "not-connected" });
+
+    const error = await screen.findByTestId("post-target-error");
+    expect(error).toHaveAttribute("data-error-code", "INSTAGRAM_NOT_CONNECTED");
+    expect(error.textContent).toContain("로그인");
+    expect(error.textContent).not.toContain("raw backend detail");
+  });
+
+  // The backend puts the numeric id in `username` rather than dropping an account it cannot name — being unable
+  // to pick your own account is worse. But a bare number must never stand as the account name, so the screen
+  // names it by its Page and says the handle could not be read.
+  it("never presents a numeric id as the account name", async () => {
+    renderScreen({
+      targets: { targets: [{ igUserId: "17841400000000000", username: "17841400000000000", pageName: "이배드" }], selectedIgUserId: "17841400000000000" },
+    });
+
+    const chosen = await screen.findByTestId("post-target-selected");
+    expect(chosen.textContent).toContain("이배드");
+    expect(chosen.textContent).not.toContain("17841400000000000");
+    expect(screen.getByTestId("post-target-handle-missing")).toBeTruthy();
+  });
+
   it("copies the composed caption", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     await withClipboard(writeText, async () => {
@@ -310,7 +385,7 @@ describe("InstagramPostScreen", () => {
 describe("InstagramPostScreen source", () => {
   // The one thing this screen must never grow by accident: a call that actually publishes, or any provider
   // credential handling. Posting needs a Creator account and Meta's Content Publishing API, and is out of scope
-  // by decision, not by oversight (`.claude-bridge` Round 178).
+  // by decision, not by oversight (docs/06_DECISIONS.md D-012).
   it("never reaches Instagram, a provider, or client-side storage", async () => {
     const fsPromises = await import("node:fs/promises");
     const path = await import("node:path");

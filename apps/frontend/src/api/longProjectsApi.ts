@@ -125,7 +125,7 @@ const SAFE_ERRORS: Record<string, string> = {
   // Two windows on the same Episode, both advancing video generation. Wording matters more here than in any
   // other message on this screen: the generic fallback ("잠시 후 다시 시도해 주세요") tells the reader to press
   // the button again, and pressing it again is exactly the double submission this lock exists to prevent — the
-  // one that actually charged $3.00 twice (`.claude-bridge` Round 152/181). So it says the opposite, plainly,
+  // one that actually charged $3.00 twice (docs/06_DECISIONS.md D-010). So it says the opposite, plainly,
   // and says the wait resolves itself.
   PROJECT_LOCKED: "다른 창에서 이 에피소드를 처리하는 중입니다. 다시 누르지 마세요 — 그쪽 작업이 끝나면 자동으로 반영됩니다.",
 };

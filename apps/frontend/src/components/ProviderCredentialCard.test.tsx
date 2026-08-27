@@ -56,7 +56,7 @@ describe("ProviderCredentialCard", () => {
 
   // Regression: this line used to read "연결됨". A user who had just revoked their Runway key on Runway's own
   // dashboard still saw it, and reasonably read it as "this key works". The app has never once asked a provider
-  // whether a stored key is valid, so it must not claim a connection it cannot verify (`.claude-bridge` Round 184).
+  // whether a stored key is valid, so it must not claim a connection it cannot verify (docs/06_DECISIONS.md D-006).
   it("never claims a connection it has not verified, and says what the status actually means", () => {
     render(
       <ProviderCredentialCard

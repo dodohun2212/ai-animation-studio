@@ -271,7 +271,7 @@ describe("longProjectsApi", () => {
   });
 
   // Same reasoning as the budget stop below, but sharper: here "다시 시도" would be an instruction to make the
-  // exact double submission the lock exists to prevent (`.claude-bridge` Round 152/181).
+  // exact double submission the lock exists to prevent (docs/06_DECISIONS.md D-010).
   it("tells the reader not to press again when another window holds the Episode", () => {
     const displayed = toLongProjectDisplayError(new LongProjectsApiError("PROJECT_LOCKED", "raw"));
 

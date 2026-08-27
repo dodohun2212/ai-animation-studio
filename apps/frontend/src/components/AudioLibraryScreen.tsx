@@ -57,7 +57,7 @@ function fileSize(bytes: number): string {
  *
  * There is deliberately no in-app search or download. No free-music service offers an API whose licence is clean
  * for commercial use without attribution, and wiring one up anyway would hand people tracks whose conditions they
- * would only discover after publishing (`.claude-bridge` Round 173).
+ * would only discover after publishing (docs/06_DECISIONS.md D-001).
  */
 export function AudioLibraryScreen({ onBack }: Props) {
   const [state, setState] = useState<State>({ status: "loading" });

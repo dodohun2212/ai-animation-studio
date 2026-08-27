@@ -493,7 +493,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                         />
                         {/* Silence unless it happened: the Backend sends both counts only when its own reference
                             cap actually dropped something, and sends the used count too so this sentence never has
-                            to hardcode that cap (`.claude-bridge` Round 168). */}
+                            to hardcode that cap. */}
                         {typeof review.referencesOmittedCount === "number" && review.referencesOmittedCount > 0 && (
                           <p
                             data-testid={`review-references-omitted-${review.sceneNumber}`}

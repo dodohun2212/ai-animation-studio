@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import type { Project, VideoLibraryProjectSummary } from "@ai-animation-studio/shared";
+import type { InstagramPublishTarget, Project, VideoLibraryProjectSummary } from "@ai-animation-studio/shared";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
+import { getInstagramTargets, setInstagramTarget, targetLabel, toInstagramTargetsDisplayError } from "../api/instagramTargetsApi.js";
 import { getPostDraft, putPostDraft, toPostDraftDisplayError } from "../api/postDraftApi.js";
 import { getVideoLibrary, toVideoLibraryDisplayError } from "../api/videoLibraryApi.js";
 import { finalVideoContentUrl } from "../api/videoMergeApi.js";
@@ -18,6 +19,16 @@ type ListState =
   | { status: "loading" }
   | { status: "error"; error: DisplayError }
   | { status: "ready"; projects: VideoLibraryProjectSummary[] };
+/**
+ * Where a post would go. Kept apart from the credential settings on purpose — a credential answers "can we act
+ * at all?", this answers "where does it land?", and that has to be readable at the moment of publishing rather
+ * than two screens away in settings (docs/06_DECISIONS.md D-006).
+ */
+type TargetsState =
+  | { status: "loading" }
+  | { status: "error"; error: DisplayError }
+  | { status: "ready"; targets: InstagramPublishTarget[]; selectedIgUserId?: string };
+
 type PickedState =
   | { status: "idle" }
   | { status: "loading" }
@@ -74,7 +85,7 @@ function composeCaption(parts: { body: string; attribution: string; aiNotice: st
  * Everything that has to happen before a finished video becomes a post, except the posting itself.
  *
  * The publishing step needs a Creator account and Meta's Content Publishing API, and is deliberately not here
- * (`.claude-bridge` Round 178). Everything before it — which video, what the caption says, whether the shape
+ * (docs/06_DECISIONS.md D-012). Everything before it — which video, what the caption says, whether the shape
  * and length are within what a reel accepts, and the credit line the audio licence requires — does not, and
  * that part is what the user is otherwise doing by hand each time.
  */
@@ -86,6 +97,8 @@ export function InstagramPostScreen({ onBack }: Props) {
   const [hashtagsRaw, setHashtagsRaw] = useState("");
   const [aiNoticeOn, setAiNoticeOn] = useState(true);
   const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
+  const [targets, setTargets] = useState<TargetsState>({ status: "loading" });
+  const [targetPending, setTargetPending] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [saveError, setSaveError] = useState<DisplayError | null>(null);
   const [openPending, setOpenPending] = useState(false);
@@ -99,9 +112,30 @@ export function InstagramPostScreen({ onBack }: Props) {
       .catch((caught: unknown) => setList({ status: "error", error: toVideoLibraryDisplayError(caught) }));
   }
 
+  function loadTargets(): void {
+    setTargets({ status: "loading" });
+    getInstagramTargets()
+      .then((response) => setTargets({ status: "ready", targets: response.targets, selectedIgUserId: response.selectedIgUserId }))
+      .catch((caught: unknown) => setTargets({ status: "error", error: toInstagramTargetsDisplayError(caught) }));
+  }
+
   useEffect(() => {
     loadList();
+    loadTargets();
   }, []);
+
+  async function chooseTarget(igUserId: string): Promise<void> {
+    if (targetPending || !igUserId) return;
+    setTargetPending(true);
+    try {
+      const response = await setInstagramTarget(igUserId);
+      setTargets({ status: "ready", targets: response.targets, selectedIgUserId: response.selectedIgUserId });
+    } catch (caught) {
+      setTargets({ status: "error", error: toInstagramTargetsDisplayError(caught) });
+    } finally {
+      setTargetPending(false);
+    }
+  }
 
   useEffect(() => {
     if (!projectId) {
@@ -182,6 +216,11 @@ export function InstagramPostScreen({ onBack }: Props) {
       setOpenPending(false);
     }
   }
+
+  const selectedTarget = targets.status === "ready"
+    ? targets.targets.find((target) => target.igUserId === targets.selectedIgUserId) ?? null
+    : null;
+  const selectedLabel = selectedTarget ? targetLabel(selectedTarget) : null;
 
   const project = picked.status === "ready" ? picked.project : null;
   const usedAudio = project?.usedAudio;
@@ -270,6 +309,78 @@ export function InstagramPostScreen({ onBack }: Props) {
           </select>
         </label>
       )}
+
+      {/* Where it goes, shown next to what goes — not buried in settings. Even with a single account this stays
+          on screen: not asking and not showing are different things, and the day a second account appears is
+          exactly the day a wrong destination costs something that cannot be taken back. */}
+      <div className={cardSection} data-testid="post-target">
+        <p className="text-sm font-semibold text-slate-200">올릴 계정</p>
+
+        {targets.status === "loading" && <Spinner label="계정을 불러오는 중..." />}
+
+        {targets.status === "error" && (
+          <div className="space-y-2">
+            <p role="alert" data-testid="post-target-error" data-error-code={targets.error.code} className="text-sm text-rose-400">
+              {targets.error.message}
+            </p>
+            <button type="button" className={outlineButton} onClick={loadTargets}>
+              다시 시도
+            </button>
+          </div>
+        )}
+
+        {/* An empty list is not an error and not "log in" — the account exists but no Facebook Page is linked to
+            it, which is a different thing for the user to go fix. */}
+        {targets.status === "ready" && !targets.targets.length && (
+          <p data-testid="post-target-none" className="text-sm text-slate-400">
+            게시할 수 있는 인스타그램 계정이 없습니다. 인스타그램 프로페셔널 계정이 페이스북 페이지에 연결돼 있어야 합니다.
+          </p>
+        )}
+
+        {targets.status === "ready" && Boolean(targets.targets.length) && (
+          <>
+            <label className="sr-only" htmlFor="post-target-select">올릴 계정 고르기</label>
+            <select
+              id="post-target-select"
+              data-testid="post-target-select"
+              className={fieldClass}
+              value={targets.selectedIgUserId ?? ""}
+              disabled={targetPending}
+              onChange={(event) => void chooseTarget(event.target.value)}
+            >
+              <option value="">고르지 않음</option>
+              {targets.targets.map((target) => {
+                const label = targetLabel(target);
+                return (
+                  <option key={target.igUserId} value={target.igUserId}>
+                    {label.name}
+                    {label.handleUnavailable ? " (핸들을 읽지 못함)" : ""}
+                  </option>
+                );
+              })}
+            </select>
+
+            {/* The stored choice was checked against this very list by the server; its absence means the page was
+                disconnected, deleted, or lost its permission since. Saying so beats an empty selector. */}
+            {!targets.selectedIgUserId && (
+              <p data-testid="post-target-unset" className="text-sm text-amber-300">
+                전에 고른 계정을 지금은 찾을 수 없습니다. 연결이 끊겼거나 권한이 회수됐을 수 있습니다. 위에서 다시 골라 주세요.
+              </p>
+            )}
+
+            {selectedTarget && (
+              <p data-testid="post-target-selected" className="text-sm text-slate-300">
+                이 영상은 <strong className="text-slate-100">{selectedLabel?.name}</strong> 계정으로 올라갑니다.
+                {selectedLabel?.handleUnavailable && (
+                  <span data-testid="post-target-handle-missing" className="mt-1 block text-xs text-amber-300">
+                    이 계정의 @핸들을 읽지 못해 연결된 페이지 이름으로 표시하고 있습니다. 올리기 전에 맞는 계정인지 확인해 주세요.
+                  </span>
+                )}
+              </p>
+            )}
+          </>
+        )}
+      </div>
 
       {picked.status === "loading" && <Spinner label="프로젝트를 불러오는 중..." />}
       {picked.status === "error" && (

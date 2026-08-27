@@ -268,7 +268,7 @@ describe("App", () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/settings/providers"))).toBe(false);
   });
 
-  it("reaches 게시물 준비 from the nav and asks only the library route until a video is picked", async () => {
+  it("reaches 게시물 준비 from the nav and asks only the library and publish-target routes until a video is picked", async () => {
     const fetchMock = vi.fn<FakeFetch>(async (input) => {
       const requestUrl = String(input);
       if (requestUrl === "/projects") return jsonResponse(200, { projects: [] });
@@ -284,7 +284,10 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "게시물 준비" }));
     await screen.findByTestId("post-empty");
 
-    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(["/videos/library"]);
+    // Sorted so the two independent mount reads cannot make this fail on ordering alone. Still an exact set:
+    // the point is that opening this screen reads the video list and the publish destinations and nothing else.
+    expect(fetchMock.mock.calls.map(([url]) => String(url)).sort())
+      .toEqual(["/settings/instagram/targets", "/videos/library"]);
     // Nothing on this screen publishes or authenticates — it must not reach a provider route either.
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/settings/providers"))).toBe(false);
   });
