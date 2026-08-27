@@ -1361,4 +1361,8 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - `withProjectLock`에 선택적 `timeoutMs` 오버라이드 추가(실제 호출부는 전부 기본값 사용, 테스트 전용) — 진짜 10초를 기다리지 않고도 타임아웃 경로가 실제로 `ProjectLockTimeoutError`를 던지는지 검증하는 신규 테스트 1건 추가.
   - 검증: root typecheck 전부 통과, Backend 788개(+1 신규) 전부 통과, root build 전부 통과. 유료 Provider 호출 없음.
   - 커밋: `e782d96`.
+- [x] **프런트 — `PROJECT_LOCKED` 안전 메시지 배선(Round 178)**: Cowork Round 182 — `videoWorkflowApi.ts`/`longProjectsApi.ts`(단편·롱 공유 코드) 양쪽에 "다시 누르지 마세요"를 명시하는 전용 문구 배선, 일반 "다시 시도" 폴백으로 되돌아가지 않게 문구 자체를 테스트로 고정.
+  - **질문 답변 — 제출(POST) 경로는 이 코드를 못 던진다, 확인**: `videos.controller.ts`/`episode-videos.controller.ts` 둘 다 `POST .../generations`가 `submissions.start()`(락 없음) 뒤에 `this.workflow.run(...)`를 `.catch(() => undefined)`로 fire-and-forget 호출 — `run()`(락을 잡는 진짜 지점) 안의 어떤 에러든 POST 응답과 완전히 분리되어 클라이언트에 절대 안 감. `PROJECT_LOCKED`는 이후 폴링(`GET .../generations/:jobId`)이나 `restart`에서만 나올 수 있음. `videoSubmissionApi.ts`엔 추가 안 하는 게 맞다고 확인 — 코드 변경 없음, 조사만.
+  - 검증: root typecheck 전부 통과, frontend 885개(+5 신규) 전부 통과, root build 전부 통과. 백엔드·계약 미변경.
+  - 커밋: `84323b4`.
 
