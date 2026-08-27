@@ -5,13 +5,14 @@ import { Injectable, type OnModuleDestroy } from "@nestjs/common";
 import { isSceneNumber, RUNWAY_PROMPT_MAX_LENGTH, sceneNumbersFor, VIDEO_SCENE_ESTIMATED_COST_USD, type ApproveLongEpisodeVideoReviewRequest, type ApproveLongEpisodeVideoReviewResponse, type GetLongEpisodeVideoPreviewResponse, type GetLongEpisodeVideoReviewResponse, type LongEpisodeDetail, type LongEpisodeStatus, type LongEpisodeVideoProgress, type LongEpisodeVideoReview, type RegenerateLongEpisodeVideoResponse, type SceneNumber, type StartLongEpisodeVideoGenerationRequest, type StartLongEpisodeVideoGenerationResponse } from "@ai-animation-studio/shared";
 import { validateImage } from "../assets/image-validation.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
-import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
+import { resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { RunwayBudget, RunwayBudgetExceededError } from "../providers/runway-budget.js";
 import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceResult, type RunwaySceneState } from "../videos/runway-workflow-support.js";
 import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { promptFor, type StoredScene } from "../videos/video-preview.service.js";
 import { longEpisodeLocked, longEpisodeNotFound, longEpisodeVideoJobNotFound, longEpisodeVideosInvalid, longEpisodeVideosNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 
@@ -41,7 +42,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
     private readonly budget?: RunwayBudget,
   ) {}
   onModuleDestroy(): void { for (const timer of this.activeTimers.values()) clearInterval(timer); this.activeTimers.clear(); }
-  private files(id: string, number: number) { if (!isSafeProjectId(id)) throw longUnsafeId(); const root = path.join(resolveSafeProjectDirectory(this.projectsRoot, id), "long_story"); const episode = path.join(root, `Episode${String(number).padStart(2, "0")}`); const videos = path.join(episode, "videos"); return { root, outlines: path.join(root, "episode_outlines.json"), longProject: path.join(root, "project.json"), project: path.join(episode, "project.json"), images: path.join(episode, "images"), videos, records: path.join(episode, "video_generation_records.json"), reviews: path.join(episode, "generated_video_reviews.json") }; }
+  private files(id: string, number: number) { const root = longStoryRoot(this.projectsRoot, id); const episode = path.join(root, episodeDirectoryName(number)); const videos = path.join(episode, "videos"); return { root, outlines: path.join(root, "episode_outlines.json"), longProject: path.join(root, "project.json"), project: path.join(episode, "project.json"), images: path.join(episode, "images"), videos, records: path.join(episode, "video_generation_records.json"), reviews: path.join(episode, "generated_video_reviews.json") }; }
   /** Same "9:16"/"16:9" -> Runway ratio mapping as episode-video-merge.service.ts's ratio(), and as video-preview.service.ts's ratioFor() for the short-project side. */
   private async ratio(id: string, number: number): Promise<"720:1280" | "1280:720"> {
     const raw = await this.json(this.files(id, number).longProject);

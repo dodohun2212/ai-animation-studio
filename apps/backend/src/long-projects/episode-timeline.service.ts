@@ -4,8 +4,8 @@ import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import type { AddLongEpisodeRequest, AddLongEpisodeResponse, ArchiveLongEpisodeRequest, ArchiveLongEpisodeResponse, DuplicateLongEpisodeResponse, LongEpisodeOutline, LongEpisodeStatus, LongProject, UpdateLongEpisodeOutlineRequest, UpdateLongEpisodeOutlineResponse } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
-import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { longEpisodeLimitReached, longEpisodeNotFound, longEpisodeTimelineNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
 
@@ -22,8 +22,8 @@ export class EpisodeTimelineService {
   private readonly projects: LongProjectsService;
   constructor(private readonly projectsRoot: string) { this.projects = new LongProjectsService(projectsRoot); }
 
-  private root(id: string) { if (!isSafeProjectId(id)) throw longUnsafeId(); return path.join(resolveSafeProjectDirectory(this.projectsRoot, id), "long_story"); }
-  private files(id: string, number?: number) { const root = this.root(id); const episode = number ? path.join(root, `Episode${String(number).padStart(2, "0")}`) : undefined; return { root, project: path.join(root, "project.json"), outlines: path.join(root, "episode_outlines.json"), episode, episodeProject: episode && path.join(episode, "project.json"), outline: episode && path.join(episode, "outline.json"), script: episode && path.join(episode, "script.json"), archives: path.join(root, "episode_archives") }; }
+  private root(id: string) { return longStoryRoot(this.projectsRoot, id); }
+  private files(id: string, number?: number) { const root = this.root(id); const episode = number ? path.join(root, episodeDirectoryName(number)) : undefined; return { root, project: path.join(root, "project.json"), outlines: path.join(root, "episode_outlines.json"), episode, episodeProject: episode && path.join(episode, "project.json"), outline: episode && path.join(episode, "outline.json"), script: episode && path.join(episode, "script.json"), archives: path.join(root, "episode_archives") }; }
   private async json(file: string): Promise<unknown> { try { return JSON.parse(await fs.readFile(file, "utf8")); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw longNotFound(); if (error instanceof SyntaxError) throw longMalformed(); throw longStorageError(); } }
   private toOutline(value: unknown, number: number): LongEpisodeOutline {
     const item = object(value); const status = item.status;
@@ -80,7 +80,7 @@ export class EpisodeTimelineService {
     if (!Number.isInteger(rawNumber) || rawNumber !== rawOutlines.length || rawNumber < 2) throw longEpisodeTimelineNotAllowed();
     this.toOutline(rawOutlines[rawNumber - 1], rawNumber);
     const files = this.files(id, rawNumber); if (!files.episode) throw longEpisodeNotFound();
-    const archiveId = `Episode${String(rawNumber).padStart(2, "0")}-${new Date().toISOString().replaceAll(/[:.]/g, "-")}`;
+    const archiveId = `${episodeDirectoryName(rawNumber)}-${new Date().toISOString().replaceAll(/[:.]/g, "-")}`;
     const destination = path.join(this.files(id).archives, archiveId);
     try { await fs.mkdir(this.files(id).archives, { recursive: true }); await fs.rename(files.episode, destination); }
     catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw longEpisodeNotFound(); throw longStorageError(); }

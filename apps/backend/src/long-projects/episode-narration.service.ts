@@ -4,13 +4,13 @@ import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import { sceneNumbersFor, TTS_ESTIMATED_COST_USD, type GetLongEpisodeNarrationReviewResponse, type LongEpisodeDetail, type LongEpisodeNarrationReview, type LongEpisodeStatus, type RegenerateLongEpisodeNarrationResponse, type SceneNumber, type StartLongEpisodeNarrationGenerationRequest, type StartLongEpisodeNarrationGenerationResponse } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
-import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiTtsApi } from "../narration/openai-narration-adapter.js";
 import { probeAudioDurationSeconds } from "../narration/audio-duration.js";
 import { longEpisodeNarrationBudgetExceeded, longEpisodeNarrationContentUnavailable, longEpisodeNarrationGenerationFailed, longEpisodeNarrationMissingText, longEpisodeNarrationNotAllowed, longEpisodeNarrationNotEnabled, longEpisodeNarrationProviderError, longEpisodeNarrationStorageError, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
@@ -32,9 +32,8 @@ export class EpisodeNarrationService {
   ) { this.projects = new LongProjectsService(projectsRoot); }
 
   private files(projectId: string, number: number) {
-    if (!isSafeProjectId(projectId)) throw longUnsafeId();
-    const root = path.join(resolveSafeProjectDirectory(this.projectsRoot, projectId), "long_story");
-    const episode = path.join(root, `Episode${String(number).padStart(2, "0")}`);
+    const root = longStoryRoot(this.projectsRoot, projectId);
+    const episode = path.join(root, episodeDirectoryName(number));
     return { root, outlines: path.join(root, "episode_outlines.json"), episode, project: path.join(episode, "project.json"), narration: path.join(episode, "narration"), records: path.join(episode, "narration_generation_records.json") };
   }
   private async json(file: string): Promise<unknown> { try { return JSON.parse(await fs.readFile(file, "utf8")); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw longNotFound(); if (error instanceof SyntaxError) throw longMalformed(); throw longStorageError(); } }

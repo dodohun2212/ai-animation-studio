@@ -4,8 +4,9 @@ import { Injectable, Logger, type OnApplicationBootstrap } from "@nestjs/common"
 import type { LongEpisodeStatus } from "@ai-animation-studio/shared";
 
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
-import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
+import { isSafeProjectId } from "../projects/project-id.js";
 
+import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 /**
  * Episode counterpart to projects/orphaned-generation-recovery.service.ts — see that file's doc comment for the
  * full single-process-loop reasoning, which applies identically here. That file explicitly flagged Long Episodes
@@ -90,7 +91,7 @@ export class OrphanedEpisodeGenerationRecoveryService implements OnApplicationBo
   }
 
   private async recoverProject(projectId: string): Promise<number> {
-    const root = path.join(resolveSafeProjectDirectory(this.projectsRoot, projectId), "long_story");
+    const root = longStoryRoot(this.projectsRoot, projectId);
     const outlinesFile = path.join(root, "episode_outlines.json");
     let outlines: unknown;
     try {
@@ -110,7 +111,7 @@ export class OrphanedEpisodeGenerationRecoveryService implements OnApplicationBo
       const target = RECOVERY_TARGETS.get(summary.status as LongEpisodeStatus);
       if (!target) continue;
       const number = index + 1;
-      const episodeFile = path.join(root, `Episode${String(number).padStart(2, "0")}`, "project.json");
+      const episodeFile = path.join(root, episodeDirectoryName(number), "project.json");
 
       let episode: unknown;
       try {

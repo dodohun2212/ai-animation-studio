@@ -1562,3 +1562,19 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - **🟠 Round 220의 회귀 테스트가 유실됨**: 대본 화면의 `planned` 상태 안내(`episode-script-needs-outline`)는 화면에 들어왔으나, 보고된 회귀 테스트가 작업 트리에 없음(테스트 헬퍼의 status 유니온에 `"planned"` 미추가, 신규 `it` 블록 없음). **새 안내 분기가 무테스트 상태** — Cowork에 반환.
   - 검증: root typecheck 전부 통과, frontend 956개 전부 통과, Backend 941개 전부 통과, root build 전부 통과.
   - **다음 항목으로 이월**: Cowork 요청 — "provider를 든 서비스의 화면이 무료라고 말하는 것"은 프런트에서 표현할 수 없으므로 백엔드 가드 필요. 설계는 CLI.
+- [x] **장기 프로젝트 경로 계산 13곳 → 1곳 통합(Round 203)**: 에셋 모델 재설계(단기 `mappings` 재사용)의 1단계 — 동작을 바꾸지 않고 복사본만 없애서, 이후 단계가 건드릴 코드를 줄이고 기존 테스트가 그대로 안전망이 되게 함. 사용자 지시: "안정적이고 코드는 효율적으로."
+  - `long-project-paths.ts` 신규 — `longStoryRoot(projectsRoot, projectId)` / `episodeDirectoryName(n)`. `projectsRoot`를 인자로 받아 `.archive` 아래 동일 레이아웃도 같은 함수가 처리(두 번째 함수를 만들면 그게 이 함수와 갈라질 자유가 생김).
+  - **🔴 13개 복사본이 서로 달랐다** — D-021(다섯 복사본이 *똑같이* 틀림)의 반대 모양이라 더 나쁨: 하나를 읽어도 나머지에 대해 아무것도 알 수 없었음.
+    ```
+    사전 검사   isSafeProjectId 를 하는 곳과 안 하는 곳이 섞여 있었음
+                → 같은 입력에 longUnsafeId() vs unsafeProjectId() 로 갈렸음
+                  (다만 code=UNSAFE_PROJECT_ID, status=400 이 동일해 API 계약은 불변 — 확인함)
+    봉쇄 검사   episode-continuity-reference 한 곳만 path.resolve + relative 검사, 나머지 12곳은 path.join
+    회차 번호   호출부마다 각자 검증, 두 곳은 경로를 만든 뒤에 검증
+    ```
+  - **검증을 함수 안에 넣음**: `episodeDirectoryName`이 정수 검사를 자기가 하므로 **검증 안 된 번호로 디렉터리 이름을 만들 수 없다.** 다음 호출자에게 규칙을 알려줘야 하는 관례가 아니라 구조가 됨.
+  - `episode-continuity-reference`의 봉쇄 검사는 **삭제**했다 — `Episode`+숫자에는 구분자가 들어갈 수 없어 발동 불가였고, **발동할 수 없는 검사는 다음 사람에게 "이 이름은 못 믿을 값"이라고 잘못 말한다**(D-019). 그 성질은 이름을 만드는 자리(`episodeDirectoryName` 테스트)에서 단언한다.
+  - `longStoryRoot`가 같은 검사를 하므로 그 앞의 사전 검사 6곳도 제거. 남은 `isSafeProjectId`/`resolveSafeProjectDirectory` 사용처 4곳은 전부 정당함(readdir 필터, 신규 id 검증, `withProjectLock`의 프로젝트 디렉터리).
+  - `episodeDirectory()`도 만들었다가 **삭제** — 13곳 중 단독으로 필요한 곳이 0이었음. 쓰이지 않는 export 는 다음 사람이 두 번 해석하게 만든다.
+  - 신규 테스트 7건. 순 변경 **+37 / -41** (기능 추가 없이 줄어듦).
+  - 검증: root typecheck 전부 통과, Backend 948개(+7 신규) 전부 통과, frontend 956개 전부 통과, root build 전부 통과.

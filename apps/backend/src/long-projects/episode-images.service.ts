@@ -6,13 +6,13 @@ import { IMAGE_ESTIMATED_COST_USD, isSceneNumber, sceneNumbersFor, type ApproveL
 import { validateImage } from "../assets/image-validation.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
-import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "../images/openai-image-adapter.js";
 import { imagePromptFor } from "../images/image-prompt.js";
 import { longEpisodeImagesBudgetExceeded, longEpisodeImagesInvalid, longEpisodeImagesNotAllowed, longEpisodeImagesProviderError, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 import { EpisodeAssetMappingsService } from "./episode-asset-mappings.service.js";
@@ -46,9 +46,8 @@ export class EpisodeImagesService {
   ) {}
 
   private files(projectId: string, number: number) {
-    if (!isSafeProjectId(projectId)) throw longUnsafeId();
-    const root = path.join(resolveSafeProjectDirectory(this.projectsRoot, projectId), "long_story");
-    const episode = path.join(root, `Episode${String(number).padStart(2, "0")}`);
+    const root = longStoryRoot(this.projectsRoot, projectId);
+    const episode = path.join(root, episodeDirectoryName(number));
     const images = path.join(episode, "images");
     return { root, outlines: path.join(root, "episode_outlines.json"), episode, project: path.join(episode, "project.json"), longProject: path.join(root, "project.json"), mapping: path.join(episode, "asset_mapping_review.json"), images, reviews: path.join(episode, "generated_image_reviews.json"), continuityMetadata: path.join(episode, "image_generation_metadata.json") };
   }

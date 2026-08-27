@@ -3,8 +3,8 @@ import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import type { GetLongEpisodeContinuityResponse, LongEpisodeContinuityMemory, LongEpisodeDetail, LongEpisodeStatus, SaveLongEpisodeContinuityRequest, SaveLongEpisodeContinuityResponse } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
-import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { longEpisodeContinuityNotAllowed, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 
@@ -21,7 +21,7 @@ const text = (value: unknown, limit = 4000): string | undefined => typeof value 
 export class EpisodeContinuityService {
   constructor(private readonly projectsRoot: string) {}
 
-  private files(projectId: string, number: number) { if (!isSafeProjectId(projectId)) throw longUnsafeId(); const root = path.join(resolveSafeProjectDirectory(this.projectsRoot, projectId), "long_story"); const episode = path.join(root, `Episode${String(number).padStart(2, "0")}`); return { root, outlines: path.join(root, "episode_outlines.json"), project: path.join(episode, "project.json"), continuity: path.join(episode, "continuity.json") }; }
+  private files(projectId: string, number: number) { const root = longStoryRoot(this.projectsRoot, projectId); const episode = path.join(root, episodeDirectoryName(number)); return { root, outlines: path.join(root, "episode_outlines.json"), project: path.join(episode, "project.json"), continuity: path.join(episode, "continuity.json") }; }
   private async json(file: string): Promise<unknown> { try { return JSON.parse(await fs.readFile(file, "utf8")); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw longNotFound(); if (error instanceof SyntaxError) throw longMalformed(); throw longStorageError(); } }
   private async episode(id: string, number: number): Promise<StoredEpisode> { if (!Number.isInteger(number) || number < 1) throw longEpisodeNotFound(); const files = this.files(id, number); const outlines = await this.json(files.outlines); if (!Array.isArray(outlines) || number > outlines.length || !object(outlines[number - 1]) || outlines[number - 1].episode_number !== number) throw longEpisodeNotFound(); const raw = await this.json(files.project); if (!object(raw) || raw.number !== number || !states.includes(raw.state as LongEpisodeStatus) || typeof raw.approved !== "boolean" || !Number.isInteger(raw.script_revision) || typeof raw.updated_at !== "string") throw longInvalidData(); return raw as StoredEpisode; }
   private detail(episode: StoredEpisode): LongEpisodeDetail { const script = toApiEpisodeScript(episode.script); const warnings = withoutStaleEpisodeRecoveryWarnings(Array.isArray(episode.warnings) ? episode.warnings.filter((item): item is string => typeof item === "string") : [], episode.state); return { episodeNumber: episode.number, title: String(episode.title), summary: String(episode.summary), mainEvent: String(episode.core_event), conflict: String(episode.conflict), cliffhanger: String(episode.cliffhanger), nextEpisodeHook: String(episode.next_connection), status: episode.state, approved: episode.approved, scriptRevision: episode.script_revision, ...(script ? { script } : {}), scriptHistoryCount: Array.isArray(episode.script_history) ? episode.script_history.length : 0, ...(warnings.length > 0 ? { warnings } : {}) }; }

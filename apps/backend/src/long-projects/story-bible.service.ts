@@ -23,10 +23,10 @@ import type {
   UpdateLongStoryBibleItemResponse,
 } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
-import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId, storyBibleItemExists, storyBibleItemNotFound } from "./long-project-api.error.js";
 
+import { longStoryRoot } from "./long-project-paths.js";
 const collections = ["characters", "locations", "props", "secrets", "foreshadowing"] as const;
 const idKeys = { characters: "character_id", locations: "location_id", props: "prop_id", secrets: "secret_id", foreshadowing: "foreshadowing_id" } as const;
 const prefixes = { characters: "CHAR", locations: "LOC", props: "PROP", secrets: "SECRET", foreshadowing: "FORESHADOW" } as const;
@@ -66,8 +66,7 @@ export class StoryBibleService {
   constructor(private readonly projectsRoot: string, private readonly assets = new LocalAssetsRepository(path.dirname(projectsRoot))) {}
 
   private files(projectId: string): { project: string; bible: string } {
-    if (!isSafeProjectId(projectId)) throw longUnsafeId();
-    const root = path.join(resolveSafeProjectDirectory(this.projectsRoot, projectId), "long_story");
+    const root = longStoryRoot(this.projectsRoot, projectId);
     return { project: path.join(root, "project.json"), bible: path.join(root, "story_bible.json") };
   }
 

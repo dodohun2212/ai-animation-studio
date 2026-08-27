@@ -3,13 +3,13 @@ import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import { STORY_ESTIMATED_COST_USD, type ApproveLongEpisodeScriptRequest, type ApproveLongEpisodeScriptResponse, type GenerateLongEpisodeScriptRequest, type GenerateLongEpisodeScriptResponse, type GetLongEpisodeResponse, type LongEpisodeDetail, type LongEpisodeOutline, type LongEpisodeScene, type LongEpisodeScript, type LongEpisodeStatus, type SceneNumber, type UpdateLongEpisodeScriptRequest, type UpdateLongEpisodeScriptResponse } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
-import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiStoryApi } from "../story/openai-story-adapter.js";
 import { buildEpisodeContext } from "./episode-context-builder.js";
 import { longEpisodeNotFound, longEpisodeScriptBudgetExceeded, longEpisodeScriptExists, longEpisodeScriptNotAllowed, longEpisodeScriptProviderError, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
 
@@ -32,8 +32,8 @@ export class EpisodeScriptsService {
     private readonly budget?: OpenAiBudget,
   ) { this.projects = new LongProjectsService(projectsRoot); }
 
-  private root(projectId: string): string { if (!isSafeProjectId(projectId)) throw longUnsafeId(); return path.join(resolveSafeProjectDirectory(this.projectsRoot, projectId), "long_story"); }
-  private files(projectId: string, number: number) { const root = this.root(projectId); const episode = path.join(root, `Episode${String(number).padStart(2, "0")}`); return { root, project: path.join(root, "project.json"), outlines: path.join(root, "episode_outlines.json"), bible: path.join(root, "story_bible.json"), episode, episodeProject: path.join(episode, "project.json"), outline: path.join(episode, "outline.json"), script: path.join(episode, "script.json") }; }
+  private root(projectId: string): string { return longStoryRoot(this.projectsRoot, projectId); }
+  private files(projectId: string, number: number) { const root = this.root(projectId); const episode = path.join(root, episodeDirectoryName(number)); return { root, project: path.join(root, "project.json"), outlines: path.join(root, "episode_outlines.json"), bible: path.join(root, "story_bible.json"), episode, episodeProject: path.join(episode, "project.json"), outline: path.join(episode, "outline.json"), script: path.join(episode, "script.json") }; }
   private async json(file: string): Promise<unknown> { try { return JSON.parse(await fs.readFile(file, "utf8")); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw longNotFound(); if (error instanceof SyntaxError) throw longMalformed(); throw longStorageError(); } }
   private async outline(projectId: string, number: number): Promise<LongEpisodeOutline> {
     if (!Number.isInteger(number) || number < 1) throw longEpisodeNotFound();

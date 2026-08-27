@@ -5,9 +5,9 @@ import { Injectable } from "@nestjs/common";
 import { isSceneNumber, sceneNumbersFor, type LongEpisodeDetail, type LongEpisodeStatus, type MergeLongEpisodeVideosResponse, type SceneNumber } from "@ai-animation-studio/shared";
 
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
-import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "../videos/ffmpeg-merge.service.js";
 import { longEpisodeFfmpegUnavailable, longEpisodeMergeClipsInvalid, longEpisodeMergeFailed, longEpisodeMergeNotAllowed, longEpisodeNotFound, longInvalidData, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
@@ -33,9 +33,8 @@ export class EpisodeVideoMergeService {
   constructor(private readonly projectsRoot: string, runner?: MediaCommandRunner) { this.engine = new FfmpegMergeEngine(runner); this.projects = new LongProjectsService(projectsRoot); }
 
   private files(id: string, number: number) {
-    if (!isSafeProjectId(id)) throw longUnsafeId();
-    const root = path.join(resolveSafeProjectDirectory(this.projectsRoot, id), "long_story");
-    const episode = path.join(root, `Episode${String(number).padStart(2, "0")}`);
+    const root = longStoryRoot(this.projectsRoot, id);
+    const episode = path.join(root, episodeDirectoryName(number));
     const videos = path.join(episode, "videos");
     return { root, outlines: path.join(root, "episode_outlines.json"), longProject: path.join(root, "project.json"), episode, project: path.join(episode, "project.json"), videos, records: path.join(episode, "video_generation_records.json"), reviews: path.join(episode, "generated_video_reviews.json") };
   }

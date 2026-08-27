@@ -4,9 +4,9 @@ import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import type { ApproveLongEpisodeAssetMappingReviewRequest, ApproveLongEpisodeAssetMappingReviewResponse, BeginLongEpisodeAssetMappingReviewRequest, BeginLongEpisodeAssetMappingReviewResponse, GetLongEpisodeAssetMappingReviewResponse, GetLongEpisodeAutomaticReferenceSummaryResponse, LongEpisodeAssetMappingCandidate, LongEpisodeAssetMappingReview, LongEpisodeAutomaticReferenceSummary, LongEpisodeDetail, LongEpisodeStatus, RerunLongEpisodeAssetMatchingResponse, SceneNumber, UpdateLongEpisodeAssetMappingRequest, UpdateLongEpisodeAssetMappingResponse } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
-import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { longEpisodeMappingNotAllowed, longEpisodeMappingNotFound, longEpisodeMappingStale, longEpisodeMappingUnconfirmed, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 
@@ -34,8 +34,7 @@ export class EpisodeAssetMappingsService {
   constructor(private readonly projectsRoot: string, private readonly assets: LocalAssetsRepository) {}
 
   private files(projectId: string, number: number) {
-    if (!isSafeProjectId(projectId)) throw longUnsafeId();
-    const root = path.join(resolveSafeProjectDirectory(this.projectsRoot, projectId), "long_story"); const episode = path.join(root, `Episode${String(number).padStart(2, "0")}`);
+    const root = longStoryRoot(this.projectsRoot, projectId); const episode = path.join(root, episodeDirectoryName(number));
     return { root, bible: path.join(root, "story_bible.json"), outlines: path.join(root, "episode_outlines.json"), episode, project: path.join(episode, "project.json"), mappings: path.join(episode, "asset_mappings.json"), review: path.join(episode, "asset_mapping_review.json") };
   }
   private async json(file: string): Promise<unknown> { try { return JSON.parse(await fs.readFile(file, "utf8")); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw longNotFound(); if (error instanceof SyntaxError) throw longMalformed(); throw longStorageError(); } }

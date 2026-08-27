@@ -3,8 +3,8 @@ import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import { sceneNumbersFor, type GetLongEpisodeContinuityReferenceResponse, type LongEpisodeContinuityReference, type LongEpisodeStatus } from "@ai-animation-studio/shared";
 import { validateImage } from "../assets/image-validation.js";
-import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
-import { longEpisodeNotFound, longInvalidData, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { longEpisodeNotFound, longInvalidData, longMalformed, longNotFound, longStorageError } from "./long-project-api.error.js";
+import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 
 const COMPLETED_IMAGE_STATES: readonly LongEpisodeStatus[] = ["waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted"];
 type ObjectMap = Record<string, unknown>;
@@ -15,10 +15,8 @@ export class EpisodeContinuityReferenceService {
   constructor(private readonly projectsRoot: string) {}
 
   private files(projectId: string, number: number) {
-    if (!isSafeProjectId(projectId)) throw longUnsafeId();
-    const root = path.resolve(resolveSafeProjectDirectory(this.projectsRoot, projectId), "long_story");
-    const episode = path.resolve(root, `Episode${String(number).padStart(2, "0")}`);
-    if (path.relative(root, episode).startsWith("..") || path.isAbsolute(path.relative(root, episode))) throw longUnsafeId();
+    const root = longStoryRoot(this.projectsRoot, projectId);
+    const episode = path.join(root, episodeDirectoryName(number));
     return { root, outlines: path.join(root, "episode_outlines.json"), episode, project: path.join(episode, "project.json"), reviews: path.join(episode, "generated_image_reviews.json"), images: path.join(episode, "images") };
   }
   private async json(file: string): Promise<unknown> {

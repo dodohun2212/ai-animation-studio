@@ -5,12 +5,13 @@ import { Injectable } from "@nestjs/common";
 import { LONG_OUTLINE_ESTIMATED_COST_USD, MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, type ApproveLongProjectOutlineRequest, type ApproveLongProjectOutlineResponse, type ArchivedLongProjectSummary, type ArchiveProjectRequest, type ArchiveProjectResponse, type CreateLongProjectOutlinePreviewResponse, type CreateLongProjectRequest, type CreateLongProjectResponse, type DeleteArchivedProjectRequest, type DeleteArchivedProjectResponse, type GetLongProjectResponse, type GetLongProjectSettingsResponse, type ListArchivedLongProjectsResponse, type ListLongProjectsResponse, type LongEpisodeOutline, type LongProject, type LongProjectSettings, type LongProjectSummary, type RestoreProjectResponse, type UpdateLongProjectSettingsRequest, type UpdateLongProjectSettingsResponse } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { archiveProjectDirectory, deleteArchivedProjectDirectory, listArchivedProjectDirectories, restoreProjectDirectory } from "../projects/project-archive.js";
-import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
+import { isSafeProjectId } from "../projects/project-id.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiEpisodePlannerApi, type OpenAiEpisodeOutlineResult } from "./openai-episode-planner-adapter.js";
 import { longArchiveCollision, longArchiveNotAllowed, longExists, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longOutlineBudgetExceeded, longOutlineNotAllowed, longOutlineProviderError, longOutlineStale, longRestoreCollision, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { longStoryRoot } from "./long-project-paths.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 
 const MAX_EPISODES = Number(process.env.APP_MAX_LONG_PROJECT_EPISODES ?? "60");
@@ -79,9 +80,9 @@ export class LongProjectsService {
     private readonly providerSettings?: ProviderSettingsService,
     private readonly budget?: OpenAiBudget,
   ) {}
-  private root(id: string): string { if (!isSafeProjectId(id)) throw longUnsafeId(); return path.join(resolveSafeProjectDirectory(this.projectsRoot, id), "long_story"); }
+  private root(id: string): string { return longStoryRoot(this.projectsRoot, id); }
   private files(id: string) { const root = this.root(id); return { root, project: path.join(root, "project.json"), bible: path.join(root, "story_bible.json"), outlines: path.join(root, "episode_outlines.json") }; }
-  private archiveRoot(id: string): string { if (!isSafeProjectId(id)) throw longUnsafeId(); return path.join(resolveSafeProjectDirectory(path.resolve(this.projectsRoot, ".archive"), id), "long_story"); }
+  private archiveRoot(id: string): string { return longStoryRoot(path.resolve(this.projectsRoot, ".archive"), id); }
   private archiveFile(id: string): string { return path.join(this.archiveRoot(id), "project.json"); }
   private async loadArchived(id: string): Promise<Stored> { const stored = this.parseStored(await this.readJson(this.archiveFile(id))); if (stored.project_id !== id) throw longInvalidData(); return stored; }
   private async readJson(file: string): Promise<unknown> { try { return JSON.parse(await fs.readFile(file, "utf8")); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw longNotFound(); if (error instanceof SyntaxError) throw longMalformed(); throw longStorageError(); } }
