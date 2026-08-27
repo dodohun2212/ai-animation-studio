@@ -943,13 +943,11 @@ export interface RunLegacyReferenceMigrationResponse {
 }
 
 /**
- * "instagram" holds only the long-lived User Access Token, entered by the user themselves the same way an
- * OpenAI/Runway key is (`.claude-bridge` Round 183 — Cowork's explicit requirement: "토큰은 내가 절대 안 다뤄").
- * Publishing also needs the target Instagram Business Account ID, which is not a secret and does not belong in
- * this masked-value credential model — where that setting lives is still an open question, flagged back to
- * Cowork rather than decided here.
+ * One masked secret per provider. Instagram is deliberately not here: its connection is four values that are
+ * written by the same login and stop being true together (app id, app secret, token, token expiry), so it has
+ * its own store rather than a single masked string — see InstagramConnectionStatus.
  */
-export type ProviderCredentialKind = "openai" | "runway" | "instagram";
+export type ProviderCredentialKind = "openai" | "runway";
 
 export interface ProviderCredentialStatus {
   provider: ProviderCredentialKind;
@@ -1170,6 +1168,32 @@ export interface GetInstagramTargetsResponse {
 
 export interface SetInstagramTargetRequest { igUserId: string; }
 export type SetInstagramTargetResponse = GetInstagramTargetsResponse;
+
+/**
+ * What the app knows about its own Instagram connection, without ever returning the secret or the token.
+ * `tokenExpiresAt` is shown because a long-lived token lasts about sixty days and Meta documents no way to
+ * refresh one (D-007) — if the date is not visible, expiry always arrives as "it suddenly stopped working".
+ */
+export interface InstagramConnectionStatus {
+  /** Whether the Meta app id and secret have been entered. Signing in is impossible until they are. */
+  appConfigured: boolean;
+  /** Whether a token is stored. Says nothing about whether Meta still accepts it — that requires asking (D-006). */
+  tokenStored: boolean;
+  tokenExpiresAt?: string;
+}
+export interface SetInstagramAppRequest { appId: string; appSecret: string; }
+export type SetInstagramAppResponse = InstagramConnectionStatus;
+export interface StartInstagramLoginResponse {
+  /** The Meta login page to open in a window. */
+  url: string;
+  /** The window has arrived once its URL starts with this; hand that whole URL back to complete the login. */
+  redirectPrefix: string;
+}
+export interface CompleteInstagramLoginRequest {
+  /** The full URL the login window landed on, unparsed — the server reads the code and verifies the state it issued. */
+  redirectedUrl: string;
+}
+export type CompleteInstagramLoginResponse = InstagramConnectionStatus;
 
 /**
  * One short-project row in the cross-project video library (`.claude-bridge` Round 153/166) — an archive view of
@@ -1433,6 +1457,10 @@ export const API_ROUTES = {
   audioLibraryTrack: (trackId: string) => `/audio/library/${encodeURIComponent(trackId)}`,
   instagramTargets: "/settings/instagram/targets",
   instagramTarget: "/settings/instagram/target",
+  instagramConnection: "/settings/instagram/connection",
+  instagramApp: "/settings/instagram/app",
+  instagramLoginStart: "/settings/instagram/login/start",
+  instagramLoginComplete: "/settings/instagram/login/complete",
   projectAssetMappings: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/assets/mappings`,
   projectAssetMapping: (projectId: string, mappingId: string) =>
     `/projects/${encodeURIComponent(projectId)}/assets/mappings/${encodeURIComponent(mappingId)}`,

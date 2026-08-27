@@ -5,8 +5,8 @@ import { Injectable } from "@nestjs/common";
 import type { GetInstagramTargetsResponse, SetInstagramTargetResponse } from "@ai-animation-studio/shared";
 
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
-import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { listInstagramPublishTargets, type InstagramPublishTargetRecord } from "./instagram-graph-adapter.js";
+import { InstagramConnectionStore } from "./instagram-connection.store.js";
 import { InstagramAdapterError, type RetryOptions } from "./instagram-request.js";
 import { instagramNotConnected, instagramProviderError, instagramStorageError, instagramTargetNotFound, invalidInstagramRequest } from "./instagram-api.error.js";
 
@@ -21,7 +21,7 @@ const isObject = (value: unknown): value is Record<string, unknown> => typeof va
 export class InstagramTargetsService {
   constructor(
     private readonly learningDataRoot: string,
-    private readonly providerSettings: ProviderSettingsService,
+    private readonly connection: InstagramConnectionStore,
     private readonly requestOptions: RetryOptions = {},
   ) {}
 
@@ -53,10 +53,10 @@ export class InstagramTargetsService {
 
   /** Fetches the accounts this token can publish to right now. An expired or missing login is reported as not-connected rather than as an empty list — see instagramNotConnected. */
   private async liveTargets(): Promise<InstagramPublishTargetRecord[]> {
-    const token = await this.providerSettings.rawCredentialIfConnected("instagram");
+    const token = await this.connection.token();
     if (!token) throw instagramNotConnected();
     try {
-      return await listInstagramPublishTargets(token, this.requestOptions);
+      return await listInstagramPublishTargets(token.accessToken, this.requestOptions);
     } catch (error) {
       if (error instanceof InstagramAdapterError) {
         if (error.category === "authentication") throw instagramNotConnected();

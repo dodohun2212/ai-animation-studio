@@ -9,12 +9,10 @@ import { settingsFileMalformed, settingsStorageError } from "./provider-settings
 const ENV_NAMES: Record<ProviderCredentialKind, readonly string[]> = {
   openai: ["OPENAI_API_KEY"],
   runway: ["RUNWAYML_API_SECRET", "RUNWAY_API_SECRET"],
-  instagram: ["INSTAGRAM_ACCESS_TOKEN"],
 };
 const OFFICIAL_ENV_NAME: Record<ProviderCredentialKind, string> = {
   openai: "OPENAI_API_KEY",
   runway: "RUNWAYML_API_SECRET",
-  instagram: "INSTAGRAM_ACCESS_TOKEN",
 };
 
 type WriteEnvFile = (file: string, content: string) => Promise<void>;

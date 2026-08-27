@@ -39,6 +39,10 @@ function requiredProviderSettingsRoot(): string {
     },
     ProviderSettingsService,
   ],
-  exports: [ProviderSettingsService, ProviderSettingsRepository],
+  // PROVIDER_SETTINGS_ROOT is exported so another module storing a secret can put it under the same
+  // fail-closed root instead of resolving one of its own — mirroring how AssetsModule exports
+  // LEARNING_DATA_ROOT. Injecting an unexported token fails DI at bootstrap, which Nest surfaces as a process
+  // abort rather than a test failure, so the omission reads as worker flakiness instead of a wiring mistake.
+  exports: [ProviderSettingsService, ProviderSettingsRepository, PROVIDER_SETTINGS_ROOT],
 })
 export class ProviderSettingsModule {}

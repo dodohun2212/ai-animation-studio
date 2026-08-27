@@ -4,8 +4,7 @@ import * as path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
-import { ProviderSettingsService } from "../settings/provider-settings.service.js";
+import { InstagramConnectionStore } from "./instagram-connection.store.js";
 import { InstagramTargetsService } from "./instagram-targets.service.js";
 
 const roots: string[] = [];
@@ -24,11 +23,12 @@ function pagesResponse(pages: unknown[] = [{ name: "이배드 스튜디오", ins
 
 async function setup(options: { connected?: boolean; fetchImpl?: ReturnType<typeof vi.fn> } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "instagram-targets-")); roots.push(root);
-  const providerSettings = new ProviderSettingsService(new ProviderSettingsRepository(root));
-  if (options.connected !== false) await providerSettings.save("instagram", { value: TOKEN });
+  const connection = new InstagramConnectionStore(root);
+  await connection.saveAppCredentials({ appId: "app-1", appSecret: "secret-1" });
+  if (options.connected !== false) await connection.saveToken({ accessToken: TOKEN, expiresAt: null });
   const fetchImpl = options.fetchImpl ?? vi.fn().mockResolvedValue(pagesResponse());
-  const service = new InstagramTargetsService(root, providerSettings, { fetchImpl, sleep: async () => {} });
-  return { root, service, providerSettings, fetchImpl };
+  const service = new InstagramTargetsService(root, connection, { fetchImpl, sleep: async () => {} });
+  return { root, service, connection, fetchImpl };
 }
 
 describe("InstagramTargetsService.list", () => {
@@ -58,10 +58,10 @@ describe("InstagramTargetsService.list", () => {
   });
 
   it("remembers a chosen account across a restart", async () => {
-    const { service, root, providerSettings, fetchImpl } = await setup();
+    const { service, root, connection, fetchImpl } = await setup();
     await service.select({ igUserId: "178000001" });
 
-    const restarted = new InstagramTargetsService(root, providerSettings, { fetchImpl, sleep: async () => {} });
+    const restarted = new InstagramTargetsService(root, connection, { fetchImpl, sleep: async () => {} });
     await expect(restarted.list()).resolves.toMatchObject({ selectedIgUserId: "178000001" });
   });
 
@@ -69,13 +69,13 @@ describe("InstagramTargetsService.list", () => {
     // A page can be disconnected, deleted, or have its permission revoked between sessions. Echoing the stored
     // id back unchecked would be the app asserting something it never verified (docs/06_DECISIONS.md D-006).
     const fetchImpl = vi.fn().mockResolvedValue(pagesResponse());
-    const { service, root, providerSettings } = await setup({ fetchImpl });
+    const { service, root, connection } = await setup({ fetchImpl });
     await service.select({ igUserId: "178000001" });
 
     const afterRevocation = vi.fn().mockResolvedValue(pagesResponse([
       { name: "다른 페이지", instagram_business_account: { id: "178000099", username: "someone_else" } },
     ]));
-    const restarted = new InstagramTargetsService(root, providerSettings, { fetchImpl: afterRevocation, sleep: async () => {} });
+    const restarted = new InstagramTargetsService(root, connection, { fetchImpl: afterRevocation, sleep: async () => {} });
     const result = await restarted.list();
     expect(result.targets.map((target) => target.igUserId)).toEqual(["178000099"]);
     expect(result.selectedIgUserId).toBeUndefined(); // the screen must ask again, not publish somewhere else
