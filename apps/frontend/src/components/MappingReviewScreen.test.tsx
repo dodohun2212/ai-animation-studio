@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { jsonResponse, makeAsset, makeAssetFolder, makeMapping, makeReview } from "../api/testUtils.js";
 import { MappingReviewScreen } from "./MappingReviewScreen.js";
+import { episodeMappingApi, projectMappingApi } from "../api/mappingsApi.js";
 
 function mappingList(): HTMLElement {
   return screen.getByRole("list", { name: "Mapping 목록" });
@@ -23,7 +24,7 @@ describe("MappingReviewScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }));
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
 
     expect(screen.getByText("Mapping을 불러오는 중...")).toBeTruthy();
     await screen.findByText("대표 캐릭터");
@@ -44,7 +45,7 @@ describe("MappingReviewScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { review: makeReview() }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const rendered = render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    const rendered = render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
 
     const alert = await screen.findByTestId("mappings-error");
     expect(alert).toHaveAttribute("data-error-code", "ASSET_MAPPING_STORAGE_ERROR");
@@ -62,7 +63,7 @@ describe("MappingReviewScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { asset: assetA, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }))
       .mockResolvedValueOnce(jsonResponse(200, { asset: assetB, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true })));
 
-    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
     await screen.findByText("캐릭터 자산");
     // `mappingB` is excluded, and excluded connections are out of the list by default — "제외" that leaves the
     // row looking exactly as present as the ones in use reads as if it had not taken effect.
@@ -102,7 +103,7 @@ describe("MappingReviewScreen", () => {
       }));
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
     await screen.findByText("대상 자산");
     expect(screen.getByText("상태: 제안됨")).toBeTruthy();
 
@@ -126,7 +127,7 @@ describe("MappingReviewScreen", () => {
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveDecision = resolve; }));
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
     await screen.findByText("대상 자산");
 
     const confirmButton = within(mappingList()).getByRole("button", { name: "확인" });
@@ -155,7 +156,7 @@ describe("MappingReviewScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { mapping: snapshotted }));
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
     await screen.findByText("대상 자산");
     expect(screen.getByText("스냅샷: 없음")).toBeTruthy();
 
@@ -181,7 +182,7 @@ describe("MappingReviewScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { review: approvedReview }));
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
     await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
 
     fireEvent.click(screen.getByRole("button", { name: "지금 대본 기준으로 다시 맞추기" }));
@@ -208,11 +209,11 @@ describe("MappingReviewScreen", () => {
     vi.stubGlobal("fetch", fetchMock);
     const onOpenImageGeneration = vi.fn();
 
-    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} onOpenImageGeneration={onOpenImageGeneration} />);
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} onOpenImageGeneration={onOpenImageGeneration} />);
     await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
 
     fireEvent.click(screen.getByRole("button", { name: "연결 다 했음 · 다음 단계로" }));
-    await waitFor(() => expect(onOpenImageGeneration).toHaveBeenCalledWith("sample_project"));
+    await waitFor(() => expect(onOpenImageGeneration).toHaveBeenCalled());
   });
 
   it("offers a plain way forward when the review is already approved, and says the check is optional", async () => {
@@ -223,13 +224,13 @@ describe("MappingReviewScreen", () => {
     vi.stubGlobal("fetch", fetchMock);
     const onOpenImageGeneration = vi.fn();
 
-    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} onOpenImageGeneration={onOpenImageGeneration} />);
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} onOpenImageGeneration={onOpenImageGeneration} />);
     await screen.findByText("승인됨");
 
     // Re-running the check is still offered, but its label no longer claims work that is already done.
     expect(screen.getByTestId("approve-review-button").textContent).toBe("다시 검사하고 다음 단계로");
     fireEvent.click(screen.getByTestId("skip-to-image-generation"));
-    expect(onOpenImageGeneration).toHaveBeenCalledWith("sample_project");
+    expect(onOpenImageGeneration).toHaveBeenCalled();
     // Moving on this way sends nothing — only the two initial loads happened.
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -240,7 +241,7 @@ describe("MappingReviewScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { review: makeReview({}) }));
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
     const definition = await screen.findByTestId("reference-image-definition");
     expect(definition.textContent).toContain("등장 캐릭터");
     // The settings choices now DO seed this list (syncAutoMappings), so the old "자동으로 올라오지 않습니다"
@@ -265,7 +266,7 @@ describe("MappingReviewScreen", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
     await screen.findByText("쓰는 그림");
     // Leaving it in the list made 제외 look like it had not worked.
     expect(screen.queryByText("안 쓰는 그림")).toBeNull();
@@ -292,7 +293,7 @@ describe("MappingReviewScreen", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
     await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
 
     fireEvent.click(within(screen.getByRole("form", { name: "연결할 이미지 검색" })).getByRole("button", { name: "검색" }));
@@ -328,7 +329,7 @@ describe("MappingReviewScreen", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
     await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
     fireEvent.click(within(screen.getByRole("form", { name: "연결할 이미지 검색" })).getByRole("button", { name: "검색" }));
 
@@ -350,7 +351,7 @@ describe("MappingReviewScreen", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
     // The excluded row itself is hidden by default now, so wait on the line that reports it instead.
     await screen.findByTestId("toggle-excluded");
     fireEvent.click(within(screen.getByRole("form", { name: "연결할 이미지 검색" })).getByRole("button", { name: "검색" }));
@@ -375,7 +376,7 @@ describe("MappingReviewScreen", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
     await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
 
     fireEvent.change(screen.getByLabelText("어떤 용도로 쓰나요"), { target: { value: "background" } });
@@ -405,7 +406,7 @@ describe("MappingReviewScreen", () => {
       }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const rendered = render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    const rendered = render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
     await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
 
     fireEvent.click(screen.getByRole("button", { name: "연결 다 했음 · 다음 단계로" }));
@@ -424,7 +425,7 @@ describe("MappingReviewScreen", () => {
       .mockResolvedValueOnce(jsonResponse(409, { code: "ASSET_MAPPING_FINGERPRINT_MISMATCH", message: "internal detail" }));
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
     await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
 
     fireEvent.click(screen.getByRole("button", { name: "연결 다 했음 · 다음 단계로" }));
@@ -444,7 +445,7 @@ describe("MappingReviewScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { review: makeReview() }));
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
     await screen.findByText("유지되어야 할 자산");
 
     fireEvent.click(screen.getByRole("button", { name: "새로고침" }));
@@ -459,7 +460,7 @@ describe("MappingReviewScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { mappings: [] }))
       .mockResolvedValueOnce(jsonResponse(200, { review: makeReview() })));
     const onBack = vi.fn();
-    render(<MappingReviewScreen projectId="sample_project" onBack={onBack} />);
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={onBack} />);
     await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
 
     fireEvent.click(screen.getByRole("button", { name: "프로젝트로 돌아가기" }));
@@ -475,7 +476,7 @@ describe("MappingReviewScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }));
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
     await screen.findByText("직접 연결한 자산");
 
     // A mapping you made yourself is saved as confirmed — the button would be a no-op.
@@ -495,7 +496,7 @@ describe("MappingReviewScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { mapping: { ...mapping, status: "confirmed", snapshot: { relativePath: "asset_snapshots/MAP-A-v1.png", sha256: "d".repeat(64), sourceVersion: 1 } } }));
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MappingReviewScreen projectId="sample_project" onBack={() => {}} />);
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
     await screen.findByText("대상 자산");
     fireEvent.click(within(mappingList()).getByRole("button", { name: "확인" }));
     await screen.findByText("상태: 확인됨");
@@ -507,5 +508,22 @@ describe("MappingReviewScreen", () => {
       expect(url).not.toContain("/videos/");
       expect(url).not.toContain("/settings/providers");
     }
+  });
+
+  it("sends its calls to the Episode when given the Episode adapter, with no other change", async () => {
+    // The point of the adapter, asserted: one screen, two owners, and the ONLY difference is the URL. Before
+    // this, a Long Episode had its own screen and its own service, which could not create a mapping at all and
+    // refused the character Folders its own UI offered. If this ever fails because
+    // someone gave the screen an id again, that divergence is starting over.
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { mappings: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MappingReviewScreen api={episodeMappingApi("sample_project", 3)} onBack={() => {}} />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const called = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(called).toContain("/long-projects/sample_project/episodes/3/assets/mappings");
+    expect(called).toContain("/long-projects/sample_project/episodes/3/assets/mapping-review");
+    expect(called.every((url) => !url.startsWith("/projects/"))).toBe(true);
   });
 });

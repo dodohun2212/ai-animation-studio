@@ -15,6 +15,7 @@ import { VideoLibraryScreen } from "./components/VideoLibraryScreen.js";
 import { AudioLibraryScreen } from "./components/AudioLibraryScreen.js";
 import { InstagramPostScreen } from "./components/InstagramPostScreen.js";
 import { MappingReviewScreen } from "./components/MappingReviewScreen.js";
+import { episodeMappingApi, projectMappingApi } from "./api/mappingsApi.js";
 import { ShortProjectSettingsScreen } from "./components/ShortProjectSettingsScreen.js";
 import { StoryPromptScreen } from "./components/StoryPromptScreen.js";
 import { ImageGenerationScreen } from "./components/ImageGenerationScreen.js";
@@ -29,7 +30,6 @@ import { LongProjectOutlineScreen } from "./components/LongProjectOutlineScreen.
 import { LongStoryBibleScreen } from "./components/LongStoryBibleScreen.js";
 import { LongEpisodeOutlineScreen } from "./components/LongEpisodeOutlineScreen.js";
 import { LongEpisodeScriptScreen } from "./components/LongEpisodeScriptScreen.js";
-import { LongEpisodeMappingReviewScreen } from "./components/LongEpisodeMappingReviewScreen.js";
 import { LongEpisodeImageGenerationScreen } from "./components/LongEpisodeImageGenerationScreen.js";
 import { LongEpisodeVideoWorkflowScreen } from "./components/LongEpisodeVideoWorkflowScreen.js";
 import { LongEpisodeVideoMergeScreen } from "./components/LongEpisodeVideoMergeScreen.js";
@@ -542,7 +542,17 @@ export function App() {
             )}
             {screen.name === "longEpisodeOutline" && <LongEpisodeOutlineScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longDetail", projectId: screen.projectId })} onOpenScript={(projectId, episodeNumber) => setScreen({ name: "longEpisodeScript", projectId, episodeNumber })} />}
             {screen.name === "longEpisodeScript" && <LongEpisodeScriptScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longDetail", projectId: screen.projectId })} onOpenMappingReview={(projectId, episodeNumber) => setScreen({ name: "longEpisodeMappingReview", projectId, episodeNumber })} />}
-            {screen.name === "longEpisodeMappingReview" && <LongEpisodeMappingReviewScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longEpisodeScript", projectId: screen.projectId, episodeNumber: screen.episodeNumber })} onOpenImageGeneration={(projectId, episodeNumber) => setScreen({ name: "longEpisodeImageGeneration", projectId, episodeNumber })} />}
+            {/* The same screen the short project uses. A Long Episode runs the identical review flow over the
+                identical shapes, so it is told where to send its calls rather than reimplemented — the old
+                LongEpisodeMappingReviewScreen was that reimplementation, and it could neither create a mapping
+                nor accept a character Folder its own picker offered. */}
+            {screen.name === "longEpisodeMappingReview" && (
+              <MappingReviewScreen
+                api={episodeMappingApi(screen.projectId, screen.episodeNumber)}
+                onBack={() => setScreen({ name: "longEpisodeScript", projectId: screen.projectId, episodeNumber: screen.episodeNumber })}
+                onOpenImageGeneration={() => setScreen({ name: "longEpisodeImageGeneration", projectId: screen.projectId, episodeNumber: screen.episodeNumber })}
+              />
+            )}
             {screen.name === "longEpisodeImageGeneration" && <LongEpisodeImageGenerationScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longEpisodeMappingReview", projectId: screen.projectId, episodeNumber: screen.episodeNumber })} onOpenVideoWorkflow={(projectId, episodeNumber) => setScreen({ name: "longEpisodeVideoWorkflow", projectId, episodeNumber })} />}
             {screen.name === "longEpisodeVideoWorkflow" && <LongEpisodeVideoWorkflowScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longEpisodeImageGeneration", projectId: screen.projectId, episodeNumber: screen.episodeNumber })} onOpenMerge={(projectId, episodeNumber) => setScreen({ name: "longEpisodeVideoMerge", projectId, episodeNumber })} />}
             {screen.name === "longEpisodeVideoMerge" && <LongEpisodeVideoMergeScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longEpisodeVideoWorkflow", projectId: screen.projectId, episodeNumber: screen.episodeNumber })} onOpenContinuity={(projectId, episodeNumber) => setScreen({ name: "longEpisodeContinuity", projectId, episodeNumber })} />}
@@ -576,9 +586,9 @@ export function App() {
             )}
             {screen.name === "mappingReview" && (
               <MappingReviewScreen
-                projectId={screen.projectId}
+                api={projectMappingApi(screen.projectId)}
                 onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
-                onOpenImageGeneration={(projectId) => setScreen({ name: "imageGeneration", projectId })}
+                onOpenImageGeneration={() => setScreen({ name: "imageGeneration", projectId: screen.projectId })}
               />
             )}
             {screen.name === "settings" && (

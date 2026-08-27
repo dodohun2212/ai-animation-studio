@@ -1628,3 +1628,12 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
     - 장기: 이름은 `"records a recoverable failed state"` 인데 단언은 재시도가 `LONG_EPISODE_MERGE_NOT_ALLOWED` 로 거부되는 것이었음 — **"recoverable" 이 이름에만 있었다.** 이제 재시도가 실제 사유로 실패하고, 도구가 복구되면 성공하는 것까지 단언.
     - 단기: 재시도를 시험하려고 **상태를 손으로 `VideosApproved` 로 되돌려 저장**하고 있었음. 사용자에게는 없는 수단이라, 막다른 길이 테스트에 우회로로 박혀 있던 셈. 그 줄을 지우고 `Failed` 에서 바로 재시도되는 것을 단언.
   - 검증(백엔드 단독): typecheck 0, Backend 973개 전부 통과, backend build 정상. (전체 실행의 `decision-doc-references` 1건은 Cowork의 미커밋 프런트 파일 3개가 `.claude-bridge` 를 참조해 나는 것으로, 이 커밋에 포함되지 않음 — 우편함으로 반환.)
+- [x] **프런트 — 화면 하나가 두 소유자를 섬긴다(Round 210)**: Cowork Round 227~228. 계약 A의 프런트 절반. **화면 재작성이 아니라 어댑터 주입 하나였다.**
+  - `MappingApi` 인터페이스 + `projectMappingApi(projectId)` / `episodeMappingApi(projectId, episodeNumber)` 팩토리. `MappingReviewScreen`의 `projectId` **15회 → 0회**. `onOpenImageGeneration?: (projectId) => void` → `() => void` — 인자로 소유자를 돌려주면 화면이 다시 소유자를 아는 셈이라서.
+  - 어댑터에 `id` 문자열을 둔 이유가 코드에 적힘: 객체 정체성에 의존하면 인라인 생성 호출부가 매 렌더마다 재조회함. 호출부에 `useMemo` 규율을 요구하는 대신 안정 문자열로 끊음(`useEffect(..., [api.id])` 에서만 사용).
+  - **옛 함수 7개를 래퍼로 남기지 않음** — 남기면 그게 다음 사람이 `projectId`를 다시 들고 들어오는 입구가 됨.
+  - 신규 회귀 테스트: 같은 화면에 회차 어댑터를 물리면 **`/projects/`로 시작하는 요청이 하나도 없을 것**을 단언. 누가 다시 화면에 id를 쥐여주면 거기서 터짐.
+  - **🔴 `create` 테스트가 원래 아예 없었음** — 하필 회차에서 도달 불가능했던 그 호출. 새로 추가하며 **`versionPolicy`를 안 보내는 것**을 단언: 서버가 폴더는 `follow_latest`, 낱장은 `pinned`로 정하고 폴더+pinned를 거부하는데, 화면이 같이 정하면 규칙이 두 벌이 되고 **그 두 벌이 어긋난 결과가 바로 "UI가 제시한 폴더를 저장이 거부"였음**(B-1).
+  - **🔴 Cowork의 탐색 방식이 바뀜**: "`mappingsApi.test.ts`가 없다"고 보고했는데 실제로는 존재했고 지운 함수들을 시험하고 있었음. 원인은 **마운트가 부분 거울**인데 거기에 `ls`를 건 것 — Round 222의 "낡은 모듈 파일을 읽었다"와 같은 뿌리. 이후 파일 존재는 실제 디렉터리에 묻기로 바꿨고, **그 교훈이 곧바로 값을 함**(새 테스트의 `{mode:"all"}` vs `{kind:"all"}` 오타를 하네스가 잡음 — 이번엔 그 파일을 하네스에 넣었기 때문).
+  - 소스 주석 3곳의 `.claude-bridge` 참조 제거(도달 불가 링크, Round 182 검사기가 잡음). **링크만 걷어내고 이유는 문장이 스스로 서게 다시 씀.**
+  - 검증: root typecheck 전부 통과, frontend 960개(+4 신규) 전부 통과, Backend 973개 전부 통과, root build 전부 통과. (`local-video-workflow.runway.test.ts` 기존 타이머 플레이키 3회째 관찰 — 단독 13개 통과.)

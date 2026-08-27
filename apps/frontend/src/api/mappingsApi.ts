@@ -173,76 +173,102 @@ async function request<T>(url: string, init: RequestInit | undefined, guard: (va
   return body;
 }
 
-export function listProjectAssetMappings(projectId: string): Promise<ListProjectAssetMappingsResponse> {
-  return request(API_ROUTES.projectAssetMappings(projectId), undefined, isListResponse);
-}
-
 /**
- * Links one Asset to this project's scenes as a reference image.
+ * Everything the mapping review screen can do, with no mention of who owns the mappings.
  *
- * This endpoint has existed since the mapping feature shipped, and until now nothing in the app called it —
- * the review screen could list, confirm and exclude mappings, but there was no way to make one. The practical
- * effect was that `collectReferenceImages` always found an empty list, so every scene image was generated
- * from prompt text alone and no character or background reference ever reached the model.
+ * A short project and a Long Episode run the identical review flow over the identical request/response shapes
+ * — the only difference is which URL the calls go to. Handing the screen this object instead of an id is what
+ * keeps that true: a screen holding a `projectId` eventually does something else with it, and then the two
+ * owners have quietly diverged again. That divergence is exactly what the Long Episode mapping code was: a
+ * second, worse implementation of a flow that already existed.
  *
- * `versionPolicy` is deliberately not sent: the server picks `follow_latest` for a Folder (a Folder has no
- * versions of its own; its bytes come from whichever child is currently its representative) and
- * `pinned_version` for a single image, and it rejects a Folder pinned to a version. Letting the server decide
- * keeps that rule in one place.
+ * `projectId` + an optional `episodeNumber` was the other option and was deliberately not taken: an optional
+ * argument encodes "omit it and you get the short project" as an unwritten rule, and a caller that gets it
+ * wrong compiles and runs and silently addresses the wrong owner.
  */
-export function createProjectAssetMapping(
-  projectId: string,
-  requestBody: CreateProjectAssetMappingRequest,
-): Promise<CreateProjectAssetMappingResponse> {
-  return request(
-    API_ROUTES.projectAssetMappings(projectId),
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) },
-    isCreateResponse,
-  );
+export interface MappingApi {
+  /**
+   * Stable identity for this owner — used ONLY as a React effect dependency, never parsed or displayed.
+   * Without it the screen would have to depend on the adapter's object identity, and a caller that builds the
+   * adapter inline (the natural thing to write) would re-fetch on every render forever.
+   */
+  readonly id: string;
+  list(): Promise<ListProjectAssetMappingsResponse>;
+  create(requestBody: CreateProjectAssetMappingRequest): Promise<CreateProjectAssetMappingResponse>;
+  getReview(): Promise<GetProjectAssetMappingReviewResponse>;
+  update(mappingId: string, requestBody: UpdateProjectAssetMappingRequest): Promise<UpdateProjectAssetMappingResponse>;
+  beginReview(requestBody: BeginProjectAssetMappingReviewRequest): Promise<BeginProjectAssetMappingReviewResponse>;
+  approveReview(requestBody: ApproveProjectAssetMappingReviewRequest): Promise<ApproveProjectAssetMappingReviewResponse>;
+  snapshot(mappingId: string): Promise<SnapshotProjectAssetMappingResponse>;
 }
 
-export function getProjectAssetMappingReview(projectId: string): Promise<GetProjectAssetMappingReviewResponse> {
-  return request(API_ROUTES.projectAssetMappingReview(projectId), undefined, isGetReviewResponse);
+interface MappingRoutes {
+  id: string;
+  mappings: string;
+  mapping: (mappingId: string) => string;
+  review: string;
+  reviewApprove: string;
+  snapshot: (mappingId: string) => string;
 }
 
-export async function updateProjectAssetMapping(
-  projectId: string,
-  mappingId: string,
-  requestBody: UpdateProjectAssetMappingRequest,
-): Promise<UpdateProjectAssetMappingResponse> {
-  const response = await request(
-    API_ROUTES.projectAssetMapping(projectId, mappingId),
-    { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) },
-    isUpdateResponse,
-  );
-  if (response.mapping.mappingId !== mappingId) throw new MappingsApiError(MALFORMED.code, MALFORMED.message);
-  return response;
+const json = (body: unknown): RequestInit => ({
+  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+});
+
+function mappingApiFor(routes: MappingRoutes): MappingApi {
+  return {
+    id: routes.id,
+    list: () => request(routes.mappings, undefined, isListResponse),
+    /**
+     * Links one Asset to this owner's scenes as a reference image.
+     *
+     * `versionPolicy` is deliberately not sent: the server picks `follow_latest` for a Folder (a Folder has no
+     * versions of its own; its bytes come from whichever child is currently its representative) and
+     * `pinned_version` for a single image, and it rejects a Folder pinned to a version. Letting the server
+     * decide keeps that rule in one place — and it is the rule the Long Episode path never had, which is why
+     * a character Folder could be chosen on screen and then refused on save.
+     */
+    create: (requestBody) => request(routes.mappings, json(requestBody), isCreateResponse),
+    getReview: () => request(routes.review, undefined, isGetReviewResponse),
+    update: async (mappingId, requestBody) => {
+      const response = await request(
+        routes.mapping(mappingId),
+        { ...json(requestBody), method: "PATCH" },
+        isUpdateResponse,
+      );
+      if (response.mapping.mappingId !== mappingId) throw new MappingsApiError(MALFORMED.code, MALFORMED.message);
+      return response;
+    },
+    beginReview: (requestBody) => request(routes.review, json(requestBody), isBeginReviewResponse),
+    approveReview: (requestBody) => request(routes.reviewApprove, json(requestBody), isApproveReviewResponse),
+    snapshot: async (mappingId) => {
+      const response = await request(routes.snapshot(mappingId), { method: "POST" }, isSnapshotResponse);
+      if (response.mapping.mappingId !== mappingId) throw new MappingsApiError(MALFORMED.code, MALFORMED.message);
+      return response;
+    },
+  };
 }
 
-export function beginProjectAssetMappingReview(
-  projectId: string,
-  requestBody: BeginProjectAssetMappingReviewRequest,
-): Promise<BeginProjectAssetMappingReviewResponse> {
-  return request(
-    API_ROUTES.projectAssetMappingReview(projectId),
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) },
-    isBeginReviewResponse,
-  );
+/** Mappings owned by a short project. */
+export function projectMappingApi(projectId: string): MappingApi {
+  return mappingApiFor({
+    id: `project:${projectId}`,
+    mappings: API_ROUTES.projectAssetMappings(projectId),
+    mapping: (mappingId) => API_ROUTES.projectAssetMapping(projectId, mappingId),
+    review: API_ROUTES.projectAssetMappingReview(projectId),
+    reviewApprove: API_ROUTES.projectAssetMappingReviewApprove(projectId),
+    snapshot: (mappingId) => API_ROUTES.projectAssetMappingSnapshot(projectId, mappingId),
+  });
 }
 
-export function approveProjectAssetMappingReview(
-  projectId: string,
-  requestBody: ApproveProjectAssetMappingReviewRequest,
-): Promise<ApproveProjectAssetMappingReviewResponse> {
-  return request(
-    API_ROUTES.projectAssetMappingReviewApprove(projectId),
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) },
-    isApproveReviewResponse,
-  );
-}
-
-export async function snapshotProjectAssetMapping(projectId: string, mappingId: string): Promise<SnapshotProjectAssetMappingResponse> {
-  const response = await request(API_ROUTES.projectAssetMappingSnapshot(projectId, mappingId), { method: "POST" }, isSnapshotResponse);
-  if (response.mapping.mappingId !== mappingId) throw new MappingsApiError(MALFORMED.code, MALFORMED.message);
-  return response;
+/** Mappings owned by one Episode of a Long Project — same flow, same shapes, different scope. */
+export function episodeMappingApi(projectId: string, episodeNumber: number): MappingApi {
+  return mappingApiFor({
+    id: `episode:${projectId}:${episodeNumber}`,
+    mappings: API_ROUTES.episodeAssetMappings(projectId, episodeNumber),
+    mapping: (mappingId) => API_ROUTES.episodeAssetMapping(projectId, episodeNumber, mappingId),
+    review: API_ROUTES.episodeAssetMappingReview(projectId, episodeNumber),
+    reviewApprove: API_ROUTES.episodeAssetMappingReviewApprove(projectId, episodeNumber),
+    snapshot: (mappingId) => API_ROUTES.episodeAssetMappingSnapshot(projectId, episodeNumber, mappingId),
+  });
 }

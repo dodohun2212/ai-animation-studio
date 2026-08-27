@@ -12,24 +12,20 @@ import type {
   UpdateProjectAssetMappingDecision,
 } from "@ai-animation-studio/shared";
 import { getAsset, listAssets, toAssetDisplayError } from "../api/assetsApi.js";
-import {
-  approveProjectAssetMappingReview,
-  beginProjectAssetMappingReview,
-  createProjectAssetMapping,
-  getProjectAssetMappingReview,
-  listProjectAssetMappings,
-  snapshotProjectAssetMapping,
-  toMappingDisplayError,
-  updateProjectAssetMapping,
-} from "../api/mappingsApi.js";
+import { type MappingApi, toMappingDisplayError } from "../api/mappingsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
 
 interface Props {
-  projectId: string;
+  /**
+   * Who owns these mappings, as the set of calls that reach them — never an id. A short project and a Long
+   * Episode run the same review flow over the same shapes, so this screen is written once and told where to
+   * send its requests. See MappingApi's own doc comment for why an id would not do.
+   */
+  api: MappingApi;
   onBack: () => void;
   /** The next pipeline step (장면 이미지). Optional so the screen still renders standalone in tests. */
-  onOpenImageGeneration?: (projectId: string) => void;
+  onOpenImageGeneration?: () => void;
 }
 
 type DisplayError = { code: string; message: string; details?: Record<string, unknown> };
@@ -96,7 +92,7 @@ function blockedReason(mappings: ProjectAssetMapping[] | null, details: Record<s
   return "아직 확인하지 않은 연결이 남아 있습니다. 아래 목록에서 확인 또는 제외를 눌러 주세요.";
 }
 
-export function MappingReviewScreen({ projectId, onBack, onOpenImageGeneration }: Props) {
+export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Props) {
   const [mappings, setMappings] = useState<ProjectAssetMapping[] | null>(null);
   const [mappingsError, setMappingsError] = useState<DisplayError | null>(null);
   const [mappingsLoading, setMappingsLoading] = useState(true);
@@ -169,8 +165,8 @@ export function MappingReviewScreen({ projectId, onBack, onOpenImageGeneration }
     setMappingsLoading(true);
     setReviewLoading(true);
     const [mappingsResult, reviewResult] = await Promise.allSettled([
-      listProjectAssetMappings(projectId),
-      getProjectAssetMappingReview(projectId),
+      api.list(),
+      api.getReview(),
     ]);
     if (requestId !== loadRequest.current) return;
     if (mappingsResult.status === "fulfilled") {
@@ -190,7 +186,9 @@ export function MappingReviewScreen({ projectId, onBack, onOpenImageGeneration }
     setReviewLoading(false);
   }
 
-  useEffect(() => { void load(); }, [projectId]);
+  // api.id, not api: a caller that builds the adapter inline gets a new object every render, and depending
+  // on object identity here would re-fetch forever.
+  useEffect(() => { void load(); }, [api.id]);
 
   async function searchAssets(event: FormEvent): Promise<void> {
     event.preventDefault();
@@ -228,7 +226,7 @@ export function MappingReviewScreen({ projectId, onBack, onOpenImageGeneration }
       const sceneScope: AssetMappingSceneScope = addScope === "scene"
         ? { kind: "scene", sceneNumber: addScene }
         : { kind: "all" };
-      await createProjectAssetMapping(projectId, { assetId: asset.assetId, usageRole: addRole, sceneScope });
+      await api.create({ assetId: asset.assetId, usageRole: addRole, sceneScope });
       // Reload rather than splice the new row in: the created mapping needs its Asset details fetched, and
       // the review's own counters change too.
       await load();
@@ -245,7 +243,7 @@ export function MappingReviewScreen({ projectId, onBack, onOpenImageGeneration }
     decisionBusy.current.add(mappingId);
     setDecisionPendingIds(new Set(decisionBusy.current));
     try {
-      const response = await updateProjectAssetMapping(projectId, mappingId, { decision });
+      const response = await api.update(mappingId, { decision });
       setMappings((current) => (current ? current.map((item) => (item.mappingId === mappingId ? response.mapping : item)) : current));
       setReview(response.review);
       setDecisionErrors((current) => {
@@ -267,7 +265,7 @@ export function MappingReviewScreen({ projectId, onBack, onOpenImageGeneration }
     snapshotBusy.current.add(mappingId);
     setSnapshotPendingIds(new Set(snapshotBusy.current));
     try {
-      const response = await snapshotProjectAssetMapping(projectId, mappingId);
+      const response = await api.snapshot(mappingId);
       setMappings((current) => (current ? current.map((item) => (item.mappingId === mappingId ? response.mapping : item)) : current));
       setSnapshotErrors((current) => {
         if (!(mappingId in current)) return current;
@@ -289,7 +287,7 @@ export function MappingReviewScreen({ projectId, onBack, onOpenImageGeneration }
     setBeginPending(true);
     setReviewMutationError(null);
     try {
-      const response = await beginProjectAssetMappingReview(projectId, {
+      const response = await api.beginReview({
         scriptRevision: review?.scriptRevision ?? 0,
         textOnlyConfirmed,
         legacyConfirmed,
@@ -312,14 +310,14 @@ export function MappingReviewScreen({ projectId, onBack, onOpenImageGeneration }
     if (beginBusy.current || approveBusy.current) return;
     beginBusy.current = true; setBeginPending(true); setReviewMutationError(null);
     try {
-      const begun = await beginProjectAssetMappingReview(projectId, {
+      const begun = await api.beginReview({
         scriptRevision: review?.scriptRevision ?? 0,
         textOnlyConfirmed: true,
         legacyConfirmed,
       });
       setReview(begun.review);
       setTextOnlyConfirmed(true);
-      const approved = await approveProjectAssetMappingReview(projectId, { scriptFingerprint: begun.review.scriptFingerprint });
+      const approved = await api.approveReview({ scriptFingerprint: begun.review.scriptFingerprint });
       setReview(approved.review);
     } catch (caught) {
       setReviewMutationError(toMappingDisplayError(caught));
@@ -332,11 +330,11 @@ export function MappingReviewScreen({ projectId, onBack, onOpenImageGeneration }
     setApprovePending(true);
     setReviewMutationError(null);
     try {
-      const response = await approveProjectAssetMappingReview(projectId, { scriptFingerprint: review.scriptFingerprint });
+      const response = await api.approveReview({ scriptFingerprint: review.scriptFingerprint });
       setReview(response.review);
       // The button said "다음 단계로" and then went nowhere — it only refreshed a status line that, on a
       // second visit, already read 승인됨. Nothing on screen changed, so it read as a dead button.
-      if (response.review.status === "approved") onOpenImageGeneration?.(projectId);
+      if (response.review.status === "approved") onOpenImageGeneration?.();
     } catch (caught) {
       setReviewMutationError(toMappingDisplayError(caught));
     } finally {
@@ -580,7 +578,7 @@ export function MappingReviewScreen({ projectId, onBack, onOpenImageGeneration }
               data-testid="skip-to-image-generation"
               className={outlineButton}
               disabled={approvePending}
-              onClick={() => onOpenImageGeneration(projectId)}
+              onClick={() => onOpenImageGeneration()}
             >
               그냥 다음 단계로
             </button>
