@@ -1431,4 +1431,10 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - **아직 안 만든 것**: Electron 로그인 창(IPC), 게시 orchestration.
   - 신규 테스트 19건(`instagram-login.service.test.ts`). 검증: root typecheck 전부 통과, Backend 874개·frontend 902개·shared 25개 전부 통과, root build 전부 통과. 실제 Meta API 호출 없음.
   - 커밋: `a7e1e86`.
+- [x] **Electron 인스타그램 로그인 창(Round 186)**: 로그인 경로의 마지막 조각. 렌더러가 백엔드에서 로그인 URL을 받아 이 창에 넘기고, 창이 도착한 URL을 **통째로** 돌려주면 렌더러가 백엔드에 넘겨 완료 — 이 모듈은 아무것도 파싱하지 않아 코드 추출·state 검증이 서버 한 곳(테스트된 곳)에만 있음.
+  - **판단 — IPC 핸들러가 https facebook.com이 아닌 URL을 거부**: 지금 호출자가 우리 화면뿐이지만, 넘겨받은 URL을 그대로 여는 핸들러는 그 자체로 피싱 표면임(진짜 로그인 폼을 보여주는 창이므로). 창도 preload 없이·Node 없이·샌드박스로 띄워 최소 권한만 부여. 유사 호스트(`notfacebook.com`, `www.facebook.com.evil.example`)도 테스트로 차단 확인.
+  - **판단 — 창 닫기는 실패가 아니라 답**: 마음을 바꾸는 건 평범한 경우라 로그인 실패와 구분되어야 함(`cancelled`). 또한 결과는 한 번만 확정되므로, 성공 후 창을 닫을 때 발생하는 `closed` 이벤트가 성공을 취소로 덮어쓰지 못함.
+  - **Cowork 쪽 남은 배선 1건 전달**: `apps/frontend/src/api/electronBridge.ts`는 Cowork 구역이라 건드리지 않고 추가할 코드와 함께 요청. 특히 `hasElectronBridge()`가 false인 브라우저 탭(개발 서버)에서는 창을 띄울 수 없어 안내가 필요함을 명시.
+  - 신규 테스트 7건(`instagram-login-window.test.ts`, `node --test`). 검증: root typecheck 전부 통과, desktop 20개·Backend 874개 전부 통과, root build 전부 통과.
+  - 커밋: `181df7f`.
 
