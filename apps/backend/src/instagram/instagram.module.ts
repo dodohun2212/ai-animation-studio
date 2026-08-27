@@ -5,10 +5,13 @@ import { PROVIDER_SETTINGS_ROOT, ProviderSettingsModule } from "../settings/prov
 import { InstagramConnectionStore } from "./instagram-connection.store.js";
 import { InstagramLoginService } from "./instagram-login.service.js";
 import { InstagramTargetsController } from "./instagram-targets.controller.js";
+import { InstagramPublishService } from "./instagram-publish.service.js";
 import { InstagramTargetsService } from "./instagram-targets.service.js";
+import { PROJECTS_ROOT, ProjectsModule } from "../projects/projects.module.js";
+import { LocalProjectRepository } from "../projects/projects.repository.js";
 
 @Module({
-  imports: [AssetsModule, ProviderSettingsModule],
+  imports: [AssetsModule, ProviderSettingsModule, ProjectsModule],
   controllers: [InstagramTargetsController],
   providers: [
     {
@@ -23,11 +26,17 @@ import { InstagramTargetsService } from "./instagram-targets.service.js";
       inject: [LEARNING_DATA_ROOT, InstagramConnectionStore],
     },
     {
+      provide: InstagramPublishService,
+      useFactory: (projects: LocalProjectRepository, root: string, connection: InstagramConnectionStore) =>
+        new InstagramPublishService(projects, root, connection),
+      inject: [LocalProjectRepository, PROJECTS_ROOT, InstagramConnectionStore],
+    },
+    {
       provide: InstagramLoginService,
       useFactory: (connection: InstagramConnectionStore) => new InstagramLoginService(connection),
       inject: [InstagramConnectionStore],
     },
   ],
-  exports: [InstagramTargetsService, InstagramLoginService, InstagramConnectionStore],
+  exports: [InstagramTargetsService, InstagramLoginService, InstagramPublishService, InstagramConnectionStore],
 })
 export class InstagramModule {}

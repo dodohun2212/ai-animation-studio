@@ -37,6 +37,7 @@ export interface StoredProject {
   narration_generation_records: unknown[];
   final_video_path: string | null;
   used_audio: StoredUsedAudio | null;
+  instagram_post: StoredInstagramPost | null;
   api_usage: unknown[];
   warnings: string[];
   errors: string[];
@@ -51,6 +52,14 @@ export interface StoredUsedAudio {
   track_id?: string;
   attribution_required?: boolean;
   attribution_text?: string;
+}
+
+/** Recorded only after Instagram accepted the publish, so its presence is proof the post exists rather than that one was attempted. */
+export interface StoredInstagramPost {
+  media_id: string;
+  ig_user_id: string;
+  published_at: string;
+  caption: string;
 }
 
 export const KNOWN_STORED_PROJECT_FIELDS: ReadonlySet<string> = new Set([
@@ -79,6 +88,7 @@ export const KNOWN_STORED_PROJECT_FIELDS: ReadonlySet<string> = new Set([
   "narration_generation_records",
   "final_video_path",
   "used_audio",
+  "instagram_post",
   "api_usage",
   "warnings",
   "errors",
@@ -202,6 +212,25 @@ function finalVideoPathField(data: Record<string, unknown>): string | null {
   return value;
 }
 
+function instagramPostField(data: Record<string, unknown>): StoredInstagramPost | null {
+  const key = "instagram_post";
+  if (!(key in data) || data[key] === null) return null;
+  const value = data[key];
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw dataInvalid(`Field "${key}" must be an object or null.`);
+  }
+  const record = value as Record<string, unknown>;
+  for (const field of ["media_id", "ig_user_id", "published_at", "caption"]) {
+    if (typeof record[field] !== "string") throw dataInvalid(`Field "${key}.${field}" must be a string.`);
+  }
+  return {
+    media_id: record.media_id as string,
+    ig_user_id: record.ig_user_id as string,
+    published_at: record.published_at as string,
+    caption: record.caption as string,
+  };
+}
+
 const USED_AUDIO_MODES: ReadonlySet<string> = new Set(["narration", "narration+bgm", "silent"]);
 
 function usedAudioField(data: Record<string, unknown>): StoredUsedAudio | null {
@@ -317,6 +346,7 @@ export function parseStoredProject(raw: unknown): StoredProject {
     narration_generation_records: anyArrayField(data, "narration_generation_records", []),
     final_video_path: finalVideoPathField(data),
     used_audio: usedAudioField(data),
+    instagram_post: instagramPostField(data),
     api_usage: anyArrayField(data, "api_usage", []),
     warnings: stringArrayField(data, "warnings", []),
     errors: stringArrayField(data, "errors", []),

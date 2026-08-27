@@ -1196,6 +1196,26 @@ export interface CompleteInstagramLoginRequest {
 export type CompleteInstagramLoginResponse = InstagramConnectionStatus;
 
 /**
+ * Publishing this project's final video. `approved` must be true and is never defaulted — this is the same
+ * grade of explicit gate the paid Runway steps use, for the same reason stated differently: a mistaken charge
+ * costs money, a mistaken post cannot be unseen by whoever already saw it.
+ *
+ * `igUserId` travels with the request rather than being read from the stored selection, so the account the
+ * confirmation named is provably the account published to. The server still checks it is one this login can
+ * actually publish to.
+ */
+export interface PublishToInstagramRequest {
+  approved: true;
+  caption: string;
+  igUserId: string;
+}
+export interface PublishToInstagramResponse {
+  mediaId: string;
+  publishedAt: string;
+  project: Project;
+}
+
+/**
  * One short-project row in the cross-project video library (`.claude-bridge` Round 153/166) — an archive view of
  * results, distinct from the Asset Library's input-material role (see AssetLibraryScreen). Only lists a project
  * that has at least one generated scene video; a project that never reached video generation never appears here.
@@ -1461,6 +1481,7 @@ export const API_ROUTES = {
   instagramApp: "/settings/instagram/app",
   instagramLoginStart: "/settings/instagram/login/start",
   instagramLoginComplete: "/settings/instagram/login/complete",
+  instagramPublish: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/instagram/publish`,
   projectAssetMappings: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/assets/mappings`,
   projectAssetMapping: (projectId: string, mappingId: string) =>
     `/projects/${encodeURIComponent(projectId)}/assets/mappings/${encodeURIComponent(mappingId)}`,

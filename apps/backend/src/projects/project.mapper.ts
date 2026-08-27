@@ -41,6 +41,7 @@ export function createStoredProject(projectId: string, topic: string, timestamp:
     narration_generation_records: [],
     final_video_path: null,
     used_audio: null,
+    instagram_post: null,
     api_usage: [],
     warnings: [],
     errors: [],
@@ -83,6 +84,11 @@ export function toApiSummary(stored: StoredProject): ProjectSummary {
     aspectRatio: aspectRatioFor(stored),
     narrationAvailable: narrationAvailableFor(stored),
     ...(usedAudioFor(stored) !== undefined ? { usedAudio: usedAudioFor(stored) } : {}),
+    ...(stored.instagram_post ? { instagramPost: {
+      mediaId: stored.instagram_post.media_id,
+      igUserId: stored.instagram_post.ig_user_id,
+      publishedAt: stored.instagram_post.published_at,
+    } } : {}),
   };
 }
 

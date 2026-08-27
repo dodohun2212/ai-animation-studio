@@ -6,7 +6,10 @@ export type InstagramErrorCode =
   | "INSTAGRAM_NOT_CONNECTED"
   | "INSTAGRAM_TARGET_NOT_FOUND"
   | "INSTAGRAM_STORAGE_ERROR"
-  | "INSTAGRAM_PROVIDER_ERROR";
+  | "INSTAGRAM_PROVIDER_ERROR"
+  | "INSTAGRAM_ALREADY_PUBLISHED"
+  | "INSTAGRAM_VIDEO_UNAVAILABLE"
+  | "INSTAGRAM_PUBLISH_FAILED";
 
 export class InstagramApiException extends HttpException {
   constructor(code: InstagramErrorCode, message: string, status: HttpStatus, details?: Record<string, unknown>) {
@@ -36,3 +39,17 @@ export const instagramStorageError = () =>
 /** Meta rejected the request for a reason that is not an expired login — category is carried in details for the frontend to branch on, never Meta's own wording. */
 export const instagramProviderError = (category: string, message: string) =>
   new InstagramApiException("INSTAGRAM_PROVIDER_ERROR", message, HttpStatus.BAD_GATEWAY, { category });
+
+/**
+ * This project's final video has already been posted. Refused rather than posted again: a duplicate charge can
+ * be argued with, a duplicate post has already been seen by everyone who saw it (D-005).
+ */
+export const instagramAlreadyPublished = () =>
+  new InstagramApiException("INSTAGRAM_ALREADY_PUBLISHED", "This project's video has already been published to Instagram.", HttpStatus.CONFLICT);
+
+export const instagramVideoUnavailable = () =>
+  new InstagramApiException("INSTAGRAM_VIDEO_UNAVAILABLE", "There is no merged final video to publish yet.", HttpStatus.CONFLICT);
+
+/** The attempt ended without a post — nothing was published, so trying again is safe. */
+export const instagramPublishFailed = (message: string) =>
+  new InstagramApiException("INSTAGRAM_PUBLISH_FAILED", message, HttpStatus.BAD_GATEWAY);

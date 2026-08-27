@@ -148,6 +148,16 @@ export interface ProjectSummary {
    * reference, specifically so that deleting the track afterward (allowed — see AudioLibraryTrack's own doc
    * comment) can never silently erase the credit line a published video still owes (`.claude-bridge` Round 176).
    */
+  /**
+   * Set once this project's final video has actually been published to Instagram. Present means it is out in
+   * the world: the screen uses this to stop offering to publish the same cut twice, and the server refuses a
+   * second publish outright (D-005) — an accidental duplicate post cannot be taken back from whoever saw it.
+   */
+  instagramPost?: {
+    mediaId: string;
+    igUserId: string;
+    publishedAt: string;
+  };
   usedAudio?: {
     mode: "narration" | "narration+bgm" | "silent";
     trackId?: string;
