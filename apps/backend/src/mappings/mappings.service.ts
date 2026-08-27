@@ -35,23 +35,29 @@ const mappingsScenes = (owner: MappingOwner) => {
 };
 
 @Injectable()
-export class ProjectAssetMappingsService {
-  constructor(private readonly repository: LocalProjectAssetMappingsRepository, private readonly assets: LocalAssetsRepository, private readonly owners: MappingOwners) {}
+/**
+ * The asset-mapping flow, over whatever owns the mappings.
+ *
+ * `Key` defaults to a short project's id, so every existing caller reads exactly as before. An Episode names
+ * itself with two values and supplies its own key type rather than encoding both into one string.
+ */
+export class ProjectAssetMappingsService<Key = string> {
+  constructor(private readonly repository: LocalProjectAssetMappingsRepository, private readonly assets: LocalAssetsRepository, private readonly owners: MappingOwners<Key>) {}
 
-  async list(projectId: string): Promise<ListProjectAssetMappingsResponse> {
-    return { mappings: (await this.repository.load(await this.owners.get(projectId))).map(toPublicMapping) };
+  async list(key: Key): Promise<ListProjectAssetMappingsResponse> {
+    return { mappings: (await this.repository.load(await this.owners.get(key))).map(toPublicMapping) };
   }
-  async review(projectId: string): Promise<GetProjectAssetMappingReviewResponse> {
-    return { review: toPublicReview(await this.repository.loadReview(await this.owners.get(projectId))) };
+  async review(key: Key): Promise<GetProjectAssetMappingReviewResponse> {
+    return { review: toPublicReview(await this.repository.loadReview(await this.owners.get(key))) };
   }
-  async create(projectId: string, body: unknown): Promise<CreateProjectAssetMappingResponse> {
+  async create(key: Key, body: unknown): Promise<CreateProjectAssetMappingResponse> {
     if (!isObject(body) || Object.keys(body).some((key) => !["assetId", "usageRole", "sceneScope", "versionPolicy", "pinnedVersion", "selectedChildAssetIds"].includes(key))
       || typeof body.assetId !== "string" || !body.assetId.trim() || typeof body.usageRole !== "string" || !body.usageRole.trim() || body.usageRole.trim().length > 80
       || !(body.versionPolicy === undefined || policy(body.versionPolicy)) || !(body.pinnedVersion === undefined || body.pinnedVersion === null || (Number.isInteger(body.pinnedVersion) && Number(body.pinnedVersion) >= 1))
       || !(body.selectedChildAssetIds === undefined || (Array.isArray(body.selectedChildAssetIds) && body.selectedChildAssetIds.every((item) => typeof item === "string" && item.length > 0)))) throw invalidMappingRequest("Asset Mapping request is invalid.");
     const request = body as unknown as CreateProjectAssetMappingRequest;
     const asset = await this.asset(request.assetId);
-    const owner = await this.owners.get(projectId);
+    const owner = await this.owners.get(key);
     const sceneScope = scopeFromRequest(request.sceneScope, owner.sceneCount);
     const versionPolicy = request.versionPolicy ?? (asset.is_folder ? "follow_latest" : "pinned_version");
     if (versionPolicy === "snapshot") throw invalidMappingRequest("Create a snapshot with the snapshot endpoint.");
@@ -61,17 +67,17 @@ export class ProjectAssetMappingsService {
     const pinnedVersion = request.pinnedVersion ?? asset.version;
     if (!asset.is_folder && !asset.versions.some((version) => version.version === pinnedVersion)) throw invalidMappingRequest("Pinned Asset version does not exist.");
     const now = new Date().toISOString();
-    const mapping: StoredAssetMapping = { mapping_id: `MAP-${crypto.randomBytes(8).toString("hex").toUpperCase()}`, project_id: projectId, asset_id: asset.asset_id, enabled: true, usage_role: request.usageRole.trim(), scene_scope: toStoredScope(sceneScope), assignment_source: "manual", confidence: null, match_reason: "manual_assignment", status: "confirmed", user_confirmed: true, version_policy: versionPolicy, pinned_version: pinnedVersion, candidate_only: false, created_at: now, updated_at: now, snapshot_path: null, snapshot_sha256: null, snapshot_source_version: null, selected_child_asset_ids: [...new Set(request.selectedChildAssetIds ?? [])] };
+    const mapping: StoredAssetMapping = { mapping_id: `MAP-${crypto.randomBytes(8).toString("hex").toUpperCase()}`, project_id: owner.id, asset_id: asset.asset_id, enabled: true, usage_role: request.usageRole.trim(), scene_scope: toStoredScope(sceneScope), assignment_source: "manual", confidence: null, match_reason: "manual_assignment", status: "confirmed", user_confirmed: true, version_policy: versionPolicy, pinned_version: pinnedVersion, candidate_only: false, created_at: now, updated_at: now, snapshot_path: null, snapshot_sha256: null, snapshot_source_version: null, selected_child_asset_ids: [...new Set(request.selectedChildAssetIds ?? [])] };
     const mappings = await this.repository.load(owner); mappings.push(mapping); await this.repository.save(owner, mappings);
     return { mapping: toPublicMapping(mapping) };
   }
-  async update(projectId: string, mappingId: string, body: unknown): Promise<UpdateProjectAssetMappingResponse> {
+  async update(key: Key, mappingId: string, body: unknown): Promise<UpdateProjectAssetMappingResponse> {
     if (!isObject(body) || Object.keys(body).length === 0 || Object.keys(body).some((key) => !["decision", "enabled", "versionPolicy", "pinnedVersion"].includes(key))
       || !(body.decision === undefined || body.decision === "confirm" || body.decision === "exclude") || !(body.enabled === undefined || typeof body.enabled === "boolean")
       || !(body.versionPolicy === undefined || policy(body.versionPolicy)) || !(body.pinnedVersion === undefined || body.pinnedVersion === null || (Number.isInteger(body.pinnedVersion) && Number(body.pinnedVersion) >= 1))) throw invalidMappingRequest("Asset Mapping update is invalid.");
     const request = body as unknown as UpdateProjectAssetMappingRequest;
     if (request.versionPolicy === "snapshot") throw invalidMappingRequest("Create a snapshot with the snapshot endpoint.");
-    const owner = await this.owners.get(projectId);
+    const owner = await this.owners.get(key);
     const mappings = await this.repository.load(owner); const mapping = mappings.find((item) => item.mapping_id === mappingId);
     if (!mapping) return Promise.reject((await import("./mapping-api.error.js")).mappingNotFound());
     if (request.decision === "confirm") { mapping.status = "confirmed"; mapping.user_confirmed = true; mapping.candidate_only = false; }
@@ -86,19 +92,19 @@ export class ProjectAssetMappingsService {
     mapping.updated_at = new Date().toISOString(); const review = await this.repository.save(owner, mappings);
     return { mapping: toPublicMapping(mapping), review: toPublicReview(review) };
   }
-  async beginReview(projectId: string, body: unknown): Promise<BeginProjectAssetMappingReviewResponse> {
+  async beginReview(key: Key, body: unknown): Promise<BeginProjectAssetMappingReviewResponse> {
     if (!isObject(body) || Object.keys(body).some((key) => !["scriptRevision", "reviewedScenes", "textOnlyConfirmed", "legacyConfirmed"].includes(key)) || !Number.isInteger(body.scriptRevision) || Number(body.scriptRevision) < 0
       || !(body.reviewedScenes === undefined || (Array.isArray(body.reviewedScenes) && body.reviewedScenes.every((number) => Number.isInteger(number) && Number(number) >= 1 && Number(number) <= MAX_SCENE_COUNT) && new Set(body.reviewedScenes).size === body.reviewedScenes.length))
       || !(body.textOnlyConfirmed === undefined || typeof body.textOnlyConfirmed === "boolean") || !(body.legacyConfirmed === undefined || typeof body.legacyConfirmed === "boolean")) throw invalidMappingRequest("Asset Mapping review request is invalid.");
-    const request = body as unknown as BeginProjectAssetMappingReviewRequest; const owner = await this.owners.get(projectId); const scenes = mappingsScenes(owner); const sceneList = scenesFor(owner);
+    const request = body as unknown as BeginProjectAssetMappingReviewRequest; const owner = await this.owners.get(key); const scenes = mappingsScenes(owner); const sceneList = scenesFor(owner);
     if (!(request.reviewedScenes === undefined || request.reviewedScenes.every((number) => sceneList.includes(number)))) throw invalidMappingRequest("Asset Mapping review request is invalid.");
     if (request.scriptRevision !== owner.scriptRevision) throw invalidMappingRequest("scriptRevision must match the current project script revision.");
-    const previous = await this.repository.loadReview(owner); const review: StoredMappingReview = { project_id: projectId, mapping_revision: previous.mapping_revision + 1, script_revision: owner.scriptRevision, script_fingerprint: scriptFingerprint(scenes), status: "waiting", approved_at: "", approved_by: "", text_only_confirmed: request.textOnlyConfirmed ?? false, legacy_confirmed: request.legacyConfirmed ?? false, reviewed_scenes: [...(request.reviewedScenes ?? [])] };
+    const previous = await this.repository.loadReview(owner); const review: StoredMappingReview = { project_id: owner.id, mapping_revision: previous.mapping_revision + 1, script_revision: owner.scriptRevision, script_fingerprint: scriptFingerprint(scenes), status: "waiting", approved_at: "", approved_by: "", text_only_confirmed: request.textOnlyConfirmed ?? false, legacy_confirmed: request.legacyConfirmed ?? false, reviewed_scenes: [...(request.reviewedScenes ?? [])] };
     await this.repository.saveReview(owner, review); return { review: toPublicReview(review) };
   }
-  async approveReview(projectId: string, body: unknown): Promise<ApproveProjectAssetMappingReviewResponse> {
+  async approveReview(key: Key, body: unknown): Promise<ApproveProjectAssetMappingReviewResponse> {
     if (!isObject(body) || Object.keys(body).some((key) => !["scriptFingerprint", "approvedBy"].includes(key)) || typeof body.scriptFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(body.scriptFingerprint) || !(body.approvedBy === undefined || (typeof body.approvedBy === "string" && body.approvedBy.trim().length > 0 && body.approvedBy.length <= 80))) throw invalidMappingRequest("Asset Mapping approval request is invalid.");
-    const request = body as unknown as ApproveProjectAssetMappingReviewRequest; const owner = await this.owners.get(projectId); const scenes = mappingsScenes(owner); const sceneList = scenesFor(owner); const currentFingerprint = scriptFingerprint(scenes); const review = await this.repository.loadReview(owner);
+    const request = body as unknown as ApproveProjectAssetMappingReviewRequest; const owner = await this.owners.get(key); const scenes = mappingsScenes(owner); const sceneList = scenesFor(owner); const currentFingerprint = scriptFingerprint(scenes); const review = await this.repository.loadReview(owner);
     if (review.script_revision !== owner.scriptRevision || review.script_fingerprint !== currentFingerprint || request.scriptFingerprint !== currentFingerprint) { const invalidated = { ...review, mapping_revision: review.mapping_revision + 1, script_revision: owner.scriptRevision, script_fingerprint: currentFingerprint, status: "waiting" as const, approved_at: "", approved_by: "", reviewed_scenes: [] }; await this.repository.saveReview(owner, invalidated); throw fingerprintMismatch(); }
     const mappings = (await this.repository.load(owner)).filter((mapping) => !mapping.candidate_only);
     const blocked = mappings.filter((mapping) => mapping.status === "suggested" || mapping.status === "ambiguous" || mapping.status === "invalid" || (mapping.status === "unmatched" && !mapping.user_confirmed));
@@ -113,8 +119,8 @@ export class ProjectAssetMappingsService {
     await owner.markMappingApproved(approved.mapping_revision);
     return { review: toPublicReview(approved) };
   }
-  async snapshot(projectId: string, mappingId: string): Promise<SnapshotProjectAssetMappingResponse> {
-    const owner = await this.owners.get(projectId);
+  async snapshot(key: Key, mappingId: string): Promise<SnapshotProjectAssetMappingResponse> {
+    const owner = await this.owners.get(key);
     const mappings = await this.repository.load(owner); const mapping = mappings.find((item) => item.mapping_id === mappingId);
     if (!mapping) return Promise.reject((await import("./mapping-api.error.js")).mappingNotFound());
     const asset = await this.asset(mapping.asset_id); const version = mapping.pinned_version ?? asset.version; const storedVersion = asset.versions.find((item) => item.version === version);

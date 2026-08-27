@@ -67,7 +67,13 @@ export interface MappingOwner extends MappingLocation {
   markMappingApproved(mappingRevision: number): Promise<void>;
 }
 
-/** Resolves the owner of one scope's mappings. One implementation per kind of owner; the flow never knows which it has. */
-export interface MappingOwners {
-  get(projectId: string): Promise<MappingOwner>;
+/**
+ * Resolves the owner of one scope's mappings. One implementation per kind of owner; the flow never knows which it has.
+ *
+ * `Key` is whatever it takes to name one scope, and it differs because scopes differ: a short project is named
+ * by its id, an Episode by a project and a number. Leaving it open is what stops that difference from being
+ * smuggled through as a formatted string that both sides would then have to agree how to parse.
+ */
+export interface MappingOwners<Key = string> {
+  get(key: Key): Promise<MappingOwner>;
 }
