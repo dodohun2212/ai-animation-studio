@@ -9,7 +9,7 @@ import {
  * .../access-tokens/get-long-lived). Pure functions only: this module opens no window, stores no token, and
  * owns no expiry policy — the desktop shell owns showing the login window, the backend service owns storage.
  *
- * Why an in-app login flow rather than asking the user to paste a token (`.claude-bridge` Round 184/185): a
+ * Why an in-app login flow rather than asking the user to paste a token (docs/06_DECISIONS.md D-007): a
  * long-lived token lasts ~60 days and Meta documents no way to refresh one before it expires — its stated
  * remedy is "the person will have to go through the login flow again to get a new token." With a paste-based
  * setup that remedy is a developer-tool procedure the user must rediscover twice a year; with this flow it is
@@ -135,7 +135,7 @@ export interface TokenInspection {
 /**
  * Asks Meta whether a stored token is actually still valid, and when it expires. Read-only and free — this is
  * the call behind the "확인은 무료입니다" check button and behind showing a real expiry date, so the app stops
- * having to claim a credential works without ever having asked (`.claude-bridge` Round 184).
+ * having to claim a credential works without ever having asked (docs/06_DECISIONS.md D-006).
  *
  * The app access token form `APP_ID|APP_SECRET` is Meta's documented way to authenticate this inspection
  * without a separate token fetch.

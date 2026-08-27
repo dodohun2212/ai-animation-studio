@@ -5,7 +5,7 @@ import {
 
 /**
  * Real Instagram Content Publishing API calls using a plain fetch request (no SDK dependency). Protocol verified
- * against Meta's official documentation directly, not third-party summaries (`.claude-bridge` Round 183):
+ * against Meta's official documentation directly, not third-party summaries:
  * developers.facebook.com/docs/instagram-platform/content-publishing/ and
  * .../content-publishing/resumable-uploads/. Mirrors runway-video-adapter.ts's shape: this module owns no
  * workflow or approval decisions — a caller creates one container, uploads bytes to it, checks its status

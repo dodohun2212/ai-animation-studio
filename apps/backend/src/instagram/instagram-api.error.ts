@@ -24,7 +24,7 @@ export const invalidInstagramRequest = (message = "Instagram request is invalid.
  * No stored token, or Meta rejected the one we have. Deliberately distinct from an empty target list: "there is
  * no account to publish to" and "you need to sign in" leave the user with completely different things to do,
  * and an empty list in place of this would send someone to fix their Instagram account when the real problem is
- * a login that expired (`.claude-bridge` Round 186).
+ * a login that expired (docs/06_DECISIONS.md D-014).
  */
 export const instagramNotConnected = () =>
   new InstagramApiException("INSTAGRAM_NOT_CONNECTED", "Instagram is not connected, or the saved login has expired.", HttpStatus.CONFLICT);

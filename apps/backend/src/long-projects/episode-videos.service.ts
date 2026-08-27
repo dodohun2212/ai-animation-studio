@@ -112,7 +112,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
    * guards the same race across two processes, exactly like local-video-workflow.service.ts's advanceReal() does
    * for short projects — see that lock's own doc comment for the confirmed incident (Round 152: a real, separately
    * -billed duplicate Runway task neither process's own polling noticed) this same architecture is exposed to on
-   * the Long Episode side too (`.claude-bridge` Round 176/179).
+   * the Long Episode side too (docs/06_DECISIONS.md D-005).
    */
   private async advanceReal(id: string, number: number, job: string): Promise<VideoRecord[]> {
     const jobKey = `${id}:${number}:${job}`;
@@ -123,7 +123,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
     } catch (error) {
       // Normally the lock just waits — this only fires after real contention exceeds ACQUIRE_TIMEOUT_MS (10s),
       // which would otherwise surface as an unhandled exception instead of a proper API error the frontend can
-      // show a specific, non-retry-encouraging message for (`.claude-bridge` Round 181).
+      // show a specific, non-retry-encouraging message for (docs/06_DECISIONS.md D-010).
       if (error instanceof ProjectLockTimeoutError) throw longEpisodeLocked();
       throw error;
     } finally { this.advancing.delete(jobKey); }

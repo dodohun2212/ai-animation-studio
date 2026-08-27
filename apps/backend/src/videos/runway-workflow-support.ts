@@ -157,7 +157,7 @@ export async function advanceRunwayScene(
     // outcome. We cannot tell whether Runway actually created a task for this claim, so — unlike every other
     // failure path here — do NOT resubmit automatically; surface it and let the user check their Runway dashboard
     // first. actualCostUsd is left at the estimate (not 0): a task may really have been created and billed, and
-    // the ledger under-counting real spend is exactly the gap this closes (`.claude-bridge` Round 152).
+    // the ledger under-counting real spend is exactly the gap this closes (docs/06_DECISIONS.md D-005).
     await deps.budget.record(deps.projectId, submitting.sceneNumber, deps.apiType, false, deps.estimatedCostPerSceneUsd).catch(() => undefined);
     return { kind: "failed", sceneNumber: submitting.sceneNumber, error: "submit_interrupted" };
   }

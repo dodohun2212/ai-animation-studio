@@ -59,6 +59,6 @@ export const storyBibleItemExists = () => new LongProjectApiException("STORY_BIB
  * project-lock.ts's ProjectLockTimeoutError, mapped to a proper API error instead of falling through as an
  * unhandled exception — see episode-videos.service.ts's advanceReal() call site and
  * video-workflow-api.error.ts's videoWorkflowLocked() for the short-project twin this shares its literal `code`
- * value with, so the frontend needs only one safe-message table entry for both (`.claude-bridge` Round 181).
+ * value with, so the frontend needs only one safe-message table entry for both (docs/06_DECISIONS.md D-010).
  */
 export const longEpisodeLocked = () => new LongProjectApiException("PROJECT_LOCKED", "Another process is currently advancing this Episode's video generation.", HttpStatus.CONFLICT);

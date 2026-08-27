@@ -38,7 +38,7 @@ export class RunwayAdapterError extends Error {
    * text pulled from a rejected response body: never shown to the user, but worth persisting into
    * `video_generation_records[].error` so a real rejection can be diagnosed without reproducing the paid call —
    * a $0.25 scene-1 failure with only the category "invalid_request" recorded left no way to tell what Runway
-   * actually objected to (`.claude-bridge` Round 143).
+   * actually objected to.
    */
   constructor(public readonly category: RunwayErrorCategory, message: string = RUNWAY_KOREAN_MESSAGES[category], public readonly detail?: string) {
     super(message);
@@ -165,9 +165,8 @@ export async function createRunwayImageToVideoTask(
     // Unlike a status check or a download, this call creates a paid, non-idempotent resource. A `fetch` throw
     // (timeout, connection reset) is ambiguous — it does not tell us whether Runway ever received the request,
     // only that we did not see its response — so retrying it can create a second real task for one scene, which
-    // Runway bills independently and which our own records then have no way to notice (`.claude-bridge`
-    // Round 145: a real user's Runway dashboard showed exactly this — two POSTs per scene, one task ever polled,
-    // both billed). `maxRetries: 0` overrides whatever the caller passed for every other call this adapter makes.
+    // Runway bills independently and which our own records then have no way to notice
+    // (docs/06_DECISIONS.md D-005). `maxRetries: 0` overrides whatever the caller passed for every other call this adapter makes.
   }, { ...options, maxRetries: 0 });
   const body: unknown = await response.json().catch(() => null);
   const taskId = isObject(body) && typeof body.id === "string" ? body.id.trim() : "";

@@ -34,7 +34,7 @@ export const videoContentUnavailable = () =>
  * unhandled exception (a generic 500 with no `code`, read by the frontend as a malformed response) — see
  * local-video-workflow.service.ts's advanceReal() call site. Shares its literal `code` value with
  * long-project-api.error.ts's own factory for the same condition, so the frontend needs only one safe-message
- * table entry for both short and Long Episode video generation (`.claude-bridge` Round 181).
+ * table entry for both short and Long Episode video generation (docs/06_DECISIONS.md D-010).
  */
 export const videoWorkflowLocked = () =>
   new VideoWorkflowApiException("PROJECT_LOCKED", "Another process is currently advancing this project's video generation.", HttpStatus.CONFLICT);

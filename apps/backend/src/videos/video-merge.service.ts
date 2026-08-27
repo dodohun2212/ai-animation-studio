@@ -139,7 +139,7 @@ export class LocalVideoMergeService {
    * Preserves whatever final video already exists before this merge overwrites it — a project only reaches
    * merge() again after a scene-video restore reopens VideosApproved (see video-library.service.ts's restore()),
    * so without this, a user who restores an old scene and re-merges would silently lose the previous final cut
-   * (`.claude-bridge` Round 166). Mirrors local-video-workflow.service.ts's private archive(), generalized to the
+   * Mirrors local-video-workflow.service.ts's private archive(), generalized to the
    * final video's own directory — see video-library.service.ts's historyFileName() for the matching read side.
    */
   private async archiveExistingFinal(projectId: string): Promise<void> {

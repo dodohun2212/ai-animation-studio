@@ -225,7 +225,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
    * within this one process. `apps/backend`'s dev script (`nest start --watch`) restarts the whole process on
    * every backend file save, and the old and new process can briefly both be alive, each with its own empty
    * `advancing` Set; the cross-process file lock below is what actually closes that window
-   * (`.claude-bridge` Round 152 — see project-lock.ts).
+   * (docs/06_DECISIONS.md D-005 — see project-lock.ts).
    */
   private async advanceReal(project: StoredProject, jobId: string): Promise<StoredProject> {
     if (this.advancing.has(jobId)) return project;
@@ -236,7 +236,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       // Normally the lock just waits — the holder's own critical section is documented to resolve in low
       // single-digit seconds. This only fires after ACQUIRE_TIMEOUT_MS (10s) of real contention, which would
       // otherwise surface as an unhandled exception (a bare 500 with no `code`) instead of a proper API error the
-      // frontend can show a specific, non-retry-encouraging message for (`.claude-bridge` Round 181).
+      // frontend can show a specific, non-retry-encouraging message for (docs/06_DECISIONS.md D-010).
       if (error instanceof ProjectLockTimeoutError) throw videoWorkflowLocked();
       throw error;
     } finally { this.advancing.delete(jobId); }
@@ -254,7 +254,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
   private async advanceRealCore(staleProject: StoredProject, jobId: string): Promise<StoredProject> {
     // Re-read fresh: `staleProject` can have been fetched before this call ever reached the lock (e.g. a caller
     // queued behind another in-flight advance), so trusting it here would let a scene another advance already
-    // submitted still look "created" and get submitted again (`.claude-bridge` Round 148).
+    // submitted still look "created" and get submitted again.
     const project = await this.projects.findById(staleProject.project_id);
     const records = this.records(project, jobId);
     if (records[0]!.execution_mode !== "runway") return project;

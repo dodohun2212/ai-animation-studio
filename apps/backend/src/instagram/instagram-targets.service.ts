@@ -15,7 +15,7 @@ const isObject = (value: unknown): value is Record<string, unknown> => typeof va
 /**
  * Which Instagram account this computer publishes to. Stored beside the budget ledgers in learning_data rather
  * than with the provider credentials: it is a destination, not a secret, and it is never masked — hiding it
- * would stop the user confirming where a post is about to go (`.claude-bridge` Round 186).
+ * would stop the user confirming where a post is about to go (docs/06_DECISIONS.md D-014).
  */
 @Injectable()
 export class InstagramTargetsService {

@@ -59,7 +59,7 @@ async function validFile(file: string): Promise<{ bytes: number; createdAt: stri
 
 /**
  * Read-only browsing and restore for already-generated video results — a results archive, distinct in purpose
- * from the Asset Library's input-material role (`.claude-bridge` Round 153/166). Every scene video and the final
+ * from the Asset Library's input-material role. Every scene video and the final
  * merged video get the same "current file + versions/ history" treatment; a scene's own generation pipeline
  * (local-video-workflow.service.ts) and the merge pipeline (video-merge.service.ts) remain the only writers of
  * the *current* file — this service only ever archives a displaced current file and restores an old one, never

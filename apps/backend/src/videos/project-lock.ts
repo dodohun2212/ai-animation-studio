@@ -20,9 +20,8 @@ export class ProjectLockTimeoutError extends Error {
  * `apps/backend`'s dev script is `nest start --watch`, which restarts the process on every backend file save, and
  * the old and new process can both be alive for a brief overlapping window. In that window each process has its
  * own empty `advancing` Set, so both can read the same "created" scene and both submit it to Runway — a real,
- * separately-billed duplicate task neither process's own polling ever notices (`.claude-bridge` Round 152: a
- * confirmed incident, $3.00 actually charged against $2.00 our ledger recorded, three scenes submitted twice each
- * within the same second). A lock file, unlike an in-memory Set, is visible to both processes.
+ * separately-billed duplicate task neither process's own polling ever notices (docs/06_DECISIONS.md D-005).
+ * A lock file, unlike an in-memory Set, is visible to both processes.
  */
 export async function withProjectLock<T>(projectDirectory: string, key: string, fn: () => Promise<T>, options?: { timeoutMs?: number }): Promise<T> {
   const lockFile = path.join(projectDirectory, `.lock-${key.replace(/[^a-zA-Z0-9_-]/g, "_")}`);
