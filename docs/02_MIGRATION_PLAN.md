@@ -1536,3 +1536,18 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - 신규 테스트 8건: 거절 보고, 시작 전 부재, 새 start가 지움, 성공이 지움, state 검증 실패도 보고, 대기 없던 콜백은 무기록, 경합, signOut이 지움.
   - **프런트는 Cowork 몫** — 폴링 중 `lastLoginError`가 보이면 즉시 중단하고 기존 `SAFE_ERRORS` 문구 재사용(새 문구 안 만듦: 이미 옳은 문구가 있고 도달만 못 했음). `timedOut`은 남김 — 진짜로 아무 일도 안 일어난 경우는 여전히 있고 그때는 그게 사실.
   - 검증: root typecheck 전부 통과, Backend 941개(+8 신규) 전부 통과, frontend 954개 전부 통과, root build 전부 통과.
+  - 커밋: `91604e3`.
+- [x] **프런트 — 거절당한 로그인이 즉시 이유를 말한다 + 언마운트 후 상태 갱신 차단(Round 201)**: Cowork Round 218. `lastLoginError` 계약의 프런트 절반, 그리고 Round 193에서 CLI가 짚은 폴링 수명 문제.
+  - 폴링 종료 조건에 거절을 **예외가 아니라 같은 규칙으로** 추가: `status?.tokenStored || status?.lastLoginError` — 둘 다 "서버가 이 시도에 대해 할 말이 생겼다".
+    ```
+    before  거절 → 5분 침묵 → "로그인이 끝나지 않아 기다리기를 멈췄습니다"
+    after   거절 → 즉시 중단 → "인스타그램에서 요청을 거부했습니다. 앱 ID와 시크릿이 맞는지 확인한 뒤..."
+    ```
+    **"오래 걸렸다"는 도움이 안 되는 게 아니라 거짓이었고**, 고칠 것이 사용자 손에 있는데 기다리라고 지시했음. 어제 실제로 그 5분이 두 번 있었음.
+  - **문구 표가 하나임을 코드로 못박음**: `instagramConnectionErrorForCode(code)`를 export 하고 기존 `toInstagramConnectionDisplayError`가 그걸 호출 — throw된 에러와 폴링이 읽은 상태가 같은 `SAFE_ERRORS`를 지나감. 저장소 전체에 `INSTAGRAM_PROVIDER_ERROR` 문구는 한 곳(grep 확인). CLI가 계약을 `category`가 아니라 `code`로 준 이유가 여기서 실현됨 — category였으면 두 번째 표가 생기고 같은 실패에 데스크톱/브라우저가 다른 말을 하는 날이 옴.
+  - `timedOut`은 유지 — 창을 열어두고 자리를 뜬 진짜 침묵은 여전히 있고 그때는 그게 사실.
+  - `isStatus`는 `lastLoginError`를 **모양만** 검사(있으면 `{ code: string }`). `callbackLoginAvailable`과 사정이 다름: 그쪽은 없을 때 고를 수 있는 값이 둘 다 틀려서 필수였지만, 이쪽은 **없음이 이미 "말할 시도가 없음"이라는 정확한 뜻**이라 선택이 맞음.
+  - **언마운트 후 상태 갱신 차단**(CLI Round 193 지적): 콜백 폴링이 클릭 핸들러 안에서 최대 5분 도는데 중단 수단이 없었음 — 설정 화면은 사람이 왔다 갔다 하는 화면이라 대기가 카드보다 오래 사는 게 예외가 아니라 일상. `useRef` + 언마운트 cleanup으로 `abandoned`를 되살리고 `onStatusChange`·`setError`·`setPending` 모두 통과시킴. ref인 이유는 렌더되지 않는 값이고 정리 중인 컴포넌트에 렌더를 예약하면 안 되기 때문.
+  - 신규 테스트 2건: 폴러가 거절에 즉시 종료(읽기 2회로 확인), 카드가 거절을 `SAFE_ERRORS` 문구 그대로 표시하며 **timeout·cancelled 표시는 뜨지 않음** — 시계 탓도 사용자 탓도 하지 않는다는 것을 고정. 어제 화면이 한 게 정확히 그 둘이었음.
+  - **Cowork이 못 돌린 것을 못 돌렸다고 보고함**(Round 214의 반대) — 새 카드 테스트가 실제 폴링 인터벌 1.5초를 기다리므로 `findBy` 4초가 이 환경에서 충분한지 미확인. CLI가 실행: 충분함(frontend 956개 전부 통과).
+  - 검증: root typecheck 전부 통과, frontend 956개(+2 신규) 전부 통과, Backend 941개 전부 통과, root build 전부 통과.

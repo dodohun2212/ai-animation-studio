@@ -43,6 +43,10 @@ const PREFIX = "https://www.facebook.com/connect/login_success.html";
 const PAGE = "https://www.facebook.com/dialog/oauth?client_id=1";
 const STORED = { appConfigured: true, tokenStored: true, callbackLoginAvailable: true } as never;
 const NOT_STORED = { appConfigured: true, tokenStored: false, callbackLoginAvailable: true } as never;
+const REFUSED = {
+  appConfigured: true, tokenStored: false, callbackLoginAvailable: true,
+  lastLoginError: { code: "INSTAGRAM_PROVIDER_ERROR" },
+} as never;
 
 describe("tokenLine", () => {
   // "Stored" is not "works": this app has never asked Meta whether a stored token is still accepted, and saying
@@ -106,6 +110,23 @@ describe("pollUntilTokenStored", () => {
       ...clock(), intervalMs: 10, timeoutMs: 10_000,
     });
     expect(result).toBe(STORED);
+  });
+
+  /**
+   * The five-minute wait was the whole cost here. A refusal lands in the first seconds, and without this the
+   * screen sat silent until its timer ran out and then said the login "took too long" — about something that
+   * had already been answered, and in a direction that sends the person to wait rather than to fix.
+   */
+  it("stops as soon as a refusal is reported, without waiting out the timeout", async () => {
+    const readStatus = vi.fn()
+      .mockResolvedValueOnce(NOT_STORED)
+      .mockResolvedValueOnce(REFUSED);
+    const result = await pollUntilTokenStored({
+      isWindowClosed: openWindow, readStatus, abandoned: () => false,
+      ...clock(), intervalMs: 10, timeoutMs: 10_000,
+    });
+    expect(result).toBe(REFUSED);
+    expect(readStatus).toHaveBeenCalledTimes(2);
   });
 
   it("stops when the window closed with no token", async () => {
@@ -259,6 +280,29 @@ describe("InstagramConnectionCard", () => {
     const [, startInit] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(String(startInit.body))).toEqual({ flow: "callback" });
     expect(String((open.mock.calls[0] as unknown[])[0])).toBe(PAGE);
+  });
+
+  /**
+   * The refusal has to arrive as the refusal, in the same words the desktop flow would use. Yesterday this
+   * failure reached nobody: the server knew the credentials were wrong, and the screen said it had waited too
+   * long. The message that was already correct simply had no route to the person reading it.
+   */
+  it("says why a browser sign-in was refused, in the same words as everywhere else", async () => {
+    const refused = { appConfigured: true, tokenStored: false, callbackLoginAvailable: true, lastLoginError: { code: "INSTAGRAM_PROVIDER_ERROR" } };
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: unknown) => Promise.resolve(
+      String(url).includes("/login/start") ? jsonResponse(200, { url: PAGE }) : jsonResponse(200, refused),
+    )));
+    vi.stubGlobal("open", vi.fn().mockReturnValue({ closed: false, close: vi.fn() }));
+
+    renderCard({ callbackLoginAvailable: true });
+    fireEvent.click(screen.getByTestId("instagram-login-button"));
+
+    const error = await screen.findByTestId("instagram-connection-error", undefined, { timeout: 4000 });
+    expect(error).toHaveAttribute("data-error-code", "INSTAGRAM_PROVIDER_ERROR");
+    expect(error.textContent).toContain("앱 ID와 시크릿");
+    // Not the clock's fault, and not the person's — neither of those may be claimed here.
+    expect(screen.queryByTestId("instagram-login-timeout")).toBeNull();
+    expect(screen.queryByTestId("instagram-login-cancelled")).toBeNull();
   });
 
   /**

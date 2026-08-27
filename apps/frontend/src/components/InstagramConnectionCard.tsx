@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { InstagramConnectionStatus } from "@ai-animation-studio/shared";
 
 import { canOpenInstagramLogin, openInstagramLoginWindow } from "../api/electronBridge.js";
@@ -6,6 +6,7 @@ import {
   completeInstagramLogin,
   disconnectInstagram,
   getInstagramConnection,
+  instagramConnectionErrorForCode,
   setInstagramApp,
   startInstagramLogin,
   toInstagramConnectionDisplayError,
@@ -89,6 +90,11 @@ export interface PollDeps {
  * passing — reading success off either would be claiming a connection this app never confirmed (D-006). A
  * closed window is especially weak evidence, because a person closes it whenever they feel like it: before
  * signing in, halfway through, or well after it finished.
+ *
+ * A reported refusal ends the wait too, and that is the same rule rather than an exception: both are the server
+ * answering about this attempt. What it removes is a five-minute silence ending in "it took too long", said
+ * about a login that was refused in the first few seconds — an answer that is not merely unhelpful but false,
+ * and that sends the person to wait when the thing to change is in their hands.
  */
 export async function pollUntilTokenStored(deps: PollDeps): Promise<InstagramConnectionStatus | null> {
   const intervalMs = deps.intervalMs ?? LOGIN_POLL_INTERVAL_MS;
@@ -115,7 +121,9 @@ export async function pollUntilTokenStored(deps: PollDeps): Promise<InstagramCon
       status = undefined;
     }
     if (deps.abandoned()) return null;
-    if (status?.tokenStored) return status;
+    // A refusal ends the wait exactly as a token does — both are the server having something to say about this
+    // attempt. Kept in the same shape (the status itself) so the caller reads one value and decides once.
+    if (status?.tokenStored || status?.lastLoginError) return status;
     if (closedBeforeRead) return null;
     if (deps.now() - startedAt >= timeoutMs) return null;
   }
@@ -137,6 +145,18 @@ export function InstagramConnectionCard({ status, onStatusChange }: Props) {
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [cancelled, setCancelled] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
+  /**
+   * Set once this card is gone, so a sign-in still running has something to check.
+   *
+   * The callback flow waits up to five minutes inside a click handler, and the settings screen is one people
+   * come and go from — so the wait routinely outlives the card that started it. Without this the poll keeps
+   * asking the server and then reports into a tree that is no longer mounted.
+   *
+   * A ref rather than state on purpose: it is read from inside a running loop, never rendered, and setting it
+   * must not schedule a render on a component that is being torn down.
+   */
+  const abandoned = useRef(false);
+  useEffect(() => () => { abandoned.current = true; }, []);
 
   const line = tokenLine(status, Date.now());
   // Which sign-in this screen can run, decided here because neither side knows alone: the server knows whether
@@ -226,8 +246,17 @@ export function InstagramConnectionCard({ status, onStatusChange }: Props) {
         readStatus: getInstagramConnection,
         wait: (ms) => new Promise((resolve) => { setTimeout(resolve, ms); }),
         now: () => Date.now(),
-        abandoned: () => false,
+        abandoned: () => abandoned.current,
       });
+      if (abandoned.current) return;
+      if (stored?.lastLoginError) {
+        // Refused. Say which refusal, using the same table the thrown-error path uses — the desktop flow and
+        // this one must not describe one failure two ways. The status still goes through, because everything
+        // else on it (app configured, callback available) is current.
+        onStatusChange(stored);
+        setError(instagramConnectionErrorForCode(stored.lastLoginError.code));
+        return;
+      }
       if (stored) {
         onStatusChange(stored);
         return;
@@ -240,9 +269,9 @@ export function InstagramConnectionCard({ status, onStatusChange }: Props) {
         setTimedOut(true);
       }
     } catch (caught) {
-      setError(toInstagramConnectionDisplayError(caught));
+      if (!abandoned.current) setError(toInstagramConnectionDisplayError(caught));
     } finally {
-      setPending(false);
+      if (!abandoned.current) setPending(false);
     }
   }
 

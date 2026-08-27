@@ -27,15 +27,24 @@ const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연�
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };
 const UNKNOWN = { code: "CLIENT_UNKNOWN_ERROR", message: "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요." };
 
+/**
+ * One code, one sentence — and one table deciding it.
+ *
+ * Exported because a refusal now reaches the screen two ways: thrown by the request that made it, and reported
+ * by `lastLoginError` on a status the screen polled. Both end here, so the desktop and browser flows cannot
+ * come to describe the same failure differently. A second table keyed on something else is how they would.
+ */
+export function instagramConnectionErrorForCode(code: string): { code: string; message: string } {
+  if (Object.prototype.hasOwnProperty.call(SAFE_ERRORS, code)) return { code, message: SAFE_ERRORS[code]! };
+  if (code === NETWORK.code) return NETWORK;
+  if (code === MALFORMED.code) return MALFORMED;
+  return UNKNOWN;
+}
+
 /** Never surfaces the backend's raw message — and the backend never puts a token or secret in one anyway. */
 export function toInstagramConnectionDisplayError(error: unknown): { code: string; message: string } {
   if (!(error instanceof InstagramConnectionApiError)) return UNKNOWN;
-  if (Object.prototype.hasOwnProperty.call(SAFE_ERRORS, error.code)) {
-    return { code: error.code, message: SAFE_ERRORS[error.code]! };
-  }
-  if (error.code === NETWORK.code) return NETWORK;
-  if (error.code === MALFORMED.code) return MALFORMED;
-  return UNKNOWN;
+  return instagramConnectionErrorForCode(error.code);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -56,6 +65,11 @@ function isStatus(value: unknown): value is InstagramConnectionStatus {
     // offering one that cannot complete.
     && typeof value.callbackLoginAvailable === "boolean"
     && (value.tokenExpiresAt === undefined || isNonEmptyString(value.tokenExpiresAt))
+    // Optional by contract, so absence is valid and only the shape is checked — unlike callbackLoginAvailable,
+    // where a missing value would have to be guessed at. Here "missing" already means something exact: no
+    // attempt has anything to report.
+    && (value.lastLoginError === undefined
+      || (isRecord(value.lastLoginError) && isNonEmptyString(value.lastLoginError.code)))
   );
 }
 
