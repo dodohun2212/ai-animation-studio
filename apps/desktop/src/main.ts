@@ -1,3 +1,4 @@
+import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -5,9 +6,15 @@ import { app, BrowserWindow, dialog, ipcMain, shell, utilityProcess } from "elec
 
 import { BackendProcessManager, type ChildLike } from "./backend-process.ts";
 import { resolveProjectPath } from "./project-path.ts";
+import { migrateUserDataFolder } from "./userdata-migration.ts";
 
 const currentDirectory = fileURLToPath(new URL(".", import.meta.url));
 const DEFAULT_BACKEND_PORT = 4317;
+// Electron's userData path otherwise defaults to the raw npm package name from package.json
+// ("@ai-animation-studio/desktop"), which nests unusably on Windows as
+// `%APPDATA%\@ai-animation-studio\desktop` — a real problem when a user actually needs to find this folder
+// (`.claude-bridge` Round 176/179, during a Runway credit investigation).
+const APP_DISPLAY_NAME = "AI Animation Studio";
 
 function backendModulePath(): string {
   return app.isPackaged
@@ -25,6 +32,25 @@ function learningDataRoot(): string {
   return app.isPackaged
     ? path.join(app.getPath("userData"), "learning_data")
     : path.join(currentDirectory, "../../../learning_data");
+}
+
+/**
+ * Renames the app (so getPath("userData") starts returning the readable path) and, only for a packaged install
+ * that already has real data sitting under the old default name, moves it forward — never deletes anything, and
+ * never touches the old path if something is already at the new one (see migrateUserDataFolder's own doc
+ * comment). oldPath is captured before setName() so it reflects the pre-rename default, not the new one.
+ */
+async function renameAppAndMigrateUserData(): Promise<void> {
+  if (!app.isPackaged) { app.setName(APP_DISPLAY_NAME); return; }
+  const oldPath = app.getPath("userData");
+  app.setName(APP_DISPLAY_NAME);
+  const newPath = app.getPath("userData");
+  await migrateUserDataFolder(oldPath, newPath, {
+    pathExists: (target) => fsPromises.access(target).then(() => true, () => false),
+    rename: (from, to) => fsPromises.rename(from, to),
+    copyRecursive: (from, to) => fsPromises.cp(from, to, { recursive: true }),
+    mkdirForFile: async (target) => { await fsPromises.mkdir(path.dirname(target), { recursive: true }); },
+  });
 }
 
 let backend: BackendProcessManager | undefined;
@@ -114,7 +140,8 @@ function createWindow(): void {
   void createProductionWindow();
 }
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
+  await renameAppAndMigrateUserData();
   registerOpenProjectPathHandler();
   createWindow();
   app.on("activate", () => {
