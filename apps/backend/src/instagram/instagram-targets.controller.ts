@@ -1,14 +1,31 @@
-import { Body, Controller, Delete, Get, Header, Param, Post, Put, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Header, Logger, type LoggerService, Optional, Param, Post, Put, Query } from "@nestjs/common";
 import {
-  API_ROUTES,
+  API_ROUTES, type ApiError,
   type GetInstagramTargetsResponse, type InstagramConnectionStatus,
   type PublishToInstagramResponse,
   type SetInstagramAppResponse, type SetInstagramTargetResponse, type StartInstagramLoginResponse,
 } from "@ai-animation-studio/shared";
 
+import { InstagramApiException } from "./instagram-api.error.js";
 import { InstagramLoginService } from "./instagram-login.service.js";
 import { InstagramPublishService } from "./instagram-publish.service.js";
 import { InstagramTargetsService } from "./instagram-targets.service.js";
+
+/**
+ * Names the failure for the server console, because the page deliberately refuses to.
+ *
+ * Only fixed vocabulary is allowed through: the error code, the provider category, and the message, all of
+ * which are strings this codebase wrote (`InstagramAdapterError` keeps Meta's own text in `detail`, which never
+ * reaches the exception). The query is never named in any form — `code` and `state` are the two values in this
+ * whole flow that must not be written down anywhere, and a log line is the easiest place to leak them by
+ * accident, because it never looks like output.
+ */
+function describeLoginFailure(error: unknown): string {
+  if (!(error instanceof InstagramApiException)) return "unrecognised error";
+  const body = error.getResponse() as ApiError;
+  const category = (body.details as { category?: unknown } | undefined)?.category;
+  return typeof category === "string" ? `${body.code} (${category}): ${body.message}` : `${body.code}: ${body.message}`;
+}
 
 /** Deliberately plain: no scripts, no styling that could load anything, nothing but the two sentences. */
 function loginResultPage(title: string, detail: string): string {
@@ -24,6 +41,11 @@ export class InstagramTargetsController {
     private readonly targets: InstagramTargetsService,
     private readonly login: InstagramLoginService,
     private readonly publishing: InstagramPublishService,
+    // `@Optional()` is load-bearing, not decoration: this parameter's type is an interface, which reflects as
+    // `Object`, and without it Nest tries to resolve that and aborts the process at bootstrap rather than
+    // failing a test — the shape that already cost this repo a day of chasing "worker exited unexpectedly".
+    // Nest then passes `undefined`, which is exactly what makes the default apply.
+    @Optional() private readonly logger: Pick<LoggerService, "warn"> = new Logger("InstagramLogin"),
   ) {}
 
   @Get(API_ROUTES.instagramTargets)
@@ -64,7 +86,12 @@ export class InstagramTargetsController {
     try {
       await this.login.complete(query);
       return loginResultPage("로그인이 완료되었습니다.", "이 창을 닫고 원래 화면으로 돌아가 주세요.");
-    } catch {
+    } catch (error) {
+      // The page says nothing about why, so the console has to. Without this the only route whose reason is
+      // deliberately withheld from the person is also the only one that records nothing anywhere, and the two
+      // most likely failures are indistinguishable from outside: `nest start --watch` restarting mid-login
+      // (the issued state lives in memory and is gone), and Meta refusing the exchange.
+      this.logger.warn(`Instagram login callback failed — ${describeLoginFailure(error)}`);
       // Meta's own wording never reaches this page, and neither does ours beyond the two fixed lines — a login
       // page is exactly where a raw error message is most likely to be pasted somewhere it should not be.
       return loginResultPage("로그인을 완료하지 못했습니다.", "이 창을 닫고 다시 시도해 주세요.");

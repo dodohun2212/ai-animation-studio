@@ -32,12 +32,14 @@ async function setup(fetchImpl: ReturnType<typeof vi.fn> = exchangeFetch()) {
   const connection = new InstagramConnectionStore(root);
   await connection.saveAppCredentials({ appId: "app-1", appSecret: "secret-1" });
   const login = new InstagramLoginService(connection, REDIRECT, { fetchImpl, sleep: async () => {} });
+  const warn = vi.fn();
   const controller = new InstagramTargetsController(
     {} as InstagramTargetsService,
     login,
     {} as InstagramPublishService,
+    { warn },
   );
-  return { controller, login, connection };
+  return { controller, login, connection, warn, logged: () => warn.mock.calls.flat().join("\n") };
 }
 
 /** Starts a login the way the screen does and returns the state the service put in the URL. */
@@ -87,6 +89,52 @@ describe("InstagramTargetsController login callback", () => {
     const page = await controller.completeLogin({ error_description: "<script>alert(1)</script>" });
 
     expect(page).not.toContain("<script>");
+  });
+
+  it("says on the console why the login failed, since the page refuses to", async () => {
+    // Two failures look identical from the browser: the backend restarting mid-login (`nest start --watch`
+    // drops the issued state, which lives only in memory) and Meta refusing the exchange. Without a line here
+    // there is nowhere at all to tell them apart.
+    const { controller, logged } = await setup();
+
+    await controller.completeLogin({ code: "c", state: "never-issued" });
+
+    expect(logged()).toContain("INVALID_REQUEST");
+  });
+
+  it("names the provider category on the console when Meta is the one refusing", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(400, { error: { message: "raw meta detail", code: 190 } }));
+    const { controller, login, logged } = await setup(fetchImpl);
+    const state = await startedState(login);
+
+    await controller.completeLogin({ code: "the-code", state });
+
+    expect(logged()).toContain("INSTAGRAM_PROVIDER_ERROR");
+    expect(logged()).toContain("auth");
+  });
+
+  it("never writes the code, the state, or Meta's wording into the log", async () => {
+    // The log is the easier of the two leaks to miss: unlike the page, nobody is looking at it while deciding
+    // what is safe to include, and `code` and `state` are the two values in this flow that must not be
+    // written down anywhere.
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(400, { error: { message: "raw meta detail", code: 100 } }));
+    const { controller, login, logged } = await setup(fetchImpl);
+    const state = await startedState(login);
+
+    await controller.completeLogin({ code: "secret-code-value", state });
+
+    expect(logged()).not.toContain("secret-code-value");
+    expect(logged()).not.toContain(state);
+    expect(logged()).not.toContain("raw meta detail");
+  });
+
+  it("logs nothing at all when the login succeeds", async () => {
+    const { controller, login, warn } = await setup();
+    const state = await startedState(login);
+
+    await controller.completeLogin({ code: "the-code", state });
+
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it("serves a page that loads nothing from anywhere", async () => {
