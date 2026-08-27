@@ -7,6 +7,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell, utilityProcess } from "elec
 import { BackendProcessManager, type ChildLike } from "./backend-process.ts";
 import { isAllowedLoginUrl, openInstagramLoginWindow, type LoginWindowLike } from "./instagram-login-window.ts";
 import { resolveProjectPath } from "./project-path.ts";
+import { resolveRuntimeRoots } from "./runtime-roots.ts";
 import { migrateUserDataFolder } from "./userdata-migration.ts";
 
 const currentDirectory = fileURLToPath(new URL(".", import.meta.url));
@@ -29,10 +30,17 @@ function frontendStaticDirectory(): string {
     : path.join(currentDirectory, "../../frontend/dist");
 }
 
+/** Both roots the backend needs, decided in one place — see resolveRuntimeRoots for why they must never be resolved separately. */
+function runtimeRoots(): { providerSettingsRoot: string; learningDataRoot: string } {
+  return resolveRuntimeRoots({
+    packaged: app.isPackaged,
+    userDataPath: app.isPackaged ? app.getPath("userData") : "",
+    currentDirectory,
+  });
+}
+
 function learningDataRoot(): string {
-  return app.isPackaged
-    ? path.join(app.getPath("userData"), "learning_data")
-    : path.join(currentDirectory, "../../../learning_data");
+  return runtimeRoots().learningDataRoot;
 }
 
 /**
@@ -69,7 +77,15 @@ function startBackend(port: number): BackendProcessManager {
     },
     wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     modulePath: backendModulePath(),
-    env: { ...process.env, PORT: String(port), FRONTEND_STATIC_DIR: frontendStaticDirectory(), LEARNING_DATA_ROOT: learningDataRoot() },
+    // PROVIDER_SETTINGS_ROOT is passed explicitly alongside LEARNING_DATA_ROOT. Leaving it out let it fall back
+    // to the launching process's working directory, which differs between this shell and the browser dev server.
+    env: {
+      ...process.env,
+      PORT: String(port),
+      FRONTEND_STATIC_DIR: frontendStaticDirectory(),
+      LEARNING_DATA_ROOT: runtimeRoots().learningDataRoot,
+      PROVIDER_SETTINGS_ROOT: runtimeRoots().providerSettingsRoot,
+    },
     port,
   });
   manager.start();

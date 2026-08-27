@@ -44,3 +44,7 @@ output/archive/*
 # Local project data the app writes at runtime (projects, budget ledgers, asset library).
 # Never committed: it is the user machine every install builds up, not source.
 learning_data/
+
+# Instagram connection: Meta app id/secret and the long-lived token, written at runtime
+# under PROVIDER_SETTINGS_ROOT (apps/backend in dev). A real secret — never committed.
+instagram_connection.json
