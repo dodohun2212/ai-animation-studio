@@ -1536,6 +1536,26 @@ export const API_ROUTES = {
     `/projects/${encodeURIComponent(projectId)}/assets/mapping-review/approve`,
   projectAssetMappingSnapshot: (projectId: string, mappingId: string) =>
     `/projects/${encodeURIComponent(projectId)}/assets/mappings/${encodeURIComponent(mappingId)}/snapshot`,
+
+  /**
+   * One Episode's asset mappings — the same seven routes as a short project's, under the Episode.
+   *
+   * Deliberately identical in shape, request and response, because they are the same flow: an Episode owns
+   * mappings the way a short project does, and the only thing that differs is which scope is being named. The
+   * Episode pipeline used to have its own narrower set (no create, decisions limited to confirm/exclude), and
+   * keeping that shape while swapping the implementation underneath would have left the new abilities —
+   * linking by hand, Folders, scene-level scope — unreachable from any screen.
+   */
+  episodeAssetMappings: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/assets/mappings`,
+  episodeAssetMapping: (projectId: string, episodeNumber: number, mappingId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/assets/mappings/${encodeURIComponent(mappingId)}`,
+  episodeAssetMappingReview: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/assets/mapping-review`,
+  episodeAssetMappingReviewApprove: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/assets/mapping-review/approve`,
+  episodeAssetMappingSnapshot: (projectId: string, episodeNumber: number, mappingId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/assets/mappings/${encodeURIComponent(mappingId)}/snapshot`,
 } as const;
 
 export type {

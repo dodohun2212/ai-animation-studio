@@ -1611,3 +1611,10 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - **장면 단위 범위**(`{kind:"list", sceneNumbers:[2,4]}`)가 동작 — 회차 구현은 주석으로 못 한다고 자인하던 것. **B-3의 뿌리(에피소드 쪽 선택권 부재)가 여기서 풀린다.**
   - 장면 번호 상한이 **그 회차의 `scene_count`** 임을 확인(롱 프로젝트 것이 아님), 다른 script revision으로 시작한 리뷰는 거부됨.
   - 검증: root typecheck 전부 통과, Backend 971개(+5 신규) 전부 통과, frontend 956개 전부 통과, root build 전부 통과.
+- [x] **회차 매핑 라우트 배선 — 단기와 대칭인 7개(Round 208)**: Cowork Round 226이 계약 A를 확정("화면 재작성이 아니라 인자 주입 하나")한 뒤 착수. **Cowork 조사가 결정적이었다** — 단기 화면의 `projectId` 15회가 전부 API 호출 첫 인자였고 장면 수조차 프로젝트에서 안 가져와서, A의 비용이 예상보다 훨씬 작았음.
+  - `API_ROUTES`에 회차 5개 빌더 추가, 단기 `projectAssetMapping*` 다섯 개와 1:1 대응. 라우트 7개(list/create/update/review/begin/approve/snapshot)가 **요청·응답 모양까지 단기와 동일** — 같은 서비스·같은 저장 형식·같은 공개 매퍼를 지나므로 다를 이유가 없음.
+  - **타입 신규 0개.** `AssetMapping*` 계열을 그대로 씀. `LongEpisodeAssetMapping*` 11개는 철거 대상이나 **Cowork이 화면을 옮긴 뒤에** 지움(먼저 지우면 프런트가 컴파일 안 됨).
+  - **🔴 명시적 DI 토큰(`EPISODE_ASSET_MAPPINGS`)을 씀** — `ProjectAssetMappingsService`가 이미 단기 바인딩으로 제공되고 있어서, 같은 클래스 토큰에 두 번째 바인딩을 걸면 **모듈 스코프로만 갈린다.** 그러면 나중에 이 컨트롤러를 다른 모듈로 옮기는 날 조용히 단기 바인딩으로 바뀌고 아무것도 실패하지 않음. 토큰이 어느 바인딩을 뜻하는지 이름으로 말함.
+  - 신규 테스트 3건(앱 모듈 HTTP): 폴더 수동 연결 + 장면 범위 + 승인 후 회차 전진, **회차 자기 디렉터리에 기록**(`project_id: "long_http/Episode01"`), 없는 회차 거부. **바인딩이 시험 대상** — 단기 바인딩이었다면 한 단계 위 디렉터리를 해석하면서 나머지 단언은 전부 통과했을 것.
+  - 검증: root typecheck 전부 통과, Backend 974개(+3 신규) 전부 통과, frontend 956개 전부 통과, root build 전부 통과.
+  - **낡은 `episode-asset-mappings` 는 아직 살아 있음** — 프런트가 옮겨간 뒤 철거.
