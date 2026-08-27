@@ -188,7 +188,7 @@ export interface LongEpisodeImageReview {
    * referencesOmittedCount is present); reported explicitly rather than left for the frontend to hardcode the cap
    * itself, so a future change to the backend's own limit cannot silently make this text wrong (see the image
    * aspect-ratio size mismatch this app already shipped once from two places independently assuming the same
-   * constant — `.claude-bridge` Round 165/168).
+   * constant).
    */
   referencesUsedCount?: number;
   referencesOmittedCount?: number;
@@ -596,8 +596,7 @@ export type UpdateShortProjectAssetReferencesResponse = GetShortProjectAssetRefe
  * A caption in progress on the Instagram post-prep screen, saved so a series creator whose hashtag set barely
  * changes between episodes doesn't retype it every time. All fields optional — an unset one is simply blank on
  * the screen, not an error. Never includes attribution text: that is always derived fresh from the current
- * project's usedAudio, not saved, so an edited/deleted track can't leave a stale credit line sitting in a draft
- * (`.claude-bridge` Round 178/179).
+ * project's usedAudio, not saved, so an edited/deleted track can't leave a stale credit line sitting in a draft.
  */
 export interface PostDraft {
   body?: string;
@@ -803,7 +802,7 @@ export interface VideoPromptPreview {
    * only when at least one was actually cut (never when a section is merely empty, e.g. scene 1's continuity
    * cue). One of "Continuity cue" | "Environment" | "Performance" | "Pacing", the exact order the server removes
    * them in when the prompt is still too long. Without this, a scene that had detail quietly cut carried no
-   * signal anywhere that anything was missing (`.claude-bridge` Round 148).
+   * signal anywhere that anything was missing.
    */
   omittedSections?: string[];
 }
@@ -1074,8 +1073,7 @@ export interface RegenerateVideoResponse extends GenerationProgressResponse {
  * to be selected, so switching mode away from "narration+bgm" without clearing trackId can't accidentally leave
  * a track silently attached. "narration" requires the project to actually have narration audio
  * (ProjectSummary.narrationAvailable) — a project with none must default to "silent" and cannot request
- * "narration" at all, since there is nothing to mix (`.claude-bridge` Round 163's "derive the default from what
- * the project actually has" rule). trackId is required when (and only meaningful when) mode is "narration+bgm".
+ * "narration" at all, since there is nothing to mix (docs/06_DECISIONS.md D-011). trackId is required when (and only meaningful when) mode is "narration+bgm".
  * volume/fadeSeconds apply only to the bgm track — narration is never faded or attenuated by this setting.
  */
 export interface MergeAudioSettings {
@@ -1102,8 +1100,7 @@ export interface MergeVideosResponse {
  * One track in the BGM library — a project-independent, user-supplied resource (distinct from both the Asset
  * Library's input-material role and the Video Library's results-archive role; see VideoLibraryProjectSummary's
  * doc comment for that distinction). "upload" is the only source, permanently — not a placeholder for a later
- * external search/import. Every clean, checked candidate provider failed for a different reason (`.claude-bridge`
- * Round 172/173): Pixabay has no music/audio API at all and its Terms of Service prohibits scraping around that;
+ * external search/import. Every clean, checked candidate provider failed for a different reason (docs/06_DECISIONS.md D-001): Pixabay has no music/audio API at all and its Terms of Service prohibits scraping around that;
  * Freesound's API exists but its catalog is overwhelmingly CC-BY (attribution required) and sound-effect-
  * oriented, not music; Jamendo requires a separate paid license for commercial use; Meta Sound Collection's
  * license covers using a track inside Instagram itself, not downloading it into a file uploaded elsewhere. A
@@ -1118,7 +1115,7 @@ export interface AudioLibraryTrack {
   durationSeconds: number;
   bytes: number;
   source: "upload";
-  /** What the uploader themselves states about where this track came from — the app never verifies it (there is no provider integration to check against). Always present: required at upload time specifically because the moment of upload is the only point the uploader reliably still remembers this (`.claude-bridge` Round 173 — left optional at first, but a field left blank at upload almost never gets filled in later). */
+  /** What the uploader themselves states about where this track came from — the app never verifies it (there is no provider integration to check against). Always present: required at upload time specifically because the moment of upload is the only point the uploader reliably still remembers this (docs/06_DECISIONS.md D-002). */
   licenseKind: "cc0" | "cc-by" | "purchased" | "self-made" | "other";
   /** Whether publishing a video using this track requires crediting it (e.g. in the caption) — true for "cc-by", user-declared for "other", false otherwise. Read by both the BGM library (a persistent notice on the track) and the merge screen (surfaced again at the moment that matters — right before publishing, not just once at upload). */
   attributionRequired: boolean;
@@ -1145,7 +1142,7 @@ export interface DeleteAudioTrackResponse { trackId: string; }
  * One Instagram professional account this user could publish to, discovered live from the Facebook Pages their
  * access token can see. Deliberately not part of ProviderCredentialKind: a credential answers "can we act at
  * all?" and belongs in settings, while this answers "where does it go?" and has to be visible at the moment of
- * publishing (`.claude-bridge` Round 186).
+ * publishing (docs/06_DECISIONS.md D-014).
  */
 export interface InstagramPublishTarget {
   igUserId: string;
@@ -1216,7 +1213,7 @@ export interface PublishToInstagramResponse {
 }
 
 /**
- * One short-project row in the cross-project video library (`.claude-bridge` Round 153/166) — an archive view of
+ * One short-project row in the cross-project video library — an archive view of
  * results, distinct from the Asset Library's input-material role (see AssetLibraryScreen). Only lists a project
  * that has at least one generated scene video; a project that never reached video generation never appears here.
  */
@@ -1234,8 +1231,7 @@ export interface VideoLibraryProjectSummary {
   /**
    * Derived from ProjectSummary.usedAudio — trimmed to just the two fields a library card actually needs
    * (whether to show a credit-line notice, and what it says), not the full mode/trackId shape, since a
-   * "someone comes back later to finally publish this" reader has no use for either (`.claude-bridge` Round
-   * 177). Absent whenever usedAudio itself is (never merged, or a Video Library restore invalidated it — see
+   * "someone comes back later to finally publish this" reader has no use for either. Absent whenever usedAudio itself is (never merged, or a Video Library restore invalidated it — see
    * that field's own doc comment for why restore clears it rather than showing a stale credit line).
    */
   attributionRequired?: boolean;
@@ -1250,7 +1246,7 @@ export interface GetVideoLibraryResponse { projects: VideoLibraryProjectSummary[
  * `createdAt` (restoring an older version makes it current again without changing its own creation time).
  * `actualCostUsd` is deliberately not on this type: today's ledger has no versionId to tie a spend row to a
  * specific archived file, and showing an approximate number (matched by timestamp) risked showing a wrong one —
- * a real follow-up (`.claude-bridge` Round 153), not a silent omission.
+ * a real follow-up, not a silent omission.
  */
 export interface VideoVersionSummary {
   versionId: string;

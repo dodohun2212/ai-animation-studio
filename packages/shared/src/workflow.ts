@@ -27,8 +27,7 @@ const terminalStates = [
 
 /**
  * Documents the intended shape of the pipeline — nothing in this codebase calls canTransition() or
- * assertWorkflowTransition() at runtime today (`.claude-bridge` Round 171: found while designing the video
- * library's restore()), so a project.json write that skips this table is not actually rejected anywhere. Keep it
+ * assertWorkflowTransition() at runtime today (docs/06_DECISIONS.md D-009), so a project.json write that skips this table is not actually rejected anywhere. Keep it
  * honest anyway: a reader who trusts this table as authoritative and is wrong about that reaches worse
  * conclusions than a reader who knows to go check the code directly (the same day's aspect-ratio-size bug,
  * review-thumbnail bug, and PROVIDER_SETTINGS_ROOT bug were all one place trusting a assumption/comment another

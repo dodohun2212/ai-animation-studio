@@ -128,15 +128,14 @@ export interface ProjectSummary {
    * (style_profile.aspect, "16:9" vs anything else defaulting to vertical) — added here so every screen that
    * needs to know this project's shape (a review thumbnail's aspect box, a video library card) reads the one
    * fact instead of assuming a default independently. Three screens/services had already done that
-   * independently and landed on three different wrong assumptions before this field existed
-   * (`.claude-bridge` Round 165/168/169).
+   * independently and landed on three different wrong assumptions before this field existed.
    */
   aspectRatio: "9:16" | "16:9";
   /**
    * Whether this project has at least one real generated narration audio file today — not simply whether
    * ShortProjectSettings.narrationEnabled is on, since a project can have the setting on with nothing generated
    * yet (or narration later disabled after generating). Lets the merge screen derive its audio mode's default
-   * from what the project actually has (`.claude-bridge` Round 163) rather than the user needing to discover by
+   * from what the project actually has (docs/06_DECISIONS.md D-011) rather than the user needing to discover by
    * trial that "narration" silently produces no narration.
    */
   narrationAvailable: boolean;
@@ -146,7 +145,7 @@ export interface ProjectSummary {
    * audio was never separately recorded per-version, so it is cleared rather than shown as if still current).
    * `attributionRequired`/`attributionText` are copied by value from the track at merge time, not a live
    * reference, specifically so that deleting the track afterward (allowed — see AudioLibraryTrack's own doc
-   * comment) can never silently erase the credit line a published video still owes (`.claude-bridge` Round 176).
+   * comment) can never silently erase the credit line a published video still owes (docs/06_DECISIONS.md D-003).
    */
   /**
    * Set once this project's final video has actually been published to Instagram. Present means it is out in
