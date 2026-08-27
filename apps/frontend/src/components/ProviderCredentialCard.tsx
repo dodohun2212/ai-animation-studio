@@ -9,7 +9,16 @@ interface Props {
   acquireMutation?: () => boolean; releaseMutation?: () => void;
   disabled?: boolean; onPendingChange?: (pending: boolean) => void;
 }
-const statusText = (status: ProviderCredentialStatus) => !status.configured ? "저장된 키 없음" : status.connected ? "연결됨" : "연결 해제됨 · 키 저장됨";
+/**
+ * Says what the app actually knows, which is only what is stored here.
+ *
+ * This used to read "연결됨", and a user who had just revoked their Runway key on Runway's own dashboard still
+ * saw it — reasonably reading it as "this key works". Nothing in this app ever asks the provider whether a
+ * stored key is still valid, so "연결" was a claim about a relationship the app has never once checked
+ * (`.claude-bridge` Round 184). The wording now describes the local switch it really is.
+ */
+const statusText = (status: ProviderCredentialStatus) =>
+  !status.configured ? "저장된 키 없음" : status.connected ? "키 저장됨 · 이 앱에서 사용" : "키 저장됨 · 사용 안 함";
 const statusTone = (status: ProviderCredentialStatus) => !status.configured ? "text-slate-400" : status.connected ? "text-emerald-300" : "text-amber-300";
 const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50 disabled:hover:bg-transparent";
 
@@ -56,10 +65,13 @@ export function ProviderCredentialCard({ label, status, onStatusChange, acquireM
         <button type="submit" disabled={disabled || pending} className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50">저장</button>
       </form>
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <button type="button" className={outlineButton} disabled={disabled || pending || !status.connected} onClick={() => void run(() => disconnectProvider(status.provider))}>연결 해제</button>
-        <button type="button" className={outlineButton} disabled={disabled || pending || !status.configured || status.connected} onClick={() => void run(() => reconnectProvider(status.provider))}>다시 연결</button>
+        <button type="button" className={outlineButton} disabled={disabled || pending || !status.connected} onClick={() => void run(() => disconnectProvider(status.provider))}>이 앱에서 사용 안 함</button>
+        <button type="button" className={outlineButton} disabled={disabled || pending || !status.configured || status.connected} onClick={() => void run(() => reconnectProvider(status.provider))}>다시 사용</button>
       </div>
-      <p className="mt-2 text-xs text-slate-500">연결을 해제해도 저장된 credential은 삭제되지 않습니다.</p>
+      <p className="mt-2 text-xs text-slate-500">
+        사용을 꺼도 저장된 credential은 삭제되지 않습니다.
+        {status.configured && " 위 표시는 이 앱에 키가 저장돼 있다는 뜻입니다 — 제공사에서 그 키를 지웠거나 만료됐는지는 실제로 요청을 보내봐야 알 수 있습니다."}
+      </p>
       {actionError && <p role="alert" data-error-code={actionError.code} className="mt-2 text-sm text-rose-400">{actionError.message}</p>}
     </div>
   );

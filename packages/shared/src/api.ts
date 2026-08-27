@@ -942,7 +942,14 @@ export interface RunLegacyReferenceMigrationResponse {
   failedAssets: number;
 }
 
-export type ProviderCredentialKind = "openai" | "runway";
+/**
+ * "instagram" holds only the long-lived User Access Token, entered by the user themselves the same way an
+ * OpenAI/Runway key is (`.claude-bridge` Round 183 — Cowork's explicit requirement: "토큰은 내가 절대 안 다뤄").
+ * Publishing also needs the target Instagram Business Account ID, which is not a secret and does not belong in
+ * this masked-value credential model — where that setting lives is still an open question, flagged back to
+ * Cowork rather than decided here.
+ */
+export type ProviderCredentialKind = "openai" | "runway" | "instagram";
 
 export interface ProviderCredentialStatus {
   provider: ProviderCredentialKind;

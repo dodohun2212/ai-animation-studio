@@ -103,10 +103,10 @@ describe("ProviderSettingsScreen", () => {
     render(<ProviderSettingsScreen onBack={() => {}} />);
 
     await screen.findByText("OpenAI");
-    const disconnectButtons = screen.getAllByRole("button", { name: "연결 해제" });
+    const disconnectButtons = screen.getAllByRole("button", { name: "이 앱에서 사용 안 함" });
     fireEvent.click(disconnectButtons[0] as HTMLElement); // OpenAI's card is rendered first
 
-    await screen.findByText("연결 해제됨 · 키 저장됨");
+    await screen.findByText("키 저장됨 · 사용 안 함");
     // Runway must remain connected and unaffected.
     expect(screen.getByText("rw-********7890")).toBeTruthy();
     expect(fetchMock.mock.calls.every(([url]) => String(url) !== "/settings/providers/runway/disconnect")).toBe(true);
@@ -164,7 +164,7 @@ describe("ProviderSettingsScreen", () => {
 
     await screen.findByText("OpenAI");
     fireEvent.click(screen.getByRole("button", { name: "새로고침" }));
-    fireEvent.click(screen.getAllByRole("button", { name: "연결 해제" })[0] as HTMLElement);
+    fireEvent.click(screen.getAllByRole("button", { name: "이 앱에서 사용 안 함" })[0] as HTMLElement);
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     resolveRefresh(jsonResponse(200, { providers }));
@@ -185,12 +185,12 @@ describe("ProviderSettingsScreen", () => {
     render(<ProviderSettingsScreen onBack={() => {}} />);
 
     await screen.findByText("OpenAI");
-    fireEvent.click(screen.getAllByRole("button", { name: "연결 해제" })[0] as HTMLElement);
+    fireEvent.click(screen.getAllByRole("button", { name: "이 앱에서 사용 안 함" })[0] as HTMLElement);
     fireEvent.click(screen.getByRole("button", { name: "새로고침" }));
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     resolveMutation(jsonResponse(200, { provider: disconnected }));
-    await screen.findByText("연결 해제됨 · 키 저장됨");
+    await screen.findByText("키 저장됨 · 사용 안 함");
   });
 
   it("calls onBack when the back button is clicked", async () => {

@@ -12,7 +12,7 @@ import { credentialNotConfigured, invalidCredential, invalidSettingsRequest, unk
 import { ProviderSettingsRepository } from "./provider-settings.repository.js";
 import { ProviderSettingsLogger } from "./provider-settings.redaction.js";
 
-const PROVIDERS: readonly ProviderCredentialKind[] = ["openai", "runway"];
+const PROVIDERS: readonly ProviderCredentialKind[] = ["openai", "runway", "instagram"];
 
 function validateProvider(value: string): ProviderCredentialKind {
   if (!PROVIDERS.includes(value as ProviderCredentialKind)) throw unknownProvider();

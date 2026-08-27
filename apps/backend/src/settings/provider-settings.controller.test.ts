@@ -24,7 +24,7 @@ describe("ProviderSettingsController", () => {
   afterEach(async () => { await fs.rm(root, { recursive: true, force: true }); });
 
   it("serves all four settings operations without returning a secret", async () => {
-    expect((await controller.getSettings()).providers).toHaveLength(2);
+    expect((await controller.getSettings()).providers).toHaveLength(3);
     const saved = await controller.save("openai", { value: secret });
     expect(saved.provider).toMatchObject({ configured: true, connected: true });
     expect(JSON.stringify(saved)).not.toContain(secret);
