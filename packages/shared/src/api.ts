@@ -260,12 +260,34 @@ export interface StartLongEpisodeNarrationGenerationResponse {
   /** Same meaning and scope as StartLongEpisodeImageGenerationResponse.budget (see that field's doc comment). */
   budget?: BudgetPreview;
 }
+/**
+ * What a scene's narration audio actually is.
+ *
+ * One field rather than a boolean plus a placeholder flag, because two fields can say things that cannot be
+ * true — "no audio, and it is a placeholder" typechecks and means nothing — and every reader would have to
+ * remember to consult both. Forgetting once is how a screen ends up saying something the data does not support.
+ *
+ * `placeholder` is real on disk and playable, and that matters: it is four bytes of MP3 header written when
+ * there is no TTS credential, so the pipeline can still be walked. It is not something to hide — a person has
+ * to be able to press play and hear that there is nothing there. What it must not do is pass as narration,
+ * which is what "음성 있음" beside it used to do, and what a merge treating it as audio still does.
+ */
+export type NarrationAudioState = "none" | "placeholder" | "generated";
+
 /** One scene's narration text and whether audio has been synthesized for it yet — provider-free to read (no TTS call happens from a GET). */
 export interface LongEpisodeNarrationReview {
   sceneNumber: SceneNumber;
   narration: string;
-  hasAudio: boolean;
-  /** That scene's actual synthesized audio length, measured from the generated file. Omitted when hasAudio is false, or when the length could not be measured. */
+  /** Whether this scene has audio, and what kind — see NarrationAudioState. */
+  audio: NarrationAudioState;
+  /**
+   * That scene's synthesized audio length, measured from the file. Omitted when there is no audio, or when the
+   * length could not be measured.
+   *
+   * Not a placeholder signal. It used to be read as one — a missing length meant either a placeholder or a
+   * failed probe, and nothing could tell those apart — which is exactly the pair of facts `audio` exists to
+   * stop deriving from each other.
+   */
   audioDurationSeconds?: number;
 }
 export interface GetLongEpisodeNarrationReviewResponse {
@@ -726,8 +748,16 @@ export interface StartNarrationGenerationResponse {
 export interface NarrationReview {
   sceneNumber: SceneNumber;
   narration: string;
-  hasAudio: boolean;
-  /** That scene's actual synthesized audio length, measured from the generated file. Omitted when hasAudio is false, or when the length could not be measured (e.g. the local fake-mode placeholder file, or ffprobe unavailable). */
+  /** Whether this scene has audio, and what kind — see NarrationAudioState. */
+  audio: NarrationAudioState;
+  /**
+   * That scene's synthesized audio length, measured from the file. Omitted when there is no audio, or when the
+   * length could not be measured.
+   *
+   * Not a placeholder signal. It used to be read as one — a missing length meant either a placeholder or a
+   * failed probe, and nothing could tell those apart — which is exactly the pair of facts `audio` exists to
+   * stop deriving from each other.
+   */
   audioDurationSeconds?: number;
 }
 

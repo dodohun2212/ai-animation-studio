@@ -28,10 +28,10 @@ describe("EpisodeNarrationService", () => {
     const { narration } = await setup();
     const status = await narration.get("long", 1);
     expect(status.narrations).toEqual([
-      { sceneNumber: 1, narration: "Scene 1 narration for Episode 1: Long story.", hasAudio: false },
-      { sceneNumber: 2, narration: "Scene 2 narration for Episode 1: Long story.", hasAudio: false },
-      { sceneNumber: 3, narration: "Scene 3 narration for Episode 1: Long story.", hasAudio: false },
-      { sceneNumber: 4, narration: "Scene 4 narration for Episode 1: Long story.", hasAudio: false },
+      { sceneNumber: 1, narration: "Scene 1 narration for Episode 1: Long story.", audio: "none" },
+      { sceneNumber: 2, narration: "Scene 2 narration for Episode 1: Long story.", audio: "none" },
+      { sceneNumber: 3, narration: "Scene 3 narration for Episode 1: Long story.", audio: "none" },
+      { sceneNumber: 4, narration: "Scene 4 narration for Episode 1: Long story.", audio: "none" },
     ]);
   });
 
@@ -48,7 +48,7 @@ describe("EpisodeNarrationService", () => {
     expect(started.reusedSceneNumbers).toEqual([]);
     expect(started.skippedSceneNumbers).toEqual([]);
     const status = await narration.get("long", 1);
-    expect(status.narrations.every((item) => item.hasAudio)).toBe(true);
+    expect(status.narrations.every((item) => item.audio === "placeholder")).toBe(true);
 
     const again = await narration.generate("long", 1, { approved: true });
     expect(again.generatedSceneNumbers).toEqual([]);
@@ -76,7 +76,7 @@ describe("EpisodeNarrationService", () => {
     await narration.generate("long", 1, { approved: true });
     const result = await narration.regenerate("long", 1, "2", { approved: true });
     expect(result.sceneNumber).toBe(2);
-    expect(result.narrations[1]).toMatchObject({ hasAudio: true });
+    expect(result.narrations[1]).toMatchObject({ audio: "placeholder" });
     expect(result.retryEstimate).toBeUndefined();
     const records = JSON.parse(await fs.readFile(path.join(root!, "projects", "long", "long_story", "Episode01", "narration_generation_records.json"), "utf8")) as Array<{ scene_number: number; regenerated?: boolean }>;
     expect(records.find((item) => item.scene_number === 2)?.regenerated).toBe(true);

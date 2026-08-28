@@ -11,6 +11,7 @@ import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
+import { PLACEHOLDER_ADAPTER } from "../narration/local-narration-generation.service.js";
 
 const FINAL_PATH = "videos/final/instagram_reel.mp4" as const;
 const statuses: readonly LongEpisodeStatus[] = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted", "rendering", "completed", "failed"];
@@ -98,15 +99,44 @@ export class EpisodeVideoMergeService {
    * toggled-off file must never fail the merge, it just falls back to silence for that scene); subtitleText is
    * independent, gated on subtitlesEnabled AND that scene having narration text, regardless of audio existence.
    */
+  /**
+   * Scenes whose narration audio was written without a TTS credential.
+   *
+   * A placeholder is silent, so leaving it out changes nothing anyone can hear — what changes is that the app
+   * stops presenting it as narration it produced. Reading the record is the only way to tell: the file itself
+   * is a well-formed MP3 header and passes every check that asks whether audio exists.
+   *
+   * Unreadable or missing records mean no scene is treated as a placeholder. Erring that way keeps a merge
+   * working when this file is absent, and the worst case is the behaviour that existed before this method.
+   */
+  private async placeholderNarrationScenes(id: string, number: number): Promise<ReadonlySet<SceneNumber>> {
+    const placeholders = new Set<SceneNumber>();
+    let raw: unknown;
+    try { raw = JSON.parse(await fs.readFile(path.join(this.files(id, number).episode, "narration_generation_records.json"), "utf8")); } catch { return placeholders; }
+    if (!Array.isArray(raw)) return placeholders;
+    for (const item of raw) {
+      if (!object(item) || item.adapter !== PLACEHOLDER_ADAPTER) continue;
+      const sceneNumber = item.scene_number;
+      if (typeof sceneNumber === "number") placeholders.add(sceneNumber as SceneNumber);
+    }
+    return placeholders;
+  }
+
   private async mergeScenes(id: string, number: number, episode: Episode, clips: readonly string[], sceneNumbers: readonly SceneNumber[]): Promise<MergeSceneInput[]> {
     const projectSettings = (await this.projects.get(id)).project.settings;
     const scenes = episode.script.scenes;
     const scriptScenes = Array.isArray(scenes) ? scenes : [];
+    // Which scenes have narration that is only a placeholder. Read once here rather than re-derived from the
+    // file, because the file cannot tell you: four bytes of MP3 header is a valid file of non-zero size, and
+    // asking `size > 0` put it into finished videos as though it were a voice. The record is what knows.
+    const placeholderScenes = await this.placeholderNarrationScenes(id, number);
     return Promise.all(sceneNumbers.map(async (sceneNumber, index) => {
       const scene = scriptScenes[index];
       const narrationText = object(scene) && typeof scene.narration === "string" ? scene.narration.trim() : "";
       const file = this.narrationAudio(id, number, sceneNumber);
-      const narrationAudioPath = projectSettings.narrationEnabled && (await fs.stat(file).then((stat) => stat.size > 0).catch(() => false)) ? file : null;
+      const hasRealAudio = !placeholderScenes.has(sceneNumber)
+        && (await fs.stat(file).then((stat) => stat.size > 0).catch(() => false));
+      const narrationAudioPath = projectSettings.narrationEnabled && hasRealAudio ? file : null;
       const subtitleText = projectSettings.subtitlesEnabled ? (narrationText || null) : null;
       return { clip: clips[index]!, narrationAudioPath, subtitleText };
     }));

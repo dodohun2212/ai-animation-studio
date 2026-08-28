@@ -23,7 +23,7 @@ const isObject = (value: unknown): value is Record<string, unknown> => typeof va
  */
 const FAKE_MP3 = Buffer.from([0xff, 0xfb, 0x90, 0x00]);
 /** Named once, because the reuse decision and the record that drives it have to agree on it exactly. */
-const PLACEHOLDER_ADAPTER = "local-fake-tts-adapter";
+export const PLACEHOLDER_ADAPTER = "local-fake-tts-adapter";
 
 function scenesFor(project: StoredProject): SceneNumber[] {
   return sceneNumbersFor(toShortProjectSettings(project).sceneCount);

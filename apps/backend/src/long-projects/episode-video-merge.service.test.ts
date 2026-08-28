@@ -80,6 +80,36 @@ describe("EpisodeVideoMergeService", () => {
     const project = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "project.json"), "utf8")) as { state: string }; expect(project.state).toBe("videos_approved");
   });
 
+  it("leaves placeholder narration out of the finished video", async () => {
+    // 🔴 The original symptom. With no TTS credential the app writes four bytes of MP3 header so the pipeline
+    // can be walked, and the merge asked only whether the file had a size — so silence went into finished
+    // videos as though it were a voice, with the screen reporting narration the whole time. Nothing audible
+    // changes by leaving it out; what changes is that the app stops presenting it as something it produced.
+    const { projectsRoot } = await setup();
+    const episodeDirectory = path.join(projectsRoot, "long", "long_story", "Episode01");
+    const narrationFile = path.join(episodeDirectory, "narration", "scene2.mp3");
+    await fs.mkdir(path.dirname(narrationFile), { recursive: true });
+    await fs.writeFile(narrationFile, Buffer.from([0xff, 0xfb, 0x90, 0x00]));
+    await fs.writeFile(
+      path.join(episodeDirectory, "narration_generation_records.json"),
+      JSON.stringify([{ scene_number: 2, narration: "line", checkpoint: "completed", adapter: "local-fake-tts-adapter", tts_api_calls: 0 }]),
+      "utf8",
+    );
+    const projects = new LongProjectsService(projectsRoot);
+    await projects.updateSettings("long", { settings: { ...settings, narrationEnabled: true } });
+
+    const calls: string[][] = [];
+    await new EpisodeVideoMergeService(projectsRoot, runner({}, calls)).merge("long", 1);
+
+    const normalizeCalls = calls.filter((args) => args[0] === "ffmpeg" && args.includes("-vf"));
+    expect(normalizeCalls).toHaveLength(6);
+    // Every scene, including the one with a placeholder on disk, gets generated silence rather than that file.
+    for (const call of normalizeCalls) {
+      expect(call).not.toContain(narrationFile);
+      expect(call).toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
+    }
+  });
+
   it("mixes in a scene's generated narration audio when narrationEnabled is on, and falls back to silence for the rest", async () => {
     const { projectsRoot } = await setup();
     const narrationFile = path.join(projectsRoot, "long", "long_story", "Episode01", "narration", "scene2.mp3");

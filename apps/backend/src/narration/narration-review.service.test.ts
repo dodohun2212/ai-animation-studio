@@ -43,15 +43,15 @@ describe("NarrationReviewService", () => {
     const { reviews, generation } = await setup();
     const status = await reviews.getStatus("narr");
     expect(status.narrations).toEqual([
-      { sceneNumber: 1, narration: "narration line 1", hasAudio: false },
-      { sceneNumber: 2, narration: "", hasAudio: false },
+      { sceneNumber: 1, narration: "narration line 1", audio: "none" },
+      { sceneNumber: 2, narration: "", audio: "none" },
     ]);
     expect(fetchMock).not.toHaveBeenCalled();
 
     await generation.generate("narr", { approved: true });
     const after = await reviews.getStatus("narr");
-    expect(after.narrations[0]).toMatchObject({ hasAudio: true });
-    expect(after.narrations[1]).toMatchObject({ hasAudio: false });
+    expect(after.narrations[0]).toMatchObject({ audio: "placeholder" });
+    expect(after.narrations[1]).toMatchObject({ audio: "none" });
     expect(after.staleness).toEqual({ imageStale: [], videoStale: [], narrationStale: [] });
   });
 
@@ -70,7 +70,7 @@ describe("NarrationReviewService", () => {
     await generation.generate("narr", { approved: true });
     const result = await reviews.regenerate("narr", "1", { approved: true });
     expect(result.sceneNumber).toBe(1);
-    expect(result.narrations[0]).toMatchObject({ hasAudio: true });
+    expect(result.narrations[0]).toMatchObject({ audio: "placeholder" });
     expect(result.retryEstimate).toBeUndefined();
   });
 
@@ -84,7 +84,7 @@ describe("NarrationReviewService", () => {
     const { reviews, generation } = await setup(true, probeDuration);
     await generation.generate("narr", { approved: true });
     const status = await reviews.getStatus("narr");
-    expect(status.narrations[0]).toMatchObject({ hasAudio: true, audioDurationSeconds: 4.2 });
+    expect(status.narrations[0]).toMatchObject({ audio: "placeholder", audioDurationSeconds: 4.2 });
     expect(status.narrations[1]!.audioDurationSeconds).toBeUndefined();
     expect(probeDuration).toHaveBeenCalledTimes(1);
   });
@@ -93,7 +93,7 @@ describe("NarrationReviewService", () => {
     const { reviews, generation } = await setup();
     await generation.generate("narr", { approved: true });
     const status = await reviews.getStatus("narr");
-    expect(status.narrations[0]).toMatchObject({ hasAudio: true });
+    expect(status.narrations[0]).toMatchObject({ audio: "placeholder" });
     expect(status.narrations[0]!.audioDurationSeconds).toBeUndefined();
   });
 

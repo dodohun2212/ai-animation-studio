@@ -5,10 +5,12 @@ import {
   sceneNumbersFor,
   TTS_ESTIMATED_COST_USD,
   type GetNarrationReviewResponse,
+  type NarrationAudioState,
   type NarrationReview,
   type RegenerateNarrationResponse,
   type SceneNumber,
 } from "@ai-animation-studio/shared";
+import { PLACEHOLDER_ADAPTER } from "./local-narration-generation.service.js";
 import { toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
@@ -43,9 +45,15 @@ async function toApiNarrations(
   return Promise.all(scenes.map(async (number) => {
     const narration = sceneValue(project.scenes[number - 1], "narration");
     const file = project.generated_narrations[number - 1];
-    const hasAudio = typeof file === "string" && file === generation.narrationPath(project.project_id, number) && (await validAudio(file));
-    const audioDurationSeconds = hasAudio ? await probeDuration(file as string) : undefined;
-    return { sceneNumber: number, narration, hasAudio, ...(audioDurationSeconds !== undefined ? { audioDurationSeconds } : {}) };
+    const present = typeof file === "string" && file === generation.narrationPath(project.project_id, number) && (await validAudio(file));
+    // The record is the only thing that knows a placeholder is one — the file passes every check that asks
+    // whether audio exists. A file with no record counts as generated, because this service did not write it
+    // and calling it a placeholder would claim something it does not know.
+    const record = project.narration_generation_records[number - 1];
+    const adapter = typeof record === "object" && record !== null ? (record as { adapter?: unknown }).adapter : undefined;
+    const audio: NarrationAudioState = !present ? "none" : adapter === PLACEHOLDER_ADAPTER ? "placeholder" : "generated";
+    const audioDurationSeconds = present ? await probeDuration(file as string) : undefined;
+    return { sceneNumber: number, narration, audio, ...(audioDurationSeconds !== undefined ? { audioDurationSeconds } : {}) };
   }));
 }
 

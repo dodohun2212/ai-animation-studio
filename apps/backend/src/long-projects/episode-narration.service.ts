@@ -2,7 +2,8 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import { sceneNumbersFor, TTS_ESTIMATED_COST_USD, type GetLongEpisodeNarrationReviewResponse, type LongEpisodeDetail, type LongEpisodeNarrationReview, type LongEpisodeStatus, type RegenerateLongEpisodeNarrationResponse, type SceneNumber, type StartLongEpisodeNarrationGenerationRequest, type StartLongEpisodeNarrationGenerationResponse } from "@ai-animation-studio/shared";
+import { sceneNumbersFor, TTS_ESTIMATED_COST_USD, type GetLongEpisodeNarrationReviewResponse, type LongEpisodeDetail, type LongEpisodeNarrationReview,
+  type NarrationAudioState, type LongEpisodeStatus, type RegenerateLongEpisodeNarrationResponse, type SceneNumber, type StartLongEpisodeNarrationGenerationRequest, type StartLongEpisodeNarrationGenerationResponse } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
@@ -92,6 +93,21 @@ export class EpisodeNarrationService {
    * Both are the same mistake: asking about the file's existence rather than about what is in it. The record is
    * what knows, and it has been written all along.
    */
+  /**
+   * What the audio on disk is, not merely whether it is there.
+   *
+   * The record is the only thing that knows a placeholder is a placeholder — the file is a valid MP3 header and
+   * passes every check that asks about existence. Saying so is what lets a screen stop calling four bytes of
+   * silence "음성 있음", and what lets the merge stop putting it into a finished video.
+   *
+   * A file with no record is reported as generated rather than placeholder: this service did not write it, so
+   * calling it a placeholder would be a claim about something it knows nothing about.
+   */
+  private async audioState(records: readonly StoredRecord[], sceneNumber: SceneNumber, file: string): Promise<NarrationAudioState> {
+    if (!(await this.validAudio(file))) return "none";
+    return records.find((item) => item.scene_number === sceneNumber)?.adapter === PLACEHOLDER_ADAPTER ? "placeholder" : "generated";
+  }
+
   private stillGoodAudio(records: readonly StoredRecord[], sceneNumber: SceneNumber, text: string, canUseRealTts: boolean): boolean {
     const record = records.find((item) => item.scene_number === sceneNumber);
     // No record at all: something put a file there that this service did not write. Regenerate rather than trust it.
@@ -115,13 +131,14 @@ export class EpisodeNarrationService {
   }
 
   private async toApiNarrations(projectId: string, number: number, scenes: readonly Record<string, unknown>[]): Promise<LongEpisodeNarrationReview[]> {
+    const records = await this.loadRecords(projectId, number);
     return Promise.all(scenes.map(async (scene, index) => {
       const sceneNumber = (index + 1) as SceneNumber;
       const narration = this.sceneNarrationText(scene);
       const file = this.narrationPath(projectId, number, sceneNumber);
-      const hasAudio = await this.validAudio(file);
-      const audioDurationSeconds = hasAudio ? await probeAudioDurationSeconds(file) : undefined;
-      return { sceneNumber, narration, hasAudio, ...(audioDurationSeconds !== undefined ? { audioDurationSeconds } : {}) };
+      const audio = await this.audioState(records, sceneNumber, file);
+      const audioDurationSeconds = audio === "none" ? undefined : await probeAudioDurationSeconds(file);
+      return { sceneNumber, narration, audio, ...(audioDurationSeconds !== undefined ? { audioDurationSeconds } : {}) };
     }));
   }
 
