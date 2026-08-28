@@ -48,7 +48,8 @@ export class ProjectAssetMappingsService<Key = string> {
     return { mappings: (await this.repository.load(await this.owners.get(key))).map(toPublicMapping) };
   }
   async review(key: Key): Promise<GetProjectAssetMappingReviewResponse> {
-    return { review: toPublicReview(await this.repository.loadReview(await this.owners.get(key))) };
+    const owner = await this.owners.get(key);
+    return { review: toPublicReview(await this.repository.loadReview(owner)), sceneCount: owner.sceneCount };
   }
   async create(key: Key, body: unknown): Promise<CreateProjectAssetMappingResponse> {
     if (!isObject(body) || Object.keys(body).some((key) => !["assetId", "usageRole", "sceneScope", "versionPolicy", "pinnedVersion", "selectedChildAssetIds"].includes(key))

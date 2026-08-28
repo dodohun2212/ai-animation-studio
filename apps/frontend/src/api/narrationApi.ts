@@ -25,6 +25,11 @@ export class NarrationApiError extends Error {
 const SAFE_ERRORS: Record<string, string> = {
   INVALID_REQUEST: "요청 형식이 올바르지 않습니다.",
   PROJECT_NOT_FOUND: "프로젝트를 찾을 수 없습니다.",
+  // Same sentence as longProjectsApi's entry, deliberately word for word: it is the same server code, and a
+  // code that means one thing must not read differently depending on which screen surfaced it. It also names
+  // no subject — this covers a project's own work and an Episode's, so a sentence that picked one would be
+  // wrong for the other (that is exactly how the outline approval came to answer "이 에피소드를 처리하는 중").
+  PROJECT_LOCKED: "이 프로젝트에서 다른 작업이 진행 중입니다. 다시 누르지 마세요 — 그 작업이 끝나면 자동으로 반영됩니다.",
   NARRATION_NOT_ENABLED: "프로젝트 설정에서 \"음성 넣기\"를 먼저 켜야 음성을 만들 수 있습니다.",
   NARRATION_MISSING_TEXT: "이 장면에는 읽어줄 문장이 없어 음성을 만들 수 없습니다. 대본을 다시 만들어 주세요.",
   NARRATION_GENERATION_FAILED: "음성 파일을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.",

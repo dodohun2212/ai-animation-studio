@@ -89,6 +89,19 @@ describe("imageReviewApi", () => {
     expect(displayError.message).not.toContain("raw backend detail");
   });
 
+  it("names the lock instead of falling back to the generic unknown error", async () => {
+    // PROJECT_LOCKED reaches this API now that the paid image paths take the project lock. Without a table
+    // entry it lands in the unknown-error fallback, so a person who pressed twice is told something went wrong
+    // rather than that their first request is still running — which is the message that stops them pressing a
+    // third time. Asserted as "not the fallback" as well as "the right code", because an entry that existed but
+    // said nothing useful would still pass a code-only check.
+    const displayError = toImageReviewDisplayError(new ImageReviewApiError("PROJECT_LOCKED", "raw backend detail"));
+    expect(displayError.code).toBe("PROJECT_LOCKED");
+    expect(displayError.code).not.toBe("CLIENT_UNKNOWN_ERROR");
+    expect(displayError.message).toContain("다른 작업이 진행 중");
+    expect(displayError.message).not.toContain("raw backend detail");
+  });
+
   it("falls back to a generic unknown error for an unrecognized code", () => {
     const displayError = toImageReviewDisplayError(new ImageReviewApiError("SOMETHING_NEW", "raw"));
     expect(displayError.code).toBe("CLIENT_UNKNOWN_ERROR");

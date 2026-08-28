@@ -13,12 +13,15 @@ const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
 let root: string | undefined;
 afterEach(async () => { if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 
-async function setup() {
+async function setup(sceneCount = 6) {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "asset-mapping-"));
   const projectsRoot = path.join(root, "projects"); const projects = new LocalProjectRepository(projectsRoot);
   const project = createStoredProject("short_mapping", "Asset mapping", "2026-08-22T00:00:00.000Z");
   project.script_revision = 1;
-  project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, description: `scene ${number}` }));
+  project.scenes = Array.from({ length: sceneCount }, (_, index) => ({ number: index + 1, description: `scene ${index + 1}` }));
+  // The settings are what the scene count is read from, and what create() validates a scope against. Setting the
+  // scenes without them would build a project that cannot exist — approval refuses that pair outright.
+  project.lore_context = { ...project.lore_context, scene_count: sceneCount };
   await projects.create(project);
   const assets = new LocalAssetsRepository(root);
   const asset = await assets.create({ buffer: png, originalname: "fixture.png", mimetype: "image/png" }, { assetType: "style", displayName: "Fixture style" });
@@ -27,6 +30,20 @@ async function setup() {
 }
 
 describe("ProjectAssetMappingsService", () => {
+  it("reports the owner's own scene count, so a scene picker offers only scenes the server will accept", async () => {
+    // The screen listed 1..MAX_SCENE_COUNT and this project has four scenes, so it offered scene five and the
+    // server refused it — the app proposing a choice it does not accept. Both halves are asserted together
+    // because the value only means anything if it agrees with what create() allows; a constant six would satisfy
+    // neither, and reporting a count nothing enforces would satisfy the first alone.
+    const { service, asset } = await setup(4);
+    expect((await service.review("short_mapping")).sceneCount).toBe(4);
+
+    await expect(service.create("short_mapping", { assetId: asset.asset_id, usageRole: "style", sceneScope: { kind: "scene", sceneNumber: 5 } }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    const withinRange = await service.create("short_mapping", { assetId: asset.asset_id, usageRole: "style", sceneScope: { kind: "scene", sceneNumber: 4 } });
+    expect(withinRange.mapping.sceneScope).toEqual({ kind: "scene", sceneNumber: 4 });
+  });
+
   it("creates, lists, snapshots, reviews and reopens local project mappings", async () => {
     const { service, asset, mappings, assets } = await setup();
     const created = await service.create("short_mapping", { assetId: asset.asset_id, usageRole: "style", sceneScope: { kind: "all" } });

@@ -34,7 +34,7 @@ describe("mappingsApi", () => {
   });
 
   it("fetches the current review via GET mapping-review", async () => {
-    const response: GetProjectAssetMappingReviewResponse = { review: makeReview() };
+    const response: GetProjectAssetMappingReviewResponse = { review: makeReview(), sceneCount: 6 };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, response));
     vi.stubGlobal("fetch", fetchMock);
 

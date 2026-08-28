@@ -26,6 +26,11 @@ export class ImageReviewApiError extends Error {
 const SAFE_ERRORS: Record<string, string> = {
   INVALID_REQUEST: "요청 형식이 올바르지 않습니다.",
   PROJECT_NOT_FOUND: "프로젝트를 찾을 수 없습니다.",
+  // Same sentence as longProjectsApi's entry, deliberately word for word: it is the same server code, and a
+  // code that means one thing must not read differently depending on which screen surfaced it. It also names
+  // no subject — this covers a project's own work and an Episode's, so a sentence that picked one would be
+  // wrong for the other (that is exactly how the outline approval came to answer "이 에피소드를 처리하는 중").
+  PROJECT_LOCKED: "이 프로젝트에서 다른 작업이 진행 중입니다. 다시 누르지 마세요 — 그 작업이 끝나면 자동으로 반영됩니다.",
   IMAGE_REVIEW_NOT_ALLOWED: "이미지 검토는 이미지 생성이 완료된 프로젝트에서만 가능합니다.",
   IMAGE_REVIEW_IMAGE_INVALID: "생성된 이미지가 유효하지 않습니다. 이미지를 다시 생성해 주세요.",
   IMAGE_REVIEW_DATA_INVALID: "이미지 검토 데이터가 올바르지 않습니다.",

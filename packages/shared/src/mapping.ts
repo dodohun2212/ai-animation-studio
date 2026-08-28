@@ -113,6 +113,18 @@ export interface BeginProjectAssetMappingReviewResponse {
 /** Current review state used when reopening the mapping-review screen. */
 export interface GetProjectAssetMappingReviewResponse {
   review: ProjectAssetMappingReview;
+  /**
+   * How many scenes the owner actually has, so a scene picker offers the scenes that exist.
+   *
+   * The screen used to offer 1..MAX_SCENE_COUNT, which on a four-scene project listed scenes five and six and
+   * then had the server refuse them as an invalid request — the app offering a choice it will not accept.
+   * It cannot be derived from `review.reviewedScenes`, which starts empty and holds what a reviewer marked, not
+   * what exists.
+   *
+   * Required rather than optional: absent would read as `undefined` on a screen whose type says `number`, and
+   * whatever that renders is wrong in the same silent way the field is here to end.
+   */
+  sceneCount: number;
 }
 
 export interface ApproveProjectAssetMappingReviewRequest {
