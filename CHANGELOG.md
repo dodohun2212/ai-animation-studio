@@ -1,5 +1,11 @@
 # Changelog
 
+> **이 파일은 Python 시절의 기록이다.** 마지막 항목이 2026-07-27이고, 그 뒤의 TypeScript 작업은
+> 여기 없다. 현재 진행 중인 작업 로그는 `docs/02_MIGRATION_PLAN.md`의 날짜별 섹션이고, 코드가
+> 지금의 모양인 *이유*는 `docs/06_DECISIONS.md`에 있다. 이 파일은 그 시절 무엇이 있었는지를
+> 확인할 때만 본다.
+
+
 ## 2026-07-27 — Effective Reference Preview
 
 - Renamed the ambiguous applied-Reference area to `장면에 적용된 참고 이미지`.
