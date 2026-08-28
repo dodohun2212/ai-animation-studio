@@ -20,6 +20,39 @@ describe("LongProjectsService", () => {
     expect(await fs.stat(path.join(root!, "projects", "long_test", "long_story", "story_bible.json"))).toBeTruthy();
   });
 
+  it("moves the outline list with the episode count instead of leaving a project that cannot be opened", async () => {
+    // Changing the number wrote project.json and left the outline list at its old length. Every read checks that
+    // the two match, so the save itself reported LONG_PROJECT_DATA_INVALID — after having already written — and
+    // so did every read afterwards. A number typed on the settings screen made the project unreachable from
+    // inside the app, with no way back to it.
+    const subject = await service();
+    await subject.create(input);
+
+    const grown = await subject.updateSettings("long_test", { settings: { ...input.settings, episodeCount: 5 } });
+    expect(grown.project.episodes).toHaveLength(5);
+    expect(grown.project.episodes[4]).toMatchObject({ episodeNumber: 5, status: "planned" });
+    // Readable afterwards, which is the part that was broken.
+    expect((await subject.get("long_test")).project.episodes).toHaveLength(5);
+
+    const shrunk = await subject.updateSettings("long_test", { settings: { ...input.settings, episodeCount: 2 } });
+    expect(shrunk.project.episodes.map((episode) => episode.episodeNumber)).toEqual([1, 2]);
+  });
+
+  it("refuses to drop an Episode that has been worked on, rather than losing what was paid for", async () => {
+    // Shrinking is only safe while the Episodes going away are untouched. Their scripts and images stay on disk,
+    // so dropping the outline entry would leave paid work with nothing pointing at it.
+    const subject = await service();
+    await subject.create(input);
+    const outlines = path.join(root!, "projects", "long_test", "long_story", "episode_outlines.json");
+    const stored = JSON.parse(await fs.readFile(outlines, "utf8")) as Array<Record<string, unknown>>;
+    stored[2] = { ...stored[2], status: "images_review" };
+    await fs.writeFile(outlines, JSON.stringify(stored), "utf8");
+
+    await expect(subject.updateSettings("long_test", { settings: { ...input.settings, episodeCount: 2 } }))
+      .rejects.toMatchObject({ response: { code: "LONG_PROJECT_EPISODE_COUNT_LOCKED" } });
+    expect((await subject.get("long_test")).project.episodes).toHaveLength(3);
+  });
+
   it("does not send the model both the current title and the one it replaced", async () => {
     // create() copies eight settings fields into the Story Bible's `basic`, and updateSettings() writes only
     // project.json — so the copy goes stale the first time anything is renamed. Both prompt paths carry the

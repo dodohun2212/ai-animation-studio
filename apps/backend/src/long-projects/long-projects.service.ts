@@ -11,7 +11,7 @@ import { ProviderSettingsService } from "../settings/provider-settings.service.j
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiEpisodePlannerApi, type OpenAiEpisodeOutlineResult } from "./openai-episode-planner-adapter.js";
-import { longArchiveCollision, longArchiveNotAllowed, longAspectRatioLocked, longExists, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longOutlineBudgetExceeded, longOutlineNotAllowed,
+import { longArchiveCollision, longArchiveNotAllowed, longAspectRatioLocked, longEpisodeCountLocked, longExists, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longOutlineBudgetExceeded, longOutlineNotAllowed,
   longLocked, longOutlineProviderError, longOutlineStale, longRestoreCollision, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { longStoryRoot } from "./long-project-paths.js";
 import { storyBibleBasicForPrompt } from "./story-bible-basic.js";
@@ -157,7 +157,34 @@ export class LongProjectsService {
     if (started) throw longAspectRatioLocked(started.episodeNumber);
   }
 
-  async updateSettings(id: string, request: UpdateLongProjectSettingsRequest): Promise<UpdateLongProjectSettingsResponse> { const prior = await this.load(id.trim()); const next = settings(request?.settings); await this.assertAspectRatioChangeAllowed(prior, next); const updated = setStored(prior.project_id, next, new Date().toISOString(), prior.created_at, prior.outline_status); updated.outline_prompt_request = prior.outline_prompt_request; try { await atomicWriteUtf8File(this.files(prior.project_id).project, JSON.stringify(updated, null, 2)); } catch { throw longStorageError(); } return { project: await this.project(prior.project_id) }; }
+  /**
+   * Keeps the outline list the same length as the episode count.
+   *
+   * `outlines()` refuses a list whose length does not match, and it is on the path of every read — so changing
+   * the count without moving the list wrote a project that could then never be opened again. The save reported
+   * LONG_PROJECT_DATA_INVALID after having already written, and so did every read afterwards: a number typed on
+   * the settings screen left the project unreachable from inside the app.
+   *
+   * Growing appends planned Episodes, the same shape create() writes. Shrinking drops trailing ones, and is
+   * refused if any of them has been worked on — their scripts and images stay on disk, and dropping the outline
+   * would leave paid work with nothing pointing at it.
+   */
+  private async outlinesForEpisodeCount(stored: Stored, next: LongProjectSettings): Promise<unknown[] | undefined> {
+    if (next.episodeCount === stored.episode_count) return undefined;
+    const current = await this.outlines(stored.project_id, stored.episode_count);
+    if (next.episodeCount < current.length) {
+      const dropped = current.slice(next.episodeCount).find((episode) => episode.status !== "planned");
+      if (dropped) throw longEpisodeCountLocked(dropped.episodeNumber);
+    }
+    const raw = await this.readJson(this.files(stored.project_id).outlines) as unknown[];
+    if (next.episodeCount < raw.length) return raw.slice(0, next.episodeCount);
+    return [...raw, ...Array.from({ length: next.episodeCount - raw.length }, (_, index) => ({
+      episode_number: raw.length + index + 1, title: `Episode ${raw.length + index + 1}`, summary: "",
+      main_event: "", conflict: "", cliffhanger: "", next_episode_hook: "", status: "planned",
+    }))];
+  }
+
+  async updateSettings(id: string, request: UpdateLongProjectSettingsRequest): Promise<UpdateLongProjectSettingsResponse> { const prior = await this.load(id.trim()); const next = settings(request?.settings); await this.assertAspectRatioChangeAllowed(prior, next); const nextOutlines = await this.outlinesForEpisodeCount(prior, next); const updated = setStored(prior.project_id, next, new Date().toISOString(), prior.created_at, prior.outline_status); updated.outline_prompt_request = prior.outline_prompt_request; try { await atomicWriteUtf8File(this.files(prior.project_id).project, JSON.stringify(updated, null, 2)); if (nextOutlines) await atomicWriteUtf8File(this.files(prior.project_id).outlines, JSON.stringify(nextOutlines, null, 2)); } catch { throw longStorageError(); } return { project: await this.project(prior.project_id) }; }
   /** A direct port of Python's render_project_outline_prompt() — the exact prompt the real planner adapter (when connected) is sent, and the text a user reviews/edits before approval either way. */
   private async renderOutlinePrompt(s: Stored): Promise<string> {
     const bible = object(await this.readJson(this.files(s.project_id).bible));
