@@ -13,58 +13,66 @@ const image = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
 async function services(): Promise<{ long: LongProjectsService; bible: StoryBibleService; assets: LocalAssetsRepository }> { root = await fs.mkdtemp(path.join(os.tmpdir(), "story-bible-")); const projectsRoot = path.join(root, "projects"); const long = new LongProjectsService(projectsRoot); await long.create({ projectId: "long_bible", settings }); const assets = new LocalAssetsRepository(root); return { long, bible: new StoryBibleService(projectsRoot, assets), assets }; }
 
 describe("StoryBibleService", () => {
-  it("creates all five collections with snake_case storage and camelCase API", async () => {
+  it("creates both collections with snake_case storage and camelCase API", async () => {
     const { bible } = await services();
-    const character = await bible.create("long_bible", "characters", { item: { id: "CHAR-1", name: "Mina", status: "active", alive: true, emotionalState: "worried", ownedItemIds: ["PROP-1"] } });
-    expect(character.item).toMatchObject({ id: "CHAR-1", emotionalState: "worried", ownedItemIds: ["PROP-1"] });
-    for (const collection of ["locations", "props", "secrets", "foreshadowing"] as const) await bible.create("long_bible", collection, { item: { name: collection, status: "planned" } });
+    const secret = await bible.create("long_bible", "secrets", { item: { id: "SECRET-1", name: "출생의 비밀", status: "hidden", description: "이배드는 사실 시장의 아들이다", revealAvailableEpisode: 4 } });
+    expect(secret.item).toMatchObject({ id: "SECRET-1", description: "이배드는 사실 시장의 아들이다", revealAvailableEpisode: 4 });
+    await bible.create("long_bible", "foreshadowing", { item: { name: "깨진 시계", status: "open" } });
     expect((await bible.get("long_bible")).storyBible.foreshadowing).toHaveLength(1);
     const raw = JSON.parse(await fs.readFile(path.join(root!, "projects", "long_bible", "long_story", "story_bible.json"), "utf8"));
-    expect(raw.characters[0]).toMatchObject({ character_id: "CHAR-1", emotional_state: "worried", owned_item_ids: ["PROP-1"] });
-    expect(raw.characters[0]).not.toHaveProperty("emotionalState");
+    expect(raw.secrets[0]).toMatchObject({ secret_id: "SECRET-1", reveal_available_episode: 4 });
+    expect(raw.secrets[0]).not.toHaveProperty("revealAvailableEpisode");
   });
 
   it("updates and deletes an item without changing its ID", async () => {
-    const { bible } = await services(); await bible.create("long_bible", "props", { item: { id: "PROP-1", name: "Key", status: "lost", ownerId: "CHAR-1" } });
-    const updated = await bible.update("long_bible", "props", "PROP-1", { item: { status: "found", ownerId: "CHAR-2" } });
-    expect(updated.item).toMatchObject({ id: "PROP-1", status: "found", ownerId: "CHAR-2" });
-    await expect(bible.update("long_bible", "props", "PROP-1", { item: { id: "PROP-2" } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
-    expect((await bible.delete("long_bible", "props", "PROP-1")).storyBible.props).toEqual([]);
-    await expect(bible.delete("long_bible", "props", "PROP-1")).rejects.toMatchObject({ response: { code: "STORY_BIBLE_ITEM_NOT_FOUND" } });
+    const { bible } = await services(); await bible.create("long_bible", "foreshadowing", { item: { id: "FORESHADOW-1", name: "깨진 시계", status: "open" } });
+    const updated = await bible.update("long_bible", "foreshadowing", "FORESHADOW-1", { item: { status: "resolved", description: "3화에서 회수" } });
+    expect(updated.item).toMatchObject({ id: "FORESHADOW-1", status: "resolved", description: "3화에서 회수" });
+    await expect(bible.update("long_bible", "foreshadowing", "FORESHADOW-1", { item: { id: "FORESHADOW-2" } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    expect((await bible.delete("long_bible", "foreshadowing", "FORESHADOW-1")).storyBible.foreshadowing).toEqual([]);
+    await expect(bible.delete("long_bible", "foreshadowing", "FORESHADOW-1")).rejects.toMatchObject({ response: { code: "STORY_BIBLE_ITEM_NOT_FOUND" } });
   });
 
-  it("rejects duplicate, unsafe, unknown, and invalid typed fields", async () => {
-    const { bible } = await services(); await bible.create("long_bible", "characters", { item: { id: "CHAR-1", name: "Mina" } });
-    await expect(bible.create("long_bible", "characters", { item: { id: "CHAR-1", name: "Copy" } })).rejects.toMatchObject({ response: { code: "STORY_BIBLE_ITEM_ALREADY_EXISTS" } });
-    await expect(bible.create("long_bible", "characters", { item: { id: "../escape", name: "Bad" } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
-    await expect(bible.create("long_bible", "characters", { item: { name: "Bad", unknown: "no" } as never })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
-    await expect(bible.create("long_bible", "characters", { item: { name: "Bad", alive: "yes" } as never })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  it("rejects duplicate, unsafe, unknown, invalid typed, and removed-collection requests", async () => {
+    const { bible } = await services(); await bible.create("long_bible", "secrets", { item: { id: "SECRET-1", name: "Truth" } });
+    await expect(bible.create("long_bible", "secrets", { item: { id: "SECRET-1", name: "Copy" } })).rejects.toMatchObject({ response: { code: "STORY_BIBLE_ITEM_ALREADY_EXISTS" } });
+    await expect(bible.create("long_bible", "secrets", { item: { id: "../escape", name: "Bad" } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(bible.create("long_bible", "secrets", { item: { name: "Bad", unknown: "no" } as never })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(bible.create("long_bible", "secrets", { item: { name: "Bad", revealAvailableEpisode: 0 } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    // The three collections that went with the screen are refused by name, not silently accepted into nothing.
+    for (const gone of ["characters", "locations", "props"]) {
+      await expect(bible.create("long_bible", gone, { item: { name: "Bad" } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    }
     await expect(bible.create("long_bible", "bad", { item: { name: "Bad" } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
   it("reopens persisted items with a fresh backend service", async () => {
-    const { bible } = await services(); await bible.create("long_bible", "secrets", { item: { id: "SECRET-1", name: "Truth", status: "hidden", plannedRevealEpisode: 2 } });
+    const { bible } = await services(); await bible.create("long_bible", "secrets", { item: { id: "SECRET-1", name: "Truth", status: "hidden", revealAvailableEpisode: 2 } });
     const reloaded = new StoryBibleService(path.join(root!, "projects"));
-    expect((await reloaded.get("long_bible")).storyBible.secrets).toEqual([expect.objectContaining({ id: "SECRET-1", plannedRevealEpisode: 2 })]);
+    expect((await reloaded.get("long_bible")).storyBible.secrets).toEqual([expect.objectContaining({ id: "SECRET-1", revealAvailableEpisode: 2 })]);
   });
 
-  it("ignores an Asset link on the way in, and drops one already on disk", async () => {
-    // The link was stored and validated but read by nothing — no image generation, no Episode mapping, no
-    // prompt assembly. Removing it has two halves and this covers both: a request carrying `assetLink` is
-    // accepted and the field is not persisted, and an item written before the removal still loads.
+  it("still opens a Story Bible written by the version that had five collections", async () => {
+    // Everything those collections stored is still on disk in older projects — relationship ids, alive/injured,
+    // truth, content, an Asset link. Refusing an unknown key would make each of those projects unopenable, so
+    // they are read and dropped. New writes carry only what a secret is made of.
     const { bible } = await services();
-    const created = await bible.create("long_bible", "characters", { item: { id: "CHAR-1", name: "Mina", assetLink: { assetId: "ASSET-CHAR-1", versionPolicy: "pinned_version", pinnedVersion: 1, episodeScope: { mode: "episode", episode: 2 } } } });
-    expect(created.item).not.toHaveProperty("assetLink");
+    await bible.create("long_bible", "secrets", { item: { id: "SECRET-1", name: "출생의 비밀" } });
     const file = path.join(root!, "projects", "long_bible", "long_story", "story_bible.json");
-    expect(JSON.parse(await fs.readFile(file, "utf8")).characters[0]).not.toHaveProperty("asset_link");
-
-    // A Story Bible saved by the previous version. Refusing the unknown key here would make it unopenable.
-    const legacy = JSON.parse(await fs.readFile(file, "utf8"));
-    legacy.characters[0].asset_link = { asset_id: "ASSET-CHAR-1", version_policy: "follow_latest", pinned_version: null, episode_scope: { mode: "all" } };
+    const legacy = JSON.parse(await fs.readFile(file, "utf8")) as { secrets: Record<string, unknown>[] };
+    legacy.secrets[0] = {
+      ...legacy.secrets[0]!,
+      truth: "시장의 아들", content: "본문", planned_reveal_episode: 8, actual_reveal_episode: null,
+      character_ids: ["CHAR-GONE"], location_ids: ["LOC-GONE"], event_ids: [],
+      asset_link: { asset_id: "ASSET-1", version_policy: "follow_latest", pinned_version: null, episode_scope: { mode: "all" } },
+    };
     await fs.writeFile(file, JSON.stringify(legacy), "utf8");
-    const reopened = (await bible.get("long_bible")).storyBible.characters[0];
-    expect(reopened).toMatchObject({ id: "CHAR-1", name: "Mina" });
-    expect(reopened).not.toHaveProperty("assetLink");
+
+    const reopened = (await bible.get("long_bible")).storyBible.secrets[0]!;
+    expect(reopened).toMatchObject({ id: "SECRET-1", name: "출생의 비밀" });
+    for (const gone of ["truth", "content", "plannedRevealEpisode", "characterIds", "assetLink"]) {
+      expect(reopened).not.toHaveProperty(gone);
+    }
   });
 
   it("updates basic and world content atomically while preserving a validated global style Asset link", async () => {
@@ -98,65 +106,29 @@ describe("StoryBibleService", () => {
     await expect(bible.get("long_bible")).rejects.toMatchObject({ response: { code: "LONG_PROJECT_DATA_INVALID" } });
   });
 
-  it("audits every supported dangling relationship deterministically without changing valid data", async () => {
-    const { bible } = await services();
-    await bible.create("long_bible", "characters", { item: { id: "CHAR-VALID", locationId: "LOC-VALID", ownedItemIds: ["PROP-VALID"] } });
-    await bible.create("long_bible", "locations", { item: { id: "LOC-VALID", characterIds: ["CHAR-VALID"] } });
-    await bible.create("long_bible", "props", { item: { id: "PROP-VALID", ownerId: "CHAR-VALID", locationId: "LOC-VALID" } });
-    expect(await bible.relationshipAudit("long_bible")).toEqual({ issues: [] });
-    const file = path.join(root!, "projects", "long_bible", "long_story", "story_bible.json"); const raw = JSON.parse(await fs.readFile(file, "utf8"));
-    raw.characters.push({ character_id: "CHAR-BROKEN", location_id: "LOC-MISSING", owned_item_ids: ["PROP-Z", "PROP-A", "PROP-Z"] });
-    raw.locations.push({ location_id: "LOC-BROKEN", character_ids: ["CHAR-MISSING"] });
-    raw.props.push({ prop_id: "PROP-BROKEN", owner_id: "CHAR-MISSING", location_id: "LOC-MISSING" });
-    raw.secrets.push({ secret_id: "SECRET-BROKEN", character_ids: ["CHAR-MISSING"], location_ids: ["LOC-MISSING"] });
-    raw.foreshadowing.push({ foreshadowing_id: "FORESHADOW-BROKEN", character_ids: ["CHAR-MISSING"], location_ids: ["LOC-MISSING"] });
-    await fs.writeFile(file, JSON.stringify(raw), "utf8"); const before = await fs.readFile(file, "utf8");
-    expect(await bible.relationshipAudit("long_bible")).toEqual({ issues: [
-      { collection: "characters", itemId: "CHAR-BROKEN", field: "locationId", missingIds: ["LOC-MISSING"] },
-      { collection: "characters", itemId: "CHAR-BROKEN", field: "ownedItemIds", missingIds: ["PROP-A", "PROP-Z"] },
-      { collection: "locations", itemId: "LOC-BROKEN", field: "characterIds", missingIds: ["CHAR-MISSING"] },
-      { collection: "props", itemId: "PROP-BROKEN", field: "locationId", missingIds: ["LOC-MISSING"] },
-      { collection: "props", itemId: "PROP-BROKEN", field: "ownerId", missingIds: ["CHAR-MISSING"] },
-      { collection: "secrets", itemId: "SECRET-BROKEN", field: "characterIds", missingIds: ["CHAR-MISSING"] },
-      { collection: "secrets", itemId: "SECRET-BROKEN", field: "locationIds", missingIds: ["LOC-MISSING"] },
-      { collection: "foreshadowing", itemId: "FORESHADOW-BROKEN", field: "characterIds", missingIds: ["CHAR-MISSING"] },
-      { collection: "foreshadowing", itemId: "FORESHADOW-BROKEN", field: "locationIds", missingIds: ["LOC-MISSING"] },
-    ] });
-    expect(await fs.readFile(file, "utf8")).toBe(before);
-  });
-
-  it("rejects malformed stored relationships safely without writing legacy data", async () => {
-    const { bible } = await services(); const file = path.join(root!, "projects", "long_bible", "long_story", "story_bible.json");
-    const raw = JSON.parse(await fs.readFile(file, "utf8")); raw.characters = [{ character_id: "CHAR-1", owned_item_ids: "PROP-1" }]; await fs.writeFile(file, JSON.stringify(raw), "utf8"); const before = await fs.readFile(file, "utf8");
-    await expect(bible.relationshipAudit("long_bible")).rejects.toMatchObject({ response: { code: "LONG_PROJECT_DATA_INVALID" } });
-    expect(await fs.readFile(file, "utf8")).toBe(before);
-  });
-
   it("searches name and description in stored order, including unicode and a blank query", async () => {
     const { bible } = await services();
-    await bible.create("long_bible", "characters", { item: { id: "CHAR-1", name: "민재", description: "밤의 도서관" } });
-    await bible.create("long_bible", "characters", { item: { id: "CHAR-2", name: "Mina", description: "A Korean detective" } });
-    await bible.create("long_bible", "characters", { item: { id: "CHAR-3", name: "Other", description: "unrelated" } });
-    expect(await bible.search("long_bible", "characters", "  민재 ")).toEqual({ items: [expect.objectContaining({ id: "CHAR-1" })] });
-    expect(await bible.search("long_bible", "characters", "KOREAN")).toEqual({ items: [expect.objectContaining({ id: "CHAR-2" })] });
-    expect((await bible.search("long_bible", "characters", "   ")).items.map((item) => item.id)).toEqual(["CHAR-1", "CHAR-2", "CHAR-3"]);
+    await bible.create("long_bible", "secrets", { item: { id: "SECRET-1", name: "민재", description: "밤의 도서관" } });
+    await bible.create("long_bible", "secrets", { item: { id: "SECRET-2", name: "Mina", description: "A Korean detective" } });
+    await bible.create("long_bible", "secrets", { item: { id: "SECRET-3", name: "Other", description: "unrelated" } });
+    expect(await bible.search("long_bible", "secrets", "  민재 ")).toEqual({ items: [expect.objectContaining({ id: "SECRET-1" })] });
+    expect(await bible.search("long_bible", "secrets", "KOREAN")).toEqual({ items: [expect.objectContaining({ id: "SECRET-2" })] });
+    expect((await bible.search("long_bible", "secrets", "   ")).items.map((item) => item.id)).toEqual(["SECRET-1", "SECRET-2", "SECRET-3"]);
     await expect(bible.search("long_bible", "unknown", "x")).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
-    await expect(bible.search("long_bible", "characters", undefined)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(bible.search("long_bible", "secrets", undefined)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
   it("duplicates one item deeply with a safe fresh ID", async () => {
     const { bible } = await services();
-    await bible.create("long_bible", "characters", { item: {
-      id: "CHAR-1", name: "민재", description: "original", ownedItemIds: ["PROP-1"],
-    } });
-    const duplicated = await bible.duplicate("long_bible", "characters", "CHAR-1");
-    expect(duplicated.item).toMatchObject({ id: expect.stringMatching(/^CHAR-[A-F0-9]{8}$/), name: "민재 복사본", description: "original", ownedItemIds: ["PROP-1"] });
-    expect(duplicated.item.id).not.toBe("CHAR-1");
-    const source = (await bible.get("long_bible")).storyBible.characters.find((item) => item.id === "CHAR-1");
-    expect(source).toMatchObject({ name: "민재", ownedItemIds: ["PROP-1"] });
-    await expect(bible.duplicate("long_bible", "characters", "CHAR-MISSING")).rejects.toMatchObject({ response: { code: "STORY_BIBLE_ITEM_NOT_FOUND" } });
-    await expect(bible.duplicate("long_bible", "characters", "../unsafe")).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
-    await expect(bible.duplicate("long_bible", "unknown", "CHAR-1")).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await bible.create("long_bible", "secrets", { item: { id: "SECRET-1", name: "민재", description: "original", revealAvailableEpisode: 3 } });
+    const duplicated = await bible.duplicate("long_bible", "secrets", "SECRET-1");
+    expect(duplicated.item).toMatchObject({ id: expect.stringMatching(/^SECRET-[A-F0-9]{8}$/), name: "민재 복사본", description: "original", revealAvailableEpisode: 3 });
+    expect(duplicated.item.id).not.toBe("SECRET-1");
+    const source = (await bible.get("long_bible")).storyBible.secrets.find((item) => item.id === "SECRET-1");
+    expect(source).toMatchObject({ name: "민재", revealAvailableEpisode: 3 });
+    await expect(bible.duplicate("long_bible", "secrets", "SECRET-MISSING")).rejects.toMatchObject({ response: { code: "STORY_BIBLE_ITEM_NOT_FOUND" } });
+    await expect(bible.duplicate("long_bible", "secrets", "../unsafe")).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(bible.duplicate("long_bible", "unknown", "SECRET-1")).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
   it("links a protagonist Folder for the whole project, and refuses a single drawing", async () => {

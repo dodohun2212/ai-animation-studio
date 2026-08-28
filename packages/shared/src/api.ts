@@ -400,14 +400,6 @@ export interface GetLongEpisodeContinuityResponse {
 export interface SaveLongEpisodeContinuityRequest { memory: Omit<LongEpisodeContinuityMemory, "episodeNumber" | "updatedAt">; }
 export interface SaveLongEpisodeContinuityResponse { memory: LongEpisodeContinuityMemory; nextEpisode: LongEpisodeDetail | null; }
 
-/** Read-only integrity report for advanced Story Bible links; it never alters stored data. */
-export interface LongStoryBibleRelationshipIssue {
-  collection: LongStoryBibleCollection;
-  itemId: string;
-  field: "locationId" | "ownerId" | "ownedItemIds" | "characterIds" | "locationIds";
-  missingIds: string[];
-}
-export interface GetLongStoryBibleRelationshipAuditResponse { issues: LongStoryBibleRelationshipIssue[]; }
 export interface SearchLongStoryBibleItemsResponse { items: LongStoryBibleItem[]; }
 export interface DuplicateLongStoryBibleItemResponse { item: LongStoryBibleItem; storyBible: LongStoryBible; }
 export interface LongEpisodeContinuityReference {
@@ -491,48 +483,27 @@ export interface UpdateLongEpisodeOutlineRequest { outline: Record<string, strin
 export interface UpdateLongEpisodeOutlineResponse { project: LongProject; episode: LongEpisodeOutline; }
 
 /** Provider-free editable records stored in a long project's Story Bible. */
-export type LongStoryBibleCollection = "characters" | "locations" | "props" | "secrets" | "foreshadowing";
+/**
+ * The two collections whose text reaches the script prompt. Characters, locations and props were removed with
+ * the screen that edited them: `buildEpisodeContext` never carried them, and nothing else read them either.
+ */
+export type LongStoryBibleCollection = "secrets" | "foreshadowing";
 
+/**
+ * A secret or a piece of foreshadowing. Only these two collections remain: their text is what reaches the script
+ * prompt, and `revealAvailableEpisode` is what keeps Episode 8's twist out of Episode 3.
+ *
+ * The character, location and prop collections are gone, and with them the fields only they used — relationship
+ * ids (`locationId`, `ownerId`, `ownedItemIds`, `characterIds`), `alive`/`injured`, `truth`, `content` and the
+ * rest. Nothing in the app could set them and nothing read them; the audit that checked those ids could only
+ * ever report success. `description` stays: it is the body of a secret, and it is sent.
+ */
 export interface LongStoryBibleItem {
   id: string;
   name?: string;
   status?: string;
   description?: string;
-  alive?: boolean;
-  injured?: boolean;
-  referenceId?: string;
-  lastAppearance?: string;
-  emotionalState?: string;
-  locationId?: string;
-  ownerId?: string;
-  ownedItemIds?: string[];
-  characterIds?: string[];
-  locationIds?: string[];
-  episodeIds?: string[];
-  eventIds?: string[];
-  plannedRevealEpisode?: number;
-  actualRevealEpisode?: number;
-  truth?: string;
   revealAvailableEpisode?: number;
-  content?: string;
-  /**
-   * @deprecated Removed — the server accepts this field and ignores it, and never returns it.
-   *
-   * A Story Bible item's Asset link was stored and validated but read by nothing: no image generation, no
-   * Episode Asset mapping, no prompt assembly ever looked at it. The one screen that offered it could only
-   * pick Folders, which the server always refused, so the path was unreachable as well as pointless. Kept in
-   * the type only until the Story Bible screen stops sending it, then deleted along with LongStoryBibleAssetLink.
-   * The project-wide `styleAssetLink` is unrelated and stays — that one really does reach every Episode's images.
-   */
-  assetLink?: LongStoryBibleAssetLink | null;
-}
-
-/** Optional Asset Library reference for a character, location, or prop. */
-export interface LongStoryBibleAssetLink {
-  assetId: string;
-  versionPolicy: "pinned_version" | "follow_latest";
-  pinnedVersion: number | null;
-  episodeScope: { mode: "all" } | { mode: "episode"; episode: number };
 }
 
 /**
@@ -565,9 +536,6 @@ export interface LongStoryBible {
   world: Record<string, unknown>;
   styleAssetLink?: LongStoryBibleStyleAssetLink;
   protagonistAssetLink?: LongStoryBibleProtagonistLink;
-  characters: LongStoryBibleItem[];
-  locations: LongStoryBibleItem[];
-  props: LongStoryBibleItem[];
   secrets: LongStoryBibleItem[];
   foreshadowing: LongStoryBibleItem[];
   updatedAt: string;
@@ -1532,8 +1500,6 @@ export const API_ROUTES = {
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/narration/${sceneNumber}/content`,
   longEpisodeContinuity: (projectId: string, episodeNumber: number) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/continuity`,
-  longProjectStoryBibleRelationshipAudit: (projectId: string) =>
-    `/long-projects/${encodeURIComponent(projectId)}/story-bible/relationship-audit`,
   longProjectStoryBibleSearch: (projectId: string, collection: LongStoryBibleCollection, query: string) =>
     `/long-projects/${encodeURIComponent(projectId)}/story-bible/${collection}/search?query=${encodeURIComponent(query)}`,
   longProjectStoryBibleDuplicate: (projectId: string, collection: LongStoryBibleCollection, itemId: string) =>

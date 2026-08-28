@@ -12,13 +12,11 @@ import type {
   UpdateLongStoryBibleProtagonistAssetLinkRequest, UpdateLongStoryBibleProtagonistAssetLinkResponse,
   UpdateLongStoryBibleStyleAssetLinkRequest,
   UpdateLongStoryBibleStyleAssetLinkResponse,
-  GetLongStoryBibleRelationshipAuditResponse,
   SearchLongStoryBibleItemsResponse,
   DuplicateLongStoryBibleItemResponse,
   LongStoryBible,
   LongStoryBibleCollection,
   LongStoryBibleItem,
-  LongStoryBibleRelationshipIssue,
   LongStoryBibleItemInput,
   UpdateLongStoryBibleItemRequest,
   UpdateLongStoryBibleItemResponse,
@@ -28,23 +26,34 @@ import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId, storyBibleItemExists, storyBibleItemNotFound } from "./long-project-api.error.js";
 
 import { longStoryRoot } from "./long-project-paths.js";
-const collections = ["characters", "locations", "props", "secrets", "foreshadowing"] as const;
-const idKeys = { characters: "character_id", locations: "location_id", props: "prop_id", secrets: "secret_id", foreshadowing: "foreshadowing_id" } as const;
-const prefixes = { characters: "CHAR", locations: "LOC", props: "PROP", secrets: "SECRET", foreshadowing: "FORESHADOW" } as const;
-const common = ["name", "status", "description"] as const;
+const collections = ["secrets", "foreshadowing"] as const;
+const idKeys = { secrets: "secret_id", foreshadowing: "foreshadowing_id" } as const;
+const prefixes = { secrets: "SECRET", foreshadowing: "FORESHADOW" } as const;
+/**
+ * What a secret is made of, and nothing else.
+ *
+ * The character, location and prop collections are gone: their text never reached a prompt, and the fields only
+ * they used — relationship ids, `alive`/`injured`, `truth`, `content` and the rest — could not be set from
+ * anywhere in the app. Keys that are still on disk are read and dropped (see `parseStoredItem`), so a Story
+ * Bible written before this still opens.
+ */
 const allowed: Record<LongStoryBibleCollection, readonly string[]> = {
-  characters: [...common, "alive", "injured", "reference_id", "last_appearance", "emotional_state", "location_id", "owned_item_ids"],
-  locations: [...common, "character_ids", "episode_ids", "reference_id"],
-  props: [...common, "owner_id", "location_id", "episode_ids", "reference_id"],
-  secrets: [...common, "planned_reveal_episode", "actual_reveal_episode", "character_ids", "location_ids", "event_ids", "truth", "reveal_available_episode", "content"],
-  foreshadowing: [...common, "planned_reveal_episode", "actual_reveal_episode", "character_ids", "location_ids", "event_ids", "truth", "reveal_available_episode", "content"],
+  secrets: ["name", "status", "description", "reveal_available_episode"],
+  foreshadowing: ["name", "status", "description", "reveal_available_episode"],
 };
-const camel: Record<string, string> = { reference_id: "referenceId", last_appearance: "lastAppearance", emotional_state: "emotionalState", location_id: "locationId", owner_id: "ownerId", owned_item_ids: "ownedItemIds", character_ids: "characterIds", location_ids: "locationIds", episode_ids: "episodeIds", event_ids: "eventIds", planned_reveal_episode: "plannedRevealEpisode", actual_reveal_episode: "actualRevealEpisode", reveal_available_episode: "revealAvailableEpisode" };
+const camel: Record<string, string> = { reveal_available_episode: "revealAvailableEpisode" };
 const snake: Record<string, string> = Object.fromEntries(Object.entries(camel).map(([key, value]) => [value, key]));
 const safeItemId = /^[\p{L}\p{N}_-]+$/u;
 const stylePolicies = ["pinned_version", "follow_latest", "snapshot"] as const;
 
-type StoredBible = { basic: Record<string, unknown>; world: Record<string, unknown>; characters: Record<string, unknown>[]; locations: Record<string, unknown>[]; props: Record<string, unknown>[]; secrets: Record<string, unknown>[]; foreshadowing: Record<string, unknown>[]; summaries: Record<string, unknown>; updated_at: string };
+/**
+ * `retired` carries the character/location/prop arrays of an older Story Bible through a save untouched.
+ *
+ * Those collections are no longer read, parsed or exposed, but they are somebody's typed notes and this service
+ * rewrites the whole file on every save — dropping them from the in-memory shape would quietly empty them on
+ * the next edit of anything else. Kept, never validated, never returned.
+ */
+type StoredBible = { basic: Record<string, unknown>; world: Record<string, unknown>; secrets: Record<string, unknown>[]; foreshadowing: Record<string, unknown>[]; summaries: Record<string, unknown>; updated_at: string; retired: Record<string, unknown> };
 
 const isCollection = (value: string): value is LongStoryBibleCollection => (collections as readonly string[]).includes(value);
 function asObject(value: unknown, error = longInvalidData): Record<string, unknown> { if (!value || typeof value !== "object" || Array.isArray(value)) throw error(); return value as Record<string, unknown>; }
@@ -81,7 +90,9 @@ export class StoryBibleService {
     const basic = asObject(bible.basic);
     if (basic.style_asset_link !== undefined) this.styleAssetLink(basic.style_asset_link);
     if (basic.protagonist_asset_link !== undefined) this.protagonistLink(basic.protagonist_asset_link);
-    const result: StoredBible = { basic, world: asObject(bible.world), characters: [], locations: [], props: [], secrets: [], foreshadowing: [], summaries: asObject(bible.summaries), updated_at: asText(bible.updated_at) };
+    const retired: Record<string, unknown> = {};
+    for (const gone of ["characters", "locations", "props"]) if (bible[gone] !== undefined) retired[gone] = bible[gone];
+    const result: StoredBible = { basic, world: asObject(bible.world), secrets: [], foreshadowing: [], summaries: asObject(bible.summaries), updated_at: asText(bible.updated_at), retired };
     for (const collection of collections) {
       if (!Array.isArray(bible[collection])) throw longInvalidData();
       result[collection] = bible[collection].map((item) => this.parseStoredItem(collection, item));
@@ -108,10 +119,13 @@ export class StoryBibleService {
   private parseStoredItem(collection: LongStoryBibleCollection, value: unknown): Record<string, unknown> {
     const item = asObject(value);
     const idKey = idKeys[collection];
-    // Items written before the Asset link was removed still carry `asset_link` on disk. It is read and dropped:
-    // refusing it here would make every Story Bible that ever held a link fail to load. The same lenient-read /
-    // strict-write split `platform` uses in long-projects.service.ts.
-    const known = new Set([idKey, ...allowed[collection], "asset_link"]);
+    // Everything the collections used to accept is still on disk in older projects, and refusing an unknown key
+    // here would make those Story Bibles impossible to open. They are read and dropped — the same lenient-read /
+    // strict-write split `platform` uses in long-projects.service.ts. New writes carry only `allowed` above.
+    const legacy = ["asset_link", "alive", "injured", "reference_id", "last_appearance", "emotional_state",
+      "location_id", "owner_id", "owned_item_ids", "character_ids", "location_ids", "episode_ids", "event_ids",
+      "planned_reveal_episode", "actual_reveal_episode", "truth", "content"];
+    const known = new Set([idKey, ...allowed[collection], ...legacy]);
     if (Object.keys(item).some((key) => !known.has(key))) throw longInvalidData();
     const id = asText(item[idKey]);
     if (!safeItemId.test(id)) throw longInvalidData();
@@ -129,10 +143,7 @@ export class StoryBibleService {
 
   private inputItem(collection: LongStoryBibleCollection, value: unknown, includeId: boolean): Record<string, unknown> {
     const input = asObject(value, longInvalidRequest);
-    // `assetLink` is accepted and ignored rather than refused: the screen still sends it until its fieldset is
-    // removed, and refusing would break adding an item outright. Drop this once the frontend no longer sends it
-    // — the contract field carries the same note.
-    const known = new Set(["id", "assetLink", ...allowed[collection].map((key) => camel[key] ?? key)]);
+    const known = new Set(["id", ...allowed[collection].map((key) => camel[key] ?? key)]);
     if (Object.keys(input).some((key) => !known.has(key))) throw longInvalidRequest("Unknown Story Bible item field.");
     const result: Record<string, unknown> = {};
     if (input.id !== undefined) { const id = asText(input.id, longInvalidRequest); if (!safeItemId.test(id)) throw longInvalidRequest("Story Bible item ID is unsafe."); result[idKeys[collection]] = id; }
@@ -161,12 +172,13 @@ export class StoryBibleService {
     const { style_asset_link: storedStyle, protagonist_asset_link: storedProtagonist, ...basic } = bible.basic;
     const style = storedStyle === undefined ? undefined : this.styleAssetLink(storedStyle);
     const protagonist = storedProtagonist === undefined ? undefined : this.protagonistLink(storedProtagonist);
-    return { basic, world: bible.world, ...(style ? { styleAssetLink: { assetId: style.asset_id as string, versionPolicy: style.version_policy as "pinned_version" | "follow_latest" | "snapshot", pinnedVersion: style.pinned_version as number } } : {}), ...(protagonist ? { protagonistAssetLink: { assetId: protagonist.asset_id as string, versionPolicy: protagonist.version_policy as "pinned_version" | "follow_latest", pinnedVersion: protagonist.pinned_version as number | null } } : {}), characters: bible.characters.map((item) => this.toApiItem("characters", item)), locations: bible.locations.map((item) => this.toApiItem("locations", item)), props: bible.props.map((item) => this.toApiItem("props", item)), secrets: bible.secrets.map((item) => this.toApiItem("secrets", item)), foreshadowing: bible.foreshadowing.map((item) => this.toApiItem("foreshadowing", item)), updatedAt: bible.updated_at };
+    return { basic, world: bible.world, ...(style ? { styleAssetLink: { assetId: style.asset_id as string, versionPolicy: style.version_policy as "pinned_version" | "follow_latest" | "snapshot", pinnedVersion: style.pinned_version as number } } : {}), ...(protagonist ? { protagonistAssetLink: { assetId: protagonist.asset_id as string, versionPolicy: protagonist.version_policy as "pinned_version" | "follow_latest", pinnedVersion: protagonist.pinned_version as number | null } } : {}), secrets: bible.secrets.map((item) => this.toApiItem("secrets", item)), foreshadowing: bible.foreshadowing.map((item) => this.toApiItem("foreshadowing", item)), updatedAt: bible.updated_at };
   }
 
   private async save(projectId: string, bible: StoredBible): Promise<void> {
     bible.updated_at = new Date().toISOString();
-    try { await atomicWriteUtf8File(this.files(projectId).bible, JSON.stringify(bible, null, 2)); } catch { throw longStorageError(); }
+    const { retired, ...rest } = bible;
+    try { await atomicWriteUtf8File(this.files(projectId).bible, JSON.stringify({ ...rest, ...retired }, null, 2)); } catch { throw longStorageError(); }
   }
 
   async get(projectId: string): Promise<GetLongProjectStoryBibleResponse> { return { storyBible: this.toApi(await this.read(projectId.trim())) }; }
@@ -259,44 +271,6 @@ export class StoryBibleService {
   }
 
   /** Reports legacy dangling links without changing or rejecting the Story Bible. */
-  async relationshipAudit(projectId: string): Promise<GetLongStoryBibleRelationshipAuditResponse> {
-    const bible = await this.read(projectId.trim());
-    const ids = {
-      characters: new Set(bible.characters.map((item) => item.character_id as string)),
-      locations: new Set(bible.locations.map((item) => item.location_id as string)),
-      props: new Set(bible.props.map((item) => item.prop_id as string)),
-    };
-    const issues: LongStoryBibleRelationshipIssue[] = [];
-    const report = (collection: LongStoryBibleCollection, item: Record<string, unknown>, itemId: string, storedField: string, field: LongStoryBibleRelationshipIssue["field"], target: Set<string>) => {
-      const value = item[storedField];
-      if (value === undefined) return;
-      const referencedIds = Array.isArray(value) ? value as string[] : [value as string];
-      const missingIds = [...new Set(referencedIds.filter((reference) => !target.has(reference)))].sort();
-      if (missingIds.length) issues.push({ collection, itemId, field, missingIds });
-    };
-    for (const item of bible.characters) {
-      const itemId = item.character_id as string;
-      report("characters", item, itemId, "location_id", "locationId", ids.locations);
-      report("characters", item, itemId, "owned_item_ids", "ownedItemIds", ids.props);
-    }
-    for (const item of bible.locations) report("locations", item, item.location_id as string, "character_ids", "characterIds", ids.characters);
-    for (const item of bible.props) {
-      const itemId = item.prop_id as string;
-      report("props", item, itemId, "owner_id", "ownerId", ids.characters);
-      report("props", item, itemId, "location_id", "locationId", ids.locations);
-    }
-    for (const collection of ["secrets", "foreshadowing"] as const) for (const item of bible[collection]) {
-      const itemId = item[idKeys[collection]] as string;
-      report(collection, item, itemId, "character_ids", "characterIds", ids.characters);
-      report(collection, item, itemId, "location_ids", "locationIds", ids.locations);
-    }
-    const compare = (left: string, right: string) => left === right ? 0 : left < right ? -1 : 1;
-    const collectionOrder = new Map(collections.map((collection, index) => [collection, index]));
-    const fieldOrder = new Map(["locationId", "ownerId", "ownedItemIds", "characterIds", "locationIds"].map((field, index) => [field, index]));
-    issues.sort((left, right) => collectionOrder.get(left.collection)! - collectionOrder.get(right.collection)! || compare(left.itemId, right.itemId) || fieldOrder.get(left.field)! - fieldOrder.get(right.field)!);
-    return { issues };
-  }
-
   async create(projectId: string, collectionName: string, request: CreateLongStoryBibleItemRequest): Promise<CreateLongStoryBibleItemResponse> {
     if (!isCollection(collectionName)) throw longInvalidRequest("Unknown Story Bible collection.");
     const id = projectId.trim(); const bible = await this.read(id); const item = this.inputItem(collectionName, request?.item, false); const idKey = idKeys[collectionName];

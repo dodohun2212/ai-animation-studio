@@ -2,13 +2,15 @@ import { describe, expect, it } from "vitest";
 import { API_ROUTES, type LongEpisodeImageReview, type LongStoryBible, type LongStoryBibleItem, type StartLongEpisodeImageGenerationRequest } from "./api.js";
 
 describe("long Story Bible shared contract", () => {
-  it("keeps five collection names and encodes route IDs", () => {
-    const item: LongStoryBibleItem = { id: "CHAR-1", name: "Mina", alive: true, ownedItemIds: ["PROP-1"], assetLink: { assetId: "ASSET-CHAR-1", versionPolicy: "pinned_version", pinnedVersion: 2, episodeScope: { mode: "episode", episode: 1 } } };
-    const bible: LongStoryBible = { basic: {}, world: {}, characters: [item], locations: [], props: [], secrets: [], foreshadowing: [], updatedAt: "2026-08-23T00:00:00.000Z" };
-    expect(bible.characters[0]?.ownedItemIds).toEqual(["PROP-1"]);
-    expect(bible.characters[0]?.assetLink?.episodeScope).toEqual({ mode: "episode", episode: 1 });
+  it("keeps the two collections that reach the prompt, and encodes route IDs", () => {
+    // Characters, locations and props are gone with the screen that edited them: their text never reached
+    // buildEpisodeContext and nothing else read it. A secret is the opposite — its words are the item, and
+    // revealAvailableEpisode is what keeps Episode 8's twist out of Episode 3.
+    const item: LongStoryBibleItem = { id: "SECRET-1", name: "출생의 비밀", description: "이배드는 시장의 아들", revealAvailableEpisode: 4 };
+    const bible: LongStoryBible = { basic: {}, world: {}, secrets: [item], foreshadowing: [], updatedAt: "2026-08-23T00:00:00.000Z" };
+    expect(bible.secrets[0]?.revealAvailableEpisode).toBe(4);
     expect(API_ROUTES.longProjectStoryBible("a b")).toBe("/long-projects/a%20b/story-bible");
-    expect(API_ROUTES.longProjectStoryBibleItem("project", "characters", "CHAR/1")).toBe("/long-projects/project/story-bible/characters/CHAR%2F1");
+    expect(API_ROUTES.longProjectStoryBibleItem("project", "secrets", "SECRET/1")).toBe("/long-projects/project/story-bible/secrets/SECRET%2F1");
   });
 
   it("keeps long Episode image generation and review explicitly approved and scoped", () => {

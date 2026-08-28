@@ -16,18 +16,10 @@ describe("StoryBibleController", () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "story-bible-controller-")); const projectsRoot = path.join(root, "projects");
     await new LongProjectsService(projectsRoot).create({ projectId: "long_bible", settings });
     const controller = new StoryBibleController(new StoryBibleService(projectsRoot));
-    expect((await controller.create("long_bible", "locations", { item: { id: "LOC-1", name: "Library" } })).item.id).toBe("LOC-1");
-    expect((await controller.get("long_bible")).storyBible.locations).toHaveLength(1);
-    try { await controller.delete("long_bible", "locations", "LOC-2"); throw new Error("Expected missing item error"); }
+    expect((await controller.create("long_bible", "secrets", { item: { id: "SECRET-1", name: "출생의 비밀" } })).item.id).toBe("SECRET-1");
+    expect((await controller.get("long_bible")).storyBible.secrets).toHaveLength(1);
+    try { await controller.delete("long_bible", "secrets", "SECRET-2"); throw new Error("Expected missing item error"); }
     catch (error) { expect((error as { getStatus(): number }).getStatus()).toBe(HttpStatus.NOT_FOUND); expect((error as { getResponse(): { code: string } }).getResponse().code).toBe("STORY_BIBLE_ITEM_NOT_FOUND"); }
-  });
-
-  it("exposes the read-only relationship audit route", async () => {
-    root = await fs.mkdtemp(path.join(os.tmpdir(), "story-bible-controller-")); const projectsRoot = path.join(root, "projects");
-    await new LongProjectsService(projectsRoot).create({ projectId: "long_bible", settings }); const controller = new StoryBibleController(new StoryBibleService(projectsRoot));
-    await controller.create("long_bible", "characters", { item: { id: "CHAR-1", locationId: "LOC-MISSING" } });
-    await expect(controller.relationshipAudit("long_bible")).resolves.toEqual({ issues: [{ collection: "characters", itemId: "CHAR-1", field: "locationId", missingIds: ["LOC-MISSING"] }] });
-    await expect(controller.relationshipAudit("../unsafe")).rejects.toMatchObject({ response: { code: "UNSAFE_PROJECT_ID" } });
   });
 
   it("exposes separate Story Bible content and global style-link mutations", async () => {
@@ -41,11 +33,11 @@ describe("StoryBibleController", () => {
   it("exposes the Story Bible search and duplicate routes", async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "story-bible-controller-")); const projectsRoot = path.join(root, "projects");
     await new LongProjectsService(projectsRoot).create({ projectId: "long_bible", settings }); const controller = new StoryBibleController(new StoryBibleService(projectsRoot));
-    await controller.create("long_bible", "locations", { item: { id: "LOC-1", name: "도서관", description: "비밀 장소" } });
-    expect(await controller.search("long_bible", "locations", " 장소 ")).toEqual({ items: [expect.objectContaining({ id: "LOC-1", name: "도서관" })] });
-    const copy = await controller.duplicate("long_bible", "locations", "LOC-1");
-    expect(copy.item).toMatchObject({ id: expect.stringMatching(/^LOC-[A-F0-9]{8}$/), name: "도서관 복사본", description: "비밀 장소" });
+    await controller.create("long_bible", "foreshadowing", { item: { id: "FORESHADOW-1", name: "도서관", description: "비밀 장소" } });
+    expect(await controller.search("long_bible", "foreshadowing", " 장소 ")).toEqual({ items: [expect.objectContaining({ id: "FORESHADOW-1", name: "도서관" })] });
+    const copy = await controller.duplicate("long_bible", "foreshadowing", "FORESHADOW-1");
+    expect(copy.item).toMatchObject({ id: expect.stringMatching(/^FORESHADOW-[A-F0-9]{8}$/), name: "도서관 복사본", description: "비밀 장소" });
     await expect(controller.search("long_bible", "bad", "x")).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
-    await expect(controller.duplicate("long_bible", "locations", "LOC-MISSING")).rejects.toMatchObject({ response: { code: "STORY_BIBLE_ITEM_NOT_FOUND" } });
+    await expect(controller.duplicate("long_bible", "foreshadowing", "FORESHADOW-MISSING")).rejects.toMatchObject({ response: { code: "STORY_BIBLE_ITEM_NOT_FOUND" } });
   });
 });

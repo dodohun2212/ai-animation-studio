@@ -3,7 +3,7 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 import { jsonResponse } from "./testUtils.js";
 import { createLongStoryBibleItem, deleteLongStoryBibleItem, duplicateLongStoryBibleItem, getLongProjectStoryBible, searchLongStoryBibleItems, toLongStoryBibleDisplayError, updateLongStoryBibleContent, updateLongStoryBibleItem, updateLongStoryBibleStyleAssetLink } from "./longStoryBibleApi.js";
 
-const bible = { basic: {}, world: {}, characters: [{ id: "CHAR-1", name: "Mina" }], locations: [], props: [], secrets: [], foreshadowing: [], updatedAt: "2026-08-23T00:00:00.000Z" };
+const bible = { basic: {}, world: {}, secrets: [{ id: "SECRET-1", name: "출생의 비밀" }], foreshadowing: [], updatedAt: "2026-08-23T00:00:00.000Z" };
 
 describe("long Story Bible API", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -11,44 +11,44 @@ describe("long Story Bible API", () => {
   it("uses only shared Story Bible routes for get, create, update, and delete", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { storyBible: bible }))
-      .mockResolvedValueOnce(jsonResponse(201, { item: bible.characters[0], storyBible: bible }))
-      .mockResolvedValueOnce(jsonResponse(200, { item: bible.characters[0], storyBible: bible }))
+      .mockResolvedValueOnce(jsonResponse(201, { item: bible.secrets[0], storyBible: bible }))
+      .mockResolvedValueOnce(jsonResponse(200, { item: bible.secrets[0], storyBible: bible }))
       .mockResolvedValueOnce(jsonResponse(200, { storyBible: bible }));
     vi.stubGlobal("fetch", fetchMock);
 
     await getLongProjectStoryBible("long id");
-    await createLongStoryBibleItem("long id", "characters", { item: { id: "CHAR-1", name: "Mina" } });
-    await updateLongStoryBibleItem("long id", "characters", "CHAR/1", { item: { name: "Mina revised" } });
-    await deleteLongStoryBibleItem("long id", "characters", "CHAR/1");
+    await createLongStoryBibleItem("long id", "secrets", { item: { id: "SECRET-1", name: "출생의 비밀" } });
+    await updateLongStoryBibleItem("long id", "secrets", "SECRET/1", { item: { name: "고친 이름" } });
+    await deleteLongStoryBibleItem("long id", "secrets", "SECRET/1");
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, "/long-projects/long%20id/story-bible");
-    expect(fetchMock.mock.calls[1]?.[0]).toBe("/long-projects/long%20id/story-bible/characters");
-    expect(fetchMock.mock.calls[2]?.[0]).toBe("/long-projects/long%20id/story-bible/characters/CHAR%2F1");
-    expect(fetchMock.mock.calls[3]?.[0]).toBe("/long-projects/long%20id/story-bible/characters/CHAR%2F1");
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/long-projects/long%20id/story-bible/secrets");
+    expect(fetchMock.mock.calls[2]?.[0]).toBe("/long-projects/long%20id/story-bible/secrets/SECRET%2F1");
+    expect(fetchMock.mock.calls[3]?.[0]).toBe("/long-projects/long%20id/story-bible/secrets/SECRET%2F1");
   });
 
   it("rejects malformed responses and never displays a raw backend message", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(409, { code: "STORY_BIBLE_ITEM_ALREADY_EXISTS", message: "raw internal detail" })));
-    await expect(createLongStoryBibleItem("p", "characters", { item: { name: "Mina" } })).rejects.toMatchObject({ code: "STORY_BIBLE_ITEM_ALREADY_EXISTS" });
+    await expect(createLongStoryBibleItem("p", "secrets", { item: { name: "출생의 비밀" } })).rejects.toMatchObject({ code: "STORY_BIBLE_ITEM_ALREADY_EXISTS" });
     const displayed = toLongStoryBibleDisplayError({});
     expect(displayed.message).not.toContain("raw internal detail");
     expect(displayed.code).toBe("CLIENT_UNKNOWN_ERROR");
   });
 
   it("uses guarded shared routes for explicit searches and local duplicates", async () => {
-    const duplicated = { ...bible.characters[0], id: "CHAR-2", name: "Mina copy" };
-    const duplicatedBible = { ...bible, characters: [...bible.characters, duplicated] };
+    const duplicated = { ...bible.secrets[0], id: "SECRET-2", name: "복사본" };
+    const duplicatedBible = { ...bible, characters: [...bible.secrets, duplicated] };
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { items: bible.characters }))
+      .mockResolvedValueOnce(jsonResponse(200, { items: bible.secrets }))
       .mockResolvedValueOnce(jsonResponse(201, { item: duplicated, storyBible: duplicatedBible }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await searchLongStoryBibleItems("long id", "characters", "Mina & co");
-    await duplicateLongStoryBibleItem("long id", "characters", "CHAR/1");
+    await searchLongStoryBibleItems("long id", "secrets", "Mina & co");
+    await duplicateLongStoryBibleItem("long id", "secrets", "SECRET/1");
 
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("/long-projects/long%20id/story-bible/characters/search?query=Mina%20%26%20co");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/long-projects/long%20id/story-bible/secrets/search?query=Mina%20%26%20co");
     expect(fetchMock.mock.calls[0]?.[1]).toBeUndefined();
-    expect(fetchMock.mock.calls[1]?.[0]).toBe("/long-projects/long%20id/story-bible/characters/CHAR%2F1/duplicate");
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/long-projects/long%20id/story-bible/secrets/SECRET%2F1/duplicate");
     expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: "POST" });
   });
 

@@ -5,16 +5,13 @@ import {
   type DeleteLongStoryBibleItemResponse,
   type DuplicateLongStoryBibleItemResponse,
   type GetLongProjectStoryBibleResponse,
-  type GetLongStoryBibleRelationshipAuditResponse,
   type LongStoryBible,
   type LongStoryBibleCollection,
   type LongStoryBibleItem,
-  type LongStoryBibleRelationshipIssue,
   type LongStoryBibleStyleAssetLink,
   type SearchLongStoryBibleItemsResponse,
   type UpdateLongStoryBibleContentRequest,
   type UpdateLongStoryBibleContentResponse,
-  type LongStoryBibleAssetLink,
   type UpdateLongStoryBibleItemRequest,
   type UpdateLongStoryBibleItemResponse,
   type UpdateLongStoryBibleProtagonistAssetLinkRequest,
@@ -55,18 +52,10 @@ export function toLongStoryBibleDisplayError(error: unknown): { code: string; me
   return UNKNOWN;
 }
 
-const COLLECTIONS: readonly LongStoryBibleCollection[] = ["characters", "locations", "props", "secrets", "foreshadowing"];
+const COLLECTIONS: readonly LongStoryBibleCollection[] = ["secrets", "foreshadowing"];
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const isString = (value: unknown): value is string => typeof value === "string";
 const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every(isString);
-
-function isAssetLink(value: unknown): value is LongStoryBibleAssetLink {
-  if (!isRecord(value) || !isString(value.assetId) || !value.assetId.trim()) return false;
-  if (value.versionPolicy !== "pinned_version" && value.versionPolicy !== "follow_latest") return false;
-  if (!(value.pinnedVersion === null || (Number.isInteger(value.pinnedVersion) && (value.pinnedVersion as number) >= 1))) return false;
-  if (!isRecord(value.episodeScope) || (value.episodeScope.mode !== "all" && value.episodeScope.mode !== "episode")) return false;
-  return value.episodeScope.mode === "all" || (Number.isInteger(value.episodeScope.episode) && (value.episodeScope.episode as number) >= 1);
-}
 
 function isStyleAssetLink(value: unknown): value is LongStoryBibleStyleAssetLink {
   return isRecord(value) && isString(value.assetId) && value.assetId.trim().length > 0
@@ -76,15 +65,9 @@ function isStyleAssetLink(value: unknown): value is LongStoryBibleStyleAssetLink
 
 function isItem(value: unknown): value is LongStoryBibleItem {
   if (!isRecord(value) || !isString(value.id) || !value.id.trim()) return false;
-  const stringFields = ["name", "status", "description", "referenceId", "lastAppearance", "emotionalState", "locationId", "ownerId", "truth", "content"];
-  const arrayFields = ["ownedItemIds", "characterIds", "locationIds", "episodeIds", "eventIds"];
-  const numberFields = ["plannedRevealEpisode", "actualRevealEpisode", "revealAvailableEpisode"];
-  return stringFields.every((key) => value[key] === undefined || isString(value[key]))
-    && arrayFields.every((key) => value[key] === undefined || isStringArray(value[key]))
-    && numberFields.every((key) => value[key] === undefined || (typeof value[key] === "number" && Number.isInteger(value[key])))
-    && (value.alive === undefined || typeof value.alive === "boolean")
-    && (value.injured === undefined || typeof value.injured === "boolean")
-    && (value.assetLink === undefined || value.assetLink === null || isAssetLink(value.assetLink));
+  return ["name", "status", "description"].every((key) => value[key] === undefined || isString(value[key]))
+    && (value.revealAvailableEpisode === undefined
+      || (typeof value.revealAvailableEpisode === "number" && Number.isInteger(value.revealAvailableEpisode)));
 }
 
 function isStoryBible(value: unknown): value is LongStoryBible {
@@ -102,11 +85,6 @@ const isUpdateResponse = (value: unknown): value is UpdateLongStoryBibleItemResp
 const isDeleteResponse = (value: unknown): value is DeleteLongStoryBibleItemResponse => isRecord(value) && isStoryBible(value.storyBible);
 const isSearchResponse = (value: unknown): value is SearchLongStoryBibleItemsResponse => isRecord(value) && Array.isArray(value.items) && value.items.every(isItem);
 const isDuplicateResponse = (value: unknown): value is DuplicateLongStoryBibleItemResponse => isRecord(value) && isItem(value.item) && isStoryBible(value.storyBible);
-const isRelationshipIssue = (value: unknown): value is LongStoryBibleRelationshipIssue => {
-  if (!isRecord(value) || !COLLECTIONS.includes(value.collection as LongStoryBibleCollection) || !isString(value.itemId) || !isStringArray(value.missingIds)) return false;
-  return value.field === "locationId" || value.field === "ownerId" || value.field === "ownedItemIds" || value.field === "characterIds" || value.field === "locationIds";
-};
-const isRelationshipAuditResponse = (value: unknown): value is GetLongStoryBibleRelationshipAuditResponse => isRecord(value) && Array.isArray(value.issues) && value.issues.every(isRelationshipIssue);
 
 async function request<T>(url: string, init: RequestInit | undefined, guard: (value: unknown) => value is T): Promise<T> {
   let response: Response;
@@ -142,10 +120,6 @@ export function updateLongStoryBibleStyleAssetLink(projectId: string, body: Upda
  */
 export function updateLongStoryBibleProtagonistAssetLink(projectId: string, body: UpdateLongStoryBibleProtagonistAssetLinkRequest): Promise<UpdateLongStoryBibleProtagonistAssetLinkResponse> {
   return request(API_ROUTES.longProjectStoryBibleProtagonistAssetLink(projectId), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, isProtagonistAssetLinkResponse);
-}
-
-export function getLongStoryBibleRelationshipAudit(projectId: string): Promise<GetLongStoryBibleRelationshipAuditResponse> {
-  return request(API_ROUTES.longProjectStoryBibleRelationshipAudit(projectId), undefined, isRelationshipAuditResponse);
 }
 
 export function createLongStoryBibleItem(projectId: string, collection: LongStoryBibleCollection, body: CreateLongStoryBibleItemRequest): Promise<CreateLongStoryBibleItemResponse> {
