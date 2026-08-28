@@ -81,6 +81,8 @@ async function promptVariables(stored: StoredProject, assets?: LocalAssetsReposi
   const notes = settings.styleNotes;
   const story = object(stored.story);
   const cast = toShortProjectCast(stored);
+  const castLead = cast.find((member) => member.castRole === "protagonist" || member.castRole === "lead");
+  const castLeadName = castLead && assets ? (await assets.get(castLead.assetId).catch(() => null))?.display_name : undefined;
   const { atmosphereAssetIds, sceneReferenceAssets } = toShortProjectAssetReferences(stored);
   return {
     project_name: settings.projectName || "별도 이름 없음",
@@ -89,7 +91,12 @@ async function promptVariables(stored: StoredProject, assets?: LocalAssetsReposi
     genre: settings.genre,
     mood: settings.mood,
     lore: settings.lore || "AUTONOMOUS_SETTING",
-    character: settings.character,
+    // The template asks "대표 캐릭터" twice — once as this line and once inside the cast block, which marks a
+    // member 구분: 대표 캐릭터 — and nothing kept the two in agreement. A project with a cast lead and a
+    // differently-typed name handed the model two answers to the same question, three lines apart, directly
+    // above the instruction not to mix character names. The cast is the richer of the two (name, story role,
+    // description, per-child features), so when it names a lead, this line says that lead.
+    character: castLeadName ?? settings.character,
     character_cast_metadata: await describeCharacterCast(assets, cast),
     atmosphere_asset_metadata: await describeAtmosphereAssets(assets, atmosphereAssetIds),
     scene_reference_asset_metadata: await describeSceneReferenceAssets(assets, sceneReferenceAssets),

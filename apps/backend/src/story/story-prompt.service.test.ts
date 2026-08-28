@@ -2,6 +2,7 @@ import * as fsPromises from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
@@ -326,5 +327,27 @@ describe("local Story generator", () => {
     expect(story.scenes).toHaveLength(4);
     expect(story.scenes[3]!.number).toBe(4);
     expect(() => validateStory(story)).toThrow();
+  });
+
+  it("names one lead, not two, when a cast member is marked 대표", async () => {
+    // The template asks the same question twice, three lines apart: `대표 캐릭터: $character` and then a cast
+    // block that marks a member 구분: 대표 캐릭터. Nothing kept them in agreement, so a project with both could
+    // hand the model two different leads — directly above the line telling it not to mix character names.
+    const root = await fsPromises.mkdtemp(path.join(os.tmpdir(), "story-prompt-lead-")); roots.push(root);
+    const templateRoot = path.join(root, "templates"); await fsPromises.mkdir(path.join(templateRoot, "story"), { recursive: true });
+    await fsPromises.writeFile(path.join(templateRoot, "story", "story_generation.txt"), "lead=$character\ncast=$character_cast_metadata", "utf8");
+    const assets = new LocalAssetsRepository(root);
+    const folder = await assets.createFolder({ assetType: "character", displayName: "이배드" });
+    const repository = new LocalProjectRepository(path.join(root, "projects"));
+    const stored = createStoredProject("lead_check", "night sky", "2026-08-22T00:00:00.000Z");
+    stored.character_profile = {
+      name: "예전에 적어둔 다른 이름",
+      cast: [{ asset_id: folder.asset_id, cast_role: "protagonist", story_role: "주인공" }],
+    };
+    await repository.create(stored);
+
+    const { preview } = await new StoryPromptService(repository, templateRoot, undefined, undefined, undefined, assets).preview("lead_check");
+    expect(preview.originalPrompt).toContain("lead=이배드");
+    expect(preview.originalPrompt).not.toContain("예전에 적어둔 다른 이름");
   });
 });
