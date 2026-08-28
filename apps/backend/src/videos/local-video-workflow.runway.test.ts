@@ -129,6 +129,45 @@ describe("real Runway video workflow", () => {
     expect(project.workflow_state).toBe(WorkflowState.GeneratingVideos);
   });
 
+  it("buys only the failed scene when a retry follows three that already succeeded", async () => {
+    // Every other failure test in this file fails at scene 1, so nothing has ever asked what a retry does with
+    // the scenes already paid for. At $0.25 a scene this is the most expensive way to be wrong, and it happens
+    // on the button a person presses immediately after seeing the error. The image side has the same test for
+    // the same reason; video is the half that costs more.
+    const deps = await setupWithConnectedRunway();
+    const workflow = newWorkflow(deps);
+    const fetchMock = runwayFetchMock({ failTaskId: "task-4" }); // task ids are handed out in submission order
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+
+    await workflow.run("video_workflow", deps.accepted.jobId);
+    let progress;
+    for (let scene = 1; scene <= 4; scene++) {
+      now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+      progress = await workflow.getProgress("video_workflow", deps.accepted.jobId);
+      now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+      progress = await workflow.getProgress("video_workflow", deps.accepted.jobId);
+    }
+    expect(progress).toMatchObject({ status: "failed", failedSceneNumbers: [4] });
+    expect(fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/v1/image_to_video")).length).toBe(4);
+
+    fetchMock.mockClear();
+    await workflow.regenerate("video_workflow", deps.accepted.jobId, [4]);
+
+    // One submission, and it is scene 4's prompt — not a fresh run of everything before it.
+    const submits = fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/v1/image_to_video"));
+    expect(submits.length).toBe(1);
+    const project = await deps.projects.findById("video_workflow");
+    const records = project.video_generation_records as Array<Record<string, unknown>>;
+    const scene4 = records.find((record) => record.scene_number === 4)!;
+    expect(JSON.parse(String((submits[0]![1] as RequestInit).body))).toMatchObject({ promptText: String(scene4.prompt) });
+    // And the three already bought keep the outputs they were billed for.
+    for (const scene of [1, 2, 3]) {
+      expect(records.find((record) => record.scene_number === scene)!.status).toBe("succeeded");
+    }
+  });
+
   it("appends a one-off additionalInstruction to the resubmitted scene's prompt without persisting it into the record", async () => {
     const deps = await setupWithConnectedRunway();
     const workflow = newWorkflow(deps);
