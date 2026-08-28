@@ -8,7 +8,8 @@ type ImageReviewErrorCode =
   | "IMAGE_REVIEW_DATA_INVALID"
   | "IMAGE_REVIEW_STORAGE_ERROR"
   | "IMAGE_REVIEW_BUDGET_EXCEEDED"
-  | "IMAGE_REVIEW_PROVIDER_ERROR";
+  | "IMAGE_REVIEW_PROVIDER_ERROR"
+  | "PROJECT_LOCKED";
 
 class ImageReviewApiException extends HttpException {
   constructor(code: ImageReviewErrorCode, message: string, status: HttpStatus, details?: Record<string, unknown>) {
@@ -31,3 +32,11 @@ export const imageReviewBudgetExceeded = (message: string) =>
   new ImageReviewApiException("IMAGE_REVIEW_BUDGET_EXCEEDED", message, HttpStatus.CONFLICT);
 export const imageReviewProviderError = (category: string, message: string) =>
   new ImageReviewApiException("IMAGE_REVIEW_PROVIDER_ERROR", message, HttpStatus.BAD_GATEWAY, { category });
+
+/**
+ * project-lock.ts's ProjectLockTimeoutError as an API error. Shares its literal `code` with the Long Project and
+ * video-workflow twins, so the frontend answers all of them from one safe-message entry (docs/06_DECISIONS.md
+ * D-010), and names no subject for the same reason it is shared.
+ */
+export const imageReviewLocked = () =>
+  new ImageReviewApiException("PROJECT_LOCKED", "This scene's image is already being regenerated.", HttpStatus.CONFLICT);

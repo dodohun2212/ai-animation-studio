@@ -16,6 +16,7 @@ import {
 } from "@ai-animation-studio/shared";
 
 import { validateImage } from "../assets/image-validation.js";
+import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { toApiProject } from "../projects/project.mapper.js";
@@ -35,7 +36,7 @@ import {
   imageReviewBudgetExceeded,
   imageReviewDataInvalid,
   imageReviewImageInvalid,
-  imageReviewNotAllowed,
+  imageReviewNotAllowed, imageReviewLocked,
   imageReviewProviderError,
   imageReviewStorageError,
   invalidImageReviewRequest,
@@ -222,7 +223,25 @@ export class ImageReviewService {
     return { project: toApiProject(updated), reviews: toApiReviews(reviews, timestamp, scenes, updated.image_generation_records) };
   }
 
+  /**
+   * Drawing one scene again, at the reviewer's request.
+   *
+   * Keyed on the scene, not the project: regenerating two scenes without waiting for the first is ordinary in a
+   * review screen and must not be refused. Two presses on the *same* scene are one intent, and without this
+   * they were two charges — the gate and the write sit on opposite sides of the provider call.
+   */
   async regenerate(projectId: string, rawSceneNumber: string, body: unknown): Promise<RegenerateImageReviewResponse> {
+    const id = projectId.trim();
+    try {
+      return await withProjectLock(this.projects.projectDirectory(id), `${id}:image-scene-${rawSceneNumber}`,
+        () => this.regenerateCore(projectId, rawSceneNumber, body), { timeoutMs: 0 });
+    } catch (error) {
+      if (error instanceof ProjectLockTimeoutError) throw imageReviewLocked();
+      throw error;
+    }
+  }
+
+  private async regenerateCore(projectId: string, rawSceneNumber: string, body: unknown): Promise<RegenerateImageReviewResponse> {
     if (!isObject(body) || body.approved !== true
       || Object.keys(body).some((key) => key !== "approved" && key !== "additionalInstruction")
       || (body.additionalInstruction !== undefined && typeof body.additionalInstruction !== "string")) throw invalidImageReviewRequest();

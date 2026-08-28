@@ -12,6 +12,7 @@ import {
 } from "@ai-animation-studio/shared";
 import { PLACEHOLDER_ADAPTER } from "./local-narration-generation.service.js";
 import { toApiProject } from "../projects/project.mapper.js";
+import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
@@ -20,7 +21,7 @@ import { ProviderSettingsService } from "../settings/provider-settings.service.j
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiTtsApi } from "./openai-narration-adapter.js";
-import { invalidNarrationRequest, narrationBudgetExceeded, narrationMissingText, narrationNotEnabled, narrationProviderError, narrationStorageError } from "./narration-api.error.js";
+import { invalidNarrationRequest, narrationBudgetExceeded, narrationMissingText, narrationNotEnabled, narrationLocked, narrationProviderError, narrationStorageError } from "./narration-api.error.js";
 import { computeSceneStaleness } from "../projects/scene-staleness.js";
 import type { LocalNarrationGenerationService } from "./local-narration-generation.service.js";
 import { probeAudioDurationSeconds } from "./audio-duration.js";
@@ -80,7 +81,26 @@ export class NarrationReviewService {
     return { project: toApiProject(project), narrations, staleness: await computeSceneStaleness(project), ...(budget ? { budget } : {}) };
   }
 
+  /**
+   * Speaking one scene again, at the reviewer's request.
+   *
+   * Keyed on the scene rather than the project: regenerating two different scenes without waiting for the first
+   * is a normal thing to do in a review screen, and a project-wide key would refuse the second. What must not
+   * happen is the same scene twice — the gate and the write sit on opposite sides of the provider call, so two
+   * presses on one scene both pass and both are billed for the same audio.
+   */
   async regenerate(projectId: string, rawSceneNumber: string, body: unknown): Promise<RegenerateNarrationResponse> {
+    const id = projectId.trim();
+    try {
+      return await withProjectLock(this.projects.projectDirectory(id), `${id}:narration-scene-${rawSceneNumber}`,
+        () => this.regenerateCore(projectId, rawSceneNumber, body), { timeoutMs: 0 });
+    } catch (error) {
+      if (error instanceof ProjectLockTimeoutError) throw narrationLocked();
+      throw error;
+    }
+  }
+
+  private async regenerateCore(projectId: string, rawSceneNumber: string, body: unknown): Promise<RegenerateNarrationResponse> {
     if (!isObject(body) || body.approved !== true
       || Object.keys(body).some((key) => key !== "approved" && key !== "additionalInstruction")
       || (body.additionalInstruction !== undefined && typeof body.additionalInstruction !== "string")) throw invalidNarrationRequest();

@@ -6,6 +6,7 @@ import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { parseShortProjectSettings, applyShortProjectSettings } from "../projects/project-settings.js";
 import { LocalNarrationGenerationService } from "./local-narration-generation.service.js";
+import { withProjectLock } from "../videos/project-lock.js";
 import { NarrationReviewService } from "./narration-review.service.js";
 import type { probeAudioDurationSeconds } from "./audio-duration.js";
 
@@ -37,6 +38,25 @@ async function setup(narrationEnabled = true, probeDuration: typeof probeAudioDu
 }
 
 describe("NarrationReviewService", () => {
+  it("refuses a second regeneration of the same scene at once, while leaving other scenes free", async () => {
+    // Keyed on the scene: two presses on one scene are one intent and were billed twice, but regenerating a
+    // different scene without waiting is ordinary in a review screen and must still go through. Both halves are
+    // asserted, because a guard that refuses everything would satisfy the first on its own.
+    const { projects, reviews } = await setup();
+    const startedAt = Date.now();
+    let sameScene: unknown;
+    let otherScene: unknown;
+    await withProjectLock(projects.projectDirectory("narr"), "narr:narration-scene-1", async () => {
+      sameScene = await reviews.regenerate("narr", "1", { approved: true }).catch((error: unknown) => error);
+      otherScene = await reviews.regenerate("narr", "2", { approved: true }).catch((error: unknown) => error);
+    });
+
+    expect(sameScene).toMatchObject({ response: { code: "PROJECT_LOCKED" } });
+    expect(otherScene).not.toMatchObject({ response: { code: "PROJECT_LOCKED" } });
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+  });
+
+
   it("reports each scene's narration text and audio status without generating anything", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

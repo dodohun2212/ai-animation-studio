@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import { sceneNumbersFor, TTS_ESTIMATED_COST_USD, type SceneNumber, type StartNarrationGenerationResponse } from "@ai-animation-studio/shared";
 import { toApiProject } from "../projects/project.mapper.js";
+import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
@@ -12,7 +13,7 @@ import { ProviderSettingsService } from "../settings/provider-settings.service.j
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiTtsApi } from "./openai-narration-adapter.js";
-import { invalidNarrationRequest, narrationBudgetExceeded, narrationContentUnavailable, narrationGenerationFailed, narrationNotEnabled, narrationProviderError, narrationStorageError } from "./narration-api.error.js";
+import { invalidNarrationRequest, narrationBudgetExceeded, narrationContentUnavailable, narrationGenerationFailed, narrationNotEnabled, narrationLocked, narrationProviderError, narrationStorageError } from "./narration-api.error.js";
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 /** A silent single-frame MP3, used in local-fake mode — mirrors the local-fake single-pixel PNG used by image generation. */
@@ -102,7 +103,28 @@ export class LocalNarrationGenerationService {
     return { path: file, extension: ".mp3" };
   }
 
+  /**
+   * Speaking every scene that does not already have good audio.
+   *
+   * Under the project lock for the reason its Episode twin is: narration writes no in-progress state for a
+   * second arrival to be turned away by, and the per-scene reuse check cannot stand in for one — two presses
+   * that arrive together both read scene 1 as missing, because neither has written it yet. That is one charge
+   * per scene where the user asked for one run.
+   *
+   * Refused at once rather than queued: a queued second press would re-walk every scene, find the audio the
+   * first wrote, and reuse all of it — the right answer, after making the caller wait out a whole generation.
+   */
   async generate(projectId: string, body: unknown): Promise<StartNarrationGenerationResponse> {
+    const id = projectId.trim();
+    try {
+      return await withProjectLock(this.projects.projectDirectory(id), `${id}:narration`, () => this.generateCore(projectId, body), { timeoutMs: 0 });
+    } catch (error) {
+      if (error instanceof ProjectLockTimeoutError) throw narrationLocked();
+      throw error;
+    }
+  }
+
+  private async generateCore(projectId: string, body: unknown): Promise<StartNarrationGenerationResponse> {
     if (!isObject(body) || Object.keys(body).length !== 1 || body.approved !== true) throw invalidNarrationRequest();
     const project = await this.projects.findById(projectId.trim());
     if (!toShortProjectSettings(project).narrationEnabled) throw narrationNotEnabled();

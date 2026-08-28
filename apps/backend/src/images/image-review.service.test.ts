@@ -13,6 +13,7 @@ import { ProviderSettingsRepository } from "../settings/provider-settings.reposi
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { OpenAiBudget } from "../providers/openai-budget.js";
 import { ImageReviewService } from "./image-review.service.js";
+import { withProjectLock } from "../videos/project-lock.js";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 const roots: string[] = [];
@@ -64,6 +65,25 @@ async function setupWithConnectedOpenAiAndConfirmedReference() {
 }
 
 describe("provider-free generated image review", () => {
+  it("refuses a second regeneration of the same scene at once, while leaving other scenes free", async () => {
+    // Keyed on the scene, not the project. Two presses on one scene are one intent and were two charges; two
+    // scenes regenerated back to back is a normal review action and must not be refused. Asserting only the
+    // refusal would also pass for a guard that refuses everything.
+    const { projects, service } = await setup();
+    const startedAt = Date.now();
+    let sameScene: unknown;
+    let otherScene: unknown;
+    await withProjectLock(projects.projectDirectory("review"), "review:image-scene-1", async () => {
+      sameScene = await service.regenerate("review", "1", { approved: true }).catch((error: unknown) => error);
+      otherScene = await service.regenerate("review", "2", { approved: true }).catch((error: unknown) => error);
+    });
+
+    expect(sameScene).toMatchObject({ response: { code: "PROJECT_LOCKED" } });
+    expect(otherScene).not.toMatchObject({ response: { code: "PROJECT_LOCKED" } });
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+  });
+
+
   it("returns six pending review rows for valid generated images without writing review metadata", async () => {
     const { projectsRoot, service } = await setup();
     const result = await service.getStatus("review");

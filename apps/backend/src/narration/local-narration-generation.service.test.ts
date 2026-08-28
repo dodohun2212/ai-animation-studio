@@ -6,6 +6,7 @@ import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { parseShortProjectSettings, applyShortProjectSettings, toShortProjectSettings } from "../projects/project-settings.js";
 import { LocalNarrationGenerationService } from "./local-narration-generation.service.js";
+import { withProjectLock } from "../videos/project-lock.js";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -33,6 +34,23 @@ async function setup(narrationEnabled = true) {
 }
 
 describe("provider-free local narration generation", () => {
+  it("refuses a second narration run while one is in progress, at once rather than after a wait", async () => {
+    // The lock is the only thing standing here — narration writes no in-progress state, and the per-scene reuse
+    // check is no help to two presses that arrive together, since neither has written scene 1 yet. Holding the
+    // lock for real, because calling generate() twice would not reach it: the fake path finishes first.
+    const { projectsRoot, projects } = await setup();
+    const service = new LocalNarrationGenerationService(projects, projectsRoot);
+    const startedAt = Date.now();
+    let refusal: unknown;
+    await withProjectLock(projects.projectDirectory("narr"), "narr:narration", async () => {
+      refusal = await service.generate("narr", { approved: true }).catch((error: unknown) => error);
+    });
+
+    expect(refusal).toMatchObject({ response: { code: "PROJECT_LOCKED" } });
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+    expect((await projects.findById("narr")).generated_narrations.filter(Boolean)).toHaveLength(0);
+  });
+
   it("requires explicit approval and narrationEnabled", async () => {
     const { projectsRoot, projects } = await setup();
     const service = new LocalNarrationGenerationService(projects, projectsRoot);
