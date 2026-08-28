@@ -18,7 +18,7 @@ import { Spinner } from "./Spinner.js";
 
 interface Props {
   /**
-   * Who owns these mappings, as the set of calls that reach them — never an id. A short project and a Long
+   * Who owns these mappings, as the set of calls that reach them — never an id (D-026). A short project and a Long
    * Episode run the same review flow over the same shapes, so this screen is written once and told where to
    * send its requests. See MappingApi's own doc comment for why an id would not do.
    */
@@ -38,6 +38,7 @@ const STATUS_TEXT_TONE: Record<AssetMappingStatus, string> = {
   confirmed: "text-emerald-300", suggested: "text-violet-300", ambiguous: "text-amber-300",
   unmatched: "text-slate-400", excluded: "text-rose-300", invalid: "text-rose-300",
 };
+// The Asset Library's own words, not a second set translated here — see docs/06_DECISIONS.md D-028.
 const TYPE_LABELS: Record<AssetType, string> = {
   character: "캐릭터", style: "스타일", background: "배경", object: "소품", general_reference: "일반 참고",
 };

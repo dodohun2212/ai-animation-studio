@@ -20,7 +20,13 @@ type OutlineKey = "title" | "summary" | "mainEvent" | "conflict" | "cliffhanger"
  * pulls the viewer into the next one.
  */
 const OUTLINE_FIELDS: { key: OutlineKey; label: string; hint: string; multiline: boolean }[] = [
-  { key: "title", label: "회차 제목", hint: "이 회차를 부르는 이름입니다.", multiline: false },
+  // The hint says where the value came from, not just what the field is.
+  //
+  // A new Episode's title is built as "Episode N: <the work's title at the moment the outline was approved>",
+  // and it does not follow later renames — the title is this Episode's own data from then on, which is right:
+  // a person who edits an Episode title should not have it overwritten by a project rename. What was wrong is
+  // that the screen showed an old work title with nothing saying why, so it read as the app being out of date.
+  { key: "title", label: "회차 제목", hint: "회차 개요를 승인한 시점의 작품 제목으로 만들어졌습니다. 작품 제목을 나중에 바꿔도 여기는 따라가지 않으니, 바꾸려면 여기서 고쳐 주세요.", multiline: false },
   { key: "summary", label: "이 회차 줄거리", hint: "이 회차에서 무슨 일이 일어나는지 한두 문단으로 적습니다.", multiline: true },
   { key: "mainEvent", label: "핵심 사건", hint: "이 회차에서 반드시 일어나야 하는 사건 하나입니다.", multiline: true },
   { key: "conflict", label: "갈등", hint: "누가 무엇 때문에 부딪히는지 적습니다.", multiline: true },

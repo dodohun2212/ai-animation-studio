@@ -186,6 +186,8 @@ async function request<T>(url: string, init: RequestInit | undefined, guard: (va
  * owners have quietly diverged again. That divergence is exactly what the Long Episode mapping code was: a
  * second, worse implementation of a flow that already existed.
  *
+ * (docs/06_DECISIONS.md D-026.)
+ *
  * `projectId` + an optional `episodeNumber` was the other option and was deliberately not taken: an optional
  * argument encodes "omit it and you get the short project" as an unwritten rule, and a caller that gets it
  * wrong compiles and runs and silently addresses the wrong owner.

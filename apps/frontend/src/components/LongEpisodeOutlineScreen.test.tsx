@@ -139,4 +139,17 @@ describe("LongEpisodeOutlineScreen", () => {
     expect(failure.getAttribute("data-error-code")).toBe("LONG_EPISODE_NOT_FOUND");
     expect(screen.queryByRole("button", { name: "이 회차 내용 저장" })).toBeNull();
   });
+
+  // The title is built from the work's title at outline-approval time and never follows a later rename. That is
+  // correct — it is the Episode's own data, and a rename must not overwrite what someone edited here. What was
+  // missing is the screen saying so: an old work title with no explanation reads as the app being stale.
+  it("says where the Episode title came from and that a rename will not update it", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({ [`GET ${EPISODE_URL}`]: { episode: episode() } }));
+    render(<LongEpisodeOutlineScreen projectId="long_test" episodeNumber={3} onBack={() => {}} />);
+
+    const hint = await screen.findByText(/회차 개요를 승인한 시점의 작품 제목/);
+    expect(hint.textContent).toContain("따라가지 않");
+    // The way out is named, because "it will not update" alone leaves a person with nothing to do.
+    expect(hint.textContent).toContain("여기서 고쳐");
+  });
 });
