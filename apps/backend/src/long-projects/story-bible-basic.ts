@@ -18,7 +18,16 @@ const OWNED_BY_SETTINGS = new Set([
   "title", "logline", "overview", "genre", "tone", "theme", "ending_direction", "audience",
 ]);
 
+/**
+ * Asset links live in `basic` because that is where the Story Bible keeps project-wide values, but they are
+ * plumbing: an Asset ID and a version policy say nothing to a model writing a script, and the style link has
+ * been going into the prompt as a raw blob in the middle of the story setup. What a prompt can use is the thing
+ * the link points at — the protagonist's name is added to project_overview by the caller — so the links
+ * themselves are removed here.
+ */
+const PLUMBING = new Set(["style_asset_link", "protagonist_asset_link"]);
+
 export function storyBibleBasicForPrompt(basic: unknown): Record<string, unknown> {
   if (typeof basic !== "object" || basic === null || Array.isArray(basic)) return {};
-  return Object.fromEntries(Object.entries(basic as Record<string, unknown>).filter(([key]) => !OWNED_BY_SETTINGS.has(key)));
+  return Object.fromEntries(Object.entries(basic as Record<string, unknown>).filter(([key]) => !OWNED_BY_SETTINGS.has(key) && !PLUMBING.has(key)));
 }

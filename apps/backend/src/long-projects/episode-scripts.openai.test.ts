@@ -3,7 +3,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EpisodeScriptsService } from "./episode-scripts.service.js";
+import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { LongProjectsService } from "./long-projects.service.js";
+import { StoryBibleService } from "./story-bible.service.js";
 import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { OpenAiBudget } from "../providers/openai-budget.js";
@@ -172,5 +174,43 @@ describe("real OpenAI Long Episode script generation", () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(String(init.body)) as { text: { format: { schema: { properties: { scenes: { minItems: number; maxItems: number } } } } } };
     expect(body.text.format.schema.properties.scenes).toMatchObject({ minItems: 9, maxItems: 9 });
+  });
+
+  it("puts the protagonist's name in the prompt, and the link plumbing nowhere near it", async () => {
+    // The first path that gives a script prompt a character name at all. buildEpisodeContext's `characters`
+    // list has always been empty and the Story Bible's character collection never reached it, so scripts were
+    // written without knowing who they were about.
+    const { subject, projectsRoot, root: testRoot } = await setupWithConnectedOpenAi();
+    const assets = new LocalAssetsRepository(testRoot);
+    const folder = await assets.createFolder({ assetType: "character", displayName: "이배드" });
+    const bibleService = new StoryBibleService(projectsRoot, assets);
+    await bibleService.updateProtagonistAssetLink("long", { assetLink: { assetId: folder.asset_id, versionPolicy: "follow_latest", pinnedVersion: null } });
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responsesBody(aiStory(6))));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await subject.generate("long", 1, { userRequestId: "episode-scripts.openai-protagonist" });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body)) as { input: string };
+    expect(body.input).toContain("이배드");
+    // An Asset ID and a version policy mean nothing to a model writing a script. The style link had been going
+    // into the prompt as a raw blob; both links are plumbing and neither belongs there.
+    expect(body.input).not.toContain(folder.asset_id);
+    expect(body.input).not.toContain("follow_latest");
+  });
+
+  it("still writes the script when the protagonist Folder cannot be read", async () => {
+    // A link pointing at a missing library file must not be able to block generation — the name is a nicety,
+    // the script is the thing the person asked for.
+    const { subject, projectsRoot } = await setupWithConnectedOpenAi();
+    const biblePath = path.join(projectsRoot, "long", "long_story", "story_bible.json");
+    const bible = JSON.parse(await fs.readFile(biblePath, "utf8")) as Record<string, unknown>;
+    bible.basic = { protagonist_asset_link: { asset_id: "ASSET-GONE", version_policy: "follow_latest", pinned_version: null } };
+    await fs.writeFile(biblePath, JSON.stringify(bible, null, 2));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responsesBody(aiStory(6))));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const generated = await subject.generate("long", 1, { userRequestId: "episode-scripts.openai-protagonist-missing" });
+    expect(generated.episode).toMatchObject({ status: "script_review" });
   });
 });

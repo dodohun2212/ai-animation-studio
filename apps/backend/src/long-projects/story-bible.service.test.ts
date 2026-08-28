@@ -158,4 +158,38 @@ describe("StoryBibleService", () => {
     await expect(bible.duplicate("long_bible", "characters", "../unsafe")).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     await expect(bible.duplicate("long_bible", "unknown", "CHAR-1")).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
+
+  it("links a protagonist Folder for the whole project, and refuses a single drawing", async () => {
+    // Inverted on purpose: an item's link refused Folders, this one requires one. A character is a set of
+    // angles of one person, and a single drawing is a pose — the name on the Folder is what a script prompt
+    // is given, and the per-child descriptions are what an image prompt can read.
+    const { bible, assets } = await services();
+    const folder = await assets.createFolder({ assetType: "character", displayName: "이배드" });
+    const drawing = await assets.create({ buffer: image, originalname: "front.png", mimetype: "image/png" }, { assetType: "character", displayName: "정면", approved: true });
+
+    const linked = await bible.updateProtagonistAssetLink("long_bible", { assetLink: { assetId: folder.asset_id, versionPolicy: "follow_latest", pinnedVersion: null } });
+    expect(linked.storyBible.protagonistAssetLink).toEqual({ assetId: folder.asset_id, versionPolicy: "follow_latest", pinnedVersion: null });
+    const file = path.join(root!, "projects", "long_bible", "long_story", "story_bible.json");
+    expect(JSON.parse(await fs.readFile(file, "utf8")).basic.protagonist_asset_link).toEqual({ asset_id: folder.asset_id, version_policy: "follow_latest", pinned_version: null });
+
+    await expect(bible.updateProtagonistAssetLink("long_bible", { assetLink: { assetId: drawing.asset_id, versionPolicy: "follow_latest", pinnedVersion: null } }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(bible.updateProtagonistAssetLink("long_bible", { assetLink: { assetId: "ASSET-MISSING", versionPolicy: "follow_latest", pinnedVersion: null } }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    // The refused attempts left the good link alone.
+    expect((await bible.get("long_bible")).storyBible.protagonistAssetLink?.assetId).toBe(folder.asset_id);
+
+    expect((await bible.updateProtagonistAssetLink("long_bible", { assetLink: null })).storyBible.protagonistAssetLink).toBeUndefined();
+  });
+
+  it("keeps the protagonist link when the advanced JSON editor rewrites basic", async () => {
+    // updateContent replaces `basic` wholesale. The style link already had to be carried across it; this one
+    // is stored the same way and would otherwise be deleted by an unrelated edit.
+    const { bible, assets } = await services();
+    const folder = await assets.createFolder({ assetType: "character", displayName: "이배드" });
+    await bible.updateProtagonistAssetLink("long_bible", { assetLink: { assetId: folder.asset_id, versionPolicy: "follow_latest", pinnedVersion: null } });
+    const after = await bible.updateContent("long_bible", { basic: { 시대: "20년 뒤" }, world: {} });
+    expect(after.storyBible.protagonistAssetLink?.assetId).toBe(folder.asset_id);
+    expect(after.storyBible.basic).toEqual({ 시대: "20년 뒤" });
+  });
 });

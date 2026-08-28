@@ -9,6 +9,7 @@ import type {
   GetLongProjectStoryBibleResponse,
   UpdateLongStoryBibleContentRequest,
   UpdateLongStoryBibleContentResponse,
+  UpdateLongStoryBibleProtagonistAssetLinkRequest, UpdateLongStoryBibleProtagonistAssetLinkResponse,
   UpdateLongStoryBibleStyleAssetLinkRequest,
   UpdateLongStoryBibleStyleAssetLinkResponse,
   GetLongStoryBibleRelationshipAuditResponse,
@@ -77,13 +78,24 @@ export class StoryBibleService {
     const bible = asObject(raw);
     const known = new Set(["basic", "world", "characters", "locations", "props", "secrets", "foreshadowing", "summaries", "updated_at"]);
     if (Object.keys(bible).some((key) => !known.has(key))) throw longInvalidData();
-    const basic = asObject(bible.basic); if (basic.style_asset_link !== undefined) this.styleAssetLink(basic.style_asset_link);
+    const basic = asObject(bible.basic);
+    if (basic.style_asset_link !== undefined) this.styleAssetLink(basic.style_asset_link);
+    if (basic.protagonist_asset_link !== undefined) this.protagonistLink(basic.protagonist_asset_link);
     const result: StoredBible = { basic, world: asObject(bible.world), characters: [], locations: [], props: [], secrets: [], foreshadowing: [], summaries: asObject(bible.summaries), updated_at: asText(bible.updated_at) };
     for (const collection of collections) {
       if (!Array.isArray(bible[collection])) throw longInvalidData();
       result[collection] = bible[collection].map((item) => this.parseStoredItem(collection, item));
     }
     return result;
+  }
+
+  private protagonistLink(value: unknown, error = longInvalidData): Record<string, unknown> {
+    const link = asObject(value, error);
+    if (Object.keys(link).length !== 3 || !["asset_id", "version_policy", "pinned_version"].every((key) => key in link)) throw error();
+    if (link.version_policy !== "pinned_version" && link.version_policy !== "follow_latest") throw error();
+    if (link.version_policy === "pinned_version" && (!Number.isInteger(link.pinned_version) || Number(link.pinned_version) < 1)) throw error();
+    if (link.version_policy === "follow_latest" && link.pinned_version !== null) throw error();
+    return { asset_id: asText(link.asset_id, error), version_policy: link.version_policy, pinned_version: link.pinned_version };
   }
 
   private styleAssetLink(value: unknown, error = longInvalidData): Record<string, unknown> {
@@ -146,9 +158,10 @@ export class StoryBibleService {
   }
 
   private toApi(bible: StoredBible): LongStoryBible {
-    const { style_asset_link: storedStyle, ...basic } = bible.basic;
+    const { style_asset_link: storedStyle, protagonist_asset_link: storedProtagonist, ...basic } = bible.basic;
     const style = storedStyle === undefined ? undefined : this.styleAssetLink(storedStyle);
-    return { basic, world: bible.world, ...(style ? { styleAssetLink: { assetId: style.asset_id as string, versionPolicy: style.version_policy as "pinned_version" | "follow_latest" | "snapshot", pinnedVersion: style.pinned_version as number } } : {}), characters: bible.characters.map((item) => this.toApiItem("characters", item)), locations: bible.locations.map((item) => this.toApiItem("locations", item)), props: bible.props.map((item) => this.toApiItem("props", item)), secrets: bible.secrets.map((item) => this.toApiItem("secrets", item)), foreshadowing: bible.foreshadowing.map((item) => this.toApiItem("foreshadowing", item)), updatedAt: bible.updated_at };
+    const protagonist = storedProtagonist === undefined ? undefined : this.protagonistLink(storedProtagonist);
+    return { basic, world: bible.world, ...(style ? { styleAssetLink: { assetId: style.asset_id as string, versionPolicy: style.version_policy as "pinned_version" | "follow_latest" | "snapshot", pinnedVersion: style.pinned_version as number } } : {}), ...(protagonist ? { protagonistAssetLink: { assetId: protagonist.asset_id as string, versionPolicy: protagonist.version_policy as "pinned_version" | "follow_latest", pinnedVersion: protagonist.pinned_version as number | null } } : {}), characters: bible.characters.map((item) => this.toApiItem("characters", item)), locations: bible.locations.map((item) => this.toApiItem("locations", item)), props: bible.props.map((item) => this.toApiItem("props", item)), secrets: bible.secrets.map((item) => this.toApiItem("secrets", item)), foreshadowing: bible.foreshadowing.map((item) => this.toApiItem("foreshadowing", item)), updatedAt: bible.updated_at };
   }
 
   private async save(projectId: string, bible: StoredBible): Promise<void> {
@@ -164,8 +177,10 @@ export class StoryBibleService {
     if ("style_asset_link" in basic || "styleAssetLink" in basic) throw longInvalidRequest("Use the global style Asset link endpoint.");
     const id = projectId.trim(); const bible = await this.read(id);
     const preservedStyle = bible.basic.style_asset_link;
+    const preservedProtagonist = bible.basic.protagonist_asset_link;
     bible.basic = jsonValue(basic) as Record<string, unknown>; bible.world = jsonValue(world) as Record<string, unknown>;
     if (preservedStyle !== undefined) bible.basic.style_asset_link = preservedStyle;
+    if (preservedProtagonist !== undefined) bible.basic.protagonist_asset_link = preservedProtagonist;
     await this.save(id, bible); return { storyBible: this.toApi(bible) };
   }
 
@@ -181,6 +196,29 @@ export class StoryBibleService {
       if (asset.asset_type !== "style" || asset.is_folder || !asset.enabled || !asset.approved) throw longInvalidRequest("Story Bible style Asset link is unavailable.");
       if (!asset.versions.some((version) => version.version === link.pinned_version)) throw longInvalidRequest("Story Bible style Asset link version is unavailable.");
       bible.basic.style_asset_link = link;
+    }
+    await this.save(id, bible); return { storyBible: this.toApi(bible) };
+  }
+
+  /**
+   * The protagonist is a Folder, and that is the one place this rule is inverted.
+   *
+   * A Story Bible item's link refused Folders; this one requires them. A character is a set of angles of one
+   * person, so a single drawing is a pose, not the lead — and the per-child descriptions are what an image
+   * prompt has any use for. Episode Asset mapping already resolves Folders, so nothing downstream is new here.
+   */
+  async updateProtagonistAssetLink(projectId: string, request: UpdateLongStoryBibleProtagonistAssetLinkRequest): Promise<UpdateLongStoryBibleProtagonistAssetLinkResponse> {
+    if (!request || typeof request !== "object" || Object.keys(request).length !== 1 || !("assetLink" in request)) throw longInvalidRequest("Story Bible protagonist Asset link request is invalid.");
+    const id = projectId.trim(); const bible = await this.read(id);
+    if (request.assetLink === null) delete bible.basic.protagonist_asset_link;
+    else {
+      const api = asObject(request.assetLink, longInvalidRequest);
+      if (Object.keys(api).length !== 3 || !["assetId", "versionPolicy", "pinnedVersion"].every((key) => key in api)) throw longInvalidRequest("Story Bible protagonist Asset link is invalid.");
+      const link = this.protagonistLink({ asset_id: api.assetId, version_policy: api.versionPolicy, pinned_version: api.pinnedVersion }, longInvalidRequest);
+      let asset; try { asset = await this.assets.get(link.asset_id as string); } catch { throw longInvalidRequest("Story Bible protagonist Asset link is unavailable."); }
+      if (asset.asset_type !== "character" || !asset.is_folder || !asset.enabled) throw longInvalidRequest("Story Bible protagonist Asset link is unavailable.");
+      if (link.version_policy === "pinned_version" && !asset.versions.some((version) => version.version === link.pinned_version)) throw longInvalidRequest("Story Bible protagonist Asset link version is unavailable.");
+      bible.basic.protagonist_asset_link = link;
     }
     await this.save(id, bible); return { storyBible: this.toApi(bible) };
   }

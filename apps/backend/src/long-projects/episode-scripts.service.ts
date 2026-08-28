@@ -12,6 +12,7 @@ import { buildEpisodeContext } from "./episode-context-builder.js";
 import { longEpisodeNotFound, longEpisodeScriptBudgetExceeded, longEpisodeScriptExists, longEpisodeScriptNotAllowed, longEpisodeScriptProviderError, longEpisodeSettingsNotAllowed, longInvalidData, longLocked, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { episodeSettings } from "./episode-settings.js";
+import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { storyBibleBasicForPrompt } from "./story-bible-basic.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
@@ -34,6 +35,9 @@ export class EpisodeScriptsService {
     private readonly projectsRoot: string,
     private readonly providerSettings?: ProviderSettingsService,
     private readonly budget?: OpenAiBudget,
+    // Defaulted the way StoryBibleService does it, so the module factory stays as it is. Only the protagonist's
+    // name is read from it — the script prompt has no use for anything else in the library.
+    private readonly assets = new LocalAssetsRepository(path.dirname(projectsRoot)),
   ) { this.projects = new LongProjectsService(projectsRoot); }
 
   private root(projectId: string): string { return longStoryRoot(this.projectsRoot, projectId); }
@@ -74,11 +78,37 @@ export class EpisodeScriptsService {
   private async save(projectId: string, outline: LongEpisodeOutline, stored: StoredEpisode): Promise<LongEpisodeDetail> { const files = this.files(projectId, outline.episodeNumber); const outlines = await this.json(files.outlines); if (!Array.isArray(outlines)) throw longInvalidData(); const copy = [...outlines]; const current = asObject(copy[outline.episodeNumber - 1]); current.status = stored.state; copy[outline.episodeNumber - 1] = current; try { await fs.mkdir(files.episode, { recursive: true }); await Promise.all([atomicWriteUtf8File(files.episodeProject, JSON.stringify(stored, null, 2)), atomicWriteUtf8File(files.outline, JSON.stringify(stored.outline, null, 2)), atomicWriteUtf8File(files.script, JSON.stringify(stored.script, null, 2)), atomicWriteUtf8File(files.outlines, JSON.stringify(copy, null, 2))]); } catch { throw longStorageError(); } return this.toApi({ ...outline, status: stored.state }, stored); }
   private async bibleContext(projectId: string): Promise<string> { const bible = asObject(await this.json(this.files(projectId, 1).bible)); const names = ["characters", "locations", "props"].flatMap((collection) => Array.isArray(bible[collection]) ? bible[collection].map((item) => asObject(item).name).filter((name): name is string => typeof name === "string" && Boolean(name.trim())) : []); return names.join(", "); }
   private async continuityContext(projectId: string, episodeNumber: number): Promise<Record<string, unknown>> { const recent: unknown[] = []; const older: unknown[] = []; for (let number = 1; number < episodeNumber; number += 1) { try { const raw = asObject(await this.json(path.join(this.files(projectId, number).episode, "continuity.json"))); const record = { episodeNumber: number, summary: typeof raw.episode_summary === "string" ? raw.episode_summary : "", events: Array.isArray(raw.events) ? raw.events.filter((value): value is string => typeof value === "string") : [], characterChanges: Array.isArray(raw.character_changes) ? raw.character_changes.filter((value) => value && typeof value === "object" && !Array.isArray(value)) : [], nextActions: Array.isArray(raw.next_actions) ? raw.next_actions.filter((value): value is string => typeof value === "string") : [] }; (number >= episodeNumber - 3 ? recent : older).push(record); } catch (error) { if (!(error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404)) throw error; } } return { recentContinuity: recent, olderCompressedSummaries: older.map((value) => ({ episodeNumber: (value as { episodeNumber: number }).episodeNumber, summary: (value as { summary: string }).summary })) }; }
+  /**
+   * The protagonist's name, read from the Folder the project points at.
+   *
+   * This is the first path that puts a character name into a real script prompt: `buildEpisodeContext`'s
+   * `characters` list has always been empty, and the Story Bible's own character collection never reached it,
+   * so scripts were written without knowing who they were about.
+   *
+   * The name is read at prompt time rather than copied when the link is saved. A copy would go stale the moment
+   * the Folder is renamed — the same shape as the settings copy in `basic` and the Episode title, both of which
+   * this repository has already had to repair.
+   *
+   * A link pointing at something unreadable yields no name instead of an error: a missing library file must not
+   * be able to block generating a script.
+   */
+  private async protagonistName(basic: unknown): Promise<string | undefined> {
+    const link = isObj(basic) ? basic.protagonist_asset_link : undefined;
+    const assetId = isObj(link) && typeof link.asset_id === "string" ? link.asset_id : undefined;
+    if (!assetId) return undefined;
+    try {
+      const name = (await this.assets.get(assetId)).display_name;
+      return typeof name === "string" && name.trim() ? name : undefined;
+    } catch { return undefined; }
+  }
+
   /** A direct port of Python's build_context()/StoryContextBuilder.build() call site — assembles the same payload episode-context-builder.ts's buildEpisodeContext() truncates and returns. candidate_assets is deliberately omitted: Asset Mapping review only ever begins after a script is script_approved (generate()'s own allowed-state list ends there), so at every point this can run there are never any candidates yet — matching Python's own `if asset_context:` being empty in that same window, not a TS gap. */
   private async buildContext(projectId: string, outline: LongEpisodeOutline, stored: StoredEpisode, userInstruction = ""): Promise<Record<string, unknown>> {
     const bible = asObject(await this.json(this.files(projectId, 1).bible));
     const projectSettings = (await this.projects.get(projectId)).project.settings;
+    const protagonist = await this.protagonistName(bible.basic);
     const projectOverview = {
+      ...(protagonist ? { protagonist } : {}),
       title: projectSettings.title, logline: projectSettings.logline, overview: projectSettings.overview,
       genre: projectSettings.genre, tone: projectSettings.tone, theme: projectSettings.theme,
       episode_count: projectSettings.episodeCount, episode_duration_seconds: projectSettings.episodeDurationSeconds,

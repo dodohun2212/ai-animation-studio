@@ -535,6 +535,22 @@ export interface LongStoryBibleAssetLink {
   episodeScope: { mode: "all" } | { mode: "episode"; episode: number };
 }
 
+/**
+ * The project's protagonist, stored as `basic.protagonist_asset_link`.
+ *
+ * A Folder, never a single image: a character is a set of angles of one person, and the per-child descriptions
+ * are what an image prompt has to read. It is chosen once for the whole work — a 20-Episode project should not
+ * ask for its lead 20 times — which is why it sits here beside the style link rather than on each Episode.
+ *
+ * Its Folder name is the name the script prompt is given. Before this, no path put a character name into a real
+ * script prompt at all: the Story Bible's character collection never reached `buildEpisodeContext`.
+ */
+export interface LongStoryBibleProtagonistLink {
+  assetId: string;
+  versionPolicy: "pinned_version" | "follow_latest";
+  pinnedVersion: number | null;
+}
+
 /** Project-wide visual style reference stored as `basic.style_asset_link`. */
 export interface LongStoryBibleStyleAssetLink {
   assetId: string;
@@ -548,6 +564,7 @@ export interface LongStoryBible {
   basic: Record<string, unknown>;
   world: Record<string, unknown>;
   styleAssetLink?: LongStoryBibleStyleAssetLink;
+  protagonistAssetLink?: LongStoryBibleProtagonistLink;
   characters: LongStoryBibleItem[];
   locations: LongStoryBibleItem[];
   props: LongStoryBibleItem[];
@@ -562,6 +579,9 @@ export interface UpdateLongStoryBibleContentResponse { storyBible: LongStoryBibl
 /** `null` explicitly removes the global style Asset link. */
 export interface UpdateLongStoryBibleStyleAssetLinkRequest { assetLink: LongStoryBibleStyleAssetLink | null; }
 export interface UpdateLongStoryBibleStyleAssetLinkResponse { storyBible: LongStoryBible; }
+/** `null` explicitly removes the protagonist link. */
+export interface UpdateLongStoryBibleProtagonistAssetLinkRequest { assetLink: LongStoryBibleProtagonistLink | null; }
+export interface UpdateLongStoryBibleProtagonistAssetLinkResponse { storyBible: LongStoryBible; }
 export interface CreateLongStoryBibleItemRequest { item: LongStoryBibleItemInput; }
 export interface CreateLongStoryBibleItemResponse { item: LongStoryBibleItem; storyBible: LongStoryBible; }
 export interface UpdateLongStoryBibleItemRequest { item: LongStoryBibleItemInput; }
@@ -1442,6 +1462,8 @@ export const API_ROUTES = {
     `/long-projects/${encodeURIComponent(projectId)}/story-bible/content`,
   longProjectStoryBibleStyleAssetLink: (projectId: string) =>
     `/long-projects/${encodeURIComponent(projectId)}/story-bible/style-asset-link`,
+  longProjectStoryBibleProtagonistAssetLink: (projectId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/story-bible/protagonist-asset-link`,
   longProjectStoryBibleCollection: (projectId: string, collection: LongStoryBibleCollection) =>
     `/long-projects/${encodeURIComponent(projectId)}/story-bible/${collection}`,
   longProjectStoryBibleItem: (projectId: string, collection: LongStoryBibleCollection, itemId: string) =>
