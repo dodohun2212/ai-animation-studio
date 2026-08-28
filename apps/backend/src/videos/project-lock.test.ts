@@ -77,6 +77,51 @@ describe("withProjectLock", () => {
     releaseFirst();
   });
 
+  it("keeps a live holder's lock from being reclaimed as stale, however long the guarded work runs", async () => {
+    // The staleness rule exists to reclaim locks from dead processes. Guarded work that outlives STALE_LOCK_MS is
+    // not a dead process, and treating it as one hands the lock to a second arrival while the first is still
+    // inside its paid provider call — the duplicate charge the lock was added to prevent, back again and only for
+    // the slow calls people press twice. Back-dating the file here is what a minute of real work would look like.
+    const lockFile = path.join(directory, ".lock-slow_job");
+    let releaseFirst!: () => void;
+    const beatLanded = new Promise<void>((resolve) => {
+      void withProjectLock(directory, "slow_job", async () => {
+        const old = new Date(Date.now() - 5 * 60_000);
+        await fs.utimes(lockFile, old, old);
+        setTimeout(resolve, 80);
+        await new Promise<void>((r) => { releaseFirst = r; });
+      }, { heartbeatMs: 20 });
+    });
+    await beatLanded;
+
+    let second: unknown;
+    try { second = await withProjectLock(directory, "slow_job", async () => "stole it", { timeoutMs: 0 }); }
+    catch (error) { second = error; }
+    expect(second).toBeInstanceOf(ProjectLockTimeoutError);
+    releaseFirst();
+  });
+
+  it("does not delete a lock that was already reclaimed by someone else", async () => {
+    // Releasing by filename alone deletes whatever happens to be at that path, including a lock a second holder
+    // acquired after this one was reclaimed — freeing work that is still running. The token says whose it is.
+    const lockFile = path.join(directory, ".lock-taken_job");
+    let releaseFirst!: () => void;
+    const firstStarted = new Promise<void>((resolve) => {
+      void withProjectLock(directory, "taken_job", async () => {
+        resolve();
+        await new Promise<void>((r) => { releaseFirst = r; });
+      });
+    });
+    await firstStarted;
+
+    await fs.writeFile(lockFile, JSON.stringify({ pid: 999999, token: "someone-else", acquiredAt: new Date().toISOString() }));
+    releaseFirst();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const survivor: unknown = JSON.parse(await fs.readFile(lockFile, "utf8"));
+    expect(survivor).toMatchObject({ token: "someone-else" });
+  });
+
   it("releases the lock file even when the wrapped function throws", async () => {
     await expect(withProjectLock(directory, "job", async () => { throw new Error("boom"); })).rejects.toThrow("boom");
     // A fresh acquire must succeed immediately — nothing left behind by the failed attempt.
