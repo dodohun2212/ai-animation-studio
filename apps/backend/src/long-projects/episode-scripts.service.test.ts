@@ -12,6 +12,33 @@ async function setup(episodeDurationSeconds: 30 | 60 = 30, sceneCount = 6) { roo
 afterEach(async () => { vi.unstubAllGlobals(); if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 
 describe("EpisodeScriptsService", () => {
+  it("answers a repeated regeneration with what the first one made, and a fresh intent with a new script", async () => {
+    // The lock stops presses that overlap. It cannot stop the one that arrives after the first finished, and a
+    // regeneration is a legal repeat the state gate lets through — so a person who waited with nothing on screen
+    // and pressed again paid twice. Both halves are asserted: repeating must cost nothing, and a genuinely new
+    // intent must still work, since a guard that refused every repeat would satisfy the first alone.
+    const subject = await setup();
+    const first = await subject.generate("long", 1, { userRequestId: "intent-a" });
+    const repeat = await subject.generate("long", 1, { regenerate: true, userRequestId: "intent-a" });
+    expect(repeat.episode.scriptRevision).toBe(first.episode.scriptRevision);
+    expect(repeat.episode.scriptHistoryCount).toBe(first.episode.scriptHistoryCount);
+
+    const again = await subject.generate("long", 1, { regenerate: true, userRequestId: "intent-b" });
+    expect(again.episode.scriptRevision).toBe(first.episode.scriptRevision + 1);
+
+    // Survives a reload: the id lives with the Episode, not in this instance.
+    const reloaded = new EpisodeScriptsService(path.join(root!, "projects"));
+    const afterReload = await reloaded.generate("long", 1, { regenerate: true, userRequestId: "intent-b" });
+    expect(afterReload.episode.scriptRevision).toBe(again.episode.scriptRevision);
+  });
+
+  it("refuses a generation with no userRequestId rather than treating it as a fresh intent", async () => {
+    // Absent would mean "no protection", quietly, for any caller that forgot — the shape that cost real money
+    // on the login flow's `flow` default (D-014).
+    const subject = await setup();
+    await expect(subject.generate("long", 1, {} as never)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
   it("refuses a second script generation while one is running, at once rather than after a wait", async () => {
     // Holding the lock for real, because a test that merely calls generate() twice proves nothing here: the
     // local-fake path finishes before a second call starts, so both refusals come from the state and the lock is
@@ -21,7 +48,7 @@ describe("EpisodeScriptsService", () => {
     const startedAt = Date.now();
     let refusal: unknown;
     await withProjectLock(projectDirectory, "long:episode-1:script", async () => {
-      refusal = await subject.generate("long", 1, {}).catch((error: unknown) => error);
+      refusal = await subject.generate("long", 1, { userRequestId: "episode-scripts.service-script-1" }).catch((error: unknown) => error);
     });
 
     expect(refusal).toMatchObject({ response: { code: "PROJECT_LOCKED" } });
@@ -34,10 +61,10 @@ describe("EpisodeScriptsService", () => {
   it("creates, edits, preserves history, and approves one six-scene local episode script", async () => {
     const subject = await setup();
     await expect(subject.get("long", 3)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_NOT_FOUND" } });
-    const generated = await subject.generate("long", 1, {});
+    const generated = await subject.generate("long", 1, { userRequestId: "episode-scripts.service-script-2" });
     expect(generated.episode).toMatchObject({ status: "script_review", approved: false, scriptRevision: 1 });
     expect(generated.episode.script?.scenes.map((scene) => scene.number)).toEqual([1, 2, 3, 4, 5, 6]);
-    await expect(subject.generate("long", 1, {})).rejects.toMatchObject({ response: { code: "LONG_EPISODE_SCRIPT_EXISTS" } });
+    await expect(subject.generate("long", 1, { userRequestId: "episode-scripts.service-script-3" })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_SCRIPT_EXISTS" } });
     const script = generated.episode.script!; script.title = "Edited";
     const edited = await subject.update("long", 1, { script });
     expect(edited.episode).toMatchObject({ scriptRevision: 2, scriptHistoryCount: 2 });
@@ -50,7 +77,7 @@ describe("EpisodeScriptsService", () => {
 
   it("generates a template narration sentence for every scene, round-trips an edit, and rejects a non-string narration", async () => {
     const subject = await setup();
-    const generated = await subject.generate("long", 1, {});
+    const generated = await subject.generate("long", 1, { userRequestId: "episode-scripts.service-script-4" });
     expect(generated.episode.script?.scenes.every((scene) => typeof scene.narration === "string" && scene.narration.length > 0)).toBe(true);
     const script = generated.episode.script!;
     script.scenes[0] = { ...script.scenes[0]!, narration: "고친 내레이션" };
@@ -63,14 +90,14 @@ describe("EpisodeScriptsService", () => {
 
   it("snapshots the project's real episodeDurationSeconds onto a newly created episode, not a hardcoded 30", async () => {
     const subject = await setup(60);
-    await subject.generate("long", 1, {});
+    await subject.generate("long", 1, { userRequestId: "episode-scripts.service-script-5" });
     const stored = JSON.parse(await fs.readFile(path.join(root!, "projects", "long", "long_story", "Episode01", "project.json"), "utf8")) as { duration_seconds: number };
     expect(stored.duration_seconds).toBe(60);
   });
 
   it("generates and edits a script sized to the project's own scene count, not a hardcoded six", async () => {
     const subject = await setup(30, 9);
-    const generated = await subject.generate("long", 1, {});
+    const generated = await subject.generate("long", 1, { userRequestId: "episode-scripts.service-script-6" });
     expect(generated.episode.script?.scenes.map((scene) => scene.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
     const script = generated.episode.script!;
     const edited = await subject.update("long", 1, { script });
@@ -79,7 +106,7 @@ describe("EpisodeScriptsService", () => {
   });
 
   it("rejects malformed user edits", async () => {
-    const subject = await setup(); await subject.generate("long", 1, {});
+    const subject = await setup(); await subject.generate("long", 1, { userRequestId: "episode-scripts.service-script-7" });
     await expect(subject.update("long", 1, { script: { title: "x", synopsis: "x", ending: "x", scenes: [] } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
@@ -87,7 +114,7 @@ describe("EpisodeScriptsService", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const subject = await setup();
-    await subject.generate("long", 1, {});
+    await subject.generate("long", 1, { userRequestId: "episode-scripts.service-script-8" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

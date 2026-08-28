@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { MAX_SCENE_COUNT, MIN_SCENE_COUNT, type LongEpisodeDetail, type LongEpisodeScript } from "@ai-animation-studio/shared";
+import type { GenerateLongEpisodeScriptRequest } from "@ai-animation-studio/shared";
 import { approveLongEpisodeScript, generateLongEpisodeScript, getLongEpisode, toLongProjectDisplayError, updateLongEpisodeScript } from "../api/longProjectsApi.js";
 import { Spinner } from "./Spinner.js";
 import { STORY_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
@@ -64,6 +65,20 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
   const [confirming, setConfirming] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
   const busy = useRef(false);
+  /**
+   * One id per intent to have a script written, kept until that intent succeeds.
+   *
+   * Minted per press it would be a new id every time, and the server's repeat check — which exists because a
+   * regeneration is a legal repeat the state gate cannot refuse — would never see the same id twice. `busy`
+   * only covers presses within this mounted screen; a reload or a dev-server remount clears it, which is how
+   * the outline came to be billed twice twenty-three seconds apart.
+   */
+  const scriptRequestId = useRef<string | null>(null);
+
+  function scriptRequest(regenerate: boolean): GenerateLongEpisodeScriptRequest {
+    scriptRequestId.current ??= crypto.randomUUID();
+    return regenerate ? { regenerate: true, userRequestId: scriptRequestId.current } : { userRequestId: scriptRequestId.current };
+  }
 
   const apply = (next: LongEpisodeDetail) => {
     setEpisode(next);
@@ -73,7 +88,7 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
 
   useEffect(() => { let cancelled = false; setLoading(true); setJustSaved(false); getLongEpisode(projectId, episodeNumber).then((response) => { if (!cancelled) apply(response.episode); }).catch((caught) => { if (!cancelled) setError(toLongProjectDisplayError(caught)); }).finally(() => { if (!cancelled) setLoading(false); }); return () => { cancelled = true; }; }, [projectId, episodeNumber]);
 
-  async function run(action: () => Promise<{ episode: LongEpisodeDetail }>) { if (busy.current) return; busy.current = true; setPending(true); setError(null); try { apply((await action()).episode); } catch (caught) { setError(toLongProjectDisplayError(caught)); } finally { busy.current = false; setPending(false); } }
+  async function run(action: () => Promise<{ episode: LongEpisodeDetail }>) { if (busy.current) return; busy.current = true; setPending(true); setError(null); try { apply((await action()).episode); scriptRequestId.current = null; } catch (caught) { setError(toLongProjectDisplayError(caught)); } finally { busy.current = false; setPending(false); } }
 
   function editScene(key: string, value: string): void {
     setJustSaved(false);
@@ -147,7 +162,7 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
           <p data-testid="episode-script-cost-notice" className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300">
             이 단계는 <span className="font-semibold">비용이 발생합니다</span> — AI가 스토리 개요와 등장인물·설정집을 재료로 이 회차의 대본을 씁니다. 약 {`$${STORY_ESTIMATED_COST_USD.toFixed(2)}`}이 청구됩니다(추정치).
           </p>
-          <button type="button" className={primaryButton} disabled={pending} onClick={() => void run(() => generateLongEpisodeScript(projectId, episodeNumber, {}))}>
+          <button type="button" className={primaryButton} disabled={pending} onClick={() => void run(() => generateLongEpisodeScript(projectId, episodeNumber, scriptRequest(false)))}>
             {pending ? "생성 중..." : "대본 초안 만들기"}
           </button>
         </div>
@@ -246,7 +261,7 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
                     {pending ? "저장 중..." : "수정 저장"}
                   </button>
                   <button type="button" className={amberOutlineButton} disabled={pending || dirty} onClick={() => setConfirming(true)}>대본 승인</button>
-                  <button type="button" className={outlineButton} disabled={pending} onClick={() => void run(() => generateLongEpisodeScript(projectId, episodeNumber, { regenerate: true }))}>새로 생성</button>
+                  <button type="button" className={outlineButton} disabled={pending} onClick={() => void run(() => generateLongEpisodeScript(projectId, episodeNumber, scriptRequest(true)))}>새로 생성</button>
                 </div>
                 {dirty && (
                   <p data-testid="episode-script-unsaved" className="text-xs text-amber-300">

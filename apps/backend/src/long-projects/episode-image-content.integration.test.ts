@@ -34,7 +34,7 @@ async function generatedEpisode() {
   const preview = await projects.preview("long");
   await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 });
   const scripts = new EpisodeScriptsService(projectsRoot);
-  await scripts.generate("long", 1, {});
+  await scripts.generate("long", 1, { userRequestId: "episode-image-content.integration-script-1" });
   await scripts.approve("long", 1, { approved: true });
   await approveEpisodeMappingReview(projectsRoot, root, "long", 1);
   const images = new EpisodeImagesService(projectsRoot);

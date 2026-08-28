@@ -18,7 +18,7 @@ async function setup(narrationEnabled = true) {
   const preview = await projects.preview("long");
   await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 });
   const scripts = new EpisodeScriptsService(projectsRoot);
-  await scripts.generate("long", 1, {});
+  await scripts.generate("long", 1, { userRequestId: "episode-narration.service-script-1" });
   const narration = new EpisodeNarrationService(projectsRoot);
   return { projectsRoot, projects, scripts, narration };
 }

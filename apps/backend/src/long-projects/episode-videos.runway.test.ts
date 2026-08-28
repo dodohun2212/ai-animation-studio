@@ -24,7 +24,7 @@ async function setupWithConnectedRunway(episodeDurationSeconds: 30 | 60 = 30, as
   await projects.create({ projectId: "long", settings: { ...settings, clipDurationSeconds: episodeDurationSeconds === 60 ? 10 : 5, aspectRatio } });
   const outline = await projects.preview("long");
   await projects.approve("long", { approved: true, prompt: outline.preview.prompt, promptSha256: outline.preview.promptSha256 });
-  const scripts = new EpisodeScriptsService(projectsRoot); await scripts.generate("long", 1, {}); await scripts.approve("long", 1, { approved: true });
+  const scripts = new EpisodeScriptsService(projectsRoot); await scripts.generate("long", 1, { userRequestId: "episode-videos.runway-script-1" }); await scripts.approve("long", 1, { approved: true });
   await approveEpisodeMappingReview(projectsRoot, root, "long", 1);
   const images = new EpisodeImagesService(projectsRoot); await images.generate("long", 1, { approved: true }); for (const number of [1, 2, 3, 4, 5, 6] as const) await images.approve("long", 1, String(number), { approved: true });
 

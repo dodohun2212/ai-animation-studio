@@ -30,7 +30,7 @@ async function setup() {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-video-merge-")); const projectsRoot = path.join(root, "projects");
   const projects = new LongProjectsService(projectsRoot); await projects.create({ projectId: "long", settings });
   const outline = await projects.preview("long"); await projects.approve("long", { approved: true, prompt: outline.preview.prompt, promptSha256: outline.preview.promptSha256 });
-  const scripts = new EpisodeScriptsService(projectsRoot); await scripts.generate("long", 1, {}); await scripts.approve("long", 1, { approved: true });
+  const scripts = new EpisodeScriptsService(projectsRoot); await scripts.generate("long", 1, { userRequestId: "episode-video-merge.service-script-1" }); await scripts.approve("long", 1, { approved: true });
   await approveEpisodeMappingReview(projectsRoot, root, "long", 1);
   const images = new EpisodeImagesService(projectsRoot); await images.generate("long", 1, { approved: true }); for (const number of [1, 2, 3, 4, 5, 6] as const) await images.approve("long", 1, String(number), { approved: true });
   const videos = new EpisodeVideosService(projectsRoot); const preview = await videos.preview("long", 1); const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) }); await videos.run("long", 1, started.jobId); for (const number of [1, 2, 3, 4, 5, 6] as const) await videos.approve("long", 1, started.jobId, String(number), { approved: true });

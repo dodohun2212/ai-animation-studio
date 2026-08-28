@@ -56,7 +56,7 @@ describe("real OpenAI Long Episode script generation", () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responsesBody(aiStory(6))));
     vi.stubGlobal("fetch", fetchMock);
 
-    const generated = await subject.generate("long", 1, {});
+    const generated = await subject.generate("long", 1, { userRequestId: "episode-scripts.openai-script-1" });
     expect(generated.episode).toMatchObject({ status: "script_review", approved: false, scriptRevision: 1 });
     expect(generated.episode.script).toMatchObject({ title: "AI Episode Script", synopsis: "AI synopsis", ending: "AI ending" });
     expect(generated.episode.script?.scenes).toHaveLength(6);
@@ -80,7 +80,7 @@ describe("real OpenAI Long Episode script generation", () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responsesBody(aiStory(6))));
     vi.stubGlobal("fetch", fetchMock);
 
-    await subject.generate("long", 1, {});
+    await subject.generate("long", 1, { userRequestId: "episode-scripts.openai-script-2" });
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(String(init.body)) as { input: string };
@@ -98,7 +98,7 @@ describe("real OpenAI Long Episode script generation", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const generated = await subject.generate("long", 1, {});
+    const generated = await subject.generate("long", 1, { userRequestId: "episode-scripts.openai-script-3" });
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(generated.episode.script?.title).toContain("Local Episode Script");
@@ -110,7 +110,7 @@ describe("real OpenAI Long Episode script generation", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(subject.generate("long", 1, {})).rejects.toMatchObject({ response: { code: "LONG_EPISODE_SCRIPT_BUDGET_EXCEEDED" } });
+    await expect(subject.generate("long", 1, { userRequestId: "episode-scripts.openai-script-4" })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_SCRIPT_BUDGET_EXCEEDED" } });
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect((await subject.get("long", 1)).episode.status).toBe("outline_ready");
@@ -121,7 +121,7 @@ describe("real OpenAI Long Episode script generation", () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { error: { code: "invalid_api_key" } }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(subject.generate("long", 1, {})).rejects.toMatchObject({ response: { code: "LONG_EPISODE_SCRIPT_PROVIDER_ERROR", details: { category: "authentication" } } });
+    await expect(subject.generate("long", 1, { userRequestId: "episode-scripts.openai-script-5" })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_SCRIPT_PROVIDER_ERROR", details: { category: "authentication" } } });
 
     const usage = JSON.parse(await fs.readFile(path.join(usedRoot!, "api_budget_usage.json"), "utf8")) as Array<{ succeeded: boolean }>;
     expect(usage).toEqual([expect.objectContaining({ succeeded: false })]);
@@ -134,7 +134,7 @@ describe("real OpenAI Long Episode script generation", () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responsesBody(malformed)));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(subject.generate("long", 1, {})).rejects.toMatchObject({ response: { code: "LONG_EPISODE_SCRIPT_PROVIDER_ERROR" } });
+    await expect(subject.generate("long", 1, { userRequestId: "episode-scripts.openai-script-6" })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_SCRIPT_PROVIDER_ERROR" } });
 
     expect((await subject.get("long", 1)).episode.status).toBe("outline_ready");
   });
@@ -144,7 +144,7 @@ describe("real OpenAI Long Episode script generation", () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responsesBody(aiStory(9))));
     vi.stubGlobal("fetch", fetchMock);
 
-    const generated = await subject.generate("long", 1, {});
+    const generated = await subject.generate("long", 1, { userRequestId: "episode-scripts.openai-script-7" });
     expect(generated.episode.script?.scenes).toHaveLength(9);
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];

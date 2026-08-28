@@ -9,6 +9,33 @@ const episode = (status: "outline_ready" | "script_review" | "script_approved", 
 
 describe("LongEpisodeScriptScreen", () => {
   afterEach(() => vi.unstubAllGlobals());
+  it("reuses one request id until the generation succeeds, so a retry is not a second charge", async () => {
+    // The id is what lets the server answer a repeat with what the first press made. Minted per press it would
+    // differ every time and protect nothing — which is what the video workflow screen still does — so the thing
+    // to hold is that a retry after a failure carries the same id, and only a fresh intent gets a new one.
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("outline_ready", false) }))
+      .mockResolvedValueOnce(jsonResponse(500, { code: "LONG_EPISODE_SCRIPT_PROVIDER_ERROR", message: "raw" }))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("script_review") }))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("script_review") }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeScriptScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+    await screen.findByRole("button", { name: "대본 초안 만들기" });
+
+    fireEvent.click(screen.getByRole("button", { name: "대본 초안 만들기" }));
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: "대본 초안 만들기" }));
+    await waitFor(() => expect(screen.getByTestId("episode-script-field-description")).toHaveValue("Description"));
+
+    const idOf = (index: number) => JSON.parse(String((fetchMock.mock.calls[index]![1] as RequestInit).body)).userRequestId as string;
+    expect(idOf(1)).toHaveLength(36);
+    expect(idOf(2)).toBe(idOf(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "새로 생성" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(idOf(3)).not.toBe(idOf(1));
+  });
+
   it("generates a local six-scene script and only approves after the final confirmation", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { episode: episode("outline_ready", false) })).mockResolvedValueOnce(jsonResponse(200, { episode: episode("script_review") })).mockResolvedValueOnce(jsonResponse(200, { episode: episode("script_approved") }));
     vi.stubGlobal("fetch", fetchMock);

@@ -42,7 +42,7 @@ async function readEpisodeState(projectsRoot: string, projectId: string, episode
 /** Advances one Episode through script + asset-mapping approval — the common prefix every generating state needs. */
 async function toAssetMappingApproved(projectsRoot: string, episodeNumber: number): Promise<void> {
   const scripts = new EpisodeScriptsService(projectsRoot);
-  await scripts.generate("long", episodeNumber, {});
+  await scripts.generate("long", episodeNumber, { userRequestId: "orphaned-episode-generation-recovery.service-script-1" });
   await scripts.approve("long", episodeNumber, { approved: true });
   await approveEpisodeMappingReview(projectsRoot, path.dirname(projectsRoot), "long", episodeNumber);
 }

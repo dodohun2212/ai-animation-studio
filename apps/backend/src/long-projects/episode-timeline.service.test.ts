@@ -43,7 +43,7 @@ describe("EpisodeTimelineService", () => {
     const { projectsRoot, projects, timeline } = await services();
     const preview = await projects.preview("timeline_test");
     await projects.approve("timeline_test", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 });
-    await new EpisodeScriptsService(projectsRoot).generate("timeline_test", 1, {});
+    await new EpisodeScriptsService(projectsRoot).generate("timeline_test", 1, { userRequestId: "episode-timeline.service-script-1" });
     await expect(timeline.add("timeline_test", {})).rejects.toMatchObject({ response: { code: "LONG_EPISODE_TIMELINE_NOT_ALLOWED" } });
   });
 
@@ -70,7 +70,7 @@ describe("EpisodeTimelineService", () => {
       const { projectsRoot, projects, timeline } = await services();
       const preview = await projects.preview("timeline_test");
       await projects.approve("timeline_test", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 });
-      await new EpisodeScriptsService(projectsRoot).generate("timeline_test", 1, {});
+      await new EpisodeScriptsService(projectsRoot).generate("timeline_test", 1, { userRequestId: "episode-timeline.service-script-2" });
       await expect(timeline.updateOutline("timeline_test", 1, { outline: { title: "너무 늦음" } })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_TIMELINE_NOT_ALLOWED" } });
       const stillEditable = await timeline.updateOutline("timeline_test", 2, { outline: { title: "아직 됨" } });
       expect(stillEditable.episode.title).toBe("아직 됨");

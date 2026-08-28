@@ -16,9 +16,9 @@ afterEach(async () => { if (root) await fs.rm(root, { recursive: true, force: tr
 
 describe("EpisodeContinuityService", () => {
   it("saves only after image approval, atomically persists snake_case, and returns an existing next episode", async () => {
-    const { continuity, scripts } = await setup(); await scripts.generate("long", 1, {});
+    const { continuity, scripts } = await setup(); await scripts.generate("long", 1, { userRequestId: "episode-continuity.service-script-1" });
     await expect(continuity.save("long", 1, { memory })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_CONTINUITY_NOT_ALLOWED" } });
-    await markEligible(1); await scripts.generate("long", 2, {});
+    await markEligible(1); await scripts.generate("long", 2, { userRequestId: "episode-continuity.service-script-2" });
     const saved = await continuity.save("long", 1, { memory });
     expect(saved.memory).toMatchObject({ episodeNumber: 1, episodeSummary: "A bridge collapses." });
     expect(saved.nextEpisode).toMatchObject({ episodeNumber: 2 });
@@ -33,7 +33,7 @@ describe("EpisodeContinuityService", () => {
     // took everything the person wrote, and refused at the end. The refusal is right; its timing was not, and
     // its timing is the only thing that could change.
     const { continuity, scripts } = await setup();
-    await scripts.generate("long", 1, {});
+    await scripts.generate("long", 1, { userRequestId: "episode-continuity.service-script-3" });
 
     expect(await continuity.get("long", 1)).toMatchObject({ canSave: false });
 
@@ -46,14 +46,14 @@ describe("EpisodeContinuityService", () => {
     // The report and the refusal have to come from one list. Two copies of "which states may save" is the shape
     // that put this screen a step out of sync with its own server in the first place.
     const { continuity, scripts } = await setup();
-    await scripts.generate("long", 1, {});
+    await scripts.generate("long", 1, { userRequestId: "episode-continuity.service-script-4" });
 
     const before = await continuity.get("long", 1);
     expect(before.canSave).toBe(false);
     await expect(continuity.save("long", 1, { memory })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_CONTINUITY_NOT_ALLOWED" } });
 
     await markEligible(1);
-    await scripts.generate("long", 2, {});
+    await scripts.generate("long", 2, { userRequestId: "episode-continuity.service-script-5" });
     const after = await continuity.get("long", 1);
     expect(after.canSave).toBe(true);
     await expect(continuity.save("long", 1, { memory })).resolves.toMatchObject({ memory: { episodeNumber: 1 } });
@@ -61,14 +61,14 @@ describe("EpisodeContinuityService", () => {
 
   it("reports it even when no notes have been written yet", async () => {
     const { continuity, scripts } = await setup();
-    await scripts.generate("long", 1, {});
+    await scripts.generate("long", 1, { userRequestId: "episode-continuity.service-script-6" });
     await markEligible(1);
 
     expect(await continuity.get("long", 1)).toMatchObject({ memory: null, canSave: true });
   });
 
   it("rejects malformed memory and accepts a missing next Episode as null", async () => {
-    const { continuity, scripts } = await setup(); await scripts.generate("long", 1, {}); await markEligible(1);
+    const { continuity, scripts } = await setup(); await scripts.generate("long", 1, { userRequestId: "episode-continuity.service-script-7" }); await markEligible(1);
     await expect(continuity.save("long", 1, { memory: { ...memory, events: ["x", 2] } as never })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     await expect(continuity.save("long", 1, { memory })).resolves.toMatchObject({ nextEpisode: null });
     await fs.writeFile(path.join(path.dirname(episodePath(1)), "continuity.json"), "{ nope");
@@ -78,7 +78,7 @@ describe("EpisodeContinuityService", () => {
   it("adds ordered, bounded continuity context without secret fields to the next script history", async () => {
     const { scripts } = await setup();
     for (const number of [1, 2, 3, 4]) { const directory = path.dirname(episodePath(number)); await fs.mkdir(directory, { recursive: true }); await fs.writeFile(path.join(directory, "continuity.json"), JSON.stringify({ episode_number: number, episode_summary: `summary-${number}`, events: [`event-${number}`], character_changes: [{ characterId: `character-${number}` }], next_actions: [`action-${number}`], revealed_secret_ids: ["must-not-appear"], remaining_secret_ids: ["also-hidden"], appeared_character_ids: [], appeared_location_ids: [], item_changes: [], resolved_conflicts: [], new_conflicts: [], new_foreshadowing_ids: [], resolved_foreshadowing_ids: [], time_elapsed: "", world_changes: [], user_edits: "", updated_at: new Date().toISOString() })); }
-    await scripts.generate("long", 5, {});
+    await scripts.generate("long", 5, { userRequestId: "episode-continuity.service-script-8" });
     const saved = JSON.parse(await fs.readFile(episodePath(5), "utf8")); const context = saved.script_history.at(-1).continuity_context;
     expect(context.recentContinuity.map((value: { episodeNumber: number }) => value.episodeNumber)).toEqual([2, 3, 4]);
     expect(context.olderCompressedSummaries).toEqual([{ episodeNumber: 1, summary: "summary-1" }]);

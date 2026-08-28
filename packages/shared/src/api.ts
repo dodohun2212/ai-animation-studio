@@ -124,7 +124,19 @@ export interface LongEpisodeDetail extends LongEpisodeOutline {
 }
 
 export interface GetLongEpisodeResponse { episode: LongEpisodeDetail; }
-export interface GenerateLongEpisodeScriptRequest { regenerate?: true; }
+/**
+ * `userRequestId` identifies the person's intent, not the click.
+ *
+ * The lock stops two presses that overlap. It cannot stop the one that arrives after the first has finished,
+ * and that is the shape this step is exposed to: a regeneration is a legal repeat, so the state gate lets it
+ * through, and a person who waited half a minute with nothing on screen and pressed again paid twice. The same
+ * id sent again returns what the first press produced instead of generating anything.
+ *
+ * The screen must mint it when the intent forms and keep it until the request succeeds — one per press produces
+ * a new id every time and protects nothing (see LongEpisodeVideoWorkflowScreen, which does exactly that;
+ * VideoPromptPreviewScreen holds one in state, which is the pattern to copy).
+ */
+export interface GenerateLongEpisodeScriptRequest { regenerate?: true; userRequestId: string; }
 export interface GenerateLongEpisodeScriptResponse { episode: LongEpisodeDetail; }
 export interface UpdateLongEpisodeScriptRequest { script: LongEpisodeScript; }
 export interface UpdateLongEpisodeScriptResponse { episode: LongEpisodeDetail; }

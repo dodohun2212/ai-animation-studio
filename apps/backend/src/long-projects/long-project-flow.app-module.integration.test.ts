@@ -79,7 +79,7 @@ describe.sequential("Long Project Episode flow over HTTP", () => {
     await call("POST", API_ROUTES.longProjectOutlineApproval(PROJECT_ID),
       { approved: true, prompt: preview.prompt, promptSha256: preview.promptSha256 });
 
-    await call("POST", API_ROUTES.longEpisodeScriptGeneration(PROJECT_ID, 1), {});
+    await call("POST", API_ROUTES.longEpisodeScriptGeneration(PROJECT_ID, 1), { userRequestId: "flow-script-1" });
     await call("POST", API_ROUTES.longEpisodeScriptApproval(PROJECT_ID, 1), { approved: true });
 
     // A mapping review has to be approved before images, and it needs something mapped. A Folder is the case
@@ -149,7 +149,7 @@ describe.sequential("Long Project Episode flow over HTTP", () => {
       "POST", API_ROUTES.longProjectOutlinePreview(PROJECT_ID));
     await call("POST", API_ROUTES.longProjectOutlineApproval(PROJECT_ID),
       { approved: true, prompt: preview.prompt, promptSha256: preview.promptSha256 });
-    await call("POST", API_ROUTES.longEpisodeScriptGeneration(PROJECT_ID, 1), {});
+    await call("POST", API_ROUTES.longEpisodeScriptGeneration(PROJECT_ID, 1), { userRequestId: "flow-script-1" });
 
     // Two steps that each cost money when a credential is present. With none configured they take the fake path,
     // and the ledger file is how that is checked rather than assumed — an empty ledger is the only evidence that

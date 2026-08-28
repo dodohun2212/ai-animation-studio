@@ -13,7 +13,7 @@ const settings = { title: "Long story", logline: "A hero changes", overview: "",
 async function setup() {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-images-")); const projectsRoot = path.join(root, "projects"); const projects = new LongProjectsService(projectsRoot);
   await projects.create({ projectId: "long", settings }); const preview = await projects.preview("long"); await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 });
-  const scripts = new EpisodeScriptsService(projectsRoot); await scripts.generate("long", 1, {}); await scripts.approve("long", 1, { approved: true });
+  const scripts = new EpisodeScriptsService(projectsRoot); await scripts.generate("long", 1, { userRequestId: "episode-images.service-script-1" }); await scripts.approve("long", 1, { approved: true });
   await approveEpisodeMappingReview(projectsRoot, root, "long", 1);
   return { images: new EpisodeImagesService(projectsRoot), projectsRoot };
 }

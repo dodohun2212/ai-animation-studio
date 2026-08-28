@@ -30,7 +30,7 @@ async function setupWithConnectedOpenAi() {
   const preview = await projects.preview("long");
   await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 });
   const scripts = new EpisodeScriptsService(projectsRoot);
-  await scripts.generate("long", 1, {});
+  await scripts.generate("long", 1, { userRequestId: "episode-images.openai-script-1" });
   await scripts.approve("long", 1, { approved: true });
   const assets = new LocalAssetsRepository(root);
   // Approved through the flow the app actually serves now, not a second implementation of it. That makes this
@@ -92,7 +92,7 @@ describe("real OpenAI Episode image generation", () => {
     const preview = await projects.preview("long");
     await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 });
     const scripts = new EpisodeScriptsService(projectsRoot);
-    await scripts.generate("long", 1, {});
+    await scripts.generate("long", 1, { userRequestId: "episode-images.openai-script-2" });
     await scripts.approve("long", 1, { approved: true });
     const assets = new LocalAssetsRepository(root);
     const mappingStore = new LocalProjectAssetMappingsRepository(projectsRoot);
@@ -126,7 +126,7 @@ describe("real OpenAI Episode image generation", () => {
     const preview = await projects.preview("long");
     await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 });
     const scripts = new EpisodeScriptsService(projectsRoot);
-    await scripts.generate("long", 1, {});
+    await scripts.generate("long", 1, { userRequestId: "episode-images.openai-script-3" });
     await scripts.approve("long", 1, { approved: true });
     const assets = new LocalAssetsRepository(root);
     const mappingStore = new LocalProjectAssetMappingsRepository(projectsRoot);
