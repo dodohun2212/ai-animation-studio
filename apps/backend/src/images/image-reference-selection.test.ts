@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import type { SceneNumber } from "@ai-animation-studio/shared";
 import type { StoredAssetMapping } from "../mappings/mapping-storage.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { collectReferenceImages, describeReferenceMappingsForScene } from "./image-reference-selection.js";
@@ -35,7 +36,7 @@ describe("collectReferenceImages with a Folder mapping", () => {
     await assets.updateCharacterFolderReferenceSet(folder.asset_id, { childAssetIds: [first.asset_id, second.asset_id], thumbnailAssetId: second.asset_id });
 
     const mapping = fixtureMapping({ asset_id: folder.asset_id, version_policy: "follow_latest", pinned_version: null });
-    const collected = await collectReferenceImages(assets, [mapping], path.join(root, "projects"), "p1", 1, null);
+    const collected = await collectReferenceImages(assets, [mapping], path.join(root, "projects"), 1 as SceneNumber, null);
 
     expect(collected.images).toHaveLength(1);
     expect(collected.images[0]).toEqual(pngB);
@@ -48,7 +49,7 @@ describe("collectReferenceImages with a Folder mapping", () => {
     const emptyFolder = await assets.createFolder({ assetType: "style", displayName: "Empty" });
     const mapping = fixtureMapping({ asset_id: emptyFolder.asset_id, version_policy: "follow_latest", pinned_version: null });
 
-    const collected = await collectReferenceImages(assets, [mapping], path.join(root, "projects"), "p1", 1, null);
+    const collected = await collectReferenceImages(assets, [mapping], path.join(root, "projects"), 1 as SceneNumber, null);
     expect(collected.images).toEqual([]);
     expect(collected.omittedCount).toBe(0);
   });
@@ -63,7 +64,7 @@ describe("collectReferenceImages with a Folder mapping", () => {
     // not count toward omittedCount even though it comes last in iteration order.
     mappings.push(fixtureMapping({ mapping_id: "MAP-missing", asset_id: "ASSET-DOES-NOT-EXIST", version_policy: "follow_latest", pinned_version: null }));
 
-    const collected = await collectReferenceImages(assets, mappings, path.join(root, "projects"), "p1", 1, null);
+    const collected = await collectReferenceImages(assets, mappings, path.join(root, "projects"), 1 as SceneNumber, null);
 
     expect(collected.images).toHaveLength(16);
     expect(collected.omittedCount).toBe(1); // 17 real images - 16 sent = 1 left out; the missing-Asset mapping is not counted.

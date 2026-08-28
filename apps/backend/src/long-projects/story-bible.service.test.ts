@@ -73,13 +73,13 @@ describe("StoryBibleService", () => {
     expect((await bible.updateStyleAssetLink("long_bible", { assetLink: null })).storyBible.styleAssetLink).toBeUndefined();
   });
 
-  it("rejects wrong, unavailable, disabled, and nonexistent global style Asset versions", async () => {
+  it("rejects wrong, unavailable, unapproved, and nonexistent global style Asset versions", async () => {
     const { bible, assets } = await services();
     const character = await assets.create({ buffer: image, originalname: "character.png", mimetype: "image/png" }, { assetType: "character", displayName: "Character", approved: true });
     const style = await assets.create({ buffer: image, originalname: "style.png", mimetype: "image/png" }, { assetType: "style", displayName: "Style", approved: true });
     await expect(bible.updateStyleAssetLink("long_bible", { assetLink: { assetId: character.asset_id, versionPolicy: "pinned_version", pinnedVersion: 1 } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     await expect(bible.updateStyleAssetLink("long_bible", { assetLink: { assetId: style.asset_id, versionPolicy: "follow_latest", pinnedVersion: 9 } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
-    await assets.update(style.asset_id, { approved: false, enabled: false });
+    await assets.update(style.asset_id, { approved: false });
     await expect(bible.updateStyleAssetLink("long_bible", { assetLink: { assetId: style.asset_id, versionPolicy: "pinned_version", pinnedVersion: 1 } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
@@ -92,8 +92,8 @@ describe("StoryBibleService", () => {
     await expect(bible.create("long_bible", "characters", { item: { name: "Unknown", assetLink: { ...link, assetId: "ASSET-CHAR-MISSING" } } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     await expect(bible.create("long_bible", "characters", { item: { name: "Version", assetLink: { ...link, pinnedVersion: 9 } } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     await expect(bible.create("long_bible", "characters", { item: { name: "Scope", assetLink: { ...link, episodeScope: { mode: "episode", episode: 3 } } } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
-    await assets.update(background.asset_id, { approved: false, enabled: false });
-    await expect(bible.create("long_bible", "locations", { item: { name: "Disabled", assetLink: { assetId: background.asset_id, versionPolicy: "follow_latest", pinnedVersion: null, episodeScope: { mode: "all" } } } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await assets.update(background.asset_id, { approved: false });
+    await expect(bible.create("long_bible", "locations", { item: { name: "Unapproved", assetLink: { assetId: background.asset_id, versionPolicy: "follow_latest", pinnedVersion: null, episodeScope: { mode: "all" } } } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     await expect(bible.create("long_bible", "secrets", { item: { name: "Secret", assetLink: link } as never })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 

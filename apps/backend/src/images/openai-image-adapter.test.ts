@@ -10,12 +10,11 @@ function jsonResponse(status: number, body: unknown, headers: Record<string, str
     headers: { get: (name: string) => headers[name.toLowerCase()] ?? null },
   } as unknown as Response;
 }
-const noSleep = async () => {};
 
 describe("callOpenAiImageApi", () => {
   it("posts the images/generations request and returns decoded PNG bytes", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }, { "x-request-id": "req-1" }));
-    const result = await callOpenAiImageApi("sk-test", "scene one", { fetchImpl: fetchMock, sleep: noSleep });
+    const result = await callOpenAiImageApi("sk-test", "scene one", { fetchImpl: fetchMock });
     expect(result.bytes).toEqual(Buffer.from(PNG_BASE64, "base64"));
     expect(result.requestId).toBe("req-1");
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -26,13 +25,13 @@ describe("callOpenAiImageApi", () => {
 
   it("uses caller-supplied model/size/quality/format instead of the defaults", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
-    await callOpenAiImageApi("sk-test", "p", { model: "m", size: "1024x1024", quality: "high", outputFormat: "jpeg", fetchImpl: fetchMock, sleep: noSleep });
+    await callOpenAiImageApi("sk-test", "p", { model: "m", size: "1024x1024", quality: "high", outputFormat: "jpeg", fetchImpl: fetchMock });
     expect(JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))).toMatchObject({ model: "m", size: "1024x1024", quality: "high", output_format: "jpeg" });
   });
 
   it("classifies a 401 as authentication and never retries", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { error: { code: "invalid_api_key" } }));
-    await expect(callOpenAiImageApi("sk", "p", { fetchImpl: fetchMock, sleep: noSleep })).rejects.toMatchObject({ category: "authentication" });
+    await expect(callOpenAiImageApi("sk", "p", { fetchImpl: fetchMock })).rejects.toMatchObject({ category: "authentication" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -54,13 +53,13 @@ describe("callOpenAiImageApi", () => {
 
   it("rejects a response with no b64_json as empty_response", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [] }));
-    await expect(callOpenAiImageApi("sk", "p", { fetchImpl: fetchMock, sleep: noSleep })).rejects.toMatchObject({ category: "empty_response" });
+    await expect(callOpenAiImageApi("sk", "p", { fetchImpl: fetchMock })).rejects.toMatchObject({ category: "empty_response" });
   });
 
   it("is an instance of the shared OpenAiAdapterError with a Korean message", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { error: {} }));
     try {
-      await callOpenAiImageApi("sk", "p", { fetchImpl: fetchMock, sleep: noSleep });
+      await callOpenAiImageApi("sk", "p", { fetchImpl: fetchMock });
       throw new Error("expected callOpenAiImageApi to throw");
     } catch (error) {
       expect(error).toBeInstanceOf(OpenAiAdapterError);
@@ -74,7 +73,7 @@ describe("callOpenAiImageEditApi", () => {
 
   it("posts a multipart/form-data images/edits request with one image[] part per Reference and returns decoded PNG bytes", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }, { "x-request-id": "req-2" }));
-    const result = await callOpenAiImageEditApi("sk-test", "scene one", [REFERENCE, REFERENCE], { fetchImpl: fetchMock, sleep: noSleep });
+    const result = await callOpenAiImageEditApi("sk-test", "scene one", [REFERENCE, REFERENCE], { fetchImpl: fetchMock });
     expect(result.bytes).toEqual(Buffer.from(PNG_BASE64, "base64"));
     expect(result.requestId).toBe("req-2");
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -92,20 +91,20 @@ describe("callOpenAiImageEditApi", () => {
 
   it("rejects when no Reference images are supplied, without calling fetch", async () => {
     const fetchMock = vi.fn();
-    await expect(callOpenAiImageEditApi("sk-test", "p", [], { fetchImpl: fetchMock, sleep: noSleep })).rejects.toMatchObject({ category: "invalid_request" });
+    await expect(callOpenAiImageEditApi("sk-test", "p", [], { fetchImpl: fetchMock })).rejects.toMatchObject({ category: "invalid_request" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("uses caller-supplied model/size/quality/format instead of the defaults", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
-    await callOpenAiImageEditApi("sk-test", "p", [REFERENCE], { model: "m", size: "1024x1024", quality: "high", outputFormat: "jpeg", fetchImpl: fetchMock, sleep: noSleep });
+    await callOpenAiImageEditApi("sk-test", "p", [REFERENCE], { model: "m", size: "1024x1024", quality: "high", outputFormat: "jpeg", fetchImpl: fetchMock });
     const form = (fetchMock.mock.calls[0] as [string, RequestInit])[1].body as FormData;
     expect(form.get("model")).toBe("m"); expect(form.get("size")).toBe("1024x1024"); expect(form.get("quality")).toBe("high"); expect(form.get("output_format")).toBe("jpeg");
   });
 
   it("classifies a 401 as authentication and never retries", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { error: { code: "invalid_api_key" } }));
-    await expect(callOpenAiImageEditApi("sk", "p", [REFERENCE], { fetchImpl: fetchMock, sleep: noSleep })).rejects.toMatchObject({ category: "authentication" });
+    await expect(callOpenAiImageEditApi("sk", "p", [REFERENCE], { fetchImpl: fetchMock })).rejects.toMatchObject({ category: "authentication" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -119,6 +118,6 @@ describe("callOpenAiImageEditApi", () => {
 
   it("rejects a response with no b64_json as empty_response", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [] }));
-    await expect(callOpenAiImageEditApi("sk", "p", [REFERENCE], { fetchImpl: fetchMock, sleep: noSleep })).rejects.toMatchObject({ category: "empty_response" });
+    await expect(callOpenAiImageEditApi("sk", "p", [REFERENCE], { fetchImpl: fetchMock })).rejects.toMatchObject({ category: "empty_response" });
   });
 });

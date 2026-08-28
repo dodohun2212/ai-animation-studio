@@ -53,7 +53,9 @@ afterEach(async () => {
 function runwayFetchMock(options: { failTaskId?: string } = {}) {
   const checkCounts = new Map<string, number>();
   let nextTaskId = 1;
-  return vi.fn(async (url: string) => {
+  return vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+    void init;
+    const url = String(input);
     if (url.endsWith("/v1/image_to_video")) {
       const taskId = `task-${nextTaskId++}`;
       return { ok: true, status: 200, json: async () => ({ id: taskId }), headers: { get: () => null } } as unknown as Response;
@@ -205,7 +207,9 @@ describe("real Runway episode video generation", () => {
     let notifyReachedSubmit: () => void = () => {};
     const reachedSubmit = new Promise<void>((resolve) => { notifyReachedSubmit = resolve; });
     let submitCalls = 0;
-    const fetchMock = vi.fn(async (url: string) => {
+    const fetchMock = vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+    void init;
+    const url = String(input);
       if (url.endsWith("/v1/image_to_video")) {
         submitCalls += 1;
         if (submitCalls === 1) { notifyReachedSubmit(); return new Promise((resolve) => { resolveStalledSubmit = resolve; }); }

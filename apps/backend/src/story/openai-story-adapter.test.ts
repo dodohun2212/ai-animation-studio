@@ -21,12 +21,11 @@ function jsonResponse(status: number, body: unknown, headers: Record<string, str
   } as unknown as Response;
 }
 
-const noSleep = async () => {};
 
 describe("callOpenAiStoryApi", () => {
   it("posts the strict json_schema request and returns the parsed, validated Story", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responsesBody(VALID_STORY), { "x-request-id": "req-1" }));
-    const result = await callOpenAiStoryApi("sk-test", "prompt text", { fetchImpl: fetchMock, sleep: noSleep });
+    const result = await callOpenAiStoryApi("sk-test", "prompt text", { fetchImpl: fetchMock });
     expect(result.story).toEqual(VALID_STORY);
     expect(result.requestId).toBe("req-1");
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -40,41 +39,41 @@ describe("callOpenAiStoryApi", () => {
 
   it("uses a caller-supplied model instead of the default", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responsesBody(VALID_STORY)));
-    await callOpenAiStoryApi("sk-test", "prompt", { model: "custom-model", fetchImpl: fetchMock, sleep: noSleep });
+    await callOpenAiStoryApi("sk-test", "prompt", { model: "custom-model", fetchImpl: fetchMock });
     expect(JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body)).model).toBe("custom-model");
   });
 
   it("classifies a 401 as authentication and never retries", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { error: { code: "invalid_api_key", message: "bad key" } }));
-    await expect(callOpenAiStoryApi("sk-bad", "p", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(callOpenAiStoryApi("sk-bad", "p", { fetchImpl: fetchMock }))
       .rejects.toMatchObject({ category: "authentication" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("classifies insufficient_quota as quota_or_permission and never retries", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(403, { error: { code: "insufficient_quota", message: "no quota" } }));
-    await expect(callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock }))
       .rejects.toMatchObject({ category: "quota_or_permission" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("classifies content_policy_violation as safety_policy and never retries", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(400, { error: { code: "content_policy_violation", message: "blocked" } }));
-    await expect(callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock }))
       .rejects.toMatchObject({ category: "safety_policy" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("classifies a bare 400 as invalid_request and never retries", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(400, { error: {} }));
-    await expect(callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock }))
       .rejects.toMatchObject({ category: "invalid_request" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("classifies context_length_exceeded distinctly from a generic invalid_request and never retries", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(400, { error: { code: "context_length_exceeded", message: "too long" } }));
-    await expect(callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock }))
       .rejects.toMatchObject({ category: "context_length_exceeded" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -105,26 +104,26 @@ describe("callOpenAiStoryApi", () => {
 
   it("rejects an empty output_text as empty_response", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { output: [] }));
-    await expect(callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock }))
       .rejects.toMatchObject({ category: "empty_response" });
   });
 
   it("rejects unparsable JSON text as invalid_response", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { output: [{ type: "message", content: [{ type: "output_text", text: "{not json" }] }] }));
-    await expect(callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock }))
       .rejects.toMatchObject({ category: "invalid_response" });
   });
 
   it("rejects JSON that fails the strict six-scene Story schema as invalid_response", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responsesBody({ title: "t", synopsis: "s", ending: "e", scenes: [SCENE(1)] })));
-    await expect(callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock }))
       .rejects.toMatchObject({ category: "invalid_response" });
   });
 
   it("is an instance of OpenAiStoryAdapterError with a Korean message", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { error: {} }));
     try {
-      await callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock, sleep: noSleep });
+      await callOpenAiStoryApi("sk", "p", { fetchImpl: fetchMock });
       throw new Error("expected callOpenAiStoryApi to throw");
     } catch (error) {
       expect(error).toBeInstanceOf(OpenAiStoryAdapterError);

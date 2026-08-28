@@ -27,7 +27,7 @@ function exchangeFetch() {
     .mockResolvedValueOnce(jsonResponse(200, { access_token: "long", expires_in: 5_184_000 }));
 }
 
-async function setup(fetchImpl: ReturnType<typeof vi.fn> = exchangeFetch()) {
+async function setup(fetchImpl: typeof fetch = exchangeFetch()) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "instagram-controller-")); roots.push(root);
   const connection = new InstagramConnectionStore(root);
   await connection.saveAppCredentials({ appId: "app-1", appSecret: "secret-1" });

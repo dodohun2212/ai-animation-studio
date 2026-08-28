@@ -28,7 +28,7 @@ function exchangeFetch(longLivedSeconds: number | null = 5_184_000) {
 }
 
 async function setup(
-  options: { app?: boolean; fetchImpl?: ReturnType<typeof vi.fn>; now?: () => number; callbackUri?: string | null } = {},
+  options: { app?: boolean; fetchImpl?: typeof fetch; now?: () => number; callbackUri?: string | null } = {},
 ) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "instagram-login-")); roots.push(root);
   const connection = new InstagramConnectionStore(root);
@@ -36,7 +36,7 @@ async function setup(
   const service = new InstagramLoginService(
     connection,
     options.callbackUri === undefined ? REDIRECT : options.callbackUri,
-    { fetchImpl: options.fetchImpl ?? vi.fn(), sleep: async () => {} },
+    { fetchImpl: options.fetchImpl ?? vi.fn<typeof fetch>(), sleep: async () => {} },
     options.now ?? Date.now,
   );
   return { root, connection, service };
@@ -352,7 +352,7 @@ describe("InstagramLoginService.lastLoginError", () => {
     // Everything in the failing path is asynchronous, so a second press can land while the first is still
     // failing. The newer attempt owns the slot.
     const { service } = await setup({
-      fetchImpl: vi.fn().mockImplementation(async () => {
+      fetchImpl: vi.fn<typeof fetch>().mockImplementation(async () => {
         await service.start({ flow: "callback" });
         return jsonResponse(400, { error: { message: "no", code: 1 } });
       }),

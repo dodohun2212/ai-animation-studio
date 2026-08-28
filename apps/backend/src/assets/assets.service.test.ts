@@ -49,7 +49,7 @@ describe("AssetsService", () => {
     const indexPath = path.join(root, "asset_library", "assets.json");
     const records = JSON.parse(await fs.readFile(indexPath, "utf8")) as Array<Record<string, unknown>>;
     const secondId = "ASSET-CHAR-SECOND";
-    const second = { ...records[0]!, asset_id: secondId, display_name: "Character side", role: "side" };
+    const second: Record<string, unknown> = { ...records[0]!, asset_id: secondId, display_name: "Character side", role: "side" };
     const folderId = "FOLDER-CHARACTER";
     records[0]!.parent_folder_id = folderId; records[0]!.sort_order = 0;
     second.parent_folder_id = folderId; second.sort_order = 1;

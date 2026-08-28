@@ -21,12 +21,12 @@ function pagesResponse(pages: unknown[] = [{ name: "이배드 스튜디오", ins
   return jsonResponse(200, { data: pages });
 }
 
-async function setup(options: { connected?: boolean; fetchImpl?: ReturnType<typeof vi.fn> } = {}) {
+async function setup(options: { connected?: boolean; fetchImpl?: typeof fetch } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "instagram-targets-")); roots.push(root);
   const connection = new InstagramConnectionStore(root);
   await connection.saveAppCredentials({ appId: "app-1", appSecret: "secret-1" });
   if (options.connected !== false) await connection.saveToken({ accessToken: TOKEN, expiresAt: null });
-  const fetchImpl = options.fetchImpl ?? vi.fn().mockResolvedValue(pagesResponse());
+  const fetchImpl = options.fetchImpl ?? vi.fn<typeof fetch>().mockResolvedValue(pagesResponse());
   const service = new InstagramTargetsService(root, connection, { fetchImpl, sleep: async () => {} });
   return { root, service, connection, fetchImpl };
 }

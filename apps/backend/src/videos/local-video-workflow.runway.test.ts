@@ -143,14 +143,14 @@ describe("real Runway video workflow", () => {
 
     const recordForScene1 = (records: Array<Record<string, unknown>>) => records.find((record) => record.scene_number === 1)!;
     fetchMock.mockClear();
-    const basePrompt = String(recordForScene1((await deps.projects.findById("video_workflow")).video_generation_records).prompt);
+    const basePrompt = String(recordForScene1((await deps.projects.findById("video_workflow")).video_generation_records as Array<Record<string, unknown>>).prompt);
     await workflow.regenerate("video_workflow", deps.accepted.jobId, [1], "  더 격렬하게  ");
     const submitCall = fetchMock.mock.calls.find((call) => String(call[0]).endsWith("/v1/image_to_video"))!;
     expect(JSON.parse(String((submitCall[1] as RequestInit).body))).toMatchObject({ promptText: `${basePrompt}\n더 격렬하게` });
 
     // Not stored: the record's own prompt field stays the plain scene prompt.
     const project = await deps.projects.findById("video_workflow");
-    expect(String(recordForScene1(project.video_generation_records).prompt)).toBe(basePrompt);
+    expect(String(recordForScene1(project.video_generation_records as Array<Record<string, unknown>>).prompt)).toBe(basePrompt);
   });
 
   it("reports a retry cost estimate reflecting real recorded spend for a Runway job", async () => {
@@ -177,7 +177,9 @@ describe("real Runway video workflow", () => {
   it("fails the scene with a category code plus Runway's own rejection detail instead of an uncaught exception when Runway rejects the submission itself", async () => {
     const deps = await setupWithConnectedRunway();
     const workflow = newWorkflow(deps);
-    const fetchMock = vi.fn(async (url: string) => {
+    const fetchMock = vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+    void init;
+    const url = String(input);
       if (url.endsWith("/v1/image_to_video")) {
         return { ok: false, status: 401, json: async () => ({ error: "invalid api key" }), headers: { get: () => null } } as unknown as Response;
       }
@@ -312,7 +314,9 @@ describe("real Runway video workflow", () => {
     let resolveSubmit: (value: unknown) => void = () => {};
     let notifyReachedSubmit: () => void = () => {};
     const reachedSubmit = new Promise<void>((resolve) => { notifyReachedSubmit = resolve; });
-    const fetchMock = vi.fn(async (url: string) => {
+    const fetchMock = vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+    void init;
+    const url = String(input);
       if (url.endsWith("/v1/image_to_video")) {
         notifyReachedSubmit();
         return new Promise((resolve) => { resolveSubmit = resolve; });
@@ -363,7 +367,9 @@ describe("real Runway video workflow", () => {
     let notifyReachedSubmit: () => void = () => {};
     const reachedSubmit = new Promise<void>((resolve) => { notifyReachedSubmit = resolve; });
     let submitCalls = 0;
-    const fetchMock = vi.fn(async (url: string) => {
+    const fetchMock = vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+    void init;
+    const url = String(input);
       if (url.endsWith("/v1/image_to_video")) {
         submitCalls += 1;
         if (submitCalls === 1) { notifyReachedSubmit(); return new Promise((resolve) => { resolveStalledSubmit = resolve; }); }

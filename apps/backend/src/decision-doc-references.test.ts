@@ -1,3 +1,4 @@
+import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,7 +51,9 @@ function headingLinesOutsideCodeFences(document: string): string[] {
 }
 
 async function collectSourceFiles(directory: string): Promise<string[]> {
-  let entries: Awaited<ReturnType<typeof fs.readdir>>;
+  // Dirent<string>, not the Buffer-named overload the bare ReturnType resolves to — `withFileTypes: true`
+  // is what this call actually asks for.
+  let entries: Dirent<string>[];
   try {
     entries = await fs.readdir(directory, { withFileTypes: true });
   } catch {

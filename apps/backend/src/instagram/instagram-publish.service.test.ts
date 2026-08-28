@@ -26,7 +26,9 @@ function jsonResponse(status: number, body: unknown): Response {
  */
 function graphFetch(options: { statuses?: string[]; failAt?: "container" | "upload" | "publish" } = {}) {
   const statuses = [...(options.statuses ?? ["FINISHED"])];
-  return vi.fn(async (url: string) => {
+  return vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+    void init;
+    const url = String(input);
     const target = String(url);
     if (target.includes("/me/accounts")) {
       return jsonResponse(200, { data: [{ name: "이배드 스튜디오", instagram_business_account: { id: IG_USER_ID, username: "ibad_studio" } }] });
@@ -52,7 +54,7 @@ function graphFetch(options: { statuses?: string[]; failAt?: "container" | "uplo
 
 async function setup(options: {
   connected?: boolean; withVideo?: boolean; alreadyPublished?: boolean;
-  fetchImpl?: ReturnType<typeof vi.fn>; now?: () => number;
+  fetchImpl?: typeof fetch; now?: () => number;
 } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "instagram-publish-")); roots.push(root);
   const projectsRoot = path.join(root, "projects");

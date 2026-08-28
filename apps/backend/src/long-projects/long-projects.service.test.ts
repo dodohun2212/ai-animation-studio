@@ -20,11 +20,18 @@ describe("LongProjectsService", () => {
     expect(await fs.stat(path.join(root!, "projects", "long_test", "long_story", "story_bible.json"))).toBeTruthy();
   });
 
-  it("rejects an episodeDurationSeconds other than 30 or 60 — the only durations 6 fixed scenes x Runway's 5s/10s clips can produce", async () => {
+  it("derives episodeDurationSeconds from the scene count and clip length, and refuses to be told one", async () => {
+    // Named for a rule that stopped existing: it said 30 or 60 were the only durations "6 fixed scenes x
+    // Runway's 5s/10s clips" could produce, from when the scene count was fixed at six. The value is derived
+    // now, so what is actually worth holding is that it is derived and that supplying one is refused — which is
+    // also the only reason the old assertion still passed, since 45 was rejected as an unknown field rather
+    // than as a disallowed duration.
     const subject = await service();
-    await expect(subject.create({ ...input, settings: { ...input.settings, episodeDurationSeconds: 45 as 30 } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(subject.create({ ...input, settings: { ...input.settings, episodeDurationSeconds: 45 } as never }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+
     const created = await subject.create(input);
-    expect(created.project.settings.episodeDurationSeconds).toBe(30);
+    expect(created.project.settings.episodeDurationSeconds).toBe(input.settings.sceneCount * input.settings.clipDurationSeconds);
   });
 
   it("rejects a non-boolean narrationEnabled or subtitlesEnabled on create", async () => {

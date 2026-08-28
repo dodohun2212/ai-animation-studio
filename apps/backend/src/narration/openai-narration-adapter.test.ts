@@ -19,12 +19,11 @@ function errorResponse(status: number, body: unknown, headers: Record<string, st
     headers: { get: (name: string) => headers[name.toLowerCase()] ?? null },
   } as unknown as Response;
 }
-const noSleep = async () => {};
 
 describe("callOpenAiTtsApi", () => {
   it("posts the audio/speech request and returns the raw audio bytes directly from the response body", async () => {
     const fetchMock = vi.fn().mockResolvedValue(audioResponse(200, AUDIO_BYTES, { "x-request-id": "req-1" }));
-    const result = await callOpenAiTtsApi("sk-test", "scene one narration", { fetchImpl: fetchMock, sleep: noSleep });
+    const result = await callOpenAiTtsApi("sk-test", "scene one narration", { fetchImpl: fetchMock });
     expect(result.bytes).toEqual(AUDIO_BYTES);
     expect(result.requestId).toBe("req-1");
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -35,25 +34,25 @@ describe("callOpenAiTtsApi", () => {
 
   it("uses caller-supplied model/voice/responseFormat instead of the defaults", async () => {
     const fetchMock = vi.fn().mockResolvedValue(audioResponse(200, AUDIO_BYTES));
-    await callOpenAiTtsApi("sk-test", "line", { model: "tts-1", voice: "nova", responseFormat: "wav", fetchImpl: fetchMock, sleep: noSleep });
+    await callOpenAiTtsApi("sk-test", "line", { model: "tts-1", voice: "nova", responseFormat: "wav", fetchImpl: fetchMock });
     expect(JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))).toMatchObject({ model: "tts-1", voice: "nova", response_format: "wav" });
   });
 
   it("rejects an empty or whitespace-only narration line without calling fetch", async () => {
     const fetchMock = vi.fn();
-    await expect(callOpenAiTtsApi("sk", "   ", { fetchImpl: fetchMock, sleep: noSleep })).rejects.toMatchObject({ category: "invalid_request" });
+    await expect(callOpenAiTtsApi("sk", "   ", { fetchImpl: fetchMock })).rejects.toMatchObject({ category: "invalid_request" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("rejects narration longer than the documented 4096-character input cap without calling fetch", async () => {
     const fetchMock = vi.fn();
-    await expect(callOpenAiTtsApi("sk", "a".repeat(4097), { fetchImpl: fetchMock, sleep: noSleep })).rejects.toMatchObject({ category: "invalid_request" });
+    await expect(callOpenAiTtsApi("sk", "a".repeat(4097), { fetchImpl: fetchMock })).rejects.toMatchObject({ category: "invalid_request" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("classifies a 401 as authentication and never retries", async () => {
     const fetchMock = vi.fn().mockResolvedValue(errorResponse(401, { error: { code: "invalid_api_key" } }));
-    await expect(callOpenAiTtsApi("sk", "line", { fetchImpl: fetchMock, sleep: noSleep })).rejects.toMatchObject({ category: "authentication" });
+    await expect(callOpenAiTtsApi("sk", "line", { fetchImpl: fetchMock })).rejects.toMatchObject({ category: "authentication" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -75,13 +74,13 @@ describe("callOpenAiTtsApi", () => {
 
   it("rejects an empty audio response body as empty_response", async () => {
     const fetchMock = vi.fn().mockResolvedValue(audioResponse(200, Buffer.alloc(0)));
-    await expect(callOpenAiTtsApi("sk", "line", { fetchImpl: fetchMock, sleep: noSleep })).rejects.toMatchObject({ category: "empty_response" });
+    await expect(callOpenAiTtsApi("sk", "line", { fetchImpl: fetchMock })).rejects.toMatchObject({ category: "empty_response" });
   });
 
   it("is an instance of the shared OpenAiAdapterError with a Korean message", async () => {
     const fetchMock = vi.fn().mockResolvedValue(errorResponse(401, { error: {} }));
     try {
-      await callOpenAiTtsApi("sk", "line", { fetchImpl: fetchMock, sleep: noSleep });
+      await callOpenAiTtsApi("sk", "line", { fetchImpl: fetchMock });
       throw new Error("expected callOpenAiTtsApi to throw");
     } catch (error) {
       expect(error).toBeInstanceOf(OpenAiAdapterError);

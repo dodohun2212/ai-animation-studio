@@ -169,6 +169,10 @@ export class StoryBibleService {
     let asset;
     try { asset = await this.assets.get(link.asset_id as string); } catch { throw longInvalidRequest("Story Bible Asset link is unavailable."); }
     const expectedType = collection === "characters" ? "character" : collection === "locations" ? "background" : "object";
+    // `enabled` is checked but nothing in the app can turn it off: creation always writes true and the update
+    // request has no such field, so only a hand-edited library file reaches that branch. Kept because the value
+    // is persisted and validated on load — but a test claiming to cover "a disabled Asset" is covering the
+    // unapproved case instead, which is what the two in this service's tests were doing.
     if (asset.asset_type !== expectedType || asset.is_folder || !asset.enabled || !asset.approved) throw longInvalidRequest("Story Bible Asset link is unavailable.");
     if (link.version_policy === "pinned_version" && !asset.versions.some((version) => version.version === link.pinned_version)) throw longInvalidRequest("Story Bible Asset link version is unavailable.");
     item.asset_link = link;

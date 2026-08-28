@@ -13,6 +13,9 @@
     "emitDecoratorMetadata": true,
     "strictPropertyInitialization": false
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts"]
+  // Test files are included on purpose. Left out, a contract change lands as a pile of runtime failures instead
+  // of compile errors — adding one required field to a request type produced ninety-one of them once — and a
+  // call site left stale by a refactor goes on passing arguments the function no longer takes. Both happened
+  // here (docs/06_DECISIONS.md D-030).
+  "include": ["src/**/*.ts"]
 }

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ApiError } from "@ai-animation-studio/shared";
 
 import { ProjectApiException } from "./project-api.error.js";
+import { SceneEditService } from "./scene-edit.service.js";
 import { ProjectsController } from "./projects.controller.js";
 import { LocalProjectRepository } from "./projects.repository.js";
 import { ProjectsService } from "./projects.service.js";
@@ -34,7 +35,11 @@ describe("ProjectsController", () => {
 
   beforeEach(async () => {
     root = await fsPromises.mkdtemp(path.join(os.tmpdir(), "projects-controller-test-"));
-    controller = new ProjectsController(new ProjectsService(new LocalProjectRepository(root)));
+    const repository = new LocalProjectRepository(root);
+    // The scene-edit dependency was simply missing, so it was `undefined` here. Nothing in this file touches a
+    // scene-edit route, which is why nothing failed — but the next test that does would have got an unreadable
+    // "cannot read property of undefined" instead of a result.
+    controller = new ProjectsController(new ProjectsService(repository), new SceneEditService(repository, root));
   });
 
   afterEach(async () => {

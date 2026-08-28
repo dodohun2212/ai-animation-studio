@@ -4,12 +4,14 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { SceneEditService } from "./scene-edit.service.js";
 import { ProjectsController } from "./projects.controller.js";
 import { LocalProjectRepository } from "./projects.repository.js";
 import { ProjectsService } from "./projects.service.js";
 
 function newBackendInstance(root: string): ProjectsController {
-  return new ProjectsController(new ProjectsService(new LocalProjectRepository(root)));
+  const repository = new LocalProjectRepository(root);
+  return new ProjectsController(new ProjectsService(repository), new SceneEditService(repository, root));
 }
 
 describe("project persistence across a Backend restart", () => {

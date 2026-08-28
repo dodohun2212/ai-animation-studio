@@ -103,8 +103,8 @@ describe("advanceRunwayScene", () => {
 
   it("downloads output and records success when Runway reports SUCCEEDED", async () => {
     const outputBytes = Buffer.from("fake-mp4-bytes");
-    const fetchImpl = vi.fn(async (url: string) => (
-      url.includes("/v1/tasks/") ? jsonResponse(200, { id: "task-1", status: "SUCCEEDED", output: ["https://cdn.runway/output.mp4"] }) : binaryResponse(outputBytes)
+    const fetchImpl = vi.fn(async (input: URL | RequestInfo) => (
+      String(input).includes("/v1/tasks/") ? jsonResponse(200, { id: "task-1", status: "SUCCEEDED", output: ["https://cdn.runway/output.mp4"] }) : binaryResponse(outputBytes)
     ));
     const budget = fakeBudget();
     const states = sixScenes({ 1: { status: "running", taskId: "task-1", submittedAt: new Date().toISOString() } });
