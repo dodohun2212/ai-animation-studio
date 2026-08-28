@@ -28,6 +28,45 @@ describe("EpisodeContinuityService", () => {
     expect(await continuity.get("long", 1)).toMatchObject({ memory: { episodeNumber: 1 } });
   });
 
+  it("says whether saving is possible before anything has been typed", async () => {
+    // 🔴 Reading was allowed at every state and saving at almost none, and nothing said so — the screen opened,
+    // took everything the person wrote, and refused at the end. The refusal is right; its timing was not, and
+    // its timing is the only thing that could change.
+    const { continuity, scripts } = await setup();
+    await scripts.generate("long", 1, {});
+
+    expect(await continuity.get("long", 1)).toMatchObject({ canSave: false });
+
+    await markEligible(1);
+
+    expect(await continuity.get("long", 1)).toMatchObject({ canSave: true });
+  });
+
+  it("answers the same question the save path asks", async () => {
+    // The report and the refusal have to come from one list. Two copies of "which states may save" is the shape
+    // that put this screen a step out of sync with its own server in the first place.
+    const { continuity, scripts } = await setup();
+    await scripts.generate("long", 1, {});
+
+    const before = await continuity.get("long", 1);
+    expect(before.canSave).toBe(false);
+    await expect(continuity.save("long", 1, { memory })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_CONTINUITY_NOT_ALLOWED" } });
+
+    await markEligible(1);
+    await scripts.generate("long", 2, {});
+    const after = await continuity.get("long", 1);
+    expect(after.canSave).toBe(true);
+    await expect(continuity.save("long", 1, { memory })).resolves.toMatchObject({ memory: { episodeNumber: 1 } });
+  });
+
+  it("reports it even when no notes have been written yet", async () => {
+    const { continuity, scripts } = await setup();
+    await scripts.generate("long", 1, {});
+    await markEligible(1);
+
+    expect(await continuity.get("long", 1)).toMatchObject({ memory: null, canSave: true });
+  });
+
   it("rejects malformed memory and accepts a missing next Episode as null", async () => {
     const { continuity, scripts } = await setup(); await scripts.generate("long", 1, {}); await markEligible(1);
     await expect(continuity.save("long", 1, { memory: { ...memory, events: ["x", 2] } as never })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });

@@ -331,7 +331,20 @@ export interface LongEpisodeContinuityMemory {
   userEdits: string;
   updatedAt: string;
 }
-export interface GetLongEpisodeContinuityResponse { memory: LongEpisodeContinuityMemory | null; }
+export interface GetLongEpisodeContinuityResponse {
+  memory: LongEpisodeContinuityMemory | null;
+  /**
+   * Whether saving is possible right now.
+   *
+   * Reading these notes is allowed at any point and saving them is not — they describe what an Episode ended up
+   * being, so they are only meaningful once its video work has started. Nothing said so: the screen opened, took
+   * everything the person typed, and refused at the end. Being told after writing is the worst moment to be
+   * told, and the refusal is the same either way, so the only thing that can change is when it arrives.
+   *
+   * Computed from the same list the save path checks, so the answer and the refusal cannot drift apart.
+   */
+  canSave: boolean;
+}
 export interface SaveLongEpisodeContinuityRequest { memory: Omit<LongEpisodeContinuityMemory, "episodeNumber" | "updatedAt">; }
 export interface SaveLongEpisodeContinuityResponse { memory: LongEpisodeContinuityMemory; nextEpisode: LongEpisodeDetail | null; }
 
