@@ -92,6 +92,42 @@ export function parseReview(value: unknown): StoredMappingReview {
   return item as unknown as StoredMappingReview;
 }
 
+/**
+ * Keys older review files carry that this one does not. Read and dropped, never written.
+ *
+ * `parseReview` refuses an unknown key outright, which is right for a file this service just wrote and wrong
+ * for one written months ago: a project whose review predates a field rename could not be opened at all, and
+ * the screen that reports it is the door to the paid image step. Same lenient-read / strict-write split the
+ * Story Bible uses for its retired fields.
+ */
+const retiredReviewKeys = new Set(["episode_number", "candidates"]);
+
+/**
+ * Reads a review file that may predate the current shape, and says what it can honestly say about it.
+ *
+ * Three things changed under stored files, and each one alone was enough to make a project unopenable:
+ *
+ * - keys that no longer exist (above);
+ * - `project_id`, which for an Episode is now `<project>/<Episode dir>` and used to be just `<project>`. A
+ *   legacy value is accepted when it is the project half of this location's id — a file copied from a
+ *   *different* Episode still fails, which is the check's actual purpose;
+ * - `status: "approved"` with no `reviewed_scenes`, which the current shape treats as impossible. It is not
+ *   forged into an approval: an approval means someone looked at every scene, and there is no record that
+ *   anyone did. It comes back as `waiting`, which costs a click and cannot spend anything.
+ *
+ * Writes stay strict — `saveReview` still goes through `parseReview`, so anything saved is in today's shape.
+ */
+export function parseStoredReview(value: unknown, locationId: string): StoredMappingReview {
+  if (!object(value)) throw new Error("shape");
+  const current = Object.fromEntries(Object.entries(value).filter(([key]) => !retiredReviewKeys.has(key)));
+  const storedId = current.project_id;
+  if (typeof storedId === "string" && storedId !== locationId && locationId.startsWith(`${storedId}/`)) current.project_id = locationId;
+  if (current.status === "approved" && !(Array.isArray(current.reviewed_scenes) && current.reviewed_scenes.length)) {
+    current.status = "waiting"; current.approved_at = ""; current.approved_by = "";
+  }
+  return parseReview(current);
+}
+
 export function toPublicMapping(mapping: StoredAssetMapping): ProjectAssetMapping {
   return { mappingId: mapping.mapping_id, projectId: mapping.project_id, assetId: mapping.asset_id, enabled: mapping.enabled, usageRole: mapping.usage_role, sceneScope: toPublicScope(mapping.scene_scope), assignmentSource: mapping.assignment_source, confidence: mapping.confidence, matchReason: mapping.match_reason, status: mapping.status, userConfirmed: mapping.user_confirmed, versionPolicy: mapping.version_policy, pinnedVersion: mapping.pinned_version, candidateOnly: mapping.candidate_only, createdAt: mapping.created_at, updatedAt: mapping.updated_at, snapshot: mapping.snapshot_path ? { relativePath: mapping.snapshot_path, sha256: mapping.snapshot_sha256!, sourceVersion: mapping.snapshot_source_version! } : null, selectedChildAssetIds: [...mapping.selected_child_asset_ids] };
 }

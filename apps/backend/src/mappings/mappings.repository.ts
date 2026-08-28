@@ -8,7 +8,7 @@ import { parseStoredProject, type StoredProject } from "../projects/project-stor
 import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { malformedMappings, malformedReview, mappingNotFound, mappingProjectNotFound, mappingStorageError, invalidMappings, invalidReview, snapshotInvalid } from "./mapping-api.error.js";
 import type { MappingLocation } from "./mapping-owner.js";
-import { parseMappings, parseReview, type StoredAssetMapping, type StoredMappingReview } from "./mapping-storage.js";
+import { parseMappings, parseReview, parseStoredReview, type StoredAssetMapping, type StoredMappingReview } from "./mapping-storage.js";
 
 const errorCode = (error: unknown) => typeof error === "object" && error !== null && "code" in error ? String((error as { code?: unknown }).code) : "";
 // Python hashes a stable key-sorted JSON representation. Recursively sort it before stringifying.
@@ -53,7 +53,7 @@ export class LocalProjectAssetMappingsRepository {
     await location.ensureExists();
     let raw: string;
     try { raw = await fsPromises.readFile(this.reviewPath(location), "utf8"); } catch (error) { if (errorCode(error) === "ENOENT") return { project_id: location.id, mapping_revision: 0, script_revision: 0, script_fingerprint: "", status: "waiting", approved_at: "", approved_by: "", text_only_confirmed: false, legacy_confirmed: false, reviewed_scenes: [] }; throw mappingStorageError(); }
-    try { const review = parseReview(JSON.parse(raw)); if (review.project_id !== location.id) throw new Error("project"); return review; } catch (error) { if (error instanceof SyntaxError) throw malformedReview(); throw invalidReview(); }
+    try { const review = parseStoredReview(JSON.parse(raw), location.id); if (review.project_id !== location.id) throw new Error("project"); return review; } catch (error) { if (error instanceof SyntaxError) throw malformedReview(); throw invalidReview(); }
   }
   async saveReview(location: MappingLocation, review: StoredMappingReview): Promise<void> {
     if (review.project_id !== location.id) throw invalidReview();
