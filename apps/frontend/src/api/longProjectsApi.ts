@@ -116,7 +116,11 @@ const SAFE_ERRORS: Record<string, string> = {
   // the button again, and pressing it again is exactly the double submission this lock exists to prevent — the
   // one that actually charged $3.00 twice (docs/06_DECISIONS.md D-010). So it says the opposite, plainly,
   // and says the wait resolves itself.
-  PROJECT_LOCKED: "다른 창에서 이 에피소드를 처리하는 중입니다. 다시 누르지 마세요 — 그쪽 작업이 끝나면 자동으로 반영됩니다.",
+  // One code, two subjects: this covers both an Episode's work and a Long Project's outline approval (D-010
+  // keeps one frontend entry per code). It used to name the Episode, so approving a project outline answered
+  // "이 에피소드를 처리하는 중" — a sentence about something the user had not touched. A message shared by two
+  // subjects must not name either.
+  PROJECT_LOCKED: "이 프로젝트에서 다른 작업이 진행 중입니다. 다시 누르지 마세요 — 그 작업이 끝나면 자동으로 반영됩니다.",
 };
 const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };

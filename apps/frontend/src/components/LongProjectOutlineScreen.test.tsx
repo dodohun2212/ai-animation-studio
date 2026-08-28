@@ -37,19 +37,56 @@ function textarea(): HTMLTextAreaElement {
   return screen.getByRole("textbox") as HTMLTextAreaElement;
 }
 
+/**
+ * Answers on the route that was asked for, rather than on call order.
+ *
+ * These tests used to queue responses positionally, which held only while the screen made exactly the requests
+ * they expected in exactly that order. Adding the mount-time project read shifted every queue by one and nine
+ * tests failed at once — each request quietly receiving the answer meant for another. Routing removes the
+ * coupling: a test states what each endpoint answers, and stays true when the screen asks for something else.
+ */
+type Answer = Response | Promise<Response>;
+function routedFetch(routes: { project?: Answer[]; preview?: Answer[]; approval?: Answer[] }) {
+  const queues: Record<string, Answer[]> = { project: [...(routes.project ?? [])], preview: [...(routes.preview ?? [])], approval: [...(routes.approval ?? [])] };
+  return vi.fn((url: string) => {
+    const key = url.endsWith("/outline/preview") ? "preview" : url.endsWith("/outline/approval") ? "approval" : "project";
+    const queue = queues[key]!;
+    const next = queue.length > 1 ? queue.shift()! : queue[0];
+    if (!next) throw new Error(`No response configured for ${key} (${url})`);
+    return Promise.resolve(next);
+  });
+}
+
+/** The mount-time read, for the ordinary case where the outline has not been generated yet. */
+function plannedProject() {
+  return jsonResponse(200, { project: makeLongProject({ id: "long_test", outlineStatus: "planned" }) });
+}
+
+/** How many requests went to `suffix`. Counting every request instead says "and nothing else happened", which is a different and more brittle claim. */
+function countTo(fetchMock: ReturnType<typeof vi.fn>, suffix: string): number {
+  return (fetchMock.mock.calls as Array<[string, RequestInit]>).filter(([url]) => url.endsWith(suffix)).length;
+}
+
+/** The one call made to `suffix`, so an assertion names the request it means instead of counting to it. */
+function callTo(fetchMock: ReturnType<typeof vi.fn>, suffix: string): [string, RequestInit] {
+  const call = (fetchMock.mock.calls as Array<[string, RequestInit]>).find(([url]) => url.endsWith(suffix));
+  if (!call) throw new Error(`No request was made to ${suffix}`);
+  return call;
+}
+
 describe("LongProjectOutlineScreen", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
   it("shows a loading state, then loads the preview via POST /long-projects/:projectId/outline/preview", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { preview: PREVIEW }));
+    const fetchMock = routedFetch({ project: [plannedProject()], preview: [jsonResponse(200, { preview: PREVIEW })] });
     renderScreen(fetchMock);
 
     expect(screen.getByText("미리보기를 불러오는 중...")).toBeTruthy();
     await screen.findByDisplayValue(PREVIEW.prompt);
 
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url, init] = callTo(fetchMock, "/outline/preview");
     expect(url).toBe("/long-projects/long_test/outline/preview");
     expect(init.method).toBe("POST");
     expect(init.body).toBeUndefined();
@@ -67,7 +104,7 @@ describe("LongProjectOutlineScreen", () => {
   });
 
   it("lets the user edit the textarea and restore the original prompt", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { preview: PREVIEW }));
+    const fetchMock = routedFetch({ project: [plannedProject()], preview: [jsonResponse(200, { preview: PREVIEW })] });
     renderScreen(fetchMock);
 
     await screen.findByDisplayValue(PREVIEW.prompt);
@@ -79,7 +116,7 @@ describe("LongProjectOutlineScreen", () => {
   });
 
   it("blocks approval of an empty prompt without calling the approval endpoint", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { preview: PREVIEW }));
+    const fetchMock = routedFetch({ project: [plannedProject()], preview: [jsonResponse(200, { preview: PREVIEW })] });
     renderScreen(fetchMock);
 
     await screen.findByDisplayValue(PREVIEW.prompt);
@@ -88,11 +125,11 @@ describe("LongProjectOutlineScreen", () => {
 
     const alert = await screen.findByTestId("validation-error");
     expect(alert.textContent).toBe("스토리 개요 프롬프트를 입력해야 합니다.");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(countTo(fetchMock, "/outline/approval")).toBe(0);
   });
 
   it("does not call the approval endpoint on the first click — it only opens an explicit confirmation panel", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { preview: PREVIEW }));
+    const fetchMock = routedFetch({ project: [plannedProject()], preview: [jsonResponse(200, { preview: PREVIEW })] });
     renderScreen(fetchMock);
 
     await screen.findByDisplayValue(PREVIEW.prompt);
@@ -111,11 +148,11 @@ describe("LongProjectOutlineScreen", () => {
     expect(panel.textContent).toContain(`$${LONG_OUTLINE_ESTIMATED_COST_USD.toFixed(2)}`);
     expect(panel.textContent).not.toContain("비용이 들지 않습니다");
     // Only the preview POST has happened — the first click never sent an approval request.
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(countTo(fetchMock, "/outline/approval")).toBe(0);
   });
 
   it("returns to editing without sending anything when the confirmation panel is cancelled", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { preview: PREVIEW }));
+    const fetchMock = routedFetch({ project: [plannedProject()], preview: [jsonResponse(200, { preview: PREVIEW })] });
     renderScreen(fetchMock);
 
     await screen.findByDisplayValue(PREVIEW.prompt);
@@ -126,28 +163,25 @@ describe("LongProjectOutlineScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "돌아가기" }));
 
     expect(screen.queryByTestId("approve-confirm-panel")).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(countTo(fetchMock, "/outline/approval")).toBe(0);
     expect(textarea()).not.toBeDisabled();
   });
 
   it("submits an explicit approved:true POST only after the second, final confirmation click", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { preview: PREVIEW }))
-      .mockResolvedValueOnce(jsonResponse(200, APPROVAL_RESPONSE));
+    const fetchMock = routedFetch({ project: [plannedProject()], preview: [jsonResponse(200, { preview: PREVIEW })], approval: [jsonResponse(200, APPROVAL_RESPONSE)] });
     renderScreen(fetchMock);
 
     await screen.findByDisplayValue(PREVIEW.prompt);
     fireEvent.change(textarea(), { target: { value: "수정된 아웃라인 프롬프트" } });
     fireEvent.click(screen.getByRole("button", { name: "이 프롬프트로 승인" }));
     await screen.findByTestId("approve-confirm-panel");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(countTo(fetchMock, "/outline/approval")).toBe(0);
 
     fireEvent.click(screen.getByRole("button", { name: "네, 승인합니다" }));
 
     await screen.findByTestId("approved-message");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(countTo(fetchMock, "/outline/approval")).toBe(1);
+    const [url, init] = callTo(fetchMock, "/outline/approval");
     expect(url).toBe("/long-projects/long_test/outline/approval");
     expect(init.method).toBe("POST");
     expect(JSON.parse(String(init.body))).toEqual({
@@ -158,10 +192,7 @@ describe("LongProjectOutlineScreen", () => {
   });
 
   it("shows the outline_ready episodes after final approval", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { preview: PREVIEW }))
-      .mockResolvedValueOnce(jsonResponse(200, GENERATED_APPROVAL_RESPONSE));
+    const fetchMock = routedFetch({ project: [plannedProject()], preview: [jsonResponse(200, { preview: PREVIEW })], approval: [jsonResponse(200, GENERATED_APPROVAL_RESPONSE)] });
     renderScreen(fetchMock);
 
     await screen.findByDisplayValue(PREVIEW.prompt);
@@ -180,10 +211,7 @@ describe("LongProjectOutlineScreen", () => {
   });
 
   it("shows a stale-hash error with a refresh action and never leaks the raw backend message", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { preview: PREVIEW }))
-      .mockResolvedValueOnce(jsonResponse(409, { code: "LONG_OUTLINE_STALE", message: "raw backend detail" }));
+    const fetchMock = routedFetch({ project: [plannedProject()], preview: [jsonResponse(200, { preview: PREVIEW })], approval: [jsonResponse(409, { code: "LONG_OUTLINE_STALE", message: "raw backend detail" })] });
     renderScreen(fetchMock);
 
     await screen.findByDisplayValue(PREVIEW.prompt);
@@ -199,10 +227,7 @@ describe("LongProjectOutlineScreen", () => {
   });
 
   it("shows a safe error for LONG_OUTLINE_NOT_ALLOWED without leaking the raw backend message", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { preview: PREVIEW }))
-      .mockResolvedValueOnce(jsonResponse(409, { code: "LONG_OUTLINE_NOT_ALLOWED", message: "raw backend detail" }));
+    const fetchMock = routedFetch({ project: [plannedProject()], preview: [jsonResponse(200, { preview: PREVIEW })], approval: [jsonResponse(409, { code: "LONG_OUTLINE_NOT_ALLOWED", message: "raw backend detail" })] });
     renderScreen(fetchMock);
 
     await screen.findByDisplayValue(PREVIEW.prompt);
@@ -218,14 +243,11 @@ describe("LongProjectOutlineScreen", () => {
 
   it("prevents a duplicate approval POST while one is already in flight", async () => {
     let resolveApproval: (response: Response) => void = () => {};
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { preview: PREVIEW }))
-      .mockReturnValueOnce(
-        new Promise<Response>((resolve) => {
-          resolveApproval = resolve;
-        }),
-      );
+    const fetchMock = routedFetch({
+      project: [plannedProject()],
+      preview: [jsonResponse(200, { preview: PREVIEW })],
+      approval: [new Promise<Response>((resolve) => { resolveApproval = resolve; })],
+    });
     renderScreen(fetchMock);
 
     await screen.findByDisplayValue(PREVIEW.prompt);
@@ -238,8 +260,48 @@ describe("LongProjectOutlineScreen", () => {
     expect(confirmButton).toBeDisabled();
     fireEvent.click(confirmButton);
 
-    expect(fetchMock).toHaveBeenCalledTimes(2); // 1 preview POST + exactly one approval POST
+    expect(countTo(fetchMock, "/outline/approval")).toBe(1);
     resolveApproval(jsonResponse(200, APPROVAL_RESPONSE));
     await waitFor(() => expect(screen.queryByTestId("approve-confirm-panel")).toBeNull());
+  });
+
+  it("does not offer approval again for an outline that is already approved", async () => {
+    // A reload during the ~25-second approval used to bring this screen back with the button armed. Pressing it
+    // again reached the server, and one project was billed twice for the same outline 22.9 seconds apart — the
+    // budget ledger shows the two requests genuinely overlapped. The server refuses the second attempt now, but
+    // a screen that invites a refused action is still wrong (D-023).
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: unknown) => Promise.resolve(
+      String(url).endsWith("/outline/preview")
+        ? jsonResponse(200, { preview: PREVIEW })
+        : jsonResponse(200, { project: makeLongProject({ outlineStatus: "outline_ready" }) }),
+    )));
+
+    render(<LongProjectOutlineScreen projectId="long_test" onBack={() => {}} />);
+
+    await screen.findByTestId("outline-already-approved");
+    expect(screen.queryByRole("button", { name: "이 프롬프트로 승인" })).toBeNull();
+  });
+
+  it("says how long the approval takes, and that pressing again will not help", async () => {
+    // The 23 seconds of an unchanged screen is what actually produced the second press. A button reading
+    // 전송 중… was the only sign it was working. Asserted on the specific promises the notice makes, so a
+    // future edit that softens it into a generic spinner has to change this test deliberately.
+    let resolveApproval: ((value: unknown) => void) | undefined;
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: unknown) => {
+      const target = String(url);
+      if (target.endsWith("/outline/preview")) return Promise.resolve(jsonResponse(200, { preview: PREVIEW }));
+      if (target.endsWith("/outline/approval")) return new Promise((resolve) => { resolveApproval = resolve; });
+      return Promise.resolve(jsonResponse(200, { project: makeLongProject({ outlineStatus: "planned" }) }));
+    }));
+
+    render(<LongProjectOutlineScreen projectId="long_test" onBack={() => {}} />);
+    await screen.findByDisplayValue(PREVIEW.prompt);
+    fireEvent.click(screen.getByRole("button", { name: "이 프롬프트로 승인" }));
+    fireEvent.click(await screen.findByRole("button", { name: "네, 승인합니다" }));
+
+    const notice = await screen.findByTestId("approve-in-progress");
+    expect(notice.textContent).toContain("20~30초");
+    expect(notice.textContent).toContain("다시 눌러도");
+    expect(resolveApproval).toBeDefined();
   });
 });

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { LONG_OUTLINE_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 import type { LongEpisodeOutline, LongProjectOutlinePromptPreview } from "@ai-animation-studio/shared";
 
-import { approveLongProjectOutline, createLongProjectOutlinePreview, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { approveLongProjectOutline, createLongProjectOutlinePreview, getLongProject, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { Spinner } from "./Spinner.js";
@@ -34,6 +34,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
   const [approveError, setApproveError] = useState<DisplayError | null>(null);
   const [approved, setApproved] = useState<ApprovedState | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [alreadyApproved, setAlreadyApproved] = useState(false);
 
   const loadRequest = useRef(0);
   const approveBusy = useRef(false);
@@ -43,6 +44,20 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
     setPreviewLoading(true);
     setPreviewError(null);
     try {
+      /**
+       * Asked before the preview is shown: an outline that is already approved must not be offered for approval
+       * again. A reload during a slow approval used to bring the screen back with the button armed, and pressing
+       * it a second time reached the server — which is how one project was billed twice for the same outline
+       * (D-023). The server refuses that now, but a screen that invites a refused action is still wrong.
+       */
+      const existing = await getLongProject(projectId).catch(() => null);
+      if (requestId !== loadRequest.current) return;
+      if (existing && existing.project.outlineStatus === "outline_ready") {
+        setAlreadyApproved(true);
+        setPreview(null);
+        return;
+      }
+      setAlreadyApproved(false);
       const response = await createLongProjectOutlinePreview(projectId);
       if (requestId !== loadRequest.current) return;
       setPreview(response.preview);
@@ -151,6 +166,13 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
           {previewError.message}
         </p>
       )}
+      {/* Sits outside the preview block on purpose: an already-approved outline has no preview to show, so a
+          notice nested inside it would never render — which is how it was written the first time. */}
+      {alreadyApproved && (
+        <p data-testid="outline-already-approved" className="rounded-xl border border-emerald-400/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-200">
+          이 작품의 스토리 개요는 이미 승인되었습니다. 회차 개요는 왼쪽 메뉴에서 볼 수 있습니다.
+        </p>
+      )}
 
       {preview && (
         <div className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
@@ -199,6 +221,18 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
           {validationError && (
             <p role="alert" data-testid="validation-error" className="text-sm text-rose-400">
               {validationError}
+            </p>
+          )}
+          {/* The wait is the defect this addresses. One project was billed for this outline twice, 22.9 seconds
+              apart, and the ledger shows the two requests genuinely overlapped inside the server — so the second
+              press happened while the first was still running. A button reading 전송 중… was the only sign, and
+              after twenty seconds of an otherwise unchanged screen that is not enough to stop someone pressing
+              again. The server now refuses the second attempt, but the person should not be put in the position
+              of making it: say how long this takes, and say that pressing again cannot help. */}
+          {approvePending && (
+            <p data-testid="approve-in-progress" className="rounded-xl border border-violet-400/30 bg-violet-500/5 px-4 py-3 text-sm text-violet-200">
+              AI가 회차 개요를 쓰는 중입니다. <span className="font-semibold">보통 20~30초쯤 걸립니다.</span>{" "}
+              이 화면을 닫거나 다시 누르지 마세요 — 다시 눌러도 빨라지지 않고, 이미 보낸 요청은 그대로 진행됩니다.
             </p>
           )}
           {confirmOpen && (
