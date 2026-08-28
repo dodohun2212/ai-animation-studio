@@ -170,6 +170,36 @@ describe("real OpenAI Episode image generation", () => {
     expect(usage).toEqual([expect.objectContaining({ succeeded: false })]);
   });
 
+  it("keeps the scenes it already paid for when a later one fails, and buys only the rest on retry", async () => {
+    // The money question a real run raises and nothing here answered: the existing failure case fails on scene
+    // one, so there is never any partial work to keep. Fail partway instead and the retry either reuses what was
+    // already bought or buys it again — six scenes at ten cents each, so getting this wrong is most of the cost
+    // of the step, silently, on exactly the retry someone reaches for after an error.
+    const { images, projectsRoot } = await setupWithConnectedOpenAi();
+    let calls = 0;
+    const failingAtFourth = vi.fn().mockImplementation(async () => {
+      calls += 1;
+      return calls === 4 ? jsonResponse(401, { error: { code: "invalid_api_key" } }) : jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] });
+    });
+    vi.stubGlobal("fetch", failingAtFourth);
+
+    await expect(images.generate("long", 1, { approved: true })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_PROVIDER_ERROR" } });
+    expect(calls).toBe(4);
+
+    const imageDirectory = path.join(projectsRoot, "long", "long_story", "Episode01", "images");
+    const kept = (await fs.readdir(imageDirectory)).filter((name) => name.endsWith(".png"));
+    expect(kept).toHaveLength(3);
+
+    // The retry: three already on disk, three still to buy.
+    const succeeding = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", succeeding);
+    const second = await images.generate("long", 1, { approved: true });
+
+    expect(succeeding).toHaveBeenCalledTimes(3);
+    expect(second.reusedSceneNumbers).toEqual([1, 2, 3]);
+    expect(second.generatedSceneNumbers).toEqual([4, 5, 6]);
+  });
+
   it("regenerates one scene via the real adapter and reports a retry cost estimate", async () => {
     const { images } = await setupWithConnectedOpenAi();
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
