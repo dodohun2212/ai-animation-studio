@@ -28,7 +28,8 @@ import type {
   UpdateShortProjectCastResponse,
 } from "@ai-animation-studio/shared";
 
-import { sceneCountLocked, invalidRequest, projectArchiveCollision, projectArchiveNotAllowed, projectNotFound, projectRestoreCollision, storageError } from "./project-api.error.js";
+import { shortProjectAspectRatio } from "./project-aspect.js";
+import { aspectRatioLocked, sceneCountLocked, invalidRequest, projectArchiveCollision, projectArchiveNotAllowed, projectNotFound, projectRestoreCollision, storageError } from "./project-api.error.js";
 import { createStoredProject, toApiProject, toApiSummary } from "./project.mapper.js";
 import { applyShortProjectAssetReferences, parseShortProjectAssetReferences, toShortProjectAssetReferences } from "./project-asset-references.js";
 import { applyPostDraft, parsePostDraft, toPostDraft } from "./project-post-draft.js";
@@ -156,6 +157,10 @@ export class ProjectsService {
     const storyScenes = stored.scenes.length;
     if (storyScenes > 0 && settings.sceneCount !== toShortProjectSettings(stored).sceneCount) throw sceneCountLocked(storyScenes);
     const updated = applyShortProjectSettings(stored, settings, new Date().toISOString());
+    // Compared through the one function that reads orientation from storage, rather than by looking at the
+    // request's own text: that function is where "16 : 9" and "16:9" are decided to be the same thing, and a
+    // second reading here would be the sixth copy of a derivation that already caused this exact bug once.
+    if (stored.generated_images.length > 0 && shortProjectAspectRatio(updated) !== shortProjectAspectRatio(stored)) throw aspectRatioLocked();
     await this.repository.save(updated);
     return { project: toApiProject(updated), settings };
   }

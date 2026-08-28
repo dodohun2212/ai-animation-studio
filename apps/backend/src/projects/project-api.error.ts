@@ -12,7 +12,8 @@ export type ProjectErrorCode =
   | "PROJECT_ARCHIVE_NOT_ALLOWED"
   | "PROJECT_ARCHIVE_COLLISION"
   | "PROJECT_RESTORE_COLLISION"
-  | "PROJECT_SCENE_COUNT_LOCKED";
+  | "PROJECT_SCENE_COUNT_LOCKED"
+  | "PROJECT_ASPECT_RATIO_LOCKED";
 
 export class ProjectApiException extends HttpException {
   constructor(
@@ -108,5 +109,19 @@ export function projectRestoreCollision(): ProjectApiException {
 export function sceneCountLocked(storyScenes: number): ProjectApiException {
   return new ProjectApiException("PROJECT_SCENE_COUNT_LOCKED",
     `This project's Story already has ${storyScenes} scenes. Regenerate the Story to change how many it has.`,
+    HttpStatus.CONFLICT);
+}
+
+/**
+ * The orientation cannot be changed once images have been generated at the current one.
+ *
+ * Image generation, the video request and the merge each read it when they run. Changing it afterwards sends
+ * portrait images to the video provider asking for landscape, and the merge pads the result to the new shape —
+ * paid work at a size nothing else in the project matches. The Long Project has the same rule for the same
+ * reason; this is the short side's half.
+ */
+export function aspectRatioLocked(): ProjectApiException {
+  return new ProjectApiException("PROJECT_ASPECT_RATIO_LOCKED",
+    "This project already has images generated at its current orientation. Regenerate the images to change it.",
     HttpStatus.CONFLICT);
 }

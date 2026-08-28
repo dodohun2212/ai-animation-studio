@@ -138,6 +138,31 @@ describe("ProjectsService", () => {
     expect((await service.getProjectSettings("story_scenes")).settings.sceneCount).toBe(4);
   });
 
+  it("refuses an orientation change once images exist, and does not count a rewritten but identical value as a change", async () => {
+    // The short half of the Long Project's rule, for the same reason: image generation, the video request and
+    // the merge each read orientation when they run, so flipping it afterwards sends portrait images to the
+    // provider asking for landscape. The second half of this test is the part worth having — the value reaches
+    // storage as loose text, and "16 : 9" saved over "16:9" must not read as a change.
+    await service.createProject({ projectId: "orientation", topic: "등대" });
+    const settings = {
+      projectName: "등대", topic: "등대", genre: "", mood: "", character: "", lore: "", fullStory: "",
+      sceneCount: 6 as const, clipDurationSeconds: 5 as const, additionalNotes: "",
+      styleNotes: { aspect: "16:9" }, narrationEnabled: false, subtitlesEnabled: false,
+    };
+    await service.updateProjectSettings("orientation", { settings });
+
+    const repository = new LocalProjectRepository(root);
+    const stored = await repository.findById("orientation");
+    stored.generated_images = ["images/scene1.png"];
+    await repository.save(stored);
+
+    await expect(service.updateProjectSettings("orientation", { settings: { ...settings, styleNotes: { aspect: "9:16" } } }))
+      .rejects.toMatchObject({ response: { code: "PROJECT_ASPECT_RATIO_LOCKED" } });
+
+    const spaced = await service.updateProjectSettings("orientation", { settings: { ...settings, styleNotes: { aspect: "16 : 9" }, projectName: "등대지기" } });
+    expect(spaced.settings.projectName).toBe("등대지기");
+  });
+
   it("returns an empty cast for a project that has never set one", async () => {
     await service.createProject({ projectId: "cast_project", topic: "topic" });
     expect(await service.getProjectCast("cast_project")).toEqual({ cast: [] });
