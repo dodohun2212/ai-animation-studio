@@ -357,4 +357,25 @@ describe("LongStoryBibleScreen", () => {
     const body = JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body));
     expect(body.item).not.toHaveProperty("revealAvailableEpisode");
   });
+
+  // A refusal that renders several screens above the button reads as the app doing nothing, and the next thing
+  // a person does is press again. The error belongs where the action was.
+  it("shows a failed save inside the form, beside the button that was pressed", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { storyBible: emptyBible }))
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { project: makeLongProject({ id: "long_test" }) }))
+      .mockResolvedValueOnce(jsonResponse(400, { code: "INVALID_REQUEST", message: "Story Bible Asset link is unavailable." }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongStoryBibleScreen projectId="long_test" onBack={() => {}} />);
+
+    await screen.findByTestId("story-bible-empty");
+    fireEvent.change(screen.getByLabelText("항목 이름"), { target: { value: "이배드" } });
+    fireEvent.click(screen.getByRole("button", { name: "항목 추가" }));
+
+    const error = await screen.findByTestId("story-bible-submit-error");
+    // The form is what must hold it, not the page: within() proves the position, not just the presence.
+    expect(within(screen.getByRole("form", { name: "설정집 항목 추가" })).getByTestId("story-bible-submit-error")).toBe(error);
+    expect(error.textContent).not.toContain("Story Bible Asset link");
+  });
 });

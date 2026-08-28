@@ -187,6 +187,15 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
    * accepted it; only the screen never asked for it.
    */
   const [revealFrom, setRevealFrom] = useState("");
+  /**
+   * A failed save, shown inside the form rather than only at the top of the screen.
+   *
+   * The screen-level error sits above everything; this form is the last thing on a long page. A person who
+   * pressed 항목 추가 is looking at the button, and the refusal was rendering several screens above them — so
+   * the app appeared to do nothing at all. An error nobody can see is the same as no error, and worse than a
+   * visible one, because the next thing a person does is press again.
+   */
+  const [submitError, setSubmitError] = useState<DisplayError | null>(null);
   const [editing, setEditing] = useState<LongStoryBibleItem | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -315,7 +324,7 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
     event.preventDefault();
     if (busy.current) return;
     if (!name.trim()) { setValidationError("이름을 입력하세요."); return; }
-    setValidationError(null); busy.current = true; setPending(true);
+    setValidationError(null); setSubmitError(null); busy.current = true; setPending(true);
     try {
       if (editing) {
         const response = await updateLongStoryBibleItem(projectId, collection, editing.id, { item: { ...itemInput(editing), ...draft() } });
@@ -324,8 +333,8 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
         const response = await createLongStoryBibleItem(projectId, collection, { item: draft() });
         setBible(response.storyBible);
       }
-      setError(null); resetEditor();
-    } catch (caught) { setError(toLongStoryBibleDisplayError(caught)); }
+      setError(null); setSubmitError(null); resetEditor();
+    } catch (caught) { setSubmitError(toLongStoryBibleDisplayError(caught)); }
     finally { busy.current = false; setPending(false); }
   }
   async function confirmDelete() {
@@ -725,6 +734,11 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
               </>
             )}
           </fieldset>
+        )}
+        {submitError && (
+          <p role="alert" data-testid="story-bible-submit-error" data-error-code={submitError.code} className="text-sm text-rose-400">
+            {submitError.message}
+          </p>
         )}
         <div className="flex gap-2">
           <button type="submit" className={primaryButton} disabled={pending}>
