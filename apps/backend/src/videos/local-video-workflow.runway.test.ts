@@ -220,12 +220,18 @@ describe("real Runway video workflow", () => {
     // interval * 2 + 3 seconds is right until the machine is busy, and then the ticks land after it and the
     // assertions read a half-finished state — which is how this test came to fail about once every few full
     // runs while passing every time it was run on its own.
+    // Wait for the *last* of the two facts, not the first. Scene 2 is submitted after scene 1 is written as
+    // succeeded, so a loop that stops at scene 1 can read the gap between those two writes and find scene 2
+    // still "created" — which is exactly how this failed roughly one full run in five while passing every time
+    // it ran alone. Scene 2 reaching "running" implies scene 1 finished, so waiting on it covers both.
     const deadline = Date.now() + (RUNWAY_POLL_INTERVAL_SECONDS * 4 + 10) * 1000;
     let project = await deps.projects.findById("video_workflow");
     for (;;) {
-      const current = (project.video_generation_records as Array<Record<string, unknown>>).find((record) => record.scene_number === 1);
-      if (current?.status === "succeeded") break;
-      if (Date.now() > deadline) throw new Error(`scene 1 never left ${String(current?.status)} on the background timer`);
+      const records = project.video_generation_records as Array<Record<string, unknown>>;
+      const first = records.find((record) => record.scene_number === 1);
+      const second = records.find((record) => record.scene_number === 2);
+      if (second?.status === "running") break;
+      if (Date.now() > deadline) throw new Error(`the background timer left scene 1 ${String(first?.status)} and scene 2 ${String(second?.status)}`);
       await new Promise((resolve) => setTimeout(resolve, 100));
       project = await deps.projects.findById("video_workflow");
     }
