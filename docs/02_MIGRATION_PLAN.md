@@ -1647,3 +1647,10 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - **`episode-images.openai.test.ts`의 시드를 새 흐름으로 교체** — 이제 그 테스트가 통합 증명이다. 리뷰를 쓰는 쪽과 게이트가 검사하는 쪽이 어긋나면 여섯 케이스 전부 게이트에서 실패한다(예전엔 기능이 도달 불가인 채로 통과했음).
   - 신규 테스트 5건(내레이션 제외, 지문 등가성, 전이, 재시작 무해, 대본 미승인 거부).
   - 검증: root typecheck 전부 통과, Backend 979개 전부 통과, frontend 960개 전부 통과, root build 전부 통과.
+- [x] **낡은 회차 매핑 구현 철거 — 에셋 모델 재설계 완료(Round 212)**: 새 경로가 옛 경로가 하던 걸 다 하고 못 하던 것도 한다는 걸 **먼저 증명한 뒤**(Round 207 통합 테스트, Round 211 데이터 경로 연결) 지움.
+  - 삭제: `episode-asset-mappings.service.ts`(+테스트), `episode-asset-mappings.controller.ts`, `episode-image-reference-selection.ts`(+테스트), `LongEpisodeMappingReviewScreen.tsx`(+테스트).
+  - shared에서 **타입 12개**(`LongEpisodeAssetMapping*` 계열 + `LongEpisodeAutomaticReferenceSummary` 계열) + **라우트 5개** 제거. 프런트의 죽은 API 함수·타입 가드·테스트 케이스도 함께.
+  - **테스트 시드를 공용 픽스처로 모음**(`episode-mapping-test-fixtures.ts`): 6개 테스트 파일이 같은 3줄 시드를 반복하고 있었음. 파일을 직접 찍어 만드는 대신 **실제 흐름을 돌린다** — 리뷰를 만드는 쪽과 다음 단계가 검사하는 쪽이 어긋나면 여섯 파일이 전부 실패해서 알려줌. 직접 찍는 픽스처였으면 계속 초록이고 아무것도 증명 못 했을 것(D-017).
+  - **중복 `withoutNarration`/`fingerprint` 사본 2개가 함께 사라짐** — 그 복사본들이 어긋난 것이 Round 211의 근본 원인이었음. 이제 그 규칙은 `MappingOwner.scenes` 한 곳에만 있음.
+  - 결과: 회차 매핑이 단기와 **같은 흐름·같은 저장·같은 리뷰 규칙·같은 화면**을 씀. Round 224의 B-1(폴더 거부)·B-3(에피소드에서 매핑 생성 불가)이 별도 수정 없이 해소되고, B-2(적용 범위가 단수)는 장면 단위 `sceneScope`로 대체됨.
+  - 검증: root typecheck 전부 통과, Backend 971개 전부 통과, frontend 953개 전부 통과, root build 전부 통과.

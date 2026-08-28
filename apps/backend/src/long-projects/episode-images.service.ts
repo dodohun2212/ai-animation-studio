@@ -15,7 +15,6 @@ import { longEpisodeImagesBudgetExceeded, longEpisodeImagesInvalid, longEpisodeI
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
-import { EpisodeAssetMappingsService } from "./episode-asset-mappings.service.js";
 import { EpisodeContinuityReferenceService } from "./episode-continuity-reference.service.js";
 import { collectReferenceImages } from "../images/image-reference-selection.js";
 import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";

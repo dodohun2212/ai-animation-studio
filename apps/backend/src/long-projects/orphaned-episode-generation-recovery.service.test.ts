@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
-import { EpisodeAssetMappingsService } from "./episode-asset-mappings.service.js";
+import { approveEpisodeMappingReview } from "./episode-mapping-test-fixtures.js";
 import { EpisodeImagesService } from "./episode-images.service.js";
 import { EpisodeScriptsService } from "./episode-scripts.service.js";
 import { EpisodeVideoMergeService } from "./episode-video-merge.service.js";
@@ -44,9 +44,7 @@ async function toAssetMappingApproved(projectsRoot: string, episodeNumber: numbe
   const scripts = new EpisodeScriptsService(projectsRoot);
   await scripts.generate("long", episodeNumber, {});
   await scripts.approve("long", episodeNumber, { approved: true });
-  const mappings = new EpisodeAssetMappingsService(projectsRoot, new LocalAssetsRepository(path.dirname(projectsRoot)));
-  const mapping = await mappings.begin("long", episodeNumber, { textOnlyConfirmed: true });
-  await mappings.approve("long", episodeNumber, { approved: true, scriptFingerprint: mapping.review.scriptFingerprint });
+  await approveEpisodeMappingReview(projectsRoot, path.dirname(projectsRoot), "long", episodeNumber);
 }
 async function toWaitingForVideoConfirmation(projectsRoot: string, episodeNumber: number): Promise<void> {
   const images = new EpisodeImagesService(projectsRoot);

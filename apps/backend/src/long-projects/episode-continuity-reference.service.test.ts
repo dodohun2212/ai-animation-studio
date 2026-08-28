@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
-import { EpisodeAssetMappingsService } from "./episode-asset-mappings.service.js";
+import { approveEpisodeMappingReview } from "./episode-mapping-test-fixtures.js";
 import { EpisodeContinuityReferenceService } from "./episode-continuity-reference.service.js";
 import { EpisodeImagesService } from "./episode-images.service.js";
 import { EpisodeScriptsService } from "./episode-scripts.service.js";
@@ -15,8 +15,8 @@ const episode = (number: number, file: string) => path.join(root!, "projects", "
 async function setup() {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-continuity-reference-")); const projectsRoot = path.join(root, "projects"); const projects = new LongProjectsService(projectsRoot);
   await projects.create({ projectId: "long", settings }); const preview = await projects.preview("long"); await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 });
-  const scripts = new EpisodeScriptsService(projectsRoot); const mappings = new EpisodeAssetMappingsService(projectsRoot, new LocalAssetsRepository(root)); const images = new EpisodeImagesService(projectsRoot);
-  for (const number of [1, 2]) { await scripts.generate("long", number, {}); await scripts.approve("long", number, { approved: true }); const review = await mappings.begin("long", number, { textOnlyConfirmed: true }); await mappings.approve("long", number, { approved: true, scriptFingerprint: review.review.scriptFingerprint }); }
+  const scripts = new EpisodeScriptsService(projectsRoot); const images = new EpisodeImagesService(projectsRoot);
+  for (const number of [1, 2]) { await scripts.generate("long", number, {}); await scripts.approve("long", number, { approved: true }); await approveEpisodeMappingReview(projectsRoot, root, "long", number); }
   return { images, reference: new EpisodeContinuityReferenceService(projectsRoot) };
 }
 async function approveFirstEpisode(images: EpisodeImagesService) { await images.generate("long", 1, { approved: true }); for (const scene of [1, 2, 3, 4, 5, 6] as const) await images.approve("long", 1, String(scene), { approved: true }); }
@@ -55,16 +55,16 @@ describe("EpisodeContinuityReferenceService", () => {
     const projectsRoot = path.join(root, "projects"); const projects = new LongProjectsService(projectsRoot);
     await projects.create({ projectId: "long", settings: { ...settings, sceneCount: 4 } });
     const preview = await projects.preview("long"); await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 });
-    const scripts = new EpisodeScriptsService(projectsRoot); const mappings = new EpisodeAssetMappingsService(projectsRoot, new LocalAssetsRepository(root)); const images = new EpisodeImagesService(projectsRoot); const reference = new EpisodeContinuityReferenceService(projectsRoot);
+    const scripts = new EpisodeScriptsService(projectsRoot); const images = new EpisodeImagesService(projectsRoot); const reference = new EpisodeContinuityReferenceService(projectsRoot);
 
     await scripts.generate("long", 1, {}); await scripts.approve("long", 1, { approved: true });
-    const review1 = await mappings.begin("long", 1, { textOnlyConfirmed: true }); await mappings.approve("long", 1, { approved: true, scriptFingerprint: review1.review.scriptFingerprint });
+    await approveEpisodeMappingReview(projectsRoot, root, "long", 1);
 
     // Bump the project's own scene count before Episode 2 is ever created, so Episode 2 snapshots 8 while
     // Episode 1 keeps its already-snapshotted 4 — sourceSceneNumber must reflect Episode 1's own count.
     await projects.updateSettings("long", { settings: { ...settings, sceneCount: 8 } });
     await scripts.generate("long", 2, {}); await scripts.approve("long", 2, { approved: true });
-    const review2 = await mappings.begin("long", 2, { textOnlyConfirmed: true }); await mappings.approve("long", 2, { approved: true, scriptFingerprint: review2.review.scriptFingerprint });
+    await approveEpisodeMappingReview(projectsRoot, root, "long", 2);
 
     await images.generate("long", 1, { approved: true });
     for (const scene of [1, 2, 3, 4]) await images.approve("long", 1, String(scene), { approved: true });

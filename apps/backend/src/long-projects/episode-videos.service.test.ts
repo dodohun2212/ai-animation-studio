@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
-import { EpisodeAssetMappingsService } from "./episode-asset-mappings.service.js";
+import { approveEpisodeMappingReview } from "./episode-mapping-test-fixtures.js";
 import { EpisodeImagesService } from "./episode-images.service.js";
 import { EpisodeScriptsService } from "./episode-scripts.service.js";
 import { EpisodeVideosService } from "./episode-videos.service.js";
@@ -15,7 +15,7 @@ async function setup(episodeDurationSeconds: 30 | 60 = 30, aspectRatio: "9:16" |
   root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-videos-")); const projectsRoot = path.join(root, "projects"); const projects = new LongProjectsService(projectsRoot);
   await projects.create({ projectId: "long", settings: { ...settings, clipDurationSeconds: episodeDurationSeconds === 60 ? 10 : 5, aspectRatio } }); const outline = await projects.preview("long"); await projects.approve("long", { approved: true, prompt: outline.preview.prompt, promptSha256: outline.preview.promptSha256 });
   const scripts = new EpisodeScriptsService(projectsRoot); await scripts.generate("long", 1, {}); await scripts.approve("long", 1, { approved: true });
-  const mappings = new EpisodeAssetMappingsService(projectsRoot, new LocalAssetsRepository(root)); const mapping = await mappings.begin("long", 1, { textOnlyConfirmed: true }); await mappings.approve("long", 1, { approved: true, scriptFingerprint: mapping.review.scriptFingerprint });
+  await approveEpisodeMappingReview(projectsRoot, root, "long", 1);
   const images = new EpisodeImagesService(projectsRoot); await images.generate("long", 1, { approved: true }); for (const number of [1, 2, 3, 4, 5, 6] as const) await images.approve("long", 1, String(number), { approved: true });
   return { videos: new EpisodeVideosService(projectsRoot), projectsRoot };
 }

@@ -131,49 +131,7 @@ export interface UpdateLongEpisodeScriptResponse { episode: LongEpisodeDetail; }
 export interface ApproveLongEpisodeScriptRequest { approved: true; }
 export interface ApproveLongEpisodeScriptResponse { episode: LongEpisodeDetail; }
 
-export interface LongEpisodeAssetMappingCandidate {
-  mappingId: string;
-  sourceCollection: "basic" | "characters" | "locations" | "props";
-  sourceItemId: string;
-  assetId: string;
-  usageRole: "character" | "background" | "object" | "style";
-  versionPolicy: "pinned_version" | "follow_latest" | "snapshot";
-  pinnedVersion: number | null;
-  episodeScope: { mode: "all" } | { mode: "episode"; episode: number };
-  status: "suggested" | "confirmed" | "excluded";
-  userConfirmed: boolean;
-}
 
-export interface LongEpisodeAssetMappingReview {
-  projectId: string;
-  episodeNumber: number;
-  mappingRevision: number;
-  scriptRevision: number;
-  scriptFingerprint: string;
-  status: "waiting" | "approved";
-  textOnlyConfirmed: boolean;
-  candidates: LongEpisodeAssetMappingCandidate[];
-}
-
-export interface GetLongEpisodeAssetMappingReviewResponse { review: LongEpisodeAssetMappingReview; }
-export interface BeginLongEpisodeAssetMappingReviewRequest { textOnlyConfirmed?: boolean; }
-export interface BeginLongEpisodeAssetMappingReviewResponse { review: LongEpisodeAssetMappingReview; }
-export interface UpdateLongEpisodeAssetMappingRequest { decision: "confirm" | "exclude"; }
-export interface UpdateLongEpisodeAssetMappingResponse { mapping: LongEpisodeAssetMappingCandidate; review: LongEpisodeAssetMappingReview; }
-export interface ApproveLongEpisodeAssetMappingReviewRequest { approved: true; scriptFingerprint: string; }
-export interface ApproveLongEpisodeAssetMappingReviewResponse { review: LongEpisodeAssetMappingReview; episode: LongEpisodeDetail; }
-
-/** Provider-free preview of the Asset IDs automatically selected per Episode scene. */
-export interface LongEpisodeAutomaticReferenceSummary {
-  candidateAssetIds: string[];
-  /** Keyed by the Episode's actual scene numbers — no longer fixed at exactly six. See LongProjectSettings.sceneCount. */
-  selectedAssetIdsByScene: Partial<Record<SceneNumber, string[]>>;
-  /** Equal to the Episode's scene count (LongProjectSettings.sceneCount), not a fixed 6. */
-  estimatedImageApiCalls: number;
-}
-export interface GetLongEpisodeAutomaticReferenceSummaryResponse { summary: LongEpisodeAutomaticReferenceSummary; }
-/** Rebuilds only deterministic automatic scene selections and returns to mapping review. */
-export interface RerunLongEpisodeAssetMatchingResponse { review: LongEpisodeAssetMappingReview; episode: LongEpisodeDetail; }
 
 /** Provider-free persisted review decision for one long-story Episode image. */
 export interface LongEpisodeImageReview {
@@ -1376,16 +1334,6 @@ export const API_ROUTES = {
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/script`,
   longEpisodeScriptApproval: (projectId: string, episodeNumber: number) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/script/approval`,
-  longEpisodeAssetMappingReview: (projectId: string, episodeNumber: number) =>
-    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/asset-mapping-review`,
-  longEpisodeAssetMappingReviewApproval: (projectId: string, episodeNumber: number) =>
-    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/asset-mapping-review/approval`,
-  longEpisodeAutomaticReferenceSummary: (projectId: string, episodeNumber: number) =>
-    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/asset-mapping-review/automatic-selection`,
-  longEpisodeAssetMatchingRerun: (projectId: string, episodeNumber: number) =>
-    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/asset-mapping-review/rerun`,
-  longEpisodeAssetMapping: (projectId: string, episodeNumber: number, mappingId: string) =>
-    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/asset-mapping-review/mappings/${encodeURIComponent(mappingId)}`,
   longEpisodeImageGeneration: (projectId: string, episodeNumber: number) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/images/generations`,
   longEpisodeImageReview: (projectId: string, episodeNumber: number) =>

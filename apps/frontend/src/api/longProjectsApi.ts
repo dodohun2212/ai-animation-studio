@@ -35,18 +35,6 @@ import {
   type ApproveLongEpisodeScriptResponse,
   type LongEpisodeDetail,
   type LongEpisodeScript,
-  type LongEpisodeAssetMappingCandidate,
-  type LongEpisodeAssetMappingReview,
-  type GetLongEpisodeAssetMappingReviewResponse,
-  type BeginLongEpisodeAssetMappingReviewRequest,
-  type BeginLongEpisodeAssetMappingReviewResponse,
-  type UpdateLongEpisodeAssetMappingRequest,
-  type UpdateLongEpisodeAssetMappingResponse,
-  type ApproveLongEpisodeAssetMappingReviewRequest,
-  type ApproveLongEpisodeAssetMappingReviewResponse,
-  type LongEpisodeAutomaticReferenceSummary,
-  type GetLongEpisodeAutomaticReferenceSummaryResponse,
-  type RerunLongEpisodeAssetMatchingResponse,
   type LongEpisodeImageReview,
   type StartLongEpisodeImageGenerationRequest,
   type StartLongEpisodeImageGenerationResponse,
@@ -393,36 +381,6 @@ function isEpisodeResponse(value: unknown): value is GetLongEpisodeResponse {
   return isRecord(value) && isLongEpisodeDetail(value.episode);
 }
 
-function isEpisodeCandidate(value: unknown): value is LongEpisodeAssetMappingCandidate {
-  if (!isRecord(value) || !isNonEmptyString(value.mappingId) || !isNonEmptyString(value.assetId) || !isNonEmptyString(value.sourceItemId)) return false;
-  if (value.sourceCollection !== "basic" && value.sourceCollection !== "characters" && value.sourceCollection !== "locations" && value.sourceCollection !== "props") return false;
-  if (value.usageRole !== "character" && value.usageRole !== "background" && value.usageRole !== "object" && value.usageRole !== "style") return false;
-  if (value.versionPolicy !== "pinned_version" && value.versionPolicy !== "follow_latest" && value.versionPolicy !== "snapshot") return false;
-  if (value.pinnedVersion !== null && (!Number.isInteger(value.pinnedVersion) || (value.pinnedVersion as number) <= 0)) return false;
-  if (!isRecord(value.episodeScope) || (value.episodeScope.mode !== "all" && (value.episodeScope.mode !== "episode" || !Number.isInteger(value.episodeScope.episode)))) return false;
-  return (value.status === "suggested" || value.status === "confirmed" || value.status === "excluded") && typeof value.userConfirmed === "boolean";
-}
-
-function isEpisodeMappingReview(value: unknown): value is LongEpisodeAssetMappingReview {
-  return isRecord(value) && isNonEmptyString(value.projectId) && Number.isInteger(value.episodeNumber) && Number.isInteger(value.mappingRevision)
-    && Number.isInteger(value.scriptRevision) && isDigest(value.scriptFingerprint) && (value.status === "waiting" || value.status === "approved")
-    && typeof value.textOnlyConfirmed === "boolean" && Array.isArray(value.candidates) && value.candidates.every(isEpisodeCandidate);
-}
-
-const isGetEpisodeMappingReviewResponse = (value: unknown): value is GetLongEpisodeAssetMappingReviewResponse => isRecord(value) && isEpisodeMappingReview(value.review);
-const isBeginEpisodeMappingReviewResponse = (value: unknown): value is BeginLongEpisodeAssetMappingReviewResponse => isGetEpisodeMappingReviewResponse(value);
-const isUpdateEpisodeMappingResponse = (value: unknown): value is UpdateLongEpisodeAssetMappingResponse => isRecord(value) && isEpisodeCandidate(value.mapping) && isEpisodeMappingReview(value.review);
-const isApproveEpisodeMappingResponse = (value: unknown): value is ApproveLongEpisodeAssetMappingReviewResponse => isRecord(value) && isEpisodeMappingReview(value.review) && isLongEpisodeDetail(value.episode);
-
-function isAutomaticReferenceSummary(value: unknown): value is LongEpisodeAutomaticReferenceSummary {
-  if (!isRecord(value) || !Array.isArray(value.candidateAssetIds) || !value.candidateAssetIds.every(isNonEmptyString)
-    || !isRecord(value.selectedAssetIdsByScene) || !Number.isInteger(value.estimatedImageApiCalls) || (value.estimatedImageApiCalls as number) < 0) return false;
-  const selections = value.selectedAssetIdsByScene as Record<string, unknown>;
-  return Object.entries(selections).every(([key, selection]) => isSceneNumber(Number(key)) && Array.isArray(selection) && selection.every(isNonEmptyString));
-}
-const isGetAutomaticReferenceSummaryResponse = (value: unknown): value is GetLongEpisodeAutomaticReferenceSummaryResponse => isRecord(value) && isAutomaticReferenceSummary(value.summary);
-const isRerunEpisodeAssetMatchingResponse = (value: unknown): value is RerunLongEpisodeAssetMatchingResponse => isRecord(value) && isEpisodeMappingReview(value.review) && isLongEpisodeDetail(value.episode);
-
 function isSceneNumber(value: unknown): value is SceneNumber {
   return typeof value === "number" && Number.isInteger(value) && isValidSceneNumber(value);
 }
@@ -629,31 +587,11 @@ export function generateLongEpisodeScript(projectId: string, episodeNumber: numb
 export function updateLongEpisodeScript(projectId: string, episodeNumber: number, requestBody: UpdateLongEpisodeScriptRequest): Promise<UpdateLongEpisodeScriptResponse> { return request(API_ROUTES.longEpisodeScript(projectId, episodeNumber), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isEpisodeResponse); }
 export function approveLongEpisodeScript(projectId: string, episodeNumber: number, requestBody: ApproveLongEpisodeScriptRequest): Promise<ApproveLongEpisodeScriptResponse> { return request(API_ROUTES.longEpisodeScriptApproval(projectId, episodeNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isEpisodeResponse); }
 
-export function getLongEpisodeAssetMappingReview(projectId: string, episodeNumber: number): Promise<GetLongEpisodeAssetMappingReviewResponse> {
-  return request(API_ROUTES.longEpisodeAssetMappingReview(projectId, episodeNumber), undefined, isGetEpisodeMappingReviewResponse);
-}
 
-export function beginLongEpisodeAssetMappingReview(projectId: string, episodeNumber: number, requestBody: BeginLongEpisodeAssetMappingReviewRequest): Promise<BeginLongEpisodeAssetMappingReviewResponse> {
-  return request(API_ROUTES.longEpisodeAssetMappingReview(projectId, episodeNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isBeginEpisodeMappingReviewResponse);
-}
 
-export function updateLongEpisodeAssetMapping(projectId: string, episodeNumber: number, mappingId: string, requestBody: UpdateLongEpisodeAssetMappingRequest): Promise<UpdateLongEpisodeAssetMappingResponse> {
-  return request(API_ROUTES.longEpisodeAssetMapping(projectId, episodeNumber, mappingId), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isUpdateEpisodeMappingResponse);
-}
 
-export function approveLongEpisodeAssetMappingReview(projectId: string, episodeNumber: number, requestBody: ApproveLongEpisodeAssetMappingReviewRequest): Promise<ApproveLongEpisodeAssetMappingReviewResponse> {
-  return request(API_ROUTES.longEpisodeAssetMappingReviewApproval(projectId, episodeNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isApproveEpisodeMappingResponse);
-}
 
-/** Read-only deterministic scene-to-Asset preview; it never starts image generation. */
-export function getLongEpisodeAutomaticReferenceSummary(projectId: string, episodeNumber: number): Promise<GetLongEpisodeAutomaticReferenceSummaryResponse> {
-  return request(API_ROUTES.longEpisodeAutomaticReferenceSummary(projectId, episodeNumber), undefined, isGetAutomaticReferenceSummaryResponse);
-}
 
-/** Re-runs only the local matcher and returns the Episode to explicit mapping review. */
-export function rerunLongEpisodeAssetMatching(projectId: string, episodeNumber: number): Promise<RerunLongEpisodeAssetMatchingResponse> {
-  return request(API_ROUTES.longEpisodeAssetMatchingRerun(projectId, episodeNumber), { method: "POST" }, isRerunEpisodeAssetMatchingResponse);
-}
 
 export function getLongEpisodeImageReview(projectId: string, episodeNumber: number): Promise<GetLongEpisodeImageReviewResponse> {
   return request(API_ROUTES.longEpisodeImageReview(projectId, episodeNumber), undefined, isGetEpisodeImageReviewResponse);

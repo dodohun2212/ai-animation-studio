@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { EpisodeAssetMappingsService } from "./episode-asset-mappings.service.js";
+import { approveEpisodeMappingReview } from "./episode-mapping-test-fixtures.js";
 import { EpisodeImagesService } from "./episode-images.service.js";
 import { EpisodeScriptsService } from "./episode-scripts.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
@@ -14,7 +14,7 @@ async function setup() {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-images-")); const projectsRoot = path.join(root, "projects"); const projects = new LongProjectsService(projectsRoot);
   await projects.create({ projectId: "long", settings }); const preview = await projects.preview("long"); await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 });
   const scripts = new EpisodeScriptsService(projectsRoot); await scripts.generate("long", 1, {}); await scripts.approve("long", 1, { approved: true });
-  const mappings = new EpisodeAssetMappingsService(projectsRoot, new LocalAssetsRepository(root)); const mapping = await mappings.begin("long", 1, { textOnlyConfirmed: true }); await mappings.approve("long", 1, { approved: true, scriptFingerprint: mapping.review.scriptFingerprint });
+  await approveEpisodeMappingReview(projectsRoot, root, "long", 1);
   return { images: new EpisodeImagesService(projectsRoot), projectsRoot };
 }
 afterEach(async () => { if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });

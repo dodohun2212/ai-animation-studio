@@ -3,20 +3,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   approveLongProjectOutline,
-  approveLongEpisodeAssetMappingReview,
   approveLongEpisodeImageReview,
-  beginLongEpisodeAssetMappingReview,
   createLongProject,
   createLongProjectOutlinePreview,
   getLongProject,
   getLongProjectSettings,
-  getLongEpisodeAssetMappingReview,
   getLongEpisodeImageReview,
   listLongProjects,
   LongProjectsApiError,
   toLongProjectDisplayError,
   updateLongProjectSettings,
-  updateLongEpisodeAssetMapping,
   regenerateLongEpisodeImageReview,
   startLongEpisodeImageGeneration,
   getLongEpisodeVideoPreview,
@@ -146,30 +142,6 @@ describe("longProjectsApi", () => {
     expect(JSON.parse(String(archive.body))).toEqual({ approved: true });
   });
 
-  it("uses only the documented local Episode mapping-review routes", async () => {
-    const candidate = { mappingId: "MAP-1", sourceCollection: "characters" as const, sourceItemId: "hero", assetId: "ASSET-1", usageRole: "character" as const, versionPolicy: "pinned_version" as const, pinnedVersion: 1, episodeScope: { mode: "all" as const }, status: "suggested" as const, userConfirmed: false };
-    const review = { projectId: "reopen_me", episodeNumber: 1, mappingRevision: 1, scriptRevision: 3, scriptFingerprint: "a".repeat(64), status: "waiting" as const, textOnlyConfirmed: false, candidates: [candidate] };
-    const episode = { episodeNumber: 1, title: "Episode 1", summary: "", mainEvent: "", conflict: "", cliffhanger: "", nextEpisodeHook: "", status: "asset_mapping_approved" as const, approved: true, scriptRevision: 3, scriptHistoryCount: 1 };
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { review }))
-      .mockResolvedValueOnce(jsonResponse(200, { review }))
-      .mockResolvedValueOnce(jsonResponse(200, { mapping: { ...candidate, status: "confirmed", userConfirmed: true }, review }))
-      .mockResolvedValueOnce(jsonResponse(200, { review: { ...review, status: "approved" }, episode }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    await getLongEpisodeAssetMappingReview("reopen_me", 1);
-    await beginLongEpisodeAssetMappingReview("reopen_me", 1, {});
-    await updateLongEpisodeAssetMapping("reopen_me", 1, "MAP-1", { decision: "confirm" });
-    await approveLongEpisodeAssetMappingReview("reopen_me", 1, { approved: true, scriptFingerprint: review.scriptFingerprint });
-
-    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      "/long-projects/reopen_me/episodes/1/asset-mapping-review",
-      "/long-projects/reopen_me/episodes/1/asset-mapping-review",
-      "/long-projects/reopen_me/episodes/1/asset-mapping-review/mappings/MAP-1",
-      "/long-projects/reopen_me/episodes/1/asset-mapping-review/approval",
-    ]);
-    expect(JSON.parse(String((fetchMock.mock.calls[2]?.[1] as RequestInit).body))).toEqual({ decision: "confirm" });
-  });
 
   it("uses only the documented local Episode image routes and explicit approval bodies", async () => {
     const imageEpisode = { episodeNumber: 1, title: "Episode 1", summary: "", mainEvent: "", conflict: "", cliffhanger: "", nextEpisodeHook: "", status: "images_review" as const, approved: true, scriptRevision: 3, scriptHistoryCount: 1 };
