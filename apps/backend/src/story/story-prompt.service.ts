@@ -90,12 +90,19 @@ async function promptVariables(stored: StoredProject, assets?: LocalAssetsReposi
     mood: settings.mood,
     lore: settings.lore || "AUTONOMOUS_SETTING",
     character: settings.character,
-    character_asset_metadata: "",
     character_cast_metadata: await describeCharacterCast(assets, cast),
     atmosphere_asset_metadata: await describeAtmosphereAssets(assets, atmosphereAssetIds),
     scene_reference_asset_metadata: await describeSceneReferenceAssets(assets, sceneReferenceAssets),
-    project_asset_metadata: "",
-    previous_scene_context: previousSceneContext(stored),
+    // The template prints a heading for each of these and then tells the model what to do with what follows.
+    // An empty value leaves the heading standing over nothing, which reads as content that went missing rather
+    // than content that does not exist — so both say so, in Python's own words for the same two blanks. The
+    // three metadata variables above already carry their own "없음" sentences.
+    //
+    // Section 5 has no selector on this side: what Python gathered as one "extra Assets" list is the cast,
+    // atmosphere and scene-reference selections above, each with its own section. So it is always this
+    // sentence today, and the heading now says as much instead of trailing off.
+    project_asset_metadata: "선택한 추가 Asset 없음",
+    previous_scene_context: previousSceneContext(stored) || "연결된 이전 이야기 없음",
     visual_style: notes.visualStyle ?? value(profile, "visual_style"),
     color: notes.color ?? value(profile, "color"),
     lighting: notes.lighting ?? value(profile, "lighting"),
@@ -106,7 +113,7 @@ async function promptVariables(stored: StoredProject, assets?: LocalAssetsReposi
     duration_seconds: String(settings.durationSeconds),
     scene_count: String(settings.sceneCount),
     clip_duration_seconds: String(settings.clipDurationSeconds),
-    additional_notes: settings.additionalNotes,
+    additional_notes: settings.additionalNotes || "별도 지시 없음",
   };
 }
 

@@ -41,6 +41,34 @@ describe("default prompts root resolution (regression: must not depend on proces
     const result = await service.preview("default_root_check");
     expect(result.preview.originalPrompt).toContain("a lighthouse at dusk");
   });
+
+  it("leaves no section heading standing over nothing in the real template", async () => {
+    // Each numbered section prints a heading, then its value, then an instruction about what to do with it. A
+    // value that is the empty string leaves the heading with nothing under it and the instruction pointing at
+    // the gap — to a model that reads as content that was dropped, not content that does not exist, and it
+    // goes out on a paid request. Python filled every one of these blanks with a sentence saying "없음".
+    const root = await fsPromises.mkdtemp(path.join(os.tmpdir(), "story-prompt-blank-section-")); roots.push(root);
+    const repository = new LocalProjectRepository(path.join(root, "projects"));
+    await repository.create(createStoredProject("blank_sections", "a lighthouse at dusk", "2026-08-22T00:00:00.000Z"));
+    const { preview } = await new StoryPromptService(repository).preview("blank_sections");
+
+    // Headings come from the template rather than being spelled here: written by hand, one of them was wrong
+    // and the test passed for the wrong reason — it found no heading, took the empty string, and only failed
+    // because the assertion happened to be "not empty". Every line that is a lone `$variable` is a section
+    // whose whole body is that value, which is exactly the set that can come out blank.
+    const template = await fsPromises.readFile(path.resolve(process.cwd(), "../../prompts/story/story_generation.txt"), "utf8");
+    const lines = template.split(/\r?\n/);
+    const headings = lines.flatMap((line, index) => /^\$\w+$/.test(line) && lines[index - 1]?.startsWith("[") ? [lines[index - 1]!] : []);
+    expect(headings.length).toBeGreaterThanOrEqual(4);
+
+    // Nothing is selected or linked on a project this bare, so every one of them takes its empty case.
+    for (const heading of headings) {
+      // The first line after the heading is the section's value; a blank one is the failure being pinned.
+      const [, rest = ""] = preview.originalPrompt.split(heading);
+      const [, value = ""] = rest.split(/\r?\n/);
+      expect(value.trim()).not.toBe("");
+    }
+  });
 });
 
 const SCENE = (number: number) => ({

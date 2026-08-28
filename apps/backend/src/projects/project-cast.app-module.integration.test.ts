@@ -197,6 +197,9 @@ describe.sequential("real AppModule project cast/asset-reference/continuity HTTP
     });
     expect(await disconnectResponse.json()).toEqual({ link: null });
     const disconnectedPreview = await (await fetch(`${base}/projects/cont_current/story/preview`, { method: "POST" })).json() as { preview: { originalPrompt: string } };
-    expect(disconnectedPreview.preview.originalPrompt).toBe("previous=");
+    // Not blank: the real template prints a heading above this and an instruction below it, so an empty value
+    // leaves the heading standing over nothing — which reads as content that went missing rather than content
+    // that does not exist. Python said so in words here too.
+    expect(disconnectedPreview.preview.originalPrompt).toBe("previous=연결된 이전 이야기 없음");
   });
 });
