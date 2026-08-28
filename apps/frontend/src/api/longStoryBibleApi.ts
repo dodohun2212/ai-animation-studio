@@ -10,8 +10,8 @@ import {
   type LongStoryBibleItem,
   type LongStoryBibleStyleAssetLink,
   type SearchLongStoryBibleItemsResponse,
-  type UpdateLongStoryBibleContentRequest,
-  type UpdateLongStoryBibleContentResponse,
+  type UpdateLongStoryBibleWorldRequest,
+  type UpdateLongStoryBibleWorldResponse,
   type UpdateLongStoryBibleItemRequest,
   type UpdateLongStoryBibleItemResponse,
   type UpdateLongStoryBibleProtagonistAssetLinkRequest,
@@ -77,7 +77,7 @@ function isStoryBible(value: unknown): value is LongStoryBible {
 }
 
 const isGetResponse = (value: unknown): value is GetLongProjectStoryBibleResponse => isRecord(value) && isStoryBible(value.storyBible);
-const isContentResponse = (value: unknown): value is UpdateLongStoryBibleContentResponse => isRecord(value) && isStoryBible(value.storyBible);
+const isWorldResponse = (value: unknown): value is UpdateLongStoryBibleWorldResponse => isRecord(value) && isStoryBible(value.storyBible);
 const isStyleAssetLinkResponse = (value: unknown): value is UpdateLongStoryBibleStyleAssetLinkResponse => isRecord(value) && isStoryBible(value.storyBible);
 const isProtagonistAssetLinkResponse = (value: unknown): value is UpdateLongStoryBibleProtagonistAssetLinkResponse => isRecord(value) && isStoryBible(value.storyBible);
 const isCreateResponse = (value: unknown): value is CreateLongStoryBibleItemResponse => isRecord(value) && isItem(value.item) && isStoryBible(value.storyBible);
@@ -104,8 +104,8 @@ export function getLongProjectStoryBible(projectId: string): Promise<GetLongProj
   return request(API_ROUTES.longProjectStoryBible(projectId), undefined, isGetResponse);
 }
 
-export function updateLongStoryBibleContent(projectId: string, body: UpdateLongStoryBibleContentRequest): Promise<UpdateLongStoryBibleContentResponse> {
-  return request(API_ROUTES.longProjectStoryBibleContent(projectId), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, isContentResponse);
+export function updateLongStoryBibleWorld(projectId: string, body: UpdateLongStoryBibleWorldRequest): Promise<UpdateLongStoryBibleWorldResponse> {
+  return request(API_ROUTES.longProjectStoryBibleWorld(projectId), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, isWorldResponse);
 }
 
 export function updateLongStoryBibleStyleAssetLink(projectId: string, body: UpdateLongStoryBibleStyleAssetLinkRequest): Promise<UpdateLongStoryBibleStyleAssetLinkResponse> {

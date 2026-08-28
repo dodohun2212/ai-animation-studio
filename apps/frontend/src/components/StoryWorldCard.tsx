@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { getLongProjectStoryBible, toLongStoryBibleDisplayError, updateLongStoryBibleContent } from "../api/longStoryBibleApi.js";
+import { getLongProjectStoryBible, toLongStoryBibleDisplayError, updateLongStoryBibleWorld } from "../api/longStoryBibleApi.js";
 
 interface Props { projectId: string; }
 type DisplayError = { code: string; message: string };
@@ -89,10 +89,7 @@ export function StoryWorldCard({ projectId }: Props) {
     } catch { setValidationError("세계관 설정은 JSON 객체 형식이어야 합니다."); return; }
     setValidationError(null); busy.current = true; setPending(true); setJustSaved(false);
     try {
-      // `basic` is sent back unchanged: this endpoint replaces both halves, and omitting it would clear
-      // whatever the project has stored there — including 전체 그림체 and 주인공, which live inside it.
-      const current = await getLongProjectStoryBible(projectId);
-      const response = await updateLongStoryBibleContent(projectId, { basic: current.storyBible.basic, world });
+      const response = await updateLongStoryBibleWorld(projectId, { world });
       const text = JSON.stringify(response.storyBible.world, null, 2);
       setDraft(text); setRows(rowsFrom(text)); setError(null); setJustSaved(true);
     } catch (caught) { setError(toLongStoryBibleDisplayError(caught)); }

@@ -22,12 +22,13 @@ describe("StoryBibleController", () => {
     catch (error) { expect((error as { getStatus(): number }).getStatus()).toBe(HttpStatus.NOT_FOUND); expect((error as { getResponse(): { code: string } }).getResponse().code).toBe("STORY_BIBLE_ITEM_NOT_FOUND"); }
   });
 
-  it("exposes separate Story Bible content and global style-link mutations", async () => {
+  it("exposes separate Story Bible world and global style-link mutations", async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "story-bible-controller-")); const projectsRoot = path.join(root, "projects");
     await new LongProjectsService(projectsRoot).create({ projectId: "long_bible", settings }); const controller = new StoryBibleController(new StoryBibleService(projectsRoot));
-    await expect(controller.updateContent("long_bible", { basic: { title: "Edited" }, world: { era: "future" } })).resolves.toMatchObject({ storyBible: { basic: { title: "Edited" }, world: { era: "future" } } });
-    await expect(controller.updateStyleAssetLink("long_bible", { assetLink: null })).resolves.toMatchObject({ storyBible: { basic: { title: "Edited" } } });
-    await expect(controller.updateContent("long_bible", { basic: {}, world: {}, extra: true } as never)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(controller.updateWorld("long_bible", { world: { era: "future" } })).resolves.toMatchObject({ storyBible: { world: { era: "future" } } });
+    // The world save above left `basic` alone, and clearing the style link leaves the world notes alone.
+    await expect(controller.updateStyleAssetLink("long_bible", { assetLink: null })).resolves.toMatchObject({ storyBible: { world: { era: "future" } } });
+    await expect(controller.updateWorld("long_bible", { world: {}, extra: true } as never)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
   it("exposes the Story Bible search and duplicate routes", async () => {

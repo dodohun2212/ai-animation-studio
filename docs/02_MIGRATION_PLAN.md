@@ -2005,3 +2005,9 @@ Episode01/script.json   "이배드" 가 52개 필드에 57번
   - **저장된 데이터는 지우지 않는다.** 옛 항목의 키(관계 4필드·`truth`·`content`·`alive` 등)는 읽고 버리고, **캐릭터·배경·소품 배열 자체는 `retired` 로 들고 있다가 저장할 때 그대로 되쓴다.** 이 서비스는 저장할 때마다 파일 전체를 다시 쓰므로, 안 들고 있으면 **다른 것을 한 번 고치는 순간 사람이 적어둔 항목이 조용히 빈 배열이 된다.**
   - 🔴 편집 중 `LongStoryBibleItem` 의 닫는 괄호를 같이 지웠는데 **타입체크가 즉시 잡았다** — 인덱스로 구간을 잘라내는 편집의 위험(오늘 두 번째).
   - 검증: root typecheck 통과, Backend 1030개·frontend 1020개·shared 25개 전부 통과, root build 통과. 저장소 전체에 `relationship-audit`·`LongStoryBibleAssetLink` 잔재 없음.
+- [x] **세계관 저장이 `basic` 을 지나가지 않는다 — 요청에서 그 칸을 없앴다**: `PATCH .../story-bible/content` 가 `basic` 과 `world` 를 **둘 다 요구하고 둘 다 갈아치웠다.** `basic` 에는 지금 **주인공 링크와 전체 그림체 링크**가 들어 있어서, 세계관 노트만 저장하려는 호출자가 `basic` 을 되읽어 그대로 실어 보내야 했고 **한 번 빠뜨리면 그 프로젝트의 주인공이 지워진다.** 화면이 그 되읽기를 실제로 하고 있었다(Cowork이 Round 268에서 짚고 테스트까지 걸어둔 자리).
+  - `UpdateLongStoryBibleWorldRequest { world }` 로 좁히고 라우트도 `/story-bible/world` 로 바꿨다 — **요청이 `basic` 을 말할 수단이 없으면 어떤 호출자도 그걸 틀릴 수 없다.** 서버의 보존 로직(`preservedStyle`/`preservedProtagonist`)과 `style_asset_link` 거절 분기도 같이 사라졌다: 애초에 도달할 수 없는 상태가 됐다.
+  - 화면에서 저장 전 `getLongProjectStoryBible` 되읽기를 걷었다 — 요청이 2회에서 1회로 준다.
+  - **`basic` 을 편집하던 화면이 이미 없어졌기 때문에 가능한 정리다.** 그 화면이 있을 때 이 좁히기를 했으면 고급 편집 JSON 이 못 저장했다.
+  - 머테이션 확인: 여분 키 거절(`Object.keys(request).length !== 1`)을 빼면 서비스·컨트롤러 테스트가 각각 빨갛다.
+  - 검증: root typecheck 통과, Backend 1030개·frontend 1020개·shared 25개 전부 통과, root build 통과.

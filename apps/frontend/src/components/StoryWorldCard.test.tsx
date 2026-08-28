@@ -49,28 +49,25 @@ describe("StoryWorldCard", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     fireEvent.click(within(card).getByRole("button", { name: "세계관 설명 저장" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
-    const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit];
-    expect(url).toBe("/long-projects/long_test/story-bible/content");
-    expect(JSON.parse(String(init.body))).toEqual({ basic: {}, world: { 지역: "바다 위 도시" } });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(url).toBe("/long-projects/long_test/story-bible/world");
+    expect(JSON.parse(String(init.body))).toEqual({ world: { 지역: "바다 위 도시" } });
   });
 
-  it("sends the stored basic back untouched, because the endpoint replaces both halves", async () => {
-    // 주인공 and 전체 그림체 live inside `basic`. Sending `{}` for it here would clear both — a card about the
-    // world silently deleting two choices made on the same screen.
+  it("says nothing about basic at all, so it cannot clear the links stored there", async () => {
+    // 주인공 and 전체 그림체 live inside `basic`. This card used to have to read it back and hand it in
+    // unchanged, because the endpoint replaced both halves and omitting it cleared both. The request cannot
+    // carry `basic` any more, so the card no longer reads it and cannot get it wrong.
     const withBasic = { ...emptyBible, basic: { title: "이배드의 탄생", protagonist_asset_link: { assetId: "FOLDER-1" } } };
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { storyBible: withBasic }))
-      .mockResolvedValueOnce(jsonResponse(200, { storyBible: withBasic }))
-      .mockResolvedValueOnce(jsonResponse(200, { storyBible: withBasic }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { storyBible: withBasic }));
     vi.stubGlobal("fetch", fetchMock);
     render(<StoryWorldCard projectId="long_test" />);
 
     const card = await screen.findByTestId("story-world-card");
     fireEvent.click(within(card).getByRole("button", { name: "세계관 설명 저장" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
-    expect(JSON.parse(String((fetchMock.mock.calls[2] as [string, RequestInit])[1].body)).basic)
-      .toEqual({ title: "이배드의 탄생", protagonist_asset_link: { assetId: "FOLDER-1" } });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(String((fetchMock.mock.calls[1] as [string, RequestInit])[1].body))).not.toHaveProperty("basic");
   });
 
   it("refuses a non-object in the raw editor before making a request", async () => {

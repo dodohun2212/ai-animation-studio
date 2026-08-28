@@ -542,8 +542,16 @@ export interface LongStoryBible {
 }
 
 export interface GetLongProjectStoryBibleResponse { storyBible: LongStoryBible; }
-export interface UpdateLongStoryBibleContentRequest { basic: Record<string, unknown>; world: Record<string, unknown>; }
-export interface UpdateLongStoryBibleContentResponse { storyBible: LongStoryBible; }
+/**
+ * The world notes, and only those.
+ *
+ * This used to take `basic` as well and replace both halves, from a screen that edited both as raw JSON. That
+ * screen is gone and `basic` now holds the protagonist and style links, each with its own endpoint — so a
+ * caller sending world notes had to read `basic` back and send it unchanged, and forgetting to would clear the
+ * project's lead. A request cannot do that if it cannot say `basic`.
+ */
+export interface UpdateLongStoryBibleWorldRequest { world: Record<string, unknown>; }
+export interface UpdateLongStoryBibleWorldResponse { storyBible: LongStoryBible; }
 /** `null` explicitly removes the global style Asset link. */
 export interface UpdateLongStoryBibleStyleAssetLinkRequest { assetLink: LongStoryBibleStyleAssetLink | null; }
 export interface UpdateLongStoryBibleStyleAssetLinkResponse { storyBible: LongStoryBible; }
@@ -1426,8 +1434,8 @@ export const API_ROUTES = {
   longProjects: "/long-projects",
   longProjectStoryBible: (projectId: string) =>
     `/long-projects/${encodeURIComponent(projectId)}/story-bible`,
-  longProjectStoryBibleContent: (projectId: string) =>
-    `/long-projects/${encodeURIComponent(projectId)}/story-bible/content`,
+  longProjectStoryBibleWorld: (projectId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/story-bible/world`,
   longProjectStoryBibleStyleAssetLink: (projectId: string) =>
     `/long-projects/${encodeURIComponent(projectId)}/story-bible/style-asset-link`,
   longProjectStoryBibleProtagonistAssetLink: (projectId: string) =>

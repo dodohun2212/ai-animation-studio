@@ -7,8 +7,8 @@ import type {
   CreateLongStoryBibleItemResponse,
   DeleteLongStoryBibleItemResponse,
   GetLongProjectStoryBibleResponse,
-  UpdateLongStoryBibleContentRequest,
-  UpdateLongStoryBibleContentResponse,
+  UpdateLongStoryBibleWorldRequest,
+  UpdateLongStoryBibleWorldResponse,
   UpdateLongStoryBibleProtagonistAssetLinkRequest, UpdateLongStoryBibleProtagonistAssetLinkResponse,
   UpdateLongStoryBibleStyleAssetLinkRequest,
   UpdateLongStoryBibleStyleAssetLinkResponse,
@@ -183,16 +183,18 @@ export class StoryBibleService {
 
   async get(projectId: string): Promise<GetLongProjectStoryBibleResponse> { return { storyBible: this.toApi(await this.read(projectId.trim())) }; }
 
-  async updateContent(projectId: string, request: UpdateLongStoryBibleContentRequest): Promise<UpdateLongStoryBibleContentResponse> {
-    if (!request || typeof request !== "object" || Object.keys(request).length !== 2 || !("basic" in request) || !("world" in request)) throw longInvalidRequest("Story Bible content request is invalid.");
-    const basic = asObject(request.basic, longInvalidRequest); const world = asObject(request.world, longInvalidRequest);
-    if ("style_asset_link" in basic || "styleAssetLink" in basic) throw longInvalidRequest("Use the global style Asset link endpoint.");
+  /**
+   * Writes the world notes and nothing else.
+   *
+   * It used to replace `basic` too, which is where the protagonist and style links live. A caller that only
+   * wanted to save world notes had to read `basic` back and hand it in unchanged, and any caller that forgot
+   * cleared the project's lead. Now the request has no way to say `basic`, so no caller can get that wrong.
+   */
+  async updateWorld(projectId: string, request: UpdateLongStoryBibleWorldRequest): Promise<UpdateLongStoryBibleWorldResponse> {
+    if (!request || typeof request !== "object" || Object.keys(request).length !== 1 || !("world" in request)) throw longInvalidRequest("Story Bible world request is invalid.");
+    const world = asObject(request.world, longInvalidRequest);
     const id = projectId.trim(); const bible = await this.read(id);
-    const preservedStyle = bible.basic.style_asset_link;
-    const preservedProtagonist = bible.basic.protagonist_asset_link;
-    bible.basic = jsonValue(basic) as Record<string, unknown>; bible.world = jsonValue(world) as Record<string, unknown>;
-    if (preservedStyle !== undefined) bible.basic.style_asset_link = preservedStyle;
-    if (preservedProtagonist !== undefined) bible.basic.protagonist_asset_link = preservedProtagonist;
+    bible.world = jsonValue(world) as Record<string, unknown>;
     await this.save(id, bible); return { storyBible: this.toApi(bible) };
   }
 

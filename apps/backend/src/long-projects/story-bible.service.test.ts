@@ -75,16 +75,19 @@ describe("StoryBibleService", () => {
     }
   });
 
-  it("updates basic and world content atomically while preserving a validated global style Asset link", async () => {
+  it("saves world notes without touching the links stored beside them", async () => {
+    // The request has no `basic` any more, so a caller saving world notes cannot clear the style or protagonist
+    // link by leaving it out — which is what the old shape made possible, and what the screen had to work
+    // around by reading `basic` back and handing it in unchanged.
     const { bible, assets } = await services();
     const style = await assets.create({ buffer: image, originalname: "style.png", mimetype: "image/png" }, { assetType: "style", displayName: "Noir", approved: true });
-    const linked = await bible.updateStyleAssetLink("long_bible", { assetLink: { assetId: style.asset_id, versionPolicy: "snapshot", pinnedVersion: 1 } });
-    expect(linked.storyBible.styleAssetLink).toEqual({ assetId: style.asset_id, versionPolicy: "snapshot", pinnedVersion: 1 });
-    const saved = await bible.updateContent("long_bible", { basic: { title: "Changed", nested: { mood: "dark" } }, world: { rules: ["no magic"] } });
-    expect(saved.storyBible).toMatchObject({ basic: { title: "Changed", nested: { mood: "dark" } }, world: { rules: ["no magic"] }, styleAssetLink: { assetId: style.asset_id, versionPolicy: "snapshot", pinnedVersion: 1 } });
+    await bible.updateStyleAssetLink("long_bible", { assetLink: { assetId: style.asset_id, versionPolicy: "snapshot", pinnedVersion: 1 } });
+
+    const saved = await bible.updateWorld("long_bible", { world: { rules: ["no magic"] } });
+    expect(saved.storyBible).toMatchObject({ world: { rules: ["no magic"] }, styleAssetLink: { assetId: style.asset_id, versionPolicy: "snapshot", pinnedVersion: 1 } });
     const raw = JSON.parse(await fs.readFile(path.join(root!, "projects", "long_bible", "long_story", "story_bible.json"), "utf8"));
     expect(raw.basic.style_asset_link).toEqual({ asset_id: style.asset_id, version_policy: "snapshot", pinned_version: 1 });
-    await expect(bible.updateContent("long_bible", { basic: { style_asset_link: {} }, world: {} })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(bible.updateWorld("long_bible", { world: {}, basic: {} } as never)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     expect((await bible.updateStyleAssetLink("long_bible", { assetLink: null })).storyBible.styleAssetLink).toBeUndefined();
   });
 
@@ -154,14 +157,14 @@ describe("StoryBibleService", () => {
     expect((await bible.updateProtagonistAssetLink("long_bible", { assetLink: null })).storyBible.protagonistAssetLink).toBeUndefined();
   });
 
-  it("keeps the protagonist link when the advanced JSON editor rewrites basic", async () => {
-    // updateContent replaces `basic` wholesale. The style link already had to be carried across it; this one
-    // is stored the same way and would otherwise be deleted by an unrelated edit.
+  it("keeps the protagonist link when world notes are saved", async () => {
+    // Saving world notes is the ordinary edit that used to travel through `basic` and could take the link with
+    // it. Now it cannot reach `basic` at all.
     const { bible, assets } = await services();
     const folder = await assets.createFolder({ assetType: "character", displayName: "이배드" });
     await bible.updateProtagonistAssetLink("long_bible", { assetLink: { assetId: folder.asset_id, versionPolicy: "follow_latest", pinnedVersion: null } });
-    const after = await bible.updateContent("long_bible", { basic: { 시대: "20년 뒤" }, world: {} });
+    const after = await bible.updateWorld("long_bible", { world: { 시대: "20년 뒤" } });
     expect(after.storyBible.protagonistAssetLink?.assetId).toBe(folder.asset_id);
-    expect(after.storyBible.basic).toEqual({ 시대: "20년 뒤" });
+    expect(after.storyBible.world).toEqual({ 시대: "20년 뒤" });
   });
 });

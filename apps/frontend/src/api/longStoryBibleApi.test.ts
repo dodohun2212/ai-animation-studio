@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 
 import { jsonResponse } from "./testUtils.js";
-import { createLongStoryBibleItem, deleteLongStoryBibleItem, duplicateLongStoryBibleItem, getLongProjectStoryBible, searchLongStoryBibleItems, toLongStoryBibleDisplayError, updateLongStoryBibleContent, updateLongStoryBibleItem, updateLongStoryBibleStyleAssetLink } from "./longStoryBibleApi.js";
+import { createLongStoryBibleItem, deleteLongStoryBibleItem, duplicateLongStoryBibleItem, getLongProjectStoryBible, searchLongStoryBibleItems, toLongStoryBibleDisplayError, updateLongStoryBibleWorld, updateLongStoryBibleItem, updateLongStoryBibleStyleAssetLink } from "./longStoryBibleApi.js";
 
 const bible = { basic: {}, world: {}, secrets: [{ id: "SECRET-1", name: "출생의 비밀" }], foreshadowing: [], updatedAt: "2026-08-23T00:00:00.000Z" };
 
@@ -52,19 +52,19 @@ describe("long Story Bible API", () => {
     expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: "POST" });
   });
 
-  it("uses guarded content and global style link routes", async () => {
+  it("uses guarded world and global style link routes", async () => {
     const styledBible = { ...bible, styleAssetLink: { assetId: "STYLE-1", versionPolicy: "snapshot" as const, pinnedVersion: 3 } };
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { storyBible: bible }))
       .mockResolvedValueOnce(jsonResponse(200, { storyBible: styledBible }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await updateLongStoryBibleContent("long id", { basic: { title: "Revised" }, world: { era: "future" } });
+    await updateLongStoryBibleWorld("long id", { world: { era: "future" } });
     await updateLongStoryBibleStyleAssetLink("long id", { assetLink: styledBible.styleAssetLink });
 
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("/long-projects/long%20id/story-bible/content");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/long-projects/long%20id/story-bible/world");
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: "PATCH" });
-    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ basic: { title: "Revised" }, world: { era: "future" } });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ world: { era: "future" } });
     expect(fetchMock.mock.calls[1]?.[0]).toBe("/long-projects/long%20id/story-bible/style-asset-link");
     expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({ assetLink: styledBible.styleAssetLink });
   });
