@@ -215,9 +215,21 @@ describe("real Runway video workflow", () => {
 
     // Two real ticks are needed: the 1st check only ever reports RUNNING (matching Runway's real behavior of
     // never resolving on the very first poll), the 2nd reports SUCCEEDED and advances to scene 2.
-    await new Promise((resolve) => setTimeout(resolve, (RUNWAY_POLL_INTERVAL_SECONDS * 2 + 3) * 1000));
+    //
+    // Waited for what the ticks do, not for how long two of them usually take. A fixed sleep of
+    // interval * 2 + 3 seconds is right until the machine is busy, and then the ticks land after it and the
+    // assertions read a half-finished state — which is how this test came to fail about once every few full
+    // runs while passing every time it was run on its own.
+    const deadline = Date.now() + (RUNWAY_POLL_INTERVAL_SECONDS * 4 + 10) * 1000;
+    let project = await deps.projects.findById("video_workflow");
+    for (;;) {
+      const current = (project.video_generation_records as Array<Record<string, unknown>>).find((record) => record.scene_number === 1);
+      if (current?.status === "succeeded") break;
+      if (Date.now() > deadline) throw new Error(`scene 1 never left ${String(current?.status)} on the background timer`);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      project = await deps.projects.findById("video_workflow");
+    }
 
-    const project = await deps.projects.findById("video_workflow");
     const records = project.video_generation_records as Array<Record<string, unknown>>;
     const scene1 = records.find((record) => record.scene_number === 1)!;
     const scene2 = records.find((record) => record.scene_number === 2)!;
