@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { BudgetPreview, LongEpisodeContinuityReference, LongEpisodeDetail, LongEpisodeImageReview, SceneNumber, StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
+import type { BudgetPreview, LongEpisodeContinuityReference, LongEpisodeDetail, LongEpisodeImageReview, LongEpisodeStatus, SceneNumber, StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
 import { IMAGE_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 
 import {
@@ -25,8 +25,29 @@ type ReviewState =
   | { status: "idle" | "loading" }
   | { status: "error"; error: DisplayError }
   | { status: "ready"; reviews: LongEpisodeImageReview[]; budget?: BudgetPreview; retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview } };
-const SCENE_SLOT_LABEL: Record<string, string> = { generated: "생성됨", waiting: "대기 중", pending: "검토 대기", approved: "승인됨" };
+const SCENE_SLOT_LABEL: Record<string, string> = { generated: "생성됨", waiting: "대기 중", generating: "만드는 중", pending: "검토 대기", approved: "승인됨" };
 const sceneSlotLabel = (status: string) => SCENE_SLOT_LABEL[status] ?? status;
+
+/**
+ * The Episode's steps in the order they happen, so a screen can ask "are we past this yet" rather than
+ * "are we exactly here".
+ *
+ * The 참고 이미지 연결 notice below was written as `status !== asset_mapping_approved`, so it reappeared the
+ * moment generation started — telling someone to approve a thing they had approved a second earlier, while
+ * their money was being spent. A step notice has to know direction; equality does not.
+ */
+const STATUS_ORDER: readonly LongEpisodeStatus[] = [
+  "planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review",
+  "asset_mapping_approved", "generating_images", "images_ready", "images_review",
+  "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved",
+  "rendering", "completed",
+];
+/** `interrupted` and `failed` are not points on the line, so they never read as "before" anything. */
+function isBefore(status: LongEpisodeStatus | undefined, marker: LongEpisodeStatus): boolean {
+  if (!status) return false;
+  const at = STATUS_ORDER.indexOf(status);
+  return at !== -1 && at < STATUS_ORDER.indexOf(marker);
+}
 
 const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const primaryButton = "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
@@ -89,6 +110,28 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
     // and including it would re-run the effect (and its cleanup) before the in-flight fetch resolves,
     // permanently discarding the response via the `cancelled` flag and leaving the screen stuck loading.
   }, [episodeNumber, projectId, reviewable]);
+
+  /**
+   * While images are being made, ask again until they are not.
+   *
+   * The screen read the Episode once and never again, so a generation that ran for four minutes looked
+   * identical to one that had not started: every scene "대기 중", no button, nothing moving. The person who
+   * paid for it has no way to tell those apart, and the next thing they do is press generate again.
+   *
+   * Three seconds because the run makes roughly one image every thirty; the cost of asking is one local
+   * request, and the cost of not asking is a second $0.60 batch. Stops the moment the status moves on, and on
+   * unmount, so leaving the screen does not leave a timer behind.
+   */
+  useEffect(() => {
+    if (episode?.status !== "generating_images") return;
+    let cancelled = false;
+    const timer = setInterval(() => {
+      getLongEpisode(projectId, episodeNumber)
+        .then((response) => { if (!cancelled) setEpisode(response.episode); })
+        .catch(() => { /* A dropped poll is not worth an error banner; the next tick asks again. */ });
+    }, 3000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [projectId, episodeNumber, episode?.status]);
 
   const eligible = episode?.status === "asset_mapping_approved";
   async function confirmGeneration(): Promise<void> {
@@ -157,9 +200,21 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
       {/* Episode 1 has no previous Episode by definition — saying a reference is "missing" there reads as a
           prerequisite the user failed to meet, when nothing is wrong at all. */}
       {!continuityReferenceLoading && !continuityReference?.available && <p data-testid="episode-image-continuity-unavailable" className="text-sm text-slate-400">{episodeNumber <= 1 ? "첫 에피소드라 이어받을 이전 장면이 없습니다. 이 에피소드부터 새로 시작합니다." : "이전 에피소드의 마지막 장면 자료가 아직 없어서, 이어받지 않고 이 에피소드만으로 만듭니다."}</p>}
-      {episode && !eligible && !reviewable && <p data-testid="episode-image-not-eligible" className="text-sm text-amber-300">에피소드 이미지 생성을 시작하려면 먼저 참고 이미지 연결을 승인하세요.</p>}
+      {episode && isBefore(episode.status, "asset_mapping_approved") && <p data-testid="episode-image-not-eligible" className="text-sm text-amber-300">에피소드 이미지 생성을 시작하려면 먼저 참고 이미지 연결을 승인하세요.</p>}
       <ol data-testid="episode-image-scenes" className="list-decimal space-y-1 pl-5 text-sm text-slate-300">
-        {sceneNumbers.map((sceneNumber) => <li key={sceneNumber} data-testid={`episode-image-scene-${sceneNumber}`} data-status={reviewFor(sceneNumber)?.status ?? (generation ? "generated" : "waiting")}>장면 {sceneNumber}: {sceneSlotLabel(reviewFor(sceneNumber)?.status ?? (generation ? "generated" : "waiting"))}</li>)}
+        {sceneNumbers.map((sceneNumber) => {
+          /* Without the generating case this list said "대기 중" for every scene while five of six were
+             already bought — money going out in front of a screen that showed nothing happening, which is
+             what makes a person press the button again. Per-scene progress is not published, so this says
+             what is true of the batch rather than inventing a per-scene claim. */
+          const status = reviewFor(sceneNumber)?.status
+            ?? (episode?.status === "generating_images" ? "generating" : generation ? "generated" : "waiting");
+          return (
+            <li key={sceneNumber} data-testid={`episode-image-scene-${sceneNumber}`} data-status={status}>
+              장면 {sceneNumber}: {sceneSlotLabel(status)}
+            </li>
+          );
+        })}
       </ol>
       {eligible && !generation && <button type="button" disabled={confirmingGeneration} className={primaryButton} onClick={() => setConfirmingGeneration(true)}>이미지 생성 시작</button>}
       {confirmingGeneration && (

@@ -4,10 +4,22 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, makeLongProjectSettings } from "../api/testUtils.js";
 import { LongEpisodeImageGenerationScreen } from "./LongEpisodeImageGenerationScreen.js";
 
-const episode = (status: "asset_mapping_approved" | "images_review" | "waiting_for_video_confirmation") => ({
+const episode = (status: "planned" | "asset_mapping_approved" | "generating_images" | "images_review" | "waiting_for_video_confirmation") => ({
   episodeNumber: 1, title: "Episode 1", summary: "Summary", mainEvent: "Event", conflict: "Conflict", cliffhanger: "Hook", nextEpisodeHook: "Next",
   status, approved: true, scriptRevision: 2, scriptHistoryCount: 1,
 });
+/**
+ * The screen never guesses scene numbers — with no reviews yet it reads them off the Episode's own script, and
+ * an Episode with neither renders an empty list. An Episode that is generating always has an approved script
+ * by then, so a fixture for that state needs one or the list it is asserting about does not exist.
+ */
+const scriptScenes = [1, 2, 3, 4, 5, 6].map((number) => ({
+  number, description: "d", visualAction: "v", startMotion: "s", mainMotion: "m", endMotion: "e",
+  shotSize: "s", cameraAngle: "c", composition: "c", lensFeel: "l", focusSubject: "f", cameraMotion: "c",
+  environmentMotion: "e", motionSpeed: "n", motionIntensity: "m", expressionChange: "x", continuityHint: "h",
+}));
+const withScript = (value: ReturnType<typeof episode>) => ({ ...value, script: { title: "t", synopsis: "s", ending: "e", scenes: scriptScenes } });
+
 const reviews = (approved: number[] = []) => [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: approved.includes(sceneNumber) ? "approved" as const : "pending" as const, updatedAt: "2026-08-23T00:00:00.000Z" }));
 
 describe("LongEpisodeImageGenerationScreen", () => {
@@ -261,5 +273,46 @@ describe("LongEpisodeImageGenerationScreen", () => {
 
     const picture = await screen.findByTestId("episode-image-review-picture-1");
     expect(picture).toHaveAttribute("data-aspect", "9:16");
+  });
+
+  // While the images were being made this screen said "대기 중" for every scene and offered no button — the
+  // same picture as "nothing has started". Five of six were already bought at that point. A person who cannot
+  // tell those apart presses generate again, and that is another $0.60.
+  it("says the scenes are being made while they are being made", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: withScript(episode("generating_images")) }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
+      .mockResolvedValue(jsonResponse(200, { episode: withScript(episode("generating_images")) })));
+
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+    const scene = await screen.findByTestId("episode-image-scene-1");
+    expect(scene).toHaveAttribute("data-status", "generating");
+    expect(scene.textContent).toContain("만드는 중");
+  });
+
+  // The notice told people to approve a thing they had approved seconds earlier, while their money was being
+  // spent — it was written as "status is exactly asset_mapping_approved", so starting generation brought it
+  // back. A notice about a step has to know which side of it we are on.
+  it("stops telling you to approve the mapping once generation has started", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: withScript(episode("generating_images")) }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
+      .mockResolvedValue(jsonResponse(200, { episode: withScript(episode("generating_images")) })));
+
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+    await screen.findByTestId("episode-image-scene-1");
+    expect(screen.queryByTestId("episode-image-not-eligible")).toBeNull();
+  });
+
+  it("still asks for the mapping approval when it genuinely has not happened", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("planned") }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValue(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) })));
+
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+    expect(await screen.findByTestId("episode-image-not-eligible")).toBeTruthy();
   });
 });
