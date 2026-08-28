@@ -13,6 +13,15 @@ import { SceneEditService } from "./scene-edit.service.js";
 
 export const PROJECTS_ROOT = "PROJECTS_ROOT";
 
+/**
+ * `learning_data` relative to the cwd, which for every real launch is `apps/backend` — see story-prompt.service.ts
+ * for why that is consistent rather than accidental.
+ *
+ * The repository root holds a directory of the same name, and it is a different thing: the Python baseline's
+ * data, tracked in git, last written by the Python app. Nothing here should ever write there. When reading
+ * files to answer "what did the app actually store", check which one you opened first — a stale copy of that
+ * question already produced a wrong answer once (D-032).
+ */
 function defaultProjectsRoot(): string {
   return process.env.PROJECTS_ROOT ?? path.join(process.env.LEARNING_DATA_ROOT ?? path.join(process.cwd(), "learning_data"), "projects");
 }
