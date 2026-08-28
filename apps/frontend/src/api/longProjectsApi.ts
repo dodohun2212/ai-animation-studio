@@ -659,7 +659,7 @@ function isLongEpisodeNarrationReview(value: unknown): value is LongEpisodeNarra
   return isRecord(value)
     && isSceneNumber(value.sceneNumber)
     && typeof value.narration === "string"
-    && typeof value.hasAudio === "boolean"
+    && (value.audio === "none" || value.audio === "placeholder" || value.audio === "generated")
     && (value.audioDurationSeconds === undefined || isFiniteNonNegative(value.audioDurationSeconds));
 }
 const isLongEpisodeNarrationReviewList = (value: unknown): value is LongEpisodeNarrationReview[] =>

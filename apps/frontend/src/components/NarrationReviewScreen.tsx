@@ -357,7 +357,7 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
                     key={item.sceneNumber}
                     data-testid={`narration-scene-${item.sceneNumber}`}
                     data-has-narration={text ? "true" : "false"}
-                    data-has-audio={item.hasAudio ? "true" : "false"}
+                    data-has-audio={item.audio !== "none" ? "true" : "false"}
                     className={`space-y-2 rounded-xl border bg-slate-950/40 p-3.5 ${
                       tooLong ? "border-amber-400/40" : "border-white/10"
                     }`}
@@ -374,7 +374,7 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
                         ) : (
                           <StatusChip tone="danger">문장 없음</StatusChip>
                         )}
-                        {item.hasAudio && <StatusChip tone="success">음성 있음</StatusChip>}
+                        {item.audio !== "none" && <StatusChip tone="success">음성 있음</StatusChip>}
                         <StaleBadge
                           staleSceneNumbers={state.staleness?.narrationStale}
                           sceneNumber={item.sceneNumber}
@@ -389,7 +389,7 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
                       <p className="text-sm text-slate-500">이 장면에는 읽어줄 문장이 없어 음성도 만들어지지 않습니다.</p>
                     )}
 
-                    {item.hasAudio && (
+                    {item.audio !== "none" && (
                       <audio
                         controls
                         data-testid={`narration-audio-${item.sceneNumber}`}
@@ -400,7 +400,7 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
                       </audio>
                     )}
 
-                    {item.hasAudio && text && !voiceOff && (
+                    {item.audio !== "none" && text && !voiceOff && (
                       <div className="flex justify-end">
                         <button
                           type="button"

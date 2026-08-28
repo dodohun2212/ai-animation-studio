@@ -13,7 +13,10 @@ function narrations(entries: { narration: string; hasAudio?: boolean; audioDurat
   return entries.map((entry, index) => ({
     sceneNumber: index + 1,
     narration: entry.narration,
-    hasAudio: entry.hasAudio ?? false,
+    // Mechanical: the contract now names what the audio is rather than whether it exists. Naming the state
+    // directly at each call site is the better fixture and belongs with the screen work that has to tell
+    // a placeholder apart from a real voice.
+    audio: entry.hasAudio ? "generated" : "none",
     ...(entry.audioDurationSeconds === undefined ? {} : { audioDurationSeconds: entry.audioDurationSeconds }),
   }));
 }
