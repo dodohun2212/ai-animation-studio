@@ -27,7 +27,6 @@ import { LongProjectDetail } from "./components/LongProjectDetail.js";
 import { LongProjectList } from "./components/LongProjectList.js";
 import { LongProjectSettingsScreen } from "./components/LongProjectSettingsScreen.js";
 import { LongProjectOutlineScreen } from "./components/LongProjectOutlineScreen.js";
-import { LongStoryBibleScreen } from "./components/LongStoryBibleScreen.js";
 import { LongEpisodeOutlineScreen } from "./components/LongEpisodeOutlineScreen.js";
 import { LongEpisodeScriptScreen } from "./components/LongEpisodeScriptScreen.js";
 import { LongEpisodeImageGenerationScreen } from "./components/LongEpisodeImageGenerationScreen.js";
@@ -66,7 +65,6 @@ type Screen =
   | { name: "longDetail"; projectId: string }
   | { name: "longSettings"; projectId: string }
   | { name: "longOutline"; projectId: string }
-  | { name: "longStoryBible"; projectId: string }
   | { name: "longEpisodeOutline"; projectId: string; episodeNumber: number }
   | { name: "longEpisodeScript"; projectId: string; episodeNumber: number }
   | { name: "longEpisodeMappingReview"; projectId: string; episodeNumber: number }
@@ -78,7 +76,7 @@ type Screen =
   | { name: "longEpisodeSettings"; projectId: string; episodeNumber: number };
 
 const LONG_PROJECT_SCREEN_NAMES = new Set<Screen["name"]>([
-  "longDetail", "longSettings", "longOutline", "longStoryBible",
+  "longDetail", "longSettings", "longOutline",
   "longEpisodeOutline", "longEpisodeScript", "longEpisodeMappingReview", "longEpisodeImageGeneration",
   "longEpisodeVideoWorkflow", "longEpisodeVideoMerge", "longEpisodeNarrationReview", "longEpisodeContinuity",
   "longEpisodeSettings",
@@ -252,11 +250,11 @@ function LongWorkspaceNav({ screen, onNavigate }: { screen: Screen; onNavigate: 
     <nav aria-label="장편 프로젝트 작업공간" className="mt-4 flex flex-col items-start gap-1 border-b border-white/10 pb-4">
       {tab(screen.name, "longDetail", "작품 한눈에 보기", () => onNavigate({ name: "longDetail", projectId }))}
       {tab(screen.name, "longSettings", "작품 기본 설정", () => onNavigate({ name: "longSettings", projectId }))}
-      {/* 설정집 before 회차 나누기, because that is the order the work actually happens in: the Story Bible is
-          read when the Episode outline is generated and again for every Episode script, so anything written
-          after those steps does not reach them. The old order put the paid step first and the thing it reads
-          second, which is how a person ends up writing a secret that can no longer affect anything. */}
-      {tab(screen.name, "longStoryBible", "등장인물·설정집", () => onNavigate({ name: "longStoryBible", projectId }))}
+      {/* 등장인물·설정집 is gone. Its three remaining tabs (캐릭터·배경·소품) named folders that the script
+          prompt never received — reference pictures reach generation through 참고 이미지 연결, per Episode, and
+          always did. The two halves that the prompt does read, 세계관 설명 and 비밀·복선, moved into 작품 기본
+          설정 above, which is also where the tab order now puts them: the settings screen is read when the
+          Episode outline is generated and again for every Episode script, so it belongs before 회차 나누기. */}
       {tab(screen.name, "longOutline", "회차 나누기(AI)", () => onNavigate({ name: "longOutline", projectId }))}
       {episodeNumber !== undefined && (
         <>
@@ -519,7 +517,6 @@ export function App() {
                 onBack={() => setScreen({ name: "longList" })}
                 onOpenSettings={(projectId) => setScreen({ name: "longSettings", projectId })}
                 onOpenOutline={(projectId) => setScreen({ name: "longOutline", projectId })}
-                onOpenStoryBible={(projectId) => setScreen({ name: "longStoryBible", projectId })}
                 onOpenEpisodeOutline={(projectId, episodeNumber) => setScreen({ name: "longEpisodeOutline", projectId, episodeNumber })}
                 onOpenEpisodeScript={(projectId, episodeNumber) => setScreen({ name: "longEpisodeScript", projectId, episodeNumber })}
                 onOpenMappingReview={(projectId, episodeNumber) => setScreen({ name: "longEpisodeMappingReview", projectId, episodeNumber })}
@@ -540,12 +537,6 @@ export function App() {
             )}
             {screen.name === "longOutline" && (
               <LongProjectOutlineScreen
-                projectId={screen.projectId}
-                onBack={() => setScreen({ name: "longDetail", projectId: screen.projectId })}
-              />
-            )}
-            {screen.name === "longStoryBible" && (
-              <LongStoryBibleScreen
                 projectId={screen.projectId}
                 onBack={() => setScreen({ name: "longDetail", projectId: screen.projectId })}
               />

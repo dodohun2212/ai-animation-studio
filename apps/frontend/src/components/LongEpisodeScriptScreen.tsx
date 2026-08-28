@@ -160,7 +160,7 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
               sentence. The other half — a screen claiming "free" while its service holds a provider — is not
               expressible from here and is worth a backend-side guard. */}
           <p data-testid="episode-script-cost-notice" className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300">
-            이 단계는 <span className="font-semibold">비용이 발생합니다</span> — AI가 스토리 개요와 등장인물·설정집을 재료로 이 회차의 대본을 씁니다. 약 {`$${STORY_ESTIMATED_COST_USD.toFixed(2)}`}이 청구됩니다(추정치).
+            이 단계는 <span className="font-semibold">비용이 발생합니다</span> — AI가 작품 기본 설정과 스토리 개요를 재료로 이 회차의 대본을 씁니다. 약 {`$${STORY_ESTIMATED_COST_USD.toFixed(2)}`}이 청구됩니다(추정치).
           </p>
           <button type="button" className={primaryButton} disabled={pending} onClick={() => void run(() => generateLongEpisodeScript(projectId, episodeNumber, scriptRequest(false)))}>
             {pending ? "생성 중..." : "대본 초안 만들기"}

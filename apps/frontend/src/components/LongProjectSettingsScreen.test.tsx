@@ -160,4 +160,18 @@ describe("LongProjectSettingsScreen", () => {
     expect(body.settings).toMatchObject({ sceneCount: 8, clipDurationSeconds: 10 });
     expect(body.settings).not.toHaveProperty("episodeDurationSeconds");
   });
+
+  // Everything the script prompt reads about the work now lives on this one screen. The move is only real if
+  // the cards are actually mounted here — a rename of the import or a lost line puts them nowhere at all, and
+  // the old screen no longer has them either, so nothing on screen would say the feature had disappeared.
+  it("carries 주인공, 전체 그림체, 세계관 설명 and 비밀·복선 on one screen", async () => {
+    stubScreenFetch({ settings: makeLongProjectSettings() });
+    render(<LongProjectSettingsScreen projectId="long_test" onBack={() => {}} />);
+
+    expect(await screen.findByTestId("story-world-card")).toBeTruthy();
+    expect(screen.getByTestId("story-secrets-card")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "세계관 설명 저장" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "비밀 추가" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "복선 추가" })).toBeTruthy();
+  });
 });

@@ -131,8 +131,12 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
             <label key={key} className="block text-sm text-slate-300">
               {label}
               <textarea data-testid={`continuity-${key}`} className={fieldClassName} value={toLines(form[key])} disabled={pending || !canSave} placeholder="한 줄에 하나씩 입력" onChange={(event) => setForm((current) => ({ ...current, [key]: fromLines(event.target.value) }))} />
+              {/* The screen this hint used to name no longer exists, and with it went the only place these
+                  numbers could be read off. Naming a deleted screen is worse than saying nothing: a person goes
+                  looking for it, does not find it, and reads the whole field as broken. The honest hint is what
+                  the field is for and that it is optional — which it always was. */}
               {key.endsWith("Ids") && (
-                <span className="mt-1 block text-xs text-slate-500">등장인물·설정집에 등록된 항목의 번호를 적는 칸입니다. 잘 모르겠으면 비워 두셔도 됩니다.</span>
+                <span className="mt-1 block text-xs text-slate-500">이 회차에 나온 항목의 번호를 적는 칸입니다. 번호를 모르면 비워 두셔도 됩니다 — 비워도 이어쓰기 메모는 저장됩니다.</span>
               )}
             </label>
           ))}

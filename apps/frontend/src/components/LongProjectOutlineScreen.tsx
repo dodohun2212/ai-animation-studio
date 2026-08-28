@@ -157,7 +157,8 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
           Stated as the question each one answers, since that is the only way to know which one to type into. */}
       <p className="text-sm text-slate-400">
         스토리 개요는 <strong className="text-slate-200">"몇 화에 무슨 일이 일어나는가"</strong>입니다 — 시간 순서를 따라가는 줄거리예요.
-        등장인물이 어떻게 생겼는지, 어떤 배경·소품·비밀이 있는지는 여기가 아니라 <strong className="text-slate-200">등장인물·설정집</strong>에 적습니다.
+        세계관과 비밀·복선은 여기가 아니라 <strong className="text-slate-200">작품 기본 설정</strong>에 적습니다.
+        등장인물이 어떻게 생겼는지는 글이 아니라 <strong className="text-slate-200">이미지 보관함</strong>의 폴더로 정합니다 — 주인공은 작품 기본 설정에서 고르고, 나머지는 회차마다 <strong className="text-slate-200">참고 이미지 연결</strong>에서 붙입니다.
       </p>
 
       {previewLoading && !preview && <Spinner label="미리보기를 불러오는 중..." />}

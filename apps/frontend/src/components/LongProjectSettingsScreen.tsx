@@ -5,6 +5,8 @@ import { getLongProjectSettings, toLongProjectDisplayError, updateLongProjectSet
 import { GlobalStyleAssetCard } from "./GlobalStyleAssetCard.js";
 import { ProtagonistAssetCard } from "./ProtagonistAssetCard.js";
 import { Spinner } from "./Spinner.js";
+import { StorySecretsCard } from "./StorySecretsCard.js";
+import { StoryWorldCard } from "./StoryWorldCard.js";
 
 interface Props {
   projectId: string;
@@ -255,6 +257,14 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
           so both sit outside the settings form with a button each. */}
       {state.settings && <ProtagonistAssetCard projectId={projectId} />}
       {state.settings && <GlobalStyleAssetCard projectId={projectId} />}
+      {/* 세계관 설명 and 비밀·복선 moved here from 등장인물·설정집, for the same reason as the two cards above:
+          they describe the work, not one character or one Episode, and script generation reads them from the
+          project once per prompt. They were on a screen about characters only because the server stores all of
+          this in one file — and that screen also carried three tabs (캐릭터·배경·소품) whose text reaches
+          nothing, so the two halves that do reach the model were the harder ones to find.
+          Ordered after the two picture cards because those two are one choice each and these are lists. */}
+      {state.settings && <StoryWorldCard projectId={projectId} />}
+      {state.settings && <StorySecretsCard projectId={projectId} />}
     </section>
   );
 }

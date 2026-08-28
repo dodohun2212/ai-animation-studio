@@ -8,7 +8,6 @@ import { Spinner } from "./Spinner.js";
 
 interface LongProjectDetailProps {
   projectId: string; onBack: () => void; onOpenSettings: (projectId: string) => void; onOpenOutline: (projectId: string) => void;
-  onOpenStoryBible?: (projectId: string) => void;
   onOpenEpisodeOutline?: (projectId: string, episodeNumber: number) => void;
   onOpenEpisodeScript?: (projectId: string, episodeNumber: number) => void;
   onOpenMappingReview?: (projectId: string, episodeNumber: number) => void;
@@ -85,7 +84,7 @@ function episodeHasScript(status: LongEpisodeStatus): boolean {
 }
 
 export function LongProjectDetail({
-  projectId, onBack, onOpenSettings, onOpenOutline, onOpenStoryBible, onOpenEpisodeOutline, onOpenEpisodeScript,
+  projectId, onBack, onOpenSettings, onOpenOutline, onOpenEpisodeOutline, onOpenEpisodeScript,
   onOpenMappingReview = () => {}, onOpenImageGeneration = () => {}, onOpenVideoWorkflow = () => {},
   onOpenVideoMerge = () => {}, onOpenContinuity = () => {}, onOpenNarrationReview = () => {}, onOpenGallery = () => {}, onArchived = () => {},
 }: LongProjectDetailProps) {
@@ -130,7 +129,6 @@ export function LongProjectDetail({
           <div className="flex flex-wrap gap-3">
             <button type="button" className={secondaryButton} onClick={() => onOpenSettings(projectId)}>장기 프로젝트 설정</button>
             <button type="button" className={secondaryButton} onClick={() => onOpenOutline(projectId)}>스토리 개요 확인</button>
-            {onOpenStoryBible && <button type="button" className={secondaryButton} onClick={() => onOpenStoryBible(projectId)}>등장인물·설정집</button>}
             <button type="button" className={secondaryButton} onClick={() => onOpenGallery(projectId)}>생성 이미지 모음</button>
             <button
               type="button"
