@@ -16,7 +16,14 @@ import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generati
 import { LongProjectsService } from "./long-projects.service.js";
 
 /** A silent single-frame MP3, used in local-fake mode — mirrors narration/local-narration-generation.service.ts's identical placeholder. */
+/**
+ * Four bytes of MP3 header and no audio, written when there is no TTS credential so the rest of the pipeline
+ * can still be walked. It is a placeholder, and the record below is the only thing that says so — the file
+ * itself is indistinguishable from real narration to anything that only asks whether a file is there.
+ */
 const FAKE_MP3 = Buffer.from([0xff, 0xfb, 0x90, 0x00]);
+/** Named once, because the reuse decision and the record that drives it have to agree on it exactly. */
+const PLACEHOLDER_ADAPTER = "local-fake-tts-adapter";
 const statuses: readonly LongEpisodeStatus[] = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted", "rendering", "completed", "failed"];
 type StoredEpisode = Record<string, unknown> & { number: number; state: LongEpisodeStatus; approved: boolean; script: Record<string, unknown>; script_revision: number; updated_at: string; scene_count?: number };
 type StoredRecord = { scene_number: SceneNumber; narration: string; checkpoint: "completed"; adapter: string; tts_api_calls: number; regenerated?: true };
@@ -70,6 +77,29 @@ export class EpisodeNarrationService {
     const temp = path.join(path.dirname(file), `.${path.basename(file)}.${crypto.randomUUID()}.tmp`); let renamed = false;
     try { await fs.writeFile(temp, bytes); await fs.rename(temp, file); renamed = true; } finally { if (!renamed) await fs.unlink(temp).catch(() => undefined); }
   }
+  /**
+   * Whether the audio already on disk is still the audio this scene should have.
+   *
+   * The check used to be "is there a file", which is a different question and answered yes in two cases where
+   * the file was wrong:
+   *
+   * - A placeholder written with no credential passed as real audio forever. Connect a TTS key afterwards and
+   *   every one of those scenes was skipped as already done, so the narration could never become real — no
+   *   error, no cost, and the app reporting audio the whole time.
+   * - Reword a scene's narration and the old audio stayed. Pressing generate did nothing, and the video kept
+   *   saying the previous line.
+   *
+   * Both are the same mistake: asking about the file's existence rather than about what is in it. The record is
+   * what knows, and it has been written all along.
+   */
+  private stillGoodAudio(records: readonly StoredRecord[], sceneNumber: SceneNumber, text: string, canUseRealTts: boolean): boolean {
+    const record = records.find((item) => item.scene_number === sceneNumber);
+    // No record at all: something put a file there that this service did not write. Regenerate rather than trust it.
+    if (!record || record.narration !== text) return false;
+    // A placeholder is only worth keeping while it is still the best this app can do.
+    return record.adapter !== PLACEHOLDER_ADAPTER || !canUseRealTts;
+  }
+
   private async loadRecords(projectId: string, number: number): Promise<StoredRecord[]> {
     try {
       const raw = await this.json(this.files(projectId, number).records);
@@ -116,14 +146,15 @@ export class EpisodeNarrationService {
     const generated: SceneNumber[] = []; const reused: SceneNumber[] = []; const skipped: SceneNumber[] = [];
     try {
       await fs.mkdir(this.files(id, number).narration, { recursive: true });
+      const existingRecords = await this.loadRecords(id, number);
       for (let index = 0; index < scenes.length; index += 1) {
         const sceneNumber = (index + 1) as SceneNumber;
         const text = this.sceneNarrationText(scenes[index]!);
         const destination = this.narrationPath(id, number, sceneNumber);
         if (!text) { skipped.push(sceneNumber); continue; }
-        if (await this.validAudio(destination)) { reused.push(sceneNumber); continue; }
+        if (await this.validAudio(destination) && this.stillGoodAudio(existingRecords, sceneNumber, text, Boolean(apiKey && this.budget))) { reused.push(sceneNumber); continue; }
 
-        let bytes: Buffer = FAKE_MP3; let adapter = "local-fake-tts-adapter"; let apiCalls = 0;
+        let bytes: Buffer = FAKE_MP3; let adapter = PLACEHOLDER_ADAPTER; let apiCalls = 0;
         if (apiKey && this.budget) {
           await this.budget.preflight(TTS_ESTIMATED_COST_USD);
           let succeeded = false;
@@ -163,7 +194,7 @@ export class EpisodeNarrationService {
     if (!text) throw longEpisodeNarrationMissingText();
 
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
-    let bytes: Buffer = FAKE_MP3; let adapter = "local-fake-tts-adapter"; let apiCalls = 0;
+    let bytes: Buffer = FAKE_MP3; let adapter = PLACEHOLDER_ADAPTER; let apiCalls = 0;
     let retryEstimate: RegenerateLongEpisodeNarrationResponse["retryEstimate"];
     if (apiKey && this.budget) {
       try {

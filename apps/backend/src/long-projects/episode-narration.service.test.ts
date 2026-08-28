@@ -103,6 +103,56 @@ describe("EpisodeNarrationService", () => {
     await expect(fs.access(content.path)).resolves.toBeUndefined();
   });
 
+  it("does not keep placeholder audio once a real voice could be made instead", async () => {
+    // 🔴 Without a credential this writes four bytes of MP3 header so the pipeline can still be walked. The
+    // reuse check then asked only whether a file was there, so connecting a TTS key afterwards skipped every one
+    // of those scenes as already done — the narration could never become real, with no error, no cost, and the
+    // app reporting audio throughout.
+    const { narration, projectsRoot } = await setup();
+    const first = await narration.generate("long", 1, { approved: true });
+    expect(first.generatedSceneNumbers.length).toBeGreaterThan(0);
+
+    const withCredential = new EpisodeNarrationService(projectsRoot, { rawCredentialIfConnected: async () => "sk-test" } as never, { preflight: async () => {}, record: async () => {} } as never);
+    const second = await withCredential.generate("long", 1, { approved: true }).catch((error: unknown) => error);
+
+    // It tries again rather than reusing. Whether the call then succeeds is the provider's business — what
+    // matters here is that the placeholder was not treated as finished work.
+    if (second instanceof Error) {
+      expect(String(second)).not.toMatch(/reused/i);
+    } else {
+      expect((second as { reusedSceneNumbers: number[] }).reusedSceneNumbers).toEqual([]);
+    }
+  });
+
+  it("regenerates a scene whose narration text has since been reworded", async () => {
+    // Same mistake, different symptom: the audio stayed while the words changed, so pressing generate did
+    // nothing and the video went on saying the previous line.
+    const { narration, projectsRoot } = await setup();
+    await narration.generate("long", 1, { approved: true });
+
+    const scriptFile = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
+    const episode = JSON.parse(await fs.readFile(scriptFile, "utf8")) as { script: { scenes: Array<Record<string, unknown>> } };
+    episode.script.scenes[0]!.narration = "완전히 다시 쓴 내레이션";
+    await fs.writeFile(scriptFile, JSON.stringify(episode), "utf8");
+
+    const again = await narration.generate("long", 1, { approved: true });
+
+    expect(again.generatedSceneNumbers).toContain(1);
+    expect(again.reusedSceneNumbers).not.toContain(1);
+  });
+
+  it("still reuses audio that is as good as it is going to get", async () => {
+    // The fix must not turn every press into a full regeneration: with no credential, a placeholder is still
+    // the best this app can produce, and remaking it would spend time to change nothing.
+    const { narration } = await setup();
+    await narration.generate("long", 1, { approved: true });
+
+    const again = await narration.generate("long", 1, { approved: true });
+
+    expect(again.generatedSceneNumbers).toEqual([]);
+    expect(again.reusedSceneNumbers.length).toBeGreaterThan(0);
+  });
+
   it("never imports a provider, network client, FFmpeg, or subprocess", async () => {
     const source = await fs.readFile(path.join(process.cwd(), "src", "long-projects", "episode-narration.service.ts"), "utf8");
     expect(source).not.toMatch(/runway|ffmpeg|child_process/i);
