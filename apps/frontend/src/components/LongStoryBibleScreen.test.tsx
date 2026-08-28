@@ -63,7 +63,7 @@ describe("LongStoryBibleScreen", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveAttribute("data-error-code", "LONG_PROJECT_STORAGE_ERROR");
     expect(alert.textContent).not.toContain("absolute");
-    for (const name of ["캐릭터", "장소", "소품", "비밀", "복선"]) expect(screen.getByRole("tab", { name })).toBeTruthy();
+    for (const name of ["캐릭터", "배경", "소품", "비밀", "복선"]) expect(screen.getByRole("tab", { name })).toBeTruthy();
   });
 
   it("shows a read-only relationship audit with deterministic issues, healthy state, and safe retry errors", async () => {

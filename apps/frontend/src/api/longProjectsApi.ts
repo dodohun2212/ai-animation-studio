@@ -515,6 +515,22 @@ export function getLongProject(projectId: string): Promise<GetLongProjectRespons
   return request(API_ROUTES.longProject(projectId), undefined, isGetLongProjectResponse);
 }
 
+/**
+ * URL for one Episode scene's generated image bytes — the short project's imageReviewContentUrl, for an Episode.
+ *
+ * `cacheBuster` is the review's own `updatedAt`, so regenerating a scene changes the URL and the browser fetches
+ * the new picture instead of showing the cached old one. Without it a reviewer who pressed 다시 만들기 would keep
+ * looking at the image they rejected while deciding whether to approve it.
+ */
+export function longEpisodeImageContentUrl(
+  projectId: string,
+  episodeNumber: number,
+  sceneNumber: SceneNumber,
+  cacheBuster: string,
+): string {
+  return `${API_ROUTES.longEpisodeImageContent(projectId, episodeNumber, sceneNumber)}?v=${encodeURIComponent(cacheBuster)}`;
+}
+
 export function getLongProjectSettings(projectId: string): Promise<GetLongProjectSettingsResponse> {
   return request(API_ROUTES.longProjectSettings(projectId), undefined, isGetLongProjectSettingsResponse);
 }

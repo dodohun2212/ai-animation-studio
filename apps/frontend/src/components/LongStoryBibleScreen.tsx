@@ -9,7 +9,13 @@ import { Spinner } from "./Spinner.js";
 interface Props { projectId: string; onBack: () => void; }
 type DisplayError = { code: string; message: string };
 const TABS: Array<{ value: LongStoryBibleCollection; label: string }> = [
-  { value: "characters", label: "캐릭터" }, { value: "locations", label: "장소" }, { value: "props", label: "소품" },
+  // These labels must stay word-for-word the ones the Asset Library uses for its folder types, because a tab
+  // here only accepts folders of the matching type and the server speaks one vocabulary for both
+  // (usageRole: character | background | object | style). They did not match — this tab said 장소 while the
+  // library said 배경, and the library said 오브젝트 while this one said 소품 — so choosing a folder meant
+  // knowing a translation table nothing on screen showed you. 장소 became 배경 (the server's word); 오브젝트
+  // became 소품 in the library instead (the natural Korean for a prop, and its own prose already said 소품).
+  { value: "characters", label: "캐릭터" }, { value: "locations", label: "배경" }, { value: "props", label: "소품" },
   { value: "secrets", label: "비밀" }, { value: "foreshadowing", label: "복선" },
 ];
 const ASSET_LINK_COLLECTIONS: readonly LongStoryBibleCollection[] = ["characters", "locations", "props"];
@@ -338,7 +344,7 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
    * 등장인물 links to a Folder and nothing else — the same rule the short project's 등장 캐릭터 list follows.
    * A single drawing is one pose of a character, not the character, and the per-child description block the
    * image prompt builds has nothing to read unless the link points at a Folder.
-   * 장소·소품 accept either: a Folder when several angles of one place exist, a single image when it is just
+   * 배경·소품 accept either: a Folder when several angles of one place exist, a single image when it is just
    * the one picture.
    */
   const linkableAssets = collection === "characters"
@@ -361,7 +367,7 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
           스토리 개요. Renamed, and the difference stated as the question each store answers rather than left
           for the user to infer. */}
       <p className="text-sm text-slate-400">
-        등장인물·장소·소품·비밀이 <strong className="text-slate-200">무엇인지</strong> 적는 곳입니다 — 시간 순서와 무관한 설정집이에요.
+        등장인물·배경·소품·비밀이 <strong className="text-slate-200">무엇인지</strong> 적는 곳입니다 — 시간 순서와 무관한 설정집이에요.
         "몇 화에 무슨 일이 일어나는가"는 여기가 아니라 <strong className="text-slate-200">스토리 개요</strong>에 적습니다.
         여기 적은 내용은 회차마다 등장인물의 생김새·성격이 흔들리지 않게 붙잡아 주는 역할을 합니다.
       </p>

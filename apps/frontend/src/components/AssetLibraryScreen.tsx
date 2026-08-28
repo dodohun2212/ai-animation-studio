@@ -7,7 +7,9 @@ import { Spinner } from "./Spinner.js";
 interface Props { onBack: () => void; initialQuery?: string }
 const TYPES: Array<{ value: AssetType; label: string }> = [
   { value: "character", label: "캐릭터" }, { value: "style", label: "스타일" },
-  { value: "background", label: "배경" }, { value: "object", label: "오브젝트" },
+  // Kept word-for-word in step with the Story Bible's tab labels — see that file's own note. A folder type
+  // named differently in the two places is a translation table the user has to hold in their head.
+  { value: "background", label: "배경" }, { value: "object", label: "소품" },
   { value: "general_reference", label: "일반 참고" },
 ];
 const splitList = (value: string) => value.split(",").map((item) => item.trim()).filter(Boolean);

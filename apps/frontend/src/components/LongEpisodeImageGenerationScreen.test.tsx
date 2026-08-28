@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { jsonResponse } from "../api/testUtils.js";
+import { jsonResponse, makeLongProjectSettings } from "../api/testUtils.js";
 import { LongEpisodeImageGenerationScreen } from "./LongEpisodeImageGenerationScreen.js";
 
 const episode = (status: "asset_mapping_approved" | "images_review" | "waiting_for_video_confirmation") => ({
@@ -18,6 +18,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: episode("asset_mapping_approved") }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, generatedSceneNumbers: [1, 2, 3, 4, 5, 6], reusedSceneNumbers: [] }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, reviews: reviews() }));
     vi.stubGlobal("fetch", fetchMock);
@@ -26,12 +27,12 @@ describe("LongEpisodeImageGenerationScreen", () => {
     expect(await screen.findByTestId("episode-image-cost-notice")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "이미지 생성 시작" }));
     expect(await screen.findByTestId("episode-image-generate-confirm")).toBeTruthy();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
 
     fireEvent.click(screen.getByRole("button", { name: "이미지 생성" }));
     await screen.findByTestId("episode-image-generation-summary");
-    expect(fetchMock.mock.calls[2]?.[0]).toBe("/long-projects/long/episodes/1/images/generations");
-    expect(JSON.parse(String((fetchMock.mock.calls[2]?.[1] as RequestInit).body))).toEqual({ approved: true });
+    expect(fetchMock.mock.calls[3]?.[0]).toBe("/long-projects/long/episodes/1/images/generations");
+    expect(JSON.parse(String((fetchMock.mock.calls[3]?.[1] as RequestInit).body))).toEqual({ approved: true });
     await screen.findByTestId("episode-image-review-1");
   });
 
@@ -40,6 +41,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: true } }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode, reviews: reviews() }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode, reviews: reviews([1]) }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode, reviews: reviews(), sceneNumber: 2 }));
@@ -49,17 +51,17 @@ describe("LongEpisodeImageGenerationScreen", () => {
     expect(await screen.findByTestId("episode-image-continuity-available")).toHaveTextContent("에피소드 1의 마지막 장면(6번)");
     expect(await screen.findByTestId("episode-image-review-1")).toHaveAttribute("data-status", "pending");
     fireEvent.click(screen.getAllByRole("button", { name: "이 이미지로 확정" })[0]!);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
-    expect(fetchMock.mock.calls[3]?.[0]).toBe("/long-projects/long/episodes/1/images/review/1/approve");
-    expect(JSON.parse(String((fetchMock.mock.calls[3]?.[1] as RequestInit).body))).toEqual({ approved: true });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
+    expect(fetchMock.mock.calls[4]?.[0]).toBe("/long-projects/long/episodes/1/images/review/1/approve");
+    expect(JSON.parse(String((fetchMock.mock.calls[4]?.[1] as RequestInit).body))).toEqual({ approved: true });
 
     fireEvent.click(screen.getAllByRole("button", { name: "다시 만들기" })[1]!);
     expect(await screen.findByTestId("episode-image-regenerate-confirm-2")).toBeTruthy();
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
     fireEvent.click(screen.getByRole("button", { name: "이 장면 다시 만들기" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
-    expect(fetchMock.mock.calls[4]?.[0]).toBe("/long-projects/long/episodes/1/images/review/2/regenerate");
-    expect(JSON.parse(String((fetchMock.mock.calls[4]?.[1] as RequestInit).body))).toEqual({ approved: true });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(6));
+    expect(fetchMock.mock.calls[5]?.[0]).toBe("/long-projects/long/episodes/1/images/review/2/regenerate");
+    expect(JSON.parse(String((fetchMock.mock.calls[5]?.[1] as RequestInit).body))).toEqual({ approved: true });
     expect(screen.getByTestId("episode-image-review-1")).toHaveAttribute("data-status", "pending");
   });
 
@@ -68,6 +70,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: done }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: false } }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: done, reviews: reviews([1, 2, 3, 4, 5, 6]) })));
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
     expect(await screen.findByTestId("episode-video-confirmation-transition")).toBeTruthy();
@@ -88,6 +91,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: { ...episode("asset_mapping_approved"), script: { title: "t", synopsis: "s", ending: "e", scenes } } }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
       .mockResolvedValueOnce(
         jsonResponse(200, {
           episode: imageReviewEpisode,
@@ -104,7 +108,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
 
     // 6 scenes x $0.10, shown before the request goes out.
     expect(screen.getByTestId("episode-image-cost-estimate").textContent).toContain("$0.60");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
 
     fireEvent.click(screen.getByRole("button", { name: "이미지 생성" }));
     const budget = await screen.findByTestId("episode-image-generation-budget");
@@ -116,6 +120,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: episode("asset_mapping_approved") }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, generatedSceneNumbers: [1, 2, 3, 4, 5, 6], reusedSceneNumbers: [] }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, reviews: reviews() }));
     vi.stubGlobal("fetch", fetchMock);
@@ -134,6 +139,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: first }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 0, sourceSceneNumber: 6, available: false } }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
       .mockResolvedValue(jsonResponse(200, { episode: first, reviews: reviews() })));
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
@@ -145,6 +151,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: later }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: false } }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
       .mockResolvedValue(jsonResponse(200, { episode: later, reviews: reviews() })));
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={2} onBack={() => {}} />);
 
@@ -160,6 +167,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: ready }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
       .mockResolvedValue(jsonResponse(200, { episode: ready, reviews: fourReviews })));
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
@@ -180,6 +188,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: withScript }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
       .mockResolvedValue(jsonResponse(200, { episode: withScript, reviews: [] })));
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
@@ -194,11 +203,63 @@ describe("LongEpisodeImageGenerationScreen", () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: ready }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 2, sourceSceneNumber: 4, available: true } }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
       .mockResolvedValue(jsonResponse(200, { episode: ready, reviews: reviews() })));
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={3} onBack={() => {}} />);
 
     const line = await screen.findByTestId("episode-image-continuity-available");
     expect(line.textContent).toContain("에피소드 2의 마지막 장면(4번)");
     expect(line.textContent).not.toContain("6번 장면");
+  });
+
+  it("shows the picture it is asking the reviewer to approve, and refetches it after a regeneration", async () => {
+    // Until now this screen had no <img> at all and no route served one, so 확정/다시 만들기 — one of which
+    // spends money — were pressed against a picture nobody had seen. The cache buster is the second half: the
+    // browser would otherwise keep showing the rejected image while the reviewer decides about the new one.
+    const reviewEpisode = episode("images_review");
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "16:9" }) }))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode, reviews: reviews() })));
+
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={2} onBack={() => {}} />);
+
+    const picture = await screen.findByTestId("episode-image-review-picture-1");
+    expect(picture.getAttribute("src")).toContain("/long-projects/long/episodes/2/images/1/content");
+    expect(picture.getAttribute("src")).toContain("?v=");
+    // A 16:9 Episode really does produce landscape images; a portrait box would show a tall slice of one.
+    expect(picture).toHaveAttribute("data-aspect", "16:9");
+  });
+
+  it("still shows the picture after the Episode has moved past image review", async () => {
+    // The backend deliberately put no status gate on /content. If the screen adds one anyway, the review screen
+    // stops showing the thing under review the moment the Episode advances — the exact failure being fixed.
+    const advanced = episode("waiting_for_video_confirmation");
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: advanced }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: advanced, reviews: reviews([1, 2, 3, 4, 5, 6]) })));
+
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={2} onBack={() => {}} />);
+
+    expect(await screen.findByTestId("episode-image-review-picture-1")).toBeTruthy();
+  });
+
+  it("falls back to the default shape when the settings request fails, rather than losing the picture", async () => {
+    // Shape is a nicety; the picture is the point. A settings endpoint that does not answer must not be able to
+    // put the reviewer back in front of nothing.
+    const reviewEpisode = episode("images_review");
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode, reviews: reviews() })));
+
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={2} onBack={() => {}} />);
+
+    const picture = await screen.findByTestId("episode-image-review-picture-1");
+    expect(picture).toHaveAttribute("data-aspect", "9:16");
   });
 });

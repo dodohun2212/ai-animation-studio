@@ -7,6 +7,8 @@ import {
   getLongEpisode,
   getLongEpisodeContinuityReference,
   getLongEpisodeImageReview,
+  getLongProjectSettings,
+  longEpisodeImageContentUrl,
   regenerateLongEpisodeImageReview,
   startLongEpisodeImageGeneration,
   toLongProjectDisplayError,
@@ -36,6 +38,14 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
   const [episode, setEpisode] = useState<LongEpisodeDetail | null>(null);
   const [continuityReference, setContinuityReference] = useState<LongEpisodeContinuityReference | null>(null);
   const [continuityReferenceLoading, setContinuityReferenceLoading] = useState(true);
+  /**
+   * Only so the image box takes this project's real shape. A 16:9 Episode really does produce landscape images,
+   * and fitting one into a portrait box shows the reviewer a tall slice of a picture that is not tall — a paid
+   * approve/regenerate decision made against something the model never produced. Failure is silent on purpose:
+   * a settings request that does not answer must not cost anyone the picture itself, so the box falls back to
+   * the app-wide default shape and the image still renders.
+   */
+  const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9">("9:16");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<DisplayError | null>(null);
   const [confirmingGeneration, setConfirmingGeneration] = useState(false);
@@ -60,6 +70,9 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
       .then((response) => { if (!cancelled) setContinuityReference(response.reference); })
       .catch(() => { if (!cancelled) setContinuityReference(null); })
       .finally(() => { if (!cancelled) setContinuityReferenceLoading(false); });
+    getLongProjectSettings(projectId)
+      .then((response) => { if (!cancelled) setAspectRatio(response.settings.aspectRatio); })
+      .catch(() => { /* Shape only — see aspectRatio's own comment. The picture matters more than its box. */ });
     return () => { cancelled = true; };
   }, [projectId, episodeNumber]);
 
@@ -204,6 +217,17 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
                     {" "}{review.referencesUsedCount ?? 0}장만 사용됐습니다. 연결을 줄이면 남은 것이 반영됩니다.
                   </p>
                 )}
+                {/* The screen this replaces had no <img> at all, and no route existed to serve one: a reviewer
+                    approved or paid to regenerate a picture they had never seen. Deliberately NOT gated on the
+                    Episode's status — an image that exists must stay visible after the Episode moves on, or the
+                    review screen stops showing the thing under review, which is the failure this fixes. */}
+                <img
+                  src={longEpisodeImageContentUrl(projectId, episodeNumber, sceneNumber, review.updatedAt)}
+                  alt={`${sceneNumber}번 장면 이미지`}
+                  data-testid={`episode-image-review-picture-${sceneNumber}`}
+                  data-aspect={aspectRatio}
+                  className={`${aspectRatio === "16:9" ? "aspect-video" : "aspect-[9/16]"} w-full rounded-xl border border-white/10 bg-slate-800 object-cover`}
+                />
                 <div className="flex flex-wrap justify-end gap-3">
                   <button type="button" className={smallOutlineButton} disabled={review.status === "approved" || approving} onClick={() => void approveScene(sceneNumber)}>{approving ? "확정하는 중..." : review.status === "approved" ? "확정 완료" : "이 이미지로 확정"}</button>
                   <button type="button" className={smallOutlineButton} disabled={regenerating || confirming} onClick={() => setRegenerateConfirm(sceneNumber)}>{regenerating ? "다시 만드는 중..." : "다시 만들기"}</button>

@@ -39,7 +39,7 @@ const STATUS_TEXT_TONE: Record<AssetMappingStatus, string> = {
   unmatched: "text-slate-400", excluded: "text-rose-300", invalid: "text-rose-300",
 };
 const TYPE_LABELS: Record<AssetType, string> = {
-  character: "캐릭터", style: "스타일", background: "배경", object: "오브젝트", general_reference: "일반 참고",
+  character: "캐릭터", style: "스타일", background: "배경", object: "소품", general_reference: "일반 참고",
 };
 // A filter option list, not tied to any one project's actual scene count — offers the full supported range
 // (2-12, see docs/02_MIGRATION_PLAN.md) so it works regardless of which project is open.
@@ -431,7 +431,7 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
             어떤 용도로 쓰나요
             <select value={addRole} onChange={(event) => setAddRole(event.target.value)} className="rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100">
               <option value="character">등장인물</option>
-              <option value="background">배경·장소</option>
+              <option value="background">배경</option>
               <option value="object">소품</option>
               <option value="style">그림체·분위기</option>
             </select>
