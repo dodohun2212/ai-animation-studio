@@ -607,7 +607,24 @@ export interface ShortProjectSettings {
 /** What a client actually sends: durationSeconds is derived server-side (sceneCount * clipDurationSeconds) and is rejected as an unsupported field if included. */
 export type ShortProjectSettingsInput = Omit<ShortProjectSettings, "durationSeconds">;
 
-export interface GetProjectSettingsResponse { settings: ShortProjectSettings; }
+/**
+ * Two flags rather than one, because this form has two locks and they close at different moments.
+ *
+ * A single `changeable` would have to be false as soon as either closed, which would disable the scene count
+ * the instant images existed — a field that is still perfectly editable then, if no Story has been written.
+ * The Episode's settings have one lock and so carry one flag; the shape follows the rule, not the other screen.
+ *
+ * Both exist so the screen does not have to re-derive the server's rule from the project. Computing
+ * `scenes.length > 0` in the frontend would be a second copy of the condition the save actually checks, and two
+ * copies is how the continuity screen came to disagree with its own server.
+ */
+export interface GetProjectSettingsResponse {
+  settings: ShortProjectSettings;
+  /** False once a Story has been written: its scenes are what the rest of the pipeline counts. */
+  sceneCountChangeable: boolean;
+  /** False once images have been generated at the current orientation. */
+  aspectRatioChangeable: boolean;
+}
 export interface UpdateProjectSettingsRequest { settings: ShortProjectSettingsInput; }
 export interface UpdateProjectSettingsResponse { project: Project; settings: ShortProjectSettings; }
 

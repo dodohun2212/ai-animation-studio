@@ -18,6 +18,8 @@ import {
   getLongEpisodeVideoPreview,
   startLongEpisodeVideoGeneration,
   getLongEpisodeContinuity,
+  getLongEpisodeSettings,
+  updateLongEpisodeSettings,
   saveLongEpisodeContinuity,
   getLongEpisodeContinuityReference,
   addLongEpisode,
@@ -314,6 +316,63 @@ describe("longProjectsApi", () => {
     await expect(getLongEpisodeVideoPreview("long", 1)).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(409, { code: "VIDEO_CONFIRMATION_STALE", message: "C:\\\\private" })));
     await expect(startLongEpisodeVideoGeneration("long", 1, { confirmationId: "confirm", userRequestId: "request", approved: true, prompts: [1,2,3,4,5,6].map((sceneNumber) => ({ sceneNumber: sceneNumber as 1|2|3|4|5|6, prompt: "prompt" })) })).rejects.toMatchObject({ code: "VIDEO_CONFIRMATION_STALE" });
+  });
+
+  it("reads Episode settings with the project defaults and the changeable flag", async () => {
+    const settings = { sceneCount: 8, clipDurationSeconds: 10, episodeDurationSeconds: 80 };
+    const projectDefaults = { sceneCount: 6, clipDurationSeconds: 5, episodeDurationSeconds: 30 };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { settings, projectDefaults, changeable: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getLongEpisodeSettings("long", 2)).resolves.toEqual({ settings, projectDefaults, changeable: true });
+    expect(fetchMock).toHaveBeenCalledWith("/long-projects/long/episodes/2/settings");
+  });
+
+  // Both are load-bearing on the screen and neither is recoverable from the rest of the response: without
+  // `changeable` the form renders editable for an Episode whose script is already written, and the person finds
+  // out from a rejected save — the failure the flag exists to prevent. Without `projectDefaults` the screen
+  // cannot mark which values were changed, and silently stopping looks the same as nothing being changed.
+  it("rejects an Episode settings response missing changeable or projectDefaults", async () => {
+    const settings = { sceneCount: 6, clipDurationSeconds: 5, episodeDurationSeconds: 30 };
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { settings, projectDefaults: settings })));
+    await expect(getLongEpisodeSettings("long", 1)).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { settings, changeable: true })));
+    await expect(getLongEpisodeSettings("long", 1)).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+
+    // Out of the allowed set rather than merely the wrong type: a clip length of 7 would reach a <select> with
+    // no matching <option> and render as nothing chosen, which reads as "not set" instead of as bad data.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, {
+      settings: { sceneCount: 6, clipDurationSeconds: 7, episodeDurationSeconds: 42 },
+      projectDefaults: settings,
+      changeable: true,
+    })));
+    await expect(getLongEpisodeSettings("long", 1)).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+  });
+
+  it("sends only the two editable fields when saving Episode settings, over PUT", async () => {
+    const settings = { sceneCount: 4, clipDurationSeconds: 5, episodeDurationSeconds: 20 };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { settings }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(updateLongEpisodeSettings("long", 3, { sceneCount: 4, clipDurationSeconds: 5 })).resolves.toEqual({ settings });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/long-projects/long/episodes/3/settings");
+    expect(init.method).toBe("PUT");
+    // The server derives episodeDurationSeconds and rejects the request outright if it is sent.
+    expect(JSON.parse(String(init.body))).toEqual({ sceneCount: 4, clipDurationSeconds: 5 });
+  });
+
+  it("names the settings refusal instead of falling back to the generic unknown error", () => {
+    // Reachable despite `changeable`: two windows, a script generated in one, then a save from the other, whose
+    // form was drawn before the script existed. Asserted as "not the fallback" as well as "the right code",
+    // because an entry that existed but said nothing useful would still pass a code-only check.
+    const displayed = toLongProjectDisplayError(new LongProjectsApiError("LONG_EPISODE_SETTINGS_NOT_ALLOWED", "raw backend detail"));
+    expect(displayed.code).toBe("LONG_EPISODE_SETTINGS_NOT_ALLOWED");
+    expect(displayed.code).not.toBe("CLIENT_UNKNOWN_ERROR");
+    expect(displayed.message).toContain("대본을 다시 만들어야");
+    expect(displayed.message).not.toContain("raw backend detail");
   });
 
   it("uses GET and explicit PUT only for Episode continuity memory", async () => {

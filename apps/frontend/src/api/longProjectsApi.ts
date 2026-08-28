@@ -18,13 +18,17 @@ import {
   type CreateLongProjectRequest,
   type CreateLongProjectResponse,
   type GetLongProjectResponse,
+  type GetLongEpisodeSettingsResponse,
   type GetLongProjectSettingsResponse,
   type ListLongProjectsResponse,
   type LongEpisodeOutline,
   type UpdateLongEpisodeOutlineRequest,
   type UpdateLongEpisodeOutlineResponse,
   type LongProject,
+  type LongEpisodeSettings,
   type LongProjectSettings,
+  type UpdateLongEpisodeSettingsRequest,
+  type UpdateLongEpisodeSettingsResponse,
   type LongProjectSummary,
   type GetLongEpisodeResponse,
   type GenerateLongEpisodeScriptRequest,
@@ -121,6 +125,11 @@ const SAFE_ERRORS: Record<string, string> = {
   // "이 에피소드를 처리하는 중" — a sentence about something the user had not touched. A message shared by two
   // subjects must not name either.
   PROJECT_LOCKED: "이 프로젝트에서 다른 작업이 진행 중입니다. 다시 누르지 마세요 — 그 작업이 끝나면 자동으로 반영됩니다.",
+  // The screen's `changeable` flag normally keeps this out of sight. It still has to say something true,
+  // because there is one way to reach it: two windows open, a script generated in one, then a save from the
+  // other — which was showing an editable form from before the script existed. So the message states what
+  // changed underneath and what the way forward is, rather than "지금은 안 됩니다".
+  LONG_EPISODE_SETTINGS_NOT_ALLOWED: "이 회차의 대본이 이미 이 장면 수와 클립 길이로 쓰였습니다. 바꾸려면 대본을 다시 만들어야 합니다.",
 };
 const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };
@@ -334,6 +343,41 @@ function isGetLongProjectResponse(value: unknown): value is GetLongProjectRespon
 
 function isGetLongProjectSettingsResponse(value: unknown): value is GetLongProjectSettingsResponse {
   return isRecord(value) && isLongProjectSettings(value.settings);
+}
+
+/**
+ * The three numbers an Episode's own settings carry, checked to the same standard as the project's.
+ *
+ * The two the person edits are range-checked rather than merely typed, because the screen binds sceneCount to a
+ * number input and clipDurationSeconds to a select: a value outside the allowed set would render as a control
+ * with nothing selected, which reads as "not set" rather than as bad data.
+ */
+function isLongEpisodeSettings(value: unknown): value is LongEpisodeSettings {
+  if (!isRecord(value)) return false;
+  if (!Number.isInteger(value.sceneCount) || (value.sceneCount as number) < MIN_SCENE_COUNT || (value.sceneCount as number) > MAX_SCENE_COUNT) return false;
+  if (!(RUNWAY_CLIP_DURATIONS as readonly number[]).includes(value.clipDurationSeconds as number)) return false;
+  if (!Number.isInteger(value.episodeDurationSeconds) || (value.episodeDurationSeconds as number) <= 0) return false;
+  return true;
+}
+
+/**
+ * `projectDefaults` and `changeable` are required, not optional.
+ *
+ * Absent, `changeable` would be `undefined` on a screen whose type says boolean, and the form would render
+ * editable for an Episode whose script is already written — the person would find that out from a rejected
+ * save, which is the exact failure this flag exists to prevent (same reasoning as the continuity screen's
+ * canSave). Absent, `projectDefaults` would make "changed from the default" unanswerable, and a screen that
+ * silently stops marking changes looks identical to one where nothing was changed.
+ */
+function isGetLongEpisodeSettingsResponse(value: unknown): value is GetLongEpisodeSettingsResponse {
+  return isRecord(value)
+    && isLongEpisodeSettings(value.settings)
+    && isLongEpisodeSettings(value.projectDefaults)
+    && typeof value.changeable === "boolean";
+}
+
+function isUpdateLongEpisodeSettingsResponse(value: unknown): value is UpdateLongEpisodeSettingsResponse {
+  return isRecord(value) && isLongEpisodeSettings(value.settings);
 }
 
 function isUpdateLongProjectSettingsResponse(value: unknown): value is UpdateLongProjectSettingsResponse {
@@ -555,6 +599,27 @@ export function updateLongProjectSettings(
     API_ROUTES.longProjectSettings(projectId),
     { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) },
     isUpdateLongProjectSettingsResponse,
+  );
+}
+
+export function getLongEpisodeSettings(projectId: string, episodeNumber: number): Promise<GetLongEpisodeSettingsResponse> {
+  return request(API_ROUTES.longEpisodeSettings(projectId, episodeNumber), undefined, isGetLongEpisodeSettingsResponse);
+}
+
+/**
+ * Sends only the two fields the person edits. `episodeDurationSeconds` is derived by the server and rejected as
+ * an unsupported field if included — the same rule the project's own settings follow, so neither screen has to
+ * remember a different one.
+ */
+export function updateLongEpisodeSettings(
+  projectId: string,
+  episodeNumber: number,
+  requestBody: UpdateLongEpisodeSettingsRequest,
+): Promise<UpdateLongEpisodeSettingsResponse> {
+  return request(
+    API_ROUTES.longEpisodeSettings(projectId, episodeNumber),
+    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) },
+    isUpdateLongEpisodeSettingsResponse,
   );
 }
 

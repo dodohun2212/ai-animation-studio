@@ -168,6 +168,18 @@ describe("projectsApi", () => {
       expect(toDisplayError(error)).toEqual({ code: "PROJECT_NOT_FOUND", message: "프로젝트를 찾을 수 없습니다." });
     });
 
+    // The settings screen's own guard normally keeps this out of sight, but the refusal has to say something
+    // true when it does arrive: what changed underneath, and that regenerating the Story is the way to change
+    // it. Without a table entry it lands in the generic fallback, which tells a person nothing about a field
+    // they edited on a different screen — the exact gap that made this failure hard to understand.
+    it("names the scene-count lock instead of falling back to the generic unknown error", () => {
+      const result = toDisplayError(new ProjectsApiError("PROJECT_SCENE_COUNT_LOCKED", "raw backend detail"));
+      expect(result.code).toBe("PROJECT_SCENE_COUNT_LOCKED");
+      expect(result.code).not.toBe("CLIENT_UNKNOWN_ERROR");
+      expect(result.message).toContain("이야기를 다시 만들어야");
+      expect(result.message).not.toContain("raw backend detail");
+    });
+
     it("falls back to a safe generic code/message for an unexpected error", () => {
       const result = toDisplayError(new Error("some internal detail"));
       expect(typeof result.code).toBe("string");

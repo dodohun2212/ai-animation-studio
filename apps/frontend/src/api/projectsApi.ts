@@ -71,6 +71,14 @@ const SAFE_ERRORS: Record<string, string> = {
   PROJECT_ARCHIVE_NOT_ALLOWED: "생성 또는 렌더링이 진행 중인 프로젝트는 보관할 수 없습니다.",
   PROJECT_ARCHIVE_COLLISION: "이미 복구 가능한 보관 항목이 있습니다. 먼저 정리해 주세요.",
   PROJECT_RESTORE_COLLISION: "같은 위치에 이미 활성 프로젝트가 있어 복구할 수 없습니다.",
+  // Says what changed and what the way out is, not just "안 됩니다". The scene count lives in two places once a
+  // Story exists — the settings, and the Story's own scenes — and every later step (이미지, 이미지 검토,
+  // 내레이션, 매핑) reads the settings one. Letting them drift produced a refusal two screens later quoting a
+  // number the person could not see, with nothing connecting it to the field they had changed.
+  //
+  // No number in the wording on purpose: the count is in the backend's own English message, which is never
+  // shown, and no `details` field carries it yet. A message that invented one would be worse than one without.
+  PROJECT_SCENE_COUNT_LOCKED: "이 프로젝트의 이야기가 이미 만들어져서 장면 수를 바꿀 수 없습니다. 바꾸려면 이야기를 다시 만들어야 합니다.",
 };
 
 /**

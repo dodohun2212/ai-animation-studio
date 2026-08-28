@@ -89,7 +89,7 @@ describe("project routes and DTO shape", () => {
     };
     // durationSeconds is derived server-side (sceneCount * clipDurationSeconds), so the response's full
     // ShortProjectSettings adds it back rather than reusing the request's narrower ShortProjectSettingsInput.
-    const response: GetProjectSettingsResponse = { settings: { ...settings.settings, durationSeconds: 30 } };
+    const response: GetProjectSettingsResponse = { settings: { ...settings.settings, durationSeconds: 30 }, sceneCountChangeable: true, aspectRatioChangeable: true };
 
     expect(API_ROUTES.projectSettings("한글 id")).toBe(
       "/projects/%ED%95%9C%EA%B8%80%20id/settings",

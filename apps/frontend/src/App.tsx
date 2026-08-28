@@ -35,6 +35,7 @@ import { LongEpisodeVideoWorkflowScreen } from "./components/LongEpisodeVideoWor
 import { LongEpisodeVideoMergeScreen } from "./components/LongEpisodeVideoMergeScreen.js";
 import { LongEpisodeNarrationReviewScreen } from "./components/LongEpisodeNarrationReviewScreen.js";
 import { LongEpisodeContinuityScreen } from "./components/LongEpisodeContinuityScreen.js";
+import { LongEpisodeSettingsScreen } from "./components/LongEpisodeSettingsScreen.js";
 import { ArchiveScreen } from "./components/ArchiveScreen.js";
 import { WorkflowGuideScreen } from "./components/WorkflowGuideScreen.js";
 import { NarrationReviewScreen } from "./components/NarrationReviewScreen.js";
@@ -73,12 +74,14 @@ type Screen =
   | { name: "longEpisodeVideoWorkflow"; projectId: string; episodeNumber: number }
   | { name: "longEpisodeVideoMerge"; projectId: string; episodeNumber: number }
   | { name: "longEpisodeNarrationReview"; projectId: string; episodeNumber: number }
-  | { name: "longEpisodeContinuity"; projectId: string; episodeNumber: number };
+  | { name: "longEpisodeContinuity"; projectId: string; episodeNumber: number }
+  | { name: "longEpisodeSettings"; projectId: string; episodeNumber: number };
 
 const LONG_PROJECT_SCREEN_NAMES = new Set<Screen["name"]>([
   "longDetail", "longSettings", "longOutline", "longStoryBible",
   "longEpisodeOutline", "longEpisodeScript", "longEpisodeMappingReview", "longEpisodeImageGeneration",
   "longEpisodeVideoWorkflow", "longEpisodeVideoMerge", "longEpisodeNarrationReview", "longEpisodeContinuity",
+  "longEpisodeSettings",
 ]);
 
 const SHORT_PROJECT_SCREEN_NAMES = new Set<Screen["name"]>([
@@ -256,6 +259,9 @@ function LongWorkspaceNav({ screen, onNavigate }: { screen: Screen; onNavigate: 
           <span className="mx-1 text-sm text-slate-500">·</span>
           <span className="text-sm text-slate-400">{episodeNumber}화</span>
           {tab(screen.name, "longEpisodeOutline", "이 회차 내용", () => onNavigate({ name: "longEpisodeOutline", projectId, episodeNumber }))}
+          {/* Before 장면 대본 on purpose: these two numbers go into the script prompt, so they are chosen
+              before the script exists — and once it does, this screen's whole job is to say why they are fixed. */}
+          {tab(screen.name, "longEpisodeSettings", "이 회차 설정", () => onNavigate({ name: "longEpisodeSettings", projectId, episodeNumber }))}
           {tab(screen.name, "longEpisodeScript", "장면 대본", () => onNavigate({ name: "longEpisodeScript", projectId, episodeNumber }))}
           {tab(screen.name, "longEpisodeMappingReview", "참고 이미지 연결", () => onNavigate({ name: "longEpisodeMappingReview", projectId, episodeNumber }))}
           {tab(screen.name, "longEpisodeImageGeneration", "장면 이미지", () => onNavigate({ name: "longEpisodeImageGeneration", projectId, episodeNumber }))}
@@ -563,6 +569,7 @@ export function App() {
                 onBack={() => setScreen({ name: "longDetail", projectId: screen.projectId })}
               />
             )}
+            {screen.name === "longEpisodeSettings" && <LongEpisodeSettingsScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longEpisodeOutline", projectId: screen.projectId, episodeNumber: screen.episodeNumber })} />}
             {screen.name === "longEpisodeContinuity" && <LongEpisodeContinuityScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longEpisodeVideoMerge", projectId: screen.projectId, episodeNumber: screen.episodeNumber })} onOpenNextEpisode={(projectId, episodeNumber) => setScreen({ name: "longEpisodeScript", projectId, episodeNumber })} />}
             {screen.name === "create" && (
               <CreateProjectForm onCreated={handleCreated} onCancel={() => setScreen({ name: "list" })} />

@@ -107,9 +107,12 @@ export function projectRestoreCollision(): ProjectApiException {
  * nothing inconsistent — unlike the Long Project's Episode, where both are in the prompt and both are refused.
  */
 export function sceneCountLocked(storyScenes: number): ProjectApiException {
+  // The count travels in `details` as well as the message: the message is the backend's own words and never
+  // reaches a screen, so a frontend that wants to say "already has 6 scenes" has nowhere else to get the 6.
+  // Same shape as ASSET_MAPPING_APPROVAL_BLOCKED's missingSceneNumbers.
   return new ProjectApiException("PROJECT_SCENE_COUNT_LOCKED",
     `This project's Story already has ${storyScenes} scenes. Regenerate the Story to change how many it has.`,
-    HttpStatus.CONFLICT);
+    HttpStatus.CONFLICT, { sceneCount: storyScenes });
 }
 
 /**

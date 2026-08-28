@@ -141,6 +141,21 @@ describe("CreateLongProjectForm", () => {
     expect(onCreated).not.toHaveBeenCalled();
   });
 
+  // An Episode can now change its own scene count and clip length, so this number is what a new Episode starts
+  // from — not what every Episode is. Both halves are asserted: the true wording present AND the old wording
+  // gone, because leaving "에피소드당" in place next to the new line would keep the false claim on screen.
+  it("calls the length a default for new Episodes rather than a fact about every Episode", () => {
+    vi.stubGlobal("fetch", vi.fn());
+    render(<CreateLongProjectForm onCreated={() => {}} onCancel={() => {}} />);
+
+    const line = screen.getByTestId("long-create-episode-length");
+    expect(line.textContent).toContain("새 회차 기본값");
+    expect(line.textContent).not.toContain("에피소드당");
+    expect(line.textContent).toContain("회차마다 장면 수와 클립 길이를 다르게");
+    // The one thing that is not per-Episode still says so, in the same breath.
+    expect(line.textContent).toContain("화면 비율은 작품 전체에 하나");
+  });
+
   it("calls onCancel when Cancel is clicked", () => {
     vi.stubGlobal("fetch", vi.fn());
     const onCancel = vi.fn();

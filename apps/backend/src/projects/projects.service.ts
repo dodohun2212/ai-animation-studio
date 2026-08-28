@@ -142,7 +142,12 @@ export class ProjectsService {
 
   async getProjectSettings(projectId: string): Promise<GetProjectSettingsResponse> {
     const stored = await this.repository.findById(projectId.trim());
-    return { settings: toShortProjectSettings(stored) };
+    // Read from the same two facts updateProjectSettings refuses on, so the screen and the save cannot disagree.
+    return {
+      settings: toShortProjectSettings(stored),
+      sceneCountChangeable: stored.scenes.length === 0,
+      aspectRatioChangeable: stored.generated_images.length === 0,
+    };
   }
 
   async updateProjectSettings(

@@ -105,7 +105,7 @@ describe("ProjectsService", () => {
 
     expect(saved.project.topic).toBe("별을 찾는 아이");
     // durationSeconds is derived server-side (sceneCount * clipDurationSeconds), not part of the request.
-    expect(await restarted.getProjectSettings("wizard_project")).toEqual({ settings: { ...settings, durationSeconds: 30 } });
+    expect(await restarted.getProjectSettings("wizard_project")).toEqual({ settings: { ...settings, durationSeconds: 30 }, sceneCountChangeable: true, aspectRatioChangeable: true });
   });
 
   it("refuses to change the scene count once a Story has been written, while leaving the rest of the form editable", async () => {
@@ -161,6 +161,26 @@ describe("ProjectsService", () => {
 
     const spaced = await service.updateProjectSettings("orientation", { settings: { ...settings, styleNotes: { aspect: "16 : 9" }, projectName: "등대지기" } });
     expect(spaced.settings.projectName).toBe("등대지기");
+  });
+
+  it("reports the two locks separately, because they close at different moments", async () => {
+    // The reason this is two flags and not one. Images can exist while no Story does — the scene count is still
+    // perfectly editable then, and a single `changeable` would have had to disable it. Each flag is read from
+    // the same fact its own refusal checks, so the screen and the save cannot disagree.
+    await service.createProject({ projectId: "flags", topic: "등대" });
+    const repository = new LocalProjectRepository(root);
+
+    expect(await service.getProjectSettings("flags")).toMatchObject({ sceneCountChangeable: true, aspectRatioChangeable: true });
+
+    const withImages = await repository.findById("flags");
+    withImages.generated_images = ["images/scene1.png"];
+    await repository.save(withImages);
+    expect(await service.getProjectSettings("flags")).toMatchObject({ sceneCountChangeable: true, aspectRatioChangeable: false });
+
+    const withStory = await repository.findById("flags");
+    withStory.scenes = [{ number: 1, description: "scene 1" }];
+    await repository.save(withStory);
+    expect(await service.getProjectSettings("flags")).toMatchObject({ sceneCountChangeable: false, aspectRatioChangeable: false });
   });
 
   it("returns an empty cast for a project that has never set one", async () => {

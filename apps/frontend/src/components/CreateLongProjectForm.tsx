@@ -239,8 +239,12 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
           ))}
         </select>
       </div>
-      <p className="text-sm text-slate-400 md:col-span-2">
-        에피소드당 예상 영상 길이: {settings.sceneCount * settings.clipDurationSeconds}초 ({settings.sceneCount}장면 × {settings.clipDurationSeconds}초)
+      {/* Not "에피소드당" any more: an Episode can now change its own scene count and clip length, so this
+          number describes what a *new* Episode starts from, not what every Episode is. Left as it was, it would
+          have kept stating a total that any edited Episode no longer has. */}
+      <p className="text-sm text-slate-400 md:col-span-2" data-testid="long-create-episode-length">
+        새 회차 기본값: {settings.sceneCount * settings.clipDurationSeconds}초 ({settings.sceneCount}장면 × {settings.clipDurationSeconds}초)
+        <span className="mt-0.5 block text-xs text-slate-500">회차마다 장면 수와 클립 길이를 다르게 정할 수 있습니다. 화면 비율은 작품 전체에 하나입니다.</span>
       </p>
       <div>
         <label className="block text-sm text-slate-300" htmlFor="long-aspect-ratio">
