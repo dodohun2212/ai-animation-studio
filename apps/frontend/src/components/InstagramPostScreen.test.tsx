@@ -63,7 +63,7 @@ function renderScreen(options: {
     if (url === "/projects/p1") return jsonResponse(200, { project: makeProject({ id: "p1", ...options.project }) });
     if (url === "/projects/p1/settings") {
       if (options.durationSeconds === "fails") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "raw" });
-      return jsonResponse(200, { settings: makeSettings(options.durationSeconds ?? 30) });
+      return jsonResponse(200, { settings: makeSettings(options.durationSeconds ?? 30), sceneCountChangeable: true, aspectRatioChangeable: true });
     }
     if (url === "/projects/p1/instagram/publish") {
       if (options.publish && options.publish !== "ok") {
@@ -310,7 +310,7 @@ describe("InstagramPostScreen", () => {
       const url = String(input);
       if (url === LIBRARY_URL) return jsonResponse(200, { projects: [libraryProject()] });
       if (url === "/projects/p1") return jsonResponse(200, { project: makeProject({ id: "p1" }) });
-      if (url === "/projects/p1/settings") return jsonResponse(200, { settings: makeSettings(30) });
+      if (url === "/projects/p1/settings") return jsonResponse(200, { settings: makeSettings(30), sceneCountChangeable: true, aspectRatioChangeable: true });
       if (url === "/projects/p1/post-draft" && init?.method === "PUT") {
         return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "raw backend detail" });
       }

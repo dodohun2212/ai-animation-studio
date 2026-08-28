@@ -28,7 +28,7 @@ describe("ShortProjectSettingsScreen", () => {
   it("reopens saved Wizard settings and saves an edited topic through PATCH", async () => {
     const project = makeProject({ topic: "새 주제" });
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
@@ -52,7 +52,7 @@ describe("ShortProjectSettingsScreen", () => {
   it("edits scene count and clip duration, shows the computed total, and saves both without durationSeconds", async () => {
     const project = makeProject({});
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
@@ -79,7 +79,7 @@ describe("ShortProjectSettingsScreen", () => {
 
   it("shows a one-time setup banner and a finish button that hands off via onBack right after creation", async () => {
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
@@ -94,9 +94,9 @@ describe("ShortProjectSettingsScreen", () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
-  it("omits the setup banner when reopened later, but still offers a way out at the bottom", async () => {
+  it("omits the setup banner and finish button when reopened later for an existing project", async () => {
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
@@ -106,17 +106,13 @@ describe("ShortProjectSettingsScreen", () => {
 
     await screen.findByDisplayValue("별의 지도");
     expect(screen.queryByTestId("just-created-notice")).toBeNull();
-    // The first-run wording is gone...
     expect(screen.queryByTestId("finish-setup-button")).toBeNull();
     expect(screen.getByRole("button", { name: "프로젝트로 돌아가기" })).toBeTruthy();
-    // ...but the page still ends on a way out. Four sections sit below the save button, and without this the
-    // only exit was scrolling all the way back to the top.
-    expect(screen.getByTestId("settings-done-button")).toBeTruthy();
   });
 
   it("blocks empty project name before sending PATCH", async () => {
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
@@ -136,7 +132,7 @@ describe("ShortProjectSettingsScreen", () => {
     const side = makeAsset({ assetId: "ASSET-CHAR-SIDE", displayName: "은빛 늑대_옆모습", assetType: "character", parentFolderId: "ASSET-CHAR-2", contentUrl: "/assets/ASSET-CHAR-SIDE/content", imageAvailable: true });
     const hero = makeAssetFolder({ assetId: "ASSET-CHAR-2", displayName: "은빛 늑대", assetType: "character", childAssetIds: [side.assetId], thumbnailAssetId: side.assetId });
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
@@ -159,7 +155,7 @@ describe("ShortProjectSettingsScreen", () => {
 
   it("shows a live draft Story prompt preview from unsaved settings once the panel is opened, and stays closed by default", async () => {
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
@@ -184,7 +180,7 @@ describe("ShortProjectSettingsScreen", () => {
   it("shows the actual error when the draft preview request fails, instead of the empty-fields hint", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === "/projects/sample_project/settings") return jsonResponse(200, { settings });
+      if (url === "/projects/sample_project/settings") return jsonResponse(200, { settings, sceneCountChangeable: true, aspectRatioChangeable: true });
       if (url === "/projects/sample_project/settings/cast") return jsonResponse(200, { cast: [] });
       if (url === "/projects/sample_project/settings/asset-references") return jsonResponse(200, { atmosphereAssetIds: [], sceneReferenceAssets: [] });
       if (url === "/projects/sample_project/settings/continuity") return jsonResponse(200, { link: null });
@@ -207,7 +203,7 @@ describe("ShortProjectSettingsScreen", () => {
   it("shows the current cast, adds a searched character, and removes a cast member", async () => {
     const hero = makeAssetFolder({ assetId: "ASSET-CHAR-1", displayName: "주인공", assetType: "character" });
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
@@ -236,7 +232,7 @@ describe("ShortProjectSettingsScreen", () => {
 
   it("removes a cast member through the same PUT endpoint", async () => {
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "ASSET-CHAR-1", castRole: "protagonist", storyRole: "대표 캐릭터" }] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
@@ -258,7 +254,7 @@ describe("ShortProjectSettingsScreen", () => {
     const folder = makeAssetFolder({ assetId: "ASSET-CHAR-FOLDER", displayName: "주인공 폴더", assetType: "character" });
     const loose = makeAsset({ assetId: "ASSET-CHAR-LOOSE", displayName: "주인공 옆모습", assetType: "character", isFolder: false });
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
@@ -279,7 +275,7 @@ describe("ShortProjectSettingsScreen", () => {
 
   it("promotes a member to 대표 in the spelling the prompt builder actually reads, and demotes the previous one", async () => {
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": {
         cast: [
           { assetId: "ASSET-CHAR-1", castRole: "protagonist", storyRole: "대표 캐릭터" },
@@ -320,7 +316,7 @@ describe("ShortProjectSettingsScreen", () => {
 
   it("says so when no member is the 대표, since the prompt would then describe everyone as 서브", async () => {
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "ASSET-CHAR-1", castRole: "supporting", storyRole: "서브 캐릭터" }] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
@@ -335,7 +331,7 @@ describe("ShortProjectSettingsScreen", () => {
   it("shows a cast-load error without breaking the rest of the settings screen", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === "/projects/sample_project/settings") return jsonResponse(200, { settings });
+      if (url === "/projects/sample_project/settings") return jsonResponse(200, { settings, sceneCountChangeable: true, aspectRatioChangeable: true });
       if (url === "/projects/sample_project/settings/cast") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "internal: failed to load cast" });
       if (url === "/projects/sample_project/settings/asset-references") return jsonResponse(200, { atmosphereAssetIds: [], sceneReferenceAssets: [] });
       if (url === "/projects/sample_project/settings/continuity") return jsonResponse(200, { link: null });
@@ -353,7 +349,7 @@ describe("ShortProjectSettingsScreen", () => {
   it("shows the current atmosphere/scene reference Assets, adds a searched atmosphere Asset, and removes it", async () => {
     const style = makeAsset({ assetId: "ASSET-STYLE-1", displayName: "네온 팔레트", assetType: "style" });
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
@@ -380,7 +376,7 @@ describe("ShortProjectSettingsScreen", () => {
   it("adds a scene reference Asset with a required purpose and removes it through the same PUT endpoint", async () => {
     const key = makeAsset({ assetId: "ASSET-OBJECT-1", displayName: "청동 열쇠", assetType: "object" });
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
@@ -409,7 +405,7 @@ describe("ShortProjectSettingsScreen", () => {
   it("shows an asset-reference load error without breaking the rest of the settings screen", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === "/projects/sample_project/settings") return jsonResponse(200, { settings });
+      if (url === "/projects/sample_project/settings") return jsonResponse(200, { settings, sceneCountChangeable: true, aspectRatioChangeable: true });
       if (url === "/projects/sample_project/settings/cast") return jsonResponse(200, { cast: [] });
       if (url === "/projects/sample_project/settings/asset-references") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "internal: failed to load asset references" });
       if (url === "/projects/sample_project/settings/continuity") return jsonResponse(200, { link: null });
@@ -426,7 +422,7 @@ describe("ShortProjectSettingsScreen", () => {
 
   it("lists continuity options, links to one, and disconnects it again", async () => {
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
@@ -450,7 +446,7 @@ describe("ShortProjectSettingsScreen", () => {
 
   it("disconnects an existing continuity link", async () => {
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: { projectId: "prev_project", projectName: "이전 프로젝트", label: "이전 프로젝트 · Scene 6" } },
@@ -471,7 +467,7 @@ describe("ShortProjectSettingsScreen", () => {
   it("shows a continuity load error without breaking the rest of the settings screen", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === "/projects/sample_project/settings") return jsonResponse(200, { settings });
+      if (url === "/projects/sample_project/settings") return jsonResponse(200, { settings, sceneCountChangeable: true, aspectRatioChangeable: true });
       if (url === "/projects/sample_project/settings/cast") return jsonResponse(200, { cast: [] });
       if (url === "/projects/sample_project/settings/asset-references") return jsonResponse(200, { atmosphereAssetIds: [], sceneReferenceAssets: [] });
       if (url === "/projects/sample_project/settings/continuity") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "internal: failed to load continuity" });
@@ -489,7 +485,7 @@ describe("ShortProjectSettingsScreen", () => {
   it("defaults narration off and saves it once turned on", async () => {
     const project = makeProject({});
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
@@ -513,7 +509,7 @@ describe("ShortProjectSettingsScreen", () => {
 
   it("reopens an existing project with narration already on", async () => {
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings: { ...settings, narrationEnabled: true } },
+      "GET /projects/sample_project/settings": { settings: { ...settings, narrationEnabled: true }, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
@@ -528,7 +524,7 @@ describe("ShortProjectSettingsScreen", () => {
   it("lets subtitles be turned on without voice, so a project can get captions at no cost", async () => {
     const project = makeProject({});
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
@@ -549,7 +545,7 @@ describe("ShortProjectSettingsScreen", () => {
 
   it("reopens an existing project with subtitles already on", async () => {
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings: { ...settings, subtitlesEnabled: true } },
+      "GET /projects/sample_project/settings": { settings: { ...settings, subtitlesEnabled: true }, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
@@ -566,7 +562,7 @@ describe("ShortProjectSettingsScreen", () => {
     // The backend decides orientation with `aspect === "16:9"`, so a typed value that is off by a character
     // silently produces a vertical video — after six clips have been paid for.
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
@@ -583,7 +579,7 @@ describe("ShortProjectSettingsScreen", () => {
   it("keeps an unrecognised saved ratio visible and says what it will actually produce", async () => {
     // Rewriting the stored value on render would hide that this project is about to come out vertical.
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings: { ...settings, styleNotes: { ...settings.styleNotes, aspect: "1920x1080" } } },
+      "GET /projects/sample_project/settings": { settings: { ...settings, styleNotes: { ...settings.styleNotes, aspect: "1920x1080" } }, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
@@ -599,7 +595,7 @@ describe("ShortProjectSettingsScreen", () => {
   it("saves the chosen ratio in the exact spelling the video step compares against", async () => {
     const project = makeProject({});
     const fetchMock = stubFetchByRoute({
-      "GET /projects/sample_project/settings": { settings },
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
@@ -615,5 +611,61 @@ describe("ShortProjectSettingsScreen", () => {
     const call = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PATCH")!;
     const body = JSON.parse(String((call[1] as RequestInit).body)) as { settings: { styleNotes: { aspect: string } } };
     expect(body.settings.styleNotes.aspect).toBe("9:16");
+  });
+
+  // Both locks say why before anything is typed, rather than after a rejected save. The refusal is knowable the
+  // moment the screen opens, and the worst moment to hear it is with a number already typed in.
+  // Both halves are asserted each time — the reason is stated AND the control is actually unusable — because a
+  // notice above a working field is just a field with a notice on it.
+  it("locks the scene count and says why once the Story exists", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: false, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    expect(await screen.findByTestId("settings-scene-count-locked")).toBeTruthy();
+    expect(screen.getByTestId("settings-scene-count")).toBeDisabled();
+    // The other field is untouched: the two conditions are independent, and one flag would have locked both.
+    expect(screen.getByTestId("settings-aspect")).not.toBeDisabled();
+    expect(screen.queryByTestId("settings-aspect-locked")).toBeNull();
+  });
+
+  it("locks the aspect ratio and says why once images exist", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: false },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    expect(await screen.findByTestId("settings-aspect-locked")).toBeTruthy();
+    expect(screen.getByTestId("settings-aspect")).toBeDisabled();
+    expect(screen.getByTestId("settings-scene-count")).not.toBeDisabled();
+    expect(screen.queryByTestId("settings-scene-count-locked")).toBeNull();
+  });
+
+  // The counterpart both rules need: without it, a change that locked either field unconditionally would still
+  // pass its own locked test.
+  it("leaves both fields usable when nothing is locked", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    await screen.findByTestId("settings-scene-count");
+    expect(screen.getByTestId("settings-scene-count")).not.toBeDisabled();
+    expect(screen.getByTestId("settings-aspect")).not.toBeDisabled();
+    expect(screen.queryByTestId("settings-scene-count-locked")).toBeNull();
+    expect(screen.queryByTestId("settings-aspect-locked")).toBeNull();
   });
 });

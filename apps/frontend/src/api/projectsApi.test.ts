@@ -52,11 +52,11 @@ describe("projectsApi", () => {
     };
     const project = makeProject({ topic: settings.topic });
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { settings }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings, sceneCountChangeable: true, aspectRatioChangeable: true }))
       .mockResolvedValueOnce(jsonResponse(200, { project, settings }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(getProjectSettings("reopen_me")).resolves.toEqual({ settings });
+    await expect(getProjectSettings("reopen_me")).resolves.toEqual({ settings, sceneCountChangeable: true, aspectRatioChangeable: true });
     await expect(updateProjectSettings("reopen_me", { settings })).resolves.toEqual({ project, settings });
     expect(fetchMock.mock.calls[0]).toEqual(["/projects/reopen_me/settings"]);
     const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
@@ -100,6 +100,23 @@ describe("projectsApi", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { projects: "not-an-array" })));
 
     await expect(listProjects()).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+  });
+
+  // Both flags decide whether a field is editable. Absent, each reads as `undefined` where the screen's type
+  // says boolean, and the form renders editable for a project whose Story is already written — the person then
+  // finds out from a rejected save, which is the failure the flags exist to prevent.
+  it("rejects a settings response missing either changeable flag", async () => {
+    const settings = {
+      projectName: "reopen_me", topic: "별", genre: "판타지", mood: "따뜻함", character: "아이",
+      lore: "별의 세계", fullStory: "별을 찾는다.", durationSeconds: 30, sceneCount: 6 as const, clipDurationSeconds: 5 as const,
+      additionalNotes: "", styleNotes: { aspect: "16:9" }, narrationEnabled: false, subtitlesEnabled: false,
+    };
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { settings, aspectRatioChangeable: true })));
+    await expect(getProjectSettings("reopen_me")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { settings, sceneCountChangeable: true })));
+    await expect(getProjectSettings("reopen_me")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
   });
 
   it("converts a success response missing required project fields into a safe ProjectsApiError", async () => {
@@ -177,6 +194,36 @@ describe("projectsApi", () => {
       expect(result.code).toBe("PROJECT_SCENE_COUNT_LOCKED");
       expect(result.code).not.toBe("CLIENT_UNKNOWN_ERROR");
       expect(result.message).toContain("이야기를 다시 만들어야");
+      expect(result.message).not.toContain("raw backend detail");
+    });
+
+    // The field still shows the number that was just refused, so "you cannot change it" leaves the person with
+    // no way to know what to type back. The count is only in the backend's own English message, which never
+    // reaches a screen, so it comes through details.
+    it("says how many scenes the Story actually has when the backend sends the count", () => {
+      const result = toDisplayError(new ProjectsApiError("PROJECT_SCENE_COUNT_LOCKED", "raw", { sceneCount: 6 }));
+      expect(result.message).toContain("6장면");
+      expect(result.message).toContain("이야기를 다시 만들어야");
+      expect(result.message).not.toContain("raw");
+    });
+
+    // A number is only worth printing when it is one. Both halves are asserted — the fallback wording is used
+    // AND no digit was invented — because a message that made up a scene count is worse than one without.
+    it("falls back to the number-free wording rather than inventing a count", () => {
+      for (const details of [undefined, {}, { sceneCount: "6" }, { sceneCount: 0 }, { sceneCount: 6.5 }]) {
+        const result = toDisplayError(new ProjectsApiError("PROJECT_SCENE_COUNT_LOCKED", "raw", details));
+        expect(result.message).toContain("이야기가 이미 만들어져서");
+        expect(result.message).not.toMatch(/[0-9]/);
+      }
+    });
+
+    it("names the aspect-ratio lock instead of falling back to the generic unknown error", () => {
+      // The lock this stands for: images are made at the project's orientation and every later paid step reads
+      // it again, so changing it afterwards sent portrait pictures to a request asking for landscape video.
+      const result = toDisplayError(new ProjectsApiError("PROJECT_ASPECT_RATIO_LOCKED", "raw backend detail"));
+      expect(result.code).toBe("PROJECT_ASPECT_RATIO_LOCKED");
+      expect(result.code).not.toBe("CLIENT_UNKNOWN_ERROR");
+      expect(result.message).toContain("이미지를 다시 만들어야");
       expect(result.message).not.toContain("raw backend detail");
     });
 

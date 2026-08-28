@@ -104,7 +104,7 @@ describe("ProjectDetail", () => {
     };
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.endsWith("/settings")) return jsonResponse(200, { settings });
+      if (url.endsWith("/settings")) return jsonResponse(200, { settings, sceneCountChangeable: true, aspectRatioChangeable: true });
       return jsonResponse(200, { project });
     }));
     render(<ProjectDetail projectId="sample_project" onBack={() => {}} onOpenMappingReview={() => {}} />);

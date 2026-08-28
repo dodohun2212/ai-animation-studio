@@ -79,7 +79,25 @@ const SAFE_ERRORS: Record<string, string> = {
   // No number in the wording on purpose: the count is in the backend's own English message, which is never
   // shown, and no `details` field carries it yet. A message that invented one would be worse than one without.
   PROJECT_SCENE_COUNT_LOCKED: "이 프로젝트의 이야기가 이미 만들어져서 장면 수를 바꿀 수 없습니다. 바꾸려면 이야기를 다시 만들어야 합니다.",
+  // Same failure as the scene count, one setting over: images are generated at the project's orientation, and
+  // every later paid step reads it again at the moment it runs. Changing it after images exist sent portrait
+  // pictures to a request asking for landscape video, which the merge then padded to the new shape — this
+  // repository has already shipped that bug once.
+  PROJECT_ASPECT_RATIO_LOCKED: "이미 지금 화면 비율로 만든 이미지가 있어서 비율을 바꿀 수 없습니다. 바꾸려면 이미지를 다시 만들어야 합니다.",
 };
+
+/**
+ * The scene-count refusal, said with the number the Story actually has.
+ *
+ * Without it the field still shows whatever the person just typed — the number that was refused — so "you
+ * cannot change it" leaves them no way to know what to type back. The count is in the backend's own English
+ * message, which never reaches a screen, so it travels in `details`.
+ */
+function sceneCountLockedMessage(details: Record<string, unknown> | undefined): string {
+  const value = details?.sceneCount;
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) return SAFE_ERRORS.PROJECT_SCENE_COUNT_LOCKED!;
+  return `이 프로젝트의 이야기는 이미 ${value}장면으로 만들어졌습니다. 장면 수를 바꾸려면 이야기를 다시 만들어야 합니다.`;
+}
 
 /**
  * INVALID_REQUEST alone covers many different situations across every endpoint this module calls (settings
@@ -108,6 +126,9 @@ export function toDisplayError(error: unknown): { code: string; message: string 
   if (!(error instanceof ProjectsApiError)) return UNKNOWN_ERROR;
   if (error.code === "INVALID_REQUEST") {
     return { code: error.code, message: invalidRequestMessage(error.details) };
+  }
+  if (error.code === "PROJECT_SCENE_COUNT_LOCKED") {
+    return { code: error.code, message: sceneCountLockedMessage(error.details) };
   }
   // These two are thrown by this module itself (see NETWORK_ERROR/MALFORMED_RESPONSE_ERROR above) with an
   // already-safe, already-Korean message — never the backend's own text — so passing them through as-is is
@@ -193,8 +214,22 @@ function isShortProjectSettings(value: unknown): value is ShortProjectSettings {
   return Object.entries(value.styleNotes).every(([key, item]) => allowedStyleKeys.includes(key) && typeof item === "string");
 }
 
+/**
+ * Both flags are required, not optional.
+ *
+ * They decide whether two fields are editable. Absent, each reads as `undefined` where the screen's type says
+ * boolean, and a form drawn from that is editable for a project whose Story is already written — the person
+ * finds out from a rejected save, which is the exact failure these flags exist to prevent (the same reasoning
+ * as the continuity screen's canSave and the Episode settings screen's changeable).
+ *
+ * They are two, not one, because their conditions are independent: images exist but the Story was regenerated
+ * is a real state, and there the scene count is still editable. One flag would lock that field for no reason.
+ */
 function isGetProjectSettingsResponse(value: unknown): value is GetProjectSettingsResponse {
-  return isRecord(value) && isShortProjectSettings(value.settings);
+  return isRecord(value)
+    && isShortProjectSettings(value.settings)
+    && typeof value.sceneCountChangeable === "boolean"
+    && typeof value.aspectRatioChangeable === "boolean";
 }
 
 function isUpdateProjectSettingsResponse(value: unknown): value is UpdateProjectSettingsResponse {

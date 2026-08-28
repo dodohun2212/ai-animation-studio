@@ -20,7 +20,24 @@ import { createStoryPromptDraftPreview, toStoryDisplayError } from "../api/story
 import { Spinner } from "./Spinner.js";
 
 interface Props { projectId: string; onBack: () => void; justCreated?: boolean; }
-type State = { settings: ShortProjectSettings | null; loading: boolean; error: { code: string; message: string } | null };
+type State = {
+  settings: ShortProjectSettings | null;
+  loading: boolean;
+  error: { code: string; message: string } | null;
+  /**
+   * Whether each of these two can still be changed, straight from the server.
+   *
+   * Deriving them here — "does the project have scenes yet" — would be a second copy of the condition the save
+   * itself checks, and two copies is how the continuity screen came to disagree with its own server. They are
+   * two flags and not one because the conditions are independent: a project can have images and no Story (the
+   * Story was regenerated), and there the scene count is still editable.
+   *
+   * Default true while loading, so a slow read never makes a working field look permanently locked; nothing is
+   * saveable until the settings arrive anyway.
+   */
+  sceneCountChangeable: boolean;
+  aspectRatioChangeable: boolean;
+};
 
 const EMPTY_SETTINGS: ShortProjectSettings = {
   projectName: "", topic: "", genre: "미스터리", mood: "시네마틱", character: "", lore: "", fullStory: "",
@@ -73,7 +90,7 @@ const ASPECT_OPTIONS: { value: string; label: string }[] = [
  * neither option is kept and named rather than quietly rewritten: replacing the user's data on render would
  * hide that their old project is about to come out vertical.
  */
-function AspectField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function AspectField({ value, onChange, changeable }: { value: string; onChange: (value: string) => void; changeable: boolean }) {
   const known = ASPECT_OPTIONS.some((option) => option.value === value);
   return (
     <div className="space-y-1.5">
@@ -84,6 +101,7 @@ function AspectField({ value, onChange }: { value: string; onChange: (value: str
           data-testid="settings-aspect"
           className={fieldClassName}
           value={known ? value : ""}
+          disabled={!changeable}
           onChange={(event) => onChange(event.target.value)}
         >
           {!known && <option value="">{value ? `인식할 수 없는 값: ${value}` : "선택 안 됨"}</option>}
@@ -92,7 +110,15 @@ function AspectField({ value, onChange }: { value: string; onChange: (value: str
           ))}
         </select>
       </label>
-      {!known && (
+      {/* Named before the unknown-value warning, because it is the stronger fact: if the ratio cannot change,
+          "고르면 바뀝니다" is not true any more. This repository has already shipped the bug this lock exists
+          for — images made portrait, video billed landscape, the merge padding the mismatch. */}
+      {!changeable && (
+        <p data-testid="settings-aspect-locked" className="text-xs text-amber-300">
+          이미 지금 비율로 이미지를 만들어서 비율은 바꿀 수 없습니다. 바꾸려면 이미지를 다시 만들어야 합니다.
+        </p>
+      )}
+      {!known && changeable && (
         <p data-testid="settings-aspect-unknown" className="text-xs text-amber-300">
           지금 값으로는 세로형으로 만들어집니다. 위에서 하나를 고르면 바뀝니다.
         </p>
@@ -651,7 +677,7 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
 }
 
 export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = false }: Props) {
-  const [state, setState] = useState<State>({ settings: null, loading: true, error: null });
+  const [state, setState] = useState<State>({ settings: null, loading: true, error: null, sceneCountChangeable: true, aspectRatioChangeable: true });
   const saving = useRef(false);
   const [characterOptions, setCharacterOptions] = useState<Asset[] | null>(null);
   const [characterPickerOpen, setCharacterPickerOpen] = useState(false);
@@ -705,10 +731,10 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
 
   useEffect(() => {
     let cancelled = false;
-    getProjectSettings(projectId).then(({ settings }) => {
-      if (!cancelled) setState({ settings, loading: false, error: null });
+    getProjectSettings(projectId).then(({ settings, sceneCountChangeable, aspectRatioChangeable }) => {
+      if (!cancelled) setState({ settings, loading: false, error: null, sceneCountChangeable, aspectRatioChangeable });
     }).catch((error: unknown) => {
-      if (!cancelled) setState({ settings: null, loading: false, error: toDisplayError(error) });
+      if (!cancelled) setState({ settings: null, loading: false, error: toDisplayError(error), sceneCountChangeable: true, aspectRatioChangeable: true });
     });
     return () => { cancelled = true; };
   }, [projectId]);
@@ -769,7 +795,10 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
     setState((old) => ({ ...old, loading: true, error: null }));
     try {
       const response = await updateProjectSettings(projectId, { settings });
-      setState({ settings: response.settings, loading: false, error: null });
+      // Keep the two lock flags: a settings save cannot change them (only generating a Story or images can),
+      // and the response does not carry them. Replacing the whole state here dropped both, which typechecked
+      // as an error and would have shown the locked fields as editable again right after a save.
+      setState((old) => ({ ...old, settings: response.settings, loading: false, error: null }));
       setJustSaved(true);
       if (justSavedTimer.current) clearTimeout(justSavedTimer.current);
       justSavedTimer.current = setTimeout(() => setJustSaved(false), 4000);
@@ -862,10 +891,12 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
             장면 수
             <input
               type="number"
+              data-testid="settings-scene-count"
               min={MIN_SCENE_COUNT}
               max={MAX_SCENE_COUNT}
               className={fieldClassName}
               value={state.settings.sceneCount}
+              disabled={!state.sceneCountChangeable}
               onChange={(event) => {
                 const parsed = Number(event.target.value);
                 if (!Number.isInteger(parsed)) return;
@@ -875,6 +906,15 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
               }}
             />
           </label>
+          {/* Said before the field is touched, not after a rejected save. The refusal is knowable the moment
+              this screen opens, and the last thing a person needs is to type a number, press save, and only
+              then be told it was never going to work. The field is disabled as well as explained — a notice
+              above a working field is just a field with a notice on it. */}
+          {!state.sceneCountChangeable && (
+            <p data-testid="settings-scene-count-locked" className="text-xs text-amber-300">
+              이야기를 이미 만들어서 장면 수는 바꿀 수 없습니다. 바꾸려면 이야기를 다시 만들어야 합니다.
+            </p>
+          )}
           <label className="block text-sm text-slate-300">
             클립 길이(초)
             <select
@@ -899,7 +939,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
           <Field label="카메라 느낌" value={state.settings.styleNotes.camera ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, camera: value })} />
           <Field label="대사 스타일" value={state.settings.styleNotes.dialogue ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, dialogue: value })} />
           <Field label="피할 요소" value={state.settings.styleNotes.avoid ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, avoid: value })} />
-          <AspectField value={state.settings.styleNotes.aspect ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, aspect: value })} />
+          <AspectField value={state.settings.styleNotes.aspect ?? ""} changeable={state.aspectRatioChangeable} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, aspect: value })} />
           <Field label="추가 지시사항" value={state.settings.additionalNotes} onChange={(value) => setField("additionalNotes", value)} multiline />
           <div className="md:col-span-2 space-y-3 rounded-xl border border-white/10 bg-slate-950/40 p-3.5">
             <p className="text-sm font-semibold text-slate-200">내레이션</p>

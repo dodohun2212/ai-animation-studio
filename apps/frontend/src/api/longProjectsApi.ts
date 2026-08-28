@@ -215,8 +215,40 @@ const LONG_EPISODE_CONTINUITY_ERRORS: Record<string, string> = {
   LONG_EPISODE_CONTINUITY_INVALID: "연결 기억을 저장하려면 검토한 값이 올바르게 채워져 있어야 합니다.",
 };
 
+/**
+ * The two refusals that can name the Episode responsible, and the wording to use when they cannot.
+ *
+ * Both are about a project-wide setting being blocked by one Episode's existing work, so "you cannot" without
+ * "because of which one" leaves a person with twenty Episodes nothing to act on. The number only exists in the
+ * backend's own English message, which never reaches a screen, so it travels in `details` — the same shape
+ * PROJECT_SCENE_COUNT_LOCKED already uses for its scene count.
+ *
+ * The fallback is not a lesser version of the same sentence: it says the same true thing minus the number,
+ * because a message that invents an Episode number would be worse than one that omits it.
+ */
+const EPISODE_LOCKED_MESSAGES: Record<string, (episodeNumber: number | null) => string> = {
+  LONG_PROJECT_EPISODE_COUNT_LOCKED: (episodeNumber) =>
+    episodeNumber === null
+      ? "이미 작업을 시작한 회차가 있어서 회차 수를 줄일 수 없습니다. 회차 수를 늘리는 것은 언제든 됩니다."
+      : `${episodeNumber}회차는 이미 작업을 시작해서, 여기까지 줄이면 만들어 둔 것이 사라집니다. 회차 수를 늘리는 것은 언제든 됩니다.`,
+  LONG_PROJECT_ASPECT_RATIO_LOCKED: (episodeNumber) =>
+    episodeNumber === null
+      ? "이미 지금 화면 비율로 만든 이미지가 있어서 비율을 바꿀 수 없습니다. 바꾸려면 그 이미지를 다시 만들어야 합니다."
+      : `${episodeNumber}회차에 이미 지금 화면 비율로 만든 이미지가 있습니다. 비율을 바꾸려면 그 회차의 이미지를 다시 만들어야 합니다.`,
+};
+
+/** Positive integers only: anything else is a value this screen cannot honestly put in a sentence. */
+function episodeNumberFrom(details: Record<string, unknown> | undefined): number | null {
+  const value = details?.episodeNumber;
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
+}
+
 export function toLongProjectDisplayError(error: unknown): { code: string; message: string; details?: Record<string, unknown> } {
   if (!(error instanceof LongProjectsApiError)) return UNKNOWN;
+  if (Object.prototype.hasOwnProperty.call(EPISODE_LOCKED_MESSAGES, error.code)) {
+    const message = EPISODE_LOCKED_MESSAGES[error.code]!(episodeNumberFrom(error.details));
+    return error.details ? { code: error.code, message, details: error.details } : { code: error.code, message };
+  }
   if (Object.prototype.hasOwnProperty.call(SAFE_ERRORS, error.code)) {
     const details = error.details;
     return details ? { code: error.code, message: SAFE_ERRORS[error.code]!, details } : { code: error.code, message: SAFE_ERRORS[error.code]! };

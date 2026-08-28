@@ -58,7 +58,7 @@ describe("NarrationReviewScreen", () => {
     renderScreen(
       stubFetchByRoute({
         [REVIEW]: { project, narrations: narrations([{ narration: "첫 문장입니다." }, { narration: "둘째 문장입니다." }]) },
-        [SETTINGS]: { settings },
+        [SETTINGS]: { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       }),
     );
 
@@ -71,7 +71,7 @@ describe("NarrationReviewScreen", () => {
     renderScreen(
       stubFetchByRoute({
         [REVIEW]: { project, narrations: narrations([{ narration: "문장" }, { narration: "" }, { narration: "문장" }]) },
-        [SETTINGS]: { settings },
+        [SETTINGS]: { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       }),
     );
 
@@ -85,7 +85,7 @@ describe("NarrationReviewScreen", () => {
     renderScreen(
       stubFetchByRoute({
         [REVIEW]: { project, narrations: narrations([{ narration: "짧은 문장" }, { narration: "가".repeat(40) }]) },
-        [SETTINGS]: { settings },
+        [SETTINGS]: { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       }),
     );
 
@@ -107,7 +107,7 @@ describe("NarrationReviewScreen", () => {
   it("does not synthesize anything just from opening the confirmation", async () => {
     const fetchMock = stubFetchByRoute({
       [REVIEW]: { project, narrations: narrations([{ narration: "문장" }]) },
-      [SETTINGS]: { settings },
+      [SETTINGS]: { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
     });
     renderScreen(fetchMock);
 
@@ -127,7 +127,7 @@ describe("NarrationReviewScreen", () => {
         { project, narrations: narrations([{ narration: "문장" }, { narration: "" }]) },
         { project, narrations: narrations([{ narration: "문장", audio: "generated" }, { narration: "" }]) },
       ],
-      [SETTINGS]: { settings },
+      [SETTINGS]: { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       [GENERATE]: {
         project,
         generatedSceneNumbers: [1],
@@ -153,7 +153,7 @@ describe("NarrationReviewScreen", () => {
     renderScreen(
       stubFetchByRoute({
         [REVIEW]: { project, narrations: narrations([{ narration: "문장", audio: "generated" }, { narration: "문장" }]) },
-        [SETTINGS]: { settings },
+        [SETTINGS]: { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       }),
     );
 
@@ -166,7 +166,7 @@ describe("NarrationReviewScreen", () => {
   it("regenerates one scene only after its own confirmation, showing the retry cost first", async () => {
     const fetchMock = stubFetchByRoute({
       [REVIEW]: { project, narrations: narrations([{ narration: "문장" }, { narration: "문장", audio: "generated" }]) },
-      [SETTINGS]: { settings },
+      [SETTINGS]: { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       [REGENERATE_2]: {
         project,
         sceneNumber: 2,
@@ -194,7 +194,7 @@ describe("NarrationReviewScreen", () => {
       stubFetchByRoute(
         {
           [REVIEW]: { project, narrations: narrations([{ narration: "문장" }]) },
-          [SETTINGS]: { settings },
+          [SETTINGS]: { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
         },
         { [GENERATE]: { status: 409, body: { code: "NARRATION_NOT_ENABLED", message: "narrationEnabled must be on" } } },
       ),
@@ -217,7 +217,7 @@ describe("NarrationReviewScreen", () => {
           narrations: narrations([{ narration: "문장", audio: "generated" }, { narration: "문장", audio: "generated" }]),
           staleness: { imageStale: [], videoStale: [], narrationStale: [2] },
         },
-        [SETTINGS]: { settings },
+        [SETTINGS]: { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       }),
     );
 
@@ -236,7 +236,7 @@ describe("NarrationReviewScreen", () => {
             { narration: "긴 문장", audio: "generated", audioDurationSeconds: 7.4 },
           ]),
         },
-        [SETTINGS]: { settings },
+        [SETTINGS]: { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       }),
     );
 
@@ -253,7 +253,7 @@ describe("NarrationReviewScreen", () => {
     renderScreen(
       stubFetchByRoute({
         [REVIEW]: { project, narrations: narrations([{ narration: "가".repeat(40) }]) },
-        [SETTINGS]: { settings },
+        [SETTINGS]: { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       }),
     );
 
@@ -267,7 +267,7 @@ describe("NarrationReviewScreen", () => {
     renderScreen(
       stubFetchByRoute({
         [REVIEW]: { project, narrations: narrations([{ narration: "문장", audio: "generated" }, { narration: "문장" }]) },
-        [SETTINGS]: { settings: { ...settings, narrationEnabled: false, subtitlesEnabled: true } },
+        [SETTINGS]: { settings: { ...settings, narrationEnabled: false, subtitlesEnabled: true }, sceneCountChangeable: true, aspectRatioChangeable: true },
       }),
     );
 
@@ -285,7 +285,7 @@ describe("NarrationReviewScreen", () => {
     renderScreen(
       stubFetchByRoute({
         [REVIEW]: { project, narrations: narrations([{ narration: "문장" }]) },
-        [SETTINGS]: { settings: { ...settings, narrationEnabled: false, subtitlesEnabled: false } },
+        [SETTINGS]: { settings: { ...settings, narrationEnabled: false, subtitlesEnabled: false }, sceneCountChangeable: true, aspectRatioChangeable: true },
       }),
     );
 
@@ -314,7 +314,7 @@ describe("NarrationReviewScreen", () => {
     renderScreen(
       stubFetchByRoute({
         [REVIEW]: { project, narrations: narrations([{ narration: "첫 문장입니다.", audio: "placeholder" }]) },
-        [SETTINGS]: { settings },
+        [SETTINGS]: { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       }),
     );
 

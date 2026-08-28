@@ -77,7 +77,7 @@ function renderScreen(
     }
     if (url === SETTINGS_URL && !init) {
       if (settings === "fails") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "raw" });
-      return jsonResponse(200, { settings: makeSettings(settings.narrationEnabled, settings.subtitlesEnabled) });
+      return jsonResponse(200, { settings: makeSettings(settings.narrationEnabled, settings.subtitlesEnabled), sceneCountChangeable: true, aspectRatioChangeable: true });
     }
     if (url === AUDIO_LIBRARY_URL && !init) return jsonResponse(200, { tracks });
     const call = mergeFetch as unknown as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;

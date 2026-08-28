@@ -303,6 +303,35 @@ describe("longProjectsApi", () => {
   });
 
   describe("toLongProjectDisplayError", () => {
+    // Both refusals are a project-wide setting blocked by one Episode's existing work. Without the number, a
+    // person with twenty Episodes is told they cannot proceed and given nothing to act on. The number lives
+    // only in the backend's English message, which never reaches a screen, so it travels in details.
+    it("names the Episode responsible for each lock", () => {
+      const count = toLongProjectDisplayError(new LongProjectsApiError("LONG_PROJECT_EPISODE_COUNT_LOCKED", "raw backend detail", { episodeNumber: 3 }));
+      expect(count.code).toBe("LONG_PROJECT_EPISODE_COUNT_LOCKED");
+      expect(count.message).toContain("3회차");
+      expect(count.message).not.toContain("raw backend detail");
+      // Said in the same breath, because the refusal is only about shrinking and a person who reads "회차 수를
+      // 바꿀 수 없습니다" would stop trying to add Episodes too.
+      expect(count.message).toContain("늘리는 것은 언제든");
+
+      const ratio = toLongProjectDisplayError(new LongProjectsApiError("LONG_PROJECT_ASPECT_RATIO_LOCKED", "raw backend detail", { episodeNumber: 2 }));
+      expect(ratio.code).toBe("LONG_PROJECT_ASPECT_RATIO_LOCKED");
+      expect(ratio.message).toContain("2회차");
+      expect(ratio.message).toContain("이미지를 다시 만들어야");
+      expect(ratio.message).not.toContain("raw backend detail");
+    });
+
+    it("falls back to the number-free wording rather than inventing an Episode number", () => {
+      // Both halves: the fallback wording is used AND no digit appears. An invented Episode number would send
+      // someone to the wrong Episode, which is worse than not naming one.
+      for (const details of [undefined, {}, { episodeNumber: "3" }, { episodeNumber: 0 }, { episodeNumber: 1.5 }]) {
+        const result = toLongProjectDisplayError(new LongProjectsApiError("LONG_PROJECT_ASPECT_RATIO_LOCKED", "raw", details));
+        expect(result.message).toContain("이미지를 다시 만들어야");
+        expect(result.message).not.toMatch(/[0-9]회차/);
+      }
+    });
+
     it("falls back to a safe generic code/message for an unexpected error", () => {
       const result = toLongProjectDisplayError(new Error("some internal detail"));
       expect(typeof result.code).toBe("string");

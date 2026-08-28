@@ -62,6 +62,8 @@ function createFakeBackend(): ReturnType<typeof vi.fn<FakeFetch>> {
           fullStory: "", durationSeconds: 30, sceneCount: 6, clipDurationSeconds: 5, additionalNotes: "", styleNotes: { aspect: "16:9" },
           narrationEnabled: false, subtitlesEnabled: false,
         },
+        sceneCountChangeable: true,
+        aspectRatioChangeable: true,
       });
     }
     if (/^\/projects\/[^/]+\/settings\/cast$/.exec(url) && method === "GET") {
