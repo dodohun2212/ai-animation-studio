@@ -292,4 +292,69 @@ describe("LongStoryBibleScreen", () => {
     // 세계관 설명 stays — it is the one of the two that is actually written here.
     expect(screen.getByTestId("story-bible-world-rows")).toBeTruthy();
   });
+
+  // 비밀·복선 are the two collections whose text actually reaches the model, so their description is the item
+  // — not the second copy of a folder's own name that was removed from 캐릭터·배경·소품.
+  it("asks for the text of a secret, and for when it may be used", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { storyBible: emptyBible }))
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { project: makeLongProject({ id: "long_test" }) }))
+      .mockResolvedValueOnce(jsonResponse(201, { item: { id: "SECRET-1", name: "출생의 비밀" }, storyBible: emptyBible }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongStoryBibleScreen projectId="long_test" onBack={() => {}} />);
+
+    await screen.findByTestId("story-bible-empty");
+    fireEvent.click(screen.getByRole("tab", { name: "비밀" }));
+    fireEvent.change(screen.getByLabelText("항목 이름"), { target: { value: "출생의 비밀" } });
+    fireEvent.change(screen.getByLabelText("항목 내용"), { target: { value: "이베드는 기록관이 만든 존재다." } });
+    fireEvent.change(screen.getByLabelText("공개 가능 회차"), { target: { value: "8" } });
+    fireEvent.click(screen.getByRole("button", { name: "항목 추가" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    const body = JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body));
+    expect(body.item).toMatchObject({
+      name: "출생의 비밀",
+      description: "이베드는 기록관이 만든 존재다.",
+      // The field the whole reveal split turns on. Without it every secret defaults to Episode 1 — always
+      // revealable — and the "you must not use this yet" half of the prompt covers nothing.
+      revealAvailableEpisode: 8,
+    });
+  });
+
+  it("does not ask 캐릭터 for text nothing reads", async () => {
+    // The counterpart: these two fields belong to 비밀·복선 only. Showing them on 캐릭터 would put back exactly
+    // what was removed — a description that is sent nowhere, asked for beside a folder that already has one.
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { storyBible: emptyBible }))
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { project: makeLongProject({ id: "long_test" }) }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongStoryBibleScreen projectId="long_test" onBack={() => {}} />);
+
+    await screen.findByTestId("story-bible-empty");
+    expect(screen.queryByTestId("story-bible-item-content")).toBeNull();
+    expect(screen.queryByTestId("story-bible-reveal-from")).toBeNull();
+  });
+
+  it("leaves the reveal Episode out of the request when it is blank", async () => {
+    // Blank means "from the first Episode", which is what the server already defaults to. Sending 0 or NaN
+    // instead would be a number the person never chose.
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { storyBible: emptyBible }))
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { project: makeLongProject({ id: "long_test" }) }))
+      .mockResolvedValueOnce(jsonResponse(201, { item: { id: "SECRET-1", name: "비밀" }, storyBible: emptyBible }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongStoryBibleScreen projectId="long_test" onBack={() => {}} />);
+
+    await screen.findByTestId("story-bible-empty");
+    fireEvent.click(screen.getByRole("tab", { name: "비밀" }));
+    fireEvent.change(screen.getByLabelText("항목 이름"), { target: { value: "비밀" } });
+    fireEvent.click(screen.getByRole("button", { name: "항목 추가" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    const body = JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body));
+    expect(body.item).not.toHaveProperty("revealAvailableEpisode");
+  });
 });

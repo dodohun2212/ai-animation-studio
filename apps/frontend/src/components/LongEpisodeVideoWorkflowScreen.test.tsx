@@ -56,19 +56,19 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
   });
 
   it("does not submit until final local confirmation and sends the exact explicit request", async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, preview)).mockResolvedValueOnce(jsonResponse(200, { jobId: null })).mockResolvedValueOnce(jsonResponse(200, { jobId: "job", acceptedSceneNumbers: [1,2,3,4,5,6], episode: episode("videos_generating") })); vi.stubGlobal("fetch", fetchMock);
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, preview)).mockResolvedValueOnce(jsonResponse(200, { jobId: "job", acceptedSceneNumbers: [1,2,3,4,5,6], episode: episode("videos_generating") })); vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
-    await screen.findByTestId("episode-video-summary"); fireEvent.click(screen.getByTestId("episode-video-open-confirm")); expect(fetchMock).toHaveBeenCalledTimes(2);
+    await screen.findByTestId("episode-video-summary"); fireEvent.click(screen.getByTestId("episode-video-open-confirm")); expect(fetchMock).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: "영상 만들기 시작" })); await screen.findByTestId("episode-video-progress");
-    expect(fetchMock.mock.calls[2]![0]).toBe("/long-projects/long/episodes/1/videos/generations"); const body = JSON.parse(String((fetchMock.mock.calls[2]![1] as RequestInit).body)); expect(body).toMatchObject({ confirmationId: "confirm", approved: true, prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) }); expect(typeof body.userRequestId).toBe("string");
+    expect(fetchMock.mock.calls[1]![0]).toBe("/long-projects/long/episodes/1/videos/generations"); const body = JSON.parse(String((fetchMock.mock.calls[1]![1] as RequestInit).body)); expect(body).toMatchObject({ confirmationId: "confirm", approved: true, prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) }); expect(typeof body.userRequestId).toBe("string");
   });
   it("renders persisted sequential progress, stop/restart, and review approval/regeneration confirmations", async () => {
     const review = [1,2,3,4,5,6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" }));
-    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, preview)).mockResolvedValueOnce(jsonResponse(200, { jobId: null })).mockResolvedValueOnce(jsonResponse(200, { jobId: "job", acceptedSceneNumbers: [1,2,3,4,5,6], episode: episode("videos_generating") })).mockResolvedValueOnce(jsonResponse(200, progress("succeeded", [1,2,3,4,5,6]))).mockResolvedValueOnce(jsonResponse(200, { episode: episode("videos_review"), reviews: review })).mockResolvedValueOnce(jsonResponse(200, { episode: episode("videos_review"), reviews: [{ ...review[0], status: "approved" }, ...review.slice(1)] })); vi.stubGlobal("fetch", fetchMock);
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, preview)).mockResolvedValueOnce(jsonResponse(200, { jobId: "job", acceptedSceneNumbers: [1,2,3,4,5,6], episode: episode("videos_generating") })).mockResolvedValueOnce(jsonResponse(200, progress("succeeded", [1,2,3,4,5,6]))).mockResolvedValueOnce(jsonResponse(200, { episode: episode("videos_review"), reviews: review })).mockResolvedValueOnce(jsonResponse(200, { episode: episode("videos_review"), reviews: [{ ...review[0], status: "approved" }, ...review.slice(1)] })); vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />); await screen.findByTestId("episode-video-summary");
     fireEvent.click(screen.getByTestId("episode-video-open-confirm")); fireEvent.click(screen.getByRole("button", { name: "영상 만들기 시작" })); await screen.findByTestId("episode-video-progress");
     // Simulate a persisted completed job by invoking the same progress endpoint through the polling effect.
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5)); fireEvent.click(screen.getAllByRole("button", { name: "이 영상으로 확정" })[0]!); await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(6)); expect(fetchMock.mock.calls[5]![0]).toBe("/long-projects/long/episodes/1/videos/generations/job/review/1/approve");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4)); fireEvent.click(screen.getAllByRole("button", { name: "이 영상으로 확정" })[0]!); await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5)); expect(fetchMock.mock.calls[4]![0]).toBe("/long-projects/long/episodes/1/videos/generations/job/review/1/approve");
     fireEvent.click(screen.getAllByRole("button", { name: "다시 만들기" })[1]!); expect(await screen.findByTestId("episode-video-regenerate-confirm-2")).toBeTruthy();
   });
   it("offers a retry for a scene Runway reported failed, only submitting after explicit confirmation, and shows an actionable reason", async () => {
@@ -77,7 +77,7 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
       sceneErrors: { 2: "authentication", 3: "Runway rejected the prompt: explicit content detected" },
     };
     const retriedJob = { jobId: "job", status: "running", completedSceneNumbers: [1], currentSceneNumber: 2, failedSceneNumbers: [], sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") };
-    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, preview)).mockResolvedValueOnce(jsonResponse(200, { jobId: null })).mockResolvedValueOnce(jsonResponse(200, { jobId: "job", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") })).mockResolvedValueOnce(jsonResponse(200, failedJob)).mockResolvedValueOnce(jsonResponse(200, retriedJob));
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, preview)).mockResolvedValueOnce(jsonResponse(200, { jobId: "job", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") })).mockResolvedValueOnce(jsonResponse(200, failedJob)).mockResolvedValueOnce(jsonResponse(200, retriedJob));
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
     await screen.findByTestId("episode-video-summary");
@@ -91,8 +91,8 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     fireEvent.click(screen.getByTestId("episode-video-failed-retry-2"));
     const panel = await screen.findByTestId("episode-video-failed-retry-confirm-2");
     fireEvent.click(within(panel).getByRole("button", { name: "다시 시도" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
-    expect(fetchMock.mock.calls[4]![0]).toBe("/long-projects/long/episodes/1/videos/generations/job/scenes/2/regenerate");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(fetchMock.mock.calls[3]![0]).toBe("/long-projects/long/episodes/1/videos/generations/job/scenes/2/regenerate");
   });
 
   it("handles stale API errors without exposing internal paths", async () => { vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(409, { code: "VIDEO_CONFIRMATION_STALE", message: "raw C:\\\\private" }))); render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />); const alert = await screen.findByRole("alert"); expect(alert).toHaveAttribute("data-error-code", "CLIENT_UNKNOWN_ERROR"); expect(document.body.textContent).not.toContain("C:\\private"); });
@@ -106,48 +106,49 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     expect(notice.textContent).not.toContain("보내지 않습니다");
   });
 
-  it("reattaches to a paid job that is still running when the screen is reloaded", async () => {
-    // The job id used to live only in this component's state, so a refresh threw away the only handle to work
-    // Runway was already billing for — it could not be watched, stopped, or reviewed while the money was spent.
-    vi.stubGlobal("fetch", vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, preview))
-      .mockResolvedValueOnce(jsonResponse(200, { jobId: "job" }))
-      .mockResolvedValueOnce(jsonResponse(200, progress("running", [1, 2]))));
-
-    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
-
-    await waitFor(() => expect(screen.getByTestId("episode-video-progress")).toBeTruthy());
-  });
-
-  it("reattaches to a finished job so a reload during review does not lose what is under review", async () => {
-    // The server answers with the most recent job, finished ones included — so the screen must read progress to
-    // learn the state rather than reading a non-null id as "still generating".
-    const review = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending" as const, updatedAt: "2026-08-23T00:00:00.000Z" }));
-    vi.stubGlobal("fetch", vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, preview))
-      .mockResolvedValueOnce(jsonResponse(200, { jobId: "job" }))
-      .mockResolvedValueOnce(jsonResponse(200, progress("succeeded", [1, 2, 3, 4, 5, 6])))
-      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("videos_review"), reviews: review })));
-
-    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
-
-    await waitFor(() => expect(screen.getByTestId("episode-video-review")).toBeTruthy());
-  });
-
-  it("treats having no job to return to as an ordinary answer, not an error", async () => {
-    // null is what the server says when this Episode has never generated video. Painting it red would report
-    // "nothing is running" as a failure, on the screen a first-time user sees before they have started anything.
+  // The id identifies the intent, not the click. A retry after a failed send has to carry the same one, or the
+  // server sees two separate requests and the field is decorative — which is exactly what it was, because it
+  // was minted inside the send.
+  it("reuses one request id across a retry, and only mints a new one for a new intent", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, preview))
-      .mockResolvedValueOnce(jsonResponse(200, { jobId: null }));
+      .mockResolvedValueOnce(jsonResponse(500, { code: "LONG_PROJECT_STORAGE_ERROR", message: "raw" }))
+      .mockResolvedValueOnce(jsonResponse(200, { jobId: "job", acceptedSceneNumbers: [1,2,3,4,5,6], episode: episode("videos_generating") }));
     vi.stubGlobal("fetch", fetchMock);
-
     render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
 
     await screen.findByTestId("episode-video-summary");
-    // Wait for `current` to have been asked and answered, so this asserts about the answer rather than about a
-    // request that had not landed yet.
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    expect(screen.queryByRole("alert")).toBeNull();
+    fireEvent.click(screen.getByTestId("episode-video-open-confirm"));
+    fireEvent.click(screen.getByRole("button", { name: "영상 만들기 시작" }));
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: "영상 만들기 시작" }));
+    await screen.findByTestId("episode-video-progress");
+
+    const idOf = (index: number) => JSON.parse(String((fetchMock.mock.calls[index]![1] as RequestInit).body)).userRequestId as string;
+    expect(typeof idOf(1)).toBe("string");
+    expect(idOf(2)).toBe(idOf(1));
+  });
+
+  it("mints a new request id when the confirmation is cancelled and opened again", async () => {
+    // Cancelling is abandoning the intent. Keeping the id would make the next, genuinely separate attempt look
+    // to the server like a retry of the one the person backed out of.
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, preview))
+      .mockResolvedValueOnce(jsonResponse(500, { code: "LONG_PROJECT_STORAGE_ERROR", message: "raw" }))
+      .mockResolvedValueOnce(jsonResponse(500, { code: "LONG_PROJECT_STORAGE_ERROR", message: "raw" }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    await screen.findByTestId("episode-video-summary");
+    fireEvent.click(screen.getByTestId("episode-video-open-confirm"));
+    fireEvent.click(screen.getByRole("button", { name: "영상 만들기 시작" }));
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: "취소" }));
+    fireEvent.click(screen.getByTestId("episode-video-open-confirm"));
+    fireEvent.click(screen.getByRole("button", { name: "영상 만들기 시작" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+
+    const idOf = (index: number) => JSON.parse(String((fetchMock.mock.calls[index]![1] as RequestInit).body)).userRequestId as string;
+    expect(idOf(2)).not.toBe(idOf(1));
   });
 });

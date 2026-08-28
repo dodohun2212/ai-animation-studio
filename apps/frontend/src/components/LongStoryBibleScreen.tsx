@@ -19,6 +19,14 @@ const TABS: Array<{ value: LongStoryBibleCollection; label: string }> = [
   { value: "secrets", label: "비밀" }, { value: "foreshadowing", label: "복선" },
 ];
 const ASSET_LINK_COLLECTIONS: readonly LongStoryBibleCollection[] = ["characters", "locations", "props"];
+/**
+ * The two collections whose text is what actually reaches the model, and the only ones with a reveal Episode.
+ *
+ * A character's description is not sent anywhere — its linked picture is what the image step uses — which is
+ * why that field was removed from the other three. A secret is the opposite: the words ARE the item, and when
+ * they may be used is what keeps Episode 8's twist out of Episode 3.
+ */
+const REVEAL_COLLECTIONS: readonly LongStoryBibleCollection[] = ["secrets", "foreshadowing"];
 
 const compactField =
   "rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
@@ -169,6 +177,16 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
    * the moment they changed folders — the screen undoing an edit, silently. Once touched, the field is theirs.
    */
   const [nameTouched, setNameTouched] = useState(false);
+  /**
+   * From which Episode this secret or foreshadowing may be used — the field the whole mechanism turns on.
+   *
+   * Script generation splits the Story Bible's secrets by comparing this to the Episode being written: at or
+   * below it the secret is handed over as "you may use this", above it as "you must not". A secret without a
+   * value defaults to 1 there, meaning available from the first Episode — so with no way to set it, every
+   * secret was always revealable and the split did nothing. The field was in the stored shape and the server
+   * accepted it; only the screen never asked for it.
+   */
+  const [revealFrom, setRevealFrom] = useState("");
   const [editing, setEditing] = useState<LongStoryBibleItem | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -262,11 +280,11 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
   }
 
   function resetEditor(): void {
-    setName(""); setItemId(""); setDescription(""); setStatus(""); setEditing(null); setValidationError(null); setNameTouched(false);
+    setName(""); setItemId(""); setDescription(""); setStatus(""); setEditing(null); setValidationError(null); setNameTouched(false); setRevealFrom("");
     setAssetId(""); setVersionPolicy("pinned_version"); setScopeMode("all"); setScopeEpisode("1");
   }
   function startEdit(item: LongStoryBibleItem): void {
-    setEditing(item); setName(item.name ?? ""); setItemId(item.id); setDescription(item.description ?? ""); setStatus(item.status ?? ""); setValidationError(null); setDeleteTarget(null); setNameTouched(true);
+    setEditing(item); setName(item.name ?? ""); setItemId(item.id); setDescription(item.description ?? ""); setStatus(item.status ?? ""); setValidationError(null); setDeleteTarget(null); setNameTouched(true); setRevealFrom(item.revealAvailableEpisode === undefined ? "" : String(item.revealAvailableEpisode));
     setAssetId(item.assetLink?.assetId ?? ""); setVersionPolicy(item.assetLink?.versionPolicy ?? "pinned_version");
     setScopeMode(item.assetLink?.episodeScope.mode ?? "all"); setScopeEpisode(item.assetLink?.episodeScope.mode === "episode" ? String(item.assetLink.episodeScope.episode) : "1");
   }
@@ -286,6 +304,9 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
     return {
       ...(itemId.trim() ? { id: itemId.trim() } : {}), name: name.trim(),
       ...(description.trim() ? { description: description.trim() } : {}), ...(status.trim() ? { status: status.trim() } : {}),
+      ...(REVEAL_COLLECTIONS.includes(collection) && Number.isInteger(Number(revealFrom)) && Number(revealFrom) >= 1
+        ? { revealAvailableEpisode: Number(revealFrom) }
+        : {}),
       ...(ASSET_LINK_COLLECTIONS.includes(collection) && link ? { assetLink: link } : {}),
       ...(ASSET_LINK_COLLECTIONS.includes(collection) && editing && !assetId ? { assetLink: null } : {}),
     };
@@ -575,6 +596,45 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
             className={fieldClassName}
           />
         </label>
+        {/* Only for 비밀·복선 — the two collections whose text is actually sent. For the other three the
+            description was a second copy of what the linked folder already carries, which is why it is gone
+            from those; here it is the item itself. */}
+        {REVEAL_COLLECTIONS.includes(collection) && (
+          <>
+            <label className="block text-sm text-slate-300">
+              내용
+              <textarea
+                aria-label="항목 내용"
+                data-testid="story-bible-item-content"
+                rows={3}
+                value={description}
+                disabled={pending}
+                onChange={(event) => setDescription(event.target.value)}
+                className={fieldClassName}
+              />
+              <span className="mt-1 block text-xs text-slate-500">여기 적은 글이 대본을 쓸 때 그대로 전달됩니다.</span>
+            </label>
+            <label className="block text-sm text-slate-300">
+              몇 화부터 써도 되나
+              <input
+                aria-label="공개 가능 회차"
+                data-testid="story-bible-reveal-from"
+                type="number"
+                min={1}
+                placeholder="1"
+                value={revealFrom}
+                disabled={pending}
+                onChange={(event) => setRevealFrom(event.target.value)}
+                className={fieldClassName}
+              />
+              {/* The default is stated, because leaving it blank is a real choice with a real effect and an
+                  empty box that silently means "from the first Episode" is how a twist gets spoiled. */}
+              <span className="mt-1 block text-xs text-slate-500">
+                이 회차 전까지는 <strong className="text-slate-400">쓰지 말라고</strong> 대본 AI에게 전달됩니다. 비워 두면 1화부터 쓸 수 있습니다.
+              </span>
+            </label>
+          </>
+        )}
         {supportsAssetLink && (
           <fieldset className="space-y-3 rounded-xl border border-white/10 bg-slate-950/30 p-3.5 disabled:opacity-50" disabled={pending || assetLoading}>
             <legend className="px-1 text-sm text-slate-300">이미지 보관함에서 연결(선택 사항)</legend>
