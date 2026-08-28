@@ -12,6 +12,53 @@ async function setup(episodeDurationSeconds: 30 | 60 = 30, sceneCount = 6) { roo
 afterEach(async () => { vi.unstubAllGlobals(); if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 
 describe("EpisodeScriptsService", () => {
+  it("starts an Episode from the project's values and lets it be given its own, which the script is then written to", async () => {
+    // The point of the write path, and the only assertion that proves it is worth having: the pipeline already
+    // read the Episode's own copy rather than the project's, so what was missing was any way to change that
+    // copy. Generating afterwards and counting the scenes is what shows the change reached the work.
+    const subject = await setup(30, 6);
+    const before = await subject.settings("long", 1);
+    expect(before.settings).toEqual({ sceneCount: 6, clipDurationSeconds: 5, episodeDurationSeconds: 30 });
+    expect(before.projectDefaults).toEqual(before.settings);
+    expect(before.changeable).toBe(true);
+
+    const updated = await subject.updateSettings("long", 1, { sceneCount: 4, clipDurationSeconds: 10 });
+    expect(updated.settings).toEqual({ sceneCount: 4, clipDurationSeconds: 10, episodeDurationSeconds: 40 });
+
+    const after = await subject.settings("long", 1);
+    expect(after.settings.sceneCount).toBe(4);
+    // The project's own settings are untouched: they are what a new Episode starts from, not what this one uses.
+    expect(after.projectDefaults).toEqual({ sceneCount: 6, clipDurationSeconds: 5, episodeDurationSeconds: 30 });
+
+    const generated = await subject.generate("long", 1, { userRequestId: "settings-intent" });
+    expect(generated.episode.script?.scenes.map((scene) => scene.number)).toEqual([1, 2, 3, 4]);
+    expect((await subject.settings("long", 1)).changeable).toBe(false);
+  });
+
+  it("refuses to change them once a script exists, rather than leaving one written for other numbers", async () => {
+    // A script is written *for* a scene count and a clip length — both go into the prompt. Changing them
+    // afterwards would leave the script describing something else, so regenerating is the way, and that is a
+    // paid step someone chooses. `changeable` says so ahead of time; this is the server refusing anyway.
+    const subject = await setup(30, 6);
+    await subject.generate("long", 1, { userRequestId: "before-settings" });
+
+    await expect(subject.updateSettings("long", 1, { sceneCount: 4, clipDurationSeconds: 5 }))
+      .rejects.toMatchObject({ response: { code: "LONG_EPISODE_SETTINGS_NOT_ALLOWED" } });
+    expect((await subject.settings("long", 1)).settings.sceneCount).toBe(6);
+  });
+
+  it("refuses a scene count or clip length the rest of the pipeline cannot honour", async () => {
+    // Runway offers two clip lengths and the scene count has bounds; a value outside either would be accepted
+    // here and then fail somewhere far away, at a step that costs money.
+    const subject = await setup(30, 6);
+    for (const invalid of [{ sceneCount: 1, clipDurationSeconds: 5 }, { sceneCount: 13, clipDurationSeconds: 5 }, { sceneCount: 6, clipDurationSeconds: 7 }]) {
+      await expect(subject.updateSettings("long", 1, invalid)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    }
+    // And it does not accept a duration it is supposed to derive.
+    await expect(subject.updateSettings("long", 1, { sceneCount: 4, clipDurationSeconds: 5, episodeDurationSeconds: 20 } as never))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
   it("answers a repeated regeneration with what the first one made, and a fresh intent with a new script", async () => {
     // The lock stops presses that overlap. It cannot stop the one that arrives after the first finished, and a
     // regeneration is a legal repeat the state gate lets through — so a person who waited with nothing on screen

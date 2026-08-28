@@ -125,6 +125,46 @@ export interface LongEpisodeDetail extends LongEpisodeOutline {
 
 export interface GetLongEpisodeResponse { episode: LongEpisodeDetail; }
 /**
+ * What one Episode was told to make: how many scenes, and how long each clip runs.
+ *
+ * A Long Project's own settings are the defaults every new Episode starts from — they are not the value the
+ * Episode uses. An Episode has always kept its own copy (`scene_count`, `duration_seconds` are snapshotted at
+ * creation and every later step reads the Episode's, not the project's); what was missing was any way to change
+ * that copy. This is that.
+ *
+ * Aspect ratio is deliberately not here. It stays a project-wide value because three screens once each guessed
+ * it independently and all three guessed wrong, and because a continuity reference image crosses from one
+ * Episode into the next — a per-Episode ratio would make those two disagree with nothing to reconcile them.
+ */
+export interface LongEpisodeSettings {
+  sceneCount: number;
+  clipDurationSeconds: number;
+  /** Derived, never sent: sceneCount * clipDurationSeconds. Same rule as the project's own settings. */
+  episodeDurationSeconds: number;
+}
+
+export interface GetLongEpisodeSettingsResponse {
+  settings: LongEpisodeSettings;
+  /** What a new Episode of this project starts from, so a screen can show which values were changed. */
+  projectDefaults: LongEpisodeSettings;
+  /**
+   * Whether these can still be changed, so the screen can say why not instead of failing on save.
+   *
+   * False once a script exists: the script is written *for* a scene count and a clip length — both go into the
+   * prompt — so changing them afterwards would leave a script that was written for something else. Regenerating
+   * the script is the way to change them, and that is a paid step the person chooses on purpose.
+   */
+  changeable: boolean;
+}
+
+export interface UpdateLongEpisodeSettingsRequest {
+  sceneCount: number;
+  clipDurationSeconds: number;
+}
+
+export interface UpdateLongEpisodeSettingsResponse { settings: LongEpisodeSettings; }
+
+/**
  * `userRequestId` identifies the person's intent, not the click.
  *
  * The lock stops two presses that overlap. It cannot stop the one that arrives after the first has finished,
@@ -1395,6 +1435,8 @@ export const API_ROUTES = {
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/outline`,
   longEpisode: (projectId: string, episodeNumber: number) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}`,
+  longEpisodeSettings: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/settings`,
   longEpisodeScriptGeneration: (projectId: string, episodeNumber: number) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/script/generations`,
   longEpisodeScript: (projectId: string, episodeNumber: number) =>

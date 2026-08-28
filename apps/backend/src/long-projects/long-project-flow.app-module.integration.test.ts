@@ -59,7 +59,7 @@ async function boot(): Promise<void> {
 }
 
 /** Fails naming the route, because a wiring mistake shows up as a 404 several steps before the assertion that cares. */
-async function call<T>(method: "GET" | "POST", route: string, body?: unknown): Promise<T> {
+async function call<T>(method: "GET" | "POST" | "PUT", route: string, body?: unknown): Promise<T> {
   const response = await fetch(`${base}${route}`, {
     method,
     ...(body === undefined ? {} : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
@@ -78,6 +78,16 @@ describe.sequential("Long Project Episode flow over HTTP", () => {
       "POST", API_ROUTES.longProjectOutlinePreview(PROJECT_ID));
     await call("POST", API_ROUTES.longProjectOutlineApproval(PROJECT_ID),
       { approved: true, prompt: preview.prompt, promptSha256: preview.promptSha256 });
+
+    // The Episode's own settings, over the route the screen will use. Set to the values this walk already runs
+    // on, because what is under test here is that the route exists and takes them — the service tests are where
+    // changing them is exercised.
+    const episodeSettings = await call<{ settings: { sceneCount: number }; changeable: boolean }>(
+      "GET", API_ROUTES.longEpisodeSettings(PROJECT_ID, 1));
+    expect(episodeSettings.changeable).toBe(true);
+    expect(episodeSettings.settings.sceneCount).toBe(SETTINGS.sceneCount);
+    await call("PUT", API_ROUTES.longEpisodeSettings(PROJECT_ID, 1),
+      { sceneCount: SETTINGS.sceneCount, clipDurationSeconds: SETTINGS.clipDurationSeconds });
 
     await call("POST", API_ROUTES.longEpisodeScriptGeneration(PROJECT_ID, 1), { userRequestId: "flow-script-1" });
     await call("POST", API_ROUTES.longEpisodeScriptApproval(PROJECT_ID, 1), { approved: true });

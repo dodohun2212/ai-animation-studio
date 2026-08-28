@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import { STORY_ESTIMATED_COST_USD, type ApproveLongEpisodeScriptRequest, type ApproveLongEpisodeScriptResponse, type GenerateLongEpisodeScriptRequest, type GenerateLongEpisodeScriptResponse, type GetLongEpisodeResponse, type LongEpisodeDetail, type LongEpisodeOutline, type LongEpisodeScene, type LongEpisodeScript, type LongEpisodeStatus, type SceneNumber, type UpdateLongEpisodeScriptRequest, type UpdateLongEpisodeScriptResponse } from "@ai-animation-studio/shared";
+import { MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, STORY_ESTIMATED_COST_USD, type ApproveLongEpisodeScriptRequest, type ApproveLongEpisodeScriptResponse, type GenerateLongEpisodeScriptRequest, type GenerateLongEpisodeScriptResponse, type GetLongEpisodeResponse, type GetLongEpisodeSettingsResponse, type LongEpisodeDetail, type LongEpisodeOutline, type LongEpisodeScene, type LongEpisodeScript, type LongEpisodeStatus, type SceneNumber, type UpdateLongEpisodeScriptRequest, type UpdateLongEpisodeScriptResponse, type UpdateLongEpisodeSettingsRequest, type UpdateLongEpisodeSettingsResponse, type RunwayClipDurationSeconds } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
@@ -9,8 +9,9 @@ import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../pr
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiStoryApi } from "../story/openai-story-adapter.js";
 import { buildEpisodeContext } from "./episode-context-builder.js";
-import { longEpisodeNotFound, longEpisodeScriptBudgetExceeded, longEpisodeScriptExists, longEpisodeScriptNotAllowed, longEpisodeScriptProviderError, longInvalidData, longLocked, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { longEpisodeNotFound, longEpisodeScriptBudgetExceeded, longEpisodeScriptExists, longEpisodeScriptNotAllowed, longEpisodeScriptProviderError, longEpisodeSettingsNotAllowed, longInvalidData, longLocked, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
+import { episodeSettings } from "./episode-settings.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
@@ -129,6 +130,41 @@ export class EpisodeScriptsService {
   }
   private generated(outline: LongEpisodeOutline, bibleNames: string, continuity: Record<string, unknown>, sceneCount: number): LongEpisodeScript { const subject = outline.title || `Episode ${outline.episodeNumber}`; const latest = (continuity.recentContinuity as Array<{ summary: string }>).at(-1)?.summary; const scenes = Array.from({ length: sceneCount }, (_, index) => { const number = index + 1; return { number: number as SceneNumber, description: `${subject} scene ${number}: ${outline.summary || outline.mainEvent || "the episode progresses"}.`, visualAction: `The central action develops in scene ${number}.`, startMotion: "A still opening pose shifts into motion.", mainMotion: "The character advances the episode conflict.", endMotion: "The movement settles into the next scene.", shotSize: "medium shot", cameraAngle: "eye level", composition: "centered subject with readable background", lensFeel: "natural perspective", focusSubject: bibleNames || subject, cameraMotion: "gentle forward movement", environmentMotion: "subtle ambient movement", motionSpeed: "normal", motionIntensity: "moderate", expressionChange: "focused to hopeful", continuityHint: number === 1 && latest ? `Continue from prior Episode: ${latest}` : number === 1 ? "Establish the opening visual state." : "Continue the previous scene's ending pose and direction.", narration: `Scene ${number} narration for ${subject}.` }; }); return { title: `${subject} — Local Episode Script`, synopsis: `A local ${sceneCount}-scene draft for ${subject}.${latest ? ` It continues: ${latest}` : ""}`, ending: outline.cliffhanger || "The episode reaches its next turning point.", scenes }; }
   async get(projectId: string, number: number): Promise<GetLongEpisodeResponse> { const outline = await this.outline(projectId.trim(), number); return { episode: this.toApi(outline, await this.stored(projectId.trim(), outline)) }; }
+  /**
+   * The Episode's own scene count and clip length.
+   *
+   * Lives on this service because this is what owns the stored Episode record — its read, its validation, its
+   * write. A separate settings service would need a second copy of all three, and thirteen divergent copies of
+   * exactly that kind of thing is what long-project-paths.ts exists to have ended (D-021).
+   */
+  async settings(projectId: string, number: number): Promise<GetLongEpisodeSettingsResponse> {
+    const id = projectId.trim(); const outline = await this.outline(id, number); const stored = await this.stored(id, outline);
+    const projectSettings = (await this.projects.get(id)).project.settings;
+    return {
+      settings: episodeSettings(stored.scene_count, stored.duration_seconds / stored.scene_count),
+      projectDefaults: episodeSettings(projectSettings.sceneCount, projectSettings.clipDurationSeconds),
+      changeable: !Object.keys(stored.script).length,
+    };
+  }
+
+  async updateSettings(projectId: string, number: number, request: UpdateLongEpisodeSettingsRequest): Promise<UpdateLongEpisodeSettingsResponse> {
+    const id = projectId.trim(); const outline = await this.outline(id, number); const stored = await this.stored(id, outline);
+    if (!isObj(request) || Object.keys(request).length !== 2
+      || !Number.isInteger(request.sceneCount) || Number(request.sceneCount) < MIN_SCENE_COUNT || Number(request.sceneCount) > MAX_SCENE_COUNT
+      || !RUNWAY_CLIP_DURATIONS.includes(request.clipDurationSeconds as RunwayClipDurationSeconds)) {
+      throw longInvalidRequest(`sceneCount must be an integer from ${MIN_SCENE_COUNT} to ${MAX_SCENE_COUNT} and clipDurationSeconds one of ${RUNWAY_CLIP_DURATIONS.join(", ")}.`);
+    }
+    // Refused once a script exists rather than silently leaving one written for other numbers. `changeable` on
+    // the read says the same thing ahead of time, so a screen can disable the fields instead of failing here.
+    if (Object.keys(stored.script).length) throw longEpisodeSettingsNotAllowed();
+
+    stored.scene_count = request.sceneCount;
+    stored.duration_seconds = request.sceneCount * request.clipDurationSeconds;
+    stored.updated_at = new Date().toISOString();
+    await this.save(id, outline, stored);
+    return { settings: episodeSettings(stored.scene_count, request.clipDurationSeconds) };
+  }
+
   /**
    * Writing this Episode's script, once per press.
    *
