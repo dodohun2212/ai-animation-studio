@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Asset, LongStoryBibleProtagonistLink } from "@ai-animation-studio/shared";
 
+import { CollapsibleCard } from "./CollapsibleCard.js";
 import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
 import { getLongProjectStoryBible, toLongStoryBibleDisplayError, updateLongStoryBibleProtagonistAssetLink } from "../api/longStoryBibleApi.js";
 
@@ -83,8 +84,11 @@ export function ProtagonistAssetCard({ projectId }: Props) {
   const linkedFolder = linked ? folders.find((folder) => folder.assetId === linked.assetId) : undefined;
 
   return (
-    <section aria-label="주인공" data-testid="protagonist-card" className="space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
-      <h2 className="text-base font-semibold text-slate-100">주인공</h2>
+    <CollapsibleCard
+      title="주인공"
+      testId="protagonist-card"
+      summary={linked ? (linkedFolder?.displayName ?? linked.assetId) : "고르지 않음"}
+    >
       <p className="text-sm text-slate-400">폴더 이름이 곧 주인공 이름입니다 — 보관함에서 고치면 다음 대본부터 반영됩니다. 서브 캐릭터는 회차마다 따로 고릅니다.</p>
 
       {loading && <p className="text-sm text-slate-400">불러오는 중...</p>}
@@ -151,6 +155,6 @@ export function ProtagonistAssetCard({ projectId }: Props) {
           {pending ? "저장하는 중..." : assetId ? "이 캐릭터를 주인공으로" : "주인공 빼기"}
         </button>
       )}
-    </section>
+    </CollapsibleCard>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { LongStoryBible, LongStoryBibleCollection, LongStoryBibleItem, LongStoryBibleItemInput } from "@ai-animation-studio/shared";
 
+import { CollapsibleCard } from "./CollapsibleCard.js";
 import { createLongStoryBibleItem, deleteLongStoryBibleItem, getLongProjectStoryBible, toLongStoryBibleDisplayError, updateLongStoryBibleItem } from "../api/longStoryBibleApi.js";
 
 interface Props { projectId: string; }
@@ -114,8 +115,15 @@ export function StorySecretsCard({ projectId }: Props) {
   }
 
   return (
-    <section aria-label="비밀·복선" data-testid="story-secrets-card" className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
-      <h3 className="text-base font-semibold text-slate-100">비밀·복선</h3>
+    <CollapsibleCard
+      title="비밀·복선"
+      testId="story-secrets-card"
+      summary={
+        (bible?.secrets.length ?? 0) + (bible?.foreshadowing.length ?? 0) === 0
+          ? "없음"
+          : `비밀 ${bible?.secrets.length ?? 0} · 복선 ${bible?.foreshadowing.length ?? 0}`
+      }
+    >
       <p className="text-sm text-slate-400">적은 글이 대본에 <strong className="text-slate-300">그대로</strong> 전달됩니다.</p>
       {error && <p role="alert" data-error-code={error.code} className="text-sm text-rose-400">{error.message}</p>}
       {loading && <p className="text-sm text-slate-400">불러오는 중...</p>}
@@ -242,6 +250,6 @@ export function StorySecretsCard({ projectId }: Props) {
           </div>
         </div>
       )}
-    </section>
+    </CollapsibleCard>
   );
 }

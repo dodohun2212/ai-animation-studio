@@ -94,7 +94,16 @@ export class EpisodeVideosService implements OnModuleDestroy {
   // review on exactly this word, so it has to mean the thing they use it for. Still finishing reads as
   // running, which is what it is.
   private async progressFor(episode: Episode, job: string, records: VideoRecord[]): Promise<LongEpisodeVideoProgress> { const done = records.filter((item) => item.status === "succeeded").map((item) => item.scene_number); const failedRecords = records.filter((item) => item.status === "failed"); const failed = failedRecords.map((item) => item.scene_number); const sceneErrors = Object.fromEntries(failedRecords.filter((item) => item.error).map((item) => [item.scene_number, item.error!])); const running = records.find((item) => item.status === "running")?.scene_number; const budget = records[0]?.execution_mode === "runway" ? await this.budgetPreview(VIDEO_SCENE_ESTIMATED_COST_USD) : undefined; return { jobId: job, status: episode.state === "interrupted" ? "interrupted" : failed.length > 0 ? "failed" : done.length === records.length && episode.state !== "videos_generating" ? "succeeded" : running || done.length === records.length ? "running" : "created", ...(running ? { currentSceneNumber: running } : {}), completedSceneNumbers: done, failedSceneNumbers: failed, sceneNumbers: records.map((item) => item.scene_number), episode: this.detail(episode), ...(Object.keys(sceneErrors).length > 0 ? { sceneErrors } : {}), ...(budget ? { retryEstimate: { perSceneCostUsd: VIDEO_SCENE_ESTIMATED_COST_USD, budget } } : {}) }; }
-  private async binary(file: string) { const temp = `${file}.${crypto.randomUUID()}.tmp`; let done = false; try { await fs.writeFile(temp, MP4); await fs.rename(temp, file); done = true; } finally { if (!done) await fs.unlink(temp).catch(() => undefined); } }
+  /**
+   * Writes one scene's video. `bytes` is what Runway sent; the placeholder is only for the local fake path.
+   *
+   * It used to always write the placeholder, including on the real path's success branch — so a real Episode
+   * was charged for six clips, the download arrived, and a 32-byte stub was written over it. Nothing said so:
+   * the records read "succeeded" with real task ids, and the stub passes `validVideo`, which only checks for a
+   * length and an `ftyp` box. The short project has always written `result.bytes` here; this side was ported
+   * from the fake shape and the success branch never caught up.
+   */
+  private async binary(file: string, bytes: Buffer = MP4) { const temp = `${file}.${crypto.randomUUID()}.tmp`; let done = false; try { await fs.writeFile(temp, bytes); await fs.rename(temp, file); done = true; } finally { if (!done) await fs.unlink(temp).catch(() => undefined); } }
 
   private scheduleTimer(jobKey: string, tick: () => void): void {
     if (this.activeTimers.has(jobKey)) return;
@@ -195,8 +204,17 @@ export class EpisodeVideosService implements OnModuleDestroy {
       return records;
     }
     // result.kind === "succeeded"
+    // A body no bigger than the placeholder is not a video. Recording it as succeeded is what let six paid
+    // clips be replaced by stubs without a word, so it is refused here instead — the scene is failed and can
+    // be regenerated, rather than the Episode moving on to review with nothing to review.
+    if (result.bytes.length <= MP4.length) {
+      record.status = "failed"; record.error = "empty_output";
+      await this.saveRecords(id, number, records);
+      this.clearTimer(jobKey);
+      return records;
+    }
     await fs.mkdir(this.files(id, number).videos, { recursive: true });
-    await this.binary(this.video(id, number, result.sceneNumber));
+    await this.binary(this.video(id, number, result.sceneNumber), result.bytes);
     record.status = "succeeded"; record.completed_at = new Date().toISOString();
     await this.saveRecords(id, number, records);
 

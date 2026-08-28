@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Asset, LongStoryBibleStyleAssetLink } from "@ai-animation-studio/shared";
 
+import { CollapsibleCard } from "./CollapsibleCard.js";
 import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
 import { getLongProjectStoryBible, toLongStoryBibleDisplayError, updateLongStoryBibleStyleAssetLink } from "../api/longStoryBibleApi.js";
 
@@ -75,8 +76,11 @@ export function GlobalStyleAssetCard({ projectId }: Props) {
   }
 
   return (
-    <section aria-label="전체 그림체" data-testid="global-style-card" className="space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
-      <h2 className="text-base font-semibold text-slate-100">전체 그림체</h2>
+    <CollapsibleCard
+      title="전체 그림체"
+      testId="global-style-card"
+      summary={linked ? (assets.find((asset) => asset.assetId === linked.assetId)?.displayName ?? linked.assetId) : "고르지 않음"}
+    >
       {/* Says what it does, not what it is. "전체 비주얼 스타일" named a field; this names an effect. */}
       <p className="text-sm text-slate-400">고른 그림 한 장이 <strong className="text-slate-300">모든 회차의 모든 장면</strong>에 같이 전달됩니다.</p>
 
@@ -139,6 +143,6 @@ export function GlobalStyleAssetCard({ projectId }: Props) {
           {pending ? "저장하는 중..." : assetId ? "이 그림체로 저장" : "그림체 빼기"}
         </button>
       )}
-    </section>
+    </CollapsibleCard>
   );
 }

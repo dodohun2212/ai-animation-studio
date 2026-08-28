@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { CollapsibleCard } from "./CollapsibleCard.js";
 import { getLongProjectStoryBible, toLongStoryBibleDisplayError, updateLongStoryBibleWorld } from "../api/longStoryBibleApi.js";
 
 interface Props { projectId: string; }
@@ -106,8 +107,11 @@ export function StoryWorldCard({ projectId }: Props) {
   const shown = rows === null ? [] : rows.length === 0 ? [{ key: "", value: "" }] : rows;
 
   return (
-    <section aria-label="세계관 설명" data-testid="story-world-card" className="space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
-      <h3 className="text-base font-semibold text-slate-100">세계관 설명</h3>
+    <CollapsibleCard
+      title="세계관 설명"
+      testId="story-world-card"
+      summary={rows === null ? "직접 편집 필요" : rows.length === 0 ? "없음" : `${rows.length}개`}
+    >
       {/* The card used to carry three explanatory blocks — what to write, when it is read, that blank is
           allowed. All three were true of 주인공, 전체 그림체 and 비밀·복선 as well, so the screen said them four
           times over. They now appear once, at the top of 작품 기본 설정 (see LongProjectSettingsScreen). What
@@ -190,6 +194,6 @@ export function StoryWorldCard({ projectId }: Props) {
       <button type="button" className={outlineButton} onClick={() => void save()} disabled={pending || loading}>
         {pending ? "저장하는 중..." : "세계관 설명 저장"}
       </button>
-    </section>
+    </CollapsibleCard>
   );
 }

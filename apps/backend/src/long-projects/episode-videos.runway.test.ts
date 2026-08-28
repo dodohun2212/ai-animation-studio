@@ -50,6 +50,9 @@ afterEach(async () => {
 });
 
 /** Routes fetch calls by URL: POST submit -> a fresh task id; GET task -> RUNNING on the 1st check, SUCCEEDED after; GET output URL -> fixed bytes. */
+/** What the mock "downloads". Distinct from the local placeholder so a test can tell which one was written. */
+const RUNWAY_BODY = Buffer.concat([Buffer.from("000000186674797069736F6D", "hex"), Buffer.from("real runway output bytes for this scene")]);
+
 function runwayFetchMock(options: { failTaskId?: string } = {}) {
   const checkCounts = new Map<string, number>();
   let nextTaskId = 1;
@@ -68,7 +71,9 @@ function runwayFetchMock(options: { failTaskId?: string } = {}) {
       return { ok: true, status: 200, json: async () => ({ id: taskId, status: "SUCCEEDED", output: [`https://cdn.runway/${taskId}.mp4`] }), headers: { get: () => null } } as unknown as Response;
     }
     if (url.startsWith("https://cdn.runway/")) {
-      const bytes = Buffer.from("fake-mp4-bytes");
+      // Longer than the placeholder on purpose: a body no bigger than a bare header is refused now, and a mock
+      // that returned one would be testing the refusal instead of the download.
+      const bytes = RUNWAY_BODY;
       return { ok: true, status: 200, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), headers: { get: () => null } } as unknown as Response;
     }
     throw new Error(`unexpected fetch: ${url}`);
@@ -276,5 +281,53 @@ describe("real Runway episode video generation", () => {
     const secondReview = await videos.review("long", 1, started.jobId);
     expect(secondReview.reviews.find((review) => review.sceneNumber === 1)?.costUsd).toBeCloseTo(0.5, 8);
     expect(secondReview.reviews.filter((review) => review.sceneNumber !== 1).every((review) => review.costUsd === 0.25)).toBe(true);
+  });
+
+  it("writes what Runway sent, not the local placeholder", async () => {
+    // This is what a real cycle produced: six clips charged at $0.25, six records reading "succeeded" with real
+    // task ids, and six 32-byte files on disk — byte-identical to the local fake constant. The download had
+    // arrived and was thrown away. Nothing caught it because the stub satisfies validVideo, which only looks
+    // for a length and an `ftyp` box.
+    const deps = await setupWithConnectedRunway();
+    const videos = newVideos(deps);
+    vi.stubGlobal("fetch", runwayFetchMock());
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "bytes_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    await videos.progress("long", 1, started.jobId);
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    await videos.progress("long", 1, started.jobId);
+
+    const file = path.join(deps.projectsRoot, "long", "long_story", "Episode01", "videos", "scene1.mp4");
+    expect(await fs.readFile(file)).toEqual(RUNWAY_BODY);
+  });
+
+  it("fails a scene whose download is no bigger than a bare header instead of calling it done", async () => {
+    // An mp4 that is only a header is not a video, and recording it as succeeded is what let the placeholder
+    // pass for six paid clips. Refusing leaves the scene regenerable; accepting moved the Episode to review
+    // with nothing to review.
+    const deps = await setupWithConnectedRunway();
+    const videos = newVideos(deps);
+    const empty = Buffer.from("000000186674797069736F6D0000020069736F6D69736F32617663316D703431", "hex");
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.endsWith("/v1/image_to_video")) return { ok: true, status: 200, json: async () => ({ id: "task-1" }), headers: { get: () => null } } as unknown as Response;
+      if (url.includes("/v1/tasks/")) return { ok: true, status: 200, json: async () => ({ id: "task-1", status: "SUCCEEDED", output: ["https://cdn.runway/task-1.mp4"] }), headers: { get: () => null } } as unknown as Response;
+      return { ok: true, status: 200, arrayBuffer: async () => empty.buffer.slice(empty.byteOffset, empty.byteOffset + empty.byteLength), headers: { get: () => null } } as unknown as Response;
+    }));
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "empty_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    const progress = await videos.progress("long", 1, started.jobId);
+
+    expect(progress).toMatchObject({ status: "failed", failedSceneNumbers: [1] });
+    expect(progress.episode.status).not.toBe("videos_review");
   });
 });

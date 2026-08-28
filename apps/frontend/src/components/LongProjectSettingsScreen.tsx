@@ -124,14 +124,33 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
           {state.error.message}
         </p>
       )}
+      {/* One form, three groups, and the last one closed.
+          It used to be every field at once — about six screens of column, all of it permanently above the four
+          cards below. Almost none of it is edited twice: a title is set once, an episode count is set once.
+          Grouping does not hide anything; it stops the rarely-touched half from being in the way of the part
+          someone came to change. */}
       {state.settings && (
         <form className="grid gap-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6 md:grid-cols-2" onSubmit={submit} noValidate>
+          <div className="grid gap-4 md:col-span-2 md:grid-cols-2">
           <Field label="제목" value={state.settings.title} onChange={(value) => setField("title", value)} />
           <Field label="한 줄 줄거리" value={state.settings.logline} onChange={(value) => setField("logline", value)} />
           <Field label="개요" value={state.settings.overview} onChange={(value) => setField("overview", value)} multiline />
           <Field label="장르" value={state.settings.genre} onChange={(value) => setField("genre", value)} />
           <Field label="톤" value={state.settings.tone} onChange={(value) => setField("tone", value)} />
           <Field label="테마" value={state.settings.theme} onChange={(value) => setField("theme", value)} />
+          </div>
+          {/* Closed, like the cards below, and for the same reason: these are set once. Leaving this one open
+              while collapsing everything else was the inconsistency — the summary says what is set, so opening
+              it is for changing, not for checking. */}
+          <details className="md:col-span-2 rounded-xl border border-white/10 bg-slate-950/30" data-testid="long-settings-video-group">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-200">
+              영상 만들기
+              <span className="ml-2 font-normal text-slate-500">
+                {state.settings.episodeCount}화 · {state.settings.sceneCount}장면 × {state.settings.clipDurationSeconds}초 · {state.settings.aspectRatio}
+                {state.settings.narrationEnabled ? " · 음성" : ""}{state.settings.subtitlesEnabled ? " · 자막" : ""}
+              </span>
+            </summary>
+            <div className="grid gap-4 px-4 pb-4 md:grid-cols-2">
           <label className="block text-sm text-slate-300">
             에피소드 수
             <input
@@ -218,6 +237,13 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
               </span>
             </label>
           </div>
+            </div>
+          </details>
+          {/* Closed by default: these shape the story rather than the video, and a blank one is a complete
+              answer — the AI decides. Someone with nothing particular in mind never has to open it. */}
+          <details className="md:col-span-2 rounded-xl border border-white/10 bg-slate-950/30" data-testid="long-settings-story-group">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-200">이야기 흐름 <span className="font-normal text-slate-500">(비워 둬도 됩니다)</span></summary>
+            <div className="grid gap-4 px-4 pb-4 md:grid-cols-2">
           <Field label="누가 볼 영상인가" value={state.settings.audience} onChange={(value) => setField("audience", value)} />
           <Field label="메모" value={state.settings.notes} onChange={(value) => setField("notes", value)} multiline />
           <Field label="시작 상태" value={state.settings.startingState} onChange={(value) => setField("startingState", value)} multiline />
@@ -229,6 +255,8 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
             onChange={(value) => setField("storyFlowSummary", value)}
             multiline
           />
+            </div>
+          </details>
           {state.error && (
             <p className="text-sm text-rose-400 md:col-span-2" role="alert" data-error-code={state.error.code}>
               {state.error.message}
