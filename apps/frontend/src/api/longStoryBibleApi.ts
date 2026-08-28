@@ -17,6 +17,8 @@ import {
   type LongStoryBibleAssetLink,
   type UpdateLongStoryBibleItemRequest,
   type UpdateLongStoryBibleItemResponse,
+  type UpdateLongStoryBibleProtagonistAssetLinkRequest,
+  type UpdateLongStoryBibleProtagonistAssetLinkResponse,
   type UpdateLongStoryBibleStyleAssetLinkRequest,
   type UpdateLongStoryBibleStyleAssetLinkResponse,
 } from "@ai-animation-studio/shared";
@@ -94,6 +96,7 @@ function isStoryBible(value: unknown): value is LongStoryBible {
 const isGetResponse = (value: unknown): value is GetLongProjectStoryBibleResponse => isRecord(value) && isStoryBible(value.storyBible);
 const isContentResponse = (value: unknown): value is UpdateLongStoryBibleContentResponse => isRecord(value) && isStoryBible(value.storyBible);
 const isStyleAssetLinkResponse = (value: unknown): value is UpdateLongStoryBibleStyleAssetLinkResponse => isRecord(value) && isStoryBible(value.storyBible);
+const isProtagonistAssetLinkResponse = (value: unknown): value is UpdateLongStoryBibleProtagonistAssetLinkResponse => isRecord(value) && isStoryBible(value.storyBible);
 const isCreateResponse = (value: unknown): value is CreateLongStoryBibleItemResponse => isRecord(value) && isItem(value.item) && isStoryBible(value.storyBible);
 const isUpdateResponse = (value: unknown): value is UpdateLongStoryBibleItemResponse => isRecord(value) && isItem(value.item) && isStoryBible(value.storyBible);
 const isDeleteResponse = (value: unknown): value is DeleteLongStoryBibleItemResponse => isRecord(value) && isStoryBible(value.storyBible);
@@ -129,6 +132,16 @@ export function updateLongStoryBibleContent(projectId: string, body: UpdateLongS
 
 export function updateLongStoryBibleStyleAssetLink(projectId: string, body: UpdateLongStoryBibleStyleAssetLinkRequest): Promise<UpdateLongStoryBibleStyleAssetLinkResponse> {
   return request(API_ROUTES.longProjectStoryBibleStyleAssetLink(projectId), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, isStyleAssetLinkResponse);
+}
+
+/**
+ * The one character that belongs to the whole work, stored beside the style reference in `basic`.
+ *
+ * `null` clears it, the same way the style link does — one shape for the two project-wide references rather
+ * than a second convention for the second one.
+ */
+export function updateLongStoryBibleProtagonistAssetLink(projectId: string, body: UpdateLongStoryBibleProtagonistAssetLinkRequest): Promise<UpdateLongStoryBibleProtagonistAssetLinkResponse> {
+  return request(API_ROUTES.longProjectStoryBibleProtagonistAssetLink(projectId), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, isProtagonistAssetLinkResponse);
 }
 
 export function getLongStoryBibleRelationshipAudit(projectId: string): Promise<GetLongStoryBibleRelationshipAuditResponse> {

@@ -3,6 +3,7 @@ import { MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, type LongProje
 
 import { getLongProjectSettings, toLongProjectDisplayError, updateLongProjectSettings } from "../api/longProjectsApi.js";
 import { GlobalStyleAssetCard } from "./GlobalStyleAssetCard.js";
+import { ProtagonistAssetCard } from "./ProtagonistAssetCard.js";
 import { Spinner } from "./Spinner.js";
 
 interface Props {
@@ -249,6 +250,10 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
       {/* Moved here from the Story Bible screen: it is a project-wide choice like 화면 비율 above, not
           something about one character. Rendered outside the settings form because it saves through its own
           endpoint — one button per thing that is actually stored separately. */}
+      {/* Protagonist before style: a person names their lead character before deciding how it is drawn, and
+          this is the one that also reaches the script. Both are project-wide choices with their own endpoint,
+          so both sit outside the settings form with a button each. */}
+      {state.settings && <ProtagonistAssetCard projectId={projectId} />}
       {state.settings && <GlobalStyleAssetCard projectId={projectId} />}
     </section>
   );
