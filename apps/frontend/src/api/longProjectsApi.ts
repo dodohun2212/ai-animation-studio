@@ -457,7 +457,14 @@ function isLongEpisodeContinuityMemory(value: unknown): value is LongEpisodeCont
     && isUnknownRecordArray(value.characterChanges) && isUnknownRecordArray(value.itemChanges);
 }
 
-const isGetLongEpisodeContinuityResponse = (value: unknown): value is GetLongEpisodeContinuityResponse => isRecord(value) && (value.memory === null || isLongEpisodeContinuityMemory(value.memory));
+/**
+ * `canSave` is required, not optional-with-a-default. The screen disables its fields when saving is not allowed,
+ * so a response that omitted it would either disable everything (if absence read as false) or promise a save the
+ * server will refuse (if absence read as true) — both are the screen and its server disagreeing, which is the
+ * defect this field was added to end. A response without it is malformed and says so.
+ */
+const isGetLongEpisodeContinuityResponse = (value: unknown): value is GetLongEpisodeContinuityResponse =>
+  isRecord(value) && typeof value.canSave === "boolean" && (value.memory === null || isLongEpisodeContinuityMemory(value.memory));
 const isSaveLongEpisodeContinuityResponse = (value: unknown): value is SaveLongEpisodeContinuityResponse => isRecord(value)
   && isLongEpisodeContinuityMemory(value.memory) && (value.nextEpisode === null || isLongEpisodeDetail(value.nextEpisode));
 const isGetLongEpisodeContinuityReferenceResponse = (value: unknown): value is GetLongEpisodeContinuityReferenceResponse => {

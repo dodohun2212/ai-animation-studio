@@ -65,13 +65,26 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<DisplayError | null>(null);
   const [saved, setSaved] = useState<LongEpisodeDetail | null | undefined>(undefined);
+  /**
+   * Whether the server would accept a save right now, answered by the server itself.
+   *
+   * These notes describe how an Episode ended, so saving is only allowed once its video work has started — a
+   * correct rule. What was wrong was the timing: the screen opened, took everything the person typed, and
+   * refused at the end. The refusal is the same either way; the only thing that could change is when it
+   * arrives, so it arrives first now.
+   *
+   * Starts true so nothing is disabled while the answer is still in flight — the fields are only taken away on
+   * a definite "no", never on "not known yet". A failed load leaves it true and the old 409 path remains, which
+   * is the honest outcome when the screen could not learn the answer.
+   */
+  const [canSave, setCanSave] = useState(true);
   const busy = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setError(null); setSaved(undefined);
     getLongEpisodeContinuity(projectId, episodeNumber)
-      .then((response) => { if (!cancelled) setForm(toForm(response.memory)); })
+      .then((response) => { if (!cancelled) { setForm(toForm(response.memory)); setCanSave(response.canSave); } })
       .catch((caught) => { if (!cancelled) setError(toLongProjectDisplayError(caught)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -101,17 +114,23 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
         <h2 className="flex items-center gap-2.5 text-lg font-semibold"><span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />{`에피소드 ${episodeNumber} 이어쓰기 메모`}</h2>
         <p className="text-sm text-slate-400">다음 에피소드를 준비하기 전에 이 내용을 검토하고 직접 저장하세요. 이 화면을 여는 것만으로는 아무것도 저장되지 않습니다.</p>
       </header>
+      {!loading && !canSave && (
+        <p data-testid="continuity-not-saveable" className="rounded-xl border border-amber-400/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-200">
+          이어쓰기 메모는 이 회차의 <span className="font-semibold">영상 작업이 시작된 뒤</span>에 저장할 수 있습니다 —
+          회차가 어떻게 끝났는지를 적는 곳이라서요. 지금은 예전에 저장한 내용을 읽어볼 수만 있습니다.
+        </p>
+      )}
       {loading && <Spinner label="저장된 이어쓰기 메모를 불러오는 중..." />}
       {!loading && (
         <div className={cardSection}>
           <label className="block text-sm text-slate-300">
             에피소드 요약
-            <textarea data-testid="continuity-summary" className={fieldClassName} value={form.episodeSummary} disabled={pending} onChange={(event) => update("episodeSummary", event.target.value)} />
+            <textarea data-testid="continuity-summary" className={fieldClassName} value={form.episodeSummary} disabled={pending || !canSave} onChange={(event) => update("episodeSummary", event.target.value)} />
           </label>
           {listFields.map(([key, label]) => (
             <label key={key} className="block text-sm text-slate-300">
               {label}
-              <textarea data-testid={`continuity-${key}`} className={fieldClassName} value={toLines(form[key])} disabled={pending} placeholder="한 줄에 하나씩 입력" onChange={(event) => setForm((current) => ({ ...current, [key]: fromLines(event.target.value) }))} />
+              <textarea data-testid={`continuity-${key}`} className={fieldClassName} value={toLines(form[key])} disabled={pending || !canSave} placeholder="한 줄에 하나씩 입력" onChange={(event) => setForm((current) => ({ ...current, [key]: fromLines(event.target.value) }))} />
               {key.endsWith("Ids") && (
                 <span className="mt-1 block text-xs text-slate-500">등장인물·설정집에 등록된 항목의 번호를 적는 칸입니다. 잘 모르겠으면 비워 두셔도 됩니다.</span>
               )}
@@ -129,23 +148,23 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
               </p>
               <label className="block text-sm text-slate-300">
                 이번 화에서 달라진 캐릭터
-                <textarea data-testid="continuity-character-changes" className={`${fieldClassName} font-mono text-xs`} value={form.characterChanges} disabled={pending} onChange={(event) => update("characterChanges", event.target.value)} />
+                <textarea data-testid="continuity-character-changes" className={`${fieldClassName} font-mono text-xs`} value={form.characterChanges} disabled={pending || !canSave} onChange={(event) => update("characterChanges", event.target.value)} />
               </label>
               <label className="block text-sm text-slate-300">
                 이번 화에서 달라진 물건
-                <textarea data-testid="continuity-item-changes" className={`${fieldClassName} font-mono text-xs`} value={form.itemChanges} disabled={pending} onChange={(event) => update("itemChanges", event.target.value)} />
+                <textarea data-testid="continuity-item-changes" className={`${fieldClassName} font-mono text-xs`} value={form.itemChanges} disabled={pending || !canSave} onChange={(event) => update("itemChanges", event.target.value)} />
               </label>
             </div>
           </details>
           <label className="block text-sm text-slate-300">
             경과 시간
-            <input data-testid="continuity-time-elapsed" className={fieldClassName} value={form.timeElapsed} disabled={pending} onChange={(event) => update("timeElapsed", event.target.value)} />
+            <input data-testid="continuity-time-elapsed" className={fieldClassName} value={form.timeElapsed} disabled={pending || !canSave} onChange={(event) => update("timeElapsed", event.target.value)} />
           </label>
           <label className="block text-sm text-slate-300">
             검토 메모
-            <textarea data-testid="continuity-user-edits" className={fieldClassName} value={form.userEdits} disabled={pending} onChange={(event) => update("userEdits", event.target.value)} />
+            <textarea data-testid="continuity-user-edits" className={fieldClassName} value={form.userEdits} disabled={pending || !canSave} onChange={(event) => update("userEdits", event.target.value)} />
           </label>
-          <button type="button" data-testid="continuity-save" className={primaryButton} disabled={pending} onClick={() => void save()}>{pending ? "저장하는 중..." : "검토한 내용 저장"}</button>
+          <button type="button" data-testid="continuity-save" className={primaryButton} disabled={pending || !canSave} onClick={() => void save()}>{pending ? "저장하는 중..." : "검토한 내용 저장"}</button>
         </div>
       )}
       {saved !== undefined && (

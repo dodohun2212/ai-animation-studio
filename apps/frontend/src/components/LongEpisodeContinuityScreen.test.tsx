@@ -13,7 +13,7 @@ describe("LongEpisodeContinuityScreen", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("loads existing memory without an automatic save", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { memory: memory() }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { memory: memory(), canSave: true }));
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeContinuityScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
@@ -26,7 +26,7 @@ describe("LongEpisodeContinuityScreen", () => {
 
   it("saves only after the explicit save button with reviewed list and JSON fields", async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { memory: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { memory: null, canSave: true }))
       .mockResolvedValueOnce(jsonResponse(200, { memory: memory({ episodeSummary: "Reviewed summary", events: ["event one", "event two"], characterChanges: [{ id: "hero" }], itemChanges: [] }), nextEpisode }));
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeContinuityScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenNextEpisode={() => {}} />);
@@ -45,7 +45,7 @@ describe("LongEpisodeContinuityScreen", () => {
   });
 
   it("rejects malformed change JSON locally without sending a save", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { memory: null }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { memory: null, canSave: true }));
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeContinuityScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
@@ -59,9 +59,36 @@ describe("LongEpisodeContinuityScreen", () => {
   });
 
   it("shows malformed load responses as a safe error", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { memory: { episodeNumber: 1 } })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { memory: { episodeNumber: 1 }, canSave: true })));
     render(<LongEpisodeContinuityScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
     expect((await screen.findByTestId("continuity-error")).getAttribute("data-error-code")).toBe("CLIENT_MALFORMED_RESPONSE");
+  });
+
+  it("says saving is not possible yet before anything is typed, and takes the fields away", async () => {
+    // The refusal itself is right — these notes describe how an Episode ended, so they only mean something once
+    // its video work has started. What was wrong was hearing it at the end: the screen used to open, accept a
+    // whole form, and return 409 on save. The refusal is identical either way; only its timing could change.
+    // Both halves are asserted — the reason is stated AND the inputs are actually unusable — because a notice
+    // above a working form is just a form with a notice on it.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { memory: null, canSave: false })));
+    render(<LongEpisodeContinuityScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    const notice = await screen.findByTestId("continuity-not-saveable");
+    expect(notice.textContent).toContain("영상 작업이 시작된 뒤");
+    expect(screen.getByTestId("continuity-summary")).toBeDisabled();
+    expect(screen.getByTestId("continuity-save")).toBeDisabled();
+  });
+
+  it("leaves the form usable when saving is allowed", async () => {
+    // The counterpart the rule above needs: without it, a change that disabled the form unconditionally would
+    // still pass the test that only checks the disabled case.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { memory: null, canSave: true })));
+    render(<LongEpisodeContinuityScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    await screen.findByTestId("continuity-summary");
+    expect(screen.queryByTestId("continuity-not-saveable")).toBeNull();
+    expect(screen.getByTestId("continuity-summary")).not.toBeDisabled();
+    expect(screen.getByTestId("continuity-save")).not.toBeDisabled();
   });
 });

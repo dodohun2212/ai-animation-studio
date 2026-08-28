@@ -320,10 +320,10 @@ describe("longProjectsApi", () => {
     const continuity = { episodeNumber: 1, episodeSummary: "summary", events: [], appearedCharacterIds: [], characterChanges: [], appearedLocationIds: [], itemChanges: [], resolvedConflicts: [], newConflicts: [], revealedSecretIds: [], remainingSecretIds: [], newForeshadowingIds: [], resolvedForeshadowingIds: [], nextActions: [], timeElapsed: "", worldChanges: [], userEdits: "", updatedAt: "2026-08-23T00:00:00.000Z" };
     const nextEpisode = { episodeNumber: 2, title: "Episode 2", summary: "", mainEvent: "", conflict: "", cliffhanger: "", nextEpisodeHook: "", status: "outline_ready" as const, approved: false, scriptRevision: 0, scriptHistoryCount: 0 };
     const { episodeNumber: _episodeNumber, updatedAt: _updatedAt, ...inputMemory } = continuity;
-    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { memory: null })).mockResolvedValueOnce(jsonResponse(200, { memory: continuity, nextEpisode }));
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { memory: null, canSave: true })).mockResolvedValueOnce(jsonResponse(200, { memory: continuity, nextEpisode }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(getLongEpisodeContinuity("long", 1)).resolves.toEqual({ memory: null });
+    await expect(getLongEpisodeContinuity("long", 1)).resolves.toEqual({ memory: null, canSave: true });
     await expect(saveLongEpisodeContinuity("long", 1, { memory: inputMemory })).resolves.toEqual({ memory: continuity, nextEpisode });
 
     expect(fetchMock.mock.calls[0]).toEqual(["/long-projects/long/episodes/1/continuity"]);
