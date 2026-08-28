@@ -221,10 +221,16 @@ describe("real Runway episode video generation", () => {
     const firstRun = first.run("long", 1, started.jobId);
     // Whichever instance's call reaches fetch first stalls here, still holding the file lock.
     await reachedSubmit;
-    const secondRun = second.run("long", 1, started.jobId); // a "second process" racing in
-    // Generous real wait so `second`'s own chain (fresh read, lock-acquisition attempt, retry loop) has ample
-    // time to actually reach and block on the lock before it's released.
+    let secondSettled = false;
+    const secondRun = second.run("long", 1, started.jobId).finally(() => { secondSettled = true; }); // a "second process" racing in
+    // Real wait so `second`'s own chain (fresh read, lock-acquisition attempt, retry loop) reaches and blocks
+    // on the lock before it is released, then checked rather than assumed on the next line.
     await new Promise((resolve) => setTimeout(resolve, 200));
+    // The wait alone cannot prove the race happened — on a slow enough machine `second` might not have reached
+    // the lock yet, and the test would then pass for the weaker reason that nothing raced at all. Scene 1 is not
+    // running yet (`first` is still stalled inside submit and has written nothing), so the only thing that can
+    // be keeping `second` from finishing is the lock. Still pending is the premise; settled means no race.
+    expect(secondSettled).toBe(false);
     resolveStalledSubmit({ ok: true, status: 200, json: async () => ({ id: "task-1" }), headers: { get: () => null } });
     await Promise.all([firstRun, secondRun]);
 
