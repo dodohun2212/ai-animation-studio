@@ -254,4 +254,18 @@ describe("LongStoryBibleScreen", () => {
     await screen.findByTestId("story-bible-search-empty");
     expect(fetchMock.mock.calls[4]?.[0]).toBe("/long-projects/long_test/story-bible/characters/search?query=missing");
   });
+
+  it("does not claim an effect this screen does not have", async () => {
+    // The intro used to promise that what you type here keeps a character's look and personality steady across
+    // Episodes. Neither half held: the script prompt is built without characters/locations/props (their arrays
+    // are documented as "always empty today"), and reference images reach generation through the Asset mapping
+    // screen, not this one. Only 비밀·복선 actually travel. Pinned as a claim, not as wording — if the wiring
+    // lands, this test should be changed deliberately alongside it, not quietly deleted.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { storyBible: emptyBible })));
+    render(<LongStoryBibleScreen projectId="long" onBack={() => {}} />);
+
+    await screen.findByRole("heading", { name: "등장인물·설정집" });
+    expect(document.body.textContent).not.toContain("생김새·성격이 흔들리지 않게");
+    expect(document.body.textContent).toContain("비밀·복선");
+  });
 });

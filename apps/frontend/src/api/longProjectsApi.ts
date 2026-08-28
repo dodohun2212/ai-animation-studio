@@ -46,6 +46,7 @@ import {
   type StartLongEpisodeVideoGenerationResponse,
   type LongEpisodeVideoProgress,
   type LongEpisodeVideoReview,
+  type GetLongEpisodeCurrentVideoJobResponse,
   type GetLongEpisodeVideoReviewResponse,
   type ApproveLongEpisodeVideoReviewResponse,
   type RegenerateLongEpisodeVideoResponse,
@@ -628,6 +629,21 @@ export function regenerateLongEpisodeImageReview(projectId: string, episodeNumbe
 
 export function getLongEpisodeVideoPreview(projectId: string, episodeNumber: number): Promise<GetLongEpisodeVideoPreviewResponse> { return request(API_ROUTES.longEpisodeVideoPreview(projectId, episodeNumber), undefined, isGetEpisodeVideoPreviewResponse); }
 export function startLongEpisodeVideoGeneration(projectId: string, episodeNumber: number, requestBody: StartLongEpisodeVideoGenerationRequest): Promise<StartLongEpisodeVideoGenerationResponse> { return request(API_ROUTES.longEpisodeVideoGeneration(projectId, episodeNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isStartEpisodeVideoResponse); }
+function isGetCurrentVideoJobResponse(value: unknown): value is GetLongEpisodeCurrentVideoJobResponse {
+  return isRecord(value) && Object.keys(value).length === 1 && (value.jobId === null || isNonEmptyString(value.jobId));
+}
+/**
+ * The Episode's most recent video job, or `null` when it has never had one.
+ *
+ * Exists so a reload does not strand a paid Runway job: the job id used to live only in this screen's React
+ * state, so refreshing the page lost the only handle to work already being billed — it could not be watched,
+ * stopped, or reviewed. `null` is an ordinary answer, not a failure, and the server keeps answering after a job
+ * finishes (it reports the latest, not "one that is running"), so the caller must read progress to learn the
+ * state rather than treating a non-null id as "still generating".
+ */
+export function getLongEpisodeCurrentVideoJob(projectId: string, episodeNumber: number): Promise<GetLongEpisodeCurrentVideoJobResponse> {
+  return request(API_ROUTES.longEpisodeCurrentVideoJob(projectId, episodeNumber), undefined, isGetCurrentVideoJobResponse);
+}
 export function getLongEpisodeVideoProgress(projectId: string, episodeNumber: number, jobId: string): Promise<LongEpisodeVideoProgress> { return request(API_ROUTES.longEpisodeVideoProgress(projectId, episodeNumber, jobId), undefined, isEpisodeVideoProgress); }
 export function stopLongEpisodeVideoGeneration(projectId: string, episodeNumber: number, jobId: string): Promise<LongEpisodeVideoProgress> { return request(API_ROUTES.longEpisodeVideoStop(projectId, episodeNumber, jobId), { method: "POST" }, isEpisodeVideoProgress); }
 export function restartLongEpisodeVideoGeneration(projectId: string, episodeNumber: number, jobId: string): Promise<LongEpisodeVideoProgress> { return request(API_ROUTES.longEpisodeVideoRestart(projectId, episodeNumber, jobId), { method: "POST" }, isEpisodeVideoProgress); }

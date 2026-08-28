@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { GetLongEpisodeVideoPreviewResponse, LongEpisodeVideoProgress, LongEpisodeVideoReview, SceneNumber } from "@ai-animation-studio/shared";
 
-import { approveLongEpisodeVideoReview, episodeSceneErrorMessage, getLongEpisodeVideoPreview, getLongEpisodeVideoProgress, getLongEpisodeVideoReview, regenerateLongEpisodeVideo, restartLongEpisodeVideoGeneration, startLongEpisodeVideoGeneration, stopLongEpisodeVideoGeneration, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { approveLongEpisodeVideoReview, episodeSceneErrorMessage, getLongEpisodeCurrentVideoJob, getLongEpisodeVideoPreview, getLongEpisodeVideoProgress, getLongEpisodeVideoReview, regenerateLongEpisodeVideo, restartLongEpisodeVideoGeneration, startLongEpisodeVideoGeneration, stopLongEpisodeVideoGeneration, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { Spinner } from "./Spinner.js";
 import { videoRatioLabel } from "../utils/sceneFields.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
@@ -31,6 +31,39 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
   const busyRef = useRef(false);
   const loadPreview = async () => { setError(null); try { const response = await getLongEpisodeVideoPreview(projectId, episodeNumber); setPreview(response); setPrompts(Object.fromEntries(response.scenes.map((scene) => [scene.sceneNumber, scene.prompt]))); } catch (caught) { setError(toLongProjectDisplayError(caught)); } };
   useEffect(() => { void loadPreview(); }, [projectId, episodeNumber]);
+  /**
+   * Reattach to a job that is already running — or already finished — before deciding what to show.
+   *
+   * The job id used to live only in this component's state, so a refresh threw away the only handle to work
+   * Runway was already billing for: it could not be watched, stopped, or reviewed, and the money was spent
+   * either way. The id now comes from the server.
+   *
+   * Two things this deliberately does NOT do. It does not treat a null id as an error — having no job to return
+   * to is an ordinary answer, and showing it in red would paint "nothing is running" as a failure. And it does
+   * not treat a non-null id as "generating": the server answers with the most recent job, finished ones
+   * included (so a reload during review does not lose what is under review), so the status has to come from
+   * progress. Asking progress for it is what settles both.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    setJob(null); setReviews(null);
+    void (async () => {
+      let jobId: string | null;
+      try { ({ jobId } = await getLongEpisodeCurrentVideoJob(projectId, episodeNumber)); }
+      catch { return; /* Resuming is a bonus; failing to resume must not take the screen down. */ }
+      if (cancelled || !jobId) return;
+      try {
+        const progress = await getLongEpisodeVideoProgress(projectId, episodeNumber, jobId);
+        if (cancelled) return;
+        setJob(progress);
+        if (progress.status === "succeeded") {
+          const review = await getLongEpisodeVideoReview(projectId, episodeNumber, jobId);
+          if (!cancelled) setReviews(review.reviews);
+        }
+      } catch (caught) { if (!cancelled) setError(toLongProjectDisplayError(caught)); }
+    })();
+    return () => { cancelled = true; };
+  }, [projectId, episodeNumber]);
   const loadProgress = async () => { if (!job) return; try { const next = await getLongEpisodeVideoProgress(projectId, episodeNumber, job.jobId); setJob(next); if (next.status === "succeeded") { const review = await getLongEpisodeVideoReview(projectId, episodeNumber, next.jobId); setReviews(review.reviews); } } catch (caught) { setError(toLongProjectDisplayError(caught)); } };
   useEffect(() => { if (!job || (job.status !== "created" && job.status !== "running")) return; const timer = setTimeout(() => void loadProgress(), 400); return () => clearTimeout(timer); }, [job]);
   const valid = preview !== null && preview.scenes.every((scene) => { const prompt = prompts[scene.sceneNumber] ?? ""; return prompt.trim().length > 0 && prompt.length <= LIMIT; });

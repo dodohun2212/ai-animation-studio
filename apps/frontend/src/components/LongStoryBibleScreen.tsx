@@ -369,7 +369,25 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
       <p className="text-sm text-slate-400">
         등장인물·배경·소품·비밀이 <strong className="text-slate-200">무엇인지</strong> 적는 곳입니다 — 시간 순서와 무관한 설정집이에요.
         "몇 화에 무슨 일이 일어나는가"는 여기가 아니라 <strong className="text-slate-200">스토리 개요</strong>에 적습니다.
-        여기 적은 내용은 회차마다 등장인물의 생김새·성격이 흔들리지 않게 붙잡아 주는 역할을 합니다.
+      </p>
+      {/* The sentence removed here read: "여기 적은 내용은 회차마다 등장인물의 생김새·성격이 흔들리지 않게
+          붙잡아 주는 역할을 합니다." It was not true of either half.
+
+          Personality/description: buildContext (episode-scripts.service.ts) hands the script prompt
+          storyBible.basic, storyBible.world, secrets and foreshadowing — and not characters, locations or props.
+          episode-context-builder.ts's own field comment says those arrays are "always empty today".
+
+          Appearance: reference images reach generation only through confirmed Asset mappings, which is a
+          separate screen and a separate step, not this one.
+
+          So 비밀·복선 really do reach the AI and the other three tabs currently do not. Wiring them up is real
+          work and is queued; until it lands, the screen says what it can honestly say. A screen that promises
+          an effect it does not have is worse than one that promises less — the user cannot tell the difference
+          by looking, and spends effort here expecting an outcome that never arrives. */}
+      <p className="text-sm text-slate-400">
+        지금은 <strong className="text-slate-200">비밀·복선</strong>에 적은 내용이 대본 생성에 함께 전달됩니다.
+        캐릭터·배경·소품은 <strong className="text-slate-200">참고 이미지 연결</strong> 단계에서 이미지를 붙였을 때
+        그 이미지가 생성에 쓰입니다 — 여기 적은 설명글 자체가 전달되지는 않습니다.
       </p>
       {error && (
         <p role="alert" data-error-code={error.code} className="text-sm text-rose-400">
