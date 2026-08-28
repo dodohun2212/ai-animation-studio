@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EpisodeScriptsService } from "./episode-scripts.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
+import { withProjectLock } from "../videos/project-lock.js";
 
 let root: string | undefined;
 const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false };
@@ -11,6 +12,25 @@ async function setup(episodeDurationSeconds: 30 | 60 = 30, sceneCount = 6) { roo
 afterEach(async () => { vi.unstubAllGlobals(); if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 
 describe("EpisodeScriptsService", () => {
+  it("refuses a second script generation while one is running, at once rather than after a wait", async () => {
+    // Holding the lock for real, because a test that merely calls generate() twice proves nothing here: the
+    // local-fake path finishes before a second call starts, so both refusals come from the state and the lock is
+    // never reached. That is how this guard could be removed without a single test noticing.
+    const subject = await setup();
+    const projectDirectory = path.join(root!, "projects", "long");
+    const startedAt = Date.now();
+    let refusal: unknown;
+    await withProjectLock(projectDirectory, "long:episode-1:script", async () => {
+      refusal = await subject.generate("long", 1, {}).catch((error: unknown) => error);
+    });
+
+    expect(refusal).toMatchObject({ response: { code: "PROJECT_LOCKED" } });
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+    // get() answers from the outline when no script file exists, so "not found" is the wrong question — ask
+    // whether a script was written, which is what a refused generation must not have done.
+    expect((await subject.get("long", 1)).episode.script).toBeUndefined();
+  });
+
   it("creates, edits, preserves history, and approves one six-scene local episode script", async () => {
     const subject = await setup();
     await expect(subject.get("long", 3)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_NOT_FOUND" } });

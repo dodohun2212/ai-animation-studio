@@ -5,12 +5,14 @@ import { Injectable } from "@nestjs/common";
 import { sceneNumbersFor, TTS_ESTIMATED_COST_USD, type GetLongEpisodeNarrationReviewResponse, type LongEpisodeDetail, type LongEpisodeNarrationReview,
   type NarrationAudioState, type LongEpisodeStatus, type RegenerateLongEpisodeNarrationResponse, type SceneNumber, type StartLongEpisodeNarrationGenerationRequest, type StartLongEpisodeNarrationGenerationResponse } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
+import { resolveSafeProjectDirectory } from "../projects/project-id.js";
+import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiTtsApi } from "../narration/openai-narration-adapter.js";
 import { probeAudioDurationSeconds } from "../narration/audio-duration.js";
-import { longEpisodeNarrationBudgetExceeded, longEpisodeNarrationContentUnavailable, longEpisodeNarrationGenerationFailed, longEpisodeNarrationMissingText, longEpisodeNarrationNotAllowed, longEpisodeNarrationNotEnabled, longEpisodeNarrationProviderError, longEpisodeNarrationStorageError, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { longEpisodeNarrationBudgetExceeded, longEpisodeNarrationContentUnavailable, longEpisodeNarrationGenerationFailed, longEpisodeNarrationMissingText, longEpisodeNarrationNotAllowed, longEpisodeNarrationNotEnabled, longEpisodeNarrationProviderError, longEpisodeNarrationStorageError, longEpisodeNotFound, longInvalidData, longLocked, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
@@ -152,7 +154,31 @@ export class EpisodeNarrationService {
     return { episode: this.detail(episode), narrations, ...(budget ? { budget } : {}) };
   }
 
+  /**
+   * Speaking every scene's narration that does not already have good audio.
+   *
+   * The one guarded step with nothing else standing in for it. The others gate on a stored state — images write
+   * `generating_images` before their first call, so a second arrival is refused by the state machine — but
+   * narration is not part of the Episode state machine and writes no in-progress marker of its own. Its
+   * per-scene reuse check is no substitute: two presses that arrive together both read scene 1 as missing,
+   * because neither has written it yet. Overlapping presses were billed once per scene, not once.
+   *
+   * Refused immediately rather than queued: a queued second press would re-walk every scene, find the audio the
+   * first one wrote, and reuse all of it — the right answer, arrived at after making the caller wait out an
+   * entire generation to be told nothing happened.
+   */
   async generate(projectId: string, number: number, request: StartLongEpisodeNarrationGenerationRequest): Promise<StartLongEpisodeNarrationGenerationResponse> {
+    const locked = projectId.trim();
+    try {
+      return await withProjectLock(resolveSafeProjectDirectory(this.projectsRoot, locked), `${locked}:episode-${number}:narration`,
+        () => this.generateCore(projectId, number, request), { timeoutMs: 0 });
+    } catch (error) {
+      if (error instanceof ProjectLockTimeoutError) throw longLocked("Episode narration generation");
+      throw error;
+    }
+  }
+
+  private async generateCore(projectId: string, number: number, request: StartLongEpisodeNarrationGenerationRequest): Promise<StartLongEpisodeNarrationGenerationResponse> {
     if (!object(request) || Object.keys(request).length !== 1 || request.approved !== true) throw longInvalidRequest("Episode narration generation requires explicit approval.");
     const id = projectId.trim(); const episode = await this.episode(id, number); this.assertHasScript(episode);
     const projectSettings = (await this.projects.get(id)).project.settings;

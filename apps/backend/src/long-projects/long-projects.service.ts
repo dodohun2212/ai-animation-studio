@@ -12,7 +12,7 @@ import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../pr
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiEpisodePlannerApi, type OpenAiEpisodeOutlineResult } from "./openai-episode-planner-adapter.js";
 import { longArchiveCollision, longArchiveNotAllowed, longExists, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longOutlineBudgetExceeded, longOutlineNotAllowed,
-  longProjectLocked, longOutlineProviderError, longOutlineStale, longRestoreCollision, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+  longLocked, longOutlineProviderError, longOutlineStale, longRestoreCollision, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { longStoryRoot } from "./long-project-paths.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 
@@ -216,7 +216,7 @@ export class LongProjectsService {
       // finishes, the outline exists and this call is invalid. Waiting would only make the refusal slower.
       return await withProjectLock(resolveSafeProjectDirectory(this.projectsRoot, projectId), `${projectId}:long-outline`, () => this.approveCore(projectId, request), { timeoutMs: 0 });
     } catch (error) {
-      if (error instanceof ProjectLockTimeoutError) throw longProjectLocked();
+      if (error instanceof ProjectLockTimeoutError) throw longLocked("Outline generation");
       throw error;
     }
   }

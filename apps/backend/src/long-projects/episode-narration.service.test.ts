@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { EpisodeNarrationService } from "./episode-narration.service.js";
 import { EpisodeScriptsService } from "./episode-scripts.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
+import { withProjectLock } from "../videos/project-lock.js";
 
 let root: string | undefined;
 const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 4, clipDurationSeconds: 5, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: true, subtitlesEnabled: false };
@@ -24,6 +25,24 @@ async function setup(narrationEnabled = true) {
 afterEach(async () => { if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 
 describe("EpisodeNarrationService", () => {
+
+  it("refuses a second narration generation while one is running, at once rather than after a wait", async () => {
+    // Narration has no in-progress state for a second arrival to be turned away by, and its per-scene reuse
+    // check cannot stand in for one: two presses that arrive together both see scene 1 as missing, because
+    // neither has written it. The lock is the only thing here, so the test holds it for real.
+    const { narration } = await setup();
+    const projectDirectory = path.join(root!, "projects", "long");
+    const startedAt = Date.now();
+    let refusal: unknown;
+    await withProjectLock(projectDirectory, "long:episode-1:narration", async () => {
+      refusal = await narration.generate("long", 1, { approved: true }).catch((error: unknown) => error);
+    });
+
+    expect(refusal).toMatchObject({ response: { code: "PROJECT_LOCKED" } });
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+    const reviewed = await narration.get("long", 1);
+    expect(reviewed.narrations.every((item) => item.audio === "none")).toBe(true);
+  });
   it("reports each scene's template narration text and audio status without generating anything", async () => {
     const { narration } = await setup();
     const status = await narration.get("long", 1);
@@ -154,7 +173,9 @@ describe("EpisodeNarrationService", () => {
   });
 
   it("never imports a provider, network client, FFmpeg, or subprocess", async () => {
-    const source = await fs.readFile(path.join(process.cwd(), "src", "long-projects", "episode-narration.service.ts"), "utf8");
+    // Resolved from this file rather than process.cwd(), which is the repo root when the suite is run from
+    // there and made this guard fail on a missing file instead of on what it is guarding.
+    const source = await fs.readFile(new URL("./episode-narration.service.ts", import.meta.url), "utf8");
     expect(source).not.toMatch(/runway|ffmpeg|child_process/i);
   });
 });

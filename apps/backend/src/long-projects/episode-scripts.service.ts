@@ -3,12 +3,14 @@ import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import { STORY_ESTIMATED_COST_USD, type ApproveLongEpisodeScriptRequest, type ApproveLongEpisodeScriptResponse, type GenerateLongEpisodeScriptRequest, type GenerateLongEpisodeScriptResponse, type GetLongEpisodeResponse, type LongEpisodeDetail, type LongEpisodeOutline, type LongEpisodeScene, type LongEpisodeScript, type LongEpisodeStatus, type SceneNumber, type UpdateLongEpisodeScriptRequest, type UpdateLongEpisodeScriptResponse } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
+import { resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiStoryApi } from "../story/openai-story-adapter.js";
 import { buildEpisodeContext } from "./episode-context-builder.js";
-import { longEpisodeNotFound, longEpisodeScriptBudgetExceeded, longEpisodeScriptExists, longEpisodeScriptNotAllowed, longEpisodeScriptProviderError, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { longEpisodeNotFound, longEpisodeScriptBudgetExceeded, longEpisodeScriptExists, longEpisodeScriptNotAllowed, longEpisodeScriptProviderError, longInvalidData, longLocked, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
@@ -127,7 +129,30 @@ export class EpisodeScriptsService {
   }
   private generated(outline: LongEpisodeOutline, bibleNames: string, continuity: Record<string, unknown>, sceneCount: number): LongEpisodeScript { const subject = outline.title || `Episode ${outline.episodeNumber}`; const latest = (continuity.recentContinuity as Array<{ summary: string }>).at(-1)?.summary; const scenes = Array.from({ length: sceneCount }, (_, index) => { const number = index + 1; return { number: number as SceneNumber, description: `${subject} scene ${number}: ${outline.summary || outline.mainEvent || "the episode progresses"}.`, visualAction: `The central action develops in scene ${number}.`, startMotion: "A still opening pose shifts into motion.", mainMotion: "The character advances the episode conflict.", endMotion: "The movement settles into the next scene.", shotSize: "medium shot", cameraAngle: "eye level", composition: "centered subject with readable background", lensFeel: "natural perspective", focusSubject: bibleNames || subject, cameraMotion: "gentle forward movement", environmentMotion: "subtle ambient movement", motionSpeed: "normal", motionIntensity: "moderate", expressionChange: "focused to hopeful", continuityHint: number === 1 && latest ? `Continue from prior Episode: ${latest}` : number === 1 ? "Establish the opening visual state." : "Continue the previous scene's ending pose and direction.", narration: `Scene ${number} narration for ${subject}.` }; }); return { title: `${subject} — Local Episode Script`, synopsis: `A local ${sceneCount}-scene draft for ${subject}.${latest ? ` It continues: ${latest}` : ""}`, ending: outline.cliffhanger || "The episode reaches its next turning point.", scenes }; }
   async get(projectId: string, number: number): Promise<GetLongEpisodeResponse> { const outline = await this.outline(projectId.trim(), number); return { episode: this.toApi(outline, await this.stored(projectId.trim(), outline)) }; }
+  /**
+   * Writing this Episode's script, once per press.
+   *
+   * Under the project lock because the gate and the write sit on opposite sides of the provider call: the state
+   * check and the "a script already exists" check both read values that only become true minutes later, at the
+   * end. Two presses inside that window both pass and both are billed — measured on the Long Project outline,
+   * which had the same shape, as two charges twenty-three seconds apart.
+   *
+   * Refused immediately rather than queued. A queued second press is worse than a refused one here: when it was
+   * a regenerate it would run its own paid call after the first finished, and when it was not it would wait out
+   * the whole generation only to be told a script already exists.
+   */
   async generate(projectId: string, number: number, request: GenerateLongEpisodeScriptRequest): Promise<GenerateLongEpisodeScriptResponse> {
+    const id = projectId.trim();
+    try {
+      return await withProjectLock(resolveSafeProjectDirectory(this.projectsRoot, id), `${id}:episode-${number}:script`,
+        () => this.generateCore(id, number, request), { timeoutMs: 0 });
+    } catch (error) {
+      if (error instanceof ProjectLockTimeoutError) throw longLocked("Episode script generation");
+      throw error;
+    }
+  }
+
+  private async generateCore(projectId: string, number: number, request: GenerateLongEpisodeScriptRequest): Promise<GenerateLongEpisodeScriptResponse> {
     const id = projectId.trim(); const outline = await this.outline(id, number); const stored = await this.stored(id, outline);
     if (!["outline_ready", "script_review", "script_approved"].includes(stored.state)) throw longEpisodeScriptNotAllowed();
     if (Object.keys(stored.script).length && request?.regenerate !== true) throw longEpisodeScriptExists();

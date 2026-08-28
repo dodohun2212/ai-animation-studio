@@ -11,7 +11,7 @@ import { RunwayBudget, RunwayBudgetExceededError } from "../providers/runway-bud
 import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceResult, type RunwaySceneState } from "../videos/runway-workflow-support.js";
 import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { promptFor, utf16Length, type StoredScene } from "../videos/video-preview.service.js";
-import { longEpisodeLocked, longEpisodeNotFound, longEpisodeVideoJobNotFound, longEpisodeVideosInvalid, longEpisodeVideosNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { longLocked, longEpisodeNotFound, longEpisodeVideoJobNotFound, longEpisodeVideosInvalid, longEpisodeVideosNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
@@ -125,7 +125,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
       // Normally the lock just waits — this only fires after real contention exceeds ACQUIRE_TIMEOUT_MS (10s),
       // which would otherwise surface as an unhandled exception instead of a proper API error the frontend can
       // show a specific, non-retry-encouraging message for (docs/06_DECISIONS.md D-010).
-      if (error instanceof ProjectLockTimeoutError) throw longEpisodeLocked();
+      if (error instanceof ProjectLockTimeoutError) throw longLocked("Episode video generation");
       throw error;
     } finally { this.advancing.delete(jobKey); }
   }
