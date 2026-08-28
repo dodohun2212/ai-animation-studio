@@ -20,6 +20,33 @@ describe("LongProjectsService", () => {
     expect(await fs.stat(path.join(root!, "projects", "long_test", "long_story", "story_bible.json"))).toBeTruthy();
   });
 
+  it("refuses an aspect ratio change once an Episode has images, while every other setting stays editable", async () => {
+    // Images, video generation and the merge each read the project's ratio when they run. Change it midway and
+    // portrait images get sent to Runway asking for landscape video, which the merge then pads to the new shape
+    // — all paid, none of it matching. This repository has already shipped a project generated, billed and
+    // merged in the wrong orientation once; this is the version a settings save can cause.
+    const subject = await service();
+    await subject.create(input);
+    const outlines = path.join(root!, "projects", "long_test", "long_story", "episode_outlines.json");
+
+    // Before any images, changing it is ordinary.
+    const flipped = { ...input.settings, aspectRatio: "16:9" as const };
+    await subject.updateSettings("long_test", { settings: flipped });
+    expect((await subject.getSettings("long_test")).settings.aspectRatio).toBe("16:9");
+
+    const stored = JSON.parse(await fs.readFile(outlines, "utf8")) as Array<Record<string, unknown>>;
+    stored[1] = { ...stored[1], status: "images_review" };
+    await fs.writeFile(outlines, JSON.stringify(stored), "utf8");
+
+    await expect(subject.updateSettings("long_test", { settings: input.settings }))
+      .rejects.toMatchObject({ response: { code: "LONG_PROJECT_ASPECT_RATIO_LOCKED" } });
+    expect((await subject.getSettings("long_test")).settings.aspectRatio).toBe("16:9");
+
+    // The rest of the form still saves — including the scene count, which is only a default for new Episodes now.
+    const renamed = await subject.updateSettings("long_test", { settings: { ...flipped, title: "다른 제목", sceneCount: 8 } });
+    expect(renamed.project.settings).toMatchObject({ title: "다른 제목", sceneCount: 8, aspectRatio: "16:9" });
+  });
+
   it("derives episodeDurationSeconds from the scene count and clip length, and refuses to be told one", async () => {
     // Named for a rule that stopped existing: it said 30 or 60 were the only durations "6 fixed scenes x
     // Runway's 5s/10s clips" could produce, from when the scene count was fixed at six. The value is derived

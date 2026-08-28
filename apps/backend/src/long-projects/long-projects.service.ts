@@ -11,7 +11,7 @@ import { ProviderSettingsService } from "../settings/provider-settings.service.j
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiEpisodePlannerApi, type OpenAiEpisodeOutlineResult } from "./openai-episode-planner-adapter.js";
-import { longArchiveCollision, longArchiveNotAllowed, longExists, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longOutlineBudgetExceeded, longOutlineNotAllowed,
+import { longArchiveCollision, longArchiveNotAllowed, longAspectRatioLocked, longExists, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longOutlineBudgetExceeded, longOutlineNotAllowed,
   longLocked, longOutlineProviderError, longOutlineStale, longRestoreCollision, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { longStoryRoot } from "./long-project-paths.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
@@ -137,7 +137,26 @@ export class LongProjectsService {
     return { deletedProjectId: projectId };
   }
   async getSettings(id: string): Promise<GetLongProjectSettingsResponse> { return { settings: toSettings(await this.load(id.trim())) }; }
-  async updateSettings(id: string, request: UpdateLongProjectSettingsRequest): Promise<UpdateLongProjectSettingsResponse> { const prior = await this.load(id.trim()); const updated = setStored(prior.project_id, settings(request?.settings), new Date().toISOString(), prior.created_at, prior.outline_status); updated.outline_prompt_request = prior.outline_prompt_request; try { await atomicWriteUtf8File(this.files(prior.project_id).project, JSON.stringify(updated, null, 2)); } catch { throw longStorageError(); } return { project: await this.project(prior.project_id) }; }
+  /**
+   * Everything on the project form stays editable, with one exception.
+   *
+   * `sceneCount` and `clipDurationSeconds` are the defaults a *new* Episode starts from — every Episode keeps its
+   * own copy — so changing them later is exactly what they are for. The aspect ratio is not like that: images,
+   * video generation and the merge each read the project's ratio at the moment they run, so changing it once
+   * images exist means portrait images sent to Runway asking for landscape video, then padded to the new shape
+   * by the merge. All of it paid, none of it matching.
+   */
+  private async assertAspectRatioChangeAllowed(stored: Stored, next: LongProjectSettings): Promise<void> {
+    if (next.aspectRatio === stored.aspect_ratio) return;
+    // Read from the outline list rather than each Episode file: every writer of an Episode's state mirrors it
+    // there (see EpisodeImagesService.saveEpisode), and archive already refuses on the same source.
+    const outlines = await this.outlines(stored.project_id, stored.episode_count);
+    const beforeImages = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved"];
+    const started = outlines.find((episode) => !beforeImages.includes(episode.status));
+    if (started) throw longAspectRatioLocked(started.episodeNumber);
+  }
+
+  async updateSettings(id: string, request: UpdateLongProjectSettingsRequest): Promise<UpdateLongProjectSettingsResponse> { const prior = await this.load(id.trim()); const next = settings(request?.settings); await this.assertAspectRatioChangeAllowed(prior, next); const updated = setStored(prior.project_id, next, new Date().toISOString(), prior.created_at, prior.outline_status); updated.outline_prompt_request = prior.outline_prompt_request; try { await atomicWriteUtf8File(this.files(prior.project_id).project, JSON.stringify(updated, null, 2)); } catch { throw longStorageError(); } return { project: await this.project(prior.project_id) }; }
   /** A direct port of Python's render_project_outline_prompt() — the exact prompt the real planner adapter (when connected) is sent, and the text a user reviews/edits before approval either way. */
   private async renderOutlinePrompt(s: Stored): Promise<string> {
     const bible = object(await this.readJson(this.files(s.project_id).bible));
