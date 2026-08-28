@@ -713,4 +713,47 @@ describe("ShortProjectSettingsScreen", () => {
     // the label — the label now says what to do about it.
     expect(within(castSection).queryByText("FOLDER-GONE")).toBeNull();
   });
+
+  // Two controls on this screen answer "who is the protagonist", and the server picks one:
+  // `castLeadName ?? settings.character` (story-prompt.service.ts). Nothing said so, so a name typed in the
+  // field was silently dropped the moment a folder was marked 대표 — and the person had no way to see it.
+  it("shows the cast lead's name in 대표 캐릭터 and says the typed field is not the one in use", async () => {
+    const hero = makeAssetFolder({ assetId: "ASSET-CHAR-9", displayName: "이배드", assetType: "character" });
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings: { ...settings, character: "직접 적은 이름" }, sceneCountChangeable: true, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "ASSET-CHAR-9", castRole: "protagonist", storyRole: "대표 캐릭터" }] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+      "GET /assets?assetType=character": { assets: [hero] },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    // The name arrives from two later requests (cast, then the library) and is lifted up from the cast editor,
+    // so waiting only for the field to exist asserts before any of that has landed.
+    const field = await screen.findByLabelText("대표 캐릭터");
+    await waitFor(() => expect(field).toHaveValue("이배드"));
+    expect(field).toBeDisabled();
+    expect(screen.getByTestId("character-source").textContent).toContain("등장 캐릭터");
+    // The typed value is still stored — it is what the server falls back to — so it must not be shown as if
+    // it were in force, and must not be erased either.
+    expect(screen.queryByDisplayValue("직접 적은 이름")).toBeNull();
+  });
+
+  // The other half: with no lead marked, the typed field is the answer and stays editable.
+  it("keeps 대표 캐릭터 editable when the cast names no lead", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings: { ...settings, character: "직접 적은 이름" }, sceneCountChangeable: true, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+      "GET /assets?assetType=character": { assets: [] },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    const field = await screen.findByLabelText("대표 캐릭터");
+    expect(field).toHaveValue("직접 적은 이름");
+    expect(field).not.toBeDisabled();
+  });
 });

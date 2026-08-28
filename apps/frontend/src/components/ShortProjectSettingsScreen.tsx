@@ -178,7 +178,7 @@ const AUTO_STORY_ROLES = new Set(["대표 캐릭터", "서브 캐릭터", ""]);
  * through its own endpoint, separate from the plain-text settings form above, so a search or a blur-save here
  * never depends on the settings form's own save state.
  */
-function CastEditor({ projectId }: { projectId: string }) {
+function CastEditor({ projectId, onLeadNameChange }: { projectId: string; onLeadNameChange: (name: string | null) => void }) {
   const [cast, setCast] = useState<ShortProjectCastMember[] | null>(null);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -241,6 +241,20 @@ function CastEditor({ projectId }: { projectId: string }) {
     } catch (caught) { setSearchError(toAssetDisplayError(caught)); }
     finally { setSearchLoading(false); }
   }
+
+  /**
+   * The name the prompt will actually use for 대표 캐릭터, or null when this list names no lead.
+   *
+   * The server resolves it as `castLeadName ?? settings.character` (story-prompt.service.ts): a lead here wins
+   * over the free-text field in the form above, and nothing on screen said so — a name typed there was
+   * silently dropped the moment a folder was marked 대표. The form needs this value to say which one is live,
+   * so it is lifted rather than kept private.
+   */
+  useEffect(() => {
+    const lead = (cast ?? []).find(isRepresentative);
+    if (!lead) { onLeadNameChange(null); return; }
+    onLeadNameChange(memberNames[lead.assetId] ?? null);
+  }, [cast, memberNames, onLeadNameChange]);
 
   async function persist(next: ShortProjectCastMember[]): Promise<void> {
     if (savingRef.current) return;
@@ -727,6 +741,14 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
   const [characterPickerOpen, setCharacterPickerOpen] = useState(false);
   const [characterOptionsLoading, setCharacterOptionsLoading] = useState(false);
   const [characterOptionsError, setCharacterOptionsError] = useState<{ code: string; message: string } | null>(null);
+  /**
+   * The lead the 등장 캐릭터 list names, lifted out of CastEditor.
+   *
+   * The server takes `castLeadName ?? settings.character` (story-prompt.service.ts), so exactly one of the two
+   * controls on this screen is live at any moment and the screen has to say which. Held here because the field
+   * that must say it sits in the form, while the answer is decided three sections below.
+   */
+  const [castLeadName, setCastLeadName] = useState<string | null>(null);
   const [promptPreviewOpen, setPromptPreviewOpen] = useState(false);
   const [promptPreview, setPromptPreview] = useState<string | null>(null);
   const [promptPreviewLoading, setPromptPreviewLoading] = useState(false);
@@ -882,7 +904,26 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
           <Field label="영상 주제" value={state.settings.topic} onChange={(value) => setField("topic", value)} />
           <Field label="장르" value={state.settings.genre} onChange={(value) => setField("genre", value)} />
           <Field label="분위기" value={state.settings.mood} onChange={(value) => setField("mood", value)} />
-          <Field label="대표 캐릭터" value={state.settings.character} onChange={(value) => setField("character", value)} />
+          {/* The one place two controls on this screen answer the same question. The server resolves it as
+              `castLeadName ?? settings.character`, so a lead in 등장 캐릭터 below silently overrides whatever is
+              typed here — a person could name a character, mark a folder 대표, and never learn the typed name
+              was dropped. Disabled rather than hidden: removing the lead below makes this field live again,
+              and a field that vanishes and returns is harder to trust than one that explains itself. */}
+          <label className="block text-sm text-slate-300">
+            대표 캐릭터
+            <input
+              aria-label="대표 캐릭터"
+              className={fieldClassName}
+              value={castLeadName ?? state.settings.character}
+              disabled={castLeadName !== null}
+              onChange={(event) => setField("character", event.target.value)}
+            />
+            <span className="mt-1 block text-xs text-slate-500" data-testid="character-source">
+              {castLeadName !== null
+                ? <>아래 <span className="text-slate-400">등장 캐릭터</span>에서 고른 대표를 씁니다. 바꾸려면 거기서 고쳐 주세요.</>
+                : "등장 캐릭터에서 대표를 고르면 그 폴더 이름이 대신 쓰입니다."}
+            </span>
+          </label>
           <div className="text-sm text-slate-300 md:col-span-2">
             <button type="button" className={smallOutlineButton} onClick={() => void openCharacterPicker()}>
               {characterPickerOpen ? "폴더에서 선택 닫기" : "폴더에서 캐릭터 선택"}
@@ -1076,7 +1117,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
         </aside>
         </div>
       )}
-      {state.settings && <CastEditor projectId={projectId} />}
+      {state.settings && <CastEditor projectId={projectId} onLeadNameChange={setCastLeadName} />}
       {state.settings && <AssetReferenceEditor projectId={projectId} />}
       {state.settings && <ContinuityEditor projectId={projectId} />}
       {/* The page used to end here with nothing — the only way out was scrolling back past four sections to the
