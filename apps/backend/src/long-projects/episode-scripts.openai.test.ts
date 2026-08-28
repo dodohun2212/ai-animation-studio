@@ -87,6 +87,28 @@ describe("real OpenAI Long Episode script generation", () => {
     expect(body.input).toContain("고유한 세계관 전제");
   });
 
+  it("leaves a stale settings copy in the Story Bible out of the prompt, while keeping what only lives there", async () => {
+    // `create()` used to copy eight settings fields into `basic`, and settings edits never reached that copy, so
+    // an edited project sent the model both versions. Written here the way an older project actually looks: a
+    // stale title sitting in `basic` next to a line somebody typed themselves. The settings own the title, so
+    // only their value goes; the typed line has no duplicate anywhere and stays.
+    const { subject, projectsRoot } = await setupWithConnectedOpenAi();
+    const biblePath = path.join(projectsRoot, "long", "long_story", "story_bible.json");
+    const bible = JSON.parse(await fs.readFile(biblePath, "utf8")) as Record<string, unknown>;
+    bible.basic = { title: "지워진 옛 제목", theme: "옛 주제", premise: "손으로 적은 전제" };
+    await fs.writeFile(biblePath, JSON.stringify(bible, null, 2));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responsesBody(aiStory(6))));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await subject.generate("long", 1, { userRequestId: "episode-scripts.openai-stale-basic" });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body)) as { input: string };
+    expect(body.input).not.toContain("지워진 옛 제목");
+    expect(body.input).not.toContain("옛 주제");
+    expect(body.input).toContain("손으로 적은 전제");
+  });
+
   it("falls back to the local-fake script generator, never calling fetch, when no OpenAI credential is configured", async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-scripts-openai-"));
     const projectsRoot = path.join(root, "projects");

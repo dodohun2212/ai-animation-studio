@@ -20,6 +20,26 @@ describe("LongProjectsService", () => {
     expect(await fs.stat(path.join(root!, "projects", "long_test", "long_story", "story_bible.json"))).toBeTruthy();
   });
 
+  it("does not send the model both the current title and the one it replaced", async () => {
+    // create() copies eight settings fields into the Story Bible's `basic`, and updateSettings() writes only
+    // project.json — so the copy goes stale the first time anything is renamed. Both prompt paths carry the
+    // Bible next to the settings, which means the model is handed the new title and the old one together and
+    // has to guess. Invisible on a fresh project, because the two agree until something is edited.
+    const subject = await service();
+    await subject.create(input);
+    await subject.updateSettings("long_test", { settings: { ...input.settings, title: "새 제목", logline: "새 한 줄" } });
+
+    const { preview } = await subject.preview("long_test");
+    expect(preview.prompt).toContain("새 제목");
+    expect(preview.prompt).not.toContain(input.settings.title);
+    expect(preview.prompt).not.toContain(input.settings.logline);
+
+    // Two separate repairs, and the prompt above only proves the first. The filter is what keeps an older
+    // project's stale copy out; this is the other half — a new project is not given one to go stale.
+    const bible = JSON.parse(await fs.readFile(path.join(root!, "projects", "long_test", "long_story", "story_bible.json"), "utf8")) as { basic: Record<string, unknown> };
+    expect(bible.basic).toEqual({});
+  });
+
   it("refuses an aspect ratio change once an Episode has images, while every other setting stays editable", async () => {
     // Images, video generation and the merge each read the project's ratio when they run. Change it midway and
     // portrait images get sent to Runway asking for landscape video, which the merge then pads to the new shape

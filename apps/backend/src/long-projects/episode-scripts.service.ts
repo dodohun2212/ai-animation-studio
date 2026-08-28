@@ -12,6 +12,7 @@ import { buildEpisodeContext } from "./episode-context-builder.js";
 import { longEpisodeNotFound, longEpisodeScriptBudgetExceeded, longEpisodeScriptExists, longEpisodeScriptNotAllowed, longEpisodeScriptProviderError, longEpisodeSettingsNotAllowed, longInvalidData, longLocked, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { episodeSettings } from "./episode-settings.js";
+import { storyBibleBasicForPrompt } from "./story-bible-basic.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
@@ -91,7 +92,7 @@ export class EpisodeScriptsService {
     const olderCompressedSummaries = (continuity.olderCompressedSummaries as Array<{ episodeNumber: number; summary: string }>)
       .map((item) => ({ episode_number: item.episodeNumber, summary: item.summary }));
     return buildEpisodeContext({
-      storyBible: { basic: isObj(bible.basic) ? bible.basic : {}, world: isObj(bible.world) ? bible.world : {} },
+      storyBible: { basic: storyBibleBasicForPrompt(bible.basic), world: isObj(bible.world) ? bible.world : {} },
       projectOverview,
       episodeOutline: stored.outline,
       recentContinuity,
