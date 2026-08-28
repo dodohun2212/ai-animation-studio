@@ -27,7 +27,7 @@ const SETTINGS = {
   title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "",
   episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, aspectRatio: "9:16" as const,
   audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "",
-  narrationEnabled: false, subtitlesEnabled: false,
+  narrationEnabled: true, subtitlesEnabled: false,
 };
 const SCENES = [1, 2, 3, 4, 5, 6] as readonly SceneNumber[];
 
@@ -96,6 +96,15 @@ describe.sequential("Long Project Episode flow over HTTP", () => {
     for (const scene of SCENES) {
       await call("POST", API_ROUTES.longEpisodeImageReviewApproval(PROJECT_ID, 1, scene), { approved: true });
     }
+
+    // Narration, before video work: with no credential every scene gets the four-byte silent placeholder, and the
+    // review has to say so. A screen reading that as finished narration is what the `audio` union replaced two
+    // booleans to prevent, and nothing checked it above the service until here.
+    await call("POST", API_ROUTES.longEpisodeNarrationGeneration(PROJECT_ID, 1), { approved: true });
+    const narration = await call<{ narrations: Array<{ sceneNumber: SceneNumber; audio: string }> }>(
+      "GET", API_ROUTES.longEpisodeNarrationReview(PROJECT_ID, 1));
+    expect(narration.narrations).toHaveLength(SCENES.length);
+    expect(narration.narrations.every((item) => item.audio === "placeholder")).toBe(true);
 
     const videoPreview = await call<{ confirmationId: string; scenes: Array<{ sceneNumber: SceneNumber; prompt: string }> }>(
       "GET", API_ROUTES.longEpisodeVideoPreview(PROJECT_ID, 1));

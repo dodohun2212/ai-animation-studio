@@ -93,7 +93,7 @@ describe.sequential("short project flow over HTTP", () => {
       settings: {
         projectName: "short flow", topic: "등대지기", genre: "", mood: "", character: "", lore: "", fullStory: "",
         sceneCount: 6, clipDurationSeconds: 5, additionalNotes: "", styleNotes: {},
-        narrationEnabled: false, subtitlesEnabled: false,
+        narrationEnabled: true, subtitlesEnabled: false,
       },
     });
 
@@ -117,6 +117,15 @@ describe.sequential("short project flow over HTTP", () => {
     for (const scene of SCENES) {
       await call("POST", API_ROUTES.imageReviewApproval(PROJECT_ID, scene), { approved: true });
     }
+
+    // Narration, before video work: with no credential every scene gets the four-byte silent placeholder, and
+    // what matters is that the review says so. A screen that reads this as finished narration is the defect the
+    // `audio` union replaced two booleans to prevent, and until now nothing checked it above the service.
+    await call("POST", API_ROUTES.narrationGenerations(PROJECT_ID), { approved: true });
+    const narration = await call<{ narrations: Array<{ sceneNumber: SceneNumber; audio: string }> }>(
+      "GET", API_ROUTES.narrationReview(PROJECT_ID));
+    expect(narration.narrations).toHaveLength(SCENES.length);
+    expect(narration.narrations.every((item) => item.audio === "placeholder")).toBe(true);
 
     // The short side names this `previews`, the Episode side names it `scenes`. Both carry the same pair, and the
     // difference is only visible here — each side's own tests read whichever name that side uses.
