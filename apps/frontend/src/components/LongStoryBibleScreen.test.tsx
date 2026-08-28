@@ -264,16 +264,19 @@ describe("LongStoryBibleScreen", () => {
 
     await screen.findByTestId("story-bible-empty");
     const rows = screen.getByTestId("story-bible-world-rows");
+    // One blank row is there before anything is pressed: with none, the section showed no place to type and
+    // read as a feature that did not exist — reported twice as "세계관 설정은 입력 자체가 안 돼".
+    expect(within(rows).getAllByLabelText("무엇에 대한 설명인지")).toHaveLength(1);
     fireEvent.click(within(rows).getByRole("button", { name: "세계관 설명에 항목 추가" }));
 
-    const names = within(rows).getAllByLabelText("항목 이름");
-    expect(names).toHaveLength(1);
+    const names = within(rows).getAllByLabelText("무엇에 대한 설명인지");
+    expect(names).toHaveLength(2);
     // And what is typed into it survives, which the old shape also lost: the value was written into a JSON
     // object under an empty key that was then thrown away.
-    fireEvent.change(within(rows).getAllByLabelText("내용")[0]!, { target: { value: "바다 위 도시" } });
-    expect(within(rows).getAllByLabelText("내용")[0]!).toHaveValue("바다 위 도시");
-    fireEvent.change(names[0]!, { target: { value: "지역" } });
-    expect(within(rows).getAllByLabelText("내용")[0]!).toHaveValue("바다 위 도시");
+    fireEvent.change(within(rows).getAllByLabelText("내용")[1]!, { target: { value: "바다 위 도시" } });
+    expect(within(rows).getAllByLabelText("내용")[1]!).toHaveValue("바다 위 도시");
+    fireEvent.change(names[1]!, { target: { value: "지역" } });
+    expect(within(rows).getAllByLabelText("내용")[1]!).toHaveValue("바다 위 도시");
   });
 
   it("no longer offers a second editor for the project's own settings", async () => {
@@ -377,5 +380,39 @@ describe("LongStoryBibleScreen", () => {
     // The form is what must hold it, not the page: within() proves the position, not just the presence.
     expect(within(screen.getByRole("form", { name: "설정집 항목 추가" })).getByTestId("story-bible-submit-error")).toBe(error);
     expect(error.textContent).not.toContain("Story Bible Asset link");
+  });
+
+  // A section that opens with a sentence, a button, and nowhere to type reads as a section that does not work.
+  // That is how it was reported. One blank line means the first thing anyone can do here is start typing.
+  it("opens the world editor with a line ready to type in", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { storyBible: emptyBible }))
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { project: makeLongProject({ id: "long_test" }) }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongStoryBibleScreen projectId="long_test" onBack={() => {}} />);
+
+    await screen.findByTestId("story-bible-empty");
+    const rows = screen.getByTestId("story-bible-world-rows");
+    expect(within(rows).getAllByLabelText("무엇에 대한 설명인지")).toHaveLength(1);
+    // The blank line is not saved as an item — an unnamed row has no key to be stored under.
+    fireEvent.change(within(rows).getAllByLabelText("무엇에 대한 설명인지")[0]!, { target: { value: "시대" } });
+    fireEvent.change(within(rows).getAllByLabelText("내용")[0]!, { target: { value: "20년 뒤 미래" } });
+    expect(within(rows).getAllByLabelText("내용")[0]!).toHaveValue("20년 뒤 미래");
+  });
+
+  // The one thing that decides whether anything written here matters, and the screen never said it.
+  it("says when what is written here is read", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { storyBible: emptyBible }))
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { project: makeLongProject({ id: "long_test" }) }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongStoryBibleScreen projectId="long_test" onBack={() => {}} />);
+
+    const notice = await screen.findByTestId("story-bible-timing");
+    expect(notice.textContent).toContain("대본을 만들기 전에");
+    // Both halves: when it is read, AND what happens to Episodes that already have a script.
+    expect(notice.textContent).toContain("다시 만들어야");
   });
 });

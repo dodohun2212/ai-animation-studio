@@ -80,20 +80,27 @@ function PlainRecordEditor({ heading, hint, rows, disabled, onChange, testId }: 
       </div>
     );
   }
+  // An empty editor used to show a sentence and a button, and nothing to type into. A person who opened this
+  // screen to write down their world saw no field at all and read the whole section as not working — which is
+  // exactly how it was reported. One blank line costs nothing (a row with no name is dropped on save, see
+  // draftFromRows) and means the first thing anyone can do here is start typing.
+  const shown = rows.length === 0 ? [{ key: "", value: "" }] : rows;
   return (
     <div data-testid={testId} className="space-y-2 rounded-xl border border-white/10 bg-slate-950/40 p-3">
       <p className="text-sm font-medium text-slate-300">{heading}</p>
       <p className="text-xs text-slate-500">{hint}</p>
-      {rows.length === 0 && <p className="text-sm text-slate-400">아직 적은 내용이 없습니다.</p>}
-      {rows.map((row, index) => (
+      {shown.map((row, index) => (
         <div key={index} className="flex flex-wrap items-start gap-2">
           <label className="flex flex-col gap-1 text-xs text-slate-400">
-            항목 이름
+            무엇에 대한 설명인지
+            {/* The accessible name matches the visible one. Sharing "항목 이름" with the item-name field below put
+                two different controls under one name — ambiguous to a screen reader, and to a query. */}
             <input
+              aria-label="무엇에 대한 설명인지"
               className={fieldClassName}
               value={row.key}
               disabled={disabled}
-              onChange={(event) => onChange(rows.map((item, position) => position === index ? { ...item, key: event.target.value } : item))}
+              onChange={(event) => onChange(shown.map((item, position) => position === index ? { ...item, key: event.target.value } : item))}
             />
           </label>
           <label className="flex flex-1 flex-col gap-1 text-xs text-slate-400">
@@ -102,14 +109,14 @@ function PlainRecordEditor({ heading, hint, rows, disabled, onChange, testId }: 
               className={fieldClassName}
               value={row.value}
               disabled={disabled}
-              onChange={(event) => onChange(rows.map((item, position) => position === index ? { ...item, value: event.target.value } : item))}
+              onChange={(event) => onChange(shown.map((item, position) => position === index ? { ...item, value: event.target.value } : item))}
             />
           </label>
           <button
             type="button"
             className="mt-5 rounded-full border border-rose-400/30 px-3 py-1.5 text-xs text-rose-300 hover:bg-rose-500/10 disabled:opacity-50"
             disabled={disabled}
-            onClick={() => onChange(rows.filter((_, position) => position !== index))}
+            onClick={() => onChange(shown.filter((_, position) => position !== index))}
           >
             지우기
           </button>
@@ -122,7 +129,7 @@ function PlainRecordEditor({ heading, hint, rows, disabled, onChange, testId }: 
         type="button"
         className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50"
         disabled={disabled}
-        onClick={() => onChange([...rows, { key: "", value: "" }])}
+        onClick={() => onChange([...shown, { key: "", value: "" }])}
       >
         {heading}에 항목 추가
       </button>
@@ -408,6 +415,15 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
       <section aria-label="기본·세계관 설정" className={cardSection}>
         <SectionHeading>기본·세계관 설정</SectionHeading>
         <p className="text-sm text-slate-400">작품 전체에 걸쳐 변하지 않는 설정을 적습니다. 저장해도 대본·이미지·영상은 만들어지지 않습니다.</p>
+        {/* When this is read is the whole story, and the screen never said it. Everything here goes into the
+            prompt at two moments — 회차 나누기, and each Episode's script generation — so anything written after
+            an Episode's script exists does not reach that Episode. Without this line the section reads as
+            something you fill in whenever, and a secret written too late quietly does nothing. */}
+        <p data-testid="story-bible-timing" className="rounded-xl border border-violet-400/25 bg-violet-500/[0.06] p-3 text-sm text-slate-300">
+          여기 적은 내용은 <strong className="text-slate-100">회차 나누기</strong>와 <strong className="text-slate-100">각 회차 대본 생성</strong> 때 AI에게 전달됩니다.
+          그래서 <strong className="text-slate-100">대본을 만들기 전에</strong> 적어야 합니다 — 이미 대본이 있는 회차에는 안 들어가고,
+          아직 만들지 않은 회차부터 반영됩니다. 이미 만든 회차에 넣으려면 그 회차 대본을 다시 만들어야 합니다.
+        </p>
         {contentValidationError && (
           <p role="alert" data-testid="story-bible-content-validation-error" className="text-sm text-rose-400">
             {contentValidationError}
@@ -426,7 +442,7 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
         <PlainRecordEditor
           testId="story-bible-world-rows"
           heading="세계관 설명"
-          hint='예: 항목 이름 "시대", 내용 "20년 뒤 미래" / 항목 이름 "지역", 내용 "바다 위 도시"'
+          hint='왼쪽은 무엇에 대한 설명인지, 오른쪽은 그 내용입니다 — AI가 왼쪽을 이름표로 읽습니다. 예: 시대 → 20년 뒤 미래 / 지역 → 바다 위 도시'
           rows={worldRows}
           disabled={pending}
           onChange={(rows) => { setWorldRows(rows); setWorldDraft(draftFromRows(rows)); setContentValidationError(null); }}

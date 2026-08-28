@@ -252,8 +252,12 @@ function LongWorkspaceNav({ screen, onNavigate }: { screen: Screen; onNavigate: 
     <nav aria-label="장편 프로젝트 작업공간" className="mt-4 flex flex-col items-start gap-1 border-b border-white/10 pb-4">
       {tab(screen.name, "longDetail", "작품 한눈에 보기", () => onNavigate({ name: "longDetail", projectId }))}
       {tab(screen.name, "longSettings", "작품 기본 설정", () => onNavigate({ name: "longSettings", projectId }))}
-      {tab(screen.name, "longOutline", "회차 나누기(AI)", () => onNavigate({ name: "longOutline", projectId }))}
+      {/* 설정집 before 회차 나누기, because that is the order the work actually happens in: the Story Bible is
+          read when the Episode outline is generated and again for every Episode script, so anything written
+          after those steps does not reach them. The old order put the paid step first and the thing it reads
+          second, which is how a person ends up writing a secret that can no longer affect anything. */}
       {tab(screen.name, "longStoryBible", "등장인물·설정집", () => onNavigate({ name: "longStoryBible", projectId }))}
+      {tab(screen.name, "longOutline", "회차 나누기(AI)", () => onNavigate({ name: "longOutline", projectId }))}
       {episodeNumber !== undefined && (
         <>
           <span className="mx-1 text-sm text-slate-500">·</span>
