@@ -10,10 +10,15 @@ const run = promisify(execFile);
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true }))); });
 
+// Resolved from this file, not process.cwd(). The worker is spawned with a path built from that base, so
+// running the suite from the repo root instead of apps/backend pointed both at the wrong directory and the test
+// failed on a missing vitest rather than on anything it was testing.
+const BACKEND_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..", "..");
+
 async function runWriter(root: string, variant: string): Promise<void> {
-  const vitest = path.resolve(process.cwd(), "../../node_modules/vitest/vitest.mjs");
+  const vitest = path.resolve(BACKEND_ROOT, "../../node_modules/vitest/vitest.mjs");
   await run(process.execPath, [vitest, "run", "src/assets/assets.cross-process.worker.test.ts"], {
-    cwd: process.cwd(),
+    cwd: BACKEND_ROOT,
     env: { ...process.env, ASSET_CROSS_PROCESS_ROOT: root, ASSET_CROSS_PROCESS_VARIANT: variant },
     timeout: 20_000,
   });

@@ -775,6 +775,11 @@ export class LocalAssetsRepository {
         if (errorCode(error) !== "EEXIST") throw assetStorageError();
         try {
           const [stat, owner] = await Promise.all([fsPromises.stat(this.lockPath), fsPromises.readFile(this.lockPath, "ascii")]);
+          // A minute untouched means the holder died. That reading only holds because everything serialized()
+          // wraps is local index and file work that finishes in well under a minute — nothing here waits on a
+          // provider. videos/project-lock.ts had the same constant over calls that do, where it silently became
+          // a cap on how long the work may take and handed the lock away mid-call (D-029); it needed a heartbeat
+          // to keep meaning what this one still means. Wrapping anything slow in serialized() breaks that.
           if (Date.now() - stat.mtimeMs > 60_000 && owner === await fsPromises.readFile(this.lockPath, "ascii")) {
             await fsPromises.unlink(this.lockPath);
             continue;

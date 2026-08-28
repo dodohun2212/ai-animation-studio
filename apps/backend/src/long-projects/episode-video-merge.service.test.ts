@@ -169,7 +169,9 @@ describe("EpisodeVideoMergeService", () => {
     // (stamped upstream by episode-videos.service.ts once a scene's real generation succeeded) — this file only
     // ever reads already-downloaded local mp4 bytes off disk, regardless of how they got there. What must never
     // appear is an actual provider SDK/domain reference or a live network call.
-    const source = await fs.readFile(path.join(process.cwd(), "src", "long-projects", "episode-video-merge.service.ts"), "utf8");
+    // Resolved from this file rather than process.cwd(): run from the repo root, that path does not exist and
+    // the guard fails on a missing file instead of on the thing it guards.
+    const source = await fs.readFile(new URL("./episode-video-merge.service.ts", import.meta.url), "utf8");
     expect(source).not.toMatch(/openai|runwayml\.com|runway-video-adapter|fetch\s*\(/i);
   });
 });
