@@ -287,6 +287,23 @@ export interface ApproveLongEpisodeVideoReviewRequest { approved: true; }
 export interface ApproveLongEpisodeVideoReviewResponse extends GetLongEpisodeVideoReviewResponse {}
 export interface RegenerateLongEpisodeVideoResponse extends LongEpisodeVideoProgress { regeneratedSceneNumbers: SceneNumber[]; }
 
+/**
+ * Fetches clips that Runway already made and already charged for, and writes them where they should have gone.
+ *
+ * A finished Episode whose files are placeholders is not a generation problem: the tasks exist on Runway's side
+ * and were paid for, and their ids are in the records. This asks for those outputs again — a status read and a
+ * download, never a new generation — so nothing is added to the ledger. It exists because the bug that lost
+ * those bytes cost $1.50 per Episode, and regenerating would cost it a second time.
+ *
+ * A scene whose output can no longer be fetched (the task is gone, or its URL has expired) is reported here and
+ * left failed rather than quietly regenerated: spending money is a decision for the person, not a fallback.
+ */
+export interface RecoverLongEpisodeVideosRequest { approved: true; }
+export interface RecoverLongEpisodeVideosResponse extends LongEpisodeVideoProgress {
+  recoveredSceneNumbers: SceneNumber[];
+  unrecoverableScenes: { sceneNumber: SceneNumber; reason: string }[];
+}
+
 /** Final Episode render has a fixed relative output and never exposes an absolute path. */
 export interface MergeLongEpisodeVideosResponse {
   episode: LongEpisodeDetail;
@@ -1492,6 +1509,8 @@ export const API_ROUTES = {
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/generations/${encodeURIComponent(jobId)}/restart`,
   longEpisodeVideoRegenerate: (projectId: string, episodeNumber: number, jobId: string, sceneNumber: SceneNumber) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/generations/${encodeURIComponent(jobId)}/scenes/${sceneNumber}/regenerate`,
+  longEpisodeVideoRecovery: (projectId: string, episodeNumber: number, jobId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/generations/${encodeURIComponent(jobId)}/recovery`,
   longEpisodeVideoReview: (projectId: string, episodeNumber: number, jobId: string) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/generations/${encodeURIComponent(jobId)}/review`,
   longEpisodeVideoReviewApproval: (projectId: string, episodeNumber: number, jobId: string, sceneNumber: SceneNumber) =>

@@ -330,4 +330,115 @@ describe("real Runway episode video generation", () => {
     expect(progress).toMatchObject({ status: "failed", failedSceneNumbers: [1] });
     expect(progress.episode.status).not.toBe("videos_review");
   });
+
+  it("fetches the clips already paid for instead of buying them again", async () => {
+    // Exactly the state a real cycle left behind: six charges on the ledger, six records succeeded with task
+    // ids, six placeholder files. Recovery asks Runway for those tasks' outputs — a read, not a generation —
+    // so nothing new reaches the ledger.
+    const deps = await setupWithConnectedRunway();
+    const videos = newVideos(deps);
+    const fetchMock = runwayFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "recover_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+    for (let scene = 1; scene <= 6; scene++) {
+      now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+      await videos.progress("long", 1, started.jobId);
+      now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+      await videos.progress("long", 1, started.jobId);
+    }
+
+    // Put the damage back: overwrite every clip with the placeholder the old code wrote.
+    const placeholder = Buffer.from("000000186674797069736F6D0000020069736F6D69736F32617663316D703431", "hex");
+    const file = (scene: number) => path.join(deps.projectsRoot, "long", "long_story", "Episode01", "videos", `scene${scene}.mp4`);
+    for (let scene = 1; scene <= 6; scene++) await fs.writeFile(file(scene), placeholder);
+
+    const spendBefore = await deps.budget.spentThisMonth();
+    const submitsBefore = fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/v1/image_to_video")).length;
+
+    const result = await videos.recover("long", 1, started.jobId, { approved: true });
+
+    expect(result.recoveredSceneNumbers).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(result.unrecoverableScenes).toEqual([]);
+    expect(await fs.readFile(file(1))).toEqual(RUNWAY_BODY);
+    // No new task, and no new charge: the whole point.
+    expect(fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/v1/image_to_video")).length).toBe(submitsBefore);
+    expect(await deps.budget.spentThisMonth()).toBe(spendBefore);
+  });
+
+  it("leaves a scene whose output can no longer be fetched failed, rather than buying it again", async () => {
+    // An expired URL is the reason this is urgent. Regenerating on its own would spend money the person never
+    // agreed to spend, so the scene is reported and left for them to decide about.
+    const deps = await setupWithConnectedRunway();
+    const videos = newVideos(deps);
+    const fetchMock = runwayFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "recover_2", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+    for (let scene = 1; scene <= 6; scene++) {
+      now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+      await videos.progress("long", 1, started.jobId);
+      now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+      await videos.progress("long", 1, started.jobId);
+    }
+    const placeholder = Buffer.from("000000186674797069736F6D0000020069736F6D69736F32617663316D703431", "hex");
+    const file = (scene: number) => path.join(deps.projectsRoot, "long", "long_story", "Episode01", "videos", `scene${scene}.mp4`);
+    for (let scene = 1; scene <= 6; scene++) await fs.writeFile(file(scene), placeholder);
+
+    const submitsBefore = fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/v1/image_to_video")).length;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.includes("/v1/tasks/")) return { ok: true, status: 200, json: async () => ({ id: "t", status: "SUCCEEDED", output: ["https://cdn.runway/gone.mp4"] }), headers: { get: () => null } } as unknown as Response;
+      if (url.startsWith("https://cdn.runway/")) return { ok: false, status: 404, json: async () => ({}), text: async () => "expired", headers: { get: () => null } } as unknown as Response;
+      throw new Error(`unexpected fetch: ${url}`);
+    }));
+
+    const result = await videos.recover("long", 1, started.jobId, { approved: true });
+    expect(result.recoveredSceneNumbers).toEqual([]);
+    expect(result.unrecoverableScenes.map((item) => item.sceneNumber)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(await fs.readFile(file(1))).toEqual(placeholder);
+    expect(submitsBefore).toBe(6);
+  });
+
+  it("does not re-write the placeholder when recovery itself comes back empty", async () => {
+    // The failure mode this whole recovery exists to undo, arriving through the recovery path: a URL that still
+    // answers but hands back a header and nothing else. Writing it would restore the exact state we are here to
+    // fix, and mark it succeeded again.
+    const deps = await setupWithConnectedRunway();
+    const videos = newVideos(deps);
+    vi.stubGlobal("fetch", runwayFetchMock());
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "recover_3", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+    for (let scene = 1; scene <= 6; scene++) {
+      now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+      await videos.progress("long", 1, started.jobId);
+      now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+      await videos.progress("long", 1, started.jobId);
+    }
+    const placeholder = Buffer.from("000000186674797069736F6D0000020069736F6D69736F32617663316D703431", "hex");
+    const file = (scene: number) => path.join(deps.projectsRoot, "long", "long_story", "Episode01", "videos", `scene${scene}.mp4`);
+    for (let scene = 1; scene <= 6; scene++) await fs.writeFile(file(scene), placeholder);
+
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.includes("/v1/tasks/")) return { ok: true, status: 200, json: async () => ({ id: "t", status: "SUCCEEDED", output: ["https://cdn.runway/stub.mp4"] }), headers: { get: () => null } } as unknown as Response;
+      return { ok: true, status: 200, arrayBuffer: async () => placeholder.buffer.slice(placeholder.byteOffset, placeholder.byteOffset + placeholder.byteLength), headers: { get: () => null } } as unknown as Response;
+    }));
+
+    const result = await videos.recover("long", 1, started.jobId, { approved: true });
+    expect(result.recoveredSceneNumbers).toEqual([]);
+    expect(result.unrecoverableScenes.every((item) => item.reason === "empty_output")).toBe(true);
+    // Reported as failed, not left reading "succeeded" over a stub — that is how this went unnoticed the first time.
+    expect(result.failedSceneNumbers).toEqual([1, 2, 3, 4, 5, 6]);
+  });
 });

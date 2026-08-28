@@ -2,13 +2,14 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable, type OnModuleDestroy } from "@nestjs/common";
-import { isSceneNumber, RUNWAY_PROMPT_MAX_LENGTH, sceneNumbersFor, VIDEO_SCENE_ESTIMATED_COST_USD, type ApproveLongEpisodeVideoReviewRequest, type ApproveLongEpisodeVideoReviewResponse, type GetLongEpisodeCurrentVideoJobResponse, type GetLongEpisodeVideoPreviewResponse, type GetLongEpisodeVideoReviewResponse, type LongEpisodeDetail, type LongEpisodeStatus, type LongEpisodeVideoProgress, type LongEpisodeVideoReview, type RegenerateLongEpisodeVideoResponse, type SceneNumber, type StartLongEpisodeVideoGenerationRequest, type StartLongEpisodeVideoGenerationResponse } from "@ai-animation-studio/shared";
+import { isSceneNumber, RUNWAY_PROMPT_MAX_LENGTH, sceneNumbersFor, VIDEO_SCENE_ESTIMATED_COST_USD, type ApproveLongEpisodeVideoReviewRequest, type ApproveLongEpisodeVideoReviewResponse, type GetLongEpisodeCurrentVideoJobResponse, type GetLongEpisodeVideoPreviewResponse, type GetLongEpisodeVideoReviewResponse, type LongEpisodeDetail, type LongEpisodeStatus, type LongEpisodeVideoProgress, type LongEpisodeVideoReview, type RecoverLongEpisodeVideosResponse, type RegenerateLongEpisodeVideoResponse, type SceneNumber, type StartLongEpisodeVideoGenerationRequest, type StartLongEpisodeVideoGenerationResponse } from "@ai-animation-studio/shared";
 import { validateImage } from "../assets/image-validation.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { RunwayBudget, RunwayBudgetExceededError } from "../providers/runway-budget.js";
 import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceResult, type RunwaySceneState } from "../videos/runway-workflow-support.js";
+import { downloadRunwayOutput, getRunwayTask, RunwayAdapterError } from "../videos/runway-video-adapter.js";
 import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { promptFor, utf16Length, type StoredScene } from "../videos/video-preview.service.js";
 import { longLocked, longEpisodeNotFound, longEpisodeVideoJobNotFound, longEpisodeVideosInvalid, longEpisodeVideosNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
@@ -57,6 +58,14 @@ export class EpisodeVideosService implements OnModuleDestroy {
   private video(id: string, number: number, value: SceneNumber) { return path.join(this.files(id, number).videos, `scene${value}.mp4`); }
   private async validImage(file: string) { try { return validateImage(await fs.readFile(file), "scene.png", "image/png").extension === ".png"; } catch { return false; } }
   private async validVideo(file: string) { try { const bytes = await fs.readFile(file); return bytes.length >= MP4.length && bytes.subarray(4, 8).toString("ascii") === "ftyp"; } catch { return false; } }
+  /**
+   * Whether the file holds an actual clip rather than the placeholder.
+   *
+   * `validVideo` cannot answer this: the placeholder is a valid `ftyp` box of exactly the minimum length, which
+   * is why six paid clips could be replaced by stubs with every check still green. Recovery has to tell them
+   * apart — asking `validVideo` first skipped every damaged scene, which is this same bug wearing a new hat.
+   */
+  private async realVideo(file: string) { try { const bytes = await fs.readFile(file); return bytes.length > MP4.length && bytes.subarray(4, 8).toString("ascii") === "ftyp"; } catch { return false; } }
   /** Falls back to 6, matching every Episode stored before scene_count existed (see episode-scripts.service.ts's parseStored). */
   private sceneCount(episode: Episode): number { return Number.isInteger(episode.scene_count) ? episode.scene_count as number : 6; }
   private scenes(episode: Episode): ObjectMap[] { const value = episode.script.scenes; const count = this.sceneCount(episode); if (!Array.isArray(value) || value.length !== count || value.some((item, index) => !object(item) || item.number !== index + 1 || MOTION_SCENE_FIELDS.some((key) => typeof item[key] !== "string" || !(item[key] as string).trim()))) throw longInvalidData(); return value; }
@@ -280,6 +289,62 @@ export class EpisodeVideosService implements OnModuleDestroy {
   async progress(projectId: string, number: number, job: string) { const id = projectId.trim(); let episode = await this.loadEpisode(id, number); let records = await this.records(id, number, this.sceneCount(episode), job); if (episode.state === "videos_generating" && records[0]!.execution_mode === "runway") { records = await this.advanceReal(id, number, job); episode = await this.loadEpisode(id, number); this.scheduleTimer(`${id}:${number}:${job}`, () => { void this.advanceReal(id, number, job).catch(() => undefined); }); } return this.progressFor(episode, job, records); }
   async stop(projectId: string, number: number, job: string) { const id = projectId.trim(); const episode = await this.loadEpisode(id, number); await this.records(id, number, this.sceneCount(episode), job); if (episode.state !== "videos_generating") throw longEpisodeVideosNotAllowed(); this.stopped.add(job); this.clearTimer(`${id}:${number}:${job}`); episode.state = "interrupted"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode); return this.progress(id, number, job); }
   async restart(projectId: string, number: number, job: string) { const id = projectId.trim(); const episode = await this.loadEpisode(id, number); await this.records(id, number, this.sceneCount(episode), job); if (episode.state !== "interrupted") throw longEpisodeVideosNotAllowed(); this.stopped.delete(job); episode.state = "videos_generating"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode); return this.run(id, number, job); }
+  /**
+   * Fetches clips Runway already made, for scenes whose stored file is a placeholder.
+   *
+   * The bug that made this necessary wrote a 32-byte stub over every downloaded clip while the ledger recorded
+   * six real charges. The tasks are still Runway's, their ids are in the records, and asking for a task's
+   * output again is a read — so this adds nothing to the ledger. Regenerating would charge the same $1.50 a
+   * second time for work already paid for.
+   *
+   * Scope is deliberately narrow: only scenes recorded as `succeeded` with a task id, and only when the file on
+   * disk is not a real video. A scene already holding real bytes is left alone, and a scene that never
+   * succeeded is not a recovery case — it is a generation the person has to decide about.
+   *
+   * A scene whose output cannot be fetched any more (task gone, URL expired, an empty body) is reported and
+   * left `failed`, never silently regenerated: spending money is the person's decision, not a fallback.
+   */
+  async recover(projectId: string, number: number, job: string, body: unknown): Promise<RecoverLongEpisodeVideosResponse> {
+    if (!object(body) || Object.keys(body).length !== 1 || body.approved !== true) throw longInvalidRequest("Episode video recovery requires explicit approval.");
+    const id = projectId.trim();
+    const episode = await this.loadEpisode(id, number);
+    const records = await this.records(id, number, this.sceneCount(episode), job);
+    const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("runway") : null;
+    if (!apiKey) throw longEpisodeVideosNotAllowed();
+
+    const recoveredSceneNumbers: SceneNumber[] = [];
+    const unrecoverableScenes: { sceneNumber: SceneNumber; reason: string }[] = [];
+    let changed = false;
+
+    for (const record of records) {
+      if (record.execution_mode !== "runway" || record.status !== "succeeded" || !record.runway_task_id) continue;
+      if (await this.realVideo(this.video(id, number, record.scene_number))) continue;
+      let bytes: Buffer;
+      try {
+        const task = await getRunwayTask(apiKey, record.runway_task_id);
+        const url = task.outputUrls[0];
+        if (task.status !== "SUCCEEDED" || !url) { unrecoverableScenes.push({ sceneNumber: record.scene_number, reason: "no_output" }); continue; }
+        bytes = await downloadRunwayOutput(url);
+      } catch (error) {
+        unrecoverableScenes.push({ sceneNumber: record.scene_number, reason: error instanceof RunwayAdapterError ? String(error.category) : "unknown" });
+        continue;
+      }
+      // The same refusal the generation path makes: a body no bigger than a bare header is not a video, and
+      // writing it would repeat exactly the failure this recovery exists to undo.
+      if (bytes.length <= MP4.length) {
+        record.status = "failed"; record.error = "empty_output"; changed = true;
+        unrecoverableScenes.push({ sceneNumber: record.scene_number, reason: "empty_output" });
+        continue;
+      }
+      await fs.mkdir(this.files(id, number).videos, { recursive: true });
+      await this.binary(this.video(id, number, record.scene_number), bytes);
+      recoveredSceneNumbers.push(record.scene_number);
+    }
+
+    if (changed) await this.saveRecords(id, number, records);
+    return { ...(await this.progressFor(episode, job, records)), recoveredSceneNumbers, unrecoverableScenes };
+  }
+
   async regenerate(projectId: string, number: number, job: string, rawScene: string, body: unknown): Promise<RegenerateLongEpisodeVideoResponse> { if (!object(body) || Object.keys(body).length !== 1 || body.approved !== true) throw longInvalidRequest("Episode video regeneration requires explicit approval."); const selected = scene(Number(rawScene)); if (!selected || String(selected) !== rawScene) throw longInvalidRequest(); const id = projectId.trim(); const episode = await this.loadEpisode(id, number); if (selected > this.sceneCount(episode)) throw longInvalidRequest(); const records = await this.records(id, number, this.sceneCount(episode), job); const allowedTerminal = ["videos_review", "videos_approved"].includes(episode.state); const allowedFailedRetry = episode.state === "videos_generating" && records.find((item) => item.scene_number === selected)?.status === "failed"; if (!allowedTerminal && !allowedFailedRetry) throw longEpisodeVideosNotAllowed(); const file = this.video(id, number, selected); if (await this.validVideo(file)) { const history = path.join(this.files(id, number).videos, "history"); await fs.mkdir(history, { recursive: true }); await fs.copyFile(file, path.join(history, `scene${selected}_${Date.now()}.mp4`)); } const record = records.find((item) => item.scene_number === selected)!; record.status = "created"; delete record.completed_at; delete record.runway_task_id; delete record.runway_submitted_at; delete record.runway_last_checked_at; delete record.error; await this.saveRecords(id, number, records); const reviews = (await this.loadReviews(id, number, true)).filter((item) => item.scene_number !== selected); await this.saveReviews(id, number, reviews); episode.state = "videos_generating"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode); const result = await this.run(id, number, job); return { ...result, regeneratedSceneNumbers: [selected] }; }
   async review(projectId: string, number: number, job: string): Promise<GetLongEpisodeVideoReviewResponse> { const id = projectId.trim(); const episode = await this.loadEpisode(id, number); const sceneNumbers = sceneNumbersFor(this.sceneCount(episode)); await this.records(id, number, this.sceneCount(episode), job); if (!["videos_review", "videos_approved"].includes(episode.state) || !(await Promise.all(sceneNumbers.map((item) => this.validVideo(this.video(id, number, item))))).every(Boolean)) throw longEpisodeVideosNotAllowed(); const reviews = await this.loadReviews(id, number, true); const now = episode.updated_at; const costsByScene = this.budget ? await this.budget.costsByScene(this.budgetProjectKey(id, number)) : {}; return { episode: this.detail(episode), reviews: sceneNumbers.map((item) => { const review = reviews.find((value) => value.scene_number === item); const costUsd = costsByScene[item]; return { sceneNumber: item, status: review?.status || "pending", updatedAt: review?.updated_at || now, ...(costUsd !== undefined ? { costUsd } : {}) }; }) }; }
   async approve(projectId: string, number: number, job: string, rawScene: string, body: ApproveLongEpisodeVideoReviewRequest): Promise<ApproveLongEpisodeVideoReviewResponse> { if (!object(body) || Object.keys(body).length !== 1 || body.approved !== true) throw longInvalidRequest(); const selected = scene(Number(rawScene)); if (!selected || String(selected) !== rawScene) throw longInvalidRequest(); await this.review(projectId, number, job); const id = projectId.trim(); const episode = await this.loadEpisode(id, number); if (selected > this.sceneCount(episode)) throw longInvalidRequest(); const reviews = (await this.loadReviews(id, number, true)).filter((item) => item.scene_number !== selected); const now = new Date().toISOString(); reviews.push({ scene_number: selected, status: "approved", updated_at: now }); episode.state = sceneNumbersFor(this.sceneCount(episode)).every((item) => reviews.some((review) => review.scene_number === item && review.status === "approved")) ? "videos_approved" : "videos_review"; episode.updated_at = now; await this.saveReviews(id, number, reviews.sort((a, b) => a.scene_number - b.scene_number)); await this.saveEpisode(id, number, episode); return this.review(id, number, job); }
