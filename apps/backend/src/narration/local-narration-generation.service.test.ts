@@ -89,6 +89,57 @@ describe("provider-free local narration generation", () => {
   });
 });
 
+describe("narration that is already on disk", () => {
+  it("is not reused once a real voice could be made instead", async () => {
+    // 🔴 Same shape the Episode side had. With no credential this writes four bytes of MP3 header so the
+    // pipeline can be walked; the reuse check then asked only whether a file was there. Connect a TTS key
+    // afterwards and every placeholder was skipped as finished work — the narration could never become real,
+    // with no error and no cost, while the app reported audio throughout.
+    const { projectsRoot, projects } = await setup();
+    await new LocalNarrationGenerationService(projects, projectsRoot).generate("narr", { approved: true });
+
+    const withCredential = new LocalNarrationGenerationService(
+      projects, projectsRoot,
+      { rawCredentialIfConnected: async () => "sk-test" } as never,
+      { preflight: async () => {}, record: async () => {} } as never,
+    );
+    const again = await withCredential.generate("narr", { approved: true }).catch((error: unknown) => error);
+
+    // It tries again rather than reusing; whether the provider call then succeeds is not this test's business.
+    if (!(again instanceof Error)) {
+      expect((again as { reusedSceneNumbers: number[] }).reusedSceneNumbers).toEqual([]);
+    }
+  });
+
+  it("is regenerated when the narration line has since been reworded", async () => {
+    const { projectsRoot, projects } = await setup();
+    const service = new LocalNarrationGenerationService(projects, projectsRoot);
+    await service.generate("narr", { approved: true });
+
+    const project = await projects.findById("narr");
+    project.scenes = project.scenes.map((scene, index) => index === 0 ? { ...(scene as object), narration: "완전히 다시 쓴 대사" } : scene);
+    await projects.save(project);
+
+    const again = await service.generate("narr", { approved: true });
+
+    expect(again.generatedSceneNumbers).toContain(1);
+    expect(again.reusedSceneNumbers).not.toContain(1);
+  });
+
+  it("is still reused when it is as good as it is going to get", async () => {
+    // The fix must not turn every press into a full regeneration: with no credential a placeholder is still the
+    // best this app can produce, and remaking it would spend time to change nothing.
+    const { projectsRoot, projects } = await setup();
+    const service = new LocalNarrationGenerationService(projects, projectsRoot);
+    await service.generate("narr", { approved: true });
+
+    const again = await service.generate("narr", { approved: true });
+
+    expect(again.generatedSceneNumbers).toEqual([]);
+    expect(again.reusedSceneNumbers.length).toBeGreaterThan(0);
+  });
+});
+
 describe("toShortProjectSettings narrationEnabled sanity", () => {
   it("round-trips narrationEnabled through applyShortProjectSettings", async () => {
     const { projects } = await setup();
