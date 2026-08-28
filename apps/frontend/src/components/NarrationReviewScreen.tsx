@@ -357,7 +357,7 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
                     key={item.sceneNumber}
                     data-testid={`narration-scene-${item.sceneNumber}`}
                     data-has-narration={text ? "true" : "false"}
-                    data-has-audio={item.audio !== "none" ? "true" : "false"}
+                    data-audio={item.audio}
                     className={`space-y-2 rounded-xl border bg-slate-950/40 p-3.5 ${
                       tooLong ? "border-amber-400/40" : "border-white/10"
                     }`}
@@ -374,7 +374,13 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
                         ) : (
                           <StatusChip tone="danger">문장 없음</StatusChip>
                         )}
-                        {item.audio !== "none" && <StatusChip tone="success">음성 있음</StatusChip>}
+                        {item.audio === "generated" && <StatusChip tone="success">음성 있음</StatusChip>}
+                        {/* A placeholder is a 4-byte silent file the app writes when no OpenAI key is connected.
+                            It used to be reported the same way real audio was, so the screen said 음성 있음 over
+                            silence and the merge shipped it. Named here rather than hidden: hiding it would put
+                            the reviewer back in front of an episode whose narration is missing with nothing on
+                            screen saying so. */}
+                        {item.audio === "placeholder" && <StatusChip tone="progress">임시 음성</StatusChip>}
                         <StaleBadge
                           staleSceneNumbers={state.staleness?.narrationStale}
                           sceneNumber={item.sceneNumber}
@@ -389,6 +395,9 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
                       <p className="text-sm text-slate-500">이 장면에는 읽어줄 문장이 없어 음성도 만들어지지 않습니다.</p>
                     )}
 
+                    {/* Rendered for a placeholder too, deliberately: pressing play and hearing silence is the
+                        only way the reviewer can confirm what the chip says. Hiding it would make the
+                        placeholder invisible again, which is the original defect. */}
                     {item.audio !== "none" && (
                       <audio
                         controls

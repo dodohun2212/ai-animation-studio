@@ -1,19 +1,17 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { NarrationAudioState } from "@ai-animation-studio/shared";
 
 import { jsonResponse, makeProject } from "../api/testUtils.js";
 import { NarrationReviewScreen } from "./NarrationReviewScreen.js";
 
 const project = makeProject({});
 
-function narrations(entries: { narration: string; hasAudio?: boolean; audioDurationSeconds?: number }[]) {
+function narrations(entries: { narration: string; audio?: NarrationAudioState; audioDurationSeconds?: number }[]) {
   return entries.map((entry, index) => ({
     sceneNumber: index + 1,
     narration: entry.narration,
-    // Mechanical: the contract now names what the audio is rather than whether it exists. These fixtures still
-    // say hasAudio, so this maps it — a scene "with audio" here means real audio. Naming the state directly at
-    // each call site is the better fixture and belongs with the screen work that reads placeholder differently.
-    audio: entry.hasAudio ? "generated" : "none",
+    audio: entry.audio ?? "none",
     ...(entry.audioDurationSeconds === undefined ? {} : { audioDurationSeconds: entry.audioDurationSeconds }),
   }));
 }
@@ -127,7 +125,7 @@ describe("NarrationReviewScreen", () => {
     const fetchMock = stubFetchByRoute({
       [REVIEW]: [
         { project, narrations: narrations([{ narration: "문장" }, { narration: "" }]) },
-        { project, narrations: narrations([{ narration: "문장", hasAudio: true }, { narration: "" }]) },
+        { project, narrations: narrations([{ narration: "문장", audio: "generated" }, { narration: "" }]) },
       ],
       [SETTINGS]: { settings },
       [GENERATE]: {
@@ -147,14 +145,14 @@ describe("NarrationReviewScreen", () => {
     expect(summary.textContent).toContain("새로 만듦 1개");
     expect(summary.textContent).toContain("건너뜀 1개");
     expect(screen.getByTestId("narration-budget").textContent).toContain("$9.99");
-    await waitFor(() => expect(screen.getByTestId("narration-scene-1")).toHaveAttribute("data-has-audio", "true"));
+    await waitFor(() => expect(screen.getByTestId("narration-scene-1")).toHaveAttribute("data-audio", "generated"));
     expect(screen.getByTestId("narration-audio-1")).toBeTruthy();
   });
 
   it("offers playback and regeneration only for scenes that already have audio", async () => {
     renderScreen(
       stubFetchByRoute({
-        [REVIEW]: { project, narrations: narrations([{ narration: "문장", hasAudio: true }, { narration: "문장" }]) },
+        [REVIEW]: { project, narrations: narrations([{ narration: "문장", audio: "generated" }, { narration: "문장" }]) },
         [SETTINGS]: { settings },
       }),
     );
@@ -167,12 +165,12 @@ describe("NarrationReviewScreen", () => {
 
   it("regenerates one scene only after its own confirmation, showing the retry cost first", async () => {
     const fetchMock = stubFetchByRoute({
-      [REVIEW]: { project, narrations: narrations([{ narration: "문장" }, { narration: "문장", hasAudio: true }]) },
+      [REVIEW]: { project, narrations: narrations([{ narration: "문장" }, { narration: "문장", audio: "generated" }]) },
       [SETTINGS]: { settings },
       [REGENERATE_2]: {
         project,
         sceneNumber: 2,
-        narrations: narrations([{ narration: "문장" }, { narration: "문장", hasAudio: true }]),
+        narrations: narrations([{ narration: "문장" }, { narration: "문장", audio: "generated" }]),
         retryEstimate: {
           perSceneCostUsd: 0.01,
           budget: { monthlyLimitUsd: 10, spentUsd: 0.02, remainingUsd: 9.98, estimatedRequestCostUsd: 0.01, canSpend: true },
@@ -216,7 +214,7 @@ describe("NarrationReviewScreen", () => {
       stubFetchByRoute({
         [REVIEW]: {
           project,
-          narrations: narrations([{ narration: "문장", hasAudio: true }, { narration: "문장", hasAudio: true }]),
+          narrations: narrations([{ narration: "문장", audio: "generated" }, { narration: "문장", audio: "generated" }]),
           staleness: { imageStale: [], videoStale: [], narrationStale: [2] },
         },
         [SETTINGS]: { settings },
@@ -234,8 +232,8 @@ describe("NarrationReviewScreen", () => {
         [REVIEW]: {
           project,
           narrations: narrations([
-            { narration: "짧은 문장", hasAudio: true, audioDurationSeconds: 3.2 },
-            { narration: "긴 문장", hasAudio: true, audioDurationSeconds: 7.4 },
+            { narration: "짧은 문장", audio: "generated", audioDurationSeconds: 3.2 },
+            { narration: "긴 문장", audio: "generated", audioDurationSeconds: 7.4 },
           ]),
         },
         [SETTINGS]: { settings },
@@ -268,7 +266,7 @@ describe("NarrationReviewScreen", () => {
   it("offers no paid audio action when narration is off, and says the sentences become subtitles", async () => {
     renderScreen(
       stubFetchByRoute({
-        [REVIEW]: { project, narrations: narrations([{ narration: "문장", hasAudio: true }, { narration: "문장" }]) },
+        [REVIEW]: { project, narrations: narrations([{ narration: "문장", audio: "generated" }, { narration: "문장" }]) },
         [SETTINGS]: { settings: { ...settings, narrationEnabled: false, subtitlesEnabled: true } },
       }),
     );
@@ -306,5 +304,25 @@ describe("NarrationReviewScreen", () => {
     expect(await screen.findByTestId("narration-generate-button")).toBeTruthy();
     expect(screen.queryByTestId("narration-voice-off")).toBeNull();
     expect(screen.getByTestId("narration-estimated-cost").textContent).toBe("$0.01");
+  });
+
+  it("calls a placeholder a placeholder instead of reporting it as a real voice", async () => {
+    // With no OpenAI key connected the app writes a 4-byte silent file, and it used to be reported exactly the
+    // way synthesized audio was: the chip said 음성 있음 over silence, and the merge shipped that silence as
+    // narration. Both halves are asserted — the honest chip AND the absence of the old claim — because a chip
+    // that merely stopped saying 음성 있음 while showing nothing would hide the state rather than name it.
+    renderScreen(
+      stubFetchByRoute({
+        [REVIEW]: { project, narrations: narrations([{ narration: "첫 문장입니다.", audio: "placeholder" }]) },
+        [SETTINGS]: { settings },
+      }),
+    );
+
+    const scene = await screen.findByTestId("narration-scene-1");
+    expect(scene).toHaveAttribute("data-audio", "placeholder");
+    expect(scene.textContent).toContain("임시 음성");
+    expect(scene.textContent).not.toContain("음성 있음");
+    // The player stays: pressing play and hearing silence is how the reviewer confirms what the chip says.
+    expect(screen.getByTestId("narration-audio-1")).toBeTruthy();
   });
 });

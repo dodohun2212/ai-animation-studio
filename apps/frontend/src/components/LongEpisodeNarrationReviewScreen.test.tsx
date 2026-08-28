@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { NarrationAudioState } from "@ai-animation-studio/shared";
 
 import { jsonResponse, makeLongProjectSettings } from "../api/testUtils.js";
 import { LongEpisodeNarrationReviewScreen } from "./LongEpisodeNarrationReviewScreen.js";
@@ -9,14 +10,11 @@ const episode = (status = "script_approved") => ({
   status, approved: true, scriptRevision: 1, scriptHistoryCount: 0,
 });
 
-function narrations(entries: { narration: string; hasAudio?: boolean; audioDurationSeconds?: number }[]) {
+function narrations(entries: { narration: string; audio?: NarrationAudioState; audioDurationSeconds?: number }[]) {
   return entries.map((entry, index) => ({
     sceneNumber: index + 1,
     narration: entry.narration,
-    // Mechanical: the contract now names what the audio is rather than whether it exists. Naming the state
-    // directly at each call site is the better fixture and belongs with the screen work that has to tell
-    // a placeholder apart from a real voice.
-    audio: entry.hasAudio ? "generated" : "none",
+    audio: entry.audio ?? "none",
     ...(entry.audioDurationSeconds === undefined ? {} : { audioDurationSeconds: entry.audioDurationSeconds }),
   }));
 }
@@ -79,7 +77,7 @@ describe("LongEpisodeNarrationReviewScreen", () => {
     const fetchMock = stubFetchByRoute({
       [REVIEW]: [
         { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다." }]) },
-        { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다.", hasAudio: true, audioDurationSeconds: 3.2 }]) },
+        { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다.", audio: "generated", audioDurationSeconds: 3.2 }]) },
       ],
       [SETTINGS]: { settings: settings() },
       [GENERATE]: { episode: episode(), generatedSceneNumbers: [1], reusedSceneNumbers: [], skippedSceneNumbers: [] },
@@ -126,7 +124,7 @@ describe("LongEpisodeNarrationReviewScreen", () => {
     // is guaranteed to fail. Subtitles-only is a real mode, and the sentences are still doing a job in it.
     renderScreen(
       stubFetchByRoute({
-        [REVIEW]: { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다.", hasAudio: true }]) },
+        [REVIEW]: { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다.", audio: "generated" }]) },
         [SETTINGS]: { settings: settings({ narrationEnabled: false, subtitlesEnabled: true }) },
       }),
     );
@@ -163,7 +161,7 @@ describe("LongEpisodeNarrationReviewScreen", () => {
         [REVIEW]: {
           episode: episode(),
           narrations: narrations([
-            { narration: "짧은 문장.", hasAudio: true, audioDurationSeconds: 7.4 },
+            { narration: "짧은 문장.", audio: "generated", audioDurationSeconds: 7.4 },
             { narration: "아".repeat(60) },
           ]),
         },
@@ -178,9 +176,9 @@ describe("LongEpisodeNarrationReviewScreen", () => {
 
   it("sends a blank regeneration instruction as an omitted field, never as an empty string", async () => {
     const fetchMock = stubFetchByRoute({
-      [REVIEW]: { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다.", hasAudio: true }]) },
+      [REVIEW]: { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다.", audio: "generated" }]) },
       [SETTINGS]: { settings: settings() },
-      [REGENERATE_1]: { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다.", hasAudio: true }]), sceneNumber: 1 },
+      [REGENERATE_1]: { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다.", audio: "generated" }]), sceneNumber: 1 },
     });
     renderScreen(fetchMock);
 
@@ -217,5 +215,25 @@ describe("LongEpisodeNarrationReviewScreen", () => {
     expect(alert).toHaveAttribute("data-error-code", "LONG_EPISODE_NARRATION_PROVIDER_ERROR");
     expect(alert.textContent).toBe("OpenAI 인증에 실패했습니다. API 설정에서 키를 다시 확인해 주세요.");
     expect(alert.textContent).not.toContain("sk-abc123");
+  });
+
+  it("calls a placeholder a placeholder instead of reporting it as a real voice", async () => {
+    // With no OpenAI key connected the app writes a 4-byte silent file, and it used to be reported exactly the
+    // way synthesized audio was: the chip said 음성 있음 over silence, and the merge shipped that silence as
+    // narration. Both halves are asserted — the honest chip AND the absence of the old claim — because a chip
+    // that merely stopped saying 음성 있음 while showing nothing would hide the state rather than name it.
+    renderScreen(
+      stubFetchByRoute({
+        [REVIEW]: { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다.", audio: "placeholder" }]) },
+        [SETTINGS]: { settings: settings() },
+      }),
+    );
+
+    const scene = await screen.findByTestId("episode-narration-scene-1");
+    expect(scene).toHaveAttribute("data-audio", "placeholder");
+    expect(scene.textContent).toContain("임시 음성");
+    expect(scene.textContent).not.toContain("음성 있음");
+    // The player stays: pressing play and hearing silence is how the reviewer confirms what the chip says.
+    expect(screen.getByTestId("episode-narration-audio-1")).toBeTruthy();
   });
 });
