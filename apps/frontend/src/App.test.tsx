@@ -1,7 +1,7 @@
 import type { CreateLongProjectRequest, CreateProjectRequest, LongProject, Project } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App.js";
 import { jsonResponse } from "./api/testUtils.js";
@@ -81,6 +81,13 @@ function createFakeBackend(): ReturnType<typeof vi.fn<FakeFetch>> {
 }
 
 describe("App", () => {
+  // The screen now lives in the address bar, and jsdom keeps one window for the whole file — so without this
+  // each test would start wherever the previous one navigated to. Resetting the hash is what keeps every test
+  // starting from the project list, the way they were all written.
+  beforeEach(() => {
+    window.location.hash = "";
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -700,5 +707,30 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "작품 한눈에 보기" }));
     await screen.findByText(seed.title);
     expect(fetchMock.mock.calls.filter(([callUrl]) => String(callUrl) === "/long-projects/long_test").length).toBe(callsBeforeJump + 1);
+  });
+
+  // The whole point, end to end: land on a working screen, and a reload comes back to it. Rendering a second
+  // <App/> from the address the first one wrote is what a refresh is — the state is gone, the address is not.
+  it("comes back to the same screen after a reload", async () => {
+    vi.stubGlobal("fetch", createFakeBackend());
+    const first = render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "장기 프로젝트" }));
+    await screen.findByRole("button", { name: "새 장기 프로젝트" });
+    expect(window.location.hash).toBe("#/longList");
+
+    first.unmount();
+    render(<App />);
+    expect(await screen.findByRole("button", { name: "새 장기 프로젝트" })).toBeTruthy();
+  });
+
+  it("opens the project list when the address points at nothing", async () => {
+    // Bookmarks outlive the projects they name. A screen that fetches by an id it does not have renders its own
+    // storage error, which reads as a broken app rather than a stale link.
+    window.location.hash = "#/longEpisodeScript?projectId=gone";
+    vi.stubGlobal("fetch", createFakeBackend());
+    render(<App />);
+
+    await screen.findByText("아직 생성된 프로젝트가 없습니다.");
   });
 });

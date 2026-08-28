@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { LongProject, Project } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 import { getProject } from "./api/projectsApi.js";
@@ -74,6 +74,86 @@ type Screen =
   | { name: "longEpisodeNarrationReview"; projectId: string; episodeNumber: number }
   | { name: "longEpisodeContinuity"; projectId: string; episodeNumber: number }
   | { name: "longEpisodeSettings"; projectId: string; episodeNumber: number };
+
+/**
+ * Which fields each screen carries, so the address bar can hold them and a reload can put them back.
+ *
+ * Screen position used to live only in React state: every refresh dropped it and the app reopened on the
+ * project list — mid-task, on a screen someone had clicked four times to reach.
+ *
+ * Typed as a total map over `Screen["name"]`, which is the point: adding a screen without a line here is a
+ * type error, not a screen that silently stops surviving reload. Encoding is mechanical rather than a table of
+ * hand-written paths, so there is nothing to keep in agreement.
+ *
+ * `justCreated` is deliberately absent. It marks the one moment just after creation and changes the finish
+ * button's wording; restoring it from a URL would show a first-run affordance on a project made last week.
+ */
+type ScreenParam = "projectId" | "episodeNumber" | "jobId" | "initialQuery";
+const OPTIONAL_PARAMS: ReadonlySet<ScreenParam> = new Set<ScreenParam>(["initialQuery"]);
+const SCREEN_PARAMS: Record<Screen["name"], readonly ScreenParam[]> = {
+  list: [], create: [], providerSettings: [], videoLibrary: [], audioLibrary: [], instagramPost: [],
+  archive: [], workflowGuide: [], longList: [], longCreate: [],
+  assets: ["initialQuery"],
+  detail: ["projectId"], mappingReview: ["projectId"], settings: ["projectId"], storyPrompt: ["projectId"],
+  imageGeneration: ["projectId"], narrationReview: ["projectId"], sceneEdit: ["projectId"],
+  videoPreview: ["projectId"], videoMerge: ["projectId"],
+  videoWorkflow: ["projectId", "jobId"],
+  longDetail: ["projectId"], longSettings: ["projectId"], longOutline: ["projectId"],
+  longEpisodeOutline: ["projectId", "episodeNumber"],
+  longEpisodeScript: ["projectId", "episodeNumber"],
+  longEpisodeMappingReview: ["projectId", "episodeNumber"],
+  longEpisodeImageGeneration: ["projectId", "episodeNumber"],
+  longEpisodeVideoWorkflow: ["projectId", "episodeNumber"],
+  longEpisodeVideoMerge: ["projectId", "episodeNumber"],
+  longEpisodeNarrationReview: ["projectId", "episodeNumber"],
+  longEpisodeContinuity: ["projectId", "episodeNumber"],
+  longEpisodeSettings: ["projectId", "episodeNumber"],
+};
+
+const HOME: Screen = { name: "list" };
+
+export function hashFromScreen(screen: Screen): string {
+  const params = new URLSearchParams();
+  for (const key of SCREEN_PARAMS[screen.name]) {
+    const value = (screen as Record<string, unknown>)[key];
+    if (value === undefined || value === null || value === "") continue;
+    params.set(key, String(value));
+  }
+  const query = params.toString();
+  return query ? `#/${screen.name}?${query}` : `#/${screen.name}`;
+}
+
+/**
+ * A URL is typed by hand, edited, bookmarked and then followed months later — so every part of it is checked,
+ * and anything that does not resolve falls back to the project list rather than rendering a screen with an
+ * `undefined` where a project id belongs. A bad address is a wrong page, never a broken one.
+ */
+export function screenFromHash(hash: string): Screen {
+  const raw = hash.replace(/^#\/?/, "");
+  if (!raw) return HOME;
+  const [name = "", query] = raw.split("?", 2);
+  if (!Object.prototype.hasOwnProperty.call(SCREEN_PARAMS, name)) return HOME;
+  const screenName = name as Screen["name"];
+  const params = new URLSearchParams(query ?? "");
+  const built: Record<string, unknown> = { name: screenName };
+  for (const key of SCREEN_PARAMS[screenName]) {
+    const value = params.get(key);
+    if (value === null || value === "") {
+      if (OPTIONAL_PARAMS.has(key)) continue;
+      return HOME;
+    }
+    if (key === "episodeNumber") {
+      const episodeNumber = Number(value);
+      // Episodes are counted from 1. A zero, a negative or "abc" would reach a screen that fetches by number
+      // and render its own storage error — a worse answer than simply not going there.
+      if (!Number.isInteger(episodeNumber) || episodeNumber < 1) return HOME;
+      built[key] = episodeNumber;
+      continue;
+    }
+    built[key] = value;
+  }
+  return built as Screen;
+}
 
 const LONG_PROJECT_SCREEN_NAMES = new Set<Screen["name"]>([
   "longDetail", "longSettings", "longOutline",
@@ -420,9 +500,49 @@ function Sidebar({ screen, onNavigate }: { screen: Screen; onNavigate: (screen: 
 }
 
 export function App() {
-  const [screen, setScreen] = useState<Screen>({ name: "list" });
+  /**
+   * Screen position, kept in the address bar so a reload lands where the person was.
+   *
+   * It used to live only here, so every refresh dropped it and the app reopened on the project list — mid-task,
+   * on a screen someone had clicked four times to reach. The two effects below keep state and address in step;
+   * they settle rather than oscillate because encoding is canonical (a hand-typed address decodes, re-encodes
+   * to its normal form, and the next pass finds the two equal).
+   */
+  const [screen, setScreen] = useState<Screen>(() => screenFromHash(window.location.hash));
   const [listRefreshToken, setListRefreshToken] = useState(0);
   const [longListRefreshToken, setLongListRefreshToken] = useState(0);
+
+  // Writing the hash is what creates the history entry, so Back walks the screens the person actually visited.
+  useEffect(() => {
+    const next = hashFromScreen(screen);
+    if (window.location.hash !== next) { ourWrites.current.push(next); window.location.hash = next; }
+  }, [screen]);
+
+  /**
+   * Back, Forward, and an address typed or pasted by hand all arrive here — but so does our own write above,
+   * because setting `location.hash` fires this event too.
+   *
+   * Rebuilding the screen from our own address is lossy: the address deliberately carries only what identifies
+   * a screen, so anything else on the screen object is dropped on the way back. `justCreated` is the one that
+   * matters — it turns the first-run notice on right after a project is made, and the round trip switched it
+   * off again before anyone saw it. So an event whose address already matches the screen we are showing is
+   * ours and is ignored; a differing one came from outside and is obeyed.
+   */
+  const ourWrites = useRef<string[]>([]);
+  useEffect(() => {
+    function onHashChange(): void {
+      // Our own writes come back as events, in the order they were made, and they are echoes rather than
+      // navigation. Comparing against the screen being shown is not enough: an echo can arrive after the screen
+      // has already moved on, and then the old address looks like someone navigating backwards. Creating a
+      // project did exactly that — the echo of `#/create` landed once the settings screen was up and sent it
+      // back to the form, losing the state the address deliberately does not carry.
+      if (ourWrites.current[0] === window.location.hash) { ourWrites.current.shift(); return; }
+      ourWrites.current.length = 0;
+      setScreen(screenFromHash(window.location.hash));
+    }
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
   /** The two dashboards a session starts from — everywhere else is a working screen with its own title. */
   const isEntryScreen = screen.name === "list" || screen.name === "longList";
 
