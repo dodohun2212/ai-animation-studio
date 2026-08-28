@@ -211,7 +211,10 @@ export class LongProjectsService {
   async approve(id: string, request: ApproveLongProjectOutlineRequest): Promise<ApproveLongProjectOutlineResponse> {
     const projectId = id.trim();
     try {
-      return await withProjectLock(resolveSafeProjectDirectory(this.projectsRoot, projectId), `${projectId}:long-outline`, () => this.approveCore(projectId, request));
+      // Refused at once rather than queued. The default is to wait ten seconds for the holder, which here means
+      // the screen sits frozen through it and then shows an error anyway: by the time the first approval
+      // finishes, the outline exists and this call is invalid. Waiting would only make the refusal slower.
+      return await withProjectLock(resolveSafeProjectDirectory(this.projectsRoot, projectId), `${projectId}:long-outline`, () => this.approveCore(projectId, request), { timeoutMs: 0 });
     } catch (error) {
       if (error instanceof ProjectLockTimeoutError) throw longProjectLocked();
       throw error;

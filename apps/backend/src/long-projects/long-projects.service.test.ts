@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { withProjectLock } from "../videos/project-lock.js";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -96,10 +97,41 @@ describe("LongProjectsService", () => {
       subject.approve("long_test", approval),
     ]);
 
-    const fulfilled = [first, second].filter((outcome) => outcome.status === "fulfilled");
-    expect(fulfilled).toHaveLength(1);
+    expect([first, second].filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+
+    // Which refusal the loser gets depends on whether the two actually overlapped, and that is a matter of
+    // timing rather than of correctness: PROJECT_LOCKED means it arrived while the first was still generating,
+    // LONG_OUTLINE_NOT_ALLOWED means it arrived after. Both mean it did not reach the paid call, which is the
+    // thing under test — pinning one of them would make this pass or fail on machine speed.
     const rejected = [first, second].find((outcome) => outcome.status === "rejected");
-    expect(rejected).toMatchObject({ reason: { response: { code: "LONG_OUTLINE_NOT_ALLOWED" } } });
+    const code = (rejected as PromiseRejectedResult).reason.response.code as string;
+    expect(["PROJECT_LOCKED", "LONG_OUTLINE_NOT_ALLOWED"]).toContain(code);
+  });
+
+  it("refuses at once while an approval is genuinely in flight, instead of waiting out the lock", async () => {
+    // The previous test passes without ever reaching the lock: in fake mode the first approval finishes before
+    // the second starts, so the refusal comes from the state. This one holds the lock for real.
+    //
+    // Waiting is the wrong default here. The holder takes as long as the model does, so the ten-second wait is
+    // spent to arrive at a refusal that was certain from the start — by the time the holder finishes, the
+    // outline exists and this call is invalid. The screen would sit frozen through it and then show an error.
+    const subject = await service();
+    await subject.create(input);
+    const preview = await subject.preview("long_test");
+    const approval = { approved: true as const, promptSha256: preview.preview.promptSha256, prompt: preview.preview.prompt };
+    const projectDirectory = path.join(root!, "projects", "long_test");
+
+    let refusal: unknown;
+    const startedAt = Date.now();
+    await withProjectLock(projectDirectory, "long_test:long-outline", async () => {
+      refusal = await subject.approve("long_test", approval).catch((error: unknown) => error);
+    });
+
+    expect(refusal).toMatchObject({ response: { code: "PROJECT_LOCKED" } });
+    // Nowhere near the ten seconds the default would have spent.
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+    // And nothing was generated: the outline is still waiting to be approved.
+    expect((await subject.get("long_test")).project.outlineStatus).toBe("planned");
   });
 
   it("refuses a second approval once the outline exists, however long afterwards", async () => {

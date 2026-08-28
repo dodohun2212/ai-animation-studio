@@ -26,8 +26,11 @@ export class ProjectLockTimeoutError extends Error {
 export async function withProjectLock<T>(projectDirectory: string, key: string, fn: () => Promise<T>, options?: { timeoutMs?: number }): Promise<T> {
   const lockFile = path.join(projectDirectory, `.lock-${key.replace(/[^a-zA-Z0-9_-]/g, "_")}`);
   await fs.mkdir(projectDirectory, { recursive: true });
-  // Overridable only so a test can exercise the timeout path in milliseconds instead of really waiting
-  // ACQUIRE_TIMEOUT_MS out — every real call site relies on the default.
+  // Overridable for two reasons. A test can exercise the timeout path in milliseconds instead of really waiting
+  // ACQUIRE_TIMEOUT_MS out; and a caller whose second arrival has nothing useful to do after waiting can pass 0
+  // to be refused at once. Waiting is right when the holder finishes in seconds and the work still needs doing
+  // — it is pure delay when the holder's own completion is what will make this call invalid anyway (see
+  // LongProjectsService.approve).
   const deadline = Date.now() + (options?.timeoutMs ?? ACQUIRE_TIMEOUT_MS);
   for (;;) {
     try {
