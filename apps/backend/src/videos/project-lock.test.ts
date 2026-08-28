@@ -84,15 +84,26 @@ describe("withProjectLock", () => {
     // the slow calls people press twice. Back-dating the file here is what a minute of real work would look like.
     const lockFile = path.join(directory, ".lock-slow_job");
     let releaseFirst!: () => void;
-    const beatLanded = new Promise<void>((resolve) => {
-      void withProjectLock(directory, "slow_job", async () => {
-        const old = new Date(Date.now() - 5 * 60_000);
-        await fs.utimes(lockFile, old, old);
-        setTimeout(resolve, 80);
-        await new Promise<void>((r) => { releaseFirst = r; });
-      }, { heartbeatMs: 20 });
-    });
-    await beatLanded;
+    let started!: () => void;
+    const backDated = new Promise<void>((resolve) => { started = resolve; });
+    void withProjectLock(directory, "slow_job", async () => {
+      const old = new Date(Date.now() - 5 * 60_000);
+      await fs.utimes(lockFile, old, old);
+      started();
+      await new Promise<void>((r) => { releaseFirst = r; });
+    }, { heartbeatMs: 20 });
+    await backDated;
+
+    // Wait for a beat to have actually landed rather than for a length of time one usually fits in. A fixed
+    // wait is the same mistake this file's other race test made: on a loaded machine it elapses before the
+    // timer fires, the file still reads as abandoned, and the test fails for a reason that is not the subject.
+    const deadline = Date.now() + 5_000;
+    for (;;) {
+      const stat = await fs.stat(lockFile);
+      if (Date.now() - stat.mtimeMs < 60_000) break;
+      if (Date.now() > deadline) throw new Error("the holder never refreshed its lock");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
 
     let second: unknown;
     try { second = await withProjectLock(directory, "slow_job", async () => "stole it", { timeoutMs: 0 }); }
