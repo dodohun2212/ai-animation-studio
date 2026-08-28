@@ -108,6 +108,36 @@ describe("ProjectsService", () => {
     expect(await restarted.getProjectSettings("wizard_project")).toEqual({ settings: { ...settings, durationSeconds: 30 } });
   });
 
+  it("refuses to change the scene count once a Story has been written, while leaving the rest of the form editable", async () => {
+    // Accepted, the change put the project in a state it could not leave: Asset Mapping review counts scenes
+    // from the settings and the Story from its own, so the next step refused with "Exactly 8 Story scenes are
+    // required" — a number nobody typed, about a change made on a different screen. Refused here, the message
+    // names the actual cause while the person is still looking at the field they changed.
+    await service.createProject({ projectId: "story_scenes", topic: "등대" });
+    const settings = {
+      projectName: "등대", topic: "등대", genre: "", mood: "", character: "", lore: "", fullStory: "",
+      sceneCount: 6 as const, clipDurationSeconds: 5 as const, additionalNotes: "",
+      styleNotes: {}, narrationEnabled: false, subtitlesEnabled: false,
+    };
+    await service.updateProjectSettings("story_scenes", { settings });
+
+    // Before a Story exists, changing it is ordinary.
+    await service.updateProjectSettings("story_scenes", { settings: { ...settings, sceneCount: 4 as const } });
+    expect((await service.getProjectSettings("story_scenes")).settings.sceneCount).toBe(4);
+
+    const stored = await new LocalProjectRepository(root).findById("story_scenes");
+    stored.scenes = [1, 2, 3, 4].map((number) => ({ number, description: `scene ${number}` }));
+    await new LocalProjectRepository(root).save(stored);
+
+    await expect(service.updateProjectSettings("story_scenes", { settings: { ...settings, sceneCount: 8 as const } }))
+      .rejects.toMatchObject({ response: { code: "PROJECT_SCENE_COUNT_LOCKED" } });
+
+    // The rest of the form still saves, and so does re-saving the same scene count.
+    const renamed = await service.updateProjectSettings("story_scenes", { settings: { ...settings, sceneCount: 4 as const, projectName: "등대지기" } });
+    expect(renamed.settings.projectName).toBe("등대지기");
+    expect((await service.getProjectSettings("story_scenes")).settings.sceneCount).toBe(4);
+  });
+
   it("returns an empty cast for a project that has never set one", async () => {
     await service.createProject({ projectId: "cast_project", topic: "topic" });
     expect(await service.getProjectCast("cast_project")).toEqual({ cast: [] });

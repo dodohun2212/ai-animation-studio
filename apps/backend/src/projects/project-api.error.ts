@@ -11,7 +11,8 @@ export type ProjectErrorCode =
   | "PROJECT_STORAGE_ERROR"
   | "PROJECT_ARCHIVE_NOT_ALLOWED"
   | "PROJECT_ARCHIVE_COLLISION"
-  | "PROJECT_RESTORE_COLLISION";
+  | "PROJECT_RESTORE_COLLISION"
+  | "PROJECT_SCENE_COUNT_LOCKED";
 
 export class ProjectApiException extends HttpException {
   constructor(
@@ -91,4 +92,21 @@ export function projectRestoreCollision(): ProjectApiException {
     "An active project already exists at this project's original location.",
     HttpStatus.CONFLICT,
   );
+}
+
+/**
+ * The scene count cannot be changed once a Story has been written to it.
+ *
+ * Without this the change is accepted and the project quietly stops being able to move on: Asset Mapping review
+ * counts scenes from the settings and the Story from its own, so the next step refuses with "Exactly N Story
+ * scenes are required" — a number the person never typed, about a change they made somewhere else. Refusing here
+ * names the actual cause while they are still looking at the thing they changed.
+ *
+ * Only the scene count. Clip length does not go into the Story prompt on this side, so changing it leaves
+ * nothing inconsistent — unlike the Long Project's Episode, where both are in the prompt and both are refused.
+ */
+export function sceneCountLocked(storyScenes: number): ProjectApiException {
+  return new ProjectApiException("PROJECT_SCENE_COUNT_LOCKED",
+    `This project's Story already has ${storyScenes} scenes. Regenerate the Story to change how many it has.`,
+    HttpStatus.CONFLICT);
 }

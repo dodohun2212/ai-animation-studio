@@ -28,7 +28,7 @@ import type {
   UpdateShortProjectCastResponse,
 } from "@ai-animation-studio/shared";
 
-import { invalidRequest, projectArchiveCollision, projectArchiveNotAllowed, projectNotFound, projectRestoreCollision, storageError } from "./project-api.error.js";
+import { sceneCountLocked, invalidRequest, projectArchiveCollision, projectArchiveNotAllowed, projectNotFound, projectRestoreCollision, storageError } from "./project-api.error.js";
 import { createStoredProject, toApiProject, toApiSummary } from "./project.mapper.js";
 import { applyShortProjectAssetReferences, parseShortProjectAssetReferences, toShortProjectAssetReferences } from "./project-asset-references.js";
 import { applyPostDraft, parsePostDraft, toPostDraft } from "./project-post-draft.js";
@@ -150,6 +150,11 @@ export class ProjectsService {
   ): Promise<UpdateProjectSettingsResponse> {
     const stored = await this.repository.findById(projectId.trim());
     const settings = parseShortProjectSettings(request?.settings);
+    // Everything else on this form stays editable with a Story in place — the name, the topic, the notes. Only
+    // the scene count is refused, and only when it would actually change, because that is the one the rest of
+    // the pipeline counts from while the Story counts from its own scenes.
+    const storyScenes = stored.scenes.length;
+    if (storyScenes > 0 && settings.sceneCount !== toShortProjectSettings(stored).sceneCount) throw sceneCountLocked(storyScenes);
     const updated = applyShortProjectSettings(stored, settings, new Date().toISOString());
     await this.repository.save(updated);
     return { project: toApiProject(updated), settings };
