@@ -22,6 +22,25 @@ async function setup(episodeDurationSeconds: 30 | 60 = 30, aspectRatio: "9:16" |
 afterEach(async () => { vi.unstubAllGlobals(); if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 
 describe("EpisodeVideosService", () => {
+  it("turns a second start away on the state, and answers a resent one with the job it already made", async () => {
+    // Which of the two refuses matters, because they are not the same protection. The state gate is what stops a
+    // second paid job from starting: the Episode is already generating, so any start is refused regardless of the
+    // request id. The id does something else — a start that is *re-sent* (a timed-out client retrying the same
+    // thing) gets the existing job back instead of that refusal.
+    //
+    // Written after reporting the opposite: the id was described as the thing holding the money, and it is not.
+    const { videos } = await setup();
+    const preview = await videos.preview("long", 1);
+    const prompts = preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt }));
+    const first = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "intent-a", prompts });
+
+    const resent = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "intent-a", prompts });
+    expect(resent.jobId).toBe(first.jobId);
+
+    await expect(videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "intent-b", prompts }))
+      .rejects.toMatchObject({ response: { code: "LONG_EPISODE_VIDEOS_NOT_ALLOWED" } });
+  });
+
   it("does not call a job succeeded while the Episode is still being moved to review", async () => {
     // The two facts land one write apart: the last scene's record is saved as succeeded, then the Episode state
     // moves to videos_review. A poll in between used to answer "succeeded" — and the screen opens its review on
