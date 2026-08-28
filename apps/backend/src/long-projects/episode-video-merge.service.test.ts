@@ -174,4 +174,22 @@ describe("EpisodeVideoMergeService", () => {
     const source = await fs.readFile(new URL("./episode-video-merge.service.ts", import.meta.url), "utf8");
     expect(source).not.toMatch(/openai|runwayml\.com|runway-video-adapter|fetch\s*\(/i);
   });
+
+  it("refuses to merge a paid run whose clips are placeholders, while the local fake path still merges", async () => {
+    // What the real cycle left behind: records saying runway, reviews approved, and six 32-byte files. The old
+    // check was "larger than zero bytes", which a bare header satisfies — so this would have concatenated the
+    // stubs and published the result as the final video. Costs nothing, which is exactly why it is easy to
+    // press and why the output is believed.
+    const { projectsRoot } = await setup();
+    const merge = new EpisodeVideoMergeService(projectsRoot, runner({}, []));
+    const records = path.join(projectsRoot, "long", "long_story", "Episode01", "video_generation_records.json");
+    const stored = JSON.parse(await fs.readFile(records, "utf8")) as Record<string, unknown>[];
+    await fs.writeFile(records, JSON.stringify(stored.map((item) => ({ ...item, execution_mode: "runway" }))), "utf8");
+
+    await expect(merge.merge("long", 1)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_MERGE_CLIPS_INVALID" } });
+
+    // The same clips under the local fake path are not a problem: there a placeholder is what the path writes.
+    await fs.writeFile(records, JSON.stringify(stored), "utf8");
+    await expect(new EpisodeVideoMergeService(projectsRoot, runner({}, [])).merge("long", 1)).resolves.toBeTruthy();
+  });
 });

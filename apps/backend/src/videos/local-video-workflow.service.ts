@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { PLACEHOLDER_MP4 } from "./placeholder-clip.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
@@ -35,7 +36,8 @@ import {
   videoWorkflowNotAllowed,
 } from "./video-workflow-api.error.js";
 
-const LOCAL_FAKE_MP4 = Buffer.from("000000186674797069736F6D0000020069736F6D69736F32617663316D703431", "hex");
+/** The local fake path's bytes, shared so nothing can hold a second opinion about them. */
+const LOCAL_FAKE_MP4 = PLACEHOLDER_MP4;
 
 type VideoStatus = "created" | "submitting" | "running" | "succeeded" | "interrupted" | "failed";
 type VideoRecord = Record<string, unknown> & {

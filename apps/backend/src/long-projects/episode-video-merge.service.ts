@@ -6,6 +6,7 @@ import { isSceneNumber, sceneNumbersFor, type LongEpisodeDetail, type LongEpisod
 
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "../videos/ffmpeg-merge.service.js";
+import { isPlaceholderClip } from "../videos/placeholder-clip.js";
 import { longEpisodeFfmpegUnavailable, longEpisodeMergeClipsInvalid, longEpisodeMergeFailed, longEpisodeMergeNotAllowed, longEpisodeNotFound, longInvalidData, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
@@ -88,7 +89,12 @@ export class EpisodeVideoMergeService {
     if (!Array.isArray(rawReviews) || rawReviews.length !== sceneNumbers.length || !rawReviews.every((item) => object(item) && scene(item.scene_number) && item.status === "approved" && typeof item.updated_at === "string") || new Set(rawReviews.map((item) => (item as Review).scene_number)).size !== sceneNumbers.length) throw longEpisodeMergeClipsInvalid();
     if (!Array.isArray(rawRecords) || rawRecords.length !== sceneNumbers.length || !rawRecords.every((item) => object(item) && scene(item.scene_number) && typeof item.job_id === "string" && item.job_id.length > 0 && item.status === "succeeded" && (item.execution_mode === "local_fake_no_provider" || item.execution_mode === "runway")) || new Set(rawRecords.map((item) => (item as VideoRecord).scene_number)).size !== sceneNumbers.length || new Set(rawRecords.map((item) => (item as VideoRecord).job_id)).size !== 1) throw longEpisodeMergeClipsInvalid();
     const clips = sceneNumbers.map((number_) => this.clip(id, number, number_));
-    try { await Promise.all(clips.map(async (file) => { if ((await fs.stat(file)).size <= 0) throw new Error("empty"); })); }
+    // "Larger than zero" is the right test for the local fake path, whose clips *are* placeholders by design.
+    // It is the wrong test for a run that went to Runway: there a placeholder means the download was thrown
+    // away, which is what six paid scenes looked like on disk while every earlier check read green — and
+    // concatenating those produces a file that reaches the library calling itself the final video.
+    const paid = rawRecords.some((item) => (item as VideoRecord).execution_mode === "runway");
+    try { await Promise.all(clips.map(async (file) => { const { size } = await fs.stat(file); if (size <= 0 || (paid && isPlaceholderClip(size))) throw new Error("clip"); })); }
     catch { throw longEpisodeMergeClipsInvalid(); }
     return clips;
   }

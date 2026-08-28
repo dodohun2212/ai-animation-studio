@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { PLACEHOLDER_MP4 } from "../videos/placeholder-clip.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable, type OnModuleDestroy } from "@nestjs/common";
@@ -19,7 +20,8 @@ import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generati
 
 /** Matches video-preview.service.ts's SCENE_FIELDS (minus "number", "narration"): the fields promptFor() reads. */
 const MOTION_SCENE_FIELDS = ["description", "visual_action", "start_motion", "main_motion", "end_motion", "shot_size", "camera_angle", "composition", "lens_feel", "focus_subject", "camera_motion", "environment_motion", "motion_speed", "motion_intensity", "expression_change", "continuity_hint"] as const;
-const MP4 = Buffer.from("000000186674797069736F6D0000020069736F6D69736F32617663316D703431", "hex");
+/** The local fake path's bytes, shared so nothing can hold a second opinion about them. */
+const MP4 = PLACEHOLDER_MP4;
 const statuses: readonly LongEpisodeStatus[] = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted"];
 type ObjectMap = { [key: string]: unknown };
 type Episode = ObjectMap & { number: number; state: LongEpisodeStatus; approved: boolean; script: { scenes?: unknown }; script_revision: number; updated_at: string; duration_seconds: number; scene_count?: number };
