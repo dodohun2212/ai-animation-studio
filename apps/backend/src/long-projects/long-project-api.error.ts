@@ -83,14 +83,19 @@ export const longEpisodeSettingsNotAllowed = () => new LongProjectApiException("
  * pads whatever comes back to the new shape — paid work, produced at a size nothing else in the project matches.
  * A project generated, billed and merged in the wrong orientation is a mistake this repository has already made
  * once (see the commit that restored it), and this is the version of it that a settings save can cause.
+ *
+ * The Episode number travels in `details` as well as the message: the message is the backend's own words and
+ * never reaches a screen, so a frontend that wants to name the Episode has nowhere else to get it. Same shape
+ * as the short side's PROJECT_SCENE_COUNT_LOCKED.
  */
-export const longAspectRatioLocked = (episodeNumber: number) => new LongProjectApiException("LONG_PROJECT_ASPECT_RATIO_LOCKED", `Episode ${episodeNumber} already has images made at the current aspect ratio.`, HttpStatus.CONFLICT);
+export const longAspectRatioLocked = (episodeNumber: number) => new LongProjectApiException("LONG_PROJECT_ASPECT_RATIO_LOCKED", `Episode ${episodeNumber} already has images made at the current aspect ratio.`, HttpStatus.CONFLICT, { episodeNumber });
 
 /**
  * The episode count cannot be reduced past an Episode that has been worked on.
  *
  * Dropping it from the outline list would leave its script, images and videos on disk with nothing pointing at
  * them — work that was paid for, gone from the app with no way back to it. Refusing says which Episode is in
- * the way while the person is still looking at the number they typed.
+ * the way while the person is still looking at the number they typed. The number travels in `details` too,
+ * for the same reason as LONG_PROJECT_ASPECT_RATIO_LOCKED above.
  */
-export const longEpisodeCountLocked = (episodeNumber: number) => new LongProjectApiException("LONG_PROJECT_EPISODE_COUNT_LOCKED", `Episode ${episodeNumber} has already been worked on and would be dropped.`, HttpStatus.CONFLICT);
+export const longEpisodeCountLocked = (episodeNumber: number) => new LongProjectApiException("LONG_PROJECT_EPISODE_COUNT_LOCKED", `Episode ${episodeNumber} has already been worked on and would be dropped.`, HttpStatus.CONFLICT, { episodeNumber });

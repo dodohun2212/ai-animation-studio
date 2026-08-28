@@ -49,7 +49,7 @@ describe("LongProjectsService", () => {
     await fs.writeFile(outlines, JSON.stringify(stored), "utf8");
 
     await expect(subject.updateSettings("long_test", { settings: { ...input.settings, episodeCount: 2 } }))
-      .rejects.toMatchObject({ response: { code: "LONG_PROJECT_EPISODE_COUNT_LOCKED" } });
+      .rejects.toMatchObject({ response: { code: "LONG_PROJECT_EPISODE_COUNT_LOCKED", details: { episodeNumber: 3 } } });
     expect((await subject.get("long_test")).project.episodes).toHaveLength(3);
   });
 
@@ -92,7 +92,7 @@ describe("LongProjectsService", () => {
     await fs.writeFile(outlines, JSON.stringify(stored), "utf8");
 
     await expect(subject.updateSettings("long_test", { settings: input.settings }))
-      .rejects.toMatchObject({ response: { code: "LONG_PROJECT_ASPECT_RATIO_LOCKED" } });
+      .rejects.toMatchObject({ response: { code: "LONG_PROJECT_ASPECT_RATIO_LOCKED", details: { episodeNumber: 2 } } });
     expect((await subject.getSettings("long_test")).settings.aspectRatio).toBe("16:9");
 
     // The rest of the form still saves — including the scene count, which is only a default for new Episodes now.
