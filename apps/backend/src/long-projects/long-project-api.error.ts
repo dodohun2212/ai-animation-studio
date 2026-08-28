@@ -62,3 +62,12 @@ export const storyBibleItemExists = () => new LongProjectApiException("STORY_BIB
  * value with, so the frontend needs only one safe-message table entry for both (docs/06_DECISIONS.md D-010).
  */
 export const longEpisodeLocked = () => new LongProjectApiException("PROJECT_LOCKED", "Another process is currently advancing this Episode's video generation.", HttpStatus.CONFLICT);
+
+/**
+ * The Long Project's outline is already being generated. Shares the `PROJECT_LOCKED` code with its twins above
+ * and on the short side, so the frontend needs only one safe-message entry for all of them (D-010).
+ *
+ * Reached only under real contention past the acquire timeout — the ordinary case is the second press waiting
+ * for the first, then finding the outline already made and being refused for that reason instead.
+ */
+export const longProjectLocked = () => new LongProjectApiException("PROJECT_LOCKED", "This Long Project's outline is already being generated.", HttpStatus.CONFLICT);

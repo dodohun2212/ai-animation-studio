@@ -5,12 +5,14 @@ import { Injectable } from "@nestjs/common";
 import { LONG_OUTLINE_ESTIMATED_COST_USD, MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, type ApproveLongProjectOutlineRequest, type ApproveLongProjectOutlineResponse, type ArchivedLongProjectSummary, type ArchiveProjectRequest, type ArchiveProjectResponse, type CreateLongProjectOutlinePreviewResponse, type CreateLongProjectRequest, type CreateLongProjectResponse, type DeleteArchivedProjectRequest, type DeleteArchivedProjectResponse, type GetLongProjectResponse, type GetLongProjectSettingsResponse, type ListArchivedLongProjectsResponse, type ListLongProjectsResponse, type LongEpisodeOutline, type LongProject, type LongProjectSettings, type LongProjectSummary, type RestoreProjectResponse, type UpdateLongProjectSettingsRequest, type UpdateLongProjectSettingsResponse } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { archiveProjectDirectory, deleteArchivedProjectDirectory, listArchivedProjectDirectories, restoreProjectDirectory } from "../projects/project-archive.js";
-import { isSafeProjectId } from "../projects/project-id.js";
+import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
+import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiEpisodePlannerApi, type OpenAiEpisodeOutlineResult } from "./openai-episode-planner-adapter.js";
-import { longArchiveCollision, longArchiveNotAllowed, longExists, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longOutlineBudgetExceeded, longOutlineNotAllowed, longOutlineProviderError, longOutlineStale, longRestoreCollision, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { longArchiveCollision, longArchiveNotAllowed, longExists, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longOutlineBudgetExceeded, longOutlineNotAllowed,
+  longProjectLocked, longOutlineProviderError, longOutlineStale, longRestoreCollision, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { longStoryRoot } from "./long-project-paths.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 
@@ -194,7 +196,29 @@ export class LongProjectsService {
     });
     return { project, episodes };
   }
+  /**
+   * Generating the Episode outline, once, for a project that has not had one.
+   *
+   * Held under the project lock because the check and the write are minutes apart in the worst case and the
+   * paid call sits between them. Pressing approve, seeing nothing happen, and pressing again is what a person
+   * does when a slow step gives no sign of life — and it charged twice: the second press read `planned`,
+   * because the first had not written `outline_ready` yet. It happened, twenty-three seconds apart.
+   *
+   * The lock does not refuse the second press. It makes it wait, and by the time it runs the status says the
+   * outline is already made, so the refusal comes from the state rather than from timing. That is the
+   * difference between "usually fine" and correct.
+   */
   async approve(id: string, request: ApproveLongProjectOutlineRequest): Promise<ApproveLongProjectOutlineResponse> {
+    const projectId = id.trim();
+    try {
+      return await withProjectLock(resolveSafeProjectDirectory(this.projectsRoot, projectId), `${projectId}:long-outline`, () => this.approveCore(projectId, request));
+    } catch (error) {
+      if (error instanceof ProjectLockTimeoutError) throw longProjectLocked();
+      throw error;
+    }
+  }
+
+  private async approveCore(id: string, request: ApproveLongProjectOutlineRequest): Promise<ApproveLongProjectOutlineResponse> {
     const s = await this.load(id.trim()); if (s.outline_status !== "planned") throw longOutlineNotAllowed();
     const preview = await this.preview(s.project_id);
     if (!(request && request.approved === true && typeof request.prompt === "string" && request.prompt.trim() && request.promptSha256 === preview.preview.promptSha256)) throw longOutlineStale();

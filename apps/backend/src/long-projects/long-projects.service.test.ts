@@ -78,6 +78,40 @@ describe("LongProjectsService", () => {
     await expect(fs.access(path.join(root!, "projects", "long_test", "long_story", "episodes"))).rejects.toBeTruthy();
   });
 
+  it("charges once when approve is pressed twice, even simultaneously", async () => {
+    // 🔴 This really happened, twenty-three seconds apart and twice billed. The status check and the status
+    // write sit on either side of the paid call, so a second press taken while the first was still generating
+    // read "planned" and went ahead. Pressing again is what a person does when a slow step gives no sign of
+    // life, so the app has to be the thing that refuses.
+    //
+    // The lock does not refuse the second press; it makes it wait, and by the time it runs the status is
+    // already outline_ready. The refusal comes from the state rather than from timing.
+    const subject = await service();
+    await subject.create(input);
+    const preview = await subject.preview("long_test");
+    const approval = { approved: true as const, promptSha256: preview.preview.promptSha256, prompt: preview.preview.prompt };
+
+    const [first, second] = await Promise.allSettled([
+      subject.approve("long_test", approval),
+      subject.approve("long_test", approval),
+    ]);
+
+    const fulfilled = [first, second].filter((outcome) => outcome.status === "fulfilled");
+    expect(fulfilled).toHaveLength(1);
+    const rejected = [first, second].find((outcome) => outcome.status === "rejected");
+    expect(rejected).toMatchObject({ reason: { response: { code: "LONG_OUTLINE_NOT_ALLOWED" } } });
+  });
+
+  it("refuses a second approval once the outline exists, however long afterwards", async () => {
+    const subject = await service();
+    await subject.create(input);
+    const preview = await subject.preview("long_test");
+    const approval = { approved: true as const, promptSha256: preview.preview.promptSha256, prompt: preview.preview.prompt };
+    await subject.approve("long_test", approval);
+
+    await expect(subject.approve("long_test", approval)).rejects.toMatchObject({ response: { code: "LONG_OUTLINE_NOT_ALLOWED" } });
+  });
+
   it("rejects unsafe IDs and skips corrupt projects when listing", async () => {
     const subject = await service(); await expect(subject.create({ ...input, projectId: "../bad" })).rejects.toMatchObject({ response: { code: "UNSAFE_PROJECT_ID" } });
     await fs.mkdir(path.join(root!, "projects", "broken", "long_story"), { recursive: true });
