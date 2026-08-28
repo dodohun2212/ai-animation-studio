@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post } from "@nestjs/common";
-import { API_ROUTES, type ApproveLongEpisodeVideoReviewRequest, type ApproveLongEpisodeVideoReviewResponse, type GetLongEpisodeVideoPreviewResponse, type GetLongEpisodeVideoReviewResponse, type LongEpisodeVideoProgress, type RegenerateLongEpisodeVideoResponse, type StartLongEpisodeVideoGenerationRequest, type StartLongEpisodeVideoGenerationResponse } from "@ai-animation-studio/shared";
+import { API_ROUTES, type ApproveLongEpisodeVideoReviewRequest, type ApproveLongEpisodeVideoReviewResponse, type GetLongEpisodeCurrentVideoJobResponse, type GetLongEpisodeVideoPreviewResponse, type GetLongEpisodeVideoReviewResponse, type LongEpisodeVideoProgress, type RegenerateLongEpisodeVideoResponse, type StartLongEpisodeVideoGenerationRequest, type StartLongEpisodeVideoGenerationResponse } from "@ai-animation-studio/shared";
 import { EpisodeVideosService } from "./episode-videos.service.js";
 
 @Controller()
@@ -7,6 +7,11 @@ export class EpisodeVideosController {
   constructor(private readonly service: EpisodeVideosService) {}
   @Get(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/videos/preview`) preview(@Param("projectId") id: string, @Param("episodeNumber") number: string): Promise<GetLongEpisodeVideoPreviewResponse> { return this.service.preview(id, Number(number)); }
   @Post(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/videos/generations`) async start(@Param("projectId") id: string, @Param("episodeNumber") number: string, @Body() body: StartLongEpisodeVideoGenerationRequest): Promise<StartLongEpisodeVideoGenerationResponse> { const started = await this.service.start(id, Number(number), body); void this.service.run(id, Number(number), started.jobId).catch(() => undefined); return started; }
+  /** The way back to a running generation after a reload — see EpisodeVideosService.currentJob. */
+  @Get(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/videos/generations/current`)
+  currentJob(@Param("projectId") id: string, @Param("episodeNumber") number: string): Promise<GetLongEpisodeCurrentVideoJobResponse> {
+    return this.service.currentJob(id, Number(number));
+  }
   @Get(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/videos/generations/:jobId`) progress(@Param("projectId") id: string, @Param("episodeNumber") number: string, @Param("jobId") job: string): Promise<LongEpisodeVideoProgress> { return this.service.progress(id, Number(number), job); }
   @Post(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/videos/generations/:jobId/stop`) stop(@Param("projectId") id: string, @Param("episodeNumber") number: string, @Param("jobId") job: string): Promise<LongEpisodeVideoProgress> { return this.service.stop(id, Number(number), job); }
   @Post(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/videos/generations/:jobId/restart`) restart(@Param("projectId") id: string, @Param("episodeNumber") number: string, @Param("jobId") job: string): Promise<LongEpisodeVideoProgress> { return this.service.restart(id, Number(number), job); }

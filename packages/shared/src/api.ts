@@ -134,6 +134,18 @@ export interface ApproveLongEpisodeScriptResponse { episode: LongEpisodeDetail; 
 
 
 /** Provider-free persisted review decision for one long-story Episode image. */
+/**
+ * Which video generation this Episode is currently on, if any.
+ *
+ * Every other video route needs a job id, and the id only ever existed in the browser's memory — a refresh, a
+ * closed tab, or opening the Episode on another day left paid work running with no way to watch it or stop it.
+ * The records on disk have always known; nothing asked them.
+ *
+ * `null` means there is no job to return to, which is different from "the Episode is idle": a finished job stays
+ * reportable so a reload during review does not lose the thing being reviewed.
+ */
+export interface GetLongEpisodeCurrentVideoJobResponse { jobId: string | null; }
+
 export interface LongEpisodeImageReview {
   sceneNumber: SceneNumber;
   status: "pending" | "approved";
@@ -1341,6 +1353,9 @@ export const API_ROUTES = {
   /** One scene's generated image, as bytes. The short project's projectImageContent, for an Episode. */
   longEpisodeImageContent: (projectId: string, episodeNumber: number, sceneNumber: number) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/images/${sceneNumber}/content`,
+  /** The Episode's current video job, so a reloaded screen can find its way back to work already paid for. */
+  longEpisodeCurrentVideoJob: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/generations/current`,
   longEpisodeImageReviewApproval: (projectId: string, episodeNumber: number, sceneNumber: SceneNumber) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/images/review/${sceneNumber}/approve`,
   longEpisodeImageReviewRegeneration: (projectId: string, episodeNumber: number, sceneNumber: SceneNumber) =>

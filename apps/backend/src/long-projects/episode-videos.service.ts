@@ -2,7 +2,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable, type OnModuleDestroy } from "@nestjs/common";
-import { isSceneNumber, RUNWAY_PROMPT_MAX_LENGTH, sceneNumbersFor, VIDEO_SCENE_ESTIMATED_COST_USD, type ApproveLongEpisodeVideoReviewRequest, type ApproveLongEpisodeVideoReviewResponse, type GetLongEpisodeVideoPreviewResponse, type GetLongEpisodeVideoReviewResponse, type LongEpisodeDetail, type LongEpisodeStatus, type LongEpisodeVideoProgress, type LongEpisodeVideoReview, type RegenerateLongEpisodeVideoResponse, type SceneNumber, type StartLongEpisodeVideoGenerationRequest, type StartLongEpisodeVideoGenerationResponse } from "@ai-animation-studio/shared";
+import { isSceneNumber, RUNWAY_PROMPT_MAX_LENGTH, sceneNumbersFor, VIDEO_SCENE_ESTIMATED_COST_USD, type ApproveLongEpisodeVideoReviewRequest, type ApproveLongEpisodeVideoReviewResponse, type GetLongEpisodeCurrentVideoJobResponse, type GetLongEpisodeVideoPreviewResponse, type GetLongEpisodeVideoReviewResponse, type LongEpisodeDetail, type LongEpisodeStatus, type LongEpisodeVideoProgress, type LongEpisodeVideoReview, type RegenerateLongEpisodeVideoResponse, type SceneNumber, type StartLongEpisodeVideoGenerationRequest, type StartLongEpisodeVideoGenerationResponse } from "@ai-animation-studio/shared";
 import { validateImage } from "../assets/image-validation.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { resolveSafeProjectDirectory } from "../projects/project-id.js";
@@ -236,6 +236,24 @@ export class EpisodeVideosService implements OnModuleDestroy {
     if (records.every((item) => item.status === "succeeded") && (await Promise.all(sceneNumbersFor(this.sceneCount(episode)).map((item) => this.validVideo(this.video(id, number, item))))).every(Boolean)) { episode.state = "videos_review"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode); }
     return this.progressFor(episode, job, records);
   }
+  /**
+   * The job this Episode is on, or null.
+   *
+   * Everything else here is addressed by a job id that only ever lived in one browser tab. Reload it and the
+   * paid generation was still running with nothing able to look at it: progress needs the id, and preview —
+   * the one route that hands one back — refuses once generation has started. This is the way back in.
+   *
+   * The most recent job wins rather than "a running one", because a finished job is still what a reloaded
+   * review screen needs to show. Idleness is reported as null instead of an error: there being no job is an
+   * ordinary answer to the question, not a failure to answer it.
+   */
+  async currentJob(projectId: string, number: number): Promise<GetLongEpisodeCurrentVideoJobResponse> {
+    const id = projectId.trim();
+    const episode = await this.loadEpisode(id, number);
+    const records = await this.records(id, number, this.sceneCount(episode)).catch(() => []);
+    return { jobId: records.length ? records[records.length - 1]!.job_id : null };
+  }
+
   async progress(projectId: string, number: number, job: string) { const id = projectId.trim(); let episode = await this.loadEpisode(id, number); let records = await this.records(id, number, this.sceneCount(episode), job); if (episode.state === "videos_generating" && records[0]!.execution_mode === "runway") { records = await this.advanceReal(id, number, job); episode = await this.loadEpisode(id, number); this.scheduleTimer(`${id}:${number}:${job}`, () => { void this.advanceReal(id, number, job).catch(() => undefined); }); } return this.progressFor(episode, job, records); }
   async stop(projectId: string, number: number, job: string) { const id = projectId.trim(); const episode = await this.loadEpisode(id, number); await this.records(id, number, this.sceneCount(episode), job); if (episode.state !== "videos_generating") throw longEpisodeVideosNotAllowed(); this.stopped.add(job); this.clearTimer(`${id}:${number}:${job}`); episode.state = "interrupted"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode); return this.progress(id, number, job); }
   async restart(projectId: string, number: number, job: string) { const id = projectId.trim(); const episode = await this.loadEpisode(id, number); await this.records(id, number, this.sceneCount(episode), job); if (episode.state !== "interrupted") throw longEpisodeVideosNotAllowed(); this.stopped.delete(job); episode.state = "videos_generating"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode); return this.run(id, number, job); }
