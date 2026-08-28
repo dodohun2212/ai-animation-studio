@@ -62,12 +62,27 @@ export function SceneEditScreen({ projectId, onBack }: Props) {
   const scenes = state.status === "ready" ? state.project.scenes : [];
   const scene = useMemo(() => scenes.find((item) => item.number === selected), [scenes, selected]);
 
-  // Reset the draft whenever a different scene is opened, so edits never leak between scenes.
-  useEffect(() => {
+  /**
+   * Opening a different scene drops whatever was typed into the previous one, so edits never leak between
+   * scenes. That reset lives in the tab's click handler (`openScene`) and deliberately NOT in an effect on
+   * `[selected]`, which is where it used to live.
+   *
+   * An effect on `[selected]` runs for every reason `selected` changes, and a click is not the only one: it
+   * also goes from null to the first scene when the initial GET resolves. React runs passive effects after
+   * commit, so between the inputs appearing on screen and that effect running there is a real window in which
+   * a fast typist has already typed — and the effect then wiped it, with the save button falling back to
+   * disabled and no error shown. Reproducing that window in a test is a scheduling race, which is why it
+   * surfaced as an intermittently red test rather than a failing one; guarding the effect with a "was this the
+   * first selection" ref would have closed the same window but left the shape that produced it. Resetting from
+   * the event that actually means "the person moved to another scene" removes the window instead of narrowing
+   * it: nothing clears the draft now except this click, an explicit 되돌리기, or a successful save.
+   */
+  function openScene(number: SceneNumber): void {
+    setSelected(number);
     setDraft({});
     setSaveError(null);
     setSavedSceneNumber(null);
-  }, [selected]);
+  }
 
   const currentValue = (key: string) => (key in draft ? draft[key]! : valueOf(scene, key));
   const changedKeys = SCENE_FIELD_KEYS.filter((key) => key in draft && draft[key] !== valueOf(scene, key));
@@ -139,7 +154,7 @@ export function SceneEditScreen({ projectId, onBack }: Props) {
                     ? "border-violet-400/50 bg-violet-500/15 text-violet-200"
                     : "border-white/10 text-slate-300 hover:bg-white/5"
                 }`}
-                onClick={() => setSelected(item.number)}
+                onClick={() => openScene(item.number)}
               >
                 {item.number}번 장면
               </button>

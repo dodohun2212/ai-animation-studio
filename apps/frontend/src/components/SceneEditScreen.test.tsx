@@ -163,6 +163,53 @@ describe("SceneEditScreen", () => {
     expect(screen.getByLabelText("주요 동작")).toHaveValue("main");
   });
 
+  it("clears the previous scene's save error and save result when another scene is opened", async () => {
+    // These two used to be cleared by an effect on [selected], together with the draft. That effect also ran
+    // on the null -> first-scene transition the initial load causes, which is the race that wiped what a fast
+    // typist had already entered; the reset now hangs off the tab click instead. Moving it is only safe if
+    // everything it used to clear still gets cleared, so all three are asserted here — the draft has its own
+    // test above, and these are the two that had none.
+    const project = makeProject({ scenes: [scene(1), scene(2)] });
+    renderScreen(
+      stubFetchByRoute(
+        { [`GET ${PROJECT_URL}`]: { project } },
+        {
+          [`PATCH ${PATCH_URL}`]: {
+            status: 400,
+            body: { code: "INVALID_REQUEST", message: "scene contains unsupported fields: foo" },
+          },
+        },
+      ),
+    );
+
+    await screen.findByDisplayValue("행동 1");
+    fireEvent.change(screen.getByLabelText("읽어줄 문장"), { target: { value: "고친 문장" } });
+    fireEvent.click(screen.getByTestId("scene-edit-save"));
+    await screen.findByTestId("scene-edit-save-error");
+
+    fireEvent.click(screen.getByTestId("scene-edit-tab-2"));
+    expect(screen.queryByTestId("scene-edit-save-error")).toBeNull();
+    expect(screen.queryByTestId("scene-edit-saved")).toBeNull();
+  });
+
+  it("keeps an edit made right after the scenes appear", async () => {
+    // The defect this stands for: the field was filled in, the text vanished on its own, and the save button
+    // went back to disabled with nothing said. It only happened inside the gap between the inputs being
+    // painted and a passive effect running, so this test cannot fail on the old code — @testing-library
+    // flushes effects before handing control back, which closes that gap. It is kept as the statement of what
+    // must hold, not as the proof: the proof is that no effect resets the draft any more (see openScene), and
+    // that the previously intermittent "sends only the fields that changed" case stays green under repetition.
+    const project = makeProject({ scenes: [scene(1), scene(2)] });
+    renderScreen(stubFetchByRoute({ [`GET ${PROJECT_URL}`]: { project } }));
+
+    await screen.findByDisplayValue("행동 1");
+    fireEvent.change(screen.getByLabelText("주요 동작"), { target: { value: "빠르게 고친 값" } });
+
+    expect(screen.getByLabelText("주요 동작")).toHaveValue("빠르게 고친 값");
+    expect(screen.getByTestId("scene-edit-save")).not.toBeDisabled();
+  });
+
+
   it("shows a safe message instead of the backend's own text when a save is rejected", async () => {
     const project = makeProject({ scenes: [scene(1)] });
     renderScreen(

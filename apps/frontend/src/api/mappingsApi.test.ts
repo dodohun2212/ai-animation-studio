@@ -42,6 +42,17 @@ describe("mappingsApi", () => {
     expect(fetchMock).toHaveBeenCalledWith("/projects/sample_project/assets/mapping-review");
   });
 
+  it("rejects a review response with no sceneCount instead of letting undefined reach the scene pickers", async () => {
+    // The screen builds its scene lists from this number. Without the guard a response missing it arrives as
+    // `undefined` on a field the type says is a number, sceneNumbersFor(undefined) yields nothing, and the
+    // pickers go empty with no error anywhere — the app looking broken instead of saying so.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { review: makeReview() })));
+
+    await expect(projectMappingApi("sample_project").getReview()).rejects.toMatchObject({
+      code: "CLIENT_MALFORMED_RESPONSE",
+    });
+  });
+
   it("confirms a mapping via PATCH with a decision body", async () => {
     const mapping = makeMapping({ status: "confirmed" });
     const review = makeReview();
@@ -181,7 +192,7 @@ describe("mappingsApi", () => {
     await api.list();
     expect(fetchMock).toHaveBeenLastCalledWith("/long-projects/sample_project/episodes/3/assets/mappings");
 
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { review: makeReview() })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { review: makeReview(), sceneCount: 6 })));
     await api.getReview();
     expect(fetch).toHaveBeenLastCalledWith("/long-projects/sample_project/episodes/3/assets/mapping-review");
   });

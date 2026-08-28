@@ -20,7 +20,7 @@ describe("MappingReviewScreen", () => {
     const review = makeReview({ mappingRevision: 2, scriptRevision: 1, scriptFingerprint: "f".repeat(64), reviewedScenes: [1, 2] });
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { mappings: [mapping] }))
-      .mockResolvedValueOnce(jsonResponse(200, { review }))
+      .mockResolvedValueOnce(jsonResponse(200, { review, sceneCount: 6 }))
       .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -42,7 +42,7 @@ describe("MappingReviewScreen", () => {
   it("shows a safe error alert when the initial mappings load fails, without crashing", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(500, { code: "ASSET_MAPPING_STORAGE_ERROR", message: "raw C:\\secret" }))
-      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview() }));
+      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview(), sceneCount: 6 }));
     vi.stubGlobal("fetch", fetchMock);
 
     const rendered = render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
@@ -52,6 +52,47 @@ describe("MappingReviewScreen", () => {
     expect(rendered.container.innerHTML).not.toContain("secret");
   });
 
+  it("offers only the scenes the project actually has", async () => {
+    // A four-scene project used to be shown scenes 1-12, because the list came from the supported range rather
+    // than from this project. Picking 5 or 6 there was accepted by the screen and refused by the server as an
+    // invalid request — the app offering a choice it would not honour. Both pickers are checked, and the check
+    // is "5 is absent" as well as "4 is present": a list that had simply stopped rendering would pass the
+    // second half on its own.
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { mappings: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview(), sceneCount: 4 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
+    await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
+
+    const sceneFilter = screen.getByLabelText("장면") as HTMLSelectElement;
+    expect(Array.from(sceneFilter.options).map((option) => option.value)).toEqual(["", "1", "2", "3", "4"]);
+
+    fireEvent.change(screen.getByLabelText("어느 장면에"), { target: { value: "scene" } });
+    const scenePicker = screen.getByLabelText("연결할 장면 번호") as HTMLSelectElement;
+    expect(Array.from(scenePicker.options).map((option) => option.value)).toEqual(["1", "2", "3", "4"]);
+  });
+
+  it("withholds the scene choices rather than guessing them when the review fails to load", async () => {
+    // The count only arrives with the review. If that call fails there is no honest list to show, and the old
+    // fallback — the full supported range — is the exact thing that produced rejected picks. Empty and
+    // disabled says "not available" instead of offering scenes that may not exist.
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { mappings: [] }))
+      .mockResolvedValueOnce(jsonResponse(500, { code: "ASSET_MAPPING_STORAGE_ERROR", message: "raw" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
+    await screen.findByTestId("review-error");
+
+    const sceneFilter = screen.getByLabelText("장면") as HTMLSelectElement;
+    expect(sceneFilter).toBeDisabled();
+    expect(Array.from(sceneFilter.options).map((option) => option.value)).toEqual([""]);
+    const scopeOptions = Array.from((screen.getByLabelText("어느 장면에") as HTMLSelectElement).options);
+    expect(scopeOptions.find((option) => option.value === "scene")).toBeDisabled();
+  });
+
   it("filters mappings by status, type, and scene", async () => {
     const mappingA = makeMapping({ mappingId: "MAP-A", assetId: "ASSET-A", status: "confirmed", sceneScope: { kind: "scene", sceneNumber: 1 } });
     const mappingB = makeMapping({ mappingId: "MAP-B", assetId: "ASSET-B", status: "excluded", sceneScope: { kind: "scene", sceneNumber: 3 } });
@@ -59,7 +100,7 @@ describe("MappingReviewScreen", () => {
     const assetB = makeAsset({ assetId: "ASSET-B", displayName: "배경 자산", assetType: "background" });
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { mappings: [mappingA, mappingB] }))
-      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview() }))
+      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview(), sceneCount: 6 }))
       .mockResolvedValueOnce(jsonResponse(200, { asset: assetA, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }))
       .mockResolvedValueOnce(jsonResponse(200, { asset: assetB, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true })));
 
@@ -95,7 +136,7 @@ describe("MappingReviewScreen", () => {
     const asset = makeAsset({ assetId: "ASSET-A", displayName: "대상 자산" });
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { mappings: [mapping] }))
-      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview({ mappingRevision: 0 }) }))
+      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview({ mappingRevision: 0 }), sceneCount: 6 }))
       .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }))
       .mockResolvedValueOnce(jsonResponse(200, {
         mapping: { ...mapping, status: "confirmed", userConfirmed: true },
@@ -122,7 +163,7 @@ describe("MappingReviewScreen", () => {
     let resolveDecision: (response: Response) => void = () => {};
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { mappings: [mapping] }))
-      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview() }))
+      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview(), sceneCount: 6 }))
       .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }))
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveDecision = resolve; }));
     vi.stubGlobal("fetch", fetchMock);
@@ -151,7 +192,7 @@ describe("MappingReviewScreen", () => {
     const snapshotted = { ...mapping, snapshot: { relativePath: "asset_snapshots/MAP-A-v1.png", sha256: "c".repeat(64), sourceVersion: 1 } };
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { mappings: [mapping] }))
-      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview() }))
+      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview(), sceneCount: 6 }))
       .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }))
       .mockResolvedValueOnce(jsonResponse(200, { mapping: snapshotted }));
     vi.stubGlobal("fetch", fetchMock);
@@ -177,7 +218,7 @@ describe("MappingReviewScreen", () => {
     });
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { mappings: [] }))
-      .mockResolvedValueOnce(jsonResponse(200, { review: initialReview }))
+      .mockResolvedValueOnce(jsonResponse(200, { review: initialReview, sceneCount: 6 }))
       .mockResolvedValueOnce(jsonResponse(200, { review: begunReview }))
       .mockResolvedValueOnce(jsonResponse(200, { review: approvedReview }));
     vi.stubGlobal("fetch", fetchMock);
@@ -204,7 +245,7 @@ describe("MappingReviewScreen", () => {
     const approved = makeReview({ scriptFingerprint: "a".repeat(64), status: "approved", approvedAt: "2026-08-22T00:00:00.000Z", approvedBy: "user", reviewedScenes: [1, 2] });
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { mappings: [] }))
-      .mockResolvedValueOnce(jsonResponse(200, { review }))
+      .mockResolvedValueOnce(jsonResponse(200, { review, sceneCount: 6 }))
       .mockResolvedValueOnce(jsonResponse(200, { review: approved }));
     vi.stubGlobal("fetch", fetchMock);
     const onOpenImageGeneration = vi.fn();
@@ -220,7 +261,7 @@ describe("MappingReviewScreen", () => {
     const approved = makeReview({ scriptFingerprint: "a".repeat(64), status: "approved", approvedAt: "2026-08-22T00:00:00.000Z", approvedBy: "user", reviewedScenes: [1, 2] });
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { mappings: [] }))
-      .mockResolvedValueOnce(jsonResponse(200, { review: approved }));
+      .mockResolvedValueOnce(jsonResponse(200, { review: approved, sceneCount: 6 }));
     vi.stubGlobal("fetch", fetchMock);
     const onOpenImageGeneration = vi.fn();
 
@@ -238,7 +279,7 @@ describe("MappingReviewScreen", () => {
   it("separates 참고 이미지 from the Story-prompt-only settings, which is what made the name ambiguous", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { mappings: [] }))
-      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview({}) }));
+      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview({}), sceneCount: 6 }));
     vi.stubGlobal("fetch", fetchMock);
 
     render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
@@ -259,7 +300,7 @@ describe("MappingReviewScreen", () => {
         makeMapping({ mappingId: "MAP-KEEP", assetId: kept.assetId, status: "confirmed" }),
         makeMapping({ mappingId: "MAP-DROP", assetId: dropped.assetId, status: "excluded" }),
       ] });
-      if (url === "/projects/sample_project/assets/mapping-review") return jsonResponse(200, { review: makeReview({}) });
+      if (url === "/projects/sample_project/assets/mapping-review") return jsonResponse(200, { review: makeReview({}), sceneCount: 6 });
       if (url === `/assets/${kept.assetId}`) return jsonResponse(200, { asset: kept, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false });
       if (url === `/assets/${dropped.assetId}`) return jsonResponse(200, { asset: dropped, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false });
       throw new Error(`Unexpected fetch: ${url}`);
@@ -287,7 +328,7 @@ describe("MappingReviewScreen", () => {
       if (url === "/assets") return jsonResponse(200, { assets: [folder, child] });
       if (url === "/projects/sample_project/assets/mappings" && method === "POST") return jsonResponse(201, { mapping: created });
       if (url === "/projects/sample_project/assets/mappings") return jsonResponse(200, { mappings: [] });
-      if (url === "/projects/sample_project/assets/mapping-review") return jsonResponse(200, { review: makeReview({}) });
+      if (url === "/projects/sample_project/assets/mapping-review") return jsonResponse(200, { review: makeReview({}), sceneCount: 6 });
       if (url === `/assets/${folder.assetId}`) return jsonResponse(200, { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false });
       throw new Error(`Unexpected fetch: ${method} ${url}`);
     });
@@ -324,7 +365,7 @@ describe("MappingReviewScreen", () => {
       const url = String(input).split("?")[0]!;
       if (url === "/assets") return jsonResponse(200, { assets: [character, generated] });
       if (url === "/projects/sample_project/assets/mappings") return jsonResponse(200, { mappings: [] });
-      if (url === "/projects/sample_project/assets/mapping-review") return jsonResponse(200, { review: makeReview({}) });
+      if (url === "/projects/sample_project/assets/mapping-review") return jsonResponse(200, { review: makeReview({}), sceneCount: 6 });
       throw new Error(`Unexpected fetch: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -345,7 +386,7 @@ describe("MappingReviewScreen", () => {
       const url = String(input).split("?")[0]!;
       if (url === "/assets") return jsonResponse(200, { assets: [asset] });
       if (url === "/projects/sample_project/assets/mappings") return jsonResponse(200, { mappings: [excluded] });
-      if (url === "/projects/sample_project/assets/mapping-review") return jsonResponse(200, { review: makeReview({}) });
+      if (url === "/projects/sample_project/assets/mapping-review") return jsonResponse(200, { review: makeReview({}), sceneCount: 6 });
       if (url === `/assets/${asset.assetId}`) return jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false });
       throw new Error(`Unexpected fetch: ${url}`);
     });
@@ -370,7 +411,7 @@ describe("MappingReviewScreen", () => {
       if (url === "/assets") return jsonResponse(200, { assets: [asset] });
       if (url === "/projects/sample_project/assets/mappings" && method === "POST") return jsonResponse(201, { mapping: makeMapping({ mappingId: "MAP-BG", assetId: asset.assetId }) });
       if (url === "/projects/sample_project/assets/mappings") return jsonResponse(200, { mappings: [] });
-      if (url === "/projects/sample_project/assets/mapping-review") return jsonResponse(200, { review: makeReview({}) });
+      if (url === "/projects/sample_project/assets/mapping-review") return jsonResponse(200, { review: makeReview({}), sceneCount: 6 });
       if (url === `/assets/${asset.assetId}`) return jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false });
       throw new Error(`Unexpected fetch: ${method} ${url}`);
     });
@@ -398,7 +439,7 @@ describe("MappingReviewScreen", () => {
     const review = makeReview({ scriptFingerprint: "a".repeat(64) });
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { mappings: [] }))
-      .mockResolvedValueOnce(jsonResponse(200, { review }))
+      .mockResolvedValueOnce(jsonResponse(200, { review, sceneCount: 6 }))
       .mockResolvedValueOnce(jsonResponse(409, {
         code: "ASSET_MAPPING_APPROVAL_BLOCKED",
         message: "internal detail never shown",
@@ -421,7 +462,7 @@ describe("MappingReviewScreen", () => {
     const review = makeReview({ scriptFingerprint: "a".repeat(64) });
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { mappings: [] }))
-      .mockResolvedValueOnce(jsonResponse(200, { review }))
+      .mockResolvedValueOnce(jsonResponse(200, { review, sceneCount: 6 }))
       .mockResolvedValueOnce(jsonResponse(409, { code: "ASSET_MAPPING_FINGERPRINT_MISMATCH", message: "internal detail" }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -439,10 +480,10 @@ describe("MappingReviewScreen", () => {
     const asset = makeAsset({ assetId: "ASSET-A", displayName: "유지되어야 할 자산" });
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { mappings: [mapping] }))
-      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview() }))
+      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview(), sceneCount: 6 }))
       .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }))
       .mockResolvedValueOnce(jsonResponse(500, { code: "ASSET_MAPPING_JSON_MALFORMED", message: "raw detail" }))
-      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview() }));
+      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview(), sceneCount: 6 }));
     vi.stubGlobal("fetch", fetchMock);
 
     render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
@@ -458,7 +499,7 @@ describe("MappingReviewScreen", () => {
   it("calls onBack when the back button is clicked", async () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { mappings: [] }))
-      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview() })));
+      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview(), sceneCount: 6 })));
     const onBack = vi.fn();
     render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={onBack} />);
     await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
@@ -472,7 +513,7 @@ describe("MappingReviewScreen", () => {
     const asset = makeAsset({ assetId: "ASSET-A", displayName: "직접 연결한 자산" });
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { mappings: [mapping] }))
-      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview() }))
+      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview(), sceneCount: 6 }))
       .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -490,7 +531,7 @@ describe("MappingReviewScreen", () => {
     const asset = makeAsset({ assetId: "ASSET-A", displayName: "대상 자산" });
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { mappings: [mapping] }))
-      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview() }))
+      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview(), sceneCount: 6 }))
       .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }))
       .mockResolvedValueOnce(jsonResponse(200, { mapping: { ...mapping, status: "confirmed" }, review: makeReview() }))
       .mockResolvedValueOnce(jsonResponse(200, { mapping: { ...mapping, status: "confirmed", snapshot: { relativePath: "asset_snapshots/MAP-A-v1.png", sha256: "d".repeat(64), sourceVersion: 1 } } }));

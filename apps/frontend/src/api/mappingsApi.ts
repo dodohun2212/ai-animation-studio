@@ -131,8 +131,12 @@ const isCreateResponse = (value: unknown): value is CreateProjectAssetMappingRes
   isRecord(value) && isMapping(value.mapping);
 const isUpdateResponse = (value: unknown): value is UpdateProjectAssetMappingResponse =>
   isRecord(value) && isMapping(value.mapping) && isReview(value.review);
+// sceneCount is checked, not assumed. It is what the scene pickers are built from, and a response missing it
+// would reach the screen as `undefined` on a field typed `number` — a list built from that is wrong in exactly
+// the silent way the field was added to end. Failing the guard turns that into the ordinary malformed-response
+// message instead.
 const isGetReviewResponse = (value: unknown): value is GetProjectAssetMappingReviewResponse =>
-  isRecord(value) && isReview(value.review);
+  isRecord(value) && isReview(value.review) && typeof value.sceneCount === "number";
 const isBeginReviewResponse = (value: unknown): value is BeginProjectAssetMappingReviewResponse =>
   isRecord(value) && isReview(value.review);
 const isApproveReviewResponse = (value: unknown): value is ApproveProjectAssetMappingReviewResponse =>
