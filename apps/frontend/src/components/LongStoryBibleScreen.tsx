@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import type { Asset, LongStoryBible, LongStoryBibleAssetLink, LongStoryBibleCollection, LongStoryBibleItem, LongStoryBibleItemInput, LongStoryBibleRelationshipIssue, LongStoryBibleStyleAssetLink } from "@ai-animation-studio/shared";
+import type { Asset, LongStoryBible, LongStoryBibleAssetLink, LongStoryBibleCollection, LongStoryBibleItem, LongStoryBibleItemInput, LongStoryBibleRelationshipIssue } from "@ai-animation-studio/shared";
 
-import { createLongStoryBibleItem, deleteLongStoryBibleItem, duplicateLongStoryBibleItem, getLongProjectStoryBible, getLongStoryBibleRelationshipAudit, searchLongStoryBibleItems, toLongStoryBibleDisplayError, updateLongStoryBibleContent, updateLongStoryBibleItem, updateLongStoryBibleStyleAssetLink } from "../api/longStoryBibleApi.js";
+import { createLongStoryBibleItem, deleteLongStoryBibleItem, getLongProjectStoryBible, getLongStoryBibleRelationshipAudit, toLongStoryBibleDisplayError, updateLongStoryBibleContent, updateLongStoryBibleItem } from "../api/longStoryBibleApi.js";
 import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
 import { getLongProject, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { Spinner } from "./Spinner.js";
@@ -46,7 +46,14 @@ function rowsFrom(draft: string): BibleRow[] | null {
   } catch { return null; }
 }
 
-/** Empty names are dropped on the way out, so a blank row can exist while it is being filled in. */
+/**
+ * Empty names are dropped on the way out — they are not valid keys.
+ *
+ * That is why the rows cannot be derived from this string, and why `rows` is state. Deriving them is what the
+ * screen used to do, and it made "항목 추가" do nothing at all: the new row has an empty name, this function
+ * dropped it, the JSON came back unchanged, and re-deriving produced the same rows as before. The button
+ * appeared to be broken because, visibly, it was.
+ */
 function draftFromRows(rows: BibleRow[]): string {
   const record: Record<string, string> = {};
   for (const row of rows) if (row.key.trim()) record[row.key.trim()] = row.value;
@@ -125,8 +132,6 @@ const dangerButton =
   "rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(225,29,72,0.3)] disabled:opacity-50";
 const smallOutlineButton =
   "rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50";
-const smallAddButton =
-  "rounded-full border border-emerald-400/30 px-3 py-1.5 text-xs text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50";
 const smallRemoveButton =
   "rounded-full border border-rose-400/30 px-3 py-1.5 text-xs text-rose-300 hover:bg-rose-500/10 disabled:opacity-50";
 const cardSection = "space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
@@ -157,6 +162,13 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
   const [itemId, setItemId] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("");
+  /**
+   * Whether the person has typed in the name field themselves.
+   *
+   * Without it, filling the name in from the chosen folder would overwrite a name they had already corrected
+   * the moment they changed folders — the screen undoing an edit, silently. Once touched, the field is theirs.
+   */
+  const [nameTouched, setNameTouched] = useState(false);
   const [editing, setEditing] = useState<LongStoryBibleItem | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -171,17 +183,19 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
   const [relationshipAudit, setRelationshipAudit] = useState<LongStoryBibleRelationshipIssue[] | null>(null);
   const [relationshipAuditLoading, setRelationshipAuditLoading] = useState(false);
   const [relationshipAuditError, setRelationshipAuditError] = useState<DisplayError | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<LongStoryBibleItem[] | null>(null);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchError, setSearchError] = useState<DisplayError | null>(null);
-  const [duplicateError, setDuplicateError] = useState<DisplayError | null>(null);
-  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [basicDraft, setBasicDraft] = useState("{}");
   const [worldDraft, setWorldDraft] = useState("{}");
+  /**
+   * The rows the person is editing, held as state rather than derived from worldDraft on every render.
+   *
+   * Derived was the bug: a new row starts with an empty name, draftFromRows drops empty names because they are
+   * not valid keys, so the JSON came back identical and re-deriving produced the row list from before. Pressing
+   * "항목 추가" did nothing, and typing into a row before naming it lost the text. Rows are the thing being
+   * edited; the JSON is what they serialize to, and it only flows the other way when the stored value is
+   * (re)loaded or edited directly under 고급 편집.
+   */
+  const [worldRows, setWorldRows] = useState<BibleRow[] | null>(null);
   const [contentValidationError, setContentValidationError] = useState<string | null>(null);
-  const [styleAssetId, setStyleAssetId] = useState("");
-  const [styleVersionPolicy, setStyleVersionPolicy] = useState<LongStoryBibleStyleAssetLink["versionPolicy"]>("pinned_version");
   const busy = useRef(false);
   const loadVersion = useRef(0);
 
@@ -197,8 +211,7 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
         setBible(bibleResult.value.storyBible); setError(null);
         setBasicDraft(JSON.stringify(bibleResult.value.storyBible.basic, null, 2));
         setWorldDraft(JSON.stringify(bibleResult.value.storyBible.world, null, 2));
-        setStyleAssetId(bibleResult.value.storyBible.styleAssetLink?.assetId ?? "");
-        setStyleVersionPolicy(bibleResult.value.storyBible.styleAssetLink?.versionPolicy ?? "pinned_version");
+        setWorldRows(rowsFrom(JSON.stringify(bibleResult.value.storyBible.world, null, 2)));
       }
       else setError(toLongStoryBibleDisplayError(bibleResult.reason));
       if (assetsResult.status === "fulfilled") {
@@ -228,25 +241,6 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
     finally { setRelationshipAuditLoading(false); }
   }
 
-  async function search(): Promise<void> {
-    if (!searchQuery.trim() || searchLoading) return;
-    setSearchLoading(true); setSearchError(null);
-    try { setSearchResults((await searchLongStoryBibleItems(projectId, collection, searchQuery.trim())).items); }
-    catch (caught) { setSearchError(toLongStoryBibleDisplayError(caught)); }
-    finally { setSearchLoading(false); }
-  }
-
-  async function duplicate(item: LongStoryBibleItem): Promise<void> {
-    if (duplicatingId || pending) return;
-    setDuplicatingId(item.id); setDuplicateError(null);
-    try {
-      const response = await duplicateLongStoryBibleItem(projectId, collection, item.id);
-      setBible(response.storyBible);
-      setSearchResults((current) => current === null ? current : [...current, response.item]);
-    } catch (caught) { setDuplicateError(toLongStoryBibleDisplayError(caught)); }
-    finally { setDuplicatingId(null); }
-  }
-
   function parseContentDraft(value: string, label: string): Record<string, unknown> | null {
     try {
       const parsed: unknown = JSON.parse(value);
@@ -262,30 +256,17 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
     setContentValidationError(null); busy.current = true; setPending(true);
     try {
       const response = await updateLongStoryBibleContent(projectId, { basic, world });
-      setBible(response.storyBible); setBasicDraft(JSON.stringify(response.storyBible.basic, null, 2)); setWorldDraft(JSON.stringify(response.storyBible.world, null, 2)); setError(null);
-    } catch (caught) { setError(toLongStoryBibleDisplayError(caught)); }
-    finally { busy.current = false; setPending(false); }
-  }
-  function selectedStyleAsset(): Asset | undefined { return assets.find((asset) => asset.assetId === styleAssetId); }
-  async function saveStyleAssetLink(): Promise<void> {
-    if (busy.current) return;
-    const asset = selectedStyleAsset();
-    if (styleAssetId && !asset) { setContentValidationError("이미지 보관함에서 쓸 수 있는 스타일 항목을 선택하세요."); return; }
-    setContentValidationError(null); busy.current = true; setPending(true);
-    try {
-      const assetLink = asset ? { assetId: asset.assetId, versionPolicy: styleVersionPolicy, pinnedVersion: asset.version } : null;
-      const response = await updateLongStoryBibleStyleAssetLink(projectId, { assetLink });
-      setBible(response.storyBible); setStyleAssetId(response.storyBible.styleAssetLink?.assetId ?? ""); setStyleVersionPolicy(response.storyBible.styleAssetLink?.versionPolicy ?? "pinned_version"); setError(null);
+      setBible(response.storyBible); setBasicDraft(JSON.stringify(response.storyBible.basic, null, 2)); setWorldDraft(JSON.stringify(response.storyBible.world, null, 2)); setWorldRows(rowsFrom(JSON.stringify(response.storyBible.world, null, 2))); setError(null);
     } catch (caught) { setError(toLongStoryBibleDisplayError(caught)); }
     finally { busy.current = false; setPending(false); }
   }
 
   function resetEditor(): void {
-    setName(""); setItemId(""); setDescription(""); setStatus(""); setEditing(null); setValidationError(null);
+    setName(""); setItemId(""); setDescription(""); setStatus(""); setEditing(null); setValidationError(null); setNameTouched(false);
     setAssetId(""); setVersionPolicy("pinned_version"); setScopeMode("all"); setScopeEpisode("1");
   }
   function startEdit(item: LongStoryBibleItem): void {
-    setEditing(item); setName(item.name ?? ""); setItemId(item.id); setDescription(item.description ?? ""); setStatus(item.status ?? ""); setValidationError(null); setDeleteTarget(null);
+    setEditing(item); setName(item.name ?? ""); setItemId(item.id); setDescription(item.description ?? ""); setStatus(item.status ?? ""); setValidationError(null); setDeleteTarget(null); setNameTouched(true);
     setAssetId(item.assetLink?.assetId ?? ""); setVersionPolicy(item.assetLink?.versionPolicy ?? "pinned_version");
     setScopeMode(item.assetLink?.episodeScope.mode ?? "all"); setScopeEpisode(item.assetLink?.episodeScope.mode === "episode" ? String(item.assetLink.episodeScope.episode) : "1");
   }
@@ -339,7 +320,6 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
   const items = bible?.[collection] ?? [];
   const collectionLabel = TABS.find((tab) => tab.value === collection)?.label ?? collection;
   const supportsAssetLink = ASSET_LINK_COLLECTIONS.includes(collection);
-  const styleAssets = assets.filter((asset) => asset.assetType === "style" && !asset.isFolder);
   /**
    * 등장인물 links to a Folder and nothing else — the same rule the short project's 등장 캐릭터 list follows.
    * A single drawing is one pose of a character, not the character, and the per-child description block the
@@ -403,21 +383,23 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
             {contentValidationError}
           </p>
         )}
-        <PlainRecordEditor
-          testId="story-bible-basic-rows"
-          heading="작품 기본 정보"
-          hint='예: 항목 이름 "작품 제목", 내용 "별의 지도" / 항목 이름 "분위기", 내용 "따뜻하고 조용함"'
-          rows={rowsFrom(basicDraft)}
-          disabled={pending}
-          onChange={(rows) => { setBasicDraft(draftFromRows(rows)); setContentValidationError(null); }}
-        />
+        {/* 작품 기본 정보 was a second editor for fields that already have one.
+            The server copies title/logline/overview/genre/tone/theme/ending_direction/audience out of the
+            project's own settings when a Long Project is created, and this table showed that copy — raw English
+            keys and all — as if it were something to fill in. Editing the real settings afterwards does not
+            update the copy, so the two drift apart and BOTH reach the script prompt, disagreeing. There is
+            nothing here a person can do that 작품 기본 설정 does not do better, and one thing they could do that
+            is purely destructive: delete the title.
+            The stored `basic` object is not removed from the frontend — that is the server's data and clearing
+            it here would silently drop whatever an older project has in it. It stays reachable under 고급 편집
+            below, and removing it from the prompt is CLI's side. */}
         <PlainRecordEditor
           testId="story-bible-world-rows"
           heading="세계관 설명"
           hint='예: 항목 이름 "시대", 내용 "20년 뒤 미래" / 항목 이름 "지역", 내용 "바다 위 도시"'
-          rows={rowsFrom(worldDraft)}
+          rows={worldRows}
           disabled={pending}
-          onChange={(rows) => { setWorldDraft(draftFromRows(rows)); setContentValidationError(null); }}
+          onChange={(rows) => { setWorldRows(rows); setWorldDraft(draftFromRows(rows)); setContentValidationError(null); }}
         />
         {/* The raw text stays reachable — it is still the stored form, and the table cannot express nested
             data. Folded, so it is available without being the thing a person is first asked to type into. */}
@@ -440,7 +422,8 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
                 aria-label="세계관 설정 JSON"
                 value={worldDraft}
                 disabled={pending}
-                onChange={(event) => { setWorldDraft(event.target.value); setContentValidationError(null); }}
+                // Editing the stored form directly is the one place rows follow the JSON rather than lead it.
+                onChange={(event) => { setWorldDraft(event.target.value); setWorldRows(rowsFrom(event.target.value)); setContentValidationError(null); }}
                 className={jsonFieldClassName}
               />
             </label>
@@ -451,53 +434,11 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
         </button>
       </section>
 
-      <section aria-label="전체 비주얼 스타일 이미지 연결" className={cardSection}>
-        <SectionHeading>전체 비주얼 스타일</SectionHeading>
-        <p className="text-sm text-slate-400">원하면 이 프로젝트 전체에 적용할 승인된 스타일 에셋 하나를 연결할 수 있습니다.</p>
-        {assetLoading && <p className="text-sm text-slate-400">사용 가능한 스타일 에셋을 불러오는 중...</p>}
-        {!assetLoading && styleAssets.length === 0 && <p className="text-sm text-slate-400">승인되고 사용 설정된 스타일 에셋이 없습니다.</p>}
-        <label className="block text-sm text-slate-300">
-          스타일 에셋
-          <select
-            aria-label="전체 스타일 에셋"
-            value={styleAssetId}
-            disabled={pending || assetLoading}
-            onChange={(event) => setStyleAssetId(event.target.value)}
-            className={fieldClassName}
-          >
-            <option value="">전체 스타일 없음</option>
-            {styleAssets.map((asset) => (
-              <option key={asset.assetId} value={asset.assetId}>
-                {asset.displayName} ({asset.assetId}) · v{asset.version}
-              </option>
-            ))}
-          </select>
-        </label>
-        {styleAssetId && (
-          <label className="block text-sm text-slate-300">
-            스타일 버전 정책
-            <select
-              aria-label="전체 스타일 버전 정책"
-              value={styleVersionPolicy}
-              disabled={pending}
-              onChange={(event) => setStyleVersionPolicy(event.target.value as LongStoryBibleStyleAssetLink["versionPolicy"])}
-              className={fieldClassName}
-            >
-              <option value="pinned_version">현재 버전 고정</option>
-              <option value="follow_latest">최신 버전 따라가기</option>
-              <option value="snapshot">현재 버전 스냅샷</option>
-            </select>
-          </label>
-        )}
-        {bible?.styleAssetLink && (
-          <p data-testid="global-style-asset-link" className="text-sm text-emerald-300">
-            연결된 스타일: {bible.styleAssetLink.assetId} · {bible.styleAssetLink.versionPolicy} · v{bible.styleAssetLink.pinnedVersion}
-          </p>
-        )}
-        <button type="button" className={outlineButton} onClick={() => void saveStyleAssetLink()} disabled={pending || assetLoading}>
-          {pending ? "저장하는 중..." : styleAssetId ? "전체 스타일 저장" : "전체 스타일 빼기"}
-        </button>
-      </section>
+      {/* 전체 비주얼 스타일 moved to 작품 기본 설정 (GlobalStyleAssetCard).
+          Nothing about it is per-character or per-Episode — the server attaches it to every Episode's image
+          work — so it belongs with the other project-wide choices, beside 화면 비율, not as a ninth thing to
+          fill in on a screen that is about characters and world detail. It is still stored inside the Story
+          Bible's `basic` record; that is storage, not a reason for the control to live here. */}
 
       <section aria-label="설정집 연결 상태 점검" className={cardSection}>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -546,7 +487,7 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
             type="button"
             role="tab"
             aria-selected={collection === tab.value}
-            onClick={() => { setCollection(tab.value); resetEditor(); setDeleteTarget(null); setSearchQuery(""); setSearchResults(null); setSearchError(null); setDuplicateError(null); }}
+            onClick={() => { setCollection(tab.value); resetEditor(); setDeleteTarget(null); }}
             className={
               collection === tab.value
                 ? "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-3.5 py-1.5 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)]"
@@ -558,56 +499,12 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
         ))}
       </div>
 
-      <section aria-label={`${collectionLabel} 검색 영역`} className={cardSection}>
-        <SectionHeading>{collectionLabel} 검색</SectionHeading>
-        <p className="text-sm text-slate-400">이 항목군 안에서만 검색합니다. 검색어를 입력하고 실행해야 결과가 나옵니다.</p>
-        <form className="flex flex-wrap items-center gap-2" onSubmit={(event) => { event.preventDefault(); void search(); }}>
-          <label className="sr-only" htmlFor="story-bible-search">{collectionLabel} 검색</label>
-          <input
-            id="story-bible-search"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            className={`min-w-48 flex-1 ${compactField}`}
-          />
-          <button type="submit" className={smallOutlineButton} disabled={searchLoading || !searchQuery.trim()}>
-            {searchLoading ? "검색하는 중..." : "검색"}
-          </button>
-        </form>
-        {searchError && (
-          <div className="space-y-2">
-            <p role="alert" data-error-code={searchError.code} className="text-sm text-rose-400">
-              {searchError.message}
-            </p>
-            <button type="button" className={smallOutlineButton} onClick={() => void search()} disabled={searchLoading}>
-              다시 검색
-            </button>
-          </div>
-        )}
-        {searchResults && searchResults.length === 0 && (
-          <p data-testid="story-bible-search-empty" className="text-sm text-slate-400">
-            일치하는 {collectionLabel} 항목이 없습니다.
-          </p>
-        )}
-        {searchResults && searchResults.length > 0 && (
-          <ul aria-label={`${collectionLabel} 검색 결과`} className="space-y-2">
-            {searchResults.map((item) => (
-              <li key={item.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-white/10 bg-slate-950/40 p-2.5 text-sm">
-                <strong className="text-slate-100">{item.name || item.id}</strong>
-                <span className="text-slate-400">{item.id}</span>
-                <button type="button" className={smallAddButton} onClick={() => void duplicate(item)} disabled={Boolean(duplicatingId) || pending}>
-                  {duplicatingId === item.id ? "복제하는 중..." : "복제"}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {duplicateError && (
-          <p role="alert" data-error-code={duplicateError.code} className="text-sm text-rose-400">
-            {duplicateError.message}
-          </p>
-        )}
-      </section>
-
+      {/* The per-collection search box and its 복제 button are gone.
+          It only ever searched the items already listed a few lines below it, and its one action was to
+          duplicate one. Duplication existed as a workaround from when an item could be scoped to a single
+          Episode: the only way to put one character in Episodes 1, 3 and 7 was to make three copies. Episodes
+          now pick their own references directly, so the workaround has no job — and using it is actively
+          harmful, because automatic matching keys on the name and two items with the same name both match. */}
       {loading && !bible && <Spinner label="설정집을 불러오는 중..." />}
       {bible && items.length === 0 && (
         <p data-testid="story-bible-empty" className="text-sm text-slate-400">
@@ -634,9 +531,6 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
                 <button type="button" className={smallOutlineButton} onClick={() => startEdit(item)}>
                   수정
                 </button>
-                <button type="button" className={smallAddButton} onClick={() => void duplicate(item)} disabled={Boolean(duplicatingId) || pending}>
-                  {duplicatingId === item.id ? "복제하는 중..." : "복제"}
-                </button>
                 <button type="button" className={smallRemoveButton} onClick={() => setDeleteTarget(item)} disabled={pending}>
                   삭제
                 </button>
@@ -657,27 +551,29 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
             {validationError}
           </p>
         )}
-        <label className="block text-sm text-slate-300">
-          ID (선택 사항)
-          <input aria-label="항목 ID" value={itemId} disabled={pending || Boolean(editing)} onChange={(event) => setItemId(event.target.value)} className={fieldClassName} />
-        </label>
+        {/* ID, 설명, 상태 are gone, and 이름 fills itself in from the chosen folder.
+            Everything asked for here already exists on the Asset the person is about to pick: the folder has a
+            name and a description, and they typed both when they made it. Asking again produced two names for
+            one character — and because automatic matching keys on the name, the one typed here silently decided
+            whether the reference was ever found, while the folder's own name sat unused a few pixels away.
+            ID was generated when left blank, which is every time; 설명 reached nothing at all (the script
+            prompt never receives these items); 상태 was free text nothing reads.
+            이름 stays visible and editable, because it IS what matching keys on — a folder called
+            "이베드_최종_v3" needs fixing before it will ever match a script — but it is filled in for you. */}
+        {supportsAssetLink && assetId && (
+          <p data-testid="story-bible-name-from-folder" className="text-xs text-slate-400">
+            이름은 고른 폴더에서 가져왔습니다. 대본 속 이름과 다르면 여기서 고쳐 주세요 — 이 이름으로 장면을 찾습니다.
+          </p>
+        )}
         <label className="block text-sm text-slate-300">
           이름
           <input
             aria-label="항목 이름"
             value={name}
             disabled={pending}
-            onChange={(event) => { setName(event.target.value); setValidationError(null); }}
+            onChange={(event) => { setName(event.target.value); setNameTouched(true); setValidationError(null); }}
             className={fieldClassName}
           />
-        </label>
-        <label className="block text-sm text-slate-300">
-          설명
-          <textarea aria-label="항목 설명" value={description} disabled={pending} onChange={(event) => setDescription(event.target.value)} className={fieldClassName} />
-        </label>
-        <label className="block text-sm text-slate-300">
-          상태
-          <input aria-label="항목 상태" value={status} disabled={pending} onChange={(event) => setStatus(event.target.value)} className={fieldClassName} />
         </label>
         {supportsAssetLink && (
           <fieldset className="space-y-3 rounded-xl border border-white/10 bg-slate-950/30 p-3.5 disabled:opacity-50" disabled={pending || assetLoading}>
@@ -698,7 +594,23 @@ export function LongStoryBibleScreen({ projectId, onBack }: Props) {
             )}
             <label className="block text-sm text-slate-300">
               {collection === "characters" ? "캐릭터 폴더" : "에셋"}
-              <select aria-label="연결할 에셋" value={assetId} onChange={(event) => setAssetId(event.target.value)} className={fieldClassName}>
+              <select
+                aria-label="연결할 에셋"
+                value={assetId}
+                onChange={(event) => {
+                  const nextAssetId = event.target.value;
+                  setAssetId(nextAssetId);
+                  // The folder already carries both, and asking for them again is what produced two names for
+                  // one character. A name the person has typed themselves is never overwritten.
+                  const picked = assets.find((asset) => asset.assetId === nextAssetId);
+                  if (picked) {
+                    if (!nameTouched) setName(picked.displayName);
+                    setDescription(picked.description ?? "");
+                    setValidationError(null);
+                  }
+                }}
+                className={fieldClassName}
+              >
                 <option value="">연결 안 함</option>
                 {linkableAssets.map((asset) => (
                   <option key={asset.assetId} value={asset.assetId}>

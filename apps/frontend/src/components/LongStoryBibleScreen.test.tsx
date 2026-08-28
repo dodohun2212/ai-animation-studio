@@ -23,7 +23,6 @@ describe("LongStoryBibleScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "항목 추가" }));
     expect(screen.getByTestId("story-bible-validation-error")).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    fireEvent.change(screen.getByLabelText("항목 ID"), { target: { value: "CHAR-1" } });
     fireEvent.change(screen.getByLabelText("항목 이름"), { target: { value: "Mina" } });
     fireEvent.click(screen.getByRole("button", { name: "항목 추가" }));
     await screen.findByText("Mina");
@@ -120,8 +119,10 @@ describe("LongStoryBibleScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "항목 추가" }));
 
     await screen.findByTestId("asset-link-CHAR-1");
+    // The description comes along now: picking a folder fills it from the folder's own, which is the point of
+    // dropping the field — the person already typed it once when they made the Asset.
     expect(JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body))).toEqual({ item: {
-      name: "Mina", assetLink: { assetId: "ASSET-CHAR-1", versionPolicy: "pinned_version", pinnedVersion: 4, episodeScope: { mode: "episode", episode: 2 } },
+      name: "Mina", description: asset.description, assetLink: { assetId: "ASSET-CHAR-1", versionPolicy: "pinned_version", pinnedVersion: 4, episodeScope: { mode: "episode", episode: 2 } },
     } });
     expect(screen.getByTestId("asset-link-CHAR-1").textContent).toContain("에피소드 2");
   });
@@ -166,7 +167,7 @@ describe("LongStoryBibleScreen", () => {
     expect(JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body)).item.assetLink).toBeNull();
   });
 
-  it("edits basic/world JSON only on save and links one approved global style asset", async () => {
+  it("edits world JSON only on save", async () => {
     const style = makeAsset({ assetId: "STYLE-1", displayName: "Watercolor", assetType: "style", version: 3, enabled: true, approved: true });
     const contentBible = { ...emptyBible, basic: { title: "Revised" }, world: { era: "future" } };
     const styledBible = { ...contentBible, styleAssetLink: { assetId: style.assetId, versionPolicy: "snapshot" as const, pinnedVersion: 3 } };
@@ -187,13 +188,8 @@ describe("LongStoryBibleScreen", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
     expect(fetchMock.mock.calls[3]?.[0]).toBe("/long-projects/long_test/story-bible/content");
     expect(JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body))).toEqual({ basic: { title: "Revised" }, world: { era: "future" } });
-
-    fireEvent.change(screen.getByLabelText("전체 스타일 에셋"), { target: { value: style.assetId } });
-    fireEvent.change(screen.getByLabelText("전체 스타일 버전 정책"), { target: { value: "snapshot" } });
-    fireEvent.click(screen.getByRole("button", { name: "전체 스타일 저장" }));
-    await screen.findByTestId("global-style-asset-link");
-    expect(fetchMock.mock.calls[4]?.[0]).toBe("/long-projects/long_test/story-bible/style-asset-link");
-    expect(JSON.parse(String(fetchMock.mock.calls[4]?.[1]?.body))).toEqual({ assetLink: { assetId: "STYLE-1", versionPolicy: "snapshot", pinnedVersion: 3 } });
+    // The 전체 스타일 half of this test moved with the control, to GlobalStyleAssetCard.test.tsx — it is a
+    // project-wide choice and now sits in 작품 기본 설정 beside 화면 비율.
   });
 
   it("validates basic and world values as JSON objects before making a request", async () => {
@@ -211,61 +207,89 @@ describe("LongStoryBibleScreen", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("searches only when explicitly submitted, shows retry-safe results, and duplicates locally", async () => {
-    const copied = { id: "CHAR-2", name: "Mina copy", description: "pilot", status: "active" };
-    const copiedBible = { ...characterBible, characters: [...characterBible.characters, copied] };
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { storyBible: characterBible }))
-      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
-      .mockResolvedValueOnce(jsonResponse(200, { project: makeLongProject({ id: "long_test" }) }))
-      .mockResolvedValueOnce(jsonResponse(200, { items: [characterBible.characters[0]] }))
-      .mockResolvedValueOnce(jsonResponse(201, { item: copied, storyBible: copiedBible }));
-    vi.stubGlobal("fetch", fetchMock);
-    render(<LongStoryBibleScreen projectId="long_test" onBack={() => {}} />);
+  // The two search/duplicate tests that were here are gone with the feature.
+  // Searching only ever matched the items listed on the same screen, and its one action was to duplicate one —
+  // a workaround from when an item could be scoped to a single Episode. Episodes pick their own references now,
+  // and duplicating is actively harmful, because automatic matching keys on the name and a copy matches too.
 
-    await screen.findByText("Mina");
-    fireEvent.change(screen.getByLabelText("캐릭터 검색"), { target: { value: "Mina" } });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    fireEvent.click(screen.getByRole("button", { name: "검색" }));
-    await screen.findByLabelText("캐릭터 검색 결과");
-    expect(fetchMock.mock.calls[3]?.[0]).toBe("/long-projects/long_test/story-bible/characters/search?query=Mina");
-    fireEvent.click(screen.getByLabelText("캐릭터 검색 결과").querySelector("button")!);
-    await screen.findAllByText("Mina copy");
-    expect(fetchMock.mock.calls[4]?.[0]).toBe("/long-projects/long_test/story-bible/characters/CHAR-1/duplicate");
-    expect(fetchMock.mock.calls[4]?.[1]).toMatchObject({ method: "POST" });
-  });
-
-  it("shows a safe search error and retries the same explicit query", async () => {
+  it("fills the item name from the chosen folder instead of asking for it twice", async () => {
+    const folder = makeAssetFolder({ assetId: "FOLDER-1", displayName: "미나", description: "조종사", assetType: "character" });
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { storyBible: emptyBible }))
-      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
-      .mockResolvedValueOnce(jsonResponse(200, { project: makeLongProject({ id: "long_test" }) }))
-      .mockResolvedValueOnce(jsonResponse(500, { code: "LONG_PROJECT_STORAGE_ERROR", message: "C:\\raw\\internal" }))
-      .mockResolvedValueOnce(jsonResponse(200, { items: [] }));
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [folder] }))
+      .mockResolvedValueOnce(jsonResponse(200, { project: makeLongProject({ id: "long_test" }) }));
     vi.stubGlobal("fetch", fetchMock);
     render(<LongStoryBibleScreen projectId="long_test" onBack={() => {}} />);
 
     await screen.findByTestId("story-bible-empty");
-    fireEvent.change(screen.getByLabelText("캐릭터 검색"), { target: { value: "missing" } });
-    fireEvent.click(screen.getByRole("button", { name: "검색" }));
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).not.toContain("raw");
-    fireEvent.click(screen.getByRole("button", { name: "다시 검색" }));
-    await screen.findByTestId("story-bible-search-empty");
-    expect(fetchMock.mock.calls[4]?.[0]).toBe("/long-projects/long_test/story-bible/characters/search?query=missing");
+    expect((screen.getByLabelText("항목 이름") as HTMLInputElement).value).toBe("");
+    fireEvent.change(screen.getByLabelText("연결할 에셋"), { target: { value: "FOLDER-1" } });
+
+    expect((screen.getByLabelText("항목 이름") as HTMLInputElement).value).toBe("미나");
+    // Said out loud, because a name that appeared on its own reads as something not to touch — and this one
+    // has to be touched when the folder is called something the script never says.
+    expect(screen.getByTestId("story-bible-name-from-folder")).toBeTruthy();
   });
 
-  it("does not claim an effect this screen does not have", async () => {
-    // The intro used to promise that what you type here keeps a character's look and personality steady across
-    // Episodes. Neither half held: the script prompt is built without characters/locations/props (their arrays
-    // are documented as "always empty today"), and reference images reach generation through the Asset mapping
-    // screen, not this one. Only 비밀·복선 actually travel. Pinned as a claim, not as wording — if the wiring
-    // lands, this test should be changed deliberately alongside it, not quietly deleted.
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { storyBible: emptyBible })));
-    render(<LongStoryBibleScreen projectId="long" onBack={() => {}} />);
+  it("never overwrites a name the person typed themselves", async () => {
+    // The counterpart the rule above needs. Filling the field in is only safe if it stops once it is theirs;
+    // otherwise changing folders silently discards a correction, which is the screen undoing an edit.
+    const first = makeAssetFolder({ assetId: "FOLDER-1", displayName: "이베드_최종_v3", assetType: "character" });
+    const second = makeAssetFolder({ assetId: "FOLDER-2", displayName: "폴더2", assetType: "character" });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { storyBible: emptyBible }))
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [first, second] }))
+      .mockResolvedValueOnce(jsonResponse(200, { project: makeLongProject({ id: "long_test" }) }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongStoryBibleScreen projectId="long_test" onBack={() => {}} />);
 
-    await screen.findByRole("heading", { name: "등장인물·설정집" });
-    expect(document.body.textContent).not.toContain("생김새·성격이 흔들리지 않게");
-    expect(document.body.textContent).toContain("비밀·복선");
+    await screen.findByTestId("story-bible-empty");
+    fireEvent.change(screen.getByLabelText("연결할 에셋"), { target: { value: "FOLDER-1" } });
+    fireEvent.change(screen.getByLabelText("항목 이름"), { target: { value: "이베드" } });
+    fireEvent.change(screen.getByLabelText("연결할 에셋"), { target: { value: "FOLDER-2" } });
+
+    expect((screen.getByLabelText("항목 이름") as HTMLInputElement).value).toBe("이베드");
+  });
+
+  it("adds a world row that survives being blank until it is named", async () => {
+    // The row list used to be derived from the stored JSON on every render, and a blank name is dropped on the
+    // way into that JSON because it is not a valid key. So pressing 항목 추가 produced no row at all: the JSON
+    // came back identical and re-deriving gave the list from before. To a person the button was simply dead.
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { storyBible: emptyBible }))
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { project: makeLongProject({ id: "long_test" }) }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongStoryBibleScreen projectId="long_test" onBack={() => {}} />);
+
+    await screen.findByTestId("story-bible-empty");
+    const rows = screen.getByTestId("story-bible-world-rows");
+    fireEvent.click(within(rows).getByRole("button", { name: "세계관 설명에 항목 추가" }));
+
+    const names = within(rows).getAllByLabelText("항목 이름");
+    expect(names).toHaveLength(1);
+    // And what is typed into it survives, which the old shape also lost: the value was written into a JSON
+    // object under an empty key that was then thrown away.
+    fireEvent.change(within(rows).getAllByLabelText("내용")[0]!, { target: { value: "바다 위 도시" } });
+    expect(within(rows).getAllByLabelText("내용")[0]!).toHaveValue("바다 위 도시");
+    fireEvent.change(names[0]!, { target: { value: "지역" } });
+    expect(within(rows).getAllByLabelText("내용")[0]!).toHaveValue("바다 위 도시");
+  });
+
+  it("no longer offers a second editor for the project's own settings", async () => {
+    // 작품 기본 정보 was a table over a server-made copy of title/logline/overview/genre/tone/theme/
+    // ending_direction/audience. Editing the real settings does not update that copy, so the two drift and both
+    // reach the script prompt disagreeing — and one of its buttons deleted the title.
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { storyBible: emptyBible }))
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { project: makeLongProject({ id: "long_test" }) }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongStoryBibleScreen projectId="long_test" onBack={() => {}} />);
+
+    await screen.findByTestId("story-bible-empty");
+    expect(screen.queryByTestId("story-bible-basic-rows")).toBeNull();
+    // 세계관 설명 stays — it is the one of the two that is actually written here.
+    expect(screen.getByTestId("story-bible-world-rows")).toBeTruthy();
   });
 });

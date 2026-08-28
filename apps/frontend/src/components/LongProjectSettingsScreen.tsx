@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, type LongProjectSettings } from "@ai-animation-studio/shared";
 
 import { getLongProjectSettings, toLongProjectDisplayError, updateLongProjectSettings } from "../api/longProjectsApi.js";
+import { GlobalStyleAssetCard } from "./GlobalStyleAssetCard.js";
 import { Spinner } from "./Spinner.js";
 
 interface Props {
@@ -245,6 +246,10 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
           </button>
         </form>
       )}
+      {/* Moved here from the Story Bible screen: it is a project-wide choice like 화면 비율 above, not
+          something about one character. Rendered outside the settings form because it saves through its own
+          endpoint — one button per thing that is actually stored separately. */}
+      {state.settings && <GlobalStyleAssetCard projectId={projectId} />}
     </section>
   );
 }
