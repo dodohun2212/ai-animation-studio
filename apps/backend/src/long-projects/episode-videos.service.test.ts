@@ -22,6 +22,29 @@ async function setup(episodeDurationSeconds: 30 | 60 = 30, aspectRatio: "9:16" |
 afterEach(async () => { vi.unstubAllGlobals(); if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 
 describe("EpisodeVideosService", () => {
+  it("does not call a job succeeded while the Episode is still being moved to review", async () => {
+    // The two facts land one write apart: the last scene's record is saved as succeeded, then the Episode state
+    // moves to videos_review. A poll in between used to answer "succeeded" — and the screen opens its review on
+    // exactly that word, which the server then refuses because the state has not moved yet. Reproduced here by
+    // putting the state back, which is the same shape as arriving early.
+    const { videos, projectsRoot } = await setup();
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+    expect((await videos.progress("long", 1, started.jobId)).status).toBe("succeeded");
+
+    const episodeFile = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
+    const episode = JSON.parse(await fs.readFile(episodeFile, "utf8")) as Record<string, unknown>;
+    episode.state = "videos_generating";
+    await fs.writeFile(episodeFile, JSON.stringify(episode), "utf8");
+
+    const midway = await videos.progress("long", 1, started.jobId);
+    expect(midway.status).toBe("running");
+    expect(midway.completedSceneNumbers).toHaveLength(6);
+    // And the refusal the screen would have hit is still there, which is why the word had to change.
+    await expect(videos.review("long", 1, started.jobId)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_VIDEOS_NOT_ALLOWED" } });
+  });
+
   it("generates from the prompt the person edited, not the one it previewed", async () => {
     // 🔴 The box on the screen is editable. It used to have to come back byte for byte identical, so every edit
     // was refused with "확인해 주세요" and nothing saying what was wrong — and the short project has always

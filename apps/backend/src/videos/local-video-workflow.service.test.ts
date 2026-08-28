@@ -31,6 +31,23 @@ async function setup() {
 }
 
 describe("local fake video workflow", () => {
+  it("does not call a job succeeded while the project is still being moved to review", async () => {
+    // The Episode twin's version of this, and the same two writes: the last record is saved as succeeded, then
+    // the workflow state moves to REVIEWING_VIDEOS. A poll in between used to answer "succeeded", which is the
+    // word the screen opens its review on — and the review is refused until the state moves. Worse here than on
+    // the Episode side, since this response carries no project at all, so a screen has nothing else to read.
+    const { projects, accepted, workflow } = await setup();
+    await workflow.run("video_workflow", accepted.jobId);
+    expect((await workflow.getProgress("video_workflow", accepted.jobId)).status).toBe("succeeded");
+
+    const project = await projects.findById("video_workflow");
+    await projects.save({ ...project, workflow_state: WorkflowState.GeneratingVideos });
+
+    const midway = await workflow.getProgress("video_workflow", accepted.jobId);
+    expect(midway.status).toBe("running");
+    expect(midway.completedSceneNumbers).toHaveLength(6);
+  });
+
   it("writes six sequential local placeholders, persists restart-safe checkpoints, and never exposes paths", async () => {
     const { projectsRoot, projects, accepted, workflow } = await setup();
     await expect(workflow.run("video_workflow", accepted.jobId)).resolves.toMatchObject({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });

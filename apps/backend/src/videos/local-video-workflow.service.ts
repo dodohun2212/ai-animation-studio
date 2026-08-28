@@ -169,10 +169,16 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     // "submitting" (claimed, POST not yet resolved) reads to the user exactly like "running" — there is nothing
     // for them to act on differently while either is in flight.
     const current = records.find((record) => record.status === "running" || record.status === "submitting")?.scene_number;
+      // Not "every scene is done" but "every scene is done and the next step is open". Those are two writes
+      // apart — the last record is saved as succeeded, then the owner's state is moved — and a poll landing
+      // between them used to answer "succeeded" while a review was still refused. Both screens open their
+      // review on exactly this word, so it has to mean the thing they use it for. Still finishing reads as
+      // running, which is what it is.
+    const allDone = completedSceneNumbers.length === records.length;
     const status = project.workflow_state === WorkflowState.Interrupted ? "interrupted"
       : failedSceneNumbers.length > 0 ? "failed"
-      : completedSceneNumbers.length === records.length ? "succeeded"
-        : current ? "running" : "created";
+      : allDone && project.workflow_state !== WorkflowState.GeneratingVideos ? "succeeded"
+        : current || allDone ? "running" : "created";
     // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.
     const retryEstimate = records[0]?.execution_mode === "runway" ? await this.retryEstimate() : undefined;
     return {
