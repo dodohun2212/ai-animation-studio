@@ -93,6 +93,26 @@ export class EpisodeImagesService {
     const mapping = await this.json(this.files(projectId, number).mapping);
     if (!object(mapping) || mapping.status !== "approved" || mapping.script_revision !== episode.script_revision || mapping.script_fingerprint !== fingerprint(this.scenes(episode))) throw longEpisodeImagesNotAllowed();
   }
+  /**
+   * Where one Episode scene's generated image actually is, once it is confirmed to be one.
+   *
+   * There was no way to fetch these at all: the Episode had four routes and none of them served bytes, so its
+   * screen had nothing to put in an <img> and rendered none. People were approving and paying to regenerate
+   * pictures they could not see. The short project has had this route the whole time.
+   *
+   * Deliberately no state gate. A picture that exists can be looked at whenever — refusing to show it because
+   * the Episode has moved on is how a review screen ends up unable to display the thing being reviewed.
+   */
+  async content(projectId: string, number: number, rawSceneNumber: string): Promise<{ path: string }> {
+    const id = projectId.trim();
+    const episode = await this.episode(id, number);
+    const scene = sceneNumber(Number(rawSceneNumber));
+    if (!scene || scene > this.sceneCount(episode)) throw longEpisodeImagesInvalid();
+    const file = this.image(id, number, scene);
+    if (!(await this.validImage(file))) throw longEpisodeImagesInvalid();
+    return { path: file };
+  }
+
   private image(projectId: string, number: number, scene: SceneNumber) { return path.join(this.files(projectId, number).images, `scene${scene}.png`); }
   private async validImage(file: string): Promise<boolean> { try { return validateImage(await fs.readFile(file), "scene.png", "image/png").extension === ".png"; } catch { return false; } }
   private async writeImage(file: string, bytes: Buffer): Promise<void> {

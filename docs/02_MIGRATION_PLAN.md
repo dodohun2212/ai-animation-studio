@@ -1654,3 +1654,10 @@ Cowork가 결정 문서 5갈래(#3·5/#6/#9/#12/#13)에 대한 사용자 선택�
   - **중복 `withoutNarration`/`fingerprint` 사본 2개가 함께 사라짐** — 그 복사본들이 어긋난 것이 Round 211의 근본 원인이었음. 이제 그 규칙은 `MappingOwner.scenes` 한 곳에만 있음.
   - 결과: 회차 매핑이 단기와 **같은 흐름·같은 저장·같은 리뷰 규칙·같은 화면**을 씀. Round 224의 B-1(폴더 거부)·B-3(에피소드에서 매핑 생성 불가)이 별도 수정 없이 해소되고, B-2(적용 범위가 단수)는 장면 단위 `sceneScope`로 대체됨.
   - 검증: root typecheck 전부 통과, Backend 971개 전부 통과, frontend 953개 전부 통과, root build 전부 통과.
+- [x] **회차 장면 이미지를 실제로 가져올 수 있게 — `/content` 라우트 신설(Round 213)**: Cowork Round 225의 BLOCKING 1번. **회차 이미지 컨트롤러에 바이트를 내주는 라우트가 아예 없었고**, 그래서 화면에 `<img>`가 0개였음 — 사용자가 **그림을 한 번도 못 본 채 승인하고 유료 재생성을 눌러 왔음.** 단기에는 처음부터 있던 라우트(`images.controller.ts:19`).
+  - `GET /long-projects/:id/episodes/:n/images/:sceneNumber/content` — 단기와 같은 모양(스트리밍, `image/png`, `Content-Length`, `X-Content-Type-Options: nosniff`). shared에 `longEpisodeImageContent` 빌더 추가.
+  - **상태 게이트를 일부러 두지 않음** — 존재하는 그림은 언제든 볼 수 있어야 함. 회차가 다음 단계로 갔다고 이미지를 안 보여주면 **검토 화면이 검토 대상을 못 보여주는** 상황이 되고, 그게 이 라우트가 없애려는 실패임.
+  - 장면 번호는 **그 회차의 `scene_count`** 로 상한을 검사(파일 이름으로 아무거나 집지 않게), 생성 안 된 장면은 거부.
+  - 신규 테스트 4건: 여섯 장면 모두 실제 파일을 가리킴, 회차 상태가 진행돼도 조회됨, 없는 장면 번호 거부, 생성 안 된 장면 거부.
+  - **프런트 `<img>` 는 Cowork 몫** — 라우트 이름이 확정됐으니 우편함으로 요청.
+  - 검증: root typecheck 전부 통과, Backend 974개(+4 신규) 전부 통과, frontend 953개 전부 통과, root build 전부 통과. (`local-video-workflow.runway.test.ts` 타이머 플레이키 4회째 관찰.)

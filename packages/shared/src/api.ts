@@ -1338,6 +1338,9 @@ export const API_ROUTES = {
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/images/generations`,
   longEpisodeImageReview: (projectId: string, episodeNumber: number) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/images/review`,
+  /** One scene's generated image, as bytes. The short project's projectImageContent, for an Episode. */
+  longEpisodeImageContent: (projectId: string, episodeNumber: number, sceneNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/images/${sceneNumber}/content`,
   longEpisodeImageReviewApproval: (projectId: string, episodeNumber: number, sceneNumber: SceneNumber) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/images/review/${sceneNumber}/approve`,
   longEpisodeImageReviewRegeneration: (projectId: string, episodeNumber: number, sceneNumber: SceneNumber) =>
