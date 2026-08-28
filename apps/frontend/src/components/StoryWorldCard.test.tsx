@@ -93,16 +93,6 @@ describe("StoryWorldCard", () => {
     expect(screen.getByLabelText("세계관 설정 JSON")).toBeTruthy();
   });
 
-  // The one thing that decides whether anything written here matters, and the screen never said it.
-  it("says when what is written here is read", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { storyBible: emptyBible })));
-    render(<StoryWorldCard projectId="long_test" />);
-
-    const notice = await screen.findByTestId("story-world-timing");
-    expect(notice.textContent).toContain("대본을 만들기 전에");
-    // Empty is a complete answer, and the section read as a form that had to be filled in.
-    expect(notice.textContent).toContain("비워 둬도 됩니다");
-    // Both halves: when it is read, AND what happens to Episodes that already have a script.
-    expect(notice.textContent).toContain("다시 만들어야");
-  });
+  // The "when is this read" test moved to LongProjectSettingsScreen.test.tsx with the notice itself. Four
+  // cards on that screen each stated the same rule; it is now stated once, above all four.
 });

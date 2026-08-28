@@ -108,23 +108,11 @@ export function StoryWorldCard({ projectId }: Props) {
   return (
     <section aria-label="세계관 설명" data-testid="story-world-card" className="space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
       <h3 className="text-base font-semibold text-slate-100">세계관 설명</h3>
-      <p className="text-sm text-slate-400">
-        작품 전체에 걸쳐 <strong className="text-slate-300">꼭 지켜야 하는 것</strong>만 적으면 됩니다.
-        저장해도 대본·이미지·영상은 만들어지지 않습니다.
-      </p>
-      {/* When this is read is the whole story, and the screen never said it. It goes into the prompt at two
-          moments — 회차 나누기 and each Episode's script generation — so anything written after an Episode's
-          script exists does not reach that Episode. */}
-      <p data-testid="story-world-timing" className="rounded-xl border border-violet-400/25 bg-violet-500/[0.06] p-3 text-sm text-slate-300">
-        여기 적은 내용은 <strong className="text-slate-100">회차 나누기</strong>와 <strong className="text-slate-100">각 회차 대본 생성</strong> 때 AI에게 전달됩니다.
-        그래서 <strong className="text-slate-100">대본을 만들기 전에</strong> 적어야 합니다 — 이미 대본이 있는 회차에는 안 들어가고,
-        아직 만들지 않은 회차부터 반영됩니다. 이미 만든 회차에 넣으려면 그 회차 대본을 <strong className="text-slate-100">다시 만들어야</strong> 합니다.
-        {" "}
-        {/* Empty is a complete answer here, and nothing said so. The prompt already treats a blank field this
-            way — the outline request literally sends "자율" for one — but the section read as a form to fill
-            in, so a person with nothing particular in mind had no way to know they could just move on. */}
-        <strong className="text-slate-100">비워 둬도 됩니다</strong> — 정해 둔 것이 없으면 AI가 알아서 정합니다.
-      </p>
+      {/* The card used to carry three explanatory blocks — what to write, when it is read, that blank is
+          allowed. All three were true of 주인공, 전체 그림체 and 비밀·복선 as well, so the screen said them four
+          times over. They now appear once, at the top of 작품 기본 설정 (see LongProjectSettingsScreen). What
+          stays here is only what is true of THIS card and nothing else. */}
+      <p className="text-sm text-slate-400">꼭 지켜야 하는 설정만 적으면 됩니다.</p>
       {loading && <p className="text-sm text-slate-400">불러오는 중...</p>}
       {error && <p role="alert" data-error-code={error.code} className="text-sm text-rose-400">{error.message}</p>}
       {validationError && <p role="alert" data-testid="story-world-validation-error" className="text-sm text-rose-400">{validationError}</p>}
@@ -135,9 +123,7 @@ export function StoryWorldCard({ projectId }: Props) {
       )}
       {!loading && rows !== null && (
         <div className="space-y-2">
-          <p className="text-xs text-slate-500">
-            왼쪽은 무엇에 대한 설명인지, 오른쪽은 그 내용입니다 — AI가 왼쪽을 이름표로 읽습니다. 예: 시대 → 20년 뒤 미래 / 지역 → 바다 위 도시
-          </p>
+          <p className="text-xs text-slate-500">예: 시대 → 20년 뒤 미래 / 지역 → 바다 위 도시</p>
           {shown.map((row, index) => (
             <div key={index} className="flex flex-wrap items-start gap-2">
               <label className="flex flex-col gap-1 text-xs text-slate-400">

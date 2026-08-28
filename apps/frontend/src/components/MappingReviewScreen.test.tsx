@@ -284,7 +284,7 @@ describe("MappingReviewScreen", () => {
 
     render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
     const definition = await screen.findByTestId("reference-image-definition");
-    expect(definition.textContent).toContain("등장 캐릭터");
+    expect(definition.textContent).toContain("주인공"); // the settings screen no longer has a 등장 캐릭터 field
     // The settings choices now DO seed this list (syncAutoMappings), so the old "자동으로 올라오지 않습니다"
     // wording became false the moment that shipped. What stays true is the two-channel split.
     expect(definition.textContent).toContain("자동으로 올라옵니다");

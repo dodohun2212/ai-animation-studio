@@ -394,34 +394,25 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
           Asset to a scene. Every row here was connected by hand (or migrated from the old Python data), and a
           hand-made connection is already confirmed the moment it is saved. Saying otherwise made the button
           below read as "confirm what the AI guessed", which is why it felt like a pointless second step. */}
+      {/* Three stacked explanation blocks became one line plus a folded detail.
+          The long version was written to answer "is 참고 이미지 the same as the Assets I picked in settings?" —
+          a real question. But four paragraphs above the controls is how a screen stops being read at all, and
+          the person who asked that question asked it while looking straight at the answer. The one fact that
+          has to be visible is the two-channel split (settings choices arrive here on their own); the rest is
+          reference material and folds. */}
       <p className="text-sm text-slate-400">
-        각 장면이 어떤 이미지를 참고할지 정해둔 목록입니다. <strong className="text-slate-200">직접 연결한 것은 연결하는 순간 확정</strong>됩니다 — 여기서 다시 승인할 필요는 없습니다.
+        각 장면이 어떤 이미지를 참고할지 정하는 곳입니다. 여기서 연결한 것은 <strong className="text-slate-200">그림을 만들 때 실제 이미지로 전달</strong>됩니다.
       </p>
-      {/* "참고 이미지"가 프로젝트 설정의 등장 캐릭터·분위기 Asset과 같은 것인지 헷갈린다는 지적을 받았다. 실제로
-          둘은 완전히 다른 경로다: 설정 쪽 셋은 대본 프롬프트의 텍스트 자리표시자로만 들어가고
-          (story-prompt.service.ts의 character_cast_metadata / atmosphere_asset_metadata /
-          scene_reference_asset_metadata), 그림을 만들 때 실제 이미지 파일로 붙는 것은 이 화면의 연결뿐이다
-          (image-reference-selection.ts가 confirmed·enabled 매핑만 읽는다). 이름이 비슷해서 생긴 오해라
-          화면에서 직접 구분해 준다. */}
-      <div data-testid="reference-image-definition" className="rounded-xl border border-white/10 bg-slate-950/40 p-3.5 text-sm text-slate-400">
-        <p className="font-medium text-slate-300">여기서 말하는 &quot;참고 이미지&quot;란</p>
-        <p className="mt-1">
-          그림을 만들 때 AI에게 <strong className="text-slate-200">실제 이미지 파일로 함께 보내는 것</strong>입니다. 장면마다 따로 정합니다.
-        </p>
+      <details data-testid="reference-image-definition" className="rounded-xl border border-white/10 bg-slate-950/40 p-3 text-sm text-slate-400">
+        <summary className="cursor-pointer text-slate-300">작품 기본 설정에서 고른 것과 무엇이 다른가</summary>
         <p className="mt-2">
-          프로젝트 설정에서 고른 <span className="text-slate-300">등장 캐릭터</span>·<span className="text-slate-300">전체 분위기 Asset</span>·
-          <span className="text-slate-300">장면 참고 Asset</span>은 <strong className="text-slate-200">설정을 저장할 때 이 목록에 자동으로 올라옵니다</strong>
-          (<span className="text-violet-300">자동으로 연결된 항목</span>이라고 표시됩니다). 같은 선택이 그림에는 이미지로, 대본에는 글로 함께 전달됩니다.
+          설정에서 고른 <span className="text-slate-300">주인공</span>·<span className="text-slate-300">전체 그림체</span>는
+          <strong className="text-slate-200"> 이 목록에 자동으로 올라옵니다</strong> — 같은 선택이 그림에는 이미지로, 대본에는 글로 전달됩니다.
+          그래서 이 화면에서 할 일은 <strong className="text-slate-200">조정</strong>입니다: 서브 캐릭터·배경·소품을 더하거나,
+          특정 장면에만 붙이거나, 쓰지 않을 연결을 빼는 것.
         </p>
-        <p className="mt-2">
-          그래서 이 화면에서 할 일은 <strong className="text-slate-200">조정</strong>입니다 — 특정 장면에만 붙이거나, 설정에 없는 것을 더하거나,
-          쓰지 않을 연결을 빼는 것.
-        </p>
-      </div>
-      <p className="text-sm text-slate-400">
-        아래 버튼이 하는 일은 두 가지입니다: <strong className="text-slate-200">빠진 장면이 없는지 검사</strong>하고, 통과하면 다음 단계로 넘깁니다.
-        이미지가 하나도 안 붙은 장면이 있으면 몇 번 장면인지 알려주고 막습니다.
-      </p>
+        <p className="mt-2">직접 연결한 것은 연결하는 순간 확정됩니다 — 다시 승인할 필요 없습니다.</p>
+      </details>
 
       <section aria-label="참고 이미지 연결 추가" className="space-y-3 rounded-2xl border border-violet-400/25 bg-violet-500/[0.06] p-5">
         <h2 className="text-base font-semibold text-slate-100">참고 이미지 연결하기</h2>

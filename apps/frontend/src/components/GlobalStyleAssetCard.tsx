@@ -78,18 +78,14 @@ export function GlobalStyleAssetCard({ projectId }: Props) {
     <section aria-label="전체 그림체" data-testid="global-style-card" className="space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
       <h2 className="text-base font-semibold text-slate-100">전체 그림체</h2>
       {/* Says what it does, not what it is. "전체 비주얼 스타일" named a field; this names an effect. */}
-      <p className="text-sm text-slate-400">
-        여기에 고른 그림 한 장이 <strong className="text-slate-300">모든 회차의 모든 장면</strong>을 만들 때 같이 전달됩니다.
-        회차마다 화풍이 달라지지 않게 잡아 주는 역할입니다. 안 골라도 됩니다.
-      </p>
+      <p className="text-sm text-slate-400">고른 그림 한 장이 <strong className="text-slate-300">모든 회차의 모든 장면</strong>에 같이 전달됩니다.</p>
 
       {loading && <p className="text-sm text-slate-400">불러오는 중...</p>}
 
       {!loading && assets.length === 0 ? (
         // An empty dropdown reads as "broken"; the way out is a different screen, so it is named.
         <p data-testid="global-style-none-available" className="text-sm text-slate-400">
-          쓸 수 있는 그림체 이미지가 없습니다. <strong className="text-slate-300">이미지 보관함</strong>에서 유형을
-          <strong className="text-slate-300"> 스타일</strong>로 등록하고 승인하면 여기에 나옵니다.
+          쓸 수 있는 그림체 이미지가 없습니다 — <strong className="text-slate-300">이미지 보관함</strong>에서 유형을 스타일로 등록하고 승인해 주세요.
         </p>
       ) : !loading && (
         <>

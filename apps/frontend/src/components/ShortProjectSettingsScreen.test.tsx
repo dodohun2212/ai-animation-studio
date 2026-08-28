@@ -107,7 +107,9 @@ describe("ShortProjectSettingsScreen", () => {
     await screen.findByDisplayValue("별의 지도");
     expect(screen.queryByTestId("just-created-notice")).toBeNull();
     expect(screen.queryByTestId("finish-setup-button")).toBeNull();
-    expect(screen.getByRole("button", { name: "프로젝트로 돌아가기" })).toBeTruthy();
+    // By testid, not by name: the header carries a back button with the same words, and both do the same thing.
+    // The point here is that the bar at the end of the form still offers a way out when nothing was just created.
+    expect(screen.getByTestId("settings-done-button")).toBeTruthy();
   });
 
   it("blocks empty project name before sending PATCH", async () => {
@@ -216,7 +218,7 @@ describe("ShortProjectSettingsScreen", () => {
     const castSection = await screen.findByRole("region", { name: "등장 캐릭터" });
     await within(castSection).findByText("선택된 캐릭터가 없습니다.");
 
-    const searchForm = within(castSection).getByRole("form", { name: "캐릭터 Asset 검색" });
+    const searchForm = within(castSection).getByRole("form", { name: "캐릭터 폴더 검색" });
     fireEvent.change(within(searchForm).getByLabelText("캐릭터 검색"), { target: { value: "주인공" } });
     fireEvent.click(within(searchForm).getByRole("button", { name: "검색" }));
     await screen.findByText("주인공");
@@ -236,13 +238,15 @@ describe("ShortProjectSettingsScreen", () => {
       "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "ASSET-CHAR-1", castRole: "protagonist", storyRole: "대표 캐릭터" }] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
+      // The row resolves its name from the library on mount; without this it falls back to the raw id.
+      "GET /assets?assetType=character": { assets: [makeAssetFolder({ assetId: "ASSET-CHAR-1", displayName: "주인공", assetType: "character" })] },
       "PUT /projects/sample_project/settings/cast": { cast: [] },
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
 
     const castSection = await screen.findByRole("region", { name: "등장 캐릭터" });
-    await within(castSection).findByText("ASSET-CHAR-1");
+    await within(castSection).findByText("주인공"); // the folder name, not its id — the row used to render the raw id
     fireEvent.click(within(castSection).getByRole("button", { name: "제거" }));
 
     await within(castSection).findByText("선택된 캐릭터가 없습니다.");
@@ -264,7 +268,7 @@ describe("ShortProjectSettingsScreen", () => {
     render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
 
     const castSection = await screen.findByRole("region", { name: "등장 캐릭터" });
-    const searchForm = within(castSection).getByRole("form", { name: "캐릭터 Asset 검색" });
+    const searchForm = within(castSection).getByRole("form", { name: "캐릭터 폴더 검색" });
     fireEvent.change(within(searchForm).getByLabelText("캐릭터 검색"), { target: { value: "주인공" } });
     fireEvent.click(within(searchForm).getByRole("button", { name: "검색" }));
 
@@ -284,6 +288,10 @@ describe("ShortProjectSettingsScreen", () => {
       },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
+      "GET /assets?assetType=character": { assets: [
+        makeAssetFolder({ assetId: "ASSET-CHAR-1", displayName: "주인공", assetType: "character" }),
+        makeAssetFolder({ assetId: "ASSET-CHAR-2", displayName: "동생", assetType: "character" }),
+      ] },
       "PUT /projects/sample_project/settings/cast": {
         cast: [
           { assetId: "ASSET-CHAR-1", castRole: "supporting", storyRole: "서브 캐릭터" },
@@ -295,8 +303,8 @@ describe("ShortProjectSettingsScreen", () => {
     render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
 
     const castSection = await screen.findByRole("region", { name: "등장 캐릭터" });
-    await within(castSection).findByText("ASSET-CHAR-1");
-    const second = within(castSection).getByRole("group", { name: "ASSET-CHAR-2 구분" });
+    await within(castSection).findByText("주인공"); // the folder name, not its id — the row used to render the raw id
+    const second = within(castSection).getByRole("group", { name: "동생 구분" });
     fireEvent.click(within(second).getByRole("button", { name: "대표" }));
 
     const putCall = await waitFor(() => {
@@ -359,11 +367,11 @@ describe("ShortProjectSettingsScreen", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
 
-    const refsSection = await screen.findByRole("region", { name: "분위기·장면 참고 Asset" });
-    await within(refsSection).findByText("선택된 분위기 Asset이 없습니다.");
+    const refsSection = await screen.findByRole("region", { name: "분위기·장면 참고 이미지" });
+    await within(refsSection).findByText("고른 분위기 이미지가 없습니다.");
 
-    const searchForm = within(refsSection).getByRole("form", { name: "분위기 Asset 검색" });
-    fireEvent.change(within(searchForm).getByLabelText("분위기 Asset 검색"), { target: { value: "네온" } });
+    const searchForm = within(refsSection).getByRole("form", { name: "분위기 이미지 검색" });
+    fireEvent.change(within(searchForm).getByLabelText("분위기 이미지 검색"), { target: { value: "네온" } });
     fireEvent.click(within(searchForm).getByRole("button", { name: "검색" }));
     await within(refsSection).findByText("네온 팔레트");
 
@@ -386,9 +394,9 @@ describe("ShortProjectSettingsScreen", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
 
-    const refsSection = await screen.findByRole("region", { name: "분위기·장면 참고 Asset" });
-    const searchForm = await within(refsSection).findByRole("form", { name: "장면 참고 Asset 검색" });
-    fireEvent.change(within(searchForm).getByLabelText("장면 참고 Asset 검색"), { target: { value: "열쇠" } });
+    const refsSection = await screen.findByRole("region", { name: "분위기·장면 참고 이미지" });
+    const searchForm = await within(refsSection).findByRole("form", { name: "장면 참고 이미지 검색" });
+    fireEvent.change(within(searchForm).getByLabelText("장면 참고 이미지 검색"), { target: { value: "열쇠" } });
     fireEvent.click(within(searchForm).getByRole("button", { name: "검색" }));
     await within(refsSection).findByText("청동 열쇠");
 
@@ -667,5 +675,42 @@ describe("ShortProjectSettingsScreen", () => {
     expect(screen.getByTestId("settings-aspect")).not.toBeDisabled();
     expect(screen.queryByTestId("settings-scene-count-locked")).toBeNull();
     expect(screen.queryByTestId("settings-aspect-locked")).toBeNull();
+  });
+  it("names an already-saved cast member without needing a search first", async () => {
+    const hero = makeAssetFolder({ assetId: "ASSET-CHAR-9", displayName: "이배드", assetType: "character" });
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "ASSET-CHAR-9", castRole: "representative", storyRole: "대표 캐릭터" }] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+      "GET /assets?assetType=character": { assets: [hero] },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    const castSection = await screen.findByRole("region", { name: "등장 캐릭터" });
+    expect(await within(castSection).findByText("이배드")).toBeTruthy();
+    expect(within(castSection).queryByText("ASSET-CHAR-9")).toBeNull();
+  });
+
+  // The counterpart: a cast row can outlive the folder it points at, because deleting the folder in the
+  // library does not touch the cast. The row used to render the raw id, which reads as a glitch — the person
+  // cannot tell whether the app is broken or the folder is gone, and either way does not know to remove it.
+  it("says a cast row's folder is gone instead of showing its id", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "FOLDER-GONE", castRole: "representative", storyRole: "대표 캐릭터" }] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+      "GET /assets?assetType=character": { assets: [] },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    const castSection = await screen.findByRole("region", { name: "등장 캐릭터" });
+    expect(await within(castSection).findByTestId("cast-missing-FOLDER-GONE")).toBeTruthy();
+    // The id stays reachable as the row's title attribute for matching things up by hand, but it is no longer
+    // the label — the label now says what to do about it.
+    expect(within(castSection).queryByText("FOLDER-GONE")).toBeNull();
   });
 });

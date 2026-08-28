@@ -134,7 +134,7 @@ describe("LongProjectSettingsScreen", () => {
     const voiceLabel = (await screen.findByTestId("long-settings-narration-enabled")).closest("label");
     expect(voiceLabel?.textContent).toContain("에피소드마다, 장면마다 한 번씩 비용이 듭니다");
     const subtitleLabel = screen.getByTestId("long-settings-subtitles-enabled").closest("label");
-    expect(subtitleLabel?.textContent).toContain("비용이 들지 않습니다");
+    expect(subtitleLabel?.textContent).toContain("비용 없음");
   });
 
   it("edits scene count and clip duration, derives the displayed total, and sends both (never the derived field) on save", async () => {
@@ -173,5 +173,21 @@ describe("LongProjectSettingsScreen", () => {
     expect(screen.getByRole("button", { name: "세계관 설명 저장" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "비밀 추가" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "복선 추가" })).toBeTruthy();
+  });
+
+  // Moved here from StoryWorldCard.test.tsx. The rule is true of all four cards below — 주인공, 전체 그림체,
+  // 세계관 설명, 비밀·복선 — so it is stated once at the top rather than four times over. A screen that repeats
+  // itself four times is a screen people stop reading, and then they miss the line that was card-specific.
+  it("states once, for the whole screen, when what is written here is read", async () => {
+    stubScreenFetch({ settings: makeLongProjectSettings() });
+    render(<LongProjectSettingsScreen projectId="long_test" onBack={() => {}} />);
+
+    const notice = await screen.findByTestId("long-settings-scope");
+    expect(notice.textContent).toContain("대본 생성");
+    // Blank is a complete answer — the prompt already treats it that way, and the screen read as a form that
+    // had to be filled in.
+    expect(notice.textContent).toContain("빈 칸은 AI가 알아서");
+    // And what happens to Episodes that already have a script, which is the half people lose money on.
+    expect(notice.textContent).toContain("다시 만들어야");
   });
 });

@@ -110,6 +110,15 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
         />
         장기 프로젝트 설정
       </h2>
+      {/* Said once, here, instead of four times below.
+          Every card on this screen — 주인공, 전체 그림체, 세계관 설명, 비밀·복선 — carried its own copy of the
+          same three facts: what reaches the AI, that blank is allowed, and that already-written Episodes do not
+          change. Four restatements of one rule is how a screen ends up too long to read, and a person who
+          stops reading misses the one line that was specific to the card in front of them. */}
+      <p data-testid="long-settings-scope" className="text-sm text-slate-400">
+        여기 적은 내용은 <strong className="text-slate-200">회차 나누기</strong>와 <strong className="text-slate-200">대본 생성</strong> 때 AI에게 전달됩니다.
+        빈 칸은 AI가 알아서 정하고, <strong className="text-slate-200">이미 만든 회차는 다시 만들어야</strong> 반영됩니다.
+      </p>
       {state.error && !state.settings && (
         <p className="text-sm text-rose-400" role="alert" data-error-code={state.error.code}>
           {state.error.message}
@@ -181,11 +190,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
           </label>
           <div className="md:col-span-2 space-y-3 rounded-xl border border-white/10 bg-slate-950/40 p-3.5">
             <p className="text-sm font-semibold text-slate-200">내레이션</p>
-            <p className="text-xs leading-relaxed text-slate-400">
-              켜면 에피소드 대본에 장면마다 읽어줄 문장이 함께 들어갑니다. 등장인물이 입을 움직여 말하는 방식이 아니라
-              이야기를 읽어주는 방식이라, 입 모양이 어긋나 보이지 않습니다. 음성과 자막은 따로 켤 수 있고, 설정은
-              이 프로젝트의 모든 에피소드에 적용됩니다.
-            </p>
+            <p className="text-xs leading-relaxed text-slate-400">장면마다 읽어줄 문장이 대본에 함께 들어갑니다. 인물이 말하는 게 아니라 읽어주는 방식입니다.</p>
             <label className="flex items-start gap-2.5 text-sm text-slate-200">
               <input
                 type="checkbox"
@@ -196,9 +201,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
               />
               <span>
                 음성 넣기
-                <span className="mt-1 block text-xs leading-relaxed text-slate-400">
-                  문장을 실제 목소리로 만들어 영상에 입힙니다. 에피소드마다, 장면마다 한 번씩 비용이 듭니다.
-                </span>
+                <span className="mt-1 block text-xs text-slate-400">실제 목소리로 만들어 영상에 입힙니다. 에피소드마다, 장면마다 한 번씩 비용이 듭니다.</span>
               </span>
             </label>
             <label className="flex items-start gap-2.5 text-sm text-slate-200">
@@ -211,10 +214,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
               />
               <span>
                 자막 넣기
-                <span className="mt-1 block text-xs leading-relaxed text-slate-400">
-                  같은 문장을 영상에 글자로 얹습니다. <span className="text-slate-300">비용이 들지 않습니다.</span> 소리를 끄고
-                  보는 사람이 많은 곳에 올릴 거라면 음성 없이 자막만 켜도 됩니다.
-                </span>
+                <span className="mt-1 block text-xs text-slate-400">같은 문장을 글자로 얹습니다. <span className="text-slate-300">비용 없음.</span></span>
               </span>
             </label>
           </div>
@@ -249,20 +249,12 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
           </button>
         </form>
       )}
-      {/* Moved here from the Story Bible screen: it is a project-wide choice like 화면 비율 above, not
-          something about one character. Rendered outside the settings form because it saves through its own
-          endpoint — one button per thing that is actually stored separately. */}
-      {/* Protagonist before style: a person names their lead character before deciding how it is drawn, and
-          this is the one that also reaches the script. Both are project-wide choices with their own endpoint,
-          so both sit outside the settings form with a button each. */}
+      {/* 주인공 · 전체 그림체 · 세계관 설명 · 비밀·복선 all moved here from 등장인물·설정집. Each describes the
+          work rather than one character or one Episode, and script generation reads all four from the project.
+          They sit outside the settings form because each saves through its own endpoint — one button per thing
+          that is actually stored separately. Pictures first (one choice each), then the two lists. */}
       {state.settings && <ProtagonistAssetCard projectId={projectId} />}
       {state.settings && <GlobalStyleAssetCard projectId={projectId} />}
-      {/* 세계관 설명 and 비밀·복선 moved here from 등장인물·설정집, for the same reason as the two cards above:
-          they describe the work, not one character or one Episode, and script generation reads them from the
-          project once per prompt. They were on a screen about characters only because the server stores all of
-          this in one file — and that screen also carried three tabs (캐릭터·배경·소품) whose text reaches
-          nothing, so the two halves that do reach the model were the harder ones to find.
-          Ordered after the two picture cards because those two are one choice each and these are lists. */}
       {state.settings && <StoryWorldCard projectId={projectId} />}
       {state.settings && <StorySecretsCard projectId={projectId} />}
     </section>

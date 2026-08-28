@@ -15,7 +15,7 @@ type Draft = { name: string; description: string; revealFrom: string };
  * Episode 3. That is why these two moved here with 세계관 while 캐릭터·배경·소품 did not.
  */
 const LISTS: ReadonlyArray<{ collection: LongStoryBibleCollection; label: string; hint: string }> = [
-  { collection: "secrets", label: "비밀", hint: "아직 밝혀지면 안 되는 것. 몇 화부터 써도 되는지를 함께 정합니다." },
+  { collection: "secrets", label: "비밀", hint: "아직 밝혀지면 안 되는 것." },
   { collection: "foreshadowing", label: "복선", hint: "미리 깔아 두고 나중에 회수할 것." },
 ];
 
@@ -116,10 +116,7 @@ export function StorySecretsCard({ projectId }: Props) {
   return (
     <section aria-label="비밀·복선" data-testid="story-secrets-card" className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
       <h3 className="text-base font-semibold text-slate-100">비밀·복선</h3>
-      <p className="text-sm text-slate-400">
-        여기 적은 글은 대본을 쓸 때 <strong className="text-slate-300">그대로 전달됩니다</strong>.
-        {" "}<strong className="text-slate-200">비워 둬도 됩니다</strong> — 정해 둔 것이 없으면 AI가 알아서 만듭니다.
-      </p>
+      <p className="text-sm text-slate-400">적은 글이 대본에 <strong className="text-slate-300">그대로</strong> 전달됩니다.</p>
       {error && <p role="alert" data-error-code={error.code} className="text-sm text-rose-400">{error.message}</p>}
       {loading && <p className="text-sm text-slate-400">불러오는 중...</p>}
       {LISTS.map(({ collection, label, hint }) => {
@@ -206,11 +203,9 @@ export function StorySecretsCard({ projectId }: Props) {
                   disabled={pending}
                   onChange={(event) => setDraft(collection, { ...draft, revealFrom: event.target.value })}
                 />
-                {/* The default is stated, because leaving it blank is a real choice with a real effect and an
-                    empty box that silently means "from the first Episode" is how a twist gets spoiled. */}
-                <span className="mt-1 block text-xs text-slate-500">
-                  이 회차 전까지는 <strong className="text-slate-400">쓰지 말라고</strong> 대본 AI에게 전달됩니다. 비워 두면 1화부터 쓸 수 있습니다.
-                </span>
+                {/* The default is stated, because an empty box that silently means "from the first Episode" is
+                    how a twist gets spoiled. One clause, not two sentences. */}
+                <span className="mt-1 block text-xs text-slate-500">그 전 회차에는 쓰지 말라고 전달됩니다. 비우면 1화부터.</span>
               </label>
               {validationError?.collection === collection && (
                 <p role="alert" data-testid={`story-secrets-validation-${collection}`} className="text-sm text-rose-400">{validationError.message}</p>

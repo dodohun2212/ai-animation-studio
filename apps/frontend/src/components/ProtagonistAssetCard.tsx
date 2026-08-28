@@ -85,10 +85,7 @@ export function ProtagonistAssetCard({ projectId }: Props) {
   return (
     <section aria-label="주인공" data-testid="protagonist-card" className="space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
       <h2 className="text-base font-semibold text-slate-100">주인공</h2>
-      <p className="text-sm text-slate-400">
-        여기 고른 <strong className="text-slate-300">폴더 이름</strong>이 대본을 쓸 때 주인공 이름으로 전달되고,
-        폴더 안 그림들이 모든 회차의 장면에 참고로 붙습니다. 서브 캐릭터와 배경은 회차마다 따로 고릅니다.
-      </p>
+      <p className="text-sm text-slate-400">폴더 이름이 곧 주인공 이름입니다 — 보관함에서 고치면 다음 대본부터 반영됩니다. 서브 캐릭터는 회차마다 따로 고릅니다.</p>
 
       {loading && <p className="text-sm text-slate-400">불러오는 중...</p>}
 
@@ -96,8 +93,7 @@ export function ProtagonistAssetCard({ projectId }: Props) {
         // The way out is on another screen, so the card names that screen and what to make there. A dropdown
         // with nothing in it and a save button beside it reads as broken.
         <p data-testid="protagonist-none-available" className="text-sm text-slate-400">
-          쓸 수 있는 캐릭터 폴더가 없습니다. <strong className="text-slate-300">이미지 보관함</strong>에서
-          <strong className="text-slate-300"> 캐릭터 폴더</strong>를 만들고 그 안에 정면·옆모습 같은 그림을 넣으면 여기에 나옵니다.
+          쓸 수 있는 캐릭터 폴더가 없습니다 — <strong className="text-slate-300">이미지 보관함</strong>에서 캐릭터 폴더를 만들어 주세요.
         </p>
       ) : !loading && (
         <>
@@ -118,12 +114,9 @@ export function ProtagonistAssetCard({ projectId }: Props) {
                 </option>
               ))}
             </select>
-            {/* Said here because the name is not copied at save time — it is read when the script is written,
-                so renaming the folder is how you rename the protagonist, and it takes effect on the next
-                script rather than needing anything re-saved here. */}
-            <span className="mt-1 block text-xs text-slate-500">
-              폴더 이름이 곧 주인공 이름입니다. 이름을 바꾸려면 이미지 보관함에서 폴더 이름을 고치면 되고, 다음 대본부터 바로 반영됩니다.
-            </span>
+            {/* The name is not copied at save time — it is read when the script is written — so renaming the
+                folder is how you rename the protagonist. Said in one clause rather than three sentences. */}
+            <span className="mt-1 block text-xs text-slate-500">이름은 이미지 보관함에서 폴더 이름을 고치면 바뀝니다.</span>
           </label>
           {assetId && (
             <label className="block text-sm text-slate-300">

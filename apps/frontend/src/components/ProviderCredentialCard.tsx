@@ -51,7 +51,7 @@ export function ProviderCredentialCard({ label, status, onStatusChange, acquireM
       <p className={`mt-1 text-sm ${statusTone(status)}`}>{statusText(status)}</p>
       {status.configured && status.maskedValue && <p className="mt-1 font-mono text-sm text-slate-400">{status.maskedValue}</p>}
       <form className="mt-4 space-y-2" onSubmit={save}>
-        <label className="block text-sm text-slate-300" htmlFor={inputId}>{label} credential</label>
+        <label className="block text-sm text-slate-300" htmlFor={inputId}>{label} API 키</label>
         <input
           id={inputId}
           type="password"
@@ -69,8 +69,8 @@ export function ProviderCredentialCard({ label, status, onStatusChange, acquireM
         <button type="button" className={outlineButton} disabled={disabled || pending || !status.configured || status.connected} onClick={() => void run(() => reconnectProvider(status.provider))}>다시 사용</button>
       </div>
       <p className="mt-2 text-xs text-slate-500">
-        사용을 꺼도 저장된 credential은 삭제되지 않습니다.
-        {status.configured && " 위 표시는 이 앱에 키가 저장돼 있다는 뜻입니다 — 제공사에서 그 키를 지웠거나 만료됐는지는 실제로 요청을 보내봐야 알 수 있습니다."}
+        사용을 꺼도 저장된 키는 지워지지 않습니다.
+        {status.configured && " 키가 아직 유효한지는 실제로 요청을 보내봐야 알 수 있습니다."}
       </p>
       {actionError && <p role="alert" data-error-code={actionError.code} className="mt-2 text-sm text-rose-400">{actionError.message}</p>}
     </div>

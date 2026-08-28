@@ -17,7 +17,7 @@ describe("ProviderCredentialCard", () => {
     const status = makeProviderStatus({ provider: "openai", configured: true, connected: true, maskedValue: "sk-********7890" });
     render(<ProviderCredentialCard label="OpenAI" status={status} onStatusChange={noop} />);
 
-    const input = screen.getByLabelText("OpenAI credential") as HTMLInputElement;
+    const input = screen.getByLabelText("OpenAI API 키") as HTMLInputElement;
     expect(input.type).toBe("password");
     expect(input.value).toBe("");
   });
@@ -56,7 +56,7 @@ describe("ProviderCredentialCard", () => {
 
   // Regression: this line used to read "연결됨". A user who had just revoked their Runway key on Runway's own
   // dashboard still saw it, and reasonably read it as "this key works". The app has never once asked a provider
-  // whether a stored key is valid, so it must not claim a connection it cannot verify (docs/06_DECISIONS.md D-006).
+  // whether a stored key is valid, so it must not claim a connection it cannot verify (`.claude-bridge` Round 184).
   it("never claims a connection it has not verified, and says what the status actually means", () => {
     render(
       <ProviderCredentialCard
@@ -67,7 +67,7 @@ describe("ProviderCredentialCard", () => {
     );
 
     expect(screen.queryByText("연결됨")).toBeNull();
-    expect(screen.getByText(/제공사에서 그 키를 지웠거나 만료됐는지는/)).toBeTruthy();
+    expect(screen.getByText(/키가 아직 유효한지는 실제로 요청을 보내봐야/)).toBeTruthy();
   });
 
   it("does not raise the provider question at all when no key is stored", () => {
@@ -88,7 +88,7 @@ describe("ProviderCredentialCard", () => {
     const status = makeProviderStatus({ provider: "openai" });
     render(<ProviderCredentialCard label="OpenAI" status={status} onStatusChange={noop} />);
 
-    const input = screen.getByLabelText("OpenAI credential");
+    const input = screen.getByLabelText("OpenAI API 키");
     const saveButton = screen.getByRole("button", { name: "저장" });
 
     fireEvent.click(saveButton);
@@ -114,7 +114,7 @@ describe("ProviderCredentialCard", () => {
     const status = makeProviderStatus({ provider: "openai" });
     render(<ProviderCredentialCard label="OpenAI" status={status} onStatusChange={onStatusChange} />);
 
-    const input = screen.getByLabelText("OpenAI credential") as HTMLInputElement;
+    const input = screen.getByLabelText("OpenAI API 키") as HTMLInputElement;
     fireEvent.change(input, { target: { value: SECRET_CREDENTIAL } });
     fireEvent.click(screen.getByRole("button", { name: "저장" }));
 
@@ -135,7 +135,7 @@ describe("ProviderCredentialCard", () => {
     const status = makeProviderStatus({ provider: "openai" });
     render(<ProviderCredentialCard label="OpenAI" status={status} onStatusChange={onStatusChange} />);
 
-    const input = screen.getByLabelText("OpenAI credential") as HTMLInputElement;
+    const input = screen.getByLabelText("OpenAI API 키") as HTMLInputElement;
     fireEvent.change(input, { target: { value: SECRET_CREDENTIAL } });
     fireEvent.click(screen.getByRole("button", { name: "저장" }));
 
@@ -156,7 +156,7 @@ describe("ProviderCredentialCard", () => {
     const status = makeProviderStatus({ provider: "openai" });
     render(<ProviderCredentialCard label="OpenAI" status={status} onStatusChange={noop} />);
 
-    fireEvent.change(screen.getByLabelText("OpenAI credential"), { target: { value: SECRET_CREDENTIAL } });
+    fireEvent.change(screen.getByLabelText("OpenAI API 키"), { target: { value: SECRET_CREDENTIAL } });
     const saveButton = screen.getByRole("button", { name: "저장" });
 
     fireEvent.click(saveButton);
@@ -188,7 +188,7 @@ describe("ProviderCredentialCard", () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/settings/providers/openai/disconnect");
     expect(init.body).toBeUndefined();
-    expect(screen.getByText(/삭제되지 않습니다/)).toBeTruthy();
+    expect(screen.getByText(/지워지지 않습니다/)).toBeTruthy();
   });
 
   it("reconnects successfully without sending any credential", async () => {

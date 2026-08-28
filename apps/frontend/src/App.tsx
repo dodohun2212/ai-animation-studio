@@ -486,10 +486,6 @@ export function App() {
               <h1 className="bg-gradient-to-r from-violet-200 via-violet-300 to-pink-300 bg-clip-text text-4xl font-semibold text-transparent">
                 AI Animation Studio
               </h1>
-              <p className="mt-4 max-w-2xl text-slate-400">
-                TypeScript 기반 새 버전의 실행 환경이 준비되었습니다. 기존 Python
-                워크플로는 새 기능이 검증될 때까지 그대로 보존됩니다.
-              </p>
             </>
           )}
 

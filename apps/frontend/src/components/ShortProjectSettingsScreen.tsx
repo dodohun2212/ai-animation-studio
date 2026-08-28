@@ -63,6 +63,22 @@ const smallRemoveButton =
   "rounded-full border border-rose-400/30 px-3 py-1.5 text-xs text-rose-300 hover:bg-rose-500/10 disabled:opacity-50";
 const cardSection = "space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
 
+/**
+ * "This section saves on every click."
+ *
+ * This screen has two save models: the form at the top waits for its button, the three sections below persist
+ * on every change. That was stated once, in small text, at the very bottom of a long page — after all three
+ * sections. Someone who edits the top and leaves loses the edit, and the sentence that would have warned them
+ * is below the fold. A rule about a section belongs on the section.
+ */
+function AutoSaveTag() {
+  return (
+    <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-normal text-emerald-300">
+      고치면 바로 저장
+    </span>
+  );
+}
+
 function SectionHeading({ children }: { children: ReactNode }) {
   return (
     <h3 className="flex items-center gap-2.5 text-base font-semibold">
@@ -175,6 +191,13 @@ function CastEditor({ projectId }: { projectId: string }) {
    * than showing nothing.
    */
   const [memberNames, setMemberNames] = useState<Record<string, string>>({});
+  /**
+   * Whether the folder list has been read, so an unresolved id can be told apart from one not looked up yet.
+   *
+   * Without this the screen cannot say the difference between "still loading" and "that folder is gone", and
+   * both looked identical: a bare id in the row you press 대표 on.
+   */
+  const [namesLoaded, setNamesLoaded] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<{ code: string; message: string } | null>(null);
   const savingRef = useRef(false);
@@ -183,6 +206,21 @@ function CastEditor({ projectId }: { projectId: string }) {
     let cancelled = false;
     getProjectCast(projectId).then((response) => { if (!cancelled) setCast(response.cast); })
       .catch((caught: unknown) => { if (!cancelled) setError(toDisplayError(caught)); });
+    /* Names for the cast that is already saved.
+       `memberNames` used to be filled only by searching or adding, both of which happen in this session — so
+       reopening the screen listed every saved character by its raw id ("FOLDER-C91BA4DC1ECB") until the person
+       happened to run a search that returned it. The id is not a name, and the row it labels is the one you
+       press 대표 on. Failure is silent on purpose: the ids still render, exactly as before. */
+    listAssets({ assetType: "character" })
+      .then((response) => {
+        if (cancelled) return;
+        setMemberNames((current) => ({
+          ...Object.fromEntries(response.assets.map((asset) => [asset.assetId, asset.displayName])),
+          ...current,
+        }));
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setNamesLoaded(true); });
     return () => { cancelled = true; };
   }, [projectId]);
 
@@ -257,7 +295,7 @@ function CastEditor({ projectId }: { projectId: string }) {
 
   return (
     <section aria-label="등장 캐릭터" className={cardSection}>
-      <SectionHeading>등장 캐릭터</SectionHeading>
+      <SectionHeading>등장 캐릭터 <AutoSaveTag /></SectionHeading>
       <p className="text-xs text-slate-400">
         대표는 한 명, 나머지는 모두 서브 캐릭터가 됩니다. 이 구분은 대본 AI에게 그대로 전달됩니다.
         캐릭터형 <strong className="text-slate-300">폴더</strong>만 고를 수 있습니다 — 낱장 이미지 하나는 캐릭터가 아니라 그림 한 장이라서요.
@@ -276,8 +314,14 @@ function CastEditor({ projectId }: { projectId: string }) {
               {/* Was the raw asset id (ASSET-CHARACTER-000000000001). Nobody can tell who they added from that.
                   The name comes from whichever search result was clicked; the id stays as the title attribute
                   so it is still recoverable when something needs to be matched up by hand. */}
+              {/* A cast row can outlive the folder it points at — the folder is deleted in the library and
+                  nothing here notices. It used to render the raw id, which reads as a glitch rather than as
+                  "this one is gone, remove it". */}
               <span className="text-sm font-medium text-slate-200" title={member.assetId}>
-                {memberNames[member.assetId] ?? member.assetId}
+                {memberNames[member.assetId]
+                  ?? (namesLoaded
+                    ? <span data-testid={`cast-missing-${member.assetId}`} className="text-amber-300">지워진 폴더 · 제거해 주세요</span>
+                    : member.assetId)}
               </span>
               <span role="group" aria-label={`${memberNames[member.assetId] ?? member.assetId} 구분`} className="flex items-center gap-1.5">
                 <button
@@ -323,7 +367,7 @@ function CastEditor({ projectId }: { projectId: string }) {
             : "대표 캐릭터가 아직 없습니다. 이야기의 중심이 되는 캐릭터의 \"대표\"를 눌러 주세요."}
         </p>
       )}
-      <form onSubmit={search} aria-label="캐릭터 Asset 검색" className="flex flex-wrap items-end gap-2">
+      <form onSubmit={search} aria-label="캐릭터 폴더 검색" className="flex flex-wrap items-end gap-2">
         <label className="flex flex-col gap-1 text-xs text-slate-400">
           캐릭터 검색
           <input className={inlineInput} value={query} onChange={(event) => setQuery(event.target.value)} />
@@ -405,7 +449,7 @@ function ContinuityEditor({ projectId }: { projectId: string }) {
 
   return (
     <section aria-label="이전 장면 연결" className={cardSection}>
-      <SectionHeading>이전 장면 연결</SectionHeading>
+      <SectionHeading>이전 장면 연결 <AutoSaveTag /></SectionHeading>
       {error && (
         <p role="alert" data-testid="continuity-error" data-error-code={error.code} className="text-sm text-rose-400">
           {error.message}
@@ -540,8 +584,8 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
   const selectedIds = new Set([...(atmosphereAssetIds ?? []), ...(sceneReferenceAssets ?? []).map((item) => item.assetId)]);
 
   return (
-    <section aria-label="분위기·장면 참고 Asset" className={cardSection}>
-      <SectionHeading>전체 분위기 및 장면 참고 Asset</SectionHeading>
+    <section aria-label="분위기·장면 참고 이미지" className={cardSection}>
+      <SectionHeading>분위기·장면 참고 이미지 <AutoSaveTag /></SectionHeading>
       <p className="text-xs text-slate-400">검색 결과가 없다면 이미지 보관함에서 배경·소품·스타일 이미지를 먼저 등록해 주세요.</p>
       {error && (
         <p role="alert" data-testid="asset-reference-error" data-error-code={error.code} className="text-sm text-rose-400">
@@ -551,11 +595,11 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
       {atmosphereAssetIds === null && !error && <Spinner label="불러오는 중..." />}
 
       {atmosphereAssetIds && (
-        <div aria-label="전체 분위기 Asset" className="space-y-2 rounded-xl border border-white/5 bg-slate-950/30 p-3.5">
-          <h4 className="text-sm font-medium text-slate-300">전체 분위기 Asset</h4>
-          {atmosphereAssetIds.length === 0 && <p className="text-sm text-slate-400">선택된 분위기 Asset이 없습니다.</p>}
+        <div aria-label="전체 분위기" className="space-y-2 rounded-xl border border-white/5 bg-slate-950/30 p-3.5">
+          <h4 className="text-sm font-medium text-slate-300">전체 분위기</h4>
+          {atmosphereAssetIds.length === 0 && <p className="text-sm text-slate-400">고른 분위기 이미지가 없습니다.</p>}
           {atmosphereAssetIds.length > 0 && (
-            <ul aria-label="선택된 분위기 Asset 목록" className="space-y-1">
+            <ul aria-label="선택된 분위기 이미지 목록" className="space-y-1">
               {atmosphereAssetIds.map((assetId) => (
                 <li key={assetId} className="flex items-center gap-2 rounded-lg border border-white/10 bg-slate-900/60 p-2.5">
                   <span className="text-sm text-slate-200">{assetId}</span>
@@ -568,11 +612,11 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
           )}
           <form
             onSubmit={(event) => { event.preventDefault(); void search(atmosphereQuery, ATMOSPHERE_ASSET_TYPES, setAtmosphereResults, setAtmosphereSearchError); }}
-            aria-label="분위기 Asset 검색"
+            aria-label="분위기 이미지 검색"
             className="flex flex-wrap items-end gap-2"
           >
             <label className="flex flex-col gap-1 text-xs text-slate-400">
-              분위기 Asset 검색
+              분위기 이미지 검색
               <input className={inlineInput} value={atmosphereQuery} onChange={(event) => setAtmosphereQuery(event.target.value)} />
             </label>
             <button type="submit" className={smallOutlineButton}>
@@ -585,7 +629,7 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
             </p>
           )}
           {atmosphereResults && (
-            <ul aria-label="분위기 Asset 검색 결과" className="space-y-1">
+            <ul aria-label="분위기 이미지 검색 결과" className="space-y-1">
               {atmosphereResults.map((asset) => (
                 <li key={asset.assetId} className="flex items-center gap-2 rounded-lg border border-white/10 bg-slate-900/60 p-2.5">
                   <span className="text-sm text-slate-200">{asset.displayName}</span>
@@ -601,11 +645,11 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
       )}
 
       {sceneReferenceAssets && (
-        <div aria-label="장면 참고 Asset" className="space-y-2 rounded-xl border border-white/5 bg-slate-950/30 p-3.5">
-          <h4 className="text-sm font-medium text-slate-300">장면 참고 Asset</h4>
-          {sceneReferenceAssets.length === 0 && <p className="text-sm text-slate-400">선택된 장면 참고 Asset이 없습니다.</p>}
+        <div aria-label="장면 참고 이미지" className="space-y-2 rounded-xl border border-white/5 bg-slate-950/30 p-3.5">
+          <h4 className="text-sm font-medium text-slate-300">장면 참고 이미지</h4>
+          {sceneReferenceAssets.length === 0 && <p className="text-sm text-slate-400">고른 장면 참고 이미지가 없습니다.</p>}
           {sceneReferenceAssets.length > 0 && (
-            <ul aria-label="선택된 장면 참고 Asset 목록" className="space-y-2">
+            <ul aria-label="고른 장면 참고 이미지 목록" className="space-y-2">
               {sceneReferenceAssets.map((item) => (
                 <li key={item.assetId} className="flex flex-wrap items-center gap-3 rounded-lg border border-white/10 bg-slate-900/60 p-3">
                   <span className="text-sm font-medium text-slate-200">{item.assetId}</span>
@@ -628,11 +672,11 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
           )}
           <form
             onSubmit={(event) => { event.preventDefault(); void search(sceneQuery, SCENE_REFERENCE_ASSET_TYPES, setSceneResults, setSceneSearchError); }}
-            aria-label="장면 참고 Asset 검색"
+            aria-label="장면 참고 이미지 검색"
             className="flex flex-wrap items-end gap-2"
           >
             <label className="flex flex-col gap-1 text-xs text-slate-400">
-              장면 참고 Asset 검색
+              장면 참고 이미지 검색
               <input className={inlineInput} value={sceneQuery} onChange={(event) => setSceneQuery(event.target.value)} />
             </label>
             <button type="submit" className={smallOutlineButton}>
@@ -645,7 +689,7 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
             </p>
           )}
           {sceneResults && (
-            <ul aria-label="장면 참고 Asset 검색 결과" className="space-y-1">
+            <ul aria-label="장면 참고 이미지 검색 결과" className="space-y-1">
               {sceneResults.map((asset) => (
                 <li key={asset.assetId} className="flex flex-wrap items-center gap-3 rounded-lg border border-white/10 bg-slate-900/60 p-3">
                   <span className="text-sm text-slate-200">{asset.displayName}</span>
@@ -943,10 +987,9 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
           <Field label="추가 지시사항" value={state.settings.additionalNotes} onChange={(value) => setField("additionalNotes", value)} multiline />
           <div className="md:col-span-2 space-y-3 rounded-xl border border-white/10 bg-slate-950/40 p-3.5">
             <p className="text-sm font-semibold text-slate-200">내레이션</p>
-            <p className="text-xs leading-relaxed text-slate-400">
-              켜면 대본 AI가 장면마다 읽어줄 문장을 함께 만듭니다. 등장인물이 입을 움직여 말하는 방식이 아니라 이야기를
-              읽어주는 방식이라, 입 모양이 어긋나 보이지 않습니다. 음성과 자막은 따로 켤 수 있습니다.
-            </p>
+            {/* Matched to the long project's wording after it was cut there — the same feature was explained
+                at two lengths on two screens. */}
+            <p className="text-xs leading-relaxed text-slate-400">장면마다 읽어줄 문장이 대본에 함께 들어갑니다. 인물이 말하는 게 아니라 읽어주는 방식입니다.</p>
             <label className="flex items-start gap-2.5 text-sm text-slate-200">
               <input
                 type="checkbox"
@@ -957,9 +1000,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
               />
               <span>
                 음성 넣기
-                <span className="mt-1 block text-xs leading-relaxed text-slate-400">
-                  문장을 실제 목소리로 만들어 영상에 입힙니다. 장면마다 한 번씩 비용이 듭니다.
-                </span>
+                <span className="mt-1 block text-xs text-slate-400">실제 목소리로 만들어 영상에 입힙니다. 장면마다 비용이 듭니다.</span>
               </span>
             </label>
             <label className="flex items-start gap-2.5 text-sm text-slate-200">
@@ -972,10 +1013,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
               />
               <span>
                 자막 넣기
-                <span className="mt-1 block text-xs leading-relaxed text-slate-400">
-                  같은 문장을 영상에 글자로 얹습니다. <span className="text-slate-300">비용이 들지 않습니다.</span> 소리를 끄고
-                  보는 사람이 많은 곳에 올릴 거라면 음성 없이 자막만 켜도 됩니다.
-                </span>
+                <span className="mt-1 block text-xs text-slate-400">같은 문장을 글자로 얹습니다. <span className="text-slate-300">비용 없음.</span></span>
               </span>
             </label>
           </div>
@@ -996,6 +1034,9 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
               설정이 저장되었습니다.
             </p>
           )}
+          {/* Said here rather than in the page footer: this is the box the rule is about, and this is where
+              someone is looking when they decide whether they are done. */}
+          <p className="text-xs text-slate-500 md:col-span-2">이 상자의 내용은 <span className="text-slate-400">설정 저장</span>을 눌러야 저장됩니다.</p>
           <button type="submit" disabled={state.loading} className={`${primaryButton} md:col-span-2`}>
             {state.loading ? "저장 중…" : "설정 저장"}
           </button>
@@ -1044,17 +1085,13 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
           The note is not filler: the three sections above save on every click, the form at the top does not. */}
       {state.settings && (
         <div className="flex flex-wrap items-center justify-end gap-3 border-t border-white/10 pt-4">
-          <p className="mr-auto max-w-md text-xs text-slate-500">
-            등장 캐릭터·참고 Asset·이전 장면 연결은 고칠 때마다 바로 저장됩니다. 맨 위 상자는{" "}
-            <span className="text-slate-400">설정 저장</span>을 눌러야 반영됩니다.
-          </p>
           {justCreated ? (
             <button type="button" data-testid="finish-setup-button" className={primaryButton} onClick={onBack}>
               설정 완료 · 계속 진행하기
             </button>
           ) : (
             <button type="button" data-testid="settings-done-button" className={primaryButton} onClick={onBack}>
-              설정 마치고 프로젝트로
+              프로젝트로 돌아가기
             </button>
           )}
         </div>
