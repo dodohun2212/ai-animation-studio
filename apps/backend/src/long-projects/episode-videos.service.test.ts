@@ -22,6 +22,47 @@ async function setup(episodeDurationSeconds: 30 | 60 = 30, aspectRatio: "9:16" |
 afterEach(async () => { vi.unstubAllGlobals(); if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 
 describe("EpisodeVideosService", () => {
+  it("generates from the prompt the person edited, not the one it previewed", async () => {
+    // 🔴 The box on the screen is editable. It used to have to come back byte for byte identical, so every edit
+    // was refused with "확인해 주세요" and nothing saying what was wrong — and the short project has always
+    // accepted an edited prompt. Two halves had to move: accepting it, and then actually using it. Accepting it
+    // without using it would have been worse than the refusal, because the video would quietly not be the one
+    // asked for.
+    const { videos, projectsRoot } = await setup();
+    const preview = await videos.preview("long", 1);
+    const edited = preview.scenes.map(({ sceneNumber }, index) => ({ sceneNumber, prompt: `내가 직접 쓴 프롬프트 ${index + 1}` }));
+
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "edited_1", prompts: edited });
+
+    const records = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "video_generation_records.json"), "utf8")) as Array<{ job_id: string; prompt: string }>;
+    const stored = records.filter((item) => item.job_id === started.jobId).map((item) => item.prompt);
+    expect(stored).toEqual(edited.map((item) => item.prompt));
+  });
+
+  it("still refuses a confirmation that no longer describes this Episode", async () => {
+    // Relaxing the prompt did not relax the staleness guard: confirmationId is derived from the scenes, so a
+    // script that moved underneath is still caught. That is the thing the check was really for.
+    const { videos } = await setup();
+    const preview = await videos.preview("long", 1);
+
+    await expect(videos.start("long", 1, { approved: true, confirmationId: "not-the-one", userRequestId: "stale_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
+  it("refuses a prompt that is empty or longer than Runway accepts", async () => {
+    // Nothing checked the shape at all before, because nothing needed to while the text had to match the
+    // server's own. Accepting an edit without this would open an unchecked field straight into a paid call.
+    const { videos } = await setup();
+    const preview = await videos.preview("long", 1);
+    const withFirst = (prompt: string) => preview.scenes.map(({ sceneNumber }, index) => ({ sceneNumber, prompt: index === 0 ? prompt : "ok" }));
+
+    for (const [name, prompt] of [["empty", ""], ["blank", "   "], ["too long", "가".repeat(1001)]] as const) {
+      await expect(videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: `shape_${name}`, prompts: withFirst(prompt) }))
+        .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    }
+  });
+
+
   it("keeps preview provider-free, requires its exact approval snapshot, and produces six local fake clips sequentially", async () => {
     const { videos, projectsRoot } = await setup(); const preview = await videos.preview("long", 1);
     expect(preview).toMatchObject({ model: "gen4_turbo", ratio: "720:1280", durationSecondsPerScene: 5, executionMode: "sequential", estimatedCostUsd: 1.5 });
