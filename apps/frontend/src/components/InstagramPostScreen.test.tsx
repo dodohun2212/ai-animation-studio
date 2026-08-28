@@ -1,8 +1,23 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { Scene } from "@ai-animation-studio/shared";
+
 import { jsonResponse, makeProject } from "../api/testUtils.js";
 import { InstagramPostScreen } from "./InstagramPostScreen.js";
+
+/** Every required Scene field, plus the one the caption suggestion actually reads. */
+function scene(number: number, narration: string): Scene {
+  return {
+    number: number as Scene["number"],
+    script: "",
+    imagePrompt: "",
+    motionPrompt: "",
+    imageReview: "pending",
+    videoReview: "pending",
+    narration,
+  };
+}
 
 const LIBRARY_URL = "/videos/library";
 
@@ -228,12 +243,37 @@ describe("InstagramPostScreen", () => {
     expect((screen.getByTestId("post-ai-notice") as HTMLInputElement).checked).toBe(false);
   });
 
-  it("starts blank with the AI notice on when nothing was ever drafted", async () => {
-    renderScreen();
+  // Replaces "starts blank": a blank box was the screen asking for work it could already do. The topic and the
+  // narration are both sitting in the project by the time this screen opens.
+  it("fills the caption from the project itself when nothing was ever drafted", async () => {
+    renderScreen({ project: { topic: "기록관의 밤", scenes: [scene(1, "문이 열렸다."), scene(2, "빛이 새어 나왔다.")] } });
+    await pickProject();
+
+    expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value)
+      .toBe("기록관의 밤\n\n문이 열렸다. 빛이 새어 나왔다.");
+    // Said out loud, because text that appears on its own reads as text someone else wrote and must not be touched.
+    expect(screen.getByTestId("post-body-autofilled")).toBeTruthy();
+    expect((screen.getByTestId("post-ai-notice") as HTMLInputElement).checked).toBe(true);
+  });
+
+  // The half that matters more than the filling: a body saved as empty is a person having cleared it. Refilling
+  // that on the next visit is the screen undoing an edit, silently, which is the exact shape of the scene-edit
+  // defect. `undefined` (never saved) and `""` (saved empty) have to stay different here.
+  it("leaves the caption empty when an empty one was actually saved", async () => {
+    renderScreen({ draft: { body: "", hashtags: "", aiNotice: true }, project: { topic: "기록관의 밤" } });
     await pickProject();
 
     expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value).toBe("");
-    expect((screen.getByTestId("post-ai-notice") as HTMLInputElement).checked).toBe(true);
+    expect(screen.queryByTestId("post-body-autofilled")).toBeNull();
+  });
+
+  it("stops calling the caption pre-filled once it has been edited", async () => {
+    renderScreen({ project: { topic: "기록관의 밤" } });
+    await pickProject();
+
+    expect(screen.getByTestId("post-body-autofilled")).toBeTruthy();
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "내가 쓴 본문" } });
+    expect(screen.queryByTestId("post-body-autofilled")).toBeNull();
   });
 
   // Saving on blur, not per keystroke and not behind a button people forget. The endpoint replaces rather than
@@ -290,11 +330,13 @@ describe("InstagramPostScreen", () => {
     expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value).toBe("본문");
   });
 
-  // Losing the draft read must not cost the screen — the caption is simply blank, as it is for a new project.
+  // Losing the draft read must not cost the screen — it opens with the same caption a project that never had a
+  // draft gets. Nothing is lost by that: a failed read means nothing saved was found, and the person can still
+  // clear the box.
   it("still opens when the draft read fails", async () => {
-    renderScreen({ draft: "fails" });
+    renderScreen({ draft: "fails", project: { topic: "기록관의 밤" } });
     await pickProject();
-    expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value).toBe("");
+    expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value).toBe("기록관의 밤");
   });
 
   // Where it goes belongs beside what goes, not two screens away in settings: a credential answers "can we act

@@ -88,6 +88,25 @@ function composeCaption(parts: { body: string; attribution: string; aiNotice: st
 }
 
 /**
+ * The caption body a project starts with when nothing has ever been written for it.
+ *
+ * Assembled from what the project already holds — no model call — so opening this screen costs nothing, waits
+ * for nothing, and cannot fail. The topic goes first because the first line is what Instagram shows in the feed
+ * before "더 보기"; the narration sentences follow as one paragraph when the project has them.
+ *
+ * Used ONLY when no body has ever been saved for this project. A saved body that is an empty string is a person
+ * having deliberately cleared it, and refilling that on the next visit would be the screen undoing an edit —
+ * the same silent-overwrite shape as the scene-edit draft being wiped on load.
+ */
+function suggestCaptionBody(project: Project): string {
+  const narration = project.scenes
+    .map((scene) => (typeof scene.narration === "string" ? scene.narration.trim() : ""))
+    .filter((line) => line.length > 0)
+    .join(" ");
+  return [project.topic.trim(), narration].filter((block) => block.length > 0).join("\n\n");
+}
+
+/**
  * Everything that turns a finished video into a post: which video, what the caption says, whether the shape and
  * length are within what a reel accepts, the credit line the audio licence requires, which account it goes to —
  * and finally the posting itself.
@@ -102,6 +121,8 @@ export function InstagramPostScreen({ onBack }: Props) {
   const [projectId, setProjectId] = useState("");
   const [picked, setPicked] = useState<PickedState>({ status: "idle" });
   const [body, setBody] = useState("");
+  /** True only while the box still holds text this screen put there and the person has not touched it yet. */
+  const [bodyAutoFilled, setBodyAutoFilled] = useState(false);
   const [hashtagsRaw, setHashtagsRaw] = useState("");
   const [aiNoticeOn, setAiNoticeOn] = useState(true);
   const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
@@ -166,7 +187,11 @@ export function InstagramPostScreen({ onBack }: Props) {
     ])
       .then(([projectResponse, settingsResponse, draft]) => {
         if (cancelled) return;
-        setBody(draft?.body ?? "");
+        // `draft?.body === undefined` is "no body has ever been saved", which is not the same as a saved "".
+        // Only the first case gets a suggestion; see suggestCaptionBody.
+        const suggested = draft?.body === undefined ? suggestCaptionBody(projectResponse.project) : "";
+        setBody(draft?.body ?? suggested);
+        setBodyAutoFilled(draft?.body === undefined && suggested.length > 0);
         setHashtagsRaw(draft?.hashtags ?? "");
         setAiNoticeOn(draft?.aiNotice ?? true);
         setSaveState("idle");
@@ -287,7 +312,7 @@ export function InstagramPostScreen({ onBack }: Props) {
   }
 
   return (
-    <section className="mt-8 max-w-3xl space-y-5">
+    <section className="mt-8 max-w-5xl space-y-5">
       <button type="button" className={outlineButton} onClick={onBack}>
         돌아가기
       </button>
@@ -426,12 +451,22 @@ export function InstagramPostScreen({ onBack }: Props) {
       )}
 
       {picked.status === "ready" && (
-        <>
+        /*
+         * Laid out the way the place this is going lays it out: the clip on the left, the words on the right,
+         * both on screen at once. It used to be one long column, so the caption was written while the video it
+         * describes was scrolled off the top. The columns stack back into that single column below `lg` — on a
+         * narrow window side-by-side would make both halves too cramped to use.
+         *
+         * The left column holds the media and the checks that are about the media; the right holds everything
+         * that ends up in the post text, ending with the publish button.
+         */
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start">
+          <div className="space-y-5">
           <div className={cardSection} data-testid="post-video">
             {/* eslint-disable-next-line jsx-a11y/media-has-caption -- generated clips carry no caption track */}
             <video
               data-testid="post-video-player"
-              className={`${notVertical ? "aspect-video" : "aspect-[9/16]"} w-full max-w-xs rounded-xl border border-white/10 bg-slate-950/60`}
+              className={`${notVertical ? "aspect-video" : "aspect-[9/16]"} w-full rounded-xl border border-white/10 bg-slate-950/60`}
               controls
               preload="none"
               src={finalVideoContentUrl(projectId)}
@@ -483,7 +518,9 @@ export function InstagramPostScreen({ onBack }: Props) {
               )}
             </div>
           </div>
+          </div>
 
+          <div className="space-y-5">
           <div className={cardSection}>
             <label className="block text-sm text-slate-300" htmlFor="post-body">
               캡션 본문
@@ -494,10 +531,18 @@ export function InstagramPostScreen({ onBack }: Props) {
                 className={fieldClass}
                 placeholder="첫 줄이 미리보기에 보입니다."
                 value={body}
-                onChange={(event) => setBody(event.target.value)}
+                onChange={(event) => {
+                  setBody(event.target.value);
+                  setBodyAutoFilled(false);
+                }}
                 onBlur={() => void saveDraft()}
               />
             </label>
+            {bodyAutoFilled && (
+              <p data-testid="post-body-autofilled" className="text-xs text-slate-400">
+                이 프로젝트의 제목과 내레이션으로 미리 채워 뒀습니다. 그대로 올려도 되고, 지우고 새로 쓰셔도 됩니다.
+              </p>
+            )}
 
             <label className="block text-sm text-slate-300" htmlFor="post-hashtags">
               해시태그
@@ -680,7 +725,8 @@ export function InstagramPostScreen({ onBack }: Props) {
               </p>
             )}
           </div>
-        </>
+          </div>
+        </div>
       )}
     </section>
   );
