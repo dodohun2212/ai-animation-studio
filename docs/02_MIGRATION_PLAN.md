@@ -1925,3 +1925,9 @@ Runway   $2.00 / $10  → 남음 $8.00     장기 1회차 소요 ≈ $1.50 (영�
   - `updateContent` 가 `basic` 을 통째로 갈아치우므로 style 처럼 **보존**한다(안 하면 무관한 편집이 링크를 지운다).
   - **머테이션 셋 다 확인**: 이름을 빼면 / 배관을 다시 넣으면 / 폴더 요구를 빼면 각각 해당 테스트가 빨갛다.
   - 검증: root typecheck 통과, Backend 1031개(+4 신규) 전부 통과, frontend 1017개 전부 통과, shared 25개 전부 통과, root build 통과. **화면은 Cowork 소관** — `GlobalStyleAssetCard` 옆에 붙이면 된다.
+- [x] **약속한 훑기: "계약에는 있는데 화면이 한 번도 안 보내는 필드" — 요청 방향은 깨끗했고, 대신 더 큰 것이 나왔다**: Round 254에서 비밀 공개 시점이 그 부류였으므로 다른 것도 있을 거라 적어두고 미뤄뒀던 작업.
+  - **계약의 요청 필드 120개를 프런트 소스 전체와 대조했다 — 안 보내는 것은 없었다.** 유일한 후보(`imagePath`)는 정규식 오탐(응답 타입 `VideoScenePreview`)이었다. 방법 자체는 이미 아는 사고(`revealAvailableEpisode`)로 검증했다 — 그 필드는 수리 전이었다면 이 훑기에 걸린다.
+  - 🔴 **그런데 계약이 아니라 서버 화이트리스트를 보니 다른 게 나왔다. `연결 상태 확인`(관계 일관성 감사)은 아무것도 못 찾는다.** 감사는 `location_id`·`owned_item_ids`·`character_ids`·`owner_id`·`location_ids` 가 가리키는 ID가 실재하는지 검사하는데, **그 필드를 채울 수 있는 경로가 앱에 없다.** 설정집 화면이 보내는 것은 `id/name/description/status/revealAvailableEpisode/assetLink` 뿐이다. 즉 **관계가 생길 수 없으므로 감사는 언제나 "이상 없음"** 이다 — 버튼이 있고, 로딩이 돌고, 초록 문구가 뜨는데, 그게 무엇도 증명하지 않는다.
+  - **우리가 만든 회귀가 아니다.** 파이썬 원본에도 이 관계 필드를 채우는 UI가 없다(`app/ui` 전체에 언급 없음). `episode-context-builder.ts:37` 주석이 이미 같은 사실을 이웃 필드에 대해 적어두고 있었다 — 파이썬의 `Episode.character_ids` 도 아무 경로가 안 채운다. **처음부터 아무것도 못 하던 기능을 충실히 이식한 것**이다.
+  - 같은 훑기에서 나온 작은 것: `truth`·`content`·`plannedRevealEpisode`·`actualRevealEpisode`·`alive`·`injured`·`referenceId`·`lastAppearance`·`emotionalState`·`episodeIds` 도 서버는 받지만 화면이 안 보낸다. 비밀·복선의 본문은 `description` 으로 가고 있어 `truth`/`content` 는 쓰이지 않는다.
+  - **판단은 캡틴D 몫이라 아무것도 지우지 않았다** — B-1 과 같은 갈래다(①관계를 화면에서 만들 수 있게 하거나 ②감사를 없애거나). 다만 **지금 상태가 제일 나쁘다**: 아무것도 안 하는 초록 문구는 "확인했다"는 잘못된 안심을 준다. 우편함에 근거와 함께 넘겼다.
