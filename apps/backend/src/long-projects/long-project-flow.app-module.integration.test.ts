@@ -111,6 +111,13 @@ describe.sequential("Long Project Episode flow over HTTP", () => {
     const finished = await waitForVideos(started.jobId);
     expect(finished.status).toBe("succeeded");
 
+    // A settled job is not the same fact as an Episode ready to be reviewed, and they land at different moments:
+    // approving a scene right after the job said "succeeded" was refused as not allowed in the current state,
+    // intermittently and only under load. The precondition for the next step is the Episode's own state, so that
+    // is what to wait for.
+    const ready = await waitForEpisodeState("videos_review");
+    expect(ready).toBe("videos_review");
+
     for (const scene of SCENES) {
       await call("POST", API_ROUTES.longEpisodeVideoReviewApproval(PROJECT_ID, 1, started.jobId, scene), { approved: true });
     }
@@ -159,6 +166,16 @@ async function waitForVideos(jobId: string): Promise<{ status: string }> {
     const progress = await call<{ status: string }>("GET", API_ROUTES.longEpisodeVideoProgress(PROJECT_ID, 1, jobId));
     if (SETTLED.has(progress.status)) return progress;
     if (Date.now() > deadline) throw new Error(`video job stayed ${progress.status}`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
+async function waitForEpisodeState(target: string): Promise<string> {
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    const { episode } = await call<{ episode: { status: string } }>("GET", API_ROUTES.longEpisode(PROJECT_ID, 1));
+    if (episode.status === target) return episode.status;
+    if (Date.now() > deadline) return episode.status;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
 }
