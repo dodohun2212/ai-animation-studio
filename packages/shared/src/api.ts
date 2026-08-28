@@ -515,7 +515,15 @@ export interface LongStoryBibleItem {
   truth?: string;
   revealAvailableEpisode?: number;
   content?: string;
-  /** null explicitly removes an existing link in an update request. */
+  /**
+   * @deprecated Removed — the server accepts this field and ignores it, and never returns it.
+   *
+   * A Story Bible item's Asset link was stored and validated but read by nothing: no image generation, no
+   * Episode Asset mapping, no prompt assembly ever looked at it. The one screen that offered it could only
+   * pick Folders, which the server always refused, so the path was unreachable as well as pointless. Kept in
+   * the type only until the Story Bible screen stops sending it, then deleted along with LongStoryBibleAssetLink.
+   * The project-wide `styleAssetLink` is unrelated and stays — that one really does reach every Episode's images.
+   */
   assetLink?: LongStoryBibleAssetLink | null;
 }
 

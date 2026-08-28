@@ -48,16 +48,23 @@ describe("StoryBibleService", () => {
     expect((await reloaded.get("long_bible")).storyBible.secrets).toEqual([expect.objectContaining({ id: "SECRET-1", plannedRevealEpisode: 2 })]);
   });
 
-  it("links approved matching Assets with version and episode scope, then unlinks them", async () => {
-    const { bible, assets } = await services();
-    const asset = await assets.create({ buffer: image, originalname: "mina.png", mimetype: "image/png" }, { assetType: "character", displayName: "Mina", approved: true });
-    const created = await bible.create("long_bible", "characters", { item: { id: "CHAR-1", name: "Mina", assetLink: { assetId: asset.asset_id, versionPolicy: "pinned_version", pinnedVersion: 1, episodeScope: { mode: "episode", episode: 2 } } } });
-    expect(created.item.assetLink).toEqual({ assetId: asset.asset_id, versionPolicy: "pinned_version", pinnedVersion: 1, episodeScope: { mode: "episode", episode: 2 } });
-    const file = path.join(root!, "projects", "long_bible", "long_story", "story_bible.json"); const raw = JSON.parse(await fs.readFile(file, "utf8"));
-    expect(raw.characters[0].asset_link).toEqual({ asset_id: asset.asset_id, version_policy: "pinned_version", pinned_version: 1, episode_scope: { mode: "episode", episode: 2 } });
-    const unlinked = await bible.update("long_bible", "characters", "CHAR-1", { item: { assetLink: null } });
-    expect(unlinked.item.assetLink).toBeUndefined();
+  it("ignores an Asset link on the way in, and drops one already on disk", async () => {
+    // The link was stored and validated but read by nothing — no image generation, no Episode mapping, no
+    // prompt assembly. Removing it has two halves and this covers both: a request carrying `assetLink` is
+    // accepted and the field is not persisted, and an item written before the removal still loads.
+    const { bible } = await services();
+    const created = await bible.create("long_bible", "characters", { item: { id: "CHAR-1", name: "Mina", assetLink: { assetId: "ASSET-CHAR-1", versionPolicy: "pinned_version", pinnedVersion: 1, episodeScope: { mode: "episode", episode: 2 } } } });
+    expect(created.item).not.toHaveProperty("assetLink");
+    const file = path.join(root!, "projects", "long_bible", "long_story", "story_bible.json");
     expect(JSON.parse(await fs.readFile(file, "utf8")).characters[0]).not.toHaveProperty("asset_link");
+
+    // A Story Bible saved by the previous version. Refusing the unknown key here would make it unopenable.
+    const legacy = JSON.parse(await fs.readFile(file, "utf8"));
+    legacy.characters[0].asset_link = { asset_id: "ASSET-CHAR-1", version_policy: "follow_latest", pinned_version: null, episode_scope: { mode: "all" } };
+    await fs.writeFile(file, JSON.stringify(legacy), "utf8");
+    const reopened = (await bible.get("long_bible")).storyBible.characters[0];
+    expect(reopened).toMatchObject({ id: "CHAR-1", name: "Mina" });
+    expect(reopened).not.toHaveProperty("assetLink");
   });
 
   it("updates basic and world content atomically while preserving a validated global style Asset link", async () => {
@@ -81,20 +88,6 @@ describe("StoryBibleService", () => {
     await expect(bible.updateStyleAssetLink("long_bible", { assetLink: { assetId: style.asset_id, versionPolicy: "follow_latest", pinnedVersion: 9 } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     await assets.update(style.asset_id, { approved: false });
     await expect(bible.updateStyleAssetLink("long_bible", { assetLink: { assetId: style.asset_id, versionPolicy: "pinned_version", pinnedVersion: 1 } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
-  });
-
-  it("rejects unavailable, mismatched, unapproved, invalid-version, and invalid-scope Asset links", async () => {
-    const { bible, assets } = await services();
-    const character = await assets.create({ buffer: image, originalname: "char.png", mimetype: "image/png" }, { assetType: "character", displayName: "Character", approved: true });
-    const background = await assets.create({ buffer: image, originalname: "background.png", mimetype: "image/png" }, { assetType: "background", displayName: "Background", approved: true });
-    const link = { assetId: character.asset_id, versionPolicy: "pinned_version" as const, pinnedVersion: 1, episodeScope: { mode: "all" as const } };
-    await expect(bible.create("long_bible", "locations", { item: { name: "Place", assetLink: link } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
-    await expect(bible.create("long_bible", "characters", { item: { name: "Unknown", assetLink: { ...link, assetId: "ASSET-CHAR-MISSING" } } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
-    await expect(bible.create("long_bible", "characters", { item: { name: "Version", assetLink: { ...link, pinnedVersion: 9 } } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
-    await expect(bible.create("long_bible", "characters", { item: { name: "Scope", assetLink: { ...link, episodeScope: { mode: "episode", episode: 3 } } } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
-    await assets.update(background.asset_id, { approved: false });
-    await expect(bible.create("long_bible", "locations", { item: { name: "Unapproved", assetLink: { assetId: background.asset_id, versionPolicy: "follow_latest", pinnedVersion: null, episodeScope: { mode: "all" } } } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
-    await expect(bible.create("long_bible", "secrets", { item: { name: "Secret", assetLink: link } as never })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
   it("reports malformed and unknown stored JSON without leaking its content", async () => {
@@ -151,18 +144,16 @@ describe("StoryBibleService", () => {
     await expect(bible.search("long_bible", "characters", undefined)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
-  it("duplicates one item deeply with a safe fresh ID while preserving its Asset link", async () => {
-    const { bible, assets } = await services();
-    const asset = await assets.create({ buffer: image, originalname: "mina.png", mimetype: "image/png" }, { assetType: "character", displayName: "Mina", approved: true });
+  it("duplicates one item deeply with a safe fresh ID", async () => {
+    const { bible } = await services();
     await bible.create("long_bible", "characters", { item: {
       id: "CHAR-1", name: "민재", description: "original", ownedItemIds: ["PROP-1"],
-      assetLink: { assetId: asset.asset_id, versionPolicy: "pinned_version", pinnedVersion: 1, episodeScope: { mode: "all" } },
     } });
     const duplicated = await bible.duplicate("long_bible", "characters", "CHAR-1");
-    expect(duplicated.item).toMatchObject({ id: expect.stringMatching(/^CHAR-[A-F0-9]{8}$/), name: "민재 복사본", description: "original", ownedItemIds: ["PROP-1"], assetLink: { assetId: asset.asset_id, versionPolicy: "pinned_version", pinnedVersion: 1, episodeScope: { mode: "all" } } });
+    expect(duplicated.item).toMatchObject({ id: expect.stringMatching(/^CHAR-[A-F0-9]{8}$/), name: "민재 복사본", description: "original", ownedItemIds: ["PROP-1"] });
     expect(duplicated.item.id).not.toBe("CHAR-1");
     const source = (await bible.get("long_bible")).storyBible.characters.find((item) => item.id === "CHAR-1");
-    expect(source).toMatchObject({ name: "민재", ownedItemIds: ["PROP-1"], assetLink: { assetId: asset.asset_id } });
+    expect(source).toMatchObject({ name: "민재", ownedItemIds: ["PROP-1"] });
     await expect(bible.duplicate("long_bible", "characters", "CHAR-MISSING")).rejects.toMatchObject({ response: { code: "STORY_BIBLE_ITEM_NOT_FOUND" } });
     await expect(bible.duplicate("long_bible", "characters", "../unsafe")).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     await expect(bible.duplicate("long_bible", "unknown", "CHAR-1")).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
