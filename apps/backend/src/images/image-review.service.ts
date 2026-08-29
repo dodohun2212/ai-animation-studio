@@ -1,3 +1,4 @@
+import { PLACEHOLDER_PNG } from "./placeholder-image.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
@@ -42,7 +43,8 @@ import {
   invalidImageReviewRequest,
 } from "./image-review-api.error.js";
 
-const LOCAL_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
+/** The local fake path's bytes, shared so nothing can hold a second opinion about them. */
+const LOCAL_PNG = PLACEHOLDER_PNG;
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 

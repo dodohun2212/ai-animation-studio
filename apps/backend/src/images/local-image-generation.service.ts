@@ -1,3 +1,4 @@
+import { PLACEHOLDER_PNG } from "./placeholder-image.js";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -26,7 +27,8 @@ const sceneNumberFromParam = (raw: string): SceneNumber | undefined => {
   const value = Number(raw);
   return Number.isInteger(value) && String(value) === raw && value >= 1 && value <= MAX_SCENE_COUNT ? (value as SceneNumber) : undefined;
 };
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
+/** The local fake path's bytes, shared so nothing can hold a second opinion about them. */
+const PNG = PLACEHOLDER_PNG;
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
 export type WriteImage = (file: string, bytes: Buffer) => Promise<void>;

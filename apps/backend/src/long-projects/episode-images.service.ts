@@ -1,3 +1,4 @@
+import { PLACEHOLDER_PNG } from "../images/placeholder-image.js";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -20,7 +21,8 @@ import { collectReferenceImages } from "../images/image-reference-selection.js";
 import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import { EpisodeMappingOwners } from "./episode-mapping-owner.js";
 
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
+/** The local fake path's bytes, shared so nothing can hold a second opinion about them. */
+const PNG = PLACEHOLDER_PNG;
 const statuses: readonly LongEpisodeStatus[] = LONG_EPISODE_STATUSES;
 type StoredEpisode = Record<string, unknown> & { number: number; state: LongEpisodeStatus; approved: boolean; script: Record<string, unknown>; script_revision: number; updated_at: string };
 type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved"; updated_at: string; regeneration_count: number; history: Record<string, unknown>[]; references_used_count?: number; references_omitted_count?: number };
