@@ -81,6 +81,37 @@ describe("LongEpisodeContinuityScreen", () => {
     expect(vi.mocked(fetch).mock.calls.some((call) => (call[1] as RequestInit | undefined)?.method !== undefined)).toBe(false);
   });
 
+  /**
+   * Thirteen identical boxes made every blank one look like an unfinished job, which is why they were all
+   * blank. Nine of them are written to disk and read back by this screen and nothing else — CLI's grep found no
+   * consumer, in TypeScript or Python. They stay (an existing Episode's notes must not vanish) but they no
+   * longer sit among the four that decide the next Episode's script.
+   */
+  it("separates the fields the next Episode reads from the ones only this screen ever reads back", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      [`GET ${CONTINUITY_URL}`]: { memory: memory(), canSave: true },
+      [`GET ${EPISODE_URL}`]: outline(),
+    }));
+    render(<LongEpisodeContinuityScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    const fold = await screen.findByTestId("continuity-record-only");
+    expect(fold.textContent).toContain("다음 화 대본에는 들어가지 않습니다");
+    // "그럼 어디서 바꾸냐" is the immediate next question, and it has a real answer: the prompt reads the
+    // Story Bible item's status and reveal episode, never these ID boxes.
+    expect(fold.textContent).toContain("설정집");
+
+    // The four carried fields are outside the fold; the inert ones are inside it. Asserting containment rather
+    // than mere presence — a fold that holds everything, or nothing, would pass a presence check.
+    for (const carried of ["continuity-summary", "continuity-events", "continuity-nextActions", "continuity-character-changes"]) {
+      expect(fold.contains(screen.getByTestId(carried))).toBe(false);
+    }
+    for (const inert of ["continuity-appearedCharacterIds", "continuity-revealedSecretIds", "continuity-worldChanges", "continuity-item-changes", "continuity-time-elapsed", "continuity-user-edits"]) {
+      expect(fold.contains(screen.getByTestId(inert))).toBe(true);
+    }
+    // Still editable and still saved — this is a re-ordering, not a removal.
+    expect(screen.getByTestId("continuity-appearedCharacterIds")).toHaveValue("hero");
+  });
+
   it("leaves the form blank when the outline has nothing to offer, and says nothing about a prefill", async () => {
     vi.stubGlobal("fetch", stubFetchByRoute({
       [`GET ${CONTINUITY_URL}`]: { memory: null, canSave: true },

@@ -15,12 +15,25 @@ interface Props {
 type DisplayError = { code: string; message: string };
 type FormState = Omit<LongEpisodeContinuityMemory, "episodeNumber" | "updatedAt" | "characterChanges" | "itemChanges"> & { characterChanges: string; itemChanges: string };
 
-const listFields = [
-  ["events", "에피소드에서 있었던 일"], ["appearedCharacterIds", "등장한 캐릭터 ID"], ["appearedLocationIds", "등장한 장소 ID"],
+/**
+ * The two halves of this form, split by whether the next Episode's script prompt actually reads the field.
+ *
+ * `continuityContext()` in episode-scripts.service.ts carries exactly episode_summary, events,
+ * character_changes and next_actions forward; a grep for the rest finds only the code that writes them to disk
+ * and reads them back into this form. They are a person's own record, which is worth keeping — but the screen
+ * used to present all thirteen boxes identically, so a blank one looked like a job left undone in every case.
+ * Now the shape of the screen says which is which.
+ */
+const carriedListFields = [
+  ["events", "에피소드에서 있었던 일"], ["nextActions", "다음 에피소드에서 할 일"],
+] as const;
+const recordOnlyListFields = [
+  ["appearedCharacterIds", "등장한 캐릭터 ID"], ["appearedLocationIds", "등장한 장소 ID"],
   ["resolvedConflicts", "해결된 갈등"], ["newConflicts", "새로 생긴 갈등"], ["revealedSecretIds", "밝혀진 비밀 ID"],
   ["remainingSecretIds", "아직 남은 비밀 ID"], ["newForeshadowingIds", "새로 생긴 복선 ID"], ["resolvedForeshadowingIds", "회수된 복선 ID"],
-  ["nextActions", "다음 에피소드에서 할 일"], ["worldChanges", "세계관 변화"],
+  ["worldChanges", "세계관 변화"],
 ] as const;
+const listFields = [...carriedListFields, ...recordOnlyListFields] as const;
 type ListKey = (typeof listFields)[number][0];
 
 const blankForm = (): FormState => ({
@@ -160,36 +173,32 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
       )}
       {!loading && prefilled && (
         <p data-testid="continuity-prefilled" className="rounded-xl border border-white/10 bg-slate-900/70 px-4 py-3 text-sm text-slate-300">
-          아직 저장된 메모가 없어서 <span className="font-semibold text-slate-100">이 회차의 개요</span>로 아래 네 칸을 미리 채워 뒀습니다 — 요약, 있었던 일, 새로 생긴 갈등, 다음에서 할 일.
+          아직 저장된 메모가 없어서 <span className="font-semibold text-slate-100">이 회차의 개요</span>로 미리 채워 뒀습니다 — 요약, 있었던 일, 다음에서 할 일, 그리고 아래 기록용 칸의 새로 생긴 갈등.
           고쳐 쓰셔도 되고, 그대로 두셔도 됩니다. <span className="font-semibold text-slate-100">저장을 눌러야 저장됩니다.</span>
         </p>
       )}
       {loading && <Spinner label="저장된 이어쓰기 메모를 불러오는 중..." />}
       {!loading && (
         <div className={cardSection}>
+          {/* The four the next Episode actually reads, first and unfolded. */}
+          <p className="text-xs text-slate-400">
+            여기 네 칸이 <span className="font-semibold text-slate-200">다음 화 대본을 쓸 때 읽히는</span> 내용입니다.
+          </p>
           <label className="block text-sm text-slate-300">
             에피소드 요약
             <textarea data-testid="continuity-summary" className={fieldClassName} value={form.episodeSummary} disabled={pending || !canSave} onChange={(event) => update("episodeSummary", event.target.value)} />
           </label>
-          {listFields.map(([key, label]) => (
+          {carriedListFields.map(([key, label]) => (
             <label key={key} className="block text-sm text-slate-300">
               {label}
               <textarea data-testid={`continuity-${key}`} className={fieldClassName} value={toLines(form[key])} disabled={pending || !canSave} placeholder="한 줄에 하나씩 입력" onChange={(event) => { setPrefilled(false); setForm((current) => ({ ...current, [key]: fromLines(event.target.value) })); }} />
-              {/* The screen this hint used to name no longer exists, and with it went the only place these
-                  numbers could be read off. Naming a deleted screen is worse than saying nothing: a person goes
-                  looking for it, does not find it, and reads the whole field as broken. The honest hint is what
-                  the field is for and that it is optional — which it always was. */}
-              {key.endsWith("Ids") && (
-                <span className="mt-1 block text-xs text-slate-500">이 회차에 나온 항목의 번호를 적는 칸입니다. 번호를 모르면 비워 두셔도 됩니다 — 비워도 이어쓰기 메모는 저장됩니다.</span>
-              )}
             </label>
           ))}
-          {/* These two are stored as free-form object arrays with no agreed key set, so there is no honest way
-              to turn them into fixed fields without inventing a schema the prompt builder may not read. What is
-              fixed here is that raw JSON is no longer the first thing a person meets: the fields are named in
-              plain Korean, said to be optional, and folded away. */}
+          {/* Stored as a free-form object array with no agreed key set, so there is no honest way to turn it
+              into fixed fields without inventing a schema the prompt builder may not read. Folded away so raw
+              JSON is not the first thing a person meets — but inside the carried half, because it is carried. */}
           <details className="text-sm">
-            <summary className="cursor-pointer text-slate-400 hover:text-slate-300">이번 화에서 달라진 캐릭터·물건 (고급, 비워둬도 됩니다)</summary>
+            <summary className="cursor-pointer text-slate-400 hover:text-slate-300">이번 화에서 달라진 캐릭터 (고급, 비워둬도 됩니다)</summary>
             <div className="mt-2 space-y-3">
               <p className="text-xs text-slate-500">
                 자동으로 채워진 내용이 있으면 그대로 두시면 됩니다. 직접 적을 때는 아래 형식을 그대로 흉내 내 주세요 — 형식이 어긋나면 저장할 때 알려드립니다.
@@ -198,20 +207,50 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
                 이번 화에서 달라진 캐릭터
                 <textarea data-testid="continuity-character-changes" className={`${fieldClassName} font-mono text-xs`} value={form.characterChanges} disabled={pending || !canSave} onChange={(event) => update("characterChanges", event.target.value)} />
               </label>
+            </div>
+          </details>
+
+          {/* Everything below is written to disk and read back here, and goes nowhere else. Saying so is the
+              point: these boxes looked exactly like the four above, so every blank one read as an unfinished
+              job. The secrets/foreshadowing line is here because "then where?" is the immediate next question
+              and it has a real answer. */}
+          <details data-testid="continuity-record-only" className="rounded-xl border border-white/10 bg-slate-950/40 p-4 text-sm">
+            <summary className="cursor-pointer text-slate-300 hover:text-slate-100">기록용 칸 (저장은 되지만 다음 화 대본에는 들어가지 않습니다)</summary>
+            <div className="mt-3 space-y-4">
+              <p className="text-xs text-slate-400">
+                나중에 이 회차가 어땠는지 찾아보려고 남기는 칸입니다. 비워 두셔도 다음 화에는 아무 영향이 없습니다.
+                <br />
+                <span className="text-slate-500">
+                  비밀이나 복선을 다음 화가 알게 하려면 여기가 아니라 <span className="font-semibold text-slate-300">설정집(Story Bible)</span>에서 그 항목을 고치셔야 합니다 — 다음 화 대본은 설정집의 상태와 공개 가능 화수를 읽습니다.
+                </span>
+              </p>
+              {recordOnlyListFields.map(([key, label]) => (
+                <label key={key} className="block text-sm text-slate-300">
+                  {label}
+                  <textarea data-testid={`continuity-${key}`} className={fieldClassName} value={toLines(form[key])} disabled={pending || !canSave} placeholder="한 줄에 하나씩 입력" onChange={(event) => { setPrefilled(false); setForm((current) => ({ ...current, [key]: fromLines(event.target.value) })); }} />
+                  {/* The screen these numbers could be read off no longer exists — the character and location
+                      collections were removed from the Story Bible. Naming a deleted screen is worse than
+                      saying nothing: a person goes looking for it, does not find it, and reads the whole field
+                      as broken. */}
+                  {key.endsWith("Ids") && (
+                    <span className="mt-1 block text-xs text-slate-500">이 회차에 나온 항목의 번호를 적는 칸입니다. 번호를 모르면 비워 두셔도 됩니다.</span>
+                  )}
+                </label>
+              ))}
               <label className="block text-sm text-slate-300">
                 이번 화에서 달라진 물건
                 <textarea data-testid="continuity-item-changes" className={`${fieldClassName} font-mono text-xs`} value={form.itemChanges} disabled={pending || !canSave} onChange={(event) => update("itemChanges", event.target.value)} />
               </label>
+              <label className="block text-sm text-slate-300">
+                경과 시간
+                <input data-testid="continuity-time-elapsed" className={fieldClassName} value={form.timeElapsed} disabled={pending || !canSave} onChange={(event) => update("timeElapsed", event.target.value)} />
+              </label>
+              <label className="block text-sm text-slate-300">
+                검토 메모
+                <textarea data-testid="continuity-user-edits" className={fieldClassName} value={form.userEdits} disabled={pending || !canSave} onChange={(event) => update("userEdits", event.target.value)} />
+              </label>
             </div>
           </details>
-          <label className="block text-sm text-slate-300">
-            경과 시간
-            <input data-testid="continuity-time-elapsed" className={fieldClassName} value={form.timeElapsed} disabled={pending || !canSave} onChange={(event) => update("timeElapsed", event.target.value)} />
-          </label>
-          <label className="block text-sm text-slate-300">
-            검토 메모
-            <textarea data-testid="continuity-user-edits" className={fieldClassName} value={form.userEdits} disabled={pending || !canSave} onChange={(event) => update("userEdits", event.target.value)} />
-          </label>
           <button type="button" data-testid="continuity-save" className={primaryButton} disabled={pending || !canSave} onClick={() => void save()}>{pending ? "저장하는 중..." : "검토한 내용 저장"}</button>
         </div>
       )}
