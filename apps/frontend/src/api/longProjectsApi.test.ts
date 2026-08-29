@@ -8,6 +8,7 @@ import {
   createLongProjectOutlinePreview,
   getLongProject,
   getLongProjectSettings,
+  getLongEpisodeCurrentVideoJob,
   getLongEpisodeImageReview,
   listLongProjects,
   LongProjectsApiError,
@@ -300,6 +301,36 @@ describe("longProjectsApi", () => {
     const error = (await listLongProjects().catch((caught: unknown) => caught)) as LongProjectsApiError;
     expect(error.message).not.toContain("C:\\");
     expect(error.message).not.toContain("secret");
+  });
+
+  /**
+   * The mount-time lookup that leads back to a job already paid for.
+   *
+   * Its guard demands exactly one key, and nothing tested that: loosening it left all 1063 frontend tests
+   * green. What sits behind this response is the recovery button and the review cards, so a shape that slips
+   * through would hand the screen a job id it invented rather than one the server named.
+   */
+  describe("getLongEpisodeCurrentVideoJob", () => {
+    it("accepts the two shapes the server actually sends", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { jobId: null })));
+      expect(await getLongEpisodeCurrentVideoJob("long", 1)).toEqual({ jobId: null });
+
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { jobId: "job_1" })));
+      expect(await getLongEpisodeCurrentVideoJob("long", 1)).toEqual({ jobId: "job_1" });
+    });
+
+    it("refuses a response carrying anything else, rather than reading a job id out of it", async () => {
+      // A blanket test mock answering every request with a preview body is exactly this case, and it is why
+      // several screen tests used to pass for the wrong reason.
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { jobId: "job_1", scenes: [] })));
+      await expect(getLongEpisodeCurrentVideoJob("long", 1)).rejects.toThrow();
+
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { jobId: "" })));
+      await expect(getLongEpisodeCurrentVideoJob("long", 1)).rejects.toThrow();
+
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, {})));
+      await expect(getLongEpisodeCurrentVideoJob("long", 1)).rejects.toThrow();
+    });
   });
 
   describe("toLongProjectDisplayError", () => {

@@ -44,7 +44,9 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
       maximumProviderCalls: 6,
       budget: { monthlyLimitUsd: 10, spentUsd: 9.6, remainingUsd: 0.4, estimatedRequestCostUsd: 1.5, canSpend: false },
     };
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, withBudget)));
+    // Named routes, not one blanket answer: a blanket mock replies to the mount's current-job lookup with a
+    // 미리보기 body, which only works because the response guard happens to reject it.
+    vi.stubGlobal("fetch", stubFetchByRoute({ "GET /videos/generations/current": { jobId: null }, "GET /videos/preview": withBudget }));
     render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
 
     await screen.findByTestId("episode-video-summary");
@@ -56,7 +58,7 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
   });
 
   it("states model, ratio and clip length before the paid button, the way the short project does", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, preview)));
+    vi.stubGlobal("fetch", stubFetchByRoute({ "GET /videos/generations/current": { jobId: null }, "GET /videos/preview": preview }));
     render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
 
     const spec = await screen.findByTestId("episode-video-output-spec");
@@ -68,14 +70,14 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
   it("shows a landscape Episode as landscape rather than always claiming vertical", async () => {
     // The orientation comes from the response, so a project set to 16:9 reads as 16:9 here — this line is the
     // only place a wrong output shape is visible before six clips are paid for.
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { ...preview, ratio: "1280:720" })));
+    vi.stubGlobal("fetch", stubFetchByRoute({ "GET /videos/generations/current": { jobId: null }, "GET /videos/preview": { ...preview, ratio: "1280:720" } }));
     render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
 
     expect((await screen.findByTestId("episode-video-output-spec")).textContent).toContain("가로형 16:9");
   });
 
   it("omits the budget block entirely when no Runway credential is connected", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, preview)));
+    vi.stubGlobal("fetch", stubFetchByRoute({ "GET /videos/generations/current": { jobId: null }, "GET /videos/preview": preview }));
     render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
 
     await screen.findByTestId("episode-video-summary");
