@@ -94,6 +94,12 @@ async function setup(options: {
 }
 
 const approved = { approved: true as const, caption: "오늘의 영상", igUserId: IG_USER_ID };
+/** The body of the container-creation call — the one request a caption can ride on. */
+function containerBody(fetchImpl: ReturnType<typeof graphFetch>): Record<string, unknown> {
+  const call = fetchImpl.mock.calls.find(([url]) => String(url).endsWith("/media"));
+  if (!call) throw new Error("no container was created");
+  return JSON.parse(String((call[1] as RequestInit).body)) as Record<string, unknown>;
+}
 
 describe("InstagramPublishService.publish", () => {
   it("uploads, waits for processing, publishes, and records the post on the project", async () => {
@@ -151,6 +157,43 @@ describe("InstagramPublishService.publish", () => {
     const { service } = await setup({ fetchImpl: graphFetch({ granularOnly: true }) });
     await expect(service.publish("post_project", { ...approved, igUserId: "178000999" }))
       .rejects.toMatchObject({ response: { code: "INSTAGRAM_TARGET_NOT_FOUND" } });
+  });
+
+  /**
+   * A Reel went out with an empty caption while this project's own record said it had one.
+   *
+   * Everything up to the disk was right — the screen composed the caption, the request carried it, the stored
+   * post kept it — and `sendToInstagram` simply never took it as an argument, so it stopped there. Two tests
+   * checked that the caption was stored and none checked that it was sent, which is the difference between
+   * the app believing something and Instagram doing it.
+   *
+   * What rode on that caption is why this is worse than a missing sentence: the CC BY credit the screen
+   * promises is inserted automatically (D-003) and the AI disclosure that is on by default both live in it.
+   */
+  it("sends the caption to Meta, not only to the record it keeps of the post", async () => {
+    const fetchImpl = graphFetch();
+    const { service, projects } = await setup({ fetchImpl });
+
+    const caption = "오늘의 영상 · Music by Jane Doe · AI로 만든 영상입니다 #ai";
+    await service.publish("post_project", { ...approved, caption });
+
+    expect(containerBody(fetchImpl).caption).toBe(caption);
+    // And the record still matches what was actually sent, rather than the two drifting apart again.
+    expect((await projects.findById("post_project")).instagram_post).toMatchObject({ caption });
+  });
+
+  it("refuses a container Instagram reports as already published, rather than publishing it a second time", async () => {
+    // The comment here used to say a re-publish was "refused below"; nothing below refused it. On the one path
+    // that cannot be undone, the guard has to be real or the promise has to go.
+    const fetchImpl = graphFetch({ statuses: ["PUBLISHED"] });
+    const { service, projects } = await setup({ fetchImpl });
+
+    await expect(service.publish("post_project", approved))
+      .rejects.toMatchObject({ response: { code: "INSTAGRAM_PUBLISH_FAILED" } });
+
+    expect(fetchImpl.mock.calls.some(([url]) => String(url).includes("/media_publish"))).toBe(false);
+    // No record either: a post we cannot name is not a post we can claim.
+    expect((await projects.findById("post_project")).instagram_post).toBeNull();
   });
 
   it("reports not-connected when there is no stored token", async () => {
@@ -289,6 +332,15 @@ describe("InstagramPublishService.publishEpisode", () => {
     const scripts = new EpisodeScriptsService(projectsRoot);
     const { episode } = await scripts.get("long", 1);
     expect(episode.instagramPost).toMatchObject({ mediaId: "media-1", igUserId: IG_USER_ID });
+  });
+
+  it("sends the Episode's caption to Meta too, since both kinds share the one upload path", async () => {
+    const fetchImpl = graphFetch();
+    const { service } = await withEpisode({ fetchImpl });
+
+    await service.publishEpisode("long", 1, { ...approved, caption: "1화 · #장편" });
+
+    expect(containerBody(fetchImpl).caption).toBe("1화 · #장편");
   });
 
   it("refuses a second publish of the same Episode, which is the one mistake that cannot be walked back", async () => {

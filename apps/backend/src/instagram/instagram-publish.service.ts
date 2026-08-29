@@ -72,6 +72,13 @@ export class InstagramPublishService {
   /**
    * Waits for Meta to finish processing the uploaded video. `ERROR`/`EXPIRED` end the attempt rather than being
    * retried — the upload would have to start over anyway, and guessing otherwise risks a second container.
+   *
+   * `PUBLISHED` ends it too. This used to return, under a comment saying a re-publish was "refused below" —
+   * and nothing below refused anything. On the one path in this app whose last step cannot be undone, a
+   * comment claiming a guard that is not there is worse than no comment: it is what a reader checks instead of
+   * the code. The refusal is real now, and it is a refusal rather than a success because a container Meta has
+   * already published carries no media id we could record, and reporting a post we cannot name would put a
+   * made-up record where the screen reads the real one.
    */
   private async waitUntilPublishable(accessToken: string, containerId: string): Promise<void> {
     const deadline = this.now() + (this.poll.processingTimeoutMs ?? 3 * 60 * 1000);
@@ -82,7 +89,7 @@ export class InstagramPublishService {
       if (statusCode === "ERROR" || statusCode === "EXPIRED") {
         throw instagramPublishFailed("Instagram could not process this video.");
       }
-      if (statusCode === "PUBLISHED") return; // already out; publishing again is refused below
+      if (statusCode === "PUBLISHED") throw instagramPublishFailed("This video is already published on Instagram. Check the account before trying again.");
       if (this.now() >= deadline) throw instagramPublishFailed("Instagram is still processing this video. Try again in a few minutes.");
       await this.sleep(interval);
     }
@@ -107,7 +114,7 @@ export class InstagramPublishService {
       const current = await this.projects.findById(id);
       if (current.instagram_post) throw instagramAlreadyPublished();
 
-      const { mediaId, publishedAt } = await this.sendToInstagram(token.accessToken, igUserId, bytes);
+      const { mediaId, publishedAt } = await this.sendToInstagram(token.accessToken, igUserId, caption, bytes);
       const updated = {
         ...current,
         updated_at: publishedAt,
@@ -126,7 +133,7 @@ export class InstagramPublishService {
    * copy of it is a second place for the container-then-publish order, the processing wait, or the target
    * check to be got wrong — while looking correct beside its twin.
    */
-  private async sendToInstagram(accessToken: string, igUserId: string, bytes: Buffer): Promise<{ mediaId: string; publishedAt: string }> {
+  private async sendToInstagram(accessToken: string, igUserId: string, caption: string, bytes: Buffer): Promise<{ mediaId: string; publishedAt: string }> {
     let targets;
     try {
       // The same resolver the account list uses, on purpose: this check refuses what that list offered the
@@ -139,7 +146,7 @@ export class InstagramPublishService {
     // has since been revoked must not silently become somebody else's account (D-006).
     if (!targets.some((target) => target.igUserId === igUserId)) throw instagramTargetNotFound();
     try {
-      const { containerId } = await createInstagramResumableContainer(accessToken, igUserId, this.requestOptions);
+      const { containerId } = await createInstagramResumableContainer(accessToken, igUserId, caption, this.requestOptions);
       await uploadInstagramResumableVideo(accessToken, containerId, bytes, this.requestOptions);
       await this.waitUntilPublishable(accessToken, containerId);
       const { mediaId } = await publishInstagramContainer(accessToken, igUserId, containerId, this.requestOptions);
@@ -180,7 +187,7 @@ export class InstagramPublishService {
       if (!current) throw instagramVideoUnavailable();
       if (current.instagram_post) throw instagramAlreadyPublished();
 
-      const { mediaId, publishedAt } = await this.sendToInstagram(token.accessToken, igUserId, bytes);
+      const { mediaId, publishedAt } = await this.sendToInstagram(token.accessToken, igUserId, caption, bytes);
       const updated = {
         ...current,
         updated_at: publishedAt,

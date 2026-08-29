@@ -23,15 +23,21 @@ export type { InstagramErrorCategory } from "./instagram-request.js";
  * `fetch` throw, not a clean error response) does not tell us whether Meta ever created the container, so
  * retrying could reserve a second, orphaned one — reserving is cheap to leave dangling, unlike this adapter's
  * publishContainer(), but the same "don't guess after an ambiguous failure" discipline applies uniformly.
+ *
+ * `caption` is required rather than optional because this is the only request that can carry it: a Reel's
+ * caption is set when the container is reserved, and `media_publish` takes nothing but the creation id. A
+ * caption that never reached this call is a caption the post will never have, and a Reel went out empty that
+ * way once — without the licence credit and the AI disclosure the screen had promised were in it (D-003). An
+ * optional parameter would let the next caller make the same omission silently.
  */
-export async function createInstagramResumableContainer(accessToken: string, igUserId: string, options: RetryOptions = {}): Promise<{ containerId: string }> {
+export async function createInstagramResumableContainer(accessToken: string, igUserId: string, caption: string, options: RetryOptions = {}): Promise<{ containerId: string }> {
   if (!igUserId.trim()) throw new InstagramAdapterError("invalid_request", "Instagram 계정 ID가 필요합니다.");
   const response = await requestWithRetry(
     `${GRAPH_BASE_URL}/${GRAPH_API_VERSION}/${encodeURIComponent(igUserId)}/media`,
     {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${accessToken}` },
-      body: JSON.stringify({ media_type: "REELS", upload_type: "resumable" }),
+      body: JSON.stringify({ media_type: "REELS", upload_type: "resumable", ...(caption ? { caption } : {}) }),
     },
     { ...options, maxRetries: 0 },
   );

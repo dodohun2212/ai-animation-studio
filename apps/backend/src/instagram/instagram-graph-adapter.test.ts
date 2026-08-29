@@ -15,20 +15,33 @@ function jsonResponse(status: number, body: unknown, headers: Record<string, str
 const noSleep = async () => {};
 
 describe("createInstagramResumableContainer", () => {
-  it("posts the verified media request shape and returns the container ID", async () => {
+  /**
+   * The caption rides here or nowhere. `media_publish` takes only the creation id, so a caption missing from
+   * this body is a caption the finished Reel will never have — which is how one went out empty, without the
+   * licence credit and AI disclosure the screen said were in it. This assertion is exact on purpose, but it
+   * used to be exact around a body with no caption in it, which is what let the omission stand.
+   */
+  it("posts the verified media request shape, caption included, and returns the container ID", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "container-1" }));
-    const result = await createInstagramResumableContainer("token", "17800000000000", { fetchImpl: fetchMock, sleep: noSleep });
+    const result = await createInstagramResumableContainer("token", "17800000000000", "오늘의 영상 #ai", { fetchImpl: fetchMock, sleep: noSleep });
     expect(result.containerId).toBe("container-1");
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://graph.facebook.com/v26.0/17800000000000/media");
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>).authorization).toBe("Bearer token");
+    expect(JSON.parse(String(init.body))).toEqual({ media_type: "REELS", upload_type: "resumable", caption: "오늘의 영상 #ai" });
+  });
+
+  it("omits the caption field entirely when there is no caption, rather than sending an empty one", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "container-1" }));
+    await createInstagramResumableContainer("token", "17800000000000", "", { fetchImpl: fetchMock, sleep: noSleep });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(String(init.body))).toEqual({ media_type: "REELS", upload_type: "resumable" });
   });
 
   it("rejects an empty IG user ID without calling fetch", async () => {
     const fetchMock = vi.fn();
-    await expect(createInstagramResumableContainer("token", "  ", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(createInstagramResumableContainer("token", "  ", "caption", { fetchImpl: fetchMock, sleep: noSleep }))
       .rejects.toMatchObject({ category: "invalid_request" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -38,7 +51,7 @@ describe("createInstagramResumableContainer", () => {
       .mockResolvedValueOnce(jsonResponse(429, {}, { "retry-after": "0" }))
       .mockResolvedValueOnce(jsonResponse(200, { id: "container-2" }));
     const sleep = vi.fn(noSleep);
-    await expect(createInstagramResumableContainer("token", "id", { fetchImpl: fetchMock, sleep, maxRetries: 2 }))
+    await expect(createInstagramResumableContainer("token", "id", "caption", { fetchImpl: fetchMock, sleep, maxRetries: 2 }))
       .rejects.toMatchObject({ category: "rate_limit" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(sleep).not.toHaveBeenCalled();
@@ -46,13 +59,13 @@ describe("createInstagramResumableContainer", () => {
 
   it("classifies error.code 190 as authentication using Graph API's own error envelope", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { error: { message: "Error validating access token", code: 190 } }));
-    await expect(createInstagramResumableContainer("token", "id", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(createInstagramResumableContainer("token", "id", "caption", { fetchImpl: fetchMock, sleep: noSleep }))
       .rejects.toMatchObject({ category: "authentication", detail: "Error validating access token" });
   });
 
   it("classifies error.code 4 as rate_limit even on a non-429 status", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(400, { error: { message: "app request limit reached", code: 4 } }));
-    await expect(createInstagramResumableContainer("token", "id", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(createInstagramResumableContainer("token", "id", "caption", { fetchImpl: fetchMock, sleep: noSleep }))
       .rejects.toMatchObject({ category: "rate_limit" });
   });
 
@@ -61,13 +74,13 @@ describe("createInstagramResumableContainer", () => {
     // those as fact is how a login refused over a credential was described as a Meta outage, which told the
     // person to wait for something that was never going to pass on its own.
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(400, { error: { message: "Error validating client secret.", code: 1 } }));
-    await expect(createInstagramResumableContainer("token", "id", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(createInstagramResumableContainer("token", "id", "caption", { fetchImpl: fetchMock, sleep: noSleep }))
       .rejects.toMatchObject({ category: "unknown" });
   });
 
   it("still calls error.code 2 a server problem — that one Meta documents as downtime alone", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(400, { error: { message: "API Service", code: 2 } }));
-    await expect(createInstagramResumableContainer("token", "id", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(createInstagramResumableContainer("token", "id", "caption", { fetchImpl: fetchMock, sleep: noSleep }))
       .rejects.toMatchObject({ category: "server" });
   });
 
@@ -75,7 +88,7 @@ describe("createInstagramResumableContainer", () => {
     // Without these a category is an assertion with nothing to check it against, which is exactly the position
     // the first real login failure left us in.
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(400, { error: { message: "nope", code: 100, error_subcode: 33 } }));
-    await expect(createInstagramResumableContainer("token", "id", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(createInstagramResumableContainer("token", "id", "caption", { fetchImpl: fetchMock, sleep: noSleep }))
       .rejects.toMatchObject({ diagnostics: { status: 400, graphCode: 100, graphSubcode: 33 } });
   });
 
@@ -87,7 +100,7 @@ describe("createInstagramResumableContainer", () => {
       json: async () => { throw new Error("not json"); },
       headers: { get: () => null },
     } as unknown as Response);
-    const caught = await createInstagramResumableContainer("token", "id", { fetchImpl: fetchMock, sleep: noSleep })
+    const caught = await createInstagramResumableContainer("token", "id", "caption", { fetchImpl: fetchMock, sleep: noSleep })
       .catch((error: unknown) => error);
     expect(caught).toBeInstanceOf(InstagramAdapterError);
     expect((caught as InstagramAdapterError).diagnostics).toEqual({ status: 502 });
@@ -96,20 +109,20 @@ describe("createInstagramResumableContainer", () => {
 
   it("falls back to status-based classification when the body has no parseable error object", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(403, {}));
-    await expect(createInstagramResumableContainer("token", "id", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(createInstagramResumableContainer("token", "id", "caption", { fetchImpl: fetchMock, sleep: noSleep }))
       .rejects.toMatchObject({ category: "permission", detail: undefined });
   });
 
   it("rejects a response with no container ID as unknown", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {}));
-    await expect(createInstagramResumableContainer("token", "id", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(createInstagramResumableContainer("token", "id", "caption", { fetchImpl: fetchMock, sleep: noSleep }))
       .rejects.toMatchObject({ category: "unknown" });
   });
 
   it("is an instance of InstagramAdapterError with a Korean message", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, {}));
     try {
-      await createInstagramResumableContainer("token", "id", { fetchImpl: fetchMock, sleep: noSleep });
+      await createInstagramResumableContainer("token", "id", "caption", { fetchImpl: fetchMock, sleep: noSleep });
       throw new Error("expected to throw");
     } catch (error) {
       expect(error).toBeInstanceOf(InstagramAdapterError);
