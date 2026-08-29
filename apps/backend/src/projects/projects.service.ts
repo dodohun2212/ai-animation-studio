@@ -194,7 +194,7 @@ export class ProjectsService {
     const updated = applyShortProjectCast(stored, cast, new Date().toISOString());
     await this.repository.save(updated);
     if (this.assets && this.mappings) {
-      await syncAutoMappings(this.mappings, this.assets, updated.project_id, "auto_cast", cast.map((member) => ({ assetId: member.assetId, usageRole: "character" })));
+      await syncAutoMappings(this.mappings, this.assets, this.mappings.projectLocation(updated.project_id), "auto_cast", cast.map((member) => ({ assetId: member.assetId, usageRole: "character" })));
     }
     return { cast };
   }
@@ -226,8 +226,8 @@ export class ProjectsService {
     const updated = applyShortProjectAssetReferences(stored, references, new Date().toISOString());
     await this.repository.save(updated);
     if (this.assets && this.mappings) {
-      await syncAutoMappings(this.mappings, this.assets, updated.project_id, "auto_atmosphere", references.atmosphereAssetIds.map((assetId) => ({ assetId, usageRole: "atmosphere" })));
-      await syncAutoMappings(this.mappings, this.assets, updated.project_id, "auto_scene_reference", references.sceneReferenceAssets.map((member) => ({ assetId: member.assetId, usageRole: member.purpose })));
+      await syncAutoMappings(this.mappings, this.assets, this.mappings.projectLocation(updated.project_id), "auto_atmosphere", references.atmosphereAssetIds.map((assetId) => ({ assetId, usageRole: "atmosphere" })));
+      await syncAutoMappings(this.mappings, this.assets, this.mappings.projectLocation(updated.project_id), "auto_scene_reference", references.sceneReferenceAssets.map((member) => ({ assetId: member.assetId, usageRole: member.purpose })));
     }
     return references;
   }

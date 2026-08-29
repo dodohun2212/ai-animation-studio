@@ -3,6 +3,7 @@ import * as crypto from "node:crypto";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import type { StoredAssetMapping } from "../mappings/mapping-storage.js";
+import type { MappingLocation } from "../mappings/mapping-owner.js";
 
 export interface DesiredAutoMapping {
   assetId: string;
@@ -22,6 +23,11 @@ export interface DesiredAutoMapping {
  * is left alone and no auto mapping is created alongside it: `collectReferenceImages` has no dedup of its own,
  * so two enabled/confirmed mappings for the same Asset would send its picture to the model twice.
  *
+ * Takes a location rather than a project id: an Episode keeps its mappings the same way a short project does,
+ * and every rule in here — one tag's worth at a time, never touching a manual mapping, never doubling an Asset
+ * the model would then be sent twice — is the same rule for both. A second copy of this for Episodes is a
+ * second place for those three to drift, and the drift only shows up as a picture that went out wrong.
+ *
  * Never called for a Folder without checking anything about its children — a Folder mapping's bytes always come
  * from its current representative child (see image-reference-selection.ts), which is exactly what Settings'
  * own Folder-based cast/atmosphere pickers already assume.
@@ -29,11 +35,11 @@ export interface DesiredAutoMapping {
 export async function syncAutoMappings(
   mappings: LocalProjectAssetMappingsRepository,
   assets: LocalAssetsRepository,
-  projectId: string,
+  location: MappingLocation,
   tag: string,
   desired: readonly DesiredAutoMapping[],
 ): Promise<void> {
-  const existing = await mappings.load(mappings.projectLocation(projectId));
+  const existing = await mappings.load(location);
   const managed = existing.filter((mapping) => mapping.assignment_source === "auto" && mapping.match_reason === tag);
   const other = existing.filter((mapping) => !(mapping.assignment_source === "auto" && mapping.match_reason === tag));
 
@@ -50,7 +56,7 @@ export async function syncAutoMappings(
     const now = new Date().toISOString();
     next.push({
       mapping_id: `MAP-${crypto.randomBytes(8).toString("hex").toUpperCase()}`,
-      project_id: projectId,
+      project_id: location.id,
       asset_id: item.assetId,
       enabled: true,
       usage_role: item.usageRole,
@@ -76,5 +82,5 @@ export async function syncAutoMappings(
     const previous = managed.find((item) => item.asset_id === mapping.asset_id);
     return !previous || previous.mapping_id !== mapping.mapping_id || previous.usage_role !== mapping.usage_role;
   });
-  if (changed) await mappings.save(mappings.projectLocation(projectId), [...other, ...next]);
+  if (changed) await mappings.save(location, [...other, ...next]);
 }
