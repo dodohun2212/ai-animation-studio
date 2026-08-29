@@ -55,6 +55,8 @@ const MONEY_GUARDS: readonly { title: string; why: string }[] = [
     why: "recovery must stay a read — losing it means paying a second time for work already done",
   },
   {
+    // One title, two suites: the short project's merge and the Episode's. They had the same hole for the same
+    // reason, and a list that pinned only one of them would say the pair was covered.
     title: "refuses to merge a paid run whose clips are placeholders, while the local fake path still merges",
     why: "stubs would be published as the final video, and costing nothing is what makes that easy to believe",
   },

@@ -341,4 +341,25 @@ describe("local FFmpeg video merge", () => {
       expect(result.project.usedAudio).toEqual({ mode: "silent" });
     });
   });
+
+  it("refuses to merge a paid run whose clips are placeholders, while the local fake path still merges", async () => {
+    // The Episode side had this hole and it cost six paid clips; the same line was here. A placeholder is a
+    // valid non-empty ftyp header, so "larger than zero" let stubs through — and a merge publishes its result
+    // as the final video, which costs nothing and is therefore easy to press and easy to believe.
+    const { projectsRoot, projects } = await setup();
+    const placeholder = Buffer.from("000000186674797069736F6D0000020069736F6D69736F32617663316D703431", "hex");
+    const directory = path.join(projectsRoot, "video_merge", "videos", "runway");
+    await Promise.all([1, 2, 3, 4, 5, 6].map((scene) => fs.writeFile(path.join(directory, `scene${scene}.mp4`), placeholder)));
+
+    const paid = await projects.findById("video_merge");
+    paid.video_generation_records = [1, 2, 3, 4, 5, 6].map((scene) => ({ scene_number: scene, execution_mode: "runway", status: "succeeded" }));
+    await projects.save(paid);
+    await expect(new LocalVideoMergeService(projects, projectsRoot, runner({})).merge("video_merge")).rejects.toMatchObject({ response: { code: "VIDEO_MERGE_CLIPS_INVALID" } });
+
+    // Same files, local fake run: placeholders are what that path writes, so the merge is its normal flow.
+    const fake = await projects.findById("video_merge");
+    fake.video_generation_records = [1, 2, 3, 4, 5, 6].map((scene) => ({ scene_number: scene, execution_mode: "local_fake_no_provider", status: "succeeded" }));
+    await projects.save(fake);
+    await expect(new LocalVideoMergeService(projects, projectsRoot, runner({})).merge("video_merge")).resolves.toBeTruthy();
+  });
 });

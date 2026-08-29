@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { isPlaceholderClip } from "./placeholder-clip.js";
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
@@ -133,7 +134,12 @@ export class LocalVideoMergeService {
     const scenes = scenesFor(project);
     if (!isApprovedReviews(reviews, scenes)) throw videoMergeClipsInvalid();
     const clips = scenes.map((scene) => this.clip(project.project_id, scene));
-    try { await Promise.all(clips.map(async (clip) => { if ((await fs.stat(clip)).size <= 0) throw new Error("empty"); })); }
+    // The Episode side had the same hole and the same reason for the same shape: "larger than zero" is right
+    // for the local fake path, whose clips are placeholders by design, and wrong for a run that went to Runway,
+    // where a placeholder means the download was lost. Only the paid case demands a real clip, so the
+    // no-provider flow keeps working exactly as before.
+    const paid = project.video_generation_records.some((item) => typeof item === "object" && item !== null && (item as { execution_mode?: unknown }).execution_mode === "runway");
+    try { await Promise.all(clips.map(async (clip) => { const { size } = await fs.stat(clip); if (size <= 0 || (paid && isPlaceholderClip(size))) throw new Error("clip"); })); }
     catch { throw videoMergeClipsInvalid(); }
     return clips;
   }
