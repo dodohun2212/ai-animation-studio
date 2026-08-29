@@ -165,3 +165,62 @@ describe("EpisodeScriptsService", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+/** One Episode already on disk, so `get` reads a stored record rather than rebuilding one from the project. */
+async function writeStoredEpisode(overrides: Record<string, unknown> = {}): Promise<void> {
+  const file = path.join(root!, "projects", "long", "long_story", "Episode01", "project.json");
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify({
+    episode_id: "long-episode-1", number: 1, title: "t", summary: "s", core_event: "c", conflict: "x",
+    cliffhanger: "y", next_connection: "z", duration_seconds: 30, scene_count: 6, approved: false, state: "planned",
+    script: {}, script_history: [], script_revision: 0, updated_at: "2026-08-27T00:00:00.000Z",
+    outline: { episode_number: 1, title: "t", summary: "s", main_event: "c", conflict: "x", cliffhanger: "y", next_episode_hook: "z" },
+    ...overrides,
+  }, null, 2));
+}
+
+describe("EpisodeScriptsService.get — what the Episode says about itself", () => {
+  /**
+   * Three screens each assumed "9:16". The one warning worth raising about this setting — that changing it
+   * leaves every image already paid for in the wrong shape — cannot stand on an assumption, or the warning is
+   * the assumption.
+   */
+  it("says which shape it is rendered in, read from the project rather than assumed", async () => {
+    const service = await setup();
+    const wide = new LongProjectsService(path.join(root!, "projects"));
+    await wide.updateSettings("long", { settings: { ...settings, aspectRatio: "16:9" } });
+
+    expect((await service.get("long", 1)).episode.aspectRatio).toBe("16:9");
+  });
+
+  it("carries a failed Episode's reasons and a finished one's video path, both of which were already on disk", async () => {
+    const service = await setup();
+    await writeStoredEpisode({ state: "failed", errors: ["Episode video rendering failed."], final_video_path: "videos/final/instagram_reel.mp4" });
+
+    const { episode } = await service.get("long", 1);
+
+    expect(episode.errors).toEqual(["Episode video rendering failed."]);
+    expect(episode.finalVideoPath).toBe("videos/final/instagram_reel.mp4");
+  });
+
+  it("still answers when the project file beside it cannot be read, without the shape", async () => {
+    // One display field is not worth trading a readable Episode for.
+    const service = await setup();
+    await writeStoredEpisode();
+    await fs.rm(path.join(root!, "projects", "long", "long_story", "project.json"));
+
+    const { episode } = await service.get("long", 1);
+
+    expect(episode.aspectRatio).toBeUndefined();
+    expect(episode.episodeNumber).toBe(1);
+  });
+
+  it("says nothing rather than nothing-happened: no errors key on a healthy Episode", async () => {
+    // `errors: []` on every Episode would read as "we checked and it is fine", which is a larger claim than a
+    // field that was simply never written.
+    const service = await setup();
+    const { episode } = await service.get("long", 1);
+    expect(episode.errors).toBeUndefined();
+    expect(episode.finalVideoPath).toBeUndefined();
+  });
+});

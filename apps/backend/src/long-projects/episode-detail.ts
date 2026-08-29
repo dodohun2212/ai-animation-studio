@@ -44,11 +44,23 @@ export function toEpisodeDetail(episode: StoredEpisodeForDetail): LongEpisodeDet
     scriptHistoryCount: Array.isArray(episode.script_history) ? episode.script_history.length : 0,
     updatedAt: typeof episode.updated_at === "string" ? episode.updated_at : new Date(0).toISOString(),
     ...(warnings.length > 0 ? { warnings } : {}),
+    ...(errorsOf(episode).length > 0 ? { errors: errorsOf(episode) } : {}),
+    ...(typeof episode.final_video_path === "string" && episode.final_video_path ? { finalVideoPath: episode.final_video_path } : {}),
     ...(toEpisodeInstagramPost(episode.instagram_post) ? { instagramPost: toEpisodeInstagramPost(episode.instagram_post)! } : {}),
     ...(toEpisodePreviousInstagramPosts(episode.previous_instagram_posts).length > 0
       ? { previousInstagramPosts: toEpisodePreviousInstagramPosts(episode.previous_instagram_posts) } : {}),
     ...(toEpisodeUsedAudio(episode.used_audio) ? { usedAudio: toEpisodeUsedAudio(episode.used_audio)! } : {}),
   };
+}
+
+/**
+ * Why this Episode failed, if it says.
+ *
+ * Absent rather than empty when there is nothing: an `errors: []` on every healthy Episode reads as "we
+ * checked and it is fine", which is a stronger claim than a stored field that was simply never written to.
+ */
+export function errorsOf(episode: StoredEpisodeForDetail): string[] {
+  return Array.isArray(episode.errors) ? episode.errors.filter((item): item is string => typeof item === "string") : [];
 }
 
 /**

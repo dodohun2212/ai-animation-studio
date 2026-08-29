@@ -159,6 +159,28 @@ export interface LongEpisodeDetail extends LongEpisodeOutline {
    * shipped before this field did.
    */
   usedAudio?: UsedAudio;
+  /**
+   * The shape this Episode's images and clips were actually rendered in, read from the project it belongs to.
+   *
+   * Carried because three screens were each assuming "9:16" on their own. The short project has had this field
+   * from the start for the same reason its own doc comment gives, and an Episode that guesses is worse than a
+   * project that guesses: the warning a screen wants to raise here — "changing this leaves every image you
+   * already paid for in the wrong shape" — cannot stand on a guess, or the warning becomes the guess.
+   *
+   * Optional for the same reason `narrationAvailable` is: the Episode's own GET reads the project and fills it,
+   * and responses that carry an Episode alongside something else leave it absent rather than asserting a value
+   * they never looked up.
+   */
+  aspectRatio?: "9:16" | "16:9";
+  /**
+   * What this Episode has to show for a failure, and where its finished video is.
+   *
+   * A failed Episode could say it had failed and not why; a completed one could not tell a screen that a final
+   * video exists without the screen inferring it from the status. Both were on the stored record already and
+   * neither came out.
+   */
+  errors?: string[];
+  finalVideoPath?: string;
   /** Present once this Episode has been published to Instagram, so a reload still knows. */
   instagramPost?: LongEpisodeInstagramPost;
   /**
