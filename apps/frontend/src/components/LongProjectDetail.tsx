@@ -298,7 +298,9 @@ export function LongProjectDetail({
                         className="ml-auto text-slate-400 hover:text-slate-200"
                         onClick={() => onOpenNarrationReview(projectId, episode.episodeNumber)}
                       >
-                        내레이션
+                        {/* Same words as the short project's link to the same screen. Two names for one
+                            destination is how "그 내레이션 어디였지" starts. */}
+                        내레이션 확인
                       </button>
                     )}
                     {/* The plan stays reachable while it is still editable, even once the resume link has moved

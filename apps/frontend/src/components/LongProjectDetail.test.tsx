@@ -135,6 +135,9 @@ describe("LongProjectDetail", () => {
     expect(open).toHaveBeenCalledWith("long_test", 1);
     expect(screen.queryByTestId("open-episode-narration-2")).toBeNull();
     expect(screen.queryByTestId("open-episode-narration-3")).toBeNull();
+    // The short project's link to the same screen says this, and one destination should not have two names.
+    // Asserted on the text rather than the testid because the testid is not what a person reads.
+    expect(screen.getByTestId("open-episode-narration-1").textContent).toBe("내레이션 확인");
   });
 
   it("hides narration entirely while both voice and subtitles are off", async () => {
