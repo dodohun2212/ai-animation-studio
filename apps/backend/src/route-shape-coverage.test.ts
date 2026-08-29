@@ -82,6 +82,51 @@ function serverShapes(): Set<string> {
   return shapes;
 }
 
+/** One entry per handler: the route it answers and the `@Param("...")` names it reads out of that route. */
+function handlerParams(): Array<{ file: string; route: string; params: string[] }> {
+  const handlers: Array<{ file: string; route: string; params: string[] }> = [];
+  for (const file of controllerFiles(import.meta.dirname)) {
+    const source = fs.readFileSync(file, "utf8");
+    const prefixMatch = /@Controller\(\s*(?:`([^`]*)`|"([^"]*)")?\s*\)/.exec(source);
+    const prefix = resolveConstants(prefixMatch?.[1] ?? prefixMatch?.[2] ?? "");
+    // The decorator, then the handler's parameter list up to the return-type colon. Bounded so a regex that
+    // loses its footing stops at the next handler instead of swallowing the rest of the file.
+    for (const match of source.matchAll(/@(?:Get|Post|Patch|Delete|Put)\(\s*(?:`([^`]*)`|"([^"]*)"|API_ROUTES\.(\w+))?\s*\)([\s\S]{0,1500}?)\)\s*:/g)) {
+      const bare = match[3] === undefined ? undefined : (API_ROUTES as Record<string, unknown>)[match[3]];
+      const route = prefix + resolveConstants(match[1] ?? match[2] ?? (typeof bare === "string" ? bare : ""));
+      const params = [...(match[4] ?? "").matchAll(/@Param\(\s*"([^"]+)"\s*\)/g)].map((found) => found[1] ?? "");
+      handlers.push({ file: path.basename(file), route, params });
+    }
+  }
+  return handlers;
+}
+
+describe("every handler reads its parameters from a place the route actually has", () => {
+  const handlers = handlerParams();
+
+  it("read the handlers at all", () => {
+    expect(handlers.length).toBeGreaterThan(100);
+    expect(handlers.some((handler) => handler.params.length > 0)).toBe(true);
+  });
+
+  /**
+   * `@Param("x")` on a path with no `:x` segment binds to nothing and hands the handler `undefined`.
+   *
+   * That is not a type error — the parameter is usually typed `unknown` or `string`, and `undefined` passes
+   * either without complaint — so the route typechecks, its service tests pass, and every call fails. Story
+   * Bible search sat like that: `?query=` read as a path parameter, 400 to every request, green everywhere.
+   *
+   * Query-string values belong to `@Query`, which this cannot mistake for a path segment.
+   */
+  it("never names a path parameter the route does not declare", () => {
+    const mismatched = handlers.flatMap(({ file, route, params }) =>
+      params.filter((name) => !new RegExp(`:${name}(?![A-Za-z0-9_])`).test(route))
+        .map((name) => `${file} ${route} reads @Param("${name}")`));
+
+    expect(mismatched).toEqual([]);
+  });
+});
+
 describe("every route the client can build is a route the server serves", () => {
   const client = clientShapes();
   const server = serverShapes();
