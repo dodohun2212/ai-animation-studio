@@ -1,10 +1,10 @@
 import { Body, Controller, Get, HttpException, Param, Post, Res, StreamableFile } from "@nestjs/common";
 import type { Response as HttpResponse } from "express";
 import * as fs from "node:fs/promises";
-import { API_ROUTES, type ApproveLongEpisodeVideoReviewRequest, type ApproveLongEpisodeVideoReviewResponse, type GetLongEpisodeCurrentVideoJobResponse, type GetLongEpisodeVideoPreviewResponse, type GetLongEpisodeVideoReviewResponse, type LongEpisodeVideoProgress, type RecoverLongEpisodeVideosResponse, type RegenerateLongEpisodeVideoResponse, type StartLongEpisodeVideoGenerationRequest, type StartLongEpisodeVideoGenerationResponse } from "@ai-animation-studio/shared";
+import { API_ROUTES, type ApproveLongEpisodeVideoReviewRequest, type ApproveLongEpisodeVideoReviewResponse, type GetLongEpisodeCurrentVideoJobResponse, type GetLongEpisodeVideoPreviewResponse, type GetLongEpisodeVideoReviewResponse, type LongEpisodeVideoProgress, type GetVideoVersionsResponse, type RecoverLongEpisodeVideosResponse, type RegenerateLongEpisodeVideoResponse, type RestoreLongEpisodeVideoVersionResponse, type StartLongEpisodeVideoGenerationRequest, type StartLongEpisodeVideoGenerationResponse } from "@ai-animation-studio/shared";
 import { EpisodeVideosService } from "./episode-videos.service.js";
 import { EpisodeVideoMergeService } from "./episode-video-merge.service.js";
-import { longEpisodeMergeClipsInvalid, longEpisodeVideosInvalid } from "./long-project-api.error.js";
+import { longEpisodeMergeClipsInvalid, longEpisodeVideoVersionNotFound, longEpisodeVideosInvalid } from "./long-project-api.error.js";
 
 @Controller()
 export class EpisodeVideosController {
@@ -44,6 +44,40 @@ export class EpisodeVideosController {
       if (error instanceof HttpException) throw error;
       throw longEpisodeMergeClipsInvalid();
     }
+  }
+
+  /**
+   * Past copies of one scene's clip: list, play, restore.
+   *
+   * Declared above `:sceneNumber/content` for the same reason `final/content` is — sibling routes under
+   * `videos/` are decided by registration order, and that ordering has already been wrong once here.
+   */
+  @Get(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/videos/:sceneNumber/versions`)
+  versions(@Param("projectId") id: string, @Param("episodeNumber") number: string, @Param("sceneNumber") scene: string): Promise<GetVideoVersionsResponse> {
+    return this.service.versions(id, Number(number), scene);
+  }
+
+  @Get(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/videos/:sceneNumber/versions/:versionId/content`)
+  async versionContent(@Param("projectId") id: string, @Param("episodeNumber") number: string, @Param("sceneNumber") scene: string, @Param("versionId") versionId: string, @Res({ passthrough: true }) response: HttpResponse): Promise<StreamableFile> {
+    const content = await this.service.versionContent(id, Number(number), scene, versionId);
+    try {
+      const handle = await fs.open(content.path, "r");
+      const stat = await handle.stat();
+      if (!stat.isFile()) { await handle.close(); throw longEpisodeVideoVersionNotFound(); }
+      response.type("video/mp4");
+      response.setHeader("Content-Disposition", `inline; filename="scene${scene}_${versionId}.mp4"`);
+      response.setHeader("Content-Length", String(stat.size));
+      response.setHeader("X-Content-Type-Options", "nosniff");
+      return new StreamableFile(handle.createReadStream());
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw longEpisodeVideoVersionNotFound();
+    }
+  }
+
+  @Post(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/videos/:sceneNumber/versions/:versionId/restore`)
+  restoreVersion(@Param("projectId") id: string, @Param("episodeNumber") number: string, @Param("sceneNumber") scene: string, @Param("versionId") versionId: string, @Body() body: unknown): Promise<RestoreLongEpisodeVideoVersionResponse> {
+    return this.service.restoreVersion(id, Number(number), scene, versionId, body);
   }
 
   @Get(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/videos/:sceneNumber/content`)

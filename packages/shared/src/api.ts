@@ -78,7 +78,17 @@ export interface LongEpisodeOutline {
   warnings?: string[];
 }
 
-export type LongEpisodeStatus = "planned" | "outline_ready" | "script_review" | "script_approved" | "waiting_for_asset_mapping_review" | "asset_mapping_approved" | "generating_images" | "images_ready" | "images_review" | "waiting_for_video_confirmation" | "videos_generating" | "videos_ready" | "videos_review" | "videos_approved" | "interrupted" | "rendering" | "completed" | "failed";
+/**
+ * Every state an Episode can be stored in, as a list — and the type is derived from the list, not written
+ * beside it.
+ *
+ * Five backend services each kept their own copy of this to validate stored data, and three of them stopped at
+ * `interrupted`: a merged Episode read as corrupt, so its scene clips, its images and its script all answered
+ * 500 once the final video existed. The number of places that know the list is the number of places that can
+ * disagree about it, and they did. Adding a state is now one edit.
+ */
+export const LONG_EPISODE_STATUSES = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted", "rendering", "completed", "failed"] as const;
+export type LongEpisodeStatus = (typeof LONG_EPISODE_STATUSES)[number];
 
 export interface LongEpisodeScene {
   number: SceneNumber;
@@ -1416,6 +1426,17 @@ export interface RestoreVideoVersionRequest { approved: true; }
 export interface RestoreVideoVersionResponse { project: Project; }
 
 /**
+ * Restoring one of an Episode scene's past clips.
+ *
+ * Free and non-destructive, exactly like the short project's: the clip that was current is archived first, so
+ * the restore is itself reversible and no copy is ever deleted. It does void the Episode's merged final video
+ * — the scenes it was built from no longer match — so the Episode comes back with its final path cleared and,
+ * if it had been completed, its state back at `videos_approved`. That is why the Episode is in the response:
+ * the screen needs the state it is now in, not the one it asked from.
+ */
+export interface RestoreLongEpisodeVideoVersionResponse { episode: LongEpisodeDetail; }
+
+/**
  * Editing one scene's fields in place, instead of regenerating the whole Story. The server enforces its own
  * whitelist of editable field names (unknown keys are rejected) — this type is deliberately a loose string map
  * rather than naming every field, since the whitelist is a backend implementation detail (which scene-schema
@@ -1518,6 +1539,20 @@ export const API_ROUTES = {
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/generations/${encodeURIComponent(jobId)}/review`,
   longEpisodeVideoReviewApproval: (projectId: string, episodeNumber: number, jobId: string, sceneNumber: SceneNumber) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/generations/${encodeURIComponent(jobId)}/review/${sceneNumber}/approve`,
+  /**
+   * Past copies of one Episode scene's clip, listed / played / restored.
+   *
+   * Same three shapes as the short project's video library, because they are the same thing: a displaced clip
+   * is archived on regeneration either way. Until now the Episode wrote those copies under a timestamped name
+   * that nothing in the app could read back, so paid clips accumulated on disk with no way to reach them.
+   * `versionId` is `current` or `v001`-style, exactly as VideoVersionSummary already defines it.
+   */
+  longEpisodeVideoVersions: (projectId: string, episodeNumber: number, sceneNumber: SceneNumber) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/${sceneNumber}/versions`,
+  longEpisodeVideoVersionContent: (projectId: string, episodeNumber: number, sceneNumber: SceneNumber, versionId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/${sceneNumber}/versions/${encodeURIComponent(versionId)}/content`,
+  longEpisodeVideoVersionRestore: (projectId: string, episodeNumber: number, sceneNumber: SceneNumber, versionId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/${sceneNumber}/versions/${encodeURIComponent(versionId)}/restore`,
   longEpisodeVideoMerge: (projectId: string, episodeNumber: number) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/merge`,
   /**
