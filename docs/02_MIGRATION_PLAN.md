@@ -2271,3 +2271,9 @@ Episode01/script.json   "이배드" 가 52개 필드에 57번
   - 🟠 **내가 앞 라운드에 틀리게 적은 것을 정정한다**: `INSTAGRAM_CALLBACK_TLS_CERT`/`_KEY` 는 PEM **내용이 아니라 파일 경로**다(`resolveCallbackTls` 가 그 경로를 `readFileSync` 한다). 내용이라고 적었던 것은 틀렸다 — 윈도우에서 여러 줄 PEM 을 환경변수에 넣으라고 시킬 뻔했다.
   - **프론트에서 바꿀 것은 없다**: 서버가 `callbackLoginAvailable: this.callbackUri !== null` 로 답하고 `InstagramConnectionCard:168` 이 그 값으로 흐름을 고른다. TLS 를 켜면 화면이 저절로 콜백 흐름으로 바뀐다.
   - 등록할 주소는 정확히 `https://127.0.0.1:3443/settings/instagram/callback` — 메타는 정확 일치를 본다.
+- [x] **인증서 상태를 이 컴퓨터에서 실제로 확인했다 (Cowork Round 315)**: *"예전 인증서가 남아 있나"* 를 추측 대신 찾아봤다.
+  - **mkcert 는 이미 설치돼 있다** (`C:\Users\USER\AppData\Local\Microsoft\WinGet\Links\mkcert.exe`).
+  - **루트 CA 도 이미 있고 신뢰 저장소에 들어가 있다** — `mkcert -CAROOT` 에 `rootCA.pem` 이 있고, `Cert:\CurrentUser\Root` 에 `O=mkcert development CA` 가 조회된다. 즉 `mkcert -install` 은 이미 된 상태다.
+  - **잎 인증서(127.0.0.1)는 어디에도 없다** — 저장소·사용자 폴더 전부 검색해 `*.pem` 이 CA 두 개뿐이다. 그래서 남은 일은 **한 줄(`mkcert 127.0.0.1`)** 뿐이다.
+  - 🟠 **`apps/backend/.env` 는 자동 로드되지 않는다**: `@nestjs/config` 도 `dotenv` 도 의존성에 없고, 그 파일은 `provider-settings.repository.ts` 가 **프로바이더 자격증명 저장소**로 쓰는 파일이다("Local UTF-8 dotenv storage only. It neither reads process.env"). TLS 변수를 거기 적으면 **아무 일도 안 일어난다** — 셸에서 넣어야 한다.
+  - 문서(D-020/D-022)는 mkcert 를 개발 경로 한정으로 명시한다 — openssl 자체 서명은 경고로 흐름이 깨져 안 된다.
