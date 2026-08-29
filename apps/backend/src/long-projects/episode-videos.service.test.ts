@@ -216,6 +216,62 @@ describe("EpisodeVideosService", () => {
       .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
+  /**
+   * A twelve-scene Episode whose script changed meant twelve presses, and the twelfth is where a person stops
+   * reading what they are approving. The short project has had one press for this since its own review screen
+   * existed.
+   */
+  it("re-buys every scene of the job in one press, archiving each clip it displaces", async () => {
+    const { videos, projectsRoot } = await setup();
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_2", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+
+    const result = await videos.regenerateAll("long", 1, started.jobId, { approved: true });
+
+    expect(result.regeneratedSceneNumbers).toEqual([1, 2, 3, 4, 5, 6]);
+    // Every displaced clip kept, not just the first: a bulk action must not be the cheap way to lose work.
+    const history = await fs.readdir(path.join(projectsRoot, "long", "long_story", "Episode01", "videos", "history"));
+    expect(history.filter((name) => name.endsWith("_v001.mp4")).length).toBe(6);
+  });
+
+  it("refuses a whole-Episode re-buy while a generation is still running", async () => {
+    // One failed scene may be retried mid-run. All of them may not: the scenes still running would be paid for
+    // a second time, and this is the only route where that mistake is a single press.
+    const { videos, projectsRoot } = await setup();
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_2", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+    const file = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
+    const stored = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>;
+    await fs.writeFile(file, JSON.stringify({ ...stored, state: "videos_generating" }));
+    // Scene 1 failed mid-run — the one case a retry *is* allowed while generating. Retrying that single scene
+    // stays open; re-buying all six does not, and that difference is the whole point of the guard.
+    const recordsFile = path.join(projectsRoot, "long", "long_story", "Episode01", "video_generation_records.json");
+    const records = JSON.parse(await fs.readFile(recordsFile, "utf8")) as Array<Record<string, unknown>>;
+    records[0] = { ...records[0], status: "failed" };
+    await fs.writeFile(recordsFile, JSON.stringify(records));
+
+    await expect(videos.regenerateAll("long", 1, started.jobId, { approved: true }))
+      .rejects.toMatchObject({ response: { code: "LONG_EPISODE_VIDEOS_NOT_ALLOWED" } });
+    await expect(videos.regenerate("long", 1, started.jobId, "1", { approved: true })).resolves.toBeDefined();
+  });
+
+  it("carries one-off direction to every scene it re-buys", async () => {
+    const { videos, projectsRoot } = await setup();
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_2", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+
+    await videos.regenerateAll("long", 1, started.jobId, { approved: true, additionalInstruction: "전체적으로 더 어둡게" });
+
+    const records = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "video_generation_records.json"), "utf8")) as Array<{ prompt: string; base_prompt?: string }>;
+    expect(records.every((record) => record.prompt.endsWith("전체적으로 더 어둡게"))).toBe(true);
+    expect(records.every((record) => typeof record.base_prompt === "string")).toBe(true);
+    // And none of them read as behind the script afterwards — the baseline is what staleness compares against.
+    expect((await videos.review("long", 1, started.jobId)).staleness.videoStale).toEqual([]);
+  });
+
   it("never calls fetch across preview, start, run, progress, regenerate, and approve when no Runway credential/budget is wired in", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

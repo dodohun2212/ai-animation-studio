@@ -495,8 +495,61 @@ export class EpisodeVideosService implements OnModuleDestroy {
     return { ...(await this.progressFor(episode, job, records)), recoveredSceneNumbers, unrecoverableScenes };
   }
 
-  async regenerate(projectId: string, number: number, job: string, rawScene: string, body: unknown): Promise<RegenerateLongEpisodeVideoResponse> { if (!object(body) || body.approved !== true || Object.keys(body).some((key) => key !== "approved" && key !== "additionalInstruction") || (body.additionalInstruction !== undefined && typeof body.additionalInstruction !== "string")) throw longInvalidRequest("Episode video regeneration requires explicit approval."); const additionalInstruction = typeof body.additionalInstruction === "string" ? body.additionalInstruction.trim() : ""; const selected = scene(Number(rawScene)); if (!selected || String(selected) !== rawScene) throw longInvalidRequest(); const id = projectId.trim(); const episode = await this.loadEpisode(id, number); if (selected > this.sceneCount(episode)) throw longInvalidRequest(); const records = await this.records(id, number, this.sceneCount(episode), job); const allowedTerminal = ["videos_review", "videos_approved"].includes(episode.state); const allowedFailedRetry = episode.state === "videos_generating" && records.find((item) => item.scene_number === selected)?.status === "failed"; if (!allowedTerminal && !allowedFailedRetry) throw longEpisodeVideosNotAllowed(); const file = this.video(id, number, selected); if (await this.validVideo(file)) await this.archive(id, number, selected); const record = records.find((item) => item.scene_number === selected)!; if (additionalInstruction) { const base = record.base_prompt ?? record.prompt; record.base_prompt = base; record.prompt = `${base}
-${additionalInstruction}`; } record.status = "created"; delete record.completed_at; delete record.runway_task_id; delete record.runway_submitted_at; delete record.runway_last_checked_at; delete record.error; await this.saveRecords(id, number, records); const reviews = (await this.loadReviews(id, number, true)).filter((item) => item.scene_number !== selected); await this.saveReviews(id, number, reviews); episode.state = "videos_generating"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode); const result = await this.run(id, number, job); return { ...result, regeneratedSceneNumbers: [selected] }; }
+  async regenerate(projectId: string, number: number, job: string, rawScene: string, body: unknown): Promise<RegenerateLongEpisodeVideoResponse> {
+    const selected = scene(Number(rawScene));
+    if (!selected || String(selected) !== rawScene) throw longInvalidRequest();
+    return this.regenerateScenes(projectId, number, job, [selected], body);
+  }
+
+  /**
+   * Re-buys every scene of this job in one press.
+   *
+   * An Episode could only be regenerated one scene at a time, so a twelve-scene Episode whose script changed
+   * meant twelve presses — and the twelfth is where someone stops checking what they are approving. The short
+   * project has had this since its own review screen existed.
+   *
+   * Deliberately no cheaper than the twelve presses: every scene is submitted and every scene is charged. What
+   * this removes is the repetition, not the cost, and the screen has to keep saying the cost.
+   */
+  async regenerateAll(projectId: string, number: number, job: string, body: unknown): Promise<RegenerateLongEpisodeVideoResponse> {
+    const id = projectId.trim();
+    const episode = await this.loadEpisode(id, number);
+    return this.regenerateScenes(projectId, number, job, sceneNumbersFor(this.sceneCount(episode)), body);
+  }
+
+  /** One path for one scene and for all of them — the rules that guard money must not have two implementations. */
+  private async regenerateScenes(projectId: string, number: number, job: string, selection: readonly SceneNumber[], body: unknown): Promise<RegenerateLongEpisodeVideoResponse> {
+    if (!object(body) || body.approved !== true || Object.keys(body).some((key) => key !== "approved" && key !== "additionalInstruction") || (body.additionalInstruction !== undefined && typeof body.additionalInstruction !== "string")) throw longInvalidRequest("Episode video regeneration requires explicit approval.");
+    const additionalInstruction = typeof body.additionalInstruction === "string" ? body.additionalInstruction.trim() : "";
+    const id = projectId.trim();
+    const episode = await this.loadEpisode(id, number);
+    if (selection.length === 0 || selection.some((item) => item > this.sceneCount(episode))) throw longInvalidRequest();
+    const records = await this.records(id, number, this.sceneCount(episode), job);
+    const allowedTerminal = ["videos_review", "videos_approved"].includes(episode.state);
+    // A failed scene may be retried mid-generation; a whole-Episode re-buy may not, because the scenes still
+    // running would be paid for twice.
+    const allowedFailedRetry = selection.length === 1 && episode.state === "videos_generating"
+      && records.find((item) => item.scene_number === selection[0])?.status === "failed";
+    if (!allowedTerminal && !allowedFailedRetry) throw longEpisodeVideosNotAllowed();
+
+    for (const selected of selection) {
+      const file = this.video(id, number, selected);
+      if (await this.validVideo(file)) await this.archive(id, number, selected);
+      const record = records.find((item) => item.scene_number === selected)!;
+      if (additionalInstruction) { const base = record.base_prompt ?? record.prompt; record.base_prompt = base; record.prompt = `${base}
+${additionalInstruction}`; }
+      record.status = "created";
+      delete record.completed_at; delete record.runway_task_id; delete record.runway_submitted_at; delete record.runway_last_checked_at; delete record.error;
+    }
+    await this.saveRecords(id, number, records);
+    const reviews = (await this.loadReviews(id, number, true)).filter((item) => !selection.includes(item.scene_number));
+    await this.saveReviews(id, number, reviews);
+    episode.state = "videos_generating"; episode.updated_at = new Date().toISOString();
+    await this.saveEpisode(id, number, episode);
+    const result = await this.run(id, number, job);
+    return { ...result, regeneratedSceneNumbers: [...selection] };
+  }
+
   async review(projectId: string, number: number, job: string): Promise<GetLongEpisodeVideoReviewResponse> { const id = projectId.trim(); const episode = await this.loadEpisode(id, number); const sceneNumbers = sceneNumbersFor(this.sceneCount(episode)); const records = await this.records(id, number, this.sceneCount(episode), job); if (!["videos_review", "videos_approved"].includes(episode.state) || !(await Promise.all(sceneNumbers.map((item) => this.validVideo(this.video(id, number, item))))).every(Boolean)) throw longEpisodeVideosNotAllowed(); const reviews = await this.loadReviews(id, number, true); const now = episode.updated_at; const costsByScene = this.budget ? await this.budget.costsByScene(this.budgetProjectKey(id, number)) : {}; return { episode: this.detail(episode), reviews: sceneNumbers.map((item) => { const review = reviews.find((value) => value.scene_number === item); const costUsd = costsByScene[item]; return { sceneNumber: item, status: review?.status || "pending", updatedAt: review?.updated_at || now, ...(costUsd !== undefined ? { costUsd } : {}) }; }), staleness: await this.videoStaleness(id, number, episode, records) }; }
   /**
    * Which clips were paid for against a script that has since changed.

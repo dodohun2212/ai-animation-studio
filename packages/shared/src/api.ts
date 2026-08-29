@@ -1868,6 +1868,9 @@ export const API_ROUTES = {
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/generations/${encodeURIComponent(jobId)}/restart`,
   longEpisodeVideoRegenerate: (projectId: string, episodeNumber: number, jobId: string, sceneNumber: SceneNumber) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/generations/${encodeURIComponent(jobId)}/scenes/${sceneNumber}/regenerate`,
+  /** Re-buys every scene of this job at once. Same body, same per-scene cost — it removes the repetition, not the charge. */
+  longEpisodeVideoRegenerateAll: (projectId: string, episodeNumber: number, jobId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/generations/${encodeURIComponent(jobId)}/regenerate-all`,
   longEpisodeVideoRecovery: (projectId: string, episodeNumber: number, jobId: string) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/generations/${encodeURIComponent(jobId)}/recovery`,
   longEpisodeVideoReview: (projectId: string, episodeNumber: number, jobId: string) =>
