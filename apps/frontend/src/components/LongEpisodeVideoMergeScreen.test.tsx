@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { jsonResponse, makeLongProjectSettings } from "../api/testUtils.js";
+import { jsonResponse, makeLongProjectSettings, stubFetchByRoute } from "../api/testUtils.js";
 import { LongEpisodeVideoMergeScreen } from "./LongEpisodeVideoMergeScreen.js";
 
 const episode = (status = "completed") => ({ episodeNumber: 1, title: "Episode", summary: "summary", mainEvent: "event", conflict: "conflict", cliffhanger: "cliffhanger", nextEpisodeHook: "hook", status, approved: true, scriptRevision: 1, scriptHistoryCount: 1 });
@@ -55,19 +55,6 @@ const confirmedRoutes = (approved: number, total: number) => ({
     })),
   },
 });
-
-/** Keyed by "METHOD url" so the Episode GET and the merge POST cannot be mistaken for each other. */
-function stubFetchByRoute(
-  routes: Record<string, unknown>,
-  errorRoutes: Record<string, { status: number; body: unknown }> = {},
-): ReturnType<typeof vi.fn> {
-  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const key = `${init?.method ?? "GET"} ${String(input)}`;
-    if (key in errorRoutes) return jsonResponse(errorRoutes[key]!.status, errorRoutes[key]!.body);
-    if (!(key in routes)) throw new Error(`Unexpected fetch: ${key}`);
-    return jsonResponse(200, routes[key]);
-  });
-}
 
 describe("LongEpisodeVideoMergeScreen", () => {
   afterEach(() => vi.unstubAllGlobals());
