@@ -2,6 +2,7 @@ import {
   API_ROUTES,
   type GetInstagramTargetsResponse,
   type InstagramPublishTarget,
+  type InstagramTargetDiagnostics,
   type SetInstagramTargetResponse,
 } from "@ai-animation-studio/shared";
 
@@ -55,6 +56,23 @@ function isTarget(value: unknown): value is InstagramPublishTarget {
   );
 }
 
+function isCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+/**
+ * The counts behind an empty list. Checked strictly and dropped when wrong rather than shown half-read: this
+ * exists to end a guess, and a diagnosis assembled from a malformed body would be a new one.
+ */
+function isDiagnostics(value: unknown): value is InstagramTargetDiagnostics {
+  return isRecord(value)
+    && isCount(value.pageCount)
+    && isCount(value.pagesWithInstagramAccount)
+    && Array.isArray(value.missingPermissions)
+    && value.missingPermissions.every((one) => typeof one === "string")
+    && typeof value.permissionsChecked === "boolean";
+}
+
 function isTargetsResponse(body: unknown): body is GetInstagramTargetsResponse {
   return (
     isRecord(body)
@@ -104,7 +122,9 @@ async function request(url: string, init?: RequestInit): Promise<unknown> {
 export async function getInstagramTargets(): Promise<GetInstagramTargetsResponse> {
   const body = await request(API_ROUTES.instagramTargets);
   if (!isTargetsResponse(body)) throw new InstagramTargetsApiError(MALFORMED.code, MALFORMED.message);
-  return body;
+  // Only present when the list is empty, and never load-bearing: a wrong shape costs the explanation, not the
+  // screen.
+  return isRecord(body) && isDiagnostics(body.diagnostics) ? { ...body, diagnostics: body.diagnostics } : { ...body, diagnostics: undefined };
 }
 
 /** Stores which account future posts go to. Rejected with INSTAGRAM_TARGET_NOT_FOUND if it is no longer listed. */

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { InstagramPublishTarget, LongEpisodeDetail, Project, VideoLibraryEpisodeSummary, VideoLibraryProjectSummary } from "@ai-animation-studio/shared";
+import type { InstagramPublishTarget, InstagramTargetDiagnostics, LongEpisodeDetail, Project, VideoLibraryEpisodeSummary, VideoLibraryProjectSummary } from "@ai-animation-studio/shared";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
 import { publishLongEpisodeToInstagram, publishToInstagram, toInstagramPublishDisplayError } from "../api/instagramPublishApi.js";
@@ -29,7 +29,7 @@ type ListState =
 type TargetsState =
   | { status: "loading" }
   | { status: "error"; error: DisplayError }
-  | { status: "ready"; targets: InstagramPublishTarget[]; selectedIgUserId?: string };
+  | { status: "ready"; targets: InstagramPublishTarget[]; selectedIgUserId?: string; diagnostics?: InstagramTargetDiagnostics };
 
 /**
  * What is about to be posted. A short project and an Episode are different enough underneath — different video
@@ -122,6 +122,51 @@ function composeCaption(parts: { body: string; attribution: string; aiNotice: st
  * having deliberately cleared it, and refilling that on the next visit would be the screen undoing an edit —
  * the same silent-overwrite shape as the scene-edit draft being wiped on load.
  */
+/**
+ * Why the account list is empty, in the words of the one thing the person has to go change.
+ *
+ * The single sentence this replaces named all three causes at once, so the reader had to try them in turn —
+ * and the first two are things this person had already done. Naming one is the whole point.
+ *
+ * Order matters: a missing permission is checked first because fixing Facebook cannot cure it, and someone told
+ * to "link a page" while the token lacks the scope will do that work and see no change.
+ */
+function describeEmptyTargets(diagnostics: InstagramTargetDiagnostics | undefined): { headline: string; detail: string } {
+  if (!diagnostics) {
+    return {
+      headline: "게시할 수 있는 인스타그램 계정이 없습니다.",
+      detail: "인스타그램 프로페셔널 계정이 페이스북 페이지에 연결돼 있어야 합니다.",
+    };
+  }
+  // `permissionsChecked: false` is "not looked at", not "nothing missing". Saying nothing about permissions is
+  // the honest reading; an empty list under a failed check would otherwise read as a clean bill.
+  if (diagnostics.permissionsChecked && diagnostics.missingPermissions.length > 0) {
+    return {
+      headline: "이 로그인에 필요한 권한이 빠져 있습니다.",
+      detail: `빠진 권한: ${diagnostics.missingPermissions.join(", ")} — 페이스북 쪽 설정을 고쳐도 이건 풀리지 않고, 인스타그램을 다시 연결해야 합니다.`,
+    };
+  }
+  if (diagnostics.pageCount === 0) {
+    return {
+      headline: "이 로그인으로 보이는 페이스북 페이지가 없습니다.",
+      detail: "게시하려면 페이스북 페이지가 하나 있어야 하고, 로그인할 때 그 페이지를 허용해야 합니다.",
+    };
+  }
+  if (diagnostics.pagesWithInstagramAccount === 0) {
+    return {
+      headline: `페이스북 페이지 ${diagnostics.pageCount}개가 보이는데, 인스타그램 계정이 연결된 페이지가 없습니다.`,
+      detail: "인스타그램 프로페셔널 계정을 그 페이지 중 하나에 연결해 주세요.",
+    };
+  }
+  /* Pages exist, one of them has an Instagram account, nothing is missing — and the list is still empty. The
+     honest answer is that this screen does not know, said plainly rather than dressed as one of the causes
+     above. */
+  return {
+    headline: "게시할 수 있는 계정을 찾지 못했습니다.",
+    detail: `페이지 ${diagnostics.pageCount}개 중 ${diagnostics.pagesWithInstagramAccount}개에 인스타그램 계정이 연결돼 있는데도 목록이 비어 있습니다. 원인을 여기서는 알 수 없습니다.`,
+  };
+}
+
 function suggestCaptionBody(project: Project): string {
   const narration = project.scenes
     .map((scene) => (typeof scene.narration === "string" ? scene.narration.trim() : ""))
@@ -178,7 +223,7 @@ export function InstagramPostScreen({ onBack }: Props) {
   function loadTargets(): void {
     setTargets({ status: "loading" });
     getInstagramTargets()
-      .then((response) => setTargets({ status: "ready", targets: response.targets, selectedIgUserId: response.selectedIgUserId }))
+      .then((response) => setTargets({ status: "ready", targets: response.targets, selectedIgUserId: response.selectedIgUserId, diagnostics: response.diagnostics }))
       .catch((caught: unknown) => setTargets({ status: "error", error: toInstagramTargetsDisplayError(caught) }));
   }
 
@@ -192,7 +237,7 @@ export function InstagramPostScreen({ onBack }: Props) {
     setTargetPending(true);
     try {
       const response = await setInstagramTarget(igUserId);
-      setTargets({ status: "ready", targets: response.targets, selectedIgUserId: response.selectedIgUserId });
+      setTargets({ status: "ready", targets: response.targets, selectedIgUserId: response.selectedIgUserId, diagnostics: response.diagnostics });
     } catch (caught) {
       setTargets({ status: "error", error: toInstagramTargetsDisplayError(caught) });
     } finally {
@@ -499,9 +544,10 @@ export function InstagramPostScreen({ onBack }: Props) {
         {/* An empty list is not an error and not "log in" — the account exists but no Facebook Page is linked to
             it, which is a different thing for the user to go fix. */}
         {targets.status === "ready" && !targets.targets.length && (
-          <p data-testid="post-target-none" className="text-sm text-slate-400">
-            게시할 수 있는 인스타그램 계정이 없습니다. 인스타그램 프로페셔널 계정이 페이스북 페이지에 연결돼 있어야 합니다.
-          </p>
+          <div data-testid="post-target-none" className="space-y-1">
+            <p className="text-sm text-slate-200">{describeEmptyTargets(targets.diagnostics).headline}</p>
+            <p className="text-sm text-slate-400">{describeEmptyTargets(targets.diagnostics).detail}</p>
+          </div>
         )}
 
         {targets.status === "ready" && Boolean(targets.targets.length) && (
