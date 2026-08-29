@@ -70,6 +70,8 @@ function isDiagnostics(value: unknown): value is InstagramTargetDiagnostics {
     && isCount(value.pagesWithInstagramAccount)
     && Array.isArray(value.missingPermissions)
     && value.missingPermissions.every((one) => typeof one === "string")
+    && Array.isArray(value.grantedPermissions)
+    && value.grantedPermissions.every((one) => typeof one === "string")
     && typeof value.permissionsChecked === "boolean";
 }
 

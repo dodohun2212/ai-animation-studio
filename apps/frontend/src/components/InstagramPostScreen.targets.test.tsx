@@ -8,6 +8,7 @@ const diagnostics = (overrides: Record<string, unknown> = {}) => ({
   pageCount: 0,
   pagesWithInstagramAccount: 0,
   missingPermissions: [],
+  grantedPermissions: ["instagram_basic", "pages_show_list"],
   permissionsChecked: true,
   ...overrides,
 });
@@ -78,4 +79,27 @@ describe("InstagramPostScreen — why the account list is empty", () => {
     expect(panel.textContent).toContain("게시할 수 있는 인스타그램 계정이 없습니다");
     expect(panel.textContent).not.toContain("페이스북 페이지 2개");
   });
+
+  it("shows what the token actually holds, so a refused permission is not read as one never asked for", async () => {
+    // Both produce the same empty `missingPermissions` when the app does not request a permission at all. The
+    // granted set is the only line that separates "re-connect" from "the app asks for the wrong things".
+    renderWith({ targets: [], diagnostics: diagnostics({ pageCount: 0, grantedPermissions: ["instagram_basic"] }) });
+
+    expect((await screen.findByTestId("post-target-granted")).textContent).toContain("instagram_basic");
+  });
+
+  it("says 없음 rather than an empty line when the token holds nothing", async () => {
+    renderWith({ targets: [], diagnostics: diagnostics({ grantedPermissions: [] }) });
+
+    expect((await screen.findByTestId("post-target-granted")).textContent).toContain("없음");
+  });
+
+  it("does not list granted permissions when the check did not happen", async () => {
+    // An unchecked list printed as fact is the same confident wrong answer this panel exists to remove.
+    renderWith({ targets: [], diagnostics: diagnostics({ permissionsChecked: false }) });
+
+    await screen.findByTestId("post-target-none");
+    expect(screen.queryByTestId("post-target-granted")).toBeNull();
+  });
+
 });

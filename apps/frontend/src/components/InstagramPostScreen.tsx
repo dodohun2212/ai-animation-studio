@@ -547,6 +547,14 @@ export function InstagramPostScreen({ onBack }: Props) {
           <div data-testid="post-target-none" className="space-y-1">
             <p className="text-sm text-slate-200">{describeEmptyTargets(targets.diagnostics).headline}</p>
             <p className="text-sm text-slate-400">{describeEmptyTargets(targets.diagnostics).detail}</p>
+            {targets.diagnostics?.permissionsChecked && (
+              /* What the token actually holds, not what we think is missing. "Asked for and refused" and "never
+                 asked for" produce the same empty list, and only this line tells them apart — which is the
+                 difference between re-connecting and changing what the app requests. */
+              <p data-testid="post-target-granted" className="pt-1 text-xs text-slate-500">
+                이 로그인이 가진 권한: {targets.diagnostics.grantedPermissions.length > 0 ? targets.diagnostics.grantedPermissions.join(", ") : "없음"}
+              </p>
+            )}
           </div>
         )}
 
