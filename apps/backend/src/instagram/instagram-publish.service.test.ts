@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
+import { EpisodeScriptsService } from "../long-projects/episode-scripts.service.js";
 import { InstagramConnectionStore } from "./instagram-connection.store.js";
 import { InstagramPublishService } from "./instagram-publish.service.js";
 
@@ -208,10 +209,16 @@ describe("InstagramPublishService.publish", () => {
  */
 async function withEpisode(options: Parameters<typeof setup>[0] & { withVideo?: boolean; alreadyPublished?: boolean } = {}) {
   const context = await setup({ ...options, withVideo: false });
-  const directory = path.join(context.projectsRoot, "long", "long_story", "Episode01");
+  const storyRoot = path.join(context.projectsRoot, "long", "long_story");
+  const directory = path.join(storyRoot, "Episode01");
   await fs.mkdir(path.join(directory, "videos", "final"), { recursive: true });
+  // The Episode read-back goes through the scripts service, which reads the outline first.
+  await fs.writeFile(path.join(storyRoot, "episode_outlines.json"), JSON.stringify([{
+    episode_number: 1, title: "첫 번째 밤", summary: "s", main_event: "e", conflict: "c",
+    cliffhanger: "h", next_episode_hook: "n", status: "completed",
+  }]));
   await fs.writeFile(path.join(directory, "project.json"), JSON.stringify({
-    number: 1, state: "completed", approved: true, script: {}, script_revision: 1,
+    episode_id: "long-episode-1", number: 1, state: "completed", approved: true, script: {}, script_revision: 1, script_history: [], duration_seconds: 30, scene_count: 6, outline: {},
     title: "첫 번째 밤", summary: "s", core_event: "e", conflict: "c", cliffhanger: "h",
     next_connection: "n", updated_at: "2026-08-26T00:00:00.000Z",
     ...(options.alreadyPublished ? { instagram_post: { media_id: "media-old", ig_user_id: IG_USER_ID, published_at: "2026-08-26T00:00:00.000Z", caption: "before" } } : {}),
@@ -233,6 +240,20 @@ describe("InstagramPublishService.publishEpisode", () => {
     expect(result.episode.instagramPost).toMatchObject({ mediaId: "media-1", igUserId: IG_USER_ID, caption: "오늘의 영상" });
     const stored = JSON.parse(await fs.readFile(episodeFile, "utf8")) as { instagram_post: Record<string, unknown> };
     expect(stored.instagram_post).toMatchObject({ media_id: "media-1", ig_user_id: IG_USER_ID });
+  });
+
+  it("leaves the published record where the screen actually reads it back", async () => {
+    // The lock against publishing twice lives on the Episode, and the screen learns it from
+    // GET /long-projects/:id/episodes/:n. That endpoint is served by a different mapper, which did not carry
+    // the field — so publishing worked, the response said so, and a refresh offered to publish again.
+    // Written here because this is the guarantee the publish path is making, not the scripts service.
+    const { service, projectsRoot } = await withEpisode({ fetchImpl: graphFetch({ statuses: ["FINISHED"] }) });
+
+    await service.publishEpisode("long", 1, approved);
+
+    const scripts = new EpisodeScriptsService(projectsRoot);
+    const { episode } = await scripts.get("long", 1);
+    expect(episode.instagramPost).toMatchObject({ mediaId: "media-1", igUserId: IG_USER_ID });
   });
 
   it("refuses a second publish of the same Episode, which is the one mistake that cannot be walked back", async () => {

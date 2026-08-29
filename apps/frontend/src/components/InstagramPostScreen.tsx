@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import type { InstagramPublishTarget, Project, VideoLibraryProjectSummary } from "@ai-animation-studio/shared";
+import type { InstagramPublishTarget, LongEpisodeDetail, Project, VideoLibraryEpisodeSummary, VideoLibraryProjectSummary } from "@ai-animation-studio/shared";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
-import { publishToInstagram, toInstagramPublishDisplayError } from "../api/instagramPublishApi.js";
+import { publishLongEpisodeToInstagram, publishToInstagram, toInstagramPublishDisplayError } from "../api/instagramPublishApi.js";
 import { getInstagramTargets, setInstagramTarget, targetLabel, toInstagramTargetsDisplayError } from "../api/instagramTargetsApi.js";
 import { getPostDraft, putPostDraft, toPostDraftDisplayError } from "../api/postDraftApi.js";
 import { getVideoLibrary, toVideoLibraryDisplayError } from "../api/videoLibraryApi.js";
+import { getLongEpisode, getLongEpisodeSettings, getLongProjectSettings, longEpisodeFinalVideoContentUrl, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { finalVideoContentUrl } from "../api/videoMergeApi.js";
 import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBridge.js";
 import { Spinner } from "./Spinner.js";
@@ -19,7 +20,7 @@ type DisplayError = { code: string; message: string };
 type ListState =
   | { status: "loading" }
   | { status: "error"; error: DisplayError }
-  | { status: "ready"; projects: VideoLibraryProjectSummary[] };
+  | { status: "ready"; projects: VideoLibraryProjectSummary[]; episodes: VideoLibraryEpisodeSummary[] };
 /**
  * Where a post would go. Kept apart from the credential settings on purpose — a credential answers "can we act
  * at all?", this answers "where does it land?", and that has to be readable at the moment of publishing rather
@@ -30,11 +31,34 @@ type TargetsState =
   | { status: "error"; error: DisplayError }
   | { status: "ready"; targets: InstagramPublishTarget[]; selectedIgUserId?: string };
 
+/**
+ * What is about to be posted. A short project and an Episode are different enough underneath — different video
+ * address, different publish route, different record of "already posted" — that they are separate shapes here
+ * rather than one blurred one. Everything the screen renders is derived from whichever is picked.
+ */
 type PickedState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "error"; error: DisplayError }
-  | { status: "ready"; project: Project; plannedSeconds: number | null };
+  | { status: "ready"; kind: "project"; project: Project; plannedSeconds: number | null }
+  | {
+      status: "ready";
+      kind: "episode";
+      projectId: string;
+      episodeNumber: number;
+      episode: LongEpisodeDetail;
+      aspectRatio: "9:16" | "16:9";
+      plannedSeconds: number | null;
+    };
+
+/** How an Episode is encoded in the one picker. Short projects keep their bare id, so nothing about them moves. */
+const EPISODE_PREFIX = "episode:";
+function parseEpisodeSelection(value: string): { projectId: string; episodeNumber: number } | null {
+  if (!value.startsWith(EPISODE_PREFIX)) return null;
+  const [projectId, rawNumber] = value.slice(EPISODE_PREFIX.length).split("|");
+  const episodeNumber = Number(rawNumber);
+  return projectId && Number.isInteger(episodeNumber) ? { projectId, episodeNumber } : null;
+}
 
 /**
  * Instagram's own published limits, not house rules — a caption over this is rejected at post time and a
@@ -118,7 +142,8 @@ function suggestCaptionBody(project: Project): string {
  */
 export function InstagramPostScreen({ onBack }: Props) {
   const [list, setList] = useState<ListState>({ status: "loading" });
-  const [projectId, setProjectId] = useState("");
+  /** The picker's raw value: a short project's id, or `episode:<projectId>|<n>`. */
+  const [selection, setSelection] = useState("");
   const [picked, setPicked] = useState<PickedState>({ status: "idle" });
   const [body, setBody] = useState("");
   /** True only while the box still holds text this screen put there and the person has not touched it yet. */
@@ -140,7 +165,13 @@ export function InstagramPostScreen({ onBack }: Props) {
     setList({ status: "loading" });
     getVideoLibrary()
       // Only a project with a merged result can become a post; the rest would be a dead choice.
-      .then((response) => setList({ status: "ready", projects: response.projects.filter((p) => p.finalVideoAvailable) }))
+      // Only something with a merged result can become a post; the rest would be a dead choice — and for
+      // Episodes it would be worse than dead, since the publish route refuses them (INSTAGRAM_VIDEO_UNAVAILABLE).
+      .then((response) => setList({
+        status: "ready",
+        projects: response.projects.filter((one) => one.finalVideoAvailable),
+        episodes: response.episodes.filter((one) => one.finalVideoAvailable),
+      }))
       .catch((caught: unknown) => setList({ status: "error", error: toVideoLibraryDisplayError(caught) }));
   }
 
@@ -170,13 +201,54 @@ export function InstagramPostScreen({ onBack }: Props) {
   }
 
   useEffect(() => {
-    if (!projectId) {
+    if (!selection) {
       setPicked({ status: "idle" });
       return;
     }
     let cancelled = false;
     setPicked({ status: "loading" });
     setCopied("idle");
+    const asEpisode = parseEpisodeSelection(selection);
+    if (asEpisode) {
+      /* An Episode carries no saved draft and no audio credit — those are short-project features — so the two
+         things it does need are its own record (has it already been posted?) and its planned length. The
+         settings degrade to "length unknown" rather than failing the screen, the same way the project path
+         treats them. */
+      Promise.all([
+        getLongEpisode(asEpisode.projectId, asEpisode.episodeNumber),
+        getLongEpisodeSettings(asEpisode.projectId, asEpisode.episodeNumber).catch(() => null),
+        getLongProjectSettings(asEpisode.projectId).catch(() => null),
+      ])
+        .then(([episodeResponse, episodeSettings, projectSettings]) => {
+          if (cancelled) return;
+          const summary = list.status === "ready"
+            ? list.episodes.find((one) => one.projectId === asEpisode.projectId && one.episodeNumber === asEpisode.episodeNumber)
+            : undefined;
+          // The Episode's settings already carry the derived total. Multiplying sceneCount by clip length here
+          // would be a second place computing the same number, and the two would drift.
+          const episodeSeconds = episodeSettings?.settings.episodeDurationSeconds ?? null;
+          setBody("");
+          setBodyAutoFilled(false);
+          setHashtagsRaw("");
+          setAiNoticeOn(true);
+          setSaveState("idle");
+          setSaveError(null);
+          setPicked({
+            status: "ready",
+            kind: "episode",
+            projectId: asEpisode.projectId,
+            episodeNumber: asEpisode.episodeNumber,
+            episode: episodeResponse.episode,
+            aspectRatio: summary?.aspectRatio ?? projectSettings?.settings.aspectRatio ?? "9:16",
+            plannedSeconds: episodeSeconds,
+          });
+        })
+        .catch((caught: unknown) => {
+          if (!cancelled) setPicked({ status: "error", error: toLongProjectDisplayError(caught) });
+        });
+      return () => { cancelled = true; };
+    }
+    const projectId = selection;
     // The project itself carries usedAudio (the credit line, copied by value at merge time); the settings carry
     // the planned length; the draft carries whatever was typed last time. Only the project is essential — the
     // other two degrade to "unknown length" and "blank caption" rather than failing the whole screen.
@@ -198,6 +270,7 @@ export function InstagramPostScreen({ onBack }: Props) {
         setSaveError(null);
         setPicked({
           status: "ready",
+          kind: "project",
           project: projectResponse.project,
           plannedSeconds: settingsResponse?.settings.durationSeconds ?? null,
         });
@@ -208,7 +281,7 @@ export function InstagramPostScreen({ onBack }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [selection]);
 
   /**
    * Saves on blur rather than on a button, and rather than on every keystroke.
@@ -221,7 +294,10 @@ export function InstagramPostScreen({ onBack }: Props) {
    * deleted field, so a partial save would quietly erase the other two.
    */
   async function saveDraft(next: { body?: string; hashtags?: string; aiNotice?: boolean } = {}): Promise<void> {
-    if (!projectId) return;
+    // Drafts belong to short projects; an Episode has nowhere to save one, so the blur handler is a no-op there
+    // rather than a request that would 404.
+    if (picked.status !== "ready" || picked.kind !== "project") return;
+    const projectId = picked.project.id;
     setSaveState("saving");
     setSaveError(null);
     try {
@@ -240,11 +316,12 @@ export function InstagramPostScreen({ onBack }: Props) {
   }
 
   async function openInExplorer(): Promise<void> {
-    if (openPending || !projectId) return;
+    // Short projects only: the button it belongs to is not rendered for an Episode.
+    if (openPending || picked.status !== "ready" || picked.kind !== "project") return;
     setOpenPending(true);
     setOpenFailed(false);
     try {
-      const outcome = await openProjectPathInExplorer(projectId, FINAL_VIDEO_PATH);
+      const outcome = await openProjectPathInExplorer(picked.project.id, FINAL_VIDEO_PATH);
       if (!outcome?.opened) setOpenFailed(true);
     } catch {
       setOpenFailed(true);
@@ -258,7 +335,8 @@ export function InstagramPostScreen({ onBack }: Props) {
     : null;
   const selectedLabel = selectedTarget ? targetLabel(selectedTarget) : null;
 
-  const project = picked.status === "ready" ? picked.project : null;
+  const project = picked.status === "ready" && picked.kind === "project" ? picked.project : null;
+  const episode = picked.status === "ready" && picked.kind === "episode" ? picked : null;
   const usedAudio = project?.usedAudio;
   const creditRequired = usedAudio?.attributionRequired === true;
   const creditText = usedAudio?.attributionText?.trim() ?? "";
@@ -274,27 +352,40 @@ export function InstagramPostScreen({ onBack }: Props) {
   const hashtagsOver = hashtags.length > HASHTAG_MAX;
   const plannedSeconds = picked.status === "ready" ? picked.plannedSeconds : null;
   const tooLong = plannedSeconds !== null && plannedSeconds > REEL_MAX_SECONDS;
-  const notVertical = project?.aspectRatio === "16:9";
+  const notVertical = (project?.aspectRatio ?? episode?.aspectRatio) === "16:9";
   const copyBlocked = captionOver || hashtagsOver || creditMissing;
-  const published = project?.instagramPost;
+  /* The server's own record, on either shape — never a local flag. A reload has to keep saying "already
+     posted", because the mistake this prevents is a second public copy of something already out there. */
+  const published = project?.instagramPost ?? episode?.episode.instagramPost;
   // Pressing and being refused is worse than not being able to press: the reasons are all knowable here
   // (no account chosen, caption over the limit, credit line missing, already out in the world).
   const publishBlocked = copyBlocked || !caption || !selectedTarget || Boolean(published);
+  const videoSrc = episode
+    ? longEpisodeFinalVideoContentUrl(episode.projectId, episode.episodeNumber, episode.episode.updatedAt ?? String(episode.episodeNumber))
+    : finalVideoContentUrl(selection);
 
   /**
    * The one irreversible, public action in this app. Reached only from a panel that named the account, and the
    * account it names travels with the request so the two provably match.
    */
   async function publish(): Promise<void> {
-    if (publishing || !projectId || !selectedTarget) return;
+    if (publishing || !selectedTarget || picked.status !== "ready") return;
     setPublishing(true);
     setPublishError(null);
     try {
-      const response = await publishToInstagram(projectId, caption, selectedTarget.igUserId);
+      if (picked.kind === "episode") {
+        const response = await publishLongEpisodeToInstagram(picked.projectId, picked.episodeNumber, caption, selectedTarget.igUserId);
+        setConfirmPublish(false);
+        // Same reasoning as the project path: the Episode comes back carrying instagramPost, so "already
+        // published" is the server's record and survives a reload.
+        setPicked((current) => (current.status === "ready" && current.kind === "episode" ? { ...current, episode: response.episode } : current));
+        return;
+      }
+      const response = await publishToInstagram(picked.project.id, caption, selectedTarget.igUserId);
       setConfirmPublish(false);
       // The response carries the project with instagramPost set, so the screen switches to "already published"
       // from the server's own record rather than from a local flag that a refresh would forget.
-      setPicked((current) => (current.status === "ready" ? { ...current, project: response.project } : current));
+      setPicked((current) => (current.status === "ready" && current.kind === "project" ? { ...current, project: response.project } : current));
     } catch (caught) {
       setPublishError(toInstagramPublishDisplayError(caught));
     } finally {
@@ -345,21 +436,21 @@ export function InstagramPostScreen({ onBack }: Props) {
         </div>
       )}
 
-      {list.status === "ready" && !list.projects.length && (
+      {list.status === "ready" && !list.projects.length && !list.episodes.length && (
         <p data-testid="post-empty" className="text-sm text-slate-400">
           아직 합쳐 둔 최종 영상이 없습니다. 프로젝트에서 영상을 합치면 여기에서 고를 수 있습니다.
         </p>
       )}
 
-      {list.status === "ready" && Boolean(list.projects.length) && (
+      {list.status === "ready" && Boolean(list.projects.length || list.episodes.length) && (
         <label className="block text-sm text-slate-300" htmlFor="post-project">
           올릴 영상
           <select
             id="post-project"
             data-testid="post-project"
             className={fieldClass}
-            value={projectId}
-            onChange={(event) => setProjectId(event.target.value)}
+            value={selection}
+            onChange={(event) => setSelection(event.target.value)}
           >
             <option value="">고르지 않음</option>
             {list.projects.map((candidate) => (
@@ -367,6 +458,21 @@ export function InstagramPostScreen({ onBack }: Props) {
                 {candidate.topic || candidate.projectId}
               </option>
             ))}
+            {/* Episodes only appear once they have a merged final video, because that is exactly what the
+                publish route requires — a row that could be chosen and then refused is the shape this whole
+                separation exists to prevent. */}
+            {Boolean(list.episodes.length) && (
+              <optgroup label="장기 프로젝트 회차">
+                {list.episodes.map((candidate) => (
+                  <option
+                    key={`${candidate.projectId}-${candidate.episodeNumber}`}
+                    value={`${EPISODE_PREFIX}${candidate.projectId}|${candidate.episodeNumber}`}
+                  >
+                    {candidate.projectTitle} · {candidate.episodeNumber}화 {candidate.title}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </label>
       )}
@@ -469,12 +575,20 @@ export function InstagramPostScreen({ onBack }: Props) {
               className={`${notVertical ? "aspect-video" : "aspect-[9/16]"} w-full rounded-xl border border-white/10 bg-slate-950/60`}
               controls
               preload="none"
-              src={finalVideoContentUrl(projectId)}
+              src={videoSrc}
             />
             <p className="text-sm text-slate-300" data-testid="post-video-path">
-              저장 위치: {FINAL_VIDEO_PATH}
+              저장 위치: {episode ? `${episode.episodeNumber}화 폴더의 ${FINAL_VIDEO_PATH}` : FINAL_VIDEO_PATH}
             </p>
-            {hasElectronBridge() && (
+            {episode && (
+              /* Said rather than left to be discovered: the caption box on this screen saves itself for short
+                 projects and cannot for an Episode, and a caption quietly lost is the thing that draft was
+                 added to stop. */
+              <p data-testid="post-episode-draft-notice" className="text-xs text-amber-300">
+                회차 캡션은 자동 저장되지 않습니다. 화면을 떠나면 사라지니 올리기 전에 마무리해 주세요.
+              </p>
+            )}
+            {!episode && hasElectronBridge() && (
               <div className="flex items-center gap-3">
                 <button
                   type="button"

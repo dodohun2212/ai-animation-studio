@@ -42,8 +42,9 @@ export function toEpisodeDetail(episode: StoredEpisodeForDetail): LongEpisodeDet
     scriptRevision: episode.script_revision,
     ...(script ? { script } : {}),
     scriptHistoryCount: Array.isArray(episode.script_history) ? episode.script_history.length : 0,
+    updatedAt: typeof episode.updated_at === "string" ? episode.updated_at : new Date(0).toISOString(),
     ...(warnings.length > 0 ? { warnings } : {}),
-    ...(instagramPost(episode.instagram_post) ? { instagramPost: instagramPost(episode.instagram_post)! } : {}),
+    ...(toEpisodeInstagramPost(episode.instagram_post) ? { instagramPost: toEpisodeInstagramPost(episode.instagram_post)! } : {}),
   };
 }
 
@@ -51,7 +52,7 @@ export function toEpisodeDetail(episode: StoredEpisodeForDetail): LongEpisodeDet
  * The published record, read leniently: an Episode written before this field existed simply has none, and a
  * half-written one is treated as none rather than reported as a post nobody can find.
  */
-function instagramPost(value: unknown): LongEpisodeInstagramPost | undefined {
+export function toEpisodeInstagramPost(value: unknown): LongEpisodeInstagramPost | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const stored = value as Record<string, unknown>;
   const strings = ["media_id", "ig_user_id", "published_at", "caption"] as const;

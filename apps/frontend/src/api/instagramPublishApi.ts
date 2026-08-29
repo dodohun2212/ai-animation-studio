@@ -1,4 +1,4 @@
-import { API_ROUTES, type PublishToInstagramResponse } from "@ai-animation-studio/shared";
+import { API_ROUTES, type PublishLongEpisodeToInstagramResponse, type PublishToInstagramResponse } from "@ai-animation-studio/shared";
 
 export class InstagramPublishApiError extends Error {
   readonly code: string;
@@ -93,4 +93,49 @@ export async function publishToInstagram(
     throw new InstagramPublishApiError(MALFORMED.code, MALFORMED.message);
   }
   return body as unknown as PublishToInstagramResponse;
+}
+
+/**
+ * Publishes one Episode's merged final video. Same irreversible, public action as the short project's, and
+ * deliberately the same shape — `approved: true` sent explicitly, and the account travelling with the request
+ * so the account the confirmation named is provably the one published to.
+ *
+ * The response carries the Episode, not just the receipt: `instagramPost` on it is what lets the screen stay
+ * locked after a reload, instead of inviting a second post of something already public.
+ */
+export async function publishLongEpisodeToInstagram(
+  projectId: string,
+  episodeNumber: number,
+  caption: string,
+  igUserId: string,
+): Promise<PublishLongEpisodeToInstagramResponse> {
+  let response: Response;
+  try {
+    response = await fetch(API_ROUTES.longEpisodeInstagramPublish(projectId, episodeNumber), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ approved: true, caption, igUserId }),
+    });
+  } catch {
+    throw new InstagramPublishApiError(NETWORK.code, NETWORK.message);
+  }
+
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    body = undefined;
+  }
+
+  if (!response.ok) {
+    if (isRecord(body) && isNonEmptyString(body.code) && isNonEmptyString(body.message)) {
+      throw new InstagramPublishApiError(body.code, body.message);
+    }
+    throw new InstagramPublishApiError(MALFORMED.code, MALFORMED.message);
+  }
+
+  if (!isRecord(body) || !isNonEmptyString(body.mediaId) || !isNonEmptyString(body.publishedAt) || !isRecord(body.episode)) {
+    throw new InstagramPublishApiError(MALFORMED.code, MALFORMED.message);
+  }
+  return body as unknown as PublishLongEpisodeToInstagramResponse;
 }

@@ -131,6 +131,13 @@ export interface LongEpisodeDetail extends LongEpisodeOutline {
   scriptRevision: number;
   script?: LongEpisodeScript;
   scriptHistoryCount: number;
+  /**
+   * When this Episode was last written — which includes the moment its final video was merged.
+   *
+   * Carried so a player can bust its cache with it: an Episode's clips and final video keep the same address
+   * across a re-merge, so without a changing value the browser happily shows the previous render.
+   */
+  updatedAt: string;
   /** Present once this Episode has been published to Instagram, so a reload still knows. */
   instagramPost?: LongEpisodeInstagramPost;
 }
