@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { GetLongEpisodeVideoPreviewResponse, LongEpisodeVideoProgress, LongEpisodeVideoReview, RecoverLongEpisodeVideosResponse, SceneNumber } from "@ai-animation-studio/shared";
 
 import { approveLongEpisodeVideoReview, episodeSceneErrorMessage, getLongEpisodeCurrentVideoJob, getLongEpisodeVideoPreview, getLongEpisodeVideoProgress, getLongEpisodeVideoReview, longEpisodeVideoContentUrl, recoverLongEpisodeVideos, regenerateLongEpisodeVideo, restartLongEpisodeVideoGeneration, startLongEpisodeVideoGeneration, stopLongEpisodeVideoGeneration, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { LongEpisodeSceneVersions } from "./LongEpisodeSceneVersions.js";
 import { Spinner } from "./Spinner.js";
 import { videoRatioLabel } from "../utils/sceneFields.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
@@ -293,6 +294,19 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
                 <button type="button" className={smallOutlineButton} disabled={review.status === "approved"} onClick={() => void approve(review.sceneNumber)}>{review.status === "approved" ? "확정 완료" : "이 영상으로 확정"}</button>
                 <button type="button" className={smallOutlineButton} onClick={() => setRegenerate(review.sceneNumber)}>다시 만들기</button>
               </div>
+              {/* The clips this scene has had. Collapsed, and absent entirely when there is no history. */}
+              <LongEpisodeSceneVersions
+                projectId={projectId}
+                episodeNumber={episodeNumber}
+                sceneNumber={review.sceneNumber}
+                onRestored={(episode) => {
+                  /* Restoring voids the merged final video, so the Episode comes back in a different state than
+                     the one we asked from — and the scene's bytes changed, so the players must refetch. */
+                  setJob((current) => current ? { ...current, episode } : current);
+                  setUnplayable([]);
+                  setVideoVersion((current) => current + 1);
+                }}
+              />
               {regenerate === review.sceneNumber && (
                 <div role="alertdialog" data-testid={`episode-video-regenerate-confirm-${review.sceneNumber}`} className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
                   <p className="text-sm text-amber-200">{review.sceneNumber}번 장면을 다시 만들까요? Runway 키가 연결되어 있으면 이번 재생성분이 실제로 청구됩니다.</p>

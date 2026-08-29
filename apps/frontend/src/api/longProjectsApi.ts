@@ -51,6 +51,9 @@ import {
   type LongEpisodeVideoProgress,
   type LongEpisodeVideoReview,
   type GetLongEpisodeCurrentVideoJobResponse,
+  type GetVideoVersionsResponse,
+  type RestoreLongEpisodeVideoVersionResponse,
+  type VideoVersionSummary,
   type GetLongEpisodeVideoReviewResponse,
   type ApproveLongEpisodeVideoReviewResponse,
   type RegenerateLongEpisodeVideoResponse,
@@ -650,6 +653,53 @@ export function longEpisodeVideoContentUrl(
  */
 export function longEpisodeFinalVideoContentUrl(projectId: string, episodeNumber: number, cacheBuster: string): string {
   return `${API_ROUTES.longEpisodeFinalVideoContent(projectId, episodeNumber)}?v=${encodeURIComponent(cacheBuster)}`;
+}
+
+function isVideoVersionSummary(value: unknown): value is VideoVersionSummary {
+  return isRecord(value)
+    && isNonEmptyString(value.versionId)
+    && isNonEmptyString(value.createdAt)
+    && typeof value.bytes === "number"
+    && typeof value.isCurrent === "boolean";
+}
+
+function isGetVideoVersionsResponse(value: unknown): value is GetVideoVersionsResponse {
+  return isRecord(value) && Array.isArray(value.versions) && value.versions.every(isVideoVersionSummary);
+}
+
+function isRestoreLongEpisodeVideoVersionResponse(value: unknown): value is RestoreLongEpisodeVideoVersionResponse {
+  return isRecord(value) && isLongEpisodeDetail(value.episode);
+}
+
+/**
+ * The clips this Episode scene has had, newest first, with the one in use first.
+ *
+ * Never empty: a scene that was never regenerated answers with `current` alone. `isCurrent` marks the clip
+ * actually in use, which after a restore is NOT the most recently created one — so the screen must read it
+ * rather than assuming the top row is the newest.
+ */
+export function listLongEpisodeVideoVersions(projectId: string, episodeNumber: number, sceneNumber: SceneNumber): Promise<GetVideoVersionsResponse> {
+  return request(API_ROUTES.longEpisodeVideoVersions(projectId, episodeNumber, sceneNumber), undefined, isGetVideoVersionsResponse);
+}
+
+/** One past clip's bytes. Refuses placeholders (404) — deciding from a black box is what this screen prevents. */
+export function longEpisodeVideoVersionContentUrl(projectId: string, episodeNumber: number, sceneNumber: SceneNumber, versionId: string): string {
+  return API_ROUTES.longEpisodeVideoVersionContent(projectId, episodeNumber, sceneNumber, versionId);
+}
+
+/**
+ * Puts a past clip back in use. Free (a local copy) and itself reversible — the clip being replaced is archived
+ * first and nothing is deleted.
+ *
+ * It does void the Episode's merged final video, so the response carries the Episode's new state rather than
+ * the one the screen asked from.
+ */
+export function restoreLongEpisodeVideoVersion(projectId: string, episodeNumber: number, sceneNumber: SceneNumber, versionId: string): Promise<RestoreLongEpisodeVideoVersionResponse> {
+  return request(
+    API_ROUTES.longEpisodeVideoVersionRestore(projectId, episodeNumber, sceneNumber, versionId),
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) },
+    isRestoreLongEpisodeVideoVersionResponse,
+  );
 }
 
 export function getLongProjectSettings(projectId: string): Promise<GetLongProjectSettingsResponse> {

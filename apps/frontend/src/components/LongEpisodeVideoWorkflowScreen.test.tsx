@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { jsonResponse } from "../api/testUtils.js";
+import { jsonResponse, stubFetchByRoute } from "../api/testUtils.js";
 import { LongEpisodeVideoWorkflowScreen } from "./LongEpisodeVideoWorkflowScreen.js";
 
 const episode = (status: string) => ({ episodeNumber: 1, title: "Episode", summary: "s", mainEvent: "e", conflict: "c", cliffhanger: "h", nextEpisodeHook: "n", status, approved: true, scriptRevision: 1, scriptHistoryCount: 1 });
@@ -25,6 +25,15 @@ function callTo(fetchMock: ReturnType<typeof vi.fn>, suffix: string): [string, R
   if (!call) throw new Error(`No request was made to ${suffix}`);
   return call;
 }
+
+/**
+ * The review cards ask each scene for its past clips. One entry per scene, all saying "nothing archived", so
+ * these tests stay about recovery and playback rather than about history.
+ */
+const sceneVersionRoutes = () => Object.fromEntries([1, 2, 3, 4, 5, 6].map((sceneNumber) => [
+  `GET /videos/${sceneNumber}/versions`,
+  { versions: [{ versionId: "current", createdAt: "2026-08-23T00:00:00.000Z", bytes: 2048, isCurrent: true }] },
+]));
 
 describe("LongEpisodeVideoWorkflowScreen", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -202,12 +211,13 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
   it("fetches the clips already generated without regenerating any, and names the scenes it could not fetch", async () => {
     const review = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" }));
     const recovered = { ...progress("succeeded", [1, 2, 3, 4, 5, 6]), recoveredSceneNumbers: [1, 2, 3, 4, 5], unrecoverableScenes: [{ sceneNumber: 6, reason: "출력 링크가 만료되었습니다" }] };
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { jobId: "job" }))
-      .mockResolvedValueOnce(jsonResponse(200, progress("succeeded", [1, 2, 3, 4, 5, 6])))
-      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("videos_review"), reviews: review }))
-      .mockResolvedValueOnce(jsonResponse(200, recovered))
-      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("videos_review"), reviews: review }));
+    const fetchMock = stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": progress("succeeded", [1, 2, 3, 4, 5, 6]),
+      "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review },
+      "POST /videos/generations/job/recovery": recovered,
+      ...sceneVersionRoutes(),
+    });
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
 
@@ -245,12 +255,13 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
   it("tells an unplayable scene apart before and after recovery, and never offers to regenerate on its own", async () => {
     const review = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" }));
     const recovered = { ...progress("succeeded", [1, 2, 3, 4, 5, 6]), recoveredSceneNumbers: [1, 2, 3, 4, 5], unrecoverableScenes: [{ sceneNumber: 6, reason: "출력 링크가 만료되었습니다" }] };
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { jobId: "job" }))
-      .mockResolvedValueOnce(jsonResponse(200, progress("succeeded", [1, 2, 3, 4, 5, 6])))
-      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("videos_review"), reviews: review }))
-      .mockResolvedValueOnce(jsonResponse(200, recovered))
-      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("videos_review"), reviews: review }));
+    const fetchMock = stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": progress("succeeded", [1, 2, 3, 4, 5, 6]),
+      "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review },
+      "POST /videos/generations/job/recovery": recovered,
+      ...sceneVersionRoutes(),
+    });
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
 

@@ -1,3 +1,4 @@
+import { vi } from "vitest";
 import {
   API_ROUTES,
   WorkflowState,
@@ -22,6 +23,58 @@ export function jsonResponse(status: number, body: unknown): Response {
 }
 
 /** Simulates a response whose body is not valid JSON. */
+/**
+ * A fetch stub that answers by route instead of by call order.
+ *
+ * Three times now a screen has gained one request and taken a pile of unrelated tests with it: every
+ * `mockResolvedValueOnce` after the new one shifts by a place, and a test that meant to check a recovery ends
+ * up asserting against a progress poll. Assertions were moved to route names after the second time; this is
+ * the other half, because the *responses* were still positional.
+ *
+ * Keys are `"METHOD /url-suffix"` and the longest matching suffix wins, so `/generations/job` and
+ * `/generations/job/review` can both be named without either shadowing the other. An unmatched request throws
+ * with its URL — a request nobody planned for should be loud, not quietly answered with someone else's body.
+ *
+ * A route whose value is `sequence([...])` answers those bodies in order and then repeats the last one, so a
+ * poll that must read "running" and then "succeeded" is still expressible. That is the one thing call-order
+ * mocks did better, and without it a test that needs it has to keep the fragile style.
+ */
+const SEQUENCE = Symbol("stub-route-sequence");
+interface RouteSequence { [SEQUENCE]: true; next(): unknown }
+const isSequence = (value: unknown): value is RouteSequence =>
+  Boolean(value) && typeof value === "object" && SEQUENCE in (value as Record<symbol, unknown>);
+
+/** Successive answers for one route; the last one repeats once the list runs out. */
+export function sequence(bodies: readonly unknown[]): unknown {
+  let index = 0;
+  return {
+    [SEQUENCE]: true,
+    next: () => bodies[Math.min(index++, bodies.length - 1)],
+  } satisfies RouteSequence;
+}
+
+export function stubFetchByRoute(
+  routes: Record<string, unknown>,
+  errorRoutes: Record<string, { status: number; body: unknown }> = {},
+): ReturnType<typeof vi.fn> {
+  const match = (keys: string[], method: string, url: string): string | undefined =>
+    keys.filter((key) => {
+      const [keyMethod, ...rest] = key.split(" ");
+      return keyMethod === method && url.endsWith(rest.join(" "));
+    }).sort((left, right) => right.length - left.length)[0];
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    const method = init?.method ?? "GET";
+    const failing = match(Object.keys(errorRoutes), method, url);
+    if (failing) return jsonResponse(errorRoutes[failing]!.status, errorRoutes[failing]!.body);
+    const hit = match(Object.keys(routes), method, url);
+    if (!hit) throw new Error(`Unexpected fetch: ${method} ${url}`);
+    const answer = routes[hit];
+    if (isSequence(answer)) return jsonResponse(200, answer.next());
+    return jsonResponse(200, answer);
+  });
+}
+
 export function nonJsonResponse(status: number): Response {
   return {
     ok: status >= 200 && status < 300,
