@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Header, Logger, type LoggerService, Optional, Param, Post, Put, Query } from "@nestjs/common";
-import {
+import { type PublishLongEpisodeToInstagramResponse,
   API_ROUTES, type ApiError, type CompleteInstagramLoginResponse,
   type GetInstagramTargetsResponse, type InstagramConnectionStatus,
   type PublishToInstagramResponse,
@@ -131,6 +131,12 @@ export class InstagramTargetsController {
   @Post(`${API_ROUTES.projects}/:projectId/instagram/publish`)
   publish(@Param("projectId") projectId: string, @Body() body: unknown): Promise<PublishToInstagramResponse> {
     return this.publishing.publish(projectId, body);
+  }
+
+  /** The same for one Episode's merged final video. Equally irreversible, equally explicit. */
+  @Post(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/instagram/publish`)
+  publishEpisode(@Param("projectId") projectId: string, @Param("episodeNumber") episodeNumber: string, @Body() body: unknown): Promise<PublishLongEpisodeToInstagramResponse> {
+    return this.publishing.publishEpisode(projectId, Number(episodeNumber), body);
   }
 
   @Delete(API_ROUTES.instagramConnection)

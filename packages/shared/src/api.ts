@@ -131,6 +131,8 @@ export interface LongEpisodeDetail extends LongEpisodeOutline {
   scriptRevision: number;
   script?: LongEpisodeScript;
   scriptHistoryCount: number;
+  /** Present once this Episode has been published to Instagram, so a reload still knows. */
+  instagramPost?: LongEpisodeInstagramPost;
 }
 
 export interface GetLongEpisodeResponse { episode: LongEpisodeDetail; }
@@ -1360,6 +1362,33 @@ export type CompleteInstagramLoginResponse = InstagramConnectionStatus;
  * confirmation named is provably the account published to. The server still checks it is one this login can
  * actually publish to.
  */
+/**
+ * What an Episode's publish left behind, carried on the Episode itself.
+ *
+ * On the Episode rather than only in the publish response, because a response lives in the page load that
+ * received it. Publishing is the one irreversible outward action in this app, and a screen that forgot it
+ * after a refresh would offer to do it again — the same shape that hid a paid video job behind a reload, with
+ * a worse ending.
+ */
+export interface LongEpisodeInstagramPost {
+  mediaId: string;
+  igUserId: string;
+  publishedAt: string;
+  caption: string;
+}
+
+/** Publishing one Episode's merged final video. Same request shape as the short project's, by design. */
+export interface PublishLongEpisodeToInstagramRequest {
+  approved: true;
+  caption: string;
+  igUserId: string;
+}
+export interface PublishLongEpisodeToInstagramResponse {
+  mediaId: string;
+  publishedAt: string;
+  episode: LongEpisodeDetail;
+}
+
 export interface PublishToInstagramRequest {
   approved: true;
   caption: string;
@@ -1747,6 +1776,9 @@ export const API_ROUTES = {
   instagramLoginComplete: "/settings/instagram/login/complete",
   /** Where Meta would redirect a browser. Dormant: no address this app can serve is registrable (D-020). */
   instagramLoginCallback: "/settings/instagram/callback",
+  /** One Episode's merged final video, published. Mirrors `instagramPublish`, which only ever took a short project. */
+  longEpisodeInstagramPublish: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/instagram/publish`,
   instagramPublish: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/instagram/publish`,
   projectAssetMappings: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/assets/mappings`,
   projectAssetMapping: (projectId: string, mappingId: string) =>

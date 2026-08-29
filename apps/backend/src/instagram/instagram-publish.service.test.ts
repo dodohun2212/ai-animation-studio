@@ -199,3 +199,75 @@ describe("InstagramPublishService.publish", () => {
     await expect(retry.publish("post_project", approved)).resolves.toMatchObject({ mediaId: "media-1" });
   });
 });
+
+/**
+ * The same fake Graph, pointed at one Episode's merged final video.
+ *
+ * Deliberately reusing `setup`'s service: everything that reaches Meta is one shared path, and a second
+ * harness would let the Episode route diverge from the short one without any test noticing.
+ */
+async function withEpisode(options: Parameters<typeof setup>[0] & { withVideo?: boolean; alreadyPublished?: boolean } = {}) {
+  const context = await setup({ ...options, withVideo: false });
+  const directory = path.join(context.projectsRoot, "long", "long_story", "Episode01");
+  await fs.mkdir(path.join(directory, "videos", "final"), { recursive: true });
+  await fs.writeFile(path.join(directory, "project.json"), JSON.stringify({
+    number: 1, state: "completed", approved: true, script: {}, script_revision: 1,
+    title: "첫 번째 밤", summary: "s", core_event: "e", conflict: "c", cliffhanger: "h",
+    next_connection: "n", updated_at: "2026-08-26T00:00:00.000Z",
+    ...(options.alreadyPublished ? { instagram_post: { media_id: "media-old", ig_user_id: IG_USER_ID, published_at: "2026-08-26T00:00:00.000Z", caption: "before" } } : {}),
+  }));
+  if (options.withVideo !== false) {
+    await fs.writeFile(path.join(directory, "videos", "final", "instagram_reel.mp4"), VIDEO);
+  }
+  return { ...context, directory, episodeFile: path.join(directory, "project.json") };
+}
+
+describe("InstagramPublishService.publishEpisode", () => {
+  it("publishes an Episode's final video and records the post on the Episode itself", async () => {
+    const { service, episodeFile } = await withEpisode({ fetchImpl: graphFetch({ statuses: ["IN_PROGRESS", "FINISHED"] }) });
+
+    const result = await service.publishEpisode("long", 1, approved);
+
+    expect(result.mediaId).toBe("media-1");
+    // On the Episode, not only in the answer: a reload after publishing has to still know.
+    expect(result.episode.instagramPost).toMatchObject({ mediaId: "media-1", igUserId: IG_USER_ID, caption: "오늘의 영상" });
+    const stored = JSON.parse(await fs.readFile(episodeFile, "utf8")) as { instagram_post: Record<string, unknown> };
+    expect(stored.instagram_post).toMatchObject({ media_id: "media-1", ig_user_id: IG_USER_ID });
+  });
+
+  it("refuses a second publish of the same Episode, which is the one mistake that cannot be walked back", async () => {
+    const { service, fetchImpl } = await withEpisode({ alreadyPublished: true });
+
+    await expect(service.publishEpisode("long", 1, approved)).rejects.toMatchObject({ response: { code: "INSTAGRAM_ALREADY_PUBLISHED" } });
+    // Refused before anything reached Meta.
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("refuses when the Episode has not been merged yet, rather than uploading nothing", async () => {
+    const { service, fetchImpl } = await withEpisode({ withVideo: false });
+
+    await expect(service.publishEpisode("long", 1, approved)).rejects.toMatchObject({ response: { code: "INSTAGRAM_VIDEO_UNAVAILABLE" } });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("refuses an Episode that does not exist", async () => {
+    const { service } = await withEpisode();
+
+    await expect(service.publishEpisode("long", 9, approved)).rejects.toMatchObject({ response: { code: "INSTAGRAM_VIDEO_UNAVAILABLE" } });
+  });
+
+  it("demands the same explicit approval the short project's publish does", async () => {
+    const { service, fetchImpl } = await withEpisode();
+
+    await expect(service.publishEpisode("long", 1, { caption: "c", igUserId: IG_USER_ID })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("refuses an account this login can no longer publish to, before uploading anything", async () => {
+    // D-006: a remembered id that has since been revoked must not silently become somebody else's account.
+    const { service } = await withEpisode();
+
+    await expect(service.publishEpisode("long", 1, { ...approved, igUserId: "17800000000000999" }))
+      .rejects.toMatchObject({ response: { code: "INSTAGRAM_TARGET_NOT_FOUND" } });
+  });
+});

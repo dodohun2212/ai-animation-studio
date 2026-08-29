@@ -1,4 +1,4 @@
-import type { LongEpisodeDetail, LongEpisodeStatus } from "@ai-animation-studio/shared";
+import type { LongEpisodeDetail, LongEpisodeInstagramPost, LongEpisodeStatus } from "@ai-animation-studio/shared";
 
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
@@ -43,5 +43,23 @@ export function toEpisodeDetail(episode: StoredEpisodeForDetail): LongEpisodeDet
     ...(script ? { script } : {}),
     scriptHistoryCount: Array.isArray(episode.script_history) ? episode.script_history.length : 0,
     ...(warnings.length > 0 ? { warnings } : {}),
+    ...(instagramPost(episode.instagram_post) ? { instagramPost: instagramPost(episode.instagram_post)! } : {}),
+  };
+}
+
+/**
+ * The published record, read leniently: an Episode written before this field existed simply has none, and a
+ * half-written one is treated as none rather than reported as a post nobody can find.
+ */
+function instagramPost(value: unknown): LongEpisodeInstagramPost | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const stored = value as Record<string, unknown>;
+  const strings = ["media_id", "ig_user_id", "published_at", "caption"] as const;
+  if (strings.some((key) => typeof stored[key] !== "string")) return undefined;
+  return {
+    mediaId: stored.media_id as string,
+    igUserId: stored.ig_user_id as string,
+    publishedAt: stored.published_at as string,
+    caption: stored.caption as string,
   };
 }

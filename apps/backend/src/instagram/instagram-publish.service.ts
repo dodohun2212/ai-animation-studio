@@ -2,11 +2,14 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import type { PublishToInstagramResponse } from "@ai-animation-studio/shared";
+import type { PublishLongEpisodeToInstagramResponse, PublishToInstagramResponse } from "@ai-animation-studio/shared";
 
 import { toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { withProjectLock } from "../videos/project-lock.js";
+import { atomicWriteUtf8File } from "../projects/atomic-file.js";
+import { episodeDirectoryName, longStoryRoot } from "../long-projects/long-project-paths.js";
+import { toEpisodeDetail, type StoredEpisodeForDetail } from "../long-projects/episode-detail.js";
 import { InstagramConnectionStore } from "./instagram-connection.store.js";
 import {
   createInstagramResumableContainer, getInstagramContainerStatus, listInstagramPublishTargets,
@@ -103,33 +106,85 @@ export class InstagramPublishService {
       const current = await this.projects.findById(id);
       if (current.instagram_post) throw instagramAlreadyPublished();
 
-      let targets;
-      try {
-        targets = await listInstagramPublishTargets(token.accessToken, this.requestOptions);
-      } catch (error) {
-        throw this.asApiError(error);
-      }
-      // The account the confirmation named must still be one this login can publish to — a remembered id that
-      // has since been revoked must not silently become somebody else's account (D-006).
-      if (!targets.some((target) => target.igUserId === igUserId)) throw instagramTargetNotFound();
+      const { mediaId, publishedAt } = await this.sendToInstagram(token.accessToken, igUserId, bytes);
+      const updated = {
+        ...current,
+        updated_at: publishedAt,
+        instagram_post: { media_id: mediaId, ig_user_id: igUserId, published_at: publishedAt, caption },
+      };
+      // Written after Instagram accepted it, so the record means "this post exists", not "we tried".
+      await this.projects.save(updated);
+      return { mediaId, publishedAt, project: toApiProject(updated) };
+    });
+  }
 
-      try {
-        const { containerId } = await createInstagramResumableContainer(token.accessToken, igUserId, this.requestOptions);
-        await uploadInstagramResumableVideo(token.accessToken, containerId, bytes, this.requestOptions);
-        await this.waitUntilPublishable(token.accessToken, containerId);
-        const { mediaId } = await publishInstagramContainer(token.accessToken, igUserId, containerId, this.requestOptions);
-        const publishedAt = new Date(this.now()).toISOString();
-        const updated = {
-          ...current,
-          updated_at: publishedAt,
-          instagram_post: { media_id: mediaId, ig_user_id: igUserId, published_at: publishedAt, caption },
-        };
-        // Written after Instagram accepted it, so the record means "this post exists", not "we tried".
-        await this.projects.save(updated);
-        return { mediaId, publishedAt, project: toApiProject(updated) };
-      } catch (error) {
-        throw this.asApiError(error);
-      }
+  /**
+   * The upload itself, shared by both project kinds.
+   *
+   * One copy on purpose. This is the sequence that ends in something public and irreversible, and a second
+   * copy of it is a second place for the container-then-publish order, the processing wait, or the target
+   * check to be got wrong — while looking correct beside its twin.
+   */
+  private async sendToInstagram(accessToken: string, igUserId: string, bytes: Buffer): Promise<{ mediaId: string; publishedAt: string }> {
+    let targets;
+    try {
+      targets = await listInstagramPublishTargets(accessToken, this.requestOptions);
+    } catch (error) {
+      throw this.asApiError(error);
+    }
+    // The account the confirmation named must still be one this login can publish to — a remembered id that
+    // has since been revoked must not silently become somebody else's account (D-006).
+    if (!targets.some((target) => target.igUserId === igUserId)) throw instagramTargetNotFound();
+    try {
+      const { containerId } = await createInstagramResumableContainer(accessToken, igUserId, this.requestOptions);
+      await uploadInstagramResumableVideo(accessToken, containerId, bytes, this.requestOptions);
+      await this.waitUntilPublishable(accessToken, containerId);
+      const { mediaId } = await publishInstagramContainer(accessToken, igUserId, containerId, this.requestOptions);
+      return { mediaId, publishedAt: new Date(this.now()).toISOString() };
+    } catch (error) {
+      throw this.asApiError(error);
+    }
+  }
+
+  /**
+   * The same for one Episode's merged final video.
+   *
+   * Everything that touches Meta is the shared path above; what differs is only which record says "already
+   * published" and where the file is. The Episode keeps its own record, so a reload after publishing still
+   * knows — publishing is the one action in this app that cannot be walked back, and a screen that forgot it
+   * would offer to do it twice.
+   */
+  async publishEpisode(projectId: string, episodeNumber: number, request: unknown): Promise<PublishLongEpisodeToInstagramResponse> {
+    const { caption, igUserId } = this.parseRequest(request);
+    const id = projectId.trim();
+    if (!Number.isInteger(episodeNumber) || episodeNumber < 1) throw instagramVideoUnavailable();
+    const directory = path.join(longStoryRoot(this.projectsRoot, id), episodeDirectoryName(episodeNumber));
+    const episodeFile = path.join(directory, "project.json");
+
+    const stored = await readEpisode(episodeFile);
+    if (!stored) throw instagramVideoUnavailable();
+    if (stored.instagram_post) throw instagramAlreadyPublished();
+
+    const token = await this.connection.token();
+    if (!token) throw instagramNotConnected();
+
+    const bytes = await fs.readFile(path.join(directory, FINAL_VIDEO_PATH)).catch(() => undefined);
+    if (!bytes || bytes.length === 0) throw instagramVideoUnavailable();
+
+    return withProjectLock(directory, `${id}_${episodeNumber}_instagram_publish`, async () => {
+      // Re-read inside the lock: another window may have published while this call queued for it.
+      const current = await readEpisode(episodeFile);
+      if (!current) throw instagramVideoUnavailable();
+      if (current.instagram_post) throw instagramAlreadyPublished();
+
+      const { mediaId, publishedAt } = await this.sendToInstagram(token.accessToken, igUserId, bytes);
+      const updated = {
+        ...current,
+        updated_at: publishedAt,
+        instagram_post: { media_id: mediaId, ig_user_id: igUserId, published_at: publishedAt, caption },
+      };
+      await atomicWriteUtf8File(episodeFile, JSON.stringify(updated, null, 2));
+      return { mediaId, publishedAt, episode: toEpisodeDetail(updated) };
     });
   }
 
@@ -140,5 +195,18 @@ export class InstagramPublishService {
       return instagramProviderError(error.category, error.message);
     }
     return error;
+  }
+}
+
+/** The Episode's stored record, or nothing — unreadable is "no Episode here", never "not published yet". */
+async function readEpisode(file: string): Promise<(StoredEpisodeForDetail & { instagram_post?: unknown }) | undefined> {
+  try {
+    const parsed: unknown = JSON.parse(await fs.readFile(file, "utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+    const stored = parsed as Record<string, unknown>;
+    if (!Number.isInteger(stored.number) || typeof stored.state !== "string") return undefined;
+    return stored as unknown as StoredEpisodeForDetail & { instagram_post?: unknown };
+  } catch {
+    return undefined;
   }
 }
