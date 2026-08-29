@@ -27,6 +27,9 @@ const PNG = PLACEHOLDER_PNG;
 const statuses: readonly LongEpisodeStatus[] = LONG_EPISODE_STATUSES;
 type StoredEpisode = Record<string, unknown> & { number: number; state: LongEpisodeStatus; approved: boolean; script: Record<string, unknown>; script_revision: number; updated_at: string };
 /** `prompt` is what this scene's image was actually generated from — written only when a provider made it, so a placeholder records nothing and is never reported as behind. */
+/** The states an Episode passes through before any picture exists — the only ones where the review has nothing to show. */
+const BEFORE_IMAGES_EXIST: readonly string[] = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images"];
+
 type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved"; updated_at: string; regeneration_count: number; history: Record<string, unknown>[]; references_used_count?: number; references_omitted_count?: number; prompt?: string };
 const object = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(stable) : object(value) ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])])) : value;
@@ -141,6 +144,11 @@ export class EpisodeImagesService {
   private apiReviews(reviews: StoredReview[], timestamp: string, sceneCount: number): LongEpisodeImageReview[] { const index = new Map(reviews.map((review) => [review.scene_number, review])); return sceneNumbersFor(sceneCount).map((sceneNumber) => { const review = index.get(sceneNumber); const omission = review?.references_used_count !== undefined && review.references_omitted_count !== undefined ? { referencesUsedCount: review.references_used_count, referencesOmittedCount: review.references_omitted_count } : {}; return { sceneNumber, status: review?.status === "approved" ? "approved" : "pending", updatedAt: review?.updated_at || timestamp, ...omission }; }); }
   private async assertReviewable(projectId: string, number: number, episode: StoredEpisode, allowWaiting = false) {
     if (episode.state !== "images_review" && (!allowWaiting || episode.state !== "waiting_for_video_confirmation")) throw longEpisodeImagesNotAllowed();
+    await this.assertImagesOnDisk(projectId, number, episode);
+  }
+
+  /** Every scene's picture actually present — the half of reviewability that is about files rather than state. */
+  private async assertImagesOnDisk(projectId: string, number: number, episode: StoredEpisode) {
     if (!(await Promise.all(sceneNumbersFor(this.sceneCount(episode)).map((scene) => this.validImage(this.image(projectId, number, scene))))).every(Boolean)) throw longEpisodeImagesInvalid();
   }
   private approval(request: unknown): asserts request is { approved: true } { if (!object(request) || Object.keys(request).length !== 1 || request.approved !== true) throw longInvalidRequest("Episode image approval request is invalid."); }
@@ -250,8 +258,25 @@ export class EpisodeImagesService {
     return { imageStale };
   }
 
+  /**
+   * The review listing, readable for as long as the pictures exist.
+   *
+   * This used to require the Episode to still be sitting in `images_review`, so the moment it moved on — to
+   * video confirmation, or all the way to a finished cut — the list refused and the screen had nothing to draw.
+   * The pictures were still on disk and the content route still served them one by one; there was simply no
+   * longer anything telling the screen they were there. Paid work you cannot look at again is the same defect
+   * as paid work overwritten, only quieter, and this repository has now met it three times.
+   *
+   * Reading is not reviewing: `approve` and `regenerate` keep their state gate, because those act. This one
+   * only requires that the pictures are actually present — the same rule `content()` applies for the same
+   * stated reason.
+   */
   async get(projectId: string, number: number): Promise<GetLongEpisodeImageReviewResponse> {
-    const id = projectId.trim(); const episode = await this.episode(id, number); await this.assertReviewable(id, number, episode);
+    const id = projectId.trim(); const episode = await this.episode(id, number);
+    // Refused only while the Episode has not reached image generation — before that there is nothing to list,
+    // and saying "not at this stage" is the honest answer. Everything after stays readable.
+    if (BEFORE_IMAGES_EXIST.includes(episode.state)) throw longEpisodeImagesNotAllowed();
+    await this.assertImagesOnDisk(id, number, episode);
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, IMAGE_ESTIMATED_COST_USD) : undefined;
     const stored = await this.loadReviews(id, number);

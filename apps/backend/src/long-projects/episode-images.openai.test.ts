@@ -199,6 +199,37 @@ describe("real OpenAI Episode image generation", () => {
       .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
+  /**
+   * The pictures did not go anywhere — the list did.
+   *
+   * `get` used to require the Episode to still be sitting in `images_review`, so the moment it moved on the
+   * listing refused and the screen had nothing to draw, while the files were on disk and the content route
+   * still served them one at a time. Paid work you cannot look at again is the same defect as paid work
+   * overwritten, only quieter.
+   */
+  it("still lists the images after the Episode has moved past image review", async () => {
+    const { images, projectsRoot } = await setupWithConnectedOpenAi();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    await images.generate("long", 1, { approved: true });
+    const file = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
+    const stored = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>;
+    await fs.writeFile(file, JSON.stringify({ ...stored, state: "completed", final_video_path: "videos/final/instagram_reel.mp4" }));
+
+    const { reviews } = await images.get("long", 1);
+
+    expect(reviews.map((review) => review.sceneNumber)).toEqual([1, 2, 3, 4, 5, 6]);
+    // Reading is not reviewing: the acts still refuse at a stage that has moved on.
+    await expect(images.approve("long", 1, "1", { approved: true }))
+      .rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_NOT_ALLOWED" } });
+  });
+
+  it("still says not-allowed before any picture exists, rather than reporting an empty list", async () => {
+    // "There is nothing yet" and "there is nothing left" are different answers, and only one of them means
+    // something went wrong.
+    const { images } = await setupWithConnectedOpenAi();
+    await expect(images.get("long", 1)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_NOT_ALLOWED" } });
+  });
+
   it("falls back to the local fake adapter, never calling fetch, when no OpenAI credential is configured", async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-images-openai-"));
     const projectsRoot = path.join(root, "projects");
