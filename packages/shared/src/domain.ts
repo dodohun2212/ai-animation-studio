@@ -158,7 +158,7 @@ export interface ProjectSummary {
     publishedAt: string;
   };
   usedAudio?: {
-    mode: "narration" | "narration+bgm" | "silent";
+    mode: "narration" | "narration+bgm" | "bgm" | "silent";
     trackId?: string;
     attributionRequired?: boolean;
     attributionText?: string;

@@ -52,6 +52,7 @@ type AudioMode = MergeAudioSettings["mode"];
 const AUDIO_MODE_LABELS: Record<AudioMode, string> = {
   narration: "나레이션만",
   "narration+bgm": "나레이션 + 배경음악",
+  bgm: "배경음악만",
   silent: "무음",
 };
 

@@ -1195,13 +1195,28 @@ export interface RegenerateVideoResponse extends GenerationProgressResponse {
  * to be selected, so switching mode away from "narration+bgm" without clearing trackId can't accidentally leave
  * a track silently attached. "narration" requires the project to actually have narration audio
  * (ProjectSummary.narrationAvailable) — a project with none must default to "silent" and cannot request
- * "narration" at all, since there is nothing to mix (docs/06_DECISIONS.md D-011). trackId is required when (and only meaningful when) mode is "narration+bgm".
+ * "narration" at all, since there is nothing to mix (docs/06_DECISIONS.md D-011). trackId is required when (and only meaningful when) mode is "narration+bgm" or "bgm".
  * volume/fadeSeconds apply only to the bgm track — narration is never faded or attenuated by this setting.
  */
 export interface MergeAudioSettings {
-  mode: "narration" | "narration+bgm" | "silent";
+  /**
+   * `"bgm"` is music with nothing under it, and it exists because there was no way to say that.
+   *
+   * The three modes before it all described narration — with music, without, or off — so a project with no
+   * narration had exactly one reachable option: silence. Music alone was never forbidden; the vocabulary just
+   * had no word for it. `"bgm"` needs a track and does not need narration, which is the whole difference from
+   * `"narration+bgm"`.
+   */
+  mode: "narration" | "narration+bgm" | "bgm" | "silent";
   trackId?: string;
-  /** 0 (silent) to 1 (full volume) — the bgm track's own level, independent of narration's. Server default when omitted: 0.25 (bgm audible but clearly secondary to narration). */
+  /**
+   * 0 (silent) to 1 (full volume) — the bgm track's own level, independent of narration's.
+   *
+   * The default depends on the mode, because the reason for a default does. Under `"narration+bgm"` it is 0.25:
+   * audible but clearly secondary to a voice. Under `"bgm"` there is no voice to sit beneath, so quartering the
+   * track would make someone's own music inexplicably quiet with nothing on screen to explain it — the default
+   * there is 1, the level they uploaded.
+   */
   volume?: number;
   /** Fade-in at the start and fade-out at the end of the whole final video, in seconds. Server default when omitted: 2. */
   fadeSeconds?: number;

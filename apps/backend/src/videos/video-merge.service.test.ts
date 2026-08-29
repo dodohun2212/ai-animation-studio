@@ -302,6 +302,73 @@ describe("local FFmpeg video merge", () => {
         .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     });
 
+    /** A library holding one track, and a merge runner that writes whatever output it is handed. */
+    async function withTrack(root: string) {
+      const audioRunner: MediaCommandRunner = async (arguments_) => {
+        if ([...arguments_][0] === "ffprobe") return { stdout: JSON.stringify({ streams: [{ codec_type: "audio" }], format: { duration: "10.0" } }), stderr: "" };
+        throw new Error("unexpected audio command");
+      };
+      const audioLibrary = new AudioLibraryService(root, audioRunner);
+      const uploaded = await audioLibrary.upload(
+        { buffer: Buffer.from("fake mp3 bytes"), originalname: "bgm.mp3", mimetype: "audio/mpeg" },
+        { licenseKind: "cc-by", attributionRequired: true, attributionText: "Music by Jane Doe" },
+      );
+      const calls: string[][] = [];
+      const mergeRunner: MediaCommandRunner = async (arguments_) => {
+        const args = [...arguments_];
+        calls.push(args);
+        if (args[0] === "ffprobe") return { stdout: JSON.stringify({ streams: [{ codec_type: "video" }], format: { duration: "30.0" } }), stderr: "" };
+        await fs.writeFile(args.at(-1)!, Buffer.from("rendered"));
+        return { stdout: "", stderr: "" };
+      };
+      return { audioLibrary, uploaded, mergeRunner, calls };
+    }
+
+    it("puts music on a project that has no narration at all — the case the old vocabulary could not say", async () => {
+      // Before "bgm" every mode described narration, so a project without it could only reach silence. Music
+      // alone was never forbidden; there was no word for it.
+      const { projectsRoot, projects, root } = await setup();
+      const { audioLibrary, uploaded, mergeRunner, calls } = await withTrack(root);
+      const service = new LocalVideoMergeService(projects, projectsRoot, mergeRunner, audioLibrary);
+
+      const result = await service.merge("video_merge", { audio: { mode: "bgm", trackId: uploaded.track.trackId } });
+
+      expect(calls.some((args) => args[0] === "ffmpeg" && args.includes("-stream_loop"))).toBe(true);
+      expect(result.project.usedAudio).toMatchObject({ mode: "bgm", trackId: uploaded.track.trackId, attributionRequired: true });
+    });
+
+    it("plays that music at the level it was uploaded, not quartered under a voice that is not there", async () => {
+      // 0.25 exists to keep music under narration. With no narration the reason is gone, and applying it anyway
+      // would make someone's own upload quiet for a cause nothing on screen explains.
+      const { projectsRoot, projects, root } = await setup();
+      const { audioLibrary, uploaded, mergeRunner, calls } = await withTrack(root);
+      const service = new LocalVideoMergeService(projects, projectsRoot, mergeRunner, audioLibrary);
+
+      await service.merge("video_merge", { audio: { mode: "bgm", trackId: uploaded.track.trackId } });
+
+      const mix = calls.find((args) => args.includes("-stream_loop"));
+      expect(mix!.join(" ")).toContain("volume=1");
+      expect(mix!.join(" ")).not.toContain("volume=0.25");
+    });
+
+    it("still keeps 0.25 under narration, where the reason for it holds", async () => {
+      const { projectsRoot, projects, root } = await setup();
+      await withNarration(projects, projectsRoot, true);
+      const { audioLibrary, uploaded, mergeRunner, calls } = await withTrack(root);
+      const service = new LocalVideoMergeService(projects, projectsRoot, mergeRunner, audioLibrary);
+
+      await service.merge("video_merge", { audio: { mode: "narration+bgm", trackId: uploaded.track.trackId } });
+
+      expect(calls.find((args) => args.includes("-stream_loop"))!.join(" ")).toContain("volume=0.25");
+    });
+
+    it("refuses music with no track named, the same way narration+bgm does", async () => {
+      const { projectsRoot, projects } = await setup();
+
+      await expect(new LocalVideoMergeService(projects, projectsRoot, runner()).merge("video_merge", { audio: { mode: "bgm" } }))
+        .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    });
+
     it("mixes in a real BGM track from the audio library, keeping narration in the base merge", async () => {
       const { projectsRoot, projects, root } = await setup();
       await withNarration(projects, projectsRoot, true);

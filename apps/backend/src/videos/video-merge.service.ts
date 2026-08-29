@@ -19,7 +19,8 @@ const FINAL_VIDEO_PATH = "videos/final/instagram_reel.mp4" as const;
 const DEFAULT_BGM_VOLUME = 0.25;
 const DEFAULT_BGM_FADE_SECONDS = 2;
 type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved" };
-type AudioMode = "narration" | "narration+bgm" | "silent";
+/** Mirrors MergeAudioSettings["mode"] — the stored record and the request speak the same vocabulary. */
+type AudioMode = "narration" | "narration+bgm" | "bgm" | "silent";
 interface ResolvedAudioSettings { mode: AudioMode; trackId?: string; volume: number; fadeSeconds: number }
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -53,6 +54,17 @@ function narrationAvailableFor(project: StoredProject): boolean {
  * rejected rather than silently falling back, so a client bug can't ship a merge whose audio doesn't match what
  * the user asked for.
  */
+/** Both modes that carry a track. Named once so a third caller cannot forget the newer of the two. */
+const usesBgm = (mode: string): boolean => mode === "narration+bgm" || mode === "bgm";
+
+/**
+ * The bgm level to use when the request does not say.
+ *
+ * 0.25 exists to keep music under a voice. With no voice, that reason is gone, and applying it anyway would
+ * make someone's own upload quiet for a cause the screen never mentions.
+ */
+const defaultBgmVolume = (mode: string): number => (mode === "bgm" ? 1 : DEFAULT_BGM_VOLUME);
+
 function resolveAudioSettings(project: StoredProject, request: unknown): ResolvedAudioSettings {
   const narrationAvailable = narrationAvailableFor(project);
   const defaultMode: AudioMode = narrationAvailable && toShortProjectSettings(project).narrationEnabled ? "narration" : "silent";
@@ -62,16 +74,18 @@ function resolveAudioSettings(project: StoredProject, request: unknown): Resolve
   if (request.audio === undefined) return fallback;
   const audio = request.audio;
   if (!isObject(audio) || Object.keys(audio).some((key) => !["mode", "trackId", "volume", "fadeSeconds"].includes(key))) throw videoMergeInvalidRequest();
-  if (audio.mode !== "narration" && audio.mode !== "narration+bgm" && audio.mode !== "silent") throw videoMergeInvalidRequest("audio.mode must be narration, narration+bgm, or silent.");
+  if (audio.mode !== "narration" && audio.mode !== "narration+bgm" && audio.mode !== "bgm" && audio.mode !== "silent") throw videoMergeInvalidRequest("audio.mode must be narration, narration+bgm, bgm, or silent.");
+  // Deliberately not "bgm": music alone has nothing to mix a voice into, so a project without narration can
+  // ask for it. That was the one thing the old vocabulary could not express.
   if ((audio.mode === "narration" || audio.mode === "narration+bgm") && !narrationAvailable) throw videoMergeInvalidRequest("This project has no narration audio to include.");
-  if (audio.mode === "narration+bgm" && (typeof audio.trackId !== "string" || !audio.trackId.trim())) throw videoMergeInvalidRequest("audio.trackId is required for narration+bgm.");
+  if (usesBgm(audio.mode) && (typeof audio.trackId !== "string" || !audio.trackId.trim())) throw videoMergeInvalidRequest(`audio.trackId is required for ${audio.mode}.`);
   if (audio.trackId !== undefined && typeof audio.trackId !== "string") throw videoMergeInvalidRequest();
   if (audio.volume !== undefined && (typeof audio.volume !== "number" || !Number.isFinite(audio.volume) || audio.volume < 0 || audio.volume > 1)) throw videoMergeInvalidRequest("audio.volume must be between 0 and 1.");
   if (audio.fadeSeconds !== undefined && (typeof audio.fadeSeconds !== "number" || !Number.isFinite(audio.fadeSeconds) || audio.fadeSeconds < 0)) throw videoMergeInvalidRequest("audio.fadeSeconds must be a non-negative number.");
   return {
     mode: audio.mode,
-    ...(audio.mode === "narration+bgm" ? { trackId: audio.trackId as string } : {}),
-    volume: typeof audio.volume === "number" ? audio.volume : DEFAULT_BGM_VOLUME,
+    ...(usesBgm(audio.mode) ? { trackId: audio.trackId as string } : {}),
+    volume: typeof audio.volume === "number" ? audio.volume : defaultBgmVolume(audio.mode),
     fadeSeconds: typeof audio.fadeSeconds === "number" ? audio.fadeSeconds : DEFAULT_BGM_FADE_SECONDS,
   };
 }
@@ -180,7 +194,7 @@ export class LocalVideoMergeService {
     // fast, the same as approvedClips() failing fast on invalid clips below, not mid-render.
     let bgmPath: string | undefined;
     let bgmAttribution: { attributionRequired: boolean; attributionText?: string } | undefined;
-    if (audio.mode === "narration+bgm") {
+    if (usesBgm(audio.mode)) {
       if (!this.audioLibrary) throw videoMergeInvalidRequest("BGM is not available in this configuration.");
       bgmPath = (await this.audioLibrary.content(audio.trackId!)).path;
       const track = await this.audioLibrary.get(audio.trackId!);
@@ -204,12 +218,12 @@ export class LocalVideoMergeService {
       // `style_profile.aspect` until that field turned out to be written by nothing, so every merge padded to a
       // portrait canvas — including landscape footage, which came out pillarboxed.
       await this.engine.merge(mergeScenes, clipDurationSeconds, finalPath, shortProjectAspectRatio(rendering));
-      if (audio.mode === "narration+bgm" && bgmPath) {
+      if (usesBgm(audio.mode) && bgmPath) {
         await this.engine.mixBackgroundMusic(finalPath, bgmPath, audio.volume, audio.fadeSeconds, finalPath);
       }
       const usedAudio: StoredUsedAudio = {
         mode: audio.mode,
-        ...(audio.mode === "narration+bgm" ? { track_id: audio.trackId! } : {}),
+        ...(usesBgm(audio.mode) ? { track_id: audio.trackId! } : {}),
         ...(bgmAttribution?.attributionRequired !== undefined ? { attribution_required: bgmAttribution.attributionRequired } : {}),
         ...(bgmAttribution?.attributionText !== undefined ? { attribution_text: bgmAttribution.attributionText } : {}),
       };

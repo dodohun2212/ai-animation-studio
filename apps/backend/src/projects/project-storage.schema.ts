@@ -48,7 +48,7 @@ export interface StoredProject {
 
 /** What the most recently completed merge actually used — see ProjectSummary.usedAudio's own doc comment for why attribution is copied by value here rather than kept as a live reference to the track. */
 export interface StoredUsedAudio {
-  mode: "narration" | "narration+bgm" | "silent";
+  mode: "narration" | "narration+bgm" | "bgm" | "silent";
   track_id?: string;
   attribution_required?: boolean;
   attribution_text?: string;
