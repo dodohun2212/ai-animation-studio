@@ -84,6 +84,44 @@ describe("real OpenAI Episode image generation", () => {
     expect(result.budget?.canSpend).toBe(true);
   });
 
+  /**
+   * An image is only worth what the script it was drawn from is still worth. Editing a scene after paying for
+   * its image left no sign anywhere — this is the image half of the same hole the video review already covers.
+   *
+   * Only computable because the prompt is now recorded at generation time. Before that there was nothing to
+   * compare against, which is why this half shipped a round later than the video one rather than shipping an
+   * `imageStale: []` nobody had computed.
+   */
+  it("names the scenes whose paid-for images were drawn from a script that has since changed", async () => {
+    const { images, projectsRoot } = await setupWithConnectedOpenAi();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    await images.generate("long", 1, { approved: true });
+    expect((await images.get("long", 1)).staleness.imageStale).toEqual([]);
+
+    const file = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
+    const episode = JSON.parse(await fs.readFile(file, "utf8")) as { script: { scenes: Record<string, unknown>[] } };
+    episode.script.scenes[1]!.visual_action = "the hero kneels beside the broken machine";
+    await fs.writeFile(file, JSON.stringify(episode, null, 2));
+
+    expect((await images.get("long", 1)).staleness.imageStale).toEqual([2]);
+  });
+
+  it("keeps the recorded prompt through an approval, so approving does not make a stale image look current", async () => {
+    // `approve` rebuilds the stored review from scratch and carries named fields forward. The prompt has to be
+    // one of them, or the one action a person takes on this screen would erase what staleness is measured from.
+    const { images, projectsRoot } = await setupWithConnectedOpenAi();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    await images.generate("long", 1, { approved: true });
+
+    const file = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
+    const episode = JSON.parse(await fs.readFile(file, "utf8")) as { script: { scenes: Record<string, unknown>[] } };
+    episode.script.scenes[0]!.visual_action = "the hero looks up at a sky full of drones";
+    await fs.writeFile(file, JSON.stringify(episode, null, 2));
+
+    const approved = await images.approve("long", 1, "1", { approved: true });
+    expect(approved.staleness.imageStale).toContain(1);
+  });
+
   it("derives the requested image size from the Long Project's own aspectRatio setting instead of always hardcoding portrait", async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-images-openai-"));
     const projectsRoot = path.join(root, "projects");

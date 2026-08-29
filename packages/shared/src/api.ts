@@ -297,9 +297,22 @@ export interface StartLongEpisodeImageGenerationResponse {
   /** Same meaning and scope as StartImageGenerationResponse.budget (see that field's doc comment). */
   budget?: BudgetPreview;
 }
+/**
+ * Which already-paid-for images were made from a script the Episode has since moved past.
+ *
+ * Same method as LongEpisodeVideoStaleness and the short project's SceneStaleness: rebuild the prompt from the
+ * scene as it stands and compare it to the one recorded when that image was generated. Only scenes that were
+ * actually generated have a recorded prompt — a placeholder standing in for an image nobody paid for records
+ * nothing, and so is never reported as behind, which is correct: there is nothing to be behind.
+ *
+ * Images generated before the prompt was recorded also have no record, and are likewise absent. That is a real
+ * limit and the honest one: this list says "these are known to be behind", never "the rest are known current".
+ */
+export interface LongEpisodeImageStaleness { imageStale: SceneNumber[]; }
 export interface GetLongEpisodeImageReviewResponse {
   episode: LongEpisodeDetail;
   reviews: LongEpisodeImageReview[];
+  staleness: LongEpisodeImageStaleness;
   /** Same meaning and scope as StartImageGenerationResponse.budget (see that field's doc comment). */
   budget?: BudgetPreview;
 }
