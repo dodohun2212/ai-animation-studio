@@ -106,6 +106,29 @@ describe("EpisodeNarrationService", () => {
     expect(narrations.every((item) => item.audio === "none")).toBe(true);
   });
 
+  /**
+   * The regeneration response carries the whole picture, not just the scene it made.
+   *
+   * Without it the screen has to carry its old list forward and take this scene out — right, but a second place
+   * deciding what "stale" means, and this week is a long list of second places drifting. The server already
+   * makes this comparison to answer the review, so sending it costs nothing.
+   */
+  it("reports staleness for every scene after regenerating one, not just the one it made", async () => {
+    const { narration, projectsRoot } = await setup();
+    await narration.generate("long", 1, { approved: true });
+    const file = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
+    const episode = JSON.parse(await fs.readFile(file, "utf8")) as { script: { scenes: Record<string, unknown>[] } };
+    episode.script.scenes[0]!.narration = "1번 문장이 바뀌었습니다.";
+    episode.script.scenes[1]!.narration = "2번 문장도 바뀌었습니다.";
+    await fs.writeFile(file, JSON.stringify(episode, null, 2));
+    expect((await narration.get("long", 1)).staleness.narrationStale).toEqual([1, 2]);
+
+    const result = await narration.regenerate("long", 1, "1", { approved: true });
+
+    // 1 was just spoken from the sentence it now has; 2 was not touched and is still behind.
+    expect(result.staleness.narrationStale).toEqual([2]);
+  });
+
   it("skips a scene with no narration text instead of failing the whole batch", async () => {
     const { narration, scripts } = await setup();
     const episode = await scripts.get("long", 1);

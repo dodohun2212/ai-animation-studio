@@ -286,7 +286,7 @@ export class EpisodeNarrationService {
     try { await fs.mkdir(path.dirname(destination), { recursive: true }); await this.writeAudio(destination, bytes); if (!(await this.validAudio(destination))) throw new Error(); } catch { throw longEpisodeNarrationStorageError(); }
     await this.putRecord(id, number, { scene_number: sceneNumber, narration: text, checkpoint: "completed", adapter, tts_api_calls: apiCalls, regenerated: true });
 
-    return { episode: this.detail(episode), narrations: await this.toApiNarrations(id, number, scenes), sceneNumber, ...(retryEstimate ? { retryEstimate } : {}) };
+    return { episode: this.detail(episode), narrations: await this.toApiNarrations(id, number, scenes), staleness: await this.narrationStaleness(id, number, scenes), sceneNumber, ...(retryEstimate ? { retryEstimate } : {}) };
   }
 
   async content(projectId: string, number: number, rawSceneNumber: string): Promise<{ path: string; extension: ".mp3" }> {

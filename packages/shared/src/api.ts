@@ -585,6 +585,16 @@ export interface RegenerateLongEpisodeNarrationRequest {
 export interface RegenerateLongEpisodeNarrationResponse {
   episode: LongEpisodeDetail;
   narrations: LongEpisodeNarrationReview[];
+  /**
+   * Recomputed for every scene, not just the regenerated one.
+   *
+   * Without it the screen has to carry its previous list forward and take the regenerated scene out of it — a
+   * correct inference, and a second place that decides what "stale" means. The server already does this
+   * comparison to answer the review, so sending it costs nothing and removes the copy. The alternative the
+   * screen would otherwise reach for — re-reading the whole review — throws away the `retryEstimate` that only
+   * this response carries.
+   */
+  staleness: LongEpisodeNarrationStaleness;
   sceneNumber: SceneNumber;
   /** Same meaning as RegenerateImageReviewResponse.retryEstimate (see that field's doc comment). Absent in the local fake execution mode. */
   retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview };
