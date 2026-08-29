@@ -72,11 +72,13 @@ describe("longProjectsApi", () => {
     const settings = makeLongProjectSettings();
     const project = makeLongProject({ settings });
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { settings }))
+      // `aspectRatioChangeable` is required by the contract, so a stub without it is malformed — the guard
+      // doing its job, not a test to loosen.
+      .mockResolvedValueOnce(jsonResponse(200, { settings, aspectRatioChangeable: true }))
       .mockResolvedValueOnce(jsonResponse(200, { project }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(getLongProjectSettings("reopen_me")).resolves.toEqual({ settings });
+    await expect(getLongProjectSettings("reopen_me")).resolves.toEqual({ settings, aspectRatioChangeable: true });
     await expect(updateLongProjectSettings("reopen_me", { settings })).resolves.toEqual({ project });
     expect(fetchMock.mock.calls[0]).toEqual(["/long-projects/reopen_me/settings"]);
     const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];

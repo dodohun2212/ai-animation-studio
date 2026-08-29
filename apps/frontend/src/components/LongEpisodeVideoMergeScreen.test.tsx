@@ -35,6 +35,9 @@ const EPISODE_URL = "/long-projects/long/episodes/1";
 const SETTINGS_URL = "/long-projects/long/settings";
 const mediaSettings = (narrationEnabled: boolean, subtitlesEnabled: boolean) => ({
   settings: makeLongProjectSettings({ narrationEnabled, subtitlesEnabled }),
+  // Required by the contract: a stub that answers less than the server does turns a real response into a
+  // malformed one, and this screen then loses its settings entirely.
+  aspectRatioChangeable: true,
 });
 const MERGE_URL = "/long-projects/long/episodes/1/videos/merge";
 const AUDIO_LIBRARY_URL = "/audio/library";

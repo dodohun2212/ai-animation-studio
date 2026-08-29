@@ -13,7 +13,22 @@ interface Props {
   onBack: () => void;
 }
 
-type State = { settings: LongProjectSettings | null; loading: boolean; error: { code: string; message: string } | null };
+type State = {
+  settings: LongProjectSettings | null;
+  loading: boolean;
+  error: { code: string; message: string } | null;
+  /**
+   * Whether the aspect ratio can still be changed, answered by the server rather than derived here.
+   *
+   * The save enforces this with the same function that computes it, so the screen never carries a second copy
+   * of the rule — two copies is how a screen comes to disagree with its own server about work someone paid for.
+   * Starts true so nothing is disabled while the answer is in flight, and a failed load leaves the old
+   * behaviour rather than locking a field on a read that never arrived.
+   */
+  aspectRatioChangeable: boolean;
+  /** Which Episode closed it. A bare "you cannot change this" leaves the person asking why now; this answers it. */
+  aspectRatioLockedBy?: number;
+};
 
 const fieldClassName =
   "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
@@ -32,7 +47,7 @@ function Field({ label, value, onChange, multiline = false }: { label: string; v
 }
 
 export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
-  const [state, setState] = useState<State>({ settings: null, loading: true, error: null });
+  const [state, setState] = useState<State>({ settings: null, loading: true, error: null, aspectRatioChangeable: true });
   const [justSaved, setJustSaved] = useState(false);
   const saving = useRef(false);
   const justSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -44,11 +59,18 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
   useEffect(() => {
     let cancelled = false;
     getLongProjectSettings(projectId)
-      .then(({ settings }) => {
-        if (!cancelled) setState({ settings, loading: false, error: null });
+      .then((response) => {
+        if (cancelled) return;
+        setState({
+          settings: response.settings,
+          loading: false,
+          error: null,
+          aspectRatioChangeable: response.aspectRatioChangeable,
+          aspectRatioLockedBy: response.aspectRatioLockedByEpisodeNumber,
+        });
       })
       .catch((error: unknown) => {
-        if (!cancelled) setState({ settings: null, loading: false, error: toLongProjectDisplayError(error) });
+        if (!cancelled) setState({ settings: null, loading: false, error: toLongProjectDisplayError(error), aspectRatioChangeable: true });
       });
     return () => {
       cancelled = true;
@@ -82,7 +104,10 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
       // unsupported field if included — same as ShortProjectSettingsInput's equivalent.
       const { episodeDurationSeconds: _episodeDurationSeconds, ...settingsInput } = settings;
       const response = await updateLongProjectSettings(projectId, { settings: settingsInput });
-      setState({ settings: response.project.settings, loading: false, error: null });
+      // Merged, not replaced: the update response carries the settings, not the lock — and saving cannot close
+      // it anyway (only generating images does). Replacing the whole state here would drop what the GET said and
+      // silently unlock a project whose images already exist.
+      setState((old) => ({ ...old, settings: response.project.settings, loading: false, error: null }));
       setJustSaved(true);
       if (justSavedTimer.current) clearTimeout(justSavedTimer.current);
       justSavedTimer.current = setTimeout(() => setJustSaved(false), 4000);
@@ -196,16 +221,29 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
           <p className="text-sm text-slate-400">
             에피소드당 예상 영상 길이: {state.settings.sceneCount * state.settings.clipDurationSeconds}초 ({state.settings.sceneCount}장면 × {state.settings.clipDurationSeconds}초)
           </p>
-          <label className="block text-sm text-slate-300">
+          <label className="block text-sm text-slate-300" htmlFor="long-settings-aspect-ratio">
             화면 비율
             <select
+              id="long-settings-aspect-ratio"
+              data-testid="long-settings-aspect-ratio"
               className={fieldClassName}
               value={state.settings.aspectRatio}
+              disabled={!state.aspectRatioChangeable}
               onChange={(event) => setField("aspectRatio", event.target.value as LongProjectSettings["aspectRatio"])}
             >
               <option value="9:16">9:16</option>
               <option value="16:9">16:9</option>
             </select>
+            {/* Said here rather than after the save is refused. The refusal is the same either way; the only
+                thing that can change is whether it arrives before or after the person decided to change it. */}
+            {!state.aspectRatioChangeable && (
+              <span data-testid="long-settings-aspect-locked" className="mt-1.5 block text-xs text-amber-300">
+                {state.aspectRatioLockedBy !== undefined
+                  ? `${state.aspectRatioLockedBy}화가 이미 이미지를 만들어서 화면 비율은 더 이상 바꿀 수 없습니다.`
+                  : "이미 이미지를 만든 회차가 있어 화면 비율은 더 이상 바꿀 수 없습니다."}
+                {" "}바꾸려면 그 이미지들을 다시 만들어야 하고, 비용이 듭니다.
+              </span>
+            )}
           </label>
           <div className="md:col-span-2 space-y-3 rounded-xl border border-white/10 bg-slate-950/40 p-3.5">
             <p className="text-sm font-semibold text-slate-200">내레이션</p>

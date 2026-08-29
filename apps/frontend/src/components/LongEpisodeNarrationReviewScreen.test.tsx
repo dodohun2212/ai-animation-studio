@@ -60,7 +60,7 @@ describe("LongEpisodeNarrationReviewScreen", () => {
     // sentences before paying per scene.
     const fetchMock = stubFetchByRoute({
       [REVIEW]: { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다." }, { narration: "둘째 문장입니다." }]) },
-      [SETTINGS]: { settings: settings() },
+      [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
     });
     renderScreen(fetchMock);
 
@@ -79,7 +79,7 @@ describe("LongEpisodeNarrationReviewScreen", () => {
         { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다." }]) },
         { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다.", audio: "generated", audioDurationSeconds: 3.2 }]) },
       ],
-      [SETTINGS]: { settings: settings() },
+      [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
       [GENERATE]: { episode: episode(), generatedSceneNumbers: [1], reusedSceneNumbers: [], skippedSceneNumbers: [] },
     });
     renderScreen(fetchMock);
@@ -103,7 +103,7 @@ describe("LongEpisodeNarrationReviewScreen", () => {
     // point to "go fix the sentence in the script screen" would send them to a disabled field.
     const fetchMock = stubFetchByRoute({
       [REVIEW]: { episode: episode("script_review"), narrations: narrations([{ narration: "첫 문장입니다." }]) },
-      [SETTINGS]: { settings: settings() },
+      [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
     });
     renderScreen(fetchMock);
     expect(await screen.findByText(/대본 화면의 "읽어줄 문장" 항목에서 고치면 됩니다/)).toBeTruthy();
@@ -113,7 +113,7 @@ describe("LongEpisodeNarrationReviewScreen", () => {
 
     renderScreen(stubFetchByRoute({
       [REVIEW]: { episode: episode("videos_approved"), narrations: narrations([{ narration: "첫 문장입니다." }]) },
-      [SETTINGS]: { settings: settings() },
+      [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
     }));
     expect(await screen.findByText(/문장을 더 고칠 수 없습니다/)).toBeTruthy();
     expect(screen.queryByText(/대본 화면의 "읽어줄 문장" 항목에서 고치면 됩니다/)).toBeNull();
@@ -125,7 +125,7 @@ describe("LongEpisodeNarrationReviewScreen", () => {
     renderScreen(
       stubFetchByRoute({
         [REVIEW]: { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다.", audio: "generated" }]) },
-        [SETTINGS]: { settings: settings({ narrationEnabled: false, subtitlesEnabled: true }) },
+        [SETTINGS]: { settings: settings({ narrationEnabled: false, subtitlesEnabled: true }), aspectRatioChangeable: true },
       }),
     );
 
@@ -165,7 +165,7 @@ describe("LongEpisodeNarrationReviewScreen", () => {
             { narration: "아".repeat(60) },
           ]),
         },
-        [SETTINGS]: { settings: settings({ clipDurationSeconds: 5 }) },
+        [SETTINGS]: { settings: settings({ clipDurationSeconds: 5 }), aspectRatioChangeable: true },
       }),
     );
 
@@ -177,7 +177,7 @@ describe("LongEpisodeNarrationReviewScreen", () => {
   it("sends a blank regeneration instruction as an omitted field, never as an empty string", async () => {
     const fetchMock = stubFetchByRoute({
       [REVIEW]: { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다.", audio: "generated" }]) },
-      [SETTINGS]: { settings: settings() },
+      [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
       [REGENERATE_1]: { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다.", audio: "generated" }]), sceneNumber: 1 },
     });
     renderScreen(fetchMock);
@@ -197,7 +197,7 @@ describe("LongEpisodeNarrationReviewScreen", () => {
       stubFetchByRoute(
         {
           [REVIEW]: { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다." }]) },
-          [SETTINGS]: { settings: settings() },
+          [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
         },
         {
           [GENERATE]: {
@@ -225,7 +225,7 @@ describe("LongEpisodeNarrationReviewScreen", () => {
     renderScreen(
       stubFetchByRoute({
         [REVIEW]: { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다.", audio: "placeholder" }]) },
-        [SETTINGS]: { settings: settings() },
+        [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
       }),
     );
 

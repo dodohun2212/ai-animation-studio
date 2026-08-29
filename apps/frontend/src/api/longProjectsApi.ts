@@ -381,7 +381,12 @@ function isGetLongProjectResponse(value: unknown): value is GetLongProjectRespon
 }
 
 function isGetLongProjectSettingsResponse(value: unknown): value is GetLongProjectSettingsResponse {
-  return isRecord(value) && isLongProjectSettings(value.settings);
+  // `aspectRatioChangeable` is required by the contract, so a response without it is malformed rather than a
+  // screen that silently treats a locked setting as editable. The episode number is only present when locked.
+  return isRecord(value)
+    && isLongProjectSettings(value.settings)
+    && typeof value.aspectRatioChangeable === "boolean"
+    && (value.aspectRatioLockedByEpisodeNumber === undefined || Number.isInteger(value.aspectRatioLockedByEpisodeNumber));
 }
 
 /**
@@ -823,8 +828,10 @@ export function approveLongEpisodeImageReview(projectId: string, episodeNumber: 
   return request(API_ROUTES.longEpisodeImageReviewApproval(projectId, episodeNumber, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) }, isApproveEpisodeImageReviewResponse);
 }
 
-export function regenerateLongEpisodeImageReview(projectId: string, episodeNumber: number, sceneNumber: SceneNumber): Promise<RegenerateLongEpisodeImageReviewResponse> {
-  return request(API_ROUTES.longEpisodeImageReviewRegeneration(projectId, episodeNumber, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) }, isRegenerateEpisodeImageReviewResponse);
+/** `additionalInstruction` is omitted entirely when blank — the server treats whitespace as absent, and sending "" would be a third spelling of "no direction". */
+export function regenerateLongEpisodeImageReview(projectId: string, episodeNumber: number, sceneNumber: SceneNumber, additionalInstruction?: string): Promise<RegenerateLongEpisodeImageReviewResponse> {
+  const instruction = additionalInstruction?.trim();
+  return request(API_ROUTES.longEpisodeImageReviewRegeneration(projectId, episodeNumber, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(instruction ? { approved: true, additionalInstruction: instruction } : { approved: true }) }, isRegenerateEpisodeImageReviewResponse);
 }
 
 export function getLongEpisodeVideoPreview(projectId: string, episodeNumber: number): Promise<GetLongEpisodeVideoPreviewResponse> { return request(API_ROUTES.longEpisodeVideoPreview(projectId, episodeNumber), undefined, isGetEpisodeVideoPreviewResponse); }
@@ -847,7 +854,11 @@ export function getLongEpisodeCurrentVideoJob(projectId: string, episodeNumber: 
 export function getLongEpisodeVideoProgress(projectId: string, episodeNumber: number, jobId: string): Promise<LongEpisodeVideoProgress> { return request(API_ROUTES.longEpisodeVideoProgress(projectId, episodeNumber, jobId), undefined, isEpisodeVideoProgress); }
 export function stopLongEpisodeVideoGeneration(projectId: string, episodeNumber: number, jobId: string): Promise<LongEpisodeVideoProgress> { return request(API_ROUTES.longEpisodeVideoStop(projectId, episodeNumber, jobId), { method: "POST" }, isEpisodeVideoProgress); }
 export function restartLongEpisodeVideoGeneration(projectId: string, episodeNumber: number, jobId: string): Promise<LongEpisodeVideoProgress> { return request(API_ROUTES.longEpisodeVideoRestart(projectId, episodeNumber, jobId), { method: "POST" }, isEpisodeVideoProgress); }
-export function regenerateLongEpisodeVideo(projectId: string, episodeNumber: number, jobId: string, sceneNumber: SceneNumber): Promise<RegenerateLongEpisodeVideoResponse> { return request(API_ROUTES.longEpisodeVideoRegenerate(projectId, episodeNumber, jobId, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) }, isRegenerateEpisodeVideoResponse); }
+/** Same rule as the image regeneration above: a blank direction is not sent at all. */
+export function regenerateLongEpisodeVideo(projectId: string, episodeNumber: number, jobId: string, sceneNumber: SceneNumber, additionalInstruction?: string): Promise<RegenerateLongEpisodeVideoResponse> {
+  const instruction = additionalInstruction?.trim();
+  return request(API_ROUTES.longEpisodeVideoRegenerate(projectId, episodeNumber, jobId, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(instruction ? { approved: true, additionalInstruction: instruction } : { approved: true }) }, isRegenerateEpisodeVideoResponse);
+}
 export function getLongEpisodeVideoReview(projectId: string, episodeNumber: number, jobId: string): Promise<GetLongEpisodeVideoReviewResponse> { return request(API_ROUTES.longEpisodeVideoReview(projectId, episodeNumber, jobId), undefined, isGetEpisodeVideoReviewResponse); }
 export function approveLongEpisodeVideoReview(projectId: string, episodeNumber: number, jobId: string, sceneNumber: SceneNumber): Promise<ApproveLongEpisodeVideoReviewResponse> { return request(API_ROUTES.longEpisodeVideoReviewApproval(projectId, episodeNumber, jobId, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) }, isApproveEpisodeVideoReviewResponse); }
 /**

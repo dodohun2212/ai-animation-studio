@@ -17,12 +17,24 @@ import { LongProjectSettingsScreen } from "./LongProjectSettingsScreen.js";
  * The card was added to this screen after these tests were written; answering everything with `{ settings }`
  * left it rendering its own error, which then made "the alert" ambiguous in tests that assert on one.
  */
+/**
+ * `aspectRatioChangeable` is required by the contract, so every settings body needs it or the guard rejects the
+ * response and the screen renders nothing. Defaulted here rather than at fifteen call sites — a test that says
+ * nothing about the lock is a test about an unlocked project, which is what they all were before it existed.
+ */
+function withSettingsDefaults(body: unknown): unknown {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return body;
+  const record = body as Record<string, unknown>;
+  if (!("settings" in record) || "aspectRatioChangeable" in record) return record;
+  return { aspectRatioChangeable: true, ...record };
+}
+
 function stubScreenFetch(settingsBody: unknown, options: { settingsStatus?: number } = {}) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
     const url = String(input);
     if (url.startsWith("/assets")) return jsonResponse(200, { assets: [] });
     if (url.includes("/story-bible")) return jsonResponse(200, { storyBible: { basic: {}, world: {}, characters: [], locations: [], props: [], secrets: [], foreshadowing: [], updatedAt: "2026-08-23T00:00:00.000Z" } });
-    return jsonResponse(options.settingsStatus ?? 200, settingsBody);
+    return jsonResponse(options.settingsStatus ?? 200, withSettingsDefaults(settingsBody));
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
@@ -107,7 +119,7 @@ describe("LongProjectSettingsScreen", () => {
     const project = makeLongProject({ settings: { ...settings, subtitlesEnabled: true } });
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { settings }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings, aspectRatioChangeable: true }))
       .mockResolvedValueOnce(jsonResponse(200, { project }));
     vi.stubGlobal("fetch", fetchMock);
     render(<LongProjectSettingsScreen projectId="long_test" onBack={() => {}} />);
@@ -142,7 +154,7 @@ describe("LongProjectSettingsScreen", () => {
     const project = makeLongProject({ settings: { ...settings, sceneCount: 8, clipDurationSeconds: 10, episodeDurationSeconds: 80 } });
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { settings }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings, aspectRatioChangeable: true }))
       .mockResolvedValueOnce(jsonResponse(200, { project }));
     vi.stubGlobal("fetch", fetchMock);
     render(<LongProjectSettingsScreen projectId="long_test" onBack={() => {}} />);
@@ -189,5 +201,35 @@ describe("LongProjectSettingsScreen", () => {
     expect(notice.textContent).toContain("빈 칸은 AI가 알아서");
     // And what happens to Episodes that already have a script, which is the half people lose money on.
     expect(notice.textContent).toContain("다시 만들어야");
+  });
+
+  /**
+   * A long project's aspect ratio is read by image generation, video generation and the merge, every time they
+   * run. Changing it after an Episode has images means portrait pictures sent to Runway asking for landscape
+   * video, then padded by the merge — all paid for, none matching, and nothing on this screen said so.
+   *
+   * The server answers it, computed by the same function the save enforces with; the screen never re-derives
+   * the rule. Said before the change rather than after the refusal: the refusal is identical either way, and
+   * the only thing that can differ is whether it comes before the person decided.
+   */
+  it("locks the aspect ratio once an Episode has images, and names the Episode that closed it", async () => {
+    stubScreenFetch({ settings: makeLongProjectSettings(), aspectRatioChangeable: false, aspectRatioLockedByEpisodeNumber: 2 });
+    render(<LongProjectSettingsScreen projectId="long_test" onBack={() => {}} />);
+
+    expect(await screen.findByTestId("long-settings-aspect-ratio")).toBeDisabled();
+    const notice = screen.getByTestId("long-settings-aspect-locked");
+    // "Why now" has one answer and the server already knows it.
+    expect(notice.textContent).toContain("2화");
+    expect(notice.textContent).toContain("비용이 듭니다");
+  });
+
+  it("leaves the aspect ratio editable and says nothing when the project is not locked", async () => {
+    stubScreenFetch({ settings: makeLongProjectSettings(), aspectRatioChangeable: true });
+    render(<LongProjectSettingsScreen projectId="long_test" onBack={() => {}} />);
+
+    expect(await screen.findByTestId("long-settings-aspect-ratio")).not.toBeDisabled();
+    // The counterpart the rule above needs: without it, a change that disabled the field unconditionally would
+    // still pass the locked test.
+    expect(screen.queryByTestId("long-settings-aspect-locked")).toBeNull();
   });
 });

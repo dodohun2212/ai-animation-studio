@@ -31,7 +31,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: episode("asset_mapping_approved") }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
-      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, generatedSceneNumbers: [1, 2, 3, 4, 5, 6], reusedSceneNumbers: [] }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, reviews: reviews(), staleness: { imageStale: [] } }));
     vi.stubGlobal("fetch", fetchMock);
@@ -54,7 +54,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: true } }))
-      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode, reviews: reviews(), staleness: { imageStale: [] } }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode, reviews: reviews([1]), staleness: { imageStale: [] } }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode, reviews: reviews(), staleness: { imageStale: [] }, sceneNumber: 2 }));
@@ -83,7 +83,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: done }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: false } }))
-      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: done, reviews: reviews([1, 2, 3, 4, 5, 6]), staleness: { imageStale: [] } })));
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
     expect(await screen.findByTestId("episode-video-confirmation-transition")).toBeTruthy();
@@ -104,7 +104,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: { ...episode("asset_mapping_approved"), script: { title: "t", synopsis: "s", ending: "e", scenes } } }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
-      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
       .mockResolvedValueOnce(
         jsonResponse(200, {
           episode: imageReviewEpisode,
@@ -133,7 +133,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: episode("asset_mapping_approved") }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
-      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, generatedSceneNumbers: [1, 2, 3, 4, 5, 6], reusedSceneNumbers: [] }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, reviews: reviews(), staleness: { imageStale: [] } }));
     vi.stubGlobal("fetch", fetchMock);
@@ -152,7 +152,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: first }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 0, sourceSceneNumber: 6, available: false } }))
-      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
       .mockResolvedValue(jsonResponse(200, { episode: first, reviews: reviews(), staleness: { imageStale: [] } })));
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
@@ -164,7 +164,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: later }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: false } }))
-      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
       .mockResolvedValue(jsonResponse(200, { episode: later, reviews: reviews(), staleness: { imageStale: [] } })));
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={2} onBack={() => {}} />);
 
@@ -180,7 +180,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: ready }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
-      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
       .mockResolvedValue(jsonResponse(200, { episode: ready, reviews: fourReviews, staleness: { imageStale: [] } })));
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
@@ -201,7 +201,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: withScript }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
-      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
       .mockResolvedValue(jsonResponse(200, { episode: withScript, reviews: [], staleness: { imageStale: [] } })));
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
@@ -216,7 +216,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: ready }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 2, sourceSceneNumber: 4, available: true } }))
-      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
       .mockResolvedValue(jsonResponse(200, { episode: ready, reviews: reviews(), staleness: { imageStale: [] } })));
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={3} onBack={() => {}} />);
 
@@ -233,7 +233,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
-      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "16:9" }) }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "16:9" }), aspectRatioChangeable: true }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode, reviews: reviews(), staleness: { imageStale: [] } })));
 
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={2} onBack={() => {}} />);
@@ -252,7 +252,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: advanced }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
-      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: advanced, reviews: reviews([1, 2, 3, 4, 5, 6]), staleness: { imageStale: [] } })));
 
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={2} onBack={() => {}} />);
@@ -283,7 +283,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: withScript(episode("generating_images")) }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
-      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
       .mockResolvedValue(jsonResponse(200, { episode: withScript(episode("generating_images")) })));
 
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
@@ -299,7 +299,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: withScript(episode("generating_images")) }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
-      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
       .mockResolvedValue(jsonResponse(200, { episode: withScript(episode("generating_images")) })));
 
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
@@ -311,7 +311,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: episode("planned") }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
-      .mockResolvedValue(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) })));
+      .mockResolvedValue(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true })));
 
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
     expect(await screen.findByTestId("episode-image-not-eligible")).toBeTruthy();
@@ -325,7 +325,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
       // sceneNumbers falls back to the script when no review is loaded, which is the case at this stage.
       .mockResolvedValueOnce(jsonResponse(200, { episode: { ...withScript(episode("images_review"), 3), status: "videos_review" } }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
-      .mockResolvedValue(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) })));
+      .mockResolvedValue(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true })));
 
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
     const gallery = await screen.findByTestId("episode-image-gallery");
@@ -333,22 +333,33 @@ describe("LongEpisodeImageGenerationScreen", () => {
   });
 
   /**
-   * An image that was paid for and no longer matches the scene it was made from. The Episode said nothing until
-   * now, so the only way to find out was to look at six pictures and remember what the script used to say.
+   * The Episode's narration regenerate already took a one-off direction; the image did not. Same screen, same
+   * paid button, and the voice could be told what to change while the picture could not.
    *
-   * The list never claims the rest are current: an image generated before the prompt was recorded has no record
-   * and is simply absent, which is why the badge only ever appears on a scene the server named.
+   * Sent only when something was typed: whitespace is absent to the server, and an empty string would be a
+   * third spelling of "no direction" travelling over the wire.
    */
-  it("marks an image that is behind its scene, and leaves the others unmarked", async () => {
+  it("sends a one-off direction with an image regeneration, and omits it when blank", async () => {
     const ready = withScript(episode("images_review"));
-    vi.stubGlobal("fetch", vi.fn()
+    const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: ready }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
-      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) }))
-      .mockResolvedValue(jsonResponse(200, { episode: ready, reviews: reviews(), staleness: { imageStale: [3] } })));
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
+      .mockResolvedValue(jsonResponse(200, { episode: ready, reviews: reviews(), staleness: { imageStale: [] }, sceneNumber: 1 }));
+    vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
-    expect(await screen.findByTestId("episode-image-stale-3")).toBeTruthy();
-    expect(screen.queryByTestId("episode-image-stale-1")).toBeNull();
+    await screen.findByTestId("episode-image-review-1");
+    fireEvent.click(screen.getAllByRole("button", { name: "다시 만들기" })[0]!);
+    fireEvent.change(await screen.findByTestId("episode-image-regenerate-instruction-1"), { target: { value: "  더 어둡게  " } });
+    fireEvent.click(screen.getByRole("button", { name: "이 장면 다시 만들기" }));
+
+    await waitFor(() => {
+      const post = (fetchMock.mock.calls as Array<[string, RequestInit | undefined]>)
+        .find(([url, init]) => String(url).endsWith("/images/review/1/regenerate") && init?.method === "POST");
+      expect(post).toBeTruthy();
+      // Trimmed, not sent raw — the same value with padding must not read as a different direction.
+      expect(JSON.parse(String(post![1]!.body))).toEqual({ approved: true, additionalInstruction: "더 어둡게" });
+    });
   });
 });
