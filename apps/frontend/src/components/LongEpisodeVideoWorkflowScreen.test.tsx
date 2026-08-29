@@ -324,8 +324,7 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     const review = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" }));
     vi.stubGlobal("fetch", stubFetchByRoute({
       "GET /videos/generations/current": { jobId: "job" },
-      // The mount path reads the job's progress before it asks for the review — without this the screen never
-      // reaches the review at all, which is what my first version of this test got wrong.
+      // The review is only fetched once the job reports succeeded, so the progress route has to answer too.
       "GET /videos/generations/job": progress("succeeded", [1, 2, 3, 4, 5, 6]),
       "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review, staleness: { videoStale: [2] } },
       ...sceneVersionRoutes(),
@@ -336,5 +335,38 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     // Scene 1 was not reported, and a badge there would be the screen inventing one.
     expect(screen.queryByTestId("episode-video-stale-1")).toBeNull();
     expect(screen.getByTestId("episode-video-review-2")).toBeTruthy();
+  });
+
+  /**
+   * The direction is used once and never stored, which is what keeps the staleness badge honest: the server
+   * records the plain scene prompt separately, so a passing "slower camera" does not make the clip read as
+   * behind the script for ever after.
+   */
+  it("sends a one-off direction with a video regeneration", async () => {
+    const review = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" }));
+    const fetchMock = stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": progress("succeeded", [1, 2, 3, 4, 5, 6]),
+      "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review, staleness: { videoStale: [] } },
+      // The video route is /scenes/<n>/regenerate; /review/<n>/... is the image screen's shape.
+      "POST /videos/generations/job/scenes/2/regenerate": progress("running", []),
+      ...sceneVersionRoutes(),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    await screen.findByTestId("episode-video-review-2");
+    fireEvent.click(screen.getAllByRole("button", { name: "다시 만들기" })[1]!);
+    fireEvent.change(await screen.findByTestId("episode-video-regenerate-instruction-2"), { target: { value: "카메라를 더 천천히" } });
+    // The confirm says something the opener does not: one of these two opens a question, the other spends
+    // money, and naming both "다시 만들기" made the paid one indistinguishable — here and on screen.
+    fireEvent.click(screen.getByRole("button", { name: "예, 다시 생성합니다" }));
+
+    await waitFor(() => {
+      const post = (fetchMock.mock.calls as Array<[string, RequestInit | undefined]>)
+        .find(([url, init]) => String(url).endsWith("/scenes/2/regenerate") && init?.method === "POST");
+      expect(post).toBeTruthy();
+      expect(JSON.parse(String(post![1]!.body))).toEqual({ approved: true, additionalInstruction: "카메라를 더 천천히" });
+    });
   });
 });

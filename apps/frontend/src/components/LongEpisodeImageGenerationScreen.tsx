@@ -17,6 +17,7 @@ import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { Spinner } from "./Spinner.js";
 import { StatusChip } from "./ui/StatusChip.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
+import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
 import { BudgetLine } from "./ui/BudgetLine.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 
@@ -78,6 +79,8 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
   const [reviewState, setReviewState] = useState<ReviewState>({ status: "idle" });
   const [approvePending, setApprovePending] = useState<Set<SceneNumber>>(new Set());
   const [regenerateConfirm, setRegenerateConfirm] = useState<SceneNumber | null>(null);
+  /** One-off direction for the open confirmation. Cleared whenever a confirmation opens or closes, so it can never ride along to a scene it was not typed for. */
+  const [regenerateInstruction, setRegenerateInstruction] = useState("");
   const [regeneratePending, setRegeneratePending] = useState<Set<SceneNumber>>(new Set());
   const generationBusy = useRef(false);
   const approvalBusy = useRef(new Set<SceneNumber>());
@@ -192,10 +195,11 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
     if (regenerationBusy.current.has(sceneNumber)) return;
     regenerationBusy.current.add(sceneNumber); setRegeneratePending(new Set(regenerationBusy.current)); setError(null);
     try {
-      const response = await regenerateLongEpisodeImageReview(projectId, episodeNumber, sceneNumber);
+      const response = await regenerateLongEpisodeImageReview(projectId, episodeNumber, sceneNumber, regenerateInstruction);
       setEpisode(response.episode);
       setReviewState({ status: "ready", reviews: response.reviews, budget: response.retryEstimate?.budget, retryEstimate: response.retryEstimate, imageStale: response.staleness.imageStale });
       setRegenerateConfirm(null);
+      setRegenerateInstruction("");
     } catch (caught) { setError(toLongProjectDisplayError(caught)); }
     finally { regenerationBusy.current.delete(sceneNumber); setRegeneratePending(new Set(regenerationBusy.current)); }
   }
@@ -352,7 +356,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
                 />
                 <div className="flex flex-wrap justify-end gap-3">
                   <button type="button" className={smallOutlineButton} disabled={review.status === "approved" || approving} onClick={() => void approveScene(sceneNumber)}>{approving ? "확정하는 중..." : review.status === "approved" ? "확정 완료" : "이 이미지로 확정"}</button>
-                  <button type="button" className={smallOutlineButton} disabled={regenerating || confirming} onClick={() => setRegenerateConfirm(sceneNumber)}>{regenerating ? "다시 만드는 중..." : "다시 만들기"}</button>
+                  <button type="button" className={smallOutlineButton} disabled={regenerating || confirming} onClick={() => { setRegenerateInstruction(""); setRegenerateConfirm(sceneNumber); }}>{regenerating ? "다시 만드는 중..." : "다시 만들기"}</button>
                 </div>
                 {confirming && (
                   <div role="alertdialog" data-testid={`episode-image-regenerate-confirm-${sceneNumber}`} className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
@@ -362,8 +366,20 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
                       sceneCount={1}
                       data-testid={`episode-image-regenerate-cost-${sceneNumber}`}
                     />
+                    {/* The same field the short project's image review uses. The Episode's narration regenerate
+                        already accepted a direction, so this screen was one where the voice could be told what
+                        to change and the picture could not. */}
+                    <RegenerateInstructionField
+                      id={`episode-image-regenerate-instruction-${sceneNumber}`}
+                      value={regenerateInstruction}
+                      onChange={setRegenerateInstruction}
+                      disabled={regenerating}
+                      subject="그림"
+                      placeholder="예: 더 어둡게, 인물을 더 멀리서"
+                      data-testid={`episode-image-regenerate-instruction-${sceneNumber}`}
+                    />
                     <div className="flex gap-2">
-                      <button type="button" className={smallOutlineButton} disabled={regenerating} onClick={() => setRegenerateConfirm(null)}>취소</button>
+                      <button type="button" className={smallOutlineButton} disabled={regenerating} onClick={() => { setRegenerateInstruction(""); setRegenerateConfirm(null); }}>취소</button>
                       <button type="button" className={smallAmberButton} disabled={regenerating} onClick={() => void confirmRegenerate(sceneNumber)}>이 장면 다시 만들기</button>
                     </div>
                   </div>

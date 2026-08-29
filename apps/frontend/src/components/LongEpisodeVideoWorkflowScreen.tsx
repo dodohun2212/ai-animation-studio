@@ -8,6 +8,7 @@ import { videoRatioLabel } from "../utils/sceneFields.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { StatusChip } from "./ui/StatusChip.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
+import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
 
 interface Props { projectId: string; episodeNumber: number; onBack: () => void; onOpenMerge: (projectId: string, episodeNumber: number) => void; }
 type DisplayError = { code: string; message: string };
@@ -35,6 +36,8 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
    */
   const [videoStale, setVideoStale] = useState<SceneNumber[]>([]);
   const [confirmStart, setConfirmStart] = useState(false); const [regenerate, setRegenerate] = useState<SceneNumber | null>(null);
+  /** One-off direction for the open confirmation, cleared on open and on close so it cannot follow to another scene. */
+  const [regenerateInstruction, setRegenerateInstruction] = useState("");
   /**
    * Identifies the person's intent to generate this Episode's videos — not the click that sends it.
    *
@@ -214,7 +217,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
                   <span className="text-sm text-slate-300">{scene}번 장면</span>
                   <p data-testid={`episode-video-failed-reason-${scene}`} className="text-xs text-rose-300">{episodeSceneErrorMessage(job.sceneErrors?.[scene])}</p>
                 </div>
-                <button type="button" data-testid={`episode-video-failed-retry-${scene}`} className={smallOutlineButton} disabled={busy || regenerate === scene} onClick={() => setRegenerate(scene)}>다시 시도</button>
+                <button type="button" data-testid={`episode-video-failed-retry-${scene}`} className={smallOutlineButton} disabled={busy || regenerate === scene} onClick={() => { setRegenerateInstruction(""); setRegenerate(scene); }}>다시 시도</button>
                 {regenerate === scene && (
                   <div role="alertdialog" data-testid={`episode-video-failed-retry-confirm-${scene}`} className="w-full space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
                     <p className="text-sm text-amber-200">{scene}번 장면을 다시 시도할까요? Runway 키가 연결되어 있으면 이번 시도분이 실제로 청구됩니다.</p>
@@ -311,7 +314,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
               )}
               <div className="flex justify-end gap-3">
                 <button type="button" className={smallOutlineButton} disabled={review.status === "approved"} onClick={() => void approve(review.sceneNumber)}>{review.status === "approved" ? "확정 완료" : "이 영상으로 확정"}</button>
-                <button type="button" className={smallOutlineButton} onClick={() => setRegenerate(review.sceneNumber)}>다시 만들기</button>
+                <button type="button" className={smallOutlineButton} onClick={() => { setRegenerateInstruction(""); setRegenerate(review.sceneNumber); }}>다시 만들기</button>
               </div>
               {/* The clips this scene has had. Collapsed, and absent entirely when there is no history. */}
               <LongEpisodeSceneVersions
@@ -330,9 +333,21 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
                 <div role="alertdialog" data-testid={`episode-video-regenerate-confirm-${review.sceneNumber}`} className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
                   <p className="text-sm text-amber-200">{review.sceneNumber}번 장면을 다시 만들까요? Runway 키가 연결되어 있으면 이번 재생성분이 실제로 청구됩니다.</p>
                   <RetryCostNotice estimate={job.retryEstimate} sceneCount={1} data-testid={`episode-video-regenerate-cost-${review.sceneNumber}`} />
+                  {/* The same field the short project's video retry uses. Used once and never stored, so the
+                      staleness badge keeps measuring the clip against the script rather than against a passing
+                      note — the server records the plain prompt separately for exactly that reason. */}
+                  <RegenerateInstructionField
+                    id={`episode-video-regenerate-instruction-${review.sceneNumber}`}
+                    value={regenerateInstruction}
+                    onChange={setRegenerateInstruction}
+                    disabled={busy}
+                    subject="영상"
+                    placeholder="예: 카메라를 더 천천히, 인물을 더 가깝게"
+                    data-testid={`episode-video-regenerate-instruction-${review.sceneNumber}`}
+                  />
                   <div className="flex gap-2">
-                    <button type="button" className={smallOutlineButton} onClick={() => setRegenerate(null)}>취소</button>
-                    <button type="button" className={smallAmberButton} disabled={busy} onClick={() => { const scene = review.sceneNumber; setRegenerate(null); void action(() => regenerateLongEpisodeVideo(projectId, episodeNumber, job.jobId, scene)); }}>다시 만들기</button>
+                    <button type="button" className={smallOutlineButton} onClick={() => { setRegenerateInstruction(""); setRegenerate(null); }}>취소</button>
+                    <button type="button" className={smallAmberButton} disabled={busy} onClick={() => { const scene = review.sceneNumber; const instruction = regenerateInstruction; setRegenerate(null); setRegenerateInstruction(""); void action(() => regenerateLongEpisodeVideo(projectId, episodeNumber, job.jobId, scene, instruction)); }}>예, 다시 생성합니다</button>
                   </div>
                 </div>
               )}
