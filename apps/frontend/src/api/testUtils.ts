@@ -53,6 +53,23 @@ export function sequence(bodies: readonly unknown[]): unknown {
   } satisfies RouteSequence;
 }
 
+const STATUS = Symbol("stub-route-status");
+interface RouteStatus { [STATUS]: true; status: number; body: unknown }
+const isStatus = (value: unknown): value is RouteStatus =>
+  Boolean(value) && typeof value === "object" && STATUS in (value as Record<symbol, unknown>);
+
+/**
+ * One answer with a status other than 200 — usable on its own or as an entry inside `sequence`.
+ *
+ * `errorRoutes` fixes a whole route as failing, which cannot express the case this exists for: a paid
+ * submission that is refused and then succeeds when the person presses again. That is a real sequence in this
+ * app, and a test tool that cannot say it sends the next person back to call-order chains — which is the
+ * fragility this whole helper was written to end.
+ */
+export function withStatus(status: number, body: unknown): unknown {
+  return { [STATUS]: true, status, body } satisfies RouteStatus;
+}
+
 export function stubFetchByRoute(
   routes: Record<string, unknown>,
   errorRoutes: Record<string, { status: number; body: unknown }> = {},
@@ -69,8 +86,8 @@ export function stubFetchByRoute(
     if (failing) return jsonResponse(errorRoutes[failing]!.status, errorRoutes[failing]!.body);
     const hit = match(Object.keys(routes), method, url);
     if (!hit) throw new Error(`Unexpected fetch: ${method} ${url}`);
-    const answer = routes[hit];
-    if (isSequence(answer)) return jsonResponse(200, answer.next());
+    const answer = isSequence(routes[hit]) ? (routes[hit] as RouteSequence).next() : routes[hit];
+    if (isStatus(answer)) return jsonResponse(answer.status, answer.body);
     return jsonResponse(200, answer);
   });
 }
