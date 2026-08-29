@@ -2,10 +2,11 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import type { GetInstagramTargetsResponse, SetInstagramTargetResponse } from "@ai-animation-studio/shared";
+import type { GetInstagramTargetsResponse, InstagramTargetDiagnostics, SetInstagramTargetResponse } from "@ai-animation-studio/shared";
 
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
-import { listInstagramPublishTargets, type InstagramPublishTargetRecord } from "./instagram-graph-adapter.js";
+import { countInstagramPublishCandidates, listInstagramPublishTargets, readGrantedInstagramPermissions, type InstagramPublishTargetRecord } from "./instagram-graph-adapter.js";
+import { INSTAGRAM_PUBLISH_SCOPES } from "./instagram-oauth.js";
 import { InstagramConnectionStore } from "./instagram-connection.store.js";
 import { InstagramAdapterError, type RetryOptions } from "./instagram-request.js";
 import { instagramNotConnected, instagramProviderError, instagramStorageError, instagramTargetNotFound, invalidInstagramRequest } from "./instagram-api.error.js";
@@ -76,7 +77,34 @@ export class InstagramTargetsService {
     const targets = await this.liveTargets();
     const stored = await this.readStoredSelection();
     const selected = stored !== null && targets.some((target) => target.igUserId === stored) ? stored : undefined;
-    return { targets, ...(selected !== undefined ? { selectedIgUserId: selected } : {}) };
+    return {
+      targets,
+      ...(selected !== undefined ? { selectedIgUserId: selected } : {}),
+      // Only when there is nothing to choose from: a working account should not pay for two extra provider
+      // calls on every load just so the empty case can explain itself.
+      ...(targets.length === 0 ? { diagnostics: await this.diagnose() } : {}),
+    };
+  }
+
+  /**
+   * Which of the three reasons the list is empty.
+   *
+   * Fails soft in both halves. A diagnosis is a help, not a precondition — if the counts cannot be read the
+   * screen still says the list is empty, and `permissionsChecked: false` keeps it from presenting a guess
+   * about permissions as a fact.
+   */
+  private async diagnose(): Promise<InstagramTargetDiagnostics> {
+    const token = await this.connection.token();
+    if (!token) return { pageCount: 0, pagesWithInstagramAccount: 0, missingPermissions: [], permissionsChecked: false };
+    const counts = await countInstagramPublishCandidates(token.accessToken, this.requestOptions)
+      .catch(() => ({ pageCount: 0, pagesWithInstagramAccount: 0 }));
+    const granted = await readGrantedInstagramPermissions(token.accessToken, this.requestOptions).catch(() => undefined);
+    if (!granted) return { ...counts, missingPermissions: [], permissionsChecked: false };
+    return {
+      ...counts,
+      missingPermissions: INSTAGRAM_PUBLISH_SCOPES.filter((scope) => !granted.includes(scope)),
+      permissionsChecked: true,
+    };
   }
 
   async select(request: unknown): Promise<SetInstagramTargetResponse> {

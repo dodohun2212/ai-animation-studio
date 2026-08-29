@@ -47,7 +47,12 @@ describe("InstagramTargetsService.list", () => {
   it("returns an empty target list, connected, for a professional account with no page linked", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(pagesResponse([]));
     const { service } = await setup({ fetchImpl });
-    await expect(service.list()).resolves.toEqual({ targets: [] });
+    const result = await service.list();
+    expect(result.targets).toEqual([]);
+    expect(result.selectedIgUserId).toBeUndefined();
+    // An empty list now carries why it is empty. Named rather than left as "anything else is fine": the point
+    // of the exact-shape assertion was that nothing unexpected rides along, and that still holds.
+    expect(Object.keys(result).sort()).toEqual(["diagnostics", "targets"]);
   });
 
   it("omits selectedIgUserId until a choice has been made", async () => {
@@ -124,5 +129,91 @@ describe("InstagramTargetsService.select", () => {
   it("reports not-connected when selecting without a stored token", async () => {
     const { service } = await setup({ connected: false });
     await expect(service.select({ igUserId: "178000001" })).rejects.toMatchObject({ response: { code: "INSTAGRAM_NOT_CONNECTED" } });
+  });
+});
+
+/**
+ * Answers `/me/accounts` and `/me/permissions` separately, so an empty list can be given a cause.
+ *
+ * `permissions === null` stands for the check itself failing, which must read as "not checked" rather than as
+ * "nothing granted" — those two lead a person to different places.
+ */
+function diagnosticFetch(options: { pages?: unknown[]; permissions?: string[] | null } = {}) {
+  return vi.fn<typeof fetch>(async (input) => {
+    const url = String(input);
+    if (url.includes("/me/permissions")) {
+      if (options.permissions === null) return jsonResponse(500, { error: { message: "no" } });
+      return jsonResponse(200, { data: (options.permissions ?? []).map((permission) => ({ permission, status: "granted" })) });
+    }
+    if (url.includes("/me/accounts")) return jsonResponse(200, { data: options.pages ?? [] });
+    return jsonResponse(200, {});
+  });
+}
+
+const ALL_SCOPES = ["instagram_basic", "instagram_content_publish", "pages_read_engagement", "pages_show_list"];
+
+describe("InstagramTargetsService.list — why the list is empty", () => {
+  it("says nothing at all when there are targets, rather than paying for a diagnosis nobody needs", async () => {
+    const { service } = await setup();
+
+    expect((await service.list()).diagnostics).toBeUndefined();
+  });
+
+  it("separates no pages from pages without a linked account", async () => {
+    // The two have different fixes, and they used to end at the same sentence.
+    const none = await setup({ fetchImpl: diagnosticFetch({ pages: [], permissions: ALL_SCOPES }) });
+    expect((await none.service.list()).diagnostics).toMatchObject({ pageCount: 0, pagesWithInstagramAccount: 0, missingPermissions: [], permissionsChecked: true });
+
+    const unlinked = await setup({ fetchImpl: diagnosticFetch({ pages: [{ name: "page one" }, { name: "page two" }], permissions: ALL_SCOPES }) });
+    expect((await unlinked.service.list()).diagnostics).toMatchObject({ pageCount: 2, pagesWithInstagramAccount: 0, missingPermissions: [] });
+  });
+
+  it("names the permissions the token does not hold, which is the cause no amount of fixing Facebook resolves", async () => {
+    const { service } = await setup({ fetchImpl: diagnosticFetch({ pages: [], permissions: ["instagram_basic"] }) });
+
+    const { diagnostics } = await service.list();
+
+    expect(diagnostics?.missingPermissions).toEqual(["instagram_content_publish", "pages_read_engagement", "pages_show_list"]);
+    expect(diagnostics?.permissionsChecked).toBe(true);
+  });
+
+  it("counts a declined permission as missing, never as held", async () => {
+    // Meta lists declined permissions in the same array with a different status. Reading them as granted
+    // would produce the confident wrong answer this whole diagnosis exists to replace.
+    const fetchImpl = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.includes("/me/permissions")) {
+        return jsonResponse(200, { data: [
+          { permission: "instagram_basic", status: "granted" },
+          { permission: "pages_show_list", status: "declined" },
+        ] });
+      }
+      return jsonResponse(200, { data: [] });
+    });
+    const { service } = await setup({ fetchImpl });
+
+    expect((await service.list()).diagnostics?.missingPermissions).toContain("pages_show_list");
+  });
+
+  it("says the permission check did not happen rather than reporting nothing missing", async () => {
+    // "we could not look" and "we looked and all is well" must not be the same answer.
+    const { service } = await setup({ fetchImpl: diagnosticFetch({ pages: [], permissions: null }) });
+
+    const { diagnostics } = await service.list();
+
+    expect(diagnostics).toMatchObject({ permissionsChecked: false, missingPermissions: [] });
+  });
+
+  it("still answers with an empty list when the counts cannot be read at all", async () => {
+    // A diagnosis is a help, not a precondition.
+    const fetchImpl = vi.fn<typeof fetch>(async (input) => (
+      String(input).includes("/me/accounts") ? jsonResponse(200, { data: [] }) : jsonResponse(500, { error: { message: "no" } })
+    ));
+    const { service } = await setup({ fetchImpl });
+
+    const result = await service.list();
+
+    expect(result.targets).toEqual([]);
+    expect(result.diagnostics).toMatchObject({ permissionsChecked: false });
   });
 });

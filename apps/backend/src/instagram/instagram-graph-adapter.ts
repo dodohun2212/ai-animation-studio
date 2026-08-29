@@ -78,6 +78,46 @@ export interface InstagramPublishTargetRecord { igUserId: string; username: stri
  *
  * A page with no connected Instagram account simply has no `instagram_business_account` and is skipped.
  */
+/**
+ * How many pages this login can see, and how many of them have an Instagram account linked.
+ *
+ * The same request the target listing makes; only the counting differs. It exists so an empty list can say
+ * which of its three causes it is instead of one sentence covering all three — reading the middle of an
+ * answer the provider was already giving us.
+ */
+export async function countInstagramPublishCandidates(accessToken: string, options: RetryOptions = {}): Promise<{ pageCount: number; pagesWithInstagramAccount: number }> {
+  const response = await requestWithRetry(
+    `${GRAPH_BASE_URL}/${GRAPH_API_VERSION}/me/accounts?fields=${encodeURIComponent("name,instagram_business_account{id}")}`,
+    { method: "GET", headers: { authorization: `Bearer ${accessToken}` } },
+    options,
+  );
+  const body: unknown = await response.json().catch(() => null);
+  const pages = isObject(body) && Array.isArray(body.data) ? body.data : [];
+  const linked = pages.filter((page) => isObject(page) && isObject(page.instagram_business_account) && typeof page.instagram_business_account.id === "string" && page.instagram_business_account.id.trim());
+  return { pageCount: pages.length, pagesWithInstagramAccount: linked.length };
+}
+
+/**
+ * The permissions Meta says this token actually holds.
+ *
+ * A token can be present and unexpired and still be unable to see a single page, and no amount of fixing the
+ * Facebook side changes that. Only "granted" counts — Meta lists declined ones in the same array with a
+ * different status, and treating those as held would produce exactly the confident wrong answer this is meant
+ * to replace.
+ */
+export async function readGrantedInstagramPermissions(accessToken: string, options: RetryOptions = {}): Promise<string[]> {
+  const response = await requestWithRetry(
+    `${GRAPH_BASE_URL}/${GRAPH_API_VERSION}/me/permissions`,
+    { method: "GET", headers: { authorization: `Bearer ${accessToken}` } },
+    options,
+  );
+  const body: unknown = await response.json().catch(() => null);
+  const rows = isObject(body) && Array.isArray(body.data) ? body.data : [];
+  return rows
+    .filter((row) => isObject(row) && row.status === "granted" && typeof row.permission === "string")
+    .map((row) => (row as { permission: string }).permission);
+}
+
 export async function listInstagramPublishTargets(accessToken: string, options: RetryOptions = {}): Promise<InstagramPublishTargetRecord[]> {
   const response = await requestWithRetry(
     `${GRAPH_BASE_URL}/${GRAPH_API_VERSION}/me/accounts?fields=${encodeURIComponent("name,instagram_business_account{id,username}")}`,

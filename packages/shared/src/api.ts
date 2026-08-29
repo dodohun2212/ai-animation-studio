@@ -1274,7 +1274,31 @@ export interface InstagramPublishTarget {
   pageName: string;
 }
 
+/**
+ * Why the list of places to publish came back empty.
+ *
+ * An empty list has three different causes with three different fixes — no Facebook page, a page with no
+ * Instagram professional account linked, or a token that was never granted the permissions to see either —
+ * and until now all three ended at one sentence, leaving the person to guess which part of their account to
+ * go and change. The middle of that answer existed at the provider and simply was not carried across.
+ *
+ * Counts and permission names only. No token, no id, no secret: what the screen needs is which of the three
+ * it is, and that is expressible without any of them.
+ */
+export interface InstagramTargetDiagnostics {
+  /** Facebook pages this login can see. Zero points at the page itself, or at a token that cannot list pages. */
+  pageCount: number;
+  /** Of those, how many have an Instagram professional account linked. Zero with pages > 0 is the linking step. */
+  pagesWithInstagramAccount: number;
+  /** Permissions this app asks for that the token does not hold. Non-empty means re-connecting is the fix. */
+  missingPermissions: string[];
+  /** False when the permission check itself could not be made, so the screen does not present a guess as fact. */
+  permissionsChecked: boolean;
+}
+
 export interface GetInstagramTargetsResponse {
+  /** Present only when the list came back empty — there is nothing to diagnose otherwise. */
+  diagnostics?: InstagramTargetDiagnostics;
   targets: InstagramPublishTarget[];
   /**
    * Present only when a previously stored choice is actually still in `targets` this time. A page can be

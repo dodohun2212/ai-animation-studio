@@ -468,7 +468,7 @@ export function InstagramPostScreen({ onBack }: Props) {
                     key={`${candidate.projectId}-${candidate.episodeNumber}`}
                     value={`${EPISODE_PREFIX}${candidate.projectId}|${candidate.episodeNumber}`}
                   >
-                    {candidate.projectTitle} · {candidate.episodeNumber}화 {candidate.title}
+                    {candidate.projectTitle} · {candidate.episodeNumber}화 「{candidate.title}」
                   </option>
                 ))}
               </optgroup>
