@@ -85,6 +85,60 @@ export interface InstagramPublishTargetRecord { igUserId: string; username: stri
  * which of its three causes it is instead of one sentence covering all three — reading the middle of an
  * answer the provider was already giving us.
  */
+/**
+ * The pages this token was actually granted, read from the token itself.
+ *
+ * `/me/accounts` is the documented way to list pages and it is not always the truthful one: under Meta's
+ * granular permissions a token can hold `pages_show_list` scoped to a specific page, address that page
+ * perfectly well, and still get `{"data": []}` from the listing. Confirmed against a real account, not
+ * inferred — the page and its linked Instagram account both answered directly while the list stayed empty.
+ *
+ * `debug_token` reports `granular_scopes`, and the `pages_show_list` entry carries `target_ids`: exactly the
+ * pages the person picked on the consent screen. That is the grant itself rather than a view of it, which is
+ * why it survives whatever `/me/accounts` decides to enumerate.
+ *
+ * Needs the app token (`appId|appSecret`) because a token cannot describe itself.
+ */
+export async function readGrantedPageIds(accessToken: string, appToken: string, options: RetryOptions = {}): Promise<string[]> {
+  const response = await requestWithRetry(
+    `${GRAPH_BASE_URL}/${GRAPH_API_VERSION}/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${encodeURIComponent(appToken)}`,
+    { method: "GET" },
+    options,
+  );
+  const body: unknown = await response.json().catch(() => null);
+  const data = isObject(body) && isObject(body.data) ? body.data : undefined;
+  const scopes = data && Array.isArray(data.granular_scopes) ? data.granular_scopes : [];
+  const pageScope = scopes.find((entry) => isObject(entry) && entry.scope === "pages_show_list");
+  const targets = isObject(pageScope) && Array.isArray(pageScope.target_ids) ? pageScope.target_ids : [];
+  return targets.filter((id): id is string => typeof id === "string" && Boolean(id.trim()));
+}
+
+/**
+ * One page, asked for by id — the other half of the fallback above.
+ *
+ * Returns nothing rather than throwing for a page that cannot be read: one unreachable page must not empty a
+ * list that other pages could still fill.
+ */
+export async function readPublishTargetById(accessToken: string, pageId: string, options: RetryOptions = {}): Promise<InstagramPublishTargetRecord | undefined> {
+  try {
+    const response = await requestWithRetry(
+      `${GRAPH_BASE_URL}/${GRAPH_API_VERSION}/${encodeURIComponent(pageId)}?fields=${encodeURIComponent("name,instagram_business_account{id,username}")}`,
+      { method: "GET", headers: { authorization: `Bearer ${accessToken}` } },
+      options,
+    );
+    const body: unknown = await response.json().catch(() => null);
+    if (!isObject(body)) return undefined;
+    const account = isObject(body.instagram_business_account) ? body.instagram_business_account : undefined;
+    const igUserId = typeof account?.id === "string" ? account.id.trim() : "";
+    if (!igUserId) return undefined;
+    const pageName = typeof body.name === "string" ? body.name.trim() : "";
+    const inlineUsername = typeof account?.username === "string" ? account.username.trim() : "";
+    return { igUserId, username: inlineUsername || await readInstagramUsername(accessToken, igUserId, options), pageName };
+  } catch {
+    return undefined;
+  }
+}
+
 export async function countInstagramPublishCandidates(accessToken: string, options: RetryOptions = {}): Promise<{ pageCount: number; pagesWithInstagramAccount: number }> {
   const response = await requestWithRetry(
     `${GRAPH_BASE_URL}/${GRAPH_API_VERSION}/me/accounts?fields=${encodeURIComponent("name,instagram_business_account{id}")}`,

@@ -229,3 +229,66 @@ describe("InstagramTargetsService.list — why the list is empty", () => {
     expect(result.diagnostics).toMatchObject({ permissionsChecked: false });
   });
 });
+
+/**
+ * The shape a real account produced: `/me/accounts` empty, while the token's own grant names the page and that
+ * page answers directly. Every body here is what Meta actually returned, with ids kept and names generic.
+ */
+function granularFetch(options: { pageIds?: string[]; pageReadable?: boolean } = {}) {
+  const pageIds = options.pageIds ?? ["1328208640370353"];
+  return vi.fn<typeof fetch>(async (input) => {
+    const url = String(input);
+    if (url.includes("/me/accounts")) return jsonResponse(200, { data: [] });
+    if (url.includes("/debug_token")) {
+      return jsonResponse(200, { data: { granular_scopes: [
+        { scope: "pages_show_list", target_ids: pageIds },
+        { scope: "instagram_basic", target_ids: ["17841441335872655"] },
+      ] } });
+    }
+    if (url.includes("/me/permissions")) return jsonResponse(200, { data: [{ permission: "pages_show_list", status: "granted" }] });
+    if (options.pageReadable === false) return jsonResponse(400, { error: { message: "no", code: 100 } });
+    if (url.includes("1328208640370353")) {
+      return jsonResponse(200, { id: "1328208640370353", name: "Ibad", instagram_business_account: { id: "17841441335872655", username: "ibad_2012_" } });
+    }
+    return jsonResponse(200, { id: "other", name: "other page" });
+  });
+}
+
+describe("InstagramTargetsService.list — a page the listing cannot see", () => {
+  it("finds the page the token was granted when /me/accounts answers with nothing", async () => {
+    // A real account reached this state: pages_show_list granted for one page, that page and its Instagram
+    // account both readable, and the list still empty. Everything was right except the question being asked.
+    const { service } = await setup({ fetchImpl: granularFetch() });
+
+    const { targets } = await service.list();
+
+    expect(targets).toEqual([{ igUserId: "17841441335872655", username: "ibad_2012_", pageName: "Ibad" }]);
+  });
+
+  it("says nothing to publish to when the grant names no page at all", async () => {
+    const { service } = await setup({ fetchImpl: granularFetch({ pageIds: [] }) });
+
+    const result = await service.list();
+
+    expect(result.targets).toEqual([]);
+    // And the empty answer still explains itself rather than going silent.
+    expect(result.diagnostics).toBeDefined();
+  });
+
+  it("keeps the empty list rather than failing when a granted page cannot be read", async () => {
+    // A second chance at an answer must not become a new way to fail.
+    const { service } = await setup({ fetchImpl: granularFetch({ pageReadable: false }) });
+
+    expect((await service.list()).targets).toEqual([]);
+  });
+
+  it("does not go looking for grants when the listing already answered", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (input) => (
+      String(input).includes("/me/accounts") ? pagesResponse() : jsonResponse(500, { error: { message: "should not be called" } })
+    ));
+    const { service } = await setup({ fetchImpl });
+
+    expect((await service.list()).targets).toHaveLength(1);
+    expect(fetchImpl.mock.calls.some(([url]) => String(url).includes("debug_token"))).toBe(false);
+  });
+});

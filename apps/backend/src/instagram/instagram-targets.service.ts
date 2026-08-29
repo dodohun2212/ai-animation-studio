@@ -5,7 +5,7 @@ import { Injectable } from "@nestjs/common";
 import type { GetInstagramTargetsResponse, InstagramTargetDiagnostics, SetInstagramTargetResponse } from "@ai-animation-studio/shared";
 
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
-import { countInstagramPublishCandidates, listInstagramPublishTargets, readGrantedInstagramPermissions, type InstagramPublishTargetRecord } from "./instagram-graph-adapter.js";
+import { countInstagramPublishCandidates, listInstagramPublishTargets, readGrantedInstagramPermissions, readGrantedPageIds, readPublishTargetById, type InstagramPublishTargetRecord } from "./instagram-graph-adapter.js";
 import { INSTAGRAM_PUBLISH_SCOPES } from "./instagram-oauth.js";
 import { InstagramConnectionStore } from "./instagram-connection.store.js";
 import { InstagramAdapterError, type RetryOptions } from "./instagram-request.js";
@@ -57,7 +57,8 @@ export class InstagramTargetsService {
     const token = await this.connection.token();
     if (!token) throw instagramNotConnected();
     try {
-      return await listInstagramPublishTargets(token.accessToken, this.requestOptions);
+      const listed = await listInstagramPublishTargets(token.accessToken, this.requestOptions);
+      return listed.length > 0 ? listed : await this.grantedTargets(token.accessToken);
     } catch (error) {
       if (error instanceof InstagramAdapterError) {
         if (error.category === "authentication") throw instagramNotConnected();
@@ -73,6 +74,29 @@ export class InstagramTargetsService {
    * without checking would be the app acting on something it never verified (docs/06_DECISIONS.md D-006). The
    * check lives here rather than in the screen so no caller can forget it.
    */
+  /**
+   * The pages this token was granted, asked for one by one.
+   *
+   * Only reached when `/me/accounts` came back empty, and that combination is real rather than defensive: a
+   * token can hold `pages_show_list` for a specific page, read that page and its linked Instagram account
+   * perfectly, and still be handed an empty list. Someone in that state has done everything right and sees
+   * "no account to publish to" — the app was asking the one question its account could not answer.
+   *
+   * Fails soft. This is a second chance at an answer, so a failure here leaves the empty list the primary path
+   * already produced, and the diagnosis explains that instead.
+   */
+  private async grantedTargets(accessToken: string): Promise<InstagramPublishTargetRecord[]> {
+    const app = await this.connection.appCredentials().catch(() => null);
+    if (!app) return [];
+    try {
+      const pageIds = await readGrantedPageIds(accessToken, `${app.appId}|${app.appSecret}`, this.requestOptions);
+      const targets = await Promise.all(pageIds.map((pageId) => readPublishTargetById(accessToken, pageId, this.requestOptions)));
+      return targets.filter((target): target is InstagramPublishTargetRecord => target !== undefined);
+    } catch {
+      return [];
+    }
+  }
+
   async list(): Promise<GetInstagramTargetsResponse> {
     const targets = await this.liveTargets();
     const stored = await this.readStoredSelection();
