@@ -2262,3 +2262,8 @@ Episode01/script.json   "이배드" 가 52개 필드에 57번
   - **① 데스크톱 로그인 — 끝에서 끝까지 붙어 있다.** `apps/desktop/src/instagram-login-window.ts` → `main.ts:206` 핸들러 등록 → `preload.cjs` → 프론트 `electronBridge.openInstagramLogin` → `InstagramConnectionCard` 가 `canOpenInstagramLogin()` 으로 흐름을 고른다. `npm run build` 통과(exit 0). 즉 `npm run dev`(= build + electron) 로 지금 쓸 수 있다.
   - **② 로컬 인증서 콜백 — 설정으로 열 수 있지만 준비물이 더 많다.** `INSTAGRAM_CALLBACK_TLS_CERT` / `_KEY` (PEM **내용**, 경로 아님) / 선택 `_PORT`(기본 3443), 그리고 메타 앱에 `https://127.0.0.1:3443/settings/instagram/callback` 등록. 반쯤 설정하면 시작 시 실패한다(의도된 것, D-022).
   - **①을 권한다** — 준비물이 없고 이미 빌드된다. ②는 인증서 발급·등록이 추가로 필요하다.
+- [x] **재로그인 경로 ②(HTTPS 콜백)의 실제 요구사항을 코드로 확인했다 (캡틴D 제안, Cowork Round 313)**: 캡틴D가 *"백엔드 킬 때 코드 2줄 추가해서 인증서 불러오면 되지 않냐"* 고 제안했다. **방향은 맞지만 코드는 한 줄도 필요 없다** — 이 저장소는 이미 그 길을 갖고 있고, 앱 전체를 HTTPS 로 띄우는 것도 아니다.
+  - `main.ts:43` 이 부팅 전에 `resolveCallbackTls(process.env)` 를 읽고, 환경변수가 있으면 `serveCallbackOverTls` 로 **콜백만 두 번째 리스너**에 올린다. HTTP 표면은 그대로다(D-022: 패키징된 앱은 아무것도 설정하지 않아 리스너가 없고 데스크톱 창으로 로그인한다).
+  - Cowork이 캡틴D에게 말한 세 가지는 **전부 이 저장소와 어긋난다**: ① `httpsOptions` 로 앱을 띄우는 게 아니다(별도 리스너), ② 등록할 주소는 `localhost` 가 아니라 **`https://127.0.0.1:3443/settings/instagram/callback`** (메타는 정확 일치를 본다), ③ **프론트 프록시는 무관하다** — 메타가 브라우저를 그 포트로 직접 돌려보내지 Vite 를 거치지 않는다.
+  - 반쯤 설정하면 **부팅이 멈춘다**(의도된 것). 자체 서명 인증서면 브라우저 경고로 흐름이 깨지므로 로컬 신뢰 인증서가 필요하다는 점만 Cowork 추측이 맞았다.
+  - **①(데스크톱)이 여전히 더 짧다** — `apps/desktop` `npm run build` 통과(exit 0), 로그인 흐름이 끝에서 끝까지 연결돼 있고 준비물이 없다.
