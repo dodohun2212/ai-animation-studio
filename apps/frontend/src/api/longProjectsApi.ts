@@ -42,6 +42,7 @@ import {
   type LongEpisodeImageReview,
   type StartLongEpisodeImageGenerationRequest,
   type StartLongEpisodeImageGenerationResponse,
+  type GetLongEpisodeImagePreviewResponse,
   type GetLongEpisodeImageReviewResponse,
   type ApproveLongEpisodeImageReviewResponse,
   type RegenerateLongEpisodeImageReviewResponse,
@@ -819,6 +820,27 @@ export function approveLongEpisodeScript(projectId: string, episodeNumber: numbe
 export function getLongEpisodeImageReview(projectId: string, episodeNumber: number): Promise<GetLongEpisodeImageReviewResponse> {
   return request(API_ROUTES.longEpisodeImageReview(projectId, episodeNumber), undefined, isGetEpisodeImageReviewResponse);
 }
+
+/**
+ * What a generation would actually buy, before anything is sent. Free and provider-free on the server.
+ *
+ * The screen cannot work this out for itself: which scenes already have a usable picture is a question about
+ * files on disk, and the review list that would hint at it is not fetched at the one stage this confirmation
+ * appears in. Quoting the scene count there is how the confirmation came to name a price the receipt never
+ * matched — always higher.
+ */
+export function getLongEpisodeImagePreview(projectId: string, episodeNumber: number): Promise<GetLongEpisodeImagePreviewResponse> {
+  return request(API_ROUTES.longEpisodeImagePreview(projectId, episodeNumber), undefined, isGetEpisodeImagePreviewResponse);
+}
+
+const isGetEpisodeImagePreviewResponse = (value: unknown): value is GetLongEpisodeImagePreviewResponse => {
+  if (!isRecord(value) || !isRecord(value.preview)) return false;
+  const preview = value.preview;
+  // Every list is checked, and so is the number: a screen that trusts a missing `generatableSceneNumbers` as
+  // an empty one would quote nothing and charge for six.
+  return isSceneNumberList(preview.sceneNumbers) && isSceneNumberList(preview.generatableSceneNumbers)
+    && isSceneNumberList(preview.reusableSceneNumbers) && isFiniteNonNegative(preview.estimatedCostUsd);
+};
 
 export function startLongEpisodeImageGeneration(projectId: string, episodeNumber: number): Promise<StartLongEpisodeImageGenerationResponse> {
   const requestBody: StartLongEpisodeImageGenerationRequest = { approved: true };

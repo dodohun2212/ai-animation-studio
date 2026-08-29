@@ -107,6 +107,14 @@ export async function mergeVideos(projectId: string, audio?: MergeAudioSettings)
   return body;
 }
 
-export function finalVideoContentUrl(projectId: string): string {
-  return API_ROUTES.videoFinalContent(projectId);
+/**
+ * `cacheBuster` (e.g. the project's `updatedAt`) forces a refetch after a re-merge.
+ *
+ * The address of a project's final video never changes, so without one the browser happily replays the previous
+ * cut — the person watches the old video and concludes the merge did nothing. The Episode player has taken one
+ * since it was written; this one had the same problem and no answer for it.
+ */
+export function finalVideoContentUrl(projectId: string, cacheBuster?: string): string {
+  const url = API_ROUTES.videoFinalContent(projectId);
+  return cacheBuster ? `${url}?v=${encodeURIComponent(cacheBuster)}` : url;
 }

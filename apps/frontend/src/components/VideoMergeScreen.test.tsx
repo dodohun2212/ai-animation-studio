@@ -373,7 +373,10 @@ describe("VideoMergeScreen", () => {
     fireEvent.click(screen.getByTestId("confirm-merge-button"));
 
     await screen.findByTestId("merge-success");
-    expect(screen.getByTestId("final-video-player")).toHaveAttribute("src", "/projects/sample_project/videos/final/content");
+    // Cache-busted by the project's own updatedAt: the address is otherwise identical after a re-merge, and the
+    // browser happily replays the previous cut — which reads as "the merge did nothing".
+    const src = screen.getByTestId("final-video-player").getAttribute("src") ?? "";
+    expect(src.startsWith("/projects/sample_project/videos/final/content?v=")).toBe(true);
     expect(screen.queryByTestId("open-in-explorer-button")).toBeNull();
   });
 

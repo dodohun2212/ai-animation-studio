@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { jsonResponse, makeLongProjectSettings } from "../api/testUtils.js";
+import { IMAGE_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 import { LongEpisodeImageGenerationScreen } from "./LongEpisodeImageGenerationScreen.js";
 
 const episode = (status: "planned" | "asset_mapping_approved" | "generating_images" | "images_ready" | "images_review" | "waiting_for_video_confirmation" | "completed") => ({
@@ -32,6 +33,9 @@ describe("LongEpisodeImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { episode: episode("asset_mapping_approved") }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
       .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
+      // Opening the confirmation asks the server what a press would actually buy — the screen cannot work that
+      // out from the review list, which is not fetched at this stage.
+      .mockResolvedValueOnce(jsonResponse(200, { preview: { sceneNumbers: [1, 2, 3, 4, 5, 6], generatableSceneNumbers: [1, 2, 3, 4, 5, 6], reusableSceneNumbers: [], estimatedCostUsd: 6 * IMAGE_ESTIMATED_COST_USD } }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, generatedSceneNumbers: [1, 2, 3, 4, 5, 6], reusedSceneNumbers: [] }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, reviews: reviews(), staleness: { imageStale: [] } }));
     vi.stubGlobal("fetch", fetchMock);
@@ -40,12 +44,14 @@ describe("LongEpisodeImageGenerationScreen", () => {
     expect(await screen.findByTestId("episode-image-cost-notice")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "이미지 생성 시작" }));
     expect(await screen.findByTestId("episode-image-generate-confirm")).toBeTruthy();
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    // Named, not counted: opening a confirmation may fetch a price, and "nothing was generated" is the
+    // fact this line means either way.
+    expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith("/images/generations") && (init as RequestInit | undefined)?.method === "POST")).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: "이미지 생성" }));
     await screen.findByTestId("episode-image-generation-summary");
-    expect(fetchMock.mock.calls[3]?.[0]).toBe("/long-projects/long/episodes/1/images/generations");
-    expect(JSON.parse(String((fetchMock.mock.calls[3]?.[1] as RequestInit).body))).toEqual({ approved: true });
+    expect(fetchMock.mock.calls[4]?.[0]).toBe("/long-projects/long/episodes/1/images/generations");
+    expect(JSON.parse(String((fetchMock.mock.calls[4]?.[1] as RequestInit).body))).toEqual({ approved: true });
     await screen.findByTestId("episode-image-review-1");
   });
 
@@ -105,6 +111,9 @@ describe("LongEpisodeImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { episode: { ...episode("asset_mapping_approved"), script: { title: "t", synopsis: "s", ending: "e", scenes } } }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
       .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
+      // Opening the confirmation asks the server what a press would actually buy — the screen cannot work that
+      // out from the review list, which is not fetched at this stage.
+      .mockResolvedValueOnce(jsonResponse(200, { preview: { sceneNumbers: [1, 2, 3, 4, 5, 6], generatableSceneNumbers: [1, 2, 3, 4, 5, 6], reusableSceneNumbers: [], estimatedCostUsd: 6 * IMAGE_ESTIMATED_COST_USD } }))
       .mockResolvedValueOnce(
         jsonResponse(200, {
           episode: imageReviewEpisode,
@@ -121,7 +130,9 @@ describe("LongEpisodeImageGenerationScreen", () => {
 
     // 6 scenes x $0.10, shown before the request goes out.
     expect(screen.getByTestId("episode-image-cost-estimate").textContent).toContain("$0.60");
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    // Named, not counted: opening a confirmation may fetch a price, and "nothing was generated" is the
+    // fact this line means either way.
+    expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith("/images/generations") && (init as RequestInit | undefined)?.method === "POST")).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: "이미지 생성" }));
     const budget = await screen.findByTestId("episode-image-generation-budget");
@@ -134,6 +145,9 @@ describe("LongEpisodeImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { episode: episode("asset_mapping_approved") }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
       .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
+      // Opening the confirmation asks the server what a press would actually buy — the screen cannot work that
+      // out from the review list, which is not fetched at this stage.
+      .mockResolvedValueOnce(jsonResponse(200, { preview: { sceneNumbers: [1, 2, 3, 4, 5, 6], generatableSceneNumbers: [1, 2, 3, 4, 5, 6], reusableSceneNumbers: [], estimatedCostUsd: 6 * IMAGE_ESTIMATED_COST_USD } }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, generatedSceneNumbers: [1, 2, 3, 4, 5, 6], reusedSceneNumbers: [] }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, reviews: reviews(), staleness: { imageStale: [] } }));
     vi.stubGlobal("fetch", fetchMock);
@@ -391,5 +405,58 @@ describe("LongEpisodeImageGenerationScreen", () => {
       // Trimmed, not sent raw — the same value with padding must not read as a different direction.
       expect(JSON.parse(String(post![1]!.body))).toEqual({ approved: true, additionalInstruction: "더 어둡게" });
     });
+  });
+
+  /**
+   * The panel quoted every scene at full price while the response it gets back reports which ones were reused —
+   * the screen said one number and the receipt said another, always overstating. A review row exists only for a
+   * scene that has a picture, so the list is the honest count.
+   */
+  /**
+   * The confirmation quoted the scene count while the generation skips anything already drawn and charges
+   * nothing for it — always too high, and always in the direction that stops people doing work they can afford.
+   *
+   * The numbers come from the server's preflight, not from the review list: the list is not fetched at this
+   * stage, which is exactly the stage a partly-failed run leaves an Episode in. Counting it here would read
+   * "nothing made yet" precisely when four were.
+   */
+  it("quotes only the scenes it would actually buy, and says the rest are kept", async () => {
+    const ready = withScript(episode("asset_mapping_approved"));
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: ready }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
+      // Four of six already drawn: the two missing ones are what a press would cost.
+      .mockResolvedValueOnce(jsonResponse(200, { preview: {
+        sceneNumbers: [1, 2, 3, 4, 5, 6],
+        generatableSceneNumbers: [5, 6],
+        reusableSceneNumbers: [1, 2, 3, 4],
+        estimatedCostUsd: 2 * IMAGE_ESTIMATED_COST_USD,
+      } })));
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "이미지 생성 시작" }));
+
+    expect((await screen.findByTestId("episode-image-reuse-notice")).textContent).toContain("4장");
+    // Two scenes, not six — the number the receipt will agree with.
+    expect(screen.getByTestId("episode-image-cost-estimate").textContent).toContain("2장 ×");
+    expect(screen.getByTestId("episode-image-cost-estimate").textContent).toContain(`$${(2 * IMAGE_ESTIMATED_COST_USD).toFixed(2)}`);
+  });
+
+  /**
+   * The list used to be fetched only while the Episode was in review, because the server refused it otherwise.
+   * It does not any more — the pictures were never gone, only the list of them.
+   */
+  it("still lists the images after the Episode has moved past review", async () => {
+    const later = withScript(episode("waiting_for_video_confirmation"));
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: later }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
+      .mockResolvedValue(jsonResponse(200, { episode: later, reviews: reviews(), staleness: { imageStale: [] } })));
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    // The list is what was refused before, and it is what the gallery and the badges are built on.
+    expect(await screen.findByTestId("episode-image-review-1")).toBeTruthy();
   });
 });

@@ -384,12 +384,14 @@ export function VideoLibraryScreen({ onBack }: Props) {
             />
           </label>
 
-          {!projects.length && (
+          {/* Both counts, because this list holds both. It used to read `projects` alone, so someone whose
+              work is entirely long-project Episodes was told they had no videos — directly above their videos. */}
+          {!projects.length && !episodes.length && (
             <p data-testid="library-empty" className="text-sm text-slate-400">
               아직 만들어진 영상이 없습니다. 프로젝트에서 영상을 만들면 여기에 쌓입니다.
             </p>
           )}
-          {Boolean(projects.length) && !filtered.length && (
+          {Boolean(projects.length || episodes.length) && !filtered.length && !filteredEpisodes.length && (
             <p data-testid="library-no-match" className="text-sm text-slate-400">
               검색어에 맞는 프로젝트가 없습니다.
             </p>

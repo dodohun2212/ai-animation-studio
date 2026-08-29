@@ -309,4 +309,24 @@ describe("VideoLibraryScreen", () => {
     const credit = await screen.findByTestId("library-episode-credit-12-1");
     expect(credit.textContent).toContain("Music by ○○○");
   });
+
+  /**
+   * The empty state read the project list alone, so someone whose work is entirely long-project Episodes was
+   * told they had no videos — directly above a list of their videos.
+   */
+  it("does not claim the library is empty when it holds only Episodes", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { projects: [], episodes: [libraryEpisode()] }));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("library-episode-12-1");
+    expect(screen.queryByTestId("library-empty")).toBeNull();
+  });
+
+  it("still says the library is empty when it holds neither", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { projects: [], episodes: [] }));
+    renderScreen(fetchMock);
+
+    // The counterpart the rule above needs: without it, removing the empty state entirely would pass.
+    expect(await screen.findByTestId("library-empty")).toBeTruthy();
+  });
 });

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import type { BudgetPreview, LongEpisodeContinuityReference, LongEpisodeDetail, LongEpisodeImageReview, LongEpisodeStatus, SceneNumber, StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
+import type { BudgetPreview, LongEpisodeContinuityReference, LongEpisodeDetail, LongEpisodeImageGenerationPreview, LongEpisodeImageReview, LongEpisodeStatus, SceneNumber, StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
 import { IMAGE_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 
 import {
   approveLongEpisodeImageReview,
   getLongEpisode,
   getLongEpisodeContinuityReference,
+  getLongEpisodeImagePreview,
   getLongEpisodeImageReview,
   getLongProjectSettings,
   longEpisodeImageContentUrl,
@@ -125,6 +126,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
    * the gallery below show real per-scene records instead of guessing scene numbers from the script.
    */
   const imagesMayExist = Boolean(episode) && !isBefore(episode!.status, "images_ready");
+
   useEffect(() => {
     if (!imagesMayExist || reviewState.status !== "idle") return;
     let cancelled = false;
@@ -170,6 +172,21 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
   }, [projectId, episodeNumber, episode?.status]);
 
   const eligible = episode?.status === "asset_mapping_approved";
+  /**
+   * The free preflight, asked once the Episode is ready to generate.
+   *
+   * Soft: if it cannot be read the screen falls back to counting the review list, which is what it did before —
+   * a confirmation that refuses to open because a preflight failed helps nobody.
+   */
+  const [preview, setPreview] = useState<LongEpisodeImageGenerationPreview | null>(null);
+  /** Asked when the question is asked, not on arrival: nobody needs a price for a button they have not pressed. */
+  function openGenerationConfirmation(): void {
+    setConfirmingGeneration(true);
+    setPreview(null);
+    void getLongEpisodeImagePreview(projectId, episodeNumber)
+      .then((response) => setPreview(response.preview))
+      .catch(() => setPreview(null));
+  }
   async function confirmGeneration(): Promise<void> {
     if (generationBusy.current) return;
     generationBusy.current = true; setGenerationPending(true); setError(null);
@@ -225,6 +242,29 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
   const sceneNumbers: SceneNumber[] = reviewState.status === "ready" && reviewState.reviews.length > 0
     ? reviewState.reviews.map((item) => item.sceneNumber)
     : (episode?.script?.scenes.map((scene) => scene.number) ?? []);
+
+  /**
+   * How many scenes already have a picture, and how many this button would actually buy.
+   *
+   * The panel quoted every scene at full price no matter what existed, while the response it gets back reports
+   * `reusedSceneNumbers` — so the screen said one number and the receipt said another, always in the direction
+   * that overstates. A review row exists only for a scene that was generated (its status is pending or
+   * approved, never "not made"), which makes the list the honest count.
+   *
+   * The flip side is worth saying out loud too: pressing this again does NOT redraw what exists. Someone who
+   * just linked a new reference and expects fresh pictures needs the per-scene 다시 만들기 instead.
+   */
+  //
+  // The count comes from the server's preflight, not from the review list. The review list is only fetched once
+  // pictures exist, and this confirmation appears at the one stage where they may not — which is exactly the
+  // state a partly-failed run leaves behind. Deriving it here would read "nothing made yet" precisely when
+  // something was, and quote all six again.
+  const alreadyMadeCount = preview?.reusableSceneNumbers.length ?? (reviewState.status === "ready"
+    ? sceneNumbers.filter((sceneNumber) => reviewFor(sceneNumber) !== undefined).length
+    : 0);
+  const toMakeCount = preview?.generatableSceneNumbers.length ?? Math.max(0, sceneNumbers.length - alreadyMadeCount);
+  // The server's own number, never re-multiplied here: two copies of a price is two prices.
+  const estimatedCostUsd = preview?.estimatedCostUsd ?? toMakeCount * IMAGE_ESTIMATED_COST_USD;
 
   return (
     <section className="mt-8 space-y-5">
@@ -288,12 +328,24 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
           </ul>
         </section>
       )}
-      {eligible && !generation && <button type="button" disabled={confirmingGeneration} className={primaryButton} onClick={() => setConfirmingGeneration(true)}>이미지 생성 시작</button>}
+      {eligible && !generation && <button type="button" disabled={confirmingGeneration} className={primaryButton} onClick={openGenerationConfirmation}>이미지 생성 시작</button>}
       {confirmingGeneration && (
         <div role="alertdialog" data-testid="episode-image-generate-confirm" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
-          <p className="text-sm text-amber-200">이 에피소드의 이미지 {sceneNumbers.length}장을 생성할까요? 이 확인창을 연 것만으로는 아직 요청이 가지 않았습니다.</p>
+          <p className="text-sm text-amber-200">
+            {alreadyMadeCount > 0
+              ? `남은 장면 이미지 ${toMakeCount}장을 생성할까요?`
+              : `이 에피소드의 이미지 ${sceneNumbers.length}장을 생성할까요?`}
+            {" "}이 확인창을 연 것만으로는 아직 요청이 가지 않았습니다.
+          </p>
+          {alreadyMadeCount > 0 && (
+            <p data-testid="episode-image-reuse-notice" className="text-sm text-slate-300">
+              이미 만들어진 <strong className="text-slate-100">{alreadyMadeCount}장</strong>은 그대로 두고 다시 만들지 않습니다 —
+              비용도 안 듭니다. 이미 있는 그림을 <strong className="text-slate-100">새로 뽑고 싶다면</strong> 이 버튼이 아니라
+              아래 목록에서 장면마다 <span className="text-slate-100">다시 만들기</span>를 눌러 주세요.
+            </p>
+          )}
           <p data-testid="episode-image-cost-estimate" className="text-xs text-slate-300 tabular-nums">
-            예상 비용: ${(sceneNumbers.length * IMAGE_ESTIMATED_COST_USD).toFixed(2)} ({sceneNumbers.length}장 × $
+            예상 비용: ${estimatedCostUsd.toFixed(2)} ({toMakeCount}장 × $
             {IMAGE_ESTIMATED_COST_USD.toFixed(2)}) · 키가 연결되어 있을 때만 청구됩니다
           </p>
           <div className="flex gap-3">

@@ -56,6 +56,9 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
   const [result, setResult] = useState<MergeVideosResponse | null>(null);
   const [openPending, setOpenPending] = useState(false);
   const [openFailed, setOpenFailed] = useState(false);
+  /* The content route refuses a file at or below placeholder size, so a merge of stubs fails to load rather
+     than showing a black box that claims to be the finished video — the Episode player says this already. */
+  const [unplayable, setUnplayable] = useState(false);
   const [sceneCount, setSceneCount] = useState<number | null>(null);
   /** null until the project settings load, and stays null if they fail — the copy then claims nothing. */
   const [mediaMode, setMediaMode] = useState<MediaMode | null>(null);
@@ -139,6 +142,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
     try {
       const response = await mergeVideos(projectId, audioSettings ?? undefined);
       setResult(response);
+      setUnplayable(false);
       setConfirmOpen(false);
     } catch (caught) {
       setError(toVideoMergeDisplayError(caught));
@@ -256,12 +260,22 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
             최종 영상 병합이 완료되었습니다. 이 단계에서는 유료 요청이 전송되지 않았습니다.
           </p>
           <AttributionNotice usedAudio={result.project.usedAudio} />
-          <video
-            src={finalVideoContentUrl(projectId)}
-            data-testid="final-video-player"
-            className="w-full max-w-sm rounded-xl border border-white/10 bg-slate-950/60"
-            controls
-          />
+          {unplayable ? (
+            <p data-testid="final-video-missing" className="rounded-lg border border-amber-400/30 bg-amber-500/[0.06] px-3 py-2 text-sm text-amber-200">
+              최종 영상 파일을 재생할 수 없습니다. 장면 영상 중에 내용이 비어 있는 것이 섞여 있을 수 있습니다 — 장면 영상 화면에서 하나씩 재생해 확인해 주세요.
+            </p>
+          ) : (
+            <video
+              /* Busted on the project's updatedAt: the merged file keeps one address across a re-merge, so
+                 without this the browser replays the previous cut and the person concludes nothing happened. */
+              src={finalVideoContentUrl(projectId, result.project.updatedAt)}
+              data-testid="final-video-player"
+              className="w-full max-w-sm rounded-xl border border-white/10 bg-slate-950/60"
+              controls
+              preload="metadata"
+              onError={() => setUnplayable(true)}
+            />
+          )}
           <p className="text-sm text-slate-300" data-testid="final-video-path">
             저장 위치: {result.finalVideoPath}
           </p>
