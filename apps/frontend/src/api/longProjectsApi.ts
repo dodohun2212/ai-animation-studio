@@ -55,6 +55,7 @@ import {
   type ApproveLongEpisodeVideoReviewResponse,
   type RegenerateLongEpisodeVideoResponse,
   type MergeLongEpisodeVideosResponse,
+  type RecoverLongEpisodeVideosResponse,
   type LongEpisodeContinuityMemory,
   type GetLongEpisodeContinuityResponse,
   type SaveLongEpisodeContinuityRequest,
@@ -758,7 +759,26 @@ export function restartLongEpisodeVideoGeneration(projectId: string, episodeNumb
 export function regenerateLongEpisodeVideo(projectId: string, episodeNumber: number, jobId: string, sceneNumber: SceneNumber): Promise<RegenerateLongEpisodeVideoResponse> { return request(API_ROUTES.longEpisodeVideoRegenerate(projectId, episodeNumber, jobId, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) }, isRegenerateEpisodeVideoResponse); }
 export function getLongEpisodeVideoReview(projectId: string, episodeNumber: number, jobId: string): Promise<GetLongEpisodeVideoReviewResponse> { return request(API_ROUTES.longEpisodeVideoReview(projectId, episodeNumber, jobId), undefined, isGetEpisodeVideoReviewResponse); }
 export function approveLongEpisodeVideoReview(projectId: string, episodeNumber: number, jobId: string, sceneNumber: SceneNumber): Promise<ApproveLongEpisodeVideoReviewResponse> { return request(API_ROUTES.longEpisodeVideoReviewApproval(projectId, episodeNumber, jobId, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) }, isApproveEpisodeVideoReviewResponse); }
+/**
+ * The two fields the recovery response adds on top of the ordinary progress shape. Both are checked: the
+ * screen tells the person which scenes came back and which did not, and a missing list would silently read as
+ * "none of them".
+ */
+function isEpisodeVideoRecoveryResponse(value: unknown): value is RecoverLongEpisodeVideosResponse {
+  if (!isEpisodeVideoProgress(value) || !isRecord(value)) return false;
+  const unrecoverable = value.unrecoverableScenes;
+  return isSceneNumberList(value.recoveredSceneNumbers)
+    && Array.isArray(unrecoverable)
+    && unrecoverable.every((item) => isRecord(item) && isSceneNumber(item.sceneNumber) && typeof item.reason === "string");
+}
+
 /** Sends only the already explicitly confirmed Episode final-render request. */
+/**
+ * Fetches the clips Runway already produced, using the task ids on record. A download, never a generation —
+ * nothing reaches the ledger. It exists because a bug discarded those bytes after paying for them, and
+ * regenerating would pay a second time.
+ */
+export function recoverLongEpisodeVideos(projectId: string, episodeNumber: number, jobId: string): Promise<RecoverLongEpisodeVideosResponse> { return request(API_ROUTES.longEpisodeVideoRecovery(projectId, episodeNumber, jobId), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) }, isEpisodeVideoRecoveryResponse); }
 export function mergeLongEpisodeVideos(projectId: string, episodeNumber: number): Promise<MergeLongEpisodeVideosResponse> { return request(API_ROUTES.longEpisodeVideoMerge(projectId, episodeNumber), { method: "POST" }, isMergeLongEpisodeVideosResponse); }
 const isSceneNumberList = (value: unknown): value is SceneNumber[] => Array.isArray(value) && value.every(isSceneNumber);
 

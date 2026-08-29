@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { GetLongEpisodeVideoPreviewResponse, LongEpisodeVideoProgress, LongEpisodeVideoReview, SceneNumber } from "@ai-animation-studio/shared";
+import type { GetLongEpisodeVideoPreviewResponse, LongEpisodeVideoProgress, LongEpisodeVideoReview, RecoverLongEpisodeVideosResponse, SceneNumber } from "@ai-animation-studio/shared";
 
-import { approveLongEpisodeVideoReview, episodeSceneErrorMessage, getLongEpisodeVideoPreview, getLongEpisodeVideoProgress, getLongEpisodeVideoReview, regenerateLongEpisodeVideo, restartLongEpisodeVideoGeneration, startLongEpisodeVideoGeneration, stopLongEpisodeVideoGeneration, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { approveLongEpisodeVideoReview, episodeSceneErrorMessage, getLongEpisodeVideoPreview, getLongEpisodeVideoProgress, getLongEpisodeVideoReview, recoverLongEpisodeVideos, regenerateLongEpisodeVideo, restartLongEpisodeVideoGeneration, startLongEpisodeVideoGeneration, stopLongEpisodeVideoGeneration, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { Spinner } from "./Spinner.js";
 import { videoRatioLabel } from "../utils/sceneFields.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
@@ -49,6 +49,27 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
   const valid = preview !== null && preview.scenes.every((scene) => { const prompt = prompts[scene.sceneNumber] ?? ""; return prompt.trim().length > 0 && prompt.length <= LIMIT; });
   async function start(): Promise<void> { if (!preview || !valid || busyRef.current || !startRequestId) return; busyRef.current = true; setBusy(true); setError(null); try { const response = await startLongEpisodeVideoGeneration(projectId, episodeNumber, { confirmationId: preview.confirmationId, userRequestId: startRequestId, approved: true, prompts: preview.scenes.map((scene) => ({ sceneNumber: scene.sceneNumber, prompt: prompts[scene.sceneNumber] ?? "" })) }); setJob({ jobId: response.jobId, status: "created", completedSceneNumbers: [], failedSceneNumbers: [], sceneNumbers: preview.scenes.map((scene) => scene.sceneNumber), episode: response.episode }); setConfirmStart(false); setStartRequestId(null); } catch (caught) { setError(toLongProjectDisplayError(caught)); } finally { busyRef.current = false; setBusy(false); } }
   async function action(fn: () => Promise<LongEpisodeVideoProgress>): Promise<void> { if (busyRef.current) return; busyRef.current = true; setBusy(true); setError(null); try { setJob(await fn()); } catch (caught) { setError(toLongProjectDisplayError(caught)); } finally { busyRef.current = false; setBusy(false); } }
+  /**
+   * Fetches the clips Runway already made, using the task ids on record.
+   *
+   * A bug wrote a 32-byte placeholder over every downloaded clip after paying for it — $1.50 an Episode, and
+   * the screen reported success. This is a download, not a generation: nothing reaches the ledger. Scenes whose
+   * output can no longer be fetched come back named, with a reason, and are left failed — spending money again
+   * is the person's decision, not a fallback.
+   */
+  const [recovery, setRecovery] = useState<RecoverLongEpisodeVideosResponse | null>(null);
+  async function recover(): Promise<void> {
+    if (!job || busyRef.current) return;
+    busyRef.current = true; setBusy(true); setError(null);
+    try {
+      const response = await recoverLongEpisodeVideos(projectId, episodeNumber, job.jobId);
+      setJob(response); setRecovery(response);
+      const review = await getLongEpisodeVideoReview(projectId, episodeNumber, response.jobId);
+      setReviews(review.reviews);
+    } catch (caught) { setError(toLongProjectDisplayError(caught)); }
+    finally { busyRef.current = false; setBusy(false); }
+  }
+
   async function approve(sceneNumber: SceneNumber): Promise<void> { if (!job) return; try { const response = await approveLongEpisodeVideoReview(projectId, episodeNumber, job.jobId, sceneNumber); setJob((current) => current ? { ...current, episode: response.episode } : current); setReviews(response.reviews); } catch (caught) { setError(toLongProjectDisplayError(caught)); } }
   return (
     <section className="mt-8 space-y-5">
@@ -167,6 +188,28 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
       {job?.status === "succeeded" && reviews && (
         <section data-testid="episode-video-review" className={cardSection}>
           <h3 className="flex items-center gap-2.5 text-base font-semibold">{dot}영상 검토</h3>
+          {/* Recovery, not regeneration — the difference is $1.50 an Episode, so the button says which one it
+              is before it is pressed. */}
+          <div className="space-y-2 rounded-xl border border-violet-400/25 bg-violet-500/[0.06] p-3.5">
+            <p className="text-sm text-slate-300">
+              영상이 비어 있거나 재생되지 않으면 <strong className="text-slate-100">다시 만들 필요 없습니다</strong> — 이미 만들어진 영상을 가져옵니다. 추가 비용이 들지 않습니다.
+            </p>
+            <button type="button" data-testid="episode-video-recover" className={smallOutlineButton} disabled={busy} onClick={() => void recover()}>
+              {busy ? "가져오는 중..." : "이미 만든 영상 가져오기"}
+            </button>
+            {recovery && (
+              <p data-testid="episode-video-recovery-result" className="text-sm text-slate-300">
+                {recovery.recoveredSceneNumbers.length}장면을 가져왔습니다.
+                {recovery.unrecoverableScenes.length > 0 && (
+                  /* Named, with the reason, and left failed. Regenerating them costs money, so the screen
+                     reports and stops rather than deciding. */
+                  <span className="mt-1 block text-amber-300">
+                    가져오지 못한 장면: {recovery.unrecoverableScenes.map((scene) => `${scene.sceneNumber}번(${scene.reason})`).join(", ")} — 다시 만들려면 장면마다 비용이 듭니다.
+                  </span>
+                )}
+              </p>
+            )}
+          </div>
           {/* Design system §4.3: overall confirmation progress before the per-scene cards. */}
           <p className="text-sm text-slate-300 tabular-nums" data-testid="episode-video-review-summary">
             {reviews.length}장면 중 {reviews.filter((review) => review.status === "approved").length}장면 확정
