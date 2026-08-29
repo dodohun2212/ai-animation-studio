@@ -60,6 +60,23 @@ const MONEY_GUARDS: readonly { title: string; why: string }[] = [
     title: "refuses to merge a paid run whose clips are placeholders, while the local fake path still merges",
     why: "stubs would be published as the final video, and costing nothing is what makes that easy to believe",
   },
+  {
+    title: "restores the Episode's existing video job on mount, so a reload does not strand paid work",
+    why: "without it a refresh hid the review cards, the players and the recovery button behind a job the page no longer had",
+  },
+  {
+    title: "plays the finished Episode, and still does so after a reload that lost the merge response",
+    why: "the same shape one level up — a finished video with no address left anywhere in the app",
+  },
+  {
+    title: "reaches its own route, writes the downloaded bytes over the stubs, and never asks Runway to make anything",
+    why: "recovery is a download; the moment it creates a task instead it costs $0.25 a scene to fetch what was already bought",
+  },
+  {
+    // One title, two suites again: the short project's scene content route and its final-video route.
+    title: "refuses to serve a paid run's placeholder as a scene, but still serves the same file for a local fake run",
+    why: "a player handed a 32-byte header draws a black box that claims to be the paid clip — the claim that got six stubs approved",
+  },
 ];
 
 describe("paid-work guard tests", () => {
