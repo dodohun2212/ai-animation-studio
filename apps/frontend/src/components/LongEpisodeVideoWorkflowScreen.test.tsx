@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { jsonResponse, stubFetchByRoute } from "../api/testUtils.js";
+import { jsonResponse, sequence, stubFetchByRoute, withStatus } from "../api/testUtils.js";
 import { LongEpisodeVideoWorkflowScreen } from "./LongEpisodeVideoWorkflowScreen.js";
 
 const episode = (status: string) => ({ episodeNumber: 1, title: "Episode", summary: "s", mainEvent: "e", conflict: "c", cliffhanger: "h", nextEpisodeHook: "n", status, approved: true, scriptRevision: 1, scriptHistoryCount: 1 });
@@ -163,12 +163,17 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
   // server sees two separate requests and the field is decorative — which is exactly what it was, because it
   // was minted inside the send.
   it("reuses one request id across a retry, and only mints a new one for a new intent", async () => {
-    const fetchMock = vi.fn()
+    const fetchMock = stubFetchByRoute({
       // The screen asks for an existing job first, so a reload can return to one that was already paid for.
-      .mockResolvedValueOnce(jsonResponse(200, { jobId: null }))
-      .mockResolvedValueOnce(jsonResponse(200, preview))
-      .mockResolvedValueOnce(jsonResponse(500, { code: "LONG_PROJECT_STORAGE_ERROR", message: "raw" }))
-      .mockResolvedValueOnce(jsonResponse(200, { jobId: "job", acceptedSceneNumbers: [1,2,3,4,5,6], episode: episode("videos_generating") }));
+      "GET /videos/generations/current": { jobId: null },
+      "GET /videos/preview": preview,
+      // The whole point of this test: the same route fails and then succeeds. `errorRoutes` fixes a route as
+      // always-failing and a plain body is always 200, so neither alone can say "this one, then that one".
+      "POST /videos/generations": sequence([
+        withStatus(500, { code: "LONG_PROJECT_STORAGE_ERROR", message: "raw" }),
+        { jobId: "job", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") },
+      ]),
+    });
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
 

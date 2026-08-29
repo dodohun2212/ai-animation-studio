@@ -3,6 +3,7 @@ import type { Asset, AssetFileAuditEntry, AssetType, CreateAssetMetadata, GetAss
 import { addAssetVersion, createAsset, createAssetFolder, deleteAsset, deleteAssetFolder, deleteAssetOwnedFile, getAsset, listAssetFileAudit, listAssets, relinkAsset, runLegacyReferenceMigration, setAssetParentFolder, toAssetDisplayError, updateAsset, updateCharacterFolderReferenceSet } from "../api/assetsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
+import { GeneratedImagesSection } from "./GeneratedImagesSection.js";
 
 interface Props { onBack: () => void; initialQuery?: string }
 const TYPES: Array<{ value: AssetType; label: string }> = [
@@ -1306,6 +1307,9 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
         </section>
       )}
       </div>
+      {/* The pictures this app has made, gathered across projects. Collapsed, and absent entirely when there
+          are none. Viewing only — the files belong to the projects that made them. */}
+      <GeneratedImagesSection />
       </div>
     </section>
   );

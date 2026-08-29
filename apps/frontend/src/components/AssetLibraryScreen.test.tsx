@@ -2,7 +2,7 @@ import type { Asset, GetAssetResponse, ListAssetsResponse } from "@ai-animation-
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { jsonResponse, makeAsset } from "../api/testUtils.js";
+import { jsonResponse, makeAsset , answerOutOfBand } from "../api/testUtils.js";
 import { AssetLibraryScreen } from "./AssetLibraryScreen.js";
 
 function searchForm(): HTMLFormElement {
@@ -59,6 +59,14 @@ async function fillAndSubmitImport(file: File, name: string): Promise<void> {
   fireEvent.click(within(form).getByRole("button", { name: "가져오기" }));
 }
 
+/**
+ * The "만든 이미지" section on this screen fetches its own list on mount. These tests are about the asset
+ * library and have no opinion about it, so it is answered out of band rather than threaded through every
+ * call-order chain in the file — which would have buried what each test is actually checking.
+ */
+const withGeneratedImages = (fetchMock: ReturnType<typeof vi.fn>) =>
+  answerOutOfBand({ "GET /images/generated": { projects: [], episodes: [] } }, fetchMock);
+
 describe("AssetLibraryScreen", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -72,7 +80,7 @@ describe("AssetLibraryScreen", () => {
       ],
     };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, response));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
 
     render(<AssetLibraryScreen onBack={() => {}} />);
     expect(screen.getByText("에셋을 불러오는 중...")).toBeTruthy();
@@ -86,7 +94,7 @@ describe("AssetLibraryScreen", () => {
 
   it("pre-fills the search box and searches with initialQuery on mount, e.g. when opened as a project's gallery", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { assets: [] }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
 
     render(<AssetLibraryScreen onBack={() => {}} initialQuery="my_project" />);
 
@@ -98,14 +106,14 @@ describe("AssetLibraryScreen", () => {
   });
 
   it("shows the empty state when the backend returns no assets", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { assets: [] })));
+    vi.stubGlobal("fetch", withGeneratedImages(vi.fn().mockResolvedValue(jsonResponse(200, { assets: [] }))));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     expect(await screen.findByText("등록된 에셋이 없습니다.")).toBeTruthy();
   });
 
   it("shows a fixed, safe Korean message and identifiable code when the initial load fails", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(500, { code: "ASSET_STORAGE_ERROR", message: "disk failure at C:\\secret\\path" })));
+    vi.stubGlobal("fetch", withGeneratedImages(vi.fn().mockResolvedValue(jsonResponse(500, { code: "ASSET_STORAGE_ERROR", message: "disk failure at C:\\secret\\path" }))));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const alert = await screen.findByRole("alert");
@@ -114,11 +122,11 @@ describe("AssetLibraryScreen", () => {
   });
 
   it("never renders the backend's raw message, details, path, or stack anywhere in the DOM", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(500, {
+    vi.stubGlobal("fetch", withGeneratedImages(vi.fn().mockResolvedValue(jsonResponse(500, {
       code: "ASSET_DATA_INVALID",
       message: "raw internal detail C:\\Users\\secret\\learning_data",
       details: { path: "C:\\Users\\secret", stack: "at Object.<anonymous> (file.ts:1:1)" },
-    })));
+    }))));
     const rendered = render(<AssetLibraryScreen onBack={() => {}} />);
 
     await screen.findByRole("alert");
@@ -134,7 +142,7 @@ describe("AssetLibraryScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, {
         assets: [makeAsset({ assetId: "ASSET-2", displayName: "b", assetType: "character" }), makeAsset({ assetId: "ASSET-1", displayName: "a", assetType: "character" })],
       }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
     await screen.findByText("등록된 에셋이 없습니다.");
 
@@ -163,7 +171,7 @@ describe("AssetLibraryScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { asset: created })) // create
       .mockResolvedValueOnce(jsonResponse(200, { assets: [created] })) // reload
       .mockResolvedValueOnce(jsonResponse(200, { asset: created, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true })); // reopen
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
     await screen.findByText("등록된 에셋이 없습니다.");
 
@@ -189,7 +197,7 @@ describe("AssetLibraryScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { asset: created }))
       .mockResolvedValueOnce(jsonResponse(200, { assets: [created] }))
       .mockResolvedValueOnce(jsonResponse(200, { asset: created, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
     await screen.findByText("등록된 에셋이 없습니다.");
 
@@ -204,7 +212,7 @@ describe("AssetLibraryScreen", () => {
 
   it("shows an accessible fixed validation error and sends no request when submitting the import form without a file or a name", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { assets: [] }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
     await screen.findByText("등록된 에셋이 없습니다.");
 
@@ -229,7 +237,7 @@ describe("AssetLibraryScreen", () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveCreate = resolve; }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
     await screen.findByText("등록된 에셋이 없습니다.");
 
@@ -257,7 +265,7 @@ describe("AssetLibraryScreen", () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, { assets: [asset] }))
       .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: ["project_a", "project_b"], ownership: "project_owned", canDeleteOwnedFile: false }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -286,7 +294,7 @@ describe("AssetLibraryScreen", () => {
         { folder: representativeFolder, children: [second, first] },
       ],
     });
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -321,7 +329,7 @@ describe("AssetLibraryScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }))
       .mockResolvedValueOnce(jsonResponse(200, { asset: updated }))
       .mockResolvedValueOnce(jsonResponse(200, { assets: [updated] }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -342,9 +350,9 @@ describe("AssetLibraryScreen", () => {
 
   it("guards delete: disables the delete button and shows guidance for an asset in use", async () => {
     const asset = makeAsset({ assetId: "ASSET-USED", displayName: "삭제 불가" });
-    vi.stubGlobal("fetch", vi.fn()
+    vi.stubGlobal("fetch", withGeneratedImages(vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { assets: [asset] }))
-      .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: ["project_a"], ownership: "project_owned", canDeleteOwnedFile: false })));
+      .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: ["project_a"], ownership: "project_owned", canDeleteOwnedFile: false }))));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -364,7 +372,7 @@ describe("AssetLibraryScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }))
       .mockResolvedValueOnce(jsonResponse(200, { assetId: "ASSET-FREE", deletedOwnedFile: false }))
       .mockResolvedValueOnce(jsonResponse(200, { assets: [] }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -388,7 +396,7 @@ describe("AssetLibraryScreen", () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, { assets: [asset] }))
       .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -412,7 +420,7 @@ describe("AssetLibraryScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { assets: [assetA, assetB] }))
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveA = resolve; })) // open A: slow
       .mockResolvedValueOnce(jsonResponse(200, { asset: assetB, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true })); // open B: fast
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -438,7 +446,7 @@ describe("AssetLibraryScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { assets: [assetA, assetB] }))
       .mockResolvedValueOnce(jsonResponse(200, { asset: assetA, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }))
       .mockResolvedValueOnce(jsonResponse(500, { code: "ASSET_STORAGE_ERROR", message: "internal detail" }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -463,7 +471,7 @@ describe("AssetLibraryScreen", () => {
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveEdit = resolve; })) // PATCH pending
       .mockResolvedValueOnce(jsonResponse(200, { asset: assetB, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true })) // open B
       .mockResolvedValueOnce(jsonResponse(200, { assets: [assetA, assetB] })); // list refresh after edit resolves
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -496,7 +504,7 @@ describe("AssetLibraryScreen", () => {
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveDelete = resolve; }))
       .mockResolvedValueOnce(jsonResponse(200, { asset: assetB, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }))
       .mockResolvedValueOnce(jsonResponse(200, { assets: [assetB] }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -527,7 +535,7 @@ describe("AssetLibraryScreen", () => {
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveCreate = resolve; })) // create: pending
       .mockResolvedValueOnce(jsonResponse(200, { asset: assetB, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true })) // open B while import is pending
       .mockResolvedValueOnce(jsonResponse(200, { assets: [assetA, assetB, created] })); // list refresh after import resolves
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -557,7 +565,7 @@ describe("AssetLibraryScreen", () => {
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveCreate = resolve; })) // create: pending
       .mockResolvedValueOnce(jsonResponse(200, { assets: [newerResult] })) // explicit newer search while import is pending
       .mockResolvedValueOnce(jsonResponse(200, { asset: created, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true })); // auto-open after import resolves
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
     await screen.findByText("원본 항목");
 
@@ -587,7 +595,7 @@ describe("AssetLibraryScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { asset: assetA, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true })) // open A
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveEdit = resolve; })) // PATCH: pending
       .mockResolvedValueOnce(jsonResponse(200, { assets: [newerResult] })); // explicit newer search while edit is pending
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -623,7 +631,7 @@ describe("AssetLibraryScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { asset: assetA, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true })) // open A
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveDelete = resolve; })) // DELETE: pending
       .mockResolvedValueOnce(jsonResponse(200, { assets: [newerResult] })); // explicit newer search while delete is pending
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -651,7 +659,7 @@ describe("AssetLibraryScreen", () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, { assets: [asset] }))
       .mockResolvedValueOnce(jsonResponse(500, { code: "ASSET_JSON_MALFORMED", message: "internal parse detail" }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
     await screen.findByText("유지되어야 하는 항목");
 
@@ -668,7 +676,7 @@ describe("AssetLibraryScreen", () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, { assets: [asset] }))
       .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -691,7 +699,7 @@ describe("AssetLibraryScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }))
       .mockResolvedValueOnce(jsonResponse(200, { asset: versioned }))
       .mockResolvedValueOnce(jsonResponse(200, { assets: [versioned] }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -724,7 +732,7 @@ describe("AssetLibraryScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }))
       .mockResolvedValueOnce(jsonResponse(200, { asset: relinked }))
       .mockResolvedValueOnce(jsonResponse(200, { assets: [relinked] }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -753,7 +761,7 @@ describe("AssetLibraryScreen", () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, { assets: [asset] }))
       .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -778,7 +786,7 @@ describe("AssetLibraryScreen", () => {
           { assetId: "ASSET-2", displayName: "누락 에셋", classification: "missing", sourceKind: "project", message: "파일이 존재하지 않습니다" },
         ],
       }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
     await screen.findByText("등록된 에셋이 없습니다.");
 
@@ -800,7 +808,7 @@ describe("AssetLibraryScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true }))
       .mockResolvedValueOnce(jsonResponse(200, { assetId: "ASSET-OWNED", deletedOwnedFile: true }))
       .mockResolvedValueOnce(jsonResponse(200, { assets: [] }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -820,9 +828,9 @@ describe("AssetLibraryScreen", () => {
 
   it("does not offer owned-file deletion when the backend reports it is unsafe", async () => {
     const asset = makeAsset({ assetId: "ASSET-SHARED", displayName: "공유된 원본" });
-    vi.stubGlobal("fetch", vi.fn()
+    vi.stubGlobal("fetch", withGeneratedImages(vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { assets: [asset] }))
-      .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false })));
+      .mockResolvedValueOnce(jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false }))));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -837,7 +845,7 @@ describe("AssetLibraryScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
       .mockResolvedValueOnce(jsonResponse(200, { projectsScanned: 3, migratedAssets: 2, deduplicatedAssets: 1, failedAssets: 0 }))
       .mockResolvedValueOnce(jsonResponse(200, { assets: [makeAsset({ assetId: "ASSET-LEGACY", displayName: "이전된 에셋" })] }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
     await screen.findByText("등록된 에셋이 없습니다.");
 
@@ -859,7 +867,7 @@ describe("AssetLibraryScreen", () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
       .mockResolvedValueOnce(jsonResponse(200, { projectsScanned: 1, migratedAssets: 0, deduplicatedAssets: 0, failedAssets: 0 }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
     await screen.findByText("등록된 에셋이 없습니다.");
 
@@ -877,7 +885,7 @@ describe("AssetLibraryScreen", () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
       .mockResolvedValueOnce(jsonResponse(500, { code: "ASSET_STORAGE_ERROR", message: "internal detail" }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
     await screen.findByText("등록된 에셋이 없습니다.");
 
@@ -899,7 +907,7 @@ describe("AssetLibraryScreen", () => {
       "GET /assets/CHAR-1": { asset: first, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
       "DELETE /assets/FOLDER-CHAR/folder": { assetId: "FOLDER-CHAR", removedChildAssetIds: [], deletedFiles: 0 },
     });
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -926,7 +934,7 @@ describe("AssetLibraryScreen", () => {
       "GET /assets/CHAR-1": { asset: first, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
       "DELETE /assets/FOLDER-CHAR/folder?removeChildIndexes=true&deleteManualFiles=true": { assetId: "FOLDER-CHAR", removedChildAssetIds: ["CHAR-1"], deletedFiles: 1 },
     });
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -951,7 +959,7 @@ describe("AssetLibraryScreen", () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { assets: [folder] }))
       .mockResolvedValueOnce(jsonResponse(200, { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -971,7 +979,7 @@ describe("AssetLibraryScreen", () => {
       "POST /assets/folders": { asset: folder },
       "GET /assets/FOLDER-BG": { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false },
     });
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
     await screen.findByText("등록된 에셋이 없습니다.");
 
@@ -1000,7 +1008,7 @@ describe("AssetLibraryScreen", () => {
       "GET /assets/CHAR-1": { asset: child, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
       "PATCH /assets/CHAR-1": { asset: updatedChild },
     });
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -1037,7 +1045,7 @@ describe("AssetLibraryScreen", () => {
       "POST /assets": { asset: created },
       "PATCH /assets/CHAR-NEW/parent-folder": { asset: filed },
     });
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -1068,7 +1076,7 @@ describe("AssetLibraryScreen", () => {
       if (url === "/assets/CHAR-NEW/parent-folder") return jsonResponse(500, { code: "ASSET_MUTATION_UNSUPPORTED", message: "수정할 수 없습니다." });
       throw new Error(`Unexpected fetch call in test: ${method} ${url}`);
     });
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -1086,7 +1094,7 @@ describe("AssetLibraryScreen", () => {
   });
 
   it("warns that a loose character image will never reach a project's cast list", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { assets: [] })));
+    vi.stubGlobal("fetch", withGeneratedImages(vi.fn().mockResolvedValue(jsonResponse(200, { assets: [] }))));
     render(<AssetLibraryScreen onBack={() => {}} />);
     await screen.findByText("등록된 에셋이 없습니다.");
 
@@ -1097,7 +1105,7 @@ describe("AssetLibraryScreen", () => {
   });
 
   it("calls onBack when the back button is clicked", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { assets: [] })));
+    vi.stubGlobal("fetch", withGeneratedImages(vi.fn().mockResolvedValue(jsonResponse(200, { assets: [] }))));
     const onBack = vi.fn();
     render(<AssetLibraryScreen onBack={onBack} />);
     await screen.findByText("등록된 에셋이 없습니다.");
@@ -1123,7 +1131,7 @@ describe("AssetLibraryScreen", () => {
       if (url === "/assets/FOLDER-GEN") return jsonResponse(200, { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false });
       return jsonResponse(200, { asset: child, usageProjectIds: [], ownership: "project_generated", canDeleteOwnedFile: false });
     });
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });
@@ -1155,7 +1163,7 @@ describe("AssetLibraryScreen", () => {
       if (String(input) === "/assets") return jsonResponse(200, { assets: [folder] });
       return jsonResponse(200, { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false });
     });
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
     render(<AssetLibraryScreen onBack={() => {}} />);
 
     const list = await screen.findByRole("list", { name: "에셋 목록" });

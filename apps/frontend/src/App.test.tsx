@@ -215,6 +215,7 @@ describe("App", () => {
       const requestUrl = String(input);
       if (requestUrl === "/projects") return jsonResponse(200, { projects: [] });
       if (requestUrl === "/assets") return jsonResponse(200, { assets: [] });
+      if (requestUrl === "/images/generated") return jsonResponse(200, { projects: [], episodes: [] });
       throw new Error(`Unexpected fetch call in test: ${requestUrl}`);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -226,7 +227,10 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "이미지 보관함" }));
     await screen.findByText("등록된 에셋이 없습니다.");
 
-    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(["/assets"]);
+    // The exact set, not merely "no provider call": the screen may ask for the assets and for the list of
+    // images it generated, and nothing else. The generated-image list is the section added to this screen —
+    // it reads files already on disk and costs nothing.
+    expect(fetchMock.mock.calls.map(([url]) => String(url)).sort()).toEqual(["/assets", "/images/generated"]);
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/settings/providers"))).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: "프로젝트 목록으로" }));

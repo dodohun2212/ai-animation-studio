@@ -70,6 +70,36 @@ export function withStatus(status: number, body: unknown): unknown {
   return { [STATUS]: true, status, body } satisfies RouteStatus;
 }
 
+/**
+ * Answers a few named routes itself and hands everything else to an existing mock.
+ *
+ * For the case where a screen gains a request that a pile of older tests have no opinion about: a section
+ * added to a page fetches its own data on mount, and every call-order chain behind it shifts by one. Rewriting
+ * dozens of tests to say "and also this" would bury what each of them is actually about, so the new request is
+ * taken out of the sequence instead of being threaded through it.
+ *
+ * `routes` uses the same `"METHOD /url-suffix"` keys as `stubFetchByRoute`. Anything unmatched goes to
+ * `fallback` untouched, so the tests' own sequences are exactly as they were.
+ */
+export function answerOutOfBand(routes: Record<string, unknown>, fallback: ReturnType<typeof vi.fn>): ReturnType<typeof vi.fn> {
+  const own = stubFetchByRoute(routes);
+  const keys = Object.keys(routes);
+  type AnyFetch = (...args: unknown[]) => Promise<Response>;
+  // Arguments are forwarded exactly as they arrived, count included: a test asserting
+  // `toHaveBeenCalledWith("/assets")` fails against a two-argument call, so passing an explicit `undefined`
+  // for a missing init would change what the underlying mock saw.
+  return vi.fn(async (...args: unknown[]) => {
+    const [input, init] = args as [RequestInfo | URL, RequestInit | undefined];
+    const url = String(input instanceof Request ? input.url : input);
+    const method = init?.method ?? "GET";
+    const mine = keys.some((key) => {
+      const [keyMethod, ...rest] = key.split(" ");
+      return keyMethod === method && url.endsWith(rest.join(" "));
+    });
+    return (mine ? own as unknown as AnyFetch : fallback as unknown as AnyFetch)(...args);
+  });
+}
+
 export function stubFetchByRoute(
   routes: Record<string, unknown>,
   errorRoutes: Record<string, { status: number; body: unknown }> = {},
