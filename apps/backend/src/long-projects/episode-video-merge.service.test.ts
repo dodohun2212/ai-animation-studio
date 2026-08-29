@@ -298,3 +298,29 @@ describe("EpisodeVideoMergeService — the cut it replaces", () => {
       .rejects.toMatchObject({ code: "ENOENT" });
   });
 });
+
+describe("EpisodeVideoMergeService — the path a person can open", () => {
+  /**
+   * `finalVideoPath` is the same string on both merge responses and means a different origin on each: the short
+   * project's is relative to the project, the Episode's to the Episode. The desktop bridge resolves everything
+   * against the project folder, so handing the Episode's value over names
+   * `<projectId>/videos/final/instagram_reel.mp4` — nothing at all, or for an id that is also a short project,
+   * somebody else's finished video.
+   *
+   * Composed here rather than in the screen: the Episode's directory layout has one home in this codebase, and
+   * a screen assembling `long_story/EpisodeNN/...` would be a second copy of it in the place least able to
+   * notice when it stops matching disk.
+   */
+  it("returns the merged file addressed from the project root as well as from the Episode", async () => {
+    const { projectsRoot } = await setup();
+
+    const result = await new EpisodeVideoMergeService(projectsRoot, runner({})).merge("long", 1);
+
+    expect(result.finalVideoPath).toBe("videos/final/instagram_reel.mp4");
+    expect(result.openablePath).toBe("long_story/Episode01/videos/final/instagram_reel.mp4");
+    // Forward slashes on the wire, whatever this machine's separator is: the screen passes it through untouched.
+    expect(result.openablePath).not.toContain("\\");
+    // And the Episode carries both too, so a reload can still open it.
+    expect(result.episode.openablePath).toBe("long_story/Episode01/videos/final/instagram_reel.mp4");
+  });
+});

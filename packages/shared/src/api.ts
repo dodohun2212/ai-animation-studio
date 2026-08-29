@@ -180,7 +180,10 @@ export interface LongEpisodeDetail extends LongEpisodeOutline {
    * neither came out.
    */
   errors?: string[];
+  /** Where the merged file sits inside this Episode — for display. To open it, use `openablePath`; see MergeLongEpisodeVideosResponse.finalVideoPath for why the two differ. */
   finalVideoPath?: string;
+  /** The same file addressed from the project root, safe to hand to the desktop bridge. Absent whenever `finalVideoPath` is. */
+  openablePath?: string;
   /** Present once this Episode has been published to Instagram, so a reload still knows. */
   instagramPost?: LongEpisodeInstagramPost;
   /**
@@ -483,7 +486,25 @@ export interface MergeLongEpisodeVideosRequest {
 
 export interface MergeLongEpisodeVideosResponse {
   episode: LongEpisodeDetail;
+  /**
+   * Where the file sits **inside the Episode**, for showing a person which file was written.
+   *
+   * The identical string on the short project's merge response is relative to the *project*, and the desktop
+   * bridge resolves everything it is handed against the project folder. So this value looks like one that can
+   * be opened and is not: handed over as-is it names `<projectId>/videos/final/instagram_reel.mp4`, which is
+   * either nothing at all or — for an id that is also a short project — somebody else's finished video.
+   * Display this; open `openablePath`.
+   */
   finalVideoPath: "videos/final/instagram_reel.mp4";
+  /**
+   * The same file, addressed from the project root: `long_story/Episode07/videos/final/instagram_reel.mp4`.
+   *
+   * Composed here rather than in the screen. The Episode's directory layout has one home in this codebase
+   * (`LONG_STORY_DIRECTORY`, `episodeDirectoryName`) precisely so that a second copy of it cannot drift — and a
+   * screen that assembles the path is that second copy, in the one place least likely to be checked against
+   * disk. The screen passes this through untouched.
+   */
+  openablePath: string;
 }
 
 /**

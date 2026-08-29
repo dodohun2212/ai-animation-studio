@@ -1,6 +1,7 @@
 import type { LongEpisodeDetail, LongEpisodeInstagramPost, LongEpisodeStatus, UsedAudio } from "@ai-animation-studio/shared";
 
 import { toApiEpisodeScript } from "./episode-script-format.js";
+import { episodeProjectRelativePath } from "./long-project-paths.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 
 /** The stored shape every Episode service already reads; only the fields this mapper touches are named. */
@@ -45,7 +46,13 @@ export function toEpisodeDetail(episode: StoredEpisodeForDetail): LongEpisodeDet
     updatedAt: typeof episode.updated_at === "string" ? episode.updated_at : new Date(0).toISOString(),
     ...(warnings.length > 0 ? { warnings } : {}),
     ...(errorsOf(episode).length > 0 ? { errors: errorsOf(episode) } : {}),
-    ...(typeof episode.final_video_path === "string" && episode.final_video_path ? { finalVideoPath: episode.final_video_path } : {}),
+    // Both, and never one without the other: `finalVideoPath` is where the file sits inside the Episode, which
+    // is what a person should be shown, and `openablePath` is the same file from the project root, which is the
+    // only form the desktop bridge can resolve. The strings differ by an origin, not by a file — handing the
+    // first one to "open in explorer" names a path in some short project instead.
+    ...(typeof episode.final_video_path === "string" && episode.final_video_path
+      ? { finalVideoPath: episode.final_video_path, openablePath: episodeProjectRelativePath(episode.number, episode.final_video_path) }
+      : {}),
     ...(toEpisodeInstagramPost(episode.instagram_post) ? { instagramPost: toEpisodeInstagramPost(episode.instagram_post)! } : {}),
     ...(toEpisodePreviousInstagramPosts(episode.previous_instagram_posts).length > 0
       ? { previousInstagramPosts: toEpisodePreviousInstagramPosts(episode.previous_instagram_posts) } : {}),

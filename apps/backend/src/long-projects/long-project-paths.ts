@@ -45,3 +45,15 @@ export function episodeDirectoryName(episodeNumber: number): string {
   if (!Number.isInteger(episodeNumber) || episodeNumber < 1) throw longEpisodeNotFound();
   return `Episode${String(episodeNumber).padStart(2, "0")}`;
 }
+
+/**
+ * One Episode's file, addressed from the project folder — the form the desktop bridge can open.
+ *
+ * Forward slashes, always: this is a wire value that a screen hands straight to "open in explorer", not a path
+ * this process joins. Composed here because the Episode's layout has exactly one home in this codebase, and a
+ * screen assembling `long_story/EpisodeNN/...` for itself would be a second copy of that layout in the place
+ * least able to notice when it stops matching disk.
+ */
+export function episodeProjectRelativePath(episodeNumber: number, withinEpisode: string): string {
+  return [LONG_STORY_DIRECTORY, episodeDirectoryName(episodeNumber), ...withinEpisode.split("/").filter(Boolean)].join("/");
+}

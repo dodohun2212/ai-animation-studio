@@ -9,7 +9,7 @@ import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeS
 import { AudioLibraryService } from "../audio/audio-library.service.js";
 import { isPlaceholderClip } from "../videos/placeholder-clip.js";
 import { longEpisodeFfmpegUnavailable, longEpisodeMergeClipsInvalid, longEpisodeMergeFailed, longEpisodeMergeNotAllowed, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
-import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
+import { episodeDirectoryName, episodeProjectRelativePath, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { toEpisodeDetail } from "./episode-detail.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
@@ -291,7 +291,7 @@ export class EpisodeVideoMergeService {
       };
       const completed = { ...rendering, state: "completed" as const, updated_at: new Date().toISOString(), final_video_path: FINAL_PATH, used_audio: usedAudio };
       await this.saveEpisode(id, number, completed);
-      return { episode: this.detail(completed), finalVideoPath: FINAL_PATH };
+      return { episode: this.detail(completed), finalVideoPath: FINAL_PATH, openablePath: episodeProjectRelativePath(number, FINAL_PATH) };
     } catch (error) {
       await this.fail(id, number, rendering);
       if (error instanceof MediaToolError && error.kind === "unavailable") throw longEpisodeFfmpegUnavailable();
