@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { LongEpisodeContinuityMemory, LongEpisodeDetail, SaveLongEpisodeContinuityRequest } from "@ai-animation-studio/shared";
+import type { LongEpisodeContinuityMemory, LongEpisodeDetail, LongEpisodeOutline, SaveLongEpisodeContinuityRequest } from "@ai-animation-studio/shared";
 
-import { getLongEpisodeContinuity, saveLongEpisodeContinuity, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { getLongEpisode, getLongEpisodeContinuity, saveLongEpisodeContinuity, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { Spinner } from "./Spinner.js";
 
@@ -28,6 +28,28 @@ const blankForm = (): FormState => ({
   resolvedConflicts: [], newConflicts: [], revealedSecretIds: [], remainingSecretIds: [], newForeshadowingIds: [], resolvedForeshadowingIds: [],
   nextActions: [], timeElapsed: "", worldChanges: [], userEdits: "",
 });
+
+/**
+ * The four fields the next Episode's script prompt actually reads, filled from what this Episode was already
+ * approved as — its own outline.
+ *
+ * Every one of these sentences was written and approved earlier in this same Episode's flow, and the screen
+ * was asking for them again from a blank box. `episode-scripts.service.ts`'s continuityContext() carries
+ * exactly summary/events/character_changes/next_actions forward, so those are what a prefill is worth doing
+ * for; the rest are left blank rather than padded with guesses.
+ *
+ * Runs only when nothing has been saved yet. A memo that exists is a person's reviewed record and is never
+ * written over — and nothing here is saved by appearing, which the header already promises.
+ */
+function prefillFromOutline(episode: LongEpisodeOutline): Partial<FormState> {
+  const line = (value: string) => (value.trim() ? [value.trim()] : []);
+  return {
+    episodeSummary: episode.summary.trim(),
+    events: line(episode.mainEvent),
+    newConflicts: line(episode.conflict),
+    nextActions: line(episode.nextEpisodeHook),
+  };
+}
 
 const toLines = (value: string[]) => value.join("\n");
 const fromLines = (value: string) => value.split("\n").map((item) => item.trim()).filter(Boolean);
@@ -78,19 +100,35 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
    * is the honest outcome when the screen could not learn the answer.
    */
   const [canSave, setCanSave] = useState(true);
+  /** True while the boxes still hold what this screen put there from the outline and nothing has been saved. */
+  const [prefilled, setPrefilled] = useState(false);
   const busy = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setError(null); setSaved(undefined);
+    setPrefilled(false);
     getLongEpisodeContinuity(projectId, episodeNumber)
-      .then((response) => { if (!cancelled) { setForm(toForm(response.memory)); setCanSave(response.canSave); } })
+      .then(async (response) => {
+        if (cancelled) return;
+        setCanSave(response.canSave);
+        if (response.memory) { setForm(toForm(response.memory)); return; }
+        // Only a memo that does not exist yet gets one. The outline is a convenience, so a failure to read it
+        // leaves the blank form the screen always had rather than failing the screen.
+        const outline = await getLongEpisode(projectId, episodeNumber).then((one) => one.episode).catch(() => null);
+        if (cancelled || !outline) return;
+        const suggested = prefillFromOutline(outline);
+        if (!suggested.episodeSummary && !suggested.events?.length && !suggested.newConflicts?.length && !suggested.nextActions?.length) return;
+        setForm((current) => ({ ...current, ...suggested }));
+        setPrefilled(true);
+      })
       .catch((caught) => { if (!cancelled) setError(toLongProjectDisplayError(caught)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [projectId, episodeNumber]);
 
   function update(key: keyof FormState, value: string): void {
+    setPrefilled(false);
     setForm((current) => ({ ...current, [key]: value }));
   }
 
@@ -120,6 +158,12 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
           회차가 어떻게 끝났는지를 적는 곳이라서요. 지금은 예전에 저장한 내용을 읽어볼 수만 있습니다.
         </p>
       )}
+      {!loading && prefilled && (
+        <p data-testid="continuity-prefilled" className="rounded-xl border border-white/10 bg-slate-900/70 px-4 py-3 text-sm text-slate-300">
+          아직 저장된 메모가 없어서 <span className="font-semibold text-slate-100">이 회차의 개요</span>로 아래 네 칸을 미리 채워 뒀습니다 — 요약, 있었던 일, 새로 생긴 갈등, 다음에서 할 일.
+          고쳐 쓰셔도 되고, 그대로 두셔도 됩니다. <span className="font-semibold text-slate-100">저장을 눌러야 저장됩니다.</span>
+        </p>
+      )}
       {loading && <Spinner label="저장된 이어쓰기 메모를 불러오는 중..." />}
       {!loading && (
         <div className={cardSection}>
@@ -130,7 +174,7 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
           {listFields.map(([key, label]) => (
             <label key={key} className="block text-sm text-slate-300">
               {label}
-              <textarea data-testid={`continuity-${key}`} className={fieldClassName} value={toLines(form[key])} disabled={pending || !canSave} placeholder="한 줄에 하나씩 입력" onChange={(event) => setForm((current) => ({ ...current, [key]: fromLines(event.target.value) }))} />
+              <textarea data-testid={`continuity-${key}`} className={fieldClassName} value={toLines(form[key])} disabled={pending || !canSave} placeholder="한 줄에 하나씩 입력" onChange={(event) => { setPrefilled(false); setForm((current) => ({ ...current, [key]: fromLines(event.target.value) })); }} />
               {/* The screen this hint used to name no longer exists, and with it went the only place these
                   numbers could be read off. Naming a deleted screen is worse than saying nothing: a person goes
                   looking for it, does not find it, and reads the whole field as broken. The honest hint is what

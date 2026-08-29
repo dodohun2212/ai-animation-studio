@@ -176,6 +176,24 @@ function suggestCaptionBody(project: Project): string {
 }
 
 /**
+ * The same suggestion for an Episode, which had none — the box opened empty and stayed empty.
+ *
+ * A short project got its title and narration written in for it here; an Episode, which is the one a series
+ * creator writes over and over, did not. Nothing about an Episode made it harder: the title, the outline
+ * summary and the per-scene narration are all already on the Episode this screen has loaded.
+ *
+ * The summary rather than the ending on purpose — a caption sits above the video and a cliffhanger spoils it.
+ */
+function suggestEpisodeCaptionBody(episode: LongEpisodeDetail): string {
+  const heading = [`${episode.episodeNumber}화`, episode.title.trim()].filter(Boolean).join(". ");
+  const narration = (episode.script?.scenes ?? [])
+    .map((scene) => (typeof scene.narration === "string" ? scene.narration.trim() : ""))
+    .filter((line) => line.length > 0)
+    .join(" ");
+  return [heading, episode.summary.trim(), narration].filter((block) => block.length > 0).join("\n\n");
+}
+
+/**
  * Everything that turns a finished video into a post: which video, what the caption says, whether the shape and
  * length are within what a reel accepts, the credit line the audio licence requires, which account it goes to —
  * and finally the posting itself.
@@ -272,8 +290,11 @@ export function InstagramPostScreen({ onBack }: Props) {
           // The Episode's settings already carry the derived total. Multiplying sceneCount by clip length here
           // would be a second place computing the same number, and the two would drift.
           const episodeSeconds = episodeSettings?.settings.episodeDurationSeconds ?? null;
-          setBody("");
-          setBodyAutoFilled(false);
+          // An Episode keeps no saved draft, so there is nothing to preserve and every visit starts from the
+          // suggestion — unlike a project, where a saved body always wins over one.
+          const suggestedBody = suggestEpisodeCaptionBody(episodeResponse.episode);
+          setBody(suggestedBody);
+          setBodyAutoFilled(suggestedBody.length > 0);
           setHashtagsRaw("");
           setAiNoticeOn(true);
           setSaveState("idle");
@@ -708,7 +729,9 @@ export function InstagramPostScreen({ onBack }: Props) {
             </label>
             {bodyAutoFilled && (
               <p data-testid="post-body-autofilled" className="text-xs text-slate-400">
-                이 프로젝트의 제목과 내레이션으로 미리 채워 뒀습니다. 그대로 올려도 되고, 지우고 새로 쓰셔도 됩니다.
+                {picked.status === "ready" && picked.kind === "episode"
+                  ? "이 회차의 제목·줄거리·내레이션으로 미리 채워 뒀습니다. 그대로 올려도 되고, 지우고 새로 쓰셔도 됩니다."
+                  : "이 프로젝트의 제목과 내레이션으로 미리 채워 뒀습니다. 그대로 올려도 되고, 지우고 새로 쓰셔도 됩니다."}
               </p>
             )}
 

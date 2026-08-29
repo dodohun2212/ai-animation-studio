@@ -1,33 +1,47 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { jsonResponse } from "../api/testUtils.js";
+import { stubFetchByRoute } from "../api/testUtils.js";
 import { LongEpisodeContinuityScreen } from "./LongEpisodeContinuityScreen.js";
 
 const memory = (overrides = {}) => ({
   episodeNumber: 1, episodeSummary: "The hero enters the ruins.", events: ["map recovered"], appearedCharacterIds: ["hero"], characterChanges: [{ id: "hero", change: "injured" }], appearedLocationIds: ["ruins"], itemChanges: [{ id: "map", change: "recovered" }], resolvedConflicts: [], newConflicts: ["guard arrives"], revealedSecretIds: [], remainingSecretIds: ["secret-1"], newForeshadowingIds: ["foreshadow-1"], resolvedForeshadowingIds: [], nextActions: ["escape"], timeElapsed: "one hour", worldChanges: ["the gate is open"], userEdits: "Keep the injury in the next Episode.", updatedAt: "2026-08-23T00:00:00.000Z", ...overrides,
 });
+const CONTINUITY_URL = "/long-projects/long/episodes/1/continuity";
+const EPISODE_URL = "/long-projects/long/episodes/1";
+/**
+ * The Episode's own outline, fetched only when no memo exists yet so the four carried-forward fields can be
+ * prefilled. Blank by default: a test that says nothing about the outline gets no prefill and sees the blank
+ * form it always saw.
+ */
+const outline = (overrides = {}) => ({
+  episode: { episodeNumber: 1, title: "Episode", summary: "", mainEvent: "", conflict: "", cliffhanger: "", nextEpisodeHook: "", status: "videos_approved" as const, approved: true, scriptRevision: 1, scriptHistoryCount: 1, ...overrides },
+});
+
 const nextEpisode = { episodeNumber: 2, title: "Episode 2", summary: "", mainEvent: "", conflict: "", cliffhanger: "", nextEpisodeHook: "", status: "outline_ready" as const, approved: false, scriptRevision: 0, scriptHistoryCount: 0 };
 
 describe("LongEpisodeContinuityScreen", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("loads existing memory without an automatic save", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { memory: memory(), canSave: true }));
+    const fetchMock = stubFetchByRoute({ [`GET ${CONTINUITY_URL}`]: { memory: memory(), canSave: true }, [`GET ${EPISODE_URL}`]: outline({ summary: "outline summary" }) });
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeContinuityScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
     expect(await screen.findByDisplayValue("The hero enters the ruins.")).toBeTruthy();
     expect(screen.getByTestId("continuity-events")).toHaveValue("map recovered");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("/long-projects/long/episodes/1/continuity");
-    expect(fetchMock.mock.calls[0]?.[1]).toBeUndefined();
+    // A saved memo is a person's reviewed record: the outline is never read, so it cannot overwrite one.
+    expect(screen.queryByTestId("continuity-prefilled")).toBeNull();
+    expect(fetchMock.mock.calls.every((call) => (call[1] as RequestInit | undefined) === undefined)).toBe(true);
+    expect(fetchMock.mock.calls.some((call) => String(call[0]) === EPISODE_URL)).toBe(false);
   });
 
   it("saves only after the explicit save button with reviewed list and JSON fields", async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { memory: null, canSave: true }))
-      .mockResolvedValueOnce(jsonResponse(200, { memory: memory({ episodeSummary: "Reviewed summary", events: ["event one", "event two"], characterChanges: [{ id: "hero" }], itemChanges: [] }), nextEpisode }));
+    const fetchMock = stubFetchByRoute({
+      [`GET ${CONTINUITY_URL}`]: { memory: null, canSave: true },
+      [`GET ${EPISODE_URL}`]: outline(),
+      [`PUT ${CONTINUITY_URL}`]: { memory: memory({ episodeSummary: "Reviewed summary", events: ["event one", "event two"], characterChanges: [{ id: "hero" }], itemChanges: [] }), nextEpisode },
+    });
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeContinuityScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenNextEpisode={() => {}} />);
 
@@ -38,14 +52,49 @@ describe("LongEpisodeContinuityScreen", () => {
     fireEvent.click(screen.getByTestId("continuity-save"));
 
     expect(await screen.findByTestId("continuity-save-success")).toHaveTextContent("에피소드 2");
-    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
-    expect(url).toBe("/long-projects/long/episodes/1/continuity");
+    const put = fetchMock.mock.calls.find((call) => (call[1] as RequestInit | undefined)?.method === "PUT");
+    const [url, init] = put as [string, RequestInit];
+    expect(url).toBe(CONTINUITY_URL);
     expect(init.method).toBe("PUT");
     expect(JSON.parse(String(init.body))).toEqual(expect.objectContaining({ memory: expect.objectContaining({ episodeSummary: "Reviewed summary", events: ["event one", "event two"], characterChanges: [{ id: "hero" }], itemChanges: [] }) }));
   });
 
+  /**
+   * The four boxes this fills were all written and approved earlier in this same Episode's flow, and the screen
+   * was asking for them again from blank. Only these four: `continuityContext()` in episode-scripts.service.ts
+   * carries summary/events/character_changes/next_actions into the next Episode's prompt and nothing else, so
+   * padding the other fields would be typing the person did not ask for, into boxes nothing reads.
+   */
+  it("prefills the carried-forward fields from the Episode's own outline when no memo exists yet", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      [`GET ${CONTINUITY_URL}`]: { memory: null, canSave: true },
+      [`GET ${EPISODE_URL}`]: outline({ summary: "폐허에 들어선다", mainEvent: "지도를 찾는다", conflict: "경비병이 온다", nextEpisodeHook: "탈출한다" }),
+    }));
+    render(<LongEpisodeContinuityScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    expect(await screen.findByDisplayValue("폐허에 들어선다")).toBeTruthy();
+    expect(screen.getByTestId("continuity-events")).toHaveValue("지도를 찾는다");
+    expect(screen.getByTestId("continuity-newConflicts")).toHaveValue("경비병이 온다");
+    expect(screen.getByTestId("continuity-nextActions")).toHaveValue("탈출한다");
+    // Nothing is saved by appearing — the header promises this and the prefill must not quietly break it.
+    expect(screen.getByTestId("continuity-prefilled")).toBeTruthy();
+    expect(vi.mocked(fetch).mock.calls.some((call) => (call[1] as RequestInit | undefined)?.method !== undefined)).toBe(false);
+  });
+
+  it("leaves the form blank when the outline has nothing to offer, and says nothing about a prefill", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      [`GET ${CONTINUITY_URL}`]: { memory: null, canSave: true },
+      [`GET ${EPISODE_URL}`]: outline(),
+    }));
+    render(<LongEpisodeContinuityScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    await screen.findByTestId("continuity-summary");
+    expect(screen.getByTestId("continuity-summary")).toHaveValue("");
+    expect(screen.queryByTestId("continuity-prefilled")).toBeNull();
+  });
+
   it("rejects malformed change JSON locally without sending a save", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { memory: null, canSave: true }));
+    const fetchMock = stubFetchByRoute({ [`GET ${CONTINUITY_URL}`]: { memory: null, canSave: true }, [`GET ${EPISODE_URL}`]: outline() });
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeContinuityScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
@@ -55,11 +104,12 @@ describe("LongEpisodeContinuityScreen", () => {
     fireEvent.click(screen.getByTestId("continuity-save"));
 
     expect(await screen.findByTestId("continuity-error")).toHaveAttribute("data-error-code", "INVALID_REQUEST");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // The count is no longer the assertion — reads on mount are allowed to grow. Nothing may be written.
+    expect(fetchMock.mock.calls.some((call) => (call[1] as RequestInit | undefined)?.method !== undefined)).toBe(false);
   });
 
   it("shows malformed load responses as a safe error", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { memory: { episodeNumber: 1 }, canSave: true })));
+    vi.stubGlobal("fetch", stubFetchByRoute({ [`GET ${CONTINUITY_URL}`]: { memory: { episodeNumber: 1 }, canSave: true }, [`GET ${EPISODE_URL}`]: outline() }));
     render(<LongEpisodeContinuityScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
     expect((await screen.findByTestId("continuity-error")).getAttribute("data-error-code")).toBe("CLIENT_MALFORMED_RESPONSE");
@@ -71,7 +121,7 @@ describe("LongEpisodeContinuityScreen", () => {
     // whole form, and return 409 on save. The refusal is identical either way; only its timing could change.
     // Both halves are asserted — the reason is stated AND the inputs are actually unusable — because a notice
     // above a working form is just a form with a notice on it.
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { memory: null, canSave: false })));
+    vi.stubGlobal("fetch", stubFetchByRoute({ [`GET ${CONTINUITY_URL}`]: { memory: null, canSave: false }, [`GET ${EPISODE_URL}`]: outline() }));
     render(<LongEpisodeContinuityScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
     const notice = await screen.findByTestId("continuity-not-saveable");
@@ -83,7 +133,7 @@ describe("LongEpisodeContinuityScreen", () => {
   it("leaves the form usable when saving is allowed", async () => {
     // The counterpart the rule above needs: without it, a change that disabled the form unconditionally would
     // still pass the test that only checks the disabled case.
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { memory: null, canSave: true })));
+    vi.stubGlobal("fetch", stubFetchByRoute({ [`GET ${CONTINUITY_URL}`]: { memory: null, canSave: true }, [`GET ${EPISODE_URL}`]: outline() }));
     render(<LongEpisodeContinuityScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
     await screen.findByTestId("continuity-summary");
