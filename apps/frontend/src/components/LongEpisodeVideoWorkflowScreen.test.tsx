@@ -122,7 +122,13 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
       sceneErrors: { 2: "authentication", 3: "Runway rejected the prompt: explicit content detected" },
     };
     const retriedJob = { jobId: "job", status: "running", completedSceneNumbers: [1], currentSceneNumber: 2, failedSceneNumbers: [], sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") };
-    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { jobId: null })).mockResolvedValueOnce(jsonResponse(200, preview)).mockResolvedValueOnce(jsonResponse(200, { jobId: "job", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") })).mockResolvedValueOnce(jsonResponse(200, failedJob)).mockResolvedValueOnce(jsonResponse(200, retriedJob));
+    const fetchMock = stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: null },
+      "GET /videos/preview": preview,
+      "POST /videos/generations": { jobId: "job", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") },
+      "GET /videos/generations/job": failedJob,
+      "POST /videos/generations/job/scenes/2/regenerate": retriedJob,
+    });
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
     await screen.findByTestId("episode-video-summary");
@@ -179,12 +185,16 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
   it("mints a new request id when the confirmation is cancelled and opened again", async () => {
     // Cancelling is abandoning the intent. Keeping the id would make the next, genuinely separate attempt look
     // to the server like a retry of the one the person backed out of.
-    const fetchMock = vi.fn()
-      // The screen asks for an existing job first, so a reload can return to one that was already paid for.
-      .mockResolvedValueOnce(jsonResponse(200, { jobId: null }))
-      .mockResolvedValueOnce(jsonResponse(200, preview))
-      .mockResolvedValueOnce(jsonResponse(500, { code: "LONG_PROJECT_STORAGE_ERROR", message: "raw" }))
-      .mockResolvedValueOnce(jsonResponse(500, { code: "LONG_PROJECT_STORAGE_ERROR", message: "raw" }));
+    const fetchMock = stubFetchByRoute(
+      {
+        // The screen asks for an existing job first, so a reload can return to one that was already paid for.
+        "GET /videos/generations/current": { jobId: null },
+        "GET /videos/preview": preview,
+      },
+      // Both submissions fail the same way, and this test is about the two ids being different — not about
+      // anything the server said back.
+      { "POST /videos/generations": { status: 500, body: { code: "LONG_PROJECT_STORAGE_ERROR", message: "raw" } } },
+    );
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
 
