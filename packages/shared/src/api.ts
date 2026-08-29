@@ -1292,6 +1292,14 @@ export interface InstagramTargetDiagnostics {
   pagesWithInstagramAccount: number;
   /** Permissions this app asks for that the token does not hold. Non-empty means re-connecting is the fix. */
   missingPermissions: string[];
+  /**
+   * Everything Meta says the token holds, not only the four this app requests.
+   *
+   * `missingPermissions` is measured against our own list, so a permission we never ask for cannot appear in
+   * it — and if the provider requires one we do not request, that field would read "nothing missing" while
+   * being the whole cause. Reporting the granted set makes an absence visible instead of unrepresentable.
+   */
+  grantedPermissions: string[];
   /** False when the permission check itself could not be made, so the screen does not present a guess as fact. */
   permissionsChecked: boolean;
 }

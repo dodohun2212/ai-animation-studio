@@ -195,6 +195,18 @@ describe("InstagramTargetsService.list — why the list is empty", () => {
     expect((await service.list()).diagnostics?.missingPermissions).toContain("pages_show_list");
   });
 
+  it("reports every permission the token holds, not only the ones this app asks for", async () => {
+    // `missingPermissions` is measured against our own four, so a permission we never request cannot appear
+    // in it. If the provider needs one we do not ask for, that field reads "nothing missing" while being the
+    // entire cause — the confident wrong answer this diagnosis exists to replace.
+    const { service } = await setup({ fetchImpl: diagnosticFetch({ pages: [], permissions: [...ALL_SCOPES, "business_management"] }) });
+
+    const { diagnostics } = await service.list();
+
+    expect(diagnostics?.missingPermissions).toEqual([]);
+    expect(diagnostics?.grantedPermissions).toContain("business_management");
+  });
+
   it("says the permission check did not happen rather than reporting nothing missing", async () => {
     // "we could not look" and "we looked and all is well" must not be the same answer.
     const { service } = await setup({ fetchImpl: diagnosticFetch({ pages: [], permissions: null }) });

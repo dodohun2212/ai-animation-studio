@@ -95,14 +95,15 @@ export class InstagramTargetsService {
    */
   private async diagnose(): Promise<InstagramTargetDiagnostics> {
     const token = await this.connection.token();
-    if (!token) return { pageCount: 0, pagesWithInstagramAccount: 0, missingPermissions: [], permissionsChecked: false };
+    if (!token) return { pageCount: 0, pagesWithInstagramAccount: 0, missingPermissions: [], grantedPermissions: [], permissionsChecked: false };
     const counts = await countInstagramPublishCandidates(token.accessToken, this.requestOptions)
       .catch(() => ({ pageCount: 0, pagesWithInstagramAccount: 0 }));
     const granted = await readGrantedInstagramPermissions(token.accessToken, this.requestOptions).catch(() => undefined);
-    if (!granted) return { ...counts, missingPermissions: [], permissionsChecked: false };
+    if (!granted) return { ...counts, missingPermissions: [], grantedPermissions: [], permissionsChecked: false };
     return {
       ...counts,
       missingPermissions: INSTAGRAM_PUBLISH_SCOPES.filter((scope) => !granted.includes(scope)),
+      grantedPermissions: granted,
       permissionsChecked: true,
     };
   }
