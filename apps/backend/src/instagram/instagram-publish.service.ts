@@ -2,14 +2,14 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import type { PublishLongEpisodeToInstagramResponse, PublishToInstagramResponse } from "@ai-animation-studio/shared";
+import type { ForgetInstagramPostResponse, ForgetLongEpisodeInstagramPostResponse, PublishLongEpisodeToInstagramResponse, PublishToInstagramResponse } from "@ai-animation-studio/shared";
 
 import { toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { withProjectLock } from "../videos/project-lock.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { episodeDirectoryName, longStoryRoot } from "../long-projects/long-project-paths.js";
-import { toEpisodeDetail, type StoredEpisodeForDetail } from "../long-projects/episode-detail.js";
+import { toEpisodeDetail, toEpisodeInstagramPost, type StoredEpisodeForDetail } from "../long-projects/episode-detail.js";
 import { InstagramConnectionStore } from "./instagram-connection.store.js";
 import {
   createInstagramResumableContainer, getInstagramContainerStatus,
@@ -18,7 +18,7 @@ import {
 import { resolveInstagramPublishTargets } from "./instagram-publish-targets.js";
 import { InstagramAdapterError, type RetryOptions } from "./instagram-request.js";
 import {
-  instagramAlreadyPublished, instagramNotConnected, instagramProviderError, instagramPublishFailed,
+  instagramAlreadyPublished, instagramNotConnected, instagramPostNotRecorded, instagramProviderError, instagramPublishFailed,
   instagramTargetNotFound, instagramVideoUnavailable, invalidInstagramRequest,
 } from "./instagram-api.error.js";
 
@@ -124,6 +124,76 @@ export class InstagramPublishService {
       await this.projects.save(updated);
       return { mediaId, publishedAt, project: toApiProject(updated) };
     });
+  }
+
+  /**
+   * Clears the stored post so the same project can be published again.
+   *
+   * Nothing here reaches Instagram, and that is the whole shape of it: the post stays up, and a person who
+   * publishes again ends up with two. The app cannot check whether the old one was taken down — it can read
+   * the account's list of pages, not undo a Reel — so `acknowledged` is the person answering the one question
+   * that decides the outcome. It is not the archive routes' confirm-by-typing-the-topic gate: the screen holds
+   * the topic, so requiring it would be a check the caller always passes (docs/06_DECISIONS.md D-023).
+   *
+   * The cleared record is pushed onto `previous_instagram_posts` rather than dropped. Someone can answer "yes,
+   * I deleted it" without having deleted it, and then this list is the only trace left that a post of this
+   * video may still be public. It is the one memory this app keeps of an action it can neither undo nor
+   * re-check.
+   */
+  async forgetPost(projectId: string, request: unknown): Promise<ForgetInstagramPostResponse> {
+    this.parseForgetRequest(request);
+    const id = projectId.trim();
+    await this.projects.findById(id);
+
+    return withProjectLock(path.join(this.projectsRoot, id), `${id}:instagram-publish`, async () => {
+      // The same lock the publish takes, so this cannot clear a record a publish is midway through writing.
+      const current = await this.projects.findById(id);
+      if (!current.instagram_post) throw instagramPostNotRecorded();
+      const updated = {
+        ...current,
+        updated_at: new Date(this.now()).toISOString(),
+        instagram_post: null,
+        previous_instagram_posts: [...current.previous_instagram_posts, current.instagram_post],
+      };
+      await this.projects.save(updated);
+      return { project: toApiProject(updated) };
+    });
+  }
+
+  /** The same for one Episode — the two publish paths share everything, and so do the two ways of undoing one. */
+  async forgetEpisodePost(projectId: string, episodeNumber: number, request: unknown): Promise<ForgetLongEpisodeInstagramPostResponse> {
+    this.parseForgetRequest(request);
+    const id = projectId.trim();
+    if (!Number.isInteger(episodeNumber) || episodeNumber < 1) throw instagramPostNotRecorded();
+    const directory = path.join(longStoryRoot(this.projectsRoot, id), episodeDirectoryName(episodeNumber));
+    const episodeFile = path.join(directory, "project.json");
+    if (!await readEpisode(episodeFile)) throw instagramPostNotRecorded();
+
+    return withProjectLock(directory, `${id}_${episodeNumber}_instagram_publish`, async () => {
+      const current = await readEpisode(episodeFile);
+      if (!current) throw instagramPostNotRecorded();
+      const post = toEpisodeInstagramPost(current.instagram_post);
+      if (!post) throw instagramPostNotRecorded();
+      const previous = Array.isArray(current.previous_instagram_posts) ? current.previous_instagram_posts : [];
+      const updated = {
+        ...current,
+        updated_at: new Date(this.now()).toISOString(),
+        instagram_post: null,
+        previous_instagram_posts: [...previous, current.instagram_post],
+      };
+      await atomicWriteUtf8File(episodeFile, JSON.stringify(updated, null, 2));
+      return { episode: toEpisodeDetail(updated) };
+    });
+  }
+
+  /**
+   * The one field, checked exactly. `acknowledged` must be literally true and alone, the same shape the publish
+   * request's `approved` uses — a defaulted or coerced value would turn a person's answer into the app's guess.
+   */
+  private parseForgetRequest(request: unknown): void {
+    if (!isObject(request) || Object.keys(request).length !== 1 || request.acknowledged !== true) {
+      throw invalidInstagramRequest("Clearing a published record requires acknowledging that the post on Instagram is not removed.");
+    }
   }
 
   /**

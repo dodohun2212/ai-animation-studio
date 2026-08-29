@@ -1,4 +1,4 @@
-import { API_ROUTES, type PublishLongEpisodeToInstagramResponse, type PublishToInstagramResponse } from "@ai-animation-studio/shared";
+import { API_ROUTES, type ForgetInstagramPostResponse, type ForgetLongEpisodeInstagramPostResponse, type PublishLongEpisodeToInstagramResponse, type PublishToInstagramResponse } from "@ai-animation-studio/shared";
 
 export class InstagramPublishApiError extends Error {
   readonly code: string;
@@ -138,4 +138,59 @@ export async function publishLongEpisodeToInstagram(
     throw new InstagramPublishApiError(MALFORMED.code, MALFORMED.message);
   }
   return body as unknown as PublishLongEpisodeToInstagramResponse;
+}
+
+/**
+ * Clears this project's stored post so the video can be published again.
+ *
+ * Nothing on Instagram changes. That is why the argument is named `acknowledged` rather than `approved`: the
+ * person is not approving an action the app will carry out, they are answering the one thing the app cannot
+ * find out for itself — whether the old post was taken down. Publishing again while it is still up leaves the
+ * account with two.
+ *
+ * Sent explicitly and never defaulted, the same discipline the publish request uses, so no code path can clear
+ * a record without that answer having been given.
+ */
+export async function forgetInstagramPost(projectId: string): Promise<ForgetInstagramPostResponse> {
+  return deletePostRecord(API_ROUTES.instagramPostRecord(projectId), "project") as Promise<ForgetInstagramPostResponse>;
+}
+
+/** The same for one Episode. The response carries the Episode so the screen unlocks without a reload. */
+export async function forgetLongEpisodeInstagramPost(projectId: string, episodeNumber: number): Promise<ForgetLongEpisodeInstagramPostResponse> {
+  return deletePostRecord(API_ROUTES.longEpisodeInstagramPostRecord(projectId, episodeNumber), "episode") as Promise<ForgetLongEpisodeInstagramPostResponse>;
+}
+
+/** One request shape, so the two kinds cannot answer differently about what a cleared record looks like. */
+async function deletePostRecord(url: string, carried: "project" | "episode"): Promise<unknown> {
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ acknowledged: true }),
+    });
+  } catch {
+    throw new InstagramPublishApiError(NETWORK.code, NETWORK.message);
+  }
+
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    body = undefined;
+  }
+
+  if (!response.ok) {
+    if (isRecord(body) && isNonEmptyString(body.code) && isNonEmptyString(body.message)) {
+      throw new InstagramPublishApiError(body.code, body.message);
+    }
+    throw new InstagramPublishApiError(MALFORMED.code, MALFORMED.message);
+  }
+
+  // Checked rather than trusted: the screen unlocks on this answer, and unlocking on a body that never carried
+  // the updated record would offer a second publish with nothing to show for the first.
+  if (!isRecord(body) || !isRecord(body[carried])) {
+    throw new InstagramPublishApiError(MALFORMED.code, MALFORMED.message);
+  }
+  return body;
 }

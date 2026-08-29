@@ -38,6 +38,8 @@ export interface StoredProject {
   final_video_path: string | null;
   used_audio: StoredUsedAudio | null;
   instagram_post: StoredInstagramPost | null;
+  /** Posts published and then forgotten, oldest first. Appended to, never rewritten — see ForgetInstagramPostRequest. */
+  previous_instagram_posts: StoredInstagramPost[];
   api_usage: unknown[];
   warnings: string[];
   errors: string[];
@@ -89,6 +91,7 @@ export const KNOWN_STORED_PROJECT_FIELDS: ReadonlySet<string> = new Set([
   "final_video_path",
   "used_audio",
   "instagram_post",
+  "previous_instagram_posts",
   "api_usage",
   "warnings",
   "errors",
@@ -212,10 +215,8 @@ function finalVideoPathField(data: Record<string, unknown>): string | null {
   return value;
 }
 
-function instagramPostField(data: Record<string, unknown>): StoredInstagramPost | null {
-  const key = "instagram_post";
-  if (!(key in data) || data[key] === null) return null;
-  const value = data[key];
+/** One post record, parsed the same way wherever it is stored — see previousInstagramPostsField. */
+function instagramPostAt(key: string, value: unknown): StoredInstagramPost {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw dataInvalid(`Field "${key}" must be an object or null.`);
   }
@@ -229,6 +230,28 @@ function instagramPostField(data: Record<string, unknown>): StoredInstagramPost 
     published_at: record.published_at as string,
     caption: record.caption as string,
   };
+}
+
+/**
+ * The forgotten posts, oldest first.
+ *
+ * Absent in every project written before this field existed, and absent is not the same as corrupt: a project
+ * that has never had a post forgotten reads back as an empty list rather than failing to open. Each entry is
+ * held to the same shape as the live one, though — a half-written record of a post that may still be public is
+ * worse than none, because it reads as knowledge.
+ */
+function previousInstagramPostsField(data: Record<string, unknown>): StoredInstagramPost[] {
+  const key = "previous_instagram_posts";
+  if (!(key in data) || data[key] === null || data[key] === undefined) return [];
+  const value = data[key];
+  if (!Array.isArray(value)) throw dataInvalid(`Field "${key}" must be an array.`);
+  return value.map((entry, index) => instagramPostAt(`${key}[${index}]`, entry));
+}
+
+function instagramPostField(data: Record<string, unknown>): StoredInstagramPost | null {
+  const key = "instagram_post";
+  if (!(key in data) || data[key] === null) return null;
+  return instagramPostAt(key, data[key]);
 }
 
 const USED_AUDIO_MODES: ReadonlySet<string> = new Set(["narration", "narration+bgm", "silent"]);
@@ -347,6 +370,7 @@ export function parseStoredProject(raw: unknown): StoredProject {
     final_video_path: finalVideoPathField(data),
     used_audio: usedAudioField(data),
     instagram_post: instagramPostField(data),
+    previous_instagram_posts: previousInstagramPostsField(data),
     api_usage: anyArrayField(data, "api_usage", []),
     warnings: stringArrayField(data, "warnings", []),
     errors: stringArrayField(data, "errors", []),

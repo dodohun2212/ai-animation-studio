@@ -161,6 +161,16 @@ export interface LongEpisodeDetail extends LongEpisodeOutline {
   usedAudio?: UsedAudio;
   /** Present once this Episode has been published to Instagram, so a reload still knows. */
   instagramPost?: LongEpisodeInstagramPost;
+  /**
+   * Posts this Episode has had published and then forgotten, oldest first.
+   *
+   * Kept because clearing `instagramPost` otherwise erases the fact that something may still be up on the
+   * account: a person who answers "yes, I deleted it" and did not would leave the app with no memory of a
+   * post that exists. This is the only memory this app has of an action it cannot undo or re-check, so it is
+   * carried out to the screen rather than only written to disk — a record nothing reads is a record that
+   * quietly stops being kept correctly.
+   */
+  previousInstagramPosts?: LongEpisodeInstagramPost[];
 }
 
 export interface GetLongEpisodeResponse { episode: LongEpisodeDetail; }
@@ -1487,6 +1497,25 @@ export interface PublishToInstagramResponse {
 }
 
 /**
+ * Forgetting a publish, so the same video can be published again.
+ *
+ * The stored record is what stops a second publish, and there was no way to clear it — a re-cut video could
+ * never go out. This clears the app's record and **nothing on Instagram**: the post stays up, and publishing
+ * again leaves the account holding two. Named for what it does for exactly that reason; a `republish` route
+ * would read, to the next person, as if Meta were being asked to replace something.
+ *
+ * `acknowledged` is the publish request's `approved` gate turned around. It is not asked because the action is
+ * destructive — the archive routes' confirmation-must-match-the-topic convention is the one for that, and it
+ * would prove nothing here since the screen holds the topic already. It is asked because **the app cannot
+ * check the one fact that decides the outcome**: whether the post was taken down on Instagram. Only a person
+ * looking at the account knows, so only a person can assert it.
+ */
+export interface ForgetInstagramPostRequest { acknowledged: true; }
+export interface ForgetInstagramPostResponse { project: Project; }
+/** Same for one Episode. Same shape by design — the two publish paths already share everything downstream. */
+export interface ForgetLongEpisodeInstagramPostResponse { episode: LongEpisodeDetail; }
+
+/**
  * One short-project row in the cross-project video library — an archive view of
  * results, distinct from the Asset Library's input-material role (see AssetLibraryScreen). Only lists a project
  * that has at least one generated scene video; a project that never reached video generation never appears here.
@@ -1866,6 +1895,10 @@ export const API_ROUTES = {
   longEpisodeInstagramPublish: (projectId: string, episodeNumber: number) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/instagram/publish`,
   instagramPublish: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/instagram/publish`,
+  /** DELETE clears this project's stored post so it can be published again. Never touches Instagram. */
+  instagramPostRecord: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/instagram/post`,
+  longEpisodeInstagramPostRecord: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/instagram/post`,
   projectAssetMappings: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/assets/mappings`,
   projectAssetMapping: (projectId: string, mappingId: string) =>
     `/projects/${encodeURIComponent(projectId)}/assets/mappings/${encodeURIComponent(mappingId)}`,

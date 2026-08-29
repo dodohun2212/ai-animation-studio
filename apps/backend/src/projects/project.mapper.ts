@@ -43,6 +43,7 @@ export function createStoredProject(projectId: string, topic: string, timestamp:
     final_video_path: null,
     used_audio: null,
     instagram_post: null,
+    previous_instagram_posts: [],
     api_usage: [],
     warnings: [],
     errors: [],
@@ -88,6 +89,11 @@ export function toApiSummary(stored: StoredProject): ProjectSummary {
       igUserId: stored.instagram_post.ig_user_id,
       publishedAt: stored.instagram_post.published_at,
     } } : {}),
+    // Carried out only when there is something to carry: an empty list on every project that has never
+    // published would read as a fact about them rather than the absence of one.
+    ...(stored.previous_instagram_posts.length > 0 ? { previousInstagramPosts: stored.previous_instagram_posts.map((post) => ({
+      mediaId: post.media_id, igUserId: post.ig_user_id, publishedAt: post.published_at,
+    })) } : {}),
   };
 }
 

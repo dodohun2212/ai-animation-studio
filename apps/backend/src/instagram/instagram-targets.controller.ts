@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Header, Logger, type LoggerService, Optional, Param, Post, Put, Query } from "@nestjs/common";
 import { type PublishLongEpisodeToInstagramResponse,
   API_ROUTES, type ApiError, type CompleteInstagramLoginResponse,
+  type ForgetInstagramPostResponse, type ForgetLongEpisodeInstagramPostResponse,
   type GetInstagramTargetsResponse, type InstagramConnectionStatus,
   type PublishToInstagramResponse,
   type SetInstagramAppResponse, type SetInstagramTargetResponse, type StartInstagramLoginResponse,
@@ -137,6 +138,22 @@ export class InstagramTargetsController {
   @Post(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/instagram/publish`)
   publishEpisode(@Param("projectId") projectId: string, @Param("episodeNumber") episodeNumber: string, @Body() body: unknown): Promise<PublishLongEpisodeToInstagramResponse> {
     return this.publishing.publishEpisode(projectId, Number(episodeNumber), body);
+  }
+
+  /**
+   * Clears this project's published record so the video can be published again. Instagram is not touched.
+   *
+   * A DELETE on the record, not a POST to a "republish" route: the next person to read this file should not be
+   * able to think the old post is being replaced. It is not — publishing again leaves two.
+   */
+  @Delete(`${API_ROUTES.projects}/:projectId/instagram/post`)
+  forgetPost(@Param("projectId") projectId: string, @Body() body: unknown): Promise<ForgetInstagramPostResponse> {
+    return this.publishing.forgetPost(projectId, body);
+  }
+
+  @Delete(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/instagram/post`)
+  forgetEpisodePost(@Param("projectId") projectId: string, @Param("episodeNumber") episodeNumber: string, @Body() body: unknown): Promise<ForgetLongEpisodeInstagramPostResponse> {
+    return this.publishing.forgetEpisodePost(projectId, Number(episodeNumber), body);
   }
 
   @Delete(API_ROUTES.instagramConnection)

@@ -157,6 +157,13 @@ export interface ProjectSummary {
     igUserId: string;
     publishedAt: string;
   };
+  /**
+   * Posts published and then forgotten, oldest first — see LongEpisodeDetail.previousInstagramPosts.
+   *
+   * Clearing `instagramPost` is how a re-cut video becomes publishable again, and on its own that clearing
+   * would also erase the only trace that something may still be live on the account.
+   */
+  previousInstagramPosts?: Array<{ mediaId: string; igUserId: string; publishedAt: string }>;
   usedAudio?: UsedAudio;
 }
 

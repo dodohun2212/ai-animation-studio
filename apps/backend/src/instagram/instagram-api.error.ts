@@ -8,6 +8,7 @@ export type InstagramErrorCode =
   | "INSTAGRAM_STORAGE_ERROR"
   | "INSTAGRAM_PROVIDER_ERROR"
   | "INSTAGRAM_ALREADY_PUBLISHED"
+  | "INSTAGRAM_POST_NOT_RECORDED"
   | "INSTAGRAM_VIDEO_UNAVAILABLE"
   | "INSTAGRAM_PUBLISH_FAILED";
 
@@ -60,6 +61,14 @@ export const instagramProviderError = (category: string, message: string, diagno
  */
 export const instagramAlreadyPublished = () =>
   new InstagramApiException("INSTAGRAM_ALREADY_PUBLISHED", "This project's video has already been published to Instagram.", HttpStatus.CONFLICT);
+
+/**
+ * There is no stored post to clear. Reported rather than silently succeeding: "nothing happened because there
+ * was nothing there" and "the record was cleared" leave the same state but mean different things to a person
+ * who is about to publish a second copy.
+ */
+export const instagramPostNotRecorded = () =>
+  new InstagramApiException("INSTAGRAM_POST_NOT_RECORDED", "This video has no published record to clear.", HttpStatus.CONFLICT);
 
 export const instagramVideoUnavailable = () =>
   new InstagramApiException("INSTAGRAM_VIDEO_UNAVAILABLE", "There is no merged final video to publish yet.", HttpStatus.CONFLICT);

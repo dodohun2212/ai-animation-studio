@@ -379,3 +379,78 @@ describe("InstagramPublishService.publishEpisode", () => {
       .rejects.toMatchObject({ response: { code: "INSTAGRAM_TARGET_NOT_FOUND" } });
   });
 });
+
+describe("InstagramPublishService.forgetPost", () => {
+  /**
+   * The lock had no key. A published project refuses a second publish forever, which is right while the post
+   * is up and wrong the moment the video is re-cut — there was no way to say "that one is gone".
+   */
+  it("clears the record so the same project can be published again", async () => {
+    const fetchImpl = graphFetch();
+    const { service, projects } = await setup({ alreadyPublished: true, fetchImpl });
+
+    const result = await service.forgetPost("post_project", { acknowledged: true });
+
+    expect(result.project.instagramPost).toBeUndefined();
+    expect((await projects.findById("post_project")).instagram_post).toBeNull();
+    // And the refusal is actually gone, rather than the record merely looking cleared.
+    await expect(service.publish("post_project", approved)).resolves.toMatchObject({ mediaId: "media-1" });
+  });
+
+  it("keeps the post it forgot, because the one on Instagram may still be up", async () => {
+    // A person can answer "yes, I deleted it" without having deleted it. This list is then the only trace the
+    // app has of a post of this video that is still public — and the next publish would otherwise overwrite
+    // the last thing that knew about it.
+    const { service, projects } = await setup({ alreadyPublished: true });
+
+    const result = await service.forgetPost("post_project", { acknowledged: true });
+
+    expect(result.project.previousInstagramPosts).toEqual([
+      { mediaId: "media-old", igUserId: IG_USER_ID, publishedAt: "2026-08-26T00:00:00.000Z" },
+    ]);
+    expect((await projects.findById("post_project")).previous_instagram_posts).toHaveLength(1);
+  });
+
+  it("reaches Instagram not at all — the post there is not this app's to remove", async () => {
+    const fetchImpl = graphFetch();
+    const { service } = await setup({ alreadyPublished: true, fetchImpl });
+
+    await service.forgetPost("post_project", { acknowledged: true });
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("refuses without the acknowledgement, which is the whole point of asking", async () => {
+    const { service, projects } = await setup({ alreadyPublished: true });
+
+    await expect(service.forgetPost("post_project", {})).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(service.forgetPost("post_project", { acknowledged: false })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(service.forgetPost("post_project", { acknowledged: true, extra: 1 })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    expect((await projects.findById("post_project")).instagram_post).not.toBeNull();
+  });
+
+  it("says so when there is no record to clear, rather than reporting a success that changed nothing", async () => {
+    const { service } = await setup();
+    await expect(service.forgetPost("post_project", { acknowledged: true }))
+      .rejects.toMatchObject({ response: { code: "INSTAGRAM_POST_NOT_RECORDED" } });
+  });
+
+  it("does the same for an Episode, and the Episode carries what it forgot", async () => {
+    const { service } = await withEpisode({ alreadyPublished: true });
+
+    const result = await service.forgetEpisodePost("long", 1, { acknowledged: true });
+
+    expect(result.episode.instagramPost).toBeUndefined();
+    expect(result.episode.previousInstagramPosts).toHaveLength(1);
+    expect(result.episode.previousInstagramPosts?.[0]?.mediaId).toBe("media-old");
+    await expect(service.publishEpisode("long", 1, approved)).resolves.toMatchObject({ mediaId: "media-1" });
+  });
+
+  it("refuses an Episode with no record, and one that does not exist", async () => {
+    const { service } = await withEpisode();
+    await expect(service.forgetEpisodePost("long", 1, { acknowledged: true }))
+      .rejects.toMatchObject({ response: { code: "INSTAGRAM_POST_NOT_RECORDED" } });
+    await expect(service.forgetEpisodePost("long", 9, { acknowledged: true }))
+      .rejects.toMatchObject({ response: { code: "INSTAGRAM_POST_NOT_RECORDED" } });
+  });
+});

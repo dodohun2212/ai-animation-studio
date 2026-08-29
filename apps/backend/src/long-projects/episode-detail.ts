@@ -45,8 +45,23 @@ export function toEpisodeDetail(episode: StoredEpisodeForDetail): LongEpisodeDet
     updatedAt: typeof episode.updated_at === "string" ? episode.updated_at : new Date(0).toISOString(),
     ...(warnings.length > 0 ? { warnings } : {}),
     ...(toEpisodeInstagramPost(episode.instagram_post) ? { instagramPost: toEpisodeInstagramPost(episode.instagram_post)! } : {}),
+    ...(toEpisodePreviousInstagramPosts(episode.previous_instagram_posts).length > 0
+      ? { previousInstagramPosts: toEpisodePreviousInstagramPosts(episode.previous_instagram_posts) } : {}),
     ...(toEpisodeUsedAudio(episode.used_audio) ? { usedAudio: toEpisodeUsedAudio(episode.used_audio)! } : {}),
   };
+}
+
+/**
+ * The posts this Episode has published and then forgotten, oldest first.
+ *
+ * Same lenient read as the live record and for a stronger reason: this list exists so that clearing
+ * `instagram_post` does not erase the fact that something may still be up on the account, and a list that
+ * refused to parse would erase exactly what it is for. Entries that do not hold together are dropped rather
+ * than guessed at — a half-read record of a public post reads as knowledge.
+ */
+export function toEpisodePreviousInstagramPosts(value: unknown): LongEpisodeInstagramPost[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(toEpisodeInstagramPost).filter((post): post is LongEpisodeInstagramPost => post !== undefined);
 }
 
 /**
