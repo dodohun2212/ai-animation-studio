@@ -265,4 +265,48 @@ describe("VideoLibraryScreen", () => {
     expect(screen.queryByTestId("library-episodes")).toBeNull();
   });
 
+  /**
+   * An Episode's clips are archived by the same code, cost the same money, and a restore voids the same merged
+   * video — but the version list existed only inside the video job screen. Once that job was behind you, the
+   * only way back to a clip you had already paid for was to pay for it again.
+   */
+  it("opens an Episode's past clips from the library and restores one", async () => {
+    const before = [
+      { versionId: "v002", createdAt: "2026-08-26T17:18:30.000Z", bytes: 2103543, isCurrent: true },
+      { versionId: "v001", createdAt: "2026-08-26T16:00:00.000Z", bytes: 2000000, isCurrent: false },
+    ];
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { projects: [], episodes: [libraryEpisode()] }))
+      .mockResolvedValueOnce(jsonResponse(200, { versions: before }))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: { episodeNumber: 1 } }))
+      .mockResolvedValueOnce(jsonResponse(200, { versions: before }))
+      .mockResolvedValueOnce(jsonResponse(200, { projects: [], episodes: [libraryEpisode()] }));
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByTestId("library-episode-versions-12-1"));
+    // The Episode's own route, not the short project's — the two archives must not be read through one path.
+    await waitFor(() => expect(String(fetchMock.mock.calls[1]?.[0])).toBe("/long-projects/12/episodes/1/videos/1/versions"));
+    expect(await screen.findByTestId("library-slots-12-1")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("version-restore-v001"));
+    const panel = await screen.findByTestId("version-restore-confirm-v001");
+    fireEvent.click(within(panel).getByRole("button", { name: "예, 되돌립니다" }));
+
+    await waitFor(() => {
+      const restore = (fetchMock.mock.calls as Array<[string, RequestInit | undefined]>)
+        .find(([url, init]) => String(url).includes("/episodes/1/videos/1/versions/v001/restore") && init?.method === "POST");
+      expect(restore).toBeTruthy();
+    });
+  });
+
+  it("tells an Episode's card that its audio still owes a credit", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {
+      projects: [],
+      episodes: [libraryEpisode({ attributionRequired: true, attributionText: "Music by ○○○" })],
+    }));
+    renderScreen(fetchMock);
+
+    const credit = await screen.findByTestId("library-episode-credit-12-1");
+    expect(credit.textContent).toContain("Music by ○○○");
+  });
 });

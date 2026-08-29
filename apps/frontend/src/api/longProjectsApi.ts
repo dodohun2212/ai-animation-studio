@@ -692,12 +692,13 @@ function isRestoreLongEpisodeVideoVersionResponse(value: unknown): value is Rest
  * actually in use, which after a restore is NOT the most recently created one — so the screen must read it
  * rather than assuming the top row is the newest.
  */
-export function listLongEpisodeVideoVersions(projectId: string, episodeNumber: number, sceneNumber: SceneNumber): Promise<GetVideoVersionsResponse> {
+/** `"final"` is a slot like any scene here: the merged video is archived the same way, and a re-merge otherwise overwrote the previous cut with no way back. */
+export function listLongEpisodeVideoVersions(projectId: string, episodeNumber: number, sceneNumber: SceneNumber | "final"): Promise<GetVideoVersionsResponse> {
   return request(API_ROUTES.longEpisodeVideoVersions(projectId, episodeNumber, sceneNumber), undefined, isGetVideoVersionsResponse);
 }
 
 /** One past clip's bytes. Refuses placeholders (404) — deciding from a black box is what this screen prevents. */
-export function longEpisodeVideoVersionContentUrl(projectId: string, episodeNumber: number, sceneNumber: SceneNumber, versionId: string): string {
+export function longEpisodeVideoVersionContentUrl(projectId: string, episodeNumber: number, sceneNumber: SceneNumber | "final", versionId: string): string {
   return API_ROUTES.longEpisodeVideoVersionContent(projectId, episodeNumber, sceneNumber, versionId);
 }
 
@@ -708,7 +709,7 @@ export function longEpisodeVideoVersionContentUrl(projectId: string, episodeNumb
  * It does void the Episode's merged final video, so the response carries the Episode's new state rather than
  * the one the screen asked from.
  */
-export function restoreLongEpisodeVideoVersion(projectId: string, episodeNumber: number, sceneNumber: SceneNumber, versionId: string): Promise<RestoreLongEpisodeVideoVersionResponse> {
+export function restoreLongEpisodeVideoVersion(projectId: string, episodeNumber: number, sceneNumber: SceneNumber | "final", versionId: string): Promise<RestoreLongEpisodeVideoVersionResponse> {
   return request(
     API_ROUTES.longEpisodeVideoVersionRestore(projectId, episodeNumber, sceneNumber, versionId),
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) },
