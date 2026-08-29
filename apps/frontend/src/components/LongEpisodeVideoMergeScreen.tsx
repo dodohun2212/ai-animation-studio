@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { MergeLongEpisodeVideosResponse } from "@ai-animation-studio/shared";
 
-import { getLongEpisode, getLongProjectSettings, mergeLongEpisodeVideos, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { getLongEpisode, getLongEpisodeCurrentVideoJob, getLongEpisodeVideoReview, getLongProjectSettings, mergeLongEpisodeVideos, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 
 interface Props {
   projectId: string;
@@ -58,6 +58,16 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
   const [sceneCount, setSceneCount] = useState<number | null>(null);
   /** null until the project settings load, and stays null if they fail — the copy then claims nothing. */
   const [mediaMode, setMediaMode] = useState<MediaMode | null>(null);
+  /**
+   * How many of this Episode's scene videos are actually 확정됨.
+   *
+   * The notice used to print the *scene* count behind the word "승인된", so an Episode with one confirmed scene
+   * out of six still read "승인된 에피소드 장면 영상 6개를 이어 붙입니다" — a sentence that was never true and that
+   * sent people into a merge the server then refused. Null when there is no video job or the review cannot be
+   * read: the copy then omits the number instead of printing a guessed one, and the button is left alone
+   * (the server is still the real gate).
+   */
+  const [approvedCount, setApprovedCount] = useState<number | null>(null);
   const busy = useRef(false);
 
   // Only ever changes this screen's wording, so a failure here is not fatal and is deliberately swallowed.
@@ -75,15 +85,25 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
         if (!cancelled) setMediaMode({ narrationEnabled: settings.narrationEnabled, subtitlesEnabled: settings.subtitlesEnabled });
       })
       .catch(() => {});
+    // The confirmed count comes from the video review, which is addressed by job id — hence the lookup first.
+    getLongEpisodeCurrentVideoJob(projectId, episodeNumber)
+      .then(({ jobId }) => (jobId === null ? null : getLongEpisodeVideoReview(projectId, episodeNumber, jobId)))
+      .then((review) => {
+        if (!cancelled && review) setApprovedCount(review.reviews.filter((one) => one.status === "approved").length);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, [projectId, episodeNumber]);
 
   const contentSentence = mergeContentSentence(mediaMode);
+  /* Only blocks on a count we actually read. Unknown stays unblocked — the server refuses either way, and a
+     button disabled on a guess is worse than one that fails honestly. */
+  const blocked = approvedCount !== null && sceneCount !== null && approvedCount < sceneCount;
 
   function openConfirmation(): void {
-    if (busy.current || result) return;
+    if (busy.current || result || blocked) return;
     setError(null);
     setConfirmationOpen(true);
   }
@@ -118,16 +138,28 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
       </h2>
       <p className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300" data-testid="episode-merge-scope-notice">
         이 단계는 비용이 들지 않습니다 — 유료 요청 없이, 이 컴퓨터에 설치된 영상 병합 프로그램만 실행합니다.
-        {sceneCount !== null ? ` 승인된 에피소드 장면 영상 ${sceneCount}개를` : " 승인된 에피소드 장면 영상을"} 순서대로 이어 붙여 최종 영상을 만듭니다.
+        {" 확정한 장면 영상을 순서대로 이어 붙여 최종 영상을 만듭니다."}
         {contentSentence ? ` ${contentSentence}` : ""}
       </p>
+      {approvedCount !== null && sceneCount !== null && (
+        <p className="text-sm text-slate-300 tabular-nums" data-testid="episode-merge-approved-count">
+          장면 {sceneCount}개 중 <strong className="text-slate-100">{approvedCount}개 확정됨</strong>
+        </p>
+      )}
+      {blocked && approvedCount !== null && sceneCount !== null && (
+        /* Named before the button is reached, not after the server refuses — the person can go back and
+           confirm the rest instead of reading an error they did not cause. */
+        <p role="status" data-testid="episode-merge-blocked" className="rounded-xl border border-amber-400/30 bg-amber-500/[0.06] px-4 py-3 text-sm text-amber-200">
+          아직 확정하지 않은 장면이 {sceneCount - approvedCount}개 있습니다. 장면 영상 화면에서 모두 확정한 뒤에 최종 영상을 만들 수 있습니다.
+        </p>
+      )}
       {!result && (
         <div className="space-y-3">
           <button
             type="button"
             className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
             data-testid="episode-open-merge-confirm"
-            disabled={confirmationOpen || pending}
+            disabled={confirmationOpen || pending || blocked}
             onClick={openConfirmation}
           >
             최종 영상 만들기

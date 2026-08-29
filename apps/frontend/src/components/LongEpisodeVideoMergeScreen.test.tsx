@@ -30,6 +30,24 @@ const mediaSettings = (narrationEnabled: boolean, subtitlesEnabled: boolean) => 
   settings: makeLongProjectSettings({ narrationEnabled, subtitlesEnabled }),
 });
 const MERGE_URL = "/long-projects/long/episodes/1/videos/merge";
+const CURRENT_JOB_URL = "/long-projects/long/episodes/1/videos/generations/current";
+const REVIEW_URL = "/long-projects/long/episodes/1/videos/generations/job/review";
+
+/**
+ * The two GETs behind the confirmed count: the review is addressed by job id, so the job has to be found first.
+ * `approved` of `total` scenes are 확정됨; the rest stay pending.
+ */
+const confirmedRoutes = (approved: number, total: number) => ({
+  [`GET ${CURRENT_JOB_URL}`]: { jobId: "job" },
+  [`GET ${REVIEW_URL}`]: {
+    episode: episode("videos_review"),
+    reviews: Array.from({ length: total }, (_, index) => ({
+      sceneNumber: index + 1,
+      status: index < approved ? "approved" : "pending",
+      updatedAt: "2026-08-23T00:00:00.000Z",
+    })),
+  },
+});
 
 /** Keyed by "METHOD url" so the Episode GET and the merge POST cannot be mistaken for each other. */
 function stubFetchByRoute(
@@ -59,22 +77,38 @@ describe("LongEpisodeVideoMergeScreen", () => {
     expect(mergeFetch.mock.calls.some((call) => (call[1] as RequestInit | undefined)?.method === "POST")).toBe(false);
   });
 
-  it("states the Episode's own scene count, read from the Episode rather than assumed", async () => {
+  it("states the Episode's own scene count and how many of them are confirmed, both read rather than assumed", async () => {
     // This screen used to hold `const EPISODE_SCENE_COUNT = 6` with a comment arguing six was a backend
     // invariant. That was true when written and false once Episodes became 2-12 scenes, so the number is now
     // measured. Four is deliberately not six: a screen that still hardcoded six would pass a six-scene
-    // fixture. The cost line matters as much — this is the most final-looking button in the Episode flow and
-    // the merge is local FFmpeg only, with no provider call behind it.
-    vi.stubGlobal("fetch", stubFetchByRoute({ [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) }, [`GET ${SETTINGS_URL}`]: mediaSettings(false, false) }));
+    // fixture. The confirmed half is measured for the same reason — the notice used to print the scene count
+    // behind the word 승인된, which read as a claim about confirmations it had never looked at. The cost line
+    // matters as much: this is the most final-looking button in the Episode flow and the merge is local FFmpeg
+    // only, with no provider call behind it.
+    vi.stubGlobal("fetch", stubFetchByRoute({ [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) }, [`GET ${SETTINGS_URL}`]: mediaSettings(false, false), ...confirmedRoutes(4, 4) }));
     render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
-    const notice = await screen.findByTestId("episode-merge-scope-notice");
-    await waitFor(() => expect(notice.textContent).toContain("4개"));
-    expect(notice.textContent).toContain("이 단계는 비용이 들지 않습니다");
-    expect(notice.textContent).not.toContain("6개");
+    const count = await screen.findByTestId("episode-merge-approved-count");
+    await waitFor(() => expect(count.textContent).toContain("4개 확정됨"));
+    expect(count.textContent).toContain("장면 4개 중");
+    expect(count.textContent).not.toContain("6개");
+    expect((await screen.findByTestId("episode-merge-scope-notice")).textContent).toContain("이 단계는 비용이 들지 않습니다");
+    expect(screen.queryByTestId("episode-merge-blocked")).toBeNull();
 
     fireEvent.click(screen.getByTestId("episode-open-merge-confirm"));
     expect((await screen.findByTestId("episode-merge-confirm-panel")).textContent).toContain("유료 요청은 전송되지 않습니다");
+  });
+
+  it("names the scenes still to be confirmed instead of letting the merge be refused by the server", async () => {
+    // The count and the block come from the same two reads; the block is what makes the count actionable.
+    vi.stubGlobal("fetch", stubFetchByRoute({ [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) }, [`GET ${SETTINGS_URL}`]: mediaSettings(false, false), ...confirmedRoutes(1, 4) }));
+    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    expect((await screen.findByTestId("episode-merge-blocked")).textContent).toContain("3개");
+    expect((await screen.findByTestId("episode-merge-approved-count")).textContent).toContain("1개 확정됨");
+
+    fireEvent.click(screen.getByTestId("episode-open-merge-confirm"));
+    expect(screen.queryByTestId("episode-merge-confirm-panel")).toBeNull();
   });
 
   it("drops the count rather than guessing one when the Episode cannot be read", async () => {
@@ -84,8 +118,11 @@ describe("LongEpisodeVideoMergeScreen", () => {
     render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
     const notice = await screen.findByTestId("episode-merge-scope-notice");
-    expect(notice.textContent).toContain("승인된 에피소드 장면 영상을 순서대로");
+    expect(notice.textContent).toContain("확정한 장면 영상을 순서대로");
     expect(notice.textContent).not.toMatch(/\d+개/);
+    // Nothing to compare the confirmations against, so neither the count nor the block may be drawn.
+    await waitFor(() => expect(screen.queryByTestId("episode-merge-approved-count")).toBeNull());
+    expect(screen.queryByTestId("episode-merge-blocked")).toBeNull();
     expect(screen.getByTestId("episode-open-merge-confirm")).toBeTruthy();
   });
 
@@ -107,13 +144,15 @@ describe("LongEpisodeVideoMergeScreen", () => {
   it("says nothing about audio or subtitles when the settings could not be read", async () => {
     // A wrong claim here is worse than none: someone would confirm a merge expecting narration on it.
     vi.stubGlobal("fetch", stubFetchByRoute(
-      { [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) } },
+      { [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) }, ...confirmedRoutes(4, 4) },
       { [`GET ${SETTINGS_URL}`]: { status: 500, body: { code: "LONG_PROJECT_STORAGE_ERROR", message: "x" } } },
     ));
     render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
     const notice = await screen.findByTestId("episode-merge-scope-notice");
-    await waitFor(() => expect(notice.textContent).toContain("4개"));
+    // The confirmed count needs two round trips, so its arrival is proof the one-hop settings read has settled
+    // too — without it this would assert on a sentence that had not been given the chance to be wrong yet.
+    await waitFor(() => expect(screen.getByTestId("episode-merge-approved-count").textContent).toContain("4개 확정됨"));
     expect(notice.textContent).not.toContain("자막");
     expect(notice.textContent).not.toContain("음성");
   });

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { GetLongEpisodeVideoPreviewResponse, LongEpisodeVideoProgress, LongEpisodeVideoReview, RecoverLongEpisodeVideosResponse, SceneNumber } from "@ai-animation-studio/shared";
 
-import { approveLongEpisodeVideoReview, episodeSceneErrorMessage, getLongEpisodeVideoPreview, getLongEpisodeVideoProgress, getLongEpisodeVideoReview, longEpisodeVideoContentUrl, recoverLongEpisodeVideos, regenerateLongEpisodeVideo, restartLongEpisodeVideoGeneration, startLongEpisodeVideoGeneration, stopLongEpisodeVideoGeneration, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { approveLongEpisodeVideoReview, episodeSceneErrorMessage, getLongEpisodeCurrentVideoJob, getLongEpisodeVideoPreview, getLongEpisodeVideoProgress, getLongEpisodeVideoReview, longEpisodeVideoContentUrl, recoverLongEpisodeVideos, regenerateLongEpisodeVideo, restartLongEpisodeVideoGeneration, startLongEpisodeVideoGeneration, stopLongEpisodeVideoGeneration, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { Spinner } from "./Spinner.js";
 import { videoRatioLabel } from "../utils/sceneFields.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
@@ -43,7 +43,37 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
   const [busy, setBusy] = useState(false); const [error, setError] = useState<DisplayError | null>(null);
   const busyRef = useRef(false);
   const loadPreview = async () => { setError(null); try { const response = await getLongEpisodeVideoPreview(projectId, episodeNumber); setPreview(response); setPrompts(Object.fromEntries(response.scenes.map((scene) => [scene.sceneNumber, scene.prompt]))); } catch (caught) { setError(toLongProjectDisplayError(caught)); } };
-  useEffect(() => { void loadPreview(); }, [projectId, episodeNumber]);
+  /**
+   * Restores the Episode's existing video job on mount, before falling back to the 미리보기.
+   *
+   * The job id used to live only in this screen's React state, so a reload showed "이 단계에서는 영상 작업을 할 수
+   * 없습니다" and nothing else — the 검토 카드, the 회수 버튼 and the paid clips were all behind a `job` that could
+   * only be set by pressing 생성 in that same page load. Money had already been spent and the screen could not
+   * reach it.
+   *
+   * A failed lookup falls through to the preview rather than showing an error: an Episode that never had a job
+   * is the ordinary case, and the preview's own error is the one worth reading.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      let jobId: string | null = null;
+      try { jobId = (await getLongEpisodeCurrentVideoJob(projectId, episodeNumber)).jobId; } catch { jobId = null; }
+      if (cancelled) return;
+      if (jobId === null) { await loadPreview(); return; }
+      try {
+        const progress = await getLongEpisodeVideoProgress(projectId, episodeNumber, jobId);
+        if (cancelled) return;
+        setJob(progress);
+        if (progress.status === "succeeded") {
+          const review = await getLongEpisodeVideoReview(projectId, episodeNumber, jobId);
+          if (cancelled) return;
+          setReviews(review.reviews);
+        }
+      } catch (caught) { if (!cancelled) setError(toLongProjectDisplayError(caught)); }
+    })();
+    return () => { cancelled = true; };
+  }, [projectId, episodeNumber]);
   const loadProgress = async () => { if (!job) return; try { const next = await getLongEpisodeVideoProgress(projectId, episodeNumber, job.jobId); setJob(next); if (next.status === "succeeded") { const review = await getLongEpisodeVideoReview(projectId, episodeNumber, next.jobId); setReviews(review.reviews); } } catch (caught) { setError(toLongProjectDisplayError(caught)); } };
   useEffect(() => { if (!job || (job.status !== "created" && job.status !== "running")) return; const timer = setTimeout(() => void loadProgress(), 400); return () => clearTimeout(timer); }, [job]);
   const valid = preview !== null && preview.scenes.every((scene) => { const prompt = prompts[scene.sceneNumber] ?? ""; return prompt.trim().length > 0 && prompt.length <= LIMIT; });
@@ -82,7 +112,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
         <h2 className="flex items-center gap-2.5 text-lg font-semibold">{dot}{`에피소드 ${episodeNumber} 영상 작업`}</h2>
         <p data-testid="episode-video-provider-notice" className="text-sm text-amber-300">Runway 키가 연결되어 있으면 장면마다 실제 유료 요청이 전송됩니다. 연결되어 있지 않으면 비용 없이 임시 영상으로 만들어집니다.</p>
       </header>
-      {!preview && !error && <Spinner label="영상 미리보기를 불러오는 중..." />}
+      {!preview && !job && !error && <Spinner label="영상 작업을 불러오는 중..." />}
       {preview && !job && (
         <div className={cardSection}>
           <p data-testid="episode-video-summary" className="text-sm text-slate-300">순차 진행 · ${preview.estimatedCostUsd.toFixed(2)}</p>
