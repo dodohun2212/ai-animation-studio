@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { MergeLongEpisodeVideosResponse } from "@ai-animation-studio/shared";
 
-import { getLongEpisode, getLongEpisodeCurrentVideoJob, getLongEpisodeVideoReview, getLongProjectSettings, mergeLongEpisodeVideos, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { getLongEpisode, getLongEpisodeCurrentVideoJob, getLongEpisodeVideoReview, getLongProjectSettings, longEpisodeFinalVideoContentUrl, mergeLongEpisodeVideos, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 
 interface Props {
   projectId: string;
@@ -68,6 +68,18 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
    * (the server is still the real gate).
    */
   const [approvedCount, setApprovedCount] = useState<number | null>(null);
+  /**
+   * True once this Episode has a merged final video — including one merged in an earlier page load.
+   *
+   * Merging used to leave a file path printed as text, and that line lived in React state, so a reload erased
+   * the only trace that the Episode was finished at all. The Episode's own status is what survives a refresh.
+   */
+  const [alreadyMerged, setAlreadyMerged] = useState(false);
+  /** Bumped after a merge so the browser fetches the new file instead of replaying a cached older one. */
+  const [videoVersion, setVideoVersion] = useState(0);
+  /* The content route refuses a file at or below placeholder size, so a merge of stubs fails to load rather
+     than showing a black box that claims to be the finished Episode. */
+  const [unplayable, setUnplayable] = useState(false);
   const busy = useRef(false);
 
   // Only ever changes this screen's wording, so a failure here is not fatal and is deliberately swallowed.
@@ -75,7 +87,9 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
     let cancelled = false;
     getLongEpisode(projectId, episodeNumber)
       .then((response) => {
-        if (!cancelled) setSceneCount(response.episode.script?.scenes.length ?? null);
+        if (cancelled) return;
+        setSceneCount(response.episode.script?.scenes.length ?? null);
+        setAlreadyMerged(response.episode.status === "completed");
       })
       .catch(() => {});
     // Same treatment for the two media settings: wording only, so a failure drops the sentence rather than
@@ -116,6 +130,8 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
     try {
       setResult(await mergeLongEpisodeVideos(projectId, episodeNumber));
       setConfirmationOpen(false);
+      setUnplayable(false);
+      setVideoVersion((current) => current + 1);
     } catch (caught) {
       setError(toLongProjectDisplayError(caught));
     } finally {
@@ -198,10 +214,26 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
           {error.message}
         </p>
       )}
-      {result && (
+      {(result || alreadyMerged) && (
         <div data-testid="episode-merge-success" className="space-y-3 rounded-2xl border border-emerald-400/30 bg-slate-900/70 p-5">
           <p className="text-sm font-semibold text-emerald-400">에피소드 최종 영상이 완성되었습니다.</p>
-          <p className="text-sm text-slate-300" data-testid="episode-final-video-path">최종 영상: {result.finalVideoPath}</p>
+          {unplayable ? (
+            <p data-testid="episode-final-video-missing" className="rounded-lg border border-amber-400/30 bg-amber-500/[0.06] px-3 py-2 text-sm text-amber-200">
+              최종 영상 파일을 재생할 수 없습니다. 장면 영상 중에 내용이 비어 있는 것이 섞여 있을 수 있습니다 — 장면 영상 화면에서 하나씩 재생해 확인해 주세요.
+            </p>
+          ) : (
+            /* Watching it is the point. Six empty clips passed 확정 because nobody could see them, and a merge
+               nobody can play is that same blindness one layer up. */
+            <video
+              data-testid="episode-final-video"
+              className="w-full rounded-lg border border-white/10 bg-black"
+              controls
+              preload="metadata"
+              src={longEpisodeFinalVideoContentUrl(projectId, episodeNumber, String(videoVersion))}
+              onError={() => setUnplayable(true)}
+            />
+          )}
+          {result && <p className="text-xs text-slate-500" data-testid="episode-final-video-path">파일: {result.finalVideoPath}</p>}
           {onOpenContinuity && (
             <button
               type="button"

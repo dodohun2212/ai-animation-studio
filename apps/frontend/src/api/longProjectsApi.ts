@@ -638,6 +638,20 @@ export function longEpisodeVideoContentUrl(
   return `${API_ROUTES.longEpisodeVideoContent(projectId, episodeNumber, sceneNumber)}?v=${encodeURIComponent(cacheBuster)}`;
 }
 
+/**
+ * URL for the Episode's merged final video.
+ *
+ * Until this existed, finishing a merge produced a file path printed as text — and that line lived in React
+ * state, so a reload lost even that. Six 32-byte stubs passed 확정 because nobody could watch them; the same
+ * blindness one layer up is a "최종 영상" nobody can play.
+ *
+ * The route refuses a file at or below placeholder size (a merge cannot be smaller than what it merged), so a
+ * black box never gets to claim it is the finished Episode.
+ */
+export function longEpisodeFinalVideoContentUrl(projectId: string, episodeNumber: number, cacheBuster: string): string {
+  return `${API_ROUTES.longEpisodeFinalVideoContent(projectId, episodeNumber)}?v=${encodeURIComponent(cacheBuster)}`;
+}
+
 export function getLongProjectSettings(projectId: string): Promise<GetLongProjectSettingsResponse> {
   return request(API_ROUTES.longProjectSettings(projectId), undefined, isGetLongProjectSettingsResponse);
 }

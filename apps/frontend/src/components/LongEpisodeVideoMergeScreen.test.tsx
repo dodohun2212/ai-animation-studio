@@ -7,9 +7,16 @@ import { LongEpisodeVideoMergeScreen } from "./LongEpisodeVideoMergeScreen.js";
 const episode = (status = "completed") => ({ episodeNumber: 1, title: "Episode", summary: "summary", mainEvent: "event", conflict: "conflict", cliffhanger: "cliffhanger", nextEpisodeHook: "hook", status, approved: true, scriptRevision: 1, scriptHistoryCount: 1 });
 const response = () => ({ episode: episode(), finalVideoPath: "videos/final/instagram_reel.mp4" as const });
 
-/** An Episode carrying a script of `count` scenes — the screen reads its scene count from exactly this. */
-const episodeWithScenes = (count: number) => ({
-  ...episode(),
+/**
+ * An Episode carrying a script of `count` scenes — the screen reads its scene count from exactly this.
+ *
+ * Defaults to 승인 완료, the state a person is actually in when they open this screen. It used to default to
+ * `completed`, which is the state *after* a merge — harmless while the screen ignored status, and misleading
+ * now that a finished Episode shows its player on sight: every pre-merge test would have rendered the success
+ * block before merging anything, and the one test that waits for that block would have passed without it.
+ */
+const episodeWithScenes = (count: number, status = "videos_approved") => ({
+  ...episode(status),
   script: {
     title: "Episode",
     synopsis: "",
@@ -175,7 +182,7 @@ describe("LongEpisodeVideoMergeScreen", () => {
     expect(url).toBe(MERGE_URL);
     expect(init.method).toBe("POST");
     expect(init.body).toBeUndefined();
-    expect(screen.getByTestId("episode-final-video-path").textContent).toBe("최종 영상: videos/final/instagram_reel.mp4");
+    expect(screen.getByTestId("episode-final-video-path").textContent).toBe("파일: videos/final/instagram_reel.mp4");
   });
 
   it("keeps a safe retryable error without exposing the backend message or an absolute path", async () => {
@@ -196,4 +203,55 @@ describe("LongEpisodeVideoMergeScreen", () => {
     expect(alert.textContent).not.toContain("C:\\private");
     expect(screen.getByTestId("episode-merge-confirm-panel")).toBeTruthy();
   });
+
+  /**
+   * Six 32-byte stubs passed 확정 because nobody could watch them. A merge whose only output is a file path
+   * printed as text is that same blindness one layer up — and the line lived in React state, so a reload
+   * erased even that.
+   */
+  it("plays the finished Episode, and still does so after a reload that lost the merge response", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4, "completed") },
+      [`GET ${SETTINGS_URL}`]: mediaSettings(false, false),
+      ...confirmedRoutes(4, 4),
+    }));
+    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    const player = await screen.findByTestId("episode-final-video");
+    expect(player.getAttribute("src")).toContain("/long-projects/long/episodes/1/videos/final/content");
+    // Nothing was merged in this page load, so there is no path to print — only the Episode's own state said
+    // it was finished, and that is what has to survive a refresh.
+    expect(screen.queryByTestId("episode-final-video-path")).toBeNull();
+  });
+
+  it("does not claim the Episode is finished before it has been merged", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) },
+      [`GET ${SETTINGS_URL}`]: mediaSettings(false, false),
+      ...confirmedRoutes(4, 4),
+    }));
+    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    await screen.findByTestId("episode-merge-approved-count");
+    expect(screen.queryByTestId("episode-merge-success")).toBeNull();
+    expect(screen.queryByTestId("episode-final-video")).toBeNull();
+  });
+
+  it("says the file will not play instead of showing a black box that claims to be the finished Episode", async () => {
+    // The route refuses a file at or below placeholder size — a merge cannot be smaller than what it merged —
+    // so this is what a merge of empty clips looks like on screen.
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4, "completed") },
+      [`GET ${SETTINGS_URL}`]: mediaSettings(false, false),
+      ...confirmedRoutes(4, 4),
+    }));
+    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    fireEvent.error(await screen.findByTestId("episode-final-video"));
+
+    const notice = await screen.findByTestId("episode-final-video-missing");
+    expect(notice.textContent).toContain("재생할 수 없습니다");
+    expect(screen.queryByTestId("episode-final-video")).toBeNull();
+  });
+
 });
