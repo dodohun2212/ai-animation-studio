@@ -27,6 +27,15 @@ describe("instagramLoginDialogUrl", () => {
     expect(url.searchParams.get("redirect_uri")).toBe("https://127.0.0.1:4317/settings/instagram/callback");
   });
 
+  it("asks again for permissions the account has not granted, instead of accepting a silent pass-through", () => {
+    // Facebook reuses an earlier answer unless told otherwise: signing in again shows no consent screen and
+    // returns a token carrying exactly the old permissions. That looks like a successful login right up until
+    // the account list comes back empty — which is precisely how a day was lost to this.
+    const url = new URL(instagramLoginDialogUrl("app-1", "state-1", REDIRECT));
+
+    expect(url.searchParams.get("auth_type")).toBe("rerequest");
+  });
+
   it("requests exactly the documented publishing permissions and nothing more", () => {
     const url = new URL(instagramLoginDialogUrl("app-1", "state-1", REDIRECT));
     expect(url.searchParams.get("scope")?.split(",")).toEqual([

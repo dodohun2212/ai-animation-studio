@@ -73,6 +73,12 @@ export function instagramLoginDialogUrl(appId: string, state: string, redirectUr
     state: state.trim(),
     response_type: "code",
     scope: INSTAGRAM_PUBLISH_SCOPES.join(","),
+    // Without this, Facebook silently reuses an earlier answer: someone who once declined a permission — or
+    // granted a narrower set while the app was in development mode — signs in again, sees no consent screen at
+    // all, and receives a token carrying exactly the old permissions. That is indistinguishable from a
+    // successful login until the account list comes back empty, which is the loop this app spent a day in.
+    // `rerequest` makes the dialog ask again for anything not held, and costs a screen nobody minds seeing.
+    auth_type: "rerequest",
   });
   return `https://www.facebook.com/${GRAPH_API_VERSION}/dialog/oauth?${query.toString()}`;
 }
