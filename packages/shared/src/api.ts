@@ -576,7 +576,34 @@ export interface ListLongProjectsResponse { projects: LongProjectSummary[]; }
 export interface ArchivedLongProjectSummary extends LongProjectSummary { archivedAt: string; }
 export interface ListArchivedLongProjectsResponse { projects: ArchivedLongProjectSummary[]; }
 export interface GetLongProjectResponse { project: LongProject; }
-export interface GetLongProjectSettingsResponse { settings: LongProjectSettings; }
+/**
+ * A Long Project's settings, and whether its one lock has closed.
+ *
+ * Only one, and that is the answer rather than an omission. `sceneCount` and `clipDurationSeconds` here are the
+ * defaults a *new* Episode starts from — every Episode snapshots its own copy the moment it is created, and the
+ * lock on changing them lives on that Episode's own settings, which already reports `changeable`. A
+ * `sceneCountChangeable` on this response could only ever be `true`, and a flag that is always true is a flag a
+ * screen learns to stop reading.
+ *
+ * The aspect ratio is not like that: images, video generation and the merge each read the project's ratio when
+ * they run, so changing it once any Episode has images means portrait images sent to Runway asking for
+ * landscape video and then padded by the merge — all paid, none matching. This is the same condition the save
+ * enforces, answered by the same code, so the screen never has to re-derive the server's rule. Computing it in
+ * the frontend would be a second copy of that rule, which is how the continuity screen once came to disagree
+ * with its own server.
+ */
+export interface GetLongProjectSettingsResponse {
+  settings: LongProjectSettings;
+  /** False once any Episode has reached image generation — see this type's own doc comment. */
+  aspectRatioChangeable: boolean;
+  /**
+   * Which Episode closed it. Present only when `aspectRatioChangeable` is false.
+   *
+   * A bare `false` leaves the screen saying "you cannot change this any more" and the person asking why now —
+   * the answer is one Episode, by number, and the server already knows which one because the refusal names it.
+   */
+  aspectRatioLockedByEpisodeNumber?: number;
+}
 export interface UpdateLongProjectSettingsRequest { settings: LongProjectSettingsInput; }
 export interface UpdateLongProjectSettingsResponse { project: LongProject; }
 export interface LongProjectOutlinePromptPreview { projectId: string; prompt: string; promptSha256: string; episodeCount: number; }

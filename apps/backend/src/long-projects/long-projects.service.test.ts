@@ -82,7 +82,10 @@ describe("LongProjectsService", () => {
     await subject.create(input);
     const outlines = path.join(root!, "projects", "long_test", "long_story", "episode_outlines.json");
 
-    // Before any images, changing it is ordinary.
+    // Before any images, changing it is ordinary — and the settings GET says so, with no Episode named.
+    const open = await subject.getSettings("long_test");
+    expect(open.aspectRatioChangeable).toBe(true);
+    expect(open.aspectRatioLockedByEpisodeNumber).toBeUndefined();
     const flipped = { ...input.settings, aspectRatio: "16:9" as const };
     await subject.updateSettings("long_test", { settings: flipped });
     expect((await subject.getSettings("long_test")).settings.aspectRatio).toBe("16:9");
@@ -94,6 +97,13 @@ describe("LongProjectsService", () => {
     await expect(subject.updateSettings("long_test", { settings: input.settings }))
       .rejects.toMatchObject({ response: { code: "LONG_PROJECT_ASPECT_RATIO_LOCKED", details: { episodeNumber: 2 } } });
     expect((await subject.getSettings("long_test")).settings.aspectRatio).toBe("16:9");
+
+    // The settings GET says the same thing the save just did, from the same code — and names the Episode that
+    // closed it, because "you cannot change this any more" without "which one did it" only raises the question.
+    // The screen must never re-derive this: two copies of the rule is two answers about paid work.
+    expect(await subject.getSettings("long_test")).toMatchObject({
+      aspectRatioChangeable: false, aspectRatioLockedByEpisodeNumber: 2,
+    });
 
     // The rest of the form still saves — including the scene count, which is only a default for new Episodes now.
     const renamed = await subject.updateSettings("long_test", { settings: { ...flipped, title: "다른 제목", sceneCount: 8 } });

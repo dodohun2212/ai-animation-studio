@@ -18,6 +18,9 @@ import { storyBibleBasicForPrompt } from "./story-bible-basic.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 
 const MAX_EPISODES = Number(process.env.APP_MAX_LONG_PROJECT_EPISODES ?? "60");
+/** The statuses an Episode can hold before any image has been generated — the aspect ratio is free to change while every Episode is still in one of them. Named once because the save and the settings GET must not answer this differently. */
+const BEFORE_IMAGES: readonly string[] = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved"];
+
 const settingKeys = ["title", "logline", "overview", "genre", "tone", "theme", "episodeCount", "sceneCount", "clipDurationSeconds", "aspectRatio", "audience", "notes", "startingState", "midpoint", "endingDirection", "storyFlowSummary", "narrationEnabled", "subtitlesEnabled"] as const;
 type Stored = { project_id: string; project_type: "long_story_project"; title: string; logline: string; overview: string; genre: string; tone: string; theme: string; episode_count: number; scene_count: number; clip_duration_seconds: number; aspect_ratio: "9:16" | "16:9"; audience: string; notes: string; starting_state: string; midpoint: string; ending_direction: string; story_flow_summary: string; narration_enabled: boolean; subtitles_enabled: boolean; created_at: string; updated_at: string; outline_status: "planned" | "outline_ready"; outline_prompt_request?: { prompt_sha256: string; prompt: string; approved_at: string; modified: boolean }; };
 const object = (value: unknown): Record<string, unknown> => { if (!value || typeof value !== "object" || Array.isArray(value)) throw longInvalidRequest(); return value as Record<string, unknown>; };
@@ -137,7 +140,31 @@ export class LongProjectsService {
     catch (error) { if (error && typeof error === "object" && "getStatus" in error) throw error; throw longStorageError(); }
     return { deletedProjectId: projectId };
   }
-  async getSettings(id: string): Promise<GetLongProjectSettingsResponse> { return { settings: toSettings(await this.load(id.trim())) }; }
+  async getSettings(id: string): Promise<GetLongProjectSettingsResponse> {
+    const stored = await this.load(id.trim());
+    const locked = await this.episodeThatLocksAspectRatio(stored);
+    return {
+      settings: toSettings(stored),
+      aspectRatioChangeable: locked === undefined,
+      ...(locked !== undefined ? { aspectRatioLockedByEpisodeNumber: locked } : {}),
+    };
+  }
+
+  /**
+   * The first Episode that has reached image generation, or nothing.
+   *
+   * One function, called by both the save that refuses and the GET that reports — the screen must never learn
+   * this rule a second time. Two copies of "when is the aspect ratio locked" is two answers to give a person
+   * about paid work, and they only have to disagree once.
+   *
+   * Fails soft on an unreadable outline list: reporting "not locked" there is the same answer the screen would
+   * have shown before this field existed, and the save still refuses on its own read. Reporting *locked* on a
+   * read failure would be worse — it would take away a setting the project may well still be allowed to change.
+   */
+  private async episodeThatLocksAspectRatio(stored: Stored): Promise<number | undefined> {
+    const outlines = await this.outlines(stored.project_id, stored.episode_count).catch(() => undefined);
+    return outlines?.find((episode) => !BEFORE_IMAGES.includes(episode.status))?.episodeNumber;
+  }
   /**
    * Everything on the project form stays editable, with one exception.
    *
@@ -152,8 +179,7 @@ export class LongProjectsService {
     // Read from the outline list rather than each Episode file: every writer of an Episode's state mirrors it
     // there (see EpisodeImagesService.saveEpisode), and archive already refuses on the same source.
     const outlines = await this.outlines(stored.project_id, stored.episode_count);
-    const beforeImages = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved"];
-    const started = outlines.find((episode) => !beforeImages.includes(episode.status));
+    const started = outlines.find((episode) => !BEFORE_IMAGES.includes(episode.status));
     if (started) throw longAspectRatioLocked(started.episodeNumber);
   }
 
