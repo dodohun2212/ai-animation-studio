@@ -3,7 +3,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import { LONG_EPISODE_STATUSES, IMAGE_ESTIMATED_COST_USD, isSceneNumber, sceneNumbersFor, type ApproveLongEpisodeImageReviewRequest, type ApproveLongEpisodeImageReviewResponse, type GetLongEpisodeImageReviewResponse, type LongEpisodeDetail, type LongEpisodeImageReview, type LongEpisodeImageStaleness, type LongEpisodeStatus, type RegenerateLongEpisodeImageReviewRequest, type RegenerateLongEpisodeImageReviewResponse, type SceneNumber, type StartLongEpisodeImageGenerationRequest, type StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
+import { LONG_EPISODE_STATUSES, IMAGE_ESTIMATED_COST_USD, isSceneNumber, sceneNumbersFor, type ApproveLongEpisodeImageReviewRequest, type ApproveLongEpisodeImageReviewResponse, type GetLongEpisodeImagePreviewResponse, type GetLongEpisodeImageReviewResponse, type LongEpisodeDetail, type LongEpisodeImageReview, type LongEpisodeImageStaleness, type LongEpisodeStatus, type RegenerateLongEpisodeImageReviewRequest, type RegenerateLongEpisodeImageReviewResponse, type SceneNumber, type StartLongEpisodeImageGenerationRequest, type StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
 import { validateImage } from "../assets/image-validation.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
@@ -172,6 +172,34 @@ export class EpisodeImagesService {
   private async continuityImagePath(projectId: string, number: number): Promise<string | null> {
     const reference = await new EpisodeContinuityReferenceService(this.projectsRoot).get(projectId, number);
     return reference.reference?.available ? this.image(projectId, number - 1, reference.reference.sourceSceneNumber) : null;
+  }
+
+  /**
+   * What a generation would actually buy, before anything is sent.
+   *
+   * The confirmation quoted every scene while `generate()` skips any that already has a usable picture and
+   * charges nothing for it — so a retry after three scenes succeeded was quoted at six and cost three. Reading
+   * a price the app already knew was wrong is not the safe direction: **overstating** a cost stops people doing
+   * work they could afford, and this app's whole argument for showing costs is that the number can be trusted.
+   *
+   * Free and provider-free: it looks at files on disk, exactly as the generation loop does, and never calls out.
+   * The same eligibility gate as `generate()`, so a preflight that answers is a generation that would run.
+   */
+  async preview(projectId: string, number: number): Promise<GetLongEpisodeImagePreviewResponse> {
+    const id = projectId.trim();
+    const episode = await this.episode(id, number);
+    if (episode.state !== "asset_mapping_approved" || !episode.approved) throw longEpisodeImagesNotAllowed();
+    const sceneNumbers = sceneNumbersFor(this.sceneCount(episode));
+    const generatable: SceneNumber[] = [];
+    const reusable: SceneNumber[] = [];
+    for (const scene of sceneNumbers) {
+      // The same question `generate()` asks per scene, asked here without acting on the answer.
+      if (await this.validImage(this.image(id, number, scene))) reusable.push(scene); else generatable.push(scene);
+    }
+    const estimatedCostUsd = generatable.length * IMAGE_ESTIMATED_COST_USD;
+    const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
+    const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, estimatedCostUsd) : undefined;
+    return { preview: { sceneNumbers, generatableSceneNumbers: generatable, reusableSceneNumbers: reusable, estimatedCostUsd, ...(budget ? { budget } : {}) } };
   }
 
   async generate(projectId: string, number: number, request: StartLongEpisodeImageGenerationRequest): Promise<StartLongEpisodeImageGenerationResponse> {

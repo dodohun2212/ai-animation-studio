@@ -2,13 +2,16 @@ import * as fs from "node:fs/promises";
 
 import { Body, Controller, Get, HttpException, Param, Post, Res, StreamableFile } from "@nestjs/common";
 import type { Response as HttpResponse } from "express";
-import { API_ROUTES, type ApproveLongEpisodeImageReviewRequest, type ApproveLongEpisodeImageReviewResponse, type GetLongEpisodeImageReviewResponse, type RegenerateLongEpisodeImageReviewRequest, type RegenerateLongEpisodeImageReviewResponse, type StartLongEpisodeImageGenerationRequest, type StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
+import { API_ROUTES, type ApproveLongEpisodeImageReviewRequest, type ApproveLongEpisodeImageReviewResponse, type GetLongEpisodeImagePreviewResponse, type GetLongEpisodeImageReviewResponse, type RegenerateLongEpisodeImageReviewRequest, type RegenerateLongEpisodeImageReviewResponse, type StartLongEpisodeImageGenerationRequest, type StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
 import { longEpisodeImagesInvalid } from "./long-project-api.error.js";
 import { EpisodeImagesService } from "./episode-images.service.js";
 
 @Controller()
 export class EpisodeImagesController {
   constructor(private readonly service: EpisodeImagesService) {}
+  /** Free preflight: which scenes a generation would actually buy. Reads files, never the provider. */
+  @Get(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/images/generations/preview`) preview(@Param("projectId") id: string, @Param("episodeNumber") number: string): Promise<GetLongEpisodeImagePreviewResponse> { return this.service.preview(id, Number(number)); }
+
   @Post(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/images/generations`) generate(@Param("projectId") id: string, @Param("episodeNumber") number: string, @Body() body: StartLongEpisodeImageGenerationRequest): Promise<StartLongEpisodeImageGenerationResponse> { return this.service.generate(id, Number(number), body); }
   @Get(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/images/review`) get(@Param("projectId") id: string, @Param("episodeNumber") number: string): Promise<GetLongEpisodeImageReviewResponse> { return this.service.get(id, Number(number)); }
   @Post(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/images/review/:sceneNumber/approve`) approve(@Param("projectId") id: string, @Param("episodeNumber") number: string, @Param("sceneNumber") scene: string, @Body() body: ApproveLongEpisodeImageReviewRequest): Promise<ApproveLongEpisodeImageReviewResponse> { return this.service.approve(id, Number(number), scene, body); }

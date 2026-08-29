@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import { ProjectAssetMappingsService } from "../mappings/mappings.service.js";
 import { EpisodeMappingOwners, type EpisodeMappingKey } from "./episode-mapping-owner.js";
+import { IMAGE_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 import { EpisodeImagesService } from "./episode-images.service.js";
 import { EpisodeScriptsService } from "./episode-scripts.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
@@ -228,6 +229,49 @@ describe("real OpenAI Episode image generation", () => {
     // something went wrong.
     const { images } = await setupWithConnectedOpenAi();
     await expect(images.get("long", 1)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_NOT_ALLOWED" } });
+  });
+
+  /**
+   * The confirmation quoted every scene while the generation charges for none it can reuse — so a retry after
+   * three succeeded was quoted at six and cost three.
+   *
+   * Overstating a price is not the safe direction. This app's argument for showing costs at all is that the
+   * number can be trusted, and a number known to be too high stops people doing work they could afford.
+   */
+  it("quotes only the scenes a generation would actually buy", async () => {
+    const { images, projectsRoot } = await setupWithConnectedOpenAi();
+    const directory = path.join(projectsRoot, "long", "long_story", "Episode01", "images");
+    await fs.mkdir(directory, { recursive: true });
+    // Two scenes already have a usable picture, the way a half-finished run leaves them.
+    for (const scene of [1, 2]) await fs.writeFile(path.join(directory, `scene${scene}.png`), Buffer.from(PNG_BASE64, "base64"));
+
+    const { preview } = await images.preview("long", 1);
+
+    expect(preview.reusableSceneNumbers).toEqual([1, 2]);
+    expect(preview.generatableSceneNumbers).toEqual([3, 4, 5, 6]);
+    expect(preview.estimatedCostUsd).toBeCloseTo(4 * IMAGE_ESTIMATED_COST_USD, 10);
+    expect(preview.sceneNumbers).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it("charges for every scene when none can be reused, and never calls the provider to find out", async () => {
+    const { images } = await setupWithConnectedOpenAi();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { preview } = await images.preview("long", 1);
+
+    expect(preview.generatableSceneNumbers).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(preview.estimatedCostUsd).toBeCloseTo(6 * IMAGE_ESTIMATED_COST_USD, 10);
+    // A preflight that costs money is not a preflight.
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a preflight for an Episode that is not ready to generate, rather than quoting a run that cannot happen", async () => {
+    const { images } = await setupWithConnectedOpenAi();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    await images.generate("long", 1, { approved: true });
+
+    await expect(images.preview("long", 1)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_NOT_ALLOWED" } });
   });
 
   it("falls back to the local fake adapter, never calling fetch, when no OpenAI credential is configured", async () => {

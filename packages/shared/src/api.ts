@@ -309,6 +309,30 @@ export interface StartLongEpisodeImageGenerationResponse {
  * limit and the honest one: this list says "these are known to be behind", never "the rest are known current".
  */
 export interface LongEpisodeImageStaleness { imageStale: SceneNumber[]; }
+/**
+ * What an Episode's image generation would actually buy, before anything is sent.
+ *
+ * The confirmation used to quote every scene — `sceneCount × per-image` — while the generation itself skips any
+ * scene that already has a usable picture and charges nothing for it. So a retry after three scenes succeeded
+ * was quoted at six and cost three, and a person deciding whether they could afford it was deciding on a number
+ * the app already knew was wrong. Overstating a price is not the safe direction: it stops people doing work
+ * they could afford.
+ *
+ * Free and provider-free, like the video preflight: this reads files on disk, never the provider.
+ */
+export interface LongEpisodeImageGenerationPreview {
+  sceneNumbers: SceneNumber[];
+  /** The scenes that would actually be generated — the ones this run charges for. */
+  generatableSceneNumbers: SceneNumber[];
+  /** Scenes that already have a usable picture and would be left alone, at no cost. */
+  reusableSceneNumbers: SceneNumber[];
+  /** `generatableSceneNumbers.length × per-image`, never the scene count. */
+  estimatedCostUsd: number;
+  /** Same meaning and scope as StartImageGenerationResponse.budget (see that field's doc comment). */
+  budget?: BudgetPreview;
+}
+export interface GetLongEpisodeImagePreviewResponse { preview: LongEpisodeImageGenerationPreview; }
+
 export interface GetLongEpisodeImageReviewResponse {
   episode: LongEpisodeDetail;
   reviews: LongEpisodeImageReview[];
@@ -2053,6 +2077,9 @@ export const API_ROUTES = {
   longEpisodeArchives: (projectId: string) => `/long-projects/${encodeURIComponent(projectId)}/episodes/archives`,
   longEpisodeArchiveRestore: (projectId: string, archiveId: string) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/archives/${encodeURIComponent(archiveId)}/restore`,
+  /** A free, provider-free preflight: which scenes an image generation would actually buy. */
+  longEpisodeImagePreview: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/images/generations/preview`,
   audioLibrary: "/audio/library",
   audioLibraryUpload: "/audio/library/upload",
   audioLibraryContent: (trackId: string) => `/audio/library/${encodeURIComponent(trackId)}/content`,
