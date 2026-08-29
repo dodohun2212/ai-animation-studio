@@ -25,6 +25,9 @@ const SAFE_ERRORS: Record<string, string> = {
   INSTAGRAM_NOT_CONNECTED: "인스타그램 로그인이 만료되었습니다. API 설정에서 다시 로그인해 주세요.",
   INSTAGRAM_TARGET_NOT_FOUND: "고른 계정으로는 지금 올릴 수 없습니다. 계정을 다시 골라 주세요.",
   INSTAGRAM_PUBLISH_FAILED: "올리지 못했습니다. 아무것도 게시되지 않았으니 다시 시도해도 됩니다.",
+  /* "지울 게 없었다" 와 "지웠다" 는 남는 상태가 같습니다. 다른 것은 다음에 올리기를 누르는 사람이 무엇을 믿고
+     누르느냐고, 그래서 성공으로 삼키지 않고 이렇게 말합니다. */
+  INSTAGRAM_POST_NOT_RECORDED: "이 영상에는 지울 게시 기록이 없습니다. 이미 풀려 있어 지금 올릴 수 있습니다.",
 };
 const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };

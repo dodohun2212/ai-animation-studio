@@ -55,6 +55,7 @@ function renderScreen(options: {
   draft?: { body?: string; hashtags?: string; aiNotice?: boolean } | "fails";
   targets?: { targets: { igUserId: string; username: string; pageName: string }[]; selectedIgUserId?: string } | "not-connected";
   publish?: "ok" | "INSTAGRAM_ALREADY_PUBLISHED" | "INSTAGRAM_PUBLISH_FAILED" | "INSTAGRAM_NOT_CONNECTED";
+  forget?: "ok" | "not-recorded";
 } = {}) {
   const projects = options.projects ?? [libraryProject()];
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -80,6 +81,10 @@ function renderScreen(options: {
         return jsonResponse(409, { code: "INSTAGRAM_NOT_CONNECTED", message: "raw backend detail" });
       }
       return jsonResponse(200, options.targets ?? { targets: [] });
+    }
+    if (url === "/projects/p1/instagram/post") {
+      if (options.forget === "not-recorded") return jsonResponse(409, { code: "INSTAGRAM_POST_NOT_RECORDED", message: "raw backend detail" });
+      return jsonResponse(200, { project: makeProject({ id: "p1", ...options.project, instagramPost: undefined }) });
     }
     if (url === "/projects/p1/post-draft") {
       if (options.draft === "fails") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "raw" });
@@ -249,6 +254,60 @@ describe("InstagramPostScreen", () => {
 
     expect(screen.getByTestId("post-check-length").textContent).toContain("0:30");
     expect(screen.getByTestId("post-check-length").textContent).not.toContain("0:00");
+  });
+
+  /**
+   * A published Episode used to be a dead end: the button was gone and the only advice was to make a new video.
+   * That is right for the accident it prevents — a second press when the first one's outcome is unclear — and
+   * wrong for the person who deleted the post on Instagram and wants to put it up again.
+   *
+   * Two steps, and the second asks about a fact rather than about resolve. Whether the post is still up is the
+   * only thing that decides one post or two, and the only thing this app cannot look up for itself.
+   */
+  it("does not clear the publish record until the second, fact-asking confirmation", async () => {
+    const { fetchMock } = renderScreen({ project: { instagramPost: { mediaId: "m1", igUserId: "1", publishedAt: "2026-08-27T10:00:00.000Z" } } });
+    await pickProject();
+    expect(screen.getByTestId("post-published")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("post-forget"));
+
+    const panel = await screen.findByTestId("post-forget-confirm");
+    expect(panel.textContent).toContain("인스타그램에서 그 게시물을 지우셨습니까?");
+    // The two facts a person needs and cannot get anywhere else on this screen.
+    expect(panel.textContent).toContain("같은 게시물이 두 개가 됩니다");
+    expect(panel.textContent).toContain("인스타그램의 게시물은 그대로 남습니다");
+    // Opening the panel must not have touched anything yet.
+    expect(fetchMock.mock.calls.some((call) => (call[1] as RequestInit | undefined)?.method === "DELETE")).toBe(false);
+  });
+
+  it("unlocks publishing from the server's own answer once the record is cleared", async () => {
+    const { fetchMock } = renderScreen({ project: { instagramPost: { mediaId: "m1", igUserId: "1", publishedAt: "2026-08-27T10:00:00.000Z" } }, targets: { targets: [{ igUserId: "1", username: "acct", pageName: "Page" }], selectedIgUserId: "1" } });
+    await pickProject();
+
+    fireEvent.click(screen.getByTestId("post-forget"));
+    fireEvent.click(await screen.findByTestId("post-forget-confirm-button"));
+
+    // The lock lifts because the response carried a project with no record — not because a local flag flipped.
+    await waitFor(() => expect(screen.queryByTestId("post-published")).toBeNull());
+    const deleted = fetchMock.mock.calls.find((call) => (call[1] as RequestInit | undefined)?.method === "DELETE");
+    const [url, init] = deleted as [string, RequestInit];
+    expect(url).toBe("/projects/p1/instagram/post");
+    expect(JSON.parse(String(init.body))).toEqual({ acknowledged: true });
+  });
+
+  // "There was nothing to clear" and "it is cleared" leave the same state. They are not the same sentence to
+  // the person about to press 올리기, so the screen says which one happened.
+  it("says plainly when there was no record to clear rather than reporting a success", async () => {
+    renderScreen({ project: { instagramPost: { mediaId: "m1", igUserId: "1", publishedAt: "2026-08-27T10:00:00.000Z" } }, forget: "not-recorded" });
+    await pickProject();
+
+    fireEvent.click(screen.getByTestId("post-forget"));
+    fireEvent.click(await screen.findByTestId("post-forget-confirm-button"));
+
+    const alert = await screen.findByTestId("post-forget-error");
+    expect(alert).toHaveAttribute("data-error-code", "INSTAGRAM_POST_NOT_RECORDED");
+    expect(alert.textContent).toContain("지울 게시 기록이 없습니다");
+    expect(alert.textContent).not.toContain("raw backend detail");
   });
 
   it("warns when the video is landscape rather than the vertical shape a reel expects", async () => {

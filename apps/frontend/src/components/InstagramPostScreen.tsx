@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { InstagramPublishTarget, InstagramTargetDiagnostics, LongEpisodeDetail, Project, VideoLibraryEpisodeSummary, VideoLibraryProjectSummary } from "@ai-animation-studio/shared";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
-import { publishLongEpisodeToInstagram, publishToInstagram, toInstagramPublishDisplayError } from "../api/instagramPublishApi.js";
+import { forgetInstagramPost, forgetLongEpisodeInstagramPost, publishLongEpisodeToInstagram, publishToInstagram, toInstagramPublishDisplayError } from "../api/instagramPublishApi.js";
 import { getInstagramTargets, setInstagramTarget, targetLabel, toInstagramTargetsDisplayError } from "../api/instagramTargetsApi.js";
 import { getPostDraft, putPostDraft, toPostDraftDisplayError } from "../api/postDraftApi.js";
 import { getVideoLibrary, toVideoLibraryDisplayError } from "../api/videoLibraryApi.js";
@@ -230,6 +230,10 @@ export function InstagramPostScreen({ onBack }: Props) {
   const [confirmPublish, setConfirmPublish] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<DisplayError | null>(null);
+  /** The unlock is its own two-step, kept apart from the publish confirmation so neither can stand in for the other. */
+  const [confirmForget, setConfirmForget] = useState(false);
+  const [forgetting, setForgetting] = useState(false);
+  const [forgetError, setForgetError] = useState<DisplayError | null>(null);
   const [targets, setTargets] = useState<TargetsState>({ status: "loading" });
   const [targetPending, setTargetPending] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
@@ -313,6 +317,8 @@ export function InstagramPostScreen({ onBack }: Props) {
           setAiNoticeOn(true);
           setSaveState("idle");
           setSaveError(null);
+          setConfirmForget(false);
+          setForgetError(null);
           setPicked({
             status: "ready",
             kind: "episode",
@@ -349,6 +355,8 @@ export function InstagramPostScreen({ onBack }: Props) {
         setAiNoticeOn(draft?.aiNotice ?? true);
         setSaveState("idle");
         setSaveError(null);
+        setConfirmForget(false);
+        setForgetError(null);
         setPicked({
           status: "ready",
           kind: "project",
@@ -474,6 +482,34 @@ export function InstagramPostScreen({ onBack }: Props) {
       setPublishError(toInstagramPublishDisplayError(caught));
     } finally {
       setPublishing(false);
+    }
+  }
+
+  /**
+   * Clears this app's record of the publish so the screen will offer to publish again.
+   *
+   * Touches nothing on Instagram — this app does not delete other people's posts and must not let anyone
+   * believe it can. The record is the only thing that changes, and the post, if it is still up, stays up.
+   */
+  async function forgetPost(): Promise<void> {
+    if (picked.status !== "ready" || forgetting) return;
+    setForgetting(true);
+    setForgetError(null);
+    try {
+      if (picked.kind === "episode") {
+        const response = await forgetLongEpisodeInstagramPost(picked.projectId, picked.episodeNumber);
+        setPicked((current) => (current.status === "ready" && current.kind === "episode" ? { ...current, episode: response.episode } : current));
+      } else {
+        const response = await forgetInstagramPost(picked.project.id);
+        setPicked((current) => (current.status === "ready" && current.kind === "project" ? { ...current, project: response.project } : current));
+      }
+      // The response carries the cleared record, so the lock lifts without a reload — and from the server's
+      // own answer rather than from a local flag a refresh would forget.
+      setConfirmForget(false);
+    } catch (caught) {
+      setForgetError(toInstagramPublishDisplayError(caught));
+    } finally {
+      setForgetting(false);
     }
   }
 
@@ -874,8 +910,62 @@ export function InstagramPostScreen({ onBack }: Props) {
                   이미 게시했습니다 · {dateOnly(published.publishedAt)}
                 </p>
                 <p className="text-xs text-slate-400">
-                  같은 영상을 또 올리면 계정에 같은 게시물이 두 개가 됩니다. 새로 올리려면 새 영상을 만들어 주세요.
+                  같은 영상을 또 올리면 계정에 같은 게시물이 두 개가 됩니다.
                 </p>
+                {/* Two steps, and the second one asks about a fact rather than about resolve: whether the post
+                    is still up is the only thing that decides whether this leaves one post or two, and it is
+                    the one thing this app cannot look up. */}
+                {!confirmForget ? (
+                  <button
+                    type="button"
+                    className={outlineButton}
+                    data-testid="post-forget"
+                    onClick={() => { setForgetError(null); setConfirmForget(true); }}
+                  >
+                    다시 올릴 수 있게 하기
+                  </button>
+                ) : (
+                  <div
+                    role="alertdialog"
+                    aria-label="게시 기록 지우기 확인"
+                    data-testid="post-forget-confirm"
+                    className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
+                  >
+                    <p className="text-sm font-semibold text-amber-300">인스타그램에서 그 게시물을 지우셨습니까?</p>
+                    <p className="text-xs text-slate-300">
+                      이 앱은 인스타그램을 볼 수 없어서 대신 확인해 드릴 수 없습니다. 아직 안 지우셨다면 계정에 같은 게시물이 두 개가 됩니다.
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      여기서 지우는 것은 이 앱의 기록뿐이고, 인스타그램의 게시물은 그대로 남습니다.
+                      지운 뒤에도 이 앱은 그 게시물을 기억합니다.
+                    </p>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        className={outlineButton}
+                        data-testid="post-forget-cancel"
+                        disabled={forgetting}
+                        onClick={() => setConfirmForget(false)}
+                      >
+                        돌아가기
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+                        data-testid="post-forget-confirm-button"
+                        disabled={forgetting}
+                        onClick={() => void forgetPost()}
+                      >
+                        {forgetting ? "지우는 중..." : "네, 지웠습니다"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {forgetError && (
+                  <p role="alert" data-testid="post-forget-error" data-error-code={forgetError.code} className="text-sm text-rose-400">
+                    {forgetError.message}
+                  </p>
+                )}
               </>
             ) : (
               <>
