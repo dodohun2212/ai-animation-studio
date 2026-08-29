@@ -73,6 +73,18 @@ const MONEY_GUARDS: readonly { title: string; why: string }[] = [
     why: "recovery is a download; the moment it creates a task instead it costs $0.25 a scene to fetch what was already bought",
   },
   {
+    title: "makes an older copy current again, archiving the one it displaces so the restore is reversible",
+    why: "without the archive-first step a restore silently destroys the paid clip it replaces, and nothing else keeps a copy",
+  },
+  {
+    title: "still serves a scene clip after the Episode has been merged, rather than reading the finished Episode as corrupt",
+    why: "three services rejected the completed state, so merging put every scene player and the recovery button behind a 500",
+  },
+  {
+    title: "does not count a paid Episode's placeholders as ready videos, while a local fake run still lists them",
+    why: "the library reporting a stubbed batch as finished is the report that made six thrown-away clips look fine",
+  },
+  {
     // One title, two suites again: the short project's scene content route and its final-video route.
     title: "refuses to serve a paid run's placeholder as a scene, but still serves the same file for a local fake run",
     why: "a player handed a 32-byte header draws a black box that claims to be the paid clip — the claim that got six stubs approved",
