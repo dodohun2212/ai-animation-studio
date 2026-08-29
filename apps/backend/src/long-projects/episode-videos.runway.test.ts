@@ -441,4 +441,32 @@ describe("real Runway episode video generation", () => {
     // Reported as failed, not left reading "succeeded" over a stub — that is how this went unnoticed the first time.
     expect(result.failedSceneNumbers).toEqual([1, 2, 3, 4, 5, 6]);
   });
+
+  it("serves a scene's clip for a player, and refuses to serve a placeholder", async () => {
+    // The Episode review screen had no address to point a <video> at, so its cards showed a status and a
+    // filename — and six 32-byte stubs were approved through it. Serving a placeholder would draw an empty
+    // player, which is the same claim the stub made on disk, so it is refused rather than streamed.
+    const deps = await setupWithConnectedRunway();
+    const videos = newVideos(deps);
+    vi.stubGlobal("fetch", runwayFetchMock());
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "content_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    await videos.progress("long", 1, started.jobId);
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    await videos.progress("long", 1, started.jobId);
+
+    const file = path.join(deps.projectsRoot, "long", "long_story", "Episode01", "videos", "scene1.mp4");
+    await expect(videos.content("long", 1, "1")).resolves.toEqual({ path: file });
+
+    const placeholder = Buffer.from("000000186674797069736F6D0000020069736F6D69736F32617663316D703431", "hex");
+    await fs.writeFile(file, placeholder);
+    await expect(videos.content("long", 1, "1")).rejects.toMatchObject({ response: { code: "LONG_EPISODE_VIDEOS_INVALID" } });
+    // And a scene number the Episode does not have is refused rather than reaching the filesystem.
+    await expect(videos.content("long", 1, "99")).rejects.toMatchObject({ response: { code: "LONG_EPISODE_VIDEOS_INVALID" } });
+  });
 });

@@ -1490,6 +1490,9 @@ export const API_ROUTES = {
   /** One scene's generated image, as bytes. The short project's projectImageContent, for an Episode. */
   longEpisodeImageContent: (projectId: string, episodeNumber: number, sceneNumber: number) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/images/${sceneNumber}/content`,
+  /** The Episode's counterpart to `videoContent`. Without it a review card has no address to point a player at. */
+  longEpisodeVideoContent: (projectId: string, episodeNumber: number, sceneNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/${sceneNumber}/content`,
   /** The Episode's current video job, so a reloaded screen can find its way back to work already paid for. */
   longEpisodeCurrentVideoJob: (projectId: string, episodeNumber: number) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/generations/current`,

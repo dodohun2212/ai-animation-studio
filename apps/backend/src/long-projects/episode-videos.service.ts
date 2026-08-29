@@ -57,6 +57,26 @@ export class EpisodeVideosService implements OnModuleDestroy {
   private detail(episode: Episode): LongEpisodeDetail { const script = toApiEpisodeScript(episode.script); const warnings = withoutStaleEpisodeRecoveryWarnings(Array.isArray(episode.warnings) ? episode.warnings.filter((item): item is string => typeof item === "string") : [], episode.state); return { episodeNumber: episode.number, title: String(episode.title), summary: String(episode.summary), mainEvent: String(episode.core_event), conflict: String(episode.conflict), cliffhanger: String(episode.cliffhanger), nextEpisodeHook: String(episode.next_connection), status: episode.state, approved: episode.approved, scriptRevision: episode.script_revision, ...(script ? { script } : {}), scriptHistoryCount: Array.isArray(episode.script_history) ? episode.script_history.length : 0, ...(warnings.length > 0 ? { warnings } : {}) }; }
   private async saveEpisode(id: string, number: number, episode: Episode) { const f = this.files(id, number); const outlines = await this.json(f.outlines); if (!Array.isArray(outlines) || !object(outlines[number - 1])) throw longInvalidData(); const copy = [...outlines]; copy[number - 1] = { ...copy[number - 1], status: episode.state }; try { await atomicWriteUtf8File(f.project, JSON.stringify(episode, null, 2)); await atomicWriteUtf8File(f.outlines, JSON.stringify(copy, null, 2)); } catch { throw longStorageError(); } }
   private image(id: string, number: number, value: SceneNumber) { return path.join(this.files(id, number).images, `scene${value}.png`); }
+  /**
+   * One scene's clip, for a player on the review screen.
+   *
+   * Nothing could watch these before: the short project had a content route and the Episode did not, so the
+   * review card showed a filename and a status. Six 32-byte stubs were approved through that screen — a player
+   * there is what turns "succeeded" into something a person can check.
+   *
+   * `realVideo`, not `validVideo`: serving a placeholder would render an empty player, which is the same claim
+   * the stub made on disk.
+   */
+  async content(projectId: string, number: number, rawSceneNumber: string): Promise<{ path: string }> {
+    const id = projectId.trim();
+    const episode = await this.loadEpisode(id, number);
+    const value = Number(rawSceneNumber);
+    if (!isSceneNumber(value) || String(value) !== rawSceneNumber || value > this.sceneCount(episode)) throw longEpisodeVideosInvalid();
+    const file = this.video(id, number, value);
+    if (!(await this.realVideo(file))) throw longEpisodeVideosInvalid();
+    return { path: file };
+  }
+
   private video(id: string, number: number, value: SceneNumber) { return path.join(this.files(id, number).videos, `scene${value}.mp4`); }
   private async validImage(file: string) { try { return validateImage(await fs.readFile(file), "scene.png", "image/png").extension === ".png"; } catch { return false; } }
   private async validVideo(file: string) { try { const bytes = await fs.readFile(file); return bytes.length >= MP4.length && bytes.subarray(4, 8).toString("ascii") === "ftyp"; } catch { return false; } }
