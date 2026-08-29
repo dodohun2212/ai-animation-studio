@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { isPlaceholderClip } from "./placeholder-clip.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
@@ -46,10 +47,18 @@ function parseTarget(raw: string, scenes: readonly SceneNumber[]): Target {
   return { kind: "scene", scene: value as SceneNumber };
 }
 
-async function validFile(file: string): Promise<{ bytes: number; createdAt: string } | undefined> {
+/**
+ * `paid` runs demand a real clip, not merely a non-empty one.
+ *
+ * A placeholder is a valid `ftyp` header, so "larger than zero" counted six stubs as ready videos while the
+ * download that was charged for had been thrown away — the library would have reported the batch as finished
+ * and offered it for download. The local fake path writes placeholders on purpose, and listing those is its
+ * normal behaviour, so only a run that reached a provider is held to the stricter test.
+ */
+async function validFile(file: string, paid = false): Promise<{ bytes: number; createdAt: string } | undefined> {
   try {
     const stat = await fs.stat(file);
-    if (!stat.isFile() || stat.size <= 0) return undefined;
+    if (!stat.isFile() || stat.size <= 0 || (paid && isPlaceholderClip(stat.size))) return undefined;
     return { bytes: stat.size, createdAt: stat.mtime.toISOString() };
   } catch {
     return undefined;
@@ -130,9 +139,10 @@ export class VideoLibraryService {
     const rows: GetVideoLibraryResponse["projects"] = [];
     for (const project of projects) {
       const scenes = scenesFor(project);
-      const sceneFiles = await Promise.all(scenes.map((scene) => validFile(this.currentFile(project.project_id, { kind: "scene", scene }))));
+      const paid = project.video_generation_records.some((item) => typeof item === "object" && item !== null && (item as { execution_mode?: unknown }).execution_mode === "runway");
+      const sceneFiles = await Promise.all(scenes.map((scene) => validFile(this.currentFile(project.project_id, { kind: "scene", scene }), paid)));
       const videosReadyCount = sceneFiles.filter(Boolean).length;
-      const finalFile = await validFile(this.currentFile(project.project_id, { kind: "final" }));
+      const finalFile = await validFile(this.currentFile(project.project_id, { kind: "final" }), paid);
       if (videosReadyCount === 0 && !finalFile) continue; // Never reached video generation — not a library entry.
       const costsByScene = this.budget ? await this.budget.costsByScene(project.project_id) : {};
       const totalActualCostUsd = Object.values(costsByScene).reduce((sum: number, value) => sum + (value ?? 0), 0);

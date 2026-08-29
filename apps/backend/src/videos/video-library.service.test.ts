@@ -324,4 +324,26 @@ describe("VideoLibraryService.restore", () => {
 
     expect(await budget.spentThisMonth()).toBe(0);
   });
+
+  it("does not count a paid run's placeholders as ready videos, while a local fake run still lists", async () => {
+    // The third place this same test lived: "larger than zero bytes", which a bare ftyp header satisfies. With
+    // six stubs on disk the library would have reported the batch finished and offered it for download — the
+    // same false claim the merge screen and the review status were making.
+    const { projectsRoot, projects, service } = await setup();
+    await createProjectWithVideos(projectsRoot, projects, "stubbed");
+    const placeholder = Buffer.from("000000186674797069736F6D0000020069736F6D69736F32617663316D703431", "hex");
+    const directory = path.join(projectsRoot, "stubbed", "videos", "runway");
+    await Promise.all([1, 2, 3, 4, 5, 6].map((scene) => fs.writeFile(path.join(directory, `scene${scene}.mp4`), placeholder)));
+
+    const paid = await projects.findById("stubbed");
+    paid.video_generation_records = [1, 2, 3, 4, 5, 6].map((scene) => ({ scene_number: scene, execution_mode: "runway", status: "succeeded" }));
+    await projects.save(paid);
+    expect((await service.list()).projects.find((row) => row.projectId === "stubbed")).toBeUndefined();
+
+    // The same files from a run with no provider are that path's real output, and stay listed.
+    const fake = await projects.findById("stubbed");
+    fake.video_generation_records = [1, 2, 3, 4, 5, 6].map((scene) => ({ scene_number: scene, execution_mode: "local_fake_no_provider", status: "succeeded" }));
+    await projects.save(fake);
+    expect((await service.list()).projects.find((row) => row.projectId === "stubbed")?.videosReadyCount).toBe(6);
+  });
 });
