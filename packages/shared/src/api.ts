@@ -1408,6 +1408,43 @@ export interface VideoLibraryProjectSummary {
  * Addressed by `projectId` *and* `episodeNumber`: an Episode's clips live under different routes from a short
  * project's, so a card built from this row has to know it is looking at an Episode.
  */
+/**
+ * One scene image this app generated, listed so it can be found again without remembering its project.
+ *
+ * The gap this fills is narrow and worth stating exactly: the images are already visible while a project is
+ * being reviewed. What has never existed is a way to find "that picture from a while ago" when the project it
+ * belongs to is the thing you have forgotten. It is a listing, not a store — the files stay where the project
+ * wrote them, because `generated_images` in a stored project holds absolute paths to them and moving a file
+ * would leave the project unable to find its own image, with nothing left on disk to undo it by.
+ *
+ * Viewing only. No edit, no delete: that was the boundary the feature was approved inside.
+ */
+export interface GeneratedImageSummary {
+  projectId: string;
+  /** What the person calls this project, so a row is recognisable without opening it. */
+  projectTitle: string;
+  sceneNumber: SceneNumber;
+  /** The file's own last-modified time. Doubles as the cache-buster: regenerating a scene reuses the address. */
+  updatedAt: string;
+  bytes: number;
+}
+
+/** The same for an Episode's scene image, which needs its Episode named as well as its story. */
+export interface GeneratedEpisodeImageSummary extends GeneratedImageSummary {
+  episodeNumber: number;
+  episodeTitle: string;
+}
+
+/**
+ * Two arrays for the reason the video library has two: a consumer that iterates one of them must not silently
+ * inherit rows it cannot address. A short project's image and an Episode's live behind different content
+ * routes, and a row that hid that difference would be a link to nowhere.
+ */
+export interface GetGeneratedImagesResponse {
+  projects: GeneratedImageSummary[];
+  episodes: GeneratedEpisodeImageSummary[];
+}
+
 export interface VideoLibraryEpisodeSummary {
   projectId: string;
   episodeNumber: number;
@@ -1579,6 +1616,13 @@ export const API_ROUTES = {
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/${sceneNumber}/versions/${encodeURIComponent(versionId)}/content`,
   longEpisodeVideoVersionRestore: (projectId: string, episodeNumber: number, sceneNumber: SceneNumber, versionId: string) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/${sceneNumber}/versions/${encodeURIComponent(versionId)}/restore`,
+  /**
+   * Every generated scene image, across every project and Episode.
+   *
+   * A listing only: each row points at the content route that already serves that image
+   * (`imageContent` / `longEpisodeImageContent`), rather than a second address for the same bytes.
+   */
+  generatedImages: "/images/generated",
   longEpisodeVideoMerge: (projectId: string, episodeNumber: number) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/merge`,
   /**

@@ -11,11 +11,17 @@ import { OpenAiBudget } from "../providers/openai-budget.js";
 import { ImagesController } from "./images.controller.js";
 import { LocalImageGenerationService } from "./local-image-generation.service.js";
 import { ImageReviewService } from "./image-review.service.js";
+import { GeneratedImageLibraryService } from "./generated-image-library.service.js";
 
 @Module({
   imports: [ProjectsModule, ProjectAssetMappingsModule, AssetsModule, ProviderSettingsModule],
   controllers: [ImagesController],
   providers: [
+    {
+      provide: GeneratedImageLibraryService,
+      useFactory: (projects: LocalProjectRepository, projectsRoot: string) => new GeneratedImageLibraryService(projects, projectsRoot),
+      inject: [LocalProjectRepository, PROJECTS_ROOT],
+    },
     { provide: OpenAiBudget, useFactory: (root: string) => new OpenAiBudget(root), inject: [LEARNING_DATA_ROOT] },
     {
       provide: LocalImageGenerationService,

@@ -26,6 +26,7 @@ export default defineConfig({
       "/long-projects": "http://127.0.0.1:3000",
       "/settings": "http://127.0.0.1:3000",
       "/assets": "http://127.0.0.1:3000",
+      "/images": "http://127.0.0.1:3000",
       "/audio": "http://127.0.0.1:3000",
       "/videos": "http://127.0.0.1:3000",
     },
