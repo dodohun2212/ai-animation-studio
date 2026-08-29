@@ -290,8 +290,9 @@ export function InstagramPostScreen({ onBack }: Props) {
     setCopied("idle");
     const asEpisode = parseEpisodeSelection(selection);
     if (asEpisode) {
-      /* An Episode carries no saved draft and no audio credit — those are short-project features — so the two
-         things it does need are its own record (has it already been posted?) and its planned length. The
+      /* An Episode carries no saved draft — that one really is short-project-only for now — so what it needs
+         here is its own record (has it already been posted?) and its planned length. The credit line is NOT in
+         that list any more: the Episode carries usedAudio like a project does, and it is read below. The
          settings degrade to "length unknown" rather than failing the screen, the same way the project path
          treats them. */
       Promise.all([
@@ -426,7 +427,15 @@ export function InstagramPostScreen({ onBack }: Props) {
 
   const project = picked.status === "ready" && picked.kind === "project" ? picked.project : null;
   const episode = picked.status === "ready" && picked.kind === "episode" ? picked : null;
-  const usedAudio = project?.usedAudio;
+  /**
+   * The credit line's source, on either kind.
+   *
+   * Was `project?.usedAudio` alone, from a time when an Episode had no such field. It has one now, the Episode
+   * merge screen already reads it, and this is the screen where the caption is written — so an Episode built
+   * on a CC BY track was going to Instagram with no credit and nothing blocking it. That is the exact failure
+   * D-003 exists to prevent, still open on the long side only.
+   */
+  const usedAudio = project?.usedAudio ?? episode?.episode.usedAudio;
   const creditRequired = usedAudio?.attributionRequired === true;
   const creditText = usedAudio?.attributionText?.trim() ?? "";
   // Required but blank is a real state: attributionText is optional in the contract, and the app must not

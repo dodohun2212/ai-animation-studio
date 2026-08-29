@@ -35,6 +35,19 @@ function libraryProject(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/**
+ * One Episode row in the library. There were no Episode fixtures in this file at all, which is the structural
+ * reason capability after capability shipped on the short side only: nothing here could notice.
+ */
+function libraryEpisode(overrides: Record<string, unknown> = {}) {
+  return {
+    projectId: "long", episodeNumber: 1, title: "재생", projectTitle: "이배드",
+    updatedAt: "2026-08-26T17:29:37.982Z", sceneCount: 6, videosReadyCount: 6,
+    finalVideoAvailable: true, totalActualCostUsd: 1.5, aspectRatio: "9:16",
+    ...overrides,
+  };
+}
+
 /** Only durationSeconds matters to this screen; the rest is filler the response type requires. */
 function makeSettings(durationSeconds: number) {
   return {
@@ -56,11 +69,22 @@ function renderScreen(options: {
   targets?: { targets: { igUserId: string; username: string; pageName: string }[]; selectedIgUserId?: string } | "not-connected";
   publish?: "ok" | "INSTAGRAM_ALREADY_PUBLISHED" | "INSTAGRAM_PUBLISH_FAILED" | "INSTAGRAM_NOT_CONNECTED";
   forget?: "ok" | "not-recorded";
+  episodes?: ReturnType<typeof libraryEpisode>[];
+  episode?: Record<string, unknown>;
 } = {}) {
   const projects = options.projects ?? [libraryProject()];
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input);
-    if (url === LIBRARY_URL) return jsonResponse(200, { projects });
+    if (url === LIBRARY_URL) return jsonResponse(200, { projects, episodes: options.episodes ?? [] });
+    if (url === "/long-projects/long/episodes/1") {
+      return jsonResponse(200, { episode: { episodeNumber: 1, title: "재생", summary: "", mainEvent: "", conflict: "", cliffhanger: "", nextEpisodeHook: "", status: "completed", approved: true, scriptRevision: 1, scriptHistoryCount: 1, updatedAt: "2026-08-27T10:00:00.000Z", ...options.episode } });
+    }
+    if (url === "/long-projects/long/episodes/1/settings") {
+      return jsonResponse(200, { settings: { sceneCount: 6, clipDurationSeconds: 5, episodeDurationSeconds: 30 }, changeable: true, projectDefaults: { sceneCount: 6, clipDurationSeconds: 5 } });
+    }
+    if (url === "/long-projects/long/settings") {
+      return jsonResponse(200, { settings: { ...makeSettings(30), aspectRatio: "9:16" } });
+    }
     if (url === "/projects/p1") return jsonResponse(200, { project: makeProject({ id: "p1", ...options.project }) });
     if (url === "/projects/p1/settings") {
       if (options.durationSeconds === "fails") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "raw" });
@@ -73,7 +97,7 @@ function renderScreen(options: {
       return jsonResponse(200, {
         mediaId: "media_1",
         publishedAt: "2026-08-27T10:00:00.000Z",
-        project: makeProject({ id: "p1", ...options.project, instagramPost: { mediaId: "media_1", igUserId: "1", publishedAt: "2026-08-27T10:00:00.000Z" } }),
+        project: makeProject({ id: "p1", ...options.project, instagramPost: { mediaId: "media_1", igUserId: "1", publishedAt: "2026-08-27T10:00:00.000Z", caption: "이전 캡션" } }),
       });
     }
     if (url === "/settings/instagram/targets" || url === "/settings/instagram/target") {
@@ -265,7 +289,7 @@ describe("InstagramPostScreen", () => {
    * only thing that decides one post or two, and the only thing this app cannot look up for itself.
    */
   it("does not clear the publish record until the second, fact-asking confirmation", async () => {
-    const { fetchMock } = renderScreen({ project: { instagramPost: { mediaId: "m1", igUserId: "1", publishedAt: "2026-08-27T10:00:00.000Z" } } });
+    const { fetchMock } = renderScreen({ project: { instagramPost: { mediaId: "m1", igUserId: "1", publishedAt: "2026-08-27T10:00:00.000Z", caption: "이전 캡션" } } });
     await pickProject();
     expect(screen.getByTestId("post-published")).toBeTruthy();
 
@@ -281,7 +305,7 @@ describe("InstagramPostScreen", () => {
   });
 
   it("unlocks publishing from the server's own answer once the record is cleared", async () => {
-    const { fetchMock } = renderScreen({ project: { instagramPost: { mediaId: "m1", igUserId: "1", publishedAt: "2026-08-27T10:00:00.000Z" } }, targets: { targets: [{ igUserId: "1", username: "acct", pageName: "Page" }], selectedIgUserId: "1" } });
+    const { fetchMock } = renderScreen({ project: { instagramPost: { mediaId: "m1", igUserId: "1", publishedAt: "2026-08-27T10:00:00.000Z", caption: "이전 캡션" } }, targets: { targets: [{ igUserId: "1", username: "acct", pageName: "Page" }], selectedIgUserId: "1" } });
     await pickProject();
 
     fireEvent.click(screen.getByTestId("post-forget"));
@@ -298,7 +322,7 @@ describe("InstagramPostScreen", () => {
   // "There was nothing to clear" and "it is cleared" leave the same state. They are not the same sentence to
   // the person about to press 올리기, so the screen says which one happened.
   it("says plainly when there was no record to clear rather than reporting a success", async () => {
-    renderScreen({ project: { instagramPost: { mediaId: "m1", igUserId: "1", publishedAt: "2026-08-27T10:00:00.000Z" } }, forget: "not-recorded" });
+    renderScreen({ project: { instagramPost: { mediaId: "m1", igUserId: "1", publishedAt: "2026-08-27T10:00:00.000Z", caption: "이전 캡션" } }, forget: "not-recorded" });
     await pickProject();
 
     fireEvent.click(screen.getByTestId("post-forget"));
@@ -308,6 +332,40 @@ describe("InstagramPostScreen", () => {
     expect(alert).toHaveAttribute("data-error-code", "INSTAGRAM_POST_NOT_RECORDED");
     expect(alert.textContent).toContain("지울 게시 기록이 없습니다");
     expect(alert.textContent).not.toContain("raw backend detail");
+  });
+
+  /**
+   * 🔴 The credit line was read from `project?.usedAudio` only. An Episode has carried `usedAudio` since the
+   * Episode merge screen started asking about audio, and this is the screen where the caption is written — so
+   * an Episode built on a CC BY track went to Instagram uncredited, with nothing blocking the button. D-003
+   * again, open on the long side alone.
+   *
+   * Nothing here could have caught it: this file had no Episode fixture at all.
+   */
+  it("puts the licence credit in an Episode's caption, the same as a project's", async () => {
+    renderScreen({
+      projects: [],
+      episodes: [libraryEpisode()],
+      episode: { usedAudio: { mode: "bgm", trackId: "t1", attributionRequired: true, attributionText: "Music by ○○○" } },
+    });
+    fireEvent.change(await screen.findByTestId("post-project"), { target: { value: "episode:long|1" } });
+
+    await screen.findByTestId("post-checks");
+    expect((await screen.findByTestId("post-caption-preview")).textContent).toContain("Music by ○○○");
+  });
+
+  it("blocks an Episode whose credit line is required but blank, the same as a project's", async () => {
+    renderScreen({
+      projects: [],
+      episodes: [libraryEpisode()],
+      episode: { usedAudio: { mode: "bgm", trackId: "t1", attributionRequired: true } },
+    });
+    fireEvent.change(await screen.findByTestId("post-project"), { target: { value: "episode:long|1" } });
+
+    await screen.findByTestId("post-checks");
+    // Required but blank: the app must not invent wording a licence may be specific about, and must not let
+    // the video out without it either.
+    expect(screen.getByTestId("post-copy")).toBeDisabled();
   });
 
   it("warns when the video is landscape rather than the vertical shape a reel expects", async () => {
@@ -555,7 +613,7 @@ describe("InstagramPostScreen", () => {
   it("offers no publish button at all once the project has been published", async () => {
     renderScreen({
       targets: { targets: [{ igUserId: "1", username: "ibad_studio", pageName: "이배드" }], selectedIgUserId: "1" },
-      project: { instagramPost: { mediaId: "m1", igUserId: "1", publishedAt: "2026-08-27T10:00:00.000Z" } },
+      project: { instagramPost: { mediaId: "m1", igUserId: "1", publishedAt: "2026-08-27T10:00:00.000Z", caption: "이전 캡션" } },
     });
     await pickProject();
 
