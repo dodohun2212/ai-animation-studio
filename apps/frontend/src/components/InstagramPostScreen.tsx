@@ -458,6 +458,16 @@ export function InstagramPostScreen({ onBack }: Props) {
   /* The server's own record, on either shape — never a local flag. A reload has to keep saying "already
      posted", because the mistake this prevents is a second public copy of something already out there. */
   const published = project?.instagramPost ?? episode?.episode.instagramPost;
+  /**
+   * Posts this video has had before, on either kind.
+   *
+   * Shown, not just stored. Clearing the publish record is the only way to publish a re-cut video, and the one
+   * thing that clearing would otherwise erase is the fact that something may still be live on the account — a
+   * person who answered "yes, I deleted it" and had not would be left with an app that has no idea. That makes
+   * this the app's only memory of an action it can neither undo nor re-check, and a record nothing reads is a
+   * record that quietly stops being kept correctly.
+   */
+  const previousPosts = project?.previousInstagramPosts ?? episode?.episode.previousInstagramPosts ?? [];
   // Pressing and being refused is worse than not being able to press: the reasons are all knowable here
   // (no account chosen, caption over the limit, credit line missing, already out in the world).
   const publishBlocked = copyBlocked || !caption || !selectedTarget || Boolean(published);
@@ -911,6 +921,31 @@ export function InstagramPostScreen({ onBack }: Props) {
           </div>
 
           <div className={cardSection} data-testid="post-publish">
+            {/* Above both branches on purpose: this matters most in the state where `published` is gone —
+                just after clearing the record, with the publish button live again. That is the moment a person
+                is one press away from a second copy of something that may still be up. */}
+            {previousPosts.length > 0 && (
+              <div data-testid="post-previous" className="space-y-2 rounded-xl border border-amber-400/30 bg-amber-500/5 p-4">
+                <p className="text-sm font-semibold text-amber-300">
+                  이 영상은 전에 {previousPosts.length}번 올라간 적이 있습니다.
+                </p>
+                <p className="text-xs text-slate-300">
+                  이 앱의 기록에서는 지웠지만, 인스타그램에서 지우지 않으셨다면 그 게시물은 계정에 그대로 있습니다.
+                </p>
+                <ul className="space-y-2">
+                  {previousPosts.map((post) => (
+                    <li key={post.mediaId} className="rounded-lg bg-slate-950/60 px-3 py-2">
+                      <p className="text-xs text-slate-400 tabular-nums">{dateOnly(post.publishedAt)}</p>
+                      {/* The caption, because that is where the licence credit and the AI disclosure lived —
+                          "what did that one actually say" is the question asked exactly when it matters. */}
+                      {post.caption.trim()
+                        ? <p className="mt-1 whitespace-pre-wrap break-words text-xs text-slate-300">{post.caption.trim()}</p>
+                        : <p className="mt-1 text-xs text-slate-500">캡션 없이 올라갔습니다.</p>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {published ? (
               // Already out in the world. The button is gone rather than disabled: there is no state of this
               // screen in which pressing it again is something the person wants.

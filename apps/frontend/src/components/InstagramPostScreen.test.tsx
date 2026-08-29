@@ -368,6 +368,43 @@ describe("InstagramPostScreen", () => {
     expect(screen.getByTestId("post-copy")).toBeDisabled();
   });
 
+  /**
+   * The history exists because clearing the publish record is the only way to publish a re-cut video, and that
+   * clearing would otherwise erase the one thing the app knows and cannot re-check: something may still be
+   * live on the account. Written and never read is how such a record quietly stops being kept correctly, so it
+   * is on screen — and above the publish button, because the state that matters is the one right after
+   * clearing, when the button is live again.
+   */
+  it("shows what this video was published as before, with the publish button live again", async () => {
+    renderScreen({
+      project: {
+        previousInstagramPosts: [
+          { mediaId: "old1", igUserId: "1", publishedAt: "2026-08-28T10:00:00.000Z", caption: "1화. 재생\n\nAI로 만든 영상입니다." },
+        ],
+      },
+      targets: { targets: [{ igUserId: "1", username: "acct", pageName: "Page" }], selectedIgUserId: "1" },
+    });
+    await pickProject();
+
+    const previous = await screen.findByTestId("post-previous");
+    expect(previous.textContent).toContain("전에 1번 올라간 적이 있습니다");
+    // The caption, because that is where the credit line and the AI disclosure lived.
+    expect(previous.textContent).toContain("AI로 만든 영상입니다");
+    // Not a lock — the record was cleared, so publishing is offered. The warning stands beside the button.
+    expect(screen.queryByTestId("post-published")).toBeNull();
+    expect(screen.getByTestId("post-publish-button")).not.toBeDisabled();
+  });
+
+  // A post that went out with an empty caption is a fact worth stating, not a blank line to skip.
+  it("says a previous post went out with no caption rather than showing nothing", async () => {
+    renderScreen({
+      project: { previousInstagramPosts: [{ mediaId: "old1", igUserId: "1", publishedAt: "2026-08-28T10:00:00.000Z", caption: "" }] },
+    });
+    await pickProject();
+
+    expect((await screen.findByTestId("post-previous")).textContent).toContain("캡션 없이 올라갔습니다");
+  });
+
   it("warns when the video is landscape rather than the vertical shape a reel expects", async () => {
     renderScreen({ projects: [libraryProject({ aspectRatio: "16:9" })], project: { aspectRatio: "16:9" } });
     await pickProject();
