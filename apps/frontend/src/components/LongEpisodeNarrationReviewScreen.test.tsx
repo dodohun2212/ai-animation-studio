@@ -59,7 +59,7 @@ describe("LongEpisodeNarrationReviewScreen", () => {
     // Reading must never cost anything: the whole reason this screen exists is to let someone check the
     // sentences before paying per scene.
     const fetchMock = stubFetchByRoute({
-      [REVIEW]: { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다." }, { narration: "둘째 문장입니다." }]) },
+      [REVIEW]: { episode: episode(), staleness: { narrationStale: [] }, narrations: narrations([{ narration: "첫 문장입니다." }, { narration: "둘째 문장입니다." }]) },
       [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
     });
     renderScreen(fetchMock);
@@ -76,8 +76,8 @@ describe("LongEpisodeNarrationReviewScreen", () => {
   it("does not send the paid request until the confirmation is explicitly accepted", async () => {
     const fetchMock = stubFetchByRoute({
       [REVIEW]: [
-        { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다." }]) },
-        { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다.", audio: "generated", audioDurationSeconds: 3.2 }]) },
+        { episode: episode(), staleness: { narrationStale: [] }, narrations: narrations([{ narration: "첫 문장입니다." }]) },
+        { episode: episode(), staleness: { narrationStale: [] }, narrations: narrations([{ narration: "첫 문장입니다.", audio: "generated", audioDurationSeconds: 3.2 }]) },
       ],
       [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
       [GENERATE]: { episode: episode(), generatedSceneNumbers: [1], reusedSceneNumbers: [], skippedSceneNumbers: [] },
@@ -102,7 +102,7 @@ describe("LongEpisodeNarrationReviewScreen", () => {
     // The Episode script is editable in script_review and read-only afterwards. Telling someone past that
     // point to "go fix the sentence in the script screen" would send them to a disabled field.
     const fetchMock = stubFetchByRoute({
-      [REVIEW]: { episode: episode("script_review"), narrations: narrations([{ narration: "첫 문장입니다." }]) },
+      [REVIEW]: { episode: episode("script_review"), staleness: { narrationStale: [] }, narrations: narrations([{ narration: "첫 문장입니다." }]) },
       [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
     });
     renderScreen(fetchMock);
@@ -112,7 +112,7 @@ describe("LongEpisodeNarrationReviewScreen", () => {
     cleanup();
 
     renderScreen(stubFetchByRoute({
-      [REVIEW]: { episode: episode("videos_approved"), narrations: narrations([{ narration: "첫 문장입니다." }]) },
+      [REVIEW]: { episode: episode("videos_approved"), staleness: { narrationStale: [] }, narrations: narrations([{ narration: "첫 문장입니다." }]) },
       [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
     }));
     expect(await screen.findByText(/문장을 더 고칠 수 없습니다/)).toBeTruthy();
@@ -124,7 +124,7 @@ describe("LongEpisodeNarrationReviewScreen", () => {
     // is guaranteed to fail. Subtitles-only is a real mode, and the sentences are still doing a job in it.
     renderScreen(
       stubFetchByRoute({
-        [REVIEW]: { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다.", audio: "generated" }]) },
+        [REVIEW]: { episode: episode(), staleness: { narrationStale: [] }, narrations: narrations([{ narration: "첫 문장입니다.", audio: "generated" }]) },
         [SETTINGS]: { settings: settings({ narrationEnabled: false, subtitlesEnabled: true }), aspectRatioChangeable: true },
       }),
     );
@@ -141,7 +141,7 @@ describe("LongEpisodeNarrationReviewScreen", () => {
     // voiceMode stays null. Hiding the button here would strand someone whose narration is actually on.
     renderScreen(
       stubFetchByRoute(
-        { [REVIEW]: { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다." }]) } },
+        { [REVIEW]: { episode: episode(), staleness: { narrationStale: [] }, narrations: narrations([{ narration: "첫 문장입니다." }]) } },
         { [SETTINGS]: { status: 500, body: { code: "LONG_PROJECT_STORAGE_ERROR", message: "x" } } },
       ),
     );
@@ -160,7 +160,7 @@ describe("LongEpisodeNarrationReviewScreen", () => {
       stubFetchByRoute({
         [REVIEW]: {
           episode: episode(),
-          narrations: narrations([
+          staleness: { narrationStale: [] }, narrations: narrations([
             { narration: "짧은 문장.", audio: "generated", audioDurationSeconds: 7.4 },
             { narration: "아".repeat(60) },
           ]),
@@ -176,7 +176,7 @@ describe("LongEpisodeNarrationReviewScreen", () => {
 
   it("sends a blank regeneration instruction as an omitted field, never as an empty string", async () => {
     const fetchMock = stubFetchByRoute({
-      [REVIEW]: { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다.", audio: "generated" }]) },
+      [REVIEW]: { episode: episode(), staleness: { narrationStale: [] }, narrations: narrations([{ narration: "첫 문장입니다.", audio: "generated" }]) },
       [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
       [REGENERATE_1]: { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다.", audio: "generated" }]), sceneNumber: 1 },
     });
@@ -196,7 +196,7 @@ describe("LongEpisodeNarrationReviewScreen", () => {
     renderScreen(
       stubFetchByRoute(
         {
-          [REVIEW]: { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다." }]) },
+          [REVIEW]: { episode: episode(), staleness: { narrationStale: [] }, narrations: narrations([{ narration: "첫 문장입니다." }]) },
           [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
         },
         {
@@ -217,6 +217,88 @@ describe("LongEpisodeNarrationReviewScreen", () => {
     expect(alert.textContent).not.toContain("sk-abc123");
   });
 
+  /**
+   * The server was already comparing the recorded sentence against the current one — it decides re-synthesis
+   * that way — and simply never said so. So a voice reading a line the script no longer contains could be
+   * confirmed. Images and videos had said this for weeks; the one you have to listen to did not.
+   */
+  it("marks a scene whose recorded voice no longer matches its sentence", async () => {
+    renderScreen(
+      stubFetchByRoute({
+        [REVIEW]: {
+          episode: episode(),
+          staleness: { narrationStale: [2] },
+          narrations: narrations([
+            { narration: "그대로인 문장.", audio: "generated" },
+            { narration: "바뀐 문장.", audio: "generated" },
+          ]),
+        },
+        [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
+      }),
+    );
+
+    const changed = await screen.findByTestId("episode-narration-scene-2");
+    expect(changed).toHaveAttribute("data-stale", "true");
+    expect(changed.textContent).toContain("문장과 다름");
+    expect(screen.getByTestId("episode-narration-stale-2").textContent).toContain("다시 만들어");
+    // The scene that did not change says nothing — a badge on everything is a badge on nothing.
+    expect(screen.getByTestId("episode-narration-scene-1")).toHaveAttribute("data-stale", "false");
+  });
+
+  /**
+   * A scene with no audio has nothing to be behind. Calling it stale would send someone to re-buy a scene they
+   * never bought — the exact reason the server leaves recordless scenes off the list.
+   */
+  it("never calls a scene with no audio stale, even if the server lists it", async () => {
+    renderScreen(
+      stubFetchByRoute({
+        [REVIEW]: {
+          episode: episode(),
+          staleness: { narrationStale: [1] },
+          narrations: narrations([{ narration: "아직 만들지 않은 문장." }]),
+        },
+        [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
+      }),
+    );
+
+    const scene = await screen.findByTestId("episode-narration-scene-1");
+    expect(scene).toHaveAttribute("data-audio", "none");
+    expect(scene).toHaveAttribute("data-stale", "false");
+    expect(screen.queryByTestId("episode-narration-stale-1")).toBeNull();
+  });
+
+  it("clears the mark on the one scene it regenerated, and leaves the others alone", async () => {
+    const fetchMock = stubFetchByRoute({
+      [REVIEW]: {
+        episode: episode(),
+        staleness: { narrationStale: [1, 2] },
+        narrations: narrations([
+          { narration: "첫 문장입니다.", audio: "generated" },
+          { narration: "둘째 문장입니다.", audio: "generated" },
+        ]),
+      },
+      [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
+      // The regenerate response carries no staleness of its own — the screen has to reason about it.
+      [REGENERATE_1]: {
+        episode: episode(),
+        narrations: narrations([
+          { narration: "첫 문장입니다.", audio: "generated" },
+          { narration: "둘째 문장입니다.", audio: "generated" },
+        ]),
+        sceneNumber: 1,
+      },
+    });
+    renderScreen(fetchMock);
+
+    expect(await screen.findByTestId("episode-narration-scene-1")).toHaveAttribute("data-stale", "true");
+    fireEvent.click(screen.getByTestId("episode-narration-regenerate-1"));
+    fireEvent.click(await screen.findByText("예, 다시 만듭니다"));
+
+    await waitFor(() => expect(screen.getByTestId("episode-narration-scene-1")).toHaveAttribute("data-stale", "false"));
+    // Scene 2 was not touched, so nothing was learned about it — clearing it too would be the screen guessing.
+    expect(screen.getByTestId("episode-narration-scene-2")).toHaveAttribute("data-stale", "true");
+  });
+
   it("calls a placeholder a placeholder instead of reporting it as a real voice", async () => {
     // With no OpenAI key connected the app writes a 4-byte silent file, and it used to be reported exactly the
     // way synthesized audio was: the chip said 음성 있음 over silence, and the merge shipped that silence as
@@ -224,7 +306,7 @@ describe("LongEpisodeNarrationReviewScreen", () => {
     // that merely stopped saying 음성 있음 while showing nothing would hide the state rather than name it.
     renderScreen(
       stubFetchByRoute({
-        [REVIEW]: { episode: episode(), narrations: narrations([{ narration: "첫 문장입니다.", audio: "placeholder" }]) },
+        [REVIEW]: { episode: episode(), staleness: { narrationStale: [] }, narrations: narrations([{ narration: "첫 문장입니다.", audio: "placeholder" }]) },
         [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
       }),
     );

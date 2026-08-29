@@ -30,6 +30,8 @@ type LoadState =
   | {
       status: "ready";
       narrations: LongEpisodeNarrationReview[];
+      /** Scenes whose recorded audio no longer says what the script says. Recomputed by the server on every read. */
+      narrationStale: SceneNumber[];
       episodeStatus: LongEpisodeStatus;
       budget?: BudgetPreview;
       retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview };
@@ -58,11 +60,15 @@ const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/7
 /**
  * One Episode's narration, mirroring the short project's NarrationReviewScreen.
  *
- * Two differences are deliberate, not omissions. There is no stale badge: long projects have no per-scene
- * staleness axis at all (images and videos do not have one either — invalidation is revision/fingerprint based
- * and checked at approval time), so a badge here would be the only one of its kind and would imply a system
- * that does not exist. And the "fix the sentence" instruction points at the Episode script screen rather than
- * telling the user to regenerate the whole script: an Episode's narration is an ordinary editable field there.
+ * The stale badge is real now. This comment used to say Episodes had no per-scene staleness axis, which was
+ * true when it was written and stopped being true when images, then videos, then narration each got one. The
+ * server was already comparing the recorded sentence against the current one to decide whether a re-synthesis
+ * was needed; it simply never said so, which let someone confirm a voice reading a line the script no longer
+ * contains — the one of the three that has to be listened to rather than looked at.
+ *
+ * The other difference is deliberate: the "fix the sentence" instruction points at the Episode script screen
+ * rather than telling the user to regenerate the whole script — an Episode's narration is an ordinary editable
+ * field there.
  */
 export function LongEpisodeNarrationReviewScreen({ projectId, episodeNumber, onBack }: Props) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
@@ -98,7 +104,7 @@ export function LongEpisodeNarrationReviewScreen({ projectId, episodeNumber, onB
     getLongEpisodeNarrationReview(projectId, episodeNumber)
       .then((response) => {
         if (requestId !== loadRequest.current) return;
-        setState({ status: "ready", narrations: response.narrations, episodeStatus: response.episode.status, budget: response.budget });
+        setState({ status: "ready", narrations: response.narrations, narrationStale: response.staleness.narrationStale, episodeStatus: response.episode.status, budget: response.budget });
       })
       .catch((caught: unknown) => {
         if (requestId !== loadRequest.current) return;
@@ -120,6 +126,7 @@ export function LongEpisodeNarrationReviewScreen({ projectId, episodeNumber, onB
   }, [projectId, episodeNumber]);
 
   const narrations = state.status === "ready" ? state.narrations : [];
+  const narrationStale = state.status === "ready" ? state.narrationStale : [];
   /**
    * Whether the Episode's script can still be edited. Only during script_review — once approved, the script
    * screen is read-only, so telling someone to "go fix the sentence there" would send them to a disabled
@@ -156,7 +163,7 @@ export function LongEpisodeNarrationReviewScreen({ projectId, episodeNumber, onB
     try {
       const response = await startLongEpisodeNarrationGeneration(projectId, episodeNumber);
       const review = await getLongEpisodeNarrationReview(projectId, episodeNumber);
-      setState({ status: "ready", narrations: review.narrations, episodeStatus: review.episode.status, budget: response.budget ?? review.budget });
+      setState({ status: "ready", narrations: review.narrations, narrationStale: review.staleness.narrationStale, episodeStatus: review.episode.status, budget: response.budget ?? review.budget });
       setGenerationSummary({
         generated: response.generatedSceneNumbers.length,
         reused: response.reusedSceneNumbers.length,
@@ -177,11 +184,17 @@ export function LongEpisodeNarrationReviewScreen({ projectId, episodeNumber, onB
     regenerateBusy.current.add(sceneNumber);
     setRegeneratePendingScenes(new Set(regenerateBusy.current));
     setActionError(null);
+    const previousStale = state.status === "ready" ? state.narrationStale : [];
     try {
       const response = await regenerateLongEpisodeNarration(projectId, episodeNumber, sceneNumber, regenerateInstruction);
       setState({
         status: "ready",
         narrations: response.narrations,
+        /* The regenerate response carries no staleness of its own, so the rest of the list is carried over
+           and only the fact this action established is applied: a scene just synthesized from the current
+           sentence is not behind it. Re-reading the whole review would be the alternative, and it would also
+           discard `retryEstimate`, which only this response has. */
+        narrationStale: previousStale.filter((number) => number !== sceneNumber),
         episodeStatus: response.episode.status,
         budget: response.retryEstimate?.budget,
         retryEstimate: response.retryEstimate,
@@ -367,6 +380,9 @@ export function LongEpisodeNarrationReviewScreen({ projectId, episodeNumber, onB
                 const overByMeasure = runsTooLong(item);
                 const overByGuess = looksTooLong(item);
                 const tooLong = overByMeasure || overByGuess;
+                /* Only a scene that actually has audio can be behind its sentence. A scene with none is not
+                   stale, and calling it stale would send someone to re-buy something never bought. */
+                const stale = item.audio !== "none" && narrationStale.includes(item.sceneNumber);
                 const regenerating = regeneratePendingScenes.has(item.sceneNumber);
                 const confirming = regenerateConfirmScene === item.sceneNumber;
                 return (
@@ -375,8 +391,9 @@ export function LongEpisodeNarrationReviewScreen({ projectId, episodeNumber, onB
                     data-testid={`episode-narration-scene-${item.sceneNumber}`}
                     data-has-narration={text ? "true" : "false"}
                     data-audio={item.audio}
+                    data-stale={stale ? "true" : "false"}
                     className={`space-y-2 rounded-xl border bg-slate-950/40 p-3.5 ${
-                      tooLong ? "border-amber-400/40" : "border-white/10"
+                      stale ? "border-rose-400/50" : tooLong ? "border-amber-400/40" : "border-white/10"
                     }`}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -398,8 +415,14 @@ export function LongEpisodeNarrationReviewScreen({ projectId, episodeNumber, onB
                             the reviewer back in front of an episode whose narration is missing with nothing on
                             screen saying so. */}
                         {item.audio === "placeholder" && <StatusChip tone="progress">임시 음성</StatusChip>}
+                        {stale && <StatusChip tone="danger">문장과 다름</StatusChip>}
                       </span>
                     </div>
+                    {stale && (
+                      <p data-testid={`episode-narration-stale-${item.sceneNumber}`} className="rounded-lg border border-rose-400/30 bg-rose-500/[0.06] px-3 py-2 text-sm text-rose-200">
+                        녹음된 음성이 지금 문장과 다릅니다. 아래 문장이 맞으면 이 장면만 다시 만들어 주세요.
+                      </p>
+                    )}
                     {text ? (
                       <p className="text-sm leading-relaxed text-slate-300">{text}</p>
                     ) : (

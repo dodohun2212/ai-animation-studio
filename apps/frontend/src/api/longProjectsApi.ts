@@ -69,6 +69,7 @@ import {
   type SaveLongEpisodeContinuityResponse,
   type GetLongEpisodeContinuityReferenceResponse,
   type LongEpisodeNarrationReview,
+  type LongEpisodeNarrationStaleness,
   type GetLongEpisodeNarrationReviewResponse,
   type StartLongEpisodeNarrationGenerationRequest,
   type StartLongEpisodeNarrationGenerationResponse,
@@ -942,8 +943,17 @@ function isLongEpisodeNarrationReview(value: unknown): value is LongEpisodeNarra
 }
 const isLongEpisodeNarrationReviewList = (value: unknown): value is LongEpisodeNarrationReview[] =>
   Array.isArray(value) && value.every(isLongEpisodeNarrationReview);
+/**
+ * Required on the contract, so a response without it is malformed rather than "an older server". The image and
+ * video reviews have been guarded this way since their own staleness landed; this is the third of the three,
+ * and the one where being wrong is hardest to notice — a picture that no longer matches its scene can be seen,
+ * a voice saying a line the script no longer contains has to be listened to.
+ */
+const isLongEpisodeNarrationStaleness = (value: unknown): value is LongEpisodeNarrationStaleness =>
+  isRecord(value) && Array.isArray(value.narrationStale) && value.narrationStale.every(isSceneNumber);
 const isGetEpisodeNarrationReviewResponse = (value: unknown): value is GetLongEpisodeNarrationReviewResponse =>
-  isRecord(value) && isLongEpisodeDetail(value.episode) && isLongEpisodeNarrationReviewList(value.narrations) && isBudgetPreview(value.budget);
+  isRecord(value) && isLongEpisodeDetail(value.episode) && isLongEpisodeNarrationReviewList(value.narrations)
+  && isLongEpisodeNarrationStaleness(value.staleness) && isBudgetPreview(value.budget);
 const isStartEpisodeNarrationResponse = (value: unknown): value is StartLongEpisodeNarrationGenerationResponse =>
   isRecord(value) && isLongEpisodeDetail(value.episode)
   && isSceneNumberList(value.generatedSceneNumbers) && isSceneNumberList(value.reusedSceneNumbers) && isSceneNumberList(value.skippedSceneNumbers)
