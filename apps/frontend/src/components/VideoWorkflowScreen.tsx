@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import type { GenerationProgressResponse, Scene, SceneNumber, VideoReview, SceneStaleness } from "@ai-animation-studio/shared";
+import type { GenerationProgressResponse, RecoverVideosResponse, Scene, SceneNumber, VideoReview, SceneStaleness } from "@ai-animation-studio/shared";
 
 import {
   approveVideoReview,
   getVideoProgress,
   getVideoReview,
+  recoverVideos,
   regenerateAllVideoScenes,
   regenerateVideoScene,
   restartVideoGeneration,
@@ -108,6 +109,17 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
   const [regenerateConfirmScene, setRegenerateConfirmScene] = useState<SceneNumber | null>(null);
   const [regeneratePendingScenes, setRegeneratePendingScenes] = useState<Set<SceneNumber>>(new Set());
   const [regenerateErrors, setRegenerateErrors] = useState<Partial<Record<SceneNumber, DisplayError>>>({});
+
+  /**
+   * The already-paid clips this job can still fetch back.
+   *
+   * The Episode side has had this since the bug that lost those bytes was found; a short project runs the same
+   * submissions against the same provider and records the same task ids, and had no way back to them — its
+   * only offer for an empty clip was to buy it again.
+   */
+  const [recoverPending, setRecoverPending] = useState(false);
+  const [recoverError, setRecoverError] = useState<DisplayError | null>(null);
+  const [recovery, setRecovery] = useState<RecoverVideosResponse | null>(null);
 
   const [regenerateAllConfirmOpen, setRegenerateAllConfirmOpen] = useState(false);
   /** One-off direction for the open single-scene confirmation; cleared whenever that panel opens or closes. */
@@ -283,6 +295,28 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
     } finally {
       regenerateBusy.current.delete(sceneNumber);
       setRegeneratePendingScenes(new Set(regenerateBusy.current));
+    }
+  }
+
+  /**
+   * Asks Runway for outputs it already produced and charged for. One press, no confirmation: nothing is spent
+   * and nothing is overwritten that was not already a placeholder — the cost of a stray click here is a wasted
+   * few seconds, and requiring a confirmation would put this behind the same gate as the paid button beside it.
+   */
+  async function recover(): Promise<void> {
+    if (recoverPending) return;
+    setRecoverPending(true);
+    setRecoverError(null);
+    try {
+      const response = await recoverVideos(projectId, jobId);
+      setRecovery(response);
+      setProgressState({ status: "ready", progress: response });
+      // The review list is what shows the clips, and their bytes just changed under it.
+      setReviewState({ status: "idle" });
+    } catch (caught) {
+      setRecoverError(toVideoWorkflowDisplayError(caught));
+    } finally {
+      setRecoverPending(false);
     }
   }
 
@@ -552,6 +586,39 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
 
               {reviewState.status === "ready" && (
                 <>
+                  {/* Free, and it must say so where the alternative costs money: an empty clip's only offer used
+                      to be "make it again". A status read and a download add nothing to the ledger. */}
+                  <div className="space-y-2 rounded-xl border border-white/10 bg-slate-950/40 p-3">
+                    <p className="text-sm text-slate-300">
+                      영상이 비어 있거나 재생되지 않으면 <strong className="text-slate-100">다시 만들 필요 없습니다</strong> — 이미 만들어진 영상을 가져옵니다. 추가 비용이 들지 않습니다.
+                    </p>
+                    <button
+                      type="button"
+                      data-testid="video-recover"
+                      className={smallOutlineButton}
+                      disabled={recoverPending}
+                      onClick={() => void recover()}
+                    >
+                      {recoverPending ? "가져오는 중..." : "이미 만든 영상 가져오기"}
+                    </button>
+                    {recovery && (
+                      <p data-testid="video-recovery-result" className="text-sm text-slate-300">
+                        {recovery.recoveredSceneNumbers.length}장면을 가져왔습니다.
+                        {recovery.unrecoverableScenes.length > 0 && (
+                          /* Named, with the reason, and left failed. Regenerating them costs money, so the
+                             screen reports and stops rather than deciding. */
+                          <span className="mt-1 block text-amber-300">
+                            가져오지 못한 장면: {recovery.unrecoverableScenes.map((scene) => `${scene.sceneNumber}번(${scene.reason})`).join(", ")} — 다시 만들려면 장면마다 비용이 듭니다.
+                          </span>
+                        )}
+                      </p>
+                    )}
+                    {recoverError && (
+                      <p role="alert" data-testid="video-recover-error" data-error-code={recoverError.code} className="text-sm text-rose-400">
+                        {recoverError.message}
+                      </p>
+                    )}
+                  </div>
                   {/* Design system §4.3: the review step always states overall confirmation progress up front. */}
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm text-slate-300 tabular-nums" data-testid="review-progress-summary">

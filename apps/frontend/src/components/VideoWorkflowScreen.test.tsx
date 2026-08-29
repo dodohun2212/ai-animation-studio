@@ -633,6 +633,39 @@ describe("VideoWorkflowScreen source", () => {
     vi.unstubAllGlobals();
   });
 
+  /**
+   * The only thing this screen used to offer for a clip that came back empty was "make it again" — a paid
+   * answer to a problem the ledger already paid for once. The Episode side has had the free one since the bug
+   * that lost those bytes was found; this is the same button, on the side that submits the same way.
+   */
+  it("fetches already-paid clips back, reports what came back, and names what did not", async () => {
+    const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, succeeded))
+      .mockResolvedValueOnce(jsonResponse(200, reviewResponse(sixReviews([1, 2, 3, 4, 5, 6]))))
+      .mockResolvedValueOnce(jsonResponse(200, {
+        ...succeeded,
+        recoveredSceneNumbers: [1, 2],
+        unrecoverableScenes: [{ sceneNumber: 3, reason: "no_output" }],
+      }))
+      // The clips' bytes just changed, so the screen refetches the list that shows them.
+      .mockResolvedValueOnce(jsonResponse(200, reviewResponse(sixReviews([1, 2, 3, 4, 5, 6]))));
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByTestId("video-recover"));
+
+    const result = await screen.findByTestId("video-recovery-result");
+    expect(result.textContent).toContain("2장면을 가져왔습니다");
+    // Named with the reason and left as they are: regenerating them costs money, so the screen reports and
+    // stops rather than deciding for the person.
+    expect(result.textContent).toContain("3번(no_output)");
+    const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit];
+    expect(url).toBe(`${PROGRESS_URL}/recovery`);
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ approved: true });
+  });
+
   it("never touches Runway, OpenAI, FFmpeg, or client-side storage surfaces", async () => {
     const fsPromises = await import("node:fs/promises");
     const path = await import("node:path");

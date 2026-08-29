@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { GetLongEpisodeVideoPreviewResponse, LongEpisodeVideoProgress, LongEpisodeVideoReview, RecoverLongEpisodeVideosResponse, SceneNumber } from "@ai-animation-studio/shared";
 
-import { approveLongEpisodeVideoReview, episodeSceneErrorMessage, getLongEpisodeCurrentVideoJob, getLongEpisodeVideoPreview, getLongEpisodeVideoProgress, getLongEpisodeVideoReview, longEpisodeVideoContentUrl, recoverLongEpisodeVideos, regenerateLongEpisodeVideo, restartLongEpisodeVideoGeneration, startLongEpisodeVideoGeneration, stopLongEpisodeVideoGeneration, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { approveLongEpisodeVideoReview, episodeSceneErrorMessage, getLongEpisodeCurrentVideoJob, getLongEpisodeVideoPreview, getLongEpisodeVideoProgress, getLongEpisodeVideoReview, longEpisodeVideoContentUrl, recoverLongEpisodeVideos, regenerateAllLongEpisodeVideos, regenerateLongEpisodeVideo, restartLongEpisodeVideoGeneration, startLongEpisodeVideoGeneration, stopLongEpisodeVideoGeneration, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { LongEpisodeSceneVersions } from "./LongEpisodeSceneVersions.js";
 import { Spinner } from "./Spinner.js";
 import { videoRatioLabel } from "../utils/sceneFields.js";
@@ -38,6 +38,8 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
   const [confirmStart, setConfirmStart] = useState(false); const [regenerate, setRegenerate] = useState<SceneNumber | null>(null);
   /** One-off direction for the open confirmation, cleared on open and on close so it cannot follow to another scene. */
   const [regenerateInstruction, setRegenerateInstruction] = useState("");
+  /** The all-scenes retry is its own two-step, never sharing the per-scene confirmation: they cost different amounts. */
+  const [confirmRegenerateAll, setConfirmRegenerateAll] = useState(false);
   /**
    * Identifies the person's intent to generate this Episode's videos — not the click that sends it.
    *
@@ -256,6 +258,51 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
                   </span>
                 )}
               </p>
+            )}
+          </div>
+          {/* Twelve scenes meant twelve clicks and twelve confirmations, each naming one clip's cost, with no
+              point at which the total was ever said out loud. This says it once. */}
+          <div className="space-y-2 rounded-xl border border-white/10 bg-slate-950/40 p-3">
+            {!confirmRegenerateAll ? (
+              <button
+                type="button"
+                data-testid="episode-video-regenerate-all"
+                className={smallOutlineButton}
+                disabled={busy}
+                onClick={() => { setRegenerateInstruction(""); setConfirmRegenerateAll(true); }}
+              >
+                모든 장면 다시 만들기
+              </button>
+            ) : (
+              <div role="alertdialog" aria-label="모든 장면 다시 만들기 확인" data-testid="episode-video-regenerate-all-confirm" className="space-y-2">
+                <p className="text-sm text-amber-200">
+                  {reviews.length}장면을 모두 다시 만들까요? Runway 키가 연결되어 있으면 <strong className="text-amber-100">{reviews.length}장면 전부가 다시 청구됩니다.</strong>
+                </p>
+                {/* The same estimate the per-scene panel shows, multiplied by what is actually being bought —
+                    the one number a person needs before this press and could not get by adding up twelve. */}
+                <RetryCostNotice estimate={job.retryEstimate} sceneCount={reviews.length} data-testid="episode-video-regenerate-all-cost" />
+                <RegenerateInstructionField
+                  id="episode-video-regenerate-all-instruction"
+                  value={regenerateInstruction}
+                  onChange={setRegenerateInstruction}
+                  disabled={busy}
+                  subject="영상"
+                  placeholder="예: 카메라를 더 천천히"
+                  data-testid="episode-video-regenerate-all-instruction"
+                />
+                <div className="flex gap-2">
+                  <button type="button" className={smallOutlineButton} disabled={busy} onClick={() => { setRegenerateInstruction(""); setConfirmRegenerateAll(false); }}>취소</button>
+                  <button
+                    type="button"
+                    className={smallAmberButton}
+                    data-testid="episode-video-regenerate-all-confirm-button"
+                    disabled={busy}
+                    onClick={() => { const instruction = regenerateInstruction; setConfirmRegenerateAll(false); setRegenerateInstruction(""); void action(() => regenerateAllLongEpisodeVideos(projectId, episodeNumber, job.jobId, instruction)); }}
+                  >
+                    예, 전부 다시 생성합니다
+                  </button>
+                </div>
+              </div>
             )}
           </div>
           {/* Design system §4.3: overall confirmation progress before the per-scene cards. */}

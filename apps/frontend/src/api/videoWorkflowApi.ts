@@ -5,6 +5,7 @@ import {
   type ApproveVideoReviewResponse,
   type GenerationProgressResponse,
   type GetVideoReviewResponse,
+  type RecoverVideosResponse,
   type RegenerateVideoRequest,
   type RegenerateVideoResponse,
   type SceneNumber,
@@ -145,6 +146,17 @@ function isRegenerateVideoResponse(value: unknown): value is RegenerateVideoResp
   );
 }
 
+/** Both lists are checked: a recovery that says nothing about what it could not fetch is a recovery that looks total. */
+function isRecoverVideosResponse(value: unknown): value is RecoverVideosResponse {
+  return (
+    isRecord(value) &&
+    isGenerationProgressResponse(value) &&
+    isSceneNumberArray(value.recoveredSceneNumbers) &&
+    Array.isArray(value.unrecoverableScenes) &&
+    value.unrecoverableScenes.every((one) => isRecord(one) && isSceneNumber(one.sceneNumber) && typeof one.reason === "string")
+  );
+}
+
 function isProject(value: unknown): value is GetVideoReviewResponse["project"] {
   return (
     isRecord(value) &&
@@ -279,6 +291,21 @@ export function regenerateAllVideoScenes(
     API_ROUTES.videoRegenerateAll(projectId, jobId),
     { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(regenerateBody(additionalInstruction)) },
     isRegenerateVideoResponse,
+  );
+}
+
+/**
+ * Fetches clips Runway already made and already charged for, and writes them where they should have gone.
+ *
+ * A status read and a download, never a new generation, so nothing is added to the ledger. The Episode side has
+ * had this since the bug that lost those bytes was found; a short project runs the same submissions against the
+ * same provider and records the same task ids, and had no way back to them.
+ */
+export function recoverVideos(projectId: string, jobId: string): Promise<RecoverVideosResponse> {
+  return request(
+    API_ROUTES.videoRecovery(projectId, jobId),
+    { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ approved: true }) },
+    isRecoverVideosResponse,
   );
 }
 

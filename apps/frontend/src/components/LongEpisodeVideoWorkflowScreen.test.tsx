@@ -369,4 +369,66 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
       expect(JSON.parse(String(post![1]!.body))).toEqual({ approved: true, additionalInstruction: "카메라를 더 천천히" });
     });
   });
+
+  /**
+   * The point is not that twelve presses became one. It is that twelve presses never once said what all twelve
+   * cost: each per-scene confirmation quoted one scene, and nothing quoted the whole. This is the first place
+   * that number appears — so the confirmation has to carry it, and the button has to say it is buying all of
+   * them.
+   */
+  it("re-buys every scene from one confirmation that quotes all of them, carrying the direction to each", async () => {
+    const review = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" }));
+    const fetchMock = stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": progress("succeeded", [1, 2, 3, 4, 5, 6]),
+      "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review, staleness: { videoStale: [] } },
+      "POST /videos/generations/job/regenerate-all": progress("running", []),
+      ...sceneVersionRoutes(),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    await screen.findByTestId("episode-video-review-2");
+    fireEvent.click(screen.getByTestId("episode-video-regenerate-all"));
+    fireEvent.change(await screen.findByTestId("episode-video-regenerate-all-instruction"), { target: { value: "  전체적으로 더 어둡게  " } });
+    // Its own confirm wording: "전부" is what separates spending six scenes' worth from spending one.
+    fireEvent.click(screen.getByTestId("episode-video-regenerate-all-confirm-button"));
+
+    await waitFor(() => {
+      const post = (fetchMock.mock.calls as Array<[string, RequestInit | undefined]>)
+        .find(([url, init]) => String(url).endsWith("/generations/job/regenerate-all") && init?.method === "POST");
+      expect(post).toBeTruthy();
+      // Trimmed by the client too: the same words with different spacing must not become a different request.
+      expect(JSON.parse(String(post![1]!.body))).toEqual({ approved: true, additionalInstruction: "전체적으로 더 어둡게" });
+    });
+    // And it never went through the single-scene route, which would have bought one and looked like six.
+    expect((fetchMock.mock.calls as Array<[string, RequestInit | undefined]>)
+      .some(([url]) => String(url).includes("/scenes/"))).toBe(false);
+  });
+
+  /**
+   * The number that never existed before: each per-scene confirmation quoted one scene, and nothing quoted the
+   * whole Episode. A confirmation for six scenes that shows one scene's price is worse than showing none.
+   */
+  it("quotes all six scenes in the whole-Episode confirmation, not one", async () => {
+    const review = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" }));
+    const withEstimate = {
+      ...progress("succeeded", [1, 2, 3, 4, 5, 6]),
+      retryEstimate: { perSceneCostUsd: 0.25, budget: { perRequestCostUsd: 0.25, spentUsd: 1, remainingUsd: 9, monthlyLimitUsd: 10, canSpend: true } },
+    };
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": withEstimate,
+      "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review, staleness: { videoStale: [] } },
+      ...sceneVersionRoutes(),
+    }));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    await screen.findByTestId("episode-video-review-2");
+    fireEvent.click(screen.getByTestId("episode-video-regenerate-all"));
+
+    const cost = await screen.findByTestId("episode-video-regenerate-all-cost");
+    expect(cost.textContent).toContain("$1.50");
+    expect(cost.textContent).toContain("6장면");
+  });
 });

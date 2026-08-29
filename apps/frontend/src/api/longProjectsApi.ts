@@ -860,6 +860,17 @@ export function regenerateLongEpisodeVideo(projectId: string, episodeNumber: num
   const instruction = additionalInstruction?.trim();
   return request(API_ROUTES.longEpisodeVideoRegenerate(projectId, episodeNumber, jobId, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(instruction ? { approved: true, additionalInstruction: instruction } : { approved: true }) }, isRegenerateEpisodeVideoResponse);
 }
+/**
+ * Re-buys every scene of this job at once.
+ *
+ * Removes the repetition, not the charge: a 12-scene Episode cost twelve clicks and still costs twelve clips.
+ * Must only be called after a second, explicit confirmation that names the total — the short project's
+ * regenerateAllVideoScenes carries the same rule for the same reason.
+ */
+export function regenerateAllLongEpisodeVideos(projectId: string, episodeNumber: number, jobId: string, additionalInstruction?: string): Promise<RegenerateLongEpisodeVideoResponse> {
+  const instruction = additionalInstruction?.trim();
+  return request(API_ROUTES.longEpisodeVideoRegenerateAll(projectId, episodeNumber, jobId), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(instruction ? { approved: true, additionalInstruction: instruction } : { approved: true }) }, isRegenerateEpisodeVideoResponse);
+}
 export function getLongEpisodeVideoReview(projectId: string, episodeNumber: number, jobId: string): Promise<GetLongEpisodeVideoReviewResponse> { return request(API_ROUTES.longEpisodeVideoReview(projectId, episodeNumber, jobId), undefined, isGetEpisodeVideoReviewResponse); }
 export function approveLongEpisodeVideoReview(projectId: string, episodeNumber: number, jobId: string, sceneNumber: SceneNumber): Promise<ApproveLongEpisodeVideoReviewResponse> { return request(API_ROUTES.longEpisodeVideoReviewApproval(projectId, episodeNumber, jobId, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) }, isApproveEpisodeVideoReviewResponse); }
 /**
