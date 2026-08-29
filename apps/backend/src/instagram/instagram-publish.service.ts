@@ -12,9 +12,10 @@ import { episodeDirectoryName, longStoryRoot } from "../long-projects/long-proje
 import { toEpisodeDetail, type StoredEpisodeForDetail } from "../long-projects/episode-detail.js";
 import { InstagramConnectionStore } from "./instagram-connection.store.js";
 import {
-  createInstagramResumableContainer, getInstagramContainerStatus, listInstagramPublishTargets,
+  createInstagramResumableContainer, getInstagramContainerStatus,
   publishInstagramContainer, uploadInstagramResumableVideo,
 } from "./instagram-graph-adapter.js";
+import { resolveInstagramPublishTargets } from "./instagram-publish-targets.js";
 import { InstagramAdapterError, type RetryOptions } from "./instagram-request.js";
 import {
   instagramAlreadyPublished, instagramNotConnected, instagramProviderError, instagramPublishFailed,
@@ -128,7 +129,9 @@ export class InstagramPublishService {
   private async sendToInstagram(accessToken: string, igUserId: string, bytes: Buffer): Promise<{ mediaId: string; publishedAt: string }> {
     let targets;
     try {
-      targets = await listInstagramPublishTargets(accessToken, this.requestOptions);
+      // The same resolver the account list uses, on purpose: this check refuses what that list offered the
+      // moment the two ask the question differently.
+      targets = await resolveInstagramPublishTargets(this.connection, accessToken, this.requestOptions);
     } catch (error) {
       throw this.asApiError(error);
     }

@@ -15,6 +15,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => fs.rm(ro
 
 const TOKEN = "EAAtoken_value_1234567890";
 const IG_USER_ID = "178000001";
+const PAGE_ID = "1328208640370353";
 const VIDEO = Buffer.from("fake final video bytes");
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -25,14 +26,21 @@ function jsonResponse(status: number, body: unknown): Response {
  * Answers the whole publish sequence by URL, so a test can change one step without re-stating the rest.
  * `statuses` is consumed one per status poll, letting a test hold the container in IN_PROGRESS first.
  */
-function graphFetch(options: { statuses?: string[]; failAt?: "container" | "upload" | "publish" } = {}) {
+function graphFetch(options: { statuses?: string[]; failAt?: "container" | "upload" | "publish"; granularOnly?: boolean } = {}) {
   const statuses = [...(options.statuses ?? ["FINISHED"])];
   return vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
     void init;
     const url = String(input);
     const target = String(url);
     if (target.includes("/me/accounts")) {
+      if (options.granularOnly) return jsonResponse(200, { data: [] });
       return jsonResponse(200, { data: [{ name: "이배드 스튜디오", instagram_business_account: { id: IG_USER_ID, username: "ibad_studio" } }] });
+    }
+    if (target.includes("/debug_token")) {
+      return jsonResponse(200, { data: { granular_scopes: [{ scope: "pages_show_list", target_ids: [PAGE_ID] }] } });
+    }
+    if (target.includes(`/${PAGE_ID}?fields=`)) {
+      return jsonResponse(200, { name: "이배드 스튜디오", instagram_business_account: { id: IG_USER_ID, username: "ibad_studio" } });
     }
     if (target.includes("rupload.facebook.com")) {
       if (options.failAt === "upload") return jsonResponse(400, { error: { message: "bad upload", code: 100 } });
@@ -116,6 +124,33 @@ describe("InstagramPublishService.publish", () => {
     await expect(service.publish("post_project", { ...approved, igUserId: "178000999" }))
       .rejects.toMatchObject({ response: { code: "INSTAGRAM_TARGET_NOT_FOUND" } });
     expect(fetchImpl.mock.calls.every(([url]) => String(url).includes("/me/accounts"))).toBe(true);
+  });
+
+  /**
+   * The account list and this check must never disagree about what "can publish" means.
+   *
+   * They did. A token whose `/me/accounts` is empty — the real state of an account holding `pages_show_list`
+   * for one page under granular permissions — had the granular fallback added to the listing alone, so the
+   * screen offered the account and then this check refused the very same one as unknown. Both sides called the
+   * same adapter function and looked correct beside each other; only asking the question twice showed it.
+   *
+   * Pointing this check back at the raw list turns it red again.
+   */
+  it("publishes to an account only the granular grant can see, the same one the account list offers", async () => {
+    const fetchImpl = graphFetch({ granularOnly: true });
+    const { service, projects } = await setup({ fetchImpl });
+
+    const result = await service.publish("post_project", approved);
+
+    expect(result.mediaId).toBe("media-1");
+    expect((await projects.findById("post_project")).instagram_post).toMatchObject({ ig_user_id: IG_USER_ID });
+  });
+
+  it("still refuses an account no path can reach, rather than publishing to the first one it found", async () => {
+    // The fallback widens what counts as reachable; it must not turn the check itself off (D-006).
+    const { service } = await setup({ fetchImpl: graphFetch({ granularOnly: true }) });
+    await expect(service.publish("post_project", { ...approved, igUserId: "178000999" }))
+      .rejects.toMatchObject({ response: { code: "INSTAGRAM_TARGET_NOT_FOUND" } });
   });
 
   it("reports not-connected when there is no stored token", async () => {
