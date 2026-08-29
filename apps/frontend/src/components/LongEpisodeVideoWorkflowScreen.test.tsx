@@ -105,8 +105,8 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
       "GET /videos/preview": preview,
       "POST /videos/generations": { jobId: "job", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") },
       "GET /videos/generations/job": progress("succeeded", [1, 2, 3, 4, 5, 6]),
-      "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review },
-      "POST /videos/generations/job/review/1/approve": { episode: episode("videos_review"), reviews: [{ ...review[0], status: "approved" }, ...review.slice(1)] },
+      "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review, staleness: { videoStale: [] } },
+      "POST /videos/generations/job/review/1/approve": { episode: episode("videos_review"), reviews: [{ ...review[0], status: "approved" }, ...review.slice(1)], staleness: { videoStale: [] } },
       ...sceneVersionRoutes(),
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -228,7 +228,7 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     const fetchMock = stubFetchByRoute({
       "GET /videos/generations/current": { jobId: "job" },
       "GET /videos/generations/job": progress("succeeded", [1, 2, 3, 4, 5, 6]),
-      "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review },
+      "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review, staleness: { videoStale: [] } },
       ...sceneVersionRoutes(),
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -247,7 +247,7 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     const fetchMock = stubFetchByRoute({
       "GET /videos/generations/current": { jobId: "job" },
       "GET /videos/generations/job": progress("succeeded", [1, 2, 3, 4, 5, 6]),
-      "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review },
+      "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review, staleness: { videoStale: [] } },
       "POST /videos/generations/job/recovery": recovered,
       ...sceneVersionRoutes(),
     });
@@ -271,7 +271,7 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     const fetchMock = stubFetchByRoute({
       "GET /videos/generations/current": { jobId: "job" },
       "GET /videos/generations/job": progress("succeeded", [1, 2, 3, 4, 5, 6]),
-      "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review },
+      "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review, staleness: { videoStale: [] } },
       ...sceneVersionRoutes(),
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -293,7 +293,7 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     const fetchMock = stubFetchByRoute({
       "GET /videos/generations/current": { jobId: "job" },
       "GET /videos/generations/job": progress("succeeded", [1, 2, 3, 4, 5, 6]),
-      "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review },
+      "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review, staleness: { videoStale: [] } },
       "POST /videos/generations/job/recovery": recovered,
       ...sceneVersionRoutes(),
     });
@@ -312,4 +312,28 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     expect(countTo(fetchMock, "/regenerate")).toBe(0);
   });
 
+  /**
+   * A clip that was paid for and no longer matches the scene it was made from. The short project has said this
+   * since the staleness work landed; an Episode said nothing, so the only way to find out was to watch six
+   * clips and notice. The server recomputes it from the prompt recorded at generation — not a flag someone has
+   * to remember to clear.
+   *
+   * A warning, not a lock: 확정 stays available. Merging a drifted clip is a legitimate choice once it is one.
+   */
+  it("marks the scenes whose paid clip no longer matches the script, without blocking them", async () => {
+    const review = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" }));
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      // The review is only fetched once the job reports succeeded, so the progress route has to answer too.
+      "GET /videos/generations/job": progress("succeeded", [1, 2, 3, 4, 5, 6]),
+      "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review, staleness: { videoStale: [2] } },
+      ...sceneVersionRoutes(),
+    }));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    expect(await screen.findByTestId("episode-video-stale-2")).toBeTruthy();
+    // Scene 1 was not reported, and a badge there would be the screen inventing one.
+    expect(screen.queryByTestId("episode-video-stale-1")).toBeNull();
+    expect(screen.getByTestId("episode-video-review-2")).toBeTruthy();
+  });
 });

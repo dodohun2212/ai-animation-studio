@@ -7,6 +7,7 @@ import { Spinner } from "./Spinner.js";
 import { videoRatioLabel } from "../utils/sceneFields.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { StatusChip } from "./ui/StatusChip.js";
+import { StaleBadge } from "./ui/StaleBadge.js";
 
 interface Props { projectId: string; episodeNumber: number; onBack: () => void; onOpenMerge: (projectId: string, episodeNumber: number) => void; }
 type DisplayError = { code: string; message: string };
@@ -26,6 +27,13 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
   const [prompts, setPrompts] = useState<Partial<Record<SceneNumber, string>>>({});
   const [job, setJob] = useState<LongEpisodeVideoProgress | null>(null);
   const [reviews, setReviews] = useState<LongEpisodeVideoReview[] | null>(null);
+  /**
+   * Scenes whose already-paid clip no longer matches the scene text, recomputed by the server from the prompt
+   * recorded at generation rather than a flag someone has to remember to clear.
+   *
+   * A warning, never a lock: merging with a clip that has drifted is a legitimate choice once it is a choice.
+   */
+  const [videoStale, setVideoStale] = useState<SceneNumber[]>([]);
   const [confirmStart, setConfirmStart] = useState(false); const [regenerate, setRegenerate] = useState<SceneNumber | null>(null);
   /**
    * Identifies the person's intent to generate this Episode's videos — not the click that sends it.
@@ -68,6 +76,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
         setJob(progress);
         if (progress.status === "succeeded") {
           const review = await getLongEpisodeVideoReview(projectId, episodeNumber, jobId);
+          setVideoStale(review.staleness.videoStale);
           if (cancelled) return;
           setReviews(review.reviews);
         }
@@ -75,7 +84,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
     })();
     return () => { cancelled = true; };
   }, [projectId, episodeNumber]);
-  const loadProgress = async () => { if (!job) return; try { const next = await getLongEpisodeVideoProgress(projectId, episodeNumber, job.jobId); setJob(next); if (next.status === "succeeded") { const review = await getLongEpisodeVideoReview(projectId, episodeNumber, next.jobId); setReviews(review.reviews); } } catch (caught) { setError(toLongProjectDisplayError(caught)); } };
+  const loadProgress = async () => { if (!job) return; try { const next = await getLongEpisodeVideoProgress(projectId, episodeNumber, job.jobId); setJob(next); if (next.status === "succeeded") { const review = await getLongEpisodeVideoReview(projectId, episodeNumber, next.jobId); setReviews(review.reviews); setVideoStale(review.staleness.videoStale); } } catch (caught) { setError(toLongProjectDisplayError(caught)); } };
   useEffect(() => { if (!job || (job.status !== "created" && job.status !== "running")) return; const timer = setTimeout(() => void loadProgress(), 400); return () => clearTimeout(timer); }, [job]);
   const valid = preview !== null && preview.scenes.every((scene) => { const prompt = prompts[scene.sceneNumber] ?? ""; return prompt.trim().length > 0 && prompt.length <= LIMIT; });
   async function start(): Promise<void> { if (!preview || !valid || busyRef.current || !startRequestId) return; busyRef.current = true; setBusy(true); setError(null); try { const response = await startLongEpisodeVideoGeneration(projectId, episodeNumber, { confirmationId: preview.confirmationId, userRequestId: startRequestId, approved: true, prompts: preview.scenes.map((scene) => ({ sceneNumber: scene.sceneNumber, prompt: prompts[scene.sceneNumber] ?? "" })) }); setJob({ jobId: response.jobId, status: "created", completedSceneNumbers: [], failedSceneNumbers: [], sceneNumbers: preview.scenes.map((scene) => scene.sceneNumber), episode: response.episode }); setConfirmStart(false); setStartRequestId(null); } catch (caught) { setError(toLongProjectDisplayError(caught)); } finally { busyRef.current = false; setBusy(false); } }
@@ -101,11 +110,12 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
       setJob(response); setRecovery(response); setUnplayable([]); setVideoVersion((current) => current + 1);
       const review = await getLongEpisodeVideoReview(projectId, episodeNumber, response.jobId);
       setReviews(review.reviews);
+      setVideoStale(review.staleness.videoStale);
     } catch (caught) { setError(toLongProjectDisplayError(caught)); }
     finally { busyRef.current = false; setBusy(false); }
   }
 
-  async function approve(sceneNumber: SceneNumber): Promise<void> { if (!job) return; try { const response = await approveLongEpisodeVideoReview(projectId, episodeNumber, job.jobId, sceneNumber); setJob((current) => current ? { ...current, episode: response.episode } : current); setReviews(response.reviews); } catch (caught) { setError(toLongProjectDisplayError(caught)); } }
+  async function approve(sceneNumber: SceneNumber): Promise<void> { if (!job) return; try { const response = await approveLongEpisodeVideoReview(projectId, episodeNumber, job.jobId, sceneNumber); setJob((current) => current ? { ...current, episode: response.episode } : current); setReviews(response.reviews); setVideoStale(response.staleness.videoStale); } catch (caught) { setError(toLongProjectDisplayError(caught)); } }
   return (
     <section className="mt-8 space-y-5">
       <button type="button" className={outlineButton} onClick={onBack}>에피소드 이미지로</button>
@@ -263,11 +273,20 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
               data-status={review.status}
               className={`space-y-2 rounded-xl border bg-slate-950/40 p-3 ${review.status === "approved" ? "border-emerald-400/30" : "border-white/10"}`}
             >
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm font-semibold text-slate-100">{review.sceneNumber}번 장면</span>
-                <StatusChip tone={review.status === "approved" ? "success" : "neutral"}>
-                  {review.status === "approved" ? "확정됨" : "검토 대기"}
-                </StatusChip>
+                <span className="flex flex-wrap items-center gap-2">
+                  {/* The same badge the short project uses, on purpose — one wording for one fact. */}
+                  <StaleBadge
+                    staleSceneNumbers={videoStale}
+                    sceneNumber={review.sceneNumber}
+                    kind="video"
+                    data-testid={`episode-video-stale-${review.sceneNumber}`}
+                  />
+                  <StatusChip tone={review.status === "approved" ? "success" : "neutral"}>
+                    {review.status === "approved" ? "확정됨" : "검토 대기"}
+                  </StatusChip>
+                </span>
               </div>
               {unplayable.includes(review.sceneNumber) ? (
                 <p data-testid={`episode-video-missing-${review.sceneNumber}`} className="rounded-lg border border-amber-400/30 bg-amber-500/[0.06] px-3 py-2 text-sm text-amber-200">

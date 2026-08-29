@@ -67,6 +67,8 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
    * the app-wide default shape and the image still renders.
    */
   const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9">("9:16");
+  /** Set once the Episode answers, so the project-settings read below cannot overwrite the more specific value whichever lands first. */
+  const episodeAspect = useRef<"9:16" | "16:9" | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<DisplayError | null>(null);
   const [confirmingGeneration, setConfirmingGeneration] = useState(false);
@@ -83,16 +85,29 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setError(null); setGeneration(null); setReviewState({ status: "idle" }); setConfirmingGeneration(false);
+    episodeAspect.current = null;
     getLongEpisode(projectId, episodeNumber)
-      .then((response) => { if (!cancelled) setEpisode(response.episode); })
+      .then((response) => {
+        if (cancelled) return;
+        setEpisode(response.episode);
+        // The Episode's own GET fills this; absent means "not determined here", so the project settings below
+        // stay the fallback rather than being overwritten with a guess.
+        if (response.episode.aspectRatio) {
+          episodeAspect.current = response.episode.aspectRatio;
+          setAspectRatio(response.episode.aspectRatio);
+        }
+      })
       .catch((caught: unknown) => { if (!cancelled) setError(toLongProjectDisplayError(caught)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     getLongEpisodeContinuityReference(projectId, episodeNumber)
       .then((response) => { if (!cancelled) setContinuityReference(response.reference); })
       .catch(() => { if (!cancelled) setContinuityReference(null); })
       .finally(() => { if (!cancelled) setContinuityReferenceLoading(false); });
+    /* Second source, not the first. The Episode now carries its own aspectRatio — added precisely so screens
+       stop each landing on their own assumption — and this read only covers an Episode whose GET did not fill
+       it. Losing both still costs only the box, never the picture. */
     getLongProjectSettings(projectId)
-      .then((response) => { if (!cancelled) setAspectRatio(response.settings.aspectRatio); })
+      .then((response) => { if (!cancelled) setAspectRatio((current) => episodeAspect.current ?? response.settings.aspectRatio ?? current); })
       .catch(() => { /* Shape only — see aspectRatio's own comment. The picture matters more than its box. */ });
     return () => { cancelled = true; };
   }, [projectId, episodeNumber]);
@@ -127,7 +142,16 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
     let cancelled = false;
     const timer = setInterval(() => {
       getLongEpisode(projectId, episodeNumber)
-        .then((response) => { if (!cancelled) setEpisode(response.episode); })
+        .then((response) => {
+        if (cancelled) return;
+        setEpisode(response.episode);
+        // The Episode's own GET fills this; absent means "not determined here", so the project settings below
+        // stay the fallback rather than being overwritten with a guess.
+        if (response.episode.aspectRatio) {
+          episodeAspect.current = response.episode.aspectRatio;
+          setAspectRatio(response.episode.aspectRatio);
+        }
+      })
         .catch(() => { /* A dropped poll is not worth an error banner; the next tick asks again. */ });
     }, 3000);
     return () => { cancelled = true; clearInterval(timer); };

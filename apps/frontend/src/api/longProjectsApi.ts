@@ -57,6 +57,7 @@ import {
   type GetLongEpisodeVideoReviewResponse,
   type ApproveLongEpisodeVideoReviewResponse,
   type RegenerateLongEpisodeVideoResponse,
+  type LongEpisodeVideoStaleness,
   type MergeAudioSettings,
   type MergeLongEpisodeVideosResponse,
   type RecoverLongEpisodeVideosResponse,
@@ -519,7 +520,10 @@ function isEpisodeVideoProgress(value: unknown): value is LongEpisodeVideoProgre
 }
 const isStartEpisodeVideoResponse = (value: unknown): value is StartLongEpisodeVideoGenerationResponse => isRecord(value) && isNonEmptyString(value.jobId) && Array.isArray(value.acceptedSceneNumbers) && value.acceptedSceneNumbers.length >= MIN_SCENE_COUNT && value.acceptedSceneNumbers.length <= MAX_SCENE_COUNT && value.acceptedSceneNumbers.every(isSceneNumber) && isLongEpisodeDetail(value.episode);
 function isEpisodeVideoReview(value: unknown): value is LongEpisodeVideoReview { return isRecord(value) && isSceneNumber(value.sceneNumber) && (value.status === "pending" || value.status === "approved") && isNonEmptyString(value.updatedAt) && (value.costUsd === undefined || isFiniteNonNegative(value.costUsd)); }
-const isGetEpisodeVideoReviewResponse = (value: unknown): value is GetLongEpisodeVideoReviewResponse => isRecord(value) && isLongEpisodeDetail(value.episode) && Array.isArray(value.reviews) && value.reviews.every(isEpisodeVideoReview);
+/** `staleness` is required by the contract, so a response without it is malformed — not a screen that quietly shows no badges. */
+const isLongEpisodeVideoStaleness = (value: unknown): value is LongEpisodeVideoStaleness =>
+  isRecord(value) && Array.isArray(value.videoStale) && value.videoStale.every(isSceneNumber);
+const isGetEpisodeVideoReviewResponse = (value: unknown): value is GetLongEpisodeVideoReviewResponse => isRecord(value) && isLongEpisodeDetail(value.episode) && Array.isArray(value.reviews) && value.reviews.every(isEpisodeVideoReview) && isLongEpisodeVideoStaleness(value.staleness);
 const isApproveEpisodeVideoReviewResponse = (value: unknown): value is ApproveLongEpisodeVideoReviewResponse => isGetEpisodeVideoReviewResponse(value);
 const isRegenerateEpisodeVideoResponse = (value: unknown): value is RegenerateLongEpisodeVideoResponse => {
   if (!isEpisodeVideoProgress(value)) return false;
