@@ -342,6 +342,37 @@ describe("ProjectsService", () => {
     expect(after[0]).toMatchObject({ mapping_id: "MAP-MANUAL01", assignment_source: "manual" });
   });
 
+  /**
+   * Taking an Asset out by hand is a decision, and the automatic path must not overrule it.
+   *
+   * Without this, "removed" reads to the sync as "absent" and it seeds the mapping again on the next settings
+   * save — so generation runs on a reference the person believes they removed. That is worse than having no
+   * automatic path at all: without one they are merely doing the work every time.
+   */
+  it("leaves an Asset alone once someone has excluded it, rather than seeding it again", async () => {
+    const assets = new LocalAssetsRepository(root);
+    const mappings = new LocalProjectAssetMappingsRepository(root);
+    const withMappings = new ProjectsService(new LocalProjectRepository(root), assets, mappings);
+    await withMappings.createProject({ projectId: "cast_project", topic: "topic" });
+    const hero = await assets.create({ buffer: CHAR_PNG, originalname: "hero.png" }, { assetType: "character", displayName: "Hero" });
+    const now = "2026-08-27T00:00:00.000Z";
+    // A mapping this tag does not own — excluded by hand. The existing "leave manual alone" check only skips
+    // mappings that are still `confirmed`, so an excluded one looked like nothing at all and a fresh auto
+    // mapping was created beside it: the same Asset back in, under a name the person never chose.
+    await mappings.save(mappings.projectLocation("cast_project"), [{
+      mapping_id: "MAP-MANUAL01", project_id: "cast_project", asset_id: hero.asset_id, enabled: false, usage_role: "hand-picked",
+      scene_scope: { mode: "all" }, assignment_source: "manual", confidence: null, match_reason: "manual_assignment",
+      status: "excluded", user_confirmed: false, version_policy: "pinned_version", pinned_version: 1, candidate_only: false,
+      created_at: now, updated_at: now, snapshot_path: null, snapshot_sha256: null, snapshot_source_version: null, selected_child_asset_ids: [],
+    }]);
+
+    await withMappings.updateProjectCast("cast_project", { cast: [{ assetId: hero.asset_id, castRole: "protagonist", storyRole: "대표 캐릭터" }] });
+
+    const after = await mappings.load(mappings.projectLocation("cast_project"));
+    expect(after).toHaveLength(1);
+    expect(after[0]).toMatchObject({ mapping_id: "MAP-MANUAL01", status: "excluded", enabled: false });
+  });
+
   it("auto-links atmosphere Assets and scene reference Assets (usage role from the user's own purpose text), and updates the role when the purpose changes", async () => {
     const assets = new LocalAssetsRepository(root);
     const mappings = new LocalProjectAssetMappingsRepository(root);

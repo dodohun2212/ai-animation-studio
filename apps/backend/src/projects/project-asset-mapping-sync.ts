@@ -43,6 +43,7 @@ export async function syncAutoMappings(
   const managed = existing.filter((mapping) => mapping.assignment_source === "auto" && mapping.match_reason === tag);
   const other = existing.filter((mapping) => !(mapping.assignment_source === "auto" && mapping.match_reason === tag));
 
+  const excludedAssetIds = new Set(existing.filter((mapping) => mapping.status === "excluded").map((mapping) => mapping.asset_id));
   const next: StoredAssetMapping[] = [];
   for (const item of desired) {
     const current = managed.find((mapping) => mapping.asset_id === item.assetId);
@@ -51,6 +52,11 @@ export async function syncAutoMappings(
       continue;
     }
     if (other.some((mapping) => mapping.asset_id === item.assetId && mapping.enabled && mapping.status === "confirmed")) continue;
+    // Excluded means a person took this Asset out. Re-creating it would make the automatic path overrule a
+    // decision someone made by hand — and that is worse than having no automatic path at all: without one they
+    // are merely doing the work every time, whereas this way generation runs on a mapping they believe they
+    // removed. Checked across every tag, not just this one: which tag re-seeds it is not the person's problem.
+    if (excludedAssetIds.has(item.assetId)) continue;
     const asset = await assets.get(item.assetId).catch(() => null);
     if (!asset) continue;
     const now = new Date().toISOString();
