@@ -2267,3 +2267,7 @@ Episode01/script.json   "이배드" 가 52개 필드에 57번
   - Cowork이 캡틴D에게 말한 세 가지는 **전부 이 저장소와 어긋난다**: ① `httpsOptions` 로 앱을 띄우는 게 아니다(별도 리스너), ② 등록할 주소는 `localhost` 가 아니라 **`https://127.0.0.1:3443/settings/instagram/callback`** (메타는 정확 일치를 본다), ③ **프론트 프록시는 무관하다** — 메타가 브라우저를 그 포트로 직접 돌려보내지 Vite 를 거치지 않는다.
   - 반쯤 설정하면 **부팅이 멈춘다**(의도된 것). 자체 서명 인증서면 브라우저 경고로 흐름이 깨지므로 로컬 신뢰 인증서가 필요하다는 점만 Cowork 추측이 맞았다.
   - **①(데스크톱)이 여전히 더 짧다** — `apps/desktop` `npm run build` 통과(exit 0), 로그인 흐름이 끝에서 끝까지 연결돼 있고 준비물이 없다.
+- [x] **캡틴D 결정: ②(백엔드 HTTPS 콜백)로 간다 — 실행 절차를 확정했다 (Cowork Round 314)**: 데스크톱 앱은 접는다(*"프로그램이 안정될 때까지 백엔드 쓸 거라니까"*). **코드 변경은 여전히 0줄**이다 — `main.ts:43` 이 환경변수를 읽어 콜백만 두 번째 리스너에 올리고, `instagram.module.ts` 가 **같은 `resolveCallbackTls` 로** 로그인 서비스의 콜백 주소를 만든다(주소와 문 여는 곳이 두 군데 합의가 아니라 구성상 하나다, D-022).
+  - 🟠 **내가 앞 라운드에 틀리게 적은 것을 정정한다**: `INSTAGRAM_CALLBACK_TLS_CERT`/`_KEY` 는 PEM **내용이 아니라 파일 경로**다(`resolveCallbackTls` 가 그 경로를 `readFileSync` 한다). 내용이라고 적었던 것은 틀렸다 — 윈도우에서 여러 줄 PEM 을 환경변수에 넣으라고 시킬 뻔했다.
+  - **프론트에서 바꿀 것은 없다**: 서버가 `callbackLoginAvailable: this.callbackUri !== null` 로 답하고 `InstagramConnectionCard:168` 이 그 값으로 흐름을 고른다. TLS 를 켜면 화면이 저절로 콜백 흐름으로 바뀐다.
+  - 등록할 주소는 정확히 `https://127.0.0.1:3443/settings/instagram/callback` — 메타는 정확 일치를 본다.
