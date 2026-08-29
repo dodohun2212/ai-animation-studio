@@ -85,7 +85,12 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
   });
 
   it("does not submit until final local confirmation and sends the exact explicit request", async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { jobId: null })).mockResolvedValueOnce(jsonResponse(200, preview)).mockResolvedValueOnce(jsonResponse(200, { jobId: "job", acceptedSceneNumbers: [1,2,3,4,5,6], episode: episode("videos_generating") })); vi.stubGlobal("fetch", fetchMock);
+    const fetchMock = stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: null },
+      "GET /videos/preview": preview,
+      "POST /videos/generations": { jobId: "job", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") },
+    });
+    vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
     await screen.findByTestId("episode-video-summary"); fireEvent.click(screen.getByTestId("episode-video-open-confirm")); expect(countTo(fetchMock, "/videos/generations")).toBe(0);
     fireEvent.click(screen.getByRole("button", { name: "영상 만들기 시작" })); await screen.findByTestId("episode-video-progress");
@@ -93,7 +98,16 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
   });
   it("renders persisted sequential progress, stop/restart, and review approval/regeneration confirmations", async () => {
     const review = [1,2,3,4,5,6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" }));
-    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { jobId: null })).mockResolvedValueOnce(jsonResponse(200, preview)).mockResolvedValueOnce(jsonResponse(200, { jobId: "job", acceptedSceneNumbers: [1,2,3,4,5,6], episode: episode("videos_generating") })).mockResolvedValueOnce(jsonResponse(200, progress("succeeded", [1,2,3,4,5,6]))).mockResolvedValueOnce(jsonResponse(200, { episode: episode("videos_review"), reviews: review })).mockResolvedValueOnce(jsonResponse(200, { episode: episode("videos_review"), reviews: [{ ...review[0], status: "approved" }, ...review.slice(1)] })); vi.stubGlobal("fetch", fetchMock);
+    const fetchMock = stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: null },
+      "GET /videos/preview": preview,
+      "POST /videos/generations": { jobId: "job", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") },
+      "GET /videos/generations/job": progress("succeeded", [1, 2, 3, 4, 5, 6]),
+      "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review },
+      "POST /videos/generations/job/review/1/approve": { episode: episode("videos_review"), reviews: [{ ...review[0], status: "approved" }, ...review.slice(1)] },
+      ...sceneVersionRoutes(),
+    });
+    vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />); await screen.findByTestId("episode-video-summary");
     fireEvent.click(screen.getByTestId("episode-video-open-confirm")); fireEvent.click(screen.getByRole("button", { name: "영상 만들기 시작" })); await screen.findByTestId("episode-video-progress");
     // Simulate a persisted completed job by invoking the same progress endpoint through the polling effect.
@@ -194,10 +208,12 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
    */
   it("restores the Episode's existing video job on mount, so a reload does not strand paid work", async () => {
     const review = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" }));
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { jobId: "job" }))
-      .mockResolvedValueOnce(jsonResponse(200, progress("succeeded", [1, 2, 3, 4, 5, 6])))
-      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("videos_review"), reviews: review }));
+    const fetchMock = stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": progress("succeeded", [1, 2, 3, 4, 5, 6]),
+      "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review },
+      ...sceneVersionRoutes(),
+    });
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
 
@@ -235,10 +251,12 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
 
   it("plays each scene from the video content route", async () => {
     const review = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" }));
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { jobId: "job" }))
-      .mockResolvedValueOnce(jsonResponse(200, progress("succeeded", [1, 2, 3, 4, 5, 6])))
-      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("videos_review"), reviews: review }));
+    const fetchMock = stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": progress("succeeded", [1, 2, 3, 4, 5, 6]),
+      "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review },
+      ...sceneVersionRoutes(),
+    });
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
 
