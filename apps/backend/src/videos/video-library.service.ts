@@ -49,6 +49,14 @@ function parseTarget(raw: string, scenes: readonly SceneNumber[]): Target {
   return { kind: "scene", scene: value as SceneNumber };
 }
 
+/** The Episode's stored merge record, read leniently — a half-written one is no credit rather than a wrong one. */
+function episodeUsedAudio(stored: Record<string, unknown>): Record<string, unknown> | undefined {
+  const value = stored.used_audio;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  return typeof record.attribution_required === "boolean" ? record : undefined;
+}
+
 /**
  * `paid` runs demand a real clip, not merely a non-empty one.
  *
@@ -205,6 +213,11 @@ export class VideoLibraryService {
       finalVideoAvailable: Boolean(finalFile),
       totalActualCostUsd: Object.values(costs).reduce((sum: number, value) => sum + (value ?? 0), 0),
       aspectRatio,
+      // Read off the Episode's own merge record, the same way the short row reads the project's. Copied by
+      // value at merge time there and here, so deleting the track afterwards cannot erase the credit a video
+      // already owes (D-003).
+      ...(episodeUsedAudio(stored)?.attribution_required !== undefined ? { attributionRequired: episodeUsedAudio(stored)!.attribution_required as boolean } : {}),
+      ...(episodeUsedAudio(stored)?.attribution_text !== undefined ? { attributionText: episodeUsedAudio(stored)!.attribution_text as string } : {}),
     };
   }
 

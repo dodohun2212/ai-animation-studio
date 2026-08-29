@@ -61,6 +61,9 @@ const confirmedRoutes = (approved: number, total: number) => ({
       status: index < approved ? "approved" : "pending",
       updatedAt: "2026-08-23T00:00:00.000Z",
     })),
+    // Required by the contract, so the client's guard rejects a response without it. This screen does not read
+    // staleness, but a stub that answers less than the server does turns a real response into a malformed one.
+    staleness: { videoStale: [] },
   },
 });
 

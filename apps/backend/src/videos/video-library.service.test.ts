@@ -46,7 +46,7 @@ async function createProjectWithVideos(projectsRoot: string, projects: LocalProj
  * Lays an Episode on disk the way the Episode services do — same directory names, since the library reads
  * them through the same path helpers.
  */
-async function createEpisodeWithVideos(projectsRoot: string, projectId: string, episodeNumber: number, options: { scenes?: number[]; finalVideo?: boolean; paid?: boolean; title?: string; updatedAt?: string } = {}) {
+async function createEpisodeWithVideos(projectsRoot: string, projectId: string, episodeNumber: number, options: { scenes?: number[]; finalVideo?: boolean; paid?: boolean; title?: string; updatedAt?: string; usedAudio?: Record<string, unknown> } = {}) {
   const storyRoot = path.join(projectsRoot, projectId, "long_story");
   const directory = path.join(storyRoot, `Episode${String(episodeNumber).padStart(2, "0")}`);
   await fs.mkdir(path.join(directory, "videos"), { recursive: true });
@@ -56,6 +56,7 @@ async function createEpisodeWithVideos(projectsRoot: string, projectId: string, 
   await fs.writeFile(path.join(directory, "project.json"), JSON.stringify({
     number: episodeNumber, state: "videos_review", approved: true, script: {}, script_revision: 1,
     scene_count: 6, title: options.title ?? `episode ${episodeNumber}`, updated_at: options.updatedAt ?? "2026-08-24T00:00:00.000Z",
+    ...(options.usedAudio ? { used_audio: options.usedAudio } : {}),
   }));
   await fs.writeFile(path.join(directory, "video_generation_records.json"), JSON.stringify(
     (options.scenes ?? [1, 2, 3, 4, 5, 6]).map((scene) => ({ scene_number: scene, job_id: "job", status: "succeeded", execution_mode: options.paid ? "runway" : "local_fake_no_provider" })),
@@ -393,6 +394,34 @@ describe("VideoLibraryService.list — Episodes", () => {
       title: "episode 1", projectTitle: "story story_one", sceneCount: 6, videosReadyCount: 6,
       finalVideoAvailable: true, aspectRatio: "9:16",
     });
+  });
+
+  /**
+   * The credit line belongs on the card someone comes back to. Publishing happens days after merging, and the
+   * short row has carried these two fields for exactly that reason — an Episode built on a CC BY track was the
+   * one kind of card that said nothing, while its own merge screen already knew.
+   */
+  it("carries the credit line an Episode's track requires, the same as a short project's card", async () => {
+    const { projectsRoot, service } = await setup();
+    await createEpisodeWithVideos(projectsRoot, "story_credit", 1, {
+      finalVideo: true,
+      usedAudio: { mode: "bgm", track_id: "t1", attribution_required: true, attribution_text: "Music by ○○○" },
+    });
+
+    expect((await service.list()).episodes[0]).toMatchObject({
+      attributionRequired: true, attributionText: "Music by ○○○",
+    });
+  });
+
+  it("says nothing about credit for an Episode that never merged with a track", async () => {
+    // Absent, not `false`: "no track was used" and "we did not look" must not read the same, and a card that
+    // asserts no credit is required is the one way this field could cause the failure it exists to prevent.
+    const { projectsRoot, service } = await setup();
+    await createEpisodeWithVideos(projectsRoot, "story_plain", 1, { finalVideo: true });
+
+    const row = (await service.list()).episodes[0]!;
+    expect(row.attributionRequired).toBeUndefined();
+    expect(row.attributionText).toBeUndefined();
   });
 
   it("skips an Episode that never reached video generation, so the library stays a results archive", async () => {

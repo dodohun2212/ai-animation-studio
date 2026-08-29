@@ -1651,6 +1651,16 @@ export interface VideoLibraryEpisodeSummary {
   /** Same meaning as the short row's: every recorded Runway spend for this Episode, across every attempt. */
   totalActualCostUsd: number;
   aspectRatio: "9:16" | "16:9";
+  /**
+   * Same two fields, same meaning, same source as the short row's — see VideoLibraryProjectSummary.
+   *
+   * Here for the reason that field exists at all: the person who comes back to this card later to finally
+   * publish is the one who has to write the credit line, and an Episode built on a CC BY track was the one
+   * kind of card that did not say so. The Episode has carried `usedAudio` since its merge screen started
+   * asking about audio; only this row was still short of it.
+   */
+  attributionRequired?: boolean;
+  attributionText?: string;
 }
 export interface GetVideoLibraryResponse { projects: VideoLibraryProjectSummary[]; episodes: VideoLibraryEpisodeSummary[]; }
 
