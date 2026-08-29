@@ -690,4 +690,30 @@ describe("ImageGenerationScreen", () => {
     // A blank box must produce a plain regeneration, not additionalInstruction: "".
     expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ approved: true });
   });
+
+  // The review block is the only place the pictures appeared, and it renders only at 이미지 검토 and 영상 확인 —
+  // so moving past those made all six vanish. They are still on disk; a stage is not a reason to hide what
+  // that stage produced. Same fix as the Episode screen, for the same complaint.
+  it("keeps the pictures reachable after the review step is over", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ReviewingVideos, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { project }));
+    renderScreen(fetchMock);
+
+    const gallery = await screen.findByTestId("scene-image-gallery");
+    expect(gallery.querySelectorAll("img").length).toBe(6);
+  });
+
+  it("does not show the gallery twice while the review block is already showing the same pictures", async () => {
+    // 영상 확인 still renders the review block, so a gallery there would print every scene a second time.
+    const project = makeProject({ workflowState: WorkflowState.WaitingForVideoConfirmation, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValue(jsonResponse(200, { project, reviews: sixReviews([1, 2, 3, 4, 5, 6]) }));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("scene-1");
+    expect(screen.queryByTestId("scene-image-gallery")).toBeNull();
+  });
+
 });

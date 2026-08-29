@@ -177,4 +177,93 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     const idOf = (nth: number) => JSON.parse(String(callsTo(fetchMock, "/videos/generations")[nth]![1].body)).userRequestId as string;
     expect(idOf(1)).not.toBe(idOf(0));
   });
+
+  /**
+   * The reload bug 캡틴D found: the screen showed "이 단계에서는 영상 작업을 할 수 없습니다" and nothing else after a
+   * refresh, because the job id lived only in React state. Everything paid for — the review cards, the players
+   * and the recovery button — sat behind that `job`, so $1.50 of finished work had no handle on screen.
+   */
+  it("restores the Episode's existing video job on mount, so a reload does not strand paid work", async () => {
+    const review = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" }));
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { jobId: "job" }))
+      .mockResolvedValueOnce(jsonResponse(200, progress("succeeded", [1, 2, 3, 4, 5, 6])))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("videos_review"), reviews: review }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    await screen.findByTestId("episode-video-review");
+    expect(screen.getByTestId("episode-video-recover")).toBeTruthy();
+    // Restored, not started over: the 미리보기 is what the Episode is past, and asking for it is what produced
+    // the "이 단계에서는 할 수 없습니다" line that hid everything else.
+    expect(countTo(fetchMock, "/videos/preview")).toBe(0);
+  });
+
+  it("fetches the clips already generated without regenerating any, and names the scenes it could not fetch", async () => {
+    const review = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" }));
+    const recovered = { ...progress("succeeded", [1, 2, 3, 4, 5, 6]), recoveredSceneNumbers: [1, 2, 3, 4, 5], unrecoverableScenes: [{ sceneNumber: 6, reason: "출력 링크가 만료되었습니다" }] };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { jobId: "job" }))
+      .mockResolvedValueOnce(jsonResponse(200, progress("succeeded", [1, 2, 3, 4, 5, 6])))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("videos_review"), reviews: review }))
+      .mockResolvedValueOnce(jsonResponse(200, recovered))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("videos_review"), reviews: review }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    fireEvent.click(await screen.findByTestId("episode-video-recover"));
+    await waitFor(() => expect(countTo(fetchMock, "/recovery")).toBe(1));
+
+    const result = await screen.findByTestId("episode-video-recovery-result");
+    expect(result.textContent).toContain("5장면");
+    expect(result.textContent).toContain("6번");
+    expect(result.textContent).toContain("출력 링크가 만료되었습니다");
+    // Recovery is a download, not a purchase. A scene it could not fetch is reported and left alone —
+    // spending $0.25 again is the person's decision, never this screen's fallback.
+    expect(countTo(fetchMock, "/regenerate")).toBe(0);
+  });
+
+  it("plays each scene from the video content route", async () => {
+    const review = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" }));
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { jobId: "job" }))
+      .mockResolvedValueOnce(jsonResponse(200, progress("succeeded", [1, 2, 3, 4, 5, 6])))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("videos_review"), reviews: review }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    const player = await screen.findByTestId("episode-video-player-1");
+    expect(player.getAttribute("src")).toContain("/long-projects/long/episodes/1/videos/1/content");
+    expect(screen.getByTestId("episode-video-player-6")).toBeTruthy();
+  });
+
+  /**
+   * The content route refuses to serve a placeholder, so a scene that never downloaded fails to load instead of
+   * playing 32 bytes of nothing. Which sentence that failure earns depends on whether 회수 has already run —
+   * before it, the bytes are still fetchable and the answer is a button, not a bill.
+   */
+  it("tells an unplayable scene apart before and after recovery, and never offers to regenerate on its own", async () => {
+    const review = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" }));
+    const recovered = { ...progress("succeeded", [1, 2, 3, 4, 5, 6]), recoveredSceneNumbers: [1, 2, 3, 4, 5], unrecoverableScenes: [{ sceneNumber: 6, reason: "출력 링크가 만료되었습니다" }] };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { jobId: "job" }))
+      .mockResolvedValueOnce(jsonResponse(200, progress("succeeded", [1, 2, 3, 4, 5, 6])))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("videos_review"), reviews: review }))
+      .mockResolvedValueOnce(jsonResponse(200, recovered))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("videos_review"), reviews: review }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    fireEvent.error(await screen.findByTestId("episode-video-player-6"));
+    expect((await screen.findByTestId("episode-video-missing-6")).textContent).toContain("아직 가져오지 않았습니다");
+
+    fireEvent.click(screen.getByTestId("episode-video-recover"));
+    await screen.findByTestId("episode-video-recovery-result");
+    // Recovery clears the remembered failure and changes the URL, so a scene it did fetch is retried rather
+    // than replaying the refusal the browser cached a moment earlier.
+    fireEvent.error(await screen.findByTestId("episode-video-player-6"));
+    expect((await screen.findByTestId("episode-video-missing-6")).textContent).toContain("남아 있지 않습니다");
+    expect(countTo(fetchMock, "/regenerate")).toBe(0);
+  });
+
 });
