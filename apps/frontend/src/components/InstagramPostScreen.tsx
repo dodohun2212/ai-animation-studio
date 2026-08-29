@@ -213,6 +213,19 @@ export function InstagramPostScreen({ onBack }: Props) {
   const [bodyAutoFilled, setBodyAutoFilled] = useState(false);
   const [hashtagsRaw, setHashtagsRaw] = useState("");
   const [aiNoticeOn, setAiNoticeOn] = useState(true);
+  /**
+   * The shape and length of the actual file, read from the player once it has its metadata.
+   *
+   * The two checks below used to come from project settings — the *planned* aspect ratio and the *planned*
+   * duration — while the panel said they were "checked while the file is still on this machine". A merge that
+   * produced something other than the plan (a scene dropped, a clip that ran long) was reported as compliant
+   * on the strength of a number nobody had compared to the video. The file is already on screen; measuring it
+   * costs one metadata load.
+   *
+   * Null until the metadata arrives, and stays null if it never does — the planned values are then shown as
+   * what they are rather than as a measurement.
+   */
+  const [measured, setMeasured] = useState<{ vertical: boolean; seconds: number | null } | null>(null);
   const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
   const [confirmPublish, setConfirmPublish] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -295,6 +308,7 @@ export function InstagramPostScreen({ onBack }: Props) {
           const suggestedBody = suggestEpisodeCaptionBody(episodeResponse.episode);
           setBody(suggestedBody);
           setBodyAutoFilled(suggestedBody.length > 0);
+          setMeasured(null);
           setHashtagsRaw("");
           setAiNoticeOn(true);
           setSaveState("idle");
@@ -330,6 +344,7 @@ export function InstagramPostScreen({ onBack }: Props) {
         const suggested = draft?.body === undefined ? suggestCaptionBody(projectResponse.project) : "";
         setBody(draft?.body ?? suggested);
         setBodyAutoFilled(draft?.body === undefined && suggested.length > 0);
+        setMeasured(null);
         setHashtagsRaw(draft?.hashtags ?? "");
         setAiNoticeOn(draft?.aiNotice ?? true);
         setSaveState("idle");
@@ -417,8 +432,11 @@ export function InstagramPostScreen({ onBack }: Props) {
   const captionOver = caption.length > CAPTION_MAX;
   const hashtagsOver = hashtags.length > HASHTAG_MAX;
   const plannedSeconds = picked.status === "ready" ? picked.plannedSeconds : null;
-  const tooLong = plannedSeconds !== null && plannedSeconds > REEL_MAX_SECONDS;
-  const notVertical = (project?.aspectRatio ?? episode?.aspectRatio) === "16:9";
+  /* Measured beats planned wherever it exists. The planned values remain the fallback rather than the answer:
+     losing the measurement must not cost the check, but it must not be reported as one either. */
+  const checkedSeconds = measured?.seconds ?? plannedSeconds;
+  const tooLong = checkedSeconds !== null && checkedSeconds > REEL_MAX_SECONDS;
+  const notVertical = measured ? !measured.vertical : (project?.aspectRatio ?? episode?.aspectRatio) === "16:9";
   const copyBlocked = captionOver || hashtagsOver || creditMissing;
   /* The server's own record, on either shape — never a local flag. A reload has to keep saying "already
      posted", because the mistake this prevents is a second public copy of something already out there. */
@@ -649,8 +667,21 @@ export function InstagramPostScreen({ onBack }: Props) {
               data-testid="post-video-player"
               className={`${notVertical ? "aspect-video" : "aspect-[9/16]"} w-full rounded-xl border border-white/10 bg-slate-950/60`}
               controls
-              preload="none"
+              /* Was "none". Metadata is what makes the two checks below about this file rather than about the
+                 settings it was supposed to be made from, and it is a local read of a file already on disk. */
+              preload="metadata"
               src={videoSrc}
+              onLoadedMetadata={(event) => {
+                const element = event.currentTarget;
+                // A stream whose duration the browser cannot state reports Infinity or NaN. That is "not
+                // measured", not "zero seconds" — falling through to the planned value is the honest outcome.
+                const seconds = Number.isFinite(element.duration) && element.duration > 0 ? element.duration : null;
+                if (!element.videoWidth || !element.videoHeight) {
+                  setMeasured(seconds === null ? null : { vertical: !notVertical, seconds });
+                  return;
+                }
+                setMeasured({ vertical: element.videoHeight >= element.videoWidth, seconds });
+              }}
             />
             <p className="text-sm text-slate-300" data-testid="post-video-path">
               저장 위치: {episode ? `${episode.episodeNumber}화 폴더의 ${FINAL_VIDEO_PATH}` : FINAL_VIDEO_PATH}
@@ -683,7 +714,10 @@ export function InstagramPostScreen({ onBack }: Props) {
             )}
           </div>
 
-          {/* The three things Instagram itself decides, checked while the file is still on this machine. */}
+          {/* What Instagram decides about this file — read from the file itself once the player has its
+              metadata, and from the project's settings only until then. Which of the two it is has to be
+              visible: a check that reports the plan as a measurement is worse than no check, because it is
+              believed. */}
           <div className={cardSection} data-testid="post-checks">
             <p className="text-sm font-semibold text-slate-200">올리기 전 확인</p>
             <div className="flex flex-wrap items-center gap-2" data-testid="post-check-shape">
@@ -695,17 +729,22 @@ export function InstagramPostScreen({ onBack }: Props) {
               )}
             </div>
             <div className="flex flex-wrap items-center gap-2" data-testid="post-check-length">
-              {plannedSeconds === null ? (
+              {checkedSeconds === null ? (
                 <span className="text-xs text-slate-400">길이를 확인하지 못했습니다.</span>
               ) : (
                 <>
-                  <StatusChip tone={tooLong ? "danger" : "success"}>{durationLabel(plannedSeconds)}</StatusChip>
+                  <StatusChip tone={tooLong ? "danger" : "success"}>{durationLabel(checkedSeconds)}</StatusChip>
                   <span className="text-xs text-slate-400">
                     {tooLong ? "릴스 한도(3분)를 넘습니다. 장면 수나 장면 길이를 줄여야 합니다." : "릴스 한도(3분) 안입니다."}
                   </span>
                 </>
               )}
             </div>
+            <p className="text-xs text-slate-500" data-testid="post-check-source">
+              {measured
+                ? "위 영상 파일을 직접 재어 본 값입니다."
+                : "아직 영상 파일을 읽지 못해 설정값으로 적었습니다. 실제 파일이 다를 수 있습니다."}
+            </p>
           </div>
           </div>
 

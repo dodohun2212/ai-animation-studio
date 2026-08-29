@@ -197,6 +197,60 @@ describe("InstagramPostScreen", () => {
     expect(screen.getByTestId("post-copy")).toBeTruthy();
   });
 
+  /**
+   * The panel called itself "checked while the file is still on this machine" while reading the project's
+   * *planned* duration and *planned* aspect ratio. A merge that produced something else — a dropped scene, a
+   * clip that ran long — was reported as compliant on a number nobody had compared to the video, and the user
+   * would find out in Instagram's upload sheet instead.
+   *
+   * jsdom never fires `loadedmetadata` on its own, so the event is dispatched with the values a real browser
+   * would expose. The 200s plan and the 30s file disagree deliberately: only reading the file gets this right.
+   */
+  function loadVideoMetadata(dimensions: { videoWidth: number; videoHeight: number; duration: number }): void {
+    const player = screen.getByTestId("post-video-player");
+    for (const [key, value] of Object.entries(dimensions)) {
+      Object.defineProperty(player, key, { configurable: true, value });
+    }
+    fireEvent.loadedMetadata(player);
+  }
+
+  it("reports the file it measured, not the length the project planned", async () => {
+    renderScreen({ durationSeconds: 200 });
+    await pickProject();
+    // Before the metadata arrives it says so rather than passing the plan off as a measurement.
+    expect(screen.getByTestId("post-check-length").textContent).toContain("한도(3분)를 넘습니다");
+    expect(screen.getByTestId("post-check-source").textContent).toContain("설정값으로 적었습니다");
+
+    loadVideoMetadata({ videoWidth: 1080, videoHeight: 1920, duration: 30 });
+
+    expect(screen.getByTestId("post-check-length").textContent).toContain("0:30");
+    expect(screen.getByTestId("post-check-length").textContent).toContain("한도(3분) 안입니다");
+    expect(screen.getByTestId("post-check-source").textContent).toContain("직접 재어 본");
+  });
+
+  it("reports the shape it measured, even when the project's settings say otherwise", async () => {
+    renderScreen({ projects: [libraryProject({ aspectRatio: "9:16" })], project: { aspectRatio: "9:16" }, durationSeconds: 30 });
+    await pickProject();
+    expect(screen.getByTestId("post-check-shape").textContent).toContain("세로 9:16");
+
+    // The settings say vertical; the file that came out is not. The file wins.
+    loadVideoMetadata({ videoWidth: 1920, videoHeight: 1080, duration: 30 });
+
+    expect(screen.getByTestId("post-check-shape").textContent).toContain("가로 영상");
+  });
+
+  // A stream whose duration the browser cannot state reports Infinity. That is "not measured", never "0:00" —
+  // a zero-second chip under a real video is a confident wrong answer.
+  it("keeps the planned length when the file reports no usable duration", async () => {
+    renderScreen({ durationSeconds: 30 });
+    await pickProject();
+
+    loadVideoMetadata({ videoWidth: 1080, videoHeight: 1920, duration: Number.POSITIVE_INFINITY });
+
+    expect(screen.getByTestId("post-check-length").textContent).toContain("0:30");
+    expect(screen.getByTestId("post-check-length").textContent).not.toContain("0:00");
+  });
+
   it("warns when the video is landscape rather than the vertical shape a reel expects", async () => {
     renderScreen({ projects: [libraryProject({ aspectRatio: "16:9" })], project: { aspectRatio: "16:9" } });
     await pickProject();
