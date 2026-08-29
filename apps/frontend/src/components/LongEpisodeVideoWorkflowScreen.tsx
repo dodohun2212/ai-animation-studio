@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { GetLongEpisodeVideoPreviewResponse, LongEpisodeVideoProgress, LongEpisodeVideoReview, RecoverLongEpisodeVideosResponse, SceneNumber } from "@ai-animation-studio/shared";
 
-import { approveLongEpisodeVideoReview, episodeSceneErrorMessage, getLongEpisodeVideoPreview, getLongEpisodeVideoProgress, getLongEpisodeVideoReview, recoverLongEpisodeVideos, regenerateLongEpisodeVideo, restartLongEpisodeVideoGeneration, startLongEpisodeVideoGeneration, stopLongEpisodeVideoGeneration, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { approveLongEpisodeVideoReview, episodeSceneErrorMessage, getLongEpisodeVideoPreview, getLongEpisodeVideoProgress, getLongEpisodeVideoReview, longEpisodeVideoContentUrl, recoverLongEpisodeVideos, regenerateLongEpisodeVideo, restartLongEpisodeVideoGeneration, startLongEpisodeVideoGeneration, stopLongEpisodeVideoGeneration, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { Spinner } from "./Spinner.js";
 import { videoRatioLabel } from "../utils/sceneFields.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
@@ -48,7 +48,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
   useEffect(() => { if (!job || (job.status !== "created" && job.status !== "running")) return; const timer = setTimeout(() => void loadProgress(), 400); return () => clearTimeout(timer); }, [job]);
   const valid = preview !== null && preview.scenes.every((scene) => { const prompt = prompts[scene.sceneNumber] ?? ""; return prompt.trim().length > 0 && prompt.length <= LIMIT; });
   async function start(): Promise<void> { if (!preview || !valid || busyRef.current || !startRequestId) return; busyRef.current = true; setBusy(true); setError(null); try { const response = await startLongEpisodeVideoGeneration(projectId, episodeNumber, { confirmationId: preview.confirmationId, userRequestId: startRequestId, approved: true, prompts: preview.scenes.map((scene) => ({ sceneNumber: scene.sceneNumber, prompt: prompts[scene.sceneNumber] ?? "" })) }); setJob({ jobId: response.jobId, status: "created", completedSceneNumbers: [], failedSceneNumbers: [], sceneNumbers: preview.scenes.map((scene) => scene.sceneNumber), episode: response.episode }); setConfirmStart(false); setStartRequestId(null); } catch (caught) { setError(toLongProjectDisplayError(caught)); } finally { busyRef.current = false; setBusy(false); } }
-  async function action(fn: () => Promise<LongEpisodeVideoProgress>): Promise<void> { if (busyRef.current) return; busyRef.current = true; setBusy(true); setError(null); try { setJob(await fn()); } catch (caught) { setError(toLongProjectDisplayError(caught)); } finally { busyRef.current = false; setBusy(false); } }
+  async function action(fn: () => Promise<LongEpisodeVideoProgress>): Promise<void> { if (busyRef.current) return; busyRef.current = true; setBusy(true); setError(null); try { setJob(await fn()); setUnplayable([]); setVideoVersion((current) => current + 1); } catch (caught) { setError(toLongProjectDisplayError(caught)); } finally { busyRef.current = false; setBusy(false); } }
   /**
    * Fetches the clips Runway already made, using the task ids on record.
    *
@@ -58,12 +58,16 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
    * is the person's decision, not a fallback.
    */
   const [recovery, setRecovery] = useState<RecoverLongEpisodeVideosResponse | null>(null);
+  /* The content route refuses placeholders, so a scene that never downloaded fails to load rather than playing
+     32 bytes of nothing. Which sentence the person gets depends on whether 가져오기 has already run. */
+  const [unplayable, setUnplayable] = useState<readonly number[]>([]);
+  const [videoVersion, setVideoVersion] = useState(0);
   async function recover(): Promise<void> {
     if (!job || busyRef.current) return;
     busyRef.current = true; setBusy(true); setError(null);
     try {
       const response = await recoverLongEpisodeVideos(projectId, episodeNumber, job.jobId);
-      setJob(response); setRecovery(response);
+      setJob(response); setRecovery(response); setUnplayable([]); setVideoVersion((current) => current + 1);
       const review = await getLongEpisodeVideoReview(projectId, episodeNumber, response.jobId);
       setReviews(review.reviews);
     } catch (caught) { setError(toLongProjectDisplayError(caught)); }
@@ -234,6 +238,22 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
                   {review.status === "approved" ? "확정됨" : "검토 대기"}
                 </StatusChip>
               </div>
+              {unplayable.includes(review.sceneNumber) ? (
+                <p data-testid={`episode-video-missing-${review.sceneNumber}`} className="rounded-lg border border-amber-400/30 bg-amber-500/[0.06] px-3 py-2 text-sm text-amber-200">
+                  {recovery
+                    ? "이 장면 영상은 남아 있지 않습니다. 보려면 다시 만들어야 하고, 비용이 듭니다."
+                    : "영상을 아직 가져오지 않았습니다. 위의 '이미 만든 영상 가져오기'를 눌러 주세요."}
+                </p>
+              ) : (
+                <video
+                  data-testid={`episode-video-player-${review.sceneNumber}`}
+                  className="w-full rounded-lg border border-white/10 bg-black"
+                  controls
+                  preload="metadata"
+                  src={longEpisodeVideoContentUrl(projectId, episodeNumber, review.sceneNumber, String(videoVersion))}
+                  onError={() => setUnplayable((current) => current.includes(review.sceneNumber) ? current : [...current, review.sceneNumber])}
+                />
+              )}
               {review.costUsd !== undefined && (
                 <p className="text-xs text-slate-400 tabular-nums" data-testid={`episode-video-review-cost-${review.sceneNumber}`}>
                   이 장면에 쓴 비용: ${review.costUsd.toFixed(2)}

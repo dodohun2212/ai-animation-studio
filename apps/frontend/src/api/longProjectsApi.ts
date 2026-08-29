@@ -620,6 +620,24 @@ export function longEpisodeImageContentUrl(
   return `${API_ROUTES.longEpisodeImageContent(projectId, episodeNumber, sceneNumber)}?v=${encodeURIComponent(cacheBuster)}`;
 }
 
+/**
+ * URL for one Episode scene's generated video bytes.
+ *
+ * The route refuses to serve a placeholder (`LONG_EPISODE_VIDEOS_INVALID`), so a `<video>` pointed here either
+ * plays the real clip or fails — which is the honest answer, not a bug to paper over.
+ *
+ * `cacheBuster` changes after 가져오기 or 다시 만들기 so the browser refetches instead of replaying the failure
+ * it cached a moment earlier.
+ */
+export function longEpisodeVideoContentUrl(
+  projectId: string,
+  episodeNumber: number,
+  sceneNumber: SceneNumber,
+  cacheBuster: string,
+): string {
+  return `${API_ROUTES.longEpisodeVideoContent(projectId, episodeNumber, sceneNumber)}?v=${encodeURIComponent(cacheBuster)}`;
+}
+
 export function getLongProjectSettings(projectId: string): Promise<GetLongProjectSettingsResponse> {
   return request(API_ROUTES.longProjectSettings(projectId), undefined, isGetLongProjectSettingsResponse);
 }
