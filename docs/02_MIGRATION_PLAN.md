@@ -2346,3 +2346,9 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
   - 주입 셋으로 확인했다: 이력 push 를 빼면 2건 빨강 / `acknowledged` 검사를 끄면 1건 빨강 / 되돌리면 초록.
 - [x] **게시 잠금을 푸는 문이 화면에 붙었다 (Cowork Round 326, `c1b14fb`)**: 2단계 확인이고, 두 번째 단계가 묻는 것은 결심이 아니라 **결과를 가르는 사실 하나** — 인스타그램에서 지웠는지. 잠금은 **서버 응답의 갱신된 기록으로** 풀린다(로컬 플래그가 아니다). `INSTAGRAM_POST_NOT_RECORDED` 를 `SAFE_ERRORS` 에 채웠다 — 안 채우면 *"요청을 처리하지 못했습니다"* 로 떨어져서, 서버가 성공과 구분해 둔 그 사실이 **화면에서 사라진다.**
   - **단편에도 이력이 있다** (Cowork Round 326 🟠 는 오독이다): `previousInstagramPosts` 는 `domain.ts` 의 Project 에도 `057d00d` 에서 같이 들어갔고, 매퍼가 싣고, 단편 테스트가 그 값을 단언한다(`keeps the post it forgot`). 확인창의 *"지운 뒤에도 이 앱은 그 게시물을 기억합니다"* 는 **단편·회차 양쪽에서 참이다.** 문장을 가를 필요가 없다.
+- [x] **🔴 회차 게시가 라이선스 출처 없이 나가고 있었다 (Cowork Round 327, `429aa88`)**: 게시 화면이 `project?.usedAudio` 만 읽었다. 회차는 `usedAudio` 를 오늘부터 갖고 있고 회차 병합 화면은 이미 읽는데, **캡션을 쓰는 화면만 안 읽었다** — CC BY 음원을 깐 회차는 출처 없이 올라가고 `creditMissing` 도 안 걸려 버튼도 안 막혔다. D-003 이 장기에서만 열려 있었다.
+  - **아무도 못 잡은 구조적 이유: `InstagramPostScreen.test.tsx` 에 회차 픽스처가 하나도 없었다.** 회차 분기 전체가 무검증이었다. 픽스처가 들어왔으니 이제 이 파일이 두 종류를 같이 본다. 주입: `project?.usedAudio` 로 되돌리면 두 테스트가 빨갛다.
+  - 내가 고친 것: 새 테스트 둘의 선택 값이 `episode:long:1` 이었는데 화면의 형식은 **`episode:<projectId>|<n>`** 이라(파이프) 선택 자체가 안 됐다 — `post-checks` 를 못 찾는 실패였다. 값을 맞추자 45개 전부 통과.
+  - `:293` 주석의 *"An Episode carries no saved draft and no audio credit — those are short-project features"* 도 같이 고쳤다. **그 문장이 참이던 시절에 쓰였고 지금은 거짓이며, 다음 사람이 코드 대신 그것을 읽는다.**
+- [x] **단편의 게시 기록이 뭘 올렸는지 말하지 못했다 (`09aa90c`)**: `caption` 은 첫 게시부터 디스크에 저장됐지만 **API 로 안 나갔다** — 회차 기록은 처음부터 싣고 있었는데. 캡션은 **출처 문구와 AI 고지가 사는 곳**이라, *"이 게시물이 뭐라고 나갔나"* 는 정확히 그게 중요해지는 순간에 묻는 질문이다. `previousInstagramPosts` 도 같이 캡션을 싣는다.
+  - **여기서도 정확한 단언 하나가 캡션 없는 모양을 지키고 있었다**: `toEqual({ mediaId, igUserId, publishedAt })`. 어댑터 몸통에서 캡션을 붙잡아 두던 것과 같은 모양이고, 이번 주에 두 번째다.
