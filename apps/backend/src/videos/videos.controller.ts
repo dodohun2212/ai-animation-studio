@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import { Body, Controller, Get, HttpException, Param, Post, Res, StreamableFile } from "@nestjs/common";
-import { API_ROUTES, type ApproveVideoReviewResponse, type GenerationProgressResponse, type GetVideoLibraryResponse, type GetVideoPromptPreviewResponse, type GetVideoReviewResponse, type GetVideoVersionsResponse, type MergeVideosResponse, type RegenerateVideoResponse, type RestoreVideoVersionResponse, type SceneNumber, type StartVideoGenerationResponse } from "@ai-animation-studio/shared";
+import { API_ROUTES, type ApproveVideoReviewResponse, type GenerationProgressResponse, type GetVideoLibraryResponse, type GetVideoPromptPreviewResponse, type GetVideoReviewResponse, type GetVideoVersionsResponse, type MergeVideosResponse, type RecoverVideosResponse, type RegenerateVideoResponse, type RestoreVideoVersionResponse, type SceneNumber, type StartVideoGenerationResponse } from "@ai-animation-studio/shared";
 
 import { videoContentUnavailable } from "./video-workflow-api.error.js";
 import { videoMergeContentUnavailable } from "./video-merge-api.error.js";
@@ -132,6 +132,12 @@ export class VideosController {
     if (!parsed) return this.workflow.regenerate(projectId, jobId, []);
     const scenes = await this.workflow.jobSceneNumbers(projectId, jobId);
     return this.workflow.regenerate(projectId, jobId, scenes, parsed.additionalInstruction);
+  }
+
+  /** Re-fetches this job's already-paid Runway outputs for scenes left holding a placeholder. Never generates. */
+  @Post(`${API_ROUTES.projects}/:projectId/videos/generations/:jobId/recovery`)
+  recover(@Param("projectId") projectId: string, @Param("jobId") jobId: string, @Body() body: unknown): Promise<RecoverVideosResponse> {
+    return this.workflow.recover(projectId, jobId, body);
   }
 
   @Get(`${API_ROUTES.projects}/:projectId/videos/generations/:jobId/review`)

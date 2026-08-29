@@ -13,6 +13,7 @@ import { RunwayBudget } from "../providers/runway-budget.js";
 import { RUNWAY_POLL_INTERVAL_SECONDS, SUBMIT_CLAIM_TIMEOUT_SECONDS } from "./runway-workflow-support.js";
 import { LocalVideoPreviewService } from "./video-preview.service.js";
 import { LocalVideoSubmissionService } from "./local-video-submission.service.js";
+import { PLACEHOLDER_MP4 } from "./placeholder-clip.js";
 import { LocalVideoWorkflowService } from "./local-video-workflow.service.js";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
@@ -105,6 +106,86 @@ describe("real Runway video workflow", () => {
     const project = await deps.projects.findById("video_workflow");
     expect(project.workflow_state).toBe(WorkflowState.ReviewingVideos);
     expect(await Promise.all([1, 2, 3, 4, 5, 6].map((scene) => fs.readFile(path.join(deps.projectsRoot, "video_workflow", "videos", "runway", `scene${scene}.mp4`), "utf8")))).toEqual(Array(6).fill("fake-mp4-bytes"));
+  });
+
+  /**
+   * The Episode has had this since the bug that lost these bytes was found; the short project, which submits
+   * the same way and records the same task ids, had no route back to them at all. The only way to a lost clip
+   * here was to buy it a second time.
+   */
+  it("fetches the paid outputs again for scenes left holding a placeholder, without submitting anything", async () => {
+    const deps = await setupWithConnectedRunway();
+    const workflow = newWorkflow(deps);
+    const fetchMock = runwayFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+    await workflow.run("video_workflow", deps.accepted.jobId);
+    for (let scene = 1; scene <= 6; scene++) {
+      now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+      await workflow.getProgress("video_workflow", deps.accepted.jobId);
+      now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+      await workflow.getProgress("video_workflow", deps.accepted.jobId);
+    }
+    const file = (scene: number) => path.join(deps.projectsRoot, "video_workflow", "videos", "runway", `scene${scene}.mp4`);
+    for (let scene = 1; scene <= 6; scene++) await fs.writeFile(file(scene), PLACEHOLDER_MP4);
+    const submitsBefore = fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/v1/image_to_video")).length;
+    // A real clip, i.e. bigger than the placeholder — the recovery refuses anything that small, which is the
+    // same refusal the generation path makes and the reason this feature exists.
+    const recovered = Buffer.concat([PLACEHOLDER_MP4, Buffer.alloc(2048, 9)]);
+    const recoveryFetch = vi.fn(async (url: string) => {
+      if (url.includes("/v1/tasks/")) return { ok: true, status: 200, json: async () => ({ id: "t", status: "SUCCEEDED", output: ["https://cdn.runway/kept.mp4"] }), headers: { get: () => null } } as unknown as Response;
+      if (url.startsWith("https://cdn.runway/")) return { ok: true, status: 200, arrayBuffer: async () => recovered.buffer.slice(recovered.byteOffset, recovered.byteOffset + recovered.byteLength), headers: { get: () => null } } as unknown as Response;
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", recoveryFetch);
+
+    const result = await workflow.recover("video_workflow", deps.accepted.jobId, { approved: true });
+
+    expect(result.recoveredSceneNumbers).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(result.unrecoverableScenes).toEqual([]);
+    expect(Buffer.from(await fs.readFile(file(1))).equals(recovered)).toBe(true);
+    // Never a generation: the ledger must not move, so nothing may be submitted — on either mock.
+    expect(fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/v1/image_to_video")).length).toBe(submitsBefore);
+    expect(recoveryFetch.mock.calls.some((call) => String(call[0]).endsWith("/v1/image_to_video"))).toBe(false);
+  });
+
+  it("reports a scene whose output can no longer be fetched, and leaves its placeholder alone", async () => {
+    // Reported rather than quietly regenerated: spending money is the person's decision, not a fallback.
+    const deps = await setupWithConnectedRunway();
+    const workflow = newWorkflow(deps);
+    vi.stubGlobal("fetch", runwayFetchMock());
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+    await workflow.run("video_workflow", deps.accepted.jobId);
+    for (let scene = 1; scene <= 6; scene++) {
+      now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+      await workflow.getProgress("video_workflow", deps.accepted.jobId);
+      now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+      await workflow.getProgress("video_workflow", deps.accepted.jobId);
+    }
+    const file = (scene: number) => path.join(deps.projectsRoot, "video_workflow", "videos", "runway", `scene${scene}.mp4`);
+    for (let scene = 1; scene <= 6; scene++) await fs.writeFile(file(scene), PLACEHOLDER_MP4);
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.includes("/v1/tasks/")) return { ok: true, status: 200, json: async () => ({ id: "t", status: "SUCCEEDED", output: ["https://cdn.runway/gone.mp4"] }), headers: { get: () => null } } as unknown as Response;
+      if (url.startsWith("https://cdn.runway/")) return { ok: false, status: 404, json: async () => ({}), text: async () => "expired", headers: { get: () => null } } as unknown as Response;
+      throw new Error(`unexpected fetch: ${url}`);
+    }));
+
+    const result = await workflow.recover("video_workflow", deps.accepted.jobId, { approved: true });
+
+    expect(result.recoveredSceneNumbers).toEqual([]);
+    expect(result.unrecoverableScenes.map((item) => item.sceneNumber)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(await fs.readFile(file(1))).toEqual(PLACEHOLDER_MP4);
+  });
+
+  it("refuses recovery without the approval, and when no Runway credential is connected", async () => {
+    const deps = await setupWithConnectedRunway();
+    await expect(newWorkflow(deps).recover("video_workflow", deps.accepted.jobId, {}))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    const withoutKey = new LocalVideoWorkflowService(deps.projects, deps.projectsRoot);
+    await expect(withoutKey.recover("video_workflow", deps.accepted.jobId, { approved: true }))
+      .rejects.toMatchObject({ response: { code: "VIDEO_WORKFLOW_NOT_ALLOWED" } });
   });
 
   it("halts at a scene Runway explicitly reports FAILED, without submitting later scenes, and lets the user regenerate it", async () => {

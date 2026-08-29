@@ -11,6 +11,7 @@ import {
   type ApproveVideoReviewResponse,
   type GenerationProgressResponse,
   type GetVideoReviewResponse,
+  type RecoverVideosResponse,
   type RegenerateVideoResponse,
   type SceneNumber,
   type VideoReview,
@@ -24,6 +25,7 @@ import { computeSceneStaleness } from "../projects/scene-staleness.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { RunwayBudget, RunwayBudgetExceededError } from "../providers/runway-budget.js";
 import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceResult, type RunwaySceneState } from "./runway-workflow-support.js";
+import { downloadRunwayOutput, getRunwayTask, RunwayAdapterError } from "./runway-video-adapter.js";
 import { ProjectLockTimeoutError, withProjectLock } from "./project-lock.js";
 import { LEGACY_VIDEO_JOB_ID } from "./legacy-job.js";
 import {
@@ -401,6 +403,66 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       const costUsd = costsByScene[scene];
       return { sceneNumber: scene, status: review?.status ?? "pending", updatedAt: review?.updated_at ?? timestamp, ...(costUsd !== undefined ? { costUsd } : {}) };
     });
+  }
+
+  /**
+   * Fetches this job's already-paid Runway outputs again, for scenes left holding a placeholder.
+   *
+   * The Episode side has had this since the bug that lost those bytes was found. The short project submits the
+   * same way, against the same provider, and records the same task ids — it simply had no way back to them, so
+   * the only route to a lost clip here was to buy it a second time.
+   *
+   * A status read and a download. Never a generation, so nothing reaches the ledger. A scene whose output can
+   * no longer be fetched is reported and left as it is rather than quietly regenerated: spending money is the
+   * person's decision, not this method's fallback.
+   */
+  async recover(projectId: string, jobId: string, body: unknown): Promise<RecoverVideosResponse> {
+    if (!isObject(body) || Object.keys(body).length !== 1 || body.approved !== true) throw invalidVideoWorkflowRequest();
+    const project = await this.projects.findById(projectId.trim());
+    const records = this.records(project, jobId);
+    const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("runway") : null;
+    if (!apiKey) throw videoWorkflowNotAllowed();
+
+    const recoveredSceneNumbers: SceneNumber[] = [];
+    const unrecoverableScenes: { sceneNumber: SceneNumber; reason: string }[] = [];
+    const updated: VideoRecord[] = [];
+
+    for (const record of records) {
+      if (record.execution_mode !== "runway" || record.status !== "succeeded" || !record.runway_task_id) continue;
+      if (await this.realClip(project.project_id, record.scene_number)) continue;
+      let bytes: Buffer;
+      try {
+        const task = await getRunwayTask(apiKey, record.runway_task_id);
+        const url = task.outputUrls[0];
+        if (task.status !== "SUCCEEDED" || !url) { unrecoverableScenes.push({ sceneNumber: record.scene_number, reason: "no_output" }); continue; }
+        bytes = await downloadRunwayOutput(url);
+      } catch (error) {
+        unrecoverableScenes.push({ sceneNumber: record.scene_number, reason: error instanceof RunwayAdapterError ? String((error as { category?: unknown }).category) : "unknown" });
+        continue;
+      }
+      // The same refusal the generation path makes: a body no bigger than a bare header is not a video, and
+      // writing it would repeat exactly the failure this recovery exists to undo.
+      if (bytes.length <= PLACEHOLDER_MP4.length) {
+        updated.push({ ...record, status: "failed", error: "empty_output" });
+        unrecoverableScenes.push({ sceneNumber: record.scene_number, reason: "empty_output" });
+        continue;
+      }
+      await fs.mkdir(this.videoDirectory(project.project_id), { recursive: true });
+      await this.atomicBinary(this.file(project.project_id, record.scene_number), bytes);
+      recoveredSceneNumbers.push(record.scene_number);
+    }
+
+    const saved = updated.length > 0 ? this.replaceRecords(project, updated) : project;
+    if (updated.length > 0) await this.projects.save(saved);
+    return { ...(await this.progress(saved, jobId)), recoveredSceneNumbers, unrecoverableScenes };
+  }
+
+  /** A real clip, not the placeholder standing in for one — the same distinction `content()` already makes. */
+  private async realClip(projectId: string, scene: SceneNumber): Promise<boolean> {
+    try {
+      const stat = await fs.stat(this.file(projectId, scene));
+      return stat.isFile() && stat.size > 0 && !isPlaceholderClip(stat.size);
+    } catch { return false; }
   }
 
   async getProgress(projectId: string, jobId: string): Promise<GenerationProgressResponse> {

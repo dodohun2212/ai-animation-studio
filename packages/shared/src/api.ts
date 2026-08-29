@@ -424,6 +424,21 @@ export interface RegenerateLongEpisodeVideoResponse extends LongEpisodeVideoProg
  * A scene whose output can no longer be fetched (the task is gone, or its URL has expired) is reported here and
  * left failed rather than quietly regenerated: spending money is a decision for the person, not a fallback.
  */
+/**
+ * Fetches a short project's already-paid-for Runway outputs again, for scenes whose files are placeholders.
+ *
+ * The Episode side has had this since the bug that lost those bytes was found; the short project, which runs
+ * the same submissions against the same provider and records the same task ids, had no way back to them. Same
+ * rules, because they are the same rules: a status read and a download, never a new generation, so nothing is
+ * added to the ledger — and a scene whose output can no longer be fetched is reported and left failed rather
+ * than quietly regenerated, because spending money is the person's decision, not a fallback.
+ */
+export interface RecoverVideosRequest { approved: true; }
+export interface RecoverVideosResponse extends GenerationProgressResponse {
+  recoveredSceneNumbers: SceneNumber[];
+  unrecoverableScenes: { sceneNumber: SceneNumber; reason: string }[];
+}
+
 export interface RecoverLongEpisodeVideosRequest { approved: true; }
 export interface RecoverLongEpisodeVideosResponse extends LongEpisodeVideoProgress {
   recoveredSceneNumbers: SceneNumber[];
@@ -1997,6 +2012,8 @@ export const API_ROUTES = {
   videoVersions: (projectId: string, scene: SceneNumber | "final") => `/projects/${encodeURIComponent(projectId)}/videos/${scene}/versions`,
   videoVersionContent: (projectId: string, scene: SceneNumber | "final", versionId: string) => `/projects/${encodeURIComponent(projectId)}/videos/${scene}/versions/${encodeURIComponent(versionId)}/content`,
   videoVersionRestore: (projectId: string, scene: SceneNumber | "final", versionId: string) => `/projects/${encodeURIComponent(projectId)}/videos/${scene}/versions/${encodeURIComponent(versionId)}/restore`,
+  /** POST re-fetches this job's paid Runway outputs for scenes left holding a placeholder. Never generates. */
+  videoRecovery: (projectId: string, jobId: string) => `/projects/${encodeURIComponent(projectId)}/videos/generations/${encodeURIComponent(jobId)}/recovery`,
   audioLibrary: "/audio/library",
   audioLibraryUpload: "/audio/library/upload",
   audioLibraryContent: (trackId: string) => `/audio/library/${encodeURIComponent(trackId)}/content`,
