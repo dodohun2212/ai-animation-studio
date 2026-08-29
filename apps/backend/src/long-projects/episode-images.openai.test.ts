@@ -156,6 +156,49 @@ describe("real OpenAI Episode image generation", () => {
     }
   });
 
+  /**
+   * The Episode's regeneration button could only re-buy the same prompt. Someone who disliked an image had no
+   * way to say what to change and could only pay again and hope — while the short project's own review screen,
+   * and this Episode's narration regeneration, both already took direction.
+   */
+  it("appends one-off direction to the regenerated image's prompt, and only to that one request", async () => {
+    const { images } = await setupWithConnectedOpenAi();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+    await images.generate("long", 1, { approved: true });
+    const before = fetchMock.mock.calls.length;
+
+    await images.regenerate("long", 1, "2", { approved: true, additionalInstruction: "조명을 더 어둡게" });
+
+    const [, init] = fetchMock.mock.calls[before] as [string, RequestInit];
+    const { prompt } = JSON.parse(init.body as string) as { prompt: string };
+    expect(prompt.endsWith("조명을 더 어둡게")).toBe(true);
+    expect(prompt).toContain("Scene:");
+  });
+
+  it("keeps the plain scene prompt as the staleness baseline, so direction does not mark a scene behind forever", async () => {
+    // Recording the instructed text would leave this scene permanently stale — staleness would then be
+    // measuring the instruction instead of the thing it exists to measure.
+    const { images } = await setupWithConnectedOpenAi();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    await images.generate("long", 1, { approved: true });
+
+    const after = await images.regenerate("long", 1, "2", { approved: true, additionalInstruction: "조명을 더 어둡게" });
+
+    expect(after.staleness.imageStale).toEqual([]);
+  });
+
+  it("refuses a regeneration body carrying anything else", async () => {
+    const { images } = await setupWithConnectedOpenAi();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    await images.generate("long", 1, { approved: true });
+
+    await expect(images.regenerate("long", 1, "2", { approved: true, additionalInstruction: 5 } as never))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(images.regenerate("long", 1, "2", { approved: true, other: "x" } as never))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
   it("falls back to the local fake adapter, never calling fetch, when no OpenAI credential is configured", async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-images-openai-"));
     const projectsRoot = path.join(root, "projects");

@@ -183,6 +183,39 @@ describe("EpisodeVideosService", () => {
     expect((await videos.review("long", 1, started.jobId)).staleness.videoStale).toContain(3);
   });
 
+  /**
+   * The Episode's clip regeneration had no request type at all beyond approval — the one place a person could
+   * say "same scene, but slower" was missing while the short project and the Episode's narration both had it.
+   */
+  it("carries one-off direction into the re-submitted clip's prompt, and leaves the baseline alone", async () => {
+    const { videos, projectsRoot } = await setup();
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_2", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+
+    await videos.regenerate("long", 1, started.jobId, "3", { approved: true, additionalInstruction: "카메라를 더 천천히" });
+
+    const file = path.join(projectsRoot, "long", "long_story", "Episode01", "video_generation_records.json");
+    const records = JSON.parse(await fs.readFile(file, "utf8")) as Array<{ scene_number: number; prompt: string; base_prompt?: string }>;
+    const third = records.find((record) => record.scene_number === 3)!;
+    expect(third.prompt.endsWith("카메라를 더 천천히")).toBe(true);
+    expect(third.base_prompt).toBe(preview.scenes.find((item) => item.sceneNumber === 3)!.prompt);
+    // And the clip is not reported as behind its script: the baseline is what staleness reads.
+    expect((await videos.review("long", 1, started.jobId)).staleness.videoStale).toEqual([]);
+  });
+
+  it("refuses a regeneration body carrying anything else", async () => {
+    const { videos } = await setup();
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_2", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+
+    await expect(videos.regenerate("long", 1, started.jobId, "3", { approved: true, additionalInstruction: 5 } as never))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(videos.regenerate("long", 1, started.jobId, "3", { approved: true, other: "x" } as never))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
   it("never calls fetch across preview, start, run, progress, regenerate, and approve when no Runway credential/budget is wired in", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

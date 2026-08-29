@@ -145,6 +145,21 @@ export class EpisodeImagesService {
   }
   private approval(request: unknown): asserts request is { approved: true } { if (!object(request) || Object.keys(request).length !== 1 || request.approved !== true) throw longInvalidRequest("Episode image approval request is invalid."); }
 
+  /**
+   * The regeneration body: approval, plus optional one-off direction for this single attempt.
+   *
+   * Separate from `approval()` because approving an image and re-buying one are different acts — an approval
+   * that quietly accepted an instruction would be a paid field on a free route.
+   */
+  private regenerationRequest(request: unknown): string {
+    if (!object(request) || request.approved !== true
+      || Object.keys(request).some((key) => key !== "approved" && key !== "additionalInstruction")
+      || (request.additionalInstruction !== undefined && typeof request.additionalInstruction !== "string")) {
+      throw longInvalidRequest("Episode image regeneration requires explicit approval.");
+    }
+    return typeof request.additionalInstruction === "string" ? request.additionalInstruction.trim() : "";
+  }
+
   /** The previous Episode's approved final-scene image path, when usable — null otherwise (including Episode 1, which has no predecessor). */
   private async continuityImagePath(projectId: string, number: number): Promise<string | null> {
     const reference = await new EpisodeContinuityReferenceService(this.projectsRoot).get(projectId, number);
@@ -249,7 +264,7 @@ export class EpisodeImagesService {
     const all = sceneNumbersFor(this.sceneCount(episode)).every((current) => reviews.some((item) => item.scene_number === current && item.status === "approved")); if (all) episode.state = "waiting_for_video_confirmation"; episode.updated_at = now; await this.saveReviews(id, number, reviews); await this.saveEpisode(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(reviews, now, this.sceneCount(episode)), staleness: this.imageStaleness(episode, reviews) };
   }
   async regenerate(projectId: string, number: number, rawScene: string, request: RegenerateLongEpisodeImageReviewRequest): Promise<RegenerateLongEpisodeImageReviewResponse> {
-    const id = projectId.trim(); this.approval(request); const scene = sceneNumber(Number(rawScene)); if (!scene || String(scene) !== rawScene) throw longInvalidRequest("Episode image scene number is invalid."); const episode = await this.episode(id, number); await this.assertReviewable(id, number, episode, true);
+    const id = projectId.trim(); const additionalInstruction = this.regenerationRequest(request); const scene = sceneNumber(Number(rawScene)); if (!scene || String(scene) !== rawScene) throw longInvalidRequest("Episode image scene number is invalid."); const episode = await this.episode(id, number); await this.assertReviewable(id, number, episode, true);
     if (scene > this.sceneCount(episode)) throw longInvalidRequest("Episode image scene number is invalid.");
     const reviews = await this.loadReviews(id, number);
     const current = this.image(id, number, scene); let bytes: Buffer; try { bytes = await fs.readFile(current); if (!await this.validImage(current)) throw new Error(); } catch { throw longEpisodeImagesInvalid(); }
@@ -263,8 +278,13 @@ export class EpisodeImagesService {
     let generatedPrompt: string | undefined;
     if (apiKey && this.budget) {
       const scenes = this.scenes(episode);
-      const prompt = imagePromptFor(scenes[scene - 1], "");
-      generatedPrompt = prompt;
+      // The plain scene prompt is what gets recorded; the instruction rides only on this one request. Record
+      // the instructed text instead and this scene reads as permanently behind its own script — staleness
+      // would then be measuring the instruction rather than the thing it exists to measure.
+      const basePrompt = imagePromptFor(scenes[scene - 1], "");
+      const prompt = additionalInstruction ? `${basePrompt}
+${additionalInstruction}` : basePrompt;
+      generatedPrompt = basePrompt;
       const owner = await this.mappingOwners.get({ projectId: id, episodeNumber: number });
       const mappings = await this.mappingStore.load(owner);
       const continuityPath = await this.continuityImagePath(id, number);

@@ -318,7 +318,34 @@ export interface GetLongEpisodeImageReviewResponse {
 }
 export interface ApproveLongEpisodeImageReviewRequest { approved: true; }
 export interface ApproveLongEpisodeImageReviewResponse extends GetLongEpisodeImageReviewResponse {}
-export interface RegenerateLongEpisodeImageReviewRequest { approved: true; }
+export interface RegenerateLongEpisodeImageReviewRequest {
+  approved: true;
+  /**
+   * Same meaning and lifetime as RegenerateImageReviewRequest.additionalInstruction: one-off direction for this
+   * single regeneration, appended as the prompt's last line and never stored back into the scene.
+   *
+   * An Episode's regeneration button used to have no way to say *what to change*, so a person who disliked an
+   * image could only buy the same prompt again and hope. The short project has had this since its own review
+   * screen existed, and the Episode's narration regeneration already takes one — this was the odd one out.
+   *
+   * The prompt recorded for staleness stays the plain scene prompt, not the instructed one. Recording the
+   * instructed text would leave that scene permanently marked as behind its own script, which is what
+   * staleness would then be measuring instead of the thing it exists to measure.
+   */
+  additionalInstruction?: string;
+}
+
+/**
+ * Explicit re-submission of one Episode scene's clip, with optional one-off direction.
+ *
+ * `additionalInstruction` is appended to the Runway prompt for this submission only. The record keeps both:
+ * `prompt` is what was actually sent (the submission has to be reproducible from it), and the scene's plain
+ * prompt remains the baseline staleness compares against.
+ */
+export interface RegenerateLongEpisodeVideoRequest {
+  approved: true;
+  additionalInstruction?: string;
+}
 export interface RegenerateLongEpisodeImageReviewResponse extends GetLongEpisodeImageReviewResponse {
   sceneNumber: SceneNumber;
   /** Same meaning as RegenerateImageReviewResponse.retryEstimate (see that field's doc comment). */
