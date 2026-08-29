@@ -18,6 +18,22 @@ function libraryProject(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function libraryEpisode(overrides: Record<string, unknown> = {}) {
+  return {
+    projectId: "12",
+    episodeNumber: 1,
+    title: "첫 번째 밤",
+    projectTitle: "이배드 연대기",
+    updatedAt: "2026-08-28T09:00:00.000Z",
+    sceneCount: 6,
+    videosReadyCount: 6,
+    finalVideoAvailable: true,
+    totalActualCostUsd: 1.5,
+    aspectRatio: "9:16",
+    ...overrides,
+  };
+}
+
 function renderScreen(fetchMock: ReturnType<typeof vi.fn>) {
   vi.stubGlobal("fetch", fetchMock);
   return render(<VideoLibraryScreen onBack={() => {}} />);
@@ -187,4 +203,66 @@ describe("VideoLibraryScreen", () => {
     expect(warning.textContent).toContain("더 이상 알 수 없습니다");
     expect(warning.textContent).toContain("Music by ○○○");
   });
+
+  it("lists Episodes in their own section and plays a finished one", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { projects: [libraryProject()], episodes: [libraryEpisode()] }));
+    renderScreen(fetchMock);
+
+    const card = await screen.findByTestId("library-episode-12-1");
+    expect(card.textContent).toContain("이배드 연대기 · 1화 첫 번째 밤");
+    expect(card.textContent).toContain("장면 6/6");
+    expect(screen.getByTestId("library-episode-cost-12-1").textContent).toContain("$1.50");
+    expect(screen.getByTestId("library-episode-final-12-1").getAttribute("src")).toContain("/long-projects/12/episodes/1/videos/final/content");
+  });
+
+  it("draws no Episode section for someone who only makes short projects", async () => {
+    // A heading for a thing you do not have is the kind of length this screen was asked to lose.
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { projects: [libraryProject()], episodes: [] }));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("library-project-1");
+    expect(screen.queryByTestId("library-episodes")).toBeNull();
+  });
+
+  it("offers no player for an Episode that has not been merged yet", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {
+      projects: [],
+      episodes: [libraryEpisode({ finalVideoAvailable: false, videosReadyCount: 4 })],
+    }));
+    renderScreen(fetchMock);
+
+    const card = await screen.findByTestId("library-episode-12-1");
+    expect(card.textContent).toContain("최종 영상 없음");
+    expect(card.textContent).toContain("장면 4/6");
+    expect(screen.queryByTestId("library-episode-final-12-1")).toBeNull();
+  });
+
+  it("finds an Episode by its own title or by the story it belongs to", async () => {
+    // One box, one question: "where is my finished video". Searching only short projects would make the
+    // Episode section vanish the moment anyone typed.
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { projects: [libraryProject()], episodes: [libraryEpisode()] }));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("library-episode-12-1");
+    fireEvent.change(screen.getByTestId("library-search"), { target: { value: "연대기" } });
+
+    expect(screen.getByTestId("library-episode-12-1")).toBeTruthy();
+    expect(screen.queryByTestId("library-project-1")).toBeNull();
+  });
+
+  it("hides an Episode the search does not match, rather than showing it whatever is typed", async () => {
+    // The other direction, and it is the one that fails silently: a screen that never filters Episodes passes
+    // the test above unchanged, because the Episode survives every search including the ones it should not.
+    // Removing the Episode filter turns this red and leaves that one green — which is why both exist.
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { projects: [libraryProject()], episodes: [libraryEpisode()] }));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("library-episode-12-1");
+    fireEvent.change(screen.getByTestId("library-search"), { target: { value: "여기에는-없는-말" } });
+
+    expect(screen.queryByTestId("library-episode-12-1")).toBeNull();
+    // And the section header goes with it, rather than standing over nothing.
+    expect(screen.queryByTestId("library-episodes")).toBeNull();
+  });
+
 });

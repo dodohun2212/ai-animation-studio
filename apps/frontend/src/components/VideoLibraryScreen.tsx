@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { sceneNumbersFor, type SceneNumber, type VideoLibraryProjectSummary, type VideoVersionSummary } from "@ai-animation-studio/shared";
+import { sceneNumbersFor, type SceneNumber, type VideoLibraryEpisodeSummary, type VideoLibraryProjectSummary, type VideoVersionSummary } from "@ai-animation-studio/shared";
 
 import {
   getVideoLibrary,
@@ -8,6 +8,7 @@ import {
   toVideoLibraryDisplayError,
   videoVersionContentUrl,
 } from "../api/videoLibraryApi.js";
+import { longEpisodeFinalVideoContentUrl } from "../api/longProjectsApi.js";
 import { Spinner } from "./Spinner.js";
 import { StatusChip } from "./ui/StatusChip.js";
 
@@ -19,7 +20,7 @@ type DisplayError = { code: string; message: string };
 type LibraryState =
   | { status: "loading" }
   | { status: "error"; error: DisplayError }
-  | { status: "ready"; projects: VideoLibraryProjectSummary[] };
+  | { status: "ready"; projects: VideoLibraryProjectSummary[]; episodes: VideoLibraryEpisodeSummary[] };
 type VersionsState =
   | { status: "loading" }
   | { status: "error"; error: DisplayError }
@@ -72,7 +73,7 @@ export function VideoLibraryScreen({ onBack }: Props) {
   function load(): void {
     setState({ status: "loading" });
     getVideoLibrary()
-      .then((response) => setState({ status: "ready", projects: response.projects }))
+      .then((response) => setState({ status: "ready", projects: response.projects, episodes: response.episodes }))
       .catch((caught: unknown) => setState({ status: "error", error: toVideoLibraryDisplayError(caught) }));
   }
 
@@ -117,6 +118,15 @@ export function VideoLibraryScreen({ onBack }: Props) {
   const filtered = term
     ? projects.filter((project) => project.topic.toLowerCase().includes(term) || project.projectId.toLowerCase().includes(term))
     : projects;
+  /**
+   * Episodes arrive in their own array, deliberately — the publish route reads the short-project store, so an
+   * Episode listed among `projects` would be a row a person can pick and then cannot publish. They are listed
+   * here, and searched by the same box, because "where are my finished videos" is one question.
+   */
+  const episodes = state.status === "ready" ? state.episodes : [];
+  const filteredEpisodes = term
+    ? episodes.filter((one) => one.title.toLowerCase().includes(term) || one.projectTitle.toLowerCase().includes(term) || one.projectId.toLowerCase().includes(term))
+    : episodes;
 
   return (
     <section className="mt-8 max-w-4xl space-y-5">
@@ -362,6 +372,45 @@ export function VideoLibraryScreen({ onBack }: Props) {
               );
             })}
           </ul>
+
+          {/* Episodes, in their own list. Absent entirely when there are none, so a person who only makes short
+              projects never sees a heading for a thing they do not have. */}
+          {Boolean(filteredEpisodes.length) && (
+            <div className="space-y-3" data-testid="library-episodes">
+              <h2 className="text-base font-semibold text-slate-100">장기 프로젝트 회차</h2>
+              <ul className="space-y-3">
+                {filteredEpisodes.map((one) => (
+                  <li key={`${one.projectId}-${one.episodeNumber}`} data-testid={`library-episode-${one.projectId}-${one.episodeNumber}`} className={cardSection}>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <span className="text-sm font-semibold text-slate-100">{one.projectTitle} · {one.episodeNumber}화 {one.title}</span>
+                      <span className="flex flex-wrap items-center gap-2">
+                        <StatusChip tone={one.finalVideoAvailable ? "success" : "neutral"}>
+                          {one.finalVideoAvailable ? "최종 영상 있음" : "최종 영상 없음"}
+                        </StatusChip>
+                        <span className="text-xs text-slate-400 tabular-nums" data-testid={`library-episode-cost-${one.projectId}-${one.episodeNumber}`}>
+                          누적 ${one.totalActualCostUsd.toFixed(2)}
+                        </span>
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 tabular-nums">
+                      장면 {one.videosReadyCount}/{one.sceneCount} · {one.aspectRatio} · 마지막 변경 {dateTime(one.updatedAt)}
+                    </p>
+                    {one.finalVideoAvailable && (
+                      /* An archive of finished videos that cannot play them is a list of filenames. The count
+                         above already refuses to call a placeholder "ready", so what plays here is real. */
+                      <video
+                        data-testid={`library-episode-final-${one.projectId}-${one.episodeNumber}`}
+                        className="w-full rounded-lg border border-white/10 bg-black"
+                        controls
+                        preload="none"
+                        src={longEpisodeFinalVideoContentUrl(one.projectId, one.episodeNumber, one.updatedAt)}
+                      />
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </>
       )}
     </section>
