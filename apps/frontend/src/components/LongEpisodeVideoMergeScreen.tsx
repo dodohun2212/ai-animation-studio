@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import type { MergeLongEpisodeVideosResponse } from "@ai-animation-studio/shared";
+import type { AudioLibraryTrack, MergeLongEpisodeVideosResponse, UsedAudio } from "@ai-animation-studio/shared";
 
 import { getLongEpisode, getLongEpisodeCurrentVideoJob, getLongEpisodeVideoReview, getLongProjectSettings, longEpisodeFinalVideoContentUrl, mergeLongEpisodeVideos, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { getAudioLibrary } from "../api/audioLibraryApi.js";
+import type { AudioMode } from "./mergeAudio.js";
+import { AttributionNotice, AUDIO_MODE_LABELS, MergeAudioFieldset, needsTrack, toAudioSettings } from "./mergeAudio.js";
 
 interface Props {
   projectId: string;
@@ -80,6 +83,25 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
   /* The content route refuses a file at or below placeholder size, so a merge of stubs fails to load rather
      than showing a black box that claims to be the finished Episode. */
   const [unplayable, setUnplayable] = useState(false);
+  /**
+   * null until the Episode loads, and stays null when it cannot be determined.
+   *
+   * The Episode's own GET is the only response that goes to disk for this; the field is absent elsewhere, and
+   * absent means "not determined here", never "no narration". Null therefore leaves the narration option
+   * alone rather than locking it on something nobody checked.
+   */
+  const [narrationAvailable, setNarrationAvailable] = useState<boolean | null>(null);
+  const [audioMode, setAudioMode] = useState<AudioMode | null>(null);
+  const [tracks, setTracks] = useState<AudioLibraryTrack[]>([]);
+  const [trackId, setTrackId] = useState("");
+  /**
+   * What the last merge used — read from the Episode on load, not only from this session's merge response.
+   *
+   * An Episode merged in an earlier page load still owes its credit line, and that is exactly the reader who
+   * is about to write a caption. Reading it only from `result` would show the attribution to the person who
+   * just merged and hide it from the person who came back to publish (D-003).
+   */
+  const [usedAudio, setUsedAudio] = useState<UsedAudio | undefined>(undefined);
   const busy = useRef(false);
 
   // Only ever changes this screen's wording, so a failure here is not fatal and is deliberately swallowed.
@@ -90,6 +112,18 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
         if (cancelled) return;
         setSceneCount(response.episode.script?.scenes.length ?? null);
         setAlreadyMerged(response.episode.status === "completed");
+        setUsedAudio(response.episode.usedAudio);
+        // Derived, not assumed: an Episode with no narration audio cannot merge "나레이션만", and defaulting to
+        // it would label a silent video as a narrated one (docs/06_DECISIONS.md D-011). Absent stays null.
+        const available = response.episode.narrationAvailable ?? null;
+        setNarrationAvailable(available);
+        setAudioMode(available === true ? "narration" : "silent");
+      })
+      .catch(() => {});
+    // An empty library simply means the two music options stay unavailable — never a reason to block merging.
+    getAudioLibrary()
+      .then((library) => {
+        if (!cancelled) setTracks(library.tracks);
       })
       .catch(() => {});
     // Same treatment for the two media settings: wording only, so a failure drops the sentence rather than
@@ -115,6 +149,9 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
   /* Only blocks on a count we actually read. Unknown stays unblocked — the server refuses either way, and a
      button disabled on a guess is worse than one that fails honestly. */
   const blocked = approvedCount !== null && sceneCount !== null && approvedCount < sceneCount;
+  /** Null until the Episode has loaded — merging before then would send a mode derived from nothing. */
+  const audioSettings = toAudioSettings(audioMode, trackId);
+  const modeUnready = audioMode !== null && needsTrack(audioMode) && !trackId;
 
   function openConfirmation(): void {
     if (busy.current || result || blocked) return;
@@ -128,7 +165,9 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
     setPending(true);
     setError(null);
     try {
-      setResult(await mergeLongEpisodeVideos(projectId, episodeNumber));
+      const merged = await mergeLongEpisodeVideos(projectId, episodeNumber, audioSettings ?? undefined);
+      setResult(merged);
+      setUsedAudio(merged.episode.usedAudio);
       setConfirmationOpen(false);
       setUnplayable(false);
       setVideoVersion((current) => current + 1);
@@ -169,17 +208,34 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
           아직 확정하지 않은 장면이 {sceneCount - approvedCount}개 있습니다. 장면 영상 화면에서 모두 확정한 뒤에 최종 영상을 만들 수 있습니다.
         </p>
       )}
+      {!result && !alreadyMerged && audioMode !== null && (
+        <MergeAudioFieldset
+          idPrefix="episode-merge-audio"
+          tracks={tracks}
+          narrationAvailable={narrationAvailable}
+          mode={audioMode}
+          onModeChange={setAudioMode}
+          trackId={trackId}
+          onTrackChange={setTrackId}
+          disabled={pending || confirmationOpen}
+        />
+      )}
       {!result && (
         <div className="space-y-3">
           <button
             type="button"
             className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
             data-testid="episode-open-merge-confirm"
-            disabled={confirmationOpen || pending || blocked}
+            disabled={confirmationOpen || pending || blocked || modeUnready}
             onClick={openConfirmation}
           >
-            최종 영상 만들기
+            {audioMode ? `${AUDIO_MODE_LABELS[audioMode]}으로 최종 영상 만들기` : "최종 영상 만들기"}
           </button>
+          {modeUnready && (
+            <p data-testid="episode-merge-audio-track-required" className="text-xs text-amber-300">
+              배경음악을 고르면 최종 영상을 만들 수 있습니다.
+            </p>
+          )}
           {confirmationOpen && (
             <div role="alertdialog" aria-label="에피소드 최종 영상 확인" data-testid="episode-merge-confirm-panel" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
               <p className="text-sm text-slate-300">
@@ -234,6 +290,10 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
             />
           )}
           {result && <p className="text-xs text-slate-500" data-testid="episode-final-video-path">파일: {result.finalVideoPath}</p>}
+          {/* The Episode publishes to the same Instagram under the same licence as a short project, and this is
+              the screen the caption gets written from. Reading it from state that survives a reload is the
+              point: the person who comes back to publish is the one who needs it (D-003). */}
+          <AttributionNotice usedAudio={usedAudio} />
           {onOpenContinuity && (
             <button
               type="button"

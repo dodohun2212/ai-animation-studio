@@ -145,12 +145,50 @@ describe("VideoMergeScreen", () => {
     expect(JSON.parse(String(init.body))).toEqual({ audio: { mode: "narration+bgm", trackId: "t1" } });
   });
 
+  /**
+   * The screen that prompted this had all three of its old options in the state a person actually hits: no
+   * narration recorded and a track sitting in the library. "나레이션만" and "나레이션 + 배경음악" were both locked
+   * for want of narration, leaving 무음 as the only reachable choice — so the music they had already uploaded
+   * could not be used at all. Music alone was never forbidden; the contract simply had no word for it
+   * (MergeAudioSettings' "bgm" doc comment).
+   */
+  it("lets a project with no narration merge music alone", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    renderScreen(mergeFetch, { narrationAvailable: false }, undefined, [makeTrack()]);
+
+    await screen.findByTestId("merge-audio-settings");
+    // The two narration modes stay locked — this is the exact state where the old screen had nothing left.
+    expect(screen.getByTestId("merge-audio-narration")).toBeDisabled();
+    expect(screen.getByTestId("merge-audio-narration+bgm")).toBeDisabled();
+    expect(screen.getByTestId("merge-audio-bgm")).not.toBeDisabled();
+
+    fireEvent.click(screen.getByTestId("merge-audio-bgm"));
+    // Needs a track for the same reason "narration+bgm" does: a music mode with no music would render silence
+    // and look finished.
+    expect(screen.getByTestId("open-merge-confirm-button")).toBeDisabled();
+
+    fireEvent.change(screen.getByTestId("merge-audio-track"), { target: { value: "t1" } });
+    expect(screen.getByTestId("open-merge-confirm-button").textContent).toContain("배경음악만");
+
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+
+    await waitFor(() => expect(mergeFetch).toHaveBeenCalled());
+    const [, init] = mergeFetch.mock.calls[0] as [string, RequestInit];
+    // No narration in the request: the server's volume default differs by mode, and sending "narration+bgm"
+    // here would quarter a track that has nothing to sit beneath.
+    expect(JSON.parse(String(init.body))).toEqual({ audio: { mode: "bgm", trackId: "t1" } });
+  });
+
   it("says why background music is unavailable instead of leaving a dead option", async () => {
     renderScreen(vi.fn(), { narrationAvailable: true });
 
     await screen.findByTestId("merge-audio-settings");
     expect(screen.getByTestId("merge-audio-narration+bgm")).toBeDisabled();
     expect(screen.getByTestId("merge-audio-bgm-unavailable").textContent).toContain("음원 보관함");
+    // Music-only is locked for the same reason and says so in its own words rather than sitting there dead.
+    expect(screen.getByTestId("merge-audio-bgm")).toBeDisabled();
+    expect(screen.getByTestId("merge-audio-bgm-only-unavailable").textContent).toContain("음원 보관함");
   });
 
   // The reminder has to reach the person while they are still writing the caption, not only on the library screen.

@@ -37,6 +37,14 @@ const mediaSettings = (narrationEnabled: boolean, subtitlesEnabled: boolean) => 
   settings: makeLongProjectSettings({ narrationEnabled, subtitlesEnabled }),
 });
 const MERGE_URL = "/long-projects/long/episodes/1/videos/merge";
+const AUDIO_LIBRARY_URL = "/audio/library";
+const track = (overrides: Record<string, unknown> = {}) => ({
+  trackId: "t1", title: "기록관의 밤", durationSeconds: 95, bytes: 2_400_000,
+  source: "upload", licenseKind: "self-made", attributionRequired: false,
+  addedAt: "2026-08-26T18:00:00.000Z", ...overrides,
+});
+/** The library is its own fetch on mount; an Episode test that ignores it simply has no music to offer. */
+const audioLibrary = (tracks: ReturnType<typeof track>[] = []) => ({ [`GET ${AUDIO_LIBRARY_URL}`]: { tracks } });
 const CURRENT_JOB_URL = "/long-projects/long/episodes/1/videos/generations/current";
 const REVIEW_URL = "/long-projects/long/episodes/1/videos/generations/job/review";
 
@@ -151,10 +159,16 @@ describe("LongEpisodeVideoMergeScreen", () => {
     expect(notice.textContent).not.toContain("음성");
   });
 
-  it("POSTs the exact Episode merge route without a body after final confirmation", async () => {
+  /**
+   * Was "without a body". The Episode merge had no request type at all, so there was nothing to send; now that
+   * the screen asks about audio, sending nothing would silently discard the answer. What must not change is
+   * that the POST happens only after the explicit confirmation.
+   */
+  it("POSTs the exact Episode merge route carrying the chosen audio after final confirmation", async () => {
     const mergeFetch = stubFetchByRoute({
       [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) },
       [`GET ${SETTINGS_URL}`]: mediaSettings(false, false),
+      ...audioLibrary(),
       [`POST ${MERGE_URL}`]: response(),
     });
     vi.stubGlobal("fetch", mergeFetch);
@@ -168,8 +182,69 @@ describe("LongEpisodeVideoMergeScreen", () => {
     const [url, init] = post as [string, RequestInit];
     expect(url).toBe(MERGE_URL);
     expect(init.method).toBe("POST");
-    expect(init.body).toBeUndefined();
+    // narrationAvailable is absent on this fixture — "not determined here", so the screen defaults to silence
+    // rather than claiming a narration it never looked for.
+    expect(JSON.parse(String(init.body))).toEqual({ audio: { mode: "silent" } });
     expect(screen.getByTestId("episode-final-video-path").textContent).toBe("파일: videos/final/instagram_reel.mp4");
+  });
+
+  /**
+   * The gap this closes: the Episode merge screen had no audio at all, so an Episode could only ever carry
+   * whatever the project's narration/subtitle toggles produced. A series creator with a track in the library
+   * had no way to put it under an Episode — the short project's screen could, and the two publish to the same
+   * place.
+   */
+  it("offers the same audio choices for an Episode, music alone included, and sends the chosen one", async () => {
+    const mergeFetch = stubFetchByRoute({
+      [`GET ${EPISODE_URL}`]: { episode: { ...episodeWithScenes(4), narrationAvailable: false } },
+      [`GET ${SETTINGS_URL}`]: mediaSettings(false, false),
+      ...audioLibrary([track()]),
+      [`POST ${MERGE_URL}`]: response(),
+    });
+    vi.stubGlobal("fetch", mergeFetch);
+    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    await screen.findByTestId("episode-merge-audio-settings");
+    // Read from the Episode, never assumed: an Episode with no narration audio must not offer to mix one.
+    expect(screen.getByTestId("episode-merge-audio-narration")).toBeDisabled();
+    expect(screen.getByTestId("episode-merge-audio-bgm")).not.toBeDisabled();
+
+    fireEvent.click(screen.getByTestId("episode-merge-audio-bgm"));
+    expect(screen.getByTestId("episode-open-merge-confirm")).toBeDisabled();
+    expect(screen.getByTestId("episode-merge-audio-track-required")).toBeTruthy();
+
+    fireEvent.change(screen.getByTestId("episode-merge-audio-track"), { target: { value: "t1" } });
+    fireEvent.click(screen.getByTestId("episode-open-merge-confirm"));
+    fireEvent.click(await screen.findByTestId("episode-confirm-merge"));
+
+    await screen.findByTestId("episode-merge-success");
+    const post = mergeFetch.mock.calls.find((call) => (call[1] as RequestInit | undefined)?.method === "POST");
+    const [, init] = post as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({ audio: { mode: "bgm", trackId: "t1" } });
+  });
+
+  /**
+   * 🔴 The Episode publish path shipped before `usedAudio` existed, so a CC BY Episode could go to Instagram
+   * with no credit anywhere — not because the value was empty but because the screen had nowhere to read it
+   * from. That is the failure D-003 exists to prevent, and it was open on the long side only.
+   *
+   * Read from the Episode rather than from this session's merge response on purpose: the person who comes back
+   * later to write the caption is exactly the one who needs the sentence, and they did not merge it.
+   */
+  it("shows the credit an already-merged Episode owes, on a load that did no merging", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      [`GET ${EPISODE_URL}`]: {
+        episode: {
+          ...episodeWithScenes(4, "completed"),
+          usedAudio: { mode: "bgm", trackId: "t1", attributionRequired: true, attributionText: "Music by ○○○" },
+        },
+      },
+      [`GET ${SETTINGS_URL}`]: mediaSettings(false, false),
+      ...audioLibrary([track({ attributionRequired: true })]),
+    }));
+    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    expect((await screen.findByTestId("merge-attribution-text")).textContent).toBe("Music by ○○○");
   });
 
   it("keeps a safe retryable error without exposing the backend message or an absolute path", async () => {

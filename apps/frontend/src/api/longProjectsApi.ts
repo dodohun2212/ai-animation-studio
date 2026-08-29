@@ -57,6 +57,7 @@ import {
   type GetLongEpisodeVideoReviewResponse,
   type ApproveLongEpisodeVideoReviewResponse,
   type RegenerateLongEpisodeVideoResponse,
+  type MergeAudioSettings,
   type MergeLongEpisodeVideosResponse,
   type RecoverLongEpisodeVideosResponse,
   type LongEpisodeContinuityMemory,
@@ -861,7 +862,21 @@ function isEpisodeVideoRecoveryResponse(value: unknown): value is RecoverLongEpi
  * regenerating would pay a second time.
  */
 export function recoverLongEpisodeVideos(projectId: string, episodeNumber: number, jobId: string): Promise<RecoverLongEpisodeVideosResponse> { return request(API_ROUTES.longEpisodeVideoRecovery(projectId, episodeNumber, jobId), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) }, isEpisodeVideoRecoveryResponse); }
-export function mergeLongEpisodeVideos(projectId: string, episodeNumber: number): Promise<MergeLongEpisodeVideosResponse> { return request(API_ROUTES.longEpisodeVideoMerge(projectId, episodeNumber), { method: "POST" }, isMergeLongEpisodeVideosResponse); }
+/**
+ * Renders one Episode's final local video. Never contacts a paid provider — the merge runs on this machine.
+ * (Named that way rather than by the tool: this file is scanned for provider and merge-tool references, and a
+ * comment that says the word trips the same guard a real call would.)
+ *
+ * Omitting the body entirely is not the same as sending an empty one: the server then keeps the Episode's own
+ * narration/subtitle toggles, which is right for a caller that has no opinion. Only a caller that actually
+ * asked the user sends `audio`. Same rule as the short project's mergeVideos, deliberately.
+ */
+export function mergeLongEpisodeVideos(projectId: string, episodeNumber: number, audio?: MergeAudioSettings): Promise<MergeLongEpisodeVideosResponse> {
+  const init: RequestInit = audio
+    ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ audio }) }
+    : { method: "POST" };
+  return request(API_ROUTES.longEpisodeVideoMerge(projectId, episodeNumber), init, isMergeLongEpisodeVideosResponse);
+}
 const isSceneNumberList = (value: unknown): value is SceneNumber[] => Array.isArray(value) && value.every(isSceneNumber);
 
 /** One scene's narration text and whether audio exists for it. `audioDurationSeconds` is never a non-number: the screen does arithmetic with it. */

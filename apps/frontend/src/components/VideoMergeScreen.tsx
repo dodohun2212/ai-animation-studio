@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import type { AudioLibraryTrack, MergeAudioSettings, MergeVideosResponse, ProjectSummary } from "@ai-animation-studio/shared";
+import type { AudioLibraryTrack, MergeAudioSettings, MergeVideosResponse } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
 import { getAudioLibrary } from "../api/audioLibraryApi.js";
+import type { AudioMode } from "./mergeAudio.js";
+import { AttributionNotice, AUDIO_MODE_LABELS, MergeAudioFieldset, needsTrack, toAudioSettings } from "./mergeAudio.js";
 import { finalVideoContentUrl, mergeVideos, toVideoMergeDisplayError } from "../api/videoMergeApi.js";
 import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBridge.js";
 
@@ -44,80 +46,6 @@ function mergeContentSentence(mode: MediaMode | null): string | null {
     return "음성을 만들어 둔 장면에는 그 음성이 입혀지고, 자막은 넣지 않습니다.";
   }
   return "음성도 자막도 꺼져 있어 장면 영상만 이어 붙입니다.";
-}
-
-type AudioMode = MergeAudioSettings["mode"];
-
-/** Fixed labels, so the button below can say exactly what it is about to produce. */
-const AUDIO_MODE_LABELS: Record<AudioMode, string> = {
-  narration: "나레이션만",
-  "narration+bgm": "나레이션 + 배경음악",
-  bgm: "배경음악만",
-  silent: "무음",
-};
-
-/**
- * The credit line a finished video owes, shown at the one moment it is actually usable.
- *
- * Attribution was collected at upload and shown in the library and again while choosing a track, but neither of
- * those is where it has to end up: a CC BY licence requires the credit to appear *where the work is published*,
- * and the user's next move after this screen is to paste a caption into Instagram. Up to now the sentence lived
- * two screens behind them at that moment (docs/06_DECISIONS.md D-003).
- *
- * Reads `usedAudio`, not the track, on purpose — the backend copies the sentence by value at merge time, so a
- * track deleted afterwards cannot silently erase what an already-published video still owes.
- */
-function AttributionNotice({ usedAudio }: { usedAudio: ProjectSummary["usedAudio"] }) {
-  const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
-
-  if (!usedAudio?.attributionRequired) return null;
-  const text = usedAudio.attributionText?.trim() ?? "";
-
-  async function copy(): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied("done");
-    } catch {
-      // Clipboard access can be refused outright (no permission, insecure origin). The sentence is on screen
-      // either way, so this degrades to "select it yourself" rather than to a dead end.
-      setCopied("failed");
-    }
-  }
-
-  return (
-    <div data-testid="merge-attribution" className="space-y-2 rounded-xl border border-amber-400/30 bg-amber-500/5 p-4">
-      <p className="text-sm font-semibold text-amber-300">이 영상은 캡션에 출처를 함께 적어야 합니다.</p>
-      {text ? (
-        <>
-          <p data-testid="merge-attribution-text" className="select-all rounded-lg bg-slate-950/60 px-3 py-2 text-sm text-slate-200">
-            {text}
-          </p>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              data-testid="merge-attribution-copy"
-              className="rounded-full border border-amber-400/30 px-4 py-2 text-sm text-amber-200 hover:bg-amber-400/10"
-              onClick={() => void copy()}
-            >
-              문구 복사
-            </button>
-            {copied === "done" && <span data-testid="merge-attribution-copied" className="text-xs text-emerald-400">복사했습니다.</span>}
-            {copied === "failed" && (
-              <span data-testid="merge-attribution-copy-failed" className="text-xs text-slate-400">
-                복사하지 못했습니다. 위 문구를 직접 선택해 복사해 주세요.
-              </span>
-            )}
-          </div>
-        </>
-      ) : (
-        // Required but blank: saying "credit it" without saying what to write leaves the user to guess wording
-        // the licence may be specific about, so this points back to the one place the wording can be fixed.
-        <p data-testid="merge-attribution-missing" className="text-sm text-slate-300">
-          적어야 할 문구가 비어 있습니다. 음원 보관함에서 이 음원의 출처 문구를 채운 뒤 캡션에 넣어 주세요.
-        </p>
-      )}
-    </div>
-  );
 }
 
 export function VideoMergeScreen({ projectId, onBack }: Props) {
@@ -221,16 +149,9 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
   }
 
   const contentSentence = mergeContentSentence(mediaMode);
-  const bgmSelectable = tracks.length > 0;
-  const selectedTrack = tracks.find((track) => track.trackId === trackId);
-  /** Undefined until the project has loaded — merging before then would send a mode derived from nothing. */
-  const audioSettings: MergeAudioSettings | null =
-    audioMode === null
-      ? null
-      : audioMode === "narration+bgm"
-        ? (trackId ? { mode: audioMode, trackId } : null)
-        : { mode: audioMode };
-  const modeUnready = audioMode === "narration+bgm" && !trackId;
+  /** Null until the project has loaded — merging before then would send a mode derived from nothing. */
+  const audioSettings: MergeAudioSettings | null = toAudioSettings(audioMode, trackId);
+  const modeUnready = audioMode !== null && needsTrack(audioMode) && !trackId;
 
   return (
     <section className="mt-8 max-w-2xl space-y-5">
@@ -254,70 +175,17 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
         {contentSentence ? ` ${contentSentence}` : ""}
       </p>
 
-      {/* An open setting, not a question: merging is free and takes seconds, so a confirmation dialog asking about
-          audio would train people to click through confirmations — the habit that costs money on the paid steps.
-          The button below says what the current choice will produce instead. */}
       {!result && audioMode !== null && (
-        <fieldset data-testid="merge-audio-settings" className="space-y-2 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
-          <legend className="px-1 text-sm font-semibold text-slate-200">오디오</legend>
-          {(["narration", "narration+bgm", "silent"] as AudioMode[]).map((mode) => {
-            // Only offered when the project can actually produce it: narration needs generated narration audio,
-            // and bgm needs at least one uploaded track. An option that would fail is not an option.
-            const unavailable = (mode === "narration" && narrationAvailable === false)
-              || (mode === "narration+bgm" && !bgmSelectable);
-            return (
-              <label key={mode} className="flex items-start gap-2 text-sm text-slate-300" htmlFor={`merge-audio-${mode}`}>
-                <input
-                  id={`merge-audio-${mode}`}
-                  data-testid={`merge-audio-${mode}`}
-                  type="radio"
-                  name="merge-audio-mode"
-                  className="mt-1"
-                  checked={audioMode === mode}
-                  disabled={unavailable || pending || confirmOpen}
-                  onChange={() => setAudioMode(mode)}
-                />
-                <span>
-                  {AUDIO_MODE_LABELS[mode]}
-                  {mode === "silent" && <span className="text-slate-500"> — 인스타그램 앱에서 직접 음원을 붙일 때</span>}
-                  {mode === "narration" && narrationAvailable === false && (
-                    <span data-testid="merge-audio-narration-unavailable" className="text-slate-500"> — 이 프로젝트에는 나레이션이 아직 없습니다</span>
-                  )}
-                  {mode === "narration+bgm" && !bgmSelectable && (
-                    <span data-testid="merge-audio-bgm-unavailable" className="text-slate-500"> — 음원 보관함에 올린 음악이 없습니다</span>
-                  )}
-                </span>
-              </label>
-            );
-          })}
-          {audioMode === "narration+bgm" && bgmSelectable && (
-            <label className="block text-sm text-slate-300" htmlFor="merge-audio-track">
-              배경음악
-              <select
-                id="merge-audio-track"
-                data-testid="merge-audio-track"
-                className="mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
-                value={trackId}
-                disabled={pending || confirmOpen}
-                onChange={(event) => setTrackId(event.target.value)}
-              >
-                <option value="">고르지 않음</option>
-                {tracks.map((track) => (
-                  <option key={track.trackId} value={track.trackId}>{track.title}</option>
-                ))}
-              </select>
-            </label>
-          )}
-          {/* Carried through to the merge screen so the reminder lands while the caption is still being written. */}
-          {selectedTrack?.attributionRequired && (
-            <p data-testid="merge-audio-attribution" className="text-xs text-amber-300">
-              이 음원은 캡션에 출처를 적어야 합니다.
-              {selectedTrack.attributionText?.trim()
-                ? ` 병합이 끝나면 문구를 복사할 수 있습니다: ${selectedTrack.attributionText.trim()}`
-                : " 적을 문구가 비어 있습니다 — 음원 보관함에서 먼저 채워 주세요."}
-            </p>
-          )}
-        </fieldset>
+        <MergeAudioFieldset
+          idPrefix="merge-audio"
+          tracks={tracks}
+          narrationAvailable={narrationAvailable}
+          mode={audioMode}
+          onModeChange={setAudioMode}
+          trackId={trackId}
+          onTrackChange={setTrackId}
+          disabled={pending || confirmOpen}
+        />
       )}
 
       {!result && (
