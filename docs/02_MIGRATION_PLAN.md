@@ -2467,3 +2467,10 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
   - 🟢 **단편의 선례가 `"suggested"` 가 아니라 `confirmed`/`user_confirmed: true` 라는 점이 중요하다**: 그 주석의 이유 — *"사람이 설정에서 이미 이름으로 골랐으니, 매핑 검토에서 다시 확인시키는 건 같은 질문을 두 번 하는 것"* — 이 Story Bible 링크에 **그대로** 적용된다. 그러니 회차도 제안이 아니라 **확정으로 심는 것**이 맞다.
   - **20화짜리에서 아픈 이유**: 매 회차 손으로 다시 고르고, 20번이면 한 번은 빠뜨리고, **빠뜨린 걸 아는 시점은 이미 이미지를 산 뒤**다. 단편은 한 번이라 티가 안 나고 장기는 스무 번이라 티가 난다.
   - `ProtagonistAssetCard` 주석의 *"applied to every Episode"* 는 **이름에만 참이고 그림에는 거짓**이다(`protagonistName()` 이 폴더 이름만 읽어 대본 프롬프트에 싣는다). 캡틴D 의 기대가 거기서 나왔다.
+- [ ] **🔴 철거(`117877a`)에서 같이 빠진 것 전수 조사 — 셋 찾았다 (착수 대기: 캡틴D 사이클 중)**: 자동 연결이 사라진 모양 — **읽는 쪽은 남고 만드는 쪽이 없어진 것** — 을 단서로 훑었다. 백엔드에서 삭제된 소스는 그 커밋 셋뿐이라 범위는 좁다.
+  - **① 자동 제안 (보고된 것)**: `"suggested"` 를 만드는 곳이 없다. 단편은 `syncAutoMappings()` 를 설정 저장 때 세 번 부르고, **장기는 0번**이다.
+  - **② `"ambiguous"` · `"unmatched"` · `"invalid"` 도 같이 죽었다**: `mappings.service.ts:111` 이 이 셋을 **승인 차단 조건으로 읽는데 만드는 곳이 없다.** 즉 지금 승인을 실제로 막는 건 `"suggested"` 뿐이고 그것도 안 만들어지니 **차단 조건 전체가 아무것도 안 막는다.** 옛 서비스에는 매칭이 이 상태들을 붙였다.
+  - **③ 🔴 회차 매핑 검토 무효화가 옛 파일 모양을 읽는다 — 살아 있는 결함**: `assets.repository.ts:517` 의 `invalidateEpisodeMappingReview` 가 `review.candidates` 를 요구하는데, 새 `StoredMappingReview` 에는 **`candidates` 가 없다**(매핑은 `asset_mappings.json` 으로 분리됐다). 그래서 **Asset 버전이 올라가도 승인된 회차 검토가 다시 안 열린다.** 단편 쪽(`:504`)은 `asset_mappings.json` 을 읽어서 정상이다.
+    - 🟠 **그 경로의 테스트는 초록이다**: `assets.repository.test.ts:312` 가 `candidates: [...]` 를 **손으로 써 넣는다** — 앱이 더 이상 안 만드는 모양이다. **초록인데 지키는 게 앱이 쓰는 파일이 아니다**(D-023 의 변종).
+  - **없어진 게 아니라 원래 없던 것 하나**: `protagonist_asset_link` 는 옛 자동 제안에도 없었다. 다만 `ProtagonistAssetCard` 주석의 *"applied to every Episode"* 가 **이름에만 참**이라 캡틴D의 기대를 만들었다.
+  - **정리 후보(손실 아님)**: `episode_scope` 는 저장 허용 키에만 남아 **아무도 읽거나 쓰지 않는다**; Story Bible 컬렉션의 `asset_link` 는 `legacy` 목록으로 내려가 **읽고 버린다**(컬렉션 자체가 `secrets|foreshadowing` 로 줄어든 결과 — 의도된 것).
