@@ -1,4 +1,4 @@
-import type { LongEpisodeDetail, LongEpisodeInstagramPost, LongEpisodeStatus } from "@ai-animation-studio/shared";
+import type { LongEpisodeDetail, LongEpisodeInstagramPost, LongEpisodeStatus, UsedAudio } from "@ai-animation-studio/shared";
 
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
@@ -45,6 +45,7 @@ export function toEpisodeDetail(episode: StoredEpisodeForDetail): LongEpisodeDet
     updatedAt: typeof episode.updated_at === "string" ? episode.updated_at : new Date(0).toISOString(),
     ...(warnings.length > 0 ? { warnings } : {}),
     ...(toEpisodeInstagramPost(episode.instagram_post) ? { instagramPost: toEpisodeInstagramPost(episode.instagram_post)! } : {}),
+    ...(toEpisodeUsedAudio(episode.used_audio) ? { usedAudio: toEpisodeUsedAudio(episode.used_audio)! } : {}),
   };
 }
 
@@ -62,5 +63,24 @@ export function toEpisodeInstagramPost(value: unknown): LongEpisodeInstagramPost
     igUserId: stored.ig_user_id as string,
     publishedAt: stored.published_at as string,
     caption: stored.caption as string,
+  };
+}
+
+/**
+ * What the last merge used, read leniently.
+ *
+ * The credit line is built from this and nothing else, so a half-written record counts as absent rather than
+ * being reported as audio with no attribution — the quiet version of publishing a CC BY track uncredited.
+ */
+export function toEpisodeUsedAudio(value: unknown): UsedAudio | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const stored = value as Record<string, unknown>;
+  const mode = stored.mode;
+  if (mode !== "narration" && mode !== "narration+bgm" && mode !== "bgm" && mode !== "silent") return undefined;
+  return {
+    mode,
+    ...(typeof stored.track_id === "string" ? { trackId: stored.track_id } : {}),
+    ...(typeof stored.attribution_required === "boolean" ? { attributionRequired: stored.attribution_required } : {}),
+    ...(typeof stored.attribution_text === "string" ? { attributionText: stored.attribution_text } : {}),
   };
 }

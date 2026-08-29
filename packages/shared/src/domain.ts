@@ -157,12 +157,21 @@ export interface ProjectSummary {
     igUserId: string;
     publishedAt: string;
   };
-  usedAudio?: {
-    mode: "narration" | "narration+bgm" | "bgm" | "silent";
-    trackId?: string;
-    attributionRequired?: boolean;
-    attributionText?: string;
-  };
+  usedAudio?: UsedAudio;
+}
+
+/**
+ * What a finished merge actually used, copied at merge time.
+ *
+ * Named rather than written inline because the Episode needs the same shape, and a second anonymous copy is a
+ * second place for the credit line's fields to drift — which for `attributionText` means a video published
+ * without the credit its licence requires (D-003).
+ */
+export interface UsedAudio {
+  mode: "narration" | "narration+bgm" | "bgm" | "silent";
+  trackId?: string;
+  attributionRequired?: boolean;
+  attributionText?: string;
 }
 
 export interface Project extends ProjectSummary {

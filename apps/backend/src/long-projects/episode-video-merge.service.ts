@@ -6,8 +6,9 @@ import { LONG_EPISODE_STATUSES, isSceneNumber, sceneNumbersFor, type LongEpisode
 
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "../videos/ffmpeg-merge.service.js";
+import { AudioLibraryService } from "../audio/audio-library.service.js";
 import { isPlaceholderClip } from "../videos/placeholder-clip.js";
-import { longEpisodeFfmpegUnavailable, longEpisodeMergeClipsInvalid, longEpisodeMergeFailed, longEpisodeMergeNotAllowed, longEpisodeNotFound, longInvalidData, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { longEpisodeFfmpegUnavailable, longEpisodeMergeClipsInvalid, longEpisodeMergeFailed, longEpisodeMergeNotAllowed, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { toEpisodeDetail } from "./episode-detail.js";
@@ -16,6 +17,9 @@ import { LongProjectsService } from "./long-projects.service.js";
 import { PLACEHOLDER_ADAPTER } from "../narration/local-narration-generation.service.js";
 
 const FINAL_PATH = "videos/final/instagram_reel.mp4" as const;
+/** Same numbers the short project's merge uses — see MergeAudioSettings for why the bgm default splits by mode. */
+const DEFAULT_BGM_VOLUME = 0.25;
+const DEFAULT_BGM_FADE_SECONDS = 2;
 const statuses: readonly LongEpisodeStatus[] = LONG_EPISODE_STATUSES;
 type ObjectMap = Record<string, unknown>;
 type Episode = ObjectMap & { number: number; state: LongEpisodeStatus; approved: boolean; script: ObjectMap; script_revision: number; updated_at: string; scene_count?: number; duration_seconds?: number };
@@ -33,7 +37,7 @@ export class EpisodeVideoMergeService {
   private readonly engine: FfmpegMergeEngine;
   private readonly projects: LongProjectsService;
 
-  constructor(private readonly projectsRoot: string, runner?: MediaCommandRunner) { this.engine = new FfmpegMergeEngine(runner); this.projects = new LongProjectsService(projectsRoot); }
+  constructor(private readonly projectsRoot: string, runner?: MediaCommandRunner, private readonly audioLibrary?: AudioLibraryService) { this.engine = new FfmpegMergeEngine(runner); this.projects = new LongProjectsService(projectsRoot); }
 
   private files(id: string, number: number) {
     const root = longStoryRoot(this.projectsRoot, id);
@@ -175,8 +179,68 @@ export class EpisodeVideoMergeService {
     return { path: file };
   }
 
-  async merge(projectId: string, number: number): Promise<MergeLongEpisodeVideosResponse> {
+  /**
+   * This merge's audio, in the short project's own vocabulary.
+   *
+   * Same rules, deliberately: `"narration"` and `"narration+bgm"` need narration audio to actually exist,
+   * `"bgm"` does not and only needs a track, and an omitted request falls back to whatever the Episode's own
+   * settings say. Two spellings of the same choice would be two places to get it wrong, and one of the ways to
+   * get it wrong ships a video without the credit its licence requires.
+   */
+  private async resolveAudio(id: string, number: number, episode: Episode, request: unknown): Promise<{ mode: "narration" | "narration+bgm" | "bgm" | "silent"; trackId?: string; volume: number; fadeSeconds: number }> {
+    const narrationAvailable = await this.narrationAvailable(id, number, episode);
+    const fallbackMode = narrationAvailable && await this.narrationEnabled(id) ? "narration" as const : "silent" as const;
+    const fallback = { mode: fallbackMode, volume: DEFAULT_BGM_VOLUME, fadeSeconds: DEFAULT_BGM_FADE_SECONDS };
+    if (request === undefined) return fallback;
+    if (!object(request) || Object.keys(request).some((key) => key !== "audio")) throw longInvalidRequest();
+    if (request.audio === undefined) return fallback;
+    const audio = request.audio;
+    if (!object(audio) || Object.keys(audio).some((key) => !["mode", "trackId", "volume", "fadeSeconds"].includes(key))) throw longInvalidRequest();
+    const mode = audio.mode;
+    if (mode !== "narration" && mode !== "narration+bgm" && mode !== "bgm" && mode !== "silent") throw longInvalidRequest("audio.mode must be narration, narration+bgm, bgm, or silent.");
+    if ((mode === "narration" || mode === "narration+bgm") && !narrationAvailable) throw longInvalidRequest("This Episode has no narration audio to include.");
+    const needsTrack = mode === "narration+bgm" || mode === "bgm";
+    if (needsTrack && (typeof audio.trackId !== "string" || !audio.trackId.trim())) throw longInvalidRequest(`audio.trackId is required for ${mode}.`);
+    if (audio.volume !== undefined && (typeof audio.volume !== "number" || !Number.isFinite(audio.volume) || audio.volume < 0 || audio.volume > 1)) throw longInvalidRequest("audio.volume must be between 0 and 1.");
+    if (audio.fadeSeconds !== undefined && (typeof audio.fadeSeconds !== "number" || !Number.isFinite(audio.fadeSeconds) || audio.fadeSeconds < 0)) throw longInvalidRequest("audio.fadeSeconds must be a non-negative number.");
+    return {
+      mode,
+      ...(needsTrack ? { trackId: audio.trackId as string } : {}),
+      // Same split the short merge makes: 0.25 keeps music under a voice, and with no voice that reason is gone.
+      volume: typeof audio.volume === "number" ? audio.volume : (mode === "bgm" ? 1 : DEFAULT_BGM_VOLUME),
+      fadeSeconds: typeof audio.fadeSeconds === "number" ? audio.fadeSeconds : DEFAULT_BGM_FADE_SECONDS,
+    };
+  }
+
+  /** Real files on disk, matching what the Episode's own GET reports to the screen. */
+  private async narrationAvailable(id: string, number: number, _episode: Episode): Promise<boolean> {
+    const directory = path.join(this.files(id, number).episode, "narration");
+    try {
+      const entries = await fs.readdir(directory);
+      const sizes = await Promise.all(entries.filter((name) => name.endsWith(".mp3")).map(async (name) => {
+        try { return (await fs.stat(path.join(directory, name))).size; } catch { return 0; }
+      }));
+      return sizes.some((size) => size > 0);
+    } catch { return false; }
+  }
+
+  private async narrationEnabled(id: string): Promise<boolean> {
+    try { return (await this.projects.get(id)).project.settings.narrationEnabled; } catch { return false; }
+  }
+
+  async merge(projectId: string, number: number, request?: unknown): Promise<MergeLongEpisodeVideosResponse> {
     const id = projectId.trim(); const episode = await this.loadEpisode(id, number); const clips = await this.approvedClips(id, number, episode);
+    const audio = await this.resolveAudio(id, number, episode, request);
+    // Resolved before any rendering starts, like the short project's merge: an unknown track should fail here
+    // rather than after a render nobody can undo.
+    let bgmPath: string | undefined;
+    let bgmTrack: { attributionRequired: boolean; attributionText?: string } | undefined;
+    if (audio.mode === "narration+bgm" || audio.mode === "bgm") {
+      if (!this.audioLibrary) throw longInvalidRequest("BGM is not available in this configuration.");
+      bgmPath = (await this.audioLibrary.content(audio.trackId!)).path;
+      const track = await this.audioLibrary.get(audio.trackId!);
+      bgmTrack = { attributionRequired: track.attributionRequired, ...(track.attributionText ? { attributionText: track.attributionText } : {}) };
+    }
     try { for (const clip of clips) await this.engine.probe(clip); }
     catch (error) { if (error instanceof MediaToolError && error.kind === "unavailable") throw longEpisodeFfmpegUnavailable(); throw longEpisodeMergeClipsInvalid(); }
     const rendering = { ...episode, state: "rendering" as const, updated_at: new Date().toISOString() };
@@ -185,7 +249,16 @@ export class EpisodeVideoMergeService {
       const output = this.final(id, number); await fs.mkdir(path.dirname(output), { recursive: true });
       const mergeScenes = await this.mergeScenes(id, number, episode, clips, sceneNumbersFor(this.sceneCount(episode)));
       await this.engine.merge(mergeScenes, this.clipDurationSeconds(episode), output, await this.ratio(id, number));
-      const completed = { ...rendering, state: "completed" as const, updated_at: new Date().toISOString(), final_video_path: FINAL_PATH };
+      if (bgmPath) await this.engine.mixBackgroundMusic(output, bgmPath, audio.volume, audio.fadeSeconds, output);
+      // Copied as a value at merge time, never looked up later: the credit line has to survive the track being
+      // edited or deleted, because what was published cannot be unpublished (D-003).
+      const usedAudio = {
+        mode: audio.mode,
+        ...(audio.trackId ? { track_id: audio.trackId } : {}),
+        ...(bgmTrack?.attributionRequired !== undefined ? { attribution_required: bgmTrack.attributionRequired } : {}),
+        ...(bgmTrack?.attributionText !== undefined ? { attribution_text: bgmTrack.attributionText } : {}),
+      };
+      const completed = { ...rendering, state: "completed" as const, updated_at: new Date().toISOString(), final_video_path: FINAL_PATH, used_audio: usedAudio };
       await this.saveEpisode(id, number, completed);
       return { episode: this.detail(completed), finalVideoPath: FINAL_PATH };
     } catch (error) {

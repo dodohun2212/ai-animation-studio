@@ -10,6 +10,7 @@ import { approveEpisodeMappingReview } from "./episode-mapping-test-fixtures.js"
 import { EpisodeImagesService } from "./episode-images.service.js";
 import { EpisodeScriptsService } from "./episode-scripts.service.js";
 import { EpisodeVideoMergeService } from "./episode-video-merge.service.js";
+import { AudioLibraryService } from "../audio/audio-library.service.js";
 import { EpisodeVideosService } from "./episode-videos.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
 
@@ -191,5 +192,78 @@ describe("EpisodeVideoMergeService", () => {
     // The same clips under the local fake path are not a problem: there a placeholder is what the path writes.
     await fs.writeFile(records, JSON.stringify(stored), "utf8");
     await expect(new EpisodeVideoMergeService(projectsRoot, runner({}, [])).merge("long", 1)).resolves.toBeTruthy();
+  });
+});
+
+describe("EpisodeVideoMergeService — audio", () => {
+  /** A library holding one CC BY track, and a runner that records what ffmpeg was asked to do. */
+  async function withTrack() {
+    const audioRunner: MediaCommandRunner = async (arguments_) => {
+      if ([...arguments_][0] === "ffprobe") return { stdout: JSON.stringify({ streams: [{ codec_type: "audio" }], format: { duration: "10.0" } }), stderr: "" };
+      throw new Error("unexpected audio command");
+    };
+    const library = new AudioLibraryService(root!, audioRunner);
+    const uploaded = await library.upload(
+      { buffer: Buffer.from("fake mp3 bytes"), originalname: "bgm.mp3", mimetype: "audio/mpeg" },
+      { licenseKind: "cc-by", attributionRequired: true, attributionText: "Music by Jane Doe" },
+    );
+    const calls: string[][] = [];
+    const mergeRunner: MediaCommandRunner = async (arguments_) => {
+      const args = [...arguments_];
+      calls.push(args);
+      if (args[0] === "ffprobe") return { stdout: JSON.stringify({ streams: [{ codec_type: "video" }], format: { duration: "30.0" } }), stderr: "" };
+      await fs.writeFile(args.at(-1)!, "rendered");
+      return { stdout: "", stderr: "" };
+    };
+    return { library, uploaded, mergeRunner, calls };
+  }
+
+  it("puts music under an Episode that has no narration, and remembers the credit it owes", async () => {
+    // The credit is the point. An Episode built on a CC BY track had nowhere to record that, so the publish
+    // screen — which shipped first — had nothing to show and would have published it uncredited (D-003).
+    const { projectsRoot } = await setup();
+    const { library, uploaded, mergeRunner } = await withTrack();
+    const service = new EpisodeVideoMergeService(projectsRoot, mergeRunner, library);
+
+    const result = await service.merge("long", 1, { audio: { mode: "bgm", trackId: uploaded.track.trackId } });
+
+    expect(result.finalVideoPath).toBe("videos/final/instagram_reel.mp4");
+    const { episode } = await new EpisodeScriptsService(projectsRoot).get("long", 1);
+    expect(episode.usedAudio).toMatchObject({
+      mode: "bgm", trackId: uploaded.track.trackId, attributionRequired: true, attributionText: "Music by Jane Doe",
+    });
+  });
+
+  it("plays that music at the level it was uploaded, since there is no voice for it to sit under", async () => {
+    const { projectsRoot } = await setup();
+    const { library, uploaded, mergeRunner, calls } = await withTrack();
+
+    await new EpisodeVideoMergeService(projectsRoot, mergeRunner, library).merge("long", 1, { audio: { mode: "bgm", trackId: uploaded.track.trackId } });
+
+    const mix = calls.find((args) => args.includes("-stream_loop"));
+    expect(mix).toBeDefined();
+    expect(mix!.join(" ")).toContain("volume=1");
+  });
+
+  it("refuses narration for an Episode that has none, rather than rendering something else", async () => {
+    const { projectsRoot } = await setup();
+
+    await expect(new EpisodeVideoMergeService(projectsRoot, runner({})).merge("long", 1, { audio: { mode: "narration" } }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
+  it("refuses music with no track named", async () => {
+    const { projectsRoot } = await setup();
+
+    await expect(new EpisodeVideoMergeService(projectsRoot, runner({})).merge("long", 1, { audio: { mode: "bgm" } }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
+  it("merges silently and mixes nothing when no audio is asked for at all", async () => {
+    const { projectsRoot } = await setup();
+    const calls: string[][] = [];
+    await new EpisodeVideoMergeService(projectsRoot, runner({}, calls)).merge("long", 1);
+
+    expect(calls.some((args) => args.includes("-stream_loop"))).toBe(false);
   });
 });

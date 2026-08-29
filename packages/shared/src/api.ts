@@ -1,4 +1,4 @@
-import type { Project, ProjectSummary, SceneNumber } from "./domain.js";
+import type { Project, ProjectSummary, SceneNumber, UsedAudio } from "./domain.js";
 import { MAX_SCENE_COUNT, MIN_SCENE_COUNT } from "./domain.js";
 import type { Asset, AssetOwnership, AssetType } from "./asset.js";
 import type {
@@ -138,6 +138,27 @@ export interface LongEpisodeDetail extends LongEpisodeOutline {
    * across a re-merge, so without a changing value the browser happily shows the previous render.
    */
   updatedAt: string;
+  /**
+   * Whether this Episode has narration audio on disk — the same "real files exist" meaning the short project's
+   * ProjectSummary.narrationAvailable carries.
+   *
+   * Without it a merge screen has no basis for locking the narration options, so it would either offer a mix
+   * the server refuses or hide one that would have worked. Guessing is the one thing it must not do.
+   *
+   * Optional because only the Episode's own GET actually looks: the responses that carry an Episode alongside
+   * something else (a video job's progress, a merge result) do not go to disk for this, and reporting `false`
+   * from those would be a claim nobody checked. Absent means "not determined here", never "no narration".
+   */
+  narrationAvailable?: boolean;
+  /**
+   * What the last merge actually used, copied at merge time rather than looked up later.
+   *
+   * This is the credit line's only source. Without it an Episode built on a CC BY track shows no attribution
+   * anywhere — not because the value is empty but because there is nowhere to read it from — and it goes to
+   * Instagram uncredited. That is precisely the failure D-003 exists to prevent, and the Episode publish path
+   * shipped before this field did.
+   */
+  usedAudio?: UsedAudio;
   /** Present once this Episode has been published to Instagram, so a reload still knows. */
   instagramPost?: LongEpisodeInstagramPost;
 }
@@ -324,6 +345,17 @@ export interface RecoverLongEpisodeVideosResponse extends LongEpisodeVideoProgre
 }
 
 /** Final Episode render has a fixed relative output and never exposes an absolute path. */
+/**
+ * An Episode's final render, with the same audio vocabulary the short project's merge uses.
+ *
+ * There was no request type at all: the Episode merge took a project and an episode number and nothing else,
+ * so the screen had nowhere to send a choice even after one existed. Same shape as MergeVideosRequest on
+ * purpose — two spellings of "put this music under it" would be two places to get it wrong.
+ */
+export interface MergeLongEpisodeVideosRequest {
+  audio?: MergeAudioSettings;
+}
+
 export interface MergeLongEpisodeVideosResponse {
   episode: LongEpisodeDetail;
   finalVideoPath: "videos/final/instagram_reel.mp4";
