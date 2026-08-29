@@ -9,6 +9,7 @@ import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { RunwayBudget } from "../providers/runway-budget.js";
 import { VideoLibraryService } from "./video-library.service.js";
+import { PLACEHOLDER_MP4 } from "./placeholder-clip.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true }))); });
@@ -39,6 +40,34 @@ async function createProjectWithVideos(projectsRoot: string, projects: LocalProj
     await projects.save(updated);
   }
   return project;
+}
+
+/**
+ * Lays an Episode on disk the way the Episode services do — same directory names, since the library reads
+ * them through the same path helpers.
+ */
+async function createEpisodeWithVideos(projectsRoot: string, projectId: string, episodeNumber: number, options: { scenes?: number[]; finalVideo?: boolean; paid?: boolean; title?: string; updatedAt?: string } = {}) {
+  const storyRoot = path.join(projectsRoot, projectId, "long_story");
+  const directory = path.join(storyRoot, `Episode${String(episodeNumber).padStart(2, "0")}`);
+  await fs.mkdir(path.join(directory, "videos"), { recursive: true });
+  await fs.writeFile(path.join(storyRoot, "project.json"), JSON.stringify({ title: `story ${projectId}`, aspect_ratio: "9:16" }));
+  const outlines = Array.from({ length: episodeNumber }, (_unused, index) => ({ episode_number: index + 1, title: `outline ${index + 1}` }));
+  await fs.writeFile(path.join(storyRoot, "episode_outlines.json"), JSON.stringify(outlines));
+  await fs.writeFile(path.join(directory, "project.json"), JSON.stringify({
+    number: episodeNumber, state: "videos_review", approved: true, script: {}, script_revision: 1,
+    scene_count: 6, title: options.title ?? `episode ${episodeNumber}`, updated_at: options.updatedAt ?? "2026-08-24T00:00:00.000Z",
+  }));
+  await fs.writeFile(path.join(directory, "video_generation_records.json"), JSON.stringify(
+    (options.scenes ?? [1, 2, 3, 4, 5, 6]).map((scene) => ({ scene_number: scene, job_id: "job", status: "succeeded", execution_mode: options.paid ? "runway" : "local_fake_no_provider" })),
+  ));
+  for (const scene of options.scenes ?? [1, 2, 3, 4, 5, 6]) {
+    await fs.writeFile(path.join(directory, "videos", `scene${scene}.mp4`), Buffer.concat([PLACEHOLDER_MP4, Buffer.alloc(512, scene)]));
+  }
+  if (options.finalVideo) {
+    await fs.mkdir(path.join(directory, "videos", "final"), { recursive: true });
+    await fs.writeFile(path.join(directory, "videos", "final", "instagram_reel.mp4"), Buffer.concat([PLACEHOLDER_MP4, Buffer.alloc(4096, 7)]));
+  }
+  return directory;
 }
 
 describe("VideoLibraryService.list", () => {
@@ -345,5 +374,71 @@ describe("VideoLibraryService.restore", () => {
     fake.video_generation_records = [1, 2, 3, 4, 5, 6].map((scene) => ({ scene_number: scene, execution_mode: "local_fake_no_provider", status: "succeeded" }));
     await projects.save(fake);
     expect((await service.list()).projects.find((row) => row.projectId === "stubbed")?.videosReadyCount).toBe(6);
+  });
+});
+
+describe("VideoLibraryService.list — Episodes", () => {
+  it("lists an Episode's results in their own array, not mixed into the short projects", async () => {
+    // Its own array on purpose: the Instagram post screen reads `projects` and publishes by short-project id,
+    // so an Episode arriving there would be selectable and then unpublishable.
+    const { projectsRoot, projects, service } = await setup();
+    await createProjectWithVideos(projectsRoot, projects, "short_one");
+    await createEpisodeWithVideos(projectsRoot, "story_one", 1, { finalVideo: true });
+
+    const result = await service.list();
+
+    expect(result.projects.map((row) => row.projectId)).toEqual(["short_one"]);
+    expect(result.episodes.map((row) => `${row.projectId}/${row.episodeNumber}`)).toEqual(["story_one/1"]);
+    expect(result.episodes[0]).toMatchObject({
+      title: "episode 1", projectTitle: "story story_one", sceneCount: 6, videosReadyCount: 6,
+      finalVideoAvailable: true, aspectRatio: "9:16",
+    });
+  });
+
+  it("skips an Episode that never reached video generation, so the library stays a results archive", async () => {
+    const { projectsRoot, service } = await setup();
+    await createEpisodeWithVideos(projectsRoot, "story_two", 1, { scenes: [] });
+
+    expect((await service.list()).episodes).toEqual([]);
+  });
+
+  it("does not count a paid Episode's placeholders as ready videos, while a local fake run still lists them", async () => {
+    // The sixth place this same judgment lives. A stubbed paid run reporting six ready videos is the report
+    // that had the batch looking finished while the downloaded bytes had been thrown away.
+    const { projectsRoot, service } = await setup();
+    const directory = await createEpisodeWithVideos(projectsRoot, "story_three", 1, { paid: true });
+    for (const scene of [1, 2, 3]) await fs.writeFile(path.join(directory, "videos", `scene${scene}.mp4`), PLACEHOLDER_MP4);
+
+    const paidRun = await service.list();
+    expect(paidRun.episodes[0]?.videosReadyCount).toBe(3);
+
+    // Same files, fake run: placeholders are its normal output, so all six are listed.
+    await fs.writeFile(path.join(directory, "video_generation_records.json"), JSON.stringify(
+      [1, 2, 3, 4, 5, 6].map((scene) => ({ scene_number: scene, job_id: "job", status: "succeeded", execution_mode: "local_fake_no_provider" })),
+    ));
+    expect((await service.list()).episodes[0]?.videosReadyCount).toBe(6);
+  });
+
+  it("reports what the Episode actually cost, read from the ledger under its own id", async () => {
+    const { projectsRoot, budget, service } = await setup();
+    await createEpisodeWithVideos(projectsRoot, "story_four", 2, { paid: true });
+    await budget.record("story_four:episode2", 1, "video", true, 0.25);
+    await budget.record("story_four:episode2", 2, "video", true, 0.25);
+    // A different Episode's spend must not land on this row.
+    await budget.record("story_four:episode1", 1, "video", true, 0.25);
+
+    const [row] = (await service.list()).episodes;
+
+    expect(row?.totalActualCostUsd).toBeCloseTo(0.5);
+  });
+
+  it("keeps listing the rest when one story's stored files cannot be read", async () => {
+    const { projectsRoot, service } = await setup();
+    await createEpisodeWithVideos(projectsRoot, "story_good", 1);
+    const brokenRoot = path.join(projectsRoot, "story_broken", "long_story");
+    await fs.mkdir(brokenRoot, { recursive: true });
+    await fs.writeFile(path.join(brokenRoot, "project.json"), "{ not json");
+
+    expect((await service.list()).episodes.map((row) => row.projectId)).toEqual(["story_good"]);
   });
 });

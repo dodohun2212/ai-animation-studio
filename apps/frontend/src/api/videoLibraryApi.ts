@@ -4,6 +4,7 @@ import {
   type GetVideoVersionsResponse,
   type RestoreVideoVersionResponse,
   type SceneNumber,
+  type VideoLibraryEpisodeSummary,
   type VideoLibraryProjectSummary,
   type VideoVersionSummary,
 } from "@ai-animation-studio/shared";
@@ -63,6 +64,27 @@ function isCount(value: unknown): value is number {
 
 function isAspectRatio(value: unknown): value is "9:16" | "16:9" {
   return value === "9:16" || value === "16:9";
+}
+
+/**
+ * An Episode's row. Checked as strictly as a short project's, and kept in its own array for the same reason
+ * the server keeps it there: the Instagram post screen reads `projects` and publishes by short-project id, so
+ * an Episode arriving in that array would be selectable and then unpublishable.
+ */
+function isLibraryEpisode(value: unknown): value is VideoLibraryEpisodeSummary {
+  return (
+    isRecord(value)
+    && isNonEmptyString(value.projectId)
+    && isCount(value.episodeNumber) && value.episodeNumber >= 1
+    && typeof value.title === "string"
+    && typeof value.projectTitle === "string"
+    && isNonEmptyString(value.updatedAt)
+    && isCount(value.sceneCount)
+    && isCount(value.videosReadyCount)
+    && typeof value.finalVideoAvailable === "boolean"
+    && isCostUsd(value.totalActualCostUsd)
+    && isAspectRatio(value.aspectRatio)
+  );
 }
 
 function isLibraryProject(value: unknown): value is VideoLibraryProjectSummary {
@@ -125,7 +147,10 @@ export async function getVideoLibrary(): Promise<GetVideoLibraryResponse> {
   if (!isRecord(body) || !Array.isArray(body.projects) || !body.projects.every(isLibraryProject)) {
     throw new VideoLibraryApiError(MALFORMED.code, MALFORMED.message);
   }
-  return { projects: body.projects };
+  // Episodes are checked but do not invalidate the answer: a screen that has not been taught about them yet
+  // should still show the short projects rather than the malformed-response banner.
+  const episodes = Array.isArray(body.episodes) ? body.episodes.filter(isLibraryEpisode) : [];
+  return { projects: body.projects, episodes };
 }
 
 /** Every stored copy of one scene's video, or of the final merged video. Read-only; never charges anything. */

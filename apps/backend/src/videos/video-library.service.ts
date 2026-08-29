@@ -11,6 +11,7 @@ import {
   type GetVideoVersionsResponse,
   type RestoreVideoVersionResponse,
   type SceneNumber,
+  type VideoLibraryEpisodeSummary,
   type VideoVersionSummary,
 } from "@ai-animation-studio/shared";
 
@@ -28,6 +29,7 @@ import {
   videoLibraryVersionNotFound,
 } from "./video-library-api.error.js";
 import { shortProjectAspectRatio } from "../projects/project-aspect.js";
+import { episodeDirectoryName, longStoryRoot } from "../long-projects/long-project-paths.js";
 
 const FINAL_VIDEO_PATH = "videos/final/instagram_reel.mp4" as const;
 
@@ -64,6 +66,19 @@ async function validFile(file: string, paid = false): Promise<{ bytes: number; c
     return undefined;
   }
 }
+
+/** Reads one stored JSON file, or nothing — every caller here treats unreadable as absent on purpose. */
+async function readJson(file: string): Promise<unknown> {
+  try { return JSON.parse(await fs.readFile(file, "utf8")) as unknown; } catch { return undefined; }
+}
+const storedObject = async (file: string): Promise<Record<string, unknown> | undefined> => {
+  const parsed = await readJson(file);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : undefined;
+};
+const storedArray = async (file: string): Promise<unknown[]> => {
+  const parsed = await readJson(file);
+  return Array.isArray(parsed) ? parsed : [];
+};
 
 /**
  * Read-only browsing and restore for already-generated video results — a results archive, distinct in purpose
@@ -134,6 +149,65 @@ export class VideoLibraryService {
     await this.atomicBinary(path.join(this.historyDirectory(projectId, target), this.historyFileName(target, next)), bytes);
   }
 
+  /**
+   * Episode rows, read straight off disk through the long-project path helpers.
+   *
+   * Deliberately not a second opinion about where Episode files live: `longStoryRoot` and
+   * `episodeDirectoryName` are the same functions the Episode services use. What this does own is the
+   * judgment every other reader here already makes — a paid run must have produced a real clip, not a
+   * placeholder — so a stubbed Episode is not counted as ready.
+   *
+   * Fails soft per Episode. A story whose outline cannot be read should not empty the whole library.
+   */
+  private async episodeRows(): Promise<VideoLibraryEpisodeSummary[]> {
+    let entries: string[];
+    try { entries = (await fs.readdir(this.projectsRoot, { withFileTypes: true })).filter((item) => item.isDirectory()).map((item) => item.name); } catch { return []; }
+    const rows: VideoLibraryEpisodeSummary[] = [];
+    for (const projectId of entries) {
+      let storyRoot: string;
+      try { storyRoot = longStoryRoot(this.projectsRoot, projectId); } catch { continue; }
+      const project = await storedObject(path.join(storyRoot, "project.json"));
+      if (!project) continue;
+      const projectTitle = typeof project.title === "string" ? project.title : projectId;
+      const aspectRatio = project.aspect_ratio === "16:9" ? "16:9" as const : "9:16" as const;
+      const list = await storedArray(path.join(storyRoot, "episode_outlines.json"));
+      for (let index = 0; index < list.length; index += 1) {
+        const row = await this.episodeRow(projectId, projectTitle, aspectRatio, storyRoot, index + 1, list[index]);
+        if (row) rows.push(row);
+      }
+    }
+    return rows.sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+  }
+
+  private async episodeRow(projectId: string, projectTitle: string, aspectRatio: "9:16" | "16:9", storyRoot: string, episodeNumber: number, outline: unknown): Promise<VideoLibraryEpisodeSummary | undefined> {
+    const directory = path.join(storyRoot, episodeDirectoryName(episodeNumber));
+    const stored = await storedObject(path.join(directory, "project.json"));
+    if (!stored) return undefined;
+    const recordList = await storedArray(path.join(directory, "video_generation_records.json"));
+    const paid = recordList.some((item) => typeof item === "object" && item !== null && (item as { execution_mode?: unknown }).execution_mode === "runway");
+    const sceneCount = Number.isInteger(stored.scene_count) ? stored.scene_count as number : 6;
+    const scenes = await Promise.all(sceneNumbersFor(sceneCount).map((scene) => validFile(path.join(directory, "videos", `scene${scene}.mp4`), paid)));
+    const videosReadyCount = scenes.filter(Boolean).length;
+    const finalFile = await validFile(path.join(directory, "videos", "final", "instagram_reel.mp4"), paid);
+    // Never reached video generation — the same rule the short rows use, so the library stays a results
+    // archive rather than a second project list.
+    if (videosReadyCount === 0 && !finalFile) return undefined;
+    const costs = this.budget ? await this.budget.costsByScene(`${projectId}:episode${episodeNumber}`) : {};
+    const outlineTitle = outline && typeof outline === "object" && !Array.isArray(outline) ? (outline as { title?: unknown }).title : undefined;
+    return {
+      projectId,
+      episodeNumber,
+      title: typeof stored.title === "string" ? stored.title : typeof outlineTitle === "string" ? outlineTitle : `${episodeNumber}화`,
+      projectTitle,
+      updatedAt: typeof stored.updated_at === "string" ? stored.updated_at : new Date(0).toISOString(),
+      sceneCount,
+      videosReadyCount,
+      finalVideoAvailable: Boolean(finalFile),
+      totalActualCostUsd: Object.values(costs).reduce((sum: number, value) => sum + (value ?? 0), 0),
+      aspectRatio,
+    };
+  }
+
   async list(): Promise<GetVideoLibraryResponse> {
     const projects = await this.projects.list();
     const rows: GetVideoLibraryResponse["projects"] = [];
@@ -160,7 +234,7 @@ export class VideoLibraryService {
       });
     }
     rows.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
-    return { projects: rows };
+    return { projects: rows, episodes: await this.episodeRows() };
   }
 
   private async versionsFor(projectId: string, target: Target): Promise<VideoVersionSummary[]> {

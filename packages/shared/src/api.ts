@@ -1396,7 +1396,33 @@ export interface VideoLibraryProjectSummary {
   attributionRequired?: boolean;
   attributionText?: string;
 }
-export interface GetVideoLibraryResponse { projects: VideoLibraryProjectSummary[]; }
+/**
+ * One Episode's results in the video library.
+ *
+ * A separate array rather than an extra row in `projects`, and that is not tidiness. The same list feeds the
+ * Instagram post screen, whose publish route takes a short-project id and reads the short-project repository —
+ * an Episode mixed into `projects` would be selectable there and then refuse to publish, which is the exact
+ * "both ends fine, middle missing" shape the guards in this repo exist for. A new field nobody reads yet is
+ * inert; a new row in an array every consumer already iterates is inherited whether or not it can be handled.
+ *
+ * Addressed by `projectId` *and* `episodeNumber`: an Episode's clips live under different routes from a short
+ * project's, so a card built from this row has to know it is looking at an Episode.
+ */
+export interface VideoLibraryEpisodeSummary {
+  projectId: string;
+  episodeNumber: number;
+  /** The Episode's own title, and the story it belongs to — a card needs both to be findable. */
+  title: string;
+  projectTitle: string;
+  updatedAt: string;
+  sceneCount: number;
+  videosReadyCount: number;
+  finalVideoAvailable: boolean;
+  /** Same meaning as the short row's: every recorded Runway spend for this Episode, across every attempt. */
+  totalActualCostUsd: number;
+  aspectRatio: "9:16" | "16:9";
+}
+export interface GetVideoLibraryResponse { projects: VideoLibraryProjectSummary[]; episodes: VideoLibraryEpisodeSummary[]; }
 
 /**
  * One stored copy of a scene's video, or of the final merged video — the "current" file plus every version
