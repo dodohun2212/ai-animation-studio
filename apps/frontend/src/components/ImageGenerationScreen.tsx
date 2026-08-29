@@ -125,6 +125,15 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
   const toMakeCount = Math.max(0, (currentProject?.scenes.length ?? 0) - alreadyMadeCount);
   const totalScenes = sceneNumbers.length;
   const allowed = currentProject?.workflowState === WorkflowState.AssetMappingApproved;
+  /**
+   * A run this screen did not start — reached by reload, by going back into the project, or from another
+   * window. `generatePending` is local state, so on arrival it is false, and the screen used to show six rows
+   * reading 대기 with no panel at all while images were being bought. That is the state the Episode's list
+   * comment describes as "what makes a person press the button again"; this is the short project's half.
+   */
+  const runFound = currentProject?.workflowState === WorkflowState.GeneratingImages && !generatePending;
+  /** Either way a run is in flight, and the rows and the panel say the same thing about both. */
+  const running = generatePending || runFound;
   const reviewable = currentProject?.workflowState === WorkflowState.ImagesReview;
   const videoConfirmationReached = currentProject?.workflowState === WorkflowState.WaitingForVideoConfirmation;
 
@@ -222,7 +231,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
   }
 
   useEffect(() => {
-    if (!generatePending) return;
+    if (!running) return;
     const started = Date.now();
     const ticker = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - started) / 1000)), 1000);
     // Polled, not streamed: there is no progress endpoint, and the project is the only thing that changes
@@ -234,12 +243,15 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
             .filter((scene) => typeof scene.generatedImagePath === "string" && scene.generatedImagePath)
             .map((scene) => scene.number as number);
           setCompletedScenes(new Set(done));
+          // A found run has no POST of ours to resolve, so the poll is the only thing that can notice it
+          // ended. Without this the panel would sit there claiming a run that finished minutes ago.
+          if (runFound) setProjectOverride(response.project);
         })
         // Silent: this is a progress hint. A failed poll must never replace the run's own error handling.
         .catch(() => undefined);
     }, 3000);
     return () => { clearInterval(ticker); clearInterval(poll); };
-  }, [generatePending, projectId]);
+  }, [running, runFound, projectId]);
 
   /**
    * `generatedImagePath` is the only per-scene signal the API exposes for "this one is done". The backend
@@ -319,7 +331,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
             </p>
           )}
 
-          {generatePending && (
+          {running && (
             <div data-testid="generation-progress" role="status" className="space-y-1.5 rounded-xl border border-violet-400/30 bg-violet-500/[0.07] p-3.5">
               <p className="text-sm font-semibold text-violet-200">
                 이미지를 만드는 중입니다 — {completedScenes.size}/{totalScenes}장 완료
@@ -330,9 +342,18 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                   style={{ width: `${totalScenes ? Math.round((completedScenes.size / totalScenes) * 100) : 0}%` }}
                 />
               </div>
-              <p className="text-xs text-slate-400 tabular-nums">
-                {Math.floor(elapsedSeconds / 60)}분 {elapsedSeconds % 60}초째 진행 중 · 한 장에 보통 십수 초에서 1분쯤 걸립니다.
-              </p>
+              {/* The clock starts when this screen starts the run. For a run it merely found, the start time is
+                  not something the screen knows, and a clock counting from the moment you arrived would read
+                  as the run's age — a number the app would be inventing. */}
+              {generatePending ? (
+                <p className="text-xs text-slate-400 tabular-nums">
+                  {Math.floor(elapsedSeconds / 60)}분 {elapsedSeconds % 60}초째 진행 중 · 한 장에 보통 십수 초에서 1분쯤 걸립니다.
+                </p>
+              ) : (
+                <p data-testid="generation-progress-resumed" className="text-xs text-slate-400">
+                  이 화면에 들어오기 전부터 진행 중이던 생성입니다. 시작한 시각은 알 수 없어 경과 시간은 표시하지 않습니다.
+                </p>
+              )}
               <p className="text-xs text-slate-500">
                 이 화면을 벗어나거나 새로고침해도 서버에서 만드는 것은 계속됩니다. 다만 진행 상황은 다시 들어와야 보입니다.
               </p>
@@ -345,14 +366,14 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
               // While a run is in flight, a row that is not finished is not "waiting" in any useful sense —
               // it is either being worked on now or is next. Saying 대기 next to a spinning button was the
               // part that read as "nothing is happening".
-              const label = done ? "완료" : generatePending ? "만드는 중" : "대기";
+              const label = done ? "완료" : running ? "만드는 중" : "대기";
               return (
                 <li
                   key={number}
                   data-testid={`scene-${number}`}
                   data-status={sceneStatus(number)}
                   className={`rounded-lg border p-2.5 text-sm ${
-                    done ? "border-emerald-400/30 text-emerald-300" : generatePending ? "border-violet-400/25 text-violet-200" : "border-white/10 text-slate-300"
+                    done ? "border-emerald-400/30 text-emerald-300" : running ? "border-violet-400/25 text-violet-200" : "border-white/10 text-slate-300"
                   }`}
                 >
                   {number}번 장면 · {label}

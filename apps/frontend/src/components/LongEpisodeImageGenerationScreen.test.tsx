@@ -444,6 +444,38 @@ describe("LongEpisodeImageGenerationScreen", () => {
   });
 
   /**
+   * The short project has had this panel since its run became pollable; the Episode had only a list of scenes
+   * reading 만드는 중. The sentence that matters is the last one — leaving is safe, pressing again is not —
+   * and it was missing on the side where a second batch costs more.
+   */
+  it("says a run is in progress, and that leaving the screen does not stop it", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: withScript(episode("generating_images")) }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
+      .mockResolvedValue(jsonResponse(200, { episode: withScript(episode("generating_images")) })));
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    const progress = await screen.findByTestId("episode-generation-progress");
+    expect(progress.textContent).toContain("이 화면을 벗어나거나");
+    expect(progress.textContent).toContain("다시 누르면");
+    // Found, not started here: the screen does not know when it began, so it does not put a number on it.
+    expect(screen.getByTestId("episode-generation-progress-resumed")).toBeTruthy();
+    expect(progress.textContent).not.toContain("초째 진행 중");
+  });
+
+  it("shows no progress panel when the Episode is not generating", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: withScript(episode("asset_mapping_approved")) }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValue(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true })));
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    await screen.findByTestId("episode-image-cost-notice");
+    expect(screen.queryByTestId("episode-generation-progress")).toBeNull();
+  });
+
+  /**
    * The list used to be fetched only while the Episode was in review, because the server refused it otherwise.
    * It does not any more — the pictures were never gone, only the list of them.
    */

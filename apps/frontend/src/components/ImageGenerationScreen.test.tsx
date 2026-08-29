@@ -117,6 +117,32 @@ describe("ImageGenerationScreen", () => {
     finishGeneration(jsonResponse(200, { project: midRun, generatedSceneNumbers: [1, 2], reusedSceneNumbers: [] }));
   });
 
+  /**
+   * `generatePending` is local state, so a reload during a run left the screen showing six rows reading 대기
+   * and no panel — while images were being bought. The workflow state is the fact that survives the reload.
+   */
+  it("recovers a run that was already going when the screen opened", async () => {
+    const running = makeProject({ workflowState: WorkflowState.GeneratingImages, scenes: sixScenes() });
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { project: running })));
+
+    const progress = await screen.findByTestId("generation-progress");
+    expect(progress.textContent).toContain("이 화면을 벗어나거나");
+    // No row says 대기 while the batch is running — that reading is what makes a person press again.
+    expect(screen.getByTestId("scene-1").textContent).toContain("만드는 중");
+    // The clock is not claimed for a run whose start time the screen does not know.
+    expect(screen.getByTestId("generation-progress-resumed")).toBeTruthy();
+    expect(progress.textContent).not.toContain("초째 진행 중");
+  });
+
+  it("says nothing about a run when the project is not generating", async () => {
+    const idle = makeProject({ workflowState: WorkflowState.AssetMappingApproved, scenes: sixScenes() });
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { project: idle })));
+
+    await screen.findByTestId("provider-mode-notice");
+    expect(screen.queryByTestId("generation-progress")).toBeNull();
+    expect(screen.getByTestId("scene-1").textContent).toContain("대기");
+  });
+
   it("blocks generation and hides the start button when the project is not Asset-Mapping-approved", async () => {
     const project = makeProject({ workflowState: WorkflowState.Ready, scenes: [] });
     renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { project })));

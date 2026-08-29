@@ -77,6 +77,15 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
   const [confirmingGeneration, setConfirmingGeneration] = useState(false);
   const [generationPending, setGenerationPending] = useState(false);
   const [generation, setGeneration] = useState<StartLongEpisodeImageGenerationResponse | null>(null);
+  /**
+   * When this screen started the run, so the clock counts the run rather than the visit.
+   *
+   * Null for a run that was already going on arrival — reload, another window, or coming back to the Episode.
+   * The screen knows such a run exists (the status says so) but not when it began, and a clock started on
+   * arrival would read as the run's age, which is a number the app would be making up.
+   */
+  const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [reviewState, setReviewState] = useState<ReviewState>({ status: "idle" });
   const [approvePending, setApprovePending] = useState<Set<SceneNumber>>(new Set());
   const [regenerateConfirm, setRegenerateConfirm] = useState<SceneNumber | null>(null);
@@ -171,6 +180,14 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
     return () => { cancelled = true; clearInterval(timer); };
   }, [projectId, episodeNumber, episode?.status]);
 
+  /* Costs nothing and needs nothing from the server: it is the one thing that proves the app is still alive
+     while a batch nobody can see per-scene runs for several minutes. */
+  useEffect(() => {
+    if (episode?.status !== "generating_images" || runStartedAt === null) return;
+    const ticker = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - runStartedAt) / 1000)), 1000);
+    return () => clearInterval(ticker);
+  }, [episode?.status, runStartedAt]);
+
   const eligible = episode?.status === "asset_mapping_approved";
   /**
    * The free preflight, asked once the Episode is ready to generate.
@@ -193,6 +210,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
     try {
       const response = await startLongEpisodeImageGeneration(projectId, episodeNumber);
       setGeneration(response); setEpisode(response.episode); setConfirmingGeneration(false);
+      setRunStartedAt(Date.now()); setElapsedSeconds(0);
     } catch (caught) { setError(toLongProjectDisplayError(caught)); }
     finally { generationBusy.current = false; setGenerationPending(false); }
   }
@@ -281,6 +299,30 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
           prerequisite the user failed to meet, when nothing is wrong at all. */}
       {!continuityReferenceLoading && !continuityReference?.available && <p data-testid="episode-image-continuity-unavailable" className="text-sm text-slate-400">{episodeNumber <= 1 ? "첫 에피소드라 이어받을 이전 장면이 없습니다. 이 에피소드부터 새로 시작합니다." : "이전 에피소드의 마지막 장면 자료가 아직 없어서, 이어받지 않고 이 에피소드만으로 만듭니다."}</p>}
       {episode && isBefore(episode.status, "asset_mapping_approved") && <p data-testid="episode-image-not-eligible" className="text-sm text-amber-300">에피소드 이미지 생성을 시작하려면 먼저 참고 이미지 연결을 승인하세요.</p>}
+      {/* The short project has said all of this since the run was made pollable; the Episode showed only a list
+          of scenes reading 만드는 중, with nothing about whether leaving was safe. That last sentence is the one
+          that stops a second $0.60 batch, and it was missing on the side where a batch costs more. */}
+      {episode?.status === "generating_images" && (
+        <div data-testid="episode-generation-progress" role="status" className="space-y-1.5 rounded-xl border border-violet-400/30 bg-violet-500/[0.07] p-3.5">
+          <p className="text-sm font-semibold text-violet-200">
+            {sceneNumbers.length > 0 ? `장면 ${sceneNumbers.length}개의 이미지를 만드는 중입니다.` : "이미지를 만드는 중입니다."}
+          </p>
+          {/* No per-scene count and no bar: the Episode does not publish per-scene progress, and a bar drawn
+              from nothing is a claim the screen cannot keep. */}
+          {runStartedAt !== null ? (
+            <p className="text-xs text-slate-400 tabular-nums">
+              {Math.floor(elapsedSeconds / 60)}분 {elapsedSeconds % 60}초째 진행 중 · 한 장에 보통 십수 초에서 1분쯤 걸립니다.
+            </p>
+          ) : (
+            <p data-testid="episode-generation-progress-resumed" className="text-xs text-slate-400">
+              이 화면에 들어오기 전부터 진행 중이던 생성입니다. 시작한 시각은 알 수 없어 경과 시간은 표시하지 않습니다.
+            </p>
+          )}
+          <p className="text-xs text-slate-500">
+            이 화면을 벗어나거나 새로고침해도 서버에서 만드는 것은 계속됩니다. 다시 누르면 같은 장면을 한 번 더 결제하게 됩니다.
+          </p>
+        </div>
+      )}
       <ol data-testid="episode-image-scenes" className="list-decimal space-y-1 pl-5 text-sm text-slate-300">
         {sceneNumbers.map((sceneNumber) => {
           /* Without the generating case this list said "대기 중" for every scene while five of six were

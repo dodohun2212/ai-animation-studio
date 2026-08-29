@@ -209,7 +209,7 @@ describe("VideoMergeScreen", () => {
     expect(screen.getByTestId("merge-scope-notice").textContent).toContain("이 단계는 비용이 들지 않습니다");
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(PROJECT_URL));
     // The scene count follows the project's actual scenes, not a fixed six.
-    await waitFor(() => expect(screen.getByTestId("merge-scope-notice").textContent).toContain("6개 승인 장면 영상을 순서대로 이어 붙입니다"));
+    await waitFor(() => expect(screen.getByTestId("merge-scope-notice").textContent).toContain("확정된 6개 장면 영상을 순서대로 이어 붙입니다"));
     expect(mergeFetch).not.toHaveBeenCalled();
   });
 
@@ -220,7 +220,7 @@ describe("VideoMergeScreen", () => {
     fireEvent.click(await screen.findByTestId("open-merge-confirm-button"));
     const panel = await screen.findByTestId("merge-confirm-panel");
     expect(panel.textContent).toContain("유료 요청은 전송되지 않습니다");
-    await waitFor(() => expect(panel.textContent).toContain("6개 승인 장면 영상을 하나의 최종 영상으로 병합할까요?"));
+    await waitFor(() => expect(panel.textContent).toContain("확정된 6개 장면 영상을 하나의 최종 영상으로 병합할까요?"));
     expect(mergeFetch).not.toHaveBeenCalled();
   });
 
@@ -228,10 +228,39 @@ describe("VideoMergeScreen", () => {
     const mergeFetch = vi.fn();
     renderScreen(mergeFetch, { scenes: sixScenes().slice(0, 4) });
 
-    await waitFor(() => expect(screen.getByTestId("merge-scope-notice").textContent).toContain("4개 승인 장면 영상을 순서대로 이어 붙입니다"));
+    await waitFor(() => expect(screen.getByTestId("merge-scope-notice").textContent).toContain("확정된 4개 장면 영상을 순서대로 이어 붙입니다"));
     fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
     const panel = await screen.findByTestId("merge-confirm-panel");
-    await waitFor(() => expect(panel.textContent).toContain("4개 승인 장면 영상을 하나의 최종 영상으로 병합할까요?"));
+    await waitFor(() => expect(panel.textContent).toContain("확정된 4개 장면 영상을 하나의 최종 영상으로 병합할까요?"));
+  });
+
+  /**
+   * The screen used to call the scene total "승인 장면" and offer the button regardless, so a project with two
+   * scenes still pending was told it would merge six approved clips and then refused by the server. The Episode
+   * screen has named the gap before the button since it was written; this is the short project's half of it.
+   */
+  it("names the scenes still unconfirmed and refuses to open the confirmation", async () => {
+    const mergeFetch = vi.fn();
+    const partly = sixScenes().map((scene, index) => (index < 4 ? scene : { ...scene, videoReview: "pending" as const }));
+    renderScreen(mergeFetch, { scenes: partly });
+
+    expect((await screen.findByTestId("merge-approved-count")).textContent).toContain("4개 확정됨");
+    expect((await screen.findByTestId("merge-blocked")).textContent).toContain("2개");
+    expect(screen.getByTestId("open-merge-confirm-button")).toBeDisabled();
+
+    // Disabled is a claim about what a press would do; the guard has to hold even if the attribute is bypassed.
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    expect(screen.queryByTestId("merge-confirm-panel")).toBeNull();
+    expect(mergeFetch).not.toHaveBeenCalled();
+  });
+
+  it("counts only the confirmed scenes, and does not block once they all are", async () => {
+    const mergeFetch = vi.fn();
+    renderScreen(mergeFetch);
+
+    expect((await screen.findByTestId("merge-approved-count")).textContent).toContain("6개 확정됨");
+    expect(screen.queryByTestId("merge-blocked")).toBeNull();
+    expect(screen.getByTestId("open-merge-confirm-button")).not.toBeDisabled();
   });
 
   it("cancels the confirmation without ever calling the merge endpoint", async () => {
@@ -377,7 +406,33 @@ describe("VideoMergeScreen", () => {
     // browser happily replays the previous cut — which reads as "the merge did nothing".
     const src = screen.getByTestId("final-video-player").getAttribute("src") ?? "";
     expect(src.startsWith("/projects/sample_project/videos/final/content?v=")).toBe(true);
+    // And specifically from the project's updatedAt — any constant would also satisfy the line above while
+    // pinning the address across the re-merge it exists to defeat.
+    expect(src).toContain(encodeURIComponent("2026-08-21T00:00:00.000Z"));
     expect(screen.queryByTestId("open-in-explorer-button")).toBeNull();
+  });
+
+  /**
+   * The merge can report success over a file the player cannot open — an empty scene clip carried through the
+   * concat produces one. The screen used to leave a silent black rectangle, which reads as "it worked", so the
+   * person went on to publish it. The notice says what to check instead.
+   */
+  it("says the final video will not play instead of leaving a silent black player", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    renderScreen(mergeFetch);
+
+    fireEvent.click(await screen.findByTestId("open-merge-confirm-button"));
+    await screen.findByTestId("merge-confirm-panel");
+    fireEvent.click(screen.getByTestId("confirm-merge-button"));
+    await screen.findByTestId("merge-success");
+
+    fireEvent.error(screen.getByTestId("final-video-player"));
+
+    expect((await screen.findByTestId("final-video-missing")).textContent).toContain("재생할 수 없습니다");
+    // The dead player goes away with it: two claims about the same file, one of them wrong, is worse than none.
+    expect(screen.queryByTestId("final-video-player")).toBeNull();
+    // The path stays — it is what the person needs to look at the file themselves.
+    expect(screen.getByTestId("final-video-path")).toBeTruthy();
   });
 
   it("opens the final video's folder through the Electron bridge when running inside the desktop shell", async () => {

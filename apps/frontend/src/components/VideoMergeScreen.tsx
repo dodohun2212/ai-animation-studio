@@ -60,6 +60,8 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
      than showing a black box that claims to be the finished video — the Episode player says this already. */
   const [unplayable, setUnplayable] = useState(false);
   const [sceneCount, setSceneCount] = useState<number | null>(null);
+  /** How many of them are actually confirmed. Null until the project loads — see `blocked` for why that matters. */
+  const [approvedCount, setApprovedCount] = useState<number | null>(null);
   /** null until the project settings load, and stays null if they fail — the copy then claims nothing. */
   const [mediaMode, setMediaMode] = useState<MediaMode | null>(null);
   /** null until the project loads: the default mode is derived from what this project actually has, never assumed. */
@@ -77,6 +79,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
       .then((response) => {
         if (cancelled) return;
         setSceneCount(response.project.scenes.length);
+        setApprovedCount(response.project.scenes.filter((scene) => scene.videoReview === "approved").length);
         // Derived, not assumed: a project that never generated narration cannot merge "narration only", and
         // defaulting to it would label a silent video as a narrated one (docs/06_DECISIONS.md D-011).
         setNarrationAvailable(response.project.narrationAvailable);
@@ -124,7 +127,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
 
   /** Opens the explicit confirmation panel. Never calls the network by itself. */
   function openConfirmation(): void {
-    if (busy.current || result) return;
+    if (busy.current || result || blocked) return;
     setError(null);
     setConfirmOpen(true);
   }
@@ -153,6 +156,9 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
   }
 
   const contentSentence = mergeContentSentence(mediaMode);
+  /* Only blocks on a count we actually read. Unknown stays unblocked — the server refuses either way, and a
+     button disabled on a guess is worse than one that fails honestly. Same rule as the Episode's merge. */
+  const blocked = approvedCount !== null && sceneCount !== null && approvedCount < sceneCount;
   /** Null until the project has loaded — merging before then would send a mode derived from nothing. */
   const audioSettings: MergeAudioSettings | null = toAudioSettings(audioMode, trackId);
   const modeUnready = audioMode !== null && needsTrack(audioMode) && !trackId;
@@ -175,9 +181,22 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
       </h1>
       <p className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300" data-testid="merge-scope-notice">
         이 단계는 비용이 들지 않습니다 — 유료 요청 없이, 이 컴퓨터에 설치된 영상 병합 프로그램만 실행합니다.
-        {sceneCount !== null ? ` ${sceneCount}개` : ""} 승인 장면 영상을 순서대로 이어 붙입니다.
+        {approvedCount !== null ? ` 확정된 ${approvedCount}개` : ""} 장면 영상을 순서대로 이어 붙입니다.
         {contentSentence ? ` ${contentSentence}` : ""}
       </p>
+
+      {approvedCount !== null && sceneCount !== null && (
+        <p className="text-sm text-slate-300 tabular-nums" data-testid="merge-approved-count">
+          장면 {sceneCount}개 중 <strong className="text-slate-100">{approvedCount}개 확정됨</strong>
+        </p>
+      )}
+      {blocked && approvedCount !== null && sceneCount !== null && (
+        /* Named before the button is reached, not after the server refuses — the person can go back and
+           confirm the rest instead of reading an error they did not cause. */
+        <p role="status" data-testid="merge-blocked" className="rounded-xl border border-amber-400/30 bg-amber-500/[0.06] px-4 py-3 text-sm text-amber-200">
+          아직 확정하지 않은 장면이 {sceneCount - approvedCount}개 있습니다. 장면 영상 화면에서 모두 확정한 뒤에 최종 영상을 만들 수 있습니다.
+        </p>
+      )}
 
       {!result && audioMode !== null && (
         <MergeAudioFieldset
@@ -199,7 +218,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
             className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
             data-testid="open-merge-confirm-button"
             onClick={openConfirmation}
-            disabled={confirmOpen || pending || modeUnready}
+            disabled={confirmOpen || pending || blocked || modeUnready}
           >
             {audioMode ? `${AUDIO_MODE_LABELS[audioMode]}으로 병합` : "최종 영상으로 병합"}
           </button>
@@ -217,7 +236,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
               className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
             >
               <p className="text-sm font-semibold text-amber-300">
-                {sceneCount !== null ? `${sceneCount}개 승인 장면 영상을` : "승인 장면 영상을"} 하나의 최종 영상으로 병합할까요?
+                {approvedCount !== null ? `확정된 ${approvedCount}개 장면 영상을` : "확정된 장면 영상을"} 하나의 최종 영상으로 병합할까요?
               </p>
               <p className="text-sm text-slate-300">
                 아직 병합이 시작되지 않았습니다. 확인을 누르면 이 컴퓨터의 영상 병합 프로그램이 실행됩니다.
