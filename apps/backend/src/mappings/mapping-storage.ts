@@ -27,6 +27,14 @@ const scene = (value: unknown): value is SceneNumber => Number.isInteger(value) 
 const iso = (value: unknown): value is string => typeof value === "string" && !Number.isNaN(Date.parse(value));
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === "string");
 const object = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+/**
+ * Every key a stored mapping may carry — including `episode_scope`, which nothing reads or writes any more.
+ *
+ * It is here so that Episode files written before the mapping teardown still open: dropping it from this set
+ * would turn those into LONG_PROJECT_DATA_INVALID, which is a project that cannot be opened rather than a field
+ * that is ignored. Listed and inert on purpose, and said out loud because a key in this set looks like a key in
+ * use — the whole reason that teardown's other leftovers went unnoticed for as long as they did.
+ */
 const mappingKeys = new Set(["mapping_id", "project_id", "asset_id", "enabled", "usage_role", "scene_scope", "assignment_source", "confidence", "match_reason", "status", "user_confirmed", "version_policy", "pinned_version", "candidate_only", "created_at", "updated_at", "snapshot_path", "snapshot_sha256", "snapshot_source_version", "selected_child_asset_ids", "episode_scope"]);
 const reviewKeys = new Set(["project_id", "mapping_revision", "script_revision", "script_fingerprint", "status", "approved_at", "approved_by", "text_only_confirmed", "legacy_confirmed", "reviewed_scenes"]);
 
