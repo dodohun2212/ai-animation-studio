@@ -46,6 +46,18 @@ const MONEY_GUARDS: readonly { title: string; why: string }[] = [
     title: "refuses to drop an Episode that has been worked on, rather than losing what was paid for",
     why: "its script and images stay on disk with nothing pointing at them",
   },
+  {
+    title: "writes what Runway sent, not the local placeholder",
+    why: "six clips were charged for and their bytes thrown away, with every check still reading green",
+  },
+  {
+    title: "fetches the clips already paid for instead of buying them again",
+    why: "recovery must stay a read — losing it means paying a second time for work already done",
+  },
+  {
+    title: "refuses to merge a paid run whose clips are placeholders, while the local fake path still merges",
+    why: "stubs would be published as the final video, and costing nothing is what makes that easy to believe",
+  },
 ];
 
 describe("paid-work guard tests", () => {
