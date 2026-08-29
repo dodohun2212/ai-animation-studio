@@ -88,11 +88,12 @@ export function toApiSummary(stored: StoredProject): ProjectSummary {
       mediaId: stored.instagram_post.media_id,
       igUserId: stored.instagram_post.ig_user_id,
       publishedAt: stored.instagram_post.published_at,
+      caption: stored.instagram_post.caption,
     } } : {}),
     // Carried out only when there is something to carry: an empty list on every project that has never
     // published would read as a fact about them rather than the absence of one.
     ...(stored.previous_instagram_posts.length > 0 ? { previousInstagramPosts: stored.previous_instagram_posts.map((post) => ({
-      mediaId: post.media_id, igUserId: post.ig_user_id, publishedAt: post.published_at,
+      mediaId: post.media_id, igUserId: post.ig_user_id, publishedAt: post.published_at, caption: post.caption,
     })) } : {}),
   };
 }

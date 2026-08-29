@@ -108,8 +108,10 @@ describe("InstagramPublishService.publish", () => {
     const result = await service.publish("post_project", approved);
 
     expect(result.mediaId).toBe("media-1");
+    // Exact, and it used to be exact around a record with no caption in it — the same shape of assertion that
+    // held the caption out of the container body. What a post said belongs on the record of that post.
     expect(result.project.instagramPost).toEqual({
-      mediaId: "media-1", igUserId: IG_USER_ID, publishedAt: "2026-08-27T12:00:00.000Z",
+      mediaId: "media-1", igUserId: IG_USER_ID, publishedAt: "2026-08-27T12:00:00.000Z", caption: "오늘의 영상",
     });
     const stored = await projects.findById("post_project");
     expect(stored.instagram_post).toMatchObject({ media_id: "media-1", caption: "오늘의 영상" });
@@ -175,11 +177,15 @@ describe("InstagramPublishService.publish", () => {
     const { service, projects } = await setup({ fetchImpl });
 
     const caption = "오늘의 영상 · Music by Jane Doe · AI로 만든 영상입니다 #ai";
-    await service.publish("post_project", { ...approved, caption });
+    const result = await service.publish("post_project", { ...approved, caption });
 
     expect(containerBody(fetchImpl).caption).toBe(caption);
     // And the record still matches what was actually sent, rather than the two drifting apart again.
     expect((await projects.findById("post_project")).instagram_post).toMatchObject({ caption });
+    // Out to the screen as well. The Episode's record has always carried its caption and the short project's
+    // stopped at the disk, so "what did this post actually say" — the question that matters exactly when the
+    // credit line does — had an answer on one kind only.
+    expect(result.project.instagramPost).toMatchObject({ caption });
   });
 
   it("refuses a container Instagram reports as already published, rather than publishing it a second time", async () => {
@@ -406,7 +412,7 @@ describe("InstagramPublishService.forgetPost", () => {
     const result = await service.forgetPost("post_project", { acknowledged: true });
 
     expect(result.project.previousInstagramPosts).toEqual([
-      { mediaId: "media-old", igUserId: IG_USER_ID, publishedAt: "2026-08-26T00:00:00.000Z" },
+      { mediaId: "media-old", igUserId: IG_USER_ID, publishedAt: "2026-08-26T00:00:00.000Z", caption: "before" },
     ]);
     expect((await projects.findById("post_project")).previous_instagram_posts).toHaveLength(1);
   });

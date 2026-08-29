@@ -156,6 +156,15 @@ export interface ProjectSummary {
     mediaId: string;
     igUserId: string;
     publishedAt: string;
+    /**
+     * What was actually published with it.
+     *
+     * Stored since the first publish and carried nowhere, so the screen could say a project was posted but not
+     * what went out with it — while the Episode's record carried the caption from the start. The caption is
+     * where the licence credit and the AI disclosure live, so "what did this post say" is the question someone
+     * asks precisely when it matters (D-003).
+     */
+    caption: string;
   };
   /**
    * Posts published and then forgotten, oldest first — see LongEpisodeDetail.previousInstagramPosts.
@@ -163,7 +172,7 @@ export interface ProjectSummary {
    * Clearing `instagramPost` is how a re-cut video becomes publishable again, and on its own that clearing
    * would also erase the only trace that something may still be live on the account.
    */
-  previousInstagramPosts?: Array<{ mediaId: string; igUserId: string; publishedAt: string }>;
+  previousInstagramPosts?: Array<{ mediaId: string; igUserId: string; publishedAt: string; caption: string }>;
   usedAudio?: UsedAudio;
 }
 
