@@ -2324,3 +2324,8 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
   - 접힌 쪽에 **"그럼 어디서 바꾸냐"** 의 답을 한 줄 붙였다: 비밀·복선은 설정집에서 고쳐야 하고 다음 화 대본은 설정집의 `status` 와 `reveal_available_episode` 를 읽는다. 답 없는 안내는 칸을 고장 난 것처럼 보이게 한다.
   - 테스트가 **presence 가 아니라 containment 로** 단언한다 — 전부 담은 상자도, 텅 빈 상자도 presence 는 통과한다. 주입으로 확인했다: `worldChanges` 를 넘어가는 쪽으로 옮기면 정확히 그 테스트가 빨갛고, 되돌리면 초록이다.
   - 프리필 안내문도 같이 고쳤다: `newConflicts` 가 접힌 쪽으로 갔는데 문구는 여전히 "아래 네 칸" 이라 **안 보이는 칸을 채워 놓고 네 칸이라고 말하는** 상태였다.
+- [x] **🔴 화면이 방금 보여준 계정을 발행이 모른다고 했다 — 목록을 부르는 곳이 둘이었다 (Cowork Round 323, `84ba1d8`)**: granular 폴백(`925fe25`)을 **목록 쪽에만** 넣었다. 발행 직전의 D-006 확인(`sendToInstagram`)은 폴백 없는 `listInstagramPublishTargets` 를 그대로 불렀고, 캡틴D 토큰의 `/me/accounts` 는 여전히 `{"data": []}` 라 **`some()` 이 false → `INSTAGRAM_TARGET_NOT_FOUND`**. 즉 **고른 계정이 화면에는 있고 발행에는 없었다.** 단편·회차 둘 다 같은 함수를 쓰므로 게시 전체가 막혀 있었다.
+  - **그 함수 위 주석이 이 실패를 예고하고 있었다**: *"a second copy of it is a second place for the … **target check** to be got wrong — while looking correct beside its twin."* 두 호출자가 **같은 어댑터 함수**를 부르고 있어서 나란히 놓고 봐도 똑같아 보였다. 같은 질문을 두 번 물어봐야만 드러난다.
+  - **발행 쪽에 폴백을 한 벌 더 붙이지 않았다** — 그건 세 번째 사본이다. `resolveInstagramPublishTargets()` 한 함수로 내리고 **두 호출자가 같은 것을 부르게** 했다. `grantedTargets` 도 서비스에서 그리로 옮겼다(여전히 실패는 소프트).
+  - 주입 두 개로 확인했다: 폴백 자체를 빼면 **목록·발행 두 테스트가 같이** 빨갛고, **발행만** 원래대로 raw 목록에 되돌리면 **발행 테스트만** 빨갛다 — 후자가 이번에 실제로 있던 상태다. 그리고 없는 계정은 폴백이 있어도 여전히 거절한다(폴백은 도달 범위를 넓히지 확인을 끄지 않는다, D-006).
+  - 프론트 문구는 안 건드렸다. `INSTAGRAM_TARGET_NOT_FOUND` → *"계정을 다시 골라 주세요"* 는 **진짜 취소된 경우에는 옳은 문장**이다. 틀린 것은 문장이 아니라 그 코드가 나온다는 사실이었고, 문구를 고쳤으면 버그를 덮었을 것이다.
