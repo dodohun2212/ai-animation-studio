@@ -159,6 +159,25 @@ export class EpisodeVideoMergeService {
     await this.saveEpisode(id, number, failed).catch(() => undefined);
   }
 
+  /**
+   * The path to this Episode's merged final video, once there is one worth serving.
+   *
+   * Refuses a file that is only as long as the placeholder clip, the same test the merge itself applies to its
+   * inputs. A merged file cannot be smaller than the clips that went into it, so a file this size means the
+   * merge concatenated stubs — and a player pointed at that draws a black box while calling itself the final
+   * video, which is the exact claim the 32-byte scene files were making on disk.
+   */
+  async content(projectId: string, number: number): Promise<{ path: string }> {
+    const id = projectId.trim();
+    await this.loadEpisode(id, number);
+    const file = this.final(id, number);
+    let size: number;
+    try { const stat = await fs.stat(file); if (!stat.isFile()) throw longEpisodeMergeClipsInvalid(); size = stat.size; }
+    catch { throw longEpisodeMergeClipsInvalid(); }
+    if (size <= 0 || isPlaceholderClip(size)) throw longEpisodeMergeClipsInvalid();
+    return { path: file };
+  }
+
   async merge(projectId: string, number: number): Promise<MergeLongEpisodeVideosResponse> {
     const id = projectId.trim(); const episode = await this.loadEpisode(id, number); const clips = await this.approvedClips(id, number, episode);
     try { for (const clip of clips) await this.engine.probe(clip); }

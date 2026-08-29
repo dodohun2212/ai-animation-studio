@@ -1520,6 +1520,16 @@ export const API_ROUTES = {
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/generations/${encodeURIComponent(jobId)}/review/${sceneNumber}/approve`,
   longEpisodeVideoMerge: (projectId: string, episodeNumber: number) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/merge`,
+  /**
+   * The Episode's merged final video, so it can be watched instead of named.
+   *
+   * The short project has had `videoFinalContent` since its merge screen existed. The Episode's merge screen
+   * printed the file path as text and nothing else, and that line lived in React state — a reload left the
+   * finished video with no address anywhere in the app. Same hole as the scene clips had before
+   * `longEpisodeVideoContent`, one level up.
+   */
+  longEpisodeFinalVideoContent: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/final/content`,
   longEpisodeNarrationGeneration: (projectId: string, episodeNumber: number) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/narration/generations`,
   longEpisodeNarrationReview: (projectId: string, episodeNumber: number) =>

@@ -3,11 +3,12 @@ import type { Response as HttpResponse } from "express";
 import * as fs from "node:fs/promises";
 import { API_ROUTES, type ApproveLongEpisodeVideoReviewRequest, type ApproveLongEpisodeVideoReviewResponse, type GetLongEpisodeCurrentVideoJobResponse, type GetLongEpisodeVideoPreviewResponse, type GetLongEpisodeVideoReviewResponse, type LongEpisodeVideoProgress, type RecoverLongEpisodeVideosResponse, type RegenerateLongEpisodeVideoResponse, type StartLongEpisodeVideoGenerationRequest, type StartLongEpisodeVideoGenerationResponse } from "@ai-animation-studio/shared";
 import { EpisodeVideosService } from "./episode-videos.service.js";
-import { longEpisodeVideosInvalid } from "./long-project-api.error.js";
+import { EpisodeVideoMergeService } from "./episode-video-merge.service.js";
+import { longEpisodeMergeClipsInvalid, longEpisodeVideosInvalid } from "./long-project-api.error.js";
 
 @Controller()
 export class EpisodeVideosController {
-  constructor(private readonly service: EpisodeVideosService) {}
+  constructor(private readonly service: EpisodeVideosService, private readonly merges: EpisodeVideoMergeService) {}
   /**
    * Streams one scene's clip so a review card can hold a player.
    *
@@ -15,6 +16,36 @@ export class EpisodeVideosController {
    * a status and a filename. Six placeholders were approved through that screen — a player is what lets a
    * person check the claim the status makes.
    */
+  /**
+   * Streams the Episode's merged final video.
+   *
+   * Registered before the `:sceneNumber` route below, and in this controller rather than beside the merge it
+   * belongs to, because the two paths are the same shape to a router and registration order is what decides
+   * which one answers. Declared in a separate controller it lost: `final` was parsed as a scene number and
+   * every request came back as an invalid scene rather than the video. The short project's videos controller
+   * carries the same pairing for the same reason.
+   *
+   * Without this the finished Episode video had no address at all — the merge screen printed its file path as
+   * text held in React state, so a reload left it unreachable.
+   */
+  @Get(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/videos/final/content`)
+  async finalContent(@Param("projectId") id: string, @Param("episodeNumber") number: string, @Res({ passthrough: true }) response: HttpResponse): Promise<StreamableFile> {
+    const content = await this.merges.content(id, Number(number));
+    try {
+      const handle = await fs.open(content.path, "r");
+      const stat = await handle.stat();
+      if (!stat.isFile()) { await handle.close(); throw longEpisodeMergeClipsInvalid(); }
+      response.type("video/mp4");
+      response.setHeader("Content-Disposition", `inline; filename="episode${number}_final.mp4"`);
+      response.setHeader("Content-Length", String(stat.size));
+      response.setHeader("X-Content-Type-Options", "nosniff");
+      return new StreamableFile(handle.createReadStream());
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw longEpisodeMergeClipsInvalid();
+    }
+  }
+
   @Get(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/videos/:sceneNumber/content`)
   async content(@Param("projectId") id: string, @Param("episodeNumber") number: string, @Param("sceneNumber") scene: string, @Res({ passthrough: true }) response: HttpResponse): Promise<StreamableFile> {
     const content = await this.service.content(id, Number(number), scene);
