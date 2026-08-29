@@ -10,6 +10,7 @@ import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { AudioLibraryService } from "../audio/audio-library.service.js";
 import { LocalVideoMergeService } from "./video-merge.service.js";
+import { PLACEHOLDER_MP4 } from "./placeholder-clip.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true }))); });
@@ -89,6 +90,26 @@ describe("local FFmpeg video merge", () => {
     const content = await service.content("video_merge");
     expect(content).toEqual({ path: path.join(projectsRoot, "video_merge", "videos", "final", "instagram_reel.mp4") });
     await expect(fs.readFile(content.path, "utf8")).resolves.toBe("rendered");
+  });
+
+  it("refuses to serve a paid run's placeholder as the final video, but still serves the same file for a local fake run", async () => {
+    // The merge already refuses to build from placeholders; this is the same rule on the way back out. A
+    // merged file cannot be smaller than the clips that went into it, so this size means stubs were
+    // concatenated — and a player pointed at it shows a black box named "최종 영상".
+    const { projectsRoot, projects } = await setup();
+    const service = new LocalVideoMergeService(projects, projectsRoot, runner({}));
+    await service.merge("video_merge");
+    const file = path.join(projectsRoot, "video_merge", "videos", "final", "instagram_reel.mp4");
+    await fs.writeFile(file, PLACEHOLDER_MP4);
+
+    await expect(service.content("video_merge")).resolves.toEqual({ path: file });
+
+    const project = await projects.findById("video_merge");
+    project.video_generation_records = [{ scene_number: 1, job_id: "job", status: "succeeded", execution_mode: "runway" } as unknown as (typeof project.video_generation_records)[number]];
+    await projects.save(project);
+
+    await expect(new LocalVideoMergeService(projects, projectsRoot, runner({})).content("video_merge"))
+      .rejects.toMatchObject({ response: { code: "VIDEO_MERGE_CONTENT_UNAVAILABLE" } });
   });
 
   it("uses the documented landscape normalization when the stored wizard aspect is 16:9", async () => {

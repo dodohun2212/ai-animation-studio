@@ -1,5 +1,5 @@
 import * as crypto from "node:crypto";
-import { PLACEHOLDER_MP4 } from "./placeholder-clip.js";
+import { isPlaceholderClip, PLACEHOLDER_MP4 } from "./placeholder-clip.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
@@ -131,9 +131,14 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     const number = sceneNumberFromParam(rawSceneNumber);
     if (!number) throw videoContentUnavailable();
     const file = this.file(project.project_id, number);
+    // A paid run demands a real clip, not merely a non-empty one — the fifth place this same judgment lives
+    // (see placeholder-clip.ts). Serving a 32-byte header to a `<video>` draws a black box that calls itself
+    // the scene, which is the claim that let six stubbed clips be approved through a review screen. The local
+    // fake path writes placeholders on purpose, so only a run that reached a provider is held to the test.
+    const paid = project.video_generation_records.some((item) => typeof item === "object" && item !== null && (item as { execution_mode?: unknown }).execution_mode === "runway");
     try {
       const stat = await fs.stat(file);
-      if (!stat.isFile() || stat.size <= 0) throw new Error("invalid");
+      if (!stat.isFile() || stat.size <= 0 || (paid && isPlaceholderClip(stat.size))) throw new Error("invalid");
     } catch {
       throw videoContentUnavailable();
     }

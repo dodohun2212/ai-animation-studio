@@ -115,9 +115,12 @@ export class LocalVideoMergeService {
   async content(projectId: string): Promise<{ path: string }> {
     const project = await this.projects.findById(projectId.trim());
     const file = this.final(project.project_id);
+    // Same rule the merge itself applies to its inputs, now on the way back out. A merged file cannot be
+    // smaller than the clips that went into it, so this size means placeholders were concatenated.
+    const paid = project.video_generation_records.some((item) => typeof item === "object" && item !== null && (item as { execution_mode?: unknown }).execution_mode === "runway");
     try {
       const stat = await fs.stat(file);
-      if (!stat.isFile() || stat.size <= 0) throw new Error("invalid");
+      if (!stat.isFile() || stat.size <= 0 || (paid && isPlaceholderClip(stat.size))) throw new Error("invalid");
     } catch {
       throw videoMergeContentUnavailable();
     }

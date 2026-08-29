@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { PLACEHOLDER_MP4 } from "./placeholder-clip.js";
 
 import { afterEach, describe, expect, it } from "vitest";
 import { WorkflowState } from "@ai-animation-studio/shared";
@@ -79,6 +80,25 @@ describe("local fake video workflow", () => {
     await expect(fs.readFile(content.path)).resolves.toEqual(expect.any(Buffer));
     await expect(workflow.content("video_workflow", "7")).rejects.toMatchObject({ response: { code: "VIDEO_CONTENT_UNAVAILABLE" } });
     await expect(workflow.content("video_workflow", "abc")).rejects.toMatchObject({ response: { code: "VIDEO_CONTENT_UNAVAILABLE" } });
+  });
+
+  it("refuses to serve a paid run's placeholder as a scene, but still serves the same file for a local fake run", async () => {
+    // The two directions on one file, because "paid" is the whole judgment. A `<video>` pointed at a 32-byte
+    // header draws a black box that calls itself the scene — the claim that let six stubbed clips be approved
+    // through a review screen — while the local fake path writes exactly these bytes as its normal output.
+    const { projectsRoot, projects, accepted, workflow } = await setup();
+    await workflow.run("video_workflow", accepted.jobId);
+    const file = path.join(projectsRoot, "video_workflow", "videos", "runway", "scene2.mp4");
+    await fs.writeFile(file, PLACEHOLDER_MP4);
+
+    await expect(workflow.content("video_workflow", "2")).resolves.toEqual({ path: file });
+
+    const project = await projects.findById("video_workflow");
+    project.video_generation_records = project.video_generation_records.map((record) => ({ ...(record as Record<string, unknown>), execution_mode: "runway" }));
+    await projects.save(project);
+
+    await expect(new LocalVideoWorkflowService(projects, projectsRoot).content("video_workflow", "2"))
+      .rejects.toMatchObject({ response: { code: "VIDEO_CONTENT_UNAVAILABLE" } });
   });
 
   it("rejects content for a scene that has not produced a video yet", async () => {
