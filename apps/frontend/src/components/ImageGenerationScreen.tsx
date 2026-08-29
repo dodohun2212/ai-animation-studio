@@ -361,6 +361,28 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
             })}
           </ol>
 
+          {/* The pictures stay reachable after the review step.
+              The review block below renders only while the project is at 이미지 검토, so approving the last
+              scene made all of them vanish — and the video step is exactly when "what did scene 3 look like"
+              gets asked. They are still on disk; a stage is not a reason to hide what that stage produced. */}
+          {!reviewable && !videoConfirmationReached && sceneNumbers.some((number) => sceneStatus(number) === "completed") && (
+            <section aria-label="만든 장면 이미지" data-testid="scene-image-gallery" className="space-y-2 rounded-xl border border-white/10 bg-slate-950/30 p-4">
+              <h3 className="text-sm font-semibold text-slate-200">만든 장면 이미지</h3>
+              <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {sceneNumbers.filter((number) => sceneStatus(number) === "completed").map((number) => (
+                  <li key={number} className="space-y-1">
+                    <img
+                      src={imageReviewContentUrl(projectId, number, currentProject?.updatedAt ?? "")}
+                      alt={`${number}번 장면 이미지`}
+                          className="w-full rounded-lg border border-white/10 object-cover"
+                    />
+                    <span className="block text-xs text-slate-400">{number}번 장면</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           {allowed && !result && (
             <button type="button" className={primaryButton} onClick={openConfirmation} disabled={confirmOpen}>
               이미지 생성 시작

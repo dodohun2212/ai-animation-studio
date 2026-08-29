@@ -208,7 +208,12 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
              what makes a person press the button again. Per-scene progress is not published, so this says
              what is true of the batch rather than inventing a per-scene claim. */
           const status = reviewFor(sceneNumber)?.status
-            ?? (episode?.status === "generating_images" ? "generating" : generation ? "generated" : "waiting");
+            ?? (episode?.status === "generating_images" ? "generating"
+              // Past the image step the pictures exist — the gallery above is showing them — so "대기 중" here
+              // was the same list being wrong at a fourth stage. Review detail is only loaded at the review
+              // step; without it this says the one thing that is still true.
+              : (episode && !isBefore(episode.status, "images_ready")) || generation ? "generated"
+              : "waiting");
           return (
             <li key={sceneNumber} data-testid={`episode-image-scene-${sceneNumber}`} data-status={status}>
               장면 {sceneNumber}: {sceneSlotLabel(status)}
@@ -216,6 +221,30 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
           );
         })}
       </ol>
+      {/* The pictures stay reachable after the step that made them.
+          The review block below is the only place they appeared, and it renders only while the Episode is at
+          the review step — so approving the last scene made all six vanish. They are still on disk, and the
+          video step is exactly when "what did scene 3 look like" gets asked. A stage is not a reason to hide
+          what that stage produced. */}
+      {episode && !isBefore(episode.status, "images_ready") && !reviewable && sceneNumbers.length > 0 && (
+        <section aria-label="만든 장면 이미지" data-testid="episode-image-gallery" className="space-y-2 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
+          <h3 className="text-base font-semibold text-slate-100">만든 장면 이미지</h3>
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {sceneNumbers.map((sceneNumber) => (
+              <li key={sceneNumber} className="space-y-1">
+                <img
+                  src={longEpisodeImageContentUrl(projectId, episodeNumber, sceneNumber, episode.status)}
+                  /* Eager: six pictures on a screen someone opened to look at them, and a lazy loader that
+                     does not fire leaves six empty boxes with no error anywhere. */
+                  alt={`${sceneNumber}번 장면 이미지`}
+                  className="w-full rounded-lg border border-white/10 object-cover"
+                />
+                <span className="block text-xs text-slate-400">{sceneNumber}번 장면</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {eligible && !generation && <button type="button" disabled={confirmingGeneration} className={primaryButton} onClick={() => setConfirmingGeneration(true)}>이미지 생성 시작</button>}
       {confirmingGeneration && (
         <div role="alertdialog" data-testid="episode-image-generate-confirm" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">

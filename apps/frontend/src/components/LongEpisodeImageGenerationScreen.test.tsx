@@ -4,21 +4,22 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, makeLongProjectSettings } from "../api/testUtils.js";
 import { LongEpisodeImageGenerationScreen } from "./LongEpisodeImageGenerationScreen.js";
 
-const episode = (status: "planned" | "asset_mapping_approved" | "generating_images" | "images_review" | "waiting_for_video_confirmation") => ({
+const episode = (status: "planned" | "asset_mapping_approved" | "generating_images" | "images_ready" | "images_review" | "waiting_for_video_confirmation") => ({
   episodeNumber: 1, title: "Episode 1", summary: "Summary", mainEvent: "Event", conflict: "Conflict", cliffhanger: "Hook", nextEpisodeHook: "Next",
   status, approved: true, scriptRevision: 2, scriptHistoryCount: 1,
 });
 /**
- * The screen never guesses scene numbers — with no reviews yet it reads them off the Episode's own script, and
- * an Episode with neither renders an empty list. An Episode that is generating always has an approved script
- * by then, so a fixture for that state needs one or the list it is asserting about does not exist.
+ * A script the response guard accepts. `longProjectsApi` checks every scene for all sixteen motion fields, so a
+ * scene written as `{ number }` makes the whole Episode response invalid and the screen renders nothing — the
+ * list and the gallery a test is asserting about never exist. The screen also refuses to guess scene numbers,
+ * so a state that has no reviews yet needs this to have any scenes at all.
  */
-const scriptScenes = [1, 2, 3, 4, 5, 6].map((number) => ({
-  number, description: "d", visualAction: "v", startMotion: "s", mainMotion: "m", endMotion: "e",
+const scriptScenes = (count = 6) => Array.from({ length: count }, (_, index) => ({
+  number: index + 1, description: "d", visualAction: "v", startMotion: "s", mainMotion: "m", endMotion: "e",
   shotSize: "s", cameraAngle: "c", composition: "c", lensFeel: "l", focusSubject: "f", cameraMotion: "c",
   environmentMotion: "e", motionSpeed: "n", motionIntensity: "m", expressionChange: "x", continuityHint: "h",
 }));
-const withScript = (value: ReturnType<typeof episode>) => ({ ...value, script: { title: "t", synopsis: "s", ending: "e", scenes: scriptScenes } });
+const withScript = (value: ReturnType<typeof episode>, count = 6) => ({ ...value, script: { title: "t", synopsis: "s", ending: "e", scenes: scriptScenes(count) } });
 
 const reviews = (approved: number[] = []) => [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: approved.includes(sceneNumber) ? "approved" as const : "pending" as const, updatedAt: "2026-08-23T00:00:00.000Z" }));
 
@@ -314,5 +315,20 @@ describe("LongEpisodeImageGenerationScreen", () => {
 
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
     expect(await screen.findByTestId("episode-image-not-eligible")).toBeTruthy();
+  });
+
+  // The review block is the only place the pictures appeared, and it renders only at the review step — so
+  // approving the last scene made all six vanish. The video step is exactly when "what did scene 3 look like"
+  // gets asked, and the files are still on disk.
+  it("keeps the pictures reachable after the review step is over", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      // sceneNumbers falls back to the script when no review is loaded, which is the case at this stage.
+      .mockResolvedValueOnce(jsonResponse(200, { episode: { ...withScript(episode("images_review"), 3), status: "videos_review" } }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValue(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }) })));
+
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+    const gallery = await screen.findByTestId("episode-image-gallery");
+    expect(gallery.querySelectorAll("img").length).toBeGreaterThan(0);
   });
 });
