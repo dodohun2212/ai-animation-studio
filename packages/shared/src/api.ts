@@ -535,9 +535,23 @@ export interface LongEpisodeNarrationReview {
    */
   audioDurationSeconds?: number;
 }
+/**
+ * Which already-spoken scenes no longer match the words the script now has.
+ *
+ * The last of the three: the Episode's video and image reviews already say this, and the voice — the one a
+ * viewer hears rather than sees — did not. The generation path has always known, because it compares the
+ * scene's narration to the recorded one to decide whether to re-buy the audio. It simply never told the screen,
+ * so a person could approve narration that says something the script no longer does.
+ *
+ * A scene with no record is absent, not listed: nothing has been spoken yet, so nothing is behind. Placeholder
+ * audio is likewise not "stale" — it matches its text; it is just not real speech, which `state` already says.
+ */
+export interface LongEpisodeNarrationStaleness { narrationStale: SceneNumber[]; }
+
 export interface GetLongEpisodeNarrationReviewResponse {
   episode: LongEpisodeDetail;
   narrations: LongEpisodeNarrationReview[];
+  staleness: LongEpisodeNarrationStaleness;
   /** Same meaning and scope as StartLongEpisodeImageGenerationResponse.budget (see that field's doc comment). */
   budget?: BudgetPreview;
 }

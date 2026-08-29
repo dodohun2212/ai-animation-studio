@@ -2,7 +2,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import { LONG_EPISODE_STATUSES, sceneNumbersFor, TTS_ESTIMATED_COST_USD, type GetLongEpisodeNarrationReviewResponse, type LongEpisodeDetail, type LongEpisodeNarrationReview,
+import { LONG_EPISODE_STATUSES, sceneNumbersFor, TTS_ESTIMATED_COST_USD, type GetLongEpisodeNarrationReviewResponse, type LongEpisodeDetail, type LongEpisodeNarrationReview, type LongEpisodeNarrationStaleness,
   type NarrationAudioState, type LongEpisodeStatus, type RegenerateLongEpisodeNarrationResponse, type SceneNumber, type StartLongEpisodeNarrationGenerationRequest, type StartLongEpisodeNarrationGenerationResponse } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { resolveSafeProjectDirectory } from "../projects/project-id.js";
@@ -145,6 +145,30 @@ export class EpisodeNarrationService {
     }));
   }
 
+  /**
+   * Which spoken scenes no longer match the words the script now has.
+   *
+   * The comparison already existed — `stillGoodAudio` makes it to decide whether a generation must re-buy a
+   * scene — and its answer never reached the screen. So the app knew the audio said something the script no
+   * longer does, and the review screen still offered it for approval.
+   *
+   * A scene with no record is absent rather than listed: nothing has been spoken, so nothing is behind. And a
+   * scene whose audio is gone from disk is left out too — that is "not made", which the review's own `state`
+   * says, and calling it stale would send someone to re-buy what they have not bought once.
+   */
+  private async narrationStaleness(id: string, number: number, scenes: readonly Record<string, unknown>[]): Promise<LongEpisodeNarrationStaleness> {
+    const records = await this.loadRecords(id, number);
+    const narrationStale: SceneNumber[] = [];
+    for (const sceneNumber of sceneNumbersFor(scenes.length)) {
+      const scene = scenes[sceneNumber - 1];
+      const record = records.find((item) => item.scene_number === sceneNumber);
+      if (!scene || !record) continue;
+      if (!(await this.validAudio(this.narrationPath(id, number, sceneNumber)))) continue;
+      if (record.narration !== this.sceneNarrationText(scene)) narrationStale.push(sceneNumber);
+    }
+    return { narrationStale };
+  }
+
   async get(projectId: string, number: number): Promise<GetLongEpisodeNarrationReviewResponse> {
     const id = projectId.trim(); const episode = await this.episode(id, number); this.assertHasScript(episode);
     const scenes = this.scriptScenes(episode, this.sceneCount(episode));
@@ -152,7 +176,7 @@ export class EpisodeNarrationService {
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.
     const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, TTS_ESTIMATED_COST_USD) : undefined;
-    return { episode: this.detail(episode), narrations, ...(budget ? { budget } : {}) };
+    return { episode: this.detail(episode), narrations, staleness: await this.narrationStaleness(id, number, scenes), ...(budget ? { budget } : {}) };
   }
 
   /**

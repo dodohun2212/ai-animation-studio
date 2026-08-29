@@ -74,6 +74,38 @@ describe("EpisodeNarrationService", () => {
     expect(again.reusedSceneNumbers).toEqual([1, 2, 3, 4]);
   });
 
+  /**
+   * The last of the three. The Episode's video and image reviews already say when a scene has moved past what
+   * was paid for; the voice — the one a viewer hears rather than sees — did not, so a person could approve
+   * narration that says something the script no longer does.
+   *
+   * The comparison already existed: the generation path makes it to decide whether to re-buy a scene. Its
+   * answer simply never reached the screen.
+   */
+  it("names the scenes whose spoken audio no longer matches the script", async () => {
+    const { narration, projectsRoot } = await setup();
+    await narration.generate("long", 1, { approved: true });
+    expect((await narration.get("long", 1)).staleness.narrationStale).toEqual([]);
+
+    const file = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
+    const episode = JSON.parse(await fs.readFile(file, "utf8")) as { script: { scenes: Record<string, unknown>[] } };
+    episode.script.scenes[1]!.narration = "이제 완전히 다른 문장을 말합니다.";
+    await fs.writeFile(file, JSON.stringify(episode, null, 2));
+
+    expect((await narration.get("long", 1)).staleness.narrationStale).toEqual([2]);
+  });
+
+  it("says nothing about a scene that has never been spoken", async () => {
+    // Absent, not listed: "not made" is a different state from "behind", and calling it stale would send
+    // someone to re-buy what they have not bought once. The review's own `audio` field says "none".
+    const { narration } = await setup();
+
+    const { staleness, narrations } = await narration.get("long", 1);
+
+    expect(staleness.narrationStale).toEqual([]);
+    expect(narrations.every((item) => item.audio === "none")).toBe(true);
+  });
+
   it("skips a scene with no narration text instead of failing the whole batch", async () => {
     const { narration, scripts } = await setup();
     const episode = await scripts.get("long", 1);
