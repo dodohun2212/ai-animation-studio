@@ -267,3 +267,34 @@ describe("EpisodeVideoMergeService — audio", () => {
     expect(calls.some((args) => args.includes("-stream_loop"))).toBe(false);
   });
 });
+
+describe("EpisodeVideoMergeService — the cut it replaces", () => {
+  /**
+   * Re-merging overwrote the finished video in place. The previous cut may already have been watched,
+   * approved, or been one press away from being published — and it was simply gone, with no way to get back to
+   * it. Archiving costs a local file copy.
+   */
+  it("keeps the previous final video when a second merge replaces it", async () => {
+    const { projectsRoot } = await setup();
+    const service = new EpisodeVideoMergeService(projectsRoot, runner({}));
+    const final = path.join(projectsRoot, "long", "long_story", "Episode01", "videos", "final");
+
+    await service.merge("long", 1);
+    const first = await fs.readFile(path.join(final, "instagram_reel.mp4"));
+    // What a clip restore leaves behind: the Episode is mergeable again and the old cut is still on disk.
+    const episodeFile = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
+    const stored = JSON.parse(await fs.readFile(episodeFile, "utf8")) as Record<string, unknown>;
+    await fs.writeFile(episodeFile, JSON.stringify({ ...stored, state: "videos_approved", final_video_path: null }));
+    await service.merge("long", 1);
+
+    expect(Buffer.from(await fs.readFile(path.join(final, "history", "instagram_reel_v001.mp4"))).equals(first)).toBe(true);
+  });
+
+  it("archives nothing on a first merge, because there is no previous cut to keep", async () => {
+    const { projectsRoot } = await setup();
+    await new EpisodeVideoMergeService(projectsRoot, runner({})).merge("long", 1);
+
+    await expect(fs.readdir(path.join(projectsRoot, "long", "long_story", "Episode01", "videos", "final", "history")))
+      .rejects.toMatchObject({ code: "ENOENT" });
+  });
+});

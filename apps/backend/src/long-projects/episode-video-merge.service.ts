@@ -71,6 +71,32 @@ export class EpisodeVideoMergeService {
   }
 
   private clip(id: string, number: number, value: SceneNumber): string { return path.join(this.files(id, number).videos, `scene${value}.mp4`); }
+  /**
+   * Copies the current final video into `videos/final/history/` before a new merge replaces it.
+   *
+   * `instagram_reel_v{NNN}.mp4` — the same name the short project's video library archives under, and the same
+   * name this Episode's own version routes read back. A third naming scheme would put the copies somewhere
+   * nothing can list, which is the state Episode scene clips were in until this week: preserved and unreachable,
+   * which is only a quieter version of not preserved at all.
+   *
+   * Silent when there is nothing to keep — a first merge has no previous cut — and it never fails the merge:
+   * losing the archive is bad, losing the merge someone is waiting on because the archive failed is worse.
+   */
+  private async archiveFinal(id: string, number: number): Promise<void> {
+    try {
+      const current = this.final(id, number);
+      const bytes = await fs.readFile(current).catch(() => undefined);
+      if (!bytes || bytes.length === 0) return;
+      const directory = path.join(path.dirname(current), "history");
+      let entries: string[] = [];
+      try { entries = await fs.readdir(directory); } catch { entries = []; }
+      const versions = entries.map((name) => /^instagram_reel_v(\d{3})\.mp4$/.exec(name))
+        .filter((match): match is RegExpExecArray => Boolean(match)).map((match) => Number(match[1]));
+      await fs.mkdir(directory, { recursive: true });
+      await fs.writeFile(path.join(directory, `instagram_reel_v${String((versions.length ? Math.max(...versions) : 0) + 1).padStart(3, "0")}.mp4`), bytes);
+    } catch { /* keeping a copy is best-effort; it must never be the reason a merge fails */ }
+  }
+
   private final(id: string, number: number): string { return path.join(this.files(id, number).videos, "final", "instagram_reel.mp4"); }
   /** Same path scheme as episode-narration.service.ts's narrationPath() — not shared to avoid a cross-service dependency, matching this file's existing "each service computes its own file paths" convention. */
   private narrationAudio(id: string, number: number, scene: SceneNumber): string { return path.join(this.files(id, number).episode, "narration", `scene${scene}.mp3`); }
@@ -247,6 +273,11 @@ export class EpisodeVideoMergeService {
     await this.saveEpisode(id, number, rendering);
     try {
       const output = this.final(id, number); await fs.mkdir(path.dirname(output), { recursive: true });
+      // The cut this merge is about to replace, kept. Re-merging with different audio or after restoring a
+      // clip used to overwrite the finished video in place, and the previous cut — which someone may already
+      // have watched, approved, or been about to publish — was simply gone. Archiving costs a local file copy.
+      await this.archiveFinal(id, number);
+
       const mergeScenes = await this.mergeScenes(id, number, episode, clips, sceneNumbersFor(this.sceneCount(episode)));
       await this.engine.merge(mergeScenes, this.clipDurationSeconds(episode), output, await this.ratio(id, number));
       if (bgmPath) await this.engine.mixBackgroundMusic(output, bgmPath, audio.volume, audio.fadeSeconds, output);

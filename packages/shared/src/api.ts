@@ -1812,12 +1812,18 @@ export const API_ROUTES = {
    * is archived on regeneration either way. Until now the Episode wrote those copies under a timestamped name
    * that nothing in the app could read back, so paid clips accumulated on disk with no way to reach them.
    * `versionId` is `current` or `v001`-style, exactly as VideoVersionSummary already defines it.
+   *
+   * `"final"` addresses the merged video, the same word the short project's routes use. Re-merging an Episode
+   * used to overwrite the finished cut in place with nothing kept — a cut someone may already have watched,
+   * approved, or been one press away from publishing. Restoring one makes it current again and leaves the
+   * Episode completed, where restoring a *scene* clears the final video instead: that one invalidates the
+   * merge, this one is the merge.
    */
-  longEpisodeVideoVersions: (projectId: string, episodeNumber: number, sceneNumber: SceneNumber) =>
+  longEpisodeVideoVersions: (projectId: string, episodeNumber: number, sceneNumber: SceneNumber | "final") =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/${sceneNumber}/versions`,
-  longEpisodeVideoVersionContent: (projectId: string, episodeNumber: number, sceneNumber: SceneNumber, versionId: string) =>
+  longEpisodeVideoVersionContent: (projectId: string, episodeNumber: number, sceneNumber: SceneNumber | "final", versionId: string) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/${sceneNumber}/versions/${encodeURIComponent(versionId)}/content`,
-  longEpisodeVideoVersionRestore: (projectId: string, episodeNumber: number, sceneNumber: SceneNumber, versionId: string) =>
+  longEpisodeVideoVersionRestore: (projectId: string, episodeNumber: number, sceneNumber: SceneNumber | "final", versionId: string) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/videos/${sceneNumber}/versions/${encodeURIComponent(versionId)}/restore`,
   /**
    * Every generated scene image, across every project and Episode.

@@ -96,9 +96,9 @@ async function layHistory(episodeDirectory: string, scene: SceneNumber): Promise
   await fs.writeFile(path.join(videos, `scene${scene}.mp4`), clip(3));
 }
 
-const versionsUrl = (base: string, scene: SceneNumber) => base + API_ROUTES.longEpisodeVideoVersions("long", 1, scene);
-const contentUrl = (base: string, scene: SceneNumber, version: string) => base + API_ROUTES.longEpisodeVideoVersionContent("long", 1, scene, version);
-const restoreUrl = (base: string, scene: SceneNumber, version: string) => base + API_ROUTES.longEpisodeVideoVersionRestore("long", 1, scene, version);
+const versionsUrl = (base: string, scene: SceneNumber | "final") => base + API_ROUTES.longEpisodeVideoVersions("long", 1, scene);
+const contentUrl = (base: string, scene: SceneNumber | "final", version: string) => base + API_ROUTES.longEpisodeVideoVersionContent("long", 1, scene, version);
+const restoreUrl = (base: string, scene: SceneNumber | "final", version: string) => base + API_ROUTES.longEpisodeVideoVersionRestore("long", 1, scene, version);
 
 describe.sequential("an Episode scene's past clips", () => {
   it("lists the clip in use and every archived copy, newest first", async () => {
@@ -213,5 +213,72 @@ describe.sequential("an Episode scene's past clips", () => {
 
     // Neither attempt touched the file in use.
     expect((await fs.readFile(path.join(episodeDirectory, "videos", "scene2.mp4"))).equals(clip(3))).toBe(true);
+  });
+});
+
+describe.sequential("an Episode's past final videos", () => {
+  /** A finished cut plus two older ones, the way re-merging twice would leave them. */
+  async function layFinalHistory(episodeDirectory: string): Promise<void> {
+    const final = path.join(episodeDirectory, "videos", "final");
+    await fs.mkdir(path.join(final, "history"), { recursive: true });
+    await fs.writeFile(path.join(final, "history", "instagram_reel_v001.mp4"), clip(1));
+    await fs.writeFile(path.join(final, "history", "instagram_reel_v002.mp4"), clip(2));
+    await fs.writeFile(path.join(final, "instagram_reel.mp4"), clip(3));
+  }
+
+  async function markCompleted(episodeDirectory: string): Promise<string> {
+    const episodeFile = path.join(episodeDirectory, "project.json");
+    const stored = JSON.parse(await fs.readFile(episodeFile, "utf8")) as Record<string, unknown>;
+    await fs.writeFile(episodeFile, JSON.stringify({ ...stored, state: "completed", final_video_path: "videos/final/instagram_reel.mp4" }));
+    return episodeFile;
+  }
+
+  it("lists the finished cut in use and every older one, on the same three routes as a scene", async () => {
+    const { base, episodeDirectory } = await bootEpisodeWithClips();
+    await layFinalHistory(episodeDirectory);
+    await markCompleted(episodeDirectory);
+
+    const { versions } = await (await fetch(versionsUrl(base, "final"))).json() as { versions: VideoVersionSummary[] };
+
+    expect(versions.map((version) => version.versionId)).toEqual(["current", "v002", "v001"]);
+  });
+
+  it("plays an older cut, identified by its bytes rather than by the route answering at all", async () => {
+    const { base, episodeDirectory } = await bootEpisodeWithClips();
+    await layFinalHistory(episodeDirectory);
+    await markCompleted(episodeDirectory);
+
+    const older = await fetch(contentUrl(base, "final", "v001"));
+
+    expect(older.status).toBe(200);
+    expect(Buffer.from(await older.arrayBuffer()).equals(clip(1))).toBe(true);
+  });
+
+  /**
+   * The opposite of a scene restore, on purpose.
+   *
+   * Restoring a *scene* clears the final video: the merge was built from clips that no longer match. Restoring
+   * a *final video* is the merge — clearing it would throw away the very cut the person just chose, which is
+   * the one outcome this feature exists to prevent.
+   */
+  it("makes an older cut current again and leaves the Episode finished, not un-merged", async () => {
+    const { base, episodeDirectory } = await bootEpisodeWithClips();
+    await layFinalHistory(episodeDirectory);
+    const episodeFile = await markCompleted(episodeDirectory);
+
+    const response = await fetch(restoreUrl(base, "final", "v001"), {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }),
+    });
+
+    expect(response.status).toBe(201);
+    const { episode } = await response.json() as { episode: { status: string } };
+    expect(episode.status).toBe("completed");
+    const after = JSON.parse(await fs.readFile(episodeFile, "utf8")) as { final_video_path: unknown };
+    expect(after.final_video_path).toBe("videos/final/instagram_reel.mp4");
+    // The chosen cut is what the Episode now serves, and the one it displaced was kept — a restore is itself
+    // reversible or it is just a different way of losing a cut.
+    const final = path.join(episodeDirectory, "videos", "final");
+    expect(Buffer.from(await fs.readFile(path.join(final, "instagram_reel.mp4"))).equals(clip(1))).toBe(true);
+    expect(Buffer.from(await fs.readFile(path.join(final, "history", "instagram_reel_v003.mp4"))).equals(clip(3))).toBe(true);
   });
 });

@@ -327,15 +327,31 @@ export class EpisodeVideosService implements OnModuleDestroy {
    * A scene whose output cannot be fetched any more (task gone, URL expired, an empty body) is reported and
    * left `failed`, never silently regenerated: spending money is the person's decision, not a fallback.
    */
-  private historyDirectory(id: string, number: number): string { return path.join(this.files(id, number).videos, "history"); }
-  private historyFile(id: string, number: number, value: SceneNumber, version: number): string {
-    return path.join(this.historyDirectory(id, number), `scene${value}_v${String(version).padStart(3, "0")}.mp4`);
+  /**
+   * The two things an Episode keeps past copies of: one scene's clip, and the merged final video.
+   *
+   * `"final"` is a target here rather than a second set of methods, for the reason the short project's video
+   * library made it one — every rule that matters (archive before overwriting, list newest first, restoring is
+   * free and itself reversible) is the same rule, and a second implementation of it is a second place for a
+   * paid file to be replaced with no copy kept.
+   */
+  private historyDirectory(id: string, number: number, target: SceneNumber | "final"): string {
+    const videos = this.files(id, number).videos;
+    return target === "final" ? path.join(videos, "final", "history") : path.join(videos, "history");
   }
-  /** The version numbers already archived for one scene, in ascending order. */
-  private async historyVersions(id: string, number: number, value: SceneNumber): Promise<number[]> {
+  private historyFile(id: string, number: number, target: SceneNumber | "final", version: number): string {
+    const prefix = target === "final" ? "instagram_reel_v" : `scene${target}_v`;
+    return path.join(this.historyDirectory(id, number, target), `${prefix}${String(version).padStart(3, "0")}.mp4`);
+  }
+  /** The file this target serves today. */
+  private currentFile(id: string, number: number, target: SceneNumber | "final"): string {
+    return target === "final" ? path.join(this.files(id, number).videos, "final", "instagram_reel.mp4") : this.video(id, number, target);
+  }
+  /** The version numbers already archived for one target, in ascending order. */
+  private async historyVersions(id: string, number: number, target: SceneNumber | "final"): Promise<number[]> {
     let entries: string[];
-    try { entries = await fs.readdir(this.historyDirectory(id, number)); } catch { return []; }
-    const pattern = new RegExp(`^scene${value}_v(\\d{3})\\.mp4$`);
+    try { entries = await fs.readdir(this.historyDirectory(id, number, target)); } catch { return []; }
+    const pattern = target === "final" ? /^instagram_reel_v(\d{3})\.mp4$/ : new RegExp(String.raw`^scene${target}_v(\d{3})\.mp4$`);
     return entries.map((name) => pattern.exec(name)).filter((match): match is RegExpExecArray => Boolean(match)).map((match) => Number(match[1])).sort((a, b) => a - b);
   }
   /**
@@ -346,13 +362,12 @@ export class EpisodeVideosService implements OnModuleDestroy {
    * archived into a shape nothing could list, play or restore. Paid work piling up where nobody can reach it
    * is the same defect as paid work being overwritten; it is only quieter.
    */
-  private async archive(id: string, number: number, value: SceneNumber): Promise<void> {
-    const current = this.video(id, number, value);
-    const bytes = await fs.readFile(current).catch(() => undefined);
+  async archive(id: string, number: number, target: SceneNumber | "final"): Promise<void> {
+    const bytes = await fs.readFile(this.currentFile(id, number, target)).catch(() => undefined);
     if (!bytes || bytes.length === 0) return;
-    const versions = await this.historyVersions(id, number, value);
-    await fs.mkdir(this.historyDirectory(id, number), { recursive: true });
-    await this.binary(this.historyFile(id, number, value, (versions.at(-1) ?? 0) + 1), bytes);
+    const versions = await this.historyVersions(id, number, target);
+    await fs.mkdir(this.historyDirectory(id, number, target), { recursive: true });
+    await this.binary(this.historyFile(id, number, target, (versions.at(-1) ?? 0) + 1), bytes);
   }
 
   private async fileFacts(file: string): Promise<{ bytes: number; createdAt: string } | undefined> {
@@ -364,9 +379,12 @@ export class EpisodeVideosService implements OnModuleDestroy {
   }
 
   /** The scene number this Episode actually has, or a refusal — shared by all three version routes. */
-  private async sceneOf(projectId: string, number: number, rawScene: string): Promise<{ id: string; episode: Episode; value: SceneNumber }> {
+  private async sceneOf(projectId: string, number: number, rawScene: string): Promise<{ id: string; episode: Episode; value: SceneNumber | "final" }> {
     const id = projectId.trim();
     const episode = await this.loadEpisode(id, number);
+    // "final" addresses the merged video, on the same three routes, exactly as the short project's video
+    // library does. One vocabulary for one idea: a past copy of something this Episode already paid for.
+    if (rawScene === "final") return { id, episode, value: "final" };
     const value = scene(Number(rawScene));
     if (!value || String(value) !== rawScene || value > this.sceneCount(episode)) throw longInvalidRequest();
     return { id, episode, value };
@@ -374,7 +392,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
 
   async versions(projectId: string, number: number, rawScene: string): Promise<GetVideoVersionsResponse> {
     const { id, value } = await this.sceneOf(projectId, number, rawScene);
-    const current = await this.fileFacts(this.video(id, number, value));
+    const current = await this.fileFacts(this.currentFile(id, number, value));
     const archived = await Promise.all((await this.historyVersions(id, number, value)).map(async (version) => {
       const facts = await this.fileFacts(this.historyFile(id, number, value, version));
       return facts ? { versionId: `v${String(version).padStart(3, "0")}`, createdAt: facts.createdAt, bytes: facts.bytes, isCurrent: false, sortKey: version } : undefined;
@@ -385,8 +403,8 @@ export class EpisodeVideosService implements OnModuleDestroy {
     return { versions: current ? [{ versionId: "current", createdAt: current.createdAt, bytes: current.bytes, isCurrent: true }, ...rows] : rows };
   }
 
-  private versionFile(id: string, number: number, value: SceneNumber, versionId: string): string {
-    if (versionId === "current") return this.video(id, number, value);
+  private versionFile(id: string, number: number, value: SceneNumber | "final", versionId: string): string {
+    if (versionId === "current") return this.currentFile(id, number, value);
     const match = /^v(\d{3})$/.exec(versionId);
     if (!match) throw longEpisodeVideoVersionNotFound();
     return this.historyFile(id, number, value, Number(match[1]));
@@ -421,10 +439,15 @@ export class EpisodeVideosService implements OnModuleDestroy {
       const episode = await this.loadEpisode(id, number);
       try {
         await this.archive(id, number, value);
-        await this.binary(this.video(id, number, value), bytes);
+        await this.binary(this.currentFile(id, number, value), bytes);
       } catch { throw longStorageError(); }
-      const restored: Episode = { ...episode, updated_at: new Date().toISOString(), final_video_path: null };
-      if (episode.state === "completed") restored.state = "videos_approved";
+      // A scene restore voids the merged video (it was built from clips that no longer match). A final-video
+      // restore is the opposite: it *is* the merged video, so the Episode comes back completed and pointing at
+      // it. Treating both the same would have thrown away the very cut the person just chose.
+      const restored: Episode = value === "final"
+        ? { ...episode, updated_at: new Date().toISOString(), final_video_path: "videos/final/instagram_reel.mp4", state: "completed" as const }
+        : { ...episode, updated_at: new Date().toISOString(), final_video_path: null };
+      if (value !== "final" && episode.state === "completed") restored.state = "videos_approved";
       await this.saveEpisode(id, number, restored);
       return { episode: this.detail(restored) };
     });
