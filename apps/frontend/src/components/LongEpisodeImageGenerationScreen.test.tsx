@@ -1,10 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { jsonResponse, makeLongProjectSettings } from "../api/testUtils.js";
 import { LongEpisodeImageGenerationScreen } from "./LongEpisodeImageGenerationScreen.js";
 
-const episode = (status: "planned" | "asset_mapping_approved" | "generating_images" | "images_ready" | "images_review" | "waiting_for_video_confirmation") => ({
+const episode = (status: "planned" | "asset_mapping_approved" | "generating_images" | "images_ready" | "images_review" | "waiting_for_video_confirmation" | "completed") => ({
   episodeNumber: 1, title: "Episode 1", summary: "Summary", mainEvent: "Event", conflict: "Conflict", cliffhanger: "Hook", nextEpisodeHook: "Next",
   status, approved: true, scriptRevision: 2, scriptHistoryCount: 1,
 });
@@ -258,6 +258,36 @@ describe("LongEpisodeImageGenerationScreen", () => {
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={2} onBack={() => {}} />);
 
     expect(await screen.findByTestId("episode-image-review-picture-1")).toBeTruthy();
+  });
+
+  /**
+   * A regenerated picture used to keep showing the old one until the Episode changed *stage*, because the
+   * cache-buster was the Episode's status — the coarsest thing on the screen. The per-scene `updatedAt` moves
+   * when that scene's own picture does, which is the only moment the browser needs to fetch again.
+   *
+   * This could not be done before the listing was readable outside `images_review`: there was no per-scene
+   * timestamp to use. The server fix is what let the screen stop using the wrong value.
+   */
+  it("busts the picture cache per scene, not per Episode stage", async () => {
+    // Past review entirely: this is the gallery someone opens to ask "what did scene 3 look like".
+    const advanced = episode("completed");
+    const perScene = reviews().map((review) => (review.sceneNumber === 3
+      ? { ...review, updatedAt: "2026-08-29T11:22:33.000Z" }
+      : review));
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: advanced }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: advanced, reviews: perScene, staleness: { imageStale: [] } })));
+
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={2} onBack={() => {}} />);
+
+    // The gallery, not the review card: this is the one that was busting on the Episode's status.
+    const gallery = await screen.findByTestId("episode-image-gallery");
+    const third = within(gallery).getByAltText("3번 장면 이미지");
+    expect(third.getAttribute("src")).toContain("2026-08-29T11%3A22%3A33.000Z");
+    // The scene that did not change keeps its own timestamp — one regeneration must not refetch all six.
+    expect(within(gallery).getByAltText("1번 장면 이미지").getAttribute("src")).toContain("2026-08-23T00%3A00%3A00.000Z");
   });
 
   it("falls back to the default shape when the settings request fails, rather than losing the picture", async () => {

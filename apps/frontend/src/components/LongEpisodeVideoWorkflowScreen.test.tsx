@@ -431,4 +431,28 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     expect(cost.textContent).toContain("$1.50");
     expect(cost.textContent).toContain("6장면");
   });
+
+  /**
+   * Same rule as the short project's screen, and it had to be the same rule: one screen enforcing it and one
+   * not is worse than neither, because the next person reading either cannot tell which is the convention.
+   */
+  it("never leaves two differently-priced confirmations open at once", async () => {
+    const review = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" }));
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": progress("succeeded", [1, 2, 3, 4, 5, 6]),
+      "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review, staleness: { videoStale: [] } },
+      ...sceneVersionRoutes(),
+    }));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    await screen.findByTestId("episode-video-review-2");
+    fireEvent.click(screen.getByTestId("episode-video-regenerate-all"));
+    expect(await screen.findByTestId("episode-video-regenerate-all-confirm")).toBeTruthy();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "다시 만들기" })[1]!);
+
+    expect(await screen.findByTestId("episode-video-regenerate-instruction-2")).toBeTruthy();
+    expect(screen.queryByTestId("episode-video-regenerate-all-confirm")).toBeNull();
+  });
 });

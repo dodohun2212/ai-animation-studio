@@ -263,6 +263,9 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
     if (regenerateBusy.current.has(sceneNumber)) return;
     clearRegenerateError(sceneNumber);
     setRegenerateInstruction("");
+    // Closes the all-scenes one: two open confirmations would stand side by side quoting one scene and all of
+    // them — two prices for two actions, and the reader has to notice which panel they are in.
+    setRegenerateAllConfirmOpen(false);
     setRegenerateConfirmScene(sceneNumber);
   }
 
@@ -322,6 +325,9 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
 
   function openRegenerateAllConfirmation(): void {
     if (regenerateAllBusy.current) return;
+    // One confirmation at a time: two open at once, priced one scene and six, makes the reader work out which
+    // panel they are inside before they can answer it.
+    setRegenerateConfirmScene(null);
     setRegenerateAllError(null);
     setRegenerateAllInstruction("");
     setRegenerateAllConfirmOpen(true);

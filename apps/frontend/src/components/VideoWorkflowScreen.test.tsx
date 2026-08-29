@@ -626,13 +626,6 @@ describe("VideoWorkflowScreen", () => {
     const [, init] = fetchMock.mock.calls[2] as [string, RequestInit];
     expect(JSON.parse(String(init.body))).toEqual({ approved: true });
   });
-});
-
-describe("VideoWorkflowScreen source", () => {
-  beforeEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   /**
    * The only thing this screen used to offer for a clip that came back empty was "make it again" — a paid
    * answer to a problem the ledger already paid for once. The Episode side has had the free one since the bug
@@ -665,6 +658,40 @@ describe("VideoWorkflowScreen source", () => {
     expect(init.method).toBe("POST");
     expect(JSON.parse(String(init.body))).toEqual({ approved: true });
   });
+
+  /**
+   * Two confirmations at once, priced one scene and six, is a question the reader has to answer before they can
+   * answer the question: *which panel am I inside?* That is the opposite of what a confirmation is for.
+   */
+  it("never leaves two differently-priced confirmations open at once", async () => {
+    const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, succeeded))
+      .mockResolvedValueOnce(jsonResponse(200, reviewResponse(sixReviews([1, 2, 3, 4, 5, 6]))));
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByTestId("regenerate-all-button"));
+    expect(screen.getByTestId("regenerate-all-confirm-panel")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("video-review-regenerate-2"));
+
+    expect(await screen.findByTestId("video-regenerate-confirm-panel-2")).toBeTruthy();
+    expect(screen.queryByTestId("regenerate-all-confirm-panel")).toBeNull();
+
+    // And back the other way, so neither opener is the privileged one.
+    fireEvent.click(screen.getByTestId("regenerate-all-button"));
+    expect(await screen.findByTestId("regenerate-all-confirm-panel")).toBeTruthy();
+    expect(screen.queryByTestId("video-regenerate-confirm-panel-2")).toBeNull();
+  });
+});
+
+describe("VideoWorkflowScreen source", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+
 
   it("never touches Runway, OpenAI, FFmpeg, or client-side storage surfaces", async () => {
     const fsPromises = await import("node:fs/promises");

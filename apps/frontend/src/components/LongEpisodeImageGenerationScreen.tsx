@@ -117,8 +117,16 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
   }, [projectId, episodeNumber]);
 
   const reviewable = episode?.status === "images_review" || episode?.status === "waiting_for_video_confirmation";
+  /**
+   * Whether this Episode has images at all — which is a different question from whether it is being reviewed.
+   *
+   * The list used to be fetched only while reviewable, because the server refused it otherwise; it does not any
+   * more (the pictures were never gone, only the list of them). Reading it at every later stage is what lets
+   * the gallery below show real per-scene records instead of guessing scene numbers from the script.
+   */
+  const imagesMayExist = Boolean(episode) && !isBefore(episode!.status, "images_ready");
   useEffect(() => {
-    if (!reviewable || reviewState.status !== "idle") return;
+    if (!imagesMayExist || reviewState.status !== "idle") return;
     let cancelled = false;
     setReviewState({ status: "loading" });
     getLongEpisodeImageReview(projectId, episodeNumber)
@@ -128,7 +136,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
     // reviewState.status is intentionally excluded: it is set inside this effect as a start-once guard,
     // and including it would re-run the effect (and its cleanup) before the in-flight fetch resolves,
     // permanently discarding the response via the `cancelled` flag and leaving the screen stuck loading.
-  }, [episodeNumber, projectId, reviewable]);
+  }, [episodeNumber, projectId, imagesMayExist]);
 
   /**
    * While images are being made, ask again until they are not.
@@ -265,7 +273,10 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
             {sceneNumbers.map((sceneNumber) => (
               <li key={sceneNumber} className="space-y-1">
                 <img
-                  src={longEpisodeImageContentUrl(projectId, episodeNumber, sceneNumber, episode.status)}
+                  /* The scene's own updatedAt when the list has it: a regenerated picture changes under the
+                     same address, and busting on the Episode's status would keep showing the old one until the
+                     Episode moved stage. Falls back to the status, which is what this had before. */
+                  src={longEpisodeImageContentUrl(projectId, episodeNumber, sceneNumber, reviewFor(sceneNumber)?.updatedAt ?? episode.status)}
                   /* Eager: six pictures on a screen someone opened to look at them, and a lazy loader that
                      does not fire leaves six empty boxes with no error anywhere. */
                   alt={`${sceneNumber}번 장면 이미지`}

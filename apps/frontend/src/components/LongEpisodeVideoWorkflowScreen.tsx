@@ -219,7 +219,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
                   <span className="text-sm text-slate-300">{scene}번 장면</span>
                   <p data-testid={`episode-video-failed-reason-${scene}`} className="text-xs text-rose-300">{episodeSceneErrorMessage(job.sceneErrors?.[scene])}</p>
                 </div>
-                <button type="button" data-testid={`episode-video-failed-retry-${scene}`} className={smallOutlineButton} disabled={busy || regenerate === scene} onClick={() => { setRegenerateInstruction(""); setRegenerate(scene); }}>다시 시도</button>
+                <button type="button" data-testid={`episode-video-failed-retry-${scene}`} className={smallOutlineButton} disabled={busy || regenerate === scene} onClick={() => { setConfirmRegenerateAll(false); setRegenerateInstruction(""); setRegenerate(scene); }}>다시 시도</button>
                 {regenerate === scene && (
                   <div role="alertdialog" data-testid={`episode-video-failed-retry-confirm-${scene}`} className="w-full space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
                     <p className="text-sm text-amber-200">{scene}번 장면을 다시 시도할까요? Runway 키가 연결되어 있으면 이번 시도분이 실제로 청구됩니다.</p>
@@ -269,7 +269,9 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
                 data-testid="episode-video-regenerate-all"
                 className={smallOutlineButton}
                 disabled={busy}
-                onClick={() => { setRegenerateInstruction(""); setConfirmRegenerateAll(true); }}
+                /* Closes the per-scene one. Two open confirmations would stand side by side quoting one scene
+                   and six — two prices for two actions, and the reader has to notice which panel they are in. */
+                onClick={() => { setRegenerate(null); setRegenerateInstruction(""); setConfirmRegenerateAll(true); }}
               >
                 모든 장면 다시 만들기
               </button>
@@ -361,7 +363,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
               )}
               <div className="flex justify-end gap-3">
                 <button type="button" className={smallOutlineButton} disabled={review.status === "approved"} onClick={() => void approve(review.sceneNumber)}>{review.status === "approved" ? "확정 완료" : "이 영상으로 확정"}</button>
-                <button type="button" className={smallOutlineButton} onClick={() => { setRegenerateInstruction(""); setRegenerate(review.sceneNumber); }}>다시 만들기</button>
+                <button type="button" className={smallOutlineButton} onClick={() => { setConfirmRegenerateAll(false); setRegenerateInstruction(""); setRegenerate(review.sceneNumber); }}>다시 만들기</button>
               </div>
               {/* The clips this scene has had. Collapsed, and absent entirely when there is no history. */}
               <LongEpisodeSceneVersions
