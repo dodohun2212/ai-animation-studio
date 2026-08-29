@@ -10,6 +10,7 @@ import { isPlaceholderClip } from "../videos/placeholder-clip.js";
 import { longEpisodeFfmpegUnavailable, longEpisodeMergeClipsInvalid, longEpisodeMergeFailed, longEpisodeMergeNotAllowed, longEpisodeNotFound, longInvalidData, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
+import { toEpisodeDetail } from "./episode-detail.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
 import { PLACEHOLDER_ADAPTER } from "../narration/local-narration-generation.service.js";
@@ -55,11 +56,7 @@ export class EpisodeVideoMergeService {
     return raw as Episode;
   }
 
-  private detail(episode: Episode): LongEpisodeDetail {
-    const script = toApiEpisodeScript(episode.script);
-    const warnings = withoutStaleEpisodeRecoveryWarnings(Array.isArray(episode.warnings) ? episode.warnings.filter((item): item is string => typeof item === "string") : [], episode.state);
-    return { episodeNumber: episode.number, title: String(episode.title), summary: String(episode.summary), mainEvent: String(episode.core_event), conflict: String(episode.conflict), cliffhanger: String(episode.cliffhanger), nextEpisodeHook: String(episode.next_connection), status: episode.state, approved: episode.approved, scriptRevision: episode.script_revision, ...(script ? { script } : {}), scriptHistoryCount: Array.isArray(episode.script_history) ? episode.script_history.length : 0, ...(warnings.length > 0 ? { warnings } : {}) };
-  }
+  private detail(episode: Episode): LongEpisodeDetail { return toEpisodeDetail(episode); }
 
   private async saveEpisode(id: string, number: number, episode: Episode): Promise<void> {
     const f = this.files(id, number); const outlines = await this.json(f.outlines);
