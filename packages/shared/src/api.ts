@@ -354,7 +354,21 @@ export interface LongEpisodeVideoProgress {
 }
 /** costUsd: actual cost recorded for this scene's video across every attempt, including past regenerations; absent when nothing has been recorded. */
 export interface LongEpisodeVideoReview { sceneNumber: SceneNumber; status: "pending" | "approved"; updatedAt: string; costUsd?: number; }
-export interface GetLongEpisodeVideoReviewResponse { episode: LongEpisodeDetail; reviews: LongEpisodeVideoReview[]; }
+/**
+ * Which already-paid-for clips no longer match the script they were made from.
+ *
+ * Computed the same way the short project's SceneStaleness is — by rebuilding the prompt from the scene as it
+ * stands now and comparing it to the one recorded when that clip was generated — never a stored flag, so there
+ * is nothing to keep in sync. A scene with no record is absent rather than listed: nothing has been made yet,
+ * so nothing is behind.
+ *
+ * Only `videoStale`. The short project also reports images and narration, and this deliberately does not: an
+ * Episode's image generation records no prompt anywhere, so an `imageStale: []` here would be a list nobody
+ * computed presented beside one that was — which is how a screen ends up trusting a blank. When the Episode's
+ * image path starts recording its prompt, the field can be added and will mean something.
+ */
+export interface LongEpisodeVideoStaleness { videoStale: SceneNumber[]; }
+export interface GetLongEpisodeVideoReviewResponse { episode: LongEpisodeDetail; reviews: LongEpisodeVideoReview[]; staleness: LongEpisodeVideoStaleness; }
 export interface ApproveLongEpisodeVideoReviewRequest { approved: true; }
 export interface ApproveLongEpisodeVideoReviewResponse extends GetLongEpisodeVideoReviewResponse {}
 export interface RegenerateLongEpisodeVideoResponse extends LongEpisodeVideoProgress { regeneratedSceneNumbers: SceneNumber[]; }

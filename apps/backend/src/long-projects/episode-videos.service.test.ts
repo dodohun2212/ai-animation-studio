@@ -145,6 +145,44 @@ describe("EpisodeVideosService", () => {
     await expect(fs.readdir(path.join(projectsRoot, "long", "long_story", "Episode01", "videos", "history"))).resolves.toHaveLength(1);
   });
 
+  /**
+   * A clip is only worth what the script it was made from is still worth. Editing a scene after paying for its
+   * video left no sign anywhere: the clip stayed in the review screen looking approved-and-current, and the
+   * only way to find out was to watch the merged Episode.
+   */
+  it("names the scenes whose paid-for clips were made from a script that has since changed", async () => {
+    const { videos, projectsRoot } = await setup();
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_2", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+    expect((await videos.review("long", 1, started.jobId)).staleness.videoStale).toEqual([]);
+
+    // Edit scene 2's main motion on disk, the way a script revision would.
+    const file = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
+    const episode = JSON.parse(await fs.readFile(file, "utf8")) as { script: { scenes: Record<string, unknown>[] } };
+    episode.script.scenes[1]!.main_motion = "the hero turns and runs the other way";
+    await fs.writeFile(file, JSON.stringify(episode, null, 2));
+
+    const { staleness } = await videos.review("long", 1, started.jobId);
+    expect(staleness.videoStale).toContain(2);
+  });
+
+  it("carries an edit forward to the next scene's clip, which was built partly from it", async () => {
+    // promptFor reads the previous scene for its continuity cue, so scene 3's clip is behind after scene 2 is
+    // edited even though scene 3 was not touched. Falls out of recomputing; there is no propagation code.
+    const { videos, projectsRoot } = await setup();
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_2", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+
+    const file = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
+    const episode = JSON.parse(await fs.readFile(file, "utf8")) as { script: { scenes: Record<string, unknown>[] } };
+    episode.script.scenes[1]!.end_motion = "the camera whips left";
+    await fs.writeFile(file, JSON.stringify(episode, null, 2));
+
+    expect((await videos.review("long", 1, started.jobId)).staleness.videoStale).toContain(3);
+  });
+
   it("never calls fetch across preview, start, run, progress, regenerate, and approve when no Runway credential/budget is wired in", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
