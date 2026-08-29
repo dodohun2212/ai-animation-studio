@@ -16,6 +16,7 @@ import {
 import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { Spinner } from "./Spinner.js";
 import { StatusChip } from "./ui/StatusChip.js";
+import { StaleBadge } from "./ui/StaleBadge.js";
 import { BudgetLine } from "./ui/BudgetLine.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 
@@ -24,7 +25,7 @@ type DisplayError = { code: string; message: string };
 type ReviewState =
   | { status: "idle" | "loading" }
   | { status: "error"; error: DisplayError }
-  | { status: "ready"; reviews: LongEpisodeImageReview[]; budget?: BudgetPreview; retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview } };
+  | { status: "ready"; reviews: LongEpisodeImageReview[]; budget?: BudgetPreview; retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview }; imageStale: SceneNumber[] };
 const SCENE_SLOT_LABEL: Record<string, string> = { generated: "생성됨", waiting: "대기 중", generating: "만드는 중", pending: "검토 대기", approved: "승인됨" };
 const sceneSlotLabel = (status: string) => SCENE_SLOT_LABEL[status] ?? status;
 
@@ -118,7 +119,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
     let cancelled = false;
     setReviewState({ status: "loading" });
     getLongEpisodeImageReview(projectId, episodeNumber)
-      .then((response) => { if (!cancelled) { setEpisode(response.episode); setReviewState({ status: "ready", reviews: response.reviews, budget: response.budget }); } })
+      .then((response) => { if (!cancelled) { setEpisode(response.episode); setReviewState({ status: "ready", reviews: response.reviews, budget: response.budget, imageStale: response.staleness.imageStale }); } })
       .catch((caught: unknown) => { if (!cancelled) setReviewState({ status: "error", error: toLongProjectDisplayError(caught) }); });
     return () => { cancelled = true; };
     // reviewState.status is intentionally excluded: it is set inside this effect as a start-once guard,
@@ -179,6 +180,9 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
         reviews: response.reviews,
         budget: current.status === "ready" ? current.budget : undefined,
         retryEstimate: current.status === "ready" ? current.retryEstimate : undefined,
+        // Carried from the response, not the old state: approving scene 2 must not leave scene 3's badge
+        // showing what was true one request ago.
+        imageStale: response.staleness.imageStale,
       }));
     } catch (caught) { setError(toLongProjectDisplayError(caught)); }
     finally { approvalBusy.current.delete(sceneNumber); setApprovePending(new Set(approvalBusy.current)); }
@@ -190,7 +194,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
     try {
       const response = await regenerateLongEpisodeImageReview(projectId, episodeNumber, sceneNumber);
       setEpisode(response.episode);
-      setReviewState({ status: "ready", reviews: response.reviews, budget: response.retryEstimate?.budget, retryEstimate: response.retryEstimate });
+      setReviewState({ status: "ready", reviews: response.reviews, budget: response.retryEstimate?.budget, retryEstimate: response.retryEstimate, imageStale: response.staleness.imageStale });
       setRegenerateConfirm(null);
     } catch (caught) { setError(toLongProjectDisplayError(caught)); }
     finally { regenerationBusy.current.delete(sceneNumber); setRegeneratePending(new Set(regenerationBusy.current)); }
@@ -312,9 +316,19 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
                 data-status={review.status}
                 className={`space-y-2 rounded-xl border bg-slate-950/40 p-3 ${review.status === "approved" ? "border-emerald-400/30" : "border-white/10"}`}
               >
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-sm font-semibold text-slate-100">{sceneNumber}번 장면</span>
-                  <StatusChip tone={review.status === "approved" ? "success" : "neutral"}>{sceneSlotLabel(review.status)}</StatusChip>
+                  <span className="flex flex-wrap items-center gap-2">
+                    {/* The same badge the short project uses — one wording for one fact. Never says the rest are
+                        current: an image made before prompts were recorded has no record and is simply absent. */}
+                    <StaleBadge
+                      staleSceneNumbers={reviewState.imageStale}
+                      sceneNumber={sceneNumber}
+                      kind="image"
+                      data-testid={`episode-image-stale-${sceneNumber}`}
+                    />
+                    <StatusChip tone={review.status === "approved" ? "success" : "neutral"}>{sceneSlotLabel(review.status)}</StatusChip>
+                  </span>
                 </div>
                 {/* Quiet unless the Backend's reference cap actually dropped something. The total is derived from
                     both counts it sends, so this line never hardcodes that cap — the same split the short-project

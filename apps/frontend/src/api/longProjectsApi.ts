@@ -57,6 +57,7 @@ import {
   type GetLongEpisodeVideoReviewResponse,
   type ApproveLongEpisodeVideoReviewResponse,
   type RegenerateLongEpisodeVideoResponse,
+  type LongEpisodeImageStaleness,
   type LongEpisodeVideoStaleness,
   type MergeAudioSettings,
   type MergeLongEpisodeVideosResponse,
@@ -481,7 +482,10 @@ const isEpisodeImageReviews = (value: unknown): value is LongEpisodeImageReview[
 const isStartEpisodeImageGenerationResponse = (value: unknown): value is StartLongEpisodeImageGenerationResponse => isRecord(value)
   && isLongEpisodeDetail(value.episode) && Array.isArray(value.generatedSceneNumbers) && value.generatedSceneNumbers.every(isSceneNumber)
   && Array.isArray(value.reusedSceneNumbers) && value.reusedSceneNumbers.every(isSceneNumber);
-const isGetEpisodeImageReviewResponse = (value: unknown): value is GetLongEpisodeImageReviewResponse => isRecord(value) && isLongEpisodeDetail(value.episode) && isEpisodeImageReviews(value.reviews);
+/** Required by the contract, same as the video review's — a response without it is malformed, never a screen that shows no badges. */
+const isLongEpisodeImageStaleness = (value: unknown): value is LongEpisodeImageStaleness =>
+  isRecord(value) && Array.isArray(value.imageStale) && value.imageStale.every(isSceneNumber);
+const isGetEpisodeImageReviewResponse = (value: unknown): value is GetLongEpisodeImageReviewResponse => isRecord(value) && isLongEpisodeDetail(value.episode) && isEpisodeImageReviews(value.reviews) && isLongEpisodeImageStaleness(value.staleness);
 const isApproveEpisodeImageReviewResponse = (value: unknown): value is ApproveLongEpisodeImageReviewResponse => isGetEpisodeImageReviewResponse(value);
 const isRegenerateEpisodeImageReviewResponse = (value: unknown): value is RegenerateLongEpisodeImageReviewResponse => isRecord(value) && isGetEpisodeImageReviewResponse(value) && isSceneNumber(value.sceneNumber);
 

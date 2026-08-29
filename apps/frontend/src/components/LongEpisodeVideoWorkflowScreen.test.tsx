@@ -324,7 +324,8 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     const review = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" }));
     vi.stubGlobal("fetch", stubFetchByRoute({
       "GET /videos/generations/current": { jobId: "job" },
-      // The review is only fetched once the job reports succeeded, so the progress route has to answer too.
+      // The mount path reads the job's progress before it asks for the review — without this the screen never
+      // reaches the review at all, which is what my first version of this test got wrong.
       "GET /videos/generations/job": progress("succeeded", [1, 2, 3, 4, 5, 6]),
       "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review, staleness: { videoStale: [2] } },
       ...sceneVersionRoutes(),
