@@ -19,9 +19,19 @@ const outlineButton =
 /**
  * The one character the whole work is about.
  *
- * Sits beside 전체 그림체 because it is the same kind of thing: one Asset chosen once for the project, applied
- * to every Episode, rather than something re-picked per Episode. Sub-characters and locations stay per-Episode
- * — a work has one protagonist and a different supporting cast each time.
+ * Sits beside 전체 그림체 because it is the same kind of thing: one Asset chosen once for the project rather
+ * than re-picked per Episode. Sub-characters and locations stay per-Episode — a work has one protagonist and a
+ * different supporting cast each time.
+ *
+ * What actually leaves this card today is the folder's NAME, read by episode-scripts.service.ts and put in the
+ * script prompt. The pictures do not: an Episode's reference images come from its own asset mapping, and
+ * nothing seeds that from here. This paragraph used to say the Asset was "applied to every Episode", which is
+ * true of the name and was read — reasonably — as true of the pictures too, by the person who then linked the
+ * same folder by hand twenty times.
+ *
+ * That gap is being closed on the server (auto-seeding the mapping from this link, for Episodes that have not
+ * generated images yet). When it lands, this note and the sentence under the title both need revisiting — they
+ * are written to describe today, not to lower expectations permanently.
  *
  * Folders only, and that is the opposite of the Story Bible's per-item links, which refused folders. A
  * character is the set of angles of one person; a single image is one pose of them. The server enforces the
@@ -90,6 +100,11 @@ export function ProtagonistAssetCard({ projectId }: Props) {
       summary={linked ? (linkedFolder?.displayName ?? linked.assetId) : "고르지 않음"}
     >
       <p className="text-sm text-slate-400">폴더 이름이 곧 주인공 이름입니다 — 보관함에서 고치면 다음 대본부터 반영됩니다. 서브 캐릭터는 회차마다 따로 고릅니다.</p>
+      {/* Said plainly because the absence is invisible: nothing on the Episode's mapping screen shows that a
+          protagonist was ever chosen here, so a person who set one reasonably assumes it is being used. */}
+      <p data-testid="protagonist-scope-notice" className="rounded-lg border border-amber-400/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-300">
+        지금은 <strong className="text-amber-200">이름만</strong> 대본에 실립니다. 그림을 쓰려면 회차마다 <strong className="text-amber-200">참고 이미지 연결</strong>에서 이 폴더를 직접 골라 주세요.
+      </p>
 
       {loading && <p className="text-sm text-slate-400">불러오는 중...</p>}
 

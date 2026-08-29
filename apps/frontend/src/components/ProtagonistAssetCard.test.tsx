@@ -26,6 +26,21 @@ function renderCard(assets: unknown[], link?: unknown) {
 describe("ProtagonistAssetCard", () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  /**
+   * The card's own text said the folder name reaches the script, and its doc comment said the Asset was
+   * "applied to every Episode". The first is true; the second is true of the name and not of the pictures, and
+   * a person read it the reasonable way and linked the same folder by hand on every Episode. Until the server
+   * seeds that mapping, the card has to say which half it actually does.
+   */
+  it("says the pictures are not carried to Episodes yet, and where to pick them", async () => {
+    renderCard([folder], { assetId: "FOLDER-1", versionPolicy: "follow_latest", pinnedVersion: null });
+
+    const notice = await screen.findByTestId("protagonist-scope-notice");
+    expect(notice.textContent).toContain("이름만");
+    // Naming the screen that does carry them: a limit with no next step reads as a dead end.
+    expect(notice.textContent).toContain("참고 이미지 연결");
+  });
+
   // Folders only, and this is the opposite of the Story Bible's per-item links, which refused them. A
   // character is the set of angles of one person; a single image is one pose. The server enforces the same
   // rule, so what the screen offers is what the server takes.
