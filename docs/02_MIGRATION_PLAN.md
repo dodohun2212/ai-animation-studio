@@ -2144,3 +2144,7 @@ Episode01/script.json   "이배드" 가 52개 필드에 57번
   - 🟠 **처음엔 네트워크 호출이 아예 안 나갔다.** 스텁을 평범한 함수로 만들었더니 `no-test-network.guard` 가 거절했다 — vitest mock 이 아닌 fetch 로 Runway 를 부르는 것을 막는 가드다(D-016: 디스크의 진짜 키로 실제 API 에 나가 정체불명 과금이 났던 사건). `vi.fn` 으로 감싸 해결했고, **그 가드가 의도대로 작동하는 것을 우연히 확인한 셈이다.**
   - 머테이션 확인: `realVideo` → `validVideo` (회수가 손상된 장면을 전부 건너뛰게 만들었던 그 버그)를 되돌려 넣으면 셋 중 둘이 빨갛다.
   - 검증: root typecheck 통과, Backend 1059개(+3 신규)·frontend 1043개 전부 통과, root build 통과.
+- [x] **가짜 타이머를 켜 놓고 안 돌려주는 파일을 가드로 잡는다 (`520f908`)**: `project-lock` 간헐 실패를 닫으면서 `episode-videos.runway.test.ts` 의 `afterEach` 주석을 읽다 단서를 찾았다 — **파일 안**에서 가짜 타이머가 새면 다음 테스트의 **진짜 `setTimeout` 이 굶는다.** `project-lock.ts` 의 재시도 루프가 정확히 그것으로 매달렸고, 실패하는 건 아무 잘못 없는 다음 테스트다. 두 파일(`local-video-workflow.runway`, `episode-videos.runway`)의 `afterEach` 가 **그 일이 실제로 벌어진 뒤에** 쓰인 것이고 주석에 그렇게 적혀 있다.
+  - 파일 간 누수는 불가능하다는 것도 같이 확인했다 — vitest 기본 `isolate` 라 파일마다 환경이 따로다. 즉 이건 파일 내부 문제고, 그래서 `afterEach` 안이어야 한다.
+  - **"파일 어딘가에 `useRealTimers` 가 있으면 통과"가 아니라 `afterEach` 안일 것**을 건다. 시작한 테스트가 도중에 실패해도 돌려주는 경우가 그것뿐이고, 새는 것이 가장 곤란한 때가 바로 그때다. 주입 두 방향 확인: 복원을 지우기 / 복원을 `afterEach` 밖으로 빼기 — 둘 다 빨갛다.
+  - 저장소 범위다(`decision-doc-references.test.ts` 와 같은 방식). 프론트 파일에 주입해도 백엔드에서 잡힌다. 스캔이 아무것도 안 읽는 경우를 위해 파일 200개 이상·가짜 타이머 사용 파일 1개 이상을 단언한다.
