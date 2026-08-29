@@ -668,6 +668,38 @@ export interface ArchiveLongEpisodeRequest { approved: true; }
 export interface ArchiveLongEpisodeResponse { project: LongProject; archivedEpisodeNumber: number; archiveId: string; }
 
 /**
+ * One Episode sitting in the project's recoverable archive.
+ *
+ * Archiving already moved the folder aside rather than deleting it, and already handed back an `archiveId` —
+ * which had nowhere to go. There was no way to see what had been archived and no way to bring one back, so a
+ * "recoverable" action was, from the app, indistinguishable from a deletion. That is also the answer to whether
+ * archiving needs a typed confirmation: it does not, once it is listable and reversible. What makes an action
+ * safe is being able to undo it, not being asked twice.
+ *
+ * `archivedAt` is read back out of the id the archive was named with, and is absent rather than guessed when
+ * that name does not parse — a folder from some future naming scheme should still be listed and restorable,
+ * just without a date.
+ */
+export interface ArchivedLongEpisodeSummary {
+  archiveId: string;
+  /** The number it held when it was archived — not the number it would come back as, which depends on how many Episodes exist now. */
+  episodeNumber: number;
+  title: string;
+  archivedAt?: string;
+}
+export interface ListArchivedLongEpisodesResponse { archives: ArchivedLongEpisodeSummary[]; }
+
+/**
+ * Brings an archived Episode back as the project's last Episode.
+ *
+ * Back as the *last* one, not the number it left from: archiving only ever takes the final Episode, and the
+ * project may well have grown since. Restoring into an occupied number would either overwrite an Episode or
+ * renumber the ones after it, and both of those lose work that nobody asked to lose.
+ */
+export interface RestoreLongEpisodeRequest { approved: true; }
+export interface RestoreLongEpisodeResponse { project: LongProject; episode: LongEpisodeOutline; }
+
+/**
  * Editing one Episode's own outline fields (the per-Episode plan the whole-project outline approval assigned —
  * title/summary/mainEvent/conflict/cliffhanger/nextEpisodeHook) in place, without regenerating anything. Only
  * allowed while that Episode's own status is still "planned" or "outline_ready" — the same window
@@ -2017,6 +2049,10 @@ export const API_ROUTES = {
   videoVersionRestore: (projectId: string, scene: SceneNumber | "final", versionId: string) => `/projects/${encodeURIComponent(projectId)}/videos/${scene}/versions/${encodeURIComponent(versionId)}/restore`,
   /** POST re-fetches this job's paid Runway outputs for scenes left holding a placeholder. Never generates. */
   videoRecovery: (projectId: string, jobId: string) => `/projects/${encodeURIComponent(projectId)}/videos/generations/${encodeURIComponent(jobId)}/recovery`,
+  /** The Episodes this project has archived, newest first. */
+  longEpisodeArchives: (projectId: string) => `/long-projects/${encodeURIComponent(projectId)}/episodes/archives`,
+  longEpisodeArchiveRestore: (projectId: string, archiveId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/archives/${encodeURIComponent(archiveId)}/restore`,
   audioLibrary: "/audio/library",
   audioLibraryUpload: "/audio/library/upload",
   audioLibraryContent: (trackId: string) => `/audio/library/${encodeURIComponent(trackId)}/content`,

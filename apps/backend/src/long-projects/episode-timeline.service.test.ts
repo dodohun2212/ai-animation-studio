@@ -39,6 +39,64 @@ describe("EpisodeTimelineService", () => {
     await expect(timeline.archive("timeline_test", 1, { approved: true })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_TIMELINE_NOT_ALLOWED" } });
   });
 
+  /**
+   * Archiving already moved the folder aside and already handed back an `archiveId`. Nothing could read it, so
+   * the id went nowhere and a "recoverable" action was, from the app, a deletion with a friendlier word on it.
+   */
+  it("lists what it archived, with the title and the moment it was archived", async () => {
+    const { timeline } = await services();
+    await timeline.add("timeline_test", { title: "사라질 화" });
+    const { archiveId } = await timeline.archive("timeline_test", 3, { approved: true });
+
+    const { archives } = await timeline.listArchives("timeline_test");
+
+    expect(archives).toHaveLength(1);
+    expect(archives[0]).toMatchObject({ archiveId, episodeNumber: 3, title: "사라질 화" });
+    // Read back out of the folder's own name, not invented: it has to parse as a real instant.
+    expect(Number.isNaN(Date.parse(archives[0]!.archivedAt!))).toBe(false);
+  });
+
+  it("answers with an empty list for a project that has never archived anything", async () => {
+    const { timeline } = await services();
+    await expect(timeline.listArchives("timeline_test")).resolves.toEqual({ archives: [] });
+  });
+
+  it("brings one back as the last Episode, carrying the outline it was archived with", async () => {
+    const { projectsRoot, timeline } = await services();
+    await timeline.add("timeline_test", { title: "돌아올 화" });
+    await timeline.updateOutline("timeline_test", 3, { outline: { summary: "적어 둔 줄거리" } });
+    const { archiveId } = await timeline.archive("timeline_test", 3, { approved: true });
+    // The summary was typed after the folder was created, and `updateOutline` writes only the outline row —
+    // so the folder's own copy was stale until archiving reconciled the two. Without that, a restore hands
+    // back the Episode as it was before the last edit, and says nothing about it.
+    // The project grew while it was away, so it cannot come back to the number it left from.
+    await timeline.add("timeline_test", { title: "그 사이 생긴 화" });
+
+    const result = await timeline.restoreArchive("timeline_test", archiveId, { approved: true });
+
+    expect(result.episode).toMatchObject({ episodeNumber: 4, title: "돌아올 화", summary: "적어 둔 줄거리" });
+    expect(result.project.episodeCount).toBe(4);
+    // The folder is back in place under its new number, and the record inside it agrees with that number.
+    const stored = JSON.parse(await fs.readFile(path.join(projectsRoot, "timeline_test", "long_story", "Episode04", "project.json"), "utf8")) as { number: number; outline: { episode_number: number } };
+    expect(stored.number).toBe(4);
+    expect(stored.outline.episode_number).toBe(4);
+    // And it is no longer offered as an archive.
+    await expect(timeline.listArchives("timeline_test")).resolves.toEqual({ archives: [] });
+  });
+
+  it("refuses a restore without approval, and an archive id that names somewhere else", async () => {
+    const { timeline } = await services();
+    await timeline.add("timeline_test", {});
+    const { archiveId } = await timeline.archive("timeline_test", 3, { approved: true });
+
+    await expect(timeline.restoreArchive("timeline_test", archiveId, {})).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    // An archive id is a name this app wrote; one that is not must never reach a path join.
+    await expect(timeline.restoreArchive("timeline_test", "../../..", { approved: true })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_NOT_FOUND" } });
+    await expect(timeline.restoreArchive("timeline_test", "Episode03-nope", { approved: true })).rejects.toBeTruthy();
+    // None of the refusals may have moved anything.
+    expect((await timeline.listArchives("timeline_test")).archives).toHaveLength(1);
+  });
+
   it("blocks timeline changes once a script workflow has started", async () => {
     const { projectsRoot, projects, timeline } = await services();
     const preview = await projects.preview("timeline_test");
