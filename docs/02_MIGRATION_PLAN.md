@@ -2388,3 +2388,9 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
   - 테스트가 **"안 뜨는 것" 을 같이 단언**한다 — 뜨는 것만 보면 전부에 뜨는 배지도 통과한다.
   - 🟠 **스텁이 서버보다 적게 답한 자리가 이번 주에만 세 곳**: `LongEpisodeVideoMergeScreen`(4) → `LongEpisodeImageGenerationScreen`(15) → `longProjectsApi.test.ts`(3, 내가 고침). **가드를 새로 붙일 때 그 응답을 흉내 내는 모든 스텁이 그 변경의 실제 비용**이고, 셋 다 가드를 약하게 하는 대신 스텁을 계약에 맞춰 닫았다.
   - 주입: `staleSceneNumbers` 를 빈 배열로 두면 그 테스트만 빨갛다.
+- [x] **장기 프로젝트 설정이 화면비 잠금을 말한다 — Cowork 목록 12번 (`8450597`)**: `GetLongProjectSettingsResponse` 에 `aspectRatioChangeable` 과 **잠근 회차 번호**를 실었다. 서버가 저장에서 이미 거절하고 있었는데 **화면에는 그 사실이 안 나갔다.**
+  - **`sceneCountChangeable` 은 안 만들었다 (Cowork 요청과 다름, 이유 있음)**: 장기의 `sceneCount`·`clipDurationSeconds` 는 **새 회차가 시작할 기본값**이고 회차마다 자기 사본을 갖는다 — 잠금은 회차 자신의 설정(`changeable`)에 이미 있다. 이 응답의 `sceneCountChangeable` 은 **언제나 `true`** 일 수밖에 없고, **늘 참인 플래그는 화면이 곧 안 읽게 되는 플래그**다.
+  - **잠근 회차 번호를 같이 보낸다**: 맨 `false` 는 *"이제 못 바꿉니다"* 까지만 말하고 **"왜 지금?"** 을 남긴다. 답은 회차 하나이고, 거절 에러가 이미 그 번호를 알고 있었다.
+  - **저장과 GET 이 같은 함수를 쓴다**(`episodeThatLocksAspectRatio`). 규칙이 두 벌이면 결제한 작업에 대해 사람에게 **다른 답 두 개**를 주게 되고, 한 번만 갈라져도 늦다.
+  - GET 은 **소프트 실패**한다: outline 목록을 못 읽으면 *"안 잠김"* 으로 답한다. 읽기 실패에 *"잠김"* 이라고 답하면 **아직 바꿔도 되는 설정을 빼앗는다.** 저장은 자기 읽기로 여전히 거절한다.
+  - 주입: 잠금 조회를 항상 `undefined` 로 만들면 1건 빨강, 되돌리면 15건 초록.
