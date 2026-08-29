@@ -313,11 +313,16 @@ describe("LocalAssetsRepository", () => {
     const root = await makeRoot(); const repository = new LocalAssetsRepository(root);
     const asset = await repository.create({ buffer: image, originalname: "d.png", mimetype: "image/png" }, metadata);
     const episode = path.join(root, "projects", "p2", "long_story", "Episode01"); await fs.mkdir(episode, { recursive: true });
+    // The shape the app actually writes: mappings live in their own file, and the review record has no
+    // `candidates`. Written by hand as `candidates` this test passed while the cascade it guards did nothing —
+    // the Episode's review was the one file the mapping teardown left this function still reading the old way.
     await fs.writeFile(path.join(episode, "asset_mapping_review.json"), JSON.stringify({
-      project_id: "p2", episode_number: 1, mapping_revision: 1, script_revision: 1, script_fingerprint: "b".repeat(64), status: "approved",
-      text_only_confirmed: false, approved_at: "2026-01-01T00:00:00Z",
-      candidates: [{ mapping_id: "EP-MAP-1", source_collection: "characters", source_item_id: "char-1", asset_id: asset.asset_id, usage_role: "character", version_policy: "follow_latest", pinned_version: null, episode_scope: { mode: "all" }, status: "confirmed", user_confirmed: true, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" }],
+      project_id: "p2", mapping_revision: 1, script_revision: 1, script_fingerprint: "b".repeat(64), status: "approved",
+      text_only_confirmed: false, legacy_confirmed: false, reviewed_scenes: [1], approved_at: "2026-01-01T00:00:00Z", approved_by: "user",
     }), "utf8");
+    await fs.writeFile(path.join(episode, "asset_mappings.json"), JSON.stringify([
+      { mapping_id: "MAP-1", project_id: "p2", asset_id: asset.asset_id, enabled: true, usage_role: "character", scene_scope: { mode: "all" }, assignment_source: "manual", confidence: null, match_reason: "manual_assignment", status: "confirmed", user_confirmed: true, version_policy: "follow_latest", pinned_version: null, candidate_only: false, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", snapshot_path: null, snapshot_sha256: null, snapshot_source_version: null, selected_child_asset_ids: [] },
+    ]), "utf8");
     await fs.writeFile(path.join(episode, "project.json"), JSON.stringify({ number: 1, state: "asset_mapping_approved" }), "utf8");
     await repository.addVersion(asset.asset_id, { buffer: secondImage, originalname: "d2.png", mimetype: "image/png" }, "");
     const review = JSON.parse(await fs.readFile(path.join(episode, "asset_mapping_review.json"), "utf8"));

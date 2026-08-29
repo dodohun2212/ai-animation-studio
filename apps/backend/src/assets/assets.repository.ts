@@ -484,12 +484,13 @@ export class LocalAssetsRepository {
     for (const entry of entries) {
       if (!entry.isDirectory() || entry.name === "_asset_library_manual") continue;
       const projectDir = path.join(this.projectsRoot, entry.name);
-      await this.invalidateProjectMappingReview(projectDir, assetId, versionPolicyFilter);
+      await this.invalidateMappingReview(projectDir, assetId, versionPolicyFilter, "workflow_state", "WAITING_FOR_ASSET_MAPPING_REVIEW", "ASSET_MAPPING_APPROVED");
       let episodeEntries: fs.Dirent[];
       try { episodeEntries = await fsPromises.readdir(path.join(projectDir, "long_story"), { withFileTypes: true }); } catch { continue; }
       for (const episodeEntry of episodeEntries) {
         if (!episodeEntry.isDirectory() || !/^Episode\d+$/.test(episodeEntry.name)) continue;
-        await this.invalidateEpisodeMappingReview(path.join(projectDir, "long_story", episodeEntry.name), assetId, versionPolicyFilter);
+        await this.invalidateMappingReview(path.join(projectDir, "long_story", episodeEntry.name), assetId, versionPolicyFilter, "state", "waiting_for_asset_mapping_review", "asset_mapping_approved");
+
       }
     }
   }
@@ -501,27 +502,31 @@ export class LocalAssetsRepository {
     return matches && (!versionPolicyFilter || item.version_policy === versionPolicyFilter);
   }
 
-  private async invalidateProjectMappingReview(projectDir: string, assetId: string, versionPolicyFilter?: "follow_latest"): Promise<void> {
+  /**
+   * Reopens one owner's approved mapping review because an Asset it points at has changed underneath it.
+   *
+   * One function for both owners, because they now keep their mappings the same way: `asset_mappings.json`
+   * beside `asset_mapping_review.json`. They did not always — an Episode used to carry its mappings inline in
+   * the review as `candidates`, and when that was torn down this cascade kept reading the old shape for
+   * Episodes only. It found no `candidates` and returned, so **an Episode's approved review was never reopened
+   * when an Asset gained a version**, while the short project's was. Its test passed throughout: the test
+   * wrote `candidates` by hand, so it was proving the old file shape rather than the one the app produces.
+   *
+   * Silent at every step on purpose. A version was already added successfully by the time this runs; a project
+   * whose files cannot be read must not turn that into a failure, and the review it could not reopen is a
+   * staleness this app has other ways to show.
+   */
+  private async invalidateMappingReview(directory: string, assetId: string, versionPolicyFilter: "follow_latest" | undefined, stateKey: "workflow_state" | "state", waitingValue: string, approvedValue: string): Promise<void> {
     let mappings: unknown;
-    try { mappings = JSON.parse(await fsPromises.readFile(path.join(projectDir, "asset_mappings.json"), "utf8")); } catch { return; }
+    try { mappings = JSON.parse(await fsPromises.readFile(path.join(directory, "asset_mappings.json"), "utf8")); } catch { return; }
     if (!Array.isArray(mappings) || !mappings.some((item) => this.referencesAsset(item, assetId, versionPolicyFilter))) return;
     let review: unknown;
-    try { review = JSON.parse(await fsPromises.readFile(path.join(projectDir, "asset_mapping_review.json"), "utf8")); } catch { return; }
+    try { review = JSON.parse(await fsPromises.readFile(path.join(directory, "asset_mapping_review.json"), "utf8")); } catch { return; }
     if (!isObject(review)) return;
     const nextRevision = (typeof review.mapping_revision === "number" ? review.mapping_revision : 0) + 1;
     const next = { ...review, status: "waiting", approved_at: "", approved_by: "", mapping_revision: nextRevision };
-    try { await atomicWriteUtf8File(path.join(projectDir, "asset_mapping_review.json"), JSON.stringify(next, null, 2)); } catch { return; }
-    await this.invalidateOwnerState(path.join(projectDir, "project.json"), "workflow_state", "WAITING_FOR_ASSET_MAPPING_REVIEW", "ASSET_MAPPING_APPROVED");
-  }
-
-  private async invalidateEpisodeMappingReview(episodeDir: string, assetId: string, versionPolicyFilter?: "follow_latest"): Promise<void> {
-    let review: unknown;
-    try { review = JSON.parse(await fsPromises.readFile(path.join(episodeDir, "asset_mapping_review.json"), "utf8")); } catch { return; }
-    if (!isObject(review) || !Array.isArray(review.candidates) || !review.candidates.some((item) => this.referencesAsset(item, assetId, versionPolicyFilter))) return;
-    const nextRevision = (typeof review.mapping_revision === "number" ? review.mapping_revision : 0) + 1;
-    const next = { ...review, status: "waiting", approved_at: "", mapping_revision: nextRevision };
-    try { await atomicWriteUtf8File(path.join(episodeDir, "asset_mapping_review.json"), JSON.stringify(next, null, 2)); } catch { return; }
-    await this.invalidateOwnerState(path.join(episodeDir, "project.json"), "state", "waiting_for_asset_mapping_review", "asset_mapping_approved");
+    try { await atomicWriteUtf8File(path.join(directory, "asset_mapping_review.json"), JSON.stringify(next, null, 2)); } catch { return; }
+    await this.invalidateOwnerState(path.join(directory, "project.json"), stateKey, waitingValue, approvedValue);
   }
 
   private async invalidateOwnerState(statePath: string, key: "workflow_state" | "state", waitingValue: string, approvedValue: string): Promise<void> {
