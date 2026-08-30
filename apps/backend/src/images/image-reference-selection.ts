@@ -48,6 +48,109 @@ export async function describeReferenceMappingsForScene(
 export interface CollectedReferenceImages {
   images: Buffer[];
   omittedCount: number;
+  /** The same images, in the same order, named by where their bytes came from. See referenceSourcesForScene. */
+  sources: string[];
+}
+
+/**
+ * Names one reference image by where its bytes came from, in a form two runs can be compared by.
+ *
+ * The prompt text cannot carry this. An Episode sends its references as bytes to the image edit API and records
+ * only the prompt, so swapping the protagonist Folder for a different one changes every picture the next
+ * generation would make while leaving the recorded prompt character-for-character identical — nothing on disk
+ * could tell that anything had changed. That is the gap this closes: the record gains the one fact the prompt
+ * never held.
+ *
+ * A version number rather than a hash of the bytes. Editing a drawing in place produces a new Asset version,
+ * which is the event the Asset Library already treats as "this is different now"; hashing would additionally
+ * catch a file rewritten behind the library's back, which is not something this app does and not something a
+ * user could act on if it were reported. A Folder is named by the child file its representative resolves to,
+ * because the Folder's own version does not move when that child is replaced.
+ */
+function referenceSourceName(mapping: StoredAssetMapping, filePath: string, isFolder: boolean, resolvedVersion: number | null): string {
+  if (mapping.version_policy === "snapshot" && mapping.snapshot_path) return "snapshot:" + (mapping.snapshot_sha256 ?? mapping.snapshot_path);
+  if (isFolder) return "folder:" + mapping.asset_id + ":" + path.basename(filePath);
+  return "asset:" + mapping.asset_id + "@" + String(resolvedVersion ?? "latest");
+}
+
+/** The continuity image is a reference like any other and can be swapped like one, so it is named too. */
+const CONTINUITY_SOURCE = "continuity";
+
+interface ResolvedReference { readonly filePath: string; readonly source: string }
+
+/**
+ * Resolves which files this scene's references come from, without reading any of them.
+ *
+ * Split out so `collectReferenceImages` and the staleness check cannot disagree about what a scene's references
+ * are: one decides what gets paid for and the other tells the user their pictures are behind, and a second copy
+ * of this resolution would let those two drift apart in exactly the way nobody notices until a wrong picture has
+ * already been bought (D-031).
+ *
+ * Existence is checked with `stat` here and by the read itself in the caller. The two answers differ only for a
+ * file that exists but cannot be read, and the consequence there is a staleness marker shown for a reference
+ * that would in fact have been skipped — a wrong flag, never a wrong picture.
+ */
+async function resolveReferences(
+  assets: LocalAssetsRepository,
+  mappings: readonly StoredAssetMapping[],
+  directory: string,
+  sceneNumber: SceneNumber,
+  continuityImagePath: string | null,
+): Promise<{ readonly resolved: ResolvedReference[]; readonly omittedCount: number }> {
+  const resolved: ResolvedReference[] = [];
+  let omittedCount = 0;
+
+  for (const mapping of relevantMappingsForScene(mappings, sceneNumber)) {
+    let filePath: string | null = null;
+    let version: number | null = null;
+    let isFolder = false;
+    if (mapping.version_policy === "snapshot" && mapping.snapshot_path) {
+      filePath = path.join(directory, mapping.snapshot_path);
+    } else {
+      const asset = await assets.get(mapping.asset_id).catch(() => null);
+      if (!asset) continue;
+      // A Folder mapping is always follow_latest (see mappings.service.ts) — its bytes come from whichever
+      // child is currently its representative image, never a pinned version of its own.
+      isFolder = asset.is_folder;
+      if (asset.is_folder) {
+        filePath = await assets.resolveFolderRepresentativeContentPath(asset);
+      } else if (mapping.version_policy === "pinned_version" && mapping.pinned_version) {
+        filePath = assets.resolveVersionContentPath(asset, mapping.pinned_version);
+        version = mapping.pinned_version;
+      } else {
+        filePath = assets.resolveContentPath(asset);
+        version = asset.version;
+      }
+    }
+    if (!filePath) continue;
+    if (!await fs.stat(filePath).then((stat) => stat.isFile()).catch(() => false)) continue;
+    if (resolved.length >= MAX_REFERENCE_IMAGES) { omittedCount += 1; continue; }
+    resolved.push({ filePath, source: referenceSourceName(mapping, filePath, isFolder, version) });
+  }
+
+  if (sceneNumber === 1 && continuityImagePath && await fs.stat(continuityImagePath).then((stat) => stat.isFile()).catch(() => false)) {
+    if (resolved.length >= MAX_REFERENCE_IMAGES) omittedCount += 1;
+    else resolved.push({ filePath: continuityImagePath, source: CONTINUITY_SOURCE });
+  }
+
+  return { resolved, omittedCount };
+}
+
+/**
+ * What this scene's references currently are, as names — the recompute half of the staleness check.
+ *
+ * Compared against the list recorded when the pictures were made: different means the pictures on disk were
+ * drawn from references this scene would no longer use. No record means the scene has nothing to be behind,
+ * exactly as with the prompt (`imageStaleness`), so it is never reported stale.
+ */
+export async function referenceSourcesForScene(
+  assets: LocalAssetsRepository,
+  mappings: readonly StoredAssetMapping[],
+  directory: string,
+  sceneNumber: SceneNumber,
+  continuityImagePath: string | null,
+): Promise<string[]> {
+  return (await resolveReferences(assets, mappings, directory, sceneNumber, continuityImagePath)).resolved.map((item) => item.source);
 }
 
 /**
@@ -74,38 +177,15 @@ export async function collectReferenceImages(
   sceneNumber: SceneNumber,
   continuityImagePath: string | null,
 ): Promise<CollectedReferenceImages> {
+  const { resolved, omittedCount } = await resolveReferences(assets, mappings, directory, sceneNumber, continuityImagePath);
   const results: Buffer[] = [];
-  let omittedCount = 0;
-
-  for (const mapping of relevantMappingsForScene(mappings, sceneNumber)) {
-    let filePath: string | null = null;
-    if (mapping.version_policy === "snapshot" && mapping.snapshot_path) {
-      filePath = path.join(directory, mapping.snapshot_path);
-    } else {
-      const asset = await assets.get(mapping.asset_id).catch(() => null);
-      if (!asset) continue;
-      // A Folder mapping is always follow_latest (see mappings.service.ts) — its bytes come from whichever
-      // child is currently its representative image, never a pinned version of its own.
-      filePath = asset.is_folder
-        ? await assets.resolveFolderRepresentativeContentPath(asset)
-        : mapping.version_policy === "pinned_version" && mapping.pinned_version
-          ? assets.resolveVersionContentPath(asset, mapping.pinned_version)
-          : assets.resolveContentPath(asset);
-    }
-    if (!filePath) continue;
-    const bytes = await fs.readFile(filePath).catch(() => null);
+  const sources: string[] = [];
+  for (const reference of resolved) {
+    const bytes = await fs.readFile(reference.filePath).catch(() => null);
     if (!bytes) continue;
-    if (results.length >= MAX_REFERENCE_IMAGES) { omittedCount += 1; continue; }
     results.push(bytes);
+    sources.push(reference.source);
   }
 
-  if (sceneNumber === 1 && continuityImagePath) {
-    const bytes = await fs.readFile(continuityImagePath).catch(() => null);
-    if (bytes) {
-      if (results.length >= MAX_REFERENCE_IMAGES) omittedCount += 1;
-      else results.push(bytes);
-    }
-  }
-
-  return { images: results, omittedCount };
+  return { images: results, omittedCount, sources };
 }

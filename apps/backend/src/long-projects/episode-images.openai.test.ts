@@ -23,7 +23,12 @@ function jsonResponse(status: number, body: unknown): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => body, headers: { get: () => null } } as unknown as Response;
 }
 
-async function setupWithConnectedOpenAi() {
+/**
+ * `seed` runs after the Episode's script is approved and before its mapping review is, which is the only window
+ * in which a mapping can be created: beginReview refuses to run once the review has been approved, so a test
+ * that needs the Episode to own a mapping cannot add one afterwards.
+ */
+async function setupWithConnectedOpenAi(seed?: (context: { assets: LocalAssetsRepository; mappings: ProjectAssetMappingsService<EpisodeMappingKey>; key: EpisodeMappingKey }) => Promise<void>) {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-images-openai-"));
   const projectsRoot = path.join(root, "projects");
   const projects = new LongProjectsService(projectsRoot);
@@ -41,6 +46,7 @@ async function setupWithConnectedOpenAi() {
   const mappingOwners = new EpisodeMappingOwners(projectsRoot);
   const mappingsService = new ProjectAssetMappingsService<EpisodeMappingKey>(mappingStore, assets, mappingOwners);
   const episodeKey: EpisodeMappingKey = { projectId: "long", episodeNumber: 1 };
+  if (seed) await seed({ assets, mappings: mappingsService, key: episodeKey });
   const begun = await mappingsService.beginReview(episodeKey, { scriptRevision: (await mappingOwners.get(episodeKey)).scriptRevision, textOnlyConfirmed: true });
   await mappingsService.approveReview(episodeKey, { scriptFingerprint: begun.review.scriptFingerprint });
   const settingsRepository = new ProviderSettingsRepository(root);
@@ -105,6 +111,70 @@ describe("real OpenAI Episode image generation", () => {
     await fs.writeFile(file, JSON.stringify(episode, null, 2));
 
     expect((await images.get("long", 1)).staleness.imageStale).toEqual([2]);
+  });
+
+  it("names the scenes whose paid-for images were drawn from references that are no longer the ones used", async () => {
+    // The prompt comparison above cannot see this. References reach the image model as bytes, not as text, so
+    // changing which Assets are mapped alters every picture the next run would make while leaving the recorded
+    // prompt character-for-character identical. Before the reference list was recorded there was nothing on
+    // disk that could tell — which is the same reason imageStale shipped a round after videoStale.
+    const { images, assets, mappingStore, mappingOwners } = await setupWithConnectedOpenAi(async ({ assets: library, mappings, key }) => {
+      const hero = await library.create({ buffer: PNG, originalname: "hero.png", mimetype: "image/png" }, { assetType: "character", displayName: "이배드", approved: true });
+      await mappings.create(key, { assetId: hero.asset_id, usageRole: "character", sceneScope: { kind: "all" } });
+    });
+    const mappings = new ProjectAssetMappingsService<EpisodeMappingKey>(mappingStore, assets, mappingOwners);
+    const key: EpisodeMappingKey = { projectId: "long", episodeNumber: 1 };
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    await images.generate("long", 1, { approved: true });
+    const generated = await images.get("long", 1);
+    expect(generated.staleness.referenceStale).toEqual([]);
+    expect(generated.staleness.imageStale).toEqual([]);
+
+    // A second character joins the mapping. The script did not move, so imageStale stays empty — and that is
+    // exactly why this needs its own field rather than being folded into that one.
+    const rival = await assets.create({ buffer: PNG, originalname: "rival.png", mimetype: "image/png" }, { assetType: "character", displayName: "민재", approved: true });
+    await mappings.create(key, { assetId: rival.asset_id, usageRole: "character", sceneScope: { kind: "all" } });
+
+    const after = await images.get("long", 1);
+    expect(after.staleness.referenceStale).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(after.staleness.imageStale).toEqual([]);
+  });
+
+  it("keeps the recorded reference list through an approval and a regeneration", async () => {
+    // Both actions rebuild the stored review from named fields, which is the shape that has dropped a field
+    // five times in this repository now. Approving or regenerating one scene must not make the others look
+    // current again by erasing what their staleness was measured from.
+    const { images, assets, mappingStore, mappingOwners } = await setupWithConnectedOpenAi(async ({ assets: library, mappings, key }) => {
+      const hero = await library.create({ buffer: PNG, originalname: "hero.png", mimetype: "image/png" }, { assetType: "character", displayName: "이배드", approved: true });
+      await mappings.create(key, { assetId: hero.asset_id, usageRole: "character", sceneScope: { kind: "all" } });
+    });
+    const mappings = new ProjectAssetMappingsService<EpisodeMappingKey>(mappingStore, assets, mappingOwners);
+    const key: EpisodeMappingKey = { projectId: "long", episodeNumber: 1 };
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    await images.generate("long", 1, { approved: true });
+    const rival = await assets.create({ buffer: PNG, originalname: "rival.png", mimetype: "image/png" }, { assetType: "character", displayName: "민재", approved: true });
+    await mappings.create(key, { assetId: rival.asset_id, usageRole: "character", sceneScope: { kind: "all" } });
+
+    // Scene 1 is the one approved, so it is the one whose record the rebuild could drop; scene 2 proves the
+    // approval did not quietly reset the rest either.
+    expect((await images.approve("long", 1, "1", { approved: true })).staleness.referenceStale).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it("says nothing rather than everything when the mappings cannot be read", async () => {
+    // Recomputing a broken mapping file as "no references at all" would report every scene that recorded some
+    // as behind — a screen full of staleness markers produced by a read error. Not knowing has to look like not
+    // knowing.
+    const { images, projectsRoot } = await setupWithConnectedOpenAi(async ({ assets: library, mappings, key }) => {
+      const hero = await library.create({ buffer: PNG, originalname: "hero.png", mimetype: "image/png" }, { assetType: "character", displayName: "이배드", approved: true });
+      await mappings.create(key, { assetId: hero.asset_id, usageRole: "character", sceneScope: { kind: "all" } });
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    await images.generate("long", 1, { approved: true });
+
+    await fs.writeFile(path.join(projectsRoot, "long", "long_story", "Episode01", "asset_mappings.json"), "not json", "utf8");
+    expect((await images.get("long", 1)).staleness.referenceStale).toEqual([]);
   });
 
   it("keeps the recorded prompt through an approval, so approving does not make a stale image look current", async () => {

@@ -311,7 +311,26 @@ export interface StartLongEpisodeImageGenerationResponse {
  * Images generated before the prompt was recorded also have no record, and are likewise absent. That is a real
  * limit and the honest one: this list says "these are known to be behind", never "the rest are known current".
  */
-export interface LongEpisodeImageStaleness { imageStale: SceneNumber[]; }
+export interface LongEpisodeImageStaleness {
+  imageStale: SceneNumber[];
+  /**
+   * Scenes whose pictures were drawn from reference images this scene would no longer use.
+   *
+   * The prompt comparison above cannot see this. An Episode sends its mapped Assets to the image model as
+   * bytes, not as text in the prompt, so changing the protagonist to a different Folder — or its representative
+   * drawing being replaced, or the mapping being excluded — alters every picture the next run would make while
+   * leaving the recorded prompt identical. Before this field there was nothing on disk that could tell.
+   *
+   * Separate from `imageStale` rather than folded into it because the two mean different things to the person
+   * reading them: one says the description changed, the other says the character did. They also arrive from
+   * different actions — editing the script versus editing the Story Bible or the mapping — and a screen that
+   * merged them would be unable to say which happened.
+   *
+   * The same "known to be behind" limit applies: only scenes with a recorded reference list appear, so pictures
+   * generated before this was recorded are absent rather than wrongly reported.
+   */
+  referenceStale: SceneNumber[];
+}
 /**
  * What an Episode's image generation would actually buy, before anything is sent.
  *
