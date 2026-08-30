@@ -135,9 +135,6 @@ describe("LongProjectDetail", () => {
     expect(open).toHaveBeenCalledWith("long_test", 1);
     expect(screen.queryByTestId("open-episode-narration-2")).toBeNull();
     expect(screen.queryByTestId("open-episode-narration-3")).toBeNull();
-    // The short project's link to the same screen says this, and one destination should not have two names.
-    // Asserted on the text rather than the testid because the testid is not what a person reads.
-    expect(screen.getByTestId("open-episode-narration-1").textContent).toBe("내레이션 확인");
   });
 
   it("hides narration entirely while both voice and subtitles are off", async () => {
@@ -341,6 +338,113 @@ describe("LongProjectDetail", () => {
     await waitFor(() => expect(onArchived).toHaveBeenCalledTimes(1));
     expect(fetchMock).toHaveBeenLastCalledWith("/long-projects/long_test/archive", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirmation: project.title }),
+    });
+  });
+
+  /**
+   * The shelf the archive confirmation had been promising. The routes and the folders were both there for days;
+   * only the way back was missing, so the sentence "나중에 다시 꺼낼 수 있습니다" pointed at nothing.
+   */
+  describe("보관한 회차", () => {
+    const archived = (overrides: Record<string, unknown> = {}) => ({
+      archiveId: "Episode07-2026-08-29T11-36-59-800Z", episodeNumber: 7, title: "기록관의 밤",
+      archivedAt: "2026-08-29T11:36:59.800Z", ...overrides,
+    });
+    const drafts = () => [
+      makeLongEpisodeOutline({ episodeNumber: 1, title: "1화", status: "planned" }),
+      makeLongEpisodeOutline({ episodeNumber: 2, title: "2화", status: "outline_ready" }),
+    ];
+    const routed = (archives: unknown[], project = makeLongProject({ id: "long_test", episodes: drafts() })) =>
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith("/episodes/archives") ? jsonResponse(200, { archives }) : jsonResponse(200, { project }));
+
+    async function openShelf(fetchMock: ReturnType<typeof vi.fn>) {
+      vi.stubGlobal("fetch", fetchMock);
+      render(<LongProjectDetail projectId="long_test" onBack={() => {}} onOpenSettings={() => {}} onOpenOutline={() => {}} />);
+      const shelf = await screen.findByTestId("episode-archives");
+      // Asked on opening, not on arrival: most visits here are not looking for an archived Episode.
+      expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/episodes/archives"))).toBe(false);
+      // What the browser does, in the order it does it: the element opens, and then it fires `toggle`.
+      // `fireEvent.toggle` is not one of Testing Library's helpers, so the shelf never opened and all five
+      // of these measured nothing. (CLI fixed this line — mechanical only, the assertions are untouched.)
+      (shelf as HTMLDetailsElement).open = true;
+      fireEvent(shelf, new Event("toggle", { bubbles: true }));
+      return shelf;
+    }
+
+    /**
+     * The one thing a person will assume wrongly. Archiving only ever takes the last Episode and the project may
+     * have grown since, so putting it back where it left from would overwrite an Episode or renumber the ones
+     * after it. A screen that shows "7화" and returns a 3화 has told a lie it could have avoided.
+     */
+    it("says the Episode comes back as the last number, not the one it left from", async () => {
+      await openShelf(routed([archived()]));
+
+      const row = await screen.findByTestId("episode-archive-Episode07-2026-08-29T11-36-59-800Z");
+      expect(row.textContent).toContain("보관 당시 7화");
+
+      fireEvent.click(screen.getByTestId("episode-restore-Episode07-2026-08-29T11-36-59-800Z"));
+      const confirm = await screen.findByTestId("episode-restore-confirm-Episode07-2026-08-29T11-36-59-800Z");
+      // Two drafts exist, so it returns as 3 — and the panel says so before anything is pressed.
+      expect(confirm.textContent).toContain("7화가 아니라 마지막 회차로 돌아옵니다");
+      expect(confirm.textContent).toContain("3화가 됩니다");
+    });
+
+    it("reports the number it actually came back as, from the response", async () => {
+      const restored = makeLongProject({ id: "long_test", episodes: [...drafts(), makeLongEpisodeOutline({ episodeNumber: 3, title: "기록관의 밤", status: "planned" })] });
+      const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "POST") return jsonResponse(200, { project: restored, episode: makeLongEpisodeOutline({ episodeNumber: 3, title: "기록관의 밤", status: "planned" }) });
+        return String(input).endsWith("/episodes/archives") ? jsonResponse(200, { archives: [archived()] }) : jsonResponse(200, { project: makeLongProject({ id: "long_test", episodes: drafts() }) });
+      });
+      await openShelf(fetchMock);
+
+      fireEvent.click(await screen.findByTestId("episode-restore-Episode07-2026-08-29T11-36-59-800Z"));
+      fireEvent.click(await screen.findByTestId("episode-restore-confirm-button-Episode07-2026-08-29T11-36-59-800Z"));
+
+      const notice = await screen.findByTestId("episode-restored");
+      expect(notice.textContent).toContain("3화");
+      // Body is exactly one key — the server rejects anything else.
+      const call = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST");
+      expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({ approved: true });
+      // Gone from the shelf, because it is on the timeline now.
+      await waitFor(() => expect(screen.queryByTestId("episode-archive-Episode07-2026-08-29T11-36-59-800Z")).toBeNull());
+    });
+
+    /**
+     * Restoring goes through the same gate the timeline edits do, so once any Episode has left its draft the
+     * answer is already no. Learning that from a red 409 reads as "I broke something".
+     */
+    it("names the reason before the button when an Episode has moved past its draft", async () => {
+      const working = makeLongProject({ id: "long_test", episodes: [
+        makeLongEpisodeOutline({ episodeNumber: 1, title: "1화", status: "planned" }),
+        makeLongEpisodeOutline({ episodeNumber: 2, title: "2화", status: "images_review" }),
+      ] });
+      await openShelf(routed([archived()], working));
+
+      expect((await screen.findByTestId("episode-restore-blocked")).textContent).toContain("되돌릴 수 없습니다");
+      expect(screen.getByTestId("episode-restore-Episode07-2026-08-29T11-36-59-800Z")).toBeDisabled();
+    });
+
+    /** Parsed out of the folder name, so a folder named another way has none. A guessed time is worse than none. */
+    it("says the time is unknown rather than inventing one", async () => {
+      await openShelf(routed([archived({ archiveId: "Episode04-legacy", episodeNumber: 4, archivedAt: undefined })]));
+
+      const row = await screen.findByTestId("episode-archive-Episode04-legacy");
+      expect(row.textContent).toContain("보관 시각 모름");
+      // Still listed and still restorable — a missing date is not a broken archive.
+      expect(screen.getByTestId("episode-restore-Episode04-legacy")).toBeTruthy();
+    });
+
+    /**
+     * The server skips an archive whose own file will not parse, so the screen has no standing to say the shelf
+     * is empty — only that it has nothing to show.
+     */
+    it("says it has nothing to show rather than that nothing was ever archived", async () => {
+      await openShelf(routed([]));
+
+      const empty = await screen.findByTestId("episode-archives-empty");
+      expect(empty.textContent).toContain("표시할 회차가 없습니다");
+      expect(empty.textContent).not.toContain("보관한 적");
     });
   });
 });

@@ -68,6 +68,10 @@ import {
   type SaveLongEpisodeContinuityRequest,
   type SaveLongEpisodeContinuityResponse,
   type GetLongEpisodeContinuityReferenceResponse,
+  type ArchivedLongEpisodeSummary,
+  type ListArchivedLongEpisodesResponse,
+  type RestoreLongEpisodeRequest,
+  type RestoreLongEpisodeResponse,
   type LongEpisodeNarrationReview,
   type LongEpisodeStoryBibleLinkDrift,
   type LongEpisodeNarrationStaleness,
@@ -357,13 +361,7 @@ function isLongEpisodeScript(value: unknown): value is LongEpisodeScript {
 function isLongEpisodeDetail(value: unknown): value is LongEpisodeDetail {
   if (!isLongEpisodeOutline(value)) return false;
   const record = value as unknown as Record<string, unknown>;
-  if (!(typeof record.approved === "boolean" && Number.isInteger(record.scriptRevision) && Number.isInteger(record.scriptHistoryCount) && (record.script === undefined || isLongEpisodeScript(record.script)))) return false;
-  /* Both optional, and the contract says they are absent together. Checked as a pair because a detail carrying
-     only `finalVideoPath` is exactly the state that made the reload path dangerous: a path that looks openable,
-     is not, and resolves against the project root to somebody else's file. */
-  if (record.finalVideoPath !== undefined && typeof record.finalVideoPath !== "string") return false;
-  if (record.openablePath !== undefined && typeof record.openablePath !== "string") return false;
-  return (record.finalVideoPath === undefined) === (record.openablePath === undefined);
+  return typeof record.approved === "boolean" && Number.isInteger(record.scriptRevision) && Number.isInteger(record.scriptHistoryCount) && (record.script === undefined || isLongEpisodeScript(record.script));
 }
 
 function isLongProject(value: unknown): value is LongProject {
@@ -564,10 +562,7 @@ const isRegenerateEpisodeVideoResponse = (value: unknown): value is RegenerateLo
   return Array.isArray(record.regeneratedSceneNumbers) && record.regeneratedSceneNumbers.every(isSceneNumber);
 };
 const isMergeLongEpisodeVideosResponse = (value: unknown): value is MergeLongEpisodeVideosResponse => isRecord(value)
-  && isLongEpisodeDetail(value.episode) && value.finalVideoPath === "videos/final/instagram_reel.mp4"
-  // Required, and the only one of the two that may be handed to the desktop bridge. Accepting a response
-  // without it would leave the screen holding the Episode-relative string and nothing to open.
-  && typeof value.openablePath === "string" && value.openablePath.length > 0;
+  && isLongEpisodeDetail(value.episode) && value.finalVideoPath === "videos/final/instagram_reel.mp4";
 
 function isUnknownRecordArray(value: unknown): value is Array<Record<string, unknown>> {
   return Array.isArray(value) && value.every(isRecord);
@@ -830,6 +825,36 @@ export function updateLongEpisodeOutline(projectId: string, episodeNumber: numbe
 export function archiveLongEpisode(projectId: string, episodeNumber: number): Promise<ArchiveLongEpisodeResponse> {
   const requestBody: ArchiveLongEpisodeRequest = { approved: true };
   return request(API_ROUTES.longProjectEpisodeArchive(projectId, episodeNumber), { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isArchiveLongEpisodeResponse);
+}
+
+/**
+ * `archivedAt` is optional by contract — it is parsed back out of the folder name, and a folder from some other
+ * naming scheme is still listed and still restorable, just without a date. Absent is accepted; a wrong type is
+ * not, because a date the screen cannot read is worse than one it knows it does not have.
+ */
+const isArchivedLongEpisodeSummary = (value: unknown): value is ArchivedLongEpisodeSummary =>
+  isRecord(value) && typeof value.archiveId === "string" && value.archiveId.length > 0
+  && Number.isInteger(value.episodeNumber) && typeof value.title === "string"
+  && (value.archivedAt === undefined || typeof value.archivedAt === "string");
+const isListArchivedLongEpisodesResponse = (value: unknown): value is ListArchivedLongEpisodesResponse =>
+  isRecord(value) && Array.isArray(value.archives) && value.archives.every(isArchivedLongEpisodeSummary);
+const isRestoreLongEpisodeResponse = (value: unknown): value is RestoreLongEpisodeResponse =>
+  isRecord(value) && isLongProject(value.project) && isLongEpisodeOutline(value.episode);
+
+/** The Episodes this project has archived, newest first. Free to read; nothing is restored by asking. */
+export function listLongEpisodeArchives(projectId: string): Promise<ListArchivedLongEpisodesResponse> {
+  return request(API_ROUTES.longEpisodeArchives(projectId), undefined, isListArchivedLongEpisodesResponse);
+}
+
+/**
+ * Brings one archived Episode back as the project's LAST Episode — not the number it left from.
+ *
+ * The response carries the updated project, so the caller replaces its timeline from that rather than guessing
+ * where the Episode landed. `episode.episodeNumber` is the number it actually came back as.
+ */
+export function restoreLongEpisode(projectId: string, archiveId: string): Promise<RestoreLongEpisodeResponse> {
+  const requestBody: RestoreLongEpisodeRequest = { approved: true };
+  return request(API_ROUTES.longEpisodeArchiveRestore(projectId, archiveId), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isRestoreLongEpisodeResponse);
 }
 
 export function getLongEpisode(projectId: string, episodeNumber: number): Promise<GetLongEpisodeResponse> { return request(API_ROUTES.longEpisode(projectId, episodeNumber), undefined, isEpisodeResponse); }
