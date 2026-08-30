@@ -7,6 +7,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell, utilityProcess } from "elec
 import { BackendProcessManager, type ChildLike } from "./backend-process.ts";
 import { isAllowedLoginUrl, openInstagramLoginWindow, type LoginWindowLike } from "./instagram-login-window.ts";
 import { resolveProjectPath } from "./project-path.ts";
+import { startProductionWindow } from "./production-startup.ts";
 import { resolveRuntimeRoots } from "./runtime-roots.ts";
 import { migrateUserDataFolder } from "./userdata-migration.ts";
 
@@ -148,31 +149,33 @@ function registerInstagramLoginHandler(): void {
   });
 }
 
-async function createProductionWindow(): Promise<BrowserWindow> {
+async function createProductionWindow(): Promise<BrowserWindow | undefined> {
   const port = Number(process.env.BACKEND_PORT ?? DEFAULT_BACKEND_PORT);
   backend = startBackend(port);
-  const ready = await backend.waitUntilReady();
-  if (!ready) {
-    await dialog.showMessageBox({
-      type: "error",
-      title: "AI Animation Studio",
-      message: "로컬 서버를 시작하지 못했습니다. 앱을 다시 시작해 주세요.",
-    });
-    app.quit();
-  }
-  const window = new BrowserWindow({
-    width: 1440,
-    height: 900,
-    minWidth: 1024,
-    minHeight: 700,
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      preload: path.join(currentDirectory, "preload.cjs"),
+  return startProductionWindow<BrowserWindow>({
+    port,
+    waitUntilReady: () => backend!.waitUntilReady(),
+    showStartupFailure: async () => {
+      await dialog.showMessageBox({
+        type: "error",
+        title: APP_DISPLAY_NAME,
+        message: "로컬 서버를 시작하지 못했습니다. 앱을 다시 시작해 주세요.",
+      });
     },
+    quit: () => app.quit(),
+    createWindow: () => new BrowserWindow({
+      width: 1440,
+      height: 900,
+      minWidth: 1024,
+      minHeight: 700,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        preload: path.join(currentDirectory, "preload.cjs"),
+      },
+    }),
+    load: (window, url) => window.loadURL(url),
   });
-  await window.loadURL(`http://127.0.0.1:${port}/`);
-  return window;
 }
 
 function createDevelopmentWindow(developmentUrl: string): BrowserWindow {
