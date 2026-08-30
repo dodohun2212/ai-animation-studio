@@ -69,6 +69,41 @@ describe("buildEpisodeContext", () => {
     })).toThrow(EpisodeContextTooLargeError);
   });
 
+  /**
+   * The one section eviction may never take.
+   *
+   * `forbidden_information` is not a nicety in the payload — it is the whole mechanism behind "이 비밀은 8화부터".
+   * Every other section, dropped, costs the script some memory. This one, dropped, hands the model a prompt that
+   * has never heard of the twist being off-limits, and the twist lands in episode 3. Nobody finds out from an
+   * error: the script generates, reads fine, and is wrong about the one thing a long project is built around.
+   *
+   * Written because nothing measured it. Adding `forbidden_information` to the ladder — the obvious next move
+   * for anyone whose payload is over the limit and who is looking for something else to drop — left all 1199
+   * backend tests green. The eviction test above only checks the order of what *is* evicted, which an
+   * implementation that also evicts this passes.
+   *
+   * The pair matters: the second half alone would pass an implementation that never evicts anything.
+   */
+  it("would rather fail than build a context whose not-yet list has been evicted", () => {
+    const forbidden = Array.from({ length: 6 }, (_, index) => ({ secret_id: `S${index}`, reveal_available_episode: 9, content: "x".repeat(400) }));
+    expect(() => buildEpisodeContext({
+      ...baseInput, secrets: forbidden, foreshadowing: [], recentContinuity: [], olderCompressedSummaries: [], maxCharacters: 2_000,
+    })).toThrow(EpisodeContextTooLargeError);
+  });
+
+  it("keeps every forbidden secret while evicting the sections it is allowed to evict", () => {
+    const crowding = Array.from({ length: 4 }, (_, index) => ({ foreshadowing_id: `F${index}`, status: "open", content: "x".repeat(600) }));
+    const forbidden = [{ secret_id: "S9", reveal_available_episode: 9, content: "the twist" }];
+    const context = buildEpisodeContext({
+      ...baseInput, secrets: forbidden, foreshadowing: crowding, recentContinuity: [], olderCompressedSummaries: [], maxCharacters: 2_500,
+    });
+
+    expect(context.excluded_sections).toContain("lower_priority_foreshadowing");
+    expect((context.unresolved_foreshadowing as unknown[]).length).toBeLessThan(crowding.length);
+    expect(context.forbidden_information).toEqual(forbidden);
+    expect(context.excluded_sections).not.toContain("forbidden_information");
+  });
+
   it("rejects a maxCharacters below Python's floor", () => {
     expect(() => buildEpisodeContext({ ...baseInput, maxCharacters: 1_000 })).toThrow("maxCharacters is too small");
   });
