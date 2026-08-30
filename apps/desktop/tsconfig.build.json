@@ -1,0 +1,15 @@
+{
+  // What ships. The same settings as tsconfig.json, minus the test files.
+  //
+  // They are included there on purpose so a contract change lands as compile errors rather than runtime ones
+  // (D-030), and that stays true — `typecheck` still runs against tsconfig.json. But emitting them made `dist`
+  // hold a second, compiled copy of every test, and `node --test` with no arguments discovers both. Every test
+  // ran twice, the reported count moved depending on whether a build had happened, and — the part that matters
+  // — the dist copies run against compiled code that is only as fresh as the last build. Proven by editing one
+  // dist file and watching the suite fail while its source was untouched: a stale dist can turn the suite red
+  // for code nobody wrote, and can just as easily keep it green for code that no longer exists.
+  //
+  // It also stops the packaged app from shipping its own tests.
+  "extends": "./tsconfig.json",
+  "exclude": ["src/**/*.test.ts"]
+}

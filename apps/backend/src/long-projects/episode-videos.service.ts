@@ -377,10 +377,23 @@ export class EpisodeVideosService implements OnModuleDestroy {
   private currentFile(id: string, number: number, target: SceneNumber | "final"): string {
     return target === "final" ? path.join(this.files(id, number).videos, "final", "instagram_reel.mp4") : this.video(id, number, target);
   }
-  /** The version numbers already archived for one target, in ascending order. */
+  /**
+   * The version numbers already archived for one target, in ascending order.
+   *
+   * "The directory is not there yet" is the first archive and reads as none. Every other failure throws, and
+   * that difference matters because this list is not only listed — `archive()` takes the highest number and
+   * adds one. A readdir that failed for any other reason (a lock, a permission, an I/O error — none of them
+   * exotic on Windows) came back empty, numbering restarted at v001, and the copy landed on top of a clip that
+   * was already there. That clip was bought from Runway.
+   *
+   * The image side of the same operation has always thrown here (`episode-images.service.ts` regenerate: mkdir,
+   * then readdir, inside a try that raises a storage error). Two implementations of one question, and only one
+   * of them could overwrite paid work — docs/06_DECISIONS.md D-036's third question is what separates them.
+   */
   private async historyVersions(id: string, number: number, target: SceneNumber | "final"): Promise<number[]> {
     let entries: string[];
-    try { entries = await fs.readdir(this.historyDirectory(id, number, target)); } catch { return []; }
+    try { entries = await fs.readdir(this.historyDirectory(id, number, target)); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw longStorageError(); }
     const pattern = target === "final" ? /^instagram_reel_v(\d{3})\.mp4$/ : new RegExp(String.raw`^scene${target}_v(\d{3})\.mp4$`);
     return entries.map((name) => pattern.exec(name)).filter((match): match is RegExpExecArray => Boolean(match)).map((match) => Number(match[1])).sort((a, b) => a - b);
   }

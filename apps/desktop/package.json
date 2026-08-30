@@ -6,7 +6,7 @@
   "main": "dist/main.js",
   "scripts": {
     "dev": "npm run build && electron .",
-    "build": "tsc && node -e \"require('node:fs').copyFileSync('src/preload.cjs','dist/preload.cjs')\"",
+    "build": "tsc -p tsconfig.build.json && node -e \"require('node:fs').copyFileSync('src/preload.cjs','dist/preload.cjs')\"",
     "test": "node --test",
     "typecheck": "tsc --noEmit --pretty false",
     "package": "electron-builder --dir",
