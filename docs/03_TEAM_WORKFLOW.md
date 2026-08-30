@@ -68,6 +68,20 @@ Lead Agent가 작업 분석(Python 기준 또는 개선 과제)
 
 두 방식을 동시에 쓰지 않는다 — 예를 들어 `dev:backend`만 켜놓고 `4317`로 접속을 시도하면 아무것도 응답하지 않는다.
 
+### `dev:desktop`은 백엔드 번들을 먼저 다시 만든다
+
+Electron은 `dev:backend`처럼 소스를 watch하지 않고 **미리 번들된 `apps/backend/dist-bundle/main.cjs`를 fork**한다. 그 번들을 만드는 것은 `npm run package --workspace @ai-animation-studio/backend` 뿐이라, 예전에는 `dev:desktop`이 **마지막으로 패키징한 날의 백엔드**를 띄웠다.
+
+실제로 그랬다: 번들이 6일 묵어 있었고, 그 안에는 실사용 사이클을 막았던 검사(`scriptRevision must match …`)가 **고친 뒤에도 그대로** 들어 있었다. 그 상태로 데스크톱 셸을 켜면 **고쳐진 코드가 안 도는데 화면은 아무 말도 하지 않는다** — 백엔드를 고치고 셸에서 확인하는 사람이 "왜 그대로지" 를 디버깅하게 된다.
+
+그래서 루트의 `dev:desktop`이 번들부터 다시 만든다. 몇 초 더 걸리는 값으로 **셸이 항상 지금 소스를 띄운다.**
+
+```
+npm run dev:desktop  =  백엔드 package(빌드+번들)  →  desktop build  →  electron
+```
+
+브라우저 쪽(`dev:backend` + `dev:frontend`)은 원래부터 소스를 watch하므로 이 문제가 없다.
+
 ## 세션 시작 규칙
 
 새 세션은 이전 대화를 기억하지 못한다. 시작 시 다음을 수행한다.

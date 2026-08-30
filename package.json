@@ -9,7 +9,7 @@
     "typecheck": "npm run build --workspace @ai-animation-studio/shared && npm run typecheck --workspaces --if-present",
     "dev:frontend": "npm run dev --workspace @ai-animation-studio/frontend",
     "dev:backend": "npm run dev --workspace @ai-animation-studio/backend",
-    "dev:desktop": "npm run dev --workspace @ai-animation-studio/desktop"
+    "dev:desktop": "npm run package --workspace @ai-animation-studio/backend && npm run dev --workspace @ai-animation-studio/desktop"
   },
   "engines": { "node": ">=22" }
 }
