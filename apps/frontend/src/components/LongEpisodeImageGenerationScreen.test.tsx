@@ -563,6 +563,42 @@ describe("LongEpisodeImageGenerationScreen", () => {
     expect(progress.textContent).not.toContain("초째 진행 중");
   });
 
+  /**
+   * The case the panel was written for and never covered: a run this screen starts.
+   *
+   * `startLongEpisodeImageGeneration` does not answer until all six images exist — minutes with a real key —
+   * and the status the server writes before its loop is only reachable by asking again. Gating the panel on the
+   * status the screen already held meant it stayed hidden for exactly the stretch it exists to cover. Every
+   * existing test found a run already in progress, so all of them passed while a person watched six rows read
+   * 대기 중 through a $0.60 batch.
+   */
+  it("says a run is in progress from the moment it starts one, before any answer comes back", async () => {
+    const ready = withScript(episode("asset_mapping_approved"));
+    let finish: (value: Response) => void = () => {};
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: ready }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
+      .mockResolvedValueOnce(jsonResponse(200, { preview: { sceneNumbers: [1, 2, 3, 4, 5, 6], generatableSceneNumbers: [1, 2, 3, 4, 5, 6], reusableSceneNumbers: [], estimatedCostUsd: 6 * IMAGE_ESTIMATED_COST_USD } }))
+      // The generation POST, left hanging exactly as the real one hangs.
+      .mockReturnValueOnce(new Promise<Response>((resolve) => { finish = resolve; })));
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "이미지 생성 시작" }));
+    fireEvent.click(await screen.findByRole("button", { name: "이미지 생성" }));
+
+    const progress = await screen.findByTestId("episode-generation-progress");
+    expect(progress.textContent).toContain("이 화면을 벗어나거나");
+    expect(progress.textContent).toContain("다시 누르면");
+    // Started here, so the clock is honest — and this is the half that says so.
+    expect(progress.textContent).toContain("초째 진행 중");
+    expect(screen.queryByTestId("episode-generation-progress-resumed")).toBeNull();
+    // No row may read 대기 중 while the batch is being bought.
+    expect(screen.getByTestId("episode-image-scene-1")).toHaveAttribute("data-status", "generating");
+
+    finish(jsonResponse(200, { episode: withScript(episode("images_review")), generatedSceneNumbers: [1, 2, 3, 4, 5, 6], reusedSceneNumbers: [] }));
+  });
+
   it("shows no progress panel when the Episode is not generating", async () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: withScript(episode("asset_mapping_approved")) }))

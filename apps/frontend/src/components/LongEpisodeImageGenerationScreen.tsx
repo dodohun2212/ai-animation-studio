@@ -162,13 +162,27 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
    * request, and the cost of not asking is a second $0.60 batch. Stops the moment the status moves on, and on
    * unmount, so leaving the screen does not leave a timer behind.
    */
+  /**
+   * A run is happening — either the status says so, or this screen's own POST has not come back yet.
+   *
+   * The second half is what was missing. `startLongEpisodeImageGeneration` does not return until every image is
+   * made, and the status the server writes before the loop is only reachable by asking again. So the screen sat
+   * for the whole run holding the state it had before pressing: no panel, six rows reading 대기 중, while the
+   * money went out. The panel existed and was tested — but only for a run this screen found, never for one it
+   * started, which is every first run.
+   */
+  const running = generationPending || episode?.status === "generating_images";
+  /** Set once the POST has answered, so a poll still in flight cannot put the pre-answer status back. */
+  const generationSettled = useRef(false);
   useEffect(() => {
-    if (episode?.status !== "generating_images") return;
+    if (!running) return;
     let cancelled = false;
     const timer = setInterval(() => {
       getLongEpisode(projectId, episodeNumber)
         .then((response) => {
-        if (cancelled) return;
+        // The POST's own answer is the authoritative end of the run; a poll that started before it landed
+        // would otherwise write "still generating" over the finished state.
+        if (cancelled || generationSettled.current) return;
         setEpisode(response.episode);
         // The Episode's own GET fills this; absent means "not determined here", so the project settings below
         // stay the fallback rather than being overwritten with a guess.
@@ -180,15 +194,15 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
         .catch(() => { /* A dropped poll is not worth an error banner; the next tick asks again. */ });
     }, 3000);
     return () => { cancelled = true; clearInterval(timer); };
-  }, [projectId, episodeNumber, episode?.status]);
+  }, [projectId, episodeNumber, running]);
 
   /* Costs nothing and needs nothing from the server: it is the one thing that proves the app is still alive
      while a batch nobody can see per-scene runs for several minutes. */
   useEffect(() => {
-    if (episode?.status !== "generating_images" || runStartedAt === null) return;
+    if (!running || runStartedAt === null) return;
     const ticker = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - runStartedAt) / 1000)), 1000);
     return () => clearInterval(ticker);
-  }, [episode?.status, runStartedAt]);
+  }, [running, runStartedAt]);
 
   const eligible = episode?.status === "asset_mapping_approved";
   /**
@@ -208,11 +222,15 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
   }
   async function confirmGeneration(): Promise<void> {
     if (generationBusy.current) return;
-    generationBusy.current = true; setGenerationPending(true); setError(null);
+    generationBusy.current = true; generationSettled.current = false; setGenerationPending(true); setError(null);
+    // Stamped as the request goes out, not when it answers. The answer is minutes away, and the panel is up for
+    // all of it; reading runStartedAt as null in that stretch made the screen say it had walked in on a run
+    // already going and could not know when it began — about a run it had started itself two lines earlier.
+    setRunStartedAt(Date.now()); setElapsedSeconds(0);
     try {
       const response = await startLongEpisodeImageGeneration(projectId, episodeNumber);
+      generationSettled.current = true;
       setGeneration(response); setEpisode(response.episode); setConfirmingGeneration(false);
-      setRunStartedAt(Date.now()); setElapsedSeconds(0);
     } catch (caught) { setError(toLongProjectDisplayError(caught)); }
     finally { generationBusy.current = false; setGenerationPending(false); }
   }
@@ -306,7 +324,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
       {/* The short project has said all of this since the run was made pollable; the Episode showed only a list
           of scenes reading 만드는 중, with nothing about whether leaving was safe. That last sentence is the one
           that stops a second $0.60 batch, and it was missing on the side where a batch costs more. */}
-      {episode?.status === "generating_images" && (
+      {running && (
         <div data-testid="episode-generation-progress" role="status" className="space-y-1.5 rounded-xl border border-violet-400/30 bg-violet-500/[0.07] p-3.5">
           <p className="text-sm font-semibold text-violet-200">
             {sceneNumbers.length > 0 ? `장면 ${sceneNumbers.length}개의 이미지를 만드는 중입니다.` : "이미지를 만드는 중입니다."}
@@ -352,7 +370,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
              what makes a person press the button again. Per-scene progress is not published, so this says
              what is true of the batch rather than inventing a per-scene claim. */
           const status = reviewFor(sceneNumber)?.status
-            ?? (episode?.status === "generating_images" ? "generating"
+            ?? (running ? "generating"
               // Past the image step the pictures exist — the gallery above is showing them — so "대기 중" here
               // was the same list being wrong at a fourth stage. Review detail is only loaded at the review
               // step; without it this says the one thing that is still true.
