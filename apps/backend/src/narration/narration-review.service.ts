@@ -72,15 +72,14 @@ export class NarrationReviewService {
      * Only for the shared staleness shape this response carries. This screen does not act on `imageStale`, but
      * it does return it, and a field that is wrong wherever it is not looked at is a field that will be wrong
      * the first time someone looks.
+     *
+     * Defaulted rather than left undefined, from the root the project repository already knows. An optional
+     * dependency with no default is the same trap the staleness parameter was: every construction that omits it
+     * gets a wrong list without anyone choosing that, and only the one wired through DI would be right.
      */
-    private readonly assets?: LocalAssetsRepository,
-    private readonly mappings?: LocalProjectAssetMappingsRepository,
+    private readonly assets: LocalAssetsRepository = new LocalAssetsRepository(path.dirname(projects.root)),
+    private readonly mappings: LocalProjectAssetMappingsRepository = new LocalProjectAssetMappingsRepository(projects.root),
   ) {}
-
-  /** Undefined without the repositories, which the staleness check reads as "cannot tell" rather than "none". */
-  private async referenceContext(projectId: string) {
-    return this.assets && this.mappings ? sceneReferenceContext(this.assets, this.mappings, projectId) : undefined;
-  }
 
   async getStatus(projectId: string): Promise<GetNarrationReviewResponse> {
     const project = await this.projects.findById(projectId.trim());
@@ -89,7 +88,7 @@ export class NarrationReviewService {
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.
     const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, TTS_ESTIMATED_COST_USD) : undefined;
-    return { project: toApiProject(project), narrations, staleness: await computeSceneStaleness(project, await this.referenceContext(project.project_id)), ...(budget ? { budget } : {}) };
+    return { project: toApiProject(project), narrations, staleness: await computeSceneStaleness(project, await sceneReferenceContext(this.assets, this.mappings, project.project_id)), ...(budget ? { budget } : {}) };
   }
 
   /**

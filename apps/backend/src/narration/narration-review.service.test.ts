@@ -8,8 +8,10 @@ import { parseShortProjectSettings, applyShortProjectSettings } from "../project
 import { LocalNarrationGenerationService } from "./local-narration-generation.service.js";
 import { withProjectLock } from "../videos/project-lock.js";
 import { NarrationReviewService } from "./narration-review.service.js";
+import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import type { probeAudioDurationSeconds } from "./audio-duration.js";
 
+const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 const roots: string[] = [];
 afterEach(async () => {
   vi.unstubAllGlobals();
@@ -73,6 +75,34 @@ describe("NarrationReviewService", () => {
     expect(after.narrations[0]).toMatchObject({ audio: "placeholder" });
     expect(after.narrations[1]).toMatchObject({ audio: "none" });
     expect(after.staleness).toEqual({ imageStale: [], videoStale: [], narrationStale: [], referenceStale: [] });
+  });
+
+  it("reads its own mappings when nobody handed it any, so imageStale is right in every construction", async () => {
+    // Constructed here the way every test and every future caller constructs it: five arguments, no Asset
+    // Library, no mappings. Left as optional-with-no-default those two would be undefined, this response would
+    // recompute the image prompt without a References block, and every generated scene of a project with a
+    // confirmed mapping would come back stale — the same wrong list the scene-edit response used to return, and
+    // for the same reason: a dependency nobody was asked about.
+    const { reviews, projects, root } = await setup();
+    const assets = new (await import("../assets/assets.repository.js")).LocalAssetsRepository(path.join(root, "learning_data"));
+    const character = await assets.create({ buffer: PNG, originalname: "hero.png", mimetype: "image/png" }, { assetType: "character", displayName: "Hero", approved: true });
+    const mappings = new LocalProjectAssetMappingsRepository(path.join(root, "learning_data", "projects"));
+    const now = "2026-08-30T00:00:00.000Z";
+    await mappings.save(mappings.projectLocation("narr"), [{
+      mapping_id: "MAP-NARR0001", project_id: "narr", asset_id: character.asset_id, enabled: true, usage_role: "character",
+      scene_scope: { mode: "all" }, assignment_source: "manual", confidence: null, match_reason: "manual_assignment",
+      status: "confirmed", user_confirmed: true, version_policy: "follow_latest", pinned_version: null, candidate_only: false,
+      created_at: now, updated_at: now, snapshot_path: null, snapshot_sha256: null, snapshot_source_version: null, selected_child_asset_ids: [],
+    }]);
+
+    const project = await projects.findById("narr");
+    const { imagePromptFor, styleLineFor } = await import("../images/image-prompt.js");
+    const { describeReferenceMappingsForScene } = await import("../images/image-reference-selection.js");
+    const stored = await mappings.load(mappings.projectLocation("narr"));
+    project.image_generation_records = [{ scene_number: 1, prompt: imagePromptFor(project.scenes[0], styleLineFor(project), await describeReferenceMappingsForScene(assets, stored, 1)) }];
+    await projects.save(project);
+
+    expect((await reviews.getStatus("narr")).staleness?.imageStale).toEqual([]);
   });
 
   it("flags narrationStale once the scene's narration text is edited after audio was generated", async () => {

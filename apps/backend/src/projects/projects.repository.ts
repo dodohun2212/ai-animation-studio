@@ -46,6 +46,18 @@ export class LocalProjectRepository {
     return { directory, file: path.join(directory, "project.json") };
   }
 
+  /**
+   * The directory every project lives under.
+   *
+   * Exposed so a service holding this repository can build the things that live beside a project — its Asset
+   * Mappings, most of all — without also being handed the root separately. A service that has this repository
+   * demonstrably knows where the projects are; making it take the same path twice is how one of the two ends up
+   * missing, which is exactly how three callers came to compute staleness without their mappings.
+   */
+  get root(): string {
+    return this.projectsRoot;
+  }
+
   /** Resolved absolute storage directory for one project, e.g. for confirming a stored path stays within it. */
   projectDirectory(projectId: string): string {
     return this.projectFile(projectId).directory;
