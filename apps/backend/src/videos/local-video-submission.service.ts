@@ -28,6 +28,10 @@ import {
   videoRequestIdConflict,
   videoSubmissionNotAllowed,
 } from "./video-submission-api.error.js";
+import { ProjectLockTimeoutError, withProjectLock } from "./project-lock.js";
+// PROJECT_LOCKED already belongs to this directory and this feature as the frontend sees it; a second code
+// saying the same thing would be a new contract for a path that only fires after ten seconds of real contention.
+import { videoWorkflowLocked } from "./video-workflow-api.error.js";
 
 function scenesFor(project: StoredProject): SceneNumber[] {
   return sceneNumbersFor(toShortProjectSettings(project).sceneCount);
@@ -142,7 +146,28 @@ export class LocalVideoSubmissionService {
     return { jobId, acceptedSceneNumbers: [...scenes] };
   }
 
+  /**
+   * The short project's half of the same race the Episode side had.
+   *
+   * Read the project, check its state, then save the whole object back with the new records appended. Two
+   * presses at once both read the same project and the second save replaced the first, so one caller was told
+   * a job had started that was never written. Locked for the same reason and in the same shape as every other
+   * money-adjacent path here; the loser waits and then meets the state gate, which is what actually refuses a
+   * second charge (docs/04_INTERNAL_API_CONTRACT.md is explicit that this is not `userRequestId`'s job).
+   *
+   * Swept together with the Episode side rather than fixed alone — D-029: a gate around a paid call is never
+   * only in one place.
+   */
   async start(projectId: string, body: unknown): Promise<StartVideoGenerationResponse> {
+    const id = projectId.trim();
+    try {
+      return await withProjectLock(this.projects.projectDirectory(id), `${id}:videos-start`, () => this.startCore(id, body));
+    } catch (error) {
+      if (error instanceof ProjectLockTimeoutError) throw videoWorkflowLocked();
+      throw error;
+    }
+  }
+  private async startCore(projectId: string, body: unknown): Promise<StartVideoGenerationResponse> {
     const project = await this.projects.findById(projectId.trim());
     const scenes = scenesFor(project);
     const request = this.validateRequest(body, scenes);

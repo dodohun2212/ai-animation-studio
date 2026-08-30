@@ -59,6 +59,42 @@ describe("local video submission approval gate", () => {
     await expect(restarted.start("video_submit", body)).resolves.toEqual(accepted);
   });
 
+  /**
+   * Two presses at once, from two clients.
+   *
+   * `start()` read the project, checked its state, then saved the whole object back with the new records
+   * appended — with nothing serializing that. Both calls read the same project, both passed the state gate, and
+   * the second save replaced the first: two job ids handed out, one job on disk, and the loser's screen asking
+   * about a job that was never written after being told its run had started.
+   *
+   * Asserts both halves, because only one of them is about money. Exactly one job may exist — that is the state
+   * gate doing the job the contract says is its (never `userRequestId`'s) — and the loser must be told no,
+   * rather than handed an id. The second half is what was actually broken; the first held by an accident of
+   * ordering and is pinned so it stays deliberate.
+   */
+  it("refuses the second of two simultaneous submissions instead of handing out a job that is never written", async () => {
+    const { projects, previews, service } = await setup();
+    const first = await request(previews, "request_a");
+    const second = await request(previews, "request_b");
+
+    const outcomes = await Promise.allSettled([service.start("video_submit", first), service.start("video_submit", second)]);
+
+    expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+    expect(outcomes.find((outcome) => outcome.status === "rejected")).toMatchObject({ reason: { response: { code: "VIDEO_SUBMISSION_NOT_ALLOWED" } } });
+    const persisted = await projects.findById("video_submit");
+    expect(persisted.video_generation_records).toHaveLength(6);
+    expect(new Set((persisted.video_generation_records as Array<{ job_id: string }>).map((record) => record.job_id)).size).toBe(1);
+  });
+
+  /** The counterpart: serializing must not turn one person's repeated press into a refusal. */
+  it("still returns the same job when the same request ID is submitted twice", async () => {
+    const { previews, service } = await setup();
+    const body = await request(previews);
+    const accepted = await service.start("video_submit", body);
+
+    await expect(service.start("video_submit", body)).resolves.toEqual(accepted);
+  });
+
   it("rejects unapproved/malformed IDs, stale image confirmation, duplicate request-ID input changes, and over-budget submissions", async () => {
     const { projects, previews, service } = await setup();
     const body = await request(previews);

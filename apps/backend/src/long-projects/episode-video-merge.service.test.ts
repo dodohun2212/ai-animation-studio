@@ -27,17 +27,62 @@ function runner(options: { invalidProbe?: boolean; unavailable?: boolean; noOutp
   };
 }
 
-async function setup() {
+/** Everything up to approved images — where a video submission becomes possible, and where the race lives. */
+async function setupToApprovedImages() {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-video-merge-")); const projectsRoot = path.join(root, "projects");
   const projects = new LongProjectsService(projectsRoot); await projects.create({ projectId: "long", settings });
   const outline = await projects.preview("long"); await projects.approve("long", { approved: true, prompt: outline.preview.prompt, promptSha256: outline.preview.promptSha256 });
   const scripts = new EpisodeScriptsService(projectsRoot); await scripts.generate("long", 1, { userRequestId: "episode-video-merge.service-script-1" }); await scripts.approve("long", 1, { approved: true });
   await approveEpisodeMappingReview(projectsRoot, root, "long", 1);
   const images = new EpisodeImagesService(projectsRoot); await images.generate("long", 1, { approved: true }); for (const number of [1, 2, 3, 4, 5, 6] as const) await images.approve("long", 1, String(number), { approved: true });
+  return { projectsRoot };
+}
+
+async function setup() {
+  const { projectsRoot } = await setupToApprovedImages();
   const videos = new EpisodeVideosService(projectsRoot); const preview = await videos.preview("long", 1); const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) }); await videos.run("long", 1, started.jobId); for (const number of [1, 2, 3, 4, 5, 6] as const) await videos.approve("long", 1, started.jobId, String(number), { approved: true });
   return { projectsRoot };
 }
 afterEach(async () => { if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
+
+/**
+ * Two presses at once, from two clients — the Episode half of the same race the short project had.
+ *
+ * `start()` read the records file, checked the Episode's state, then wrote both, with nothing serializing it.
+ * Measured before the fix: both callers came back with a job id and only one of those jobs was on disk, so the
+ * loser asked about its job forever and got LONG_EPISODE_VIDEO_JOB_NOT_FOUND after being told the run started.
+ *
+ * Both halves are asserted, and only one is about money. Exactly one job may exist — the state gate doing what
+ * docs/04_INTERNAL_API_CONTRACT.md says is its job and not `userRequestId`'s — and the loser must be refused
+ * rather than handed an id. Reuses this file's setup, which already carries an Episode to approved images.
+ */
+describe("two simultaneous Episode video submissions", () => {
+  it("refuses the second instead of handing out a job that is never written", async () => {
+    const { projectsRoot } = await setupToApprovedImages();
+    const videos = new EpisodeVideosService(projectsRoot);
+    const preview = await videos.preview("long", 1);
+    const body = (userRequestId: string) => ({ approved: true as const, confirmationId: preview.confirmationId, userRequestId, prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+
+    const outcomes = await Promise.allSettled([videos.start("long", 1, body("request_a")), videos.start("long", 1, body("request_b"))]);
+
+    expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+    expect(outcomes.find((outcome) => outcome.status === "rejected")).toMatchObject({ reason: { response: { code: "LONG_EPISODE_VIDEOS_NOT_ALLOWED" } } });
+    const raw = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "video_generation_records.json"), "utf8")) as Array<{ job_id: string }>;
+    expect(raw).toHaveLength(6);
+    expect(new Set(raw.map((record) => record.job_id)).size).toBe(1);
+  });
+
+  /** The counterpart: serializing must not turn one person's repeated press into a refusal. */
+  it("still returns the same job when the same request ID is submitted twice", async () => {
+    const { projectsRoot } = await setupToApprovedImages();
+    const videos = new EpisodeVideosService(projectsRoot);
+    const preview = await videos.preview("long", 1);
+    const body = { approved: true as const, confirmationId: preview.confirmationId, userRequestId: "request_same", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) };
+    const accepted = await videos.start("long", 1, body);
+
+    await expect(videos.start("long", 1, body)).resolves.toMatchObject({ jobId: accepted.jobId });
+  });
+});
 
 describe("EpisodeVideoMergeService", () => {
   it("probes, normalizes, and concatenates the current six approved Episode clips in scene order without exposing disk paths", async () => {

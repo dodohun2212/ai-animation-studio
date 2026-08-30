@@ -272,7 +272,36 @@ export class EpisodeVideosService implements OnModuleDestroy {
     // Read-only: previewing never reserves or records budget, it only reports the ledger's current state.
     const budget = await this.budgetPreview(estimatedCostUsd);
     return { confirmationId: hash.digest("hex"), model: "gen4_turbo", ratio, durationSecondsPerScene, executionMode: "sequential", scenes: items, estimatedCostUsd, maximumProviderCalls: sceneNumbers.length, ...(budget ? { budget } : {}) }; }
-  async start(projectId: string, number: number, request: StartLongEpisodeVideoGenerationRequest): Promise<StartLongEpisodeVideoGenerationResponse> { const id = projectId.trim(); if (!object(request) || Object.keys(request).length !== 4 || !validId(request.userRequestId) || typeof request.confirmationId !== "string" || request.approved !== true || !Array.isArray(request.prompts)) throw longInvalidRequest("Episode video start request is invalid."); const episode = await this.loadEpisode(id, number); const sceneNumbers = sceneNumbersFor(this.sceneCount(episode)); if (request.prompts.length !== sceneNumbers.length) throw longInvalidRequest("Episode video start request is invalid."); const existing = await this.records(id, number, this.sceneCount(episode)).catch((error) => error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404 ? [] : Promise.reject(error)); const same = existing.filter((item) => item.user_request_id === request.userRequestId); if (same.length) { const jobId = same[0]!.job_id; if (same.some((item, index) => item.prompt !== request.prompts[index]?.prompt || item.confirmation_id !== request.confirmationId)) throw longInvalidRequest("Episode video request ID conflicts with a previous request."); return { jobId, acceptedSceneNumbers: [...sceneNumbers], episode: this.detail(episode) }; } const preview = await this.preview(id, number); if (preview.confirmationId !== request.confirmationId || request.prompts.some((item, index) => !object(item) || item.sceneNumber !== sceneNumbers[index])) throw longInvalidRequest("Episode video confirmation is stale."); // The prompt itself is the person's to change. It used to have to match the preview byte for byte, which
+  /**
+   * Two presses at once used to produce two answers and one job.
+   *
+   * `start()` read the records file, checked the Episode's state, then wrote the file and the state. Nothing
+   * serialized that, so two calls with different `userRequestId` — two tabs, two clients — both read an empty
+   * records file, both passed the state gate, and the second write replaced the first. Measured, not reasoned:
+   * both callers came back with a job id and only one of those jobs existed on disk, so the loser's screen
+   * asked about its job forever and got LONG_EPISODE_VIDEO_JOB_NOT_FOUND after being told the run had started.
+   *
+   * 🟢 It never double-charged, and the reason is worth writing down because it is not `userRequestId`: the
+   * existing records are read *before* the state gate, so a second call that arrives after the first has
+   * written `videos_generating` is refused by the gate and never reaches the write, and one that arrives
+   * before it saw an empty file and overwrote rather than appended. Money was safe by an accident of ordering
+   * — docs/04_INTERNAL_API_CONTRACT.md is explicit that the state gate is what stops the second charge, and
+   * this is that gate holding while everything around it slipped.
+   *
+   * Locked now, like every other money-adjacent path in this file and its siblings. The second caller waits,
+   * then meets the state gate honestly: "already generating" instead of a job id that was never written.
+   */
+  async start(projectId: string, number: number, request: StartLongEpisodeVideoGenerationRequest): Promise<StartLongEpisodeVideoGenerationResponse> {
+    const id = projectId.trim();
+    try {
+      return await withProjectLock(resolveSafeProjectDirectory(this.projectsRoot, id), `${id}:episode-${number}:videos-start`,
+        () => this.startCore(id, number, request));
+    } catch (error) {
+      if (error instanceof ProjectLockTimeoutError) throw longLocked("Episode video generation");
+      throw error;
+    }
+  }
+  private async startCore(projectId: string, number: number, request: StartLongEpisodeVideoGenerationRequest): Promise<StartLongEpisodeVideoGenerationResponse> { const id = projectId.trim(); if (!object(request) || Object.keys(request).length !== 4 || !validId(request.userRequestId) || typeof request.confirmationId !== "string" || request.approved !== true || !Array.isArray(request.prompts)) throw longInvalidRequest("Episode video start request is invalid."); const episode = await this.loadEpisode(id, number); const sceneNumbers = sceneNumbersFor(this.sceneCount(episode)); if (request.prompts.length !== sceneNumbers.length) throw longInvalidRequest("Episode video start request is invalid."); const existing = await this.records(id, number, this.sceneCount(episode)).catch((error) => error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404 ? [] : Promise.reject(error)); const same = existing.filter((item) => item.user_request_id === request.userRequestId); if (same.length) { const jobId = same[0]!.job_id; if (same.some((item, index) => item.prompt !== request.prompts[index]?.prompt || item.confirmation_id !== request.confirmationId)) throw longInvalidRequest("Episode video request ID conflicts with a previous request."); return { jobId, acceptedSceneNumbers: [...sceneNumbers], episode: this.detail(episode) }; } const preview = await this.preview(id, number); if (preview.confirmationId !== request.confirmationId || request.prompts.some((item, index) => !object(item) || item.sceneNumber !== sceneNumbers[index])) throw longInvalidRequest("Episode video confirmation is stale."); // The prompt itself is the person's to change. It used to have to match the preview byte for byte, which
     // made the editable box on the screen a lie: every edit came back as "확인해 주세요" with nothing saying
     // what was wrong. `confirmationId` is what guards against a stale confirmation — it is derived from the
     // scenes, so a script that moved underneath still fails here — and the short project has always accepted
