@@ -26,6 +26,8 @@ import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId, storyBibleItemExists, storyBibleItemNotFound } from "./long-project-api.error.js";
 
 import { longStoryRoot } from "./long-project-paths.js";
+import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
+import { syncStoryBibleMappings } from "./episode-story-bible-mapping-sync.js";
 const collections = ["secrets", "foreshadowing"] as const;
 const idKeys = { secrets: "secret_id", foreshadowing: "foreshadowing_id" } as const;
 const prefixes = { secrets: "SECRET", foreshadowing: "FORESHADOW" } as const;
@@ -73,7 +75,38 @@ function jsonValue(value: unknown, depth = 0): unknown {
 
 @Injectable()
 export class StoryBibleService {
-  constructor(private readonly projectsRoot: string, private readonly assets = new LocalAssetsRepository(path.dirname(projectsRoot))) {}
+  constructor(
+    private readonly projectsRoot: string,
+    private readonly assets = new LocalAssetsRepository(path.dirname(projectsRoot)),
+    /**
+     * Optional so every existing construction of this service still works, and absent means the links are saved
+     * without being pushed into Episodes — which is what this service did before, not a broken state.
+     */
+    private readonly mappings?: LocalProjectAssetMappingsRepository,
+  ) {}
+
+  /**
+   * Pushes both links into the Episodes that have not bought pictures yet.
+   *
+   * Called after either link is saved, and reading both from the Story Bible rather than taking the one that
+   * just changed: `syncAutoMappings` works a tag at a time, and passing only the changed one would leave the
+   * other tag's mappings alone, which is right — but reading both keeps the call site from having to know that.
+   *
+   * Never allowed to fail the save — the person asked for the link to be stored, and a mapping that could not
+   * be seeded is one they can still make by hand, whereas a link that did not save is gone. That guarantee is
+   * kept inside `syncStoryBibleMappings`, per Episode and for the read of the Episode list, rather than by a
+   * second try/catch here: an outer catch no input can reach is the green-but-guards-nothing shape of D-023,
+   * and it would also swallow a real bug in the two lines above it.
+   */
+  private async pushLinksToEpisodes(projectId: string, bible: StoredBible): Promise<void> {
+    if (!this.mappings) return;
+    const style = bible.basic.style_asset_link as { asset_id?: unknown } | undefined;
+    const protagonist = bible.basic.protagonist_asset_link as { asset_id?: unknown } | undefined;
+    await syncStoryBibleMappings(this.projectsRoot, this.mappings, this.assets, projectId, {
+      ...(typeof style?.asset_id === "string" ? { styleAssetId: style.asset_id } : {}),
+      ...(typeof protagonist?.asset_id === "string" ? { protagonistAssetId: protagonist.asset_id } : {}),
+    });
+  }
 
   private files(projectId: string): { project: string; bible: string } {
     const root = longStoryRoot(this.projectsRoot, projectId);
@@ -211,7 +244,9 @@ export class StoryBibleService {
       if (!asset.versions.some((version) => version.version === link.pinned_version)) throw longInvalidRequest("Story Bible style Asset link version is unavailable.");
       bible.basic.style_asset_link = link;
     }
-    await this.save(id, bible); return { storyBible: this.toApi(bible) };
+    await this.save(id, bible);
+    await this.pushLinksToEpisodes(id, bible);
+    return { storyBible: this.toApi(bible) };
   }
 
   /**
@@ -234,7 +269,9 @@ export class StoryBibleService {
       if (link.version_policy === "pinned_version" && !asset.versions.some((version) => version.version === link.pinned_version)) throw longInvalidRequest("Story Bible protagonist Asset link version is unavailable.");
       bible.basic.protagonist_asset_link = link;
     }
-    await this.save(id, bible); return { storyBible: this.toApi(bible) };
+    await this.save(id, bible);
+    await this.pushLinksToEpisodes(id, bible);
+    return { storyBible: this.toApi(bible) };
   }
 
   /** Mirrors BibleCollectionManager.search: a blank normalized query returns every item in storage order. */
