@@ -106,17 +106,21 @@ export class LongProjectsService {
    * Answered here rather than inside `outlines()` because only the screen needs it: the archive and
    * episode-count paths call `outlines()` too and have no use for a stat per Episode.
    *
-   * "Not there" reads as `false`, and that covers a missing Episode directory too — Windows reports ENOENT for
-   * a path under a non-directory as well, and either way there is no memo to read. Anything else (a permissions
-   * error, say) yields `undefined`: the field is the screen's licence to say 메모 없음, and it must not be handed
-   * out on the strength of a read that failed for a reason that has nothing to do with whether a memo exists.
+   * "Not there" and "there but unreadable" both read as `false`, because the question this answers is whether a
+   * later script gets this Episode's memory, and neither one does. "Not there" covers a missing Episode
+   * directory too — Windows reports ENOENT for a path under a non-directory as well. Anything else (a
+   * permissions error, say) yields `undefined`: the field is the screen's licence to say 메모 없음, and it must
+   * not be handed out on the strength of a read that failed for a reason unrelated to whether a memo exists.
    */
   private async withContinuitySaved(id: string, outlines: LongEpisodeOutline[]): Promise<LongEpisodeOutline[]> {
     return Promise.all(outlines.map(async (outline) => {
       const file = path.join(this.root(id), episodeDirectoryName(outline.episodeNumber), "continuity.json");
-      try { await fs.stat(file); return { ...outline, continuitySaved: true }; }
+      try { JSON.parse(await fs.readFile(file, "utf8")); return { ...outline, continuitySaved: true }; }
       catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return { ...outline, continuitySaved: false };
+        // Parsed, not merely stat'd. A file that exists and cannot be read is not a saved memo — the script
+        // prompt skips it exactly as it skips an absent one — and answering `true` on the strength of a
+        // directory entry would be this field claiming something nobody checked.
+        if (error instanceof SyntaxError || (error as NodeJS.ErrnoException).code === "ENOENT") return { ...outline, continuitySaved: false };
         return outline;
       }
     }));

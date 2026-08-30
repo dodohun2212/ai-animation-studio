@@ -35,9 +35,14 @@ describe("LongProjectsService", () => {
   it("reports a continuity memo per Episode, so the timeline does not have to ask once per row", async () => {
     const subject = await service();
     await subject.create(input);
-    const episodeOne = path.join(root!, "projects", "long_test", "long_story", "Episode01");
-    await fs.mkdir(episodeOne, { recursive: true });
-    await fs.writeFile(path.join(episodeOne, "continuity.json"), JSON.stringify({ episode_number: 1, episode_summary: "she finds the tape" }), "utf8");
+    const episodeDirectory = (number: number) => path.join(root!, "projects", "long_test", "long_story", `Episode0${number}`);
+    await fs.mkdir(episodeDirectory(1), { recursive: true });
+    await fs.writeFile(path.join(episodeDirectory(1), "continuity.json"), JSON.stringify({ episode_number: 1, episode_summary: "she finds the tape" }), "utf8");
+    // Present and unreadable is not a saved memo: the script prompt skips it exactly as it skips an absent one,
+    // so answering true here would be the field claiming something nobody checked. The first version of this
+    // stat'd the file and did exactly that.
+    await fs.mkdir(episodeDirectory(2), { recursive: true });
+    await fs.writeFile(path.join(episodeDirectory(2), "continuity.json"), "{ nope", "utf8");
 
     const episodes = (await subject.get("long_test")).project.episodes;
 

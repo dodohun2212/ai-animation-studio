@@ -8,6 +8,19 @@ export class LongProjectApiException extends HttpException {
     super((details ? { code, message, details } : { code, message }) satisfies ApiError, status);
   }
 }
+/**
+ * Whether this error is one of the named codes.
+ *
+ * For the few callers that must survive a specific failure rather than propagate it — reading an optional file
+ * that may be absent or unreadable, say. Matching on the code rather than the HTTP status because several
+ * distinct failures share a status: LONG_PROJECT_JSON_MALFORMED and LONG_PROJECT_STORAGE_ERROR are both 500,
+ * and only one of them means "there is nothing here to read".
+ */
+export function isLongProjectError(error: unknown, ...codes: Code[]): boolean {
+  if (!(error instanceof LongProjectApiException)) return false;
+  const body = error.getResponse();
+  return typeof body === "object" && body !== null && codes.includes((body as { code: Code }).code);
+}
 export const longInvalidRequest = (message = "Long project request is invalid.") => new LongProjectApiException("INVALID_REQUEST", message, HttpStatus.BAD_REQUEST);
 export const longUnsafeId = () => new LongProjectApiException("UNSAFE_PROJECT_ID", "Project ID must contain only letters, numbers, '_' or '-'.", HttpStatus.BAD_REQUEST);
 export const longNotFound = () => new LongProjectApiException("LONG_PROJECT_NOT_FOUND", "Long project was not found.", HttpStatus.NOT_FOUND);

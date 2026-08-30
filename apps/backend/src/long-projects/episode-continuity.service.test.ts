@@ -67,12 +67,56 @@ describe("EpisodeContinuityService", () => {
     expect(await continuity.get("long", 1)).toMatchObject({ memory: null, canSave: true });
   });
 
-  it("rejects malformed memory and accepts a missing next Episode as null", async () => {
+  it("rejects malformed memory on the way in, and accepts a missing next Episode as null", async () => {
     const { continuity, scripts } = await setup(); await scripts.generate("long", 1, { userRequestId: "episode-continuity.service-script-7" }); await markEligible(1);
     await expect(continuity.save("long", 1, { memory: { ...memory, events: ["x", 2] } as never })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     await expect(continuity.save("long", 1, { memory })).resolves.toMatchObject({ nextEpisode: null });
+  });
+
+  /**
+   * The screen that fixes the file has to be able to open on the broken file.
+   *
+   * This used to refuse with LONG_PROJECT_JSON_MALFORMED — and so did every later Episode's script generation,
+   * for the same file. One unreadable continuity.json therefore stopped the paid step and stopped the only
+   * repair, and nothing inside the app could reach either. Reading it as "no memo" is what the screen already
+   * knows how to render: it pre-fills from the outline, says it did, and saving replaces the bad file.
+   *
+   * The assertion this replaces pinned that dead end.
+   */
+  it("opens on a memo that can no longer be read, so the file can be rewritten", async () => {
+    const { continuity, scripts } = await setup(); await scripts.generate("long", 1, { userRequestId: "episode-continuity.service-script-9" }); await markEligible(1);
+    await continuity.save("long", 1, { memory });
     await fs.writeFile(path.join(path.dirname(episodePath(1)), "continuity.json"), "{ nope");
-    await expect(continuity.get("long", 1)).rejects.toMatchObject({ response: { code: "LONG_PROJECT_JSON_MALFORMED" } });
+
+    expect(await continuity.get("long", 1)).toMatchObject({ memory: null, canSave: true });
+
+    await expect(continuity.save("long", 1, { memory })).resolves.toMatchObject({ memory: { episodeNumber: 1 } });
+    expect(await continuity.get("long", 1)).toMatchObject({ memory: { episodeNumber: 1 } });
+  });
+
+  /**
+   * One unreadable memo must not stop a later Episode's script.
+   *
+   * The memo is optional by design — nothing writes it automatically — so a corrupt one has to degrade to the
+   * same thing an absent one does. It threw instead, which meant a single bad file made every subsequent
+   * Episode ungeneratable.
+   *
+   * Paired with the ordered-context test below, which proves a readable memo does reach the prompt: without
+   * that, an implementation that simply ignored every memo would pass this one.
+   */
+  it("skips a memo it cannot read and still writes the script, with the readable ones intact", async () => {
+    const { scripts } = await setup();
+    for (const number of [1, 2]) {
+      const directory = path.dirname(episodePath(number));
+      await fs.mkdir(directory, { recursive: true });
+      await fs.writeFile(path.join(directory, "continuity.json"), JSON.stringify({ episode_number: number, episode_summary: `summary-${number}`, events: [], character_changes: [], next_actions: [], appeared_character_ids: [], appeared_location_ids: [], item_changes: [], resolved_conflicts: [], new_conflicts: [], revealed_secret_ids: [], remaining_secret_ids: [], new_foreshadowing_ids: [], resolved_foreshadowing_ids: [], time_elapsed: "", world_changes: [], user_edits: "", updated_at: new Date().toISOString() }));
+    }
+    await fs.writeFile(path.join(path.dirname(episodePath(1)), "continuity.json"), "{ nope");
+
+    await expect(scripts.generate("long", 3, { userRequestId: "episode-continuity.service-script-10" })).resolves.toBeTruthy();
+
+    const saved = JSON.parse(await fs.readFile(episodePath(3), "utf8")) as { script_history: Array<{ continuity_context: { recentContinuity: Array<{ episodeNumber: number }> } }> };
+    expect(saved.script_history.at(-1)!.continuity_context.recentContinuity.map((value) => value.episodeNumber)).toEqual([2]);
   });
 
   it("adds ordered, bounded continuity context without secret fields to the next script history", async () => {

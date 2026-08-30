@@ -10,7 +10,7 @@ import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../pr
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiStoryApi } from "../story/openai-story-adapter.js";
 import { buildEpisodeContext } from "./episode-context-builder.js";
-import { longEpisodeNotFound, longEpisodeScriptBudgetExceeded, longEpisodeScriptExists, longEpisodeScriptNotAllowed, longEpisodeScriptProviderError, longEpisodeSettingsNotAllowed, longInvalidData, longLocked, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { isLongProjectError, longEpisodeNotFound, longEpisodeScriptBudgetExceeded, longEpisodeScriptExists, longEpisodeScriptNotAllowed, longEpisodeScriptProviderError, longEpisodeSettingsNotAllowed, longInvalidData, longLocked, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { episodeSettings } from "./episode-settings.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
@@ -28,6 +28,10 @@ const isObj = (value: unknown): value is Record<string, unknown> => Boolean(valu
 const asText = (value: unknown, error = longInvalidData): string => { if (typeof value !== "string") throw error(); return value.trim(); };
 const asNumber = (value: unknown, error = longInvalidData): number => { if (!Number.isInteger(value)) throw error(); return value as number; };
 const statuses: readonly LongEpisodeStatus[] = LONG_EPISODE_STATUSES;
+/** A continuity memo that is not there, or is there and cannot be parsed — the two states a script must survive. */
+const isAbsentOrUnreadableMemo = (error: unknown): boolean =>
+  isLongProjectError(error, "LONG_PROJECT_NOT_FOUND", "LONG_PROJECT_JSON_MALFORMED", "LONG_PROJECT_DATA_INVALID");
+
 @Injectable()
 export class EpisodeScriptsService {
   private readonly projects: LongProjectsService;
@@ -77,7 +81,21 @@ export class EpisodeScriptsService {
   private toApi(outline: LongEpisodeOutline, stored: StoredEpisode): LongEpisodeDetail { const script = Object.keys(stored.script).length ? this.parseScript(stored.script, stored.scene_count) : undefined; return { ...outline, status: stored.state, approved: stored.approved, scriptRevision: stored.script_revision, ...(script ? { script } : {}), scriptHistoryCount: stored.script_history.length, updatedAt: typeof stored.updated_at === "string" ? stored.updated_at : new Date(0).toISOString(), ...(toEpisodeInstagramPost(stored.instagram_post) ? { instagramPost: toEpisodeInstagramPost(stored.instagram_post)! } : {}), ...(toEpisodeUsedAudio(stored.used_audio) ? { usedAudio: toEpisodeUsedAudio(stored.used_audio)! } : {}), ...(episodeErrors(stored).length > 0 ? { errors: episodeErrors(stored) } : {}), ...(typeof (stored as Record<string, unknown>).final_video_path === "string" && (stored as Record<string, unknown>).final_video_path ? { finalVideoPath: (stored as Record<string, unknown>).final_video_path as string } : {}) }; }
   private async save(projectId: string, outline: LongEpisodeOutline, stored: StoredEpisode): Promise<LongEpisodeDetail> { const files = this.files(projectId, outline.episodeNumber); const outlines = await this.json(files.outlines); if (!Array.isArray(outlines)) throw longInvalidData(); const copy = [...outlines]; const current = asObject(copy[outline.episodeNumber - 1]); current.status = stored.state; copy[outline.episodeNumber - 1] = current; try { await fs.mkdir(files.episode, { recursive: true }); await Promise.all([atomicWriteUtf8File(files.episodeProject, JSON.stringify(stored, null, 2)), atomicWriteUtf8File(files.outline, JSON.stringify(stored.outline, null, 2)), atomicWriteUtf8File(files.script, JSON.stringify(stored.script, null, 2)), atomicWriteUtf8File(files.outlines, JSON.stringify(copy, null, 2))]); } catch { throw longStorageError(); } return this.toApi({ ...outline, status: stored.state }, stored); }
   private async bibleContext(projectId: string): Promise<string> { const bible = asObject(await this.json(this.files(projectId, 1).bible)); const names = ["characters", "locations", "props"].flatMap((collection) => Array.isArray(bible[collection]) ? bible[collection].map((item) => asObject(item).name).filter((name): name is string => typeof name === "string" && Boolean(name.trim())) : []); return names.join(", "); }
-  private async continuityContext(projectId: string, episodeNumber: number): Promise<Record<string, unknown>> { const recent: unknown[] = []; const older: unknown[] = []; for (let number = 1; number < episodeNumber; number += 1) { try { const raw = asObject(await this.json(path.join(this.files(projectId, number).episode, "continuity.json"))); const record = { episodeNumber: number, summary: typeof raw.episode_summary === "string" ? raw.episode_summary : "", events: Array.isArray(raw.events) ? raw.events.filter((value): value is string => typeof value === "string") : [], characterChanges: Array.isArray(raw.character_changes) ? raw.character_changes.filter((value) => value && typeof value === "object" && !Array.isArray(value)) : [], nextActions: Array.isArray(raw.next_actions) ? raw.next_actions.filter((value): value is string => typeof value === "string") : [] }; (number >= episodeNumber - 3 ? recent : older).push(record); } catch (error) { if (!(error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404)) throw error; } } return { recentContinuity: recent, olderCompressedSummaries: older.map((value) => ({ episodeNumber: (value as { episodeNumber: number }).episodeNumber, summary: (value as { summary: string }).summary })) }; }
+  /**
+   * Every earlier Episode's memo, split into the three most recent and the rest.
+   *
+   * A memo that is absent is skipped, and so is one that cannot be parsed. The memo is optional by design —
+   * nothing writes it automatically — so one unreadable file must not be able to stop a script from being
+   * written, any more than an unreadable Asset folder stops one (docs/01_CURRENT_PRODUCT_SPEC.md says that
+   * about the protagonist link, and protagonistName() below is built the same way). It used to throw:
+   * `this.json()` raises LONG_PROJECT_JSON_MALFORMED for bad JSON and only 404 was caught, so a single corrupt
+   * continuity.json made every later Episode's script ungeneratable — and the screen that would let a person
+   * rewrite that memo refused to open for the same reason, so there was no way out from inside the app.
+   *
+   * Silent here on purpose, and not silent to the person: `LongEpisodeOutline.continuitySaved` reports false
+   * for a memo that cannot be read, which is what the timeline and the pre-generation warning are built on.
+   */
+  private async continuityContext(projectId: string, episodeNumber: number): Promise<Record<string, unknown>> { const recent: unknown[] = []; const older: unknown[] = []; for (let number = 1; number < episodeNumber; number += 1) { try { const raw = asObject(await this.json(path.join(this.files(projectId, number).episode, "continuity.json"))); const record = { episodeNumber: number, summary: typeof raw.episode_summary === "string" ? raw.episode_summary : "", events: Array.isArray(raw.events) ? raw.events.filter((value): value is string => typeof value === "string") : [], characterChanges: Array.isArray(raw.character_changes) ? raw.character_changes.filter((value) => value && typeof value === "object" && !Array.isArray(value)) : [], nextActions: Array.isArray(raw.next_actions) ? raw.next_actions.filter((value): value is string => typeof value === "string") : [] }; (number >= episodeNumber - 3 ? recent : older).push(record); } catch (error) { if (!isAbsentOrUnreadableMemo(error)) throw error; } } return { recentContinuity: recent, olderCompressedSummaries: older.map((value) => ({ episodeNumber: (value as { episodeNumber: number }).episodeNumber, summary: (value as { summary: string }).summary })) }; }
   /**
    * The protagonist's name, read from the Folder the project points at.
    *
