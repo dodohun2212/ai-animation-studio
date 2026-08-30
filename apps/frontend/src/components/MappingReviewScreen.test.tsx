@@ -496,6 +496,58 @@ describe("MappingReviewScreen", () => {
     expect(screen.getByText("유지되어야 할 자산")).toBeTruthy();
   });
 
+  // The three tests below are one pair and one guard. The backend refuses a damaged review record loudly and
+  // on purpose, which leaves this screen a dead end: the review section will not render, and 승인 — the only
+  // action that would rewrite the file — is inside it. So the screen has to say the way out. The way out is
+  // opposite for the two files, and getting them the wrong way round costs the person every link they made by
+  // hand, which is why "the note says the right thing" is asserted rather than "a note appeared".
+  it("tells the person the review file can be deleted, and that deleting it does not touch their links", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { mappings: [] }))
+      .mockResolvedValueOnce(jsonResponse(500, { code: "ASSET_MAPPING_REVIEW_MALFORMED", message: "raw C:\\secret" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const rendered = render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
+
+    await screen.findByTestId("review-error");
+    const note = screen.getByTestId("review-file-recovery").textContent!.replace(/\s+/g, " ");
+    expect(note).toContain("asset_mapping_review.json");
+    expect(note).toContain("그대로");
+    expect(note).not.toContain("asset_mappings.json");
+    expect(rendered.container.innerHTML).not.toContain("secret");
+  });
+
+  it("says the opposite about the mapping file — do not delete it — and never offers the review file's way out there", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(500, { code: "ASSET_MAPPING_JSON_MALFORMED", message: "raw" }))
+      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview(), sceneCount: 6 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
+
+    await screen.findByTestId("mappings-error");
+    const note = screen.getByTestId("mapping-file-recovery").textContent!.replace(/\s+/g, " ");
+    expect(note).toContain("asset_mappings.json");
+    expect(note).toContain("지우지 마세요");
+    expect(screen.queryByTestId("review-file-recovery")).toBeNull();
+  });
+
+  it("stays quiet about files when the failure was not the file — a storage error is not something to delete", async () => {
+    // Without this, the note could be attached to every red line on the screen and both tests above would
+    // still pass, telling someone to delete a perfectly good file because the disk was busy for a moment.
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(500, { code: "ASSET_MAPPING_STORAGE_ERROR", message: "raw" }))
+      .mockResolvedValueOnce(jsonResponse(500, { code: "ASSET_MAPPING_STORAGE_ERROR", message: "raw" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
+
+    await screen.findByTestId("mappings-error");
+    await screen.findByTestId("review-error");
+    expect(screen.queryByTestId("mapping-file-recovery")).toBeNull();
+    expect(screen.queryByTestId("review-file-recovery")).toBeNull();
+  });
+
   it("calls onBack when the back button is clicked", async () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { mappings: [] }))
