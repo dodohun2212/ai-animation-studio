@@ -662,3 +662,39 @@ git ls-files 에 잡히면   파이썬 베이스라인
 ```
 
 디스크에 무엇이 저장됐는지를 근거로 삼기 전에 **어느 쪽을 열었는지 먼저 말할 것.** D-024(낡은 사본)와 같은 뿌리다 — 다른 점은 여기서는 두 사본이 **둘 다 진짜** 라는 것이고, 그래서 어느 쪽도 "낡았으니 무시" 할 수 없다.
+
+
+### D-033 · 이 포트가 안 쓰는 상태값이라고 죽은 코드가 아니다 — 디스크에 남은 파일이 아직 그 값을 들고 온다
+
+`approveReview` 의 차단 조건이 후보였다.
+
+```ts
+const blocked = mappings.filter((m) => m.status === "suggested" || m.status === "ambiguous"
+  || m.status === "invalid" || (m.status === "unmatched" && !m.user_confirmed));
+```
+
+TypeScript 쪽만 보면 **네 상태 모두 아무도 안 쓴다.** `create()` 는 `confirmed`, `update()` 는 `confirmed`/`excluded`, 자동 매핑 심기도 `confirmed` 다. 네 값을 쓰는 코드가 한 줄도 없으니 조건은 항상 빈 배열을 거른다 — D-023 이 말하는 "초록인데 아무것도 안 지키는" 그 모양으로 보였고, 지우자는 제안이 나왔다.
+
+#### 생산자는 있었다. 다른 언어로 쓰여 있었을 뿐이다
+
+```
+app/services/project_asset_mapping.py:639   status="ambiguous" if len(tied) > 1 else "suggested"   ← 자동 매처
+app/services/project_asset_mapping.py:533   status="unmatched"                                     ← mark_scene_unmatched
+app/services/project_asset_mapping.py:435   "confirmed" if always_apply else "suggested"
+apps/backend/src/mappings/mapping-storage.ts:73   status: "suggested", ...raw                      ← 없으면 채우는 기본값
+```
+
+자동 매처는 아직 포팅되지 않았다. **그래서 이 포트에는 생산자가 없는 것이고, 디스크에는 있다.** 마이그레이션 이전에 만들어진 프로젝트의 `asset_mappings.json` 은 지금도 그 값을 들고 열린다. 필드가 아예 없는 가장 오래된 파일도 `parseStored` 가 `suggested` 로 채운다.
+
+지웠다면: 사람이 한 번도 본 적 없는 자동 추천이 그대로 승인을 통과하고, **아무도 고르지 않은 레퍼런스가 이미지 모델에 실려 나간다.** 이번 주 내내 닫아 온 실패와 같은 종류다.
+
+#### 판별법
+
+```
+"이 함수를 호출하는 코드가 없다"        → 삭제 후보
+"이 값을 쓰는 코드가 없다"              → 삭제 후보 아님. 저장된 파일부터 확인한다
+```
+
+전자는 호출 그래프가 답을 준다. 후자는 **읽는 쪽이 남아 있는 한, 값의 출처가 코드가 아니라 디스크일 수 있다.** 파이썬 베이스라인을 보존한다는 결정(AGENTS.md)이 곧 그 파일들이 계속 들어온다는 뜻이고, D-032 와 같은 뿌리다 — 어느 쪽을 열었는지 먼저 확인하라.
+
+의심을 없애는 방법은 지우는 게 아니라 **재는 것이다.** 레거시 모양의 파일을 직접 써 넣고 승인을 시도하는 테스트를 붙였다(`mappings.integration.test.ts`). API 로는 만들 수 없는 상태라 파일을 손으로 쓴 것이 핵심이다 — API 가 바로 그것을 못 만드는 쪽이다. 조건을 빼면 빨개진다.

@@ -108,6 +108,12 @@ export class ProjectAssetMappingsService<Key = string> {
     const request = body as unknown as ApproveProjectAssetMappingReviewRequest; const owner = await this.owners.get(key); const scenes = mappingsScenes(owner); const sceneList = scenesFor(owner); const currentFingerprint = scriptFingerprint(scenes); const review = await this.repository.loadReview(owner);
     if (review.script_revision !== owner.scriptRevision || review.script_fingerprint !== currentFingerprint || request.scriptFingerprint !== currentFingerprint) { const invalidated = { ...review, mapping_revision: review.mapping_revision + 1, script_revision: owner.scriptRevision, script_fingerprint: currentFingerprint, status: "waiting" as const, approved_at: "", approved_by: "", reviewed_scenes: [] }; await this.repository.saveReview(owner, invalidated); throw fingerprintMismatch(); }
     const mappings = (await this.repository.load(owner)).filter((mapping) => !mapping.candidate_only);
+    // Looks dead from this side and is not. Nothing this port writes produces `suggested`, `ambiguous` or
+    // `invalid` — create() writes `confirmed`, update() writes `confirmed` or `excluded`, and the auto seeder
+    // writes `confirmed` — but the Python baseline's auto-matcher wrote all three, mark_scene_unmatched wrote
+    // `unmatched`, and parseStored still fills an absent status in as `suggested`. Deleting it would let a
+    // project carried over from before the migration be approved with a suggestion nobody ever looked at, and
+    // the image model would then be sent a reference no person chose. Measured by the legacy-file test.
     const blocked = mappings.filter((mapping) => mapping.status === "suggested" || mapping.status === "ambiguous" || mapping.status === "invalid" || (mapping.status === "unmatched" && !mapping.user_confirmed));
     if (blocked.length) throw approvalBlocked("Unconfirmed Asset Mappings must be resolved before approval.", { mappingIds: blocked.map((item) => item.mapping_id) });
     if (!mappings.length && !review.text_only_confirmed && !review.legacy_confirmed) throw approvalBlocked("Text-only or legacy confirmation is required when no Asset Mapping exists.");

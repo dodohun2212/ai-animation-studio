@@ -89,6 +89,31 @@ describe("ProjectAssetMappingsService", () => {
     expect((await service.review("short_mapping")).review.status).toBe("waiting");
   });
 
+  it("blocks approval on a suggested mapping carried over from the Python baseline", async () => {
+    // Nothing this port writes produces `suggested` — every mapping it creates is confirmed or excluded — so
+    // this condition looks dead from the TypeScript side alone. It is not. `app/services/project_asset_mapping.py`
+    // wrote `suggested` and `ambiguous` from its auto-matcher and `unmatched` from mark_scene_unmatched, and
+    // parseStored defaults an absent status to `suggested` besides. A file from before the migration therefore
+    // still arrives with one, and approving it would send the image model a reference nobody ever confirmed.
+    // Written to disk rather than through the API on purpose: the API is exactly what cannot produce this.
+    const { service, asset, project } = await setup();
+    const now = "2026-08-30T00:00:00.000Z";
+    // No `status` field at all, which is how the oldest of those files look — parseStored fills in `suggested`.
+    await fs.writeFile(path.join(root!, "projects", project.project_id, "asset_mappings.json"), JSON.stringify([{
+      mapping_id: "MAP-LEGACY", project_id: project.project_id, asset_id: asset.asset_id, usage_role: "style",
+      scene_scope: { mode: "all" }, assignment_source: "auto", created_at: now, updated_at: now,
+    }]), "utf8");
+
+    const begun = await service.beginReview("short_mapping", { scriptRevision: 1, textOnlyConfirmed: true });
+    await expect(service.approveReview("short_mapping", { scriptFingerprint: begun.review.scriptFingerprint }))
+      .rejects.toMatchObject({ response: { code: "ASSET_MAPPING_APPROVAL_BLOCKED", details: { mappingIds: ["MAP-LEGACY"] } } });
+
+    // And it clears the ordinary way: confirming the suggestion.
+    await service.update("short_mapping", "MAP-LEGACY", { decision: "confirm" });
+    await expect(service.approveReview("short_mapping", { scriptFingerprint: begun.review.scriptFingerprint }))
+      .resolves.toMatchObject({ review: { status: "approved" } });
+  });
+
   it("blocks approval when no mapping is explicitly text-only or legacy-confirmed", async () => {
     const { service } = await setup();
     const begun = await service.beginReview("short_mapping", { scriptRevision: 1 });
