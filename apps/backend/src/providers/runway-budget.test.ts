@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { VIDEO_SCENE_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
-import { RunwayBudget, RunwayBudgetExceededError } from "./runway-budget.js";
+import { RunwayBudget, RunwayBudgetExceededError, RunwayBudgetLedgerUnreadableError } from "./runway-budget.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true }))); });
@@ -60,13 +60,36 @@ describe("RunwayBudget", () => {
     await expect(budget.preflight(VIDEO_SCENE_ESTIMATED_COST_USD, now)).rejects.toBeInstanceOf(RunwayBudgetExceededError);
   });
 
-  it("reloads persisted usage across separate instances and tolerates a malformed usage file", async () => {
+  it("reloads persisted usage across separate instances, and reads a missing ledger as nothing spent", async () => {
     const root = await makeRoot();
     await new RunwayBudget(root, 10).record("p1", 1, "video", true, 1, new Date("2026-08-22T00:00:00.000Z"));
     expect(await new RunwayBudget(root, 10).spentThisMonth(new Date("2026-08-22T00:00:00.000Z"))).toBe(1);
+  });
 
-    await fs.writeFile(path.join(root, "runway_budget_usage.json"), "{not valid json", "utf8");
-    expect(await new RunwayBudget(root, 10).spentThisMonth()).toBe(0);
+  /**
+   * A ledger that cannot be read is not a ledger that says zero.
+   *
+   * It used to be: every failure came back as an empty list, and empty here means "nothing spent this month" —
+   * the most permissive answer this file can give, sitting directly under a paid provider call. Measured with
+   * $10 of a $10 budget already spent: corrupting the file let a $9.50 request through, and the next record()
+   * rewrote the month's twenty entries as one. The budget reopened and the evidence went with it, silently.
+   *
+   * The assertion this replaces said only "tolerates a malformed usage file", with no reason given anywhere for
+   * why tolerating it was safe. Refusing to spend while we cannot tell what has been spent is the direction the
+   * product rules already take everywhere else (docs/06_DECISIONS.md D-036).
+   *
+   * The pair matters: a missing ledger must still read as zero, or a first run could never spend anything.
+   */
+  it("refuses rather than reporting zero when the ledger cannot be read, and leaves the bytes alone", async () => {
+    const root = await makeRoot();
+    await new RunwayBudget(root, 10).record("p1", 1, "video", true, 1, new Date("2026-08-22T00:00:00.000Z"));
+    const file = path.join(root, "runway_budget_usage.json");
+    await fs.writeFile(file, "{not valid json", "utf8");
+
+    await expect(new RunwayBudget(root, 10).spentThisMonth()).rejects.toBeInstanceOf(RunwayBudgetLedgerUnreadableError);
+    await expect(new RunwayBudget(root, 10).preflight(0.01)).rejects.toBeInstanceOf(RunwayBudgetLedgerUnreadableError);
+    await expect(new RunwayBudget(root, 10).record("p1", 1, "video", true, 1, new Date("2026-08-22T00:00:00.000Z"))).rejects.toBeInstanceOf(RunwayBudgetLedgerUnreadableError);
+    expect(await fs.readFile(file, "utf8")).toBe("{not valid json");
   });
 
   it("sums actual cost per scene across regenerations regardless of month, ignoring other projects and legacy scene-less records", async () => {
