@@ -567,6 +567,20 @@ export class LocalAssetsRepository {
     try { await atomicWriteUtf8File(statePath, JSON.stringify({ ...raw, [key]: waitingValue }, null, 2)); } catch { /* best-effort, matches Python's silent skip */ }
   }
 
+  /**
+   * Which owners' mappings point at this Asset. Four destructive operations are gated on this answer
+   * (removing an Asset, removing a Folder, removing its children, deleting an owned file) and the Library
+   * shows it as 사용 프로젝트.
+   *
+   * Episodes are walked too, because they keep their own `asset_mappings.json` under `long_story/EpisodeNN`.
+   * Reading only the project's top level answered "nobody" for an Asset an Episode was pointing at, so
+   * deleting it was allowed: the Episode kept a mapping to an id nothing resolves any more, and the next paid
+   * image was generated without the reference the person had chosen — silently, because a reference that
+   * cannot be read is counted as omitted rather than raised. `invalidateDependents` in this same file walks
+   * Episodes for exactly this relationship; this function never learned to.
+   *
+   * An Episode names itself the way the rest of the app does: `<projectId>/EpisodeNN`.
+   */
   async usageProjects(assetId: string): Promise<string[]> {
     const used: string[] = [];
     let entries: fs.Dirent[];
@@ -576,13 +590,23 @@ export class LocalAssetsRepository {
     }
     for (const entry of entries) {
       if (!entry.isDirectory() || entry.name === "_asset_library_manual") continue;
-      try {
-        const raw: unknown = JSON.parse(await fsPromises.readFile(path.join(this.projectsRoot, entry.name, "asset_mappings.json"), "utf8"));
-        if (Array.isArray(raw) && raw.some((item) => typeof item === "object" && item !== null &&
-          ((item as { asset_id?: unknown }).asset_id === assetId || (Array.isArray((item as { selected_child_asset_ids?: unknown }).selected_child_asset_ids) && (item as { selected_child_asset_ids: unknown[] }).selected_child_asset_ids.includes(assetId))))) used.push(entry.name);
-      } catch { /* Python compatibility: damaged/missing mapping files do not break Library reads. */ }
+      const projectDir = path.join(this.projectsRoot, entry.name);
+      if (await this.mappingsUseAsset(projectDir, assetId)) used.push(entry.name);
+      let episodeEntries: fs.Dirent[];
+      try { episodeEntries = await fsPromises.readdir(path.join(projectDir, "long_story"), { withFileTypes: true }); } catch { continue; }
+      for (const episodeEntry of episodeEntries) {
+        if (!episodeEntry.isDirectory() || !/^Episode\d+$/.test(episodeEntry.name)) continue;
+        if (await this.mappingsUseAsset(path.join(projectDir, "long_story", episodeEntry.name), assetId)) used.push(`${entry.name}/${episodeEntry.name}`);
+      }
     }
     return used.sort();
+  }
+
+  /** Python compatibility: damaged/missing mapping files do not break Library reads. */
+  private async mappingsUseAsset(directory: string, assetId: string): Promise<boolean> {
+    let mappings: unknown;
+    try { mappings = JSON.parse(await fsPromises.readFile(path.join(directory, "asset_mappings.json"), "utf8")); } catch { return false; }
+    return Array.isArray(mappings) && mappings.some((item) => this.referencesAsset(item, assetId));
   }
 
   resolveContentPath(asset: StoredAsset): string | null {

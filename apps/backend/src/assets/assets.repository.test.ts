@@ -42,6 +42,32 @@ describe("LocalAssetsRepository", () => {
     expect(await repository.usageProjects(asset.asset_id)).toEqual(["p1"]);
   });
 
+  it("counts an Episode's mapping as use, so the Asset it points at cannot be deleted out from under it", async () => {
+    const root = await makeRoot();
+    const repository = new LocalAssetsRepository(root);
+    const asset = await repository.create({ buffer: image, originalname: "city.png" }, metadata);
+    const episode = path.join(root, "projects", "p2", "long_story", "Episode02");
+    await fs.mkdir(episode, { recursive: true });
+    await fs.writeFile(path.join(episode, "asset_mappings.json"), JSON.stringify([{ asset_id: asset.asset_id, selected_child_asset_ids: [] }]), "utf8");
+
+    // Named the way the rest of the app names an Episode, and blocking the same four operations a short
+    // project's mapping blocks. Before this it answered nobody, and deleting was allowed.
+    expect(await repository.usageProjects(asset.asset_id)).toEqual(["p2/Episode02"]);
+    await expect(repository.remove(asset.asset_id)).rejects.toMatchObject({ response: { code: "ASSET_IN_USE" } });
+  });
+
+  it("still lets an Asset no Episode points at be deleted", async () => {
+    const root = await makeRoot();
+    const repository = new LocalAssetsRepository(root);
+    const asset = await repository.create({ buffer: image, originalname: "city.png" }, metadata);
+    const episode = path.join(root, "projects", "p2", "long_story", "Episode02");
+    await fs.mkdir(episode, { recursive: true });
+    await fs.writeFile(path.join(episode, "asset_mappings.json"), JSON.stringify([{ asset_id: "ASSET-BG-SOMEONEELSE" }]), "utf8");
+
+    // The pair: a walk that answered "in use" for everything would pass the test above on its own.
+    expect(await repository.usageProjects(asset.asset_id)).toEqual([]);
+    await expect(repository.remove(asset.asset_id)).resolves.toBeUndefined();
+  });
   it("does not rewrite a legacy index during reads", async () => {
     const root = await makeRoot();
     const directory = path.join(root, "asset_library");
