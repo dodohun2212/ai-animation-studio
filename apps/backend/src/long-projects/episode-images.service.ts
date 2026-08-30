@@ -3,7 +3,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import { LONG_EPISODE_STATUSES, IMAGE_ESTIMATED_COST_USD, isSceneNumber, sceneNumbersFor, type ApproveLongEpisodeImageReviewRequest, type ApproveLongEpisodeImageReviewResponse, type GetLongEpisodeImagePreviewResponse, type GetLongEpisodeImageReviewResponse, type LongEpisodeDetail, type LongEpisodeImageReview, type LongEpisodeImageStaleness, type LongEpisodeStatus, type RegenerateLongEpisodeImageReviewRequest, type RegenerateLongEpisodeImageReviewResponse, type SceneNumber, type StartLongEpisodeImageGenerationRequest, type StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
+import { LONG_EPISODE_STATUSES, IMAGE_ESTIMATED_COST_USD, isSceneNumber, sceneNumbersFor, type ApproveLongEpisodeImageReviewRequest, type ApproveLongEpisodeImageReviewResponse, type GetLongEpisodeImagePreviewResponse, type GetLongEpisodeImageReviewResponse, type LongEpisodeDetail, type LongEpisodeImageReview, type LongEpisodeImageStaleness, type LongEpisodeStatus, type LongEpisodeStoryBibleLinkDrift, type RegenerateLongEpisodeImageReviewRequest, type RegenerateLongEpisodeImageReviewResponse, type SceneNumber, type StartLongEpisodeImageGenerationRequest, type StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
 import { validateImage } from "../assets/image-validation.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
@@ -19,6 +19,7 @@ import { toEpisodeDetail } from "./episode-detail.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 import { EpisodeContinuityReferenceService } from "./episode-continuity-reference.service.js";
 import type { StoredAssetMapping } from "../mappings/mapping-storage.js";
+import { storyBibleLinkDrift } from "./episode-story-bible-drift.js";
 import { collectReferenceImages, referenceSourcesForScene } from "../images/image-reference-selection.js";
 import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import { EpisodeMappingOwners } from "./episode-mapping-owner.js";
@@ -307,6 +308,12 @@ export class EpisodeImagesService {
    * recompute as "no references at all", and every scene that recorded some would be reported behind — a screen
    * full of staleness markers caused by a read error, which is the worst possible way to say "I do not know".
    */
+  /** Empty when the mappings cannot be read: the same "not knowing looks like not knowing" rule as staleness. */
+  private async linkDrift(projectId: string, number: number): Promise<LongEpisodeStoryBibleLinkDrift[]> {
+    const context = await this.referenceContext(projectId, number);
+    return context ? storyBibleLinkDrift(this.projectsRoot, this.assets, projectId, context.mappings) : [];
+  }
+
   private async referenceContext(projectId: string, number: number): Promise<{ mappings: readonly StoredAssetMapping[]; directory: string; continuityPath: string | null } | null> {
     try {
       const owner = await this.mappingOwners.get({ projectId, episodeNumber: number });
@@ -336,13 +343,13 @@ export class EpisodeImagesService {
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, IMAGE_ESTIMATED_COST_USD) : undefined;
     const stored = await this.loadReviews(id, number);
-    return { episode: this.detail(episode), reviews: this.apiReviews(stored, episode.updated_at, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, stored), ...(budget ? { budget } : {}) };
+    return { episode: this.detail(episode), reviews: this.apiReviews(stored, episode.updated_at, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, stored), storyBibleLinkDrift: await this.linkDrift(id, number), ...(budget ? { budget } : {}) };
   }
   async approve(projectId: string, number: number, rawScene: string, request: ApproveLongEpisodeImageReviewRequest): Promise<ApproveLongEpisodeImageReviewResponse> {
     const id = projectId.trim(); this.approval(request); const scene = sceneNumber(Number(rawScene)); if (!scene || String(scene) !== rawScene) throw longInvalidRequest("Episode image scene number is invalid."); const episode = await this.episode(id, number); await this.assertReviewable(id, number, episode);
     if (scene > this.sceneCount(episode)) throw longInvalidRequest("Episode image scene number is invalid.");
     const reviews = await this.loadReviews(id, number); const now = new Date().toISOString(); const index = reviews.findIndex((review) => review.scene_number === scene); const old = index < 0 ? undefined : reviews[index]; const review: StoredReview = { scene_number: scene, status: "approved", updated_at: now, regeneration_count: old?.regeneration_count ?? 0, history: [...(old?.history ?? []), { event: "approved", timestamp: now }], ...(old?.references_used_count !== undefined && old.references_omitted_count !== undefined ? { references_used_count: old.references_used_count, references_omitted_count: old.references_omitted_count } : {}), ...(old?.prompt !== undefined ? { prompt: old.prompt } : {}), ...(old?.reference_sources !== undefined ? { reference_sources: old.reference_sources } : {}) }; if (index < 0) reviews.push(review); else reviews[index] = review;
-    const all = sceneNumbersFor(this.sceneCount(episode)).every((current) => reviews.some((item) => item.scene_number === current && item.status === "approved")); if (all) episode.state = "waiting_for_video_confirmation"; episode.updated_at = now; await this.saveReviews(id, number, reviews); await this.saveEpisode(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(reviews, now, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, reviews) };
+    const all = sceneNumbersFor(this.sceneCount(episode)).every((current) => reviews.some((item) => item.scene_number === current && item.status === "approved")); if (all) episode.state = "waiting_for_video_confirmation"; episode.updated_at = now; await this.saveReviews(id, number, reviews); await this.saveEpisode(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(reviews, now, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, reviews), storyBibleLinkDrift: await this.linkDrift(id, number) };
   }
   async regenerate(projectId: string, number: number, rawScene: string, request: RegenerateLongEpisodeImageReviewRequest): Promise<RegenerateLongEpisodeImageReviewResponse> {
     const id = projectId.trim(); const additionalInstruction = this.regenerationRequest(request); const scene = sceneNumber(Number(rawScene)); if (!scene || String(scene) !== rawScene) throw longInvalidRequest("Episode image scene number is invalid."); const episode = await this.episode(id, number); await this.assertReviewable(id, number, episode, true);
@@ -392,6 +399,6 @@ ${additionalInstruction}` : basePrompt;
 
     const originals = path.join(this.files(id, number).images, "originals"); let archive = "";
     try { await fs.mkdir(originals, { recursive: true }); const entries = await fs.readdir(originals); const versions = entries.map((name) => new RegExp(`^scene${scene}_v(\\d{3})\\.png$`).exec(name)).filter((match): match is RegExpExecArray => Boolean(match)).map((match) => Number(match[1])); archive = path.join(originals, `scene${scene}_v${String((versions.length ? Math.max(...versions) : 0) + 1).padStart(3, "0")}.png`); await this.writeImage(archive, bytes); await this.writeImage(current, regenerated); if (!await this.validImage(current)) throw new Error("invalid image"); } catch { if (archive) await fs.unlink(archive).catch(() => undefined); throw longStorageError(); }
-    const now = new Date().toISOString(); const index = reviews.findIndex((review) => review.scene_number === scene); const old = index < 0 ? undefined : reviews[index]; const review: StoredReview = { scene_number: scene, status: "pending", updated_at: now, regeneration_count: (old?.regeneration_count ?? 0) + 1, history: [...(old?.history ?? []), { event: "regenerated", timestamp: now, archive: path.basename(archive) }], ...(referenceOmission ?? {}), ...(generatedPrompt !== undefined ? { prompt: generatedPrompt } : old?.prompt !== undefined ? { prompt: old.prompt } : {}), ...(generatedSources !== undefined ? { reference_sources: generatedSources } : old?.reference_sources !== undefined ? { reference_sources: old.reference_sources } : {}) }; if (index < 0) reviews.push(review); else reviews[index] = review; episode.state = "images_review"; episode.updated_at = now; await this.saveReviews(id, number, reviews); await this.saveEpisode(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(reviews, now, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, reviews), sceneNumber: scene, ...(retryEstimate ? { retryEstimate } : {}) };
+    const now = new Date().toISOString(); const index = reviews.findIndex((review) => review.scene_number === scene); const old = index < 0 ? undefined : reviews[index]; const review: StoredReview = { scene_number: scene, status: "pending", updated_at: now, regeneration_count: (old?.regeneration_count ?? 0) + 1, history: [...(old?.history ?? []), { event: "regenerated", timestamp: now, archive: path.basename(archive) }], ...(referenceOmission ?? {}), ...(generatedPrompt !== undefined ? { prompt: generatedPrompt } : old?.prompt !== undefined ? { prompt: old.prompt } : {}), ...(generatedSources !== undefined ? { reference_sources: generatedSources } : old?.reference_sources !== undefined ? { reference_sources: old.reference_sources } : {}) }; if (index < 0) reviews.push(review); else reviews[index] = review; episode.state = "images_review"; episode.updated_at = now; await this.saveReviews(id, number, reviews); await this.saveEpisode(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(reviews, now, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, reviews), storyBibleLinkDrift: await this.linkDrift(id, number), sceneNumber: scene, ...(retryEstimate ? { retryEstimate } : {}) };
   }
 }

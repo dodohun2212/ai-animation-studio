@@ -332,6 +332,27 @@ export interface LongEpisodeImageStaleness {
   referenceStale: SceneNumber[];
 }
 /**
+ * One Story Bible Asset link this Episode's own mapping does not match.
+ *
+ * An Episode that has already bought pictures keeps the mapping those pictures were made from — that is the
+ * rule, so that the record and the files agree — which means changing the Story Bible protagonist leaves that
+ * Episode entirely untouched, and `referenceStale` is silent about it by construction. Only this can say "this
+ * Episode was drawn with a different person than the story now has".
+ *
+ * Both names are carried so the screen can write that sentence without a second round trip, and both fall back
+ * to the id when the Asset is gone — an id the reader can quote beats a name the screen cannot show.
+ *
+ * A statement of difference, not of error. An Episode drawn before the change is allowed to keep the character
+ * it was drawn with; whether to spend money redrawing it is the person's decision, not the screen's.
+ */
+export interface LongEpisodeStoryBibleLinkDrift {
+  link: "protagonist" | "style";
+  storyBibleAssetId: string;
+  storyBibleAssetName: string;
+  episodeAssetId: string | null;
+  episodeAssetName: string | null;
+}
+/**
  * What an Episode's image generation would actually buy, before anything is sent.
  *
  * The confirmation used to quote every scene — `sceneCount × per-image` — while the generation itself skips any
@@ -359,6 +380,8 @@ export interface GetLongEpisodeImageReviewResponse {
   episode: LongEpisodeDetail;
   reviews: LongEpisodeImageReview[];
   staleness: LongEpisodeImageStaleness;
+  /** Story Bible links this Episode's own mapping no longer matches; empty when they agree or cannot be read. */
+  storyBibleLinkDrift: LongEpisodeStoryBibleLinkDrift[];
   /** Same meaning and scope as StartImageGenerationResponse.budget (see that field's doc comment). */
   budget?: BudgetPreview;
 }
