@@ -446,7 +446,7 @@ describe("LocalAssetsRepository", () => {
     const imagesDir = path.join(root, "projects", projectId, "images");
     await fs.mkdir(imagesDir, { recursive: true });
     for (const number of [1, 2]) await fs.writeFile(path.join(imagesDir, `scene${number}.png`), image);
-    await repository.indexGeneratedProjectImages(projectId, "topic", ["one", "two"]);
+    await repository.indexGeneratedProjectImages({ sourceProjectId: projectId, imagesDirectory: imagesDir, kind: "short project" }, "topic", ["one", "two"]);
     const manual = await repository.create({ buffer: secondImage, originalname: "mine.png" }, metadata);
 
     expect((await repository.listExcludingArchivedProjects()).length).toBe(4);
@@ -488,7 +488,7 @@ describe("LocalAssetsRepository", () => {
     const imagesDir = path.join(root, "projects", projectId, "images");
     await fs.mkdir(imagesDir, { recursive: true });
     for (const number of [1, 2]) await fs.writeFile(path.join(imagesDir, `scene${number}.png`), image);
-    await repository.indexGeneratedProjectImages(projectId, "topic", ["one", "two"]);
+    await repository.indexGeneratedProjectImages({ sourceProjectId: projectId, imagesDirectory: imagesDir, kind: "short project" }, "topic", ["one", "two"]);
     const manual = await repository.create({ buffer: secondImage, originalname: "mine.png" }, metadata);
     const generated = (await repository.list()).filter((asset) => !asset.is_folder && asset.source_project_id === projectId);
     // A generated image the user filed under a Folder of their own: that Folder outlives the project and must
@@ -517,7 +517,7 @@ describe("LocalAssetsRepository", () => {
     await fs.mkdir(imagesDir, { recursive: true });
     for (const number of [1, 2, 3, 4]) await fs.writeFile(path.join(imagesDir, `scene${number}.png`), image);
 
-    await repository.indexGeneratedProjectImages(projectId, "topic", ["one", "two", "three", "four"]);
+    await repository.indexGeneratedProjectImages({ sourceProjectId: projectId, imagesDirectory: imagesDir, kind: "short project" }, "topic", ["one", "two", "three", "four"]);
 
     const all = await repository.list();
     const children = all.filter((item) => !item.is_folder && item.source_project_id === projectId).sort((a, b) => a.source_scene_number! - b.source_scene_number!);

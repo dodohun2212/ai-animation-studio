@@ -168,7 +168,7 @@ export class LocalImageGenerationService {
       }
       if (current.generated_images.length !== scenes.length || !(await Promise.all(scenes.map((number) => validPng(this.imagePath(current.project_id, number))))).every(Boolean)) throw new Error("incomplete");
       await this.assets.indexGeneratedProjectImages(
-        current.project_id,
+        { sourceProjectId: current.project_id, imagesDirectory: path.dirname(this.imagePath(current.project_id, 1)), kind: "short project" },
         current.topic,
         current.scenes.map((scene) => sceneValue(scene, "description")),
       );

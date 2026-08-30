@@ -35,7 +35,7 @@ async function setup() {
   project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, description: `A character says "line ${number}".`, visual_action: `walks toward the ${number} gate` }));
   await projects.save(project);
   const assets = new LocalAssetsRepository(path.dirname(projectsRoot));
-  await assets.indexGeneratedProjectImages("review", project.topic, [1, 2, 3, 4, 5, 6].map((number) => `scene ${number}`));
+  await assets.indexGeneratedProjectImages({ sourceProjectId: "review", imagesDirectory: images, kind: "short project" }, project.topic, [1, 2, 3, 4, 5, 6].map((number) => `scene ${number}`));
   return { root, projectsRoot, projects, assets, service: new ImageReviewService(projects, projectsRoot, assets) };
 }
 

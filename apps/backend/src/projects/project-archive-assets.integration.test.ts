@@ -32,7 +32,7 @@ describe("archiving a project and its Asset Library entries", () => {
     const images = path.join(projectsRoot, "short", "images");
     await fs.mkdir(images, { recursive: true });
     for (const scene of [1, 2]) await fs.writeFile(path.join(images, `scene${scene}.png`), image);
-    await assets.indexGeneratedProjectImages("short", "Exact topic", ["one", "two"]);
+    await assets.indexGeneratedProjectImages({ sourceProjectId: "short", imagesDirectory: images, kind: "short project" }, "Exact topic", ["one", "two"]);
   });
   afterEach(async () => { await fs.rm(learningRoot, { recursive: true, force: true }); });
 

@@ -51,6 +51,90 @@ describe("EpisodeImagesService", () => {
     await expect(fs.access(path.join(projectsRoot, "long", "long_story", "Episode01", "images", "originals", "scene3_v001.png"))).resolves.toBeUndefined();
   });
 
+  it("puts the Episode's generated images in the Asset Library, naming the Episode and not just the project", async () => {
+    const { images, projectsRoot } = await setup();
+    const assets = new LocalAssetsRepository(root!);
+    expect(await assets.list()).toEqual([]);
+
+    await images.generate("long", 1, { approved: true });
+
+    const indexed = await assets.list();
+    const folder = indexed.find((asset) => asset.is_folder)!;
+    const children = indexed.filter((asset) => !asset.is_folder).sort((a, b) => a.source_scene_number! - b.source_scene_number!);
+    expect(folder.source_project_id).toBe("long/Episode01");
+    expect(children.map((child) => child.source_scene_number)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(folder.child_asset_ids).toEqual(children.map((child) => child.asset_id));
+    // The path is the Episode's own, which is the half the short project's assembled `<id>/images` could not produce.
+    expect(children[0]!.stored_path).toBe(path.join(projectsRoot, "long", "long_story", "Episode01", "images", "scene1.png"));
+    expect(children[0]!.tags).toContain("episode");
+    expect(assets.resolveContentPath(children[0]!)).not.toBeNull();
+  });
+
+  it("keeps two Episodes of one project apart, Folder and scene key alike", async () => {
+    const { images, projectsRoot } = await setup();
+    const scripts = new EpisodeScriptsService(projectsRoot);
+    await scripts.generate("long", 2, { userRequestId: "episode-images.service-script-2" });
+    await scripts.approve("long", 2, { approved: true });
+    await approveEpisodeMappingReview(projectsRoot, root!, "long", 2);
+    const assets = new LocalAssetsRepository(root!);
+
+    await images.generate("long", 1, { approved: true });
+    await images.generate("long", 2, { approved: true });
+
+    const folders = (await assets.list()).filter((asset) => asset.is_folder).map((asset) => asset.source_project_id).sort();
+    expect(folders).toEqual(["long/Episode01", "long/Episode02"]);
+
+    // Approving scene 1 of Episode 2 must not reach into Episode 1 — the whole reason the identity names both.
+    await images.approve("long", 2, "1", { approved: true });
+    const approved = (await assets.list()).filter((asset) => asset.approved && !asset.is_folder);
+    expect(approved.map((asset) => asset.source_project_id)).toEqual(["long/Episode02"]);
+  });
+
+  it("marks a scene's Asset approved as it is reviewed, and the Folder only once every scene is", async () => {
+    const { images } = await setup();
+    const assets = new LocalAssetsRepository(root!);
+    await images.generate("long", 1, { approved: true });
+
+    for (const scene of [1, 2, 3, 4, 5] as const) await images.approve("long", 1, String(scene), { approved: true });
+    const midway = await assets.list();
+    expect(midway.filter((asset) => !asset.is_folder && asset.approved).length).toBe(5);
+    expect(midway.find((asset) => asset.is_folder)!.approved).toBe(false);
+
+    await images.approve("long", 1, "6", { approved: true });
+    expect((await assets.list()).find((asset) => asset.is_folder)!.approved).toBe(true);
+  });
+
+  it("indexes an Episode whose pictures predate indexing rather than failing to approve it", async () => {
+    const { images } = await setup();
+    const assets = new LocalAssetsRepository(root!);
+    await images.generate("long", 1, { approved: true });
+    // Exactly the state every Episode generated before this existed is in: pictures on disk, no records. The
+    // lookup treats a missing Folder as corruption, which is the right reading only for a source indexed once.
+    await fs.writeFile(path.join(root!, "asset_library", "assets.json"), "[]", "utf8");
+
+    await expect(images.approve("long", 1, "1", { approved: true })).resolves.toMatchObject({ episode: { status: "images_review" } });
+
+    const rebuilt = await assets.list();
+    expect(rebuilt.filter((asset) => !asset.is_folder).length).toBe(6);
+    expect(rebuilt.find((asset) => asset.source_scene_number === 1)!.approved).toBe(true);
+  });
+
+  it("keeps one Asset across a regeneration and files the replaced picture as its earlier version", async () => {
+    const { images } = await setup();
+    const assets = new LocalAssetsRepository(root!);
+    await images.generate("long", 1, { approved: true });
+    const before = (await assets.list()).find((asset) => asset.source_scene_number === 3)!;
+
+    await images.regenerate("long", 1, "3", { approved: true });
+
+    const after = (await assets.list()).find((asset) => asset.source_scene_number === 3)!;
+    expect(after.asset_id).toBe(before.asset_id);
+    expect(after.version).toBe(2);
+    expect(after.status).toBe("generated");
+    expect(after.approved).toBe(false);
+    expect(path.basename(after.versions.find((version) => version.version === 1)!.stored_path)).toBe("scene3_v001.png");
+  });
+
   it("rejects stale mapping and damaged images without replacing valid review state", async () => {
     const { images, projectsRoot } = await setup(); const episode = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json"); const stored = JSON.parse(await fs.readFile(episode, "utf8")); stored.script.scenes[0].description = "changed"; await fs.writeFile(episode, JSON.stringify(stored), "utf8");
     await expect(images.generate("long", 1, { approved: true })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_NOT_ALLOWED" } });

@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import { LONG_EPISODE_STATUSES, IMAGE_ESTIMATED_COST_USD, isSceneNumber, sceneNumbersFor, type ApproveLongEpisodeImageReviewRequest, type ApproveLongEpisodeImageReviewResponse, type GetLongEpisodeImagePreviewResponse, type GetLongEpisodeImageReviewResponse, type LongEpisodeDetail, type LongEpisodeImageReview, type LongEpisodeImageStaleness, type LongEpisodeStatus, type LongEpisodeStoryBibleLinkDrift, type RegenerateLongEpisodeImageReviewRequest, type RegenerateLongEpisodeImageReviewResponse, type SceneNumber, type StartLongEpisodeImageGenerationRequest, type StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
 import { validateImage } from "../assets/image-validation.js";
-import { LocalAssetsRepository } from "../assets/assets.repository.js";
+import { LocalAssetsRepository, type GeneratedImageSource } from "../assets/assets.repository.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
@@ -187,6 +187,53 @@ export class EpisodeImagesService {
    * Free and provider-free: it looks at files on disk, exactly as the generation loop does, and never calls out.
    * The same eligibility gate as `generate()`, so a preflight that answers is a generation that would run.
    */
+  /**
+   * How the Asset Library names one Episode's generated images.
+   *
+   * The Episode, not just the Long Project it belongs to — the same identity `EpisodeMappingOwner.id` already
+   * uses, and for the same reason: two Episodes of one project would otherwise share a Folder and a scene key,
+   * so approving scene 1 of Episode 2 would find Episode 1's picture.
+   */
+  private assetSource(projectId: string, number: number): GeneratedImageSource {
+    return {
+      sourceProjectId: `${projectId}/${episodeDirectoryName(number)}`,
+      imagesDirectory: this.files(projectId, number).images,
+      kind: "long episode",
+    };
+  }
+
+  /**
+   * Put this Episode's scene images in the Asset Library, the way a short project's have always been.
+   *
+   * Without this the Episode's pictures exist on disk and nowhere in the Library, so the whole Folder-shaped
+   * half of the app — a representative image, the Folder's own description, reusing a picture as a reference
+   * for the next Episode — has nothing to act on. The Episode was already reading the Library through
+   * `collectReferenceImages`; only the writing back was missing.
+   */
+  private async indexAssets(projectId: string, number: number, episode: StoredEpisode): Promise<void> {
+    const descriptions = this.scenes(episode).map((scene) => String((scene as { description: string }).description));
+    let title = "";
+    try {
+      const outlines = await this.json(this.files(projectId, number).outlines);
+      const outline = Array.isArray(outlines) ? outlines[number - 1] : undefined;
+      if (object(outline) && typeof outline.title === "string") title = outline.title;
+    } catch { /* The Folder's description is a nicety; a damaged outline file must not fail image generation. */ }
+    await this.assets.indexGeneratedProjectImages(this.assetSource(projectId, number), title, descriptions);
+  }
+
+  /**
+   * Index on demand for an Episode whose pictures predate indexing entirely.
+   *
+   * Approving and replacing both look records up and treat a missing Folder as corruption, which is the right
+   * reading for a source that was indexed once and the wrong one for an Episode generated before any of this
+   * existed. Those Episodes are on disk right now, so the alternative is that approving one starts failing.
+   */
+  private async indexAssetsIfMissing(projectId: string, number: number, episode: StoredEpisode): Promise<void> {
+    const source = this.assetSource(projectId, number);
+    if (await this.assets.hasGeneratedProjectFolder(source.sourceProjectId)) return;
+    await this.indexAssets(projectId, number, episode);
+  }
+
   async preview(projectId: string, number: number): Promise<GetLongEpisodeImagePreviewResponse> {
     const id = projectId.trim();
     const episode = await this.episode(id, number);
@@ -254,6 +301,7 @@ export class EpisodeImagesService {
         }
         await this.saveReviews(id, number, reviews);
       }
+      await this.indexAssets(id, number, episode);
       episode.state = "images_ready"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode);
       episode.state = "images_review"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode);
     } catch (error) {
@@ -349,7 +397,11 @@ export class EpisodeImagesService {
     const id = projectId.trim(); this.approval(request); const scene = sceneNumber(Number(rawScene)); if (!scene || String(scene) !== rawScene) throw longInvalidRequest("Episode image scene number is invalid."); const episode = await this.episode(id, number); await this.assertReviewable(id, number, episode);
     if (scene > this.sceneCount(episode)) throw longInvalidRequest("Episode image scene number is invalid.");
     const reviews = await this.loadReviews(id, number); const now = new Date().toISOString(); const index = reviews.findIndex((review) => review.scene_number === scene); const old = index < 0 ? undefined : reviews[index]; const review: StoredReview = { scene_number: scene, status: "approved", updated_at: now, regeneration_count: old?.regeneration_count ?? 0, history: [...(old?.history ?? []), { event: "approved", timestamp: now }], ...(old?.references_used_count !== undefined && old.references_omitted_count !== undefined ? { references_used_count: old.references_used_count, references_omitted_count: old.references_omitted_count } : {}), ...(old?.prompt !== undefined ? { prompt: old.prompt } : {}), ...(old?.reference_sources !== undefined ? { reference_sources: old.reference_sources } : {}) }; if (index < 0) reviews.push(review); else reviews[index] = review;
-    const all = sceneNumbersFor(this.sceneCount(episode)).every((current) => reviews.some((item) => item.scene_number === current && item.status === "approved")); if (all) episode.state = "waiting_for_video_confirmation"; episode.updated_at = now; await this.saveReviews(id, number, reviews); await this.saveEpisode(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(reviews, now, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, reviews), storyBibleLinkDrift: await this.linkDrift(id, number) };
+    const all = sceneNumbersFor(this.sceneCount(episode)).every((current) => reviews.some((item) => item.scene_number === current && item.status === "approved")); if (all) episode.state = "waiting_for_video_confirmation"; episode.updated_at = now; await this.saveReviews(id, number, reviews);
+    await this.indexAssetsIfMissing(id, number, episode);
+    try { await this.assets.approveGeneratedProjectImage(this.assetSource(id, number).sourceProjectId, scene, all); }
+    catch { throw longStorageError(); }
+    await this.saveEpisode(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(reviews, now, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, reviews), storyBibleLinkDrift: await this.linkDrift(id, number) };
   }
   async regenerate(projectId: string, number: number, rawScene: string, request: RegenerateLongEpisodeImageReviewRequest): Promise<RegenerateLongEpisodeImageReviewResponse> {
     const id = projectId.trim(); const additionalInstruction = this.regenerationRequest(request); const scene = sceneNumber(Number(rawScene)); if (!scene || String(scene) !== rawScene) throw longInvalidRequest("Episode image scene number is invalid."); const episode = await this.episode(id, number); await this.assertReviewable(id, number, episode, true);
@@ -399,6 +451,10 @@ ${additionalInstruction}` : basePrompt;
 
     const originals = path.join(this.files(id, number).images, "originals"); let archive = "";
     try { await fs.mkdir(originals, { recursive: true }); const entries = await fs.readdir(originals); const versions = entries.map((name) => new RegExp(`^scene${scene}_v(\\d{3})\\.png$`).exec(name)).filter((match): match is RegExpExecArray => Boolean(match)).map((match) => Number(match[1])); archive = path.join(originals, `scene${scene}_v${String((versions.length ? Math.max(...versions) : 0) + 1).padStart(3, "0")}.png`); await this.writeImage(archive, bytes); await this.writeImage(current, regenerated); if (!await this.validImage(current)) throw new Error("invalid image"); } catch { if (archive) await fs.unlink(archive).catch(() => undefined); throw longStorageError(); }
-    const now = new Date().toISOString(); const index = reviews.findIndex((review) => review.scene_number === scene); const old = index < 0 ? undefined : reviews[index]; const review: StoredReview = { scene_number: scene, status: "pending", updated_at: now, regeneration_count: (old?.regeneration_count ?? 0) + 1, history: [...(old?.history ?? []), { event: "regenerated", timestamp: now, archive: path.basename(archive) }], ...(referenceOmission ?? {}), ...(generatedPrompt !== undefined ? { prompt: generatedPrompt } : old?.prompt !== undefined ? { prompt: old.prompt } : {}), ...(generatedSources !== undefined ? { reference_sources: generatedSources } : old?.reference_sources !== undefined ? { reference_sources: old.reference_sources } : {}) }; if (index < 0) reviews.push(review); else reviews[index] = review; episode.state = "images_review"; episode.updated_at = now; await this.saveReviews(id, number, reviews); await this.saveEpisode(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(reviews, now, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, reviews), storyBibleLinkDrift: await this.linkDrift(id, number), sceneNumber: scene, ...(retryEstimate ? { retryEstimate } : {}) };
+    const now = new Date().toISOString(); const index = reviews.findIndex((review) => review.scene_number === scene); const old = index < 0 ? undefined : reviews[index]; const review: StoredReview = { scene_number: scene, status: "pending", updated_at: now, regeneration_count: (old?.regeneration_count ?? 0) + 1, history: [...(old?.history ?? []), { event: "regenerated", timestamp: now, archive: path.basename(archive) }], ...(referenceOmission ?? {}), ...(generatedPrompt !== undefined ? { prompt: generatedPrompt } : old?.prompt !== undefined ? { prompt: old.prompt } : {}), ...(generatedSources !== undefined ? { reference_sources: generatedSources } : old?.reference_sources !== undefined ? { reference_sources: old.reference_sources } : {}) }; if (index < 0) reviews.push(review); else reviews[index] = review; episode.state = "images_review"; episode.updated_at = now;
+    await this.indexAssetsIfMissing(id, number, episode);
+    try { await this.assets.replaceGeneratedProjectSceneImage(this.assetSource(id, number).sourceProjectId, scene, current, archive); }
+    catch { throw longStorageError(); }
+    await this.saveReviews(id, number, reviews); await this.saveEpisode(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(reviews, now, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, reviews), storyBibleLinkDrift: await this.linkDrift(id, number), sceneNumber: scene, ...(retryEstimate ? { retryEstimate } : {}) };
   }
 }

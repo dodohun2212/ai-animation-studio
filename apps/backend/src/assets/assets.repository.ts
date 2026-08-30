@@ -26,6 +26,23 @@ const ARCHIVE_DIRECTORY = ".archive";
 const belongsToProject = (sourceProjectId: string, projectId: string) =>
   sourceProjectId === projectId || sourceProjectId.startsWith(`${projectId}/`);
 
+/**
+ * What generated a set of scene images, for the two questions the Asset index asks about them: what to call
+ * the owner, and where the files are.
+ *
+ * `imagesDirectory` is passed rather than assembled here. `<projectsRoot>/<id>/images` is only the short
+ * project's shape — an Episode's pictures live under `long_story/EpisodeNN/images` — and a function that
+ * assembles the one path it knows is the function that cannot be reused for the other.
+ */
+export interface GeneratedImageSource {
+  /** How the index names the owner: a short project's ID, or an Episode's `<projectId>/EpisodeNN`. */
+  sourceProjectId: string;
+  /** The directory the `sceneN.png` files actually live in. */
+  imagesDirectory: string;
+  /** Says what kind of thing made these, as a searchable tag. */
+  kind: "short project" | "long episode";
+}
+
 export class LocalAssetsRepository {
   private static readonly indexLocks = new Map<string, Promise<void>>();
   private readonly libraryRoot: string;
@@ -612,19 +629,20 @@ export class LocalAssetsRepository {
   }
 
   /**
-   * Index the project's generated scene images (one per entry in `descriptions`, not a fixed six — see
+   * Index a source's generated scene images (one per entry in `descriptions`, not a fixed six — see
    * docs/02_MIGRATION_PLAN.md's scene-count generalization) without copying them. This is an internal migration
    * hook; public Asset mutations intentionally remain unchanged. Reopening or resuming a project updates the
    * same records.
    */
-  async indexGeneratedProjectImages(projectId: string, topic: string, descriptions: string[]): Promise<void> {
+  async indexGeneratedProjectImages(source: GeneratedImageSource, topic: string, descriptions: string[]): Promise<void> {
+    const { sourceProjectId: projectId, imagesDirectory, kind } = source;
     await this.serialized(async () => {
       const assets = await this.load();
       const now = new Date().toISOString();
       const childIds: string[] = [];
       const scenes = Array.from({ length: descriptions.length }, (_, index) => index + 1);
       for (const scene of scenes) {
-        const storedPath = path.join(this.projectsRoot, projectId, "images", `scene${scene}.png`);
+        const storedPath = path.join(imagesDirectory, `scene${scene}.png`);
         const bytes = await fsPromises.readFile(storedPath).catch(() => { throw assetStorageError(); });
         let validated: ReturnType<typeof validateImage>;
         try { validated = validateImage(bytes, `scene${scene}.png`, "image/png"); } catch { throw assetStorageError(); }
@@ -636,7 +654,7 @@ export class LocalAssetsRepository {
             asset_type: "general_reference", display_name: `${projectId} Scene ${scene}`,
             description: descriptions[scene - 1]?.trim() || topic.trim(), stored_path: storedPath,
             original_filename: `scene${scene}.png`, content_sha256: validated.digest,
-            tags: terms(["generated image", "short project", projectId, `scene ${scene}`]), aliases: [], enabled: true,
+            tags: terms(["generated image", kind, projectId, `scene ${scene}`]), aliases: [], enabled: true,
             approved: false, face_baseline: false, character_key: null, version: 1,
             versions: [{ version: 1, stored_path: storedPath, content_sha256: validated.digest, created_at: now, notes: "" }],
             created_at: now, updated_at: now, notes: GENERATED_IMAGE_NOTE, legacy_asset_ids: [], status: "generated",
@@ -658,7 +676,7 @@ export class LocalAssetsRepository {
         folder = {
           asset_id: `FOLDER-${crypto.randomBytes(6).toString("hex").toUpperCase()}`,
           asset_type: "general_reference", display_name: `${projectId} generated images`, description: topic.trim(),
-          stored_path: "", original_filename: "", content_sha256: "", tags: terms(["generated image", "short project", projectId]),
+          stored_path: "", original_filename: "", content_sha256: "", tags: terms(["generated image", kind, projectId]),
           aliases: [], enabled: true, approved: false, face_baseline: false, character_key: null, version: 1, versions: [],
           created_at: now, updated_at: now, notes: GENERATED_FOLDER_NOTE, legacy_asset_ids: [], status: "generated",
           source_project_id: projectId, source_scene_number: null, reference_images: [], reference_roles: [], is_folder: true,
@@ -745,6 +763,19 @@ export class LocalAssetsRepository {
       await this.save(retained);
       return [...removed];
     });
+  }
+
+  /**
+   * Whether this source's generated images have ever been indexed.
+   *
+   * Asked before approving or replacing one. Episodes generated before they were indexed at all have pictures
+   * on disk and no records, and `approveGeneratedProjectImage` treats a missing Folder as corruption — which
+   * it is, for a source that was indexed once. The two states are different and only the caller can tell them
+   * apart, so it asks rather than being told by an exception.
+   */
+  async hasGeneratedProjectFolder(sourceProjectId: string): Promise<boolean> {
+    return (await this.load()).some((asset) => asset.is_folder && asset.source_project_id === sourceProjectId
+      && asset.notes === GENERATED_FOLDER_NOTE);
   }
 
   async approveGeneratedProjectImage(projectId: string, scene: number, allApproved: boolean): Promise<void> {
