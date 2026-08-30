@@ -6,7 +6,7 @@ import type { SceneNumber } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { parseStoredProject, type StoredProject } from "../projects/project-storage.schema.js";
 import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
-import { malformedMappings, malformedReview, mappingNotFound, mappingProjectNotFound, mappingStorageError, invalidMappings, invalidReview, snapshotInvalid } from "./mapping-api.error.js";
+import { malformedMappings, mappingNotFound, mappingProjectNotFound, mappingStorageError, invalidMappings, invalidReview, snapshotInvalid } from "./mapping-api.error.js";
 import type { MappingLocation } from "./mapping-owner.js";
 import { parseMappings, parseReview, parseStoredReview, type StoredAssetMapping, type StoredMappingReview } from "./mapping-storage.js";
 
@@ -49,11 +49,33 @@ export class LocalProjectAssetMappingsRepository {
     try { parseMappings(mappings); await atomicWriteUtf8File(this.mappingsPath(location), JSON.stringify(mappings, null, 2)); } catch (error) { if (error instanceof Error && "getStatus" in error) throw error; throw mappingStorageError(); }
     return this.invalidateReview(location);
   }
+  /** What a review is before one has been begun — and what an unreadable one falls back to. */
+  private freshReview(location: MappingLocation): StoredMappingReview {
+    return { project_id: location.id, mapping_revision: 0, script_revision: 0, script_fingerprint: "", status: "waiting", approved_at: "", approved_by: "", text_only_confirmed: false, legacy_confirmed: false, reviewed_scenes: [] };
+  }
+  /**
+   * This owner's review record, or a fresh one.
+   *
+   * A file that cannot be parsed falls back the same way a missing one does. It used to throw, and that threw
+   * from both `review()` — so the mapping screen would not open — and `beginReview()`, whose entire job is to
+   * discard the old baseline and write a new one, and which reads this record only to increment its counter.
+   * One unreadable file therefore closed the screen and the button that repairs it: the same dead end as
+   * docs/06_DECISIONS.md D-035, arrived at from the other direction.
+   *
+   * Safe because this record is **derived**, not the person's own work. It holds revision counters, a
+   * fingerprint and a status, all of which a `beginReview` rewrites from the owner and the scenes; the mappings
+   * a person actually chose live in `asset_mappings.json`, which deliberately still refuses to be read as empty
+   * (silently treating chosen references as "none chosen" would send a paid image request without them).
+   *
+   * Falling back to `waiting` cannot let anything through: approval compares this record against the owner's
+   * current script and refuses on a mismatch, so a lost approval has to be redone rather than assumed. A real
+   * storage failure still throws — only "there is nothing here to read" is absorbed.
+   */
   async loadReview(location: MappingLocation): Promise<StoredMappingReview> {
     await location.ensureExists();
     let raw: string;
-    try { raw = await fsPromises.readFile(this.reviewPath(location), "utf8"); } catch (error) { if (errorCode(error) === "ENOENT") return { project_id: location.id, mapping_revision: 0, script_revision: 0, script_fingerprint: "", status: "waiting", approved_at: "", approved_by: "", text_only_confirmed: false, legacy_confirmed: false, reviewed_scenes: [] }; throw mappingStorageError(); }
-    try { const review = parseStoredReview(JSON.parse(raw), location.id); if (review.project_id !== location.id) throw new Error("project"); return review; } catch (error) { if (error instanceof SyntaxError) throw malformedReview(); throw invalidReview(); }
+    try { raw = await fsPromises.readFile(this.reviewPath(location), "utf8"); } catch (error) { if (errorCode(error) === "ENOENT") return this.freshReview(location); throw mappingStorageError(); }
+    try { const review = parseStoredReview(JSON.parse(raw), location.id); if (review.project_id !== location.id) throw new Error("project"); return review; } catch { return this.freshReview(location); }
   }
   async saveReview(location: MappingLocation, review: StoredMappingReview): Promise<void> {
     if (review.project_id !== location.id) throw invalidReview();

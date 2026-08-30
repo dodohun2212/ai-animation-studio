@@ -89,6 +89,51 @@ describe("ProjectAssetMappingsService", () => {
     expect((await service.review("short_mapping")).review.status).toBe("waiting");
   });
 
+  /**
+   * A review record that can no longer be read must not close the screen that rewrites it.
+   *
+   * It used to throw from `review()` and from `beginReview()` both — so the mapping screen would not open and
+   * the button whose whole job is to discard the old baseline could not run either. One unreadable file, no way
+   * out from inside the app: the same dead end as D-035, reached from the other direction.
+   *
+   * Safe because this record is derived. Counters, a fingerprint and a status, all of which `beginReview`
+   * rewrites from the owner and the scenes. The approval assertion is the important half of this test: falling
+   * back to `waiting` must not let anything through, and it does not — approval still compares the record
+   * against the current script and refuses, so a lost approval is redone rather than assumed.
+   */
+  it("opens on a review record it cannot read, and lets the re-baseline button repair it", async () => {
+    const { service, asset, project } = await setup();
+    await service.create("short_mapping", { assetId: asset.asset_id, usageRole: "style", sceneScope: { kind: "all" } });
+    const begun = await service.beginReview("short_mapping", {});
+    await service.approveReview("short_mapping", { scriptFingerprint: begun.review.scriptFingerprint });
+    await fs.writeFile(path.join(root!, "projects", project.project_id, "asset_mapping_review.json"), "{ nope", "utf8");
+
+    expect((await service.review("short_mapping")).review).toMatchObject({ status: "waiting", scriptFingerprint: "" });
+    await expect(service.approveReview("short_mapping", { scriptFingerprint: begun.review.scriptFingerprint }))
+      .rejects.toMatchObject({ response: { code: "ASSET_MAPPING_FINGERPRINT_MISMATCH" } });
+
+    const rebuilt = await service.beginReview("short_mapping", {});
+    expect(rebuilt.review.scriptFingerprint).toBe(begun.review.scriptFingerprint);
+    await expect(service.approveReview("short_mapping", { scriptFingerprint: rebuilt.review.scriptFingerprint }))
+      .resolves.toMatchObject({ review: { status: "approved" } });
+  });
+
+  /**
+   * The counterpart, and the line the fallback stops at.
+   *
+   * `asset_mappings.json` is not derived — it is the references a person chose. Reading an unreadable one as
+   * "none chosen" would send the next paid image request without them and say nothing, so this one still
+   * refuses. Without this assertion, an implementation that swallowed every unreadable file would pass the test
+   * above.
+   */
+  it("still refuses to read the person's own mapping choices as an empty list", async () => {
+    const { service, asset, project } = await setup();
+    await service.create("short_mapping", { assetId: asset.asset_id, usageRole: "style", sceneScope: { kind: "all" } });
+    await fs.writeFile(path.join(root!, "projects", project.project_id, "asset_mappings.json"), "{ nope", "utf8");
+
+    await expect(service.list("short_mapping")).rejects.toMatchObject({ response: { code: "ASSET_MAPPING_JSON_MALFORMED" } });
+  });
+
   it("blocks approval on a suggested mapping carried over from the Python baseline", async () => {
     // Nothing this port writes produces `suggested` — every mapping it creates is confirmed or excluded — so
     // this condition looks dead from the TypeScript side alone. It is not. `app/services/project_asset_mapping.py`
