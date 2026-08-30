@@ -167,23 +167,6 @@ describe("EpisodeVideosService", () => {
     expect(staleness.videoStale).toContain(2);
   });
 
-  it("names the scenes whose paid-for clips were made from a picture that has since been redrawn", async () => {
-    // A clip is rendered from a picture, and regenerating that picture touches no video field — so the prompt
-    // comparison above is silent, and the review screen shows a finished clip of a character the person
-    // replaced. This side had nothing recorded to compare either: its input_hash covers the prompt alone.
-    const { videos, projectsRoot } = await setup();
-    const preview = await videos.preview("long", 1);
-    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_redraw", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
-    await videos.run("long", 1, started.jobId);
-    expect((await videos.review("long", 1, started.jobId)).staleness.videoStale).toEqual([]);
-
-    // Scene 2's picture is redrawn in place, exactly as a regeneration replaces it. The script does not move.
-    const REDRAWN = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==", "base64");
-    await fs.writeFile(path.join(projectsRoot, "long", "long_story", "Episode01", "images", "scene2.png"), REDRAWN);
-
-    expect((await videos.review("long", 1, started.jobId)).staleness.videoStale).toEqual([2]);
-  });
-
   it("carries an edit forward to the next scene's clip, which was built partly from it", async () => {
     // promptFor reads the previous scene for its continuity cue, so scene 3's clip is behind after scene 2 is
     // edited even though scene 3 was not touched. Falls out of recomputing; there is no propagation code.

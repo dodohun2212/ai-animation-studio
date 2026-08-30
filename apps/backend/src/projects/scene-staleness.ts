@@ -1,6 +1,3 @@
-import { createHash } from "node:crypto";
-import * as fs from "node:fs/promises";
-
 import { sceneNumbersFor, type SceneNumber, type SceneStaleness } from "@ai-animation-studio/shared";
 import { imagePromptFor, sceneValue, styleLineFor } from "../images/image-prompt.js";
 import { describeReferenceMappingsForScene, referenceSourcesForScene } from "../images/image-reference-selection.js";
@@ -11,11 +8,6 @@ import { promptFor, ratioFor, type StoredScene } from "../videos/video-preview.s
 import { toShortProjectSettings } from "./project-settings.js";
 import type { StoredProject } from "./project-storage.schema.js";
 import { previousSceneContinuityImagePath } from "./project-continuity.js";
-
-/** Undefined when the file cannot be read, which the caller treats as "cannot tell" rather than "changed". */
-async function sha256OfFile(file: string): Promise<string | undefined> {
-  try { return createHash("sha256").update(await fs.readFile(file)).digest("hex"); } catch { return undefined; }
-}
 
 function scenesFor(project: StoredProject): SceneNumber[] {
   return sceneNumbersFor(toShortProjectSettings(project).sceneCount);
@@ -132,16 +124,6 @@ export async function computeSceneStaleness(
       let recomputed: string | undefined;
       try { recomputed = promptFor(scene as StoredScene, previous, ratio, clipDurationSeconds).prompt; } catch { recomputed = undefined; }
       if (recomputed !== undefined && recomputed !== recordedVideoPrompt) videoStale.push(number);
-    }
-
-    // The picture, separately from the prompt. A video is rendered from an image, and regenerating that image
-    // does not touch any video field — so before this, redrawing a character left the finished video showing
-    // the old one with nothing on the screen saying so. Only reported when the video is not already listed
-    // above: the person needs to know the scene is behind, not how many ways it is behind.
-    if (!videoStale.includes(number)) {
-      const recordedImageHash = latestRecordField(project.video_generation_records, number, "source_image_sha256");
-      const imagePath = project.generated_images[number - 1];
-      if (recordedImageHash !== undefined && typeof imagePath === "string" && await sha256OfFile(imagePath) !== recordedImageHash) videoStale.push(number);
     }
   }
   return { imageStale, videoStale, narrationStale, referenceStale };

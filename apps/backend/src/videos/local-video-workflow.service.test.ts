@@ -61,23 +61,6 @@ describe("local fake video workflow", () => {
     expect(review.staleness).toEqual({ imageStale: [], videoStale: [], narrationStale: [], referenceStale: [] });
   });
 
-  it("flags a scene's video as stale once its source picture is replaced, not only when the prompt changes", async () => {
-    // A video is rendered from a picture. Redraw the picture and the video on disk still shows the old one —
-    // but videoStale compares video prompts, and a regenerated image does not touch those, so nothing said
-    // anything. The person is looking at a finished video of a character they replaced.
-    const { projectsRoot, projects, accepted, workflow } = await setup();
-    await workflow.run("video_workflow", accepted.jobId);
-    const service = new LocalVideoWorkflowService(projects, projectsRoot);
-    expect((await service.getReview("video_workflow", accepted.jobId)).staleness?.videoStale).toEqual([]);
-
-    // Scene 2's picture is redrawn in place, exactly as a regeneration replaces it. Nothing else moves.
-    const REDRAWN = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==", "base64");
-    await fs.writeFile(path.join(projectsRoot, "video_workflow", "images", "scene2.png"), REDRAWN);
-
-    const after = await service.getReview("video_workflow", accepted.jobId);
-    expect(after.staleness?.videoStale).toEqual([2]);
-  });
-
   it("flags a scene's video as stale after a motion field is edited without regenerating, and the next scene too when its end_motion changes", async () => {
     const { projectsRoot, projects, accepted, workflow } = await setup();
     await workflow.run("video_workflow", accepted.jobId);

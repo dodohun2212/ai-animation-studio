@@ -40,15 +40,6 @@ type VideoRecord = {
   user_request_id: string;
   confirmation_id: string;
   input_hash: string;
-  /**
-   * The picture this video is rendered from, on its own.
-   *
-   * `input_hash` already covers these bytes, but it covers the prompt, model, ratio and duration with them, so
-   * it can only answer "did anything change" — which is what it exists for (refusing a duplicate submission).
-   * Staleness has to answer which thing changed, because the two send the person to different buttons: a moved
-   * prompt means re-render, a replaced picture means the picture they are looking at is not the one in the video.
-   */
-  source_image_sha256: string;
   prompt: string;
   model: "gen4_turbo";
   ratio: "720:1280" | "1280:720";
@@ -165,11 +156,9 @@ export class LocalVideoSubmissionService {
     if (estimatedTotalCostUsd > this.monthlyBudgetUsd) throw videoBudgetExceeded();
 
     const hashes: string[] = [];
-    const imageHashes: string[] = [];
     for (const scene of scenes) {
       const image = await fs.readFile(project.generated_images[scene - 1]!);
       hashes.push(this.hashInput(image, request.prompts[scene - 1]!.prompt, preview.previews[scene - 1]!.ratio, preview.previews[scene - 1]!.durationSeconds));
-      imageHashes.push(createHash("sha256").update(image).digest("hex"));
     }
     const duplicate = this.existing(project, request, hashes);
     if (duplicate) return duplicate;
@@ -185,7 +174,6 @@ export class LocalVideoSubmissionService {
       user_request_id: request.userRequestId,
       confirmation_id: request.confirmationId,
       input_hash: hashes[index]!,
-      source_image_sha256: imageHashes[index]!,
       prompt: request.prompts[index]!.prompt,
       model: "gen4_turbo",
       ratio: preview.previews[index]!.ratio,
