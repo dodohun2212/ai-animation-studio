@@ -30,7 +30,7 @@ import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../pr
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "./openai-image-adapter.js";
 import { collectReferenceImages, describeReferenceMappingsForScene } from "./image-reference-selection.js";
-import { imagePromptFor, imageSizeFor, styleLineFor } from "./image-prompt.js";
+import { imagePromptFor, imageSizeFor, sceneValue, styleLineFor } from "./image-prompt.js";
 import { previousSceneContinuityImagePath } from "../projects/project-continuity.js";
 import { computeSceneStaleness } from "../projects/scene-staleness.js";
 import {
@@ -129,6 +129,29 @@ export class ImageReviewService {
     return path.join(this.projectsRoot, projectId, "images", `scene${number}.png`);
   }
 
+  /**
+   * Index this project's generated images on demand when the Library has no record of them.
+   *
+   * Approving and replacing both look the records up and read a missing Folder as corruption, which is right
+   * for a project that was indexed once and wrong for one whose Folder is simply gone. It can be gone: the
+   * Library lets a generated Folder be deleted, and `usageProjects()` answers "nobody" for it — mappings point
+   * at the references a person chose, never at the pictures this project produced — so nothing refuses the
+   * deletion. Without this, that deletion left the project stuck in image review: every approval and every
+   * regeneration answered IMAGE_REVIEW_STORAGE_ERROR, with no way back short of paying for the images again.
+   *
+   * The Episode path already carries this guard (`episode-images.service.ts`), for the same reason in a
+   * different disguise — Episodes whose pictures predate indexing. Both owners re-derive the records from what
+   * is on disk, which is where the pictures were the source of truth all along.
+   */
+  private async indexAssetsIfMissing(project: StoredProject): Promise<void> {
+    if (await this.assets.hasGeneratedProjectFolder(project.project_id)) return;
+    await this.assets.indexGeneratedProjectImages(
+      { sourceProjectId: project.project_id, imagesDirectory: path.dirname(this.imagePath(project.project_id, 1)), kind: "short project" },
+      project.topic,
+      scenesFor(project).map((number) => sceneValue(project.scenes[number - 1], "description")),
+    );
+  }
+
   private async writeBinary(finalPath: string, bytes: Buffer): Promise<void> {
     const temporary = path.join(path.dirname(finalPath), `.${path.basename(finalPath)}.${crypto.randomUUID()}.tmp`);
     let renamed = false;
@@ -216,7 +239,7 @@ export class ImageReviewService {
     } catch { throw imageReviewStorageError(); }
 
     const allApproved = scenes.every((scene) => reviews.some((item) => item.scene_number === scene && item.status === "approved"));
-    try { await this.assets.approveGeneratedProjectImage(project.project_id, number, allApproved); }
+    try { await this.indexAssetsIfMissing(project); await this.assets.approveGeneratedProjectImage(project.project_id, number, allApproved); }
     catch { throw imageReviewStorageError(); }
     const updated = allApproved
       ? { ...project, workflow_state: WorkflowState.WaitingForVideoConfirmation, updated_at: timestamp }
@@ -356,6 +379,7 @@ export class ImageReviewService {
       updated_at: timestamp,
     };
     try {
+      await this.indexAssetsIfMissing(project);
       await this.assets.replaceGeneratedProjectSceneImage(project.project_id, number, currentPath, archive!);
       await atomicWriteUtf8File(this.reviewFile(project.project_id), JSON.stringify(reviews, null, 2));
       await this.projects.save(updated);

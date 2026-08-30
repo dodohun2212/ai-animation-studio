@@ -416,3 +416,52 @@ describe("real OpenAI image regeneration", () => {
     expect(usage).toEqual([expect.objectContaining({ project_id: "review", api_type: "image", succeeded: false })]);
   });
 });
+
+describe("a generated Folder the Library no longer has", () => {
+  /**
+   * The Library lets a generated Folder be deleted — `usageProjects()` answers "nobody" for it, because
+   * mappings point at the references a person chose and never at the pictures a project produced. Approving
+   * and regenerating both looked their records up and read the absence as corruption, so one deletion left the
+   * project stuck in image review with only IMAGE_REVIEW_STORAGE_ERROR to show for it, and the way out was
+   * paying for the images a second time.
+   */
+  it("does not brick approval — the records are re-derived from the pictures on disk", async () => {
+    const { assets, service } = await setup();
+    const folder = (await assets.list()).find((asset) => asset.is_folder && asset.source_project_id === "review")!;
+    await assets.removeFolder(folder.asset_id, { removeChildIndexes: true });
+    expect(await assets.hasGeneratedProjectFolder("review")).toBe(false);
+
+    const response = await service.approve("review", "1", { approved: true });
+
+    expect(response.reviews.find((review) => review.sceneNumber === 1)?.status).toBe("approved");
+    const restored = await assets.list();
+    expect(restored.find((asset) => asset.is_folder && asset.source_project_id === "review")).toBeDefined();
+    expect(restored.find((asset) => !asset.is_folder && asset.source_project_id === "review" && asset.source_scene_number === 1)?.approved).toBe(true);
+  });
+
+  it("does not brick regeneration either", async () => {
+    const { assets, service } = await setup();
+    const folder = (await assets.list()).find((asset) => asset.is_folder && asset.source_project_id === "review")!;
+    await assets.removeFolder(folder.asset_id, { removeChildIndexes: true });
+
+    await expect(service.regenerate("review", "2", { approved: true })).resolves.toMatchObject({ sceneNumber: 2 });
+
+    expect(await assets.hasGeneratedProjectFolder("review")).toBe(true);
+  });
+
+  /**
+   * The counterpart. Re-indexing unconditionally would pass the two above and would quietly undo a person's
+   * own words on every approval — `indexGeneratedProjectImages` rewrites a child's `description` from the
+   * scene text, and that description is one of the few fields the Library lets a generated child carry. The
+   * guard has to ask first rather than re-derive every time.
+   */
+  it("leaves an edited description alone while the Folder is still there", async () => {
+    const { assets, service } = await setup();
+    const child = (await assets.list()).find((asset) => !asset.is_folder && asset.source_project_id === "review" && asset.source_scene_number === 1)!;
+    await assets.update(child.asset_id, { description: "주인공 첫 컷" });
+
+    await service.approve("review", "1", { approved: true });
+
+    expect((await assets.get(child.asset_id)).description).toBe("주인공 첫 컷");
+  });
+});
