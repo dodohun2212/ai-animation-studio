@@ -184,17 +184,14 @@ export function LongEpisodeNarrationReviewScreen({ projectId, episodeNumber, onB
     regenerateBusy.current.add(sceneNumber);
     setRegeneratePendingScenes(new Set(regenerateBusy.current));
     setActionError(null);
-    const previousStale = state.status === "ready" ? state.narrationStale : [];
     try {
       const response = await regenerateLongEpisodeNarration(projectId, episodeNumber, sceneNumber, regenerateInstruction);
       setState({
         status: "ready",
         narrations: response.narrations,
-        /* The regenerate response carries no staleness of its own, so the rest of the list is carried over
-           and only the fact this action established is applied: a scene just synthesized from the current
-           sentence is not behind it. Re-reading the whole review would be the alternative, and it would also
-           discard `retryEstimate`, which only this response has. */
-        narrationStale: previousStale.filter((number) => number !== sceneNumber),
+        // Recomputed by the server for every scene. The screen used to carry the previous list forward and
+        // take the regenerated scene out of it — correct, and a second place deciding what "stale" means.
+        narrationStale: response.staleness.narrationStale,
         episodeStatus: response.episode.status,
         budget: response.retryEstimate?.budget,
         retryEstimate: response.retryEstimate,

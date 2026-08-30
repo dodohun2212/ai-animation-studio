@@ -3,6 +3,7 @@ import type { AudioLibraryTrack, MergeLongEpisodeVideosResponse, UsedAudio } fro
 
 import { getLongEpisode, getLongEpisodeCurrentVideoJob, getLongEpisodeVideoReview, getLongProjectSettings, longEpisodeFinalVideoContentUrl, mergeLongEpisodeVideos, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { getAudioLibrary } from "../api/audioLibraryApi.js";
+import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBridge.js";
 import type { AudioMode } from "./mergeAudio.js";
 import { AttributionNotice, AUDIO_MODE_LABELS, MergeAudioFieldset, needsTrack, toAudioSettings } from "./mergeAudio.js";
 
@@ -78,6 +79,19 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
    * the only trace that the Episode was finished at all. The Episode's own status is what survives a refresh.
    */
   const [alreadyMerged, setAlreadyMerged] = useState(false);
+  /**
+   * The merged file addressed from the project root, straight from the server.
+   *
+   * Never assembled here. `finalVideoPath` is Episode-relative and the desktop bridge resolves everything
+   * against the project folder, so handing that one over opens `<projectId>/videos/final/...` — nothing, or a
+   * short project's finished video. The Episode's layout has one home on the server and a path built in this
+   * screen would be a second copy of it, in the place least likely to be checked against disk.
+   *
+   * Filled from the Episode on load as well as from the merge, so the button survives a refresh.
+   */
+  const [openablePath, setOpenablePath] = useState<string | null>(null);
+  const [openPending, setOpenPending] = useState(false);
+  const [openFailed, setOpenFailed] = useState(false);
   /** Bumped after a merge so the browser fetches the new file instead of replaying a cached older one. */
   const [videoVersion, setVideoVersion] = useState(0);
   /* The content route refuses a file at or below placeholder size, so a merge of stubs fails to load rather
@@ -112,6 +126,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
         if (cancelled) return;
         setSceneCount(response.episode.script?.scenes.length ?? null);
         setAlreadyMerged(response.episode.status === "completed");
+        setOpenablePath(response.episode.openablePath ?? null);
         setUsedAudio(response.episode.usedAudio);
         // Derived, not assumed: an Episode with no narration audio cannot merge "나레이션만", and defaulting to
         // it would label a silent video as a narrated one (docs/06_DECISIONS.md D-011). Absent stays null.
@@ -153,6 +168,20 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
   const audioSettings = toAudioSettings(audioMode, trackId);
   const modeUnready = audioMode !== null && needsTrack(audioMode) && !trackId;
 
+  async function openInExplorer(): Promise<void> {
+    if (openPending || !openablePath) return;
+    setOpenPending(true);
+    setOpenFailed(false);
+    try {
+      const outcome = await openProjectPathInExplorer(projectId, openablePath);
+      if (!outcome?.opened) setOpenFailed(true);
+    } catch {
+      setOpenFailed(true);
+    } finally {
+      setOpenPending(false);
+    }
+  }
+
   function openConfirmation(): void {
     if (busy.current || result || blocked) return;
     setError(null);
@@ -167,6 +196,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
     try {
       const merged = await mergeLongEpisodeVideos(projectId, episodeNumber, audioSettings ?? undefined);
       setResult(merged);
+      setOpenablePath(merged.openablePath);
       setUsedAudio(merged.episode.usedAudio);
       setConfirmationOpen(false);
       setUnplayable(false);
@@ -290,6 +320,27 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
             />
           )}
           {result && <p className="text-xs text-slate-500" data-testid="episode-final-video-path">파일: {result.finalVideoPath}</p>}
+          {/* Offered on a path the server composed, and only inside the desktop shell. Shown for a merge done in
+              an earlier page load too — the Episode carries the same value, which is the half the short project
+              still lacks. */}
+          {hasElectronBridge() && openablePath && (
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                data-testid="episode-open-in-explorer-button"
+                className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5 disabled:opacity-50"
+                onClick={() => void openInExplorer()}
+                disabled={openPending}
+              >
+                {openPending ? "여는 중..." : "탐색기에서 열기"}
+              </button>
+              {openFailed && (
+                <p role="alert" data-testid="episode-open-in-explorer-error" className="text-sm text-rose-400">
+                  폴더를 열지 못했습니다.
+                </p>
+              )}
+            </div>
+          )}
           {/* The Episode publishes to the same Instagram under the same licence as a short project, and this is
               the screen the caption gets written from. Reading it from state that survives a reload is the
               point: the person who comes back to publish is the one who needs it (D-003). */}

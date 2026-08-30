@@ -267,7 +267,13 @@ describe("LongEpisodeNarrationReviewScreen", () => {
     expect(screen.queryByTestId("episode-narration-stale-1")).toBeNull();
   });
 
-  it("clears the mark on the one scene it regenerated, and leaves the others alone", async () => {
+  /**
+   * The screen used to carry the previous list forward and take the regenerated scene out of it. That inference
+   * was correct and was a second place deciding what "stale" means; the server now recomputes every scene and
+   * sends the answer. The stub deliberately keeps scene 2 stale AND clears scene 1, so a screen that went back
+   * to inferring would still pass — which is why scene 2 is asserted from a list the screen did not compute.
+   */
+  it("takes the regenerated staleness from the server rather than working it out", async () => {
     const fetchMock = stubFetchByRoute({
       [REVIEW]: {
         episode: episode(),
@@ -278,9 +284,10 @@ describe("LongEpisodeNarrationReviewScreen", () => {
         ]),
       },
       [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
-      // The regenerate response carries no staleness of its own — the screen has to reason about it.
+      // Recomputed server-side for every scene, so the screen only has to read it.
       [REGENERATE_1]: {
         episode: episode(),
+        staleness: { narrationStale: [2] },
         narrations: narrations([
           { narration: "첫 문장입니다.", audio: "generated" },
           { narration: "둘째 문장입니다.", audio: "generated" },
@@ -295,8 +302,43 @@ describe("LongEpisodeNarrationReviewScreen", () => {
     fireEvent.click(await screen.findByText("예, 다시 만듭니다"));
 
     await waitFor(() => expect(screen.getByTestId("episode-narration-scene-1")).toHaveAttribute("data-stale", "false"));
-    // Scene 2 was not touched, so nothing was learned about it — clearing it too would be the screen guessing.
+    // Straight from the response, not carried over: the server is the only thing deciding this now.
     expect(screen.getByTestId("episode-narration-scene-2")).toHaveAttribute("data-stale", "true");
+  });
+
+  /**
+   * The direction the old inference could not express. Regenerating one scene can leave another one behind —
+   * someone edits two sentences and re-synthesizes one — and a screen that only ever *removed* entries would
+   * keep showing scene 2 as current. Only a recomputed list can turn a mark back on.
+   */
+  it("takes on a mark the server adds during a regeneration", async () => {
+    const fetchMock = stubFetchByRoute({
+      [REVIEW]: {
+        episode: episode(),
+        staleness: { narrationStale: [] },
+        narrations: narrations([
+          { narration: "첫 문장입니다.", audio: "generated" },
+          { narration: "둘째 문장입니다.", audio: "generated" },
+        ]),
+      },
+      [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
+      [REGENERATE_1]: {
+        episode: episode(),
+        staleness: { narrationStale: [2] },
+        narrations: narrations([
+          { narration: "첫 문장입니다.", audio: "generated" },
+          { narration: "둘째 문장입니다.", audio: "generated" },
+        ]),
+        sceneNumber: 1,
+      },
+    });
+    renderScreen(fetchMock);
+
+    expect(await screen.findByTestId("episode-narration-scene-2")).toHaveAttribute("data-stale", "false");
+    fireEvent.click(screen.getByTestId("episode-narration-regenerate-1"));
+    fireEvent.click(await screen.findByText("예, 다시 만듭니다"));
+
+    await waitFor(() => expect(screen.getByTestId("episode-narration-scene-2")).toHaveAttribute("data-stale", "true"));
   });
 
   it("calls a placeholder a placeholder instead of reporting it as a real voice", async () => {

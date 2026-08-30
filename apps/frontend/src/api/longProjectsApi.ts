@@ -357,7 +357,13 @@ function isLongEpisodeScript(value: unknown): value is LongEpisodeScript {
 function isLongEpisodeDetail(value: unknown): value is LongEpisodeDetail {
   if (!isLongEpisodeOutline(value)) return false;
   const record = value as unknown as Record<string, unknown>;
-  return typeof record.approved === "boolean" && Number.isInteger(record.scriptRevision) && Number.isInteger(record.scriptHistoryCount) && (record.script === undefined || isLongEpisodeScript(record.script));
+  if (!(typeof record.approved === "boolean" && Number.isInteger(record.scriptRevision) && Number.isInteger(record.scriptHistoryCount) && (record.script === undefined || isLongEpisodeScript(record.script)))) return false;
+  /* Both optional, and the contract says they are absent together. Checked as a pair because a detail carrying
+     only `finalVideoPath` is exactly the state that made the reload path dangerous: a path that looks openable,
+     is not, and resolves against the project root to somebody else's file. */
+  if (record.finalVideoPath !== undefined && typeof record.finalVideoPath !== "string") return false;
+  if (record.openablePath !== undefined && typeof record.openablePath !== "string") return false;
+  return (record.finalVideoPath === undefined) === (record.openablePath === undefined);
 }
 
 function isLongProject(value: unknown): value is LongProject {
@@ -558,7 +564,10 @@ const isRegenerateEpisodeVideoResponse = (value: unknown): value is RegenerateLo
   return Array.isArray(record.regeneratedSceneNumbers) && record.regeneratedSceneNumbers.every(isSceneNumber);
 };
 const isMergeLongEpisodeVideosResponse = (value: unknown): value is MergeLongEpisodeVideosResponse => isRecord(value)
-  && isLongEpisodeDetail(value.episode) && value.finalVideoPath === "videos/final/instagram_reel.mp4";
+  && isLongEpisodeDetail(value.episode) && value.finalVideoPath === "videos/final/instagram_reel.mp4"
+  // Required, and the only one of the two that may be handed to the desktop bridge. Accepting a response
+  // without it would leave the screen holding the Episode-relative string and nothing to open.
+  && typeof value.openablePath === "string" && value.openablePath.length > 0;
 
 function isUnknownRecordArray(value: unknown): value is Array<Record<string, unknown>> {
   return Array.isArray(value) && value.every(isRecord);
