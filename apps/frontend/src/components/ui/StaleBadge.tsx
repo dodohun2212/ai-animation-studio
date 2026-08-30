@@ -1,6 +1,6 @@
 import type { SceneNumber } from "@ai-animation-studio/shared";
 
-type StaleKind = "image" | "video" | "narration";
+type StaleKind = "image" | "video" | "narration" | "reference";
 
 interface StaleBadgeProps {
   /** The scene numbers the server reported as stale for this artifact kind; absent when the server sent none. */
@@ -10,10 +10,26 @@ interface StaleBadgeProps {
   "data-testid"?: string;
 }
 
-const KIND_LABEL: Record<StaleKind, string> = {
-  image: "이미지",
-  video: "영상",
-  narration: "음성",
+/**
+ * `reference` is the one kind whose cause is not the scene's own text.
+ *
+ * The other three mean "you edited this scene and did not remake this". A reference goes stale when the
+ * character behind the picture changed — a different folder mapped, its representative drawing replaced, a
+ * version bumped — while the scene's words stayed exactly as they were. Telling someone their text changed
+ * when it did not sends them to re-read a scene that is fine, so this kind gets its own sentence.
+ */
+const KIND_SENTENCE: Record<StaleKind, string> = {
+  image: "장면 내용이 바뀐 뒤로 이 이미지를 다시 만들지 않았습니다.",
+  video: "장면 내용이 바뀐 뒤로 이 영상을 다시 만들지 않았습니다.",
+  narration: "장면 내용이 바뀐 뒤로 이 음성을 다시 만들지 않았습니다.",
+  reference: "이 그림을 만든 뒤로 참고 이미지가 바뀌었습니다. 장면 내용은 그대로입니다.",
+};
+
+const KIND_TEXT: Record<StaleKind, string> = {
+  image: "내용 바뀜 · 이미지 다시 필요",
+  video: "내용 바뀜 · 영상 다시 필요",
+  narration: "내용 바뀜 · 음성 다시 필요",
+  reference: "참고 이미지 바뀜",
 };
 
 /**
@@ -35,10 +51,10 @@ export function StaleBadge({ staleSceneNumbers, sceneNumber, kind, "data-testid"
       data-stale-kind={kind}
       role="status"
       className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-500/10 px-2.5 py-0.5 text-xs font-semibold text-amber-300"
-      title={`장면 내용이 바뀐 뒤로 이 ${KIND_LABEL[kind]}을(를) 다시 만들지 않았습니다.`}
+      title={KIND_SENTENCE[kind]}
     >
       <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-current" />
-      내용 바뀜 · {KIND_LABEL[kind]} 다시 필요
+      {KIND_TEXT[kind]}
     </span>
   );
 }

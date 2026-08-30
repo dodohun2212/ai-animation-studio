@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { BudgetPreview, LongEpisodeContinuityReference, LongEpisodeDetail, LongEpisodeImageGenerationPreview, LongEpisodeImageReview, LongEpisodeStatus, SceneNumber, StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
+import type { BudgetPreview, LongEpisodeContinuityReference, LongEpisodeDetail, LongEpisodeImageGenerationPreview, LongEpisodeImageReview, LongEpisodeStatus, LongEpisodeStoryBibleLinkDrift, SceneNumber, StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
 import { IMAGE_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 
 import {
@@ -27,7 +27,9 @@ type DisplayError = { code: string; message: string };
 type ReviewState =
   | { status: "idle" | "loading" }
   | { status: "error"; error: DisplayError }
-  | { status: "ready"; reviews: LongEpisodeImageReview[]; budget?: BudgetPreview; retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview }; imageStale: SceneNumber[] };
+  | { status: "ready"; reviews: LongEpisodeImageReview[]; budget?: BudgetPreview; retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview }; imageStale: SceneNumber[]; referenceStale: SceneNumber[]; drift: LongEpisodeStoryBibleLinkDrift[] };
+/** The Story Bible's own words for these two links, so the sentence reads like the screen the person set them on. */
+const LINK_LABEL: Record<LongEpisodeStoryBibleLinkDrift["link"], string> = { protagonist: "주인공", style: "전체 그림체" };
 const SCENE_SLOT_LABEL: Record<string, string> = { generated: "생성됨", waiting: "대기 중", generating: "만드는 중", pending: "검토 대기", approved: "승인됨" };
 const sceneSlotLabel = (status: string) => SCENE_SLOT_LABEL[status] ?? status;
 
@@ -141,7 +143,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
     let cancelled = false;
     setReviewState({ status: "loading" });
     getLongEpisodeImageReview(projectId, episodeNumber)
-      .then((response) => { if (!cancelled) { setEpisode(response.episode); setReviewState({ status: "ready", reviews: response.reviews, budget: response.budget, imageStale: response.staleness.imageStale }); } })
+      .then((response) => { if (!cancelled) { setEpisode(response.episode); setReviewState({ status: "ready", reviews: response.reviews, budget: response.budget, imageStale: response.staleness.imageStale, referenceStale: response.staleness.referenceStale, drift: response.storyBibleLinkDrift }); } })
       .catch((caught: unknown) => { if (!cancelled) setReviewState({ status: "error", error: toLongProjectDisplayError(caught) }); });
     return () => { cancelled = true; };
     // reviewState.status is intentionally excluded: it is set inside this effect as a start-once guard,
@@ -229,6 +231,8 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
         // Carried from the response, not the old state: approving scene 2 must not leave scene 3's badge
         // showing what was true one request ago.
         imageStale: response.staleness.imageStale,
+        referenceStale: response.staleness.referenceStale,
+        drift: response.storyBibleLinkDrift,
       }));
     } catch (caught) { setError(toLongProjectDisplayError(caught)); }
     finally { approvalBusy.current.delete(sceneNumber); setApprovePending(new Set(approvalBusy.current)); }
@@ -240,7 +244,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
     try {
       const response = await regenerateLongEpisodeImageReview(projectId, episodeNumber, sceneNumber, regenerateInstruction);
       setEpisode(response.episode);
-      setReviewState({ status: "ready", reviews: response.reviews, budget: response.retryEstimate?.budget, retryEstimate: response.retryEstimate, imageStale: response.staleness.imageStale });
+      setReviewState({ status: "ready", reviews: response.reviews, budget: response.retryEstimate?.budget, retryEstimate: response.retryEstimate, imageStale: response.staleness.imageStale, referenceStale: response.staleness.referenceStale, drift: response.storyBibleLinkDrift });
       setRegenerateConfirm(null);
       setRegenerateInstruction("");
     } catch (caught) { setError(toLongProjectDisplayError(caught)); }
@@ -322,6 +326,24 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
             이 화면을 벗어나거나 새로고침해도 서버에서 만드는 것은 계속됩니다. 다시 누르면 같은 장면을 한 번 더 결제하게 됩니다.
           </p>
         </div>
+      )}
+      {/* A statement of difference, not of error — CLI's own framing and the right one. An Episode drawn before
+          the Story Bible changed is allowed to keep the character it was drawn with; the pictures are bought and
+          correct for what they were made from. Whether to spend money redrawing is the person's call, so this
+          says what is, names no action, and is styled as information rather than as a problem. */}
+      {reviewState.status === "ready" && reviewState.drift.length > 0 && (
+        <section data-testid="episode-story-bible-drift" aria-label="설정집과 다른 점" className="space-y-1.5 rounded-xl border border-sky-400/25 bg-sky-500/[0.06] px-4 py-3">
+          {reviewState.drift.map((item) => (
+            <p key={item.link} data-testid={`episode-drift-${item.link}`} className="text-sm text-sky-200">
+              이 에피소드는 {LINK_LABEL[item.link]}{" "}
+              <strong className="text-sky-100">{item.episodeAssetName ?? item.episodeAssetId ?? "연결 없음"}</strong>
+              (으)로 만들어졌습니다. 지금 설정집의 {LINK_LABEL[item.link]}은(는){" "}
+              <strong className="text-sky-100">{item.storyBibleAssetName || item.storyBibleAssetId}</strong>입니다.
+            </p>
+          ))}
+          {/* Said once for the section rather than per line: the reason it is not an instruction. */}
+          <p className="text-xs text-sky-300/80">이미 만든 그림은 그대로 둡니다. 새 쪽으로 맞추려면 장면마다 다시 만들기를 눌러 주세요 — 다시 만드는 만큼 비용이 듭니다.</p>
+        </section>
       )}
       <ol data-testid="episode-image-scenes" className="list-decimal space-y-1 pl-5 text-sm text-slate-300">
         {sceneNumbers.map((sceneNumber) => {
@@ -435,6 +457,15 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
                       sceneNumber={sceneNumber}
                       kind="image"
                       data-testid={`episode-image-stale-${sceneNumber}`}
+                    />
+                    {/* Separate from the one above because the causes are separate: that one means the script
+                        changed, this one means the character behind the picture did while the words stayed put.
+                        A person who is told "your text changed" when it did not goes and re-reads a fine scene. */}
+                    <StaleBadge
+                      staleSceneNumbers={reviewState.referenceStale}
+                      sceneNumber={sceneNumber}
+                      kind="reference"
+                      data-testid={`episode-reference-stale-${sceneNumber}`}
                     />
                     <StatusChip tone={review.status === "approved" ? "success" : "neutral"}>{sceneSlotLabel(review.status)}</StatusChip>
                   </span>

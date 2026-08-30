@@ -69,6 +69,7 @@ import {
   type SaveLongEpisodeContinuityResponse,
   type GetLongEpisodeContinuityReferenceResponse,
   type LongEpisodeNarrationReview,
+  type LongEpisodeStoryBibleLinkDrift,
   type LongEpisodeNarrationStaleness,
   type GetLongEpisodeNarrationReviewResponse,
   type StartLongEpisodeNarrationGenerationRequest,
@@ -491,8 +492,23 @@ const isStartEpisodeImageGenerationResponse = (value: unknown): value is StartLo
   && Array.isArray(value.reusedSceneNumbers) && value.reusedSceneNumbers.every(isSceneNumber);
 /** Required by the contract, same as the video review's — a response without it is malformed, never a screen that shows no badges. */
 const isLongEpisodeImageStaleness = (value: unknown): value is LongEpisodeImageStaleness =>
-  isRecord(value) && Array.isArray(value.imageStale) && value.imageStale.every(isSceneNumber);
-const isGetEpisodeImageReviewResponse = (value: unknown): value is GetLongEpisodeImageReviewResponse => isRecord(value) && isLongEpisodeDetail(value.episode) && isEpisodeImageReviews(value.reviews) && isLongEpisodeImageStaleness(value.staleness);
+  isRecord(value) && Array.isArray(value.imageStale) && value.imageStale.every(isSceneNumber)
+  // Required on the contract, and kept separate from imageStale on purpose: one says the description changed,
+  // the other says the character did. A response missing it is malformed, not an older server.
+  && Array.isArray(value.referenceStale) && value.referenceStale.every(isSceneNumber);
+/**
+ * One Story Bible link this Episode's mapping does not match.
+ *
+ * `episodeAssetId`/`episodeAssetName` are nullable by contract — an Episode that never had the link mapped has
+ * nothing on its side — so null is accepted and a wrong type is not.
+ */
+const isStoryBibleLinkDrift = (value: unknown): value is LongEpisodeStoryBibleLinkDrift =>
+  isRecord(value) && (value.link === "protagonist" || value.link === "style")
+  && typeof value.storyBibleAssetId === "string" && typeof value.storyBibleAssetName === "string"
+  && (value.episodeAssetId === null || typeof value.episodeAssetId === "string")
+  && (value.episodeAssetName === null || typeof value.episodeAssetName === "string");
+const isGetEpisodeImageReviewResponse = (value: unknown): value is GetLongEpisodeImageReviewResponse => isRecord(value) && isLongEpisodeDetail(value.episode) && isEpisodeImageReviews(value.reviews) && isLongEpisodeImageStaleness(value.staleness)
+  && Array.isArray(value.storyBibleLinkDrift) && value.storyBibleLinkDrift.every(isStoryBibleLinkDrift);
 const isApproveEpisodeImageReviewResponse = (value: unknown): value is ApproveLongEpisodeImageReviewResponse => isGetEpisodeImageReviewResponse(value);
 const isRegenerateEpisodeImageReviewResponse = (value: unknown): value is RegenerateLongEpisodeImageReviewResponse => isRecord(value) && isGetEpisodeImageReviewResponse(value) && isSceneNumber(value.sceneNumber);
 

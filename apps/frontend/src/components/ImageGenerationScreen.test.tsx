@@ -118,6 +118,31 @@ describe("ImageGenerationScreen", () => {
   });
 
   /**
+   * The short project folds a mapped Asset's description text into the prompt, so swapping an Asset for a
+   * different one already showed up as imageStale. What it could not see was the common case: the bytes come
+   * from whatever version the mapping points at, folder mappings follow the latest, and redrawing the same
+   * character changes every byte sent while the description stays identical.
+   *
+   * Two badges rather than one because the causes differ. "장면 내용이 바뀌었다" is false here — the words are
+   * untouched — and saying it sends someone to re-read a scene that is fine.
+   */
+  it("separates a picture behind its script from one behind its references", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, {
+      project, reviews: sixReviews(),
+      staleness: { imageStale: [1], videoStale: [], narrationStale: [], referenceStale: [2] },
+    })));
+
+    expect((await screen.findByTestId("review-stale-1")).textContent).toContain("내용 바뀜");
+    expect(screen.queryByTestId("reference-stale-1")).toBeNull();
+
+    const reference = screen.getByTestId("reference-stale-2");
+    expect(reference.textContent).toContain("참고 이미지 바뀜");
+    expect(reference.textContent).not.toContain("내용 바뀜");
+    expect(screen.queryByTestId("review-stale-2")).toBeNull();
+  });
+
+  /**
    * `generatePending` is local state, so a reload during a run left the screen showing six rows reading 대기
    * and no panel — while images were being bought. The workflow state is the fact that survives the reload.
    */

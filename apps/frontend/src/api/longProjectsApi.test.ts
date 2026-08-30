@@ -152,12 +152,12 @@ describe("longProjectsApi", () => {
     const imageEpisode = { episodeNumber: 1, title: "Episode 1", summary: "", mainEvent: "", conflict: "", cliffhanger: "", nextEpisodeHook: "", status: "images_review" as const, approved: true, scriptRevision: 3, scriptHistoryCount: 1 };
     const reviews = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending" as const, updatedAt: "2026-08-23T00:00:00.000Z" }));
     const fetchMock = vi.fn()
-      // `staleness` is required on all three review-shaped responses, so a stub without it is malformed —
-      // which is the guard doing its job, not a test to loosen.
-      .mockResolvedValueOnce(jsonResponse(200, { episode: imageEpisode, reviews, staleness: { imageStale: [] } }))
+      // `staleness` and `storyBibleLinkDrift` are both required on all three review-shaped responses, so a stub
+      // missing either is malformed — which is the guard doing its job, not a test to loosen.
+      .mockResolvedValueOnce(jsonResponse(200, { episode: imageEpisode, reviews, staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: imageEpisode, generatedSceneNumbers: [1, 2, 3, 4, 5, 6], reusedSceneNumbers: [] }))
-      .mockResolvedValueOnce(jsonResponse(200, { episode: imageEpisode, reviews, staleness: { imageStale: [] } }))
-      .mockResolvedValueOnce(jsonResponse(200, { episode: imageEpisode, reviews, staleness: { imageStale: [] }, sceneNumber: 2 }));
+      .mockResolvedValueOnce(jsonResponse(200, { episode: imageEpisode, reviews, staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: imageEpisode, reviews, staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [], sceneNumber: 2 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await getLongEpisodeImageReview("reopen_me", 1);

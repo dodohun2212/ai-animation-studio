@@ -37,7 +37,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
       // out from the review list, which is not fetched at this stage.
       .mockResolvedValueOnce(jsonResponse(200, { preview: { sceneNumbers: [1, 2, 3, 4, 5, 6], generatableSceneNumbers: [1, 2, 3, 4, 5, 6], reusableSceneNumbers: [], estimatedCostUsd: 6 * IMAGE_ESTIMATED_COST_USD } }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, generatedSceneNumbers: [1, 2, 3, 4, 5, 6], reusedSceneNumbers: [] }))
-      .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, reviews: reviews(), staleness: { imageStale: [] } }));
+      .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, reviews: reviews(), staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] }));
     vi.stubGlobal("fetch", fetchMock);
 
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
@@ -61,9 +61,9 @@ describe("LongEpisodeImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: true } }))
       .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
-      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode, reviews: reviews(), staleness: { imageStale: [] } }))
-      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode, reviews: reviews([1]), staleness: { imageStale: [] } }))
-      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode, reviews: reviews(), staleness: { imageStale: [] }, sceneNumber: 2 }));
+      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode, reviews: reviews(), staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode, reviews: reviews([1]), staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode, reviews: reviews(), staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [], sceneNumber: 2 }));
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
@@ -90,7 +90,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { episode: done }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: false } }))
       .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
-      .mockResolvedValueOnce(jsonResponse(200, { episode: done, reviews: reviews([1, 2, 3, 4, 5, 6]), staleness: { imageStale: [] } })));
+      .mockResolvedValueOnce(jsonResponse(200, { episode: done, reviews: reviews([1, 2, 3, 4, 5, 6]), staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] })));
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
     expect(await screen.findByTestId("episode-video-confirmation-transition")).toBeTruthy();
     expect(await screen.findByTestId("episode-image-continuity-unavailable")).toBeTruthy();
@@ -122,7 +122,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
           budget: { monthlyLimitUsd: 10, spentUsd: 0.6, remainingUsd: 9.4, estimatedRequestCostUsd: 0.6, canSpend: true },
         }),
       )
-      .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, reviews: reviews(), staleness: { imageStale: [] } }));
+      .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, reviews: reviews(), staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] }));
     vi.stubGlobal("fetch", fetchMock);
 
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
@@ -149,7 +149,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
       // out from the review list, which is not fetched at this stage.
       .mockResolvedValueOnce(jsonResponse(200, { preview: { sceneNumbers: [1, 2, 3, 4, 5, 6], generatableSceneNumbers: [1, 2, 3, 4, 5, 6], reusableSceneNumbers: [], estimatedCostUsd: 6 * IMAGE_ESTIMATED_COST_USD } }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, generatedSceneNumbers: [1, 2, 3, 4, 5, 6], reusedSceneNumbers: [] }))
-      .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, reviews: reviews(), staleness: { imageStale: [] } }));
+      .mockResolvedValueOnce(jsonResponse(200, { episode: imageReviewEpisode, reviews: reviews(), staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] }));
     vi.stubGlobal("fetch", fetchMock);
 
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
@@ -167,7 +167,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { episode: first }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 0, sourceSceneNumber: 6, available: false } }))
       .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
-      .mockResolvedValue(jsonResponse(200, { episode: first, reviews: reviews(), staleness: { imageStale: [] } })));
+      .mockResolvedValue(jsonResponse(200, { episode: first, reviews: reviews(), staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] })));
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
     expect((await screen.findByTestId("episode-image-continuity-unavailable")).textContent).toContain("첫 에피소드라");
@@ -179,7 +179,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { episode: later }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: false } }))
       .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
-      .mockResolvedValue(jsonResponse(200, { episode: later, reviews: reviews(), staleness: { imageStale: [] } })));
+      .mockResolvedValue(jsonResponse(200, { episode: later, reviews: reviews(), staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] })));
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={2} onBack={() => {}} />);
 
     const notice = await screen.findByTestId("episode-image-continuity-unavailable");
@@ -195,7 +195,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { episode: ready }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
       .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
-      .mockResolvedValue(jsonResponse(200, { episode: ready, reviews: fourReviews, staleness: { imageStale: [] } })));
+      .mockResolvedValue(jsonResponse(200, { episode: ready, reviews: fourReviews, staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] })));
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
     await waitFor(() => expect(screen.getByTestId("episode-image-scene-4")).toBeTruthy());
@@ -216,7 +216,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { episode: withScript }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
       .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
-      .mockResolvedValue(jsonResponse(200, { episode: withScript, reviews: [], staleness: { imageStale: [] } })));
+      .mockResolvedValue(jsonResponse(200, { episode: withScript, reviews: [], staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] })));
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
     await waitFor(() => expect(screen.getByTestId("episode-image-scene-3")).toBeTruthy());
@@ -231,7 +231,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { episode: ready }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 2, sourceSceneNumber: 4, available: true } }))
       .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
-      .mockResolvedValue(jsonResponse(200, { episode: ready, reviews: reviews(), staleness: { imageStale: [] } })));
+      .mockResolvedValue(jsonResponse(200, { episode: ready, reviews: reviews(), staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] })));
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={3} onBack={() => {}} />);
 
     const line = await screen.findByTestId("episode-image-continuity-available");
@@ -248,7 +248,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
       .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "16:9" }), aspectRatioChangeable: true }))
-      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode, reviews: reviews(), staleness: { imageStale: [] } })));
+      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode, reviews: reviews(), staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] })));
 
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={2} onBack={() => {}} />);
 
@@ -267,7 +267,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { episode: advanced }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
       .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
-      .mockResolvedValueOnce(jsonResponse(200, { episode: advanced, reviews: reviews([1, 2, 3, 4, 5, 6]), staleness: { imageStale: [] } })));
+      .mockResolvedValueOnce(jsonResponse(200, { episode: advanced, reviews: reviews([1, 2, 3, 4, 5, 6]), staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] })));
 
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={2} onBack={() => {}} />);
 
@@ -292,7 +292,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { episode: advanced }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
       .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
-      .mockResolvedValueOnce(jsonResponse(200, { episode: advanced, reviews: perScene, staleness: { imageStale: [] } })));
+      .mockResolvedValueOnce(jsonResponse(200, { episode: advanced, reviews: perScene, staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] })));
 
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={2} onBack={() => {}} />);
 
@@ -312,7 +312,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
       .mockRejectedValueOnce(new Error("network"))
-      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode, reviews: reviews(), staleness: { imageStale: [] } })));
+      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode, reviews: reviews(), staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] })));
 
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={2} onBack={() => {}} />);
 
@@ -389,7 +389,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { episode: ready }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
       .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
-      .mockResolvedValue(jsonResponse(200, { episode: ready, reviews: reviews(), staleness: { imageStale: [] }, sceneNumber: 1 }));
+      .mockResolvedValue(jsonResponse(200, { episode: ready, reviews: reviews(), staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [], sceneNumber: 1 }));
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
@@ -444,6 +444,105 @@ describe("LongEpisodeImageGenerationScreen", () => {
   });
 
   /**
+   * The two lists mean different things and arrive from different actions — editing the script versus editing
+   * the Story Bible or the mapping — so a screen that showed one badge for both would be unable to say which
+   * happened. Telling someone their text changed when it did not sends them to re-read a scene that is fine.
+   */
+  it("separates a picture behind its script from one behind its references", async () => {
+    const reviewEpisode = episode("images_review");
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
+      .mockResolvedValue(jsonResponse(200, {
+        episode: reviewEpisode, reviews: reviews(),
+        staleness: { imageStale: [1], referenceStale: [2] },
+        storyBibleLinkDrift: [],
+      })));
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    expect((await screen.findByTestId("episode-image-stale-1")).textContent).toContain("내용 바뀜");
+    expect(screen.queryByTestId("episode-reference-stale-1")).toBeNull();
+    // Scene 2's words did not change, so it must not be told they did.
+    const reference = screen.getByTestId("episode-reference-stale-2");
+    expect(reference.textContent).toContain("참고 이미지 바뀜");
+    expect(reference.textContent).not.toContain("내용 바뀜");
+    expect(screen.queryByTestId("episode-image-stale-2")).toBeNull();
+  });
+
+  /**
+   * The Episode that already bought pictures keeps the mapping they were made from, so nothing about it
+   * changes when the Story Bible does — `referenceStale` is silent there by construction. This is the only
+   * thing that can say the Episode was drawn with a different person than the story now has.
+   *
+   * A statement of difference, not of error: the pictures are correct for what they were made from, and
+   * whether to spend money redrawing is the person's decision.
+   */
+  it("says which protagonist the Episode was drawn with, without telling anyone to fix it", async () => {
+    const reviewEpisode = episode("images_review");
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
+      .mockResolvedValue(jsonResponse(200, {
+        episode: reviewEpisode, reviews: reviews(),
+        staleness: { imageStale: [], referenceStale: [] },
+        storyBibleLinkDrift: [{
+          link: "protagonist",
+          storyBibleAssetId: "FOLDER-MINJAE", storyBibleAssetName: "민재",
+          episodeAssetId: "FOLDER-IBAD", episodeAssetName: "이배드",
+        }],
+      })));
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    const drift = await screen.findByTestId("episode-drift-protagonist");
+    expect(drift.textContent).toContain("이배드");
+    expect(drift.textContent).toContain("민재");
+    // Both names come from the response, so the sentence costs no second request.
+    expect(drift.textContent).toContain("주인공");
+  });
+
+  it("falls back to the id when an Asset behind a drift is gone", async () => {
+    const reviewEpisode = episode("images_review");
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
+      .mockResolvedValue(jsonResponse(200, {
+        episode: reviewEpisode, reviews: reviews(),
+        staleness: { imageStale: [], referenceStale: [] },
+        storyBibleLinkDrift: [{
+          link: "style",
+          storyBibleAssetId: "FOLDER-STYLE", storyBibleAssetName: "수채화",
+          // Never mapped on this Episode's side — null by contract, and "연결 없음" is what that means to read.
+          episodeAssetId: null, episodeAssetName: null,
+        }],
+      })));
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    const drift = await screen.findByTestId("episode-drift-style");
+    expect(drift.textContent).toContain("연결 없음");
+    expect(drift.textContent).toContain("전체 그림체");
+  });
+
+  it("says nothing about the Story Bible when the Episode agrees with it", async () => {
+    const reviewEpisode = episode("images_review");
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
+      .mockResolvedValue(jsonResponse(200, {
+        episode: reviewEpisode, reviews: reviews(),
+        staleness: { imageStale: [], referenceStale: [] },
+        storyBibleLinkDrift: [],
+      })));
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    await screen.findByTestId("episode-image-review-1");
+    expect(screen.queryByTestId("episode-story-bible-drift")).toBeNull();
+  });
+
+  /**
    * The short project has had this panel since its run became pollable; the Episode had only a list of scenes
    * reading 만드는 중. The sentence that matters is the last one — leaving is safe, pressing again is not —
    * and it was missing on the side where a second batch costs more.
@@ -485,7 +584,7 @@ describe("LongEpisodeImageGenerationScreen", () => {
       .mockResolvedValueOnce(jsonResponse(200, { episode: later }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
       .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
-      .mockResolvedValue(jsonResponse(200, { episode: later, reviews: reviews(), staleness: { imageStale: [] } })));
+      .mockResolvedValue(jsonResponse(200, { episode: later, reviews: reviews(), staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] })));
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
     // The list is what was refused before, and it is what the gallery and the badges are built on.

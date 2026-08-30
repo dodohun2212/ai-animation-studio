@@ -207,10 +207,17 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
         reviews: response.reviews,
         budget: response.retryEstimate?.budget,
         retryEstimate: response.retryEstimate,
-        // Regenerating this scene brings it back in line with the current text, so it is no longer stale.
+        /* Regenerating this scene brings it back in line with the current text, so it is no longer stale — and
+           it is drawn from the mapping as it stands now, so it is no longer behind its references either. Both
+           lists are narrowed by exactly the one scene this action touched; the rest are left as the server last
+           reported them, because nothing was learned about them. */
         staleness:
           current.status === "ready" && current.staleness
-            ? { ...current.staleness, imageStale: current.staleness.imageStale.filter((number) => number !== sceneNumber) }
+            ? {
+                ...current.staleness,
+                imageStale: current.staleness.imageStale.filter((number) => number !== sceneNumber),
+                referenceStale: current.staleness.referenceStale.filter((number) => number !== sceneNumber),
+              }
             : undefined,
       }));
       setProjectOverride(response.project);
@@ -517,6 +524,15 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                               sceneNumber={review.sceneNumber}
                               kind="image"
                               data-testid={`review-stale-${review.sceneNumber}`}
+                            />
+                            {/* The other cause, kept apart: the character behind the picture changed while the
+                                scene's words did not. Saying "your text changed" there sends someone to re-read
+                                a scene that is fine. */}
+                            <StaleBadge
+                              staleSceneNumbers={reviewState.status === "ready" ? reviewState.staleness?.referenceStale : undefined}
+                              sceneNumber={review.sceneNumber}
+                              kind="reference"
+                              data-testid={`reference-stale-${review.sceneNumber}`}
                             />
                             <StatusChip tone={review.status === "approved" ? "success" : "neutral"}>
                               {review.status === "approved" ? "확정됨" : "검토 대기"}
