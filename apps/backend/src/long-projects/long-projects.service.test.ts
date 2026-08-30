@@ -20,6 +20,30 @@ describe("LongProjectsService", () => {
     expect(await fs.stat(path.join(root!, "projects", "long_test", "long_story", "story_bible.json"))).toBeTruthy();
   });
 
+  /**
+   * Whether each Episode has a continuity memo, per Episode.
+   *
+   * The memo is written by hand and nothing writes it automatically, and a later Episode's script prompt reads
+   * every earlier memo while silently skipping the absent ones. So an Episode without one contributes nothing
+   * to any script written after it, and the only way to notice was to read the finished script — after paying
+   * for it. The timeline could not say so: an outline carried no fact about the memo, and asking per Episode
+   * meant one request per row.
+   *
+   * Asserted across two Episodes at once on purpose. A single row would pass for an implementation that
+   * answers the same thing for every Episode, which is the shape this would most plausibly be got wrong in.
+   */
+  it("reports a continuity memo per Episode, so the timeline does not have to ask once per row", async () => {
+    const subject = await service();
+    await subject.create(input);
+    const episodeOne = path.join(root!, "projects", "long_test", "long_story", "Episode01");
+    await fs.mkdir(episodeOne, { recursive: true });
+    await fs.writeFile(path.join(episodeOne, "continuity.json"), JSON.stringify({ episode_number: 1, episode_summary: "she finds the tape" }), "utf8");
+
+    const episodes = (await subject.get("long_test")).project.episodes;
+
+    expect(episodes.map((episode) => episode.continuitySaved)).toEqual([true, false, false]);
+  });
+
   it("moves the outline list with the episode count instead of leaving a project that cannot be opened", async () => {
     // Changing the number wrote project.json and left the outline list at its old length. Every read checks that
     // the two match, so the save itself reported LONG_PROJECT_DATA_INVALID — after having already written — and

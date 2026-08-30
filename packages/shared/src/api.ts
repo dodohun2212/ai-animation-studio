@@ -66,6 +66,18 @@ export interface LongEpisodeOutline {
   nextEpisodeHook: string;
   status: LongEpisodeStatus;
   /**
+   * Whether this Episode has a continuity memo saved.
+   *
+   * The memo is written by hand, on the Episode's own continuity screen, and nothing writes it automatically.
+   * A later Episode's script prompt reads every earlier Episode's memo and silently skips the ones that are
+   * absent — so an Episode without one contributes nothing to any script written after it, and the only way to
+   * find that out today is to read the finished script, after it has been paid for.
+   *
+   * Optional on purpose, and absent means "not determined here" rather than "no memo". A screen that renders
+   * the absence as 메모 없음 would be stating something it never checked.
+   */
+  continuitySaved?: boolean;
+  /**
    * Plain-language notes about this Episode's own state that the user could not otherwise learn from `status`
    * alone — e.g. a crash-recovery message after the backend reverted a stuck generating state on restart (see
    * orphaned-episode-generation-recovery.service.ts). Optional and absent when empty (unlike the short-project
