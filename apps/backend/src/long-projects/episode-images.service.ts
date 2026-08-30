@@ -193,6 +193,13 @@ export class EpisodeImagesService {
    * The Episode, not just the Long Project it belongs to — the same identity `EpisodeMappingOwner.id` already
    * uses, and for the same reason: two Episodes of one project would otherwise share a Folder and a scene key,
    * so approving scene 1 of Episode 2 would find Episode 1's picture.
+   *
+   * These records name a directory another module renames: archiving an Episode moves it aside, and a restore
+   * brings it back under a different number. Nothing repoints them, and the project-level answer
+   * (`listExcludingArchivedProjects`) only knows about `<projectsRoot>/.archive`. What keeps this from leaving a
+   * Folder of dead pictures is a gate two files away — archiving is refused unless every Episode is still a
+   * draft, so an Episode that has images cannot be archived at all. `episode-archive-assets.integration.test.ts`
+   * is what goes red if that gate is ever widened.
    */
   private assetSource(projectId: string, number: number): GeneratedImageSource {
     return {
