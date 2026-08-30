@@ -72,7 +72,7 @@ describe("NarrationReviewService", () => {
     const after = await reviews.getStatus("narr");
     expect(after.narrations[0]).toMatchObject({ audio: "placeholder" });
     expect(after.narrations[1]).toMatchObject({ audio: "none" });
-    expect(after.staleness).toEqual({ imageStale: [], videoStale: [], narrationStale: [] });
+    expect(after.staleness).toEqual({ imageStale: [], videoStale: [], narrationStale: [], referenceStale: [] });
   });
 
   it("flags narrationStale once the scene's narration text is edited after audio was generated", async () => {

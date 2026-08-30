@@ -1937,6 +1937,19 @@ export interface SceneStaleness {
   imageStale: SceneNumber[];
   videoStale: SceneNumber[];
   narrationStale: SceneNumber[];
+  /**
+   * Scenes whose pictures were drawn from reference images that are no longer the ones this scene would use.
+   *
+   * `imageStale` catches part of this already, because the recorded prompt carries a text description of the
+   * mapped Assets — swap one Asset for another and the names differ. It cannot catch the rest: the bytes come
+   * from whichever version the mapping currently resolves to, and a Folder mapping is always follow_latest. Draw
+   * a new representative picture for the same character Folder and the description is word-for-word identical
+   * while every reference byte has changed.
+   *
+   * Same meaning and same limit as the Episode's field of this name: only scenes with a recorded reference list
+   * appear, so this says "known to be behind" and never "the rest are current".
+   */
+  referenceStale: SceneNumber[];
 }
 
 export interface UpdateSceneResponse {

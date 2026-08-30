@@ -1,11 +1,12 @@
 import { sceneNumbersFor, type SceneNumber, type SceneStaleness } from "@ai-animation-studio/shared";
 import { imagePromptFor, sceneValue, styleLineFor } from "../images/image-prompt.js";
-import { describeReferenceMappingsForScene } from "../images/image-reference-selection.js";
+import { describeReferenceMappingsForScene, referenceSourcesForScene } from "../images/image-reference-selection.js";
 import type { LocalAssetsRepository } from "../assets/assets.repository.js";
 import type { StoredAssetMapping } from "../mappings/mapping-storage.js";
 import { promptFor, ratioFor, type StoredScene } from "../videos/video-preview.service.js";
 import { toShortProjectSettings } from "./project-settings.js";
 import type { StoredProject } from "./project-storage.schema.js";
+import { previousSceneContinuityImagePath } from "./project-continuity.js";
 
 function scenesFor(project: StoredProject): SceneNumber[] {
   return sceneNumbersFor(toShortProjectSettings(project).sceneCount);
@@ -17,6 +18,15 @@ function latestRecordField(records: readonly unknown[], sceneNumber: number, key
   for (let index = records.length - 1; index >= 0; index -= 1) {
     const record = records[index];
     if (isObject(record) && record.scene_number === sceneNumber && typeof record[key] === "string") return record[key];
+  }
+  return undefined;
+}
+
+/** The array counterpart of latestRecordField, for the recorded reference list. Same newest-first scan. */
+function latestRecordStrings(records: readonly unknown[], sceneNumber: number, key: string): string[] | undefined {
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    const record = records[index];
+    if (isObject(record) && record.scene_number === sceneNumber && Array.isArray(record[key]) && (record[key] as unknown[]).every((entry) => typeof entry === "string")) return record[key] as string[];
   }
   return undefined;
 }
@@ -43,7 +53,7 @@ function latestRecordField(records: readonly unknown[], sceneNumber: number, key
  */
 export async function computeSceneStaleness(
   project: StoredProject,
-  referenceContext?: { assets: LocalAssetsRepository; mappings: readonly StoredAssetMapping[] },
+  referenceContext?: { assets: LocalAssetsRepository; mappings: readonly StoredAssetMapping[]; directory: string },
 ): Promise<SceneStaleness> {
   const scenes = scenesFor(project);
   const styleLine = styleLineFor(project);
@@ -52,6 +62,7 @@ export async function computeSceneStaleness(
   const imageStale: SceneNumber[] = [];
   const videoStale: SceneNumber[] = [];
   const narrationStale: SceneNumber[] = [];
+  const referenceStale: SceneNumber[] = [];
   for (const number of scenes) {
     const scene = project.scenes[number - 1];
 
@@ -59,6 +70,17 @@ export async function computeSceneStaleness(
     if (recordedImagePrompt !== undefined) {
       const referenceNotes = referenceContext ? await describeReferenceMappingsForScene(referenceContext.assets, referenceContext.mappings, number) : "";
       if (imagePromptFor(scene, styleLine, referenceNotes) !== recordedImagePrompt) imageStale.push(number);
+    }
+
+    // Skipped entirely without a referenceContext, for the same reason the text block is: recomputing "no
+    // references at all" against a record that has some would report every such scene as behind, and the caller
+    // that omits the context is the one that cannot tell.
+    const recordedSources = latestRecordStrings(project.image_generation_records, number, "reference_sources");
+    if (recordedSources !== undefined && referenceContext) {
+      // Order as well as membership — the model is shown the images in this order, and a reordered list is a
+      // different request.
+      const now = await referenceSourcesForScene(referenceContext.assets, referenceContext.mappings, referenceContext.directory, number, previousSceneContinuityImagePath(project));
+      if (now.length !== recordedSources.length || now.some((source, index) => source !== recordedSources[index])) referenceStale.push(number);
     }
 
     const recordedNarration = latestRecordField(project.narration_generation_records, number, "narration");
@@ -72,5 +94,5 @@ export async function computeSceneStaleness(
       if (recomputed !== undefined && recomputed !== recordedVideoPrompt) videoStale.push(number);
     }
   }
-  return { imageStale, videoStale, narrationStale };
+  return { imageStale, videoStale, narrationStale, referenceStale };
 }

@@ -128,8 +128,14 @@ export class LocalImageGenerationService {
         let adapter = "local-fake-image-adapter";
         let apiCalls = 0;
         let referenceOmission: { references_used_count: number; references_omitted_count: number } | undefined;
+        // Recorded alongside the prompt because the prompt cannot hold it: the reference text names the Asset,
+        // but the bytes come from whichever version that Asset currently resolves to, and a Folder mapping is
+        // always follow_latest. A redrawn representative child therefore changes every picture the next run
+        // would make while leaving the description word-for-word identical.
+        let referenceSources: string[] | undefined;
         if (apiKey && this.budget) {
           const references = await collectReferenceImages(this.assets, mappings, this.mappings.projectLocation(current.project_id).directory, number, continuityImagePath);
+          referenceSources = references.sources;
           if (references.omittedCount > 0) referenceOmission = { references_used_count: references.images.length, references_omitted_count: references.omittedCount };
           await this.budget.preflight(IMAGE_ESTIMATED_COST_USD);
           let succeeded = false;
@@ -154,7 +160,7 @@ export class LocalImageGenerationService {
           image_prompts: [...current.image_prompts.slice(0, number - 1), prompt],
           motion_prompts: [...current.motion_prompts.slice(0, number - 1), sceneValue(current.scenes[number - 1], "main_motion")],
           generated_images: [...current.generated_images.slice(0, number - 1), destination],
-          image_generation_records: [...current.image_generation_records.slice(0, number - 1), { scene_number: number, prompt, checkpoint: "completed", adapter, image_api_calls: apiCalls, ...(referenceOmission ?? {}) }],
+          image_generation_records: [...current.image_generation_records.slice(0, number - 1), { scene_number: number, prompt, checkpoint: "completed", adapter, image_api_calls: apiCalls, ...(referenceOmission ?? {}), ...(referenceSources !== undefined ? { reference_sources: referenceSources } : {}) }],
           updated_at: new Date().toISOString(),
         };
         await this.projects.save(current);

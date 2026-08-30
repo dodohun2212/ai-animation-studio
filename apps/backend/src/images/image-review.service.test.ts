@@ -91,7 +91,7 @@ describe("provider-free generated image review", () => {
     expect(result.reviews).toEqual(expect.arrayContaining([{ sceneNumber: 1, status: "pending", updatedAt: expect.any(String) }]));
     await expect(fs.stat(path.join(projectsRoot, "review", "generated_image_reviews.json"))).rejects.toMatchObject({ code: "ENOENT" });
     expect(result.budget).toBeUndefined(); // no OpenAI credential/budget wired in — local fake mode
-    expect(result.staleness).toEqual({ imageStale: [], videoStale: [], narrationStale: [] }); // freshly generated, nothing edited since
+    expect(result.staleness).toEqual({ imageStale: [], videoStale: [], narrationStale: [], referenceStale: [] }); // freshly generated, nothing edited since
   });
 
   it("flags a scene's image as stale after its composition fields are edited without regenerating", async () => {
@@ -125,6 +125,36 @@ describe("provider-free generated image review", () => {
     const result = await service.getStatus("review");
 
     expect(result.staleness?.imageStale).toEqual([]);
+  });
+
+  it("flags referenceStale when the mapped Asset is redrawn, which imageStale structurally cannot see", async () => {
+    // The recorded prompt carries the Asset's name and description, so swapping one Asset for another shows up
+    // as imageStale. Drawing a new version of the same character does not: the description is word-for-word
+    // identical while every reference byte the model receives has changed. This mapping is follow_latest, which
+    // is also what every Folder mapping is, so this is the ordinary case rather than an exotic one.
+    const { projects, projectsRoot, assets, service } = await setupWithConnectedOpenAiAndConfirmedReference();
+    const project = await projects.findById("review");
+    const { imagePromptFor, styleLineFor } = await import("./image-prompt.js");
+    const { describeReferenceMappingsForScene, referenceSourcesForScene } = await import("./image-reference-selection.js");
+    const mappingsRepo = new LocalProjectAssetMappingsRepository(projectsRoot);
+    const location = mappingsRepo.projectLocation("review");
+    const mappings = await mappingsRepo.load(location);
+    const styleLine = styleLineFor(project);
+    project.image_generation_records = await Promise.all([1, 2, 3, 4, 5, 6].map(async (number) => ({
+      scene_number: number,
+      prompt: imagePromptFor(project.scenes[number - 1], styleLine, await describeReferenceMappingsForScene(assets, mappings, number as never)),
+      reference_sources: await referenceSourcesForScene(assets, mappings, location.directory, number as never, null),
+    })));
+    await projects.save(project);
+    expect((await service.getStatus("review")).staleness).toMatchObject({ imageStale: [], referenceStale: [] });
+
+    // The same character, redrawn. Nothing about the description moved.
+    const REDRAWN = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==", "base64");
+    await assets.addVersion(mappings[0]!.asset_id, { buffer: REDRAWN, originalname: "hero-v2.png", mimetype: "image/png" }, "redrawn");
+
+    const after = await service.getStatus("review");
+    expect(after.staleness?.referenceStale).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(after.staleness?.imageStale).toEqual([]);
   });
 
   it("flags imageStale once the mapped Asset's own description changes, even though no scene field was touched", async () => {

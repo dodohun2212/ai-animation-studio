@@ -346,7 +346,7 @@ describe("real OpenAI image generation", () => {
   });
 
   it("sends the confirmed Asset Mapping's approved Reference image via images/edits for every scene, recording the :edit adapter", async () => {
-    const { projectsRoot, service } = await setupWithConnectedOpenAiAndConfirmedReference();
+    const { projectsRoot, service, character } = await setupWithConnectedOpenAiAndConfirmedReference();
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -359,7 +359,13 @@ describe("real OpenAI image generation", () => {
       expect((init.body as FormData).getAll("image[]")).toHaveLength(1);
     }
     const reloaded = await new LocalProjectRepository(projectsRoot).findById("images");
-    expect(reloaded.image_generation_records).toEqual(expect.arrayContaining([expect.objectContaining({ scene_number: 1, adapter: "gpt-image-2:edit", image_api_calls: 1 })]));
+    // The record names which file each of those bytes came from, not just how many there were. The prompt
+    // cannot hold it — this mapping is follow_latest, so redrawing the same character changes every byte sent
+    // while leaving the description word-for-word identical, and referenceStale is measured from this.
+    expect(reloaded.image_generation_records).toEqual(expect.arrayContaining([expect.objectContaining({
+      scene_number: 1, adapter: "gpt-image-2:edit", image_api_calls: 1,
+      reference_sources: [`asset:${character.asset_id}@1`],
+    })]));
   });
 
   it("includes the linked previous project's approved Scene 6 as an additional Scene 1 Reference only", async () => {

@@ -190,7 +190,7 @@ export class ImageReviewService {
     return {
       project: toApiProject(project),
       reviews: toApiReviews(reviews, project.updated_at, scenesFor(project), project.image_generation_records),
-      staleness: await computeSceneStaleness(project, { assets: this.assets, mappings }),
+      staleness: await computeSceneStaleness(project, { assets: this.assets, mappings, directory: this.mappings.projectLocation(project.project_id).directory }),
       ...(budget ? { budget } : {}),
     };
   }
@@ -269,6 +269,8 @@ export class ImageReviewService {
     let apiCalls = 0;
     let retryEstimate: RegenerateImageReviewResponse["retryEstimate"];
     let referenceOmission: { references_used_count: number; references_omitted_count: number } | undefined;
+    /** See the same field in local-image-generation.service.ts: the prompt names the Asset, not its bytes. */
+    let referenceSources: string[] | undefined;
     if (apiKey && this.budget) {
       const mappings = await this.mappings.load(this.mappings.projectLocation(project.project_id));
       const referenceNotes = await describeReferenceMappingsForScene(this.assets, mappings, number);
@@ -276,6 +278,7 @@ export class ImageReviewService {
       const prompt = additionalInstruction ? `${basePrompt}\n${additionalInstruction}` : basePrompt;
       const continuityImagePath = previousSceneContinuityImagePath(project);
       const references = await collectReferenceImages(this.assets, mappings, this.mappings.projectLocation(project.project_id).directory, number, continuityImagePath);
+      referenceSources = references.sources;
       if (references.omittedCount > 0) referenceOmission = { references_used_count: references.images.length, references_omitted_count: references.omittedCount };
       try {
         const size = imageSizeFor(project);
@@ -342,6 +345,7 @@ export class ImageReviewService {
       regenerated: true,
       archived_previous_path: archive,
       ...(referenceOmission ?? {}),
+      ...(referenceSources !== undefined ? { reference_sources: referenceSources } : {}),
     };
     const records = [...project.image_generation_records];
     records[number - 1] = record;
