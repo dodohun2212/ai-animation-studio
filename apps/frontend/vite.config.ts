@@ -34,5 +34,17 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: "./src/test-setup.ts",
+    /**
+     * Vitest's default is 5s, and this suite's slowest test measured 3238ms — 1.54x of headroom, on a machine
+     * doing nothing else. `npm test` runs the workspaces together, so "nothing else" is not the case that
+     * matters: under that load the backend suite went red 3 runs out of 3 at the same ratio (b98657f), each
+     * run naming whichever tests happened to be slow rather than a test that was actually wrong.
+     *
+     * A suite that goes red because something else is running teaches people to re-run instead of read, and a
+     * real failure gets waved through on the second try. 20s is the number four backend tests had already
+     * chosen inline for themselves before it was made the default there — not a new one invented here. Passing
+     * runs are not slowed: a timeout is a ceiling on failure, never a wait.
+     */
+    testTimeout: 20_000,
   },
 });
