@@ -58,15 +58,23 @@ export class InstagramPublishService {
     return path.join(this.projectsRoot, projectId, FINAL_VIDEO_PATH);
   }
 
-  private parseRequest(request: unknown): { caption: string; igUserId: string } {
-    if (!isObject(request) || Object.keys(request).length !== 3
+  private parseRequest(request: unknown): { caption: string; igUserId: string; thumbOffsetMs?: number } {
+    if (!isObject(request) || Object.keys(request).length < 3 || Object.keys(request).length > 4
+      || Object.keys(request).some((key) => !["approved", "caption", "igUserId", "thumbOffsetMs"].includes(key))
       || request.approved !== true
       || typeof request.caption !== "string"
       || typeof request.igUserId !== "string" || !request.igUserId.trim()) {
       throw invalidInstagramRequest("Publishing requires explicit approval, a caption, and the account to publish to.");
     }
     if (request.caption.length > CAPTION_MAX) throw invalidInstagramRequest(`Caption exceeds Instagram's ${CAPTION_MAX} character limit.`);
-    return { caption: request.caption, igUserId: request.igUserId.trim() };
+    // A whole, non-negative number of milliseconds. Rejected rather than rounded or clamped: a cover frame the
+    // person did not choose is indistinguishable to them from the feature not working, and this is the last
+    // call before something goes out in public that cannot be taken back.
+    if (request.thumbOffsetMs !== undefined
+      && (typeof request.thumbOffsetMs !== "number" || !Number.isInteger(request.thumbOffsetMs) || request.thumbOffsetMs < 0)) {
+      throw invalidInstagramRequest("Cover frame position must be a whole number of milliseconds from the start.");
+    }
+    return { caption: request.caption, igUserId: request.igUserId.trim(), ...(request.thumbOffsetMs !== undefined ? { thumbOffsetMs: request.thumbOffsetMs } : {}) };
   }
 
   /**
@@ -96,7 +104,7 @@ export class InstagramPublishService {
   }
 
   async publish(projectId: string, request: unknown): Promise<PublishToInstagramResponse> {
-    const { caption, igUserId } = this.parseRequest(request);
+    const { caption, igUserId, thumbOffsetMs } = this.parseRequest(request);
     const id = projectId.trim();
     const project = await this.projects.findById(id);
     // Checked before anything reaches Meta: re-publishing is the one mistake that cannot be walked back.
@@ -114,7 +122,7 @@ export class InstagramPublishService {
       const current = await this.projects.findById(id);
       if (current.instagram_post) throw instagramAlreadyPublished();
 
-      const { mediaId, publishedAt } = await this.sendToInstagram(token.accessToken, igUserId, caption, bytes);
+      const { mediaId, publishedAt } = await this.sendToInstagram(token.accessToken, igUserId, caption, bytes, thumbOffsetMs);
       const updated = {
         ...current,
         updated_at: publishedAt,
@@ -203,7 +211,7 @@ export class InstagramPublishService {
    * copy of it is a second place for the container-then-publish order, the processing wait, or the target
    * check to be got wrong — while looking correct beside its twin.
    */
-  private async sendToInstagram(accessToken: string, igUserId: string, caption: string, bytes: Buffer): Promise<{ mediaId: string; publishedAt: string }> {
+  private async sendToInstagram(accessToken: string, igUserId: string, caption: string, bytes: Buffer, thumbOffsetMs?: number): Promise<{ mediaId: string; publishedAt: string }> {
     let targets;
     try {
       // The same resolver the account list uses, on purpose: this check refuses what that list offered the
@@ -216,7 +224,7 @@ export class InstagramPublishService {
     // has since been revoked must not silently become somebody else's account (D-006).
     if (!targets.some((target) => target.igUserId === igUserId)) throw instagramTargetNotFound();
     try {
-      const { containerId } = await createInstagramResumableContainer(accessToken, igUserId, caption, this.requestOptions);
+      const { containerId } = await createInstagramResumableContainer(accessToken, igUserId, caption, thumbOffsetMs, this.requestOptions);
       await uploadInstagramResumableVideo(accessToken, containerId, bytes, this.requestOptions);
       await this.waitUntilPublishable(accessToken, containerId);
       const { mediaId } = await publishInstagramContainer(accessToken, igUserId, containerId, this.requestOptions);
@@ -235,7 +243,7 @@ export class InstagramPublishService {
    * would offer to do it twice.
    */
   async publishEpisode(projectId: string, episodeNumber: number, request: unknown): Promise<PublishLongEpisodeToInstagramResponse> {
-    const { caption, igUserId } = this.parseRequest(request);
+    const { caption, igUserId, thumbOffsetMs } = this.parseRequest(request);
     const id = projectId.trim();
     if (!Number.isInteger(episodeNumber) || episodeNumber < 1) throw instagramVideoUnavailable();
     const directory = path.join(longStoryRoot(this.projectsRoot, id), episodeDirectoryName(episodeNumber));
@@ -257,7 +265,7 @@ export class InstagramPublishService {
       if (!current) throw instagramVideoUnavailable();
       if (current.instagram_post) throw instagramAlreadyPublished();
 
-      const { mediaId, publishedAt } = await this.sendToInstagram(token.accessToken, igUserId, caption, bytes);
+      const { mediaId, publishedAt } = await this.sendToInstagram(token.accessToken, igUserId, caption, bytes, thumbOffsetMs);
       const updated = {
         ...current,
         updated_at: publishedAt,

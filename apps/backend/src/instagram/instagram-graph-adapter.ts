@@ -29,15 +29,22 @@ export type { InstagramErrorCategory } from "./instagram-request.js";
  * caption that never reached this call is a caption the post will never have, and a Reel went out empty that
  * way once — without the licence credit and the AI disclosure the screen had promised were in it (D-003). An
  * optional parameter would let the next caller make the same omission silently.
+ *
+ * `thumbOffsetMs` is optional for the opposite reason: Meta's default is 0, the first frame, so omitting it and
+ * sending 0 produce the same Reel. It rides on this call because the resumable-upload documentation lists it
+ * among the optional Reels parameters of this exact request — the same list `caption` is on, and captions
+ * demonstrably arrive through here, which is the closest this repository can get to verifying it without
+ * publishing something real. The general media reference documents the field itself: "Location, in
+ * milliseconds, of the video or reel frame to be used as the cover thumbnail image."
  */
-export async function createInstagramResumableContainer(accessToken: string, igUserId: string, caption: string, options: RetryOptions = {}): Promise<{ containerId: string }> {
+export async function createInstagramResumableContainer(accessToken: string, igUserId: string, caption: string, thumbOffsetMs?: number, options: RetryOptions = {}): Promise<{ containerId: string }> {
   if (!igUserId.trim()) throw new InstagramAdapterError("invalid_request", "Instagram 계정 ID가 필요합니다.");
   const response = await requestWithRetry(
     `${GRAPH_BASE_URL}/${GRAPH_API_VERSION}/${encodeURIComponent(igUserId)}/media`,
     {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${accessToken}` },
-      body: JSON.stringify({ media_type: "REELS", upload_type: "resumable", ...(caption ? { caption } : {}) }),
+      body: JSON.stringify({ media_type: "REELS", upload_type: "resumable", ...(caption ? { caption } : {}), ...(thumbOffsetMs !== undefined ? { thumb_offset: thumbOffsetMs } : {}) }),
     },
     { ...options, maxRetries: 0 },
   );

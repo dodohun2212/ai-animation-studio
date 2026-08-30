@@ -23,7 +23,7 @@ describe("createInstagramResumableContainer", () => {
    */
   it("posts the verified media request shape, caption included, and returns the container ID", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "container-1" }));
-    const result = await createInstagramResumableContainer("token", "17800000000000", "오늘의 영상 #ai", { fetchImpl: fetchMock, sleep: noSleep });
+    const result = await createInstagramResumableContainer("token", "17800000000000", "오늘의 영상 #ai", undefined, { fetchImpl: fetchMock, sleep: noSleep });
     expect(result.containerId).toBe("container-1");
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://graph.facebook.com/v26.0/17800000000000/media");
@@ -32,16 +32,37 @@ describe("createInstagramResumableContainer", () => {
     expect(JSON.parse(String(init.body))).toEqual({ media_type: "REELS", upload_type: "resumable", caption: "오늘의 영상 #ai" });
   });
 
+  it("sends the chosen cover frame as thumb_offset, and omits the field when none was chosen", async () => {
+    // The exact-body assertion above is what makes this worth writing: a cover the person picked that does not
+    // reach this body is a cover the Reel will not have, and they would have no way to tell — the post just
+    // comes out with the first frame, which is what it did before the feature existed.
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "container-1" }));
+    await createInstagramResumableContainer("token", "17800000000000", "caption", 4200, { fetchImpl: fetchMock, sleep: noSleep });
+    expect(JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))).toEqual({ media_type: "REELS", upload_type: "resumable", caption: "caption", thumb_offset: 4200 });
+
+    // Absent rather than 0: the two mean the same thing to Meta, and sending a field nobody asked for is how a
+    // request drifts from the documented shape this test exists to pin.
+    const withoutCover = vi.fn().mockResolvedValue(jsonResponse(200, { id: "container-2" }));
+    await createInstagramResumableContainer("token", "17800000000000", "caption", undefined, { fetchImpl: withoutCover, sleep: noSleep });
+    expect(JSON.parse(String((withoutCover.mock.calls[0] as [string, RequestInit])[1].body))).toEqual({ media_type: "REELS", upload_type: "resumable", caption: "caption" });
+
+    // Zero is a real choice — the first frame, chosen — and must survive as a sent field rather than being
+    // treated as "nothing", which is the mistake `if (thumbOffsetMs)` would make.
+    const firstFrame = vi.fn().mockResolvedValue(jsonResponse(200, { id: "container-3" }));
+    await createInstagramResumableContainer("token", "17800000000000", "caption", 0, { fetchImpl: firstFrame, sleep: noSleep });
+    expect(JSON.parse(String((firstFrame.mock.calls[0] as [string, RequestInit])[1].body))).toMatchObject({ thumb_offset: 0 });
+  });
+
   it("omits the caption field entirely when there is no caption, rather than sending an empty one", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "container-1" }));
-    await createInstagramResumableContainer("token", "17800000000000", "", { fetchImpl: fetchMock, sleep: noSleep });
+    await createInstagramResumableContainer("token", "17800000000000", "", undefined, { fetchImpl: fetchMock, sleep: noSleep });
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(String(init.body))).toEqual({ media_type: "REELS", upload_type: "resumable" });
   });
 
   it("rejects an empty IG user ID without calling fetch", async () => {
     const fetchMock = vi.fn();
-    await expect(createInstagramResumableContainer("token", "  ", "caption", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(createInstagramResumableContainer("token", "  ", "caption", undefined, { fetchImpl: fetchMock, sleep: noSleep }))
       .rejects.toMatchObject({ category: "invalid_request" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -51,7 +72,7 @@ describe("createInstagramResumableContainer", () => {
       .mockResolvedValueOnce(jsonResponse(429, {}, { "retry-after": "0" }))
       .mockResolvedValueOnce(jsonResponse(200, { id: "container-2" }));
     const sleep = vi.fn(noSleep);
-    await expect(createInstagramResumableContainer("token", "id", "caption", { fetchImpl: fetchMock, sleep, maxRetries: 2 }))
+    await expect(createInstagramResumableContainer("token", "id", "caption", undefined, { fetchImpl: fetchMock, sleep, maxRetries: 2 }))
       .rejects.toMatchObject({ category: "rate_limit" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(sleep).not.toHaveBeenCalled();
@@ -59,13 +80,13 @@ describe("createInstagramResumableContainer", () => {
 
   it("classifies error.code 190 as authentication using Graph API's own error envelope", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { error: { message: "Error validating access token", code: 190 } }));
-    await expect(createInstagramResumableContainer("token", "id", "caption", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(createInstagramResumableContainer("token", "id", "caption", undefined, { fetchImpl: fetchMock, sleep: noSleep }))
       .rejects.toMatchObject({ category: "authentication", detail: "Error validating access token" });
   });
 
   it("classifies error.code 4 as rate_limit even on a non-429 status", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(400, { error: { message: "app request limit reached", code: 4 } }));
-    await expect(createInstagramResumableContainer("token", "id", "caption", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(createInstagramResumableContainer("token", "id", "caption", undefined, { fetchImpl: fetchMock, sleep: noSleep }))
       .rejects.toMatchObject({ category: "rate_limit" });
   });
 
@@ -74,13 +95,13 @@ describe("createInstagramResumableContainer", () => {
     // those as fact is how a login refused over a credential was described as a Meta outage, which told the
     // person to wait for something that was never going to pass on its own.
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(400, { error: { message: "Error validating client secret.", code: 1 } }));
-    await expect(createInstagramResumableContainer("token", "id", "caption", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(createInstagramResumableContainer("token", "id", "caption", undefined, { fetchImpl: fetchMock, sleep: noSleep }))
       .rejects.toMatchObject({ category: "unknown" });
   });
 
   it("still calls error.code 2 a server problem — that one Meta documents as downtime alone", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(400, { error: { message: "API Service", code: 2 } }));
-    await expect(createInstagramResumableContainer("token", "id", "caption", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(createInstagramResumableContainer("token", "id", "caption", undefined, { fetchImpl: fetchMock, sleep: noSleep }))
       .rejects.toMatchObject({ category: "server" });
   });
 
@@ -88,7 +109,7 @@ describe("createInstagramResumableContainer", () => {
     // Without these a category is an assertion with nothing to check it against, which is exactly the position
     // the first real login failure left us in.
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(400, { error: { message: "nope", code: 100, error_subcode: 33 } }));
-    await expect(createInstagramResumableContainer("token", "id", "caption", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(createInstagramResumableContainer("token", "id", "caption", undefined, { fetchImpl: fetchMock, sleep: noSleep }))
       .rejects.toMatchObject({ diagnostics: { status: 400, graphCode: 100, graphSubcode: 33 } });
   });
 
@@ -100,7 +121,7 @@ describe("createInstagramResumableContainer", () => {
       json: async () => { throw new Error("not json"); },
       headers: { get: () => null },
     } as unknown as Response);
-    const caught = await createInstagramResumableContainer("token", "id", "caption", { fetchImpl: fetchMock, sleep: noSleep })
+    const caught = await createInstagramResumableContainer("token", "id", "caption", undefined, { fetchImpl: fetchMock, sleep: noSleep })
       .catch((error: unknown) => error);
     expect(caught).toBeInstanceOf(InstagramAdapterError);
     expect((caught as InstagramAdapterError).diagnostics).toEqual({ status: 502 });
@@ -109,20 +130,20 @@ describe("createInstagramResumableContainer", () => {
 
   it("falls back to status-based classification when the body has no parseable error object", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(403, {}));
-    await expect(createInstagramResumableContainer("token", "id", "caption", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(createInstagramResumableContainer("token", "id", "caption", undefined, { fetchImpl: fetchMock, sleep: noSleep }))
       .rejects.toMatchObject({ category: "permission", detail: undefined });
   });
 
   it("rejects a response with no container ID as unknown", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {}));
-    await expect(createInstagramResumableContainer("token", "id", "caption", { fetchImpl: fetchMock, sleep: noSleep }))
+    await expect(createInstagramResumableContainer("token", "id", "caption", undefined, { fetchImpl: fetchMock, sleep: noSleep }))
       .rejects.toMatchObject({ category: "unknown" });
   });
 
   it("is an instance of InstagramAdapterError with a Korean message", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, {}));
     try {
-      await createInstagramResumableContainer("token", "id", "caption", { fetchImpl: fetchMock, sleep: noSleep });
+      await createInstagramResumableContainer("token", "id", "caption", undefined, { fetchImpl: fetchMock, sleep: noSleep });
       throw new Error("expected to throw");
     } catch (error) {
       expect(error).toBeInstanceOf(InstagramAdapterError);

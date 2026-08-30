@@ -261,6 +261,28 @@ describe("InstagramPublishService.publish", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("rejects a cover frame that is not a whole, non-negative millisecond count, before anything is sent", async () => {
+    // Refused rather than rounded or clamped. This is the last call before something public that cannot be
+    // taken back, and a cover frame the person did not choose looks exactly like the feature not working.
+    const fetchImpl = graphFetch();
+    const { service } = await setup({ fetchImpl });
+    for (const thumbOffsetMs of [-1, 1.5, Number.NaN, "1000", null]) {
+      await expect(service.publish("post_project", { ...approved, thumbOffsetMs })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("carries the chosen cover frame all the way into Meta's container request", async () => {
+    // The two ends of this were verified separately — the screen sends it, the adapter puts it in the body —
+    // and neither says it survives the service between them. The Episode's own version is beside its caption
+    // test: two entry points into one upload, and a field threaded through only one of them is the shape this
+    // repository keeps finding (D-031).
+    const fetchImpl = graphFetch();
+    const { service } = await setup({ fetchImpl });
+    await service.publish("post_project", { ...approved, thumbOffsetMs: 3500 });
+    expect(containerBody(fetchImpl).thumb_offset).toBe(3500);
+  });
+
   it("rejects a caption past Instagram's limit before uploading anything", async () => {
     const fetchImpl = graphFetch();
     const { service } = await setup({ fetchImpl });
@@ -340,13 +362,17 @@ describe("InstagramPublishService.publishEpisode", () => {
     expect(episode.instagramPost).toMatchObject({ mediaId: "media-1", igUserId: IG_USER_ID });
   });
 
-  it("sends the Episode's caption to Meta too, since both kinds share the one upload path", async () => {
+  it("sends the Episode's caption and chosen cover frame to Meta too, since both kinds share the one upload path", async () => {
     const fetchImpl = graphFetch();
     const { service } = await withEpisode({ fetchImpl });
 
-    await service.publishEpisode("long", 1, { ...approved, caption: "1화 · #장편" });
+    await service.publishEpisode("long", 1, { ...approved, caption: "1화 · #장편", thumbOffsetMs: 8000 });
 
-    expect(containerBody(fetchImpl).caption).toBe("1화 · #장편");
+    const body = containerBody(fetchImpl);
+    expect(body.caption).toBe("1화 · #장편");
+    // The shared path is only shared if both fields arrive by it. The caption assertion alone would pass a
+    // version that threads the cover through the short project's entry point and not this one.
+    expect(body.thumb_offset).toBe(8000);
   });
 
   it("refuses a second publish of the same Episode, which is the one mistake that cannot be walked back", async () => {

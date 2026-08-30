@@ -1739,6 +1739,19 @@ export interface PublishLongEpisodeToInstagramRequest {
   approved: true;
   caption: string;
   igUserId: string;
+  /**
+   * Which frame becomes the Reel's cover, in milliseconds from the start.
+   *
+   * `thumb_offset` is the only cover control this app can use. Meta's other one, `cover_url`, takes an image it
+   * fetches itself — "the image must be on a public server" — and this app's videos and frames never leave the
+   * person's machine until the upload itself, so there is nothing for Meta to fetch. `cover_url` also wins when
+   * both are sent, which is the second reason not to send it.
+   *
+   * Optional because absent and `0` mean the same thing to Meta — the first frame — and the first frame is what
+   * every Reel this app has published so far has used. An omitted value therefore cannot change what happens,
+   * which is not true of an omitted caption (see createInstagramResumableContainer).
+   */
+  thumbOffsetMs?: number;
 }
 export interface PublishLongEpisodeToInstagramResponse {
   mediaId: string;
@@ -1750,6 +1763,19 @@ export interface PublishToInstagramRequest {
   approved: true;
   caption: string;
   igUserId: string;
+  /**
+   * Which frame becomes the Reel's cover, in milliseconds from the start.
+   *
+   * `thumb_offset` is the only cover control this app can use. Meta's other one, `cover_url`, takes an image it
+   * fetches itself — "the image must be on a public server" — and this app's videos and frames never leave the
+   * person's machine until the upload itself, so there is nothing for Meta to fetch. `cover_url` also wins when
+   * both are sent, which is the second reason not to send it.
+   *
+   * Optional because absent and `0` mean the same thing to Meta — the first frame — and the first frame is what
+   * every Reel this app has published so far has used. An omitted value therefore cannot change what happens,
+   * which is not true of an omitted caption (see createInstagramResumableContainer).
+   */
+  thumbOffsetMs?: number;
 }
 export interface PublishToInstagramResponse {
   mediaId: string;
