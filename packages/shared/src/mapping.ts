@@ -100,7 +100,16 @@ export interface ProjectAssetMappingReview {
 }
 
 export interface BeginProjectAssetMappingReviewRequest {
-  scriptRevision: number;
+  /**
+   * Accepted and ignored.
+   *
+   * It used to have to equal the owner's current script revision, which deadlocked the one screen that sends
+   * it: the caller can only read the revision recorded on the *review*, and beginning a review is exactly what
+   * writes that. Once the two diverged the number could never be made to match again. The optimistic check
+   * that matters lives on approve, as `scriptFingerprint` — a value the screen genuinely holds. Kept in the
+   * type so the caller that still sends it keeps compiling; it can go once nothing sends it.
+   */
+  scriptRevision?: number;
   reviewedScenes?: SceneNumber[];
   textOnlyConfirmed?: boolean;
   legacyConfirmed?: boolean;

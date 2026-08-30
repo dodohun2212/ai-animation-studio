@@ -93,13 +93,31 @@ export class ProjectAssetMappingsService<Key = string> {
     mapping.updated_at = new Date().toISOString(); const review = await this.repository.save(owner, mappings);
     return { mapping: toPublicMapping(mapping), review: toPublicReview(review) };
   }
+  /**
+   * Re-baseline this owner's mapping review against the script as it stands now.
+   *
+   * `scriptRevision` arrives and is ignored. It used to have to equal `owner.scriptRevision`, and that check
+   * deadlocked the only screen that calls this. The screen can read one script revision — the one recorded on
+   * the *review* — and beginning a review is what writes that field. So the moment the two diverged (a mapping
+   * saved before any review existed writes the record with the default 0, while the Episode's script had
+   * already moved on) the screen sent 0 forever, begin refused forever, and approve refused too because the
+   * fingerprint it compares is only ever set by a successful begin. There was no press, in this screen or any
+   * other, that could get out: the button labelled "지금 대본 기준으로 다시 맞추기" was the one thing that
+   * needed to work and it sent the same stale number as everything else.
+   *
+   * Dropping it costs nothing. The value was never stored — the record is written from `owner.scriptRevision`
+   * and the current scenes either way — so the check only ever asked the caller to already know the answer to
+   * the question it was asking. The optimistic check that matters is on `approveReview`, which compares a
+   * `scriptFingerprint` the screen actually holds, and which is entitled to ask "is this still what I saw?"
+   * because approving is the step where that question has consequences. Beginning a review has none: it sets
+   * the baseline to now and marks the review unapproved.
+   */
   async beginReview(key: Key, body: unknown): Promise<BeginProjectAssetMappingReviewResponse> {
-    if (!isObject(body) || Object.keys(body).some((key) => !["scriptRevision", "reviewedScenes", "textOnlyConfirmed", "legacyConfirmed"].includes(key)) || !Number.isInteger(body.scriptRevision) || Number(body.scriptRevision) < 0
+    if (!isObject(body) || Object.keys(body).some((key) => !["scriptRevision", "reviewedScenes", "textOnlyConfirmed", "legacyConfirmed"].includes(key)) || !(body.scriptRevision === undefined || (Number.isInteger(body.scriptRevision) && Number(body.scriptRevision) >= 0))
       || !(body.reviewedScenes === undefined || (Array.isArray(body.reviewedScenes) && body.reviewedScenes.every((number) => Number.isInteger(number) && Number(number) >= 1 && Number(number) <= MAX_SCENE_COUNT) && new Set(body.reviewedScenes).size === body.reviewedScenes.length))
       || !(body.textOnlyConfirmed === undefined || typeof body.textOnlyConfirmed === "boolean") || !(body.legacyConfirmed === undefined || typeof body.legacyConfirmed === "boolean")) throw invalidMappingRequest("Asset Mapping review request is invalid.");
     const request = body as unknown as BeginProjectAssetMappingReviewRequest; const owner = await this.owners.get(key); const scenes = mappingsScenes(owner); const sceneList = scenesFor(owner);
     if (!(request.reviewedScenes === undefined || request.reviewedScenes.every((number) => sceneList.includes(number)))) throw invalidMappingRequest("Asset Mapping review request is invalid.");
-    if (request.scriptRevision !== owner.scriptRevision) throw invalidMappingRequest("scriptRevision must match the current project script revision.");
     await owner.markMappingReviewBegun(); const previous = await this.repository.loadReview(owner); const review: StoredMappingReview = { project_id: owner.id, mapping_revision: previous.mapping_revision + 1, script_revision: owner.scriptRevision, script_fingerprint: scriptFingerprint(scenes), status: "waiting", approved_at: "", approved_by: "", text_only_confirmed: request.textOnlyConfirmed ?? false, legacy_confirmed: request.legacyConfirmed ?? false, reviewed_scenes: [...(request.reviewedScenes ?? [])] };
     await this.repository.saveReview(owner, review); return { review: toPublicReview(review) };
   }

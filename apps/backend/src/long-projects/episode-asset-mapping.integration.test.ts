@@ -117,10 +117,47 @@ describe("an Episode going through the short project's asset mapping flow", () =
     })).rejects.toMatchObject({});
   });
 
-  it("will not approve a review begun against a different script revision", async () => {
+  /**
+   * The state a real cycle got stuck in, reproduced exactly: this Episode's script is at revision 3, and
+   * linking an Asset writes the review record before any review has been begun — so that record carries the
+   * default `script_revision: 0` and an empty fingerprint. The screen sends the number it can read, which is
+   * that 0.
+   *
+   * `beginReview` used to require it to equal the owner's, and there was no way back: begin refused, so the
+   * record kept its 0, so the next press sent 0 again. Approve refused too, because the fingerprint it
+   * compares is only ever written by a successful begin. "지금 대본 기준으로 다시 맞추기" — the one button
+   * that exists for this situation — sent the same stale number as everything else.
+   *
+   * This test replaces one that pinned the old check. It was pinning the deadlock.
+   */
+  it("recovers a review whose record still carries the script revision it never had", async () => {
     const { service, folder } = await setup();
     await service.create(EPISODE, { assetId: folder.asset_id, usageRole: "character", sceneScope: { kind: "all" } });
+    const stuck = await service.review(EPISODE);
+    expect(stuck.review).toMatchObject({ scriptRevision: 0, scriptFingerprint: "", status: "waiting" });
 
-    await expect(service.beginReview(EPISODE, { scriptRevision: 2 })).rejects.toMatchObject({});
+    const begun = await service.beginReview(EPISODE, { scriptRevision: stuck.review.scriptRevision });
+
+    expect(begun.review).toMatchObject({ scriptRevision: 3, scriptFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    await expect(service.approveReview(EPISODE, { scriptFingerprint: begun.review.scriptFingerprint }))
+      .resolves.toMatchObject({ review: { status: "approved" } });
+  });
+
+  /**
+   * The counterpart. Dropping the begin-time check must not drop the one that matters: approve still compares
+   * a fingerprint the caller actually holds, and still refuses when the script moved underneath it. Without
+   * this, an implementation that checked nothing at all would pass the test above.
+   */
+  it("still refuses an approval whose fingerprint is not the script as it stands now", async () => {
+    const { service, folder, episodeDirectory } = await setup();
+    await service.create(EPISODE, { assetId: folder.asset_id, usageRole: "character", sceneScope: { kind: "all" } });
+    const begun = await service.beginReview(EPISODE, {});
+    const stored = await readJson(path.join(episodeDirectory, "project.json"));
+    const script = stored.script as { scenes: Array<Record<string, unknown>> };
+    script.scenes[5] = { number: 6, description: "changed after the review was begun" };
+    await fs.writeFile(path.join(episodeDirectory, "project.json"), JSON.stringify(stored), "utf8");
+
+    await expect(service.approveReview(EPISODE, { scriptFingerprint: begun.review.scriptFingerprint }))
+      .rejects.toMatchObject({ response: { code: "ASSET_MAPPING_FINGERPRINT_MISMATCH" } });
   });
 });
