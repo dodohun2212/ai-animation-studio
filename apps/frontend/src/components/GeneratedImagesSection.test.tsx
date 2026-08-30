@@ -40,6 +40,34 @@ describe("GeneratedImagesSection", () => {
     expect(src).toContain("v=2026-08-28T09%3A00%3A00.000Z");
   });
 
+  /**
+   * The count used to be the only thing said before the list opened, and the short project's grid is what
+   * appears first. Someone looking for an Episode's pictures scanned that grid, did not find them, and reported
+   * the library as not collecting them — while they sat four rows further down, already counted in the total.
+   */
+  it("says how the total splits before anything is opened", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({ [LISTING]: {
+      projects: [shortImage(), shortImage({ sceneNumber: 4 })],
+      episodes: [episodeImage()],
+    } }));
+    render(<GeneratedImagesSection />);
+
+    expect((await screen.findByTestId("generated-images-split")).textContent).toContain("단편 2");
+    expect(screen.getByTestId("generated-images-split").textContent).toContain("장기 회차 1");
+    // The first grid stops being the unlabelled default once there is a second one under it.
+    expect(screen.getByText("단편 프로젝트")).toBeTruthy();
+  });
+
+  it("says nothing about a split when only one kind exists", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({ [LISTING]: { projects: [shortImage()], episodes: [] } }));
+    render(<GeneratedImagesSection />);
+
+    await screen.findByTestId("generated-image-1-3");
+    // One kind on screen: a heading and a breakdown would both be noise about a division that is not there.
+    expect(screen.queryByTestId("generated-images-split")).toBeNull();
+    expect(screen.queryByText("단편 프로젝트")).toBeNull();
+  });
+
   it("addresses an Episode's picture through the Episode route, not the short project's", async () => {
     // Two arrays exist precisely because these live behind different routes. A row that lost that difference
     // would be a link to nowhere.

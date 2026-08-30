@@ -46,8 +46,17 @@ export function GeneratedImagesSection() {
 
   return (
     <details data-testid="generated-images" className="rounded-2xl border border-white/10 bg-slate-900/70">
+      {/* The split is named before the list opens. It used to say only the total, and the short project's grid
+          is what appears first — so someone looking for an Episode's pictures scanned that grid, did not find
+          them, and concluded the library had never collected them. They were four rows further down. A count
+          that hides which kinds it is counting answers a question nobody asked. */}
       <summary className="cursor-pointer px-5 py-4 text-base font-semibold text-slate-100">
         만든 이미지 {total}장
+        {Boolean(projects.length) && Boolean(episodes.length) && (
+          <span data-testid="generated-images-split" className="ml-2 text-sm font-normal text-slate-400 tabular-nums">
+            단편 {projects.length} · 장기 회차 {episodes.length}
+          </span>
+        )}
       </summary>
       <div className="space-y-4 px-5 pb-5">
         <p className="text-sm text-slate-400">
@@ -59,6 +68,10 @@ export function GeneratedImagesSection() {
           </p>
         )}
         {Boolean(projects.length) && (
+          <div className="space-y-2">
+            {/* Headed only when the other group exists: with one kind on screen a heading is noise, and with
+                both an unlabelled first grid reads as "all of them". */}
+            {Boolean(episodes.length) && <h3 className="text-sm font-semibold text-slate-200">단편 프로젝트</h3>}
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="generated-images-projects">
             {projects.map((image) => (
               <li key={`${image.projectId}-${image.sceneNumber}`} data-testid={`generated-image-${image.projectId}-${image.sceneNumber}`} className="space-y-1">
@@ -72,6 +85,7 @@ export function GeneratedImagesSection() {
               </li>
             ))}
           </ul>
+          </div>
         )}
         {Boolean(episodes.length) && (
           <div className="space-y-2" data-testid="generated-images-episodes">
