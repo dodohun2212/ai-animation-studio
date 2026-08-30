@@ -440,6 +440,76 @@ describe("LocalAssetsRepository", () => {
     await expect(repository.removeFolder(asset.asset_id)).rejects.toMatchObject({ response: { code: "ASSET_MUTATION_UNSUPPORTED" } });
   });
 
+  it("hides an archived project's generated Assets and shows them again after a restore", async () => {
+    const root = await makeRoot(); const repository = new LocalAssetsRepository(root);
+    const projectId = "archived_project";
+    const imagesDir = path.join(root, "projects", projectId, "images");
+    await fs.mkdir(imagesDir, { recursive: true });
+    for (const number of [1, 2]) await fs.writeFile(path.join(imagesDir, `scene${number}.png`), image);
+    await repository.indexGeneratedProjectImages(projectId, "topic", ["one", "two"]);
+    const manual = await repository.create({ buffer: secondImage, originalname: "mine.png" }, metadata);
+
+    expect((await repository.listExcludingArchivedProjects()).length).toBe(4);
+
+    const archived = path.join(root, "projects", ".archive");
+    await fs.mkdir(archived, { recursive: true });
+    await fs.rename(path.join(root, "projects", projectId), path.join(archived, projectId));
+
+    // The Folder goes with its children: leaving either behind is the dead-picture Folder this hides.
+    const visible = await repository.listExcludingArchivedProjects();
+    expect(visible.map((asset) => asset.asset_id)).toEqual([manual.asset_id]);
+    expect((await repository.list()).length).toBe(4);
+
+    await fs.rename(path.join(archived, projectId), path.join(root, "projects", projectId));
+    expect((await repository.listExcludingArchivedProjects()).length).toBe(4);
+  });
+
+  it("hides an archived long project's Episode Assets, which name the project and the Episode", async () => {
+    const root = await makeRoot(); const directory = path.join(root, "asset_library");
+    await fs.mkdir(directory, { recursive: true });
+    const episodeAsset = {
+      asset_id: "ASSET-GENERAL-EPISODE", asset_type: "general_reference", display_name: "12/Episode01 Scene 1",
+      stored_path: path.join(root, "projects", "12", "long_story", "Episode01", "images", "scene1.png"),
+      original_filename: "scene1.png", content_sha256: "b".repeat(64),
+      notes: "Automatically indexed project image", status: "generated",
+      source_project_id: "12/Episode01", source_scene_number: 1,
+    };
+    await fs.writeFile(path.join(directory, "assets.json"), JSON.stringify([episodeAsset]), "utf8");
+    const repository = new LocalAssetsRepository(root);
+    expect((await repository.listExcludingArchivedProjects()).length).toBe(1);
+
+    await fs.mkdir(path.join(root, "projects", ".archive", "12"), { recursive: true });
+    expect(await repository.listExcludingArchivedProjects()).toEqual([]);
+  });
+
+  it("drops only auto-indexed records when a project is deleted for good, repairing the Folders that referenced them", async () => {
+    const root = await makeRoot(); const repository = new LocalAssetsRepository(root);
+    const projectId = "doomed_project";
+    const imagesDir = path.join(root, "projects", projectId, "images");
+    await fs.mkdir(imagesDir, { recursive: true });
+    for (const number of [1, 2]) await fs.writeFile(path.join(imagesDir, `scene${number}.png`), image);
+    await repository.indexGeneratedProjectImages(projectId, "topic", ["one", "two"]);
+    const manual = await repository.create({ buffer: secondImage, originalname: "mine.png" }, metadata);
+    const generated = (await repository.list()).filter((asset) => !asset.is_folder && asset.source_project_id === projectId);
+    // A generated image the user filed under a Folder of their own: that Folder outlives the project and must
+    // not be left pointing at a record that is gone.
+    const ownFolder = await repository.createFolder({ assetType: "general_reference", displayName: "내 폴더" });
+    await repository.setParentFolder(generated[0]!.asset_id, ownFolder.asset_id);
+    expect((await repository.get(ownFolder.asset_id)).thumbnail_asset_id).toBe(generated[0]!.asset_id);
+
+    const removed = await repository.removeGeneratedProjectAssets(projectId);
+
+    expect(removed.length).toBe(3);
+    const remaining = await repository.list();
+    expect(remaining.map((asset) => asset.asset_id).sort()).toEqual([manual.asset_id, ownFolder.asset_id].sort());
+    const reloaded = remaining.find((asset) => asset.asset_id === ownFolder.asset_id)!;
+    expect(reloaded.child_asset_ids).toEqual([]);
+    expect(reloaded.thumbnail_asset_id).toBe("");
+    expect(await repository.removeGeneratedProjectAssets(projectId)).toEqual([]);
+    // The bytes belong to the project directory, not to the Library: deleting records never touches files.
+    expect(await fs.readFile(path.join(imagesDir, "scene1.png"))).toEqual(image);
+  });
+
   it("indexes exactly the project's actual generated scene count (not a fixed six)", async () => {
     const root = await makeRoot(); const repository = new LocalAssetsRepository(root);
     const projectId = "four_scene_project";

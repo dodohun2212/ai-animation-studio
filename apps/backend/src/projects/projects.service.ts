@@ -131,6 +131,11 @@ export class ProjectsService {
       || !request.confirmation.trim() || request.confirmation !== archived.topic) {
       throw invalidRequest("Delete confirmation must exactly match the project topic.", { field: "confirmation" });
     }
+    // Index first, directory second. Both orders can be interrupted, and only this one fails safely: a lost
+    // index record for a project that still exists is re-created the next time it is opened, while a deleted
+    // directory whose records survived leaves Library entries that can never show a picture again — and that
+    // are no longer hidden, because the project is no longer archived.
+    await this.assets?.removeGeneratedProjectAssets(id);
     try {
       await this.repository.deleteArchived(id);
     } catch (error) {

@@ -3,6 +3,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import { LONG_OUTLINE_ESTIMATED_COST_USD, MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, type ApproveLongProjectOutlineRequest, type ApproveLongProjectOutlineResponse, type ArchivedLongProjectSummary, type ArchiveProjectRequest, type ArchiveProjectResponse, type CreateLongProjectOutlinePreviewResponse, type CreateLongProjectRequest, type CreateLongProjectResponse, type DeleteArchivedProjectRequest, type DeleteArchivedProjectResponse, type GetLongProjectResponse, type GetLongProjectSettingsResponse, type ListArchivedLongProjectsResponse, type ListLongProjectsResponse, type LongEpisodeOutline, type LongProject, type LongProjectSettings, type LongProjectSummary, type RestoreProjectResponse, type UpdateLongProjectSettingsRequest, type UpdateLongProjectSettingsResponse } from "@ai-animation-studio/shared";
+import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { archiveProjectDirectory, deleteArchivedProjectDirectory, listArchivedProjectDirectories, restoreProjectDirectory } from "../projects/project-archive.js";
 import { isSafeProjectId, resolveSafeProjectDirectory } from "../projects/project-id.js";
@@ -85,6 +86,7 @@ export class LongProjectsService {
     private readonly deleteArchivedDirectory: (projectsRoot: string, projectId: string) => Promise<void> = deleteArchivedProjectDirectory,
     private readonly providerSettings?: ProviderSettingsService,
     private readonly budget?: OpenAiBudget,
+    private readonly assets?: LocalAssetsRepository,
   ) {}
   private root(id: string): string { return longStoryRoot(this.projectsRoot, id); }
   private files(id: string) { const root = this.root(id); return { root, project: path.join(root, "project.json"), bible: path.join(root, "story_bible.json"), outlines: path.join(root, "episode_outlines.json") }; }
@@ -136,6 +138,10 @@ export class LongProjectsService {
     const projectId = typeof id === "string" ? id.trim() : "";
     const stored = await this.loadArchived(projectId);
     if (!request || Object.keys(request).length !== 1 || typeof request.confirmation !== "string" || !request.confirmation.trim() || request.confirmation !== stored.title) throw longInvalidRequest("Delete confirmation must exactly match the long-project title.");
+    // Same order, and the same reason, as the short project's deleteArchivedProject: the Asset index goes
+    // first, because a record that outlives its files stops being hidden the moment the project stops being
+    // archived. An Episode's Assets name `<projectId>/EpisodeNN`, so one call covers every Episode.
+    await this.assets?.removeGeneratedProjectAssets(projectId);
     try { await this.deleteArchivedDirectory(this.projectsRoot, projectId); }
     catch (error) { if (error && typeof error === "object" && "getStatus" in error) throw error; throw longStorageError(); }
     return { deletedProjectId: projectId };

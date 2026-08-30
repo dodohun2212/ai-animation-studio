@@ -20,7 +20,7 @@ export class AssetsService {
   async list(query?: string, assetType?: string): Promise<ListAssetsResponse> {
     if (assetType !== undefined && !TYPES.has(assetType as AssetType)) throw badAssetRequest("Asset type is invalid.");
     const needle = query?.trim().toLocaleLowerCase() ?? "";
-    const assets = (await this.repository.list())
+    const assets = (await this.repository.listExcludingArchivedProjects())
       .filter((asset) => !assetType || asset.asset_type === assetType)
       .filter((asset) => !needle || [asset.display_name, asset.description, asset.asset_type, ...asset.tags, ...asset.aliases]
         .some((value) => value.toLocaleLowerCase().includes(needle)))

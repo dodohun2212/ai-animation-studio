@@ -17,6 +17,14 @@ const isObject = (value: unknown): value is Record<string, unknown> => typeof va
 const terms = (values: string[] | undefined) => [...new Set((values ?? []).flatMap((value) => value.replaceAll(",", " ").split(/\s+/u)).map((value) => value.trim().toLocaleLowerCase()).filter(Boolean))].sort();
 const GENERATED_IMAGE_NOTE = "Automatically indexed project image";
 const GENERATED_FOLDER_NOTE = "Automatically grouped generated project images";
+const ARCHIVE_DIRECTORY = ".archive";
+/**
+ * True when `sourceProjectId` names `projectId` itself or something stored inside it. An Episode names both —
+ * `12/Episode01` — because a mapping copied between Episodes has to be catchable (episode-mapping-owner.ts),
+ * so matching the project alone would miss every Episode belonging to it.
+ */
+const belongsToProject = (sourceProjectId: string, projectId: string) =>
+  sourceProjectId === projectId || sourceProjectId.startsWith(`${projectId}/`);
 
 export class LocalAssetsRepository {
   private static readonly indexLocks = new Map<string, Promise<void>>();
@@ -671,6 +679,71 @@ export class LocalAssetsRepository {
         child.sort_order = index;
       }
       await this.save(assets);
+    });
+  }
+
+  /**
+   * The IDs of the projects currently sitting in `<projectsRoot>/.archive`.
+   *
+   * Read at call time on purpose. Archiving is a directory move and restoring moves it back, so the directory
+   * listing already is the answer; a flag written into the Asset index would be a second copy of it that a
+   * restore has to remember to undo — and one that a crash between the two writes leaves disagreeing.
+   */
+  private async archivedProjectIds(): Promise<string[]> {
+    try {
+      const entries = await fsPromises.readdir(path.join(this.projectsRoot, ARCHIVE_DIRECTORY), { withFileTypes: true });
+      return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+    } catch (error) {
+      if (errorCode(error) === "ENOENT") return [];
+      throw assetStorageError();
+    }
+  }
+
+  /**
+   * Every Asset except those belonging to an archived project.
+   *
+   * Archiving moves `<projectsRoot>/<id>` under `.archive` and nothing rewrites the Asset index, so the Folder
+   * and its children keep listing while every image in them resolves to a file that is no longer there. That
+   * is worse than not listing them at all: an absent Folder reads as "I archived that project", a present one
+   * full of dead pictures reads as a bug and gets debugged. Restoring puts the files back exactly where the
+   * stored paths already point, so hiding needs no counterpart on the way back.
+   */
+  async listExcludingArchivedProjects(): Promise<StoredAsset[]> {
+    const assets = await this.load();
+    const archived = await this.archivedProjectIds();
+    if (archived.length === 0) return assets;
+    return assets.filter((asset) => !archived.some((projectId) => belongsToProject(asset.source_project_id, projectId)));
+  }
+
+  /**
+   * Drop the records this repository auto-indexed for a project whose data is about to be deleted for good.
+   *
+   * Deliberately not `remove()`. That refuses an Asset another project's mappings still point at, which is the
+   * right answer while the file exists and the wrong one here: the bytes go with the directory either way, and
+   * a retained record would be a Library entry that can never show a picture again — and, once the project is
+   * no longer archived, no longer hidden either. Only auto-indexed records are touched; a manually uploaded
+   * Asset carries `_asset_library_manual` and owns its own file, and is never a project's to delete.
+   */
+  async removeGeneratedProjectAssets(projectId: string): Promise<string[]> {
+    return this.serialized(async () => {
+      const assets = await this.load();
+      const removed = new Set(assets
+        .filter((asset) => belongsToProject(asset.source_project_id, projectId)
+          && (asset.notes === GENERATED_IMAGE_NOTE || asset.notes === GENERATED_FOLDER_NOTE))
+        .map((asset) => asset.asset_id));
+      if (removed.size === 0) return [];
+      const retained = assets.filter((asset) => !removed.has(asset.asset_id));
+      for (const asset of retained) {
+        // A generated image can have been moved into a Folder of the user's own (setParentFolder), so the
+        // references to clean are not only the generated Folder's — and that Folder is being removed anyway.
+        if (removed.has(asset.parent_folder_id)) { asset.parent_folder_id = ""; asset.sort_order = 0; }
+        if (asset.child_asset_ids.some((childId) => removed.has(childId))) {
+          asset.child_asset_ids = asset.child_asset_ids.filter((childId) => !removed.has(childId));
+        }
+        if (removed.has(asset.thumbnail_asset_id)) asset.thumbnail_asset_id = asset.child_asset_ids[0] ?? "";
+      }
+      await this.save(retained);
+      return [...removed];
     });
   }
 
