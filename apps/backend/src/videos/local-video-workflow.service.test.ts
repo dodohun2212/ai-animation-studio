@@ -61,6 +61,24 @@ describe("local fake video workflow", () => {
     expect(review.staleness).toEqual({ imageStale: [], videoStale: [], narrationStale: [], referenceStale: [] });
   });
 
+  it("cannot go behind its own pictures, because the app refuses to replace one once the videos exist", async () => {
+    // Written after building a staleness for exactly this and finding it could never fire. A video is rendered
+    // from a picture, so "the picture was redrawn under the finished video" sounds like a real hole — and the
+    // test that seemed to prove it wrote the PNG straight to disk, which no code path does. Regenerating a
+    // scene image is allowed only in image review or while waiting for video confirmation, and submitting the
+    // videos moves the project past both. There is nothing to be behind.
+    //
+    // Kept as a test rather than a comment because it is the state gate that makes the claim true, and a
+    // comment would not notice the day that gate widens. If this one goes red, the staleness is worth building.
+    const { projectsRoot, projects, accepted, workflow } = await setup();
+    await workflow.run("video_workflow", accepted.jobId);
+    const { ImageReviewService } = await import("../images/image-review.service.js");
+    const { LocalAssetsRepository } = await import("../assets/assets.repository.js");
+    const { LocalProjectAssetMappingsRepository } = await import("../mappings/mappings.repository.js");
+    const images = new ImageReviewService(projects, projectsRoot, new LocalAssetsRepository(path.dirname(projectsRoot)), new LocalProjectAssetMappingsRepository(projectsRoot));
+    await expect(images.regenerate("video_workflow", "2", { approved: true })).rejects.toMatchObject({ response: { code: "IMAGE_REVIEW_NOT_ALLOWED" } });
+  });
+
   it("flags a scene's video as stale after a motion field is edited without regenerating, and the next scene too when its end_motion changes", async () => {
     const { projectsRoot, projects, accepted, workflow } = await setup();
     await workflow.run("video_workflow", accepted.jobId);
