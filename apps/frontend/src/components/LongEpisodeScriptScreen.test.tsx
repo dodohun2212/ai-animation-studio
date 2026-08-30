@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { jsonResponse } from "../api/testUtils.js";
+import { jsonResponse, makeLongEpisodeOutline, makeLongProject } from "../api/testUtils.js";
 import { LongEpisodeScriptScreen } from "./LongEpisodeScriptScreen.js";
 import { STORY_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 
@@ -185,5 +185,71 @@ describe("LongEpisodeScriptScreen", () => {
     expect((await screen.findByTestId("episode-script-readonly")).textContent).toContain("지금은 고칠 수 없습니다");
     expect(screen.queryByTestId("episode-script-save")).toBeNull();
     expect((screen.getByTestId("episode-script-field-description") as HTMLTextAreaElement).disabled).toBe(true);
+  });
+
+  /**
+   * A later Episode's prompt reads every earlier memo and silently skips the missing ones. So an Episode with
+   * no memo contributes nothing to any script written after it, and the only way to find that out today is to
+   * read the finished script — after it has been paid for. This says it before the button.
+   */
+  describe("이어쓰기 메모가 빠진 앞 회차", () => {
+    const laterEpisode = { ...episode("outline_ready", false), episodeNumber: 3 };
+    const routed = (episodes: ReturnType<typeof makeLongEpisodeOutline>[]) => vi.fn(async (input: RequestInfo | URL) =>
+      String(input) === "/long-projects/long"
+        ? jsonResponse(200, { project: makeLongProject({ id: "long", episodes }) })
+        : jsonResponse(200, { episode: laterEpisode }));
+
+    it("names the earlier Episodes this script will be written without", async () => {
+      vi.stubGlobal("fetch", routed([
+        makeLongEpisodeOutline({ episodeNumber: 1, title: "1화", status: "completed", continuitySaved: false }),
+        makeLongEpisodeOutline({ episodeNumber: 2, title: "2화", status: "completed", continuitySaved: true }),
+      ]));
+      render(<LongEpisodeScriptScreen projectId="long" episodeNumber={3} onBack={() => {}} />);
+
+      const notice = await screen.findByTestId("episode-script-missing-continuity");
+      expect(notice.textContent).toContain("1화");
+      // The one that has a memo must not be named — it is going into the prompt.
+      expect(notice.textContent).not.toContain("2화");
+      // A statement with a way out, not a blocker: skipping a memo is allowed.
+      expect(notice.textContent).toContain("그대로 진행하셔도 됩니다");
+      expect(screen.getByRole("button", { name: "대본 초안 만들기" })).not.toBeDisabled();
+    });
+
+    it("says nothing when every earlier Episode has one", async () => {
+      vi.stubGlobal("fetch", routed([
+        makeLongEpisodeOutline({ episodeNumber: 1, title: "1화", status: "completed", continuitySaved: true }),
+        makeLongEpisodeOutline({ episodeNumber: 2, title: "2화", status: "completed", continuitySaved: true }),
+      ]));
+      render(<LongEpisodeScriptScreen projectId="long" episodeNumber={3} onBack={() => {}} />);
+
+      await screen.findByRole("button", { name: "대본 초안 만들기" });
+      expect(screen.queryByTestId("episode-script-missing-continuity")).toBeNull();
+    });
+
+    /**
+     * `continuitySaved` is optional and absent means "not determined here". Rendering that as 메모 없음 would
+     * state something the screen never checked — the exact shape this project has spent the week removing.
+     */
+    it("says nothing when the field is absent rather than false", async () => {
+      vi.stubGlobal("fetch", routed([
+        makeLongEpisodeOutline({ episodeNumber: 1, title: "1화", status: "completed" }),
+        makeLongEpisodeOutline({ episodeNumber: 2, title: "2화", status: "completed" }),
+      ]));
+      render(<LongEpisodeScriptScreen projectId="long" episodeNumber={3} onBack={() => {}} />);
+
+      await screen.findByRole("button", { name: "대본 초안 만들기" });
+      expect(screen.queryByTestId("episode-script-missing-continuity")).toBeNull();
+    });
+
+    it("never asks about earlier Episodes on the first one", async () => {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { episode: episode("outline_ready", false) }));
+      vi.stubGlobal("fetch", fetchMock);
+      render(<LongEpisodeScriptScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+      await screen.findByRole("button", { name: "대본 초안 만들기" });
+      // Episode 1 has nothing before it, so the project list is not worth a request.
+      expect(fetchMock.mock.calls.some(([url]) => String(url) === "/long-projects/long")).toBe(false);
+      expect(screen.queryByTestId("episode-script-missing-continuity")).toBeNull();
+    });
   });
 });

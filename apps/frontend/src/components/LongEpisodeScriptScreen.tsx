@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { MAX_SCENE_COUNT, MIN_SCENE_COUNT, type LongEpisodeDetail, type LongEpisodeScript } from "@ai-animation-studio/shared";
 import type { GenerateLongEpisodeScriptRequest } from "@ai-animation-studio/shared";
-import { approveLongEpisodeScript, generateLongEpisodeScript, getLongEpisode, toLongProjectDisplayError, updateLongEpisodeScript } from "../api/longProjectsApi.js";
+import { approveLongEpisodeScript, generateLongEpisodeScript, getLongEpisode, getLongProject, toLongProjectDisplayError, updateLongEpisodeScript } from "../api/longProjectsApi.js";
 import { Spinner } from "./Spinner.js";
 import { STORY_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
@@ -63,6 +63,15 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<ErrorState | null>(null);
   const [confirming, setConfirming] = useState(false);
+  /**
+   * Earlier Episodes with no saved continuity memo, which this script will therefore be written without.
+   *
+   * Read from the project's own episode list, because this screen only ever fetches its own Episode and the
+   * fact is about the ones before it. Fails silently: `continuitySaved` is optional and absent means "not
+   * determined", so a read that does not arrive is the same as a field that is not there — the screen says
+   * nothing rather than inventing an absence.
+   */
+  const [unsavedBefore, setUnsavedBefore] = useState<number[]>([]);
   const [justSaved, setJustSaved] = useState(false);
   const busy = useRef(false);
   /**
@@ -85,6 +94,21 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
     setDraft(next.script ? (JSON.parse(JSON.stringify(next.script)) as LongEpisodeScript) : null);
     setError(null);
   };
+
+  useEffect(() => {
+    if (episodeNumber <= 1) { setUnsavedBefore([]); return; }
+    let cancelled = false;
+    getLongProject(projectId)
+      .then((response) => {
+        if (cancelled) return;
+        setUnsavedBefore(response.project.episodes
+          .filter((episode) => episode.episodeNumber < episodeNumber && episode.continuitySaved === false)
+          .map((episode) => episode.episodeNumber));
+      })
+      // Advisory only. A failed read must never take the screen down or claim an absence it did not confirm.
+      .catch(() => { if (!cancelled) setUnsavedBefore([]); });
+    return () => { cancelled = true; };
+  }, [projectId, episodeNumber]);
 
   useEffect(() => { let cancelled = false; setLoading(true); setJustSaved(false); getLongEpisode(projectId, episodeNumber).then((response) => { if (!cancelled) apply(response.episode); }).catch((caught) => { if (!cancelled) setError(toLongProjectDisplayError(caught)); }).finally(() => { if (!cancelled) setLoading(false); }); return () => { cancelled = true; }; }, [projectId, episodeNumber]);
 
@@ -162,6 +186,16 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
           <p data-testid="episode-script-cost-notice" className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300">
             이 단계는 <span className="font-semibold">비용이 발생합니다</span> — AI가 작품 기본 설정과 스토리 개요를 재료로 이 회차의 대본을 씁니다. 약 {`$${STORY_ESTIMATED_COST_USD.toFixed(2)}`}이 청구됩니다(추정치).
           </p>
+          {/* Before the money, not after the reading. A later Episode's prompt reads every earlier memo and
+              silently skips the missing ones, so the only way to learn this today is to finish the script and
+              notice a character nobody introduced — by which point it is paid for. Stated as a fact with the
+              way out beside it, not as a blocker: skipping a memo is allowed, and some are skipped on purpose. */}
+          {unsavedBefore.length > 0 && (
+            <p role="status" data-testid="episode-script-missing-continuity" className="rounded-xl border border-sky-400/25 bg-sky-500/[0.06] px-4 py-3 text-sm text-sky-200">
+              <strong className="text-sky-100">{unsavedBefore.join("·")}화</strong>의 이어쓰기 메모가 없어서, 이 대본은 그 회차 내용을 모르는 채로 쓰입니다.
+              그 회차의 <span className="font-semibold text-sky-100">이어쓰기 메모</span>를 먼저 저장하면 반영됩니다. 그대로 진행하셔도 됩니다.
+            </p>
+          )}
           <button type="button" className={primaryButton} disabled={pending} onClick={() => void run(() => generateLongEpisodeScript(projectId, episodeNumber, scriptRequest(false)))}>
             {pending ? "생성 중..." : "대본 초안 만들기"}
           </button>
