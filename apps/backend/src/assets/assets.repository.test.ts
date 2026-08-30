@@ -464,6 +464,26 @@ describe("LocalAssetsRepository", () => {
     expect((await repository.listExcludingArchivedProjects()).length).toBe(4);
   });
 
+  it("stops the file health check from reporting an archived project's images as missing", async () => {
+    const root = await makeRoot(); const repository = new LocalAssetsRepository(root);
+    const projectId = "audited_project";
+    const imagesDir = path.join(root, "projects", projectId, "images");
+    await fs.mkdir(imagesDir, { recursive: true });
+    for (const number of [1, 2]) await fs.writeFile(path.join(imagesDir, `scene${number}.png`), image);
+    await repository.indexGeneratedProjectImages({ sourceProjectId: projectId, imagesDirectory: imagesDir, kind: "short project" }, "topic", ["one", "two"]);
+    const manual = await repository.create({ buffer: secondImage, originalname: "mine.png" }, metadata);
+    // Without this the audit could pass by finding nothing at all, archived or not.
+    expect((await repository.auditFiles()).filter((entry) => entry.classification === "healthy").length).toBe(3);
+
+    const archived = path.join(root, "projects", ".archive");
+    await fs.mkdir(archived, { recursive: true });
+    await fs.rename(path.join(root, "projects", projectId), path.join(archived, projectId));
+
+    // Not "missing" — an Asset the Library does not offer is not one the person can go and repair.
+    expect(await repository.auditFiles()).toEqual([
+      { assetId: manual.asset_id, displayName: manual.display_name, classification: "healthy", sourceKind: "manual", message: "" },
+    ]);
+  });
   it("hides an archived long project's Episode Assets, which name the project and the Episode", async () => {
     const root = await makeRoot(); const directory = path.join(root, "asset_library");
     await fs.mkdir(directory, { recursive: true });

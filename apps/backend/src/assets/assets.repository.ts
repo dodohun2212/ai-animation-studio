@@ -400,10 +400,16 @@ export class LocalAssetsRepository {
     });
   }
 
-  /** Classify every indexed non-folder file without changing Library metadata, matching Python's audit_files. */
+  /**
+   * Classify every indexed non-folder file without changing Library metadata, matching Python's audit_files.
+   *
+   * Over the same Assets the Library offers, not the whole index. An archived project's images are not there
+   * to be found, so reporting them as `missing` would name files the person cannot see, cannot open and cannot
+   * repair — the same going-looking-for-nothing this hid them to prevent, moved to the health check.
+   */
   async auditFiles(): Promise<AssetFileAuditEntry[]> {
     const results: AssetFileAuditEntry[] = [];
-    for (const asset of await this.load()) {
+    for (const asset of await this.listExcludingArchivedProjects()) {
       if (asset.is_folder) continue;
       const sourceKind = asset.source_project_id === "_asset_library_manual" ? "manual" : "project";
       const resolved = this.resolveContentPath(asset);
