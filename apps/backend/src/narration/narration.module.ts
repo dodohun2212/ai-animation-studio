@@ -8,6 +8,8 @@ import { OpenAiBudget } from "../providers/openai-budget.js";
 import { NarrationController } from "./narration.controller.js";
 import { LocalNarrationGenerationService } from "./local-narration-generation.service.js";
 import { NarrationReviewService } from "./narration-review.service.js";
+import { LocalAssetsRepository } from "../assets/assets.repository.js";
+import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 
 @Module({
   imports: [ProjectsModule, AssetsModule, ProviderSettingsModule],
@@ -21,9 +23,9 @@ import { NarrationReviewService } from "./narration-review.service.js";
       inject: [LocalProjectRepository, PROJECTS_ROOT, ProviderSettingsService, OpenAiBudget],
     }, {
       provide: NarrationReviewService,
-      useFactory: (projects: LocalProjectRepository, generation: LocalNarrationGenerationService, providerSettings: ProviderSettingsService, budget: OpenAiBudget) =>
-        new NarrationReviewService(projects, generation, providerSettings, budget),
-      inject: [LocalProjectRepository, LocalNarrationGenerationService, ProviderSettingsService, OpenAiBudget],
+      useFactory: (projects: LocalProjectRepository, generation: LocalNarrationGenerationService, providerSettings: ProviderSettingsService, budget: OpenAiBudget, assets: LocalAssetsRepository, projectsRoot: string) =>
+        new NarrationReviewService(projects, generation, providerSettings, budget, undefined, assets, new LocalProjectAssetMappingsRepository(projectsRoot)),
+      inject: [LocalProjectRepository, LocalNarrationGenerationService, ProviderSettingsService, OpenAiBudget, LocalAssetsRepository, PROJECTS_ROOT],
     },
   ],
 })

@@ -1,10 +1,12 @@
+import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
+import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { sceneNumbersFor, type SceneNumber, type UpdateSceneResponse } from "@ai-animation-studio/shared";
 import { toApiProject } from "./project.mapper.js";
 import { LocalProjectRepository } from "./projects.repository.js";
 import { toShortProjectSettings } from "./project-settings.js";
 import type { StoredProject } from "./project-storage.schema.js";
-import { computeSceneStaleness } from "./scene-staleness.js";
+import { computeSceneStaleness, sceneReferenceContext } from "./scene-staleness.js";
 import { scriptFingerprint, LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import { invalidRequest } from "./project-api.error.js";
 
@@ -34,6 +36,7 @@ export class SceneEditService {
     private readonly projects: LocalProjectRepository,
     private readonly projectsRoot: string,
     private readonly mappings: LocalProjectAssetMappingsRepository = new LocalProjectAssetMappingsRepository(projectsRoot),
+    private readonly assets: LocalAssetsRepository = new LocalAssetsRepository(path.dirname(projectsRoot)),
   ) {}
 
   async update(projectId: string, rawSceneNumber: string, body: unknown): Promise<UpdateSceneResponse> {
@@ -70,9 +73,9 @@ export class SceneEditService {
     }
 
     await this.projects.save(updated);
-    // TODO: no LocalAssetsRepository injected here yet, so this still recomputes the image-staleness check
-    // without a References block — a project with a confirmed Asset Mapping can show a wrong imageStale here
-    // even though image-review.service.ts's own GET now gets it right (same gap).
-    return { project: toApiProject(updated), staleness: await computeSceneStaleness(updated) };
+    // With the References block, which is what the recorded prompt has. Without it every scene of a project
+    // with a confirmed mapping came back imageStale — this response is "what did my edit break", so that read
+    // as six images needing repurchasing because one shot was renamed.
+    return { project: toApiProject(updated), staleness: await computeSceneStaleness(updated, await sceneReferenceContext(this.assets, this.mappings, updated.project_id)) };
   }
 }

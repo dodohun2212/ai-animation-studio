@@ -7,6 +7,7 @@ import { LocalProjectRepository } from "./projects.repository.js";
 import { SceneEditService } from "./scene-edit.service.js";
 import { LocalProjectAssetMappingsRepository, scriptFingerprint } from "../mappings/mappings.repository.js";
 
+const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true }))); });
 
@@ -81,6 +82,34 @@ describe("SceneEditService.update — staleness", () => {
     const { service } = await setup();
     const result = await service.update("scenes", "1", { scene: { narration: "새 내레이션" } });
     expect(result.staleness).toEqual({ imageStale: [], videoStale: [], narrationStale: [], referenceStale: [] });
+  });
+
+  it("does not flag every scene stale just because the project has a confirmed Asset Mapping", async () => {
+    // The recorded prompt of a project with a confirmed mapping carries a References block. Recomputing without
+    // one can never match it, so every scene came back imageStale after any edit — a screen telling the person
+    // that six images need repurchasing because they renamed one shot.
+    const { service, projects, root } = await setup();
+    const assets = new (await import("../assets/assets.repository.js")).LocalAssetsRepository(path.join(root, "learning_data"));
+    const character = await assets.create({ buffer: PNG, originalname: "hero.png", mimetype: "image/png" }, { assetType: "character", displayName: "Hero", approved: true });
+    const mappings = new LocalProjectAssetMappingsRepository(path.join(root, "learning_data", "projects"));
+    const now = "2026-08-30T00:00:00.000Z";
+    await mappings.save(mappings.projectLocation("scenes"), [{
+      mapping_id: "MAP-EDIT0001", project_id: "scenes", asset_id: character.asset_id, enabled: true, usage_role: "character",
+      scene_scope: { mode: "all" }, assignment_source: "manual", confidence: null, match_reason: "manual_assignment",
+      status: "confirmed", user_confirmed: true, version_policy: "follow_latest", pinned_version: null, candidate_only: false,
+      created_at: now, updated_at: now, snapshot_path: null, snapshot_sha256: null, snapshot_source_version: null, selected_child_asset_ids: [],
+    }]);
+
+    // Scene 2's image was generated with that mapping in place, and scene 2 is not the one being edited.
+    const project = await projects.findById("scenes");
+    const { imagePromptFor, styleLineFor } = await import("../images/image-prompt.js");
+    const { describeReferenceMappingsForScene } = await import("../images/image-reference-selection.js");
+    const stored = await mappings.load(mappings.projectLocation("scenes"));
+    project.image_generation_records = [{ scene_number: 2, prompt: imagePromptFor(project.scenes[1], styleLineFor(project), await describeReferenceMappingsForScene(assets, stored, 2)) }];
+    await projects.save(project);
+
+    const result = await service.update("scenes", "1", { scene: { focus_subject: "새 대상" } });
+    expect(result.staleness.imageStale).toEqual([]);
   });
 
   it("flags narrationStale only, when only a narration record exists and only narration text changed", async () => {

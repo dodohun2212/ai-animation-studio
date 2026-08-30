@@ -3,6 +3,7 @@ import { imagePromptFor, sceneValue, styleLineFor } from "../images/image-prompt
 import { describeReferenceMappingsForScene, referenceSourcesForScene } from "../images/image-reference-selection.js";
 import type { LocalAssetsRepository } from "../assets/assets.repository.js";
 import type { StoredAssetMapping } from "../mappings/mapping-storage.js";
+import type { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import { promptFor, ratioFor, type StoredScene } from "../videos/video-preview.service.js";
 import { toShortProjectSettings } from "./project-settings.js";
 import type { StoredProject } from "./project-storage.schema.js";
@@ -45,15 +46,46 @@ function latestRecordStrings(records: readonly unknown[], sceneNumber: number, k
  * every review GET endpoint (image/video/narration) needs the same full picture for a user opening that screen
  * cold, not only right after an edit.
  *
- * `referenceContext`, when supplied, lets the image-staleness check recompute the same `References:` block
- * imagePromptFor() folds into a real generation (see image-reference-selection.ts). Omitting it recomputes
- * without that block regardless of what actually shipped — which used to be the only option, and made every
- * scene of any project with a confirmed Asset Mapping permanently, incorrectly imageStale (the recorded prompt
- * had a References section this function could never reproduce to match against).
+ * `referenceContext` lets the image-staleness check recompute the same `References:` block
+ * imagePromptFor() folds into a real generation (see image-reference-selection.ts). Passing `undefined` recomputes
+ * without that block regardless of what actually shipped, which makes every scene of a project with a confirmed
+ * Asset Mapping incorrectly imageStale — the recorded prompt has a References section this function then cannot
+ * reproduce. That is why it is a required parameter with an explicit `undefined` rather than an optional one:
+ * three of the four callers used to leave it off, and each of their responses was wrong in exactly that way for
+ * any project with a mapping. `undefined` now means "the mappings could not be read", not "nobody thought about
+ * it", and `sceneReferenceContext` below is how a caller builds one.
  */
+export interface SceneReferenceContext {
+  assets: LocalAssetsRepository;
+  mappings: readonly StoredAssetMapping[];
+  directory: string;
+}
+
+/**
+ * The context above, built from the two repositories every caller of this function can reach.
+ *
+ * Exists because "how do I build one of these" was previously each caller's own problem, and three of the four
+ * answered it by not building one — which is a decision none of them looks like it is making. The parameter is
+ * now required, so omitting it is a compile error rather than a silently wrong list, and this is the one place
+ * that knows a project's mappings live beside its project.json.
+ *
+ * `undefined` when the mappings cannot be read, which the comparison treats as "cannot tell" rather than "no
+ * references": a project whose mapping file is unreadable must not have every generated scene reported behind.
+ */
+export async function sceneReferenceContext(
+  assets: LocalAssetsRepository,
+  mappings: LocalProjectAssetMappingsRepository,
+  projectId: string,
+): Promise<SceneReferenceContext | undefined> {
+  try {
+    const location = mappings.projectLocation(projectId);
+    return { assets, mappings: await mappings.load(location), directory: location.directory };
+  } catch { return undefined; }
+}
+
 export async function computeSceneStaleness(
   project: StoredProject,
-  referenceContext?: { assets: LocalAssetsRepository; mappings: readonly StoredAssetMapping[]; directory: string },
+  referenceContext: SceneReferenceContext | undefined,
 ): Promise<SceneStaleness> {
   const scenes = scenesFor(project);
   const styleLine = styleLineFor(project);

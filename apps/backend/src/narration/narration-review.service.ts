@@ -22,7 +22,9 @@ import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../pr
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiTtsApi } from "./openai-narration-adapter.js";
 import { invalidNarrationRequest, narrationBudgetExceeded, narrationMissingText, narrationNotEnabled, narrationLocked, narrationProviderError, narrationStorageError } from "./narration-api.error.js";
-import { computeSceneStaleness } from "../projects/scene-staleness.js";
+import { computeSceneStaleness, sceneReferenceContext } from "../projects/scene-staleness.js";
+import { LocalAssetsRepository } from "../assets/assets.repository.js";
+import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import type { LocalNarrationGenerationService } from "./local-narration-generation.service.js";
 import { probeAudioDurationSeconds } from "./audio-duration.js";
 
@@ -66,7 +68,19 @@ export class NarrationReviewService {
     private readonly providerSettings?: ProviderSettingsService,
     private readonly budget?: OpenAiBudget,
     private readonly probeDuration: typeof probeAudioDurationSeconds = probeAudioDurationSeconds,
+    /**
+     * Only for the shared staleness shape this response carries. This screen does not act on `imageStale`, but
+     * it does return it, and a field that is wrong wherever it is not looked at is a field that will be wrong
+     * the first time someone looks.
+     */
+    private readonly assets?: LocalAssetsRepository,
+    private readonly mappings?: LocalProjectAssetMappingsRepository,
   ) {}
+
+  /** Undefined without the repositories, which the staleness check reads as "cannot tell" rather than "none". */
+  private async referenceContext(projectId: string) {
+    return this.assets && this.mappings ? sceneReferenceContext(this.assets, this.mappings, projectId) : undefined;
+  }
 
   async getStatus(projectId: string): Promise<GetNarrationReviewResponse> {
     const project = await this.projects.findById(projectId.trim());
@@ -75,10 +89,7 @@ export class NarrationReviewService {
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.
     const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, TTS_ESTIMATED_COST_USD) : undefined;
-    // TODO: no LocalAssetsRepository/mappings injected here yet — same gap as scene-edit.service.ts, see its
-    // comment. This screen doesn't act on imageStale directly, but the field is
-    // still part of the shared staleness shape returned here.
-    return { project: toApiProject(project), narrations, staleness: await computeSceneStaleness(project), ...(budget ? { budget } : {}) };
+    return { project: toApiProject(project), narrations, staleness: await computeSceneStaleness(project, await this.referenceContext(project.project_id)), ...(budget ? { budget } : {}) };
   }
 
   /**

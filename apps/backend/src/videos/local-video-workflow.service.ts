@@ -21,7 +21,9 @@ import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
-import { computeSceneStaleness } from "../projects/scene-staleness.js";
+import { computeSceneStaleness, sceneReferenceContext } from "../projects/scene-staleness.js";
+import { LocalAssetsRepository } from "../assets/assets.repository.js";
+import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { RunwayBudget, RunwayBudgetExceededError } from "../providers/runway-budget.js";
 import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceResult, type RunwaySceneState } from "./runway-workflow-support.js";
@@ -113,6 +115,9 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     private readonly projectsRoot: string,
     private readonly providerSettings?: ProviderSettingsService,
     private readonly budget?: RunwayBudget,
+    /** See NarrationReviewService's field of the same name: this response carries the shared staleness shape. */
+    private readonly assets: LocalAssetsRepository = new LocalAssetsRepository(path.dirname(projectsRoot)),
+    private readonly mappings: LocalProjectAssetMappingsRepository = new LocalProjectAssetMappingsRepository(projectsRoot),
   ) {}
 
   onModuleDestroy(): void {
@@ -582,7 +587,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     return {
       project: toApiProject(project),
       reviews: this.toReviews(reviews, project.updated_at, records.map((record) => record.scene_number), costsByScene),
-      staleness: await computeSceneStaleness(project),
+      staleness: await computeSceneStaleness(project, await sceneReferenceContext(this.assets, this.mappings, project.project_id)),
     };
   }
 
