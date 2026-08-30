@@ -53,6 +53,19 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 /**
+ * Which moment of the video Instagram should use as the cover, in milliseconds, or null for its own default.
+ *
+ * Omitted from the body entirely when null rather than sent as 0. The two would post the same picture — 0 is
+ * Instagram's default — but "nobody chose" and "someone chose the first frame" are different facts, and only
+ * one of them should be recorded as a decision.
+ */
+function coverField(thumbOffsetMs: number | null | undefined): { thumbOffsetMs?: number } {
+  return typeof thumbOffsetMs === "number" && Number.isFinite(thumbOffsetMs) && thumbOffsetMs >= 0
+    ? { thumbOffsetMs: Math.round(thumbOffsetMs) }
+    : {};
+}
+
+/**
  * Publishes this project's final video. Irreversible and public — the only call in this app whose mistake cannot
  * be undone by anyone, including Instagram.
  *
@@ -66,13 +79,14 @@ export async function publishToInstagram(
   projectId: string,
   caption: string,
   igUserId: string,
+  thumbOffsetMs?: number | null,
 ): Promise<PublishToInstagramResponse> {
   let response: Response;
   try {
     response = await fetch(API_ROUTES.instagramPublish(projectId), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ approved: true, caption, igUserId }),
+      body: JSON.stringify({ approved: true, caption, igUserId, ...coverField(thumbOffsetMs) }),
     });
   } catch {
     throw new InstagramPublishApiError(NETWORK.code, NETWORK.message);
@@ -111,13 +125,14 @@ export async function publishLongEpisodeToInstagram(
   episodeNumber: number,
   caption: string,
   igUserId: string,
+  thumbOffsetMs?: number | null,
 ): Promise<PublishLongEpisodeToInstagramResponse> {
   let response: Response;
   try {
     response = await fetch(API_ROUTES.longEpisodeInstagramPublish(projectId, episodeNumber), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ approved: true, caption, igUserId }),
+      body: JSON.stringify({ approved: true, caption, igUserId, ...coverField(thumbOffsetMs) }),
     });
   } catch {
     throw new InstagramPublishApiError(NETWORK.code, NETWORK.message);

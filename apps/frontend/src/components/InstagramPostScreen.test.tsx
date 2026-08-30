@@ -645,6 +645,65 @@ describe("InstagramPostScreen", () => {
     expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({ approved: true, caption, igUserId: "1" });
   });
 
+  /**
+   * Instagram's own uploader lets you pick the cover frame; this app published whatever frame 0 happened to be.
+   *
+   * The choice is read from the player rather than from a scene number: the frame on screen when the button is
+   * pressed is the frame that goes, so there is no gap between what was shown and what was sent. A scene picker
+   * would have had to name a moment the person cannot see — and the scene's generated image is not that frame,
+   * since the video was animated from it.
+   */
+  it("sends the player's position as the cover, in milliseconds", async () => {
+    const { fetchMock } = renderScreen({ targets: { targets: [{ igUserId: "1", username: "ibad_studio", pageName: "이배드" }], selectedIgUserId: "1" } });
+    await pickProject();
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "본문" } });
+
+    const player = await screen.findByTestId("post-video-player");
+    Object.defineProperty(player, "currentTime", { value: 12.34, configurable: true });
+    fireEvent.click(screen.getByTestId("post-cover-set"));
+    expect(screen.getByTestId("post-cover-set-at").textContent).toContain("12.3초");
+
+    fireEvent.click(await screen.findByTestId("post-publish-button"));
+    fireEvent.click(await screen.findByTestId("post-publish-confirm-button"));
+
+    await screen.findByTestId("post-published");
+    const call = fetchMock.mock.calls.find(([url]) => String(url).includes("/instagram/publish"));
+    expect(JSON.parse(String((call?.[1] as RequestInit).body)).thumbOffsetMs).toBe(12340);
+  });
+
+  /**
+   * Unset and "the first frame" post the same picture, so the field is left out rather than sent as 0 — one of
+   * those is a decision somebody made and the other is nobody having touched it, and only the first should be
+   * recorded as one. It also means nothing on this screen has to be filled in before publishing.
+   */
+  it("omits the cover entirely when nobody chose one", async () => {
+    const { fetchMock } = renderScreen({ targets: { targets: [{ igUserId: "1", username: "ibad_studio", pageName: "이배드" }], selectedIgUserId: "1" } });
+    await pickProject();
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "본문" } });
+
+    expect((await screen.findByTestId("post-cover-unset")).textContent).toContain("첫 장면");
+
+    fireEvent.click(await screen.findByTestId("post-publish-button"));
+    fireEvent.click(await screen.findByTestId("post-publish-confirm-button"));
+
+    await screen.findByTestId("post-published");
+    const call = fetchMock.mock.calls.find(([url]) => String(url).includes("/instagram/publish"));
+    expect(Object.keys(JSON.parse(String((call?.[1] as RequestInit).body)))).not.toContain("thumbOffsetMs");
+  });
+
+  it("takes the cover back to the first frame", async () => {
+    renderScreen({ targets: { targets: [{ igUserId: "1", username: "ibad_studio", pageName: "이배드" }], selectedIgUserId: "1" } });
+    await pickProject();
+
+    const player = await screen.findByTestId("post-video-player");
+    Object.defineProperty(player, "currentTime", { value: 5, configurable: true });
+    fireEvent.click(screen.getByTestId("post-cover-set"));
+    fireEvent.click(screen.getByTestId("post-cover-clear"));
+
+    expect(screen.getByTestId("post-cover-unset")).toBeTruthy();
+    expect(screen.queryByTestId("post-cover-set-at")).toBeNull();
+  });
+
   // Already out in the world: there is no state of this screen in which pressing again is wanted, so the button
   // is gone rather than disabled.
   it("offers no publish button at all once the project has been published", async () => {

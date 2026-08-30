@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { InstagramPublishTarget, InstagramTargetDiagnostics, LongEpisodeDetail, Project, VideoLibraryEpisodeSummary, VideoLibraryProjectSummary } from "@ai-animation-studio/shared";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
@@ -226,6 +226,19 @@ export function InstagramPostScreen({ onBack }: Props) {
    * what they are rather than as a measurement.
    */
   const [measured, setMeasured] = useState<{ vertical: boolean; seconds: number | null } | null>(null);
+  /**
+   * Which moment of the video Instagram should use as the cover, in milliseconds.
+   *
+   * Null means "not chosen", which is the same thing Instagram already does by default — frame 0 — so an unset
+   * cover and a cover set to the first frame are the same post. That is why nothing on this screen has to be
+   * filled in before publishing.
+   *
+   * Taken from the player's own position rather than from a scene number: the frame the person is looking at
+   * when they press is the frame that goes. A scene picker would have to name a moment they cannot see, and the
+   * generated scene image is not that frame — the video was animated from it.
+   */
+  const [coverOffsetMs, setCoverOffsetMs] = useState<number | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
   const [confirmPublish, setConfirmPublish] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -485,14 +498,14 @@ export function InstagramPostScreen({ onBack }: Props) {
     setPublishError(null);
     try {
       if (picked.kind === "episode") {
-        const response = await publishLongEpisodeToInstagram(picked.projectId, picked.episodeNumber, caption, selectedTarget.igUserId);
+        const response = await publishLongEpisodeToInstagram(picked.projectId, picked.episodeNumber, caption, selectedTarget.igUserId, coverOffsetMs);
         setConfirmPublish(false);
         // Same reasoning as the project path: the Episode comes back carrying instagramPost, so "already
         // published" is the server's record and survives a reload.
         setPicked((current) => (current.status === "ready" && current.kind === "episode" ? { ...current, episode: response.episode } : current));
         return;
       }
-      const response = await publishToInstagram(picked.project.id, caption, selectedTarget.igUserId);
+      const response = await publishToInstagram(picked.project.id, caption, selectedTarget.igUserId, coverOffsetMs);
       setConfirmPublish(false);
       // The response carries the project with instagramPost set, so the screen switches to "already published"
       // from the server's own record rather than from a local flag that a refresh would forget.
@@ -719,6 +732,7 @@ export function InstagramPostScreen({ onBack }: Props) {
           <div className={cardSection} data-testid="post-video">
             {/* eslint-disable-next-line jsx-a11y/media-has-caption -- generated clips carry no caption track */}
             <video
+              ref={videoRef}
               data-testid="post-video-player"
               className={`${notVertical ? "aspect-video" : "aspect-[9/16]"} w-full rounded-xl border border-white/10 bg-slate-950/60`}
               controls
@@ -738,6 +752,47 @@ export function InstagramPostScreen({ onBack }: Props) {
                 setMeasured({ vertical: element.videoHeight >= element.videoWidth, seconds });
               }}
             />
+            {/* Instagram's own uploader offers a frame strip for this; the app has the same video already on
+                screen, so the choice is "the frame you are looking at" rather than a second way to look. Nothing
+                has to be pressed — unset means frame 0, which is exactly what Instagram does on its own. */}
+            <div className="flex flex-wrap items-center gap-2" data-testid="post-cover">
+              <button
+                type="button"
+                data-testid="post-cover-set"
+                className="rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-slate-200 hover:bg-white/5 disabled:opacity-50"
+                disabled={!!published}
+                onClick={() => {
+                  const element = videoRef.current;
+                  if (!element) return;
+                  // Not measured is not zero: a stream whose position the browser cannot state must not be
+                  // recorded as "the first frame", which is a choice nobody made.
+                  if (!Number.isFinite(element.currentTime) || element.currentTime < 0) return;
+                  setCoverOffsetMs(Math.round(element.currentTime * 1000));
+                }}
+              >
+                지금 이 장면을 커버로
+              </button>
+              {coverOffsetMs === null ? (
+                <span data-testid="post-cover-unset" className="text-xs text-slate-400">
+                  커버는 첫 장면입니다. 다른 데가 좋으면 영상을 돌린 뒤 눌러 주세요.
+                </span>
+              ) : (
+                <>
+                  <span data-testid="post-cover-set-at" className="text-xs text-emerald-400 tabular-nums">
+                    커버: {(coverOffsetMs / 1000).toFixed(1)}초 지점
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="post-cover-clear"
+                    className="text-xs text-slate-400 underline underline-offset-2 hover:text-slate-200 disabled:opacity-50"
+                    disabled={!!published}
+                    onClick={() => setCoverOffsetMs(null)}
+                  >
+                    첫 장면으로
+                  </button>
+                </>
+              )}
+            </div>
             <p className="text-sm text-slate-300" data-testid="post-video-path">
               저장 위치: {episode ? `${episode.episodeNumber}화 폴더의 ${FINAL_VIDEO_PATH}` : FINAL_VIDEO_PATH}
             </p>
