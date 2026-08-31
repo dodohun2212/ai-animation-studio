@@ -1,4 +1,6 @@
 import { PLACEHOLDER_PNG } from "../images/placeholder-image.js";
+import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
+import { resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { persistEpisodeWarning } from "./episode-warnings.js";
 import { OPENAI_LEDGER_FILE, isBudgetLedgerUnreadable, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import * as crypto from "node:crypto";
@@ -14,7 +16,7 @@ import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../pr
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "../images/openai-image-adapter.js";
 import { imagePromptFor } from "../images/image-prompt.js";
-import { longBudgetLedgerUnreadable, longEpisodeImagesBudgetExceeded, longEpisodeImagesInvalid, longEpisodeImagesNotAllowed, longEpisodeImagesProviderError, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { longBudgetLedgerUnreadable, longEpisodeImagesBudgetExceeded, longEpisodeImagesInvalid, longEpisodeImagesNotAllowed, longEpisodeImagesProviderError, longEpisodeNotFound, longInvalidData, longInvalidRequest, longLocked, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { toEpisodeDetail } from "./episode-detail.js";
@@ -260,7 +262,24 @@ export class EpisodeImagesService {
     return { preview: { sceneNumbers, generatableSceneNumbers: generatable, reusableSceneNumbers: reusable, estimatedCostUsd, ...(budget ? { budget } : {}) } };
   }
 
+  /**
+   * Refuses a second run while one is in flight, the way Episode narration and Episode scripts already do.
+   *
+   * Same shape as the short project's: the state is read, the run is allowed, and only then is
+   * `generating_images` written. Two presses that arrive together both pass the gate and both walk every scene
+   * finding no image yet — two paid images per scene for one asked-for run.
+   */
   async generate(projectId: string, number: number, request: StartLongEpisodeImageGenerationRequest): Promise<StartLongEpisodeImageGenerationResponse> {
+    const locked = projectId.trim();
+    try {
+      return await withProjectLock(resolveSafeProjectDirectory(this.projectsRoot, locked), `${locked}:episode-${number}:images`, () => this.generateCore(projectId, number, request), { timeoutMs: 0 });
+    } catch (error) {
+      if (error instanceof ProjectLockTimeoutError) throw longLocked("Episode image generation");
+      throw error;
+    }
+  }
+
+  private async generateCore(projectId: string, number: number, request: StartLongEpisodeImageGenerationRequest): Promise<StartLongEpisodeImageGenerationResponse> {
     const id = projectId.trim(); this.approval(request); const episode = await this.episode(id, number);
     if (episode.state !== "asset_mapping_approved" || !episode.approved) throw longEpisodeImagesNotAllowed(); await this.mappingCurrent(id, number, episode);
     const scenes = this.scenes(episode);

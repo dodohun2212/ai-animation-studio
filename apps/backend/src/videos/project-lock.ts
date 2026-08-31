@@ -50,7 +50,11 @@ export async function withProjectLock<T>(projectDirectory: string, key: string, 
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       if (await isStale(lockFile)) { await fs.rm(lockFile, { force: true }).catch(() => undefined); continue; }
-      if (Date.now() > deadline) throw new ProjectLockTimeoutError(key);
+      // `>=`, not `>`. With a zero timeout the deadline is *now*, and `>` is false for the whole millisecond the
+      // call was made in — so "refused at once" quietly became "wait one retry interval and try again", and a
+      // second press that should have been told the run was already going could take the lock after the first
+      // released it and be refused by a state gate instead, with a message about the wrong thing.
+      if (Date.now() >= deadline) throw new ProjectLockTimeoutError(key);
       await new Promise((resolve) => setTimeout(resolve, ACQUIRE_RETRY_MS));
     }
   }

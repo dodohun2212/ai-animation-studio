@@ -374,4 +374,26 @@ describe("local Story generator", () => {
     expect(preview.originalPrompt).toContain("lead=이배드");
     expect(preview.originalPrompt).not.toContain("예전에 적어둔 다른 이름");
   });
+
+  it("pays for one Story when two approvals arrive together, and refuses the second instead of queuing it", async () => {
+    // The prompt hash guards against approving a *stale* prompt. It does nothing about two identical approvals
+    // racing: both read READY, both decide they may run, and both pay.
+    const { repository, service } = await setupWithConnectedOpenAi();
+    const fetchMock = vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return jsonResponse(200, responsesBody(VALID_STORY));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const preview = await service.preview("sample");
+    const body = { originalPromptSha256: preview.preview.originalPromptSha256, prompt: preview.preview.originalPrompt, approved: true };
+
+    const outcomes = await Promise.allSettled([service.approve("sample", body), service.approve("sample", body)]);
+
+    expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+    const refused = outcomes.find((outcome) => outcome.status === "rejected") as PromiseRejectedResult;
+    expect(refused.reason).toMatchObject({ response: { code: "PROJECT_LOCKED" } });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect((await repository.findById("sample")).story).toEqual(VALID_STORY);
+  });
+
 });

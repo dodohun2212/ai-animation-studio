@@ -1,4 +1,5 @@
 import { PLACEHOLDER_PNG } from "./placeholder-image.js";
+import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { OPENAI_LEDGER_FILE, isBudgetLedgerUnreadable, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
@@ -19,7 +20,7 @@ import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "
 import { collectReferenceImages, describeReferenceMappingsForScene } from "./image-reference-selection.js";
 import { imagePromptFor, imageSizeFor, sceneValue, styleLineFor } from "./image-prompt.js";
 import { previousSceneContinuityImagePath } from "../projects/project-continuity.js";
-import { imageBudgetLedgerUnreadable, imageBudgetExceeded, imageContentUnavailable, imageGenerationFailed, imageGenerationNotAllowed, imageProviderError, imageStorageError, invalidImageRequest, mappingReviewRequired } from "./image-api.error.js";
+import { imageBudgetExceeded, imageBudgetLedgerUnreadable, imageContentUnavailable, imageGenerationFailed, imageGenerationLocked, imageGenerationNotAllowed, imageProviderError, imageStorageError, invalidImageRequest, mappingReviewRequired } from "./image-api.error.js";
 
 function scenesFor(project: StoredProject): SceneNumber[] {
   return sceneNumbersFor(toShortProjectSettings(project).sceneCount);
@@ -97,7 +98,29 @@ export class LocalImageGenerationService {
     }
   }
 
+  /**
+   * Refuses a second run while one is in flight, the way narration already does.
+   *
+   * `generate` reads the workflow state, decides it may run, and only then writes `generating_images`. Two
+   * presses that arrive together both read `asset_mapping_approved`, and both walk every scene finding no image
+   * yet — because neither has written one. That is **two paid images per scene where a person asked for one
+   * run**, and this is the most expensive button in the app to press twice.
+   *
+   * Refused at once rather than queued: a queued second press would re-walk every scene, find the images the
+   * first one wrote and reuse them all — the right answer, after making someone wait out a whole generation.
+   * `PROJECT_LOCKED` is the code every module sends for this (docs/06_DECISIONS.md D-005).
+   */
   async generate(projectId: string, body: unknown): Promise<StartImageGenerationResponse> {
+    const id = projectId.trim();
+    try {
+      return await withProjectLock(this.projects.projectDirectory(id), `${id}:images`, () => this.generateCore(projectId, body), { timeoutMs: 0 });
+    } catch (error) {
+      if (error instanceof ProjectLockTimeoutError) throw imageGenerationLocked();
+      throw error;
+    }
+  }
+
+  private async generateCore(projectId: string, body: unknown): Promise<StartImageGenerationResponse> {
     if (!isObject(body) || Object.keys(body).length !== 1 || body.approved !== true) throw invalidImageRequest();
     const project = await this.projects.findById(projectId.trim());
     if (project.workflow_state !== WorkflowState.AssetMappingApproved) throw imageGenerationNotAllowed();

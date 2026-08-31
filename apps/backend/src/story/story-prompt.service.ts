@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { isBudgetLedgerUnreadable, OPENAI_LEDGER_FILE, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import { existsSync } from "node:fs";
 import * as fsPromises from "node:fs/promises";
@@ -21,7 +22,7 @@ import { generateLocalStory, type StoredStory } from "./story-generation.service
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_STORY_MODEL, OpenAiStoryAdapterError, callOpenAiStoryApi } from "./openai-story-adapter.js";
 import { describeAtmosphereAssets, describeCharacterCast, describeSceneReferenceAssets } from "./story-asset-metadata.js";
-import { storyBudgetLedgerUnreadable, invalidStoryRequest, storyBudgetExceeded, storyGenerationFailed, storyGenerationNotAllowed, storyPromptStale, storyProviderError, storyRegenerationNotAllowed, storyStorageError } from "./story-api.error.js";
+import { invalidStoryRequest, storyBudgetExceeded, storyBudgetLedgerUnreadable, storyGenerationFailed, storyGenerationNotAllowed, storyLocked, storyPromptStale, storyProviderError, storyRegenerationNotAllowed, storyStorageError } from "./story-api.error.js";
 
 /** The only states where a Story exists but no scene image has been generated for it yet — see RegenerateStoryPromptRequest's doc comment for why the cutoff is drawn there. */
 const REGENERATABLE_STATES: ReadonlySet<string> = new Set([WorkflowState.WaitingForAssetMappingReview, WorkflowState.AssetMappingApproved]);
@@ -197,7 +198,27 @@ export class StoryPromptService {
     return { prompt };
   }
 
+  /**
+   * Refuses a second run while one is in flight, the way narration and image generation do.
+   *
+   * `approve` reads READY, decides it may run, and only then writes GENERATING_STORY. Two presses that arrive
+   * together both read READY, and both pay for a Story. The prompt hash guards against approving a *stale*
+   * prompt; it does nothing about two identical approvals racing.
+   *
+   * Refused at once rather than queued, and `PROJECT_LOCKED` because that is the code every module sends for
+   * this (docs/06_DECISIONS.md D-005).
+   */
   async approve(projectId: string, request: unknown): Promise<ApproveStoryPromptResponse> {
+    const id = projectId.trim();
+    try {
+      return await withProjectLock(this.projects.projectDirectory(id), `${id}:story`, () => this.approveCore(projectId, request), { timeoutMs: 0 });
+    } catch (error) {
+      if (error instanceof ProjectLockTimeoutError) throw storyLocked();
+      throw error;
+    }
+  }
+
+  private async approveCore(projectId: string, request: unknown): Promise<ApproveStoryPromptResponse> {
     if (typeof request !== "object" || request === null || Array.isArray(request)) throw invalidStoryRequest("Story prompt approval request is invalid.");
     const body = request as Record<string, unknown>;
     if (Object.keys(body).some((key) => !["originalPromptSha256", "prompt", "approved"].includes(key))

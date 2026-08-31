@@ -1,7 +1,7 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { ApiError } from "@ai-animation-studio/shared";
 
-type ImageErrorCode = "INVALID_REQUEST" | "IMAGE_GENERATION_NOT_ALLOWED" | "ASSET_MAPPING_REVIEW_REQUIRED" | "IMAGE_GENERATION_FAILED" | "IMAGE_STORAGE_ERROR" | "IMAGE_BUDGET_EXCEEDED" | "IMAGE_PROVIDER_ERROR" | "IMAGE_CONTENT_UNAVAILABLE" | "BUDGET_LEDGER_UNREADABLE";
+type ImageErrorCode = "INVALID_REQUEST" | "IMAGE_GENERATION_NOT_ALLOWED" | "ASSET_MAPPING_REVIEW_REQUIRED" | "IMAGE_GENERATION_FAILED" | "IMAGE_STORAGE_ERROR" | "IMAGE_BUDGET_EXCEEDED" | "IMAGE_PROVIDER_ERROR" | "IMAGE_CONTENT_UNAVAILABLE" | "BUDGET_LEDGER_UNREADABLE" | "PROJECT_LOCKED";
 
 class ImageApiException extends HttpException {
   constructor(code: ImageErrorCode, message: string, status: HttpStatus, details?: Record<string, unknown>) {
@@ -36,3 +36,14 @@ export const imageContentUnavailable = () =>
  */
 export const imageBudgetLedgerUnreadable = () =>
   new ImageApiException("BUDGET_LEDGER_UNREADABLE", "Monthly spend could not be read, so no paid request was sent.", HttpStatus.CONFLICT);
+
+/**
+ * A generation for this project is already running.
+ *
+ * `PROJECT_LOCKED` because that is the one code every module sends for this, and the screens that already render
+ * it say the same sentence: do not press again, the run in progress will show up on its own. Refused at once
+ * rather than queued — a queued second press would re-walk every scene, find the images the first one wrote and
+ * reuse them all, which is the right answer only after making someone wait out a whole generation.
+ */
+export const imageGenerationLocked = () =>
+  new ImageApiException("PROJECT_LOCKED", "Image generation is already running for this project.", HttpStatus.CONFLICT);

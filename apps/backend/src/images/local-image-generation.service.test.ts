@@ -431,4 +431,32 @@ describe("real OpenAI image generation", () => {
     expect(await fs.readFile(ledger, "utf8")).toBe("{ not json"); // never overwritten — the history stays for whoever looks
   });
 
+
+  it("buys six images for one asked-for run when two presses arrive together, not twelve", async () => {
+    // `generate` reads the workflow state, decides it may run, and only then writes GENERATING_IMAGES. Without a
+    // lock both presses read ASSET_MAPPING_APPROVED and both walk every scene finding no image yet, because
+    // neither has written one — two paid images per scene, for the most expensive button in the app.
+    //
+    // The counterpart is inside the same test on purpose: the loser must be *refused*, not queued. Queuing would
+    // pass a "six calls" assertion while making a person wait out a whole generation to be told nothing changed.
+    const { projects, service } = await setupWithConnectedOpenAi();
+    const fetchMock = vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5)); // hold the run open so the second press really overlaps
+      return jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const [first, second] = await Promise.allSettled([
+      service.generate("images", { approved: true }),
+      service.generate("images", { approved: true }),
+    ]);
+
+    const outcomes = [first, second];
+    expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+    const refused = outcomes.find((outcome) => outcome.status === "rejected") as PromiseRejectedResult;
+    expect(refused.reason).toMatchObject({ response: { code: "PROJECT_LOCKED" } });
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect((await projects.findById("images")).workflow_state).toBe(WorkflowState.ImagesReview);
+  });
+
 });

@@ -493,4 +493,28 @@ describe("real OpenAI Episode image generation", () => {
       budget: { monthlyLimitUsd: 10, spentUsd: expect.closeTo(0.7, 8), remainingUsd: expect.closeTo(9.3, 8), estimatedRequestCostUsd: 0.10, canSpend: true },
     });
   });
+
+  it("buys six Episode images for one asked-for run when two presses arrive together, not twelve", async () => {
+    // The same shape as the short project's, and the same cost. Episode narration and Episode scripts were
+    // already refusing a concurrent second run; images — the expensive one — were not.
+    const { images, projectsRoot } = await setupWithConnectedOpenAi();
+    const fetchMock = vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const outcomes = await Promise.allSettled([
+      images.generate("long", 1, { approved: true }),
+      images.generate("long", 1, { approved: true }),
+    ]);
+
+    expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+    const refused = outcomes.find((outcome) => outcome.status === "rejected") as PromiseRejectedResult;
+    expect(refused.reason).toMatchObject({ response: { code: "PROJECT_LOCKED" } });
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    const episode = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "project.json"), "utf8")) as { state: string };
+    expect(episode.state).toBe("images_review");
+  });
+
 });

@@ -1,7 +1,7 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { ApiError } from "@ai-animation-studio/shared";
 
-type StoryErrorCode = "INVALID_REQUEST" | "PROJECT_NOT_FOUND" | "STORY_PROMPT_STALE" | "STORY_PROMPT_STORAGE_ERROR" | "STORY_GENERATION_NOT_ALLOWED" | "STORY_GENERATION_FAILED" | "STORY_BUDGET_EXCEEDED" | "STORY_PROVIDER_ERROR" | "STORY_REGENERATION_NOT_ALLOWED" | "BUDGET_LEDGER_UNREADABLE";
+type StoryErrorCode = "INVALID_REQUEST" | "PROJECT_NOT_FOUND" | "STORY_PROMPT_STALE" | "STORY_PROMPT_STORAGE_ERROR" | "STORY_GENERATION_NOT_ALLOWED" | "STORY_GENERATION_FAILED" | "STORY_BUDGET_EXCEEDED" | "STORY_PROVIDER_ERROR" | "STORY_REGENERATION_NOT_ALLOWED" | "BUDGET_LEDGER_UNREADABLE" | "PROJECT_LOCKED";
 
 class StoryApiException extends HttpException {
   constructor(code: StoryErrorCode, message: string, status: HttpStatus, details?: Record<string, unknown>) {
@@ -36,3 +36,7 @@ export const storyRegenerationNotAllowed = () =>
  */
 export const storyBudgetLedgerUnreadable = () =>
   new StoryApiException("BUDGET_LEDGER_UNREADABLE", "Monthly spend could not be read, so no paid request was sent.", HttpStatus.CONFLICT);
+
+/** A Story generation for this project is already running — see imageGenerationLocked for why this code and why it refuses instead of queuing. */
+export const storyLocked = () =>
+  new StoryApiException("PROJECT_LOCKED", "Story generation is already running for this project.", HttpStatus.CONFLICT);
