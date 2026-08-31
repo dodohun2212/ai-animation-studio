@@ -609,9 +609,59 @@ export class LocalAssetsRepository {
     return Array.isArray(mappings) && mappings.some((item) => this.referencesAsset(item, assetId));
   }
 
+  /**
+   * The Asset's bytes on disk, or null.
+   *
+   * `stored_path` is written as an absolute path, and the learning-data root moves. The desktop shell keeps it
+   * in `apps/backend` during development and under `userData` once packaged, and migrates the whole directory
+   * across on the first packaged launch (apps/desktop's own tests pin both roots and that rename). Every path in
+   * the index then names a location that no longer exists, and this used to return null for the entire Library —
+   * with the bytes sitting in the same relative place under the new root.
+   *
+   * Measured against the real Library: all 27 non-folder Assets read as missing the moment the root changed.
+   *
+   * Not merely cosmetic, and not loud. `collectReferenceImages` drops a reference this cannot resolve and
+   * deliberately does not count it as omitted — a deleted Asset was never going to be sent, so counting it would
+   * overstate what the cap left out. After a root move that reasoning turns inside out: a paid image generation
+   * would run with **none** of the confirmed character references and report nothing missing.
+   *
+   * So a stale absolute path is retried under the current root, re-anchored at its last `projects/` or
+   * `asset_library/` segment — the two directories the root is made of, taken from the fields above rather than
+   * spelled out here. The containment check is applied to every candidate, so this widens where a file may be
+   * looked for and never where it may be read from.
+   */
   resolveContentPath(asset: StoredAsset): string | null {
     if (asset.is_folder || !asset.stored_path) return null;
-    const candidate = path.isAbsolute(asset.stored_path) ? path.resolve(asset.stored_path) : path.resolve(this.libraryRoot, asset.stored_path);
+    const candidates = path.isAbsolute(asset.stored_path)
+      ? [path.resolve(asset.stored_path), ...this.reRootedCandidates(asset.stored_path)]
+      : [path.resolve(this.libraryRoot, asset.stored_path)];
+    for (const candidate of candidates) {
+      const resolved = this.readableFileUnderRoot(candidate);
+      if (resolved) return resolved;
+    }
+    return null;
+  }
+
+  /**
+   * The same path, rebuilt under the current learning-data root.
+   *
+   * Scanned from the end so the innermost anchor wins: a root that itself sits inside a directory called
+   * `projects` would otherwise re-root at the wrong one and point at something that is not this Asset.
+   */
+  private reRootedCandidates(storedPath: string): string[] {
+    // Split on both platforms' separators, named rather than written as an escaped character class: a path
+    // recorded on Windows is read back on Windows, but the index is plain JSON and travels.
+    const segments = storedPath.split(path.win32.sep).flatMap((part) => part.split(path.posix.sep)).filter(Boolean);
+    const anchors = new Set([path.basename(this.projectsRoot), path.basename(this.libraryRoot)]);
+    const candidates: string[] = [];
+    for (let index = segments.length - 1; index >= 0; index -= 1) {
+      if (anchors.has(segments[index]!)) candidates.push(path.resolve(this.learningDataRoot, ...segments.slice(index)));
+    }
+    return candidates;
+  }
+
+  /** A real file inside the learning-data root, or null — the containment rule every candidate has to pass. */
+  private readableFileUnderRoot(candidate: string): string | null {
     try {
       const safeRoot = fs.realpathSync(path.resolve(this.learningDataRoot));
       const realCandidate = fs.realpathSync(candidate);

@@ -571,4 +571,54 @@ describe("LocalAssetsRepository", () => {
     const folder = all.find((item) => item.is_folder && item.source_project_id === projectId)!;
     expect(folder.child_asset_ids).toEqual(children.map((item) => item.asset_id));
   });
+
+  it("finds an Asset whose index still names the learning-data root it was written under, and whose bytes moved with it", async () => {
+    // The desktop shell keeps this root in apps/backend during development and under userData once packaged, and
+    // migrates the whole directory across on the first packaged launch. `stored_path` is absolute, so every path
+    // in the index then names a location that no longer exists.
+    //
+    // Measured on the real Library at a moved root: 27 of 27 non-folder Assets read as missing, with their bytes
+    // sitting in the same relative place under the new root. It is also quiet where it matters most —
+    // collectReferenceImages drops a reference it cannot resolve and deliberately does not count it as omitted,
+    // so a paid image generation would have run with none of the confirmed character references and said nothing.
+    const oldRoot = await makeRoot();
+    const written = await new LocalAssetsRepository(oldRoot).create({ buffer: image, originalname: "hero.png", mimetype: "image/png" }, metadata);
+    expect(path.isAbsolute(written.stored_path)).toBe(true);
+
+    const newRoot = await makeRoot();
+    await fs.cp(path.join(oldRoot, "projects"), path.join(newRoot, "projects"), { recursive: true });
+    await fs.cp(path.join(oldRoot, "asset_library"), path.join(newRoot, "asset_library"), { recursive: true });
+    await fs.rm(oldRoot, { recursive: true, force: true });
+
+    const moved = new LocalAssetsRepository(newRoot);
+    const asset = await moved.get(written.asset_id);
+    const resolved = moved.resolveContentPath(asset);
+    expect(resolved).not.toBeNull();
+    expect(resolved!.startsWith(await fs.realpath(newRoot))).toBe(true);
+    expect(await fs.readFile(resolved!)).toEqual(image);
+    expect(await moved.auditFiles()).toEqual([expect.objectContaining({ assetId: written.asset_id, classification: "healthy" })]);
+  });
+
+  it("does not invent a location for a path that never belonged to a learning-data root, or for bytes that are really gone", async () => {
+    // The counterpart that keeps the repair honest. Re-rooting only means "this path names somewhere inside a
+    // learning-data root, so look for it inside this one". Without both of these, an implementation that simply
+    // searched by file name would pass the test above while answering with the wrong file, or with a file for an
+    // Asset whose bytes a person actually deleted.
+    const root = await makeRoot();
+    const repository = new LocalAssetsRepository(root);
+    const created = await repository.create({ buffer: image, originalname: "hero.png", mimetype: "image/png" }, metadata);
+
+    // The stored name here is the *real* file's name, deliberately. With a made-up name this assertion passes
+    // against an implementation that searches by file name alone — the bytes are stored under their content
+    // digest, so the invented path happens not to exist and the test proves nothing. Measured: an injection that
+    // ignored the anchor and searched by name stayed green until this line used the real name.
+    const realFile = repository.resolveContentPath(created)!;
+    const elsewhere = { ...created, stored_path: path.join(os.tmpdir(), "not-a-learning-data-root", path.basename(realFile)) };
+    expect(repository.resolveContentPath(elsewhere)).toBeNull();
+
+    await fs.rm(realFile);
+    expect(repository.resolveContentPath(created)).toBeNull();
+    expect(await repository.auditFiles()).toEqual([expect.objectContaining({ classification: "missing" })]);
+  });
+
 });
