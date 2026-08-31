@@ -21,6 +21,8 @@ type ArchiveDirectory = (projectsRoot: string, projectId: string) => Promise<voi
  * Reads and writes `<projectsRoot>/<projectId>/project.json`. Pure local
  * filesystem storage: no database, no provider, no network calls.
  */
+const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+
 export class LocalProjectRepository {
   constructor(
     private readonly projectsRoot: string,
@@ -164,8 +166,17 @@ export class LocalProjectRepository {
       const output = (record as { output_path?: unknown }).output_path;
       return typeof output === "string" && output ? { ...record, output_path: relocate(output) } : record;
     });
+    // The linked previous scene's image, which is read back off disk as a Reference for a paid Scene 1
+    // generation. A stale one is dropped by a `stat` that fails, without even counting as an omitted reference —
+    // so the scene is bought without the continuity image a person deliberately chose, and nothing says so. It
+    // is the one field of this kind that does not live in a top-level array, which is exactly why it was missed
+    // the first time this relocation was written.
+    const link = stored.lore_context.previous_scene_link;
+    const linkRecord = isObject(link) ? link : undefined;
+    const linkImage = linkRecord && typeof linkRecord.image_path === "string" && linkRecord.image_path ? relocate(linkRecord.image_path) : undefined;
     return {
       ...stored,
+      ...(linkImage ? { lore_context: { ...stored.lore_context, previous_scene_link: { ...linkRecord, image_path: linkImage } } } : {}),
       generated_images: stored.generated_images.map((value) => (value ? relocate(value) : value)),
       generated_video_paths: stored.generated_video_paths.map((value) => (value ? relocate(value) : value)),
       generated_narrations: stored.generated_narrations.map((value) => (value ? relocate(value) : value)),

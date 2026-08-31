@@ -621,4 +621,30 @@ describe("LocalAssetsRepository", () => {
     expect(await repository.auditFiles()).toEqual([expect.objectContaining({ classification: "missing" })]);
   });
 
+
+  it("finds a pinned version's bytes after the root moved, the same as the current one", async () => {
+    // A version's stored_path is written the same way as an Asset's and goes stale the same way. This is what a
+    // mapping pinned to a specific version reads, so leaving it out would have meant every other kind of
+    // Reference recovering from a move while pinned ones stayed silently unresolvable — the worst shape, because
+    // the screen would look like it was working.
+    const oldRoot = await makeRoot();
+    const first = new LocalAssetsRepository(oldRoot);
+    const created = await first.create({ buffer: image, originalname: "hero.png", mimetype: "image/png" }, metadata);
+    const withVersion = await first.addVersion(created.asset_id, { buffer: secondImage, originalname: "hero-v2.png", mimetype: "image/png" }, "두 번째");
+    expect(withVersion.versions).toHaveLength(2);
+
+    const newRoot = await makeRoot();
+    await fs.cp(path.join(oldRoot, "projects"), path.join(newRoot, "projects"), { recursive: true });
+    await fs.cp(path.join(oldRoot, "asset_library"), path.join(newRoot, "asset_library"), { recursive: true });
+    await fs.rm(oldRoot, { recursive: true, force: true });
+
+    const moved = new LocalAssetsRepository(newRoot);
+    const asset = await moved.get(created.asset_id);
+    for (const version of [1, 2]) {
+      const resolved = moved.resolveVersionContentPath(asset, version);
+      expect(resolved).not.toBeNull();
+      expect(await fs.readFile(resolved!)).toEqual(version === 1 ? image : secondImage);
+    }
+  });
+
 });

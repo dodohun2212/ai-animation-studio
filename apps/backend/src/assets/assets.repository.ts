@@ -668,17 +668,23 @@ export class LocalAssetsRepository {
   }
 
   /** Resolve a version recorded in the trusted Asset Library index for a local snapshot. */
+  /**
+   * One pinned version's bytes. Relocates a stale root exactly as {@link resolveContentPath} does — a version's
+   * `stored_path` is written the same way and goes stale the same way, and this is what a mapping pinned to a
+   * specific version reads, so missing it would leave that one kind of Reference silently unresolvable after a
+   * move while every other kind recovered.
+   */
   resolveVersionContentPath(asset: StoredAsset, version: number): string | null {
     const record = asset.versions.find((item) => item.version === version);
     if (!record) return null;
-    const candidate = path.isAbsolute(record.stored_path) ? path.resolve(record.stored_path) : path.resolve(this.libraryRoot, record.stored_path);
-    try {
-      const safeRoot = fs.realpathSync(path.resolve(this.learningDataRoot));
-      const realCandidate = fs.realpathSync.native(candidate);
-      const relative = path.relative(safeRoot, realCandidate);
-      if (relative.startsWith("..") || path.isAbsolute(relative)) return null;
-      return fs.statSync(realCandidate).isFile() ? realCandidate : null;
-    } catch { return null; }
+    const candidates = path.isAbsolute(record.stored_path)
+      ? [path.resolve(record.stored_path), ...this.reRootedCandidates(record.stored_path)]
+      : [path.resolve(this.libraryRoot, record.stored_path)];
+    for (const candidate of candidates) {
+      const resolved = this.readableFileUnderRoot(candidate);
+      if (resolved) return resolved;
+    }
+    return null;
   }
 
   async canDeleteOwnedFile(asset: StoredAsset): Promise<boolean> {

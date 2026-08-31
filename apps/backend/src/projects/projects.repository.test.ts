@@ -369,4 +369,30 @@ describe("LocalProjectRepository", () => {
     expect((await moved.findById("nested")).generated_images[0]).toBe(path.join(newProjects, "nested", "images", "scene1.png"));
   });
 
+
+  it("relocates the linked previous scene's image, which a paid Scene 1 generation reads back as a Reference", async () => {
+    // The one field of this kind that does not live in a top-level array, and the reason it was missed when this
+    // relocation was first written. A stale value is dropped by a `stat` that simply fails — it is not counted as
+    // an omitted reference either, because a reference that never resolves was never going to be sent — so the
+    // scene is bought without the continuity image the person deliberately chose, and nothing says so.
+    const oldProjects = path.join(await fsPromises.mkdtemp(path.join(os.tmpdir(), "old-link-")), "learning_data", "projects");
+    const newProjects = path.join(await fsPromises.mkdtemp(path.join(os.tmpdir(), "new-link-")), "learning_data", "projects");
+    const moved = new LocalProjectRepository(newProjects);
+
+    const stored = createStoredProject("linked", "topic", "2026-08-21T00:00:00.000Z");
+    stored.lore_context = {
+      ...stored.lore_context,
+      previous_scene_link: {
+        source_kind: "short_project", user_selected: true, project_id: "earlier", project_name: "앞 이야기",
+        label: "6번 장면", scene_number: 6, story_context: "이어지는 장면",
+        image_path: path.join(oldProjects, "earlier", "images", "scene6.png"),
+      },
+    };
+    await moved.create(stored);
+
+    const link = (await moved.findById("linked")).lore_context.previous_scene_link as { image_path: string; project_name: string };
+    expect(link.image_path).toBe(path.join(newProjects, "earlier", "images", "scene6.png"));
+    expect(link.project_name).toBe("앞 이야기"); // the rest of the link is carried across untouched
+  });
+
 });
