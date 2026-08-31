@@ -1,4 +1,5 @@
 import { PLACEHOLDER_PNG } from "./placeholder-image.js";
+import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -18,7 +19,7 @@ import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "
 import { collectReferenceImages, describeReferenceMappingsForScene } from "./image-reference-selection.js";
 import { imagePromptFor, imageSizeFor, sceneValue, styleLineFor } from "./image-prompt.js";
 import { previousSceneContinuityImagePath } from "../projects/project-continuity.js";
-import { imageBudgetExceeded, imageContentUnavailable, imageGenerationFailed, imageGenerationNotAllowed, imageProviderError, imageStorageError, invalidImageRequest, mappingReviewRequired } from "./image-api.error.js";
+import { imageBudgetLedgerUnreadable, imageBudgetExceeded, imageContentUnavailable, imageGenerationFailed, imageGenerationNotAllowed, imageProviderError, imageStorageError, invalidImageRequest, mappingReviewRequired } from "./image-api.error.js";
 
 function scenesFor(project: StoredProject): SceneNumber[] {
   return sceneNumbersFor(toShortProjectSettings(project).sceneCount);
@@ -179,7 +180,7 @@ export class LocalImageGenerationService {
     } catch (error) {
       const recoverable = { ...current, workflow_state: WorkflowState.AssetMappingApproved, updated_at: new Date().toISOString() };
       await this.projects.save(recoverable).catch(() => undefined);
-      if (error instanceof OpenAiBudgetExceededError) throw imageBudgetExceeded(error.message);
+      if (isBudgetLedgerUnreadable(error)) throw imageBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw imageBudgetExceeded(error.message);
       if (error instanceof OpenAiAdapterError) throw imageProviderError(error.category, error.message);
       if (error instanceof Error && error.message === "invalid png") throw imageGenerationFailed();
       if (error instanceof Error && error.message === "incomplete") throw imageGenerationFailed();

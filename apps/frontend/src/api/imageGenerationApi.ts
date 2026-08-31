@@ -6,6 +6,7 @@ import {
   type StartImageGenerationRequest,
   type StartImageGenerationResponse,
 } from "@ai-animation-studio/shared";
+import { BUDGET_LEDGER_UNREADABLE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "./budgetLedgerError.js";
 
 export class ImageGenerationApiError extends Error {
   readonly code: string;
@@ -26,6 +27,7 @@ const SAFE_ERRORS: Record<string, string> = {
   ASSET_MAPPING_REVIEW_REQUIRED: "먼저 Asset Mapping 검토를 승인해야 합니다.",
   IMAGE_GENERATION_FAILED: "이미지 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.",
   IMAGE_STORAGE_ERROR: "이미지 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+  [BUDGET_LEDGER_UNREADABLE]: BUDGET_LEDGER_UNREADABLE_MESSAGE,
   IMAGE_BUDGET_EXCEEDED: "이번 달 OpenAI 예산을 초과하여 요청을 보내지 않았습니다.",
   IMAGE_PROVIDER_ERROR: "OpenAI 이미지 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
   IMAGE_CONTENT_UNAVAILABLE: "이미지를 불러올 수 없습니다.",

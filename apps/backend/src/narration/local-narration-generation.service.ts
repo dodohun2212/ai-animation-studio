@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
@@ -13,7 +14,7 @@ import { ProviderSettingsService } from "../settings/provider-settings.service.j
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiTtsApi } from "./openai-narration-adapter.js";
-import { invalidNarrationRequest, narrationBudgetExceeded, narrationContentUnavailable, narrationGenerationFailed, narrationNotEnabled, narrationLocked, narrationProviderError, narrationStorageError } from "./narration-api.error.js";
+import { narrationBudgetLedgerUnreadable, invalidNarrationRequest, narrationBudgetExceeded, narrationContentUnavailable, narrationGenerationFailed, narrationNotEnabled, narrationLocked, narrationProviderError, narrationStorageError } from "./narration-api.error.js";
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 /** A silent single-frame MP3, used in local-fake mode — mirrors the local-fake single-pixel PNG used by image generation. */
@@ -183,7 +184,7 @@ export class LocalNarrationGenerationService {
         generated.push(number);
       }
     } catch (error) {
-      if (error instanceof OpenAiBudgetExceededError) throw narrationBudgetExceeded(error.message);
+      if (isBudgetLedgerUnreadable(error)) throw narrationBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw narrationBudgetExceeded(error.message);
       if (error instanceof OpenAiAdapterError) throw narrationProviderError(error.category, error.message);
       if (error instanceof Error && error.message === "invalid audio") throw narrationGenerationFailed();
       throw narrationStorageError();

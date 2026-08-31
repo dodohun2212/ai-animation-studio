@@ -11,6 +11,7 @@ import {
   type SceneNumber,
   type VideoReview,
 } from "@ai-animation-studio/shared";
+import { BUDGET_LEDGER_UNREADABLE_MESSAGE } from "./budgetLedgerError.js";
 
 export class VideoWorkflowApiError extends Error {
   readonly code: string;
@@ -63,6 +64,11 @@ const SCENE_ERROR_CATEGORY_MESSAGES: Record<string, string> = {
   no_output: "Runway가 영상 결과물을 반환하지 않았습니다. 다시 시도해 주세요.",
   invalid_state: "영상 작업 상태가 예상과 달라 처리하지 못했습니다. 다시 시도해 주세요.",
   budget_exceeded: "이번 달 Runway 예산을 초과하여 요청을 보내지 않았습니다.",
+  // Not budget_exceeded. Reusing that reason would be a lie about money — nothing was overspent; the ledger
+  // itself could not be read, so the amount spent is unknown and the request was never sent. Same sentence as
+  // the HTTP-code label because it is the same cause, and one cause reading two ways is how a person ends up
+  // fixing the wrong thing.
+  budget_ledger_unreadable: BUDGET_LEDGER_UNREADABLE_MESSAGE,
   // The request went out but its outcome was never confirmed (the server stopped in between). Retrying on the
   // user's behalf could create a second billed task for one scene, so the backend deliberately stops here and
   // leaves the decision to the person paying — this message has to say that plainly, not read as a transient

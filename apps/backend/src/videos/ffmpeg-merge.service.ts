@@ -134,6 +134,17 @@ export class FfmpegMergeEngine {
       if (stat.size <= 0) throw new MediaToolError("failed", "Final output is empty.");
       await fs.rename(temporaryFinal, finalPath);
     } finally { await fs.unlink(temporaryFinal).catch(() => undefined); }
+    // Only after the rename, and never on the way out of a failure.
+    //
+    // These are a cache, not an output: nothing reads them back, every merge rewrites them, and they cost a
+    // second full-size copy of the finished video in the person's own data folder — 12-13MB per Episode, on a
+    // machine that keeps every clip it has ever paid for. Deleting them once the final file exists loses
+    // nothing anyone can miss.
+    //
+    // 🔴 Placed outside the try on purpose. A failed merge leaves them exactly where they are, because then
+    // they stop being a cache and become the only record of what the run actually produced — the person is not
+    // losing something rebuildable, they are losing the way to see why it broke (Cowork Round 384).
+    await fs.rm(normalizedDirectory, { recursive: true, force: true }).catch(() => undefined);
   }
 
   /**

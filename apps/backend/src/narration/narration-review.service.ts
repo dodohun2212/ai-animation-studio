@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import {
@@ -21,7 +22,7 @@ import { ProviderSettingsService } from "../settings/provider-settings.service.j
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiTtsApi } from "./openai-narration-adapter.js";
-import { invalidNarrationRequest, narrationBudgetExceeded, narrationMissingText, narrationNotEnabled, narrationLocked, narrationProviderError, narrationStorageError } from "./narration-api.error.js";
+import { narrationBudgetLedgerUnreadable, invalidNarrationRequest, narrationBudgetExceeded, narrationMissingText, narrationNotEnabled, narrationLocked, narrationProviderError, narrationStorageError } from "./narration-api.error.js";
 import { computeSceneStaleness, sceneReferenceContext } from "../projects/scene-staleness.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
@@ -141,7 +142,7 @@ export class NarrationReviewService {
           await this.budget.record(project.project_id, "tts", succeeded, TTS_ESTIMATED_COST_USD);
         }
       } catch (error) {
-        if (error instanceof OpenAiBudgetExceededError) throw narrationBudgetExceeded(error.message);
+        if (isBudgetLedgerUnreadable(error)) throw narrationBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw narrationBudgetExceeded(error.message);
         if (error instanceof OpenAiAdapterError) throw narrationProviderError(error.category, error.message);
         throw narrationProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown);
       }

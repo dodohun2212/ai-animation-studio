@@ -5,6 +5,7 @@ import {
   type StartVideoGenerationRequest,
   type StartVideoGenerationResponse,
 } from "@ai-animation-studio/shared";
+import { BUDGET_LEDGER_UNREADABLE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "./budgetLedgerError.js";
 
 export class VideoSubmissionApiError extends Error {
   readonly code: string;
@@ -24,6 +25,7 @@ const SAFE_ERRORS: Record<string, string> = {
   VIDEO_SUBMISSION_NOT_ALLOWED: "영상 생성 요청은 모든 장면 이미지 승인과 영상 확인 대기 상태에서만 보낼 수 있습니다.",
   VIDEO_CONFIRMATION_STALE: "미리보기 내용이 그 사이에 변경되었습니다. 새로고침 후 다시 확인해 주세요.",
   VIDEO_REQUEST_ID_CONFLICT: "이전 요청과 내용이 달라 처리할 수 없습니다. 새로고침 후 다시 시도해 주세요.",
+  [BUDGET_LEDGER_UNREADABLE]: BUDGET_LEDGER_UNREADABLE_MESSAGE,
   VIDEO_BUDGET_EXCEEDED: "설정된 예산을 초과하여 전송할 수 없습니다.",
   VIDEO_CALL_LIMIT_EXCEEDED: "허용된 Provider 호출 횟수를 초과했습니다.",
 };

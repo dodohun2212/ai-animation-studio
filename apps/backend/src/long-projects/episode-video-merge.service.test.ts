@@ -17,11 +17,27 @@ import { LongProjectsService } from "./long-projects.service.js";
 let root: string | undefined;
 const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false };
 
-function runner(options: { invalidProbe?: boolean; unavailable?: boolean; noOutput?: boolean } = {}, calls: string[][] = []): MediaCommandRunner {
+/**
+ * Snapshots the subtitle files each ffmpeg call can see, at the moment it runs.
+ *
+ * The merge deletes `normalized/` once the final file exists — it is a cache, and a second full-size copy of
+ * every finished video is not something to leave in a person's data folder. Reading a .ass file after the merge
+ * depended on that debris surviving; this reads the same content at the only moment it is actually there.
+ */
+async function captureAss(target: string, into: Map<string, string>): Promise<void> {
+  const directory = path.dirname(target);
+  const names = await fs.readdir(directory).catch(() => [] as string[]);
+  for (const name of names.filter((item) => item.endsWith(".ass"))) {
+    into.set(name, await fs.readFile(path.join(directory, name), "utf8"));
+  }
+}
+
+function runner(options: { invalidProbe?: boolean; unavailable?: boolean; noOutput?: boolean } = {}, calls: string[][] = [], ass: Map<string, string> = new Map()): MediaCommandRunner {
   return async (arguments_) => {
     const args = [...arguments_]; calls.push(args);
     if (options.unavailable) throw new MediaToolError("unavailable", "not installed");
     if (args[0] === "ffprobe") return { stdout: JSON.stringify(options.invalidProbe ? { streams: [], format: { duration: "0" } } : { streams: [{ codec_type: "video" }], format: { duration: "5" } }), stderr: "" };
+    await captureAss(args.at(-1)!, ass);
     if (!options.noOutput) await fs.writeFile(args.at(-1)!, "rendered");
     return { stdout: "", stderr: "" };
   };
@@ -190,6 +206,7 @@ describe("EpisodeVideoMergeService", () => {
   });
 
   it("burns in a subtitle for a scene with narration text when subtitlesEnabled is on, independent of whether narration audio exists", async () => {
+    const assFiles = new Map<string, string>();
     const { projectsRoot } = await setup();
     // The pipeline is already past script_review by this point (setup() runs it all the way to videos_approved),
     // so scripts.update() would reject the edit — write the stored narration text directly, same as the "requires
@@ -202,12 +219,11 @@ describe("EpisodeVideoMergeService", () => {
     await projects.updateSettings("long", { settings: { ...settings, subtitlesEnabled: true } }); // narrationEnabled stays off — captions-only
 
     const calls: string[][] = [];
-    await new EpisodeVideoMergeService(projectsRoot, runner({}, calls)).merge("long", 1);
+    await new EpisodeVideoMergeService(projectsRoot, runner({}, calls, assFiles)).merge("long", 1);
     const normalizeCalls = calls.filter((args) => args[0] === "ffmpeg" && args.includes("-vf"));
     expect(normalizeCalls[0]!.find((arg) => arg.includes("subtitles="))).toBeDefined();
     expect(normalizeCalls[0]).toContain("anullsrc=channel_layout=stereo:sample_rate=48000"); // no audio was ever generated
-    const assContent = await fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "videos", "final", "normalized", "scene1.ass"), "utf8");
-    expect(assContent).toContain("장면 1 내레이션");
+    expect(assFiles.get("scene1.ass")).toContain("장면 1 내레이션");
   });
 
   it("contains no provider or network client", async () => {

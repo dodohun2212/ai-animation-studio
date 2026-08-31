@@ -1,7 +1,7 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { ApiError } from "@ai-animation-studio/shared";
 
-type StoryErrorCode = "INVALID_REQUEST" | "PROJECT_NOT_FOUND" | "STORY_PROMPT_STALE" | "STORY_PROMPT_STORAGE_ERROR" | "STORY_GENERATION_NOT_ALLOWED" | "STORY_GENERATION_FAILED" | "STORY_BUDGET_EXCEEDED" | "STORY_PROVIDER_ERROR" | "STORY_REGENERATION_NOT_ALLOWED";
+type StoryErrorCode = "INVALID_REQUEST" | "PROJECT_NOT_FOUND" | "STORY_PROMPT_STALE" | "STORY_PROMPT_STORAGE_ERROR" | "STORY_GENERATION_NOT_ALLOWED" | "STORY_GENERATION_FAILED" | "STORY_BUDGET_EXCEEDED" | "STORY_PROVIDER_ERROR" | "STORY_REGENERATION_NOT_ALLOWED" | "BUDGET_LEDGER_UNREADABLE";
 
 class StoryApiException extends HttpException {
   constructor(code: StoryErrorCode, message: string, status: HttpStatus, details?: Record<string, unknown>) {
@@ -26,3 +26,13 @@ export const storyProviderError = (category: string, message: string) =>
   new StoryApiException("STORY_PROVIDER_ERROR", message, HttpStatus.BAD_GATEWAY, { category });
 export const storyRegenerationNotAllowed = () =>
   new StoryApiException("STORY_REGENERATION_NOT_ALLOWED", "Story regeneration requires an existing Story and no generated scene images yet.", HttpStatus.CONFLICT);
+
+/**
+ * The spend ledger could not be read, so no paid request is sent.
+ *
+ * Distinct from an exceeded budget on purpose: nothing was overspent, nothing knows what was spent, and the
+ * place to go is a file rather than a limit. Every module sends this one code so the person reads one sentence
+ * (docs/06_DECISIONS.md D-036).
+ */
+export const storyBudgetLedgerUnreadable = () =>
+  new StoryApiException("BUDGET_LEDGER_UNREADABLE", "Monthly spend could not be read, so no paid request was sent.", HttpStatus.CONFLICT);

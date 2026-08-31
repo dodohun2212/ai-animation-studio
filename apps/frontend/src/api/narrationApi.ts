@@ -9,6 +9,7 @@ import {
   type StartNarrationGenerationRequest,
   type StartNarrationGenerationResponse,
 } from "@ai-animation-studio/shared";
+import { BUDGET_LEDGER_UNREADABLE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "./budgetLedgerError.js";
 
 export class NarrationApiError extends Error {
   readonly code: string;
@@ -34,6 +35,7 @@ const SAFE_ERRORS: Record<string, string> = {
   NARRATION_MISSING_TEXT: "이 장면에는 읽어줄 문장이 없어 음성을 만들 수 없습니다. 대본을 다시 만들어 주세요.",
   NARRATION_GENERATION_FAILED: "음성 파일을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.",
   NARRATION_STORAGE_ERROR: "음성 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+  [BUDGET_LEDGER_UNREADABLE]: BUDGET_LEDGER_UNREADABLE_MESSAGE,
   NARRATION_BUDGET_EXCEEDED: "이번 달 OpenAI 예산을 초과하여 요청을 보내지 않았습니다.",
   NARRATION_CONTENT_UNAVAILABLE: "요청한 장면의 음성 파일을 찾을 수 없습니다.",
 };

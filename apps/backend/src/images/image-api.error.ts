@@ -1,7 +1,7 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { ApiError } from "@ai-animation-studio/shared";
 
-type ImageErrorCode = "INVALID_REQUEST" | "IMAGE_GENERATION_NOT_ALLOWED" | "ASSET_MAPPING_REVIEW_REQUIRED" | "IMAGE_GENERATION_FAILED" | "IMAGE_STORAGE_ERROR" | "IMAGE_BUDGET_EXCEEDED" | "IMAGE_PROVIDER_ERROR" | "IMAGE_CONTENT_UNAVAILABLE";
+type ImageErrorCode = "INVALID_REQUEST" | "IMAGE_GENERATION_NOT_ALLOWED" | "ASSET_MAPPING_REVIEW_REQUIRED" | "IMAGE_GENERATION_FAILED" | "IMAGE_STORAGE_ERROR" | "IMAGE_BUDGET_EXCEEDED" | "IMAGE_PROVIDER_ERROR" | "IMAGE_CONTENT_UNAVAILABLE" | "BUDGET_LEDGER_UNREADABLE";
 
 class ImageApiException extends HttpException {
   constructor(code: ImageErrorCode, message: string, status: HttpStatus, details?: Record<string, unknown>) {
@@ -26,3 +26,13 @@ export const imageProviderError = (category: string, message: string) =>
   new ImageApiException("IMAGE_PROVIDER_ERROR", message, HttpStatus.BAD_GATEWAY, { category });
 export const imageContentUnavailable = () =>
   new ImageApiException("IMAGE_CONTENT_UNAVAILABLE", "The requested scene image is unavailable.", HttpStatus.NOT_FOUND);
+
+/**
+ * The spend ledger could not be read, so no paid request is sent.
+ *
+ * Distinct from an exceeded budget on purpose: nothing was overspent, nothing knows what was spent, and the
+ * place to go is a file rather than a limit. Every module sends this one code so the person reads one sentence
+ * (docs/06_DECISIONS.md D-036).
+ */
+export const imageBudgetLedgerUnreadable = () =>
+  new ImageApiException("BUDGET_LEDGER_UNREADABLE", "Monthly spend could not be read, so no paid request was sent.", HttpStatus.CONFLICT);

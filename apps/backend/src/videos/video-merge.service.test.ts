@@ -15,12 +15,13 @@ import { PLACEHOLDER_MP4 } from "./placeholder-clip.js";
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true }))); });
 
-function runner(options: { invalidProbe?: boolean; noOutput?: boolean; unavailable?: boolean } = {}, calls: string[][] = []): MediaCommandRunner {
+function runner(options: { invalidProbe?: boolean; noOutput?: boolean; unavailable?: boolean } = {}, calls: string[][] = [], ass: Map<string, string> = new Map()): MediaCommandRunner {
   return async (arguments_) => {
     const args = [...arguments_]; calls.push(args);
     if (options.unavailable) throw new MediaToolError("unavailable", "not installed");
     if (args[0] === "ffprobe") return { stdout: JSON.stringify(options.invalidProbe ? { streams: [], format: { duration: "0" } } : { streams: [{ codec_type: "video" }], format: { duration: "5.0" } }), stderr: "" };
     const output = args.at(-1)!;
+    await captureAss(output, ass);
     if (!options.noOutput) await fs.writeFile(output, Buffer.from("rendered"));
     return { stdout: "", stderr: "" };
   };
@@ -36,6 +37,21 @@ async function setup() {
   await Promise.all([1, 2, 3, 4, 5, 6].map((scene) => fs.writeFile(path.join(directory, `scene${scene}.mp4`), Buffer.from(`scene-${scene}`))));
   await fs.writeFile(path.join(projectsRoot, project.project_id, "generated_video_reviews.json"), JSON.stringify([1, 2, 3, 4, 5, 6].map((scene) => ({ scene_number: scene, status: "approved", updated_at: "2026-08-23T00:00:00.000Z" }))), "utf8");
   return { root, projectsRoot, projects };
+}
+
+/**
+ * Snapshots the subtitle files each ffmpeg call can see, at the moment it runs.
+ *
+ * The merge deletes `normalized/` once the final file exists — it is a cache, and a second full-size copy of
+ * every finished video is not something to leave in a person's data folder. Reading a .ass file after the merge
+ * depended on that debris surviving; this reads the same content at the only moment it is actually there.
+ */
+async function captureAss(target: string, into: Map<string, string>): Promise<void> {
+  const directory = path.dirname(target);
+  const names = await fs.readdir(directory).catch(() => [] as string[]);
+  for (const name of names.filter((item) => item.endsWith(".ass"))) {
+    into.set(name, await fs.readFile(path.join(directory, name), "utf8"));
+  }
 }
 
 describe("local FFmpeg video merge", () => {
@@ -178,6 +194,7 @@ describe("local FFmpeg video merge", () => {
   });
 
   it("burns in subtitles for every scene with narration text when subtitlesEnabled is on, independent of whether narration audio exists (captions-only mode)", async () => {
+    const assFiles = new Map<string, string>();
     const { projectsRoot, projects } = await setup();
     const narrationFile = path.join(projectsRoot, "video_merge", "narration", "scene1.mp3");
     await fs.mkdir(path.dirname(narrationFile), { recursive: true });
@@ -189,7 +206,7 @@ describe("local FFmpeg video merge", () => {
     await projects.save(project);
 
     const calls: string[][] = [];
-    await new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge");
+    await new LocalVideoMergeService(projects, projectsRoot, runner({}, calls, assFiles)).merge("video_merge");
     const normalizeCalls = calls.filter((args) => args[0] === "ffmpeg" && args.includes("-vf"));
     // Scene 1: audio + subtitle. Scene 2: subtitle only, no audio (the captions-only case). Scenes 3-6: neither (no narration text).
     expect(normalizeCalls[0]!.find((arg) => arg.includes("subtitles="))).toBeDefined();
@@ -199,8 +216,7 @@ describe("local FFmpeg video merge", () => {
     for (const call of normalizeCalls.slice(2)) {
       expect(call.find((arg) => arg.includes("subtitles="))).toBeUndefined();
     }
-    const assContent = await fs.readFile(path.join(projectsRoot, "video_merge", "videos", "final", "normalized", "scene2.ass"), "utf8");
-    expect(assContent).toContain("장면 2 내레이션");
+    expect(assFiles.get("scene2.ass")).toContain("장면 2 내레이션");
   });
 
   it("never fails the merge over a missing or empty narration file — that scene just falls back to silence", async () => {

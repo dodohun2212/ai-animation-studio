@@ -10,7 +10,8 @@ type NarrationErrorCode =
   | "NARRATION_BUDGET_EXCEEDED"
   | "NARRATION_PROVIDER_ERROR"
   | "NARRATION_CONTENT_UNAVAILABLE"
-  | "PROJECT_LOCKED";
+  | "PROJECT_LOCKED"
+  | "BUDGET_LEDGER_UNREADABLE";
 
 class NarrationApiException extends HttpException {
   constructor(code: NarrationErrorCode, message: string, status: HttpStatus, details?: Record<string, unknown>) {
@@ -43,3 +44,13 @@ export const narrationContentUnavailable = () =>
  */
 export const narrationLocked = () =>
   new NarrationApiException("PROJECT_LOCKED", "Narration audio is already being generated for this project.", HttpStatus.CONFLICT);
+
+/**
+ * The spend ledger could not be read, so no paid request is sent.
+ *
+ * Distinct from an exceeded budget on purpose: nothing was overspent, nothing knows what was spent, and the
+ * place to go is a file rather than a limit. Every module sends this one code so the person reads one sentence
+ * (docs/06_DECISIONS.md D-036).
+ */
+export const narrationBudgetLedgerUnreadable = () =>
+  new NarrationApiException("BUDGET_LEDGER_UNREADABLE", "Monthly spend could not be read, so no paid request was sent.", HttpStatus.CONFLICT);

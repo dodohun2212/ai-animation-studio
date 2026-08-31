@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
 import { existsSync } from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
@@ -20,7 +21,7 @@ import { generateLocalStory, type StoredStory } from "./story-generation.service
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_STORY_MODEL, OpenAiStoryAdapterError, callOpenAiStoryApi } from "./openai-story-adapter.js";
 import { describeAtmosphereAssets, describeCharacterCast, describeSceneReferenceAssets } from "./story-asset-metadata.js";
-import { invalidStoryRequest, storyBudgetExceeded, storyGenerationFailed, storyGenerationNotAllowed, storyPromptStale, storyProviderError, storyRegenerationNotAllowed, storyStorageError } from "./story-api.error.js";
+import { storyBudgetLedgerUnreadable, invalidStoryRequest, storyBudgetExceeded, storyGenerationFailed, storyGenerationNotAllowed, storyPromptStale, storyProviderError, storyRegenerationNotAllowed, storyStorageError } from "./story-api.error.js";
 
 /** The only states where a Story exists but no scene image has been generated for it yet — see RegenerateStoryPromptRequest's doc comment for why the cutoff is drawn there. */
 const REGENERATABLE_STATES: ReadonlySet<string> = new Set([WorkflowState.WaitingForAssetMappingReview, WorkflowState.AssetMappingApproved]);
@@ -228,7 +229,7 @@ export class StoryPromptService {
     } catch (error) {
       // Return to READY so the user can retry instead of being stuck in GENERATING_STORY forever.
       try { await this.projects.save({ ...generating, workflow_state: WorkflowState.Ready, updated_at: new Date().toISOString() }); } catch { /* best-effort recovery */ }
-      if (error instanceof OpenAiBudgetExceededError) throw storyBudgetExceeded(error.message);
+      if (isBudgetLedgerUnreadable(error)) throw storyBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw storyBudgetExceeded(error.message);
       if (error instanceof OpenAiStoryAdapterError) throw storyProviderError(error.category, error.message);
       throw storyGenerationFailed();
     }

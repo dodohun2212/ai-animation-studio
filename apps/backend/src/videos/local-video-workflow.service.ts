@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
 import { isPlaceholderClip, PLACEHOLDER_MP4 } from "./placeholder-clip.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -299,10 +300,20 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
         beforeSubmit: (scene, claimedAt) => this.claimSceneForSubmission(project.project_id, jobId, scene, claimedAt),
       });
     } catch (error) {
-      if (error instanceof RunwayBudgetExceededError) {
+      // Two refusals from the same gate, recorded as two reasons because they send the person to opposite
+      // places. `budget_exceeded` means the month's limit is used up; this one means nothing knows what the
+      // month has cost, the request never went out, and the fix is a file rather than a limit. Reusing the
+      // first reason would be a lie about money, which is the one thing this app must never be casual about.
+      //
+      // Only the reason is set here. This same failure is also swallowed when it arrives on the background
+      // timer rather than a poll — a separate problem, deliberately not folded in (Cowork Round 384).
+      const reason = isBudgetLedgerUnreadable(error) ? "budget_ledger_unreadable"
+        : error instanceof RunwayBudgetExceededError ? "budget_exceeded"
+          : undefined;
+      if (reason) {
         const created = records.find((record) => record.status === "created");
         if (!created) return project;
-        const updated = this.replaceRecords(project, [{ ...created, status: "failed", error: "budget_exceeded" }]);
+        const updated = this.replaceRecords(project, [{ ...created, status: "failed", error: reason }]);
         updated.updated_at = new Date().toISOString();
         await this.projects.save(updated).catch(() => undefined);
         this.clearTimer(jobId);

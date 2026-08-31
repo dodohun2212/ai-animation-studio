@@ -2,15 +2,32 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { FfmpegMergeEngine, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
+import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
 import { escapeForFfmpegFilterPath } from "./subtitle-file.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true }))); });
 
-function runner(calls: string[][]): MediaCommandRunner {
+/**
+ * Snapshots the subtitle files each ffmpeg call can see, at the moment it runs.
+ *
+ * The merge deletes `normalized/` once the final file exists — it is a cache, and a second full-size copy of
+ * every finished video is not something to leave in a person's data folder. These tests were reading the .ass
+ * files out of that directory *after* the merge, so they depended on debris surviving rather than on what the
+ * merge did. Same assertions, read at the only moment they are actually true.
+ */
+async function captureAss(target: string, into: Map<string, string>): Promise<void> {
+  const directory = path.dirname(target);
+  const names = await fs.readdir(directory).catch(() => [] as string[]);
+  for (const name of names.filter((item) => item.endsWith(".ass"))) {
+    into.set(name, await fs.readFile(path.join(directory, name), "utf8"));
+  }
+}
+
+function runner(calls: string[][], ass: Map<string, string> = new Map()): MediaCommandRunner {
   return async (arguments_) => {
     const args = [...arguments_]; calls.push(args);
+    await captureAss(args.at(-1)!, ass);
     await fs.writeFile(args.at(-1)!, Buffer.from("rendered"));
     return { stdout: "", stderr: "" };
   };
@@ -60,25 +77,61 @@ describe("FfmpegMergeEngine.merge narration audio mixing", () => {
 });
 
 describe("FfmpegMergeEngine.merge subtitle burn-in", () => {
+  /**
+   * The normalized clips are a cache, and a failed merge is the one time they are not.
+   *
+   * Nothing reads them back and every merge rewrites them, so after a successful run they are a second
+   * full-size copy of the finished video sitting in the person's own data folder — 12-13MB per Episode, on a
+   * machine that also keeps every clip it has ever paid for. After a failed run they are the only record of
+   * what the run actually produced: deleting them there would not cost something rebuildable, it would cost
+   * the way to see why it broke.
+   *
+   * Asserted as a pair because either half alone is satisfied by doing nothing, or by always deleting.
+   */
+  it("clears the normalized cache once the final file exists", async () => {
+    const { root, finalPath, fontsDir } = await setup();
+    await new FfmpegMergeEngine(runner([]), fontsDir).merge([{ clip: "scene1.mp4" }, { clip: "scene2.mp4" }], 5, finalPath, "9:16");
+
+    await expect(fs.stat(finalPath)).resolves.toBeTruthy();
+    await expect(fs.stat(path.join(root, "videos", "final", "normalized"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("keeps the normalized cache when the merge failed, because that is what shows why", async () => {
+    const { root, finalPath, fontsDir } = await setup();
+    const failing: MediaCommandRunner = async (args) => {
+      const list = [...args];
+      if (list.includes("concat")) throw new MediaToolError("failed", "concat failed");
+      await fs.writeFile(list.at(-1)!, Buffer.from("rendered"));
+      return { stdout: "", stderr: "" };
+    };
+
+    // Asserted as the merge's own error, not merely "something threw": the first version of this test had no
+    // MediaToolError import at all and passed on the ReferenceError that produced.
+    await expect(new FfmpegMergeEngine(failing, fontsDir).merge([{ clip: "scene1.mp4" }], 5, finalPath, "9:16")).rejects.toBeInstanceOf(MediaToolError);
+
+    await expect(fs.stat(path.join(root, "videos", "final", "normalized", "scene1.mp4"))).resolves.toBeTruthy();
+    await expect(fs.stat(finalPath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("writes a scene ASS file and appends the subtitles filter only for a scene with subtitle text", async () => {
     const calls: string[][] = [];
     const { root, finalPath, fontsDir } = await setup();
-    const engine = new FfmpegMergeEngine(runner(calls), fontsDir);
+    const assFiles = new Map<string, string>();
+    const engine = new FfmpegMergeEngine(runner(calls, assFiles), fontsDir);
     const scenes: MergeSceneInput[] = [
       { clip: "scene1.mp4", narrationAudioPath: "scene1_narration.mp3", subtitleText: "첫 번째 문장입니다." },
       { clip: "scene2.mp4" },
     ];
     await engine.merge(scenes, 5, finalPath, "9:16");
 
-    const assPath = path.join(root, "videos", "final", "normalized", "scene1.ass");
-    const ass = await fs.readFile(assPath, "utf8");
+    const ass = assFiles.get("scene1.ass")!;
     expect(ass).toContain("첫 번째 문장입니다.");
     expect(ass).toContain("PlayResX: 1080");
 
     const normalizeCalls = calls.filter((args) => args[0] === "ffmpeg" && args.includes("-vf"));
     expect(normalizeCalls[0]!.find((arg) => arg.includes("subtitles="))).toBeDefined();
     expect(normalizeCalls[1]!.find((arg) => arg.includes("subtitles="))).toBeUndefined();
-    await expect(fs.stat(path.join(root, "videos", "final", "normalized", "scene2.ass"))).rejects.toThrow();
+    expect(assFiles.has("scene2.ass")).toBe(false);
   });
 
   it("passes the fonts directory to the subtitles filter's fontsdir option", async () => {
