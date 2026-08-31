@@ -55,6 +55,15 @@ type VideoRecord = Record<string, unknown> & {
 };
 type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved"; updated_at: string };
 
+/**
+ * The video is here and the money is gone; only the note of it is missing.
+ *
+ * Phrased as something to check rather than something to retry, because retrying is the one action that makes it
+ * worse: it buys the same scene a second time and leaves the month short by two. The person cannot fix the
+ * ledger from this screen, so the warning names the file.
+ */
+const spendUnrecordedWarning = (scene: SceneNumber) => `${scene}번 장면의 영상 비용을 사용 기록(runway_budget_usage.json)에 적지 못했습니다. 영상은 그대로 있고, 이번 달 사용액 합계만 실제보다 적게 잡혀 있습니다. 다시 만들지 마시고 기록 파일을 확인해 주세요.`;
+
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const sceneNumber = (value: unknown): SceneNumber | undefined => typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= MAX_SCENE_COUNT ? value as SceneNumber : undefined;
 const sceneNumberFromParam = (raw: string): SceneNumber | undefined => {
@@ -194,8 +203,16 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       : failedSceneNumbers.length > 0 ? "failed"
       : allDone && project.workflow_state !== WorkflowState.GeneratingVideos ? "succeeded"
         : current || allDone ? "running" : "created";
-    // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.
-    const retryEstimate = records[0]?.execution_mode === "runway" ? await this.retryEstimate() : undefined;
+    // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current
+    // state. So an unreadable ledger costs this response a cost line rather than the whole response: it is the
+    // only thing here that touches the ledger, and it used to take the entire progress poll down with it — the
+    // one screen that has to carry "the video is here, but the month's total is short" would answer a bare 500
+    // and say nothing at all. The field is already optional (a non-Runway job has none), so every screen that
+    // reads it already handles its absence. Retrying is still refused where it matters, at `preflight`, which
+    // reads the same file and throws (docs/06_DECISIONS.md D-036: what runs on top of this number is display).
+    const retryEstimate = records[0]?.execution_mode === "runway"
+      ? await this.retryEstimate().catch((error: unknown) => { if (isBudgetLedgerUnreadable(error)) return undefined; throw error; })
+      : undefined;
     return {
       jobId, status, ...(current ? { currentSceneNumber: current } : {}), completedSceneNumbers, failedSceneNumbers,
       sceneNumbers: records.map((record) => record.scene_number),
@@ -305,8 +322,11 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       // month has cost, the request never went out, and the fix is a file rather than a limit. Reusing the
       // first reason would be a lie about money, which is the one thing this app must never be casual about.
       //
-      // Only the reason is set here. This same failure is also swallowed when it arrives on the background
-      // timer rather than a poll — a separate problem, deliberately not folded in (Cowork Round 384).
+      // What reaches this catch is the *preflight* refusal — the one that happens before a scene is submitted,
+      // where nothing has been bought yet and failing the scene is the honest outcome. A ledger failure on the
+      // paths that run *after* Runway was paid no longer arrives here at all: it comes back as the result it
+      // always was, carrying `spendUnrecorded`, because throwing there discarded a video the person had already
+      // paid for (runway-workflow-support.ts's `spendUnrecorded`).
       const reason = isBudgetLedgerUnreadable(error) ? "budget_ledger_unreadable"
         : error instanceof RunwayBudgetExceededError ? "budget_exceeded"
           : undefined;
@@ -367,6 +387,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     }
     if (result.kind === "failed") {
       const updated = this.replaceRecords(project, [{ ...record, status: "failed", error: result.error }]);
+      if (result.spendUnrecorded) updated.warnings = [...updated.warnings, spendUnrecordedWarning(result.sceneNumber)];
       updated.updated_at = nowIso;
       await this.projects.save(updated);
       this.clearTimer(jobId);
@@ -380,6 +401,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     const paths = [...updated.generated_video_paths]; while (paths.length < jobRecords.length) paths.push("");
     paths[result.sceneNumber - 1] = this.file(project.project_id, result.sceneNumber);
     updated.generated_video_paths = paths; updated.updated_at = nowIso;
+    if (result.spendUnrecorded) updated.warnings = [...updated.warnings, spendUnrecordedWarning(result.sceneNumber)];
 
     if (this.records(updated, jobId).every((item) => item.status === "succeeded")) {
       updated.workflow_state = WorkflowState.ReviewingVideos;

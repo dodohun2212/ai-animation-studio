@@ -577,4 +577,48 @@ describe("real Runway video workflow", () => {
     expect(await deps.budget.spentThisMonth(now)).toBeCloseTo(0.25, 8);
     workflow.onModuleDestroy();
   });
+
+  it("keeps the video the month was already charged for when the spend ledger goes unreadable mid-job, and says the total is short", async () => {
+    // The whole reason this is an end-to-end test and not a unit one: the loss only appears when the pieces run
+    // together. Scene 1 is running on Runway, the ledger becomes unreadable, the task then succeeds — the bytes
+    // are downloaded (paid for), the ledger write throws, and everything above it used to unwind. The scene
+    // stayed "running", so the background timer polled again, downloaded again, threw again. A finished, billed
+    // video was re-fetched and discarded every five seconds, and the screen said "생성 중" the whole time.
+    const deps = await setupWithConnectedRunway();
+    const workflow = newWorkflow(deps);
+    const fetchMock = runwayFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+
+    await workflow.run("video_workflow", deps.accepted.jobId); // scene 1 submitted while the ledger was fine
+    await fs.writeFile(path.join(deps.root, "runway_budget_usage.json"), "{ this is not the ledger");
+
+    // Two polls: this mock answers RUNNING on a task's first check and SUCCEEDED after, matching Runway's own
+    // habit of never resolving on the very first poll.
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    await workflow.getProgress("video_workflow", deps.accepted.jobId);
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    const progress = await workflow.getProgress("video_workflow", deps.accepted.jobId);
+
+    // The video is kept, on disk, in the record — the money bought something and it is still there.
+    const project = await deps.projects.findById("video_workflow");
+    const records = project.video_generation_records as Array<Record<string, unknown>>;
+    expect(records.find((record) => record.scene_number === 1)!.status).toBe("succeeded");
+    expect(await fs.readFile(path.join(deps.projectsRoot, "video_workflow", "videos", "runway", "scene1.mp4"), "utf8")).toBe("fake-mp4-bytes");
+
+    // And the person is told what the ledger now does not know, in the one place they are looking.
+    expect(project.warnings.some((warning) => warning.includes("1번 장면") && warning.includes("runway_budget_usage.json"))).toBe(true);
+
+    // Scene 2 is refused rather than bought — preflight reads the same unreadable file and will not spend on top
+    // of a total it cannot see. That is the honest split: what was already paid for is kept, what is not yet
+    // paid for does not happen.
+    expect(records.find((record) => record.scene_number === 2)!.error).toBe("budget_ledger_unreadable");
+    expect(progress.status).toBe("failed");
+    // The poll itself survives. It reads the ledger only for the retry cost line, and losing that line is the
+    // cost of an unreadable ledger — losing the response would take the warning above with it.
+    expect(progress.retryEstimate).toBeUndefined();
+    workflow.onModuleDestroy();
+  });
+
 });

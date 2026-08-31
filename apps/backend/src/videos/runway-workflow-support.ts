@@ -71,10 +71,45 @@ export type RunwayAdvanceResult =
   /** Our own status-check attempt failed (network/server, after the adapter's own retries) — NOT the same as Runway
    *  reporting the task itself failed. State must stay untouched so the next check tries again. */
   | { kind: "check-error"; sceneNumber: SceneNumber }
-  | { kind: "succeeded"; sceneNumber: SceneNumber; bytes: Buffer }
+  | { kind: "succeeded"; sceneNumber: SceneNumber; bytes: Buffer; spendUnrecorded?: true }
   /** Runway explicitly reported FAILED/CANCELLED, the task exceeded RUNWAY_TASK_TIMEOUT_SECONDS, or the succeeded
    *  response had no usable output — the only cases that should ever stop the pipeline at this scene. */
-  | { kind: "failed"; sceneNumber: SceneNumber; error: string };
+  | { kind: "failed"; sceneNumber: SceneNumber; error: string; spendUnrecorded?: true };
+
+/**
+ * This scene was paid for and the ledger does not know it — the outcome above still stands.
+ *
+ * Every `record` call below runs *after* Runway has been paid: a task finished, failed, or ran past the timeout.
+ * The spend is a fact whether or not we manage to write it down, so a throw here would destroy the very thing the
+ * money bought. Measured: with the ledger unreadable while a scene was running, the succeeded branch threw, the
+ * downloaded video was dropped, and the background timer re-polled, re-downloaded and re-dropped it on every tick
+ * — forever, with the screen still saying the job was running.
+ *
+ * The two `.catch(() => undefined)`s this replaces made the opposite mistake: they kept the outcome and lost the
+ * fact silently, so the month's total quietly ran short with nobody told.
+ *
+ * Nothing new is bought on the strength of this. `preflight` reads the same ledger and still refuses
+ * (RunwayBudget.load — docs/06_DECISIONS.md D-036); this only decides what happens to work already done.
+ *
+ * A cost of 0 is not a spend and never raises the flag: a submission Runway rejected outright cost nothing to
+ * under-count, and a warning there would be noise stacked on the failure the person is already looking at.
+ */
+async function spendUnrecorded(deps: RunwayAdvanceDeps, sceneNumber: SceneNumber, succeeded: boolean, actualCostUsd?: number): Promise<boolean> {
+  try {
+    // The trailing pair is passed only when a cost is actually being overridden. Handing `record` an explicit
+    // `undefined` would change the call's shape for every existing caller and quietly let its own default for
+    // `now` go unexercised.
+    await (actualCostUsd === undefined
+      ? deps.budget.record(deps.projectId, sceneNumber, deps.apiType, succeeded, deps.estimatedCostPerSceneUsd)
+      : deps.budget.record(deps.projectId, sceneNumber, deps.apiType, succeeded, deps.estimatedCostPerSceneUsd, new Date(), actualCostUsd));
+    return false;
+  } catch {
+    return actualCostUsd !== 0;
+  }
+}
+
+/** Spreads into a result literal, so a scene that cost money the ledger missed carries that out to the caller. */
+const unrecorded = (flag: boolean) => (flag ? { spendUnrecorded: true } as const : {});
 
 /**
  * Advances one Runway scene by exactly one step: either checks the currently-running scene's task once (throttled
@@ -108,8 +143,8 @@ export async function advanceRunwayScene(
     if (running.submittedAt) {
       const elapsedSeconds = (nowDate.getTime() - new Date(running.submittedAt).getTime()) / 1000;
       if (elapsedSeconds > taskTimeoutSeconds) {
-        await deps.budget.record(deps.projectId, running.sceneNumber, deps.apiType, false, deps.estimatedCostPerSceneUsd).catch(() => undefined);
-        return { kind: "failed", sceneNumber: running.sceneNumber, error: "timeout" };
+        const missed = await spendUnrecorded(deps, running.sceneNumber, false);
+        return { kind: "failed", sceneNumber: running.sceneNumber, error: "timeout", ...unrecorded(missed) };
       }
     }
     if (running.lastCheckedAt) {
@@ -127,8 +162,8 @@ export async function advanceRunwayScene(
     if (task.status === "SUCCEEDED") {
       const url = task.outputUrls[0];
       if (!url) {
-        await deps.budget.record(deps.projectId, running.sceneNumber, deps.apiType, false, deps.estimatedCostPerSceneUsd);
-        return { kind: "failed", sceneNumber: running.sceneNumber, error: "no_output" };
+        const missed = await spendUnrecorded(deps, running.sceneNumber, false);
+        return { kind: "failed", sceneNumber: running.sceneNumber, error: "no_output", ...unrecorded(missed) };
       }
       let bytes: Buffer;
       try {
@@ -137,12 +172,12 @@ export async function advanceRunwayScene(
         // The task itself succeeded on Runway's side; only our download attempt failed. Try again next check.
         return { kind: "check-error", sceneNumber: running.sceneNumber };
       }
-      await deps.budget.record(deps.projectId, running.sceneNumber, deps.apiType, true, deps.estimatedCostPerSceneUsd);
-      return { kind: "succeeded", sceneNumber: running.sceneNumber, bytes };
+      const missed = await spendUnrecorded(deps, running.sceneNumber, true);
+      return { kind: "succeeded", sceneNumber: running.sceneNumber, bytes, ...unrecorded(missed) };
     }
     if (task.status === "FAILED" || task.status === "CANCELLED") {
-      await deps.budget.record(deps.projectId, running.sceneNumber, deps.apiType, false, deps.estimatedCostPerSceneUsd);
-      return { kind: "failed", sceneNumber: running.sceneNumber, error: task.failure || task.status };
+      const missed = await spendUnrecorded(deps, running.sceneNumber, false);
+      return { kind: "failed", sceneNumber: running.sceneNumber, error: task.failure || task.status, ...unrecorded(missed) };
     }
     return { kind: "still-running", sceneNumber: running.sceneNumber };
   }
@@ -158,8 +193,8 @@ export async function advanceRunwayScene(
     // failure path here — do NOT resubmit automatically; surface it and let the user check their Runway dashboard
     // first. actualCostUsd is left at the estimate (not 0): a task may really have been created and billed, and
     // the ledger under-counting real spend is exactly the gap this closes (docs/06_DECISIONS.md D-005).
-    await deps.budget.record(deps.projectId, submitting.sceneNumber, deps.apiType, false, deps.estimatedCostPerSceneUsd).catch(() => undefined);
-    return { kind: "failed", sceneNumber: submitting.sceneNumber, error: "submit_interrupted" };
+    const missed = await spendUnrecorded(deps, submitting.sceneNumber, false);
+    return { kind: "failed", sceneNumber: submitting.sceneNumber, error: "submit_interrupted", ...unrecorded(missed) };
   }
 
   const next = states.find((state) => state.status === "created");
@@ -183,12 +218,15 @@ export async function advanceRunwayScene(
     // like every other failure path here — otherwise it would propagate uncaught out of advanceRunwayScene and
     // the scene would silently stay "created" forever with nothing for the user to act on. No task was ever
     // created, so nothing was ever billed — actualCostUsd 0 keeps the failure visible without eating the budget.
-    await deps.budget.record(deps.projectId, next.sceneNumber, deps.apiType, false, deps.estimatedCostPerSceneUsd, new Date(), 0).catch(() => undefined);
+    // Carried out like every other path even though a cost of 0 can never raise it, so the "0 is not a spend"
+    // rule is a live decision here rather than a claim in a comment. Dropping this value on the floor left that
+    // rule unmeasured: an injection that made every failed write count as an unrecorded spend stayed green.
+    const missed = await spendUnrecorded(deps, next.sceneNumber, false, 0);
     const code = error instanceof RunwayAdapterError ? error.category : "unknown";
     // `detail`, when Runway's rejected response carried one, is never shown to the user — it only makes the
     // persisted record diagnosable without reproducing the paid call (see RunwayAdapterError's doc comment).
     const detail = error instanceof RunwayAdapterError ? error.detail : undefined;
-    return { kind: "failed", sceneNumber: next.sceneNumber, error: detail ? `${code}: ${detail}` : code };
+    return { kind: "failed", sceneNumber: next.sceneNumber, error: detail ? `${code}: ${detail}` : code, ...unrecorded(missed) };
   }
   return { kind: "submitted", sceneNumber: next.sceneNumber, taskId, submittedAt: now().toISOString() };
 }

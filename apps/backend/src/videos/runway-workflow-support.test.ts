@@ -237,4 +237,45 @@ describe("advanceRunwayScene", () => {
     expect(result).toEqual({ kind: "unchanged" });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+
+  it("hands back the video Runway already charged for even when the spend cannot be written down", async () => {
+    // The money is gone before this line runs: Runway finished the task and we downloaded the output. Throwing
+    // here used to drop those bytes, and the caller's background timer then re-polled, re-downloaded and
+    // re-dropped them on every tick — forever, with the screen still saying the job was running. The outcome is
+    // reported; only the note of it is missing, and that is what `spendUnrecorded` carries out.
+    const fetchImpl = vi.fn(async (url: string) => (String(url).includes("/v1/tasks/")
+      ? jsonResponse(200, { id: "task-1", status: "SUCCEEDED", output: ["https://cdn.runway/task-1.mp4"] })
+      : binaryResponse(Buffer.from("paid-mp4-bytes"))));
+    const budget = { preflight: vi.fn().mockResolvedValue(undefined), record: vi.fn().mockRejectedValue(new Error("ledger unreadable")) };
+    const result = await advanceRunwayScene(sixScenes({ 1: { status: "running", taskId: "task-1" } }), input, {
+      apiSecret: "secret", projectId: "p1", apiType: "video", estimatedCostPerSceneUsd: 0.25,
+      budget, adapterOptions: { fetchImpl: fetchImpl as unknown as typeof fetch, sleep: noSleep },
+    });
+    expect(result).toMatchObject({ kind: "succeeded", sceneNumber: 1, spendUnrecorded: true });
+    expect((result as { bytes: Buffer }).bytes.toString()).toBe("paid-mp4-bytes");
+  });
+
+  it("still reports Runway's own failure when the ledger refuses that write too, and says the spend went unrecorded", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1", status: "FAILED", failure: "content policy violation" }));
+    const budget = { preflight: vi.fn().mockResolvedValue(undefined), record: vi.fn().mockRejectedValue(new Error("ledger unreadable")) };
+    const result = await advanceRunwayScene(sixScenes({ 1: { status: "running", taskId: "task-1" } }), input, {
+      apiSecret: "secret", projectId: "p1", apiType: "video", estimatedCostPerSceneUsd: 0.25,
+      budget, adapterOptions: { fetchImpl, sleep: noSleep },
+    });
+    expect(result).toEqual({ kind: "failed", sceneNumber: 1, error: "content policy violation", spendUnrecorded: true });
+  });
+
+  it("does not call a rejected submission an unrecorded spend — nothing was bought, so there is nothing to be short by", async () => {
+    // The counterpart that keeps the flag meaning one thing. A 4xx before any task existed is recorded at cost 0
+    // (see RunwayBudget.record); if an unwritable ledger raised the flag here, the person would get a warning
+    // about money the month never spent, stacked on top of the failure they are already looking at.
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(401, { error: "invalid api key" }));
+    const budget = { preflight: vi.fn().mockResolvedValue(undefined), record: vi.fn().mockRejectedValue(new Error("ledger unreadable")) };
+    const result = await advanceRunwayScene(sixScenes(), input, {
+      apiSecret: "bad-secret", projectId: "p1", apiType: "video", estimatedCostPerSceneUsd: 0.25,
+      budget, adapterOptions: { fetchImpl, sleep: noSleep, maxRetries: 0 },
+    });
+    expect(result).toEqual({ kind: "failed", sceneNumber: 1, error: "authentication: invalid api key" });
+  });
+
 });
