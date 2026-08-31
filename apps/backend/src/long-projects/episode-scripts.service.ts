@@ -1,4 +1,6 @@
 import * as fs from "node:fs/promises";
+import { OPENAI_LEDGER_FILE, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
+import { persistEpisodeWarning } from "./episode-warnings.js";
 import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
@@ -287,6 +289,8 @@ export class EpisodeScriptsService {
 
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     let script: LongEpisodeScript; let historyEntry: Record<string, unknown>;
+    /** The money is gone and the ledger does not know — attached to the Episode that this call is about to save. */
+    let spendUnrecorded = false;
     if (apiKey && this.budget) {
       const context = await this.buildContext(id, outline, stored);
       const clipDurationSeconds = stored.duration_seconds / stored.scene_count;
@@ -298,7 +302,12 @@ export class EpisodeScriptsService {
           const result = await callOpenAiStoryApi(apiKey, prompt, { sceneCount: stored.scene_count });
           script = this.parseScript(result.story, stored.scene_count);
           succeeded = true;
-        } finally { await this.budget.record(id, "episode_story", succeeded, STORY_ESTIMATED_COST_USD); }
+        } finally {
+          // `recordSpend`, not a bare await: this is a `finally` around a paid call, so a throw here discards
+          // the script OpenAI was already paid for — the thing every later step is built on — and, on the
+          // failure path, replaces the provider's real error (docs/06_DECISIONS.md D-037).
+          spendUnrecorded = await recordSpend(() => this.budget!.record(id, "episode_story", succeeded, STORY_ESTIMATED_COST_USD));
+        }
       } catch (error) {
         if (isBudgetLedgerUnreadable(error)) throw longBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw longEpisodeScriptBudgetExceeded(error.message);
         if (error instanceof OpenAiAdapterError) throw longEpisodeScriptProviderError(error.category, error.message);
@@ -314,6 +323,13 @@ export class EpisodeScriptsService {
     stored.script_history.push(historyEntry);
     stored.script_revision += 1; stored.approved = false; stored.state = "script_review"; stored.updated_at = new Date().toISOString();
     stored.last_script_request_id = userRequestId;
+    // Attached before the save that persists everything else about this generation. The order matters: this
+    // writes the outline row's warning first, and `save()` then re-reads that row from disk to stamp the new
+    // status onto it, so the warning survives rather than being written and immediately overwritten.
+    if (spendUnrecorded) {
+      const files = this.files(id, number);
+      await persistEpisodeWarning({ project: files.episodeProject, outlines: files.outlines }, number, stored as unknown as Record<string, unknown>, spendUnrecordedWarning(`${number}화 대본 생성`, OPENAI_LEDGER_FILE));
+    }
     return { episode: await this.save(id, outline, stored) };
   }
   async update(projectId: string, number: number, request: UpdateLongEpisodeScriptRequest): Promise<UpdateLongEpisodeScriptResponse> { const id = projectId.trim(); const outline = await this.outline(id, number); const stored = await this.stored(id, outline); if (stored.state !== "script_review" || !Object.keys(stored.script).length) throw longEpisodeScriptNotAllowed(); const script = this.parseScript(request?.script, stored.scene_count, longInvalidRequest); stored.script_history.push({ created_at: new Date().toISOString(), source: "before_user_edit", script: stored.script }); stored.script = this.storedScript(script); stored.script_revision += 1; stored.approved = false; stored.updated_at = new Date().toISOString(); return { episode: await this.save(id, outline, stored) }; }

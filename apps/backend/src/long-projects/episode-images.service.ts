@@ -1,5 +1,6 @@
 import { PLACEHOLDER_PNG } from "../images/placeholder-image.js";
-import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
+import { persistEpisodeWarning } from "./episode-warnings.js";
+import { OPENAI_LEDGER_FILE, isBudgetLedgerUnreadable, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -272,6 +273,9 @@ export class EpisodeImagesService {
     const referenceSources = new Map<SceneNumber, string[]>();
     // What each scene's image was actually generated from, so a later script edit can be seen rather than guessed at.
     const generatedPrompts = new Map<SceneNumber, string>();
+    /** Scenes whose paid call landed but whose cost could not be written down — providers/budget-ledger.ts. */
+    const unrecordedScenes: SceneNumber[] = [];
+    const noteUnrecorded = async () => { if (unrecordedScenes.length > 0) await persistEpisodeWarning(this.files(id, number), number, episode, spendUnrecordedWarning(`${unrecordedScenes.join(", ")}번 장면 이미지 생성`, OPENAI_LEDGER_FILE)); };
     try {
       await fs.mkdir(this.files(id, number).images, { recursive: true });
       await this.saveContinuityMetadata(id, number);
@@ -292,7 +296,12 @@ export class EpisodeImagesService {
           try {
             const result = references.images.length > 0 ? await callOpenAiImageEditApi(apiKey, prompt, references.images, { size }) : await callOpenAiImageApi(apiKey, prompt, { size });
             bytes = result.bytes; succeeded = true;
-          } finally { await this.budget.record(id, "image", succeeded, IMAGE_ESTIMATED_COST_USD); }
+          } finally {
+          // `recordSpend`, not a bare await: this is a `finally` around a paid call, so a throw here discards
+          // what OpenAI was already paid for and, on the failure path, replaces the provider's real error
+          // (providers/budget-ledger.ts, docs/06_DECISIONS.md D-037).
+            if (await recordSpend(() => this.budget!.record(id, "image", succeeded, IMAGE_ESTIMATED_COST_USD))) unrecordedScenes.push(scene);
+          }
         }
         await this.writeImage(file, bytes); if (!await this.validImage(file)) throw new Error("invalid image"); generated.push(scene);
       }
@@ -310,9 +319,14 @@ export class EpisodeImagesService {
         await this.saveReviews(id, number, reviews);
       }
       await this.indexAssets(id, number, episode);
+    // Said once for the whole run, not once per scene, and on both ways out: a ledger that breaks mid-run stops
+    // the next scene at its own preflight, so the run leaves through the catch above and the happy path never
+    // runs. Without it, everything bought before the break goes unmentioned.
+      await noteUnrecorded();
       episode.state = "images_ready"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode);
       episode.state = "images_review"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode);
     } catch (error) {
+      await noteUnrecorded();
       episode.state = "asset_mapping_approved"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode).catch(() => undefined);
       if (isBudgetLedgerUnreadable(error)) throw longBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw longEpisodeImagesBudgetExceeded(error.message);
       if (error instanceof OpenAiAdapterError) throw longEpisodeImagesProviderError(error.category, error.message);
@@ -320,7 +334,7 @@ export class EpisodeImagesService {
       throw longStorageError();
     }
     // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.
-    const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, generated.length * IMAGE_ESTIMATED_COST_USD) : undefined;
+    const budget = apiKey && this.budget && unrecordedScenes.length === 0 ? await budgetPreviewFor(this.budget, generated.length * IMAGE_ESTIMATED_COST_USD) : undefined;
     return { episode: this.detail(episode), generatedSceneNumbers: generated, reusedSceneNumbers: reused, ...(budget ? { budget } : {}) };
   }
   /**
@@ -431,6 +445,8 @@ export class EpisodeImagesService {
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     let regenerated: Buffer = PNG;
     let retryEstimate: RegenerateLongEpisodeImageReviewResponse["retryEstimate"];
+    /** The money is gone and the ledger does not know — carried to the warning and past the estimate below. */
+    let spendUnrecorded = false;
     let referenceOmission: { references_used_count: number; references_omitted_count: number } | undefined;
     let generatedPrompt: string | undefined;
     let generatedSources: string[] | undefined;
@@ -456,14 +472,22 @@ ${additionalInstruction}` : basePrompt;
         try {
           const result = references.images.length > 0 ? await callOpenAiImageEditApi(apiKey, prompt, references.images, { size }) : await callOpenAiImageApi(apiKey, prompt, { size });
           regenerated = result.bytes; succeeded = true;
-        } finally { await this.budget.record(id, "image", succeeded, IMAGE_ESTIMATED_COST_USD); }
+        } finally {
+          // `recordSpend`, not a bare await: this is a `finally` around a paid call, so a throw here discards
+          // what OpenAI was already paid for and, on the failure path, replaces the provider's real error
+          // (providers/budget-ledger.ts, docs/06_DECISIONS.md D-037).
+          spendUnrecorded = await recordSpend(() => this.budget!.record(id, "image", succeeded, IMAGE_ESTIMATED_COST_USD));
+        }
       } catch (error) {
         if (isBudgetLedgerUnreadable(error)) throw longBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw longEpisodeImagesBudgetExceeded(error.message);
         if (error instanceof OpenAiAdapterError) throw longEpisodeImagesProviderError(error.category, error.message);
         throw longEpisodeImagesProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown);
       }
-      // Read-only, computed after the fact: reflects the ledger's state right after this regeneration's own record().
-      retryEstimate = { perSceneCostUsd: IMAGE_ESTIMATED_COST_USD, budget: await budgetPreviewFor(this.budget, IMAGE_ESTIMATED_COST_USD) };
+      // Read-only, computed after the fact. Skipped when the record could not be written: it reads the same
+      // file that just refused a write, and letting it throw would take the response — and the image just paid
+      // for — with it. The field is already optional.
+      if (!spendUnrecorded) retryEstimate = { perSceneCostUsd: IMAGE_ESTIMATED_COST_USD, budget: await budgetPreviewFor(this.budget, IMAGE_ESTIMATED_COST_USD) };
+      if (spendUnrecorded) await persistEpisodeWarning(this.files(id, number), number, episode, spendUnrecordedWarning(`${scene}번 장면 이미지 재생성`, OPENAI_LEDGER_FILE));
     }
 
     const originals = path.join(this.files(id, number).images, "originals"); let archive = "";

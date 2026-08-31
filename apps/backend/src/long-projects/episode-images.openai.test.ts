@@ -394,6 +394,36 @@ describe("real OpenAI Episode image generation", () => {
     expect(await fs.readFile(path.join(usedRoot, "api_budget_usage.json"), "utf8")).toBe("{ not json");
   });
 
+  it("keeps the Episode image OpenAI was already paid for when the ledger breaks mid-run, and says so on the Episode and in the outline list", async () => {
+    // The ledger is broken from inside the first paid call — after preflight let it through, before record()
+    // writes the cost. Scene 1 is bought and kept; scene 2 is refused by its own preflight (D-036), so the run
+    // leaves through the error path, which is exactly where the note used to be missing. Before the fix the
+    // `finally` threw from inside the provider call and unwound scene 1's image with it.
+    const { images, root: usedRoot, projectsRoot } = await setupWithConnectedOpenAi();
+    const ledger = path.join(usedRoot, "api_budget_usage.json");
+    const fetchMock = vi.fn(async () => {
+      await fs.writeFile(ledger, "{ not json", "utf8");
+      return jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(images.generate("long", 1, { approved: true })).rejects.toMatchObject({ response: { code: "BUDGET_LEDGER_UNREADABLE" } });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const episodeDirectory = path.join(projectsRoot, "long", "long_story", "Episode01");
+    expect((await fs.stat(path.join(episodeDirectory, "images", "scene1.png"))).size).toBeGreaterThan(0);
+
+    // Both reads: the Episode's own record, and its row in the outline list the other screen renders from.
+    const episode = JSON.parse(await fs.readFile(path.join(episodeDirectory, "project.json"), "utf8")) as { warnings?: string[] };
+    const outlines = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "episode_outlines.json"), "utf8")) as Array<{ warnings?: string[] }>;
+    for (const warnings of [episode.warnings, outlines[0]!.warnings]) {
+      const warning = warnings?.find((item) => item.includes("api_budget_usage.json"));
+      expect(warning).toContain("1번 장면");
+      expect(warning).toContain("다시 만들지 마시고");
+    }
+    expect(await fs.readFile(ledger, "utf8")).toBe("{ not json");
+  });
+
   it("blocks the real request and restores asset_mapping_approved when the monthly budget is already spent", async () => {
     const { images, budget } = await setupWithConnectedOpenAi();
     await budget.record("some-other-project", "image", true, 10, new Date());

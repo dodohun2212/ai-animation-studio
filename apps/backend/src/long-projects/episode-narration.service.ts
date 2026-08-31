@@ -1,4 +1,6 @@
 import * as crypto from "node:crypto";
+import { OPENAI_LEDGER_FILE, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
+import { persistEpisodeWarning } from "./episode-warnings.js";
 import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -213,6 +215,9 @@ export class EpisodeNarrationService {
 
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     const generated: SceneNumber[] = []; const reused: SceneNumber[] = []; const skipped: SceneNumber[] = [];
+    /** Scenes whose paid call landed but whose cost could not be written down — providers/budget-ledger.ts. */
+    const unrecordedScenes: SceneNumber[] = [];
+    const noteUnrecorded = async () => { if (unrecordedScenes.length > 0) await persistEpisodeWarning(this.files(id, number), number, episode, spendUnrecordedWarning(`${unrecordedScenes.join(", ")}번 장면 내레이션 생성`, OPENAI_LEDGER_FILE)); };
     try {
       await fs.mkdir(this.files(id, number).narration, { recursive: true });
       const existingRecords = await this.loadRecords(id, number);
@@ -228,7 +233,12 @@ export class EpisodeNarrationService {
           await this.budget.preflight(TTS_ESTIMATED_COST_USD);
           let succeeded = false;
           try { const result = await callOpenAiTtsApi(apiKey, text); bytes = result.bytes; succeeded = true; }
-          finally { await this.budget.record(id, "tts", succeeded, TTS_ESTIMATED_COST_USD); }
+          finally {
+          // `recordSpend`, not a bare await: this is a `finally` around a paid call, so a throw here discards
+          // what OpenAI was already paid for and, on the failure path, replaces the provider's real error
+          // (providers/budget-ledger.ts, docs/06_DECISIONS.md D-037).
+            if (await recordSpend(() => this.budget!.record(id, "tts", succeeded, TTS_ESTIMATED_COST_USD))) unrecordedScenes.push(sceneNumber);
+          }
           adapter = "gpt-4o-mini-tts"; apiCalls = 1;
         }
         await this.writeAudio(destination, bytes);
@@ -236,7 +246,12 @@ export class EpisodeNarrationService {
         await this.putRecord(id, number, { scene_number: sceneNumber, narration: text, checkpoint: "completed", adapter, tts_api_calls: apiCalls });
         generated.push(sceneNumber);
       }
+      // Said once for the whole run, and on both ways out: a ledger that breaks mid-run stops the next scene at
+      // its own preflight, so the run leaves through the catch below and this line never runs. Without the same
+      // call there, everything bought before the break goes unmentioned.
+      await noteUnrecorded();
     } catch (error) {
+      await noteUnrecorded();
       if (isBudgetLedgerUnreadable(error)) throw longBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw longEpisodeNarrationBudgetExceeded(error.message);
       if (error instanceof OpenAiAdapterError) throw longEpisodeNarrationProviderError(error.category, error.message);
       if (error instanceof Error && error.message === "invalid audio") throw longEpisodeNarrationGenerationFailed();
@@ -244,7 +259,7 @@ export class EpisodeNarrationService {
     }
 
     // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.
-    const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, generated.length * TTS_ESTIMATED_COST_USD) : undefined;
+    const budget = apiKey && this.budget && unrecordedScenes.length === 0 ? await budgetPreviewFor(this.budget, generated.length * TTS_ESTIMATED_COST_USD) : undefined;
     return { episode: this.detail(episode), generatedSceneNumbers: generated, reusedSceneNumbers: reused, skippedSceneNumbers: skipped, ...(budget ? { budget } : {}) };
   }
 
@@ -265,6 +280,8 @@ export class EpisodeNarrationService {
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     let bytes: Buffer = FAKE_MP3; let adapter = PLACEHOLDER_ADAPTER; let apiCalls = 0;
     let retryEstimate: RegenerateLongEpisodeNarrationResponse["retryEstimate"];
+    /** The money is gone and the ledger does not know — carried to the warning and past the estimate below. */
+    let spendUnrecorded = false;
     if (apiKey && this.budget) {
       try {
         await this.budget.preflight(TTS_ESTIMATED_COST_USD);
@@ -272,15 +289,22 @@ export class EpisodeNarrationService {
         try {
           const result = await callOpenAiTtsApi(apiKey, text, additionalInstruction ? { instructions: additionalInstruction } : {});
           bytes = result.bytes; succeeded = true;
-        } finally { await this.budget.record(id, "tts", succeeded, TTS_ESTIMATED_COST_USD); }
+        } finally {
+          // `recordSpend`, not a bare await: this is a `finally` around a paid call, so a throw here discards
+          // what OpenAI was already paid for and, on the failure path, replaces the provider's real error
+          // (providers/budget-ledger.ts, docs/06_DECISIONS.md D-037).
+          spendUnrecorded = await recordSpend(() => this.budget!.record(id, "tts", succeeded, TTS_ESTIMATED_COST_USD));
+        }
       } catch (error) {
         if (isBudgetLedgerUnreadable(error)) throw longBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw longEpisodeNarrationBudgetExceeded(error.message);
         if (error instanceof OpenAiAdapterError) throw longEpisodeNarrationProviderError(error.category, error.message);
         throw longEpisodeNarrationProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown);
       }
       adapter = "gpt-4o-mini-tts"; apiCalls = 1;
-      // Read-only, computed after the fact: reflects the ledger's state right after this regeneration's own record().
-      retryEstimate = { perSceneCostUsd: TTS_ESTIMATED_COST_USD, budget: await budgetPreviewFor(this.budget, TTS_ESTIMATED_COST_USD) };
+      // Read-only, computed after the fact. Skipped when the record could not be written — same file, so it
+      // would throw and take the response, and the audio just paid for, with it. The field is already optional.
+      if (!spendUnrecorded) retryEstimate = { perSceneCostUsd: TTS_ESTIMATED_COST_USD, budget: await budgetPreviewFor(this.budget, TTS_ESTIMATED_COST_USD) };
+      if (spendUnrecorded) await persistEpisodeWarning(this.files(id, number), number, episode, spendUnrecordedWarning(`${sceneNumber}번 장면 내레이션 재생성`, OPENAI_LEDGER_FILE));
     }
 
     const destination = this.narrationPath(id, number, sceneNumber);

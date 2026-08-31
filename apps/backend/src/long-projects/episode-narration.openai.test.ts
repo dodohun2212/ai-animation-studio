@@ -53,7 +53,7 @@ async function setup() {
   const providerSettings = new ProviderSettingsService(new ProviderSettingsRepository(root));
   await providerSettings.save("openai", { value: "sk-test-key-1234567890" });
   const budget = new OpenAiBudget(root, 10);
-  return { projectsRoot, narration: new EpisodeNarrationService(projectsRoot, providerSettings, budget) };
+  return { root: root!, projectsRoot, narration: new EpisodeNarrationService(projectsRoot, providerSettings, budget) };
 }
 
 afterEach(async () => {
@@ -109,4 +109,31 @@ describe("Episode narration with a connected OpenAI credential", () => {
     const file = path.join(projectsRoot, "long", "long_story", "Episode01", "narration", "scene1.mp3");
     expect(await fs.readFile(file)).toEqual(AUDIO_BYTES);
   });
+
+  it("keeps the Episode narration OpenAI was already paid for when the ledger breaks mid-run, and says so on the Episode and in the outline list", async () => {
+    // Broken from inside the first paid call: scene 1 is bought and kept, scene 2 is refused by its own
+    // preflight, so the run leaves through the error path — the one place the note used to be missing.
+    const { root: usedRoot, projectsRoot, narration } = await setup();
+    const ledger = path.join(usedRoot, "api_budget_usage.json");
+    const fetchMock = vi.fn(async () => {
+      await fs.writeFile(ledger, "{ not json", "utf8");
+      return audioResponse(AUDIO_BYTES);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(narration.generate("long", 1, { approved: true })).rejects.toMatchObject({ response: { code: "BUDGET_LEDGER_UNREADABLE" } });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const episodeDirectory = path.join(projectsRoot, "long", "long_story", "Episode01");
+    expect(await fs.readFile(path.join(episodeDirectory, "narration", "scene1.mp3"))).toEqual(AUDIO_BYTES);
+    const episode = JSON.parse(await fs.readFile(path.join(episodeDirectory, "project.json"), "utf8")) as { warnings?: string[] };
+    const outlines = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "episode_outlines.json"), "utf8")) as Array<{ warnings?: string[] }>;
+    for (const warnings of [episode.warnings, outlines[0]!.warnings]) {
+      const warning = warnings?.find((item) => item.includes("api_budget_usage.json"));
+      expect(warning).toContain("1번 장면");
+      expect(warning).toContain("다시 만들지 마시고");
+    }
+    expect(await fs.readFile(ledger, "utf8")).toBe("{ not json");
+  });
+
 });

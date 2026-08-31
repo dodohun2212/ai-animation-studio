@@ -213,4 +213,32 @@ describe("real OpenAI Long Episode script generation", () => {
     const generated = await subject.generate("long", 1, { userRequestId: "episode-scripts.openai-protagonist-missing" });
     expect(generated.episode).toMatchObject({ status: "script_review" });
   });
+
+  it("keeps the Episode script OpenAI was already paid for when the ledger goes unreadable, and says the month's total is short", async () => {
+    // The script is what every later step is built on — images, narration, video all read it — so losing it to
+    // its own bookkeeping is the most expensive failure in this file. The `finally` around the paid call used
+    // to throw and take the script with it, leaving the person on a screen whose only action is to buy it again.
+    const { root: usedRoot, projectsRoot, subject } = await setupWithConnectedOpenAi();
+    const ledger = path.join(usedRoot, "api_budget_usage.json");
+    const fetchMock = vi.fn(async () => {
+      await fs.writeFile(ledger, "{ not json", "utf8");
+      return jsonResponse(200, responsesBody(aiStory(6)));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await subject.generate("long", 1, { userRequestId: "ledger-broke-mid-call" });
+
+    expect(result.episode.status).toBe("script_review");
+    const stored = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "project.json"), "utf8")) as { script: Record<string, unknown>; warnings?: string[] };
+    expect(Object.keys(stored.script).length).toBeGreaterThan(0);
+    const warning = stored.warnings?.find((item) => item.includes("api_budget_usage.json"));
+    expect(warning).toContain("1화 대본 생성");
+    expect(warning).toContain("다시 만들지 마시고");
+    // Written to the outline row before save() re-reads it to stamp the new status, so it is not overwritten.
+    const outlines = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "episode_outlines.json"), "utf8")) as Array<{ warnings?: string[]; status: string }>;
+    expect(outlines[0]!.status).toBe("script_review");
+    expect(outlines[0]!.warnings?.some((item) => item.includes("api_budget_usage.json"))).toBe(true);
+    expect(await fs.readFile(ledger, "utf8")).toBe("{ not json");
+  });
+
 });

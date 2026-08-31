@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { recordSpend } from "../providers/budget-ledger.js";
 import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -345,7 +346,18 @@ export class LongProjectsService {
         try {
           result = (await callOpenAiEpisodePlannerApi(apiKey, request.prompt, s.episode_count)).result;
           succeeded = true;
-        } finally { await this.budget.record(s.project_id, "long_story_outline", succeeded, LONG_OUTLINE_ESTIMATED_COST_USD); }
+        } finally {
+          // `recordSpend`, not a bare await: a throw from this `finally` discards the outline OpenAI was already
+          // paid for — every Episode in the project comes out of it — and on the failure path replaces the
+          // provider's real error (providers/budget-ledger.ts, docs/06_DECISIONS.md D-037).
+          //
+          // 🟠 The flag is deliberately dropped here, unlike everywhere else. A long project has no warnings
+          // channel of its own (`LongEpisodeOutline.warnings` exists; `LongProjectSummary` has nothing), and the
+          // outline is not about any one Episode, so there is nowhere honest to put the sentence. Adding the
+          // field is a shared-contract change and belongs in its own change with the screen that renders it —
+          // keeping the paid outline is the part that cannot wait.
+          await recordSpend(() => this.budget!.record(s.project_id, "long_story_outline", succeeded, LONG_OUTLINE_ESTIMATED_COST_USD));
+        }
         const applied = this.applyOutlineResult(s, result);
         for (const [field, value] of Object.entries(applied.project)) (s as Record<string, unknown>)[field] = value;
         generated = applied.episodes;

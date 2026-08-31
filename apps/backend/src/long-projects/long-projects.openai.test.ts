@@ -133,4 +133,28 @@ describe("real OpenAI Long Project outline generation", () => {
     const stored = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "project.json"), "utf8")) as { outline_status: string };
     expect(stored.outline_status).toBe("planned");
   });
+
+  it("keeps the outline OpenAI was already paid for when the ledger goes unreadable, even though there is nowhere to say so", async () => {
+    // Every Episode in the project comes out of this one paid call, so losing it to its own bookkeeping is the
+    // most expensive failure here. The `finally` used to throw and take the whole outline with it.
+    //
+    // 🟠 No warning is asserted, on purpose. A long project has no warnings channel of its own, and this outline
+    // is not about any one Episode, so there is nowhere honest to put the sentence — that needs a shared-contract
+    // field and the screen to render it. This pair pins the half that cannot wait: the outline survives.
+    const { root: usedRoot, projects } = await setupWithConnectedOpenAi();
+    const ledger = path.join(usedRoot!, "api_budget_usage.json");
+    const fetchMock = vi.fn(async () => {
+      await fs.writeFile(ledger, "{ not json", "utf8");
+      return jsonResponse(200, responsesBody({ project: PROJECT_RESULT, episodes: [episode(1), episode(2)] }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const preview = await projects.preview("long");
+
+    const approved = await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 });
+
+    expect(approved.project.episodes).toHaveLength(2);
+    expect(approved.project.episodes[0]!.title).toBe(episode(1).title);
+    expect(await fs.readFile(ledger, "utf8")).toBe("{ not json");
+  });
+
 });
