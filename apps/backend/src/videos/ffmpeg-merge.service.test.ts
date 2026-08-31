@@ -311,4 +311,57 @@ describe("FfmpegMergeEngine.merge holds a still for the time it was asked for", 
     expect(duration).toBeGreaterThan(4.5);
     expect(duration).toBeLessThan(6); // 625 seconds is what this looked like before
   }, 60000);
+
+  /**
+   * The quote is the whole point of a photo card, and nothing measured that it reaches the picture.
+   *
+   * Every other check here reads the arguments — that the chain contains `subtitles=`, that the .ass says what
+   * it should. All of that stays true if the font directory moves, if the path escaping breaks on a platform,
+   * if libass is missing: FFmpeg draws nothing, exits 0, and the merge reports success. That is D-042's lesson
+   * again — a test that reads arguments can only say "the code writes this today".
+   *
+   * So this renders the same still twice, once with the quote and once without, and compares a frame from each.
+   * Identical frames mean the quote drew nothing.
+   */
+  it("burns the quote into the picture, in a script a person can read", async ({ skip }) => {
+    const available = await runMediaCommand(["ffmpeg", "-version"]).then(() => true).catch(() => false);
+    if (!available) skip();
+
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "burnin-")); roots.push(root);
+    const still = path.join(root, "card.png");
+    await runMediaCommand(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=#204060:s=1080x1920", "-frames:v", "1", still]);
+
+    async function frameOf(label: string, subtitleText?: string): Promise<string> {
+      const finalPath = path.join(root, label, "instagram_reel.mp4");
+      await fs.mkdir(path.dirname(finalPath), { recursive: true });
+      await new FfmpegMergeEngine().merge(
+        [{ clip: still, stillDurationSeconds: 5, ...(subtitleText === undefined ? {} : { subtitleText }) }],
+        5, finalPath, "9:16",
+      );
+      const frame = path.join(root, `${label}.png`);
+      await runMediaCommand(["ffmpeg", "-y", "-ss", "2.5", "-i", finalPath, "-frames:v", "1", frame]);
+      return frame;
+    }
+
+    // Korean on purpose: a font without Hangul draws boxes, and boxes are still "different from blank" — but a
+    // font that cannot open at all draws nothing, which is what this catches.
+    const withQuote = await frameOf("withquote", "천천히, 그러나 멈추지 않고");
+    const plain = await frameOf("plain");
+
+    const { stderr } = await runMediaCommand(["ffmpeg", "-i", withQuote, "-i", plain, "-filter_complex", "ssim", "-f", "null", "-"]);
+    const similarity = Number(/All:([0-9.]+)/.exec(stderr)?.[1] ?? "1");
+    expect(similarity).toBeLessThan(0.999);
+
+    // And it goes where a subtitle goes. Measured by cropping: with the quote, the bottom band is many times
+    // the size of the same band without it, while the middle band is unchanged — which is also how I found out
+    // that a second line I thought I saw in the middle of a frame was not there.
+    const band = async (frame: string, y: number) => {
+      const target = path.join(root, `${path.basename(frame, ".png")}-${y}.png`);
+      await runMediaCommand(["ffmpeg", "-y", "-i", frame, "-vf", `crop=1080:260:0:${y}`, target]);
+      return (await fs.stat(target)).size;
+    };
+    expect(await band(withQuote, 1660)).toBeGreaterThan(await band(plain, 1660) * 3);
+    expect(await band(withQuote, 580)).toBeLessThan(await band(plain, 580) * 3);
+  }, 120000);
+
 });
