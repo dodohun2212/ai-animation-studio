@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { reRootedPathCandidates } from "../projects/re-rooted-path.js";
 import * as fs from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
@@ -642,22 +643,9 @@ export class LocalAssetsRepository {
     return null;
   }
 
-  /**
-   * The same path, rebuilt under the current learning-data root.
-   *
-   * Scanned from the end so the innermost anchor wins: a root that itself sits inside a directory called
-   * `projects` would otherwise re-root at the wrong one and point at something that is not this Asset.
-   */
+  /** This Asset's path relocated under the current root — the shared rule in projects/re-rooted-path.ts. */
   private reRootedCandidates(storedPath: string): string[] {
-    // Split on both platforms' separators, named rather than written as an escaped character class: a path
-    // recorded on Windows is read back on Windows, but the index is plain JSON and travels.
-    const segments = storedPath.split(path.win32.sep).flatMap((part) => part.split(path.posix.sep)).filter(Boolean);
-    const anchors = new Set([path.basename(this.projectsRoot), path.basename(this.libraryRoot)]);
-    const candidates: string[] = [];
-    for (let index = segments.length - 1; index >= 0; index -= 1) {
-      if (anchors.has(segments[index]!)) candidates.push(path.resolve(this.learningDataRoot, ...segments.slice(index)));
-    }
-    return candidates;
+    return reRootedPathCandidates(storedPath, this.learningDataRoot, [path.basename(this.projectsRoot), path.basename(this.libraryRoot)]);
   }
 
   /** A real file inside the learning-data root, or null — the containment rule every candidate has to pass. */

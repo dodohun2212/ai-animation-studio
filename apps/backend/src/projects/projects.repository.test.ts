@@ -292,4 +292,81 @@ describe("LocalProjectRepository", () => {
     const listed = await repository.list();
     expect(listed.map((project) => project.project_id)).toEqual(["good_project"]);
   });
+
+  it("reads the paths a project recorded as places under the root it is being read from", async () => {
+    // The learning-data root moves: the desktop shell keeps it in apps/backend during development and under
+    // userData once packaged, migrating the whole directory across on the first packaged launch. These paths are
+    // stored absolute, so every one of them then names a location that no longer exists.
+    //
+    // Measured on a real project at a vanished old root: 0 of 6 images and 0 of 6 clips resolved. That does not
+    // read as an error anywhere — `generated_images` is what "this scene is already made" is decided from, so
+    // six images would simply have been bought again, and the merge would have found no clips to join.
+    //
+    // Both roots are laid out the way the app lays them out, `<learning data>/projects`, because that is what
+    // makes the relocation possible: the migration renames the directory above, and the shape below it is what
+    // the stored path can still be recognised by.
+    const oldProjects = path.join(await fsPromises.mkdtemp(path.join(os.tmpdir(), "old-install-")), "learning_data", "projects");
+    const newProjects = path.join(await fsPromises.mkdtemp(path.join(os.tmpdir(), "new-install-")), "learning_data", "projects");
+    const moved = new LocalProjectRepository(newProjects);
+
+    const stored = createStoredProject("moved", "topic", "2026-08-21T00:00:00.000Z");
+    stored.generated_images = [1, 2].map((scene) => path.join(oldProjects, "moved", "images", `scene${scene}.png`));
+    stored.generated_video_paths = [path.join(oldProjects, "moved", "videos", "runway", "scene1.mp4")];
+    stored.final_video_path = path.join(oldProjects, "moved", "videos", "final", "final.mp4");
+    stored.video_generation_records = [{ scene_number: 1, status: "succeeded", output_path: path.join(oldProjects, "moved", "videos", "runway", "scene1.mp4") }];
+    await moved.create(stored);
+    // Put the bytes where the move would have left them — same relative place, new root.
+    await fsPromises.mkdir(path.join(newProjects, "moved", "images"), { recursive: true });
+    for (const scene of [1, 2]) await fsPromises.writeFile(path.join(newProjects, "moved", "images", `scene${scene}.png`), "png");
+
+    const read = await moved.findById("moved");
+
+    for (const image of read.generated_images) {
+      expect(image.startsWith(newProjects)).toBe(true);
+      expect(await fsPromises.readFile(image, "utf8")).toBe("png");
+    }
+    expect(read.generated_video_paths[0]).toBe(path.join(newProjects, "moved", "videos", "runway", "scene1.mp4"));
+    expect(read.final_video_path).toBe(path.join(newProjects, "moved", "videos", "final", "final.mp4"));
+    expect((read.video_generation_records[0] as { output_path: string }).output_path).toBe(path.join(newProjects, "moved", "videos", "runway", "scene1.mp4"));
+
+    // Written back on the next save, so the file heals once instead of being re-derived on every read forever.
+    await moved.save(read);
+    const raw = JSON.parse(await fsPromises.readFile(path.join(newProjects, "moved", "project.json"), "utf8")) as { generated_images: string[] };
+    expect(raw.generated_images[0]!.startsWith(newProjects)).toBe(true);
+  });
+
+  it("leaves a recorded path that never named a project root exactly as it was", async () => {
+    // The counterpart that keeps the relocation from inventing a location. Only a path that names somewhere
+    // inside a learning-data root is moved, and only from its own `projects/` segment onward — anything else has
+    // to come back untouched, so a caller can still tell "this file is gone" from "this file moved with the root".
+    const projectsRoot = path.join(await fsPromises.mkdtemp(path.join(os.tmpdir(), "untouched-")), "learning_data", "projects");
+    const repositoryHere = new LocalProjectRepository(projectsRoot);
+    const outside = path.join(os.tmpdir(), "somewhere-else", "a-person-put-this-here.png");
+    const stored = createStoredProject("elsewhere", "topic", "2026-08-21T00:00:00.000Z");
+    stored.generated_images = [outside];
+    await repositoryHere.create(stored);
+
+    expect((await repositoryHere.findById("elsewhere")).generated_images[0]).toBe(outside);
+  });
+
+
+  it("relocates from the innermost matching segment when the old install itself lived inside a folder called projects", async () => {
+    // Not contrived: people keep their work under a folder named `projects`, and the app's own root then ends in
+    // a second one — `.../projects/ai-studio/learning_data/projects/<id>/...`. Anchoring on the first match
+    // rebuilds everything from the outer one and produces a path that names nothing, silently, because the
+    // relocation deliberately does not check that the file exists.
+    //
+    // Measured: without this case, an injection that scanned front-to-back stayed green — the rule was a claim
+    // in a comment and nothing held it.
+    const oldProjects = path.join(await fsPromises.mkdtemp(path.join(os.tmpdir(), "nested-")), "projects", "ai-studio", "learning_data", "projects");
+    const newProjects = path.join(await fsPromises.mkdtemp(path.join(os.tmpdir(), "new-nested-")), "learning_data", "projects");
+    const moved = new LocalProjectRepository(newProjects);
+
+    const stored = createStoredProject("nested", "topic", "2026-08-21T00:00:00.000Z");
+    stored.generated_images = [path.join(oldProjects, "nested", "images", "scene1.png")];
+    await moved.create(stored);
+
+    expect((await moved.findById("nested")).generated_images[0]).toBe(path.join(newProjects, "nested", "images", "scene1.png"));
+  });
+
 });

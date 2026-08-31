@@ -1,4 +1,5 @@
 import * as fsPromises from "node:fs/promises";
+import { reRootedPath } from "./re-rooted-path.js";
 import * as path from "node:path";
 
 import { atomicWriteUtf8File } from "./atomic-file.js";
@@ -132,7 +133,45 @@ export class LocalProjectRepository {
     if (stored.project_id !== projectId) {
       throw dataInvalid("Stored project ID does not match its directory.");
     }
-    return stored;
+    return this.underThisRoot(stored);
+  }
+
+  /**
+   * Every path this project recorded, read as a location under the root it is being read from.
+   *
+   * These are stored absolute, and the learning-data root moves — the desktop shell keeps it in `apps/backend`
+   * during development and under `userData` once packaged (docs/06_DECISIONS.md D-038). Done here, at the one
+   * place a project is read, rather than in each of the many callers that use these paths, because the ones that
+   * matter fail *quietly*:
+   *
+   * - `generated_images` is what "this scene is already made" is decided from: image generation reuses a scene
+   *   only when the project's own record already names the file on disk. A stale path does not read as an error,
+   *   it reads as "not made yet", and six images are **bought again**. It is also the single line the photo
+   *   card's "no paid calls" rests on.
+   * - `generated_video_paths` and a record's `output_path` are what the merge is handed. A stale path is a merge
+   *   that cannot find clips that were already paid for.
+   *
+   * (The provider is deliberately not named here: projects.no-provider-calls.test.ts holds this file to code and
+   * comments that stay free of provider names, and it caught the first draft of this comment.)
+   *
+   * Repaired on the way out too: the next `save()` writes the relocated paths back, so the file heals itself
+   * once rather than being re-derived on every read forever.
+   */
+  private underThisRoot(stored: StoredProject): StoredProject {
+    const relocate = (value: string) => reRootedPath(value, path.dirname(this.projectsRoot), [path.basename(this.projectsRoot)]);
+    const records = stored.video_generation_records.map((record) => {
+      if (typeof record !== "object" || record === null || Array.isArray(record)) return record;
+      const output = (record as { output_path?: unknown }).output_path;
+      return typeof output === "string" && output ? { ...record, output_path: relocate(output) } : record;
+    });
+    return {
+      ...stored,
+      generated_images: stored.generated_images.map((value) => (value ? relocate(value) : value)),
+      generated_video_paths: stored.generated_video_paths.map((value) => (value ? relocate(value) : value)),
+      generated_narrations: stored.generated_narrations.map((value) => (value ? relocate(value) : value)),
+      final_video_path: stored.final_video_path ? relocate(stored.final_video_path) : stored.final_video_path,
+      video_generation_records: records,
+    };
   }
 
   /** Lists every readable archived project alongside its approximate archived-at timestamp. Unreadable entries are silently skipped, mirroring {@link list}. */
