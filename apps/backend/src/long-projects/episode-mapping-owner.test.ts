@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { LONG_EPISODE_STATUSES } from "@ai-animation-studio/shared";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -171,4 +172,33 @@ describe("EpisodeMappingOwners", () => {
     const { owners } = await setup();
     await expect(owners.get({ projectId: "../elsewhere", episodeNumber: 1 })).rejects.toMatchObject({});
   });
+
+  /**
+   * Every status the type allows, not a hand-written subset.
+   *
+   * This check answers "is this a well-formed Episode record", so anything `LongEpisodeStatus` permits has to
+   * pass it. The list here used to stop at `interrupted`, and a finished Episode — the commonest thing to look
+   * back at — got **500, data invalid** on both of its Asset Mapping routes. Measured on real data: both
+   * Episodes of a real long story, whose only fault was being done.
+   *
+   * Written as a loop over the shared list rather than by adding the three that were missing, so the next status
+   * added to the union is covered the day it is added.
+   */
+  it("accepts every status an Episode is allowed to be in, including the finished ones", async () => {
+    for (const state of LONG_EPISODE_STATUSES) {
+      const { owners } = await setup({ state });
+      const owner = await owners.get({ projectId: "long-1", episodeNumber: 1 });
+      expect(owner.id, state).toBe("long-1/Episode01");
+      await fs.rm(root!, { recursive: true, force: true }); root = undefined;
+    }
+  });
+
+  it("still refuses a record whose status is not a status at all", async () => {
+    // The counterpart. Widening to the shared list must not become accepting anything — without this, dropping
+    // the check entirely would pass the test above.
+    const { owners } = await setup({ state: "half_done" });
+    await expect(owners.get({ projectId: "long-1", episodeNumber: 1 }))
+      .rejects.toMatchObject({ response: { code: "LONG_PROJECT_DATA_INVALID" } });
+  });
+
 });

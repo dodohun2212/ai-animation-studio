@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-import type { LongEpisodeStatus } from "@ai-animation-studio/shared";
+import { LONG_EPISODE_STATUSES, type LongEpisodeStatus } from "@ai-animation-studio/shared";
 
 import type { MappingOwner, MappingOwners } from "../mappings/mapping-owner.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
@@ -22,11 +22,19 @@ import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
  * other the moment this file existed.
  */
 
-const episodeStatuses: readonly LongEpisodeStatus[] = [
-  "planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review",
-  "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation",
-  "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted",
-];
+/**
+ * Every status an Episode can legitimately hold, taken from the shared list rather than written out again.
+ *
+ * This is a *shape* check — "is this a well-formed Episode record" — not a gate. Anything the type allows has to
+ * pass, so a hand-written copy is a defect waiting for the next status to be added. It already was one: this
+ * list stopped at `interrupted` and never gained `rendering`, `completed` or `failed`, so an Episode that had
+ * been finished answered **500, data invalid** on both of its Asset Mapping routes. Measured on real data —
+ * both Episodes of a real long story, whose only fault was being done.
+ *
+ * A finished Episode is exactly when someone opens this screen: to see which character a scene used before
+ * writing the next one, or to work out why an image came out wrong.
+ */
+const episodeStatuses: readonly LongEpisodeStatus[] = LONG_EPISODE_STATUSES;
 
 /**
  * Names one Episode. Two values, kept as two values.
