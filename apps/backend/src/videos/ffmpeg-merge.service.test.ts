@@ -415,4 +415,32 @@ describe("FfmpegMergeEngine.merge holds a still for the time it was asked for", 
     expect(await band(withQuote, 580)).toBeLessThan(await band(plain, 580) * 3);
   }, 120000);
 
+
+  /**
+   * The orientation, measured on the file rather than on the argument that carries it.
+   *
+   * The pair above pins where the card's choice is stored, through the helper every renderer reads. This one
+   * closes the other end: that the merge actually produces a landscape file. Between the two there is nowhere
+   * for "the value is right but the video is portrait" to hide, which is exactly the state this was found in.
+   */
+  it("renders a landscape card landscape and a portrait card portrait", async ({ skip }) => {
+    const available = await runMediaCommand(["ffmpeg", "-version"]).then(() => true).catch(() => false);
+    if (!available) skip();
+
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "ratio-real-")); roots.push(root);
+    const still = path.join(root, "card.png");
+    await runMediaCommand(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=#204060:s=1024x1536", "-frames:v", "1", still]);
+
+    const sizeOf = async (ratio: "9:16" | "16:9"): Promise<string> => {
+      const finalPath = path.join(root, ratio.replace(":", "x"), "instagram_reel.mp4");
+      await fs.mkdir(path.dirname(finalPath), { recursive: true });
+      await new FfmpegMergeEngine().merge([{ clip: still, stillDurationSeconds: 5 }], 5, finalPath, ratio);
+      const { stdout } = await runMediaCommand(["ffprobe", "-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", finalPath]);
+      return stdout.trim().split("\n")[0]!.replace(/,+$/, "");
+    };
+
+    expect(await sizeOf("16:9")).toBe("1920x1080");
+    expect(await sizeOf("9:16")).toBe("1080x1920");
+  }, 120000);
+
 });

@@ -55,7 +55,11 @@ export class PhotoCardService {
       subtitles_enabled: true,
       source_asset_id: request.assetId,
     };
-    project.style_profile = { aspect: request.aspectRatio };
+    // `lore_context.style_notes.aspect`, not `style_profile.aspect`. projects/project-aspect.ts exists because
+    // five readers all read the second one — a field nothing has ever written — so a project set to landscape
+    // was generated, merged and displayed vertical anyway. Writing the choice there again would have been the
+    // same defect from the other end, and it was: measured end to end, a 16:9 card merged to 1080x1920.
+    project.lore_context = { ...project.lore_context, style_notes: { aspect: request.aspectRatio } };
 
     try { await this.projects.create(project); } catch { throw photoCardStorageError(); }
     const destination = path.join(this.projectsRoot, project.project_id, "images", "scene1.png");

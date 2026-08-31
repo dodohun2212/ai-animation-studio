@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import { ProjectsService } from "./projects.service.js";
 import { createStoredProject } from "./project.mapper.js";
+import { shortProjectAspectRatio } from "./project-aspect.js";
 import type { ShortProjectSettings } from "@ai-animation-studio/shared";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -171,6 +172,30 @@ describe("PhotoCardService", () => {
     expect(settings.sceneCount).toBe(2);
     await expect(saveSettings("ordinary_one", { ...settings, sceneCount: 1 }))
       .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
+
+  /**
+   * The orientation has to reach the thing that renders, and the only way to know is to ask the renderer.
+   *
+   * `projects/project-aspect.ts` exists because five readers all read `style_profile.aspect`, a field nothing
+   * has ever written, so a project set to landscape came out vertical anyway. Its doc comment says so. Writing
+   * the card's choice to that same field was the identical defect approached from the other side, and it was
+   * live: measured end to end through the merge, a 16:9 card produced a 1080x1920 file.
+   *
+   * So this asserts what the merge is actually handed, through the same helper every other reader uses. A test
+   * that read the stored field back would have passed while the video came out the wrong shape — it would have
+   * been checking that the service wrote what the service wrote.
+   */
+  it("stores the orientation where everything that renders reads it", async () => {
+    const { projects, service, asset } = await setup();
+    vi.stubGlobal("fetch", () => { throw new Error("a photo card must not reach a provider"); });
+
+    await service.create({ ...body(asset.asset_id), aspectRatio: "16:9" });
+    expect(shortProjectAspectRatio(await projects.findById("card_one"))).toBe("16:9");
+
+    await service.create({ ...body(asset.asset_id), projectId: "card_two", aspectRatio: "9:16" });
+    expect(shortProjectAspectRatio(await projects.findById("card_two"))).toBe("9:16");
   });
 
 });
