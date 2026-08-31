@@ -462,6 +462,14 @@ export function InstagramPostScreen({ onBack }: Props) {
   const captionOver = caption.length > CAPTION_MAX;
   const hashtagsOver = hashtags.length > HASHTAG_MAX;
   const plannedSeconds = picked.status === "ready" ? picked.plannedSeconds : null;
+  /**
+   * A photo card is one still picture held for a few seconds under a slow zoom, so every frame in it looks the
+   * same — the cover picker would be a choice whose options are identical. Offering it does not break anything;
+   * it asks the person to decide something that cannot come out differently, which is its own small cost. Read
+   * from the project the screen already loaded (Project extends ProjectSummary), not from the picker's row.
+   * Episodes are never photo cards, so the question only arises on the short-project side.
+   */
+  const photoCard = project?.photoCard === true;
   /* Measured beats planned wherever it exists. The planned values remain the fallback rather than the answer:
      losing the measurement must not cost the check, but it must not be reported as one either. */
   const checkedSeconds = measured?.seconds ?? plannedSeconds;
@@ -755,6 +763,7 @@ export function InstagramPostScreen({ onBack }: Props) {
             {/* Instagram's own uploader offers a frame strip for this; the app has the same video already on
                 screen, so the choice is "the frame you are looking at" rather than a second way to look. Nothing
                 has to be pressed — unset means frame 0, which is exactly what Instagram does on its own. */}
+            {!photoCard && (
             <div className="flex flex-wrap items-center gap-2" data-testid="post-cover">
               <button
                 type="button"
@@ -793,6 +802,12 @@ export function InstagramPostScreen({ onBack }: Props) {
                 </>
               )}
             </div>
+            )}
+            {photoCard && (
+              <p data-testid="post-cover-photo-card" className="text-xs text-slate-400">
+                사진 카드는 한 장의 그림이라 어느 지점을 골라도 같은 그림입니다. 커버는 그 그림 그대로 나갑니다.
+              </p>
+            )}
             <p className="text-sm text-slate-300" data-testid="post-video-path">
               저장 위치: {episode ? `${episode.episodeNumber}화 폴더의 ${FINAL_VIDEO_PATH}` : FINAL_VIDEO_PATH}
             </p>

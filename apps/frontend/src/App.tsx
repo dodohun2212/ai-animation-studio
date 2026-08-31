@@ -12,6 +12,7 @@ import { ProjectList } from "./components/ProjectList.js";
 import { ProviderSettingsScreen } from "./components/ProviderSettingsScreen.js";
 import { AssetLibraryScreen } from "./components/AssetLibraryScreen.js";
 import { VideoLibraryScreen } from "./components/VideoLibraryScreen.js";
+import { PhotoCardScreen } from "./components/PhotoCardScreen.js";
 import { AudioLibraryScreen } from "./components/AudioLibraryScreen.js";
 import { InstagramPostScreen } from "./components/InstagramPostScreen.js";
 import { MappingReviewScreen } from "./components/MappingReviewScreen.js";
@@ -57,6 +58,7 @@ type Screen =
   | { name: "assets"; initialQuery?: string }
   | { name: "videoLibrary" }
   | { name: "audioLibrary" }
+  | { name: "photoCard" }
   | { name: "instagramPost" }
   | { name: "archive" }
   | { name: "workflowGuide" }
@@ -91,7 +93,7 @@ type Screen =
 type ScreenParam = "projectId" | "episodeNumber" | "jobId" | "initialQuery";
 const OPTIONAL_PARAMS: ReadonlySet<ScreenParam> = new Set<ScreenParam>(["initialQuery"]);
 const SCREEN_PARAMS: Record<Screen["name"], readonly ScreenParam[]> = {
-  list: [], create: [], providerSettings: [], videoLibrary: [], audioLibrary: [], instagramPost: [],
+  list: [], create: [], providerSettings: [], videoLibrary: [], audioLibrary: [], instagramPost: [], photoCard: [],
   archive: [], workflowGuide: [], longList: [], longCreate: [],
   assets: ["initialQuery"],
   detail: ["projectId"], mappingReview: ["projectId"], settings: ["projectId"], storyPrompt: ["projectId"],
@@ -252,12 +254,13 @@ function NavIcon({ name }: { name: NavIconName }) {
   }
 }
 
-type NavSection = "short" | "long" | "assets" | "videoLibrary" | "audioLibrary" | "instagramPost" | "archive" | "workflowGuide" | "providerSettings";
+type NavSection = "short" | "long" | "assets" | "videoLibrary" | "audioLibrary" | "photoCard" | "instagramPost" | "archive" | "workflowGuide" | "providerSettings";
 
 function navSectionFor(name: Screen["name"]): NavSection | null {
   if (name === "assets") return "assets";
   if (name === "videoLibrary") return "videoLibrary";
   if (name === "audioLibrary") return "audioLibrary";
+  if (name === "photoCard") return "photoCard";
   if (name === "instagramPost") return "instagramPost";
   if (name === "archive") return "archive";
   if (name === "workflowGuide") return "workflowGuide";
@@ -276,6 +279,7 @@ function NavBar({ current, onNavigate }: { current: Screen["name"]; onNavigate: 
     { key: "assets", icon: "library", label: "이미지 보관함", target: { name: "assets" } },
     { key: "videoLibrary", icon: "film", label: "영상 보관함", target: { name: "videoLibrary" } },
     { key: "audioLibrary", icon: "music", label: "음원 보관함", target: { name: "audioLibrary" } },
+    { key: "photoCard", icon: "library", label: "명언 카드", target: { name: "photoCard" } },
     { key: "instagramPost", icon: "share", label: "게시물 준비", target: { name: "instagramPost" } },
     { key: "archive", icon: "archive", label: "보관함", target: { name: "archive" } },
     { key: "workflowGuide", icon: "workflow", label: "작업 워크플로우", target: { name: "workflowGuide" } },
@@ -756,6 +760,14 @@ export function App() {
             {screen.name === "assets" && <AssetLibraryScreen onBack={() => setScreen({ name: "list" })} initialQuery={screen.initialQuery} />}
             {screen.name === "videoLibrary" && <VideoLibraryScreen onBack={() => setScreen({ name: "list" })} />}
             {screen.name === "audioLibrary" && <AudioLibraryScreen onBack={() => setScreen({ name: "list" })} />}
+            {/* Straight to the merge screen on success: music and its credit line live there, and a card that
+                stopped at "만들어졌습니다" would leave the person to find the next step themselves. */}
+            {screen.name === "photoCard" && (
+              <PhotoCardScreen
+                onBack={() => setScreen({ name: "list" })}
+                onCreated={(projectId) => setScreen({ name: "videoMerge", projectId })}
+              />
+            )}
             {screen.name === "instagramPost" && <InstagramPostScreen onBack={() => setScreen({ name: "list" })} />}
             {screen.name === "sceneEdit" && (
               <SceneEditScreen

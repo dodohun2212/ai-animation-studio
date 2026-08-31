@@ -672,6 +672,32 @@ describe("InstagramPostScreen", () => {
   });
 
   /**
+   * A photo card is one picture held under a slow zoom: every frame is the same frame. The picker would ask a
+   * question whose answers are identical, so it is dropped and a sentence says why — silence would read as a
+   * missing feature.
+   *
+   * The pair matters more than either half. A screen that hid the picker from everyone would pass the first
+   * assertion alone, and take the choice away from ordinary projects, where the frames genuinely differ.
+   */
+  it("drops the cover picker for a photo card and says why", async () => {
+    renderScreen({ project: { photoCard: true } });
+    await pickProject();
+
+    expect(screen.queryByTestId("post-cover")).toBeNull();
+    expect(screen.queryByTestId("post-cover-set")).toBeNull();
+    expect((await screen.findByTestId("post-cover-photo-card")).textContent).toContain("같은 그림");
+  });
+
+  it("keeps the cover picker for an ordinary project", async () => {
+    renderScreen();
+    await pickProject();
+
+    expect(await screen.findByTestId("post-cover")).toBeTruthy();
+    expect(screen.getByTestId("post-cover-set")).toBeTruthy();
+    expect(screen.queryByTestId("post-cover-photo-card")).toBeNull();
+  });
+
+  /**
    * Unset and "the first frame" post the same picture, so the field is left out rather than sent as 0 — one of
    * those is a decision somebody made and the other is nobody having touched it, and only the first should be
    * recorded as one. It also means nothing on this screen has to be filled in before publishing.
