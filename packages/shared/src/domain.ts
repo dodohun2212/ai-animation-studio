@@ -30,6 +30,18 @@ export const RUNWAY_CLIP_DURATIONS = [5, 10] as const;
 export type RunwayClipDurationSeconds = (typeof RUNWAY_CLIP_DURATIONS)[number];
 
 /**
+ * The longest quote a photo card will take.
+ *
+ * Here rather than on either side because both need it and they need the same one: the server refuses a longer
+ * quote, and the screen has to show a counter — without one a person types past the limit, presses the button,
+ * is refused, and writes the sentence again. A number kept in two places drifts, and the drift is invisible
+ * until someone is at 301 characters.
+ *
+ * 300 is a screenful of text over a picture, and a card is something a person reads at a glance.
+ */
+export const PHOTO_CARD_QUOTE_MAX_LENGTH = 300;
+
+/**
  * Runway Gen-4 Turbo's API `prompt` field maxLength (confirmed against docs.aimlapi.com's schema, the same source
  * already cited for {@link RUNWAY_CLIP_DURATIONS}). Measured in UTF-16 code units, matching JavaScript's native
  * `.length` and Runway's own counting. When a rendered video prompt would exceed this, the caller drops optional

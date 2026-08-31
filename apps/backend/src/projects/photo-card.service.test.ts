@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { WorkflowState } from "@ai-animation-studio/shared";
+import { PHOTO_CARD_QUOTE_MAX_LENGTH, WorkflowState } from "@ai-animation-studio/shared";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { LocalProjectRepository } from "./projects.repository.js";
 import { PhotoCardService } from "./photo-card.service.js";
@@ -97,4 +97,23 @@ describe("PhotoCardService", () => {
     const { service } = await setup();
     await expect(service.create(body("ASSET-GENERAL-DOESNOTEXIST"))).rejects.toMatchObject({ response: { code: "PHOTO_CARD_ASSET_UNUSABLE" } });
   });
+
+  /**
+   * The limit is one number in two places — the screen's counter and this refusal — so the pair is written in
+   * terms of the shared constant rather than the digit. Measured: with only the tests that existed before, an
+   * injection that moved the server's own check off `PHOTO_CARD_QUOTE_MAX_LENGTH` stayed green, which is exactly
+   * the silent drift publishing the constant was meant to prevent.
+   */
+  it("takes a quote of exactly the shared limit and refuses one character more", async () => {
+    const { service, asset } = await setup();
+    vi.stubGlobal("fetch", () => { throw new Error("a photo card must not reach a provider"); });
+
+    const atLimit = "가".repeat(PHOTO_CARD_QUOTE_MAX_LENGTH);
+    const created = await service.create({ ...body(asset.asset_id), quote: atLimit });
+    expect(created.project.topic).toBe(atLimit);
+
+    await expect(service.create({ ...body(asset.asset_id), projectId: "card_two", quote: `${atLimit}가` }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
 });

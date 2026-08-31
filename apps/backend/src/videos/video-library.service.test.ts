@@ -92,7 +92,10 @@ describe("VideoLibraryService.list", () => {
 
     const rows = (await service.list()).projects;
 
-    expect(rows.find((row) => row.projectId === "card")?.photoCard).toBe(true);
+    // Deliberately absent from this row. The publish screen picks a project here and then loads that project,
+    // where `photoCard` already lives on every ProjectSummary — carrying it twice made this list assert a need
+    // the screen does not have. Pinned so it is not re-added on the same reasoning a second time.
+    expect(rows.find((row) => row.projectId === "card")).not.toHaveProperty("photoCard");
     expect(rows.find((row) => row.projectId === "ordinary")).not.toHaveProperty("photoCard");
   });
 

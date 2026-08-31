@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { RUNWAY_CLIP_DURATIONS, WorkflowState, type CreatePhotoCardRequest, type CreatePhotoCardResponse } from "@ai-animation-studio/shared";
+import { PHOTO_CARD_QUOTE_MAX_LENGTH, RUNWAY_CLIP_DURATIONS, WorkflowState, type CreatePhotoCardRequest, type CreatePhotoCardResponse } from "@ai-animation-studio/shared";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { atomicWriteUtf8File } from "./atomic-file.js";
 import { isSafeProjectId } from "./project-id.js";
@@ -89,7 +89,7 @@ export class PhotoCardService {
     const projectId = typeof data.projectId === "string" ? data.projectId.trim() : "";
     const assetId = typeof data.assetId === "string" ? data.assetId.trim() : "";
     const quote = typeof data.quote === "string" ? data.quote.trim() : "";
-    if (!isSafeProjectId(projectId) || !assetId || !quote || quote.length > 300) throw photoCardInvalidRequest();
+    if (!isSafeProjectId(projectId) || !assetId || !quote || quote.length > PHOTO_CARD_QUOTE_MAX_LENGTH) throw photoCardInvalidRequest();
     if (!(RUNWAY_CLIP_DURATIONS as readonly number[]).includes(data.clipDurationSeconds as number)) throw photoCardInvalidRequest();
     if (data.aspectRatio !== "9:16" && data.aspectRatio !== "16:9") throw photoCardInvalidRequest();
     return { projectId, assetId, quote, clipDurationSeconds: data.clipDurationSeconds as CreatePhotoCardRequest["clipDurationSeconds"], aspectRatio: data.aspectRatio };

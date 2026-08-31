@@ -15,7 +15,7 @@ import {
   type VideoVersionSummary,
 } from "@ai-animation-studio/shared";
 
-import { photoCardFor, toApiProject } from "../projects/project.mapper.js";
+import { toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
@@ -258,7 +258,6 @@ export class VideoLibraryService {
         aspectRatio: aspectRatioFor(project),
         // Carried onto the row because the publish screen picks from this list and never loads the project. The
         // alternatives were a second request, or guessing the kind from the duration.
-        ...(photoCardFor(project) ? { photoCard: true } : {}),
         ...(project.used_audio?.attribution_required !== undefined ? { attributionRequired: project.used_audio.attribution_required } : {}),
         ...(project.used_audio?.attribution_text !== undefined ? { attributionText: project.used_audio.attribution_text } : {}),
       });
