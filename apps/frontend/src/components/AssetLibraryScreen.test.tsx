@@ -862,6 +862,94 @@ describe("AssetLibraryScreen", () => {
     expect(await screen.findByText("이전된 에셋")).toBeTruthy();
   });
 
+  // The Episode this exists for (12/Episode01) is finished: its pictures are on disk and nothing it will ever
+  // do again would index them, because the repair only ran on approve and regenerate. So the button is the
+  // only way that Episode's folder appears — which makes "the list actually refreshed" part of the assertion,
+  // not just "a number was printed".
+  it("registers scene images that were never indexed and shows the newly registered folder", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { scanned: 3, registered: 1, skipped: 2, failed: 0 }))
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [makeAsset({ assetId: "ASSET-EP1", displayName: "12/Episode01 generated images" })] }));
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
+    render(<AssetLibraryScreen onBack={() => {}} />);
+    await screen.findByText("등록된 에셋이 없습니다.");
+
+    fireEvent.click(screen.getByTestId("asset-maintenance-toggle"));
+    fireEvent.click(screen.getByRole("button", { name: "등록 실행" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(url).toBe("/assets/backfill-generated-images");
+    expect(init.method).toBe("POST");
+    const result = await screen.findByTestId("backfill-result");
+    expect(result.textContent).toContain("3개 확인");
+    expect(result.textContent).toContain("1개 등록");
+    expect(await screen.findByText("12/Episode01 generated images")).toBeTruthy();
+  });
+
+  it("does not refresh the list when everything was already registered", async () => {
+    // Running it twice is expected — the button says it is safe to. A reload on the second run would drop a
+    // selection the person is holding, in order to redraw rows that did not change.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { scanned: 3, registered: 0, skipped: 3, failed: 0 }));
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
+    render(<AssetLibraryScreen onBack={() => {}} />);
+    await screen.findByText("등록된 에셋이 없습니다.");
+
+    fireEvent.click(screen.getByTestId("asset-maintenance-toggle"));
+    fireEvent.click(screen.getByRole("button", { name: "등록 실행" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await screen.findByTestId("backfill-result");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  // A failure here is a scene file that cannot be read, so the next press reads the same unreadable file. The
+  // count alone reads like something a retry clears, which is why the sentence is asserted separately — and
+  // asserted absent on a clean run, or it would be a permanent warning about nothing.
+  it("says a failed registration will not be fixed by pressing again, and stays quiet when nothing failed", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { scanned: 3, registered: 1, skipped: 1, failed: 1 }))
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { scanned: 3, registered: 0, skipped: 3, failed: 0 }));
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
+    render(<AssetLibraryScreen onBack={() => {}} />);
+    await screen.findByText("등록된 에셋이 없습니다.");
+
+    fireEvent.click(screen.getByTestId("asset-maintenance-toggle"));
+    fireEvent.click(screen.getByRole("button", { name: "등록 실행" }));
+
+    const note = await screen.findByTestId("backfill-failed-note");
+    expect(note.textContent).toContain("다시 눌러도");
+
+    fireEvent.click(screen.getByRole("button", { name: "등록 실행" }));
+    await waitFor(() => expect(screen.queryByTestId("backfill-failed-note")).toBeNull());
+  });
+
+  it("shows a fixed, safe error when the registration request fails", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { assets: [] }))
+      .mockResolvedValueOnce(jsonResponse(500, { code: "ASSET_STORAGE_ERROR", message: "internal detail" }));
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
+    render(<AssetLibraryScreen onBack={() => {}} />);
+    await screen.findByText("등록된 에셋이 없습니다.");
+
+    fireEvent.click(screen.getByTestId("asset-maintenance-toggle"));
+    fireEvent.click(screen.getByRole("button", { name: "등록 실행" }));
+
+    const alert = await screen.findByTestId("backfill-error");
+    expect(alert.textContent).toBe("에셋을 저장하거나 읽지 못했습니다.");
+    expect(alert.textContent).not.toContain("internal detail");
+  });
+
   it("does not refresh the list when the legacy reference migration finds nothing to migrate", async () => {
     const fetchMock = vi
       .fn()

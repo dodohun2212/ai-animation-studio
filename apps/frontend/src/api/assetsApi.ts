@@ -2,6 +2,7 @@ import {
   API_ROUTES,
   MAX_SCENE_COUNT,
   type AddAssetVersionResponse,
+  type BackfillGeneratedImageAssetsResponse,
   type Asset,
   type AssetFileAuditClassification,
   type AssetFileAuditEntry,
@@ -163,6 +164,9 @@ const isNonNegativeInteger = (value: unknown): value is number => typeof value =
 const isLegacyMigrationResponse = (value: unknown): value is RunLegacyReferenceMigrationResponse => isRecord(value)
   && isNonNegativeInteger(value.projectsScanned) && isNonNegativeInteger(value.migratedAssets)
   && isNonNegativeInteger(value.deduplicatedAssets) && isNonNegativeInteger(value.failedAssets);
+const isBackfillResponse = (value: unknown): value is BackfillGeneratedImageAssetsResponse => isRecord(value)
+  && isNonNegativeInteger(value.scanned) && isNonNegativeInteger(value.registered)
+  && isNonNegativeInteger(value.skipped) && isNonNegativeInteger(value.failed);
 
 async function request<T>(url: string, init: RequestInit | undefined, guard: (value: unknown) => value is T): Promise<T> {
   let response: Response;
@@ -253,6 +257,15 @@ export async function deleteAssetOwnedFile(assetId: string): Promise<DeleteAsset
 /** Silently, idempotently imports every project's legacy references into the Library — mirrors Python's on-open self-heal. */
 export function runLegacyReferenceMigration(): Promise<RunLegacyReferenceMigrationResponse> {
   return request(API_ROUTES.legacyReferenceMigration, { method: "POST" }, isLegacyMigrationResponse);
+}
+
+/**
+ * Registers scene images that are already on disk but were never indexed — Episodes and short projects whose
+ * pictures were made before indexing existed. Idempotent: an owner that already has a Folder is counted in
+ * `skipped`, never registered twice, so running it again is safe.
+ */
+export function backfillGeneratedImageAssets(): Promise<BackfillGeneratedImageAssetsResponse> {
+  return request(API_ROUTES.backfillGeneratedImages, { method: "POST" }, isBackfillResponse);
 }
 
 export async function updateCharacterFolderReferenceSet(

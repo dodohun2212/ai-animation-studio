@@ -130,6 +130,28 @@ describe.sequential("the generated image listing", () => {
     expect(body.episodes).toEqual([]);
   });
 
+  /**
+   * The backfill route, over a running app.
+   *
+   * The service test proves it registers what it should; this proves the button can reach it at all. Route
+   * ordering in this repo has been wrong twice, both times invisible to a service test — and this endpoint is
+   * the whole remedy for a real Episode whose pictures are missing from the Library, so "the screen calls a URL
+   * that answers" is the part worth pinning.
+   */
+  it("registers the missing Folder over HTTP, and says so in numbers", async () => {
+    const { projectsRoot, projects } = await boot();
+    await shortProjectWithImages(projectsRoot, projects, "short_one", [1, 2]);
+    await episodeWithImages(projectsRoot, "long_one", 1, [1, 2, 3]);
+    const base = await start();
+
+    const response = await fetch(base + API_ROUTES.backfillGeneratedImages, { method: "POST" });
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ scanned: 2, registered: 2, skipped: 0, failed: 0 });
+    const again = await fetch(base + API_ROUTES.backfillGeneratedImages, { method: "POST" });
+    expect(await again.json()).toMatchObject({ registered: 0, skipped: 2 });
+  });
+
   it("hands back rows whose images the existing content routes actually serve", async () => {
     // The whole point of the listing is a link that works, so it is followed here rather than assumed.
     const { projectsRoot, projects } = await boot();

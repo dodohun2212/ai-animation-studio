@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import type { Asset, AssetFileAuditEntry, AssetType, CreateAssetMetadata, GetAssetResponse, RunLegacyReferenceMigrationResponse, UpdateAssetMetadataRequest } from "@ai-animation-studio/shared";
-import { addAssetVersion, createAsset, createAssetFolder, deleteAsset, deleteAssetFolder, deleteAssetOwnedFile, getAsset, listAssetFileAudit, listAssets, relinkAsset, runLegacyReferenceMigration, setAssetParentFolder, toAssetDisplayError, updateAsset, updateCharacterFolderReferenceSet } from "../api/assetsApi.js";
+import type { Asset, AssetFileAuditEntry, AssetType, BackfillGeneratedImageAssetsResponse, CreateAssetMetadata, GetAssetResponse, RunLegacyReferenceMigrationResponse, UpdateAssetMetadataRequest } from "@ai-animation-studio/shared";
+import { addAssetVersion, backfillGeneratedImageAssets, createAsset, createAssetFolder, deleteAsset, deleteAssetFolder, deleteAssetOwnedFile, getAsset, listAssetFileAudit, listAssets, relinkAsset, runLegacyReferenceMigration, setAssetParentFolder, toAssetDisplayError, updateAsset, updateCharacterFolderReferenceSet } from "../api/assetsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
 import { GeneratedImagesSection } from "./GeneratedImagesSection.js";
@@ -114,6 +114,9 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   const [legacyMigrationPending, setLegacyMigrationPending] = useState(false);
   const [legacyMigrationResult, setLegacyMigrationResult] = useState<RunLegacyReferenceMigrationResponse | null>(null);
   const [legacyMigrationError, setLegacyMigrationError] = useState<{ code: string; message: string } | null>(null);
+  const [backfillPending, setBackfillPending] = useState(false);
+  const [backfillResult, setBackfillResult] = useState<BackfillGeneratedImageAssetsResponse | null>(null);
+  const [backfillError, setBackfillError] = useState<{ code: string; message: string } | null>(null);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const [folderRemoveChildIndexes, setFolderRemoveChildIndexes] = useState(false);
   const [folderDeleteManualFiles, setFolderDeleteManualFiles] = useState(false);
@@ -160,6 +163,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   const versionBusy = useRef(false);
   const relinkBusy = useRef(false);
   const legacyMigrationBusy = useRef(false);
+  const backfillBusy = useRef(false);
   const ownedFileDeleteBusy = useRef(false);
   const folderDeleteBusy = useRef(false);
   const folderCreateBusy = useRef(false);
@@ -396,6 +400,20 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
       if (response.migratedAssets > 0 && listRequest.current === listGenerationAtStart) await load();
     } catch (caught) { setLegacyMigrationError(toAssetDisplayError(caught)); }
     finally { legacyMigrationBusy.current = false; setLegacyMigrationPending(false); }
+  }
+
+  async function runBackfill() {
+    if (backfillBusy.current) return;
+    backfillBusy.current = true; setBackfillPending(true); setBackfillError(null);
+    const listGenerationAtStart = listRequest.current;
+    try {
+      const response = await backfillGeneratedImageAssets();
+      setBackfillResult(response);
+      // Only a registration changes what the list shows. Reloading on a run that registered nothing would
+      // throw away a selection the person is in the middle of, to redraw the same rows.
+      if (response.registered > 0 && listRequest.current === listGenerationAtStart) await load();
+    } catch (caught) { setBackfillError(toAssetDisplayError(caught)); }
+    finally { backfillBusy.current = false; setBackfillPending(false); }
   }
 
   async function saveCharacterReferenceSet(childAssetIds: string[], thumbnailAssetId: string) {
@@ -648,6 +666,44 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                     </li>
                   ))}
                 </ul>
+              )}
+            </section>
+
+            <section aria-label="만들어 둔 장면 사진 등록" className={cardSection}>
+              <div className="flex items-center justify-between gap-3">
+                <SectionHeading>만들어 둔 장면 사진 등록</SectionHeading>
+                <button type="button" data-testid="backfill-run" className={smallOutlineButton} onClick={() => void runBackfill()} disabled={backfillPending}>
+                  등록 실행
+                </button>
+              </div>
+              {/* Wording covers Episodes and short projects together, because one run scans both and `scanned`
+                  is their combined count — a sentence that named only 회차 would be wrong the moment a short
+                  project is the thing that got registered. */}
+              <p className="text-sm text-slate-400">
+                이미 만든 회차와 단편의 장면 사진 중 보관함 목록에 안 잡힌 것을 찾아 등록합니다. 사진 파일은 그대로 두고 목록에만 올립니다.
+                이미 등록된 것은 건드리지 않아서 여러 번 눌러도 안전합니다.
+              </p>
+              {backfillPending && <Spinner label="등록할 사진을 찾는 중..." />}
+              {backfillError && (
+                <p role="alert" data-testid="backfill-error" data-error-code={backfillError.code} className="text-sm text-rose-400">
+                  {backfillError.message}
+                </p>
+              )}
+              {backfillResult && !backfillPending && (
+                <>
+                  <p data-testid="backfill-result" className="text-sm text-slate-300">
+                    {backfillResult.scanned}개 확인, {backfillResult.registered}개 등록, 이미 있던 것 {backfillResult.skipped}개, 실패{" "}
+                    {backfillResult.failed}개
+                  </p>
+                  {/* A failure here is a scene file that could not be read. Pressing the button again reads the
+                      same unreadable file, so the count must not sit there looking like something a retry
+                      clears — the one sentence the person needs is that this is not that kind of failure. */}
+                  {backfillResult.failed > 0 && (
+                    <p data-testid="backfill-failed-note" className="text-xs leading-relaxed text-slate-400">
+                      실패한 것은 장면 사진 파일을 읽지 못한 경우입니다. 다시 눌러도 같은 결과이니, 그 회차의 사진 파일을 확인해 주세요.
+                    </p>
+                  )}
+                </>
               )}
             </section>
 
