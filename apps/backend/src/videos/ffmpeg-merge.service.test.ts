@@ -245,6 +245,57 @@ describe("FfmpegMergeEngine.mixBackgroundMusic", () => {
     await expect(engine.mixBackgroundMusic(path.join(root, "in.mp4"), "bgm.mp3", 0.25, 2, path.join(root, "out.mp4")))
       .rejects.toMatchObject({ kind: "invalid" });
   });
+
+  /**
+   * The music has to be audible in the file, and the checks above only read the command.
+   *
+   * Every assertion in this describe block is about argument strings — `-stream_loop -1`, `atrim`, the two
+   * `afade`s, `volume`, `amix`. All of them stay exactly true if the finished file ends up carrying the video's
+   * own silent track instead of the mix: the filter is built, ffmpeg runs it, and the wrong stream is mapped
+   * out. That is the shape D-042 was about, in the one place where being wrong is inaudible rather than visible.
+   *
+   * So this mixes a tone under a deliberately **silent** video and measures the result. Silence is what makes
+   * the measurement unambiguous: anything above it can only have come from the music.
+   *
+   * Three properties, each of which an argument can promise and a file can fail to have:
+   *   - the music is in there at all;
+   *   - a three-second track still plays at nine seconds, which is what `-stream_loop -1` is for;
+   *   - the first fifth of a second is far quieter than the body, which is the fade-in.
+   */
+  it("puts audible music into the file, looping it and fading it in", async ({ skip }) => {
+    const available = await runMediaCommand(["ffmpeg", "-version"]).then(() => true).catch(() => false);
+    if (!available) skip();
+
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "bgm-real-")); roots.push(root);
+    const video = path.join(root, "reel.mp4");
+    await runMediaCommand(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=320x568:d=10",
+      "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+      "-shortest", "-c:v", "libx264", "-c:a", "aac", video]);
+    const bgm = path.join(root, "bgm.mp3");
+    await runMediaCommand(["ffmpeg", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=3", bgm]);
+
+    const meanVolume = async (file: string, extra: string[] = []): Promise<number> => {
+      const { stderr } = await runMediaCommand(["ffmpeg", ...extra, "-i", file, "-af", "volumedetect", "-f", "null", "-"]);
+      return Number(/mean_volume:\s*(-?[0-9.]+) dB/.exec(stderr)?.[1] ?? NaN);
+    };
+
+    const mixed = path.join(root, "mixed.mp4");
+    await new FfmpegMergeEngine().mixBackgroundMusic(video, bgm, 0.4, 2, mixed);
+
+    const silence = await meanVolume(video);
+    expect(silence).toBeLessThan(-80); // the input really is silent, so the rest means something
+
+    const body = await meanVolume(mixed);
+    expect(body).toBeGreaterThan(-60); // the music is in the file
+
+    // Nine seconds into a ten-second video, from a three-second track: only looping puts sound here.
+    const late = await meanVolume(mixed, ["-ss", "8", "-t", "1.5"]);
+    expect(late).toBeGreaterThan(-60);
+
+    const opening = await meanVolume(mixed, ["-t", "0.2"]);
+    expect(opening).toBeLessThan(body - 10); // fading in, not starting at full level
+  }, 120000);
+
 });
 
 describe("FfmpegMergeEngine.merge holds a still for the time it was asked for", () => {
