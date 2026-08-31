@@ -82,10 +82,28 @@ export interface MergeSceneInput {
  * the subject does not drift. The move is deliberately small — this is a caption card, and a picture that
  * lunges at the reader is harder to read, not livelier.
  */
+/**
+ * A slow push into a still, held for `seconds`.
+ *
+ * `d=1`, not `d=frames`. `zoompan`'s `d` is **output frames per input frame**, and the still arrives looped —
+ * so `d=frames` multiplied instead of setting a length. Measured end to end on a real photo card: a five-second
+ * card came out **625 seconds long and 79 MB**, and took nine and a half minutes to encode, because 125 looped
+ * input frames each became 150 output ones. One frame in, one frame out, and the loop decides the duration.
+ *
+ * The zoom is a function of `on` (output frames so far) rather than `zoom+ε`, for the same reason: with one
+ * output frame per input frame there is no previous frame inside the sequence to accumulate from. It also says
+ * what it means — 1.15 by the end of the hold — instead of an epsilon whose total silently depends on the frame
+ * count. The old expression added 0.0004 for 150 frames and so never passed 1.06; the cap it named was never
+ * reached.
+ *
+ * 1.2× the output size, not 2×. The zoom only ever reaches 1.15, so 2× was four times the pixels for headroom
+ * that cannot be used, and `zoompan` re-renders every output frame from that oversized input.
+ */
 function kenBurns(width: number, height: number, seconds: number): string {
   const frames = Math.max(1, Math.round(seconds * 30));
-  return `scale=${width * 2}:${height * 2}:force_original_aspect_ratio=increase,`
-    + `zoompan=z='min(zoom+0.0004,1.15)':d=${frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${width}x${height}:fps=30`;
+  const scaled = (value: number) => Math.round(value * 1.2 / 2) * 2; // even dimensions: yuv420p needs them
+  return `scale=${scaled(width)}:${scaled(height)}:force_original_aspect_ratio=increase,`
+    + `zoompan=z='min(1+0.15*on/${frames},1.15)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${width}x${height}:fps=30`;
 }
 
 /** Small injectable engine mirroring Python FFmpegEngine's probe/normalize/concat sequence. */
@@ -148,7 +166,9 @@ export class FfmpegMergeEngine {
       // clip is opened as it always was. Everything after this — subtitles, audio mapping, encoder, concat — is
       // the same chain for both, which is the point of doing this as an input shape rather than a second merge.
       const stillSeconds = scene.stillDurationSeconds;
-      const input = stillSeconds === undefined ? ["-i", scene.clip] : ["-loop", "1", "-t", String(stillSeconds), "-i", scene.clip];
+      // `-framerate 30` before the input, so the loop produces exactly the frames the output keeps. Without it the
+      // image demuxer loops at its own 25, and every later step is counting in a rate nothing else uses.
+      const input = stillSeconds === undefined ? ["-i", scene.clip] : ["-loop", "1", "-framerate", "30", "-t", String(stillSeconds), "-i", scene.clip];
       const sceneFilter = stillSeconds === undefined ? filter : `${kenBurns(width, height, stillSeconds)},${filter}`;
       if (scene.narrationAudioPath) {
         await this.command(["ffmpeg", "-y", ...input, "-i", scene.narrationAudioPath, "-filter_complex", "[1:a]apad[aout]", "-map", "0:v:0", "-map", "[aout]", "-vf", sceneFilter, "-c:v", "libx264", "-c:a", "aac", "-shortest", target]);

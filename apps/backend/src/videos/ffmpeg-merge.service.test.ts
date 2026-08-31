@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
+import { FfmpegMergeEngine, MediaToolError, runMediaCommand, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
 import { escapeForFfmpegFilterPath } from "./subtitle-file.js";
 
 const roots: string[] = [];
@@ -105,10 +105,16 @@ describe("FfmpegMergeEngine.merge subtitle burn-in", () => {
     await new FfmpegMergeEngine(runner(calls), fontsDir).merge([{ clip: "card.png", stillDurationSeconds: 5 }], 5, finalPath, "9:16");
 
     const normalize = calls.find((args) => args[0] === "ffmpeg" && args.includes("-vf"))!;
-    expect(normalize.slice(normalize.indexOf("-y") + 1, normalize.indexOf("-f"))).toEqual(["-loop", "1", "-t", "5", "-i", "card.png"]);
+    // `-framerate 30` is part of the shape, not decoration: without it the image demuxer loops at its own 25 and
+    // the frame counts the zoom is written in are counted in a rate nothing else in the chain uses.
+    expect(normalize.slice(normalize.indexOf("-y") + 1, normalize.indexOf("-f"))).toEqual(["-loop", "1", "-framerate", "30", "-t", "5", "-i", "card.png"]);
     const filter = normalize[normalize.indexOf("-vf") + 1]!;
     expect(filter).toContain("zoompan=");
-    expect(filter).toContain("d=150");           // five seconds at 30fps
+    // This line used to read `d=150` with the comment "five seconds at 30fps", which is the mistake itself
+    // written down as if it were the rule: `d` is output frames **per input frame**, not a length. With the
+    // still looped, 125 input frames each became 150 output ones and a five-second card came out 625 seconds
+    // long. One in, one out; the loop decides the length.
+    expect(filter).toContain(":d=1:");
     expect(filter).toContain("s=1080x1920");     // 9:16, the same size the shared filter pads to
   });
 
@@ -239,4 +245,70 @@ describe("FfmpegMergeEngine.mixBackgroundMusic", () => {
     await expect(engine.mixBackgroundMusic(path.join(root, "in.mp4"), "bgm.mp3", 0.25, 2, path.join(root, "out.mp4")))
       .rejects.toMatchObject({ kind: "invalid" });
   });
+});
+
+describe("FfmpegMergeEngine.merge holds a still for the time it was asked for", () => {
+  /**
+   * `zoompan`'s `d` is output frames **per input frame**, and the still arrives looped — so `d = seconds * 30`
+   * multiplied instead of setting a length.
+   *
+   * Measured end to end on a real photo card before the fix: a five-second card came out **625 seconds long and
+   * 79 MB**, and took nine and a half minutes to encode. 125 looped input frames, each turned into 150 output
+   * ones. Nothing failed; the merge reported success and wrote a file nobody could use.
+   *
+   * This pair pins the two halves of the mistake in the arguments, and the pair below measures the thing that
+   * actually matters — the length — with a real FFmpeg.
+   */
+  it("gives zoompan one output frame per input frame and loops at the output rate", async () => {
+    const calls: string[][] = [];
+    const runner: MediaCommandRunner = async (args) => {
+      calls.push([...args]);
+      if (args[0] === "ffprobe") return { stdout: JSON.stringify({ format: { duration: "5" } }), stderr: "" };
+      const target = args[args.length - 1]!;
+      if (target.endsWith(".mp4")) await fs.writeFile(target, "video");
+      return { stdout: "", stderr: "" };
+    };
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "kenburns-args-")); roots.push(root);
+    const finalPath = path.join(root, "final", "instagram_reel.mp4");
+    await fs.mkdir(path.dirname(finalPath), { recursive: true });
+
+    await new FfmpegMergeEngine(runner).merge([{ clip: "card.png", stillDurationSeconds: 5 }], 5, finalPath, "9:16");
+
+    const encode = calls.find((args) => args.includes("-loop"))!;
+    expect(encode).toBeDefined();
+    // The loop has to run at the rate the output keeps, or the frame counts below are counted in a rate nothing
+    // else in the chain uses.
+    expect(encode.join(" ")).toContain("-loop 1 -framerate 30 -t 5");
+    const filter = encode[encode.indexOf("-vf") + 1]!;
+    expect(filter).toContain("zoompan=");
+    expect(filter).toContain(":d=1:"); // one in, one out — the loop decides the length
+    expect(filter).not.toMatch(/:d=(?!1:)\d+/); // never a frame count, which is what multiplied
+    // The zoom is driven by elapsed output frames, because with d=1 there is no previous frame to add to.
+    expect(filter).toContain("on/150");
+  });
+
+  /**
+   * The property the arguments above exist for, measured rather than described.
+   *
+   * Skipped where FFmpeg is not installed — the app already treats that as a normal state
+   * (MediaToolError "unavailable"), and a test that cannot run is better skipped out loud than quietly turned
+   * into an assertion about argument strings, which is what the fake-runner pair above already is.
+   */
+  it("produces a video as long as the hold, not a multiple of it", async ({ skip }) => {
+    const probe = await runMediaCommand(["ffmpeg", "-version"]).then(() => true).catch(() => false);
+    if (!probe) skip();
+
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "kenburns-real-")); roots.push(root);
+    const still = path.join(root, "card.png");
+    await runMediaCommand(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=teal:s=1080x1920", "-frames:v", "1", still]);
+    const finalPath = path.join(root, "final", "instagram_reel.mp4");
+    await fs.mkdir(path.dirname(finalPath), { recursive: true });
+
+    await new FfmpegMergeEngine().merge([{ clip: still, stillDurationSeconds: 5 }], 5, finalPath, "9:16");
+
+    const { stdout } = await runMediaCommand(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", finalPath]);
+    const duration = Number(JSON.parse(stdout).format.duration);
+    expect(duration).toBeGreaterThan(4.5);
+    expect(duration).toBeLessThan(6); // 625 seconds is what this looked like before
+  }, 60000);
 });
