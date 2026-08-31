@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { Asset, RunwayClipDurationSeconds } from "@ai-animation-studio/shared";
-import { RUNWAY_CLIP_DURATIONS } from "@ai-animation-studio/shared";
+import { PHOTO_CARD_QUOTE_MAX_LENGTH, RUNWAY_CLIP_DURATIONS } from "@ai-animation-studio/shared";
 
 import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
 import { createPhotoCard, toPhotoCardDisplayError } from "../api/photoCardsApi.js";
@@ -14,13 +14,7 @@ interface Props {
 
 type DisplayError = { code: string; message: string };
 
-/**
- * The server's limit, repeated here because shared does not export it yet (asked for — see the round that
- * ships this screen). Repeated on purpose rather than left out: without a count in front of the person, a
- * 301-character line is refused only after they press the button, and they retype what they already wrote.
- * If the two ever disagree the screen is the one that is wrong, and the server still refuses correctly.
- */
-const MAX_QUOTE_LENGTH = 300;
+
 
 const field =
   "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
@@ -58,7 +52,7 @@ export function PhotoCardScreen({ onBack, onCreated }: Props) {
 
   const trimmedQuote = quote.trim();
   const trimmedId = projectId.trim();
-  const ready = Boolean(assetId) && trimmedQuote.length > 0 && trimmedId.length > 0 && trimmedQuote.length <= MAX_QUOTE_LENGTH;
+  const ready = Boolean(assetId) && trimmedQuote.length > 0 && trimmedId.length > 0 && trimmedQuote.length <= PHOTO_CARD_QUOTE_MAX_LENGTH;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -150,8 +144,8 @@ export function PhotoCardScreen({ onBack, onCreated }: Props) {
           </label>
           {/* The limit is the server's, said before the button rather than after it — a refusal that arrives
               only on submit makes the person retype what they already wrote. */}
-          <p className={`text-xs tabular-nums ${trimmedQuote.length > MAX_QUOTE_LENGTH ? "text-rose-400" : "text-slate-500"}`} data-testid="photo-card-quote-count">
-            {trimmedQuote.length} / {MAX_QUOTE_LENGTH}자
+          <p className={`text-xs tabular-nums ${trimmedQuote.length > PHOTO_CARD_QUOTE_MAX_LENGTH ? "text-rose-400" : "text-slate-500"}`} data-testid="photo-card-quote-count">
+            {trimmedQuote.length} / {PHOTO_CARD_QUOTE_MAX_LENGTH}자
           </p>
 
           <label className="block text-sm text-slate-300">

@@ -1,7 +1,11 @@
 import type { BudgetPreview } from "@ai-animation-studio/shared";
 
 interface RetryCostNoticeProps {
-  /** From a progress response's `retryEstimate`; absent in the local fake mode, where nothing is charged. */
+  /**
+   * From a progress response's `retryEstimate`. Absent in the local fake mode — and also, since CLI Rounds
+   * 397/400, on a real paid job whose budget ledger could not be read. So absent means "no number to show",
+   * never "nothing is being charged"; nothing here may treat it as proof of the second.
+   */
   estimate: { perSceneCostUsd: number; budget: BudgetPreview } | undefined;
   /** How many scenes this action would regenerate — 1 for a single retry, N for "regenerate all". */
   sceneCount: number;
@@ -16,8 +20,10 @@ interface RetryCostNoticeProps {
  * spends money. `perSceneCostUsd` is multiplied here rather than server-side because how many scenes are being
  * retried is a UI choice the progress response cannot know in advance.
  *
- * Renders nothing when there is no estimate — an absent field means the local fake adapter, which charges
- * nothing, and inventing a number there would be worse than showing none.
+ * Renders nothing when there is no estimate. That is right for both reasons the field can be absent (a fake
+ * adapter that charges nothing, or a real job whose ledger could not be read): in neither case is there an
+ * honest number, and inventing one would be worse than showing none. What must not happen is a caller reading
+ * this component's silence as "free" — see the props doc above.
  */
 export function RetryCostNotice({ estimate, sceneCount, "data-testid": testId }: RetryCostNoticeProps) {
   if (!estimate) return null;
