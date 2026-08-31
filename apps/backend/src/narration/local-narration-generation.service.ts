@@ -1,5 +1,5 @@
 import * as crypto from "node:crypto";
-import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
+import { OPENAI_LEDGER_FILE, isBudgetLedgerUnreadable, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
@@ -134,6 +134,8 @@ export class LocalNarrationGenerationService {
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     let current: StoredProject = project;
     const generated: SceneNumber[] = [];
+    /** Scenes whose paid call landed but whose cost could not be written down — see providers/budget-ledger.ts. */
+    const unrecordedScenes: SceneNumber[] = [];
     const reused: SceneNumber[] = [];
     const skipped: SceneNumber[] = [];
 
@@ -161,7 +163,10 @@ export class LocalNarrationGenerationService {
             bytes = result.bytes;
             succeeded = true;
           } finally {
-            await this.budget.record(current.project_id, "tts", succeeded, TTS_ESTIMATED_COST_USD);
+            // A `finally` around a paid call: a throw here discards what OpenAI was already paid for, and on the
+            // failure path replaces the provider's real error. Kept and reported instead
+            // (providers/budget-ledger.ts, docs/06_DECISIONS.md D-037).
+            if (await recordSpend(() => this.budget!.record(current.project_id, "tts", succeeded, TTS_ESTIMATED_COST_USD))) unrecordedScenes.push(number);
           }
           adapter = "gpt-4o-mini-tts";
           apiCalls = 1;
@@ -184,14 +189,30 @@ export class LocalNarrationGenerationService {
         generated.push(number);
       }
     } catch (error) {
+    // Attached on the way out too, not only on the happy path. A ledger that becomes unreadable mid-run stops
+    // the *next* scene at preflight (D-036) and leaves through this catch, so the happy path never runs — and
+    // the scenes already bought before it broke would have gone unmentioned, which is the whole failure this
+    // guards against.
+      if (unrecordedScenes.length > 0) {
+        await this.projects.save({ ...current, warnings: [...current.warnings, spendUnrecordedWarning(`${unrecordedScenes.join(", ")}번 장면 내레이션 생성`, OPENAI_LEDGER_FILE)], updated_at: new Date().toISOString() }).catch(() => undefined);
+      }
       if (isBudgetLedgerUnreadable(error)) throw narrationBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw narrationBudgetExceeded(error.message);
       if (error instanceof OpenAiAdapterError) throw narrationProviderError(error.category, error.message);
       if (error instanceof Error && error.message === "invalid audio") throw narrationGenerationFailed();
       throw narrationStorageError();
     }
 
-    // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.
-    const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, generated.length * TTS_ESTIMATED_COST_USD) : undefined;
+    // Said after the fact, once, rather than per scene: the person needs one instruction, not six copies of it.
+    // Saved best-effort — the response below carries the same warning either way, so they see it now regardless.
+    if (unrecordedScenes.length > 0) {
+      current = { ...current, warnings: [...current.warnings, spendUnrecordedWarning(`${unrecordedScenes.join(", ")}번 장면 내레이션 생성`, OPENAI_LEDGER_FILE)], updated_at: new Date().toISOString() };
+      await this.projects.save(current).catch(() => undefined);
+    }
+    // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current
+    // state. Skipped when a spend went unrecorded: it reads the same file that just refused a write, and letting
+    // it throw here would answer a bare 500 for a generation that actually succeeded and was paid for. The field
+    // is already optional (the local fake mode has none).
+    const budget = apiKey && this.budget && unrecordedScenes.length === 0 ? await budgetPreviewFor(this.budget, generated.length * TTS_ESTIMATED_COST_USD) : undefined;
     return {
       project: toApiProject(current),
       generatedSceneNumbers: generated,

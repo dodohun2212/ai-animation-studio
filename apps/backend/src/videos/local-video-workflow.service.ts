@@ -1,5 +1,5 @@
 import * as crypto from "node:crypto";
-import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
+import { isBudgetLedgerUnreadable, RUNWAY_LEDGER_FILE, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import { isPlaceholderClip, PLACEHOLDER_MP4 } from "./placeholder-clip.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -55,14 +55,8 @@ type VideoRecord = Record<string, unknown> & {
 };
 type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved"; updated_at: string };
 
-/**
- * The video is here and the money is gone; only the note of it is missing.
- *
- * Phrased as something to check rather than something to retry, because retrying is the one action that makes it
- * worse: it buys the same scene a second time and leaves the month short by two. The person cannot fix the
- * ledger from this screen, so the warning names the file.
- */
-const spendUnrecordedWarning = (scene: SceneNumber) => `${scene}번 장면의 영상 비용을 사용 기록(runway_budget_usage.json)에 적지 못했습니다. 영상은 그대로 있고, 이번 달 사용액 합계만 실제보다 적게 잡혀 있습니다. 다시 만들지 마시고 기록 파일을 확인해 주세요.`;
+/** The shared sentence, with this side's subject and ledger file (providers/budget-ledger.ts). */
+const runwaySpendUnrecordedWarning = (scene: SceneNumber) => spendUnrecordedWarning(`${scene}번 장면의 영상`, RUNWAY_LEDGER_FILE);
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const sceneNumber = (value: unknown): SceneNumber | undefined => typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= MAX_SCENE_COUNT ? value as SceneNumber : undefined;
@@ -387,7 +381,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     }
     if (result.kind === "failed") {
       const updated = this.replaceRecords(project, [{ ...record, status: "failed", error: result.error }]);
-      if (result.spendUnrecorded) updated.warnings = [...updated.warnings, spendUnrecordedWarning(result.sceneNumber)];
+      if (result.spendUnrecorded) updated.warnings = [...updated.warnings, runwaySpendUnrecordedWarning(result.sceneNumber)];
       updated.updated_at = nowIso;
       await this.projects.save(updated);
       this.clearTimer(jobId);
@@ -401,7 +395,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     const paths = [...updated.generated_video_paths]; while (paths.length < jobRecords.length) paths.push("");
     paths[result.sceneNumber - 1] = this.file(project.project_id, result.sceneNumber);
     updated.generated_video_paths = paths; updated.updated_at = nowIso;
-    if (result.spendUnrecorded) updated.warnings = [...updated.warnings, spendUnrecordedWarning(result.sceneNumber)];
+    if (result.spendUnrecorded) updated.warnings = [...updated.warnings, runwaySpendUnrecordedWarning(result.sceneNumber)];
 
     if (this.records(updated, jobId).every((item) => item.status === "succeeded")) {
       updated.workflow_state = WorkflowState.ReviewingVideos;

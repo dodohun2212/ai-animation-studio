@@ -1,5 +1,5 @@
 import * as fs from "node:fs/promises";
-import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
+import { OPENAI_LEDGER_FILE, isBudgetLedgerUnreadable, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import {
@@ -130,6 +130,8 @@ export class NarrationReviewService {
     let adapter = "local-fake-tts-adapter";
     let apiCalls = 0;
     let retryEstimate: RegenerateNarrationResponse["retryEstimate"];
+    /** The money is gone and the ledger does not know — carried to the warning and past the estimate below. */
+    let spendUnrecorded = false;
     if (apiKey && this.budget) {
       try {
         await this.budget.preflight(TTS_ESTIMATED_COST_USD);
@@ -139,7 +141,10 @@ export class NarrationReviewService {
           bytes = result.bytes;
           succeeded = true;
         } finally {
-          await this.budget.record(project.project_id, "tts", succeeded, TTS_ESTIMATED_COST_USD);
+          // A `finally` around a paid call: a throw here discards the bytes OpenAI was already paid for, and on
+          // the failure path replaces the provider's real error. Kept and reported instead
+          // (providers/budget-ledger.ts, docs/06_DECISIONS.md D-037).
+          spendUnrecorded = await recordSpend(() => this.budget!.record(project.project_id, "tts", succeeded, TTS_ESTIMATED_COST_USD));
         }
       } catch (error) {
         if (isBudgetLedgerUnreadable(error)) throw narrationBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw narrationBudgetExceeded(error.message);
@@ -148,8 +153,10 @@ export class NarrationReviewService {
       }
       adapter = "gpt-4o-mini-tts";
       apiCalls = 1;
-      // Read-only, computed after the fact: reflects the ledger's state right after this regeneration's own record().
-      retryEstimate = { perSceneCostUsd: TTS_ESTIMATED_COST_USD, budget: await budgetPreviewFor(this.budget, TTS_ESTIMATED_COST_USD) };
+      // Read-only, computed after the fact: reflects the ledger's state right after this regeneration's own
+      // record(). Skipped when that record could not be written — same file, so it would throw and take the
+      // response, and the audio just paid for, with it. The field is already optional.
+      if (!spendUnrecorded) retryEstimate = { perSceneCostUsd: TTS_ESTIMATED_COST_USD, budget: await budgetPreviewFor(this.budget, TTS_ESTIMATED_COST_USD) };
     }
 
     const destination = this.generation.narrationPath(project.project_id, sceneNumber);
@@ -169,6 +176,7 @@ export class NarrationReviewService {
       generated_narrations: generatedNarrations,
       narration_generation_records: records,
       updated_at: timestamp,
+      ...(spendUnrecorded ? { warnings: [...project.warnings, spendUnrecordedWarning(`${sceneNumber}번 장면 내레이션 재생성`, OPENAI_LEDGER_FILE)] } : {}),
     };
     try { await this.projects.save(updated); } catch { throw narrationStorageError(); }
     return {

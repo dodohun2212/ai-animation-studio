@@ -464,4 +464,33 @@ describe("a generated Folder the Library no longer has", () => {
 
     expect((await assets.get(child.asset_id)).description).toBe("주인공 첫 컷");
   });
+
+  it("keeps the regenerated image OpenAI was already paid for when the ledger goes unreadable, instead of refusing with it in hand", async () => {
+    // A regeneration is one paid call, so there is no next scene to refuse — the whole question is what happens
+    // to the image just bought. The ledger write sat in a `finally`, so its throw was caught by the handler
+    // right below and turned into "repair a file", with the paid bytes dropped on the floor. Now the image
+    // lands and the unrecorded cost is said instead.
+    const { root, projectsRoot, projects, service } = await setupWithConnectedOpenAiAndConfirmedReference();
+    const before = await fs.readFile(path.join(projectsRoot, "review", "images", "scene3.png"));
+    const ledger = path.join(root, "api_budget_usage.json");
+    const fetchMock = vi.fn(async () => {
+      await fs.writeFile(ledger, "{ not json", "utf8");
+      return jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await service.regenerate("review", "3", { approved: true });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.project.workflowState).toBe(WorkflowState.ImagesReview);
+    // The previous image was archived, so the paid one really did replace it rather than being thrown away.
+    await expect(fs.readFile(path.join(projectsRoot, "review", "images", "originals", "scene3_v001.png"))).resolves.toEqual(before);
+    const warning = (await projects.findById("review")).warnings.find((item) => item.includes("api_budget_usage.json"));
+    expect(warning).toContain("3번 장면");
+    expect(warning).toContain("다시 만들지 마시고");
+    // The retry cost line reads the same broken file; it goes, the response stays.
+    expect(result.retryEstimate).toBeUndefined();
+    expect(await fs.readFile(ledger, "utf8")).toBe("{ not json");
+  });
+
 });

@@ -141,4 +141,28 @@ describe("narration generation with a connected OpenAI credential", () => {
     const { reviews } = await setup();
     await expect(reviews.regenerate("narr", "1", { approved: true, additionalInstruction: 5 })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
+
+  it("keeps the narration OpenAI was already paid for when the ledger goes unreadable mid-run, and says its cost went unrecorded", async () => {
+    // Two scenes, and the ledger breaks inside the first paid call — after preflight let it through, before
+    // record() writes the cost. Scene 1 is bought, so it is kept; scene 2 is not, and its own preflight reads
+    // the same broken file and refuses. Before the fix the `finally` threw from inside the provider call and
+    // took scene 1's audio with it, leaving nothing but an instruction to repair a file.
+    const { root, projects, generation } = await setup();
+    const ledger = path.join(root, "api_budget_usage.json");
+    const fetchMock = vi.fn(async () => {
+      await fs.writeFile(ledger, "{ not json", "utf8");
+      return audioResponse(200, AUDIO_BYTES);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(generation.generate("narr", { approved: true })).rejects.toMatchObject({ response: { code: "BUDGET_LEDGER_UNREADABLE" } });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1); // scene 2 never went out
+    expect(await fs.readFile(generation.narrationPath("narr", 1))).toEqual(AUDIO_BYTES);
+    const warning = (await projects.findById("narr")).warnings.find((item) => item.includes("api_budget_usage.json"));
+    expect(warning).toContain("1번 장면");
+    expect(warning).toContain("다시 만들지 마시고");
+    expect(await fs.readFile(ledger, "utf8")).toBe("{ not json");
+  });
+
 });

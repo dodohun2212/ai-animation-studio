@@ -1,5 +1,5 @@
 import * as crypto from "node:crypto";
-import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
+import { isBudgetLedgerUnreadable, OPENAI_LEDGER_FILE, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import { existsSync } from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
@@ -143,17 +143,25 @@ export class StoryPromptService {
   ) {}
 
   /** Real OpenAI generation only runs when a connected credential and a budget tracker are both wired in; otherwise this always falls back to the local fake adapter. */
-  private async generateStory(stored: StoredProject, prompt: string, apiKey: string | null): Promise<StoredStory> {
-    if (!apiKey || !this.budget) return generateLocalStory(stored, prompt);
+  private async generateStory(stored: StoredProject, prompt: string, apiKey: string | null): Promise<{ story: StoredStory; spendUnrecorded: boolean }> {
+    if (!apiKey || !this.budget) return { story: await generateLocalStory(stored, prompt), spendUnrecorded: false };
     await this.budget.preflight(STORY_ESTIMATED_COST_USD);
     let succeeded = false;
+    let story: StoredStory | undefined;
+    let spendUnrecorded = false;
     try {
-      const { story } = await callOpenAiStoryApi(apiKey, prompt, { sceneCount: toShortProjectSettings(stored).sceneCount });
+      ({ story } = await callOpenAiStoryApi(apiKey, prompt, { sceneCount: toShortProjectSettings(stored).sceneCount }));
       succeeded = true;
-      return story;
     } finally {
-      await this.budget.record(stored.project_id, "story", succeeded, STORY_ESTIMATED_COST_USD);
+      // `recordSpend` rather than a bare await, because this is a `finally`: a throw here discards the Story
+      // OpenAI was already paid for, and on the failure path it replaces the provider's real error — a rejected
+      // prompt would be reported as a ledger problem (providers/budget-ledger.ts, docs/06_DECISIONS.md D-037).
+      spendUnrecorded = await recordSpend(() => this.budget!.record(stored.project_id, "story", succeeded, STORY_ESTIMATED_COST_USD));
     }
+    // Returned after the finally, not from inside the try. A `return { story, spendUnrecorded }` in there builds
+    // its object before the finally runs, so the flag the finally sets never reaches the caller — the warning
+    // was silently never attached, and only the test that asserts the sentence caught it.
+    return { story: story!, spendUnrecorded };
   }
 
   private async original(stored: StoredProject): Promise<string> {
@@ -224,8 +232,9 @@ export class StoryPromptService {
     try { await this.projects.save(generating); } catch { throw storyStorageError(); }
 
     let story: StoredStory;
+    let spendUnrecorded: boolean;
     try {
-      story = await this.generateStory(generating, prompt, apiKey);
+      ({ story, spendUnrecorded } = await this.generateStory(generating, prompt, apiKey));
     } catch (error) {
       // Return to READY so the user can retry instead of being stuck in GENERATING_STORY forever.
       try { await this.projects.save({ ...generating, workflow_state: WorkflowState.Ready, updated_at: new Date().toISOString() }); } catch { /* best-effort recovery */ }
@@ -241,6 +250,7 @@ export class StoryPromptService {
       script_revision: generating.script_revision + 1,
       workflow_state: WorkflowState.WaitingForAssetMappingReview,
       updated_at: completedAt,
+      ...(spendUnrecorded ? { warnings: [...generating.warnings, spendUnrecordedWarning("이야기 생성", OPENAI_LEDGER_FILE)] } : {}),
     };
     try {
       await this.projects.save(updated);

@@ -282,6 +282,30 @@ describe("StoryPromptService real OpenAI generation", () => {
     expect((await repository.findById("sample")).workflow_state).toBe(WorkflowState.Ready);
   });
 
+  it("keeps the Story OpenAI was already paid for when the ledger goes unreadable, and says the month's total is short", async () => {
+    // The Story is the most expensive thing here to lose: it is the whole run's output, and everything after it
+    // is built on it. The ledger write sat in a `finally` around the paid call, so its throw discarded the Story
+    // that had just come back and sent the person to READY — where the only thing to do is pay for it again.
+    const { repository, service, root } = await setupWithConnectedOpenAi();
+    const ledger = path.join(root, "api_budget_usage.json");
+    // Broken from inside the provider call: after preflight let the request through, before record() writes it.
+    const fetchMock = vi.fn(async () => {
+      await fsPromises.writeFile(ledger, "{ not json", "utf8");
+      return jsonResponse(200, responsesBody(VALID_STORY));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const preview = await service.preview("sample");
+
+    const approved = await service.approve("sample", { originalPromptSha256: preview.preview.originalPromptSha256, prompt: preview.preview.originalPrompt, approved: true });
+
+    expect(approved.project.workflowState).toBe(WorkflowState.WaitingForAssetMappingReview);
+    const persisted = await repository.findById("sample");
+    expect(persisted.story).toEqual(VALID_STORY);
+    const warning = persisted.warnings.find((item) => item.includes("api_budget_usage.json"));
+    expect(warning).toContain("다시 만들지 마시고");
+    expect(await fsPromises.readFile(ledger, "utf8")).toBe("{ not json"); // never overwritten
+  });
+
   it("classifies a real provider failure, records it as budget usage, and restores READY so the user can retry", async () => {
     const { repository, service, root } = await setupWithConnectedOpenAi();
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { error: { code: "invalid_api_key" } }));

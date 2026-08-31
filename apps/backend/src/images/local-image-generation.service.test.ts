@@ -398,4 +398,37 @@ describe("real OpenAI image generation", () => {
 
     for (const call of fetchMock.mock.calls) expect(call[0]).toBe("https://api.openai.com/v1/images/generations");
   });
+
+  it("keeps the image OpenAI was already paid for when the ledger goes unreadable mid-generation, and says its cost went unrecorded", async () => {
+    // Corrupted from inside the provider call itself, which is the only window where this can really happen:
+    // after preflight read the ledger and let the request through, before record() writes the cost down.
+    //
+    // What should happen splits in two. Scene 1 is already bought, so it is kept. Scene 2 is not, and its own
+    // preflight reads the same broken file and refuses (D-036) — so the run ends here, through the error path.
+    // Before the fix the `finally` threw from inside the provider call and unwound scene 1 with it: the image
+    // was lost, and the person was told to repair a file as though nothing had been bought.
+    const { root, projectsRoot, projects, service } = await setupWithConnectedOpenAi();
+    const ledger = path.join(root, "api_budget_usage.json");
+    const fetchMock = vi.fn(async () => {
+      await fs.writeFile(ledger, "{ not json", "utf8");
+      return jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(service.generate("images", { approved: true })).rejects.toMatchObject({ response: { code: "BUDGET_LEDGER_UNREADABLE" } });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1); // scene 2 was refused before any request went out
+    const project = await projects.findById("images");
+    expect((await fs.stat(path.join(projectsRoot, "images", "images", "scene1.png"))).size).toBeGreaterThan(0);
+    expect(project.generated_images[0]).toContain("scene1.png");
+    expect(project.workflow_state).toBe(WorkflowState.AssetMappingApproved); // restored, so a retry is possible
+
+    // And the cost that went unrecorded is said out loud, on the way out — naming the file, telling them not to
+    // make it again, which is the one action that would make this worse.
+    const warning = project.warnings.find((item) => item.includes("api_budget_usage.json"));
+    expect(warning).toContain("1번 장면");
+    expect(warning).toContain("다시 만들지 마시고");
+    expect(await fs.readFile(ledger, "utf8")).toBe("{ not json"); // never overwritten — the history stays for whoever looks
+  });
+
 });

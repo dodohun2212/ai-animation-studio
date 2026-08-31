@@ -1,5 +1,5 @@
 import { PLACEHOLDER_PNG } from "./placeholder-image.js";
-import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
+import { OPENAI_LEDGER_FILE, isBudgetLedgerUnreadable, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
@@ -301,6 +301,8 @@ export class ImageReviewService {
     let adapter = "local-fake-image-adapter";
     let apiCalls = 0;
     let retryEstimate: RegenerateImageReviewResponse["retryEstimate"];
+    /** The money is gone and the ledger does not know — carried to the warning and past the estimate below. */
+    let spendUnrecorded = false;
     let referenceOmission: { references_used_count: number; references_omitted_count: number } | undefined;
     /** See the same field in local-image-generation.service.ts: the prompt names the Asset, not its bytes. */
     let referenceSources: string[] | undefined;
@@ -324,7 +326,10 @@ export class ImageReviewService {
           regenerated = result.bytes;
           succeeded = true;
         } finally {
-          await this.budget.record(project.project_id, "image", succeeded, IMAGE_ESTIMATED_COST_USD);
+          // A `finally` around a paid call: a throw here discards the bytes OpenAI was already paid for, and on
+          // the failure path replaces the provider's real error. Kept and reported instead
+          // (providers/budget-ledger.ts, docs/06_DECISIONS.md D-037).
+          spendUnrecorded = await recordSpend(() => this.budget!.record(project.project_id, "image", succeeded, IMAGE_ESTIMATED_COST_USD));
         }
       } catch (error) {
         if (isBudgetLedgerUnreadable(error)) throw imageReviewBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw imageReviewBudgetExceeded(error.message);
@@ -333,8 +338,10 @@ export class ImageReviewService {
       }
       adapter = references.images.length > 0 ? `${OPENAI_IMAGE_MODEL}:edit` : OPENAI_IMAGE_MODEL;
       apiCalls = 1;
-      // Read-only, computed after the fact: reflects the ledger's state right after this regeneration's own record().
-      retryEstimate = { perSceneCostUsd: IMAGE_ESTIMATED_COST_USD, budget: await budgetPreviewFor(this.budget, IMAGE_ESTIMATED_COST_USD) };
+      // Read-only, computed after the fact: reflects the ledger's state right after this regeneration's own
+      // record(). Skipped when that record could not be written, because this reads the same file and would
+      // throw — taking the response, and the image just paid for, with it. The field is already optional.
+      if (!spendUnrecorded) retryEstimate = { perSceneCostUsd: IMAGE_ESTIMATED_COST_USD, budget: await budgetPreviewFor(this.budget, IMAGE_ESTIMATED_COST_USD) };
     }
 
     const originals = path.join(path.dirname(currentPath), "originals");
@@ -387,6 +394,7 @@ export class ImageReviewService {
       image_generation_records: records,
       workflow_state: WorkflowState.ImagesReview,
       updated_at: timestamp,
+      ...(spendUnrecorded ? { warnings: [...project.warnings, spendUnrecordedWarning(`${number}번 장면 이미지 재생성`, OPENAI_LEDGER_FILE)] } : {}),
     };
     try {
       await this.indexAssetsIfMissing(project);
