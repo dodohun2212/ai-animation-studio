@@ -88,7 +88,17 @@ export class EpisodeImagesService {
     if (!Number.isInteger(number) || number < 1) throw longEpisodeNotFound();
     const files = this.files(projectId, number); const outlines = await this.json(files.outlines);
     if (!Array.isArray(outlines) || number > outlines.length || !object(outlines[number - 1]) || outlines[number - 1].episode_number !== number) throw longEpisodeNotFound();
-    const raw = await this.json(files.project);
+    // An Episode listed in the outline but never scripted has no directory yet, so this read is ENOENT — which
+    // `json()` reports as `longNotFound()`, "Long project was not found". The project is right there; the person
+    // was looking at it a moment ago. Measured over real data: Episode 2 of a real long project answered 200 for
+    // its detail and 404 "Long project was not found" for its image review, in the same breath.
+    //
+    // The truthful answer is the one a scripted Episode in the wrong state already gets. episode-narration
+    // does exactly this and says why: a per-episode project.json that is not there yet is "no script yet", not
+    // a storage failure and not a missing project.
+    let raw: unknown;
+    try { raw = await this.json(files.project); }
+    catch (error) { if (error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404) throw longEpisodeImagesNotAllowed(); throw error; }
     if (!object(raw) || raw.number !== number || !statuses.includes(raw.state as LongEpisodeStatus) || typeof raw.approved !== "boolean" || !object(raw.script) || !Number.isInteger(raw.script_revision) || Number(raw.script_revision) < 1 || typeof raw.updated_at !== "string") throw longInvalidData();
     return raw as StoredEpisode;
   }

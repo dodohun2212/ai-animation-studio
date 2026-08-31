@@ -152,6 +152,42 @@ describe.sequential("Long Project Episode flow over HTTP", () => {
     expect(stored.state).toBe("videos_approved");
   }, 120_000);
 
+
+  it("tells the truth about an Episode that exists but has no script yet, instead of saying the project is missing", async () => {
+    // Found by booting this same app over a copy of the real learning data and calling the routes the screens
+    // call. A real Episode 2 answered 200 for its own detail and, in the same breath, 404 "Long project was not
+    // found" for its image review — a person is sent looking for something they were just looking at.
+    //
+    // The cause is that an Episode listed in the outline but never scripted has no directory yet, so reading its
+    // per-episode record is ENOENT, and ENOENT was being reported as a missing project. The truthful answer is
+    // the one a scripted Episode in the wrong state already gets, which is what the assertions below pin: the
+    // same code for both, so the message cannot depend on how far along the Episode happens to be.
+    await boot();
+    await call("POST", API_ROUTES.longProjects, { projectId: PROJECT_ID, settings: SETTINGS });
+    const { preview } = await call<{ preview: { prompt: string; promptSha256: string } }>(
+      "POST", API_ROUTES.longProjectOutlinePreview(PROJECT_ID));
+    await call("POST", API_ROUTES.longProjectOutlineApproval(PROJECT_ID),
+      { approved: true, prompt: preview.prompt, promptSha256: preview.promptSha256 });
+
+    // Episode 2 is in the outline and nothing else has been done to it.
+    await call("GET", API_ROUTES.longEpisode(PROJECT_ID, 2));
+
+    const codes: Record<string, string> = {};
+    for (const [label, route] of [
+      ["images", API_ROUTES.longEpisodeImageReview(PROJECT_ID, 2)],
+      ["videos", API_ROUTES.longEpisodeVideoPreview(PROJECT_ID, 2)],
+      ["merge", API_ROUTES.longEpisodeFinalVideoContent(PROJECT_ID, 2)],
+    ] as const) {
+      const response = await fetch(`${base}${route}`);
+      const body = await response.json() as { code?: string };
+      codes[label] = `${response.status} ${body.code ?? ""}`.trim();
+    }
+
+    expect(codes.images).toBe("409 LONG_EPISODE_IMAGES_NOT_ALLOWED");
+    expect(codes.videos).toBe("409 LONG_EPISODE_VIDEOS_NOT_ALLOWED");
+    expect(codes.merge).toBe("409 LONG_EPISODE_MERGE_NOT_ALLOWED");
+  });
+
   it("never spent anything getting there", async () => {
     await boot();
     await call("POST", API_ROUTES.longProjects, { projectId: PROJECT_ID, settings: SETTINGS });
