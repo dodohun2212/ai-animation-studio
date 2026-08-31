@@ -621,6 +621,18 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
         </button>
       </form>
 
+      {/*
+       * The pictures this app has made, gathered across projects. Collapsed, and absent entirely when there
+       * are none. Viewing only — the files belong to the projects that made them.
+       *
+       * It sits here, above everything else on the page, because of where it used to sit. As a third child of
+       * a two-column grid it wrapped to a second row under the narrow left column, which put it below a list
+       * that scrolls to 560px — so it was off-screen unless you went looking, and its four-across gallery was
+       * being drawn 320px wide. Full width, and ahead of the maintenance tools: this is for browsing, which
+       * happens often, and those are for repairs, which do not.
+       */}
+      <GeneratedImagesSection />
+
       <div className="rounded-2xl border border-white/10 bg-slate-900/40">
         <button
           type="button"
@@ -1363,9 +1375,6 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
         </section>
       )}
       </div>
-      {/* The pictures this app has made, gathered across projects. Collapsed, and absent entirely when there
-          are none. Viewing only — the files belong to the projects that made them. */}
-      <GeneratedImagesSection />
       </div>
     </section>
   );

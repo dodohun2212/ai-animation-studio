@@ -862,6 +862,29 @@ describe("AssetLibraryScreen", () => {
     expect(await screen.findByText("이전된 에셋")).toBeTruthy();
   });
 
+  // It used to be a third child of a two-column grid, which put it on a second row under the narrow left
+  // column — below a list that scrolls to 560px, so you had to already know it was there. Document order is
+  // what "you see it without looking for it" reduces to in a test, so that is what is asserted; a rule about
+  // pixels would pass on a page where the section had been pushed off the bottom again.
+  it("puts the made-images section ahead of the asset list, not below it", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { assets: [makeAsset({ assetId: "ASSET-1", displayName: "어떤 에셋" })] }));
+    vi.stubGlobal("fetch", answerOutOfBand({
+      "GET /images/generated": {
+        projects: [{ projectId: "1", projectTitle: "단편 하나", sceneNumber: 1, updatedAt: "2026-08-29T00:00:00.000Z" }],
+        episodes: [],
+      },
+    }, fetchMock));
+    render(<AssetLibraryScreen onBack={() => {}} />);
+    await screen.findByRole("list", { name: "에셋 목록" });
+
+    const made = await screen.findByTestId("generated-images");
+    const list = screen.getByRole("list", { name: "에셋 목록" });
+    const maintenance = screen.getByTestId("asset-maintenance-toggle");
+    // Node.DOCUMENT_POSITION_FOLLOWING (4): the argument comes after `made` in the document.
+    expect(made.compareDocumentPosition(list) & 4).toBe(4);
+    expect(made.compareDocumentPosition(maintenance) & 4).toBe(4);
+  });
+
   // The Episode this exists for (12/Episode01) is finished: its pictures are on disk and nothing it will ever
   // do again would index them, because the repair only ran on approve and regenerate. So the button is the
   // only way that Episode's folder appears — which makes "the list actually refreshed" part of the assertion,
