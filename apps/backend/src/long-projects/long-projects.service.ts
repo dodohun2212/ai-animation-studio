@@ -1,5 +1,5 @@
 import * as crypto from "node:crypto";
-import { recordSpend } from "../providers/budget-ledger.js";
+import { OPENAI_LEDGER_FILE, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -25,7 +25,7 @@ const MAX_EPISODES = Number(process.env.APP_MAX_LONG_PROJECT_EPISODES ?? "60");
 const BEFORE_IMAGES: readonly string[] = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved"];
 
 const settingKeys = ["title", "logline", "overview", "genre", "tone", "theme", "episodeCount", "sceneCount", "clipDurationSeconds", "aspectRatio", "audience", "notes", "startingState", "midpoint", "endingDirection", "storyFlowSummary", "narrationEnabled", "subtitlesEnabled"] as const;
-type Stored = { project_id: string; project_type: "long_story_project"; title: string; logline: string; overview: string; genre: string; tone: string; theme: string; episode_count: number; scene_count: number; clip_duration_seconds: number; aspect_ratio: "9:16" | "16:9"; audience: string; notes: string; starting_state: string; midpoint: string; ending_direction: string; story_flow_summary: string; narration_enabled: boolean; subtitles_enabled: boolean; created_at: string; updated_at: string; outline_status: "planned" | "outline_ready"; outline_prompt_request?: { prompt_sha256: string; prompt: string; approved_at: string; modified: boolean }; };
+type Stored = { project_id: string; project_type: "long_story_project"; title: string; logline: string; overview: string; genre: string; tone: string; theme: string; episode_count: number; scene_count: number; clip_duration_seconds: number; aspect_ratio: "9:16" | "16:9"; audience: string; notes: string; starting_state: string; midpoint: string; ending_direction: string; story_flow_summary: string; narration_enabled: boolean; subtitles_enabled: boolean; created_at: string; updated_at: string; outline_status: "planned" | "outline_ready"; outline_prompt_request?: { prompt_sha256: string; prompt: string; approved_at: string; modified: boolean }; warnings?: string[]; };
 const object = (value: unknown): Record<string, unknown> => { if (!value || typeof value !== "object" || Array.isArray(value)) throw longInvalidRequest(); return value as Record<string, unknown>; };
 const text = (value: unknown, required = false): string => { if (typeof value !== "string") throw longInvalidRequest(); const result = value.trim(); if (required && !result) throw longInvalidRequest(); return result; };
 const isValidSceneCount = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= MIN_SCENE_COUNT && value <= MAX_SCENE_COUNT;
@@ -77,7 +77,7 @@ function settings(value: unknown): LongProjectSettings {
 }
 function toSettings(s: Stored): LongProjectSettings { return { title: s.title, logline: s.logline, overview: s.overview, genre: s.genre, tone: s.tone, theme: s.theme, episodeCount: s.episode_count, episodeDurationSeconds: s.scene_count * s.clip_duration_seconds, sceneCount: s.scene_count, clipDurationSeconds: s.clip_duration_seconds, aspectRatio: s.aspect_ratio, audience: s.audience, notes: s.notes, startingState: s.starting_state, midpoint: s.midpoint, endingDirection: s.ending_direction, storyFlowSummary: s.story_flow_summary, narrationEnabled: s.narration_enabled, subtitlesEnabled: s.subtitles_enabled }; }
 function setStored(id: string, s: LongProjectSettings, now: string, createdAt = now, status: Stored["outline_status"] = "planned"): Stored { return { project_id: id, project_type: "long_story_project", title: s.title, logline: s.logline, overview: s.overview, genre: s.genre, tone: s.tone, theme: s.theme, episode_count: s.episodeCount, scene_count: s.sceneCount, clip_duration_seconds: s.clipDurationSeconds, aspect_ratio: s.aspectRatio, audience: s.audience, notes: s.notes, starting_state: s.startingState, midpoint: s.midpoint, ending_direction: s.endingDirection, story_flow_summary: s.storyFlowSummary, narration_enabled: s.narrationEnabled, subtitles_enabled: s.subtitlesEnabled, created_at: createdAt, updated_at: now, outline_status: status }; }
-function summary(s: Stored): LongProjectSummary { return { id: s.project_id, title: s.title, logline: s.logline, episodeCount: s.episode_count, outlineStatus: s.outline_status, createdAt: s.created_at, updatedAt: s.updated_at }; }
+function summary(s: Stored): LongProjectSummary { return { id: s.project_id, title: s.title, logline: s.logline, episodeCount: s.episode_count, outlineStatus: s.outline_status, createdAt: s.created_at, updatedAt: s.updated_at, ...(s.warnings && s.warnings.length > 0 ? { warnings: s.warnings } : {}) }; }
 
 @Injectable()
 export class LongProjectsService {
@@ -99,7 +99,7 @@ export class LongProjectsService {
   // "platform" stays accepted (and silently discarded) here even though it is no longer part of Stored/settings():
   // every project.json written before its removal still has the key, and rejecting an unknown key would make
   // every existing long project fail to load.
-  private parseStored(value: unknown): Stored { const d = object(value); const known = new Set(["project_id", "project_type", "title", "logline", "overview", "genre", "tone", "theme", "episode_count", "episode_duration_seconds", "scene_count", "clip_duration_seconds", "platform", "aspect_ratio", "audience", "notes", "starting_state", "midpoint", "ending_direction", "story_flow_summary", "narration_enabled", "subtitles_enabled", "created_at", "updated_at", "outline_status", "outline_prompt_request"]); if (Object.keys(d).some((key) => !known.has(key))) throw longInvalidData(); try { const { sceneCount, clipDurationSeconds } = coerceSceneCountAndClipDuration(d); const { narrationEnabled, subtitlesEnabled } = coerceNarrationSettings(d); const result = setStored(text(d.project_id, true), settings({ title: d.title, logline: d.logline, overview: d.overview, genre: d.genre, tone: d.tone, theme: d.theme, episodeCount: d.episode_count, sceneCount, clipDurationSeconds, aspectRatio: d.aspect_ratio, audience: d.audience, notes: d.notes, startingState: d.starting_state, midpoint: d.midpoint, endingDirection: d.ending_direction, storyFlowSummary: d.story_flow_summary, narrationEnabled, subtitlesEnabled }), text(d.updated_at, true), text(d.created_at, true), d.outline_status === "outline_ready" ? "outline_ready" : d.outline_status === "planned" ? "planned" : (() => { throw longInvalidData(); })()); if (d.project_type !== "long_story_project") throw longInvalidData(); if (d.outline_prompt_request !== undefined) result.outline_prompt_request = d.outline_prompt_request as Stored["outline_prompt_request"]; return result; } catch (error) { if (error instanceof Error && "getStatus" in error) throw error; throw longInvalidData(); } }
+  private parseStored(value: unknown): Stored { const d = object(value); const known = new Set(["project_id", "project_type", "title", "logline", "overview", "genre", "tone", "theme", "episode_count", "episode_duration_seconds", "scene_count", "clip_duration_seconds", "platform", "aspect_ratio", "audience", "notes", "starting_state", "midpoint", "ending_direction", "story_flow_summary", "narration_enabled", "subtitles_enabled", "created_at", "updated_at", "outline_status", "outline_prompt_request", "warnings"]); if (Object.keys(d).some((key) => !known.has(key))) throw longInvalidData(); try { const { sceneCount, clipDurationSeconds } = coerceSceneCountAndClipDuration(d); const { narrationEnabled, subtitlesEnabled } = coerceNarrationSettings(d); const result = setStored(text(d.project_id, true), settings({ title: d.title, logline: d.logline, overview: d.overview, genre: d.genre, tone: d.tone, theme: d.theme, episodeCount: d.episode_count, sceneCount, clipDurationSeconds, aspectRatio: d.aspect_ratio, audience: d.audience, notes: d.notes, startingState: d.starting_state, midpoint: d.midpoint, endingDirection: d.ending_direction, storyFlowSummary: d.story_flow_summary, narrationEnabled, subtitlesEnabled }), text(d.updated_at, true), text(d.created_at, true), d.outline_status === "outline_ready" ? "outline_ready" : d.outline_status === "planned" ? "planned" : (() => { throw longInvalidData(); })()); if (d.project_type !== "long_story_project") throw longInvalidData(); if (d.outline_prompt_request !== undefined) result.outline_prompt_request = d.outline_prompt_request as Stored["outline_prompt_request"]; if (Array.isArray(d.warnings)) { const kept = d.warnings.filter((item): item is string => typeof item === "string"); if (kept.length > 0) result.warnings = kept; } return result; } catch (error) { if (error instanceof Error && "getStatus" in error) throw error; throw longInvalidData(); } }
   private async load(id: string): Promise<Stored> { const stored = this.parseStored(await this.readJson(this.files(id).project)); if (stored.project_id !== id) throw longInvalidData(); return stored; }
   private async outlines(id: string, count: number): Promise<LongEpisodeOutline[]> { const raw = await this.readJson(this.files(id).outlines); if (!Array.isArray(raw) || raw.length !== count) throw longInvalidData(); return raw.map((item, index) => { const d = object(item); if (d.episode_number !== index + 1 || typeof d.title !== "string" || typeof d.summary !== "string" || typeof d.main_event !== "string" || typeof d.conflict !== "string" || typeof d.cliffhanger !== "string" || typeof d.next_episode_hook !== "string" || !["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted", "rendering", "completed", "failed"].includes(d.status as string)) throw longInvalidData(); const warnings = withoutStaleEpisodeRecoveryWarnings(Array.isArray(d.warnings) ? d.warnings.filter((entry): entry is string => typeof entry === "string") : [], d.status as string); return { episodeNumber: index + 1, title: d.title, summary: d.summary, mainEvent: d.main_event, conflict: d.conflict, cliffhanger: d.cliffhanger, nextEpisodeHook: d.next_episode_hook, status: d.status as LongEpisodeOutline["status"], ...(warnings.length > 0 ? { warnings } : {}) }; }); }
   /**
@@ -338,6 +338,8 @@ export class LongProjectsService {
 
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     let generated: Array<Record<string, unknown>>;
+    /** The money is gone and the ledger does not know — carried onto the project itself, below. */
+    let spendUnrecorded = false;
     if (apiKey && this.budget) {
       try {
         await this.budget.preflight(LONG_OUTLINE_ESTIMATED_COST_USD);
@@ -351,12 +353,10 @@ export class LongProjectsService {
           // paid for — every Episode in the project comes out of it — and on the failure path replaces the
           // provider's real error (providers/budget-ledger.ts, docs/06_DECISIONS.md D-037).
           //
-          // 🟠 The flag is deliberately dropped here, unlike everywhere else. A long project has no warnings
-          // channel of its own (`LongEpisodeOutline.warnings` exists; `LongProjectSummary` has nothing), and the
-          // outline is not about any one Episode, so there is nowhere honest to put the sentence. Adding the
-          // field is a shared-contract change and belongs in its own change with the screen that renders it —
-          // keeping the paid outline is the part that cannot wait.
-          await recordSpend(() => this.budget!.record(s.project_id, "long_story_outline", succeeded, LONG_OUTLINE_ESTIMATED_COST_USD));
+          // The outline is one paid call that produces every Episode, so an unrecorded cost belongs to the
+          // project rather than to any one of them — which is what `LongProjectSummary.warnings` is for. Putting
+          // it on an arbitrary Episode would be a lie; on all of them, noise.
+          spendUnrecorded = await recordSpend(() => this.budget!.record(s.project_id, "long_story_outline", succeeded, LONG_OUTLINE_ESTIMATED_COST_USD));
         }
         const applied = this.applyOutlineResult(s, result);
         for (const [field, value] of Object.entries(applied.project)) (s as Record<string, unknown>)[field] = value;
@@ -378,6 +378,13 @@ export class LongProjectsService {
     }
 
     s.outline_status = "outline_ready"; s.updated_at = now;
+    // Attached before the write that persists everything else about this approval, so the note travels with the
+    // outline it is about rather than needing a save of its own.
+    if (spendUnrecorded) {
+      const message = spendUnrecordedWarning("회차 개요 생성", OPENAI_LEDGER_FILE);
+      const existing = s.warnings ?? [];
+      if (!existing.includes(message)) s.warnings = [...existing, message];
+    }
     try { await atomicWriteUtf8File(this.files(s.project_id).project, JSON.stringify(s, null, 2)); await atomicWriteUtf8File(this.files(s.project_id).outlines, JSON.stringify(generated, null, 2)); } catch { throw longStorageError(); }
     return { project: await this.project(s.project_id), approvedAt: now, promptSha256: s.outline_prompt_request.prompt_sha256, modified };
   }

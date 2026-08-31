@@ -31,6 +31,9 @@ function sixReviews(approved: readonly number[] = []): GetVideoReviewResponse["r
 
 function makeProgress(overrides: Partial<GenerationProgressResponse> = {}): GenerationProgressResponse {
   return {
+    // Required, not optional, and defaulted here to the local-fake job. A test that means a paid one says so —
+    // the whole point of the field is that "paid" is never inferred from something else being absent.
+    paidProvider: false,
     jobId: "job_1",
     status: "running",
     completedSceneNumbers: [1, 2],

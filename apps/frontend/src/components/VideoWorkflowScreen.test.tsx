@@ -11,6 +11,9 @@ const REVIEW_URL = `${PROGRESS_URL}/review`;
 
 function makeProgress(overrides: Partial<GenerationProgressResponse> = {}): GenerationProgressResponse {
   return {
+    // Required, not optional, and defaulted here to the local-fake job. A test that means a paid one says so —
+    // the whole point of the field is that "paid" is never inferred from something else being absent.
+    paidProvider: false,
     jobId: "job_1",
     status: "running",
     completedSceneNumbers: [],
@@ -712,6 +715,21 @@ describe("VideoWorkflowScreen source", () => {
     ]) {
       expect(pattern.test(content)).toBe(false);
     }
+  });
+
+  /**
+   * A missing retryEstimate used to be read as "no Runway key, nothing is being charged". It is not proof of
+   * that any more: a real paid job omits it when the budget ledger cannot be read, and the old wording then
+   * told the person their paid job was free. The notice may still describe the free case — it must not claim
+   * it, which is what naming the paid case in the same breath enforces.
+   */
+  it("does not tell the person a job is free just because no cost figure arrived", async () => {
+    const running = makeProgress({ completedSceneNumbers: [1] });
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, running)));
+
+    const notice = await screen.findByTestId("provider-mode-notice");
+    expect(notice.textContent).toContain("실제 유료 요청이 전송됩니다");
+    expect(notice.textContent).not.toContain("연결되어 있지 않아 비용 없이");
   });
 
   it("warns that real money is being spent once the job reports a paid execution mode", async () => {

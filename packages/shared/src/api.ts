@@ -458,8 +458,21 @@ export interface StartLongEpisodeVideoGenerationRequest {
   approved: true;
   prompts: Array<{ sceneNumber: SceneNumber; prompt: string }>;
 }
-export interface StartLongEpisodeVideoGenerationResponse { jobId: string; acceptedSceneNumbers: SceneNumber[]; episode: LongEpisodeDetail; }
+export interface StartLongEpisodeVideoGenerationResponse {
+  jobId: string;
+  acceptedSceneNumbers: SceneNumber[];
+  episode: LongEpisodeDetail;
+  /**
+   * Same meaning as LongEpisodeVideoProgress.paidProvider, answered here as well because the screen shows a
+   * progress state of its own between starting and the first poll. Without it that moment is the one place the
+   * screen has to guess whether the job it just started costs money — which is the guess this field exists to
+   * remove.
+   */
+  paidProvider: boolean;
+}
 export interface LongEpisodeVideoProgress {
+  /** Same meaning and rule as GenerationProgressResponse.paidProvider — always present, never inferred from a missing cost line. */
+  paidProvider: boolean;
   jobId: string;
   status: "created" | "running" | "succeeded" | "failed" | "interrupted";
   currentSceneNumber?: SceneNumber;
@@ -726,6 +739,17 @@ export interface LongProjectSummary {
   outlineStatus: "planned" | "outline_ready";
   createdAt: string;
   updatedAt: string;
+  /**
+   * Plain-language notices about this project as a whole, in the person's language — never a raw code.
+   *
+   * The counterpart of `LongEpisodeOutline.warnings`, for the things that are not about any one Episode. The
+   * outline generation is the case that made it necessary: it is one paid call that produces every Episode, so
+   * when its cost cannot be written to the spend ledger there is nowhere honest to say so — putting it on an
+   * arbitrary Episode would be a lie, and on all of them, noise (docs/06_DECISIONS.md D-037).
+   *
+   * Optional and usually absent, like the Episode field: most projects never have one.
+   */
+  warnings?: string[];
 }
 
 export interface LongProject extends LongProjectSummary {
@@ -1484,6 +1508,19 @@ export interface StartVideoGenerationResponse {
 
 export interface GenerationProgressResponse {
   jobId: string;
+  /**
+   * Whether this job sends paid provider requests, decided when it was submitted and true for its whole life.
+   *
+   * **Always present.** That is the point of it. A screen used to read this off `retryEstimate`'s absence —
+   * no cost line, therefore no cost — and said "made at no cost" out loud on that basis. The moment
+   * `retryEstimate` gained a second reason to be missing (an unreadable spend ledger, docs/06_DECISIONS.md
+   * D-037), the screen started saying that about a real, paid, running job. A fact a person is told about money
+   * must not be carried by the absence of something else, because absence acquires new causes.
+   *
+   * Says "paid", not which provider: the sentence a person needs does not change when a second one is added,
+   * and this is the field they will read.
+   */
+  paidProvider: boolean;
   status: "created" | "running" | "succeeded" | "failed" | "interrupted";
   currentSceneNumber?: SceneNumber;
   completedSceneNumbers: SceneNumber[];

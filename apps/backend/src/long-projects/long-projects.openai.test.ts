@@ -138,9 +138,10 @@ describe("real OpenAI Long Project outline generation", () => {
     // Every Episode in the project comes out of this one paid call, so losing it to its own bookkeeping is the
     // most expensive failure here. The `finally` used to throw and take the whole outline with it.
     //
-    // 🟠 No warning is asserted, on purpose. A long project has no warnings channel of its own, and this outline
-    // is not about any one Episode, so there is nowhere honest to put the sentence — that needs a shared-contract
-    // field and the screen to render it. This pair pins the half that cannot wait: the outline survives.
+    // The warning is asserted now. When this pair was first written a long project had no warnings channel of its
+    // own, so it pinned only the half that could not wait — the outline survives — and said so rather than
+    // quietly asserting less. `LongProjectSummary.warnings` exists since, and the sentence has an honest place:
+    // the outline is one paid call that makes every Episode, so its cost belongs to the project.
     const { root: usedRoot, projects } = await setupWithConnectedOpenAi();
     const ledger = path.join(usedRoot!, "api_budget_usage.json");
     const fetchMock = vi.fn(async () => {
@@ -155,6 +156,10 @@ describe("real OpenAI Long Project outline generation", () => {
     expect(approved.project.episodes).toHaveLength(2);
     expect(approved.project.episodes[0]!.title).toBe(episode(1).title);
     expect(await fs.readFile(ledger, "utf8")).toBe("{ not json");
+
+    const warning = approved.project.warnings?.find((item) => item.includes("api_budget_usage.json"));
+    expect(warning).toContain("회차 개요 생성");
+    expect(warning).toContain("다시 만들지 마시고");
   });
 
 });

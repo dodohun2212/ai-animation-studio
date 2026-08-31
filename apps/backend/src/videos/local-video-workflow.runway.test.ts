@@ -621,4 +621,29 @@ describe("real Runway video workflow", () => {
     workflow.onModuleDestroy();
   });
 
+
+  it("still says the job is paid when the ledger goes unreadable and the cost line disappears", async () => {
+    // The exact shape of the defect Cowork found on the screen: it read "no cost line" as "no cost" and told a
+    // person their real, running, paid job was being made for free. That equation held only while a missing
+    // `retryEstimate` had one cause; an unreadable ledger gave it a second (D-037).
+    //
+    // So the two are pinned apart here. The cost line goes, and the sentence about money does not.
+    const deps = await setupWithConnectedRunway();
+    const workflow = newWorkflow(deps);
+    vi.stubGlobal("fetch", runwayFetchMock());
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-23T10:00:00.000Z"));
+
+    const started = await workflow.run("video_workflow", deps.accepted.jobId);
+    expect(started.paidProvider).toBe(true);
+    expect(started.retryEstimate).toBeDefined();
+
+    await fs.writeFile(path.join(deps.root, "runway_budget_usage.json"), "{ this is not the ledger");
+    const afterwards = await workflow.getProgress("video_workflow", deps.accepted.jobId);
+
+    expect(afterwards.retryEstimate).toBeUndefined(); // the display figure gives way
+    expect(afterwards.paidProvider).toBe(true); // what a person is told about money does not
+    workflow.onModuleDestroy();
+  });
+
 });

@@ -208,6 +208,9 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       ? await this.retryEstimate().catch((error: unknown) => { if (isBudgetLedgerUnreadable(error)) return undefined; throw error; })
       : undefined;
     return {
+      // Read off the records, not off whether a cost line came back: this is decided when the job is submitted
+      // (from whether a credential and a budget were both wired in) and is true for the job's whole life.
+      paidProvider: records[0]?.execution_mode === "runway",
       jobId, status, ...(current ? { currentSceneNumber: current } : {}), completedSceneNumbers, failedSceneNumbers,
       sceneNumbers: records.map((record) => record.scene_number),
       ...(Object.keys(sceneErrors).length > 0 ? { sceneErrors } : {}),
