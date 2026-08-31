@@ -1,4 +1,5 @@
 import { PLACEHOLDER_PNG } from "./placeholder-image.js";
+import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
@@ -33,7 +34,7 @@ import { collectReferenceImages, describeReferenceMappingsForScene } from "./ima
 import { imagePromptFor, imageSizeFor, sceneValue, styleLineFor } from "./image-prompt.js";
 import { previousSceneContinuityImagePath } from "../projects/project-continuity.js";
 import { computeSceneStaleness } from "../projects/scene-staleness.js";
-import {
+import { imageReviewBudgetLedgerUnreadable,
   imageReviewBudgetExceeded,
   imageReviewDataInvalid,
   imageReviewImageInvalid,
@@ -317,7 +318,7 @@ export class ImageReviewService {
           await this.budget.record(project.project_id, "image", succeeded, IMAGE_ESTIMATED_COST_USD);
         }
       } catch (error) {
-        if (error instanceof OpenAiBudgetExceededError) throw imageReviewBudgetExceeded(error.message);
+        if (isBudgetLedgerUnreadable(error)) throw imageReviewBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw imageReviewBudgetExceeded(error.message);
         if (error instanceof OpenAiAdapterError) throw imageReviewProviderError(error.category, error.message);
         throw imageReviewProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown);
       }

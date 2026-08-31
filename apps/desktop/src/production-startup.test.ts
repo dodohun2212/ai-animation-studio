@@ -32,6 +32,21 @@ test("does not open a window when the backend never became ready", async () => {
   assert.deepEqual(calls, ["dialog", "quit"]);
 });
 
+/**
+ * The backend answered /health and was gone by the time the page loaded.
+ *
+ * `createProductionWindow` is called with `void`, so this rejection was nobody's: an empty window stayed on
+ * screen with no explanation and no quit. It is the same situation as never becoming ready, half a second
+ * later, so it gets the same dialog rather than a second sentence for one thing.
+ */
+test("says the same thing and stops when the page cannot load after all", async () => {
+  const { calls, deps } = fakeShell(true);
+
+  assert.equal(await startProductionWindow({ ...deps, load: async () => { throw new Error("ERR_CONNECTION_REFUSED"); } }), undefined);
+
+  assert.deepEqual(calls, ["window", "dialog", "quit"]);
+});
+
 /** The counterpart: a shell that never opens a window at all would pass the test above. */
 test("opens the window on the backend's own port once it is ready", async () => {
   const { calls, deps } = fakeShell(true);

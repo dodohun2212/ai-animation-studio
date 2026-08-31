@@ -81,20 +81,17 @@ function errorDetailLabel(details: Record<string, unknown> | undefined): string 
  * Mapping이 남아 있습니다" while the list right below it said there were none.
  */
 /**
- * Two codes on each side mean the same thing: a file on disk cannot be read, and this screen is a dead end
- * until someone touches that file. The backend refuses loudly on purpose rather than drawing an unreadable
- * record as "괜찮음" (D-036), so what the screen owes the person is the way out — not a red line they can
- * only press again. The two sides get opposite sentences, and that difference is the whole point:
+ * When the mapping file cannot be read, this screen is a dead end until someone touches that file, and what it
+ * owes the person is the way out — not a red line they can only press again. The way out here is a warning,
+ * not an instruction: a missing asset_mappings.json reads as "연결 없음", so deleting it to clear the error
+ * throws away every link the person made by hand, with nothing that puts them back.
  *
- *   asset_mapping_review.json   지워도 안전  — the backend reads a missing review as a fresh 대기 중 record,
- *                                              so the only loss is an approval the person can press again.
- *   asset_mappings.json         지우면 손실  — a missing mapping file reads as "연결 없음", and every link
- *                                              the person made by hand is gone with no way to press it back.
- *
- * Without the second sentence the first one is dangerous: someone who just deleted one JSON to fix a screen
- * will try it on the file sitting next to it.
+ * There was a matching block for the review file, saying the opposite (that one IS safe to delete). It is gone:
+ * ASSET_MAPPING_REVIEW_MALFORMED has had no producer since eef4a38, and ASSET_MAPPING_REVIEW_INVALID is raised
+ * on the way *out* — the server's own record failing its own invariant — which deleting the file does not fix.
+ * Advice for a code that cannot arrive is the same failure this screen keeps being fixed for, one level up:
+ * the screen asserting something it never checked, and telling the next reader that a dead path is alive.
  */
-const REVIEW_FILE_UNREADABLE = new Set(["ASSET_MAPPING_REVIEW_MALFORMED", "ASSET_MAPPING_REVIEW_INVALID"]);
 const MAPPING_FILE_UNREADABLE = new Set(["ASSET_MAPPING_JSON_MALFORMED", "ASSET_MAPPING_DATA_INVALID"]);
 const fileName = "rounded bg-white/5 px-1 py-0.5 font-mono text-[11px] text-slate-300";
 const recoveryNote = "mt-2 text-xs leading-relaxed text-slate-400";
@@ -538,16 +535,7 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
       <section aria-label="검토 상태" className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6">
         {reviewLoading && !review && <Spinner label="검토 상태를 불러오는 중..." />}
         {reviewError && (
-          <>
-            <p role="alert" data-testid="review-error" data-error-code={reviewError.code} className="text-sm text-rose-400">{reviewError.message}</p>
-            {REVIEW_FILE_UNREADABLE.has(reviewError.code) && (
-              <p data-testid="review-file-recovery" className={recoveryNote}>
-                다시 열어도 같은 화면이 나옵니다. 프로젝트 폴더(장기 프로젝트면 그 회차 폴더) 안의{" "}
-                <code className={fileName}>asset_mapping_review.json</code> 을 지우면 검토 상태만 "대기 중"으로 돌아갑니다.
-                연결해 둔 참고 이미지는 그대로 남고, 승인만 다시 누르시면 됩니다.
-              </p>
-            )}
-          </>
+          <p role="alert" data-testid="review-error" data-error-code={reviewError.code} className="text-sm text-rose-400">{reviewError.message}</p>
         )}
         {review && (
           <>

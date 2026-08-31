@@ -28,6 +28,18 @@ export async function startProductionWindow<W>(deps: ProductionStartupDeps<W>): 
     return undefined;
   }
   const window = deps.createWindow();
-  await deps.load(window, `http://127.0.0.1:${deps.port}/`);
+  try {
+    await deps.load(window, `http://127.0.0.1:${deps.port}/`);
+  } catch {
+    // The same failure as never becoming ready, half a second later: the backend answered /health and then was
+    // gone before the page loaded. Nothing was handling this — `createWindow()` is called with `void`, so the
+    // rejection was unhandled and the person got an empty window with no explanation.
+    //
+    // The same dialog on purpose, and no new wording. From where the person sits the two cases are one thing —
+    // the server is not there — and inventing a second sentence would give one situation two explanations.
+    await deps.showStartupFailure();
+    deps.quit();
+    return undefined;
+  }
   return window;
 }

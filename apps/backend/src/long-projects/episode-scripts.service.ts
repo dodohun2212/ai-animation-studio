@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import { errorsOf as episodeErrors, toEpisodeInstagramPost, toEpisodeUsedAudio } from "./episode-detail.js";
@@ -10,7 +11,7 @@ import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../pr
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiStoryApi } from "../story/openai-story-adapter.js";
 import { buildEpisodeContext } from "./episode-context-builder.js";
-import { isLongProjectError, longEpisodeNotFound, longEpisodeScriptBudgetExceeded, longEpisodeScriptExists, longEpisodeScriptNotAllowed, longEpisodeScriptProviderError, longEpisodeSettingsNotAllowed, longInvalidData, longLocked, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { longBudgetLedgerUnreadable, isLongProjectError, longEpisodeNotFound, longEpisodeScriptBudgetExceeded, longEpisodeScriptExists, longEpisodeScriptNotAllowed, longEpisodeScriptProviderError, longEpisodeSettingsNotAllowed, longInvalidData, longLocked, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { episodeSettings } from "./episode-settings.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
@@ -299,7 +300,7 @@ export class EpisodeScriptsService {
           succeeded = true;
         } finally { await this.budget.record(id, "episode_story", succeeded, STORY_ESTIMATED_COST_USD); }
       } catch (error) {
-        if (error instanceof OpenAiBudgetExceededError) throw longEpisodeScriptBudgetExceeded(error.message);
+        if (isBudgetLedgerUnreadable(error)) throw longBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw longEpisodeScriptBudgetExceeded(error.message);
         if (error instanceof OpenAiAdapterError) throw longEpisodeScriptProviderError(error.category, error.message);
         throw longEpisodeScriptProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown);
       }

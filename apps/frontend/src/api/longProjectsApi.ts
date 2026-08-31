@@ -84,6 +84,7 @@ import {
   type UpdateLongProjectSettingsRequest,
   type UpdateLongProjectSettingsResponse,
 } from "@ai-animation-studio/shared";
+import { BUDGET_LEDGER_UNREADABLE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "./budgetLedgerError.js";
 
 export class LongProjectsApiError extends Error {
   readonly code: string;
@@ -122,6 +123,7 @@ const SAFE_ERRORS: Record<string, string> = {
   LONG_EPISODE_IMAGES_NOT_ALLOWED: "지금 이 에피소드 단계에서는 이미지 작업을 할 수 없습니다. 기다린다고 풀리지 않으니 에피소드 상태를 확인해 주세요.",
   LONG_EPISODE_IMAGES_INVALID: "에피소드 이미지나 검토 데이터가 올바르지 않습니다.",
   // Money, not a transient failure — this must never read as "wait and retry".
+  [BUDGET_LEDGER_UNREADABLE]: BUDGET_LEDGER_UNREADABLE_MESSAGE,
   LONG_EPISODE_IMAGES_BUDGET_EXCEEDED: "이번 달 OpenAI 예산을 초과하여 요청을 보내지 않았습니다. 비용은 청구되지 않았습니다.",
   LONG_EPISODE_IMAGES_PROVIDER_ERROR: "이미지 생성 요청이 실패했습니다. 잠시 후 다시 시도해 주세요.",
   LONG_EPISODE_VIDEOS_NOT_ALLOWED: "지금 이 에피소드 단계에서는 영상 작업을 할 수 없습니다. 기다린다고 풀리지 않으니 에피소드 상태를 확인해 주세요.",

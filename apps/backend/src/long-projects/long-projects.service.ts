@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
@@ -12,7 +13,7 @@ import { ProviderSettingsService } from "../settings/provider-settings.service.j
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { callOpenAiEpisodePlannerApi, type OpenAiEpisodeOutlineResult } from "./openai-episode-planner-adapter.js";
-import { longArchiveCollision, longArchiveNotAllowed, longAspectRatioLocked, longEpisodeCountLocked, longExists, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longOutlineBudgetExceeded, longOutlineNotAllowed,
+import { longBudgetLedgerUnreadable, longArchiveCollision, longArchiveNotAllowed, longAspectRatioLocked, longEpisodeCountLocked, longExists, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longOutlineBudgetExceeded, longOutlineNotAllowed,
   longLocked, longOutlineProviderError, longOutlineStale, longRestoreCollision, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { storyBibleBasicForPrompt } from "./story-bible-basic.js";
@@ -349,7 +350,7 @@ export class LongProjectsService {
         for (const [field, value] of Object.entries(applied.project)) (s as Record<string, unknown>)[field] = value;
         generated = applied.episodes;
       } catch (error) {
-        if (error instanceof OpenAiBudgetExceededError) throw longOutlineBudgetExceeded(error.message);
+        if (isBudgetLedgerUnreadable(error)) throw longBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw longOutlineBudgetExceeded(error.message);
         if (error instanceof OpenAiAdapterError) throw longOutlineProviderError(error.category, error.message);
         // Any other failure (a bug, an unclassified network edge case) must still land as a coded ApiError —
         // an uncaught rethrow here would surface as a bare 500 with no `code`, which the frontend can only

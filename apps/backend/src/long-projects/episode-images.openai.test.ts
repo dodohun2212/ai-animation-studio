@@ -373,6 +373,27 @@ describe("real OpenAI Episode image generation", () => {
     await expect(fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "images", "scene1.png"))).resolves.toEqual(PNG);
   });
 
+  /**
+   * "Spent too much" and "cannot tell what was spent" refuse the same request and mean opposite things.
+   *
+   * The screen's sentence for this one ends with "다시 눌러도 같은 결과이니 파일을 확인해 주세요", because an
+   * unreadable ledger does not heal by waiting — and before this code existed the person got the generic
+   * storage error, or worse, the client's own "잠시 후 다시 시도해 주세요". Paired with the budget-exceeded
+   * test right below: an implementation that answered the ledger code for every refusal would pass this one
+   * alone.
+   */
+  it("names an unreadable ledger as its own refusal, not as an exceeded budget", async () => {
+    const { images, root: usedRoot } = await setupWithConnectedOpenAi();
+    await fs.writeFile(path.join(usedRoot, "api_budget_usage.json"), "{ not json", "utf8");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(images.generate("long", 1, { approved: true })).rejects.toMatchObject({ response: { code: "BUDGET_LEDGER_UNREADABLE" } });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await fs.readFile(path.join(usedRoot, "api_budget_usage.json"), "utf8")).toBe("{ not json");
+  });
+
   it("blocks the real request and restores asset_mapping_approved when the monthly budget is already spent", async () => {
     const { images, budget } = await setupWithConnectedOpenAi();
     await budget.record("some-other-project", "image", true, 10, new Date());

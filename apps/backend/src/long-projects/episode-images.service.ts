@@ -1,4 +1,5 @@
 import { PLACEHOLDER_PNG } from "../images/placeholder-image.js";
+import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -12,7 +13,7 @@ import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../pr
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "../images/openai-image-adapter.js";
 import { imagePromptFor } from "../images/image-prompt.js";
-import { longEpisodeImagesBudgetExceeded, longEpisodeImagesInvalid, longEpisodeImagesNotAllowed, longEpisodeImagesProviderError, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { longBudgetLedgerUnreadable, longEpisodeImagesBudgetExceeded, longEpisodeImagesInvalid, longEpisodeImagesNotAllowed, longEpisodeImagesProviderError, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { toEpisodeDetail } from "./episode-detail.js";
@@ -313,7 +314,7 @@ export class EpisodeImagesService {
       episode.state = "images_review"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode);
     } catch (error) {
       episode.state = "asset_mapping_approved"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode).catch(() => undefined);
-      if (error instanceof OpenAiBudgetExceededError) throw longEpisodeImagesBudgetExceeded(error.message);
+      if (isBudgetLedgerUnreadable(error)) throw longBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw longEpisodeImagesBudgetExceeded(error.message);
       if (error instanceof OpenAiAdapterError) throw longEpisodeImagesProviderError(error.category, error.message);
       if (error instanceof Error && error.message === "invalid image") throw longEpisodeImagesInvalid();
       throw longStorageError();
@@ -448,7 +449,7 @@ ${additionalInstruction}` : basePrompt;
           regenerated = result.bytes; succeeded = true;
         } finally { await this.budget.record(id, "image", succeeded, IMAGE_ESTIMATED_COST_USD); }
       } catch (error) {
-        if (error instanceof OpenAiBudgetExceededError) throw longEpisodeImagesBudgetExceeded(error.message);
+        if (isBudgetLedgerUnreadable(error)) throw longBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw longEpisodeImagesBudgetExceeded(error.message);
         if (error instanceof OpenAiAdapterError) throw longEpisodeImagesProviderError(error.category, error.message);
         throw longEpisodeImagesProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown);
       }

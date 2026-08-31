@@ -9,7 +9,8 @@ type ImageReviewErrorCode =
   | "IMAGE_REVIEW_STORAGE_ERROR"
   | "IMAGE_REVIEW_BUDGET_EXCEEDED"
   | "IMAGE_REVIEW_PROVIDER_ERROR"
-  | "PROJECT_LOCKED";
+  | "PROJECT_LOCKED"
+  | "BUDGET_LEDGER_UNREADABLE";
 
 class ImageReviewApiException extends HttpException {
   constructor(code: ImageReviewErrorCode, message: string, status: HttpStatus, details?: Record<string, unknown>) {
@@ -38,5 +39,14 @@ export const imageReviewProviderError = (category: string, message: string) =>
  * video-workflow twins, so the frontend answers all of them from one safe-message entry (docs/06_DECISIONS.md
  * D-010), and names no subject for the same reason it is shared.
  */
+/**
+ * The spend ledger could not be read, so no paid request is sent.
+ *
+ * Distinct from a storage error on purpose: that one can pass, this one cannot until a file is repaired, and
+ * the screen's sentence for it says exactly that. Sending the generic code instead sent the person back to
+ * press a button that was certain to refuse again (docs/06_DECISIONS.md D-036).
+ */
+export const imageReviewBudgetLedgerUnreadable = () =>
+  new ImageReviewApiException("BUDGET_LEDGER_UNREADABLE", "Monthly spend could not be read, so no paid request was sent.", HttpStatus.CONFLICT);
 export const imageReviewLocked = () =>
   new ImageReviewApiException("PROJECT_LOCKED", "This scene's image is already being regenerated.", HttpStatus.CONFLICT);
