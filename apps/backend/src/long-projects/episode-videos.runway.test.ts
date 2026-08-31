@@ -469,4 +469,49 @@ describe("real Runway episode video generation", () => {
     // And a scene number the Episode does not have is refused rather than reaching the filesystem.
     await expect(videos.content("long", 1, "99")).rejects.toMatchObject({ response: { code: "LONG_EPISODE_VIDEOS_INVALID" } });
   });
+
+  it("keeps the Episode clip the month was already charged for when the ledger goes unreadable mid-job, and says the total is short", async () => {
+    // Scene 1 is running on Runway, the ledger becomes unreadable, the task then succeeds — the bytes are
+    // downloaded, so the money is gone before the ledger write is even attempted. Three things used to go wrong
+    // together here: the clip was discarded, nothing was said, and the progress poll itself died on the same
+    // file while trying to report a retry cost.
+    const deps = await setupWithConnectedRunway();
+    const videos = newVideos(deps);
+    const fetchMock = runwayFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_ledger", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId); // scene 1 submitted while the ledger was still fine
+    await fs.writeFile(path.join(deps.root, "runway_budget_usage.json"), "{ this is not the ledger");
+
+    // Two polls: this mock answers RUNNING on a task's first check and SUCCEEDED after.
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    await videos.progress("long", 1, started.jobId);
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    const progress = await videos.progress("long", 1, started.jobId);
+
+    // The clip is kept, on disk and in the record.
+    const episodeDirectory = path.join(deps.projectsRoot, "long", "long_story", "Episode01");
+    expect(await fs.readFile(path.join(episodeDirectory, "videos", "scene1.mp4"))).toEqual(RUNWAY_BODY);
+    expect(progress.completedSceneNumbers).toContain(1);
+
+    // And it is said in both places an Episode's warnings are read from.
+    const episode = JSON.parse(await fs.readFile(path.join(episodeDirectory, "project.json"), "utf8")) as { warnings?: string[] };
+    const outlines = JSON.parse(await fs.readFile(path.join(deps.projectsRoot, "long", "long_story", "episode_outlines.json"), "utf8")) as Array<{ warnings?: string[] }>;
+    for (const warnings of [episode.warnings, outlines[0]!.warnings]) {
+      const warning = warnings?.find((item) => item.includes("runway_budget_usage.json"));
+      expect(warning).toContain("1번 장면");
+      expect(warning).toContain("다시 만들지 마시고");
+    }
+
+    // Scene 2 is refused rather than bought, and the refusal is *recorded* — the frontend already has a sentence
+    // for this scene error; before this, only a poll ever saw it and a timer tick swallowed it entirely.
+    expect(progress.sceneErrors?.[2]).toBe("budget_ledger_unreadable");
+    // The poll survives: it reads the ledger only for the retry cost line, and that line is what gives way.
+    expect(progress.retryEstimate).toBeUndefined();
+  });
+
 });

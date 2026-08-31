@@ -1,5 +1,6 @@
 import * as crypto from "node:crypto";
-import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
+import { isBudgetLedgerUnreadable, RUNWAY_LEDGER_FILE, spendUnrecordedWarning } from "../providers/budget-ledger.js";
+import { persistEpisodeWarning } from "./episode-warnings.js";
 import { PLACEHOLDER_MP4 } from "../videos/placeholder-clip.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -201,10 +202,21 @@ export class EpisodeVideosService implements OnModuleDestroy {
         estimatedCostPerSceneUsd: VIDEO_SCENE_ESTIMATED_COST_USD, budget: this.budget,
       });
     } catch (error) {
-      if (isBudgetLedgerUnreadable(error)) throw longBudgetLedgerUnreadable(); if (error instanceof RunwayBudgetExceededError) {
+      // Two refusals from the same gate, written as two reasons because they send the person to opposite places
+      // — the short-project side splits them the same way (videos/local-video-workflow.service.ts).
+      //
+      // The ledger one used to be thrown rather than recorded, and that is only half a behaviour: a poll saw the
+      // error, but the background timer swallows everything (`.catch(() => undefined)` at its call sites), so on
+      // a tick the refusal vanished and the timer kept ticking against a job that could never move. Recorded, it
+      // reaches both. The frontend already maps `budget_ledger_unreadable` as a scene error for Episodes
+      // (apps/frontend/src/api/longProjectsApi.ts) — the sentence existed; nothing here ever produced it.
+      const reason = isBudgetLedgerUnreadable(error) ? "budget_ledger_unreadable"
+        : error instanceof RunwayBudgetExceededError ? "budget_exceeded"
+          : undefined;
+      if (reason) {
         const created = records.find((record) => record.status === "created");
         if (!created) return records;
-        created.status = "failed"; created.error = "budget_exceeded";
+        created.status = "failed"; created.error = reason;
         await this.saveRecords(id, number, records).catch(() => undefined);
         this.clearTimer(`${id}:${number}:${job}`);
         return records;
@@ -234,6 +246,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
     if (result.kind === "failed") {
       record.status = "failed"; record.error = result.error;
       await this.saveRecords(id, number, records);
+      await this.noteUnrecordedSpend(id, number, result);
       this.clearTimer(jobKey);
       return records;
     }
@@ -251,6 +264,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
     await this.binary(this.video(id, number, result.sceneNumber), result.bytes);
     record.status = "succeeded"; record.completed_at = new Date().toISOString();
     await this.saveRecords(id, number, records);
+    await this.noteUnrecordedSpend(id, number, result);
 
     if (records.every((item) => item.status === "succeeded")) {
       const episode = await this.loadEpisode(id, number);
@@ -262,11 +276,38 @@ export class EpisodeVideosService implements OnModuleDestroy {
     // Immediately try to submit the next scene within this same call/timer-tick.
     return this.advanceRealCore(id, number, job);
   }
+  /**
+   * Says that a scene was paid for and the ledger does not know it.
+   *
+   * The clip itself is kept — that is `spendUnrecorded`'s whole point (docs/06_DECISIONS.md D-037) — so the only
+   * thing left is telling the person, and an Episode's warnings are read from two places at once
+   * (episode-warnings.ts). Loading the Episode here rather than threading it through every branch keeps this off
+   * the path that runs on every ordinary tick.
+   */
+  private async noteUnrecordedSpend(id: string, number: number, result: RunwayAdvanceResult & { spendUnrecorded?: true }): Promise<void> {
+    if (!result.spendUnrecorded || !("sceneNumber" in result)) return;
+    const episode = await this.loadEpisode(id, number).catch(() => undefined);
+    if (!episode) return;
+    const files = this.files(id, number);
+    // `{ [key: string]: unknown }` rather than the built-in Record, which this file shadows with its own
+    // `type Record = VideoRecord` alias for the video records it works with.
+    await persistEpisodeWarning({ project: files.project, outlines: files.outlines }, number, episode as unknown as { [key: string]: unknown }, spendUnrecordedWarning(`${result.sceneNumber}번 장면의 영상`, RUNWAY_LEDGER_FILE));
+  }
+
   /** RunwayBudget's ledger scopes cost records by a single project_id string with no episode dimension of its own, so Episode video spend is keyed by this composite to keep one Episode's per-scene cost from merging with another Episode of the same long project. Never affects the shared monthly budget total, which is time-scoped only. */
   private budgetProjectKey(id: string, number: number): string { return `${id}:episode${number}`; }
+  /**
+   * Read-only, never reserves anything. So an unreadable ledger costs this a number rather than costing the
+   * caller its whole response: `progressFor` reads it on every poll, and its throw used to answer a bare 500 for
+   * a job that was otherwise fine to report on — including the one report that says a paid clip is here and the
+   * month's total is short. Retrying is still refused where it matters, at `preflight`, which reads the same
+   * file and throws (docs/06_DECISIONS.md D-036: what runs on top of this number is display).
+   */
   private async budgetPreview(estimatedCostUsd: number): Promise<GetLongEpisodeVideoPreviewResponse["budget"]> {
     if (!this.budget) return undefined;
-    const [spentUsd, remainingUsd] = await Promise.all([this.budget.spentThisMonth(), this.budget.remaining()]);
+    let spentUsd: number; let remainingUsd: number;
+    try { [spentUsd, remainingUsd] = await Promise.all([this.budget.spentThisMonth(), this.budget.remaining()]); }
+    catch (error) { if (isBudgetLedgerUnreadable(error)) return undefined; throw error; }
     return { monthlyLimitUsd: this.budget.monthlyLimitUsd, spentUsd, remainingUsd, estimatedRequestCostUsd: estimatedCostUsd, canSpend: estimatedCostUsd <= remainingUsd };
   }
   async preview(projectId: string, number: number): Promise<GetLongEpisodeVideoPreviewResponse> { const id = projectId.trim(); const episode = await this.loadEpisode(id, number); await this.assertReady(id, number, episode); const sceneNumbers = sceneNumbersFor(this.sceneCount(episode)); const durationSecondsPerScene = this.durationSecondsPerScene(episode); const ratio = await this.ratio(id, number); const scenes = this.scenes(episode); const items = scenes.map((item, index) => ({ sceneNumber: sceneNumbers[index]!, prompt: this.prompt(item, scenes[index - 1], durationSecondsPerScene, ratio), estimatedCostUsd: VIDEO_SCENE_ESTIMATED_COST_USD })); const hash = crypto.createHash("sha256").update(id).update(String(number)); for (const item of items) { hash.update(await fs.readFile(this.image(id, number, item.sceneNumber))); hash.update(item.prompt); } const estimatedCostUsd = items.reduce((sum, item) => sum + item.estimatedCostUsd, 0);
