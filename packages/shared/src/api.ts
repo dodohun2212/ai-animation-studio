@@ -1371,6 +1371,26 @@ export interface DeleteAssetOwnedFileResponse {
  * Python baseline) into the Asset Library and a confirmed, migrated project Asset Mapping. Never calls a Provider
  * or FFmpeg, and never modifies or deletes the legacy files it reads.
  */
+/**
+ * What a backfill of already-generated images found and did.
+ *
+ * The Library indexes a project's generated images when they are made, and re-seeds them when a scene is
+ * approved or regenerated. A project that finished before any of that existed does neither ever again, so its
+ * pictures stay on disk and out of the Library permanently — which is what a real Episode turned out to be.
+ * This is the way to fix those without asking someone to press the right buttons in the right order.
+ *
+ * `scanned` counts every project and Episode looked at; `registered` counts the ones that gained a Folder;
+ * `skipped` is those that already had one — untouched on purpose, exactly as the legacy migration leaves an
+ * already-migrated item alone. `failed` is the ones whose scene files could not be read, reported rather than
+ * retried, because a picture that is genuinely gone is not something a second pass will find.
+ */
+export interface BackfillGeneratedImageAssetsResponse {
+  scanned: number;
+  registered: number;
+  skipped: number;
+  failed: number;
+}
+
 export interface RunLegacyReferenceMigrationResponse {
   projectsScanned: number;
   migratedAssets: number;
@@ -2186,6 +2206,7 @@ export const API_ROUTES = {
   assetOwnedFile: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/owned-file`,
   assetFolder: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/folder`,
   legacyReferenceMigration: "/assets/legacy-migration",
+  backfillGeneratedImages: "/assets/backfill-generated-images",
   providerSettings: "/settings/providers",
   providerCredential: (provider: ProviderCredentialKind) =>
     `/settings/providers/${provider}/credential`,

@@ -206,6 +206,15 @@ export class ImageReviewService {
     // WaitingForVideoConfirmation, the review list (all approved) must still be viewable — the Frontend's video
     // confirmation screen relies on this GET succeeding to show it.
     await this.assertReviewable(project, true);
+    // Repair on the way past, never at the cost of the read.
+    //
+    // The seeding this calls existed only on approve and regenerate — two things a finished project never does
+    // again — so an project that predates indexing stayed missing from the Library forever, which is exactly
+    // what a real project turned out to be (the Episode side). Opening the review screen now fixes it.
+    //
+    // 🔴 Deliberately swallowed. Indexing reads every scene file and refuses if one is gone, and a GET whose job
+    // is to show the review must not start failing because a repair it was doing on the side could not finish.
+    await this.indexAssetsIfMissing(project).catch(() => undefined);
     const reviews = await this.load(project.project_id);
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.

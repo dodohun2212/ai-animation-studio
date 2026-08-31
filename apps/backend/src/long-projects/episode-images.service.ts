@@ -396,6 +396,15 @@ export class EpisodeImagesService {
     // and saying "not at this stage" is the honest answer. Everything after stays readable.
     if (BEFORE_IMAGES_EXIST.includes(episode.state)) throw longEpisodeImagesNotAllowed();
     await this.assertImagesOnDisk(id, number, episode);
+    // Repair on the way past, never at the cost of the read.
+    //
+    // The seeding this calls existed only on approve and regenerate — two things a finished Episode never does
+    // again — so an Episode that predates indexing stayed missing from the Library forever, which is exactly
+    // what a real project turned out to be (12/Episode01). Opening the review screen now fixes it.
+    //
+    // 🔴 Deliberately swallowed. Indexing reads every scene file and refuses if one is gone, and a GET whose job
+    // is to show the review must not start failing because a repair it was doing on the side could not finish.
+    await this.indexAssetsIfMissing(id, number, episode).catch(() => undefined);
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, IMAGE_ESTIMATED_COST_USD) : undefined;
     const stored = await this.loadReviews(id, number);

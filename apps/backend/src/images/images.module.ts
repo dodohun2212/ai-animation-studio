@@ -12,15 +12,22 @@ import { ImagesController } from "./images.controller.js";
 import { LocalImageGenerationService } from "./local-image-generation.service.js";
 import { ImageReviewService } from "./image-review.service.js";
 import { GeneratedImageLibraryService } from "./generated-image-library.service.js";
+import { GeneratedImageBackfillService } from "./generated-image-backfill.service.js";
+import { GeneratedImageBackfillController } from "./generated-image-backfill.controller.js";
 
 @Module({
   imports: [ProjectsModule, ProjectAssetMappingsModule, AssetsModule, ProviderSettingsModule],
-  controllers: [ImagesController],
+  controllers: [ImagesController, GeneratedImageBackfillController],
   providers: [
     {
       provide: GeneratedImageLibraryService,
       useFactory: (projects: LocalProjectRepository, projectsRoot: string) => new GeneratedImageLibraryService(projects, projectsRoot),
       inject: [LocalProjectRepository, PROJECTS_ROOT],
+    },
+    {
+      provide: GeneratedImageBackfillService,
+      useFactory: (library: GeneratedImageLibraryService, assets: LocalAssetsRepository, projectsRoot: string) => new GeneratedImageBackfillService(library, assets, projectsRoot),
+      inject: [GeneratedImageLibraryService, LocalAssetsRepository, PROJECTS_ROOT],
     },
     { provide: OpenAiBudget, useFactory: (root: string) => new OpenAiBudget(root), inject: [LEARNING_DATA_ROOT] },
     {

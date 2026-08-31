@@ -20,6 +20,51 @@ async function setup() {
 afterEach(async () => { if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 
 describe("EpisodeImagesService", () => {
+  /**
+   * Opening the review screen repairs a missing Library Folder.
+   *
+   * The seeding existed already, on approve and regenerate — two things a finished Episode never does again, so
+   * an Episode whose pictures predate indexing stayed out of the Library forever. A real one did: 12/Episode01,
+   * six images on disk and nothing in the index. Reading is the one thing such an Episode still does.
+   *
+   * Paired with the test below, which is the more important half: this repair rides along on a read, and a read
+   * that starts failing because a side errand could not finish is worse than the missing Folder it was fixing.
+   */
+  it("puts a missing Folder back when the review is merely opened", async () => {
+    const { images, projectsRoot } = await setup();
+    await images.generate("long", 1, { approved: true });
+    const assets = new LocalAssetsRepository(root!);
+    const folder = (await assets.list()).find((asset) => asset.is_folder && asset.source_project_id === "long/Episode01")!;
+    await assets.removeFolder(folder.asset_id, { removeChildIndexes: true });
+    expect(await assets.hasGeneratedProjectFolder("long/Episode01")).toBe(false);
+
+    await images.get("long", 1);
+
+    expect(await assets.hasGeneratedProjectFolder("long/Episode01")).toBe(true);
+    expect(projectsRoot).toBeTruthy();
+  });
+
+  /**
+   * The counterpart, and the half that keeps this from being a nuisance: a read repairs only when there is
+   * something to repair.
+   *
+   * Seeding rewrites a child's description from the scene text, and that description is one of the few fields
+   * the Library lets a generated child carry. Doing it on every open would quietly erase what a person wrote,
+   * every time they looked at the screen — the same mistake as `stat`-ing a file instead of reading it, which
+   * this repository already made once today.
+   */
+  it("does not touch a Folder that is already there, so opening the screen cannot erase what was written", async () => {
+    const { images } = await setup();
+    await images.generate("long", 1, { approved: true });
+    const assets = new LocalAssetsRepository(root!);
+    const child = (await assets.list()).find((asset) => !asset.is_folder && asset.source_project_id === "long/Episode01")!;
+    await assets.update(child.asset_id, { description: "사람이 쓴 설명" });
+
+    await images.get("long", 1);
+
+    expect((await assets.get(child.asset_id)).description).toBe("사람이 쓴 설명");
+  });
+
   it("requires exact approval and a current approved mapping before locally generating six images", async () => {
     const { images, projectsRoot } = await setup();
     await expect(images.generate("long", 1, {} as never)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
