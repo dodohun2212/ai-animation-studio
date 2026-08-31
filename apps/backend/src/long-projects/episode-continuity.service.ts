@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import type { GetLongEpisodeContinuityResponse, LongEpisodeContinuityMemory, LongEpisodeDetail, LongEpisodeStatus, SaveLongEpisodeContinuityRequest, SaveLongEpisodeContinuityResponse } from "@ai-animation-studio/shared";
+import { LONG_EPISODE_STATUSES, type GetLongEpisodeContinuityResponse, type LongEpisodeContinuityMemory, type LongEpisodeDetail, type LongEpisodeStatus, type SaveLongEpisodeContinuityRequest, type SaveLongEpisodeContinuityResponse } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { isLongProjectError, longEpisodeContinuityNotAllowed, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
@@ -10,7 +10,13 @@ import { toEpisodeDetail } from "./episode-detail.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 
 const eligible: readonly LongEpisodeStatus[] = ["waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "rendering", "completed"];
-const states: readonly LongEpisodeStatus[] = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted", "rendering", "completed", "failed"];
+/**
+ * Every status an Episode can hold — the shared list, not a copy of it. This is a shape check, so anything the
+ * type allows has to pass; a hand-written copy of it is the defect that made a finished Episode's Asset Mapping
+ * screen answer 500 (docs/06_DECISIONS.md D-039's shape, measured on real data). `eligible` above is a *gate*
+ * and stays deliberately narrow — the two look alike and mean opposite things.
+ */
+const states: readonly LongEpisodeStatus[] = LONG_EPISODE_STATUSES;
 const memoryStrings = ["episodeSummary", "timeElapsed", "userEdits"] as const;
 const memoryLists = ["events", "appearedCharacterIds", "appearedLocationIds", "resolvedConflicts", "newConflicts", "revealedSecretIds", "remainingSecretIds", "newForeshadowingIds", "resolvedForeshadowingIds", "nextActions", "worldChanges"] as const;
 const changeLists = ["characterChanges", "itemChanges"] as const;
