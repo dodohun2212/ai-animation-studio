@@ -188,6 +188,40 @@ describe.sequential("Long Project Episode flow over HTTP", () => {
     expect(codes.merge).toBe("409 LONG_EPISODE_MERGE_NOT_ALLOWED");
   });
 
+
+  it("opens the continuity memo of an Episode that has no script yet, read-only, instead of saying the project is missing", async () => {
+    // The same measurement that found the image-review case found this one, on the same real Episode: 200 for
+    // the Episode's own detail, 404 "Long project was not found" for its continuity memo.
+    //
+    // This screen's own doc comment already says why it must open: it is where a person goes to write the file,
+    // so the file's absence cannot be what closes it. That reasoning had been applied to an unreadable memo and
+    // not to an Episode that has no record yet.
+    await boot();
+    await call("POST", API_ROUTES.longProjects, { projectId: PROJECT_ID, settings: SETTINGS });
+    const { preview } = await call<{ preview: { prompt: string; promptSha256: string } }>(
+      "POST", API_ROUTES.longProjectOutlinePreview(PROJECT_ID));
+    await call("POST", API_ROUTES.longProjectOutlineApproval(PROJECT_ID),
+      { approved: true, prompt: preview.prompt, promptSha256: preview.promptSha256 });
+
+    const memo = await call<{ memory: unknown; canSave: boolean }>("GET", API_ROUTES.longEpisodeContinuity(PROJECT_ID, 2));
+
+    expect(memo.memory).toBeNull();
+    expect(memo.canSave).toBe(false); // nothing to save into an Episode that has not been written yet
+
+    // Saving is still refused, and says so as a state, not as a missing project.
+    const refused = await fetch(`${base}${API_ROUTES.longEpisodeContinuity(PROJECT_ID, 2)}`, {
+      method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ memory: {} }),
+    });
+    expect(`${refused.status} ${(await refused.json() as { code?: string }).code ?? ""}`.trim())
+      .toBe("409 LONG_EPISODE_CONTINUITY_NOT_ALLOWED");
+
+    // The counterpart that keeps "absent" from swallowing "does not exist": an Episode number the outline does
+    // not have must still be refused, or this would answer as calmly for Episode 99 as for Episode 2.
+    const outOfRange = await fetch(`${base}${API_ROUTES.longEpisodeContinuity(PROJECT_ID, 99)}`);
+    expect(outOfRange.status).toBe(404);
+    expect((await outOfRange.json() as { code?: string }).code).toBe("LONG_EPISODE_NOT_FOUND");
+  });
+
   it("never spent anything getting there", async () => {
     await boot();
     await call("POST", API_ROUTES.longProjects, { projectId: PROJECT_ID, settings: SETTINGS });

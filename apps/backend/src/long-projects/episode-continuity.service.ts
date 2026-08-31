@@ -25,6 +25,22 @@ export class EpisodeContinuityService {
   private files(projectId: string, number: number) { const root = longStoryRoot(this.projectsRoot, projectId); const episode = path.join(root, episodeDirectoryName(number)); return { root, outlines: path.join(root, "episode_outlines.json"), project: path.join(episode, "project.json"), continuity: path.join(episode, "continuity.json") }; }
   private async json(file: string): Promise<unknown> { try { return JSON.parse(await fs.readFile(file, "utf8")); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw longNotFound(); if (error instanceof SyntaxError) throw longMalformed(); throw longStorageError(); } }
   private async episode(id: string, number: number): Promise<StoredEpisode> { if (!Number.isInteger(number) || number < 1) throw longEpisodeNotFound(); const files = this.files(id, number); const outlines = await this.json(files.outlines); if (!Array.isArray(outlines) || number > outlines.length || !object(outlines[number - 1]) || outlines[number - 1].episode_number !== number) throw longEpisodeNotFound(); const raw = await this.json(files.project); if (!object(raw) || raw.number !== number || !states.includes(raw.state as LongEpisodeStatus) || typeof raw.approved !== "boolean" || !Number.isInteger(raw.script_revision) || typeof raw.updated_at !== "string") throw longInvalidData(); return raw as StoredEpisode; }
+  /**
+   * This Episode's record, or null when it has none yet.
+   *
+   * An Episode listed in the outline but never scripted has no directory, so reading its record is ENOENT — which
+   * `json()` reports as "Long project was not found". Measured over real data: a real Episode 2 answered 200 for
+   * its own detail and 404 "Long project was not found" for its continuity memo, in the same breath.
+   *
+   * Only that one code is absorbed. `longEpisodeNotFound()` — an Episode number the outline does not have — is a
+   * different thing and still refuses; without the distinction this would answer for Episode 99 as calmly as for
+   * Episode 2.
+   */
+  private async episodeOrNull(id: string, number: number): Promise<StoredEpisode | null> {
+    try { return await this.episode(id, number); }
+    catch (error) { if (isLongProjectError(error, "LONG_PROJECT_NOT_FOUND")) return null; throw error; }
+  }
+
   private detail(episode: StoredEpisode): LongEpisodeDetail { return toEpisodeDetail(episode); }
   private parse(value: unknown, expectedNumber: number, request = false): LongEpisodeContinuityMemory { const source = request ? (object(value) && Object.keys(value).length === 1 && object(value.memory) ? value.memory : undefined) : value; if (!object(source)) throw request ? longInvalidRequest("Episode Continuity Memory request is invalid.") : longInvalidData(); const expected = new Set(request ? [...memoryStrings, ...memoryLists, ...changeLists] : ["episodeNumber", "updatedAt", ...memoryStrings, ...memoryLists, ...changeLists]); if (Object.keys(source).length !== expected.size || Object.keys(source).some((key) => !expected.has(key)) || (!request && (source.episodeNumber !== expectedNumber || typeof source.updatedAt !== "string"))) throw request ? longInvalidRequest("Episode Continuity Memory request is invalid.") : longInvalidData(); const invalid = request ? longInvalidRequest("Episode Continuity Memory request is invalid.") : longInvalidData(); const updatedAt = request ? new Date().toISOString() : text(source.updatedAt, 100); if (!updatedAt) throw invalid; const result: Record<string, unknown> = { episodeNumber: expectedNumber, updatedAt };
     for (const key of memoryStrings) { const value = text(source[key]); if (value === undefined) throw invalid; result[key] = value; }
@@ -42,6 +58,11 @@ export class EpisodeContinuityService {
    * screen already handles null by pre-filling from the outline and saying so, and saving overwrites the file
    * — which is exactly the repair.
    */
-  async get(projectId: string, number: number): Promise<GetLongEpisodeContinuityResponse> { const id = projectId.trim(); const episode = await this.episode(id, number); const canSave = eligible.includes(episode.state); try { return { memory: this.fromStored(await this.json(this.files(id, number).continuity), number), canSave }; } catch (error) { if (isLongProjectError(error, "LONG_PROJECT_NOT_FOUND", "LONG_PROJECT_JSON_MALFORMED", "LONG_PROJECT_DATA_INVALID")) return { memory: null, canSave }; throw error; } }
-  async save(projectId: string, number: number, request: SaveLongEpisodeContinuityRequest): Promise<SaveLongEpisodeContinuityResponse> { const id = projectId.trim(); const current = await this.episode(id, number); if (!eligible.includes(current.state)) throw longEpisodeContinuityNotAllowed(); const memory = this.parse(request, number, true); try { await atomicWriteUtf8File(this.files(id, number).continuity, JSON.stringify(this.stored(memory), null, 2)); } catch { throw longStorageError(); } let nextEpisode: LongEpisodeDetail | null = null; try { nextEpisode = this.detail(await this.episode(id, number + 1)); } catch (error) { if (!(error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404)) throw error; } return { memory, nextEpisode }; }
+  async get(projectId: string, number: number): Promise<GetLongEpisodeContinuityResponse> { const id = projectId.trim(); const episode = await this.episodeOrNull(id, number);
+    // An Episode with no record yet has no memo and cannot have one saved — which is exactly what this screen
+    // already shows for "never written", so it opens rather than erroring. The same reasoning as the comment
+    // above: the screen a person goes to in order to write this file must not be closed by the file's absence.
+    if (!episode) return { memory: null, canSave: false };
+    const canSave = eligible.includes(episode.state); try { return { memory: this.fromStored(await this.json(this.files(id, number).continuity), number), canSave }; } catch (error) { if (isLongProjectError(error, "LONG_PROJECT_NOT_FOUND", "LONG_PROJECT_JSON_MALFORMED", "LONG_PROJECT_DATA_INVALID")) return { memory: null, canSave }; throw error; } }
+  async save(projectId: string, number: number, request: SaveLongEpisodeContinuityRequest): Promise<SaveLongEpisodeContinuityResponse> { const id = projectId.trim(); const current = await this.episodeOrNull(id, number); if (!current || !eligible.includes(current.state)) throw longEpisodeContinuityNotAllowed(); const memory = this.parse(request, number, true); try { await atomicWriteUtf8File(this.files(id, number).continuity, JSON.stringify(this.stored(memory), null, 2)); } catch { throw longStorageError(); } let nextEpisode: LongEpisodeDetail | null = null; try { nextEpisode = this.detail(await this.episode(id, number + 1)); } catch (error) { if (!(error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404)) throw error; } return { memory, nextEpisode }; }
 }
