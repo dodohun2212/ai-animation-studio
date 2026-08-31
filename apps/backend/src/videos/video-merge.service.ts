@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import { sceneNumbersFor, WorkflowState, type MergeVideosResponse, type SceneNumber } from "@ai-animation-studio/shared";
 
-import { toApiProject } from "../projects/project.mapper.js";
+import { photoCardFor, toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject, StoredUsedAudio } from "../projects/project-storage.schema.js";
@@ -100,6 +100,8 @@ export class LocalVideoMergeService {
 
   private projectDirectory(projectId: string): string { return path.join(this.projectsRoot, projectId); }
   private clip(projectId: string, scene: SceneNumber): string { return path.join(this.projectDirectory(projectId), "videos", "runway", `scene${scene}.mp4`); }
+  /** A photo card's single picture, kept where every project's scene images live so nothing needs a second convention. */
+  private cardImage(projectId: string): string { return path.join(this.projectDirectory(projectId), "images", "scene1.png"); }
   private final(projectId: string): string { return path.join(this.projectDirectory(projectId), FINAL_VIDEO_PATH); }
 
   /**
@@ -116,13 +118,13 @@ export class LocalVideoMergeService {
    * ShortProjectSettings.subtitlesEnabled's doc comment): a scene gets a subtitle whenever subtitlesEnabled is on
    * AND that scene has narration text, regardless of whether narration audio exists for it.
    */
-  private async mergeScenes(project: StoredProject, clips: readonly string[], scenes: readonly SceneNumber[], includeNarration: boolean): Promise<MergeSceneInput[]> {
+  private async mergeScenes(project: StoredProject, clips: readonly string[], scenes: readonly SceneNumber[], includeNarration: boolean, stillDurationSeconds?: number): Promise<MergeSceneInput[]> {
     const settings = toShortProjectSettings(project);
     return Promise.all(scenes.map(async (scene, index) => {
       const file = project.generated_narrations[scene - 1];
       const narrationAudioPath = includeNarration && typeof file === "string" && (await fs.stat(file).then((stat) => stat.size > 0).catch(() => false)) ? file : null;
       const subtitleText = settings.subtitlesEnabled ? sceneValue(project.scenes[scene - 1], "narration") || null : null;
-      return { clip: clips[index]!, narrationAudioPath, subtitleText };
+      return { clip: clips[index]!, narrationAudioPath, subtitleText, ...(stillDurationSeconds !== undefined ? { stillDurationSeconds } : {}) };
     }));
   }
 
@@ -139,6 +141,28 @@ export class LocalVideoMergeService {
       throw videoMergeContentUnavailable();
     }
     return { path: file };
+  }
+
+  /**
+   * The material this project's final cut is made of, and whether it is held rather than played.
+   *
+   * The state gate is the same for both kinds and means the same thing — the material is settled, or a previous
+   * merge failed and retrying is all that is left. What differs is *what is checked*, and that is the whole
+   * reason this branches instead of a photo card being dressed up as an approved video run: a card has no
+   * clips and no scene reviews, so demanding an approved reviews file would mean writing one that says six
+   * scenes were reviewed when none were. A gate that has to be lied to is not a gate.
+   */
+  private async mergeMaterial(project: StoredProject): Promise<{ paths: string[]; stillDurationSeconds?: number }> {
+    if (project.workflow_state !== WorkflowState.VideosApproved && project.workflow_state !== WorkflowState.Failed) throw videoMergeNotAllowed();
+    if (photoCardFor(project)) {
+      const picture = this.cardImage(project.project_id);
+      // The picture is the whole material. Checked for real bytes the same way a clip is, and never probed —
+      // a still has no duration of its own, which is exactly what ffprobe refuses it for.
+      const { size } = await fs.stat(picture).catch(() => ({ size: 0 }));
+      if (size <= 0) throw videoMergeClipsInvalid();
+      return { paths: [picture], stillDurationSeconds: toShortProjectSettings(project).clipDurationSeconds };
+    }
+    return { paths: await this.approvedClips(project) };
   }
 
   private async approvedClips(project: StoredProject): Promise<string[]> {
@@ -200,13 +224,18 @@ export class LocalVideoMergeService {
       const track = await this.audioLibrary.get(audio.trackId!);
       bgmAttribution = { attributionRequired: track.attributionRequired, ...(track.attributionText ? { attributionText: track.attributionText } : {}) };
     }
-    const clips = await this.approvedClips(project);
-    try { for (const clip of clips) await this.engine.probe(clip); }
-    catch (error) {
-      if (error instanceof MediaToolError && error.kind === "unavailable") throw ffmpegUnavailable();
-      throw videoMergeClipsInvalid();
+    const material = await this.mergeMaterial(project);
+    // Probing asks "is this a real video", which a still is not and never claims to be. Skipped for a card
+    // rather than the probe being loosened for every clip in the app.
+    if (material.stillDurationSeconds === undefined) {
+      try { for (const clip of material.paths) await this.engine.probe(clip); }
+      catch (error) {
+        if (error instanceof MediaToolError && error.kind === "unavailable") throw ffmpegUnavailable();
+        throw videoMergeClipsInvalid();
+      }
     }
-    const mergeScenes = await this.mergeScenes(project, clips, scenesFor(project), audio.mode !== "silent");
+    const cardScenes: SceneNumber[] = [1 as SceneNumber];
+    const mergeScenes = await this.mergeScenes(project, material.paths, material.stillDurationSeconds === undefined ? scenesFor(project) : cardScenes, audio.mode !== "silent", material.stillDurationSeconds);
     const clipDurationSeconds = toShortProjectSettings(project).clipDurationSeconds;
     const rendering = { ...project, workflow_state: WorkflowState.Rendering, updated_at: new Date().toISOString() };
     try { await this.projects.save(rendering); } catch { throw videoMergeStorageError(); }

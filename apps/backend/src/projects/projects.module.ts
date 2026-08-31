@@ -7,6 +7,8 @@ import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import { OrphanedGenerationRecoveryService } from "./orphaned-generation-recovery.service.js";
 import { ProjectsController } from "./projects.controller.js";
+import { PhotoCardController } from "./photo-card.controller.js";
+import { PhotoCardService } from "./photo-card.service.js";
 import { LocalProjectRepository } from "./projects.repository.js";
 import { ProjectsService } from "./projects.service.js";
 import { SceneEditService } from "./scene-edit.service.js";
@@ -28,9 +30,14 @@ function defaultProjectsRoot(): string {
 
 @Module({
   imports: [AssetsModule],
-  controllers: [ProjectsController],
+  controllers: [ProjectsController, PhotoCardController],
   providers: [
     { provide: PROJECTS_ROOT, useFactory: defaultProjectsRoot },
+    {
+      provide: PhotoCardService,
+      useFactory: (projects: LocalProjectRepository, assets: LocalAssetsRepository, projectsRoot: string) => new PhotoCardService(projects, assets, projectsRoot),
+      inject: [LocalProjectRepository, LocalAssetsRepository, PROJECTS_ROOT],
+    },
     {
       provide: LocalProjectRepository,
       useFactory: (projectsRoot: string) => new LocalProjectRepository(projectsRoot),

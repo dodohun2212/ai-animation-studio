@@ -29,6 +29,7 @@ export default defineConfig({
       "/images": "http://127.0.0.1:3000",
       "/audio": "http://127.0.0.1:3000",
       "/videos": "http://127.0.0.1:3000",
+      "/photo-cards": "http://127.0.0.1:3000",
     },
   },
   test: {

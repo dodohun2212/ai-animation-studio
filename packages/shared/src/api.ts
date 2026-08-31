@@ -1,4 +1,4 @@
-import type { Project, ProjectSummary, SceneNumber, UsedAudio } from "./domain.js";
+import type { Project, ProjectSummary, RunwayClipDurationSeconds, SceneNumber, UsedAudio } from "./domain.js";
 import { MAX_SCENE_COUNT, MIN_SCENE_COUNT } from "./domain.js";
 import type { Asset, AssetOwnership, AssetType } from "./asset.js";
 import type {
@@ -1384,6 +1384,30 @@ export interface DeleteAssetOwnedFileResponse {
  * already-migrated item alone. `failed` is the ones whose scene files could not be read, reported rather than
  * retried, because a picture that is genuinely gone is not something a second pass will find.
  */
+/**
+ * Everything a photo card is: one picture already in the Asset Library, one line of text, and how long to hold
+ * it for.
+ *
+ * No script, no scene planning, no image generation, no video generation — which is the point. The picture is
+ * copied to the project's scene-1 slot and recorded there, so nothing downstream is tempted to make one; the
+ * quote becomes that scene's narration text, which is what the merge already burns in as a subtitle; and the
+ * project lands ready to merge.
+ *
+ * `clipDurationSeconds` is the same choice an ordinary short project makes, reused rather than invented,
+ * because the merge reads the hold from exactly that setting.
+ */
+export interface CreatePhotoCardRequest {
+  projectId: string;
+  assetId: string;
+  quote: string;
+  clipDurationSeconds: RunwayClipDurationSeconds;
+  aspectRatio: "9:16" | "16:9";
+}
+
+export interface CreatePhotoCardResponse {
+  project: Project;
+}
+
 export interface BackfillGeneratedImageAssetsResponse {
   scanned: number;
   registered: number;
@@ -2220,6 +2244,7 @@ export const API_ROUTES = {
   assetFolder: (assetId: string) => `/assets/${encodeURIComponent(assetId)}/folder`,
   legacyReferenceMigration: "/assets/legacy-migration",
   backfillGeneratedImages: "/assets/backfill-generated-images",
+  photoCards: "/photo-cards",
   providerSettings: "/settings/providers",
   providerCredential: (provider: ProviderCredentialKind) =>
     `/settings/providers/${provider}/credential`,
