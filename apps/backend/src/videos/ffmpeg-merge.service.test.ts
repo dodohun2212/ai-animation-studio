@@ -88,6 +88,40 @@ describe("FfmpegMergeEngine.merge subtitle burn-in", () => {
    *
    * Asserted as a pair because either half alone is satisfied by doing nothing, or by always deleting.
    */
+  /**
+   * A photo card's scene is a picture, not footage.
+   *
+   * Measured before writing this: `ffprobe` calls a PNG `codec_type: "video"` and reports no `format.duration`,
+   * so a still passes the stream check and fails the duration one. The probe is right — a still has no duration
+   * of its own — so the duration is carried in and the caller skips the probe, rather than the probe being
+   * loosened for every clip in the app.
+   *
+   * Paired with the clip test below it: an input shape that ignored `stillDurationSeconds` would still play a
+   * real clip correctly, and one that looped everything would break every existing merge.
+   */
+  it("holds and slowly zooms a still, taking the duration it was given", async () => {
+    const calls: string[][] = [];
+    const { finalPath, fontsDir } = await setup();
+    await new FfmpegMergeEngine(runner(calls), fontsDir).merge([{ clip: "card.png", stillDurationSeconds: 5 }], 5, finalPath, "9:16");
+
+    const normalize = calls.find((args) => args[0] === "ffmpeg" && args.includes("-vf"))!;
+    expect(normalize.slice(normalize.indexOf("-y") + 1, normalize.indexOf("-f"))).toEqual(["-loop", "1", "-t", "5", "-i", "card.png"]);
+    const filter = normalize[normalize.indexOf("-vf") + 1]!;
+    expect(filter).toContain("zoompan=");
+    expect(filter).toContain("d=150");           // five seconds at 30fps
+    expect(filter).toContain("s=1080x1920");     // 9:16, the same size the shared filter pads to
+  });
+
+  it("still opens a real clip as one, with no loop and no zoom", async () => {
+    const calls: string[][] = [];
+    const { finalPath, fontsDir } = await setup();
+    await new FfmpegMergeEngine(runner(calls), fontsDir).merge([{ clip: "scene1.mp4" }], 5, finalPath, "9:16");
+
+    const normalize = calls.find((args) => args[0] === "ffmpeg" && args.includes("-vf"))!;
+    expect(normalize).not.toContain("-loop");
+    expect(normalize[normalize.indexOf("-vf") + 1]).not.toContain("zoompan");
+  });
+
   it("clears the normalized cache once the final file exists", async () => {
     const { root, finalPath, fontsDir } = await setup();
     await new FfmpegMergeEngine(runner([]), fontsDir).merge([{ clip: "scene1.mp4" }, { clip: "scene2.mp4" }], 5, finalPath, "9:16");

@@ -56,10 +56,36 @@ function outputSize(ratio: unknown): [number, number] {
 
 export interface MergeSceneInput {
   clip: string;
+  /**
+   * Seconds to hold `clip` for when it is a still image rather than a video.
+   *
+   * A photo card has one chosen picture and no footage, so there is nothing to play — the frame is held and
+   * slowly zoomed instead (docs/06_DECISIONS.md: Captain D chose a Ken Burns move precisely because it costs no
+   * provider call). Set only by that path; absent means `clip` is a real video and everything behaves as before.
+   *
+   * 🔴 A still must not be probed the way a clip is. Measured: `ffprobe` reports a PNG as `codec_type: "video"`,
+   * so the stream check passes — and then `format.duration` is absent, so the duration check refuses it. The
+   * probe is right to: a still has no duration of its own, which is why this field carries one. The caller
+   * skips the probe for these scenes rather than the probe being loosened for everything.
+   */
+  stillDurationSeconds?: number;
   /** Path to that scene's narration audio, or null/undefined to fall back to silence. */
   narrationAudioPath?: string | null;
   /** That scene's narration text, or null/undefined to burn in no subtitle line. Independent of narrationAudioPath — video-merge.service.ts sets this based on ShortProjectSettings.subtitlesEnabled, which can be on with no narration audio at all (subtitles-only, no TTS spend, a real Shorts use case since many viewers watch muted). */
   subtitleText?: string | null;
+}
+
+/**
+ * The slow push-in a held photo gets, at 30fps for `seconds`.
+ *
+ * Scaled up first so the zoom has real pixels to take rather than magnifying the output size, and centred so
+ * the subject does not drift. The move is deliberately small — this is a caption card, and a picture that
+ * lunges at the reader is harder to read, not livelier.
+ */
+function kenBurns(width: number, height: number, seconds: number): string {
+  const frames = Math.max(1, Math.round(seconds * 30));
+  return `scale=${width * 2}:${height * 2}:force_original_aspect_ratio=increase,`
+    + `zoompan=z='min(zoom+0.0004,1.15)':d=${frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${width}x${height}:fps=30`;
 }
 
 /** Small injectable engine mirroring Python FFmpegEngine's probe/normalize/concat sequence. */
@@ -118,10 +144,16 @@ export class FfmpegMergeEngine {
         await fs.writeFile(assPath, sceneSubtitleAss(scene.subtitleText, clipDurationSeconds, width, height), "utf8");
         filter += `,subtitles='${escapeForFfmpegFilterPath(assPath)}':fontsdir='${escapeForFfmpegFilterPath(this.fontsDir)}'`;
       }
+      // A still is looped for its own held duration and given the slow zoom before the shared filter runs; a
+      // clip is opened as it always was. Everything after this — subtitles, audio mapping, encoder, concat — is
+      // the same chain for both, which is the point of doing this as an input shape rather than a second merge.
+      const stillSeconds = scene.stillDurationSeconds;
+      const input = stillSeconds === undefined ? ["-i", scene.clip] : ["-loop", "1", "-t", String(stillSeconds), "-i", scene.clip];
+      const sceneFilter = stillSeconds === undefined ? filter : `${kenBurns(width, height, stillSeconds)},${filter}`;
       if (scene.narrationAudioPath) {
-        await this.command(["ffmpeg", "-y", "-i", scene.clip, "-i", scene.narrationAudioPath, "-filter_complex", "[1:a]apad[aout]", "-map", "0:v:0", "-map", "[aout]", "-vf", filter, "-c:v", "libx264", "-c:a", "aac", "-shortest", target]);
+        await this.command(["ffmpeg", "-y", ...input, "-i", scene.narrationAudioPath, "-filter_complex", "[1:a]apad[aout]", "-map", "0:v:0", "-map", "[aout]", "-vf", sceneFilter, "-c:v", "libx264", "-c:a", "aac", "-shortest", target]);
       } else {
-        await this.command(["ffmpeg", "-y", "-i", scene.clip, "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000", "-map", "0:v:0", "-map", "1:a:0", "-vf", filter, "-c:v", "libx264", "-c:a", "aac", "-shortest", target]);
+        await this.command(["ffmpeg", "-y", ...input, "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000", "-map", "0:v:0", "-map", "1:a:0", "-vf", sceneFilter, "-c:v", "libx264", "-c:a", "aac", "-shortest", target]);
       }
       normalized.push(target);
     }

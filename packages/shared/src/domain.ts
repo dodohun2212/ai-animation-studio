@@ -124,6 +124,20 @@ export interface ProjectSummary {
   createdAt: string;
   updatedAt: string;
   /**
+   * True only for a photo card: one chosen picture and one line of text, no script and no video generation.
+   *
+   * Deliberately not a third `ProjectType`. A photo card is a short project in every way that matters — same
+   * storage, same merge, same publish, same audio library and licence credit — and giving it its own type would
+   * mean re-attaching all five to a new owner. What it needs is one fact the pipeline can branch on: its scene
+   * is a still image, so the merge holds it and pans instead of playing it, and nothing about it is worth
+   * charging a provider for.
+   *
+   * Absent means an ordinary project. A screen may read this to drop a choice that has no meaning here — the
+   * publish screen's cover-frame offset picks a moment out of five seconds of slow zoom, where every moment
+   * looks the same.
+   */
+  photoCard?: boolean;
+  /**
    * Same source and priority as video-preview.service.ts's ratioFor()/image-prompt.ts's imageSizeFor()
    * (style_profile.aspect, "16:9" vs anything else defaulting to vertical) — added here so every screen that
    * needs to know this project's shape (a review thumbnail's aspect box, a video library card) reads the one
