@@ -1851,6 +1851,19 @@ export interface VideoLibraryProjectSummary {
   /** Same meaning and source as ProjectSummary.aspectRatio (see that field's doc comment) — lets a library card's thumbnail box match the shape this project's videos were actually rendered in. */
   aspectRatio: "9:16" | "16:9";
   /**
+   * Same meaning and source as ProjectSummary.photoCard, carried here because the publish screen picks its
+   * project from this list and never loads the project itself.
+   *
+   * It sits beside `aspectRatio` and `attributionRequired` because it is the same kind of value: a fact this
+   * row's reader has to branch on. The alternative shapes were both worse — fetching the project detail adds a
+   * request and teaches a screen that deliberately knows only two shapes about a third, and inferring "five
+   * seconds, so probably a photo card" would be deciding a kind from a duration.
+   *
+   * What it is for: dropping the cover-frame choice. Every moment of five seconds of slow zoom looks the same,
+   * so offering the choice asks someone to decide something that cannot change the result.
+   */
+  photoCard?: boolean;
+  /**
    * Derived from ProjectSummary.usedAudio — trimmed to just the two fields a library card actually needs
    * (whether to show a credit-line notice, and what it says), not the full mode/trackId shape, since a
    * "someone comes back later to finally publish this" reader has no use for either. Absent whenever usedAudio itself is (never merged, or a Video Library restore invalidated it — see

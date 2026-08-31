@@ -72,6 +72,31 @@ async function createEpisodeWithVideos(projectsRoot: string, projectId: string, 
 }
 
 describe("VideoLibraryService.list", () => {
+  /**
+   * The publish screen picks its project from this list and never loads the project itself, so a fact it has to
+   * branch on has to be on the row — beside `aspectRatio` and `attributionRequired`, which are there for the
+   * same reason. Without it the screen's only options were a second request or guessing the kind from the
+   * duration, and deciding what something is from how long it lasts is the shape this repository spent a day
+   * removing.
+   *
+   * Paired: an ordinary project must not carry the mark, or a screen would drop the cover-frame choice for
+   * every project in the library.
+   */
+  it("marks a photo card on the row, and leaves an ordinary project unmarked", async () => {
+    const { projectsRoot, projects, service } = await setup();
+    await createProjectWithVideos(projectsRoot, projects, "card", { scenes: [1] });
+    await createProjectWithVideos(projectsRoot, projects, "ordinary", { scenes: [1] });
+    const card = await projects.findById("card");
+    card.lore_context = { ...card.lore_context, photo_card: true };
+    await projects.save(card);
+
+    const rows = (await service.list()).projects;
+
+    expect(rows.find((row) => row.projectId === "card")?.photoCard).toBe(true);
+    expect(rows.find((row) => row.projectId === "ordinary")).not.toHaveProperty("photoCard");
+  });
+
+
   it("lists only projects with at least one video, with correct counts and cost totals", async () => {
     const { projectsRoot, projects, budget, service } = await setup();
     await createProjectWithVideos(projectsRoot, projects, "with_videos", { scenes: [1, 2, 3], finalVideo: true });

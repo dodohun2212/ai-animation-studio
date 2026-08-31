@@ -73,6 +73,18 @@ function usedAudioFor(stored: StoredProject): ProjectSummary["usedAudio"] {
   };
 }
 
+/**
+ * Whether this project is a photo card — one chosen picture and one line of text.
+ *
+ * Kept in `lore_context` beside `narration_enabled`, which is where this project's own flags already live, so
+ * the strict stored-key list does not have to learn a new field. Absent means an ordinary project, and the API
+ * field is omitted rather than sent as false: a reader that has never heard of photo cards behaves exactly as
+ * it did.
+ */
+export function photoCardFor(stored: StoredProject): boolean {
+  return stored.lore_context.photo_card === true;
+}
+
 export function toApiSummary(stored: StoredProject): ProjectSummary {
   return {
     id: stored.project_id,
@@ -83,6 +95,7 @@ export function toApiSummary(stored: StoredProject): ProjectSummary {
     updatedAt: stored.updated_at,
     aspectRatio: aspectRatioFor(stored),
     narrationAvailable: narrationAvailableFor(stored),
+    ...(photoCardFor(stored) ? { photoCard: true } : {}),
     ...(usedAudioFor(stored) !== undefined ? { usedAudio: usedAudioFor(stored) } : {}),
     ...(stored.instagram_post ? { instagramPost: {
       mediaId: stored.instagram_post.media_id,
