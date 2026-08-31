@@ -30,7 +30,7 @@ import type {
 
 import { shortProjectAspectRatio } from "./project-aspect.js";
 import { aspectRatioLocked, sceneCountLocked, invalidRequest, projectArchiveCollision, projectArchiveNotAllowed, projectNotFound, projectRestoreCollision, storageError } from "./project-api.error.js";
-import { createStoredProject, toApiProject, toApiSummary } from "./project.mapper.js";
+import { createStoredProject, photoCardFor, toApiProject, toApiSummary } from "./project.mapper.js";
 import { applyShortProjectAssetReferences, parseShortProjectAssetReferences, toShortProjectAssetReferences } from "./project-asset-references.js";
 import { applyPostDraft, parsePostDraft, toPostDraft } from "./project-post-draft.js";
 import { applyShortProjectCast, parseShortProjectCast, toShortProjectCast } from "./project-cast.js";
@@ -160,7 +160,9 @@ export class ProjectsService {
     request: UpdateProjectSettingsRequest,
   ): Promise<UpdateProjectSettingsResponse> {
     const stored = await this.repository.findById(projectId.trim());
-    const settings = parseShortProjectSettings(request?.settings);
+    // A photo card's scene count is 1 and is not something a person picked, so the floor moves for it — see
+    // parseShortProjectSettings. The lock just below still refuses any value that differs from what was read.
+    const settings = parseShortProjectSettings(request?.settings, photoCardFor(stored) ? 1 : undefined);
     // Everything else on this form stays editable with a Story in place — the name, the topic, the notes. Only
     // the scene count is refused, and only when it would actually change, because that is the one the rest of
     // the pipeline counts from while the Story counts from its own scenes.

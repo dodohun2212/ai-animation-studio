@@ -1,4 +1,7 @@
 import * as fs from "node:fs/promises";
+import { ProjectsService } from "./projects.service.js";
+import { createStoredProject } from "./project.mapper.js";
+import type { ShortProjectSettings } from "@ai-animation-studio/shared";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -28,7 +31,20 @@ async function setup() {
   const projects = new LocalProjectRepository(projectsRoot);
   const assets = new LocalAssetsRepository(root);
   const asset = await assets.create({ buffer: PNG, originalname: "quote.png", mimetype: "image/png" }, { assetType: "general_reference", displayName: "배경" });
-  return { root, projectsRoot, projects, assets, asset, service: new PhotoCardService(projects, assets, projectsRoot) };
+  // The settings routes are exercised through the service that serves them, so the round trip below is the one
+  // a screen actually makes rather than a direct call to the mapper.
+  const service = new ProjectsService(projects, assets);
+  return {
+    root, projectsRoot, projects, assets, asset,
+    service: new PhotoCardService(projects, assets, projectsRoot),
+    settingsOf: async (id: string) => (await service.getProjectSettings(id)).settings,
+    // `durationSeconds` is derived and deliberately not accepted back — the screen builds this payload from its
+    // fields rather than echoing the response, and so does this.
+    saveSettings: async (id: string, settings: ShortProjectSettings) => {
+      const { durationSeconds: _derived, ...editable } = settings;
+      return service.updateProjectSettings(id, { settings: editable as unknown as ShortProjectSettings });
+    },
+  };
 }
 
 const body = (assetId: string) => ({ projectId: "card_one", assetId, quote: "오늘의 문장", clipDurationSeconds: 5 as const, aspectRatio: "9:16" as const });
@@ -113,6 +129,47 @@ describe("PhotoCardService", () => {
     expect(created.project.topic).toBe(atLimit);
 
     await expect(service.create({ ...body(asset.asset_id), projectId: "card_two", quote: `${atLimit}가` }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
+
+  /**
+   * A photo card has one scene, and everything that walks "this project's scenes" counts from this number.
+   *
+   * `MIN_SCENE_COUNT` is two, so reading the card's own `scene_count: 1` through the ordinary floor rejected it
+   * as invalid and substituted the default of six. Measured end to end on a card made from a real Library
+   * picture: its settings answered six scenes and thirty seconds for a one-scene five-second card.
+   *
+   * The round trip is half the test. The scene count is locked once a project has scenes, so a save must carry
+   * back exactly what the read gave — if only the read had moved, the one number nobody chose would be the one
+   * number that could not be saved.
+   */
+  it("reports one scene and one clip's worth of seconds, and takes that same count back", async () => {
+    const { projects, service, asset, settingsOf, saveSettings } = await setup();
+    vi.stubGlobal("fetch", () => { throw new Error("a photo card must not reach a provider"); });
+    await service.create(body(asset.asset_id));
+
+    const settings = await settingsOf("card_one");
+    expect(settings.sceneCount).toBe(1);
+    expect(settings.durationSeconds).toBe(5);
+
+    await saveSettings("card_one", settings);
+    expect((await settingsOf("card_one")).sceneCount).toBe(1);
+    expect((await projects.findById("card_one")).scenes).toHaveLength(1);
+  });
+
+  it("still refuses an ordinary project made with a single scene", async () => {
+    // The counterpart. The floor moves for a photo card; the gate that stops every short project from being
+    // made as one scene does not, and widening the read must not have widened that.
+    const { saveSettings, settingsOf, projects } = await setup();
+    const ordinary = createStoredProject("ordinary_one", "보통 프로젝트", "2026-08-30T00:00:00.000Z");
+    ordinary.scenes = [{ number: 1, description: "s1" }, { number: 2, description: "s2" }];
+    ordinary.lore_context = { scene_count: 2, clip_duration_seconds: 5 };
+    await projects.create(ordinary);
+
+    const settings = await settingsOf("ordinary_one");
+    expect(settings.sceneCount).toBe(2);
+    await expect(saveSettings("ordinary_one", { ...settings, sceneCount: 1 }))
       .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 

@@ -1,13 +1,32 @@
 import { MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, type ShortProjectSettings, type ShortProjectStyleNotes } from "@ai-animation-studio/shared";
 
 import { invalidRequest } from "./project-api.error.js";
+import { photoCardFor } from "./project.mapper.js";
 import type { StoredProject } from "./project-storage.schema.js";
 
 const DEFAULT_SCENE_COUNT = 6;
 const DEFAULT_CLIP_DURATION_SECONDS = 5;
 
-function isValidSceneCount(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= MIN_SCENE_COUNT && value <= MAX_SCENE_COUNT;
+function isValidSceneCount(value: unknown, minimum: number = MIN_SCENE_COUNT): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= minimum && value <= MAX_SCENE_COUNT;
+}
+
+/**
+ * The fewest scenes this project may legitimately have.
+ *
+ * `MIN_SCENE_COUNT` is two, and that is right for something a person is composing: it stops every short project
+ * from being makeable as a single scene. A photo card is not composed — it **is** one picture and one sentence,
+ * by construction, and its record says `scene_count: 1`.
+ *
+ * Reading it back through the ordinary floor rejected that 1 as invalid and quietly substituted the default of
+ * six. Measured end to end on a card made from a real Library picture: its settings answered **six scenes and
+ * thirty seconds** for a one-scene five-second card. Worse than the wrong number on a screen, `scenesFor()`
+ * counts from this, so everything that walks "this project's scenes" walked five that do not exist.
+ *
+ * The floor moves; the gate does not. Creating an ordinary project with one scene is still refused.
+ */
+function minimumSceneCountFor(stored: StoredProject): number {
+  return photoCardFor(stored) ? 1 : MIN_SCENE_COUNT;
 }
 
 function isValidClipDuration(value: unknown): value is number {
@@ -65,7 +84,7 @@ function styleNotesFrom(value: unknown): ShortProjectStyleNotes {
 
 export function toShortProjectSettings(stored: StoredProject): ShortProjectSettings {
   const storyTitle = stringFrom(stored.story.title);
-  const sceneCount = isValidSceneCount(stored.lore_context.scene_count) ? stored.lore_context.scene_count : DEFAULT_SCENE_COUNT;
+  const sceneCount = isValidSceneCount(stored.lore_context.scene_count, minimumSceneCountFor(stored)) ? stored.lore_context.scene_count : DEFAULT_SCENE_COUNT;
   const clipDurationSeconds = isValidClipDuration(stored.lore_context.clip_duration_seconds) ? stored.lore_context.clip_duration_seconds : DEFAULT_CLIP_DURATION_SECONDS;
   return {
     projectName: stringFrom(stored.lore_context.project_name, storyTitle || "단편 프로젝트"),
@@ -88,7 +107,13 @@ export function toShortProjectSettings(stored: StoredProject): ShortProjectSetti
   };
 }
 
-export function parseShortProjectSettings(value: unknown): ShortProjectSettings {
+/**
+ * `minimumSceneCount` exists so a photo card's settings survive a round trip. Its saved scene count is 1, the
+ * caller reads 1 back, and a save has to carry the same value — the scene count is locked once a project has
+ * scenes. Without the floor moving here too, reading the truth and writing it back would be refused, and the
+ * one number a person never chose would be the thing they could not save.
+ */
+export function parseShortProjectSettings(value: unknown, minimumSceneCount: number = MIN_SCENE_COUNT): ShortProjectSettings {
   const settings = asObject(value, "settings");
   rejectUnknownFields(settings, SETTINGS_KEYS, "settings");
   for (const key of SETTINGS_KEYS) {
@@ -105,8 +130,8 @@ export function parseShortProjectSettings(value: unknown): ShortProjectSettings 
       if (item) normalizedStyleNotes[key] = item;
     }
   }
-  if (!isValidSceneCount(settings.sceneCount)) {
-    throw invalidRequest(`settings.sceneCount must be an integer between ${MIN_SCENE_COUNT} and ${MAX_SCENE_COUNT}.`, { field: "settings.sceneCount" });
+  if (!isValidSceneCount(settings.sceneCount, minimumSceneCount)) {
+    throw invalidRequest(`settings.sceneCount must be an integer between ${minimumSceneCount} and ${MAX_SCENE_COUNT}.`, { field: "settings.sceneCount" });
   }
   if (!isValidClipDuration(settings.clipDurationSeconds)) {
     throw invalidRequest(`settings.clipDurationSeconds must be one of: ${RUNWAY_CLIP_DURATIONS.join(", ")}.`, { field: "settings.clipDurationSeconds" });
