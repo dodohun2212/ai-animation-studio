@@ -16,6 +16,8 @@ import { OpenAiBudget } from "../providers/openai-budget.js";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 const PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=";
+/** A visibly different 1x1 PNG, so "which one was archived" is a question with an answer. */
+const SECOND_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 let root: string | undefined;
 const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false };
 
@@ -515,6 +517,45 @@ describe("real OpenAI Episode image generation", () => {
     expect(fetchMock).toHaveBeenCalledTimes(6);
     const episode = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "project.json"), "utf8")) as { state: string };
     expect(episode.state).toBe("images_review");
+  });
+
+
+  /**
+   * The archived copy is the picture that was there before, byte for byte.
+   *
+   * The existing check on this only calls `fs.access` — the file exists. Everything about that stays true if the
+   * archive is written from the *new* bytes instead of the old ones, and then the paid image a person is
+   * regenerating away from is gone: the file that exists to keep it is a second copy of what replaced it.
+   *
+   * It has to be measured with two genuinely different images. In the local-fake path both are the same
+   * placeholder, so a byte comparison there passes no matter which one was written — the difference has to be
+   * real for the comparison to mean anything.
+   */
+  it("archives the picture that was there before, not the one that replaced it", async () => {
+    const { images, projectsRoot } = await setupWithConnectedOpenAi();
+    const fetchMock = vi.fn()
+      .mockResolvedValue(jsonResponse(200, { data: [{ b64_json: SECOND_PNG_BASE64 }] }))
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }))
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }))
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }))
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }))
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }))
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+    await images.generate("long", 1, { approved: true });
+
+    const first = Buffer.from(PNG_BASE64, "base64");
+    const second = Buffer.from(SECOND_PNG_BASE64, "base64");
+    expect(first.equals(second)).toBe(false); // the whole test rests on these differing
+
+    const scene = path.join(projectsRoot, "long", "long_story", "Episode01", "images", "scene2.png");
+    expect(await fs.readFile(scene)).toEqual(first);
+
+    await images.regenerate("long", 1, "2", { approved: true });
+
+    const archived = path.join(projectsRoot, "long", "long_story", "Episode01", "images", "originals", "scene2_v001.png");
+    expect(await fs.readFile(archived)).toEqual(first);  // what was there before
+    expect(await fs.readFile(scene)).toEqual(second);    // what replaced it
   });
 
 });

@@ -97,7 +97,13 @@ describe("withProjectLock", () => {
     // Wait for a beat to have actually landed rather than for a length of time one usually fits in. A fixed
     // wait is the same mistake this file's other race test made: on a loaded machine it elapses before the
     // timer fires, the file still reads as abandoned, and the test fails for a reason that is not the subject.
-    const deadline = Date.now() + 5_000;
+    // The ceiling is only here so a genuine "never refreshes" fails instead of hanging — every fast run leaves
+    // the loop on the first or second pass. It was five seconds, and this test went red once in a full-suite run
+    // on the line below, right after several real-FFmpeg tests joined the suite and started competing for the
+    // machine. Not reproduced in four attempts since, alone or beside those tests, so nothing here is being
+    // treated as a defect: a bounded wait on a condition costs nothing extra when the condition arrives early,
+    // and a red that is about machine load rather than about locking is worse than a slower failure.
+    const deadline = Date.now() + 30_000;
     for (;;) {
       const stat = await fs.stat(lockFile);
       if (Date.now() - stat.mtimeMs < 60_000) break;
