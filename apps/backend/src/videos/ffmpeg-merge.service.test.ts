@@ -443,4 +443,63 @@ describe("FfmpegMergeEngine.merge holds a still for the time it was asked for", 
     expect(await sizeOf("9:16")).toBe("1080x1920");
   }, 120000);
 
+
+  /**
+   * The scenes come out in the order they went in, measured on the file.
+   *
+   * Order is the property that survives every argument check in this file: the concat list is built, ffmpeg is
+   * called, the durations add up, and a reversed or shuffled reel is byte-for-byte as plausible. A person would
+   * find out by watching their own episode.
+   *
+   * Six one-second clips in six colours far apart, merged, then one pixel read out of the middle of each second.
+   * Colour is used rather than image similarity because two flat frames can score high on structural similarity
+   * while being different colours — the thing being measured has to be the thing that differs.
+   *
+   * Measured on the real thing first: a real Episode's six clips merged to 30.22s and each five-second window
+   * matched its own scene (0.72-0.995 against ~0.10 for every other pairing).
+   */
+  it("concatenates the scenes in order", async ({ skip }) => {
+    const available = await runMediaCommand(["ffmpeg", "-version"]).then(() => true).catch(() => false);
+    if (!available) skip();
+
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "order-real-")); roots.push(root);
+    const colours = [
+      { name: "red", rgb: [255, 0, 0] },
+      { name: "green", rgb: [0, 255, 0] },
+      { name: "blue", rgb: [0, 0, 255] },
+      { name: "yellow", rgb: [255, 255, 0] },
+      { name: "magenta", rgb: [255, 0, 255] },
+      { name: "cyan", rgb: [0, 255, 255] },
+    ];
+    const clips: string[] = [];
+    for (const [index, colour] of colours.entries()) {
+      const clip = path.join(root, `scene${index + 1}.mp4`);
+      await runMediaCommand(["ffmpeg", "-y", "-f", "lavfi", "-i", `color=c=${colour.name}:s=320x568:d=1`,
+        "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+        "-shortest", "-c:v", "libx264", "-c:a", "aac", clip]);
+      clips.push(clip);
+    }
+
+    const finalPath = path.join(root, "final", "instagram_reel.mp4");
+    await fs.mkdir(path.dirname(finalPath), { recursive: true });
+    await new FfmpegMergeEngine().merge(clips.map((clip) => ({ clip })), 5, finalPath, "9:16");
+
+    /** The colour at the centre of the frame at `at` seconds, as three bytes. */
+    const pixelAt = async (at: number): Promise<[number, number, number]> => {
+      const raw = path.join(root, `pixel-${at}.raw`);
+      await runMediaCommand(["ffmpeg", "-y", "-ss", String(at), "-i", finalPath, "-frames:v", "1",
+        "-vf", "crop=8:8:(iw-8)/2:(ih-8)/2,scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", raw]);
+      const bytes = await fs.readFile(raw);
+      return [bytes[0]!, bytes[1]!, bytes[2]!];
+    };
+    const nearest = (pixel: readonly number[]): number => {
+      const distances = colours.map(({ rgb }) => rgb.reduce((sum, value, index) => sum + (value - pixel[index]!) ** 2, 0));
+      return distances.indexOf(Math.min(...distances));
+    };
+
+    const seen: number[] = [];
+    for (let index = 0; index < colours.length; index += 1) seen.push(nearest(await pixelAt(index + 0.5)) + 1);
+    expect(seen).toEqual([1, 2, 3, 4, 5, 6]);
+  }, 180000);
+
 });
