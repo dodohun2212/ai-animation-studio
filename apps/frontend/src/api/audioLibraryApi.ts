@@ -17,13 +17,27 @@ export class AudioLibraryApiError extends Error {
   }
 }
 
+/**
+ * Keyed to the codes the server actually sends (audio-api.error.ts's AudioErrorCode), which is not what this
+ * table used to hold.
+ *
+ * It listed AUDIO_FORMAT_UNSUPPORTED, AUDIO_FILE_TOO_LARGE and AUDIO_TRACK_IN_USE — none of which exist
+ * anywhere in the backend — while missing AUDIO_FILE_INVALID and AUDIO_CONTENT_UNAVAILABLE, which are the two
+ * it does send about a file. So a refused upload fell through to the generic "요청을 처리하지 못했습니다.
+ * 잠시 후 다시 시도해 주세요.", which is wrong twice over: it names no cause, and it recommends a retry for a
+ * file that will be refused identically every time.
+ *
+ * The three invented codes are removed rather than left in place. A message for a code that cannot arrive
+ * tells the next reader that path is alive.
+ */
 const SAFE_ERRORS: Record<string, string> = {
   INVALID_REQUEST: "요청 형식이 올바르지 않습니다.",
   AUDIO_TRACK_NOT_FOUND: "이 음원을 찾을 수 없습니다. 목록을 새로 불러온 뒤 다시 시도해 주세요.",
-  AUDIO_FORMAT_UNSUPPORTED: "지원하지 않는 오디오 형식입니다. MP3, WAV, M4A, OGG 파일을 올려 주세요.",
-  AUDIO_FILE_TOO_LARGE: "파일이 너무 큽니다. 50MB 이하로 올려 주세요.",
+  // Covers every reason one file is refused: wrong type, empty, over 50MB, or undecodable. It must not read as
+  // transient — the same file fails the same way on the next press, so the sentence points at the file.
+  AUDIO_FILE_INVALID: "이 파일은 쓸 수 없습니다. MP3·WAV·M4A·OGG 형식의 50MB 이하 파일인지 확인해 주세요. 다시 눌러도 같은 결과입니다.",
+  AUDIO_CONTENT_UNAVAILABLE: "이 음원의 파일을 찾을 수 없습니다. 다시 올려 주세요.",
   AUDIO_STORAGE_ERROR: "음원을 저장하는 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
-  AUDIO_TRACK_IN_USE: "이 음원을 쓰고 있는 프로젝트가 있어 지울 수 없습니다.",
 };
 const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };
@@ -124,7 +138,11 @@ export async function getAudioLibrary(): Promise<GetAudioLibraryResponse> {
  */
 export async function uploadAudioTrack(file: File, fields: UploadAudioTrackRequest): Promise<UploadAudioTrackResponse> {
   const form = new FormData();
-  form.append("file", file);
+  // "audio", not "file": the server reads this part by name (FileInterceptor("audio")), and a mismatch is not
+  // an error anywhere — the file simply never arrives, the upload is refused for having no file, and the name
+  // is the one thing neither side's own tests could see. The Asset Library's upload names its part "image" for
+  // the same reason; the part is named after what it carries.
+  form.append("audio", file);
   if (fields.title?.trim()) form.append("title", fields.title.trim());
   if (fields.artist?.trim()) form.append("artist", fields.artist.trim());
   // Required by the server: where the track came from is only knowable while the person still has the file in

@@ -58,6 +58,11 @@ describe("audioLibraryApi", () => {
     // Setting content-type by hand drops the multipart boundary and the server cannot parse the parts.
     expect(init.headers).toBeUndefined();
     const form = init.body as FormData;
+    // The part the server actually reads. This assertion is the whole reason the upload was broken and nobody
+    // saw it: every other field was checked here, the file's own part name was not, and the server reads it by
+    // name — so the file never arrived and the failure looked like a bad file rather than a wrong label.
+    expect(form.get("audio")).toBeInstanceOf(File);
+    expect(form.get("file")).toBeNull();
     expect(form.get("title")).toBe("기록관의 밤");
     // An empty optional field is left out rather than sent blank, so the server's own fallback applies.
     expect(form.get("artist")).toBeNull();
@@ -69,15 +74,17 @@ describe("audioLibraryApi", () => {
   });
 
   it("maps a known backend code to a fixed message and never leaks the raw one", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(413, { code: "AUDIO_FILE_TOO_LARGE", message: "raw backend detail" })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(400, { code: "AUDIO_FILE_INVALID", message: "raw backend detail" })));
 
     const caught = await uploadAudioTrack(new File(["x"], "big.wav"), { licenseKind: "self-made", attributionRequired: false })
       .catch((error: unknown) => error);
     const display = toAudioLibraryDisplayError(caught);
 
-    expect(display.code).toBe("AUDIO_FILE_TOO_LARGE");
+    expect(display.code).toBe("AUDIO_FILE_INVALID");
     expect(display.message).toContain("50MB");
     expect(display.message).not.toContain("raw backend detail");
+    // Not a retry: the same file is refused the same way next time, so this must not read as transient.
+    expect(display.message).not.toContain("잠시 후");
   });
 
   it("reports a network failure as its own code rather than as a server answer", async () => {

@@ -79,7 +79,7 @@ describe("AudioLibraryScreen", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, { tracks: [] }))
-      .mockResolvedValueOnce(jsonResponse(400, { code: "AUDIO_FORMAT_UNSUPPORTED", message: "raw backend detail" }));
+      .mockResolvedValueOnce(jsonResponse(400, { code: "AUDIO_FILE_INVALID", message: "raw backend detail" }));
     renderScreen(fetchMock);
 
     await screen.findByTestId("audio-library-empty");

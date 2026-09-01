@@ -2076,6 +2076,23 @@ export interface UpdateSceneResponse {
   staleness: SceneStaleness;
 }
 
+/**
+ * The name of the file part in each multipart upload — the one thing about an upload that both sides must write
+ * identically and that neither side's own tests can see.
+ *
+ * The BGM upload sent its part as `"file"` while the server read `"audio"`, so the file never arrived: the
+ * server refused the request for having no file, and the screen turned that into a generic "try again later"
+ * for something that could never succeed. Both halves were green — the frontend asserted its own FormData, the
+ * backend called its service with a file object directly — and neither test ever looked at the name that joins
+ * them (CLI Round 429, Cowork Round 428).
+ *
+ * A field name is part of the request contract exactly like a route or a body field, so it lives here with
+ * them. Read these; do not retype the string.
+ */
+export const AUDIO_UPLOAD_FILE_FIELD = "audio";
+/** The Asset Library's equivalent — three routes read it, and the frontend writes it in three places. */
+export const ASSET_UPLOAD_FILE_FIELD = "image";
+
 export const API_ROUTES = {
   health: "/health",
   projects: "/projects",

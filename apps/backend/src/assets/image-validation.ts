@@ -1,30 +1,20 @@
 import * as crypto from "node:crypto";
 import * as path from "node:path";
 import { invalidAssetFile } from "./asset-api.error.js";
+import { safeUploadFilename } from "./upload-filename.js";
 
 const MAX_BYTES = 25 * 1024 * 1024;
 const MAX_PIXELS = 40_000_000;
 export interface ValidatedImage { digest: string; extension: ".png" | ".jpg" | ".jpeg" | ".webp"; originalFilename: string }
 
 /**
- * Busboy/Multer commonly exposes RFC multipart filename bytes as Latin-1.
- * Recover UTF-8 only when the byte sequence is exact UTF-8 and the result is
- * clearly non-Latin (or the Latin-1 view contains C1 controls). This repairs
- * Korean/CJK/emoji mojibake without changing legitimate ASCII/Latin names.
+ * The Asset Library's multipart filename check: the shared repair-and-validate, refused in this library's own
+ * vocabulary. The implementation moved to upload-filename.ts when the BGM library turned out to need exactly
+ * this and had been living with a copy that omitted the repair.
  */
 export function normalizeUploadFilename(value: string): string {
-  let normalized = value;
-  if ([...value].every((character) => character.codePointAt(0)! <= 0xff)) {
-    const bytes = Buffer.from(value, "latin1");
-    const decoded = bytes.toString("utf8");
-    const exactUtf8 = !decoded.includes("\uFFFD") && Buffer.from(decoded, "utf8").equals(bytes);
-    const clearlyEncoded = [...decoded].some((character) => character.codePointAt(0)! > 0x024f)
-      || /[\u0080-\u009f]/u.test(value);
-    if (exactUtf8 && clearlyEncoded) normalized = decoded;
-  }
-  if (!normalized || normalized.length > 255 || path.basename(normalized) !== normalized
-    || normalized === "." || normalized === ".." || /[\u0000-\u001f\u007f-\u009f]/u.test(normalized)
-    || /[. ]$/u.test(normalized)) throw invalidAssetFile("Image filename is invalid.");
+  const normalized = safeUploadFilename(value);
+  if (normalized === undefined) throw invalidAssetFile("Image filename is invalid.");
   return normalized;
 }
 

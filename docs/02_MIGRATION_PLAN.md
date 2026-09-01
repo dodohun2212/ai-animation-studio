@@ -3057,3 +3057,11 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
   - 🔴 새 짝의 한쪽이 **없는 값으로 통과**하고 있었다(`WorkflowState.Draft` → 런타임 `undefined`). vitest 는 타입을 안 보고 `nest build` 가 잡았다. → **D-046**
 
 - [x] **427 의 나머지 반쪽 — 화면이 두 문장을 갖고, 성공 못 할 버튼을 감춘다 (Cowork Round 428)**: `VIDEO_MERGE_ALREADY_COMPLETED` · `LONG_EPISODE_MERGE_ALREADY_COMPLETED` 문구가 들어갔고, 회차 병합 화면은 이미 완성된 회차에서 버튼 대신 사실을 보여준다. 🟠 단편은 원래부터 버튼이 안 나왔다 — **427 에 제가 "화면이 버튼을 다시 준다"고 적은 것은 절반만 맞았다**(`VideoMergeScreen.tsx:87` 이 완료 상태를 복원한다). 그쪽 보고를 확인 없이 받아 적은 자리다.
+
+- [x] **🔴 음원 업로드는 한 번도 성공한 적이 없었다 — 결함이 셋이었고, 셋 다 같은 빈틈에 있었다 (Cowork Round 428 + CLI Round 429)**: Cowork 이 첫째(프런트가 파일 부분을 `"file"` 로, 서버는 `FileInterceptor("audio")` 로 읽음)를 고쳤다. **HTTP 로 실제 multipart 를 보내 보니 그래도 400 이었다.**
+  - **둘째 — `attributionRequired` 가 문자열로 도착한다.** multipart 에는 타입이 없어서 전 필드가 텍스트다. 서버는 `typeof !== "boolean"` 으로 거절했고, **앱이 보내는 모든 업로드가 여기서 죽었다.** `"true"`/`"false"` 두 낱말만 받는다 — `Boolean("false")` 는 `true` 라, 느슨하게 읽으면 **출처 표기가 필요한 음원을 필요 없는 것으로 저장**한다.
+  - **셋째 — 한국어 파일명이 거절됐다.** Multer 는 파일명 바이트를 Latin-1 로 준다. 한글 UTF-8 연속 바이트는 U+0080~U+009F 에 떨어지고 그게 C1 제어문자 범위다. 보관함 쪽은 **원래부터 이 복구를 하고 있었는데**, 음원 쪽은 *"audio has no mojibake-repair need"* 라는 주석과 함께 검사만 베껴 갔다. **이 앱의 기본 언어가 한국어다** — 예외가 아니라 보통의 업로드였다. 구현을 `assets/upload-filename.ts` 하나로 합쳤다.
+  - 🔴 **셋 다 초록 위에서 살아 있었다**: 프런트 테스트는 자기가 만든 FormData 를 확인하고, 서비스 테스트는 `upload()` 에 **HTTP 로는 만들어질 수 없는** 객체(진짜 boolean, 정상 파일명)를 직접 넘긴다. 양 끝이 각자 초록이고 **가운데를 아무도 안 건넜다**(D-031). 새 `audio-upload.integration.test.ts` 가 실제 Nest 인스턴스에 진짜 multipart 를 쏜다.
+  - 주입 셋 전부 빨강 — 필드 이름 되돌리면 5개, 문자열 boolean 파싱 빼면 3개, mojibake 복구 끄면 4개(보관함 쪽 기존 짝 1개 포함).
+  - 🟠 Cowork 구역에서 한 줄: `AudioLibraryScreen.test.tsx` 가 방금 지워진 `AUDIO_FORMAT_UNSUPPORTED` 를 계속 쓰고 있어 빨갰다 — 서버가 실제로 보내는 `AUDIO_FILE_INVALID` 로 바꿨다(문구 단언은 그대로 통과).
+- [x] **파일 항목 이름을 shared 상수로 냈다 (Cowork 요청)**: `AUDIO_UPLOAD_FILE_FIELD` · `ASSET_UPLOAD_FILE_FIELD`. 라우트나 본문 필드와 같은 요청 계약이라 `api.ts` 에 둔다. 백엔드 인터셉터 4곳이 이미 읽는다 — **이번 결함은 이 상수가 있었으면 애초에 안 생겼다.**
