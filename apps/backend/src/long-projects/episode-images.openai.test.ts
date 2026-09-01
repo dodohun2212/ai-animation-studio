@@ -115,6 +115,55 @@ describe("real OpenAI Episode image generation", () => {
     expect((await images.get("long", 1)).staleness.imageStale).toEqual([2]);
   });
 
+  /**
+   * The Reference Assets reach the Episode's image prompt as text, not only as bytes.
+   *
+   * The two checks below say it themselves: "References reach the image model as bytes, not as text." For a
+   * short project that is only half true — local-image-generation.service.ts and image-review.service.ts both
+   * pass describeReferenceMappingsForScene's block as imagePromptFor's third argument, so the model is told the
+   * Asset's name, the role the person gave it, its description, and a Folder child's own note. The Episode path
+   * calls imagePromptFor(scene, "") and passes neither.
+   *
+   * So an Episode's paid request uploads a photo of 이배드 with nothing saying who that is, what the person
+   * mapped them as, or anything the photo cannot show. image-prompt.ts wrote down that consequence when the
+   * argument was added for the short project; the Episode side never got it.
+   *
+   * Asserted on the prompt field of the multipart body actually sent, which is the last place it can be lost.
+   */
+  it("tells the model who the Reference Assets are, not just what they look like", async () => {
+    const { images, projectsRoot } = await setupWithConnectedOpenAi(async ({ assets: library, mappings, key }) => {
+      const hero = await library.create({ buffer: PNG, originalname: "hero.png", mimetype: "image/png" },
+        { assetType: "character", displayName: "이배드", description: "왼쪽 눈가에 흉터가 있는 서른 살 남자", approved: true });
+      await mappings.create(key, { assetId: hero.asset_id, usageRole: "주인공", sceneScope: { kind: "all" } });
+    });
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await images.generate("long", 1, { approved: true });
+
+    const sentPrompt = (index: number): string => {
+      const [, init] = fetchMock.mock.calls[index] as [string, RequestInit];
+      return String((init.body as FormData).get("prompt"));
+    };
+    const prompt = sentPrompt(0);
+    expect(prompt, "the Asset's name never reached the model").toContain("이배드");
+    expect(prompt, "the role the person chose never reached the model").toContain("주인공");
+    expect(prompt, "the description never reached the model").toContain("왼쪽 눈가에 흉터가 있는 서른 살 남자");
+
+    // Regeneration is the button a person presses over and over on the review screen, and it builds its own
+    // prompt. Fixing only the first pass would leave every retry paying for a nameless photo — measured: with
+    // the generation path fixed and this one left alone, the whole suite stayed green.
+    await images.regenerate("long", 1, "1", { approved: true });
+    const regenerated = sentPrompt(fetchMock.mock.calls.length - 1);
+    expect(regenerated, "the retry sent a nameless photo").toContain("이배드");
+    expect(regenerated).toContain("왼쪽 눈가에 흉터가 있는 서른 살 남자");
+
+    // What is recorded stays the plain scene prompt. Recording what was sent would make an Asset description
+    // edit read as a script change, which is what `referenceStale` is for and `imageStale` is not.
+    const stored = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "generated_image_reviews.json"), "utf8")) as Array<{ scene_number: number; prompt?: string }>;
+    expect(stored.find((entry) => entry.scene_number === 1)?.prompt ?? "").not.toContain("이배드");
+  });
+
   it("names the scenes whose paid-for images were drawn from references that are no longer the ones used", async () => {
     // The prompt comparison above cannot see this. References reach the image model as bytes, not as text, so
     // changing which Assets are mapped alters every picture the next run would make while leaving the recorded

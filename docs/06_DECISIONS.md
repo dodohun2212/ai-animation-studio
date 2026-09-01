@@ -1163,3 +1163,31 @@ apps/backend 에서 실행   → 통과
 ```
 
 프로덕션 `promptsRoot()` 는 모듈 위치를 기준으로 찾는다. 테스트만 다른 기준을 썼고, 어느 디렉터리에서 스위트를 띄웠는지가 **검사가 아예 돌았는지를** 결정했다. `import.meta.url` 기준으로 맞췄고 양쪽 cwd 에서 26/26 을 확인했다.
+
+### D-045 — 회차 이미지는 사진을 보내면서 그게 누구인지는 안 보냈다
+
+`image-prompt.ts` 는 `referenceNotes` 인자가 왜 생겼는지 자기 주석에 적어 놨다.
+
+> "Without it, the model receives a reference photo with no name or description attached to it, and anything a photo alone cannot convey (a stated personality, a Folder child's individual note) never reaches the model at all."
+
+단편은 생성·재생성 둘 다 그 블록을 넘긴다. **회차는 두 자리 다 안 넘겼다.**
+
+```
+단편   imagePromptFor(scene, styleLine, referenceNotes)
+회차   imagePromptFor(scene, "")
+```
+
+매핑도 자산 저장소도 이미 그 자리에 있었다 — 바로 다음 줄에서 `collectReferenceImages` 로 **같은 매핑에서 사진 바이트를 꺼내 보내고 있다.** 이름·역할·설명만 빠졌다.
+
+측정: 회차 1에 「이배드 / 주인공 / 왼쪽 눈가에 흉터가 있는 서른 살 남자」를 걸고 이미지를 생성한 뒤 **실제로 나간 multipart 몸통의 `prompt`** 를 읽었다. 셋 다 없었다.
+
+**보내는 것과 기록하는 것을 나눴다.** 이 파일에 이미 같은 판단이 있다 — 재생성의 일회성 지시는 보내되 기록하지 않는다("staleness would then be measuring the instruction rather than the thing it exists to measure"). 참고 메모도 같다: 기록에 넣으면 **Asset 설명만 고쳐도 대본이 바뀐 것처럼** 읽히고, 그건 `referenceStale` 이 이미 이름으로 재고 있는 일이다.
+
+```
+보낸다   imagePromptFor(scene, "", referenceNotes)
+기록한다 imagePromptFor(scene, "")
+```
+
+🔴 **재생성 경로는 짝이 없었다.** 생성만 고치고 재생성을 그대로 두는 주입에 스위트 319개가 전부 초록이었다 — 검토 화면에서 사람이 가장 많이 누르는 버튼이고, 매번 이름 없는 사진에 돈을 내고 있었을 자리다. 짝을 그쪽까지 늘렸다.
+
+기록을 보낸 것으로 바꾸는 주입(③)은 **기존 짝**(`referenceStale` 과 `imageStale` 을 갈라 두는 것)이 잡는다 — 양 끝이 서로를 막는다.

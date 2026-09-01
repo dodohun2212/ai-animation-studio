@@ -24,6 +24,7 @@ import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generati
 import { EpisodeContinuityReferenceService } from "./episode-continuity-reference.service.js";
 import type { StoredAssetMapping } from "../mappings/mapping-storage.js";
 import { storyBibleLinkDrift } from "./episode-story-bible-drift.js";
+import { describeReferenceMappingsForScene } from "../images/image-reference-selection.js";
 import { collectReferenceImages, referenceSourcesForScene } from "../images/image-reference-selection.js";
 import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import { EpisodeMappingOwners } from "./episode-mapping-owner.js";
@@ -314,8 +315,17 @@ export class EpisodeImagesService {
         if (await this.validImage(file)) { reused.push(scene); continue; }
         let bytes: Buffer = PNG;
         if (apiKey && this.budget) {
-          const prompt = imagePromptFor(scenes[scene - 1], "");
-          generatedPrompts.set(scene, prompt);
+          // The same block the short project has folded in since references were added (image-prompt.ts's
+          // referenceNotes doc): the photos below go up as bytes, and without this the model is never told whose
+          // photo it is, what role the person mapped them as, or anything a picture cannot carry. Measured: an
+          // Episode's paid request named nobody.
+          const referenceNotes = await describeReferenceMappingsForScene(this.assets, mappings, scene);
+          const prompt = imagePromptFor(scenes[scene - 1], "", referenceNotes);
+          // The plain scene prompt is what gets recorded, for the same reason the one-off direction below is
+          // left out of it: staleness must measure the script, and folding the References block in would make a
+          // scene read as behind its own script the moment somebody edits an Asset's description. Which
+          // references were used is measured separately and by name, in `reference_sources` below.
+          generatedPrompts.set(scene, imagePromptFor(scenes[scene - 1], ""));
           const references = await collectReferenceImages(this.assets, mappings, owner!.directory, scene, continuityPath);
           referenceSources.set(scene, references.sources);
           if (references.omittedCount > 0) referenceOmissions.set(scene, { references_used_count: references.images.length, references_omitted_count: references.omittedCount });
@@ -484,12 +494,13 @@ export class EpisodeImagesService {
       // The plain scene prompt is what gets recorded; the instruction rides only on this one request. Record
       // the instructed text instead and this scene reads as permanently behind its own script — staleness
       // would then be measuring the instruction rather than the thing it exists to measure.
-      const basePrompt = imagePromptFor(scenes[scene - 1], "");
-      const prompt = additionalInstruction ? `${basePrompt}
-${additionalInstruction}` : basePrompt;
-      generatedPrompt = basePrompt;
       const owner = await this.mappingOwners.get({ projectId: id, episodeNumber: number });
       const mappings = await this.mappingStore.load(owner);
+      const recordedPrompt = imagePromptFor(scenes[scene - 1], "");
+      const basePrompt = imagePromptFor(scenes[scene - 1], "", await describeReferenceMappingsForScene(this.assets, mappings, scene));
+      const prompt = additionalInstruction ? `${basePrompt}
+${additionalInstruction}` : basePrompt;
+      generatedPrompt = recordedPrompt;
       const continuityPath = await this.continuityImagePath(id, number);
       const references = await collectReferenceImages(this.assets, mappings, owner.directory, scene, continuityPath);
       generatedSources = references.sources;
