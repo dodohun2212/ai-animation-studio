@@ -3050,3 +3050,8 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
   - 🔴 **재생성 경로는 짝이 아예 없었다**: 생성만 고치고 재생성을 두는 주입에 장기 프로젝트 319개가 전부 초록이었다. 검토 화면에서 제일 자주 눌리는 버튼이다. 짝을 그쪽까지 늘렸다. → **D-045**
 - [x] **형제 훑기 결과 — 이미지·모션 템플릿에는 같은 결함이 없다**: `prompts/image/scene_generation.txt` 와 `prompts/templates/motion_generation.txt` 는 **TS 가 읽지 않는다**(파이썬 베이스라인 전용). TS 는 `image-prompt.ts` 에서 프롬프트를 만들고 **빈 값을 애초에 버린다**(`.filter(([, value]) => value)`) — 빈 라벨이 구조상 생기지 않는다. story 템플릿만 `renderTemplate` 를 탄다.
 - [x] **Cowork 두 건 받아 돌려줌**: `LongProjectSummary.warnings` → `LongProjectDetail`(요약 표 위), `paidProvider` → 유료 안내 두 문장 복구. 🟠 옛 픽스처 하나가 `paidProvider` 없이 유료 문장을 요구해 빨갛길래 **한 줄(`paidProvider: true`)만** 넣고 주석으로 밝혔다 — 지울지는 그쪽 판단.
+
+- [x] **🔴 병합 거절 사유가 거짓말이었다 (단편·회차 둘 다)**: Cowork 이 *"다시 열면 버튼이 나오니 재병합 됩니다"* 라고 화면을 읽어 보고했고, **두 번 눌러서** 재봤다. 1차 후 `COMPLETED`, 2차는 `409 VIDEO_MERGE_NOT_ALLOWED — "requires six approved scene videos"`. **여섯 장면은 전부 승인돼 있다.** 사람은 이미 끝낸 일을 하라는 안내를 받는다. 회차도 같은 문구.
+  - 두 상태를 가르는 코드를 따로 뒀다. **게이트는 그대로** — 재병합 허용 여부는 제품 결정(캡틴D 몫)이고, 고친 것은 *거절한다* 가 아니라 *사유가 거짓이다* 쪽이다.
+  - 🟠 화면은 코드로 문장을 고르고 모르는 코드는 일반 문장으로 떨어진다 — 거짓 대신 모호로 바뀌었고, 정확한 두 문장은 Cowork 에게 넘겼다.
+  - 🔴 새 짝의 한쪽이 **없는 값으로 통과**하고 있었다(`WorkflowState.Draft` → 런타임 `undefined`). vitest 는 타입을 안 보고 `nest build` 가 잡았다. → **D-046**
