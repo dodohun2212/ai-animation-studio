@@ -128,6 +128,11 @@ const SAFE_ERRORS: Record<string, string> = {
   LONG_EPISODE_IMAGES_PROVIDER_ERROR: "이미지 생성 요청이 실패했습니다. 잠시 후 다시 시도해 주세요.",
   LONG_EPISODE_VIDEOS_NOT_ALLOWED: "지금 이 에피소드 단계에서는 영상 작업을 할 수 없습니다. 기다린다고 풀리지 않으니 에피소드 상태를 확인해 주세요.",
   LONG_EPISODE_VIDEOS_INVALID: "에피소드 영상이나 검토 데이터가 올바르지 않습니다.",
+  // Not a failure to fix — the work is already done. The gate that produces this used to answer with the
+  // "approve every scene first" sentence, which sent people to re-approve scenes that were already approved.
+  // Whether a re-merge should be allowed at all is a separate, product question; until it is, saying the true
+  // reason is the least this can do.
+  LONG_EPISODE_MERGE_ALREADY_COMPLETED: "이미 최종 영상이 만들어진 회차입니다. 다시 만들려면 먼저 지금 영상을 정리해 주세요.",
   LONG_EPISODE_VIDEO_JOB_NOT_FOUND: "에피소드 영상 작업을 찾을 수 없습니다.",
   STORY_BIBLE_ITEM_NOT_FOUND: "Story Bible 항목을 찾을 수 없습니다.",
   STORY_BIBLE_ITEM_ALREADY_EXISTS: "같은 ID의 Story Bible 항목이 이미 있습니다.",

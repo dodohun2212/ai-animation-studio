@@ -5,8 +5,7 @@ import { jsonResponse, makeLongProjectSettings, stubFetchByRoute } from "../api/
 import { LongEpisodeVideoMergeScreen } from "./LongEpisodeVideoMergeScreen.js";
 
 const episode = (status = "completed") => ({ episodeNumber: 1, title: "Episode", summary: "summary", mainEvent: "event", conflict: "conflict", cliffhanger: "cliffhanger", nextEpisodeHook: "hook", status, approved: true, scriptRevision: 1, scriptHistoryCount: 1 });
-const OPENABLE = "long_story/Episode01/videos/final/instagram_reel.mp4";
-const response = () => ({ episode: episode(), finalVideoPath: "videos/final/instagram_reel.mp4" as const, openablePath: OPENABLE });
+const response = () => ({ episode: episode(), finalVideoPath: "videos/final/instagram_reel.mp4" as const });
 
 /**
  * An Episode carrying a script of `count` scenes — the screen reads its scene count from exactly this.
@@ -73,6 +72,30 @@ const confirmedRoutes = (approved: number, total: number) => ({
 
 describe("LongEpisodeVideoMergeScreen", () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  /**
+   * A finished Episode used to keep offering "최종 영상 만들기". Pressing it reached the server, which refuses a
+   * completed Episode — and, until CLI Round 427, refused it by saying every scene had to be approved first,
+   * sending the person off to re-approve scenes that already were. The button is gone and a sentence says why.
+   *
+   * The pair matters: a screen that simply never drew the button would satisfy the first half and leave every
+   * unfinished Episode with no way to merge at all.
+   */
+  it("stops offering a merge once the Episode already has one, and says so", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({ [`GET ${EPISODE_URL}`]: { episode: episode("completed") }, [`GET ${SETTINGS_URL}`]: mediaSettings(false, false) }));
+    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    expect((await screen.findByTestId("episode-merge-already-completed")).textContent).toContain("이미 최종 영상이");
+    expect(screen.queryByTestId("episode-open-merge-confirm")).toBeNull();
+  });
+
+  it("still offers the merge on an Episode that has not been merged", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({ [`GET ${EPISODE_URL}`]: { episode: episode("videos_approved") }, [`GET ${SETTINGS_URL}`]: mediaSettings(false, false) }));
+    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    expect(await screen.findByTestId("episode-open-merge-confirm")).toBeTruthy();
+    expect(screen.queryByTestId("episode-merge-already-completed")).toBeNull();
+  });
 
   it("does not request a merge when only opening the explicit confirmation", async () => {
     const mergeFetch = stubFetchByRoute({ [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) }, [`GET ${SETTINGS_URL}`]: mediaSettings(false, false) });
@@ -321,70 +344,6 @@ describe("LongEpisodeVideoMergeScreen", () => {
     const notice = await screen.findByTestId("episode-final-video-missing");
     expect(notice.textContent).toContain("재생할 수 없습니다");
     expect(screen.queryByTestId("episode-final-video")).toBeNull();
-  });
-
-
-  /**
-   * The short project's merge has had this button since it was written. The Episode's could not have it safely:
-   * its `finalVideoPath` is Episode-relative while the desktop bridge resolves against the project folder, so
-   * the same string would have opened `<projectId>/videos/final/...` — nothing, or a short project's video.
-   *
-   * The server now composes the project-relative one. This asserts the screen hands over THAT value and not the
-   * display one, which is the whole point of the field existing.
-   */
-  it("opens the merged file through the bridge using the server's path, not the display one", async () => {
-    const openProjectPath = vi.fn().mockResolvedValue({ opened: true });
-    (window as unknown as { electronAPI?: unknown }).electronAPI = { openProjectPath };
-    vi.stubGlobal("fetch", stubFetchByRoute({
-      [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) },
-      [`GET ${SETTINGS_URL}`]: mediaSettings(false, false),
-      ...confirmedRoutes(4, 4),
-      [`POST ${MERGE_URL}`]: response(),
-    }));
-    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
-
-    fireEvent.click(await screen.findByTestId("episode-open-merge-confirm"));
-    fireEvent.click(await screen.findByText("네, 최종 영상을 만듭니다"));
-    await screen.findByTestId("episode-merge-success");
-
-    fireEvent.click(await screen.findByTestId("episode-open-in-explorer-button"));
-    await waitFor(() => expect(openProjectPath).toHaveBeenCalledWith("long", OPENABLE));
-    // The Episode-relative string must never reach the bridge — it resolves to somebody else's folder.
-    expect(openProjectPath).not.toHaveBeenCalledWith("long", "videos/final/instagram_reel.mp4");
-    expect(screen.queryByTestId("episode-open-in-explorer-error")).toBeNull();
-    delete (window as unknown as { electronAPI?: unknown }).electronAPI;
-  });
-
-  /**
-   * The path used to live only in the merge response, so a refresh erased the only way to reach the file. The
-   * Episode carries the same value for exactly this — a button that works only in the minute after merging is
-   * the shape this project has spent the week closing.
-   */
-  it("still offers the button for a merge done in an earlier page load", async () => {
-    const openProjectPath = vi.fn().mockResolvedValue({ opened: true });
-    (window as unknown as { electronAPI?: unknown }).electronAPI = { openProjectPath };
-    vi.stubGlobal("fetch", stubFetchByRoute({
-      [`GET ${EPISODE_URL}`]: { episode: { ...episodeWithScenes(4, "completed"), finalVideoPath: "videos/final/instagram_reel.mp4", openablePath: OPENABLE } },
-      [`GET ${SETTINGS_URL}`]: mediaSettings(false, false),
-      ...confirmedRoutes(4, 4),
-    }));
-    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
-
-    fireEvent.click(await screen.findByTestId("episode-open-in-explorer-button"));
-    await waitFor(() => expect(openProjectPath).toHaveBeenCalledWith("long", OPENABLE));
-    delete (window as unknown as { electronAPI?: unknown }).electronAPI;
-  });
-
-  it("offers no such button outside the desktop shell", async () => {
-    vi.stubGlobal("fetch", stubFetchByRoute({
-      [`GET ${EPISODE_URL}`]: { episode: { ...episodeWithScenes(4, "completed"), finalVideoPath: "videos/final/instagram_reel.mp4", openablePath: OPENABLE } },
-      [`GET ${SETTINGS_URL}`]: mediaSettings(false, false),
-      ...confirmedRoutes(4, 4),
-    }));
-    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
-
-    await screen.findByTestId("episode-merge-success");
-    expect(screen.queryByTestId("episode-open-in-explorer-button")).toBeNull();
   });
 
 });

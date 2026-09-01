@@ -16,6 +16,11 @@ const SAFE_ERRORS: Record<string, string> = {
   INVALID_REQUEST: "요청 형식이 올바르지 않습니다.",
   PROJECT_NOT_FOUND: "프로젝트를 찾을 수 없습니다.",
   VIDEO_MERGE_NOT_ALLOWED: "모든 장면 영상이 승인된 뒤에만 최종 병합을 진행할 수 있습니다.",
+  // Not a failure to fix — the work is already done. The gate that produces this used to answer with the
+  // "approve every scene first" sentence, which sent people to re-approve scenes that were already approved.
+  // Whether a re-merge should be allowed at all is a separate, product question; until it is, saying the true
+  // reason is the least this can do.
+  VIDEO_MERGE_ALREADY_COMPLETED: "이미 최종 영상이 만들어진 프로젝트입니다. 다시 만들려면 먼저 지금 영상을 정리해 주세요.",
   VIDEO_MERGE_CLIPS_INVALID: "승인된 장면 영상 파일을 확인할 수 없습니다. 영상 검토 화면에서 장면을 다시 확인해 주세요.",
   FFMPEG_UNAVAILABLE: "이 컴퓨터에서 로컬 영상 병합 프로그램을 사용할 수 없습니다. 설치 상태를 확인해 주세요.",
   VIDEO_MERGE_FAILED: "로컬 영상 병합에 실패했습니다. 승인된 장면 영상은 그대로 보존됩니다.",
