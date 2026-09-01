@@ -514,4 +514,51 @@ describe("real Runway episode video generation", () => {
     expect(progress.retryEstimate).toBeUndefined();
   });
 
+
+  /**
+   * What one press of "5번 장면을 다시 시도" actually buys.
+   *
+   * The screen shows the cost of one scene, because one scene is what the person selected. But a failed scene
+   * halts the pipeline (runway-workflow-support.ts), so everything after it is still unmade: clearing the
+   * failure restarts the job and every remaining scene is submitted and charged without another confirmation.
+   * With scene 5 failed and scene 6 waiting, that press costs $0.50 while the notice says $0.25.
+   *
+   * Measured here rather than argued, because the number a screen shows about money has to come from what the
+   * code does (Cowork Round 428 asked; CLI Round 429 answers with this). The rule the estimate needs: a retry
+   * buys the selected scenes plus every scene not yet succeeded.
+   */
+  it("resumes the whole job on a single failed-scene retry — two scenes are bought, not the one selected", async () => {
+    const deps = await setupWithConnectedRunway();
+    const videos = newVideos(deps);
+    const fetchMock = runwayFetchMock({ failTaskId: "task-5" });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+    const submits = () => fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/v1/image_to_video")).length;
+
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+    const tick = async () => {
+      now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+      return videos.progress("long", 1, started.jobId);
+    };
+
+    let progress = await tick();
+    for (let attempt = 0; attempt < 20 && progress.status !== "failed"; attempt++) progress = await tick();
+    expect(progress).toMatchObject({ status: "failed", failedSceneNumbers: [5], completedSceneNumbers: [1, 2, 3, 4] });
+    const boughtBeforeRetry = submits();
+    expect(boughtBeforeRetry).toBe(5);
+
+    // Exactly what the screen's retry button sends: scene 5, and nothing about scene 6.
+    const retried = await videos.regenerate("long", 1, started.jobId, "5", { approved: true });
+    expect(retried.regeneratedSceneNumbers).toEqual([5]);
+    for (let attempt = 0; attempt < 20 && progress.status !== "succeeded"; attempt++) progress = await tick();
+
+    expect(progress).toMatchObject({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+    expect(submits() - boughtBeforeRetry).toBe(2);
+    const spent = await deps.budget.spentThisMonth(now);
+    expect(spent).toBe(0.25 * 7); // six scenes plus scene 5's failed attempt, which is charged too
+  });
+
 });

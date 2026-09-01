@@ -3065,3 +3065,6 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
   - 주입 셋 전부 빨강 — 필드 이름 되돌리면 5개, 문자열 boolean 파싱 빼면 3개, mojibake 복구 끄면 4개(보관함 쪽 기존 짝 1개 포함).
   - 🟠 Cowork 구역에서 한 줄: `AudioLibraryScreen.test.tsx` 가 방금 지워진 `AUDIO_FORMAT_UNSUPPORTED` 를 계속 쓰고 있어 빨갰다 — 서버가 실제로 보내는 `AUDIO_FILE_INVALID` 로 바꿨다(문구 단언은 그대로 통과).
 - [x] **파일 항목 이름을 shared 상수로 냈다 (Cowork 요청)**: `AUDIO_UPLOAD_FILE_FIELD` · `ASSET_UPLOAD_FILE_FIELD`. 라우트나 본문 필드와 같은 요청 계약이라 `api.ts` 에 둔다. 백엔드 인터셉터 4곳이 이미 읽는다 — **이번 결함은 이 상수가 있었으면 애초에 안 생겼다.**
+- [x] **🟠 영상 재시도 견적이 실제보다 적다 — Cowork 의심이 맞다, 재서 확인했다**: 실패한 5번을 다시 시도하면 **6번까지 산다.** 실패한 장면은 파이프라인을 멈추고(`runway-workflow-support.ts:135`), 그 실패를 지우면 **작업 전체가 재개**되기 때문이다 — 단편의 `run()` 도 회차의 `run()` 도 runway 경로에서는 `requestedScenes` 를 무시하고 `advanceReal` 로 넘긴다(`local-video-workflow.service.ts:532`, `episode-videos.service.ts:363`). 재확인 없이 다음 장면이 나간다.
+  - 캡틴D 3화 상태(1~4 완료 · 5 실패 · 6 대기)를 그대로 재현해 **제출 횟수로 쟀다**: 재시도 후 `/v1/image_to_video` 2회, 원장 총액 $1.75(= 7 × $0.25, 5번의 실패 시도분 포함). **화면은 $0.25 라고 말한다.**
+  - 규칙: **선택한 장면 ∪ 아직 succeeded 가 아닌 장면.** 검토 상태에서의 재생성은 나머지가 전부 성공이라 그대로 1이 되고, 실패 재시도만 늘어난다. 진행 응답의 `sceneNumbers` − `completedSceneNumbers` 로 화면이 바로 계산할 수 있어 계약 변경 없이 된다 — 계산은 Cowork 이 맡는다(Round 429 로 넘김).
