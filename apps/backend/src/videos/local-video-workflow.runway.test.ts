@@ -400,10 +400,17 @@ describe("real Runway video workflow", () => {
 
   it("surfaces a budget-exceeded preflight as a failed scene instead of an uncaught exception", async () => {
     const deps = await setupWithConnectedRunway();
-    await deps.budget.record("other-project", 1, "video", true, 10, new Date("2026-08-23T00:00:00.000Z")); // exhaust the shared monthly budget
     const workflow = newWorkflow(deps);
     const fetchMock = runwayFetchMock();
     vi.stubGlobal("fetch", fetchMock);
+    // The clock is frozen the way the two tests above freeze it, and for a reason that had already bitten: the
+    // spend is dated August and a monthly budget only counts the current UTC month, so this test asserted
+    // "exhausted" against a month that stopped being the current one the moment UTC rolled into September. It
+    // passed for as long as it was still August in UTC and then failed on its own, with nothing changed — and
+    // the obvious repair, bumping the date, would just re-arm it for the next first of the month.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-23T10:00:00.000Z"));
+    await deps.budget.record("other-project", 1, "video", true, 10, new Date("2026-08-23T00:00:00.000Z")); // exhaust the shared monthly budget
 
     const progress = await workflow.run("video_workflow", deps.accepted.jobId);
     expect(progress).toMatchObject({ status: "failed", failedSceneNumbers: [1] });

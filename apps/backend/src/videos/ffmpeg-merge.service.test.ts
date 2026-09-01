@@ -74,6 +74,57 @@ describe("FfmpegMergeEngine.merge narration audio mixing", () => {
     expect(normalizeCalls[0]).toContain("scene1_narration.mp3");
     expect(normalizeCalls[1]).toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
   });
+
+  /**
+   * The narration is audible in the merged file, and it does not cut the scene short.
+   *
+   * The two checks above read arguments — the file name is in the command, the filter says `[1:a]apad[aout]`,
+   * silence uses `anullsrc`. All of that stays true if the finished file carries the clip's own silent track
+   * instead: same command, wrong stream mapped out, and a voice somebody paid for is simply not in the reel.
+   *
+   * The duration is half the point. `-shortest` ends the output with whichever input runs out first, so a
+   * two-second narration under a five-second scene would truncate the picture to two seconds — `apad` is what
+   * stops that, and only the file can say whether it did.
+   *
+   * A silent clip and a tone make it unambiguous: anything above silence came from the narration, and the
+   * counterpart run without one has to stay silent, or "audible" would mean nothing.
+   */
+  it("puts the narration into the file without shortening the scene to it", async ({ skip }) => {
+    const available = await runMediaCommand(["ffmpeg", "-version"]).then(() => true).catch(() => false);
+    if (!available) skip();
+
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "narration-real-")); roots.push(root);
+    const clip = path.join(root, "scene1.mp4");
+    await runMediaCommand(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=320x568:d=5",
+      "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+      "-shortest", "-c:v", "libx264", "-c:a", "aac", clip]);
+    const narration = path.join(root, "scene1_narration.mp3");
+    await runMediaCommand(["ffmpeg", "-y", "-f", "lavfi", "-i", "sine=frequency=330:duration=2", narration]);
+
+    const meanVolume = async (file: string, extra: string[] = []): Promise<number> => {
+      const { stderr } = await runMediaCommand(["ffmpeg", ...extra, "-i", file, "-af", "volumedetect", "-f", "null", "-"]);
+      return Number(/mean_volume:\s*(-?[0-9.]+) dB/.exec(stderr)?.[1] ?? NaN);
+    };
+    const mergeInto = async (label: string, scene: MergeSceneInput): Promise<string> => {
+      const finalPath = path.join(root, label, "instagram_reel.mp4");
+      await fs.mkdir(path.dirname(finalPath), { recursive: true });
+      await new FfmpegMergeEngine().merge([scene], 5, finalPath, "9:16");
+      return finalPath;
+    };
+    const durationOf = async (file: string): Promise<number> => {
+      const { stdout } = await runMediaCommand(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", file]);
+      return Number(JSON.parse(stdout).format.duration);
+    };
+
+    const spoken = await mergeInto("spoken", { clip, narrationAudioPath: narration });
+    expect(await durationOf(spoken)).toBeGreaterThan(4.5); // the two-second voice did not truncate the scene
+    expect(await meanVolume(spoken, ["-t", "1.5"])).toBeGreaterThan(-60); // the voice is in there
+    expect(await meanVolume(spoken, ["-ss", "3", "-t", "2"])).toBeLessThan(-80); // and padded with silence after
+
+    const silent = await mergeInto("silent", { clip });
+    expect(await meanVolume(silent)).toBeLessThan(-80); // without a narration file, nothing is added
+  }, 120000);
+
 });
 
 describe("FfmpegMergeEngine.merge subtitle burn-in", () => {
