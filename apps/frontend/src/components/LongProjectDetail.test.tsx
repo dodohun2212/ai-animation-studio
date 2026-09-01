@@ -46,6 +46,36 @@ describe("LongProjectDetail", () => {
     expect(screen.queryByTestId("episode-warning-2")).toBeNull();
   });
 
+  /**
+   * The outline is one paid call that produces every Episode, so when its cost cannot be recorded there is no
+   * Episode to hang the notice on — it belongs to the project. Before the field existed the loss was prevented
+   * but never mentioned, which is the quieter half of the same failure: money moved and nothing said so.
+   */
+  it("shows a project-level warning that belongs to no single episode", async () => {
+    const project = makeLongProject({
+      id: "long_test",
+      warnings: ["스토리 개요를 만드는 데 쓴 비용을 사용 기록에 남기지 못했습니다. 이번 달 합계가 실제보다 적게 보일 수 있습니다."],
+      episodes: [makeLongEpisodeOutline({ episodeNumber: 1, status: "planned" })],
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    render(<LongProjectDetail projectId="long_test" onBack={() => {}} onOpenSettings={() => {}} onOpenOutline={() => {}} />);
+
+    const warnings = await screen.findByTestId("long-project-warnings");
+    expect(warnings.textContent).toContain("사용 기록에 남기지 못했습니다");
+    // It must not have been copied onto an episode row — that is the lie this field exists to avoid.
+    expect(screen.queryByTestId("episode-warning-1")).toBeNull();
+  });
+
+  // Without this, a panel that always rendered would sit on every project as an empty amber box.
+  it("shows no warning panel when the project has none", async () => {
+    const project = makeLongProject({ id: "long_test", episodes: [makeLongEpisodeOutline({ episodeNumber: 1, status: "planned" })] });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    render(<LongProjectDetail projectId="long_test" onBack={() => {}} onOpenSettings={() => {}} onOpenOutline={() => {}} />);
+
+    await screen.findByTestId("outline-status");
+    expect(screen.queryByTestId("long-project-warnings")).toBeNull();
+  });
+
   it("says why archiving is unavailable instead of leaving a dead button", async () => {
     // Only the last Episode can be archived. Before this, picking Episode 1 of 3 just disabled the button with
     // no explanation — the user clicks, nothing happens, and reports that archiving is broken. The reason has

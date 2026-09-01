@@ -724,17 +724,34 @@ describe("VideoWorkflowScreen source", () => {
    * it, which is what naming the paid case in the same breath enforces.
    */
   it("does not tell the person a job is free just because no cost figure arrived", async () => {
-    const running = makeProgress({ completedSceneNumbers: [1] });
+    // The exact shape the old inference got wrong: a paid job whose budget ledger could not be read, so the
+    // cost line is missing while the money is still being spent. `paidProvider` answers it outright.
+    const running = makeProgress({ completedSceneNumbers: [1], paidProvider: true });
     renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, running)));
 
     const notice = await screen.findByTestId("provider-mode-notice");
-    expect(notice.textContent).toContain("실제 유료 요청이 전송됩니다");
-    expect(notice.textContent).not.toContain("연결되어 있지 않아 비용 없이");
+    expect(notice.textContent).toContain("실제 유료 Runway API를 호출합니다");
+    expect(notice.textContent).not.toContain("비용 없이");
+  });
+
+  // The other half: without it, a screen that simply always warned about money would pass the test above and
+  // tell every local-fake run it was being charged.
+  it("still says a free run is free", async () => {
+    const running = makeProgress({ completedSceneNumbers: [1], paidProvider: false });
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, running)));
+
+    const notice = await screen.findByTestId("provider-mode-notice");
+    expect(notice.textContent).toContain("비용 없이 임시 영상으로 만들어집니다");
   });
 
   it("warns that real money is being spent once the job reports a paid execution mode", async () => {
     const running = makeProgress({
       completedSceneNumbers: [1],
+      // 🟠 CLI: added by me, mechanically — `paidProvider` is required now, and this fixture predates it, so the
+      // test was asking for the paid sentence while describing a free job. The pair above covers the harder
+      // case (paid with no cost line); this one keeps the easy one honest — with an estimate present, the
+      // notice must still be reading `paidProvider` and not the estimate. Yours to delete if it is redundant.
+      paidProvider: true,
       retryEstimate: {
         perSceneCostUsd: 0.25,
         budget: { monthlyLimitUsd: 10, spentUsd: 0.25, remainingUsd: 9.75, estimatedRequestCostUsd: 0.25, canSpend: true },

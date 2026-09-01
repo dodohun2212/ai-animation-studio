@@ -199,6 +199,22 @@ export function LongProjectDetail({
               onConfirm={async (confirmation) => { await archiveLongProject(projectId, { confirmation }); onArchived(); }}
             />
           )}
+          {/*
+           * Notices about the project rather than any one Episode — today, that the outline's paid call could
+           * not be written to the spend ledger. It belongs here and nowhere else: one call produces every
+           * Episode, so pinning it to one of them would be a lie and repeating it on all of them would be
+           * noise (the reasoning in LongProjectSummary.warnings).
+           *
+           * Above the summary rather than below it, because it is about money that has already been spent —
+           * the reader should meet it before the fields, not after scrolling past them.
+           */}
+          {state.project.warnings?.length ? (
+            <ul data-testid="long-project-warnings" className="space-y-1 rounded-2xl border border-amber-400/30 bg-amber-500/5 p-4">
+              {state.project.warnings.map((warning) => (
+                <li key={warning} className="text-sm text-amber-300">{warning}</li>
+              ))}
+            </ul>
+          ) : null}
           <dl className="grid grid-cols-1 gap-x-8 gap-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6 text-slate-100 sm:grid-cols-2">
             <div><dt className="text-xs uppercase tracking-wide text-slate-400">ID</dt><dd className="mt-0.5">{state.project.id}</dd></div>
             <div><dt className="text-xs uppercase tracking-wide text-slate-400">제목</dt><dd className="mt-0.5">{state.project.title}</dd></div>

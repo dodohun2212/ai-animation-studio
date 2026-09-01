@@ -379,20 +379,15 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
         영상 생성 진행 상황
       </h1>
       {/*
-       * The absent branch used to assert the opposite — "Runway 키가 연결되어 있지 않아 비용 없이 임시 영상으로
-       * 만들어집니다" — reading a missing `retryEstimate` as proof that nothing is being charged. That equivalence
-       * no longer holds: a real, paid Runway job now omits the estimate when the budget ledger cannot be read
-       * (CLI Rounds 397/400), and this line would then tell someone their paid job is free, which is the one
-       * direction a money claim must never be wrong in.
-       *
-       * Present still proves paid, so that half keeps asserting. Absent proves nothing, so it stops claiming —
-       * word for word with the Episode screen's notice, which has always stated both cases rather than guessing
-       * between them. A precise version needs the server to say which mode a job is in; asked for.
+       * Read from `paidProvider`, which the server states outright, rather than inferred from whether a cost
+       * figure arrived. The inference was wrong in the direction that matters: a real paid job omits its cost
+       * line when the budget ledger cannot be read, and this line then told the person their paid job was free.
+       * The field is required, never optional, precisely so that "missing" can never be read as "free" again.
        */}
       <p className="text-sm text-amber-300" data-testid="provider-mode-notice">
-        {progress?.retryEstimate
+        {progress?.paidProvider
           ? "이 작업은 실제 유료 Runway API를 호출합니다. 장면마다 비용이 발생하며, 재생성하면 그만큼 다시 청구됩니다."
-          : "Runway 키가 연결되어 있으면 장면마다 실제 유료 요청이 전송됩니다. 연결되어 있지 않으면 비용 없이 임시 영상으로 만들어집니다."}
+          : "Runway 키가 연결되어 있지 않아 비용 없이 임시 영상으로 만들어집니다. 키를 연결하면 실제 유료 요청이 전송됩니다."}
       </p>
 
       {progressState.status === "loading" && <Spinner label="진행 상황을 불러오는 중..." />}
