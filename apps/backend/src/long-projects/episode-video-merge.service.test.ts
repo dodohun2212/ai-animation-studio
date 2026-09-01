@@ -101,6 +101,23 @@ describe("two simultaneous Episode video submissions", () => {
 });
 
 describe("EpisodeVideoMergeService", () => {
+  /**
+   * The Episode half of the same wrong sentence. A completed Episode has every scene video approved, and asking
+   * it for approvals is pointing the person at work they finished — the short project's videoMergeAlreadyCompleted
+   * doc has the measurement. Both ends here too: an implementation that always claimed "already rendered" would
+   * be just as wrong for an Episode that really has nothing approved.
+   */
+  it("tells a completed Episode it is already rendered, and an unapproved one that it is not approved", async () => {
+    const { projectsRoot } = await setup();
+    await new EpisodeVideoMergeService(projectsRoot, runner({})).merge("long", 1);
+    await expect(new EpisodeVideoMergeService(projectsRoot, runner({})).merge("long", 1))
+      .rejects.toMatchObject({ response: { code: "LONG_EPISODE_MERGE_ALREADY_COMPLETED" } });
+
+    const { projectsRoot: fresh } = await setupToApprovedImages();
+    await expect(new EpisodeVideoMergeService(fresh, runner({})).merge("long", 1))
+      .rejects.toMatchObject({ response: { code: "LONG_EPISODE_MERGE_NOT_ALLOWED" } });
+  });
+
   it("probes, normalizes, and concatenates the current six approved Episode clips in scene order without exposing disk paths", async () => {
     const { projectsRoot } = await setup(); const calls: string[][] = [];
     const result = await new EpisodeVideoMergeService(projectsRoot, runner({}, calls)).merge("long", 1);

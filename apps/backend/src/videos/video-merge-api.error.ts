@@ -4,6 +4,7 @@ import type { ApiError } from "@ai-animation-studio/shared";
 type VideoMergeErrorCode =
   | "INVALID_REQUEST"
   | "VIDEO_MERGE_NOT_ALLOWED"
+  | "VIDEO_MERGE_ALREADY_COMPLETED"
   | "VIDEO_MERGE_CLIPS_INVALID"
   | "FFMPEG_UNAVAILABLE"
   | "VIDEO_MERGE_FAILED"
@@ -21,6 +22,14 @@ export const videoMergeInvalidRequest = (message = "Request is invalid.") =>
   new VideoMergeApiException("INVALID_REQUEST", message, HttpStatus.BAD_REQUEST);
 export const videoMergeNotAllowed = () =>
   new VideoMergeApiException("VIDEO_MERGE_NOT_ALLOWED", "Final rendering requires six approved scene videos.", HttpStatus.CONFLICT);
+/**
+ * Distinct from `videoMergeNotAllowed` because the two states are opposites and one message cannot honestly
+ * serve both. A completed project has every scene approved — telling that person "approval is required" names
+ * a cause that is not the cause and points them at work they already finished. Measured: merging twice returned
+ * exactly that sentence.
+ */
+export const videoMergeAlreadyCompleted = () =>
+  new VideoMergeApiException("VIDEO_MERGE_ALREADY_COMPLETED", "This project's final video has already been rendered.", HttpStatus.CONFLICT);
 export const videoMergeClipsInvalid = () =>
   new VideoMergeApiException("VIDEO_MERGE_CLIPS_INVALID", "The six approved scene videos are missing or invalid.", HttpStatus.CONFLICT);
 export const ffmpegUnavailable = () =>

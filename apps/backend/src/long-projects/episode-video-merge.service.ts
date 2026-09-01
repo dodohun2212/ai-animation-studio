@@ -8,7 +8,7 @@ import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "../videos/ffmpeg-merge.service.js";
 import { AudioLibraryService } from "../audio/audio-library.service.js";
 import { isPlaceholderClip } from "../videos/placeholder-clip.js";
-import { longEpisodeFfmpegUnavailable, longEpisodeMergeClipsInvalid, longEpisodeMergeFailed, longEpisodeMergeNotAllowed, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { longEpisodeFfmpegUnavailable, longEpisodeMergeClipsInvalid, longEpisodeMergeFailed, longEpisodeMergeAlreadyCompleted, longEpisodeMergeNotAllowed, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, episodeProjectRelativePath, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { toEpisodeDetail } from "./episode-detail.js";
@@ -120,6 +120,7 @@ export class EpisodeVideoMergeService {
     // finish published nothing. So it is a state to try again from, not a state to be stuck in. Without
     // this the app tells the person their approved scenes are still there and to try again, and then
     // refuses; the paid work behind those scenes stays reachable only by editing a file by hand.
+    if (episode.state === "completed") throw longEpisodeMergeAlreadyCompleted();
     if (episode.state !== "videos_approved" && episode.state !== "failed") throw longEpisodeMergeNotAllowed();
     const sceneNumbers = sceneNumbersFor(this.sceneCount(episode));
     const [rawReviews, rawRecords] = await Promise.all([this.json(this.files(id, number).reviews).catch(() => { throw longEpisodeMergeClipsInvalid(); }), this.json(this.files(id, number).records).catch(() => { throw longEpisodeMergeClipsInvalid(); })]);

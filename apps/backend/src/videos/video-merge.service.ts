@@ -12,7 +12,7 @@ import type { StoredProject, StoredUsedAudio } from "../projects/project-storage
 import { sceneValue } from "../images/image-prompt.js";
 import { AudioLibraryService } from "../audio/audio-library.service.js";
 import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
-import { ffmpegUnavailable, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeInvalidRequest, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
+import { ffmpegUnavailable, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeAlreadyCompleted, videoMergeInvalidRequest, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
 import { shortProjectAspectRatio } from "../projects/project-aspect.js";
 
 const FINAL_VIDEO_PATH = "videos/final/instagram_reel.mp4" as const;
@@ -153,6 +153,7 @@ export class LocalVideoMergeService {
    * scenes were reviewed when none were. A gate that has to be lied to is not a gate.
    */
   private async mergeMaterial(project: StoredProject): Promise<{ paths: string[]; stillDurationSeconds?: number }> {
+    if (project.workflow_state === WorkflowState.Completed) throw videoMergeAlreadyCompleted();
     if (project.workflow_state !== WorkflowState.VideosApproved && project.workflow_state !== WorkflowState.Failed) throw videoMergeNotAllowed();
     if (photoCardFor(project)) {
       const picture = this.cardImage(project.project_id);
@@ -168,6 +169,7 @@ export class LocalVideoMergeService {
   private async approvedClips(project: StoredProject): Promise<string[]> {
     // Same as the Episode side: Failed is written in one place, by a merge that did not finish, and nothing
     // was published when it did not. Retrying is the only sensible thing left, and it was refused.
+    if (project.workflow_state === WorkflowState.Completed) throw videoMergeAlreadyCompleted();
     if (project.workflow_state !== WorkflowState.VideosApproved && project.workflow_state !== WorkflowState.Failed) throw videoMergeNotAllowed();
     let reviews: unknown;
     try { reviews = JSON.parse(await fs.readFile(path.join(this.projectDirectory(project.project_id), "generated_video_reviews.json"), "utf8")); }

@@ -1191,3 +1191,31 @@ apps/backend 에서 실행   → 통과
 🔴 **재생성 경로는 짝이 없었다.** 생성만 고치고 재생성을 그대로 두는 주입에 스위트 319개가 전부 초록이었다 — 검토 화면에서 사람이 가장 많이 누르는 버튼이고, 매번 이름 없는 사진에 돈을 내고 있었을 자리다. 짝을 그쪽까지 늘렸다.
 
 기록을 보낸 것으로 바꾸는 주입(③)은 **기존 짝**(`referenceStale` 과 `imageStale` 을 갈라 두는 것)이 잡는다 — 양 끝이 서로를 막는다.
+
+### D-046 — 한 문장이 정반대인 두 상태를 대신했다
+
+Cowork 이 화면을 읽고 *"다시 열면 병합 버튼이 나오니 음악 바꿔서 재병합 됩니다"* 라고 적었다. 코드가 아니라 **두 번 눌러서** 재봤다.
+
+```
+1차 병합 후 상태   COMPLETED
+2차 병합           409 VIDEO_MERGE_NOT_ALLOWED
+                   "Final rendering requires six approved scene videos."
+```
+
+버튼은 다시 나오는데(그 화면의 `result` 는 방문 단위 지역 상태다) 서버는 거절한다. **거절 사유가 사실이 아니다** — 여섯 장면은 전부 승인돼 있다. 진짜 이유는 "이미 완성됨" 이고, 사람은 **이미 끝낸 일을 하라는 안내**를 받는다.
+
+회차도 같았다.
+
+```
+회차 병합 후   state = "completed"
+게이트         videos_approved / failed 만 통과
+문구           "Final rendering requires every Episode scene video to be approved."
+```
+
+고침: 두 상태를 가르는 코드를 따로 뒀다(`VIDEO_MERGE_ALREADY_COMPLETED`, `LONG_EPISODE_MERGE_ALREADY_COMPLETED`). **게이트는 그대로다** — 재병합을 허용할지는 제품 결정이고 캡틴D 몫이다. 여기서 고친 것은 *거절한다* 가 아니라 *거절 사유가 거짓말이다* 쪽이다.
+
+짝은 양 끝에 뒀다. 아무 상태에나 "이미 완성" 이라고 답하는 구현은, 정말로 승인이 안 된 프로젝트가 여전히 `NOT_ALLOWED` 를 받아야 한다는 쪽에서 잡힌다. 주입 셋 다 빨강.
+
+🟠 **화면은 아직 코드를 모른다.** `videoMergeApi.ts` 의 `SAFE_ERRORS` 는 코드로 문장을 고르고, 모르는 코드는 *"요청을 처리하지 못했습니다"* 로 떨어진다 — 거짓말보다는 낫지만 정확하지도 않다. 문장은 Cowork 구역이라 넘겼다.
+
+🔴 **짝 하나가 없는 값으로 통과하고 있었다.** `WorkflowState.Draft` 는 존재하지 않고 런타임에서 `undefined` 다 — `VideosApproved` 가 아니니 검사는 통과했고, **아무것도 안 재면서 초록이었다.** vitest 는 타입을 안 보고 넘어갔고 `nest build` 가 잡았다. 검증에 build 가 들어 있는 이유가 이거다.

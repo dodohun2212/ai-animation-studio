@@ -55,6 +55,37 @@ async function captureAss(target: string, into: Map<string, string>): Promise<vo
 }
 
 describe("local FFmpeg video merge", () => {
+  /**
+   * Pressing merge on a project that already has its final video says so, instead of asking for approvals the
+   * person finished long ago.
+   *
+   * The screen re-offers the button: `result` is local to one visit (VideoMergeScreen.tsx), so reopening the
+   * project shows it again — which is how a person would try to swap the background music. The server refuses,
+   * correctly, but it refused with "Final rendering requires six approved scene videos", and every one of those
+   * six is approved. Measured by merging twice: state COMPLETED, then that sentence.
+   *
+   * Both ends, because one message covering two opposite states is the whole defect: an implementation that
+   * answered "already rendered" to everything would be just as wrong for a project that genuinely has nothing
+   * approved yet.
+   */
+  it("tells a completed project it is already rendered, and an unapproved one that it is not approved", async () => {
+    const { projectsRoot, projects } = await setup();
+    const service = new LocalVideoMergeService(projects, projectsRoot, runner({}));
+    await service.merge("video_merge");
+    expect((await projects.findById("video_merge")).workflow_state).toBe(WorkflowState.Completed);
+
+    const completed = await service.merge("video_merge").catch((error: { getResponse(): { code: string } }) => error.getResponse());
+    expect(completed).toMatchObject({ code: "VIDEO_MERGE_ALREADY_COMPLETED" });
+
+    // A real state, not a nonexistent one: WorkflowState.Draft does not exist, and at runtime that reads as
+    // undefined — which is not VideosApproved either, so this half passed while checking nothing. The build
+    // caught it. ReviewingVideos is where a person actually sits before approving.
+    const draft = await projects.findById("video_merge");
+    await projects.save({ ...draft, workflow_state: WorkflowState.ReviewingVideos });
+    const unapproved = await service.merge("video_merge").catch((error: { getResponse(): { code: string } }) => error.getResponse());
+    expect(unapproved).toMatchObject({ code: "VIDEO_MERGE_NOT_ALLOWED" });
+  });
+
   it("probes, portrait-normalizes, concatenates six approved clips, and persists a relative final path", async () => {
     const { projectsRoot, projects } = await setup(); const calls: string[][] = [];
     const result = await new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge");
