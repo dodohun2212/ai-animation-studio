@@ -31,7 +31,7 @@ function responsesBody(result: unknown): unknown {
   return { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(result) }] }] };
 }
 
-async function setupWithConnectedOpenAi(sceneCount = 6) {
+async function setupWithConnectedOpenAi(sceneCount = 6, episodeCount = settings.episodeCount) {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-scripts-openai-"));
   const projectsRoot = path.join(root, "projects");
   const settingsRepository = new ProviderSettingsRepository(root);
@@ -39,7 +39,7 @@ async function setupWithConnectedOpenAi(sceneCount = 6) {
   await providerSettings.save("openai", { value: "sk-test-key-1234567890" });
   const budget = new OpenAiBudget(root, 10);
   const projects = new LongProjectsService(projectsRoot);
-  await projects.create({ projectId: "long", settings: { ...settings, sceneCount } });
+  await projects.create({ projectId: "long", settings: { ...settings, sceneCount, episodeCount } });
   const preview = await projects.preview("long");
   await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 });
   const subject = new EpisodeScriptsService(projectsRoot, providerSettings, budget);
@@ -239,6 +239,63 @@ describe("real OpenAI Long Episode script generation", () => {
     expect(outlines[0]!.status).toBe("script_review");
     expect(outlines[0]!.warnings?.some((item) => item.includes("api_budget_usage.json"))).toBe(true);
     expect(await fs.readFile(ledger, "utf8")).toBe("{ not json");
+  });
+
+
+  /**
+   * The earlier Episodes' memos reach the prompt that is actually sent.
+   *
+   * This is the whole reason the Continuity Memory exists, and it is the input a person pays for when they
+   * generate the next Episode's script: gathered but not rendered, the request goes out knowing nothing about
+   * the story so far, costs the same, and comes back with a plausible script that contradicts Episode 1.
+   * Nothing measured it — the reader is covered, the template is covered, the join between them was not.
+   *
+   * Written for Episode 5 rather than Episode 3 on purpose. The reader splits earlier Episodes into the last
+   * three, kept whole, and everything before that, compressed to a summary. Generating Episode 3 puts both of
+   * its predecessors in the first bucket, so a version that dropped the compressed half entirely would pass —
+   * measured: that injection stayed green until this moved to five.
+   *
+   * Asserted on the request body rather than the context object, because "what was sent" is the only question
+   * that matters and it is the last place anything can be dropped.
+   */
+  it("carries the earlier Episodes' memos into the prompt it sends, both the recent ones and the compressed ones", async () => {
+    const { projectsRoot, subject } = await setupWithConnectedOpenAi(6, 6);
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responsesBody(aiStory(6))));
+    vi.stubGlobal("fetch", fetchMock);
+
+    // The stored form of a memo, written where continuityContext reads it. Distinctive words, so finding them in
+    // the prompt cannot be an accident of the template's own wording.
+    const memos = [
+      { number: 1, summary: "주인공이 잊힌 정거장에서 깨어난다", event: "기억 조각을 처음 줍는다", action: "정거장 관리인을 찾아간다" },
+      { number: 2, summary: "관리인이 거짓말을 하고 있었다", event: "지도의 절반이 불탄다", action: "남쪽 터널로 내려간다" },
+      { number: 3, summary: "터널 아래에서 옛 승강장을 찾는다", event: "낡은 방송이 다시 흘러나온다", action: "방송의 출처를 쫓는다" },
+      { number: 4, summary: "출처는 사람이 아니었다", event: "기록실의 문이 열린다", action: "기록실 안으로 들어간다" },
+    ];
+    for (const memo of memos) {
+      const directory = path.join(projectsRoot, "long", "long_story", `Episode0${memo.number}`);
+      await fs.mkdir(directory, { recursive: true });
+      await fs.writeFile(path.join(directory, "continuity.json"), JSON.stringify({
+        episode_number: memo.number, episode_summary: memo.summary, events: [memo.event], character_changes: [],
+        next_actions: [memo.action], updated_at: "2026-08-30T00:00:00.000Z",
+      }), "utf8");
+    }
+
+    await subject.generate("long", 5, { userRequestId: "episode-5-with-memos" });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    // `input`, not `prompt`: the Responses API carries the whole prompt there (openai-story-adapter.ts).
+    const sent = String((JSON.parse(init.body as string) as { input: string }).input);
+
+    // Episodes 2-4 are the recent three: kept whole, down to what happened and what was left to do.
+    for (const memo of memos.slice(1)) {
+      for (const words of [memo.summary, memo.event, memo.action]) {
+        expect(sent, `the prompt lost: ${words}`).toContain(words);
+      }
+    }
+    // Episode 1 is older than that: its summary still has to travel, which is what "compressed" means. Its
+    // events being absent is the compression working, not a loss — asserted so the two are not confused.
+    expect(sent, "the prompt lost Episode 1's summary").toContain(memos[0]!.summary);
+    expect(sent).not.toContain(memos[0]!.event);
   });
 
 });
