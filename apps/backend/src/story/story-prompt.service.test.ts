@@ -1,6 +1,7 @@
 import * as fsPromises from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as url from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { createStoredProject } from "../projects/project.mapper.js";
@@ -57,7 +58,12 @@ describe("default prompts root resolution (regression: must not depend on proces
     // and the test passed for the wrong reason — it found no heading, took the empty string, and only failed
     // because the assertion happened to be "not empty". Every line that is a lone `$variable` is a section
     // whose whole body is that value, which is exactly the set that can come out blank.
-    const template = await fsPromises.readFile(path.resolve(process.cwd(), "../../prompts/story/story_generation.txt"), "utf8");
+    // Anchored to this file, not to process.cwd() — the same rule promptsRoot() follows, and the one this
+    // describe block is named after. Read from the repository root it passed; read from apps/backend it looked
+    // for C:\dev\prompts and threw ENOENT, so which directory the suite was started from decided whether the
+    // check ran at all. src/story/ -> ../../../.. -> repository root, matching promptsRoot()'s dev candidate.
+    const here = path.dirname(url.fileURLToPath(import.meta.url));
+    const template = await fsPromises.readFile(path.resolve(here, "../../../../prompts/story/story_generation.txt"), "utf8");
     const lines = template.split(/\r?\n/);
     const headings = lines.flatMap((line, index) => /^\$\w+$/.test(line) && lines[index - 1]?.startsWith("[") ? [lines[index - 1]!] : []);
     expect(headings.length).toBeGreaterThanOrEqual(4);
@@ -69,6 +75,46 @@ describe("default prompts root resolution (regression: must not depend on proces
       const [, value = ""] = rest.split(/\r?\n/);
       expect(value.trim()).not.toBe("");
     }
+  });
+
+  /**
+   * The same rule for the labelled lines, which is where it was actually being broken.
+   *
+   * The check above only sees a section whose whole body is one `$variable`. Most of the template is not that
+   * shape: section 7 is seven `라벨: $variable` lines, and a blank one leaves `대사 스타일:` trailing off with
+   * the next label directly under it. The heading check passed the entire time that was happening.
+   *
+   * Measured on a copy of the real projects rather than argued from the code: all eight sent `대사 스타일:`
+   * bare, four also sent `피해야 할 요소:`, three sent six such labels, one sent seven. Nothing about that is
+   * visible from the arguments — the value is present, it is the empty string, and it goes out paid.
+   *
+   * The labels are read out of the template for the same reason the headings are: hand-copied, they go stale
+   * the moment a line is added, and the new line is exactly the one nobody checked.
+   */
+  it("leaves no label standing over nothing either, on a project with nothing filled in", async () => {
+    const root = await fsPromises.mkdtemp(path.join(os.tmpdir(), "story-prompt-blank-label-")); roots.push(root);
+    const repository = new LocalProjectRepository(path.join(root, "projects"));
+    await repository.create(createStoredProject("blank_labels", "a lighthouse at dusk", "2026-08-22T00:00:00.000Z"));
+    const { preview } = await new StoryPromptService(repository).preview("blank_labels");
+
+    const here = path.dirname(url.fileURLToPath(import.meta.url));
+    const template = await fsPromises.readFile(path.resolve(here, "../../../../prompts/story/story_generation.txt"), "utf8");
+    const labels = template.split(/\r?\n/).flatMap((line) => {
+      const match = /^(.+): \$\w+$/.exec(line);
+      return match ? [match[1]!] : [];
+    });
+    expect(labels.length).toBeGreaterThanOrEqual(10); // the template still has this shape
+
+    const lines = preview.originalPrompt.split(/\r?\n/);
+    const blank = labels.filter((label) => lines.some((line) =>
+      line.startsWith(`${label}:`) && line.slice(label.length + 1).trim() === ""));
+    expect(blank, "labels sent with nothing after them").toEqual([]);
+
+    // And the open ones say so in the baseline's word rather than in the constant's name: the prompt used to
+    // carry the literal `AUTONOMOUS_SETTING` into a Korean sentence, which is an identifier leaking into a
+    // paid request, not an instruction the model can act on.
+    expect(preview.originalPrompt).toContain("세계관: 자율");
+    expect(preview.originalPrompt).not.toContain("AUTONOMOUS_SETTING");
   });
 });
 

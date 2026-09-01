@@ -32,6 +32,17 @@ const object = (value: unknown): Record<string, unknown> => typeof value === "ob
 const value = (record: Record<string, unknown>, key: string, fallback = "") => typeof record[key] === "string" ? record[key] as string : fallback;
 
 /**
+ * What the prompt says where the person left a creative choice open, word for word from the Python baseline
+ * (generation_service.py's AUTONOMOUS_SETTING). It is an instruction — "you decide this one" — and it is the
+ * reason a blank is not an acceptable substitute: the label with nothing after it reads as a value that went
+ * missing, and the model fills the gap by guessing what was supposed to be there.
+ *
+ * Measured on a copy of the real projects before this existed: all eight sent `대사 스타일:` with nothing after
+ * it, three of them sent six such labels, and one sent seven. Every one of those was a paid request.
+ */
+const AUTONOMOUS_SETTING = "자율";
+
+/**
  * The source is real ESM (apps/backend's package.json has `"type": "module"`), where `import.meta.url` is the
  * correct way to find this module's own directory — but the `package` script also bundles this same source into a
  * single CJS file with esbuild, and esbuild empties `import.meta` in CJS output rather than shimming it (it warns
@@ -89,19 +100,25 @@ async function promptVariables(stored: StoredProject, assets?: LocalAssetsReposi
   return {
     project_name: settings.projectName || "별도 이름 없음",
     topic: settings.topic,
-    full_story: settings.fullStory,
+    full_story: settings.fullStory || "별도 전체 줄거리 없음",
     genre: settings.genre,
     mood: settings.mood,
-    lore: settings.lore || "AUTONOMOUS_SETTING",
+    lore: settings.lore || AUTONOMOUS_SETTING,
     // The template asks "대표 캐릭터" twice — once as this line and once inside the cast block, which marks a
     // member 구분: 대표 캐릭터 — and nothing kept the two in agreement. A project with a cast lead and a
     // differently-typed name handed the model two answers to the same question, three lines apart, directly
     // above the instruction not to mix character names. The cast is the richer of the two (name, story role,
     // description, per-child features), so when it names a lead, this line says that lead.
-    character: castLeadName ?? settings.character,
+    // `?? settings.character` still lands on the empty string when nobody has named anyone — the baseline left
+    // this one bare too, and a project created and generated straight away sends `대표 캐릭터:` with nothing
+    // after it. Same word as the other open choices: it is a choice left open, not a value that went missing.
+    character: castLeadName || settings.character || AUTONOMOUS_SETTING,
     character_cast_metadata: await describeCharacterCast(assets, cast),
     atmosphere_asset_metadata: await describeAtmosphereAssets(assets, atmosphereAssetIds),
     scene_reference_asset_metadata: await describeSceneReferenceAssets(assets, sceneReferenceAssets),
+    // `??` was wrong here as well as blank: a stored empty string is not "absent", so `?? fallback` kept it and
+    // the label went out bare. `||` is what Python used and what the measurement above needed.
+    //
     // The template prints a heading for each of these and then tells the model what to do with what follows.
     // An empty value leaves the heading standing over nothing, which reads as content that went missing rather
     // than content that does not exist — so both say so, in Python's own words for the same two blanks. The
@@ -112,12 +129,12 @@ async function promptVariables(stored: StoredProject, assets?: LocalAssetsReposi
     // sentence today, and the heading now says as much instead of trailing off.
     project_asset_metadata: "선택한 추가 Asset 없음",
     previous_scene_context: previousSceneContext(stored) || "연결된 이전 이야기 없음",
-    visual_style: notes.visualStyle ?? value(profile, "visual_style"),
-    color: notes.color ?? value(profile, "color"),
-    lighting: notes.lighting ?? value(profile, "lighting"),
-    camera: notes.camera ?? value(profile, "camera"),
-    dialogue: notes.dialogue ?? value(profile, "dialogue"),
-    avoid: notes.avoid ?? value(profile, "avoid"),
+    visual_style: notes.visualStyle || value(profile, "visual_style", AUTONOMOUS_SETTING) || AUTONOMOUS_SETTING,
+    color: notes.color || value(profile, "color", AUTONOMOUS_SETTING) || AUTONOMOUS_SETTING,
+    lighting: notes.lighting || value(profile, "lighting", AUTONOMOUS_SETTING) || AUTONOMOUS_SETTING,
+    camera: notes.camera || value(profile, "camera", AUTONOMOUS_SETTING) || AUTONOMOUS_SETTING,
+    dialogue: notes.dialogue || value(profile, "dialogue", AUTONOMOUS_SETTING) || AUTONOMOUS_SETTING,
+    avoid: notes.avoid || value(profile, "avoid", AUTONOMOUS_SETTING) || AUTONOMOUS_SETTING,
     aspect: notes.aspect ?? value(profile, "aspect", "9:16"),
     duration_seconds: String(settings.durationSeconds),
     scene_count: String(settings.sceneCount),
