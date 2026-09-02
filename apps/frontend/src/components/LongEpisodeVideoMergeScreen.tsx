@@ -94,6 +94,8 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
   const [audioMode, setAudioMode] = useState<AudioMode | null>(null);
   const [tracks, setTracks] = useState<AudioLibraryTrack[]>([]);
   const [trackId, setTrackId] = useState("");
+  /** Where in the chosen track the music starts. 0 is the beginning, which is also what the server does with no value. */
+  const [audioStartSeconds, setAudioStartSeconds] = useState(0);
   /**
    * What the last merge used — read from the Episode on load, not only from this session's merge response.
    *
@@ -150,7 +152,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
      button disabled on a guess is worse than one that fails honestly. */
   const blocked = approvedCount !== null && sceneCount !== null && approvedCount < sceneCount;
   /** Null until the Episode has loaded — merging before then would send a mode derived from nothing. */
-  const audioSettings = toAudioSettings(audioMode, trackId);
+  const audioSettings = toAudioSettings(audioMode, trackId, audioStartSeconds);
   const modeUnready = audioMode !== null && needsTrack(audioMode) && !trackId;
 
   function openConfirmation(): void {
@@ -217,16 +219,16 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
           onModeChange={setAudioMode}
           trackId={trackId}
           onTrackChange={setTrackId}
+          startSeconds={audioStartSeconds}
+          onStartSecondsChange={setAudioStartSeconds}
           disabled={pending || confirmationOpen}
         />
       )}
-      {/*
-       * `alreadyMerged` hid the audio picker but not the button beneath it, so a finished Episode still offered
-       * "최종 영상 만들기" and the server answered 409. An action that cannot succeed should not be on screen —
-       * and the sentence that replaces it says the true reason, which the refusal itself did not.
-       */}
       {!result && alreadyMerged && (
-        <p data-testid="episode-merge-already-completed" className="text-sm text-slate-300">
+        /* Restored after Cowork Round 458 dropped it: the Episode's merge is one-way (the server answers
+           LONG_EPISODE_MERGE_ALREADY_COMPLETED), so offering the button again is an offer that cannot be taken.
+           Card re-merging opened cards only, deliberately — an Episode's final cut sits on paid clips. */
+        <p data-testid="episode-merge-already-completed" className="rounded-xl border border-white/10 bg-slate-900/70 px-4 py-3 text-sm text-slate-300">
           이 회차는 이미 최종 영상이 만들어졌습니다.
         </p>
       )}

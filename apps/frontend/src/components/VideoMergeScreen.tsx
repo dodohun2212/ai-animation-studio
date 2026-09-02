@@ -103,6 +103,8 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
   const [audioMode, setAudioMode] = useState<AudioMode | null>(null);
   const [tracks, setTracks] = useState<AudioLibraryTrack[]>([]);
   const [trackId, setTrackId] = useState("");
+  /** Where in the chosen track the music starts. 0 is the beginning, which is also what the server does with no value. */
+  const [audioStartSeconds, setAudioStartSeconds] = useState(0);
   const busy = useRef(false);
 
   // A project that already finished merging (revisited later, e.g. from the dashboard) should
@@ -201,7 +203,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
      button disabled on a guess is worse than one that fails honestly. Same rule as the Episode's merge. */
   const blocked = !photoCard && approvedCount !== null && sceneCount !== null && approvedCount < sceneCount;
   /** Null until the project has loaded — merging before then would send a mode derived from nothing. */
-  const audioSettings: MergeAudioSettings | null = toAudioSettings(audioMode, trackId);
+  const audioSettings: MergeAudioSettings | null = toAudioSettings(audioMode, trackId, audioStartSeconds);
   const modeUnready = audioMode !== null && needsTrack(audioMode) && !trackId;
 
   return (
@@ -261,6 +263,8 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
           onModeChange={setAudioMode}
           trackId={trackId}
           onTrackChange={setTrackId}
+          startSeconds={audioStartSeconds}
+          onStartSecondsChange={setAudioStartSeconds}
           disabled={pending || confirmOpen}
         />
       )}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { InstagramPublishApiError, toInstagramPublishDisplayError } from "./instagramPublishApi.js";
+import { LongProjectsApiError, toLongProjectDisplayError } from "./longProjectsApi.js";
 import { toVideoMergeDisplayError, VideoMergeApiError } from "./videoMergeApi.js";
 
 /**
@@ -31,6 +32,29 @@ describe("busy refusals", () => {
     expect(rendering.message).not.toBe(missing.message);
     expect(rendering.message).not.toContain("합쳐");
     expect(rendering.message).toContain("끝나면");
+  });
+
+  /**
+   * The one refusal that has to carry a number.
+   *
+   * "그 숫자는 안 됩니다" leaves someone guessing which second would have worked. The server sends the track's
+   * real length in `details` so the screen can say how long the song is instead (CLI Round 457) — and the same
+   * code covers both merge routes, so both screens have to say the same sentence.
+   */
+  it("says how long the track actually is when the start point is past its end", () => {
+    const short = toVideoMergeDisplayError(new VideoMergeApiError("AUDIO_START_OUT_OF_RANGE", "raw", { durationSeconds: 128.4 }));
+    const episode = toLongProjectDisplayError(new LongProjectsApiError("AUDIO_START_OUT_OF_RANGE", "raw", { durationSeconds: 128.4 }));
+
+    expect(short.message).toContain("2분 8초");
+    expect(episode.message).toBe(short.message);
+  });
+
+  // A malformed or missing length must not print "NaN분" at someone. The sentence drops the number instead and
+  // still names the move that works.
+  it("drops the number rather than printing a broken one", () => {
+    const message = toVideoMergeDisplayError(new VideoMergeApiError("AUDIO_START_OUT_OF_RANGE", "raw")).message;
+    expect(message).not.toContain("NaN");
+    expect(message).toContain("앞쪽");
   });
 
   // The fallback is what these messages exist to avoid: "잠시 후 다시 시도해 주세요" says nothing about which

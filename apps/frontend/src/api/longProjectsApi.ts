@@ -272,8 +272,23 @@ function episodeNumberFrom(details: Record<string, unknown> | undefined): number
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
 }
 
+/**
+ * Shared with the short project's merge, by meaning rather than by import: the same code, the same number in
+ * `details`, the same sentence. CLI Round 457 deliberately used one code for both routes so one sentence covers
+ * both screens — keeping the wording identical here is the half of that decision this side owns.
+ */
+function audioStartOutOfRange(details: Record<string, unknown> | undefined): string {
+  const seconds = details?.durationSeconds;
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) {
+    return "고른 시작 지점이 곡 길이를 넘습니다. 더 앞쪽에서 다시 골라 주세요.";
+  }
+  const whole = Math.floor(seconds);
+  return `고른 시작 지점이 곡 길이를 넘습니다. 이 곡은 ${Math.floor(whole / 60)}분 ${whole % 60}초까지입니다.`;
+}
+
 export function toLongProjectDisplayError(error: unknown): { code: string; message: string; details?: Record<string, unknown> } {
   if (!(error instanceof LongProjectsApiError)) return UNKNOWN;
+  if (error.code === "AUDIO_START_OUT_OF_RANGE") return { code: error.code, message: audioStartOutOfRange(error.details) };
   if (Object.prototype.hasOwnProperty.call(EPISODE_LOCKED_MESSAGES, error.code)) {
     const message = EPISODE_LOCKED_MESSAGES[error.code]!(episodeNumberFrom(error.details));
     return error.details ? { code: error.code, message, details: error.details } : { code: error.code, message };

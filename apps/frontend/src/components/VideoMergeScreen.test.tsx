@@ -384,6 +384,66 @@ describe("VideoMergeScreen", () => {
     expect(screen.getByTestId("open-merge-confirm-button")).not.toBeDisabled();
   });
 
+  /**
+   * A song is longer than a Reel, so the part someone wants is rarely the first thirty seconds.
+   *
+   * The position is taken from the player rather than typed, for the same reason the cover frame is: nobody can
+   * say which second of a two-minute track is the good one without hearing it. Zero is not sent — it is what the
+   * server does anyway, and a number that says nothing would later read as a choice someone made.
+   */
+  it("sends the music start point taken from the player", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    renderScreen(mergeFetch, { narrationAvailable: false }, { narrationEnabled: false, subtitlesEnabled: false }, [makeTrack({ durationSeconds: 128.4 })]);
+
+    fireEvent.click(await screen.findByTestId("merge-audio-bgm"));
+    fireEvent.change(screen.getByTestId("merge-audio-track"), { target: { value: "t1" } });
+
+    const player = await screen.findByTestId("merge-audio-start-player");
+    Object.defineProperty(player, "currentTime", { value: 42.5, configurable: true });
+    fireEvent.click(screen.getByTestId("merge-audio-start-set"));
+    expect(screen.getByTestId("merge-audio-start-at").textContent).toContain("0:42");
+
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+
+    await waitFor(() => expect(mergeFetch).toHaveBeenCalled());
+    const [, init] = mergeFetch.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({ audio: { mode: "bgm", trackId: "t1", startSeconds: 42.5 } });
+  });
+
+  // The start belongs to the track it was heard in. Carrying it over would apply "1분 20초" to a song that may
+  // be a minute long, and the server would refuse a merge nobody meant to ask for.
+  it("forgets the start point when a different track is chosen", async () => {
+    renderScreen(vi.fn(), { narrationAvailable: false }, { narrationEnabled: false, subtitlesEnabled: false }, [
+      makeTrack({ durationSeconds: 128.4 }),
+      makeTrack({ trackId: "t2", title: "짧은 곡", durationSeconds: 40 }),
+    ]);
+
+    fireEvent.click(await screen.findByTestId("merge-audio-bgm"));
+    fireEvent.change(screen.getByTestId("merge-audio-track"), { target: { value: "t1" } });
+    const player = await screen.findByTestId("merge-audio-start-player");
+    Object.defineProperty(player, "currentTime", { value: 80, configurable: true });
+    fireEvent.click(screen.getByTestId("merge-audio-start-set"));
+    expect(screen.getByTestId("merge-audio-start-at")).toBeTruthy();
+
+    fireEvent.change(screen.getByTestId("merge-audio-track"), { target: { value: "t2" } });
+    expect(await screen.findByTestId("merge-audio-start-unset")).toBeTruthy();
+  });
+
+  // The server refuses a start at or past the end; refusing it here first keeps that from being discovered by
+  // pressing merge and reading an error about a choice already made.
+  it("will not take a position at or past the end of the track", async () => {
+    renderScreen(vi.fn(), { narrationAvailable: false }, { narrationEnabled: false, subtitlesEnabled: false }, [makeTrack({ durationSeconds: 40 })]);
+
+    fireEvent.click(await screen.findByTestId("merge-audio-bgm"));
+    fireEvent.change(screen.getByTestId("merge-audio-track"), { target: { value: "t1" } });
+    const player = await screen.findByTestId("merge-audio-start-player");
+    Object.defineProperty(player, "currentTime", { value: 40, configurable: true });
+    fireEvent.click(screen.getByTestId("merge-audio-start-set"));
+
+    expect(screen.getByTestId("merge-audio-start-unset")).toBeTruthy();
+  });
+
   it("cancels the confirmation without ever calling the merge endpoint", async () => {
     const mergeFetch = vi.fn();
     renderScreen(mergeFetch);

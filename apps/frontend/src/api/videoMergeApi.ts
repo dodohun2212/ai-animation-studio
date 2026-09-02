@@ -37,8 +37,26 @@ const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답�
 const UNKNOWN = { code: "CLIENT_UNKNOWN_ERROR", message: "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요." };
 
 /** Never surfaces the backend's raw message, details, or any filesystem path — only a fixed, safe message per code. */
+/**
+ * The one message that needs a number out of `details`.
+ *
+ * Every other code here maps to a fixed sentence, deliberately: the server's own text can carry file paths, so
+ * none of it reaches the screen. This reads a single numeric field and formats it, which is not the same thing
+ * as passing text through — and it is what turns "그 숫자는 안 됩니다" into "이 곡은 2분 8초까지입니다", the
+ * sentence that actually tells someone what to do (CLI Round 457 put the length in `details` for exactly this).
+ */
+function audioStartOutOfRange(details: Record<string, unknown> | undefined): string {
+  const seconds = details?.durationSeconds;
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) {
+    return "고른 시작 지점이 곡 길이를 넘습니다. 더 앞쪽에서 다시 골라 주세요.";
+  }
+  const whole = Math.floor(seconds);
+  return `고른 시작 지점이 곡 길이를 넘습니다. 이 곡은 ${Math.floor(whole / 60)}분 ${whole % 60}초까지입니다.`;
+}
+
 export function toVideoMergeDisplayError(error: unknown): { code: string; message: string } {
   if (!(error instanceof VideoMergeApiError)) return UNKNOWN;
+  if (error.code === "AUDIO_START_OUT_OF_RANGE") return { code: error.code, message: audioStartOutOfRange(error.details) };
   if (Object.prototype.hasOwnProperty.call(SAFE_ERRORS, error.code)) {
     return { code: error.code, message: SAFE_ERRORS[error.code]! };
   }
