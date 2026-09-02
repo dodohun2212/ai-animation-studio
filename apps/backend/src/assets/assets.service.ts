@@ -4,12 +4,14 @@ import type {
   DeleteAssetFolderResponse, DeleteAssetOwnedFileResponse, DeleteAssetResponse, GetAssetResponse, ListAssetFileAuditResponse,
   ListAssetsResponse, RelinkAssetResponse, SetAssetParentFolderResponse, UpdateAssetMetadataRequest, UpdateAssetResponse,
 } from "@ai-animation-studio/shared";
+import { ASSET_TYPES } from "@ai-animation-studio/shared";
 import { Injectable } from "@nestjs/common";
 import { badAssetRequest, invalidAssetFile } from "./asset-api.error.js";
 import { ownershipOf, toPublicAsset } from "./asset.mapper.js";
 import { LocalAssetsRepository } from "./assets.repository.js";
 
-const TYPES = new Set<AssetType>(["character", "style", "background", "object", "general_reference"]);
+/** The contract's own list, not a second copy of it — see ASSET_TYPES for what a second copy costs. */
+const TYPES = new Set<AssetType>(ASSET_TYPES);
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const isStrings = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === "string");
 

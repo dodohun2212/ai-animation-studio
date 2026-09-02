@@ -99,6 +99,16 @@ export interface LongEpisodeOutline {
  * 500 once the final video existed. The number of places that know the list is the number of places that can
  * disagree about it, and they did. Adding a state is now one edit.
  */
+/**
+ * What an uploader may state about where a track came from.
+ *
+ * The array is the source and the type is derived from it — audio-library.service.ts checks an upload against
+ * this exact list, and a union here plus a second list there is the shape that made a written value unreadable
+ * once already (Cowork Round 436).
+ */
+export const AUDIO_LICENSE_KINDS = ["cc0", "cc-by", "purchased", "self-made", "other"] as const;
+export type AudioLicenseKind = (typeof AUDIO_LICENSE_KINDS)[number];
+
 export const LONG_EPISODE_STATUSES = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted", "rendering", "completed", "failed"] as const;
 export type LongEpisodeStatus = (typeof LONG_EPISODE_STATUSES)[number];
 
@@ -1676,7 +1686,7 @@ export interface AudioLibraryTrack {
   bytes: number;
   source: "upload";
   /** What the uploader themselves states about where this track came from — the app never verifies it (there is no provider integration to check against). Always present: required at upload time specifically because the moment of upload is the only point the uploader reliably still remembers this (docs/06_DECISIONS.md D-002). */
-  licenseKind: "cc0" | "cc-by" | "purchased" | "self-made" | "other";
+  licenseKind: AudioLicenseKind;
   /** Whether publishing a video using this track requires crediting it (e.g. in the caption) — true for "cc-by", user-declared for "other", false otherwise. Read by both the BGM library (a persistent notice on the track) and the merge screen (surfaced again at the moment that matters — right before publishing, not just once at upload). */
   attributionRequired: boolean;
   /** The exact sentence the uploader wants used as the credit line, when attributionRequired is true — the app does not compose one on the uploader's behalf, since it cannot know the source's own required wording. */
@@ -1689,7 +1699,7 @@ export interface GetAudioLibraryResponse { tracks: AudioLibraryTrack[]; }
 export interface UploadAudioTrackRequest {
   title?: string;
   artist?: string;
-  licenseKind: "cc0" | "cc-by" | "purchased" | "self-made" | "other";
+  licenseKind: AudioLicenseKind;
   attributionRequired: boolean;
   attributionText?: string;
   sourceUrl?: string;

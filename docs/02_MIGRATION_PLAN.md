@@ -3107,3 +3107,13 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
   - **게시된 카드는 예외이고, 별도 코드다**(`VIDEO_MERGE_ALREADY_PUBLISHED`). 게시물이 만들어진 파일이 조용히 다른 파일로 바뀌고 양쪽 어디에도 그 사실이 안 남는다. "이미 렌더됨" 과 같은 코드로 묶으면 사람을 다른 데로 보낸다 — 이쪽의 길은 재시도가 아니라 **새 카드**다.
   - 주입 둘 다 빨강 — 재병합을 막으면 2개, 게시 예외를 빼면 1개.
 - [x] **미리보기와 렌더가 같은 산술을 두 번 갖지 않게 했다 (Cowork Round 440 이 직접 요청)**: 카드 자막 기하(본문·제목 크기, 줄 간격, 블록 중심, 여백)를 `packages/shared` 의 `photoCardSubtitleGeometry()` 로 옮겼다. FFmpeg 이 굽는 값과 화면이 그리는 값이 **한 함수**다 — 복사본이면 미리보기가 **틀린 채로 맞아 보인다**(사람에게 만들어진 적 없는 영상의 그림을 보여준다). 줄 나누기 규칙(`splitPhotoCardSubtitle`)도 같이 옮겼다 — "첫 줄이 제목인가"는 서식이 아니라 규칙이다.
+- [x] **🟠 436 과 같은 모양을 계통적으로 훑었다 — 결함은 없었고, 우연히 일치하고 있었다**: "쓰는 쪽 목록과 읽는 쪽 목록이 손으로 두 번 적힌 자리" 를 전수 조사했다. 네 곳 나왔고 **네 곳 다 지금은 값이 같다** — 즉 아무것도 안 깨져 있었고, 깨지는 날 아무도 못 잡는 자리였다.
+  ```
+  AssetType             shared 유니온        vs  assets.service.ts TYPES · asset-storage.ts TYPES   (사본 셋)
+  AssetStatus           shared 유니온        vs  asset-storage.ts STATUSES
+  licenseKind           shared 유니온        vs  audio-library.service.ts LICENSE_KINDS
+  InstagramContainerStatus  같은 파일 유니온  vs  KNOWN_STATUSES
+  ```
+  - 전부 **배열 하나에서 타입을 파생**시키는 436 의 모양으로 바꿨다. 유니온과 `Set` 을 따로 적으면 **한 방향(서버가 모르는 값)** 은 컴파일러가 못 잡는다 — 436 이 정확히 그 방향이었다.
+  - 반대 방향(계약이 내주는 값을 서버가 조용히 거절하는 것)은 컴파일이 아니라 **실제 요청**으로만 잡힌다. `AUDIO_LICENSE_KINDS` 와 `ASSET_TYPES` 를 **전부 HTTP 로 걸어보는 짝**을 넣었다(각 5개). 주입(서버 목록에서 하나 빼기)에 그 값 하나만 정확히 빨갛다.
+  - 나머지 `new Set([...])` 은 전부 요청 키 허용 목록이라 짝이 없는 지역 값이다 — 같은 위험이 아니다.

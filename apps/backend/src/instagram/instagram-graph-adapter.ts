@@ -222,8 +222,10 @@ async function readInstagramUsername(accessToken: string, igUserId: string, opti
   }
 }
 
-export type InstagramContainerStatus = "IN_PROGRESS" | "FINISHED" | "ERROR" | "EXPIRED" | "PUBLISHED";
-const KNOWN_STATUSES = new Set<InstagramContainerStatus>(["IN_PROGRESS", "FINISHED", "ERROR", "EXPIRED", "PUBLISHED"]);
+/** One list, with the type derived from it: a union and a `Set` written out separately are two lists that must agree and cannot be made to. */
+export const INSTAGRAM_CONTAINER_STATUSES = ["IN_PROGRESS", "FINISHED", "ERROR", "EXPIRED", "PUBLISHED"] as const;
+export type InstagramContainerStatus = (typeof INSTAGRAM_CONTAINER_STATUSES)[number];
+const KNOWN_STATUSES = new Set<string>(INSTAGRAM_CONTAINER_STATUSES);
 
 /** Retrieve one container's current processing state once; polling cadence is entirely the caller's responsibility — same division of concerns as runway-video-adapter.ts's getRunwayTask(). */
 export async function getInstagramContainerStatus(accessToken: string, containerId: string, options: RetryOptions = {}): Promise<{ statusCode: InstagramContainerStatus }> {

@@ -1,4 +1,4 @@
-import { MAX_SCENE_COUNT, type AssetStatus, type AssetType } from "@ai-animation-studio/shared";
+import { ASSET_STATUSES, ASSET_TYPES, MAX_SCENE_COUNT, type AssetStatus, type AssetType } from "@ai-animation-studio/shared";
 import { isSafeAssetId } from "./asset-id.js";
 
 export interface StoredAssetVersion { version: number; stored_path: string; content_sha256: string; created_at: string; notes: string }
@@ -15,8 +15,10 @@ export interface StoredAsset {
   child_asset_ids: string[]; thumbnail_asset_id: string; role: string; sort_order: number;
 }
 
-const TYPES = new Set(["character", "style", "background", "object", "general_reference"]);
-const STATUSES = new Set(["generated", "approved", "rejected", "replaced", "missing", "manual"]);
+/** Third copy of this list, now the same one. See ASSET_TYPES. */
+const TYPES = new Set<string>(ASSET_TYPES);
+/** The contract's own list — see ASSET_STATUSES. */
+const STATUSES = new Set<string>(ASSET_STATUSES);
 const FIELDS = new Set([
   "asset_id", "asset_type", "display_name", "description", "stored_path", "original_filename", "content_sha256",
   "tags", "aliases", "enabled", "approved", "face_baseline", "character_key", "version", "versions", "created_at",

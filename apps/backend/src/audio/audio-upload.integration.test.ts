@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { Module } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { API_ROUTES, AUDIO_UPLOAD_FILE_FIELD } from "@ai-animation-studio/shared";
+import { API_ROUTES, AUDIO_LICENSE_KINDS, AUDIO_UPLOAD_FILE_FIELD } from "@ai-animation-studio/shared";
 
 import { MediaToolError, type MediaCommandRunner } from "../videos/ffmpeg-merge.service.js";
 import { AudioLibraryController } from "./audio-library.controller.js";
@@ -96,6 +96,26 @@ describe("BGM upload over HTTP", () => {
 
     expect(response.status).toBe(201);
     expect((await response.json() as { track: { title: string } }).track.title).toBe("잔잔한 배경음.mp3");
+  });
+
+  /**
+   * Every licence the contract publishes is one this route takes.
+   *
+   * The list is in packages/shared and the check is here, and until they were made one list they were two —
+   * the same shape as the `used_audio.mode` the merge could write and the storage schema could not read, which
+   * took a finished project off the screen with no error anywhere (Cowork Round 436). Deriving the type from
+   * the array stops one direction of that drift at compile time; this walks the array over the wire and closes
+   * the other, where the server quietly refuses a value the screen is allowed to offer.
+   */
+  it.each([...AUDIO_LICENSE_KINDS])("accepts %s, which the contract says a screen may send", async (licenseKind) => {
+    const { base } = await start();
+    const form = browserForm();
+    form.set("licenseKind", licenseKind);
+
+    const response = await fetch(`${base}${API_ROUTES.audioLibraryUpload}`, { method: "POST", body: form });
+
+    expect(response.status).toBe(201);
+    expect((await response.json() as { track: { licenseKind: string } }).track.licenseKind).toBe(licenseKind);
   });
 
   // Anything that is not one of those two words is a caller that does not know the contract, and guessing

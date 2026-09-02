@@ -1,18 +1,18 @@
-/** Asset categories persisted by the Python Asset Library. */
-export type AssetType =
-  | "character"
-  | "style"
-  | "background"
-  | "object"
-  | "general_reference";
+/**
+ * Asset categories persisted by the Python Asset Library.
+ *
+ * The array is the source and the type is derived from it, because a union written out here and a `Set` written
+ * out again in the server that reads stored files is two lists that must agree and cannot be made to. That is
+ * not hypothetical: the merge wrote a `used_audio.mode` its own storage schema refused to read back, and every
+ * project made that way disappeared from the list with no error anywhere (docs/06_DECISIONS.md, Cowork Round
+ * 436). These two lists happen to agree today. This is what keeps them agreeing.
+ */
+export const ASSET_TYPES = ["character", "style", "background", "object", "general_reference"] as const;
+export type AssetType = (typeof ASSET_TYPES)[number];
 
-export type AssetStatus =
-  | "generated"
-  | "approved"
-  | "rejected"
-  | "replaced"
-  | "missing"
-  | "manual";
+/** Same reason as {@link ASSET_TYPES}: asset-storage.ts validates stored files against this exact list. */
+export const ASSET_STATUSES = ["generated", "approved", "rejected", "replaced", "missing", "manual"] as const;
+export type AssetStatus = (typeof ASSET_STATUSES)[number];
 
 export interface AssetVersion {
   version: number;

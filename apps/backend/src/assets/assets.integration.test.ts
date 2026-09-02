@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { Module } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { afterEach, describe, expect, it } from "vitest";
+import { ASSET_TYPES } from "@ai-animation-studio/shared";
 import { AssetsController } from "./assets.controller.js";
 import { LocalAssetsRepository } from "./assets.repository.js";
 import { AssetsService } from "./assets.service.js";
@@ -55,6 +56,25 @@ describe("Asset Library HTTP and restart integration", () => {
     expect(JSON.stringify(await patchResponse.json())).not.toContain(root);
     const deleted = await fetch(`${restarted.base}/assets/${created.asset.assetId}`, { method: "DELETE" });
     expect(await deleted.json()).toEqual({ assetId: created.asset.assetId, deletedOwnedFile: false });
+  });
+
+  // Same reason as the BGM library's licence walk: the categories are published in packages/shared and checked
+  // here, and a value a screen is allowed to offer must be one this route takes (Cowork Round 436's shape).
+  it.each([...ASSET_TYPES])("imports a %s, which the contract says a screen may send", async (assetType) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "asset-type-")); roots.push(root);
+    const service = new AssetsService(new LocalAssetsRepository(root));
+    class TestModule {}
+    Module({ controllers: [AssetsController], providers: [{ provide: AssetsService, useValue: service }] })(TestModule);
+    const app = await NestFactory.create(TestModule, { logger: false }); await app.listen(0, "127.0.0.1"); apps.push(app);
+    const port = (app.getHttpServer().address() as { port: number }).port;
+    const form = new FormData();
+    form.append("image", new Blob([png], { type: "image/png" }), "one.png");
+    form.append("metadata", JSON.stringify({ assetType, displayName: "하나" }));
+
+    const response = await fetch(`http://127.0.0.1:${port}/assets`, { method: "POST", body: form });
+
+    expect(response.status).toBe(201);
+    expect((await response.json() as { asset: { assetType: string } }).asset.assetType).toBe(assetType);
   });
 
   it("maps strict multipart failures to the safe ApiError envelope", async () => {
