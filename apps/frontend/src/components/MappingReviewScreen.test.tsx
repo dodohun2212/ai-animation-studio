@@ -154,7 +154,7 @@ describe("MappingReviewScreen", () => {
     const [url, init] = fetchMock.mock.calls[3] as [string, RequestInit];
     expect(url).toBe("/projects/sample_project/assets/mappings/MAP-A");
     expect(init.method).toBe("PATCH");
-    expect(JSON.parse(String(init.body))).toEqual({ decision: "confirm" });
+    expect(JSON.parse(String(init.body))).toEqual({ decision: "confirm", enabled: true });
   });
 
   it("prevents a duplicate PATCH while a decision request is already in flight", async () => {

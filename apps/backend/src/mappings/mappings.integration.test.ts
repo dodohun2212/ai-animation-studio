@@ -75,6 +75,43 @@ describe("ProjectAssetMappingsService", () => {
       .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
+  /**
+   * Excluding and confirming again leaves the mapping switched on.
+   *
+   * `enabled` is read in exactly one place — the filter deciding which Assets the image model is shown
+   * (image-reference-selection.ts) — and the screen draws its badge from `status`. So a mapping left
+   * `confirmed` but not `enabled` reads as 연결됨 to the person and does not exist to the generator. 캡틴D
+   * pressed exclude and then confirm from the review screen and paid for six Episode images whose stored
+   * `reference_sources` are empty: the character was on screen as connected and no photograph of them was ever
+   * sent (Cowork Round 469, who found it after their own toggle put the round trip behind one button).
+   *
+   * A confirmed mapping that is switched off is a state nothing in this app means. Turning it off stays
+   * possible as its own explicit request, which is a different sentence.
+   */
+  it("switches a mapping back on when it is confirmed after being excluded", async () => {
+    const { service, asset } = await setup();
+    const created = await service.create("short_mapping", { assetId: asset.asset_id, usageRole: "style", sceneScope: { kind: "all" } });
+
+    await service.update("short_mapping", created.mapping.mappingId, { decision: "exclude" });
+    const restored = await service.update("short_mapping", created.mapping.mappingId, { decision: "confirm" });
+
+    expect(restored.mapping).toMatchObject({ status: "confirmed", enabled: true });
+    // And the stored record agrees — the screen reads one and generation reads the other.
+    expect((await service.list("short_mapping")).mappings.find((mapping) => mapping.mappingId === created.mapping.mappingId))
+      .toMatchObject({ status: "confirmed", enabled: true });
+  });
+
+  // Turning it off deliberately still works, and still says so: this is the sentence "confirmed but not
+  // enabled" was pretending to be.
+  it("still lets a mapping be switched off on purpose", async () => {
+    const { service, asset } = await setup();
+    const created = await service.create("short_mapping", { assetId: asset.asset_id, usageRole: "style", sceneScope: { kind: "all" } });
+
+    const off = await service.update("short_mapping", created.mapping.mappingId, { enabled: false });
+
+    expect(off.mapping).toMatchObject({ status: "confirmed", enabled: false });
+  });
+
   it("invalidates review on mapping changes and on script fingerprint changes", async () => {
     const { service, asset, project } = await setup();
     const created = await service.create("short_mapping", { assetId: asset.asset_id, usageRole: "style", sceneScope: { kind: "all" } });

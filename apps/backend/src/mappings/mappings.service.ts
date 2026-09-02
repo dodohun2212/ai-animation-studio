@@ -81,7 +81,15 @@ export class ProjectAssetMappingsService<Key = string> {
     const owner = await this.owners.get(key);
     const mappings = await this.repository.load(owner); const mapping = mappings.find((item) => item.mapping_id === mappingId);
     if (!mapping) return Promise.reject((await import("./mapping-api.error.js")).mappingNotFound());
-    if (request.decision === "confirm") { mapping.status = "confirmed"; mapping.user_confirmed = true; mapping.candidate_only = false; }
+    // Symmetrical on purpose. Excluding turns the mapping off; confirming turns it back on, and for a long time
+    // it did not — so exclude-then-confirm landed on `status: "confirmed", enabled: false`, which the screen
+    // draws as 연결됨 while the only code that reads `enabled` is the one deciding what the model gets to see
+    // (image-reference-selection.ts). 캡틴D pressed that round trip and then paid for six Episode images whose
+    // stored `reference_sources` are empty: the screen said the character was connected and no photo of them
+    // was ever sent (Cowork Round 469). A confirmed mapping that is switched off is a state nothing in this app
+    // means, so it is no longer reachable from here — `enabled: false` stays available as its own explicit
+    // request below, which is a different sentence and an honest one.
+    if (request.decision === "confirm") { mapping.status = "confirmed"; mapping.user_confirmed = true; mapping.candidate_only = false; mapping.enabled = true; }
     if (request.decision === "exclude") { mapping.status = "excluded"; mapping.user_confirmed = false; mapping.enabled = false; }
     if (request.enabled !== undefined) mapping.enabled = request.enabled;
     if (request.versionPolicy !== undefined) {
