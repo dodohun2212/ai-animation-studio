@@ -24,20 +24,24 @@ const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/7
 const dot = <span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />;
 
 /**
- * How many scenes one retry actually buys.
+ * How many scenes a paid action here actually buys.
  *
- * Retrying a failed scene does not buy that scene alone. A failed scene stops the pipeline — scenes carry
- * continuity, so the run does not skip past it — and clearing the failure resumes the whole job, sending every
- * scene that is not yet succeeded without asking again (CLI Round 429 counted the submissions: 5번만 재시도
- * → +2회). So the rule is: the chosen scene, union everything still unfinished.
+ * Not the number selected. A failed scene stops the pipeline — scenes carry continuity, so the run does not
+ * skip past it — and clearing that failure resumes the whole job, sending every scene not yet succeeded
+ * without asking again. The confirmation said 1 while two were charged (CLI Round 429 counted the
+ * submissions). Quoting money low is the one direction this must never be wrong in.
  *
- * The confirmation said 1 while two were charged. Quoting money low is the one direction this must never be
- * wrong in, which is why it is computed rather than written as a literal.
+ * `pendingSceneCount` comes from the server rather than being counted out of the scene arrays here. The rule
+ * is a fact about the backend's own halting behaviour, and this screen and the Episode one were deriving it
+ * separately — which is exactly how two ends drift apart. Only two states are reachable, so the union is
+ * `max(pending, selected)`: mid-generation the selected scene is itself one of the unfinished ones, and on a
+ * finished job nothing is pending.
+ *
+ * Absent estimate means the local fake mode, where nothing is charged and the notice renders nothing anyway;
+ * falling back to the selected count keeps the number honest rather than zero.
  */
-function scenesOneRetryBuys(sceneNumbers: readonly number[], completed: readonly number[], chosen: number): number {
-  const unfinished = new Set(sceneNumbers.filter((scene) => !completed.includes(scene)));
-  unfinished.add(chosen);
-  return unfinished.size;
+function scenesRetryBuys(estimate: { pendingSceneCount: number } | undefined, selectedCount: number): number {
+  return Math.max(estimate?.pendingSceneCount ?? 0, selectedCount);
 }
 
 export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBack, onOpenMerge }: Props) {
@@ -240,7 +244,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
                 {regenerate === scene && (
                   <div role="alertdialog" data-testid={`episode-video-failed-retry-confirm-${scene}`} className="w-full space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
                     <p className="text-sm text-amber-200">{scene}번 장면을 다시 시도할까요? Runway 키가 연결되어 있으면 이번 시도분이 실제로 청구됩니다.</p>
-                    <RetryCostNotice estimate={job.retryEstimate} sceneCount={scenesOneRetryBuys(job.sceneNumbers, job.completedSceneNumbers, scene)} data-testid={`episode-video-failed-retry-cost-${scene}`} />
+                    <RetryCostNotice estimate={job.retryEstimate} sceneCount={scenesRetryBuys(job.retryEstimate, 1)} data-testid={`episode-video-failed-retry-cost-${scene}`} />
                     <div className="flex gap-2">
                       <button type="button" className={smallOutlineButton} onClick={() => setRegenerate(null)}>취소</button>
                       <button type="button" className={smallAmberButton} disabled={busy} onClick={() => { setRegenerate(null); void action(() => regenerateLongEpisodeVideo(projectId, episodeNumber, job.jobId, scene)); }}>다시 시도</button>
@@ -299,7 +303,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
                 </p>
                 {/* The same estimate the per-scene panel shows, multiplied by what is actually being bought —
                     the one number a person needs before this press and could not get by adding up twelve. */}
-                <RetryCostNotice estimate={job.retryEstimate} sceneCount={reviews.length} data-testid="episode-video-regenerate-all-cost" />
+                <RetryCostNotice estimate={job.retryEstimate} sceneCount={scenesRetryBuys(job.retryEstimate, reviews.length)} data-testid="episode-video-regenerate-all-cost" />
                 <RegenerateInstructionField
                   id="episode-video-regenerate-all-instruction"
                   value={regenerateInstruction}
@@ -398,7 +402,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
               {regenerate === review.sceneNumber && (
                 <div role="alertdialog" data-testid={`episode-video-regenerate-confirm-${review.sceneNumber}`} className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
                   <p className="text-sm text-amber-200">{review.sceneNumber}번 장면을 다시 만들까요? Runway 키가 연결되어 있으면 이번 재생성분이 실제로 청구됩니다.</p>
-                  <RetryCostNotice estimate={job.retryEstimate} sceneCount={1} data-testid={`episode-video-regenerate-cost-${review.sceneNumber}`} />
+                  <RetryCostNotice estimate={job.retryEstimate} sceneCount={scenesRetryBuys(job.retryEstimate, 1)} data-testid={`episode-video-regenerate-cost-${review.sceneNumber}`} />
                   {/* The same field the short project's video retry uses. Used once and never stored, so the
                       staleness badge keeps measuring the clip against the script rather than against a passing
                       note — the server records the plain prompt separately for exactly that reason. */}

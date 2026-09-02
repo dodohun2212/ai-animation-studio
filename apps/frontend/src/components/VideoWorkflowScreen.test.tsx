@@ -205,6 +205,31 @@ describe("VideoWorkflowScreen", () => {
     expect(within(cost).queryByRole("alert")).toBeNull();
   });
 
+  /**
+   * The number multiplied is the server's, not one derived from the arrays on screen.
+   *
+   * Retrying a failed scene resumes the whole job, so it pays for every scene not yet succeeded — and how many
+   * that is comes from the backend's own halting behaviour. This screen and the Episode one used to work it out
+   * separately from `sceneNumbers` minus `completedSceneNumbers`, which is two places to drift. Here the arrays
+   * say one scene is left and the server says four; four is the answer, because the server is the end that
+   * knows what its own resume will submit.
+   */
+  it("multiplies by the server's pending count rather than by what the scene arrays imply", async () => {
+    const failed = makeProgress({
+      status: "failed",
+      completedSceneNumbers: [1, 2, 3, 4, 5],
+      failedSceneNumbers: [6],
+      retryEstimate: { perSceneCostUsd: 0.25, budget: { monthlyLimitUsd: 10, spentUsd: 4, remainingUsd: 6, estimatedRequestCostUsd: 0.25, canSpend: true }, pendingSceneCount: 4 },
+    });
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, failed)));
+
+    await screen.findByTestId("failed-scenes-section");
+    fireEvent.click(screen.getByTestId("failed-scene-retry-6"));
+    const cost = await screen.findByTestId("failed-scene-retry-cost-6");
+    expect(cost.textContent).toContain("$1.00");
+    expect(cost.textContent).toContain("4장면 × $0.25");
+  });
+
   it("multiplies the per-scene cost across every scene for regenerate-all and warns when it exceeds the budget", async () => {
     const succeeded = makeProgress({
       status: "succeeded",
