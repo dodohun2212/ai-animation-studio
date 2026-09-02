@@ -44,10 +44,18 @@ export async function storyBibleLinkDrift(
   for (const [link, field, tag] of [["protagonist", "protagonist_asset_link", "auto_protagonist"], ["style", "style_asset_link", "auto_style"]] as const) {
     const linked = linkedAssetId(basic[field]);
     if (!linked) continue;
-    // Only the mapping this Story Bible link owns is compared. A character someone added by hand is not the
-    // protagonist link disagreeing with itself — it is a second character, which is an ordinary thing to have.
+    // The question is whether this Episode was drawn with the person the story now names, and generation does
+    // not care who attached them: `relevantMappingsForScene` filters on confirmed/enabled/in-scope and never
+    // looks at `assignment_source`. So a protagonist connected by hand is in the pictures, and asking only
+    // about the mapping this link owns called that "연결 없음" — 캡틴D linked 이배드 by hand, paid for four
+    // Episodes' pictures with 이배드 in them, and was told the Episode had been made with nobody
+    // (Cowork Round 468). Before automatic seeding existed there was never an `auto` mapping at all, so that
+    // sentence was on every Episode of every project that had a protagonist link.
+    if (mappings.some((mapping) => mapping.enabled && mapping.status === "confirmed" && mapping.asset_id === linked)) continue;
+    // Still the tag's own mapping when there *is* a difference to report: it is the only mapping that can be
+    // called "the protagonist this Episode used". A hand-added character is not that — it may be anyone in the
+    // scene — and naming one here would trade a false alarm for a false answer.
     const mapped = mappings.find((mapping) => mapping.assignment_source === "auto" && mapping.match_reason === tag && mapping.enabled && mapping.status === "confirmed");
-    if (mapped?.asset_id === linked) continue;
     drift.push({
       link,
       storyBibleAssetId: linked,

@@ -11,6 +11,7 @@ import { OpenAiBudget } from "../providers/openai-budget.js";
 import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { EpisodeImagesService } from "./episode-images.service.js";
+import { storyBibleLinkDrift } from "./episode-story-bible-drift.js";
 import { EpisodeMappingOwners, type EpisodeMappingKey } from "./episode-mapping-owner.js";
 import { EpisodeScriptsService } from "./episode-scripts.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
@@ -35,6 +36,25 @@ afterEach(async () => { vi.unstubAllGlobals(); if (root) await fs.rm(root, { rec
 
 const jsonResponse = (status: number, body: unknown): Response =>
   ({ ok: status >= 200 && status < 300, status, json: async () => body, headers: { get: () => null } } as unknown as Response);
+
+/** The common ground the drift cases below need: a project whose outline is approved and whose two Episodes have scripts. */
+async function setup() {
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "bible-drift-"));
+  const projectsRoot = path.join(root, "projects");
+  const projects = new LongProjectsService(projectsRoot);
+  await projects.create({ projectId: "long", settings });
+  const preview = await projects.preview("long");
+  await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 });
+  const scripts = new EpisodeScriptsService(projectsRoot);
+  for (const episode of [1, 2]) {
+    await scripts.generate("long", episode, { userRequestId: `bible-drift-script-${episode}` });
+    await scripts.approve("long", episode, { approved: true });
+  }
+  const assets = new LocalAssetsRepository(root);
+  const mappingStore = new LocalProjectAssetMappingsRepository(projectsRoot);
+  const mappingOwners = new EpisodeMappingOwners(projectsRoot);
+  return { root: root!, projectsRoot, assets, mappingStore, mappingOwners, bible: new StoryBibleService(projectsRoot, assets, mappingStore) };
+}
 
 describe("changing the Story Bible protagonist after some Episodes have drawn", () => {
   it("moves the Episode that has not drawn, leaves the one that has, and marks it behind", async () => {
@@ -120,4 +140,63 @@ describe("changing the Story Bible protagonist after some Episodes have drawn", 
     expect(after.staleness.referenceStale).toEqual([]);
     expect(after.staleness.imageStale).toEqual([]);
   });
+
+  /**
+   * The protagonist connected by hand is the protagonist.
+   *
+   * Generation never asks who attached a mapping — confirmed, enabled and in scope is the whole filter — so a
+   * hand-linked character is in the pictures that were paid for. The drift report asked a narrower question,
+   * "is the mapping this link owns the same asset", and answered "made with 연결 없음" for every Episode whose
+   * protagonist was connected from the screen. 캡틴D read that after four Episodes of pictures with 이배드 in
+   * them (Cowork Round 468).
+   *
+   * Before automatic seeding existed there was no `auto` mapping to find at all, so this was every project with
+   * a protagonist link.
+   */
+  it("says nothing when the Story Bible's protagonist is in the Episode, however it was connected", async () => {
+    const { root, projectsRoot, assets, bible, mappingStore, mappingOwners } = await setup();
+    const hero = await assets.createFolder({ assetType: "character", displayName: "이배드" });
+    const mappings = new ProjectAssetMappingsService<EpisodeMappingKey>(mappingStore, assets, mappingOwners);
+    const key: EpisodeMappingKey = { projectId: "long", episodeNumber: 1 };
+
+    // Connected from the screen: assignment_source "manual", match_reason "manual_assignment".
+    await mappings.create(key, { assetId: hero.asset_id, usageRole: "character", sceneScope: { kind: "all" } });
+    await bible.updateProtagonistAssetLink("long", { assetLink: { assetId: hero.asset_id, versionPolicy: "follow_latest", pinnedVersion: null } });
+
+    const stored = await mappingStore.load(await mappingOwners.get(key));
+    expect(stored.map((mapping) => mapping.assignment_source)).toContain("manual");
+    expect(await storyBibleLinkDrift(projectsRoot, assets, "long", stored)).toEqual([]);
+    void root;
+  });
+
+  // The counterpart, so "says nothing" is not simply "says nothing ever": a protagonist the Episode does not
+  // have is still reported, and the Episode's side of the sentence stays the mapping the link owns rather than
+  // whichever character happens to be there by hand.
+  it("still reports a protagonist the Episode does not have", async () => {
+    const { projectsRoot, assets, bible, mappingStore, mappingOwners } = await setup();
+    const hero = await assets.createFolder({ assetType: "character", displayName: "이배드" });
+    const mayor = await assets.createFolder({ assetType: "character", displayName: "시장" });
+    const rival = await assets.createFolder({ assetType: "character", displayName: "민재" });
+    const mappings = new ProjectAssetMappingsService<EpisodeMappingKey>(mappingStore, assets, mappingOwners);
+    const key: EpisodeMappingKey = { projectId: "long", episodeNumber: 1 };
+
+    await mappings.create(key, { assetId: mayor.asset_id, usageRole: "character", sceneScope: { kind: "all" } });
+    await bible.updateProtagonistAssetLink("long", { assetLink: { assetId: hero.asset_id, versionPolicy: "follow_latest", pinnedVersion: null } });
+    // Past the point where seeding follows: this Episode's pictures exist, so its mappings are frozen — which
+    // is the only way a real difference can arise.
+    const episodeFile = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
+    const stored = JSON.parse(await fs.readFile(episodeFile, "utf8")) as Record<string, unknown>;
+    await fs.writeFile(episodeFile, JSON.stringify({ ...stored, state: "images_ready" }), "utf8");
+
+    await bible.updateProtagonistAssetLink("long", { assetLink: { assetId: rival.asset_id, versionPolicy: "follow_latest", pinnedVersion: null } });
+
+    const drift = await storyBibleLinkDrift(projectsRoot, assets, "long", await mappingStore.load(await mappingOwners.get(key)));
+    expect(drift).toEqual([{
+      link: "protagonist",
+      storyBibleAssetId: rival.asset_id, storyBibleAssetName: "민재",
+      // 이배드, not 시장: the hand-added character is in the Episode but is not what the protagonist link owns.
+      episodeAssetId: hero.asset_id, episodeAssetName: "이배드",
+    }]);
+  });
+
 });
