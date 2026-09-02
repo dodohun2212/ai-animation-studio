@@ -364,6 +364,21 @@ export function photoCardSubtitleGeometry(
 export const PHOTO_CARD_SUBTITLE_OUTLINE = 4;
 export const PHOTO_CARD_SUBTITLE_SHADOW = 2;
 
+/**
+ * How to draw the card's text in CSS at the size it will actually be in the video.
+ *
+ * ASS `Fontsize` is not CSS `font-size`. libass scales a font by its own vertical metrics, and for these two
+ * Noto CJK files a Hangul glyph at `Fontsize` N advances well under N pixels — so a preview that sets
+ * `font-size: N` draws text about half again as wide as the video does. It then wraps earlier than the render,
+ * and reports overflow the render never has (Cowork Round 446 saw exactly that at the largest size).
+ *
+ * Multiply the ASS size by these to get the CSS size. **Measured, not derived**: rendered through the real
+ * FFmpeg with these font files and read off the frame — 10 glyphs against 16, so glyph bearings and the
+ * outline cancel out. subtitle-font-metrics.test.ts does that measurement and fails if a font file is replaced
+ * by one that draws differently. Do not adjust these by eye; re-measure.
+ */
+export const PHOTO_CARD_SUBTITLE_CSS_RATIO = { heading: 0.662, body: 0.625 } as const;
+
 /** How much larger the heading is than the body. Not a handle: three sizes can be set to a combination that does not fit together, and two cannot. */
 export const PHOTO_CARD_HEADING_RATIO = 1.4;
 

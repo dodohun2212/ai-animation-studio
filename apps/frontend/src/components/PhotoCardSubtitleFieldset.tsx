@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState } from "react";
 import type { PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
 import {
   DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT,
@@ -22,10 +23,10 @@ interface Props {
   disabled?: boolean;
 }
 
-/** The frame the renderer works in. Only used to say the chosen size in pixels, which is the unit a person can picture. */
+/** The long side of the frame the renderer works in. Sizes are said in these pixels, which is the unit a person can picture. */
 const REFERENCE_HEIGHT = 1920;
-/** The preview's own height in CSS pixels; every size below is a fraction of it, exactly as the renderer works from frame height. */
-const PREVIEW_HEIGHT = 420;
+/** The preview's longest side on screen. The frame is drawn at full size and scaled down to this — see the box below for why. */
+const PREVIEW_LONG_SIDE = 420;
 
 const field = "w-full accent-violet-400 disabled:opacity-50";
 const label = "flex items-baseline justify-between text-sm text-slate-300";
@@ -39,14 +40,26 @@ const label = "flex items-baseline justify-between text-sm text-slate-300";
  * cannot reach a value the merge would refuse.
  */
 export function PhotoCardSubtitleFieldset({ projectId, quote, vertical, layout, onChange, disabled }: Props) {
-  const height = PREVIEW_HEIGHT;
-  const width = Math.round(height * (vertical ? 9 / 16 : 16 / 9));
+  /*
+   * Drawn at the video's real size and scaled down, not laid out small.
+   *
+   * A small box wraps a long line at a different place than a 1080-wide frame does, and the number of lines is
+   * what decides whether the block still fits: measured on the real frame, thirty body lines at the default
+   * size run off both ends, and ten at the largest size run off the top (CLI Round 445). A preview that wrapped
+   * differently would show those cases fitting. So the frame is 1080x1920 here too, and only the last step —
+   * a CSS scale — makes it small enough to sit beside the sliders.
+   */
+  const frameWidth = vertical ? 1080 : 1920;
+  const frameHeight = vertical ? 1920 : 1080;
+  const width = vertical ? Math.round(PREVIEW_LONG_SIDE * 9 / 16) : PREVIEW_LONG_SIDE;
+  const height = vertical ? PREVIEW_LONG_SIDE : Math.round(PREVIEW_LONG_SIDE * 9 / 16);
+  const scale = width / frameWidth;
   // The renderer's own arithmetic, called rather than repeated. It used to be five lines copied out of
   // `subtitle-file.ts`, which is a preview that can be silently wrong — showing a picture of a video nobody
   // made. CLI Round 441 moved the numbers into `shared` so both ends read one function; only the frame differs
   // (this box's pixels instead of 1080x1920), which is exactly what makes it a preview rather than a copy.
   const { heading, body: bodyLines } = splitPhotoCardSubtitle(quote);
-  const g = photoCardSubtitleGeometry(width, height, layout, bodyLines.length, heading !== undefined);
+  const g = photoCardSubtitleGeometry(frameWidth, frameHeight, layout, bodyLines.length, heading !== undefined);
   // `bodyY` is the block's centre; the lines are laid out from it so the block stays centred as lines are added.
   const firstBodyY = g.bodyY - (g.lineGap * Math.max(0, bodyLines.length - 1)) / 2;
   const atDefault = layout.scale === DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT.scale && layout.center === DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT.center;
@@ -54,16 +67,37 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, vertical, layout, 
    * The edge, approximated rather than reproduced.
    *
    * libass strokes a glyph outline; CSS can only stack shadows, so these two cannot draw the same thing and
-   * pretending otherwise would be worse than saying so (the note under the preview does). What is shared is
-   * the width: an outline that stayed 4px in a 420px box would be a black slab around every letter, so it is
-   * scaled to this frame — but the 4 and the 2 are read from the renderer's own constants, or a change there
-   * would leave this preview quietly describing the previous design.
+   * pretending otherwise would be worse than saying so (the note under the preview does). The widths are the
+   * renderer's own constants used unchanged — the whole frame is drawn at full size and scaled at the end, so
+   * they shrink with everything else instead of needing their own arithmetic.
    */
-  const stroke = Math.max(1, Math.round((PHOTO_CARD_SUBTITLE_OUTLINE * height) / REFERENCE_HEIGHT));
-  const drop = Math.max(1, Math.round((PHOTO_CARD_SUBTITLE_SHADOW * height) / REFERENCE_HEIGHT));
+  const stroke = PHOTO_CARD_SUBTITLE_OUTLINE;
+  const drop = PHOTO_CARD_SUBTITLE_SHADOW;
   const shadow = `0 0 ${stroke}px #000, ${drop}px ${drop}px ${stroke * 2}px rgba(0,0,0,0.85), -${stroke}px 0 ${stroke}px #000, ${stroke}px 0 ${stroke}px #000, 0 -${stroke}px ${stroke}px #000, 0 ${stroke}px ${stroke}px #000`;
 
   const margin = g.margin;
+
+  /**
+   * Whether any line falls outside the frame, read off the drawn preview instead of predicted.
+   *
+   * Predicting it would mean knowing where the text wrapped, which is the browser's answer and not something a
+   * formula here has. Since the frame is now drawn at its real size, asking the DOM is both simpler and the
+   * more honest of the two.
+   */
+  const blockRef = useRef<HTMLDivElement | null>(null);
+  const [overflowing, setOverflowing] = useState(false);
+  useLayoutEffect(() => {
+    const block = blockRef.current;
+    if (!block) return;
+    const lines = Array.from(block.children) as unknown as { offsetTop: number; offsetHeight: number; scrollWidth: number; clientWidth: number }[];
+    setOverflowing(lines.some((node) =>
+      // Each line is centred on its own top coordinate (translateY(-50%)), so its extent is half a line either way.
+      node.offsetTop - node.offsetHeight / 2 < 0
+      || node.offsetTop + node.offsetHeight / 2 > frameHeight
+      // Sideways too, and this is not hypothetical: at the largest size the 사자성어 line is wider than the frame
+      // and runs off both edges without ever being taller than it. Seen at 96px on 불광불급(不狂不及).
+      || node.scrollWidth > node.clientWidth));
+  }, [quote, layout.scale, layout.center, frameHeight, frameWidth]);
 
   function line(text: string, y: number, size: number, serif: boolean, key: string) {
     return (
@@ -97,14 +131,22 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, vertical, layout, 
           className="relative shrink-0 overflow-hidden rounded-xl border border-white/10 bg-slate-950"
           style={{ width: `${width}px`, height: `${height}px` }}
         >
-          <img
-            src={sceneImageContentUrl(projectId, 1)}
-            alt=""
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-          {heading !== undefined && line(heading, g.headingY, g.headSize, true, "head")}
-          {bodyLines.map((text, index) =>
-            line(text, firstBodyY + index * g.lineGap, g.bodySize, false, `body-${index}`))}
+          <div
+            className="absolute left-0 top-0 origin-top-left"
+            style={{ width: `${frameWidth}px`, height: `${frameHeight}px`, transform: `scale(${scale})` }}
+          >
+            <img
+              src={sceneImageContentUrl(projectId, 1)}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+            {/* The lines alone, so measuring what runs off the frame does not have to step over the picture. */}
+            <div ref={blockRef} className="absolute inset-0">
+              {heading !== undefined && line(heading, g.headingY, g.headSize, true, "head")}
+              {bodyLines.map((text, index) =>
+                line(text, firstBodyY + index * g.lineGap, g.bodySize, false, `body-${index}`))}
+            </div>
+          </div>
         </div>
 
         <div className="min-w-[16rem] flex-1 space-y-5">
@@ -167,6 +209,14 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, vertical, layout, 
         </div>
       </div>
 
+      {overflowing && (
+        /* Measured on the drawn frame rather than predicted, so it counts the lines the text actually wrapped
+           into. A long quote at a large size runs off the top and bottom, and until the frame was drawn at full
+           size this was the one failure the preview could not show. */
+        <p role="status" data-testid="photo-card-subtitle-overflow" className="rounded-xl border border-amber-400/30 bg-amber-500/[0.06] px-4 py-3 text-sm text-amber-200">
+          이 길이와 크기로는 글자가 화면 밖으로 나갑니다. 글자 크기를 줄이거나, 명언을 짧게 하거나, 위치를 옮겨 주세요.
+        </p>
+      )}
       {/* Said plainly rather than implied by how close it looks: the browser is not the renderer, and the one
           thing this cannot promise is the exact letterforms. Position and size are the point and those are real. */}
       <p className="text-xs text-slate-500" data-testid="photo-card-subtitle-approximate">

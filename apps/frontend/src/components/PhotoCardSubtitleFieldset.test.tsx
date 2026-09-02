@@ -19,6 +19,30 @@ function renderFieldset(quote: string, layout = DEFAULT_PHOTO_CARD_SUBTITLE_LAYO
   return onChange;
 }
 
+/**
+ * jsdom lays nothing out — every element reports 0 — so the overflow check has nothing to read unless the two
+ * measurements it uses are supplied. `top` comes from the style the component wrote, which is real; the line
+ * height is the one number a browser would have computed and is given here.
+ */
+function withMeasuredLines(lineHeight: number, body: () => void, textWidth = 0): void {
+  const proto = HTMLElement.prototype;
+  const saved = (["offsetTop", "offsetHeight", "scrollWidth", "clientWidth"] as const)
+    .map((name) => [name, Object.getOwnPropertyDescriptor(proto, name)] as const);
+  Object.defineProperty(proto, "offsetTop", { configurable: true, get(this: HTMLElement) { return parseFloat(this.style.top || "0"); } });
+  Object.defineProperty(proto, "offsetHeight", { configurable: true, get: () => lineHeight });
+  // A line wider than its box is the sideways half of the same failure; 0/0 means "fits", which is what the
+  // cases about vertical overflow want.
+  Object.defineProperty(proto, "scrollWidth", { configurable: true, get: () => textWidth });
+  Object.defineProperty(proto, "clientWidth", { configurable: true, get: () => 0 });
+  try {
+    body();
+  } finally {
+    for (const [name, descriptor] of saved) {
+      if (descriptor) Object.defineProperty(proto, name, descriptor); else Reflect.deleteProperty(proto, name);
+    }
+  }
+}
+
 /** The renderer stacks lines by absolute top; reading it back is how a layout test says "where", not "how it looked". */
 function tops(): number[] {
   const preview = screen.getByTestId("photo-card-subtitle-preview");
@@ -82,6 +106,41 @@ describe("PhotoCardSubtitleFieldset", () => {
     expect(scale.max).toBe("0.05");
     expect(center.min).toBe("0.15");
     expect(center.max).toBe("0.85");
+  });
+
+  /**
+   * The failure the preview could not show until the frame was drawn at its real size.
+   *
+   * Measured on 1080x1920: thirty body lines at the default size run off both ends, and ten at the largest run
+   * off the top (CLI Round 445). A preview laid out in a 236px box wraps a long line somewhere else, so it
+   * counts a different number of lines — and shows those cards fitting. The server does not clamp and does not
+   * refuse, both deliberately, which leaves saying so here as the only place it can be said.
+   */
+  it("warns when the text runs off the frame", () => {
+    withMeasuredLines(120, () => {
+      renderFieldset(`불광불급(不狂不及)\n${Array.from({ length: 30 }, (_, index) => `${index}번째 줄`).join("\n")}`, { scale: 0.05, center: 0.4 });
+      expect(screen.getByTestId("photo-card-subtitle-overflow").textContent).toContain("화면 밖으로");
+    });
+  });
+
+  /**
+   * Sideways, which is a different failure and was invisible until the frame was drawn at 1080.
+   *
+   * 불광불급(不狂不及) at the largest size measures wider than the frame and runs off both edges while never
+   * being taller than it — so a check that only looked up and down called that card fine.
+   */
+  it("warns when a line is wider than the frame", () => {
+    withMeasuredLines(120, () => {
+      renderFieldset(TWO_PART, { scale: 0.05, center: 0.4 });
+      expect(screen.getByTestId("photo-card-subtitle-overflow")).toBeTruthy();
+    }, 1400);
+  });
+
+  it("stays quiet when it fits", () => {
+    withMeasuredLines(120, () => {
+      renderFieldset(TWO_PART, { scale: 0.027, center: 0.4 });
+      expect(screen.queryByTestId("photo-card-subtitle-overflow")).toBeNull();
+    });
   });
 
   // Said rather than implied: the browser is not ffmpeg, and a preview that quietly claims to be exact is
