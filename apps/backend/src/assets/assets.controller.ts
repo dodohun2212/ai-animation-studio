@@ -1,7 +1,8 @@
 import * as fs from "node:fs/promises";
-import { ArgumentsHost, BadRequestException, Catch, Controller, Delete, ExceptionFilter, Get, Param, Patch, PayloadTooLargeException, Post, Query, Body, UploadedFile, UseFilters, UseInterceptors, StreamableFile, Res } from "@nestjs/common";
+import { ArgumentsHost, BadRequestException, Catch, Controller, Delete, ExceptionFilter, Get, Param, Patch, PayloadTooLargeException, Post, Query, Body, UploadedFile, UseFilters, UseInterceptors, StreamableFile, Req, Res } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ASSET_UPLOAD_FILE_FIELD } from "@ai-animation-studio/shared";
+import { streamStoredFile, type RangeRequest, type RangeResponse } from "../http/range-stream.js";
 import type { AddAssetVersionResponse, CharacterFolderReferenceSetResponse, CreateAssetFolderResponse, CreateAssetResponse, DeleteAssetFolderResponse, DeleteAssetOwnedFileResponse, DeleteAssetResponse, GetAssetResponse, ListAssetFileAuditResponse, ListAssetsResponse, RelinkAssetResponse, SetAssetParentFolderResponse, UpdateAssetResponse } from "@ai-animation-studio/shared";
 import { AssetsService } from "./assets.service.js";
 import { AssetApiException, assetStorageError, invalidAssetFile } from "./asset-api.error.js";
@@ -36,22 +37,16 @@ export class AssetsController {
     return this.service.list(query, assetType);
   }
   @Get(":assetId/content")
-  async content(@Param("assetId") assetId: string, @Res({ passthrough: true }) response: HttpResponse): Promise<StreamableFile> {
+  async content(@Param("assetId") assetId: string, @Req() request: RangeRequest, @Res({ passthrough: true }) response: RangeResponse): Promise<StreamableFile> {
     const content = await this.service.content(assetId);
     const extension = content.extension;
-    try {
-      const handle = await fs.open(content.path, "r");
-      const stat = await handle.stat();
-      if (!stat.isFile()) { await handle.close(); throw invalidAssetFile("Asset image is unavailable."); }
-      response.type(extension === ".png" ? "image/png" : extension === ".webp" ? "image/webp" : "image/jpeg");
-      response.setHeader("Content-Disposition", `inline; filename="asset${extension}"`);
-      response.setHeader("Content-Length", String(stat.size));
-      response.setHeader("X-Content-Type-Options", "nosniff");
-      return new StreamableFile(handle.createReadStream());
-    } catch (error) {
-      if (error instanceof AssetApiException) throw error;
-      throw invalidAssetFile("Asset image is unavailable.");
-    }
+    return streamStoredFile({
+      path: content.path,
+      contentType: extension === ".png" ? "image/png" : extension === ".webp" ? "image/webp" : "image/jpeg",
+      filename: `asset${extension}`,
+      request, response,
+      unavailable: () => invalidAssetFile("Asset image is unavailable."),
+    });
   }
   @Get("audit") audit(): Promise<ListAssetFileAuditResponse> { return this.service.audit(); }
   @Get(":assetId") get(@Param("assetId") assetId: string): Promise<GetAssetResponse> { return this.service.get(assetId); }

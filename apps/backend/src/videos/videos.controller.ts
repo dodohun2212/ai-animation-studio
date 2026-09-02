@@ -1,7 +1,8 @@
 import * as fs from "node:fs/promises";
-import { Body, Controller, Get, HttpException, Param, Post, Res, StreamableFile } from "@nestjs/common";
+import { Body, Controller, Get, HttpException, Param, Post, Req, Res, StreamableFile } from "@nestjs/common";
 import { API_ROUTES, type ApproveVideoReviewResponse, type GenerationProgressResponse, type GetVideoLibraryResponse, type GetVideoPromptPreviewResponse, type GetVideoReviewResponse, type GetVideoVersionsResponse, type MergeVideosResponse, type RecoverVideosResponse, type RegenerateVideoResponse, type RestoreVideoVersionResponse, type SceneNumber, type StartVideoGenerationResponse } from "@ai-animation-studio/shared";
 
+import { streamStoredFile, type RangeRequest, type RangeResponse } from "../http/range-stream.js";
 import { videoContentUnavailable } from "./video-workflow-api.error.js";
 import { videoMergeContentUnavailable } from "./video-merge-api.error.js";
 import { videoLibraryContentUnavailable } from "./video-library-api.error.js";
@@ -37,21 +38,15 @@ export class VideosController {
   }
 
   @Get(`${API_ROUTES.projects}/:projectId/videos/:sceneNumber/versions/:versionId/content`)
-  async videoVersionContent(@Param("projectId") projectId: string, @Param("sceneNumber") sceneNumber: string, @Param("versionId") versionId: string, @Res({ passthrough: true }) response: HttpResponse): Promise<StreamableFile> {
+  async videoVersionContent(@Param("projectId") projectId: string, @Param("sceneNumber") sceneNumber: string, @Param("versionId") versionId: string, @Req() request: RangeRequest, @Res({ passthrough: true }) response: RangeResponse): Promise<StreamableFile> {
     const content = await this.library.content(projectId, sceneNumber, versionId);
-    try {
-      const handle = await fs.open(content.path, "r");
-      const stat = await handle.stat();
-      if (!stat.isFile()) { await handle.close(); throw videoLibraryContentUnavailable(); }
-      response.type("video/mp4");
-      response.setHeader("Content-Disposition", `inline; filename="${sceneNumber}_${versionId}.mp4"`);
-      response.setHeader("Content-Length", String(stat.size));
-      response.setHeader("X-Content-Type-Options", "nosniff");
-      return new StreamableFile(handle.createReadStream());
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-      throw videoLibraryContentUnavailable();
-    }
+    return streamStoredFile({
+      path: content.path,
+      contentType: "video/mp4",
+      filename: `${sceneNumber}_${versionId}.mp4`,
+      request, response,
+      unavailable: () => videoLibraryContentUnavailable(),
+    })
   }
 
   @Post(`${API_ROUTES.projects}/:projectId/videos/:sceneNumber/versions/:versionId/restore`)
@@ -67,39 +62,27 @@ export class VideosController {
   // Registered before the :sceneNumber route below so the literal "final" segment is
   // matched here first, rather than being parsed as a (necessarily invalid) scene number.
   @Get(`${API_ROUTES.projects}/:projectId/videos/final/content`)
-  async finalContent(@Param("projectId") projectId: string, @Res({ passthrough: true }) response: HttpResponse): Promise<StreamableFile> {
+  async finalContent(@Param("projectId") projectId: string, @Req() request: RangeRequest, @Res({ passthrough: true }) response: RangeResponse): Promise<StreamableFile> {
     const content = await this.mergeService.content(projectId);
-    try {
-      const handle = await fs.open(content.path, "r");
-      const stat = await handle.stat();
-      if (!stat.isFile()) { await handle.close(); throw videoMergeContentUnavailable(); }
-      response.type("video/mp4");
-      response.setHeader("Content-Disposition", `inline; filename="instagram_reel.mp4"`);
-      response.setHeader("Content-Length", String(stat.size));
-      response.setHeader("X-Content-Type-Options", "nosniff");
-      return new StreamableFile(handle.createReadStream());
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-      throw videoMergeContentUnavailable();
-    }
+    return streamStoredFile({
+      path: content.path,
+      contentType: "video/mp4",
+      filename: `instagram_reel.mp4`,
+      request, response,
+      unavailable: () => videoMergeContentUnavailable(),
+    })
   }
 
   @Get(`${API_ROUTES.projects}/:projectId/videos/:sceneNumber/content`)
-  async content(@Param("projectId") projectId: string, @Param("sceneNumber") sceneNumber: string, @Res({ passthrough: true }) response: HttpResponse): Promise<StreamableFile> {
+  async content(@Param("projectId") projectId: string, @Param("sceneNumber") sceneNumber: string, @Req() request: RangeRequest, @Res({ passthrough: true }) response: RangeResponse): Promise<StreamableFile> {
     const content = await this.workflow.content(projectId, sceneNumber);
-    try {
-      const handle = await fs.open(content.path, "r");
-      const stat = await handle.stat();
-      if (!stat.isFile()) { await handle.close(); throw videoContentUnavailable(); }
-      response.type("video/mp4");
-      response.setHeader("Content-Disposition", `inline; filename="scene${sceneNumber}.mp4"`);
-      response.setHeader("Content-Length", String(stat.size));
-      response.setHeader("X-Content-Type-Options", "nosniff");
-      return new StreamableFile(handle.createReadStream());
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-      throw videoContentUnavailable();
-    }
+    return streamStoredFile({
+      path: content.path,
+      contentType: "video/mp4",
+      filename: `scene${sceneNumber}.mp4`,
+      request, response,
+      unavailable: () => videoContentUnavailable(),
+    })
   }
 
   @Post(`${API_ROUTES.projects}/:projectId/videos/generations`)

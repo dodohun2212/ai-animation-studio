@@ -1,8 +1,9 @@
 import * as fs from "node:fs/promises";
 
-import { Body, Controller, Get, HttpException, Param, Post, Res, StreamableFile } from "@nestjs/common";
+import { Body, Controller, Get, HttpException, Param, Post, Req, Res, StreamableFile } from "@nestjs/common";
 import type { Response as HttpResponse } from "express";
 import { API_ROUTES, type ApproveLongEpisodeImageReviewRequest, type ApproveLongEpisodeImageReviewResponse, type GetLongEpisodeImagePreviewResponse, type GetLongEpisodeImageReviewResponse, type RegenerateLongEpisodeImageReviewRequest, type RegenerateLongEpisodeImageReviewResponse, type StartLongEpisodeImageGenerationRequest, type StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
+import { streamStoredFile, type RangeRequest, type RangeResponse } from "../http/range-stream.js";
 import { longEpisodeImagesInvalid } from "./long-project-api.error.js";
 import { EpisodeImagesService } from "./episode-images.service.js";
 
@@ -24,20 +25,14 @@ export class EpisodeImagesController {
    * pictures in a JSON body is a payload nobody can cache, and the browser already knows how to fetch an image.
    */
   @Get(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/images/:sceneNumber/content`)
-  async content(@Param("projectId") id: string, @Param("episodeNumber") number: string, @Param("sceneNumber") scene: string, @Res({ passthrough: true }) response: HttpResponse): Promise<StreamableFile> {
+  async content(@Param("projectId") id: string, @Param("episodeNumber") number: string, @Param("sceneNumber") scene: string, @Req() request: RangeRequest, @Res({ passthrough: true }) response: RangeResponse): Promise<StreamableFile> {
     const content = await this.service.content(id, Number(number), scene);
-    try {
-      const handle = await fs.open(content.path, "r");
-      const stat = await handle.stat();
-      if (!stat.isFile()) { await handle.close(); throw longEpisodeImagesInvalid(); }
-      response.type("image/png");
-      response.setHeader("Content-Disposition", `inline; filename="scene${scene}.png"`);
-      response.setHeader("Content-Length", String(stat.size));
-      response.setHeader("X-Content-Type-Options", "nosniff");
-      return new StreamableFile(handle.createReadStream());
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-      throw longEpisodeImagesInvalid();
-    }
+    return streamStoredFile({
+      path: content.path,
+      contentType: "image/png",
+      filename: `scene${scene}.png`,
+      request, response,
+      unavailable: () => longEpisodeImagesInvalid(),
+    })
   }
 }

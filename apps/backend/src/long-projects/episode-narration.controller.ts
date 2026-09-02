@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
-import { Body, Controller, Get, HttpException, Param, Post, Res, StreamableFile } from "@nestjs/common";
+import { Body, Controller, Get, HttpException, Param, Post, Req, Res, StreamableFile } from "@nestjs/common";
 import { API_ROUTES, type GetLongEpisodeNarrationReviewResponse, type RegenerateLongEpisodeNarrationResponse, type StartLongEpisodeNarrationGenerationRequest, type StartLongEpisodeNarrationGenerationResponse } from "@ai-animation-studio/shared";
+import { streamStoredFile, type RangeRequest, type RangeResponse } from "../http/range-stream.js";
 import { longEpisodeNarrationContentUnavailable } from "./long-project-api.error.js";
 import { EpisodeNarrationService } from "./episode-narration.service.js";
 
@@ -26,20 +27,14 @@ export class EpisodeNarrationController {
   }
 
   @Get(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/narration/:sceneNumber/content`)
-  async content(@Param("projectId") projectId: string, @Param("episodeNumber") episodeNumber: string, @Param("sceneNumber") sceneNumber: string, @Res({ passthrough: true }) response: HttpResponse): Promise<StreamableFile> {
+  async content(@Param("projectId") projectId: string, @Param("episodeNumber") episodeNumber: string, @Param("sceneNumber") sceneNumber: string, @Req() request: RangeRequest, @Res({ passthrough: true }) response: RangeResponse): Promise<StreamableFile> {
     const content = await this.service.content(projectId, Number(episodeNumber), sceneNumber);
-    try {
-      const handle = await fs.open(content.path, "r");
-      const stat = await handle.stat();
-      if (!stat.isFile()) { await handle.close(); throw longEpisodeNarrationContentUnavailable(); }
-      response.type("audio/mpeg");
-      response.setHeader("Content-Disposition", `inline; filename="scene${sceneNumber}.mp3"`);
-      response.setHeader("Content-Length", String(stat.size));
-      response.setHeader("X-Content-Type-Options", "nosniff");
-      return new StreamableFile(handle.createReadStream());
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-      throw longEpisodeNarrationContentUnavailable();
-    }
+    return streamStoredFile({
+      path: content.path,
+      contentType: "audio/mpeg",
+      filename: `scene${sceneNumber}.mp3`,
+      request, response,
+      unavailable: () => longEpisodeNarrationContentUnavailable(),
+    })
   }
 }

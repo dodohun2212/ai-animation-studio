@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
-import { Body, Controller, Get, HttpException, Param, Post, Res, StreamableFile } from "@nestjs/common";
+import { Body, Controller, Get, HttpException, Param, Post, Req, Res, StreamableFile } from "@nestjs/common";
 import { API_ROUTES, type GetGeneratedImagesResponse, type ApproveImageReviewResponse, type GetImageReviewResponse, type RegenerateImageReviewResponse, type StartImageGenerationResponse } from "@ai-animation-studio/shared";
+import { streamStoredFile, type RangeRequest, type RangeResponse } from "../http/range-stream.js";
 import { imageContentUnavailable } from "./image-api.error.js";
 import { ImageReviewService } from "./image-review.service.js";
 import { LocalImageGenerationService } from "./local-image-generation.service.js";
@@ -29,21 +30,15 @@ export class ImagesController {
   }
 
   @Get(`${API_ROUTES.projects}/:projectId/images/:sceneNumber/content`)
-  async content(@Param("projectId") projectId: string, @Param("sceneNumber") sceneNumber: string, @Res({ passthrough: true }) response: HttpResponse): Promise<StreamableFile> {
+  async content(@Param("projectId") projectId: string, @Param("sceneNumber") sceneNumber: string, @Req() request: RangeRequest, @Res({ passthrough: true }) response: RangeResponse): Promise<StreamableFile> {
     const content = await this.service.content(projectId, sceneNumber);
-    try {
-      const handle = await fs.open(content.path, "r");
-      const stat = await handle.stat();
-      if (!stat.isFile()) { await handle.close(); throw imageContentUnavailable(); }
-      response.type("image/png");
-      response.setHeader("Content-Disposition", `inline; filename="scene${sceneNumber}.png"`);
-      response.setHeader("Content-Length", String(stat.size));
-      response.setHeader("X-Content-Type-Options", "nosniff");
-      return new StreamableFile(handle.createReadStream());
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-      throw imageContentUnavailable();
-    }
+    return streamStoredFile({
+      path: content.path,
+      contentType: "image/png",
+      filename: `scene${sceneNumber}.png`,
+      request, response,
+      unavailable: () => imageContentUnavailable(),
+    })
   }
 
   @Get(`${API_ROUTES.projects}/:projectId/images/review`)

@@ -1,7 +1,8 @@
-import { Body, Controller, Get, HttpException, Param, Post, Res, StreamableFile } from "@nestjs/common";
+import { Body, Controller, Get, HttpException, Param, Post, Req, Res, StreamableFile } from "@nestjs/common";
 import type { Response as HttpResponse } from "express";
 import * as fs from "node:fs/promises";
 import { API_ROUTES, type ApproveLongEpisodeVideoReviewRequest, type ApproveLongEpisodeVideoReviewResponse, type GetLongEpisodeCurrentVideoJobResponse, type GetLongEpisodeVideoPreviewResponse, type GetLongEpisodeVideoReviewResponse, type LongEpisodeVideoProgress, type GetVideoVersionsResponse, type RecoverLongEpisodeVideosResponse, type RegenerateLongEpisodeVideoResponse, type RestoreLongEpisodeVideoVersionResponse, type StartLongEpisodeVideoGenerationRequest, type StartLongEpisodeVideoGenerationResponse } from "@ai-animation-studio/shared";
+import { streamStoredFile, type RangeRequest, type RangeResponse } from "../http/range-stream.js";
 import { EpisodeVideosService } from "./episode-videos.service.js";
 import { EpisodeVideoMergeService } from "./episode-video-merge.service.js";
 import { longEpisodeMergeClipsInvalid, longEpisodeVideoVersionNotFound, longEpisodeVideosInvalid } from "./long-project-api.error.js";
@@ -29,21 +30,15 @@ export class EpisodeVideosController {
    * text held in React state, so a reload left it unreachable.
    */
   @Get(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/videos/final/content`)
-  async finalContent(@Param("projectId") id: string, @Param("episodeNumber") number: string, @Res({ passthrough: true }) response: HttpResponse): Promise<StreamableFile> {
+  async finalContent(@Param("projectId") id: string, @Param("episodeNumber") number: string, @Req() request: RangeRequest, @Res({ passthrough: true }) response: RangeResponse): Promise<StreamableFile> {
     const content = await this.merges.content(id, Number(number));
-    try {
-      const handle = await fs.open(content.path, "r");
-      const stat = await handle.stat();
-      if (!stat.isFile()) { await handle.close(); throw longEpisodeMergeClipsInvalid(); }
-      response.type("video/mp4");
-      response.setHeader("Content-Disposition", `inline; filename="episode${number}_final.mp4"`);
-      response.setHeader("Content-Length", String(stat.size));
-      response.setHeader("X-Content-Type-Options", "nosniff");
-      return new StreamableFile(handle.createReadStream());
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-      throw longEpisodeMergeClipsInvalid();
-    }
+    return streamStoredFile({
+      path: content.path,
+      contentType: "video/mp4",
+      filename: `episode${number}_final.mp4`,
+      request, response,
+      unavailable: () => longEpisodeMergeClipsInvalid(),
+    })
   }
 
   /**
@@ -58,21 +53,15 @@ export class EpisodeVideosController {
   }
 
   @Get(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/videos/:sceneNumber/versions/:versionId/content`)
-  async versionContent(@Param("projectId") id: string, @Param("episodeNumber") number: string, @Param("sceneNumber") scene: string, @Param("versionId") versionId: string, @Res({ passthrough: true }) response: HttpResponse): Promise<StreamableFile> {
+  async versionContent(@Param("projectId") id: string, @Param("episodeNumber") number: string, @Param("sceneNumber") scene: string, @Param("versionId") versionId: string, @Req() request: RangeRequest, @Res({ passthrough: true }) response: RangeResponse): Promise<StreamableFile> {
     const content = await this.service.versionContent(id, Number(number), scene, versionId);
-    try {
-      const handle = await fs.open(content.path, "r");
-      const stat = await handle.stat();
-      if (!stat.isFile()) { await handle.close(); throw longEpisodeVideoVersionNotFound(); }
-      response.type("video/mp4");
-      response.setHeader("Content-Disposition", `inline; filename="scene${scene}_${versionId}.mp4"`);
-      response.setHeader("Content-Length", String(stat.size));
-      response.setHeader("X-Content-Type-Options", "nosniff");
-      return new StreamableFile(handle.createReadStream());
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-      throw longEpisodeVideoVersionNotFound();
-    }
+    return streamStoredFile({
+      path: content.path,
+      contentType: "video/mp4",
+      filename: `scene${scene}_${versionId}.mp4`,
+      request, response,
+      unavailable: () => longEpisodeVideoVersionNotFound(),
+    })
   }
 
   @Post(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/videos/:sceneNumber/versions/:versionId/restore`)
@@ -81,21 +70,15 @@ export class EpisodeVideosController {
   }
 
   @Get(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/videos/:sceneNumber/content`)
-  async content(@Param("projectId") id: string, @Param("episodeNumber") number: string, @Param("sceneNumber") scene: string, @Res({ passthrough: true }) response: HttpResponse): Promise<StreamableFile> {
+  async content(@Param("projectId") id: string, @Param("episodeNumber") number: string, @Param("sceneNumber") scene: string, @Req() request: RangeRequest, @Res({ passthrough: true }) response: RangeResponse): Promise<StreamableFile> {
     const content = await this.service.content(id, Number(number), scene);
-    try {
-      const handle = await fs.open(content.path, "r");
-      const stat = await handle.stat();
-      if (!stat.isFile()) { await handle.close(); throw longEpisodeVideosInvalid(); }
-      response.type("video/mp4");
-      response.setHeader("Content-Disposition", `inline; filename="scene${scene}.mp4"`);
-      response.setHeader("Content-Length", String(stat.size));
-      response.setHeader("X-Content-Type-Options", "nosniff");
-      return new StreamableFile(handle.createReadStream());
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-      throw longEpisodeVideosInvalid();
-    }
+    return streamStoredFile({
+      path: content.path,
+      contentType: "video/mp4",
+      filename: `scene${scene}.mp4`,
+      request, response,
+      unavailable: () => longEpisodeVideosInvalid(),
+    })
   }
   @Get(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/videos/preview`) preview(@Param("projectId") id: string, @Param("episodeNumber") number: string): Promise<GetLongEpisodeVideoPreviewResponse> { return this.service.preview(id, Number(number)); }
   @Post(`${API_ROUTES.longProjects}/:projectId/episodes/:episodeNumber/videos/generations`) async start(@Param("projectId") id: string, @Param("episodeNumber") number: string, @Body() body: StartLongEpisodeVideoGenerationRequest): Promise<StartLongEpisodeVideoGenerationResponse> { const started = await this.service.start(id, Number(number), body); void this.service.run(id, Number(number), started.jobId).catch(() => undefined); return started; }
