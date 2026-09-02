@@ -409,6 +409,35 @@ describe("local FFmpeg video merge", () => {
       expect(calls.find((args) => args.includes("-stream_loop"))!.join(" ")).toContain("volume=0.25");
     });
 
+    /**
+     * Every mode the merge can write, read back off disk.
+     *
+     * `"bgm"` was writable and unreadable at the same time: the merge accepted it and stored it, and the
+     * storage schema's own list of legal modes did not have it, so `findById` threw PROJECT_DATA_INVALID and
+     * the list route dropped the project silently. A finished Reel vanished off the screen with no error
+     * anywhere (Cowork Round 436).
+     *
+     * Both halves were tested. The merge tests above assert what `merge()` returns, which is its in-memory
+     * result; the schema tests assert what the reader accepts. Nothing wrote a project and then opened it,
+     * which is the only place the disagreement lives — the same shape as the BGM upload's own two defects
+     * (docs/06_DECISIONS.md D-031).
+     */
+    it("writes a project every mode can read back — the seam the two halves' own tests never crossed", async () => {
+      for (const mode of ["silent", "narration", "narration+bgm", "bgm"] as const) {
+        const { projectsRoot, projects, root } = await setup();
+        if (mode === "narration" || mode === "narration+bgm") await withNarration(projects, projectsRoot, true);
+        const { audioLibrary, uploaded, mergeRunner } = await withTrack(root);
+        const service = new LocalVideoMergeService(projects, projectsRoot, mergeRunner, audioLibrary);
+        const needsTrack = mode === "narration+bgm" || mode === "bgm";
+
+        await service.merge("video_merge", { audio: { mode, ...(needsTrack ? { trackId: uploaded.track.trackId } : {}) } });
+
+        const reopened = await projects.findById("video_merge");
+        expect(reopened.used_audio?.mode).toBe(mode);
+        expect((await projects.list()).map((summary) => summary.project_id)).toContain("video_merge");
+      }
+    });
+
     it("refuses music with no track named, the same way narration+bgm does", async () => {
       const { projectsRoot, projects } = await setup();
 

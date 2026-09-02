@@ -2,11 +2,20 @@ import * as fsPromises from "node:fs/promises";
 import { reRootedPath } from "./re-rooted-path.js";
 import * as path from "node:path";
 
+import { Logger, type LoggerService } from "@nestjs/common";
+
 import { atomicWriteUtf8File } from "./atomic-file.js";
 import { archiveProjectDirectory, deleteArchivedProjectDirectory, listArchivedProjectDirectories, restoreProjectDirectory } from "./project-archive.js";
 import { dataInvalid, jsonMalformed, projectAlreadyExists, projectNotFound, storageError } from "./project-api.error.js";
 import { resolveSafeProjectDirectory } from "./project-id.js";
 import { parseStoredProject, type StoredProject } from "./project-storage.schema.js";
+
+/** The API error's own message when there is one — it already says which field was wrong, and it is written to be safe to show (no filesystem paths). */
+function reasonFor(error: unknown): string {
+  const response = (error as { response?: unknown } | undefined)?.response;
+  if (isObject(response) && typeof response.message === "string") return response.message;
+  return error instanceof Error && error.message ? error.message : "unknown error";
+}
 
 function errorCode(error: unknown): string | undefined {
   return typeof error === "object" && error !== null && "code" in error
@@ -30,6 +39,8 @@ export class LocalProjectRepository {
     private readonly moveDirectory: ArchiveDirectory = archiveProjectDirectory,
     private readonly restoreDirectory: ArchiveDirectory = restoreProjectDirectory,
     private readonly removeArchivedDirectory: ArchiveDirectory = deleteArchivedProjectDirectory,
+    /** Optional so every existing `new LocalProjectRepository(root)` keeps working, and so a test can read what was skipped — same shape as instagram-targets.controller.ts's own logger parameter. */
+    private readonly logger: Pick<LoggerService, "warn"> = new Logger("ProjectStorage"),
   ) {}
 
   async archive(projectId: string): Promise<void> {
@@ -209,10 +220,15 @@ export class LocalProjectRepository {
   }
 
   /**
-   * Returns every readable, valid short project. Matches
-   * MemoryManager.list_projects(): entries that fail to load (corrupt JSON,
-   * unsafe directory name, unknown/invalid fields) are silently skipped
-   * rather than failing the whole listing.
+   * Returns every readable, valid short project. Matches MemoryManager.list_projects(): an entry that fails to
+   * load (corrupt JSON, unsafe directory name, unknown/invalid fields) is skipped rather than failing the whole
+   * listing — one damaged project must not take the other twenty off the screen.
+   *
+   * Skipped is no longer the same as silent. A schema disagreement dropped a finished project out of this list
+   * with no error anywhere, and what the person saw was their completed work having disappeared; their first
+   * words were "where did it go" (Cowork Round 436). The listing still succeeds, but the reason each entry was
+   * dropped is now written down, because a store that cannot read its own files should never be the only party
+   * that knows.
    */
   async list(): Promise<StoredProject[]> {
     let entries: string[];
@@ -227,12 +243,17 @@ export class LocalProjectRepository {
     }
 
     const results: StoredProject[] = [];
+    const skipped: string[] = [];
     for (const name of entries) {
       try {
         results.push(await this.findById(name));
-      } catch {
+      } catch (error) {
+        skipped.push(`${name} (${reasonFor(error)})`);
         continue;
       }
+    }
+    if (skipped.length > 0) {
+      this.logger.warn(`Skipped ${skipped.length} unreadable project(s) in the listing: ${skipped.join("; ")}`);
     }
     return results;
   }

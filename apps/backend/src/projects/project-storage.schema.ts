@@ -48,9 +48,20 @@ export interface StoredProject {
   mapping_revision: number;
 }
 
+/**
+ * The merge's four audio modes, as data rather than as a type alone.
+ *
+ * The union used to be written out here and the reader's accepted set written out again 200 lines below, and
+ * they disagreed: `"bgm"` was a legal mode to merge with and an illegal one to read back. So a project merged
+ * with music and no narration was written, and then could never be opened again — `GET /projects/<id>` answered
+ * PROJECT_DATA_INVALID and the list route dropped it, which is a finished project disappearing off the screen
+ * (Cowork Round 436). One list now, with the type derived from it, so the two cannot drift again.
+ */
+export const USED_AUDIO_MODES = ["narration", "narration+bgm", "bgm", "silent"] as const;
+
 /** What the most recently completed merge actually used — see ProjectSummary.usedAudio's own doc comment for why attribution is copied by value here rather than kept as a live reference to the track. */
 export interface StoredUsedAudio {
-  mode: "narration" | "narration+bgm" | "bgm" | "silent";
+  mode: (typeof USED_AUDIO_MODES)[number];
   track_id?: string;
   attribution_required?: boolean;
   attribution_text?: string;
@@ -254,8 +265,6 @@ function instagramPostField(data: Record<string, unknown>): StoredInstagramPost 
   return instagramPostAt(key, data[key]);
 }
 
-const USED_AUDIO_MODES: ReadonlySet<string> = new Set(["narration", "narration+bgm", "silent"]);
-
 function usedAudioField(data: Record<string, unknown>): StoredUsedAudio | null {
   const key = "used_audio";
   if (!(key in data) || data[key] === null) {
@@ -266,8 +275,9 @@ function usedAudioField(data: Record<string, unknown>): StoredUsedAudio | null {
     throw dataInvalid(`Field "${key}" must be an object or null.`);
   }
   const record = value as Record<string, unknown>;
-  if (typeof record.mode !== "string" || !USED_AUDIO_MODES.has(record.mode)) {
-    throw dataInvalid(`Field "${key}.mode" must be narration, narration+bgm, or silent.`);
+  // The message lists the same array the check reads, so a mode that is legal can never be described as illegal.
+  if (typeof record.mode !== "string" || !(USED_AUDIO_MODES as readonly string[]).includes(record.mode)) {
+    throw dataInvalid(`Field "${key}.mode" must be one of ${USED_AUDIO_MODES.join(", ")}.`);
   }
   if (record.track_id !== undefined && typeof record.track_id !== "string") {
     throw dataInvalid(`Field "${key}.track_id" must be a string.`);

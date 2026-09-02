@@ -293,6 +293,26 @@ describe("LocalProjectRepository", () => {
     expect(listed.map((project) => project.project_id)).toEqual(["good_project"]);
   });
 
+  // Skipping is right — one damaged project must not take the rest off the screen. Doing it silently is not:
+  // a schema disagreement dropped a finished project out of this list with no error anywhere, and what the
+  // person saw was their completed work having vanished (Cowork Round 436).
+  it("says which entries it skipped and why, instead of dropping them silently", async () => {
+    const warnings: string[] = [];
+    const quiet = new LocalProjectRepository(root, undefined, undefined, undefined, undefined, { warn: (message: unknown) => { warnings.push(String(message)); } });
+    await quiet.create(createStoredProject("good_project", "topic", "2026-08-21T00:00:00.000Z"));
+    await fsPromises.mkdir(path.join(root, "broken_project"), { recursive: true });
+    await fsPromises.writeFile(path.join(root, "broken_project", "project.json"), "{broken", "utf8");
+
+    expect((await quiet.list()).map((project) => project.project_id)).toEqual(["good_project"]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("broken_project");
+    // Nothing is logged when every project reads, so the line means something when it appears.
+    warnings.length = 0;
+    await fsPromises.rm(path.join(root, "broken_project"), { recursive: true, force: true });
+    await quiet.list();
+    expect(warnings).toEqual([]);
+  });
+
   it("reads the paths a project recorded as places under the root it is being read from", async () => {
     // The learning-data root moves: the desktop shell keeps it in apps/backend during development and under
     // userData once packaged, migrating the whole directory across on the first packaged launch. These paths are
