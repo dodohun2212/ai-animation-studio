@@ -22,6 +22,9 @@ const SAFE_ERRORS: Record<string, string> = {
   INVALID_REQUEST: "요청 형식이 올바르지 않습니다.",
   INSTAGRAM_ALREADY_PUBLISHED: "이 영상은 이미 게시되었습니다. 다시 올리면 같은 영상이 두 번 올라갑니다.",
   INSTAGRAM_VIDEO_UNAVAILABLE: "올릴 최종 영상이 없습니다. 영상을 먼저 합쳐 주세요.",
+  /* Deliberately not the sentence above. "영상을 먼저 합쳐 주세요" would tell someone to start the very job that
+     is already running, and the file they would publish mid-render is neither the old cut nor the new one. */
+  INSTAGRAM_VIDEO_RENDERING: "영상을 지금 다시 만드는 중입니다. 끝나면 올릴 수 있습니다.",
   INSTAGRAM_NOT_CONNECTED: "인스타그램 로그인이 만료되었습니다. API 설정에서 다시 로그인해 주세요.",
   INSTAGRAM_TARGET_NOT_FOUND: "고른 계정으로는 지금 올릴 수 없습니다. 계정을 다시 골라 주세요.",
   INSTAGRAM_PUBLISH_FAILED: "올리지 못했습니다. 아무것도 게시되지 않았으니 다시 시도해도 됩니다.",

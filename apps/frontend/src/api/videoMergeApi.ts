@@ -21,6 +21,11 @@ const SAFE_ERRORS: Record<string, string> = {
   // Whether a re-merge should be allowed at all is a separate, product question; until it is, saying the true
   // reason is the least this can do.
   VIDEO_MERGE_ALREADY_COMPLETED: "이미 최종 영상이 만들어진 프로젝트입니다. 다시 만들려면 먼저 지금 영상을 정리해 주세요.",
+  /* Not a refusal to fix — nothing is wrong and nothing changed. Something else is holding this exact file
+     right now (a publish reading its bytes, or another render writing them), and the only correct move is to
+     wait a moment. Saying "다시 시도" without saying that reads as "it failed", which sends people looking for
+     a cause that does not exist. */
+  VIDEO_MERGE_BUSY: "지금 이 영상을 다른 곳에서 쓰는 중입니다 — 게시 중이거나 새로 만드는 중입니다. 잠시 뒤에 다시 눌러 주세요.",
   VIDEO_MERGE_CLIPS_INVALID: "승인된 장면 영상 파일을 확인할 수 없습니다. 영상 검토 화면에서 장면을 다시 확인해 주세요.",
   FFMPEG_UNAVAILABLE: "이 컴퓨터에서 로컬 영상 병합 프로그램을 사용할 수 없습니다. 설치 상태를 확인해 주세요.",
   VIDEO_MERGE_FAILED: "로컬 영상 병합에 실패했습니다. 승인된 장면 영상은 그대로 보존됩니다.",

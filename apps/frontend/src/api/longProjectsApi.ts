@@ -191,6 +191,9 @@ export function episodeSceneErrorMessage(code: string | undefined): string {
 /** Never surfaces the backend's raw message or details text — only a fixed, safe message per code. */
 const LONG_EPISODE_MERGE_ERRORS: Record<string, string> = {
   LONG_EPISODE_MERGE_NOT_ALLOWED: "에피소드의 장면 영상이 모두 승인되어야 최종 영상을 만들 수 있습니다.",
+  /* Same meaning as the short project's VIDEO_MERGE_BUSY: this episode's final video is being read or written
+     somewhere else at this moment, nothing failed, and waiting is the whole fix. */
+  LONG_EPISODE_MERGE_BUSY: "지금 이 회차 영상을 다른 곳에서 쓰는 중입니다 — 게시 중이거나 새로 만드는 중입니다. 잠시 뒤에 다시 눌러 주세요.",
   LONG_EPISODE_MERGE_CLIPS_INVALID: "승인된 에피소드 장면 영상이 아직 병합할 수 있는 상태가 아닙니다.",
   LONG_EPISODE_FFMPEG_UNAVAILABLE: "이 컴퓨터에서 영상 병합 프로그램을 실행할 수 없습니다.",
   LONG_EPISODE_MERGE_FAILED: "최종 영상 만들기를 끝내지 못했습니다. 승인된 장면들은 그대로 남아 있습니다.",
