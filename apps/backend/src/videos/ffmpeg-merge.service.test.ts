@@ -454,16 +454,19 @@ describe("FfmpegMergeEngine.merge holds a still for the time it was asked for", 
     const similarity = Number(/All:([0-9.]+)/.exec(stderr)?.[1] ?? "1");
     expect(similarity).toBeLessThan(0.999);
 
-    // And it goes where a subtitle goes. Measured by cropping: with the quote, the bottom band is many times
-    // the size of the same band without it, while the middle band is unchanged — which is also how I found out
-    // that a second line I thought I saw in the middle of a frame was not there.
+    // And it goes where a photo card's text now goes, which is not where it used to. Measured by cropping: the
+    // band around 0.40 of the height is many times the size of the same band without the quote, and the bottom
+    // band — where this used to draw, under the Reels caption and buttons — is left as empty as a blank frame.
+    //
+    // This pair asserted the opposite until the card got its own layout, and passing then was the defect: the
+    // text was rendered exactly where the platform covers it (Cowork Round 434, 캡틴D: "자막이 너무 아래다").
     const band = async (frame: string, y: number) => {
       const target = path.join(root, `${path.basename(frame, ".png")}-${y}.png`);
       await runMediaCommand(["ffmpeg", "-y", "-i", frame, "-vf", `crop=1080:260:0:${y}`, target]);
       return (await fs.stat(target)).size;
     };
-    expect(await band(withQuote, 1660)).toBeGreaterThan(await band(plain, 1660) * 3);
-    expect(await band(withQuote, 580)).toBeLessThan(await band(plain, 580) * 3);
+    expect(await band(withQuote, 640)).toBeGreaterThan(await band(plain, 640) * 3);
+    expect(await band(withQuote, 1660)).toBeLessThan(await band(plain, 1660) * 3);
   }, 120000);
 
 

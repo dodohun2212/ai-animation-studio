@@ -159,7 +159,11 @@ export class FfmpegMergeEngine {
       let filter = baseFilter;
       if (scene.subtitleText) {
         const assPath = path.join(normalizedDirectory, `scene${index + 1}.ass`);
-        await fs.writeFile(assPath, sceneSubtitleAss(scene.subtitleText, clipDurationSeconds, width, height), "utf8");
+        // A still is a photo card (see the input shape below), and a card's text is the whole point of the
+        // frame rather than a caption under the action — it gets its own layout. Nothing new has to be threaded
+        // through for that: the field that says "this is a still" is already here.
+        const layout = scene.stillDurationSeconds === undefined ? "scene" : "photo-card";
+        await fs.writeFile(assPath, sceneSubtitleAss(scene.subtitleText, clipDurationSeconds, width, height, layout), "utf8");
         filter += `,subtitles='${escapeForFfmpegFilterPath(assPath)}':fontsdir='${escapeForFfmpegFilterPath(this.fontsDir)}'`;
       }
       // A still is looped for its own held duration and given the slow zoom before the shared filter runs; a

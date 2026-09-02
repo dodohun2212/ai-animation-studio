@@ -17,11 +17,18 @@ const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
 let root: string | undefined;
 afterEach(async () => { vi.unstubAllGlobals(); if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 
-function runner(calls: string[][]): MediaCommandRunner {
+function runner(calls: string[][], writtenAss: Map<string, string> = new Map()): MediaCommandRunner {
   return async (args) => {
     const list = [...args]; calls.push(list);
     if (list[0] === "ffprobe") return { stdout: JSON.stringify({ streams: [{ codec_type: "video" }], format: { duration: "5" } }), stderr: "" };
-    await fs.writeFile(list.at(-1)!, Buffer.from("rendered"));
+    const output = list.at(-1)!;
+    // The merge deletes its working directory afterwards, so a subtitle file can only be read from inside the
+    // run that wrote it - same reason video-merge.service.test.ts captures them here rather than after.
+    const directory = path.dirname(output);
+    for (const name of (await fs.readdir(directory).catch(() => [] as string[])).filter((item) => item.endsWith(".ass"))) {
+      writtenAss.set(name, await fs.readFile(path.join(directory, name), "utf8"));
+    }
+    await fs.writeFile(output, Buffer.from("rendered"));
     return { stdout: "", stderr: "" };
   };
 }
@@ -97,6 +104,29 @@ describe("PhotoCardService", () => {
     expect(normalize).toContain("-loop");
     expect(normalize[normalize.indexOf("-vf") + 1]).toContain("zoompan");
     expect(used).toBeTruthy();
+  });
+
+  /**
+   * The card's own subtitle layout, asserted on the file the merge actually writes.
+   *
+   * Everything about that layout can be right in subtitle-file.ts and never reach a card: the branch is chosen
+   * at the burn site, from the field that marks a still. So this reads the .ass the merge wrote, which is the
+   * only place the two meet — 캡틴D's complaint was about a rendered video, not about a function.
+   */
+  it("burns the card's text in the card's own layout, not the scene caption's", async () => {
+    const { projectsRoot, projects, service, asset } = await setup();
+    vi.stubGlobal("fetch", () => { throw new Error("a photo card must not reach a provider"); });
+    await service.create({ ...body(asset.asset_id), quote: "불광불급\n미치지 않으면 미치지 못한다" });
+    const written = new Map<string, string>();
+
+    await new LocalVideoMergeService(projects, projectsRoot, runner([], written)).merge("card_one");
+
+    const ass = [...written.values()][0]!;
+    expect(ass).toContain("Noto Serif KR");
+    expect(ass).toContain("\\pos(");
+    // Above the middle of the frame, which is the whole reason this layout exists.
+    const y = Number(/\\pos\(\d+,(\d+)\)/.exec(ass)![1]);
+    expect(y).toBeLessThan(1920 * 0.5);
   });
 
   /** The counterpart: an ordinary project still needs its clips and its approved reviews. */
