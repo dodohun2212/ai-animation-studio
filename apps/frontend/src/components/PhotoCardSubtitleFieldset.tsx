@@ -3,7 +3,9 @@ import {
   DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT,
   PHOTO_CARD_HEADING_RATIO,
   PHOTO_CARD_SUBTITLE_CENTER,
+  PHOTO_CARD_SUBTITLE_OUTLINE,
   PHOTO_CARD_SUBTITLE_SCALE,
+  PHOTO_CARD_SUBTITLE_SHADOW,
   photoCardSubtitleGeometry,
   splitPhotoCardSubtitle,
 } from "@ai-animation-studio/shared";
@@ -48,10 +50,18 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, vertical, layout, 
   // `bodyY` is the block's centre; the lines are laid out from it so the block stays centred as lines are added.
   const firstBodyY = g.bodyY - (g.lineGap * Math.max(0, bodyLines.length - 1)) / 2;
   const atDefault = layout.scale === DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT.scale && layout.center === DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT.center;
-  // Scaled from the renderer's Outline 4 / Shadow 2 at 1920. A stroke that stays 4px wide in a 420px preview
-  // would be a thick black border around every letter and would read as a different design.
-  const stroke = Math.max(1, Math.round((4 * height) / REFERENCE_HEIGHT));
-  const shadow = `0 0 ${stroke}px #000, ${stroke}px ${stroke}px ${stroke * 2}px rgba(0,0,0,0.85), -${stroke}px 0 ${stroke}px #000, ${stroke}px 0 ${stroke}px #000, 0 -${stroke}px ${stroke}px #000, 0 ${stroke}px ${stroke}px #000`;
+  /*
+   * The edge, approximated rather than reproduced.
+   *
+   * libass strokes a glyph outline; CSS can only stack shadows, so these two cannot draw the same thing and
+   * pretending otherwise would be worse than saying so (the note under the preview does). What is shared is
+   * the width: an outline that stayed 4px in a 420px box would be a black slab around every letter, so it is
+   * scaled to this frame — but the 4 and the 2 are read from the renderer's own constants, or a change there
+   * would leave this preview quietly describing the previous design.
+   */
+  const stroke = Math.max(1, Math.round((PHOTO_CARD_SUBTITLE_OUTLINE * height) / REFERENCE_HEIGHT));
+  const drop = Math.max(1, Math.round((PHOTO_CARD_SUBTITLE_SHADOW * height) / REFERENCE_HEIGHT));
+  const shadow = `0 0 ${stroke}px #000, ${drop}px ${drop}px ${stroke * 2}px rgba(0,0,0,0.85), -${stroke}px 0 ${stroke}px #000, ${stroke}px 0 ${stroke}px #000, 0 -${stroke}px ${stroke}px #000, 0 ${stroke}px ${stroke}px #000`;
 
   const margin = g.margin;
 
