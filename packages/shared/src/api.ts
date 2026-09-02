@@ -1635,6 +1635,19 @@ export interface MergeAudioSettings {
 /** Omitted entirely (not just `audio` omitted) falls back to the same narrationAvailable-derived default as an explicit request would compute server-side — see MergeAudioSettings's doc comment. */
 export interface MergeVideosRequest {
   audio?: MergeAudioSettings;
+  /**
+   * Photo cards only: where the card's text goes in the video this merge is about to make.
+   *
+   * Carried on the merge rather than saved through a settings route of its own, so a value is stored only at
+   * the moment it is actually used — an adjustment made and then abandoned never comes back to change a later
+   * video. What is stored comes back as {@link ProjectSummary.subtitleLayout}, so merging the same card again
+   * starts from the layout it already has instead of the defaults.
+   *
+   * Either number may be omitted, and the omitted one keeps whatever the card is already using. Out of range is
+   * refused, never clamped (see PhotoCardSubtitleLayout). Sent for an ordinary project, it is refused too: the
+   * scene subtitle has no such control and silently ignoring the field would let a screen believe it had one.
+   */
+  subtitleLayout?: { scale?: number; center?: number };
 }
 
 /** The local FFmpeg render result never exposes an absolute filesystem path. */

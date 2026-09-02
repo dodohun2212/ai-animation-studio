@@ -6,7 +6,7 @@ import type { ShortProjectSettings } from "@ai-animation-studio/shared";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PHOTO_CARD_QUOTE_MAX_LENGTH, WorkflowState } from "@ai-animation-studio/shared";
+import { PHOTO_CARD_QUOTE_MAX_LENGTH, PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE, WorkflowState } from "@ai-animation-studio/shared";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { LocalProjectRepository } from "./projects.repository.js";
 import { PhotoCardService } from "./photo-card.service.js";
@@ -127,6 +127,84 @@ describe("PhotoCardService", () => {
     // Above the middle of the frame, which is the whole reason this layout exists.
     const y = Number(/\\pos\(\d+,(\d+)\)/.exec(ass)![1]);
     expect(y).toBeLessThan(1920 * 0.5);
+  });
+
+  /**
+   * The card's text moves where the person put it, and stays there.
+   *
+   * Both halves matter and they fail differently: a layout that reaches the render but is never stored means
+   * the next merge quietly undoes the adjustment, and one that is stored but never reaches the render means the
+   * screen shows a number the video was not made from. So this reads the .ass the merge wrote *and* reopens the
+   * project afterwards (Cowork Round 435, 캡틴D: "내가 프로그램에서 조정할 수 있게 못하나?").
+   */
+  it("renders the card at the layout it was given, and remembers it for the next merge", async () => {
+    const { projectsRoot, projects, service, asset } = await setup();
+    vi.stubGlobal("fetch", () => { throw new Error("a photo card must not reach a provider"); });
+    await service.create({ ...body(asset.asset_id), quote: "불광불급\n미치지 않으면 미치지 못한다" });
+    const first = new Map<string, string>();
+
+    const merged = await new LocalVideoMergeService(projects, projectsRoot, runner([], first))
+      .merge("card_one", { subtitleLayout: { scale: 0.04, center: 0.25 } });
+
+    const ass = [...first.values()][0]!;
+    expect(ass).toContain(`,${Math.round(1920 * 0.04)},`); // the body size it asked for
+    expect(Number(/\\pos\(\d+,(\d+)\)/.exec(ass)![1])).toBeLessThan(1920 * 0.3);
+    expect(merged.project.subtitleLayout).toEqual({ scale: 0.04, center: 0.25 });
+
+    // And a card that already holds a layout renders at it without being told again — the merge that stores it
+    // is not the merge that has to be handed it. (A second merge of the same card is refused for another
+    // reason entirely: its final video already exists.)
+    const stored = await projects.findById("card_one");
+    expect(stored.lore_context.subtitle_scale).toBe(0.04);
+    await service.create({ ...body(asset.asset_id), projectId: "card_two", quote: "불광불급" });
+    const remembered = await projects.findById("card_two");
+    remembered.lore_context = { ...remembered.lore_context, subtitle_scale: 0.04, subtitle_center: 0.25 };
+    await projects.save(remembered);
+    const second = new Map<string, string>();
+
+    await new LocalVideoMergeService(projects, projectsRoot, runner([], second)).merge("card_two");
+
+    expect([...second.values()][0]!).toContain(`,${Math.round(1920 * 0.04)},`);
+  });
+
+  it("hands a card that has never been adjusted the published defaults, not an empty field", async () => {
+    const { service, asset } = await setup();
+    vi.stubGlobal("fetch", () => { throw new Error("a photo card must not reach a provider"); });
+
+    const created = await service.create(body(asset.asset_id));
+
+    expect(created.project.subtitleLayout).toEqual({
+      scale: PHOTO_CARD_SUBTITLE_SCALE.default,
+      center: PHOTO_CARD_SUBTITLE_CENTER.default,
+    });
+  });
+
+  // Clamping was the alternative, and it is how a screen ends up showing one number while the video was made
+  // from another — with nothing anywhere saying so.
+  it("refuses a layout outside the published range instead of quietly correcting it", async () => {
+    const { projectsRoot, projects, service, asset } = await setup();
+    vi.stubGlobal("fetch", () => { throw new Error("a photo card must not reach a provider"); });
+    await service.create(body(asset.asset_id));
+    const merge = new LocalVideoMergeService(projects, projectsRoot, runner([]));
+
+    await expect(merge.merge("card_one", { subtitleLayout: { center: 1.5 } }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(merge.merge("card_one", { subtitleLayout: { scale: 0.2 } }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    // And nothing was written on the way to being refused.
+    expect((await projects.findById("card_one")).lore_context.subtitle_center).toBeUndefined();
+  });
+
+  // An ordinary project has no such control: its subtitle stays at the bottom, out of the action. Ignoring the
+  // field would let a screen believe it had a knob that does nothing.
+  it("refuses the layout for an ordinary project rather than ignoring it", async () => {
+    const { projectsRoot, projects } = await setup();
+    const ordinary = createStoredProject("ordinary", "topic", "2026-08-23T00:00:00.000Z");
+    ordinary.workflow_state = WorkflowState.VideosApproved;
+    await projects.create(ordinary);
+
+    await expect(new LocalVideoMergeService(projects, projectsRoot, runner([])).merge("ordinary", { subtitleLayout: { center: 0.4 } }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
   /** The counterpart: an ordinary project still needs its clips and its approved reviews. */

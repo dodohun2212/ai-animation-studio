@@ -150,6 +150,18 @@ export interface ProjectSummary {
    */
   photoCard?: boolean;
   /**
+   * Where this card's text sits and how big it is — the values its last merge used, or the defaults for a card
+   * that has never been merged with a choice.
+   *
+   * Present only for a photo card. Ordinary projects have no such control: their subtitle stays at the bottom,
+   * because raising it would cover the action the shot exists to show.
+   *
+   * Sent so the screen that offers the control starts from what the video actually looks like, and so a card
+   * merged again does not silently go back to the defaults — the person adjusted it once. See
+   * {@link PHOTO_CARD_SUBTITLE_SCALE} for the numbers and the reasoning.
+   */
+  subtitleLayout?: PhotoCardSubtitleLayout;
+  /**
    * Same source and priority as video-preview.service.ts's ratioFor()/image-prompt.ts's imageSizeFor()
    * (style_profile.aspect, "16:9" vs anything else defaulting to vertical) — added here so every screen that
    * needs to know this project's shape (a review thumbnail's aspect box, a video library card) reads the one
@@ -223,6 +235,53 @@ export interface Project extends ProjectSummary {
   currentVideoJobId?: string;
   warnings: string[];
   errors: string[];
+}
+
+/**
+ * A photo card's subtitle size and position, as fractions of the frame height.
+ *
+ * Fractions, not pixels: the same card is rendered at 1080x1920 or 1920x1080, and a pixel size would mean two
+ * different-looking videos from one setting.
+ *
+ * Two handles, not three. The heading size is derived from the body (`* 1.4`) rather than set on its own —
+ * three handles can be turned into a combination that does not fit together, and nothing on screen would say
+ * so. The defaults are the pair 캡틴D chose from rendered drafts (52px body / 73px heading at 1920).
+ *
+ * The bounds are refusals, not clamps: a request outside them is rejected rather than quietly corrected, so a
+ * screen can never send one number and get a video made from another (see the storage-schema drift in CLI
+ * Round 437 for what silent disagreement between two layers costs).
+ */
+export interface PhotoCardSubtitleLayout {
+  /** Body text height as a fraction of frame height. */
+  scale: number;
+  /** Vertical centre of the whole text block as a fraction of frame height. */
+  center: number;
+}
+
+/** Body size: 0.027 of frame height is 52px at 1920. The range is "readable at a glance" to "a third of the frame", both ends tried on real cards. */
+export const PHOTO_CARD_SUBTITLE_SCALE = { default: 0.027, min: 0.020, max: 0.050 } as const;
+/**
+ * Block centre: 0.40 of frame height.
+ *
+ * Not the bottom, which is where subtitles were and where Reels puts its caption, account name and buttons —
+ * the text was rendered under the platform's own interface and could not be read at all. Not dead centre
+ * either: the last line landed under the right-hand button column. The range stays clear of both edges of the
+ * frame; it is "not covered, and near the picture's focus", not a measured optimum.
+ */
+export const PHOTO_CARD_SUBTITLE_CENTER = { default: 0.40, min: 0.15, max: 0.85 } as const;
+
+/** The layout a card gets when nobody has chosen one. */
+export const DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT: PhotoCardSubtitleLayout = {
+  scale: PHOTO_CARD_SUBTITLE_SCALE.default,
+  center: PHOTO_CARD_SUBTITLE_CENTER.default,
+};
+
+/** True when both numbers are real, finite and inside their published ranges — the one definition both the server's refusal and the screen's own check read. */
+export function isPhotoCardSubtitleLayout(value: unknown): value is PhotoCardSubtitleLayout {
+  if (typeof value !== "object" || value === null) return false;
+  const { scale, center } = value as { scale?: unknown; center?: unknown };
+  return typeof scale === "number" && Number.isFinite(scale) && scale >= PHOTO_CARD_SUBTITLE_SCALE.min && scale <= PHOTO_CARD_SUBTITLE_SCALE.max
+    && typeof center === "number" && Number.isFinite(center) && center >= PHOTO_CARD_SUBTITLE_CENTER.min && center <= PHOTO_CARD_SUBTITLE_CENTER.max;
 }
 
 export interface ApiUsageRecord {

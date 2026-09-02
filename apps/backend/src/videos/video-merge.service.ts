@@ -3,9 +3,9 @@ import { isPlaceholderClip } from "./placeholder-clip.js";
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import { sceneNumbersFor, WorkflowState, type MergeVideosResponse, type SceneNumber } from "@ai-animation-studio/shared";
+import { isPhotoCardSubtitleLayout, PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE, sceneNumbersFor, WorkflowState, type MergeVideosResponse, type PhotoCardSubtitleLayout, type SceneNumber } from "@ai-animation-studio/shared";
 
-import { photoCardFor, toApiProject } from "../projects/project.mapper.js";
+import { photoCardFor, storedSubtitleLayout, toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject, StoredUsedAudio } from "../projects/project-storage.schema.js";
@@ -65,12 +65,40 @@ const usesBgm = (mode: string): boolean => mode === "narration+bgm" || mode === 
  */
 const defaultBgmVolume = (mode: string): number => (mode === "bgm" ? 1 : DEFAULT_BGM_VOLUME);
 
+/**
+ * This merge's subtitle layout for a photo card: what was asked for, on top of what the card already uses.
+ *
+ * Merged with the stored values rather than with the defaults, so sending only one number moves only that one
+ * and leaves the other where the person put it last time.
+ *
+ * Out of range is refused. Clamping was the alternative and it is the same shape of defect as the storage
+ * schema that accepted a mode it could not read back: the screen would send one number, the video would be made
+ * from another, and nothing anywhere would say so. A card is also the only project this means anything for —
+ * sending it for an ordinary project is refused rather than ignored, because ignoring it would let a screen
+ * believe it had a control it does not have.
+ */
+function resolveSubtitleLayout(project: StoredProject, request: unknown): PhotoCardSubtitleLayout {
+  const stored = storedSubtitleLayout(project);
+  if (!isObject(request) || request.subtitleLayout === undefined) return stored;
+  if (!photoCardFor(project)) throw videoMergeInvalidRequest("subtitleLayout applies to photo cards only.");
+  const asked = request.subtitleLayout;
+  if (!isObject(asked) || Object.keys(asked).some((key) => !["scale", "center"].includes(key))) throw videoMergeInvalidRequest();
+  const merged = {
+    scale: asked.scale === undefined ? stored.scale : asked.scale,
+    center: asked.center === undefined ? stored.center : asked.center,
+  };
+  if (!isPhotoCardSubtitleLayout(merged)) {
+    throw videoMergeInvalidRequest(`subtitleLayout.scale must be ${PHOTO_CARD_SUBTITLE_SCALE.min}-${PHOTO_CARD_SUBTITLE_SCALE.max} and subtitleLayout.center ${PHOTO_CARD_SUBTITLE_CENTER.min}-${PHOTO_CARD_SUBTITLE_CENTER.max}.`);
+  }
+  return merged;
+}
+
 function resolveAudioSettings(project: StoredProject, request: unknown): ResolvedAudioSettings {
   const narrationAvailable = narrationAvailableFor(project);
   const defaultMode: AudioMode = narrationAvailable && toShortProjectSettings(project).narrationEnabled ? "narration" : "silent";
   const fallback: ResolvedAudioSettings = { mode: defaultMode, volume: DEFAULT_BGM_VOLUME, fadeSeconds: DEFAULT_BGM_FADE_SECONDS };
   if (request === undefined) return fallback;
-  if (!isObject(request) || Object.keys(request).some((key) => key !== "audio")) throw videoMergeInvalidRequest();
+  if (!isObject(request) || Object.keys(request).some((key) => key !== "audio" && key !== "subtitleLayout")) throw videoMergeInvalidRequest();
   if (request.audio === undefined) return fallback;
   const audio = request.audio;
   if (!isObject(audio) || Object.keys(audio).some((key) => !["mode", "trackId", "volume", "fadeSeconds"].includes(key))) throw videoMergeInvalidRequest();
@@ -118,13 +146,13 @@ export class LocalVideoMergeService {
    * ShortProjectSettings.subtitlesEnabled's doc comment): a scene gets a subtitle whenever subtitlesEnabled is on
    * AND that scene has narration text, regardless of whether narration audio exists for it.
    */
-  private async mergeScenes(project: StoredProject, clips: readonly string[], scenes: readonly SceneNumber[], includeNarration: boolean, stillDurationSeconds?: number): Promise<MergeSceneInput[]> {
+  private async mergeScenes(project: StoredProject, clips: readonly string[], scenes: readonly SceneNumber[], includeNarration: boolean, stillDurationSeconds?: number, subtitleLayout?: PhotoCardSubtitleLayout): Promise<MergeSceneInput[]> {
     const settings = toShortProjectSettings(project);
     return Promise.all(scenes.map(async (scene, index) => {
       const file = project.generated_narrations[scene - 1];
       const narrationAudioPath = includeNarration && typeof file === "string" && (await fs.stat(file).then((stat) => stat.size > 0).catch(() => false)) ? file : null;
       const subtitleText = settings.subtitlesEnabled ? sceneValue(project.scenes[scene - 1], "narration") || null : null;
-      return { clip: clips[index]!, narrationAudioPath, subtitleText, ...(stillDurationSeconds !== undefined ? { stillDurationSeconds } : {}) };
+      return { clip: clips[index]!, narrationAudioPath, subtitleText, ...(stillDurationSeconds !== undefined ? { stillDurationSeconds, ...(subtitleLayout ? { subtitleLayout } : {}) } : {}) };
     }));
   }
 
@@ -216,6 +244,7 @@ export class LocalVideoMergeService {
   async merge(projectId: string, request?: unknown): Promise<MergeVideosResponse> {
     const project = await this.projects.findById(projectId.trim());
     const audio = resolveAudioSettings(project, request);
+    const subtitleLayout = resolveSubtitleLayout(project, request);
     // Resolved before any state changes or rendering work starts — an unknown/unavailable track should fail
     // fast, the same as approvedClips() failing fast on invalid clips below, not mid-render.
     let bgmPath: string | undefined;
@@ -237,7 +266,7 @@ export class LocalVideoMergeService {
       }
     }
     const cardScenes: SceneNumber[] = [1 as SceneNumber];
-    const mergeScenes = await this.mergeScenes(project, material.paths, material.stillDurationSeconds === undefined ? scenesFor(project) : cardScenes, audio.mode !== "silent", material.stillDurationSeconds);
+    const mergeScenes = await this.mergeScenes(project, material.paths, material.stillDurationSeconds === undefined ? scenesFor(project) : cardScenes, audio.mode !== "silent", material.stillDurationSeconds, subtitleLayout);
     const clipDurationSeconds = toShortProjectSettings(project).clipDurationSeconds;
     const rendering = { ...project, workflow_state: WorkflowState.Rendering, updated_at: new Date().toISOString() };
     try { await this.projects.save(rendering); } catch { throw videoMergeStorageError(); }
@@ -258,7 +287,12 @@ export class LocalVideoMergeService {
         ...(bgmAttribution?.attributionRequired !== undefined ? { attribution_required: bgmAttribution.attributionRequired } : {}),
         ...(bgmAttribution?.attributionText !== undefined ? { attribution_text: bgmAttribution.attributionText } : {}),
       };
-      const completed = { ...rendering, workflow_state: WorkflowState.Completed, updated_at: new Date().toISOString(), final_video_path: FINAL_VIDEO_PATH, used_audio: usedAudio };
+      // Written only here, after the render that used it: a layout the person tried and abandoned never comes
+      // back to change a later video, and a card merged again starts from what it actually looks like.
+      const loreContext = photoCardFor(rendering)
+        ? { ...rendering.lore_context, subtitle_scale: subtitleLayout.scale, subtitle_center: subtitleLayout.center }
+        : rendering.lore_context;
+      const completed = { ...rendering, lore_context: loreContext, workflow_state: WorkflowState.Completed, updated_at: new Date().toISOString(), final_video_path: FINAL_VIDEO_PATH, used_audio: usedAudio };
       await this.projects.save(completed);
       return { project: toApiProject(completed), finalVideoPath: FINAL_VIDEO_PATH };
     } catch (error) {

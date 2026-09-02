@@ -1,3 +1,5 @@
+import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, type PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
+
 const FONT_FAMILY = "Noto Sans KR";
 /**
  * The photo card's first line only. Named here, matched by libass against the file in `fonts/` — so the name
@@ -7,19 +9,10 @@ const FONT_FAMILY = "Noto Sans KR";
  */
 const QUOTE_FONT_FAMILY = "Noto Serif KR";
 
-/** Where a photo card's text sits and how big it is. Both are ratios of the frame height, so they hold at any output size. */
-export const PHOTO_CARD_SUBTITLE_SCALE = 0.027;
 /**
- * The vertical centre of the whole text block, as a fraction of frame height.
- *
- * Not the middle, and not the bottom. The bottom is where subtitles were (`MarginV` at 0.042 of height), and on
- * Reels the bottom fifth is covered by the caption, the account name and the buttons — the text was simply not
- * visible where it was. 0.40 is the closest point to the picture's own focus that the app's overlay does not
- * reach; dead centre put the last line under the right-hand button column. It is "not covered, and near the
- * focus", not a measured optimum — vertical-video gaze studies agree on centre-and-above and not on a number
- * (Cowork Round 434, who rendered the drafts and had 캡틴D choose between them).
+ * The numbers live in packages/shared because the screen that offers the control and the render that obeys it
+ * have to agree about them — including the bounds, which are refusals here and a slider's ends there.
  */
-export const PHOTO_CARD_SUBTITLE_CENTER = 0.40;
 
 /** ASS timestamp: H:MM:SS.CC (centiseconds), per the format's fixed field widths. */
 function timestamp(seconds: number): string {
@@ -46,8 +39,8 @@ function escapeDialogueText(text: string): string {
  * FILE is supplied at burn time via the `subtitles` filter's `fontsdir` option (see ffmpeg-merge.service.ts),
  * not embedded here.
  */
-export function sceneSubtitleAss(text: string, durationSeconds: number, width: number, height: number, layout: SubtitleLayout = "scene"): string {
-  if (layout === "photo-card") return photoCardSubtitleAss(text, durationSeconds, width, height);
+export function sceneSubtitleAss(text: string, durationSeconds: number, width: number, height: number, layout: SubtitleLayout = "scene", card: PhotoCardSubtitleLayout = DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT): string {
+  if (layout === "photo-card") return photoCardSubtitleAss(text, durationSeconds, width, height, card);
   const fontSize = Math.round(height * 0.033); // ~64px at a 1920-tall portrait frame, scales with resolution
   const margin = Math.round(height * 0.042);
   return [
@@ -92,16 +85,16 @@ export type SubtitleLayout = "scene" | "photo-card";
  * picked at 1920). `n5\pos` places each line by its own centre, so the block's position does not depend on
  * how many lines wrapped.
  */
-function photoCardSubtitleAss(text: string, durationSeconds: number, width: number, height: number): string {
+function photoCardSubtitleAss(text: string, durationSeconds: number, width: number, height: number, card: PhotoCardSubtitleLayout): string {
   const lines = text.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
   const hasQuote = lines.length >= 2;
   const bodyLines = hasQuote ? lines.slice(1) : lines;
-  const bodySize = Math.round(height * PHOTO_CARD_SUBTITLE_SCALE);
+  const bodySize = Math.round(height * card.scale);
   const headSize = Math.round(bodySize * 1.4);
   const headGap = Math.round(headSize * 1.6);
   const lineGap = Math.round(bodySize * 1.5);
   const blockHeight = (hasQuote ? headGap : 0) + lineGap * Math.max(0, bodyLines.length - 1);
-  const top = Math.round(height * PHOTO_CARD_SUBTITLE_CENTER) - Math.round(blockHeight / 2);
+  const top = Math.round(height * card.center) - Math.round(blockHeight / 2);
   const bodyY = top + (hasQuote ? headGap : 0) + Math.round((lineGap * Math.max(0, bodyLines.length - 1)) / 2);
   // `\pos` overrides the margins for placement but not for wrapping, so these still keep a long line off the
   // edges of the frame.

@@ -1,4 +1,4 @@
-import { WorkflowState, type Project, type ProjectSummary, type ProjectType, type Scene } from "@ai-animation-studio/shared";
+import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, isPhotoCardSubtitleLayout, WorkflowState, type PhotoCardSubtitleLayout, type Project, type ProjectSummary, type ProjectType, type Scene } from "@ai-animation-studio/shared";
 
 import { LEGACY_VIDEO_JOB_ID } from "../videos/legacy-job.js";
 
@@ -85,6 +85,26 @@ export function photoCardFor(stored: StoredProject): boolean {
   return stored.lore_context.photo_card === true;
 }
 
+/**
+ * The subtitle layout this card is using: what its last merge stored, filled in with the defaults for anything
+ * it has never set.
+ *
+ * Always answers with both numbers so no caller has to know which of them a given card happens to have written
+ * — an older card has neither, and it is not a different kind of card for that.
+ */
+export function storedSubtitleLayout(stored: StoredProject): PhotoCardSubtitleLayout {
+  const scale = stored.lore_context.subtitle_scale;
+  const center = stored.lore_context.subtitle_center;
+  const candidate = {
+    scale: typeof scale === "number" ? scale : DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT.scale,
+    center: typeof center === "number" ? center : DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT.center,
+  };
+  // A stored value outside the published range cannot have come from this app's own refusal, so it is a hand-
+  // edited file rather than a choice — the defaults are the honest answer, not a video made from a number the
+  // screen's own control could never produce.
+  return isPhotoCardSubtitleLayout(candidate) ? candidate : DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT;
+}
+
 export function toApiSummary(stored: StoredProject): ProjectSummary {
   return {
     id: stored.project_id,
@@ -95,7 +115,7 @@ export function toApiSummary(stored: StoredProject): ProjectSummary {
     updatedAt: stored.updated_at,
     aspectRatio: aspectRatioFor(stored),
     narrationAvailable: narrationAvailableFor(stored),
-    ...(photoCardFor(stored) ? { photoCard: true } : {}),
+    ...(photoCardFor(stored) ? { photoCard: true, subtitleLayout: storedSubtitleLayout(stored) } : {}),
     ...(usedAudioFor(stored) !== undefined ? { usedAudio: usedAudioFor(stored) } : {}),
     ...(stored.instagram_post ? { instagramPost: {
       mediaId: stored.instagram_post.media_id,

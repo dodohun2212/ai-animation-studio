@@ -2,7 +2,9 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE, sceneSubtitleAss } from "./subtitle-file.js";
+import { PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE } from "@ai-animation-studio/shared";
+
+import { sceneSubtitleAss } from "./subtitle-file.js";
 
 const HEIGHT = 1920;
 const WIDTH = 1080;
@@ -37,7 +39,7 @@ describe("photo card subtitles", () => {
     expect(quoteY).toBeLessThan(bodyY);
     expect(bodyY).toBeLessThan(HEIGHT * 0.5);
     // The block is centred on the chosen fraction, not merely somewhere above the middle.
-    expect(Math.round((quoteY + bodyY) / 2)).toBe(Math.round(HEIGHT * PHOTO_CARD_SUBTITLE_CENTER));
+    expect(Math.round((quoteY + bodyY) / 2)).toBe(Math.round(HEIGHT * PHOTO_CARD_SUBTITLE_CENTER.default));
   });
 
   it("sets the two faces 캡틴D asked for, and the heading derived from the body size", () => {
@@ -47,8 +49,8 @@ describe("photo card subtitles", () => {
     const [, bodyFont, bodySize] = styleRow(ass, "Body");
     expect(quoteFont).toBe("Noto Serif KR");
     expect(bodyFont).toBe("Noto Sans KR");
-    expect(Number(bodySize)).toBe(Math.round(HEIGHT * PHOTO_CARD_SUBTITLE_SCALE)); // 52 at 1920
-    expect(Number(quoteSize)).toBe(Math.round(Math.round(HEIGHT * PHOTO_CARD_SUBTITLE_SCALE) * 1.4)); // 73
+    expect(Number(bodySize)).toBe(Math.round(HEIGHT * PHOTO_CARD_SUBTITLE_SCALE.default)); // 52 at 1920
+    expect(Number(quoteSize)).toBe(Math.round(Math.round(HEIGHT * PHOTO_CARD_SUBTITLE_SCALE.default) * 1.4)); // 73
     expect(quoteBold).toBe("-1");
   });
 
@@ -58,7 +60,7 @@ describe("photo card subtitles", () => {
     const ass = card("미치지 않으면 미치지 못한다");
 
     expect(ass).not.toContain("Quote,,");
-    expect(cueY(ass, "Body")).toBe(Math.round(HEIGHT * PHOTO_CARD_SUBTITLE_CENTER));
+    expect(cueY(ass, "Body")).toBe(Math.round(HEIGHT * PHOTO_CARD_SUBTITLE_CENTER.default));
   });
 
   it("keeps a long line off the edges of the frame even though the lines are positioned", () => {
