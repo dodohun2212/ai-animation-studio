@@ -1,4 +1,4 @@
-import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, type PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
+import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, photoCardSubtitleGeometry, splitPhotoCardSubtitle, type PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
 
 const FONT_FAMILY = "Noto Sans KR";
 /**
@@ -86,24 +86,14 @@ export type SubtitleLayout = "scene" | "photo-card";
  * how many lines wrapped.
  */
 function photoCardSubtitleAss(text: string, durationSeconds: number, width: number, height: number, card: PhotoCardSubtitleLayout): string {
-  const lines = text.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
-  const hasQuote = lines.length >= 2;
-  const bodyLines = hasQuote ? lines.slice(1) : lines;
-  const bodySize = Math.round(height * card.scale);
-  const headSize = Math.round(bodySize * 1.4);
-  const headGap = Math.round(headSize * 1.6);
-  const lineGap = Math.round(bodySize * 1.5);
-  const blockHeight = (hasQuote ? headGap : 0) + lineGap * Math.max(0, bodyLines.length - 1);
-  const top = Math.round(height * card.center) - Math.round(blockHeight / 2);
-  const bodyY = top + (hasQuote ? headGap : 0) + Math.round((lineGap * Math.max(0, bodyLines.length - 1)) / 2);
-  // `\pos` overrides the margins for placement but not for wrapping, so these still keep a long line off the
-  // edges of the frame.
-  const margin = Math.round(width * 0.07);
-  const centre = Math.round(width / 2);
+  const { heading, body } = splitPhotoCardSubtitle(text);
+  // Every number comes from the shared geometry, which the preview screen draws from too — a second copy of
+  // this arithmetic is a preview that can disagree with the video without anything saying so.
+  const { bodySize, headSize, headingY, bodyY, centerX, margin } = photoCardSubtitleGeometry(width, height, card, body.length, heading !== undefined);
   const style = (name: string, font: string, size: number, bold: 0 | -1) =>
     `Style: ${name},${font},${size},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,${bold},0,0,0,100,100,0,0,1,4,2,5,${margin},${margin},0,1`;
   const cue = (styleName: string, y: number, content: string) =>
-    `Dialogue: 0,${timestamp(0)},${timestamp(durationSeconds)},${styleName},,0,0,0,,{\\an5\\pos(${centre},${y})}${escapeDialogueText(content)}`;
+    `Dialogue: 0,${timestamp(0)},${timestamp(durationSeconds)},${styleName},,0,0,0,,{\\an5\\pos(${centerX},${y})}${escapeDialogueText(content)}`;
   return [
     "[Script Info]",
     "ScriptType: v4.00+",
@@ -119,8 +109,8 @@ function photoCardSubtitleAss(text: string, durationSeconds: number, width: numb
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
-    ...(hasQuote ? [cue("Quote", top, lines[0]!)] : []),
-    ...(bodyLines.length > 0 ? [cue("Body", bodyY, bodyLines.join("\n"))] : []),
+    ...(heading !== undefined ? [cue("Quote", headingY, heading)] : []),
+    ...(body.length > 0 ? [cue("Body", bodyY, body.join("\n"))] : []),
     "",
   ].join("\n");
 }

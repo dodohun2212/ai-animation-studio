@@ -284,6 +284,74 @@ export function isPhotoCardSubtitleLayout(value: unknown): value is PhotoCardSub
     && typeof center === "number" && Number.isFinite(center) && center >= PHOTO_CARD_SUBTITLE_CENTER.min && center <= PHOTO_CARD_SUBTITLE_CENTER.max;
 }
 
+/**
+ * One photo card's text, split the way it is rendered: an optional heading line and the body under it.
+ *
+ * The split is a rule, not a formatting detail — the first line is the heading only when a line follows it. The
+ * quote is typed by hand, so a card with no line break has no heading, and assuming two parts renders a
+ * one-line card entirely in the heading face.
+ */
+export function splitPhotoCardSubtitle(text: string): { heading?: string; body: string[] } {
+  const lines = text.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
+  return lines.length >= 2 ? { heading: lines[0]!, body: lines.slice(1) } : { body: lines };
+}
+
+/** Every number the card's text is drawn from, in output pixels. */
+export interface PhotoCardSubtitleGeometry {
+  bodySize: number;
+  headSize: number;
+  /** Distance from the heading's centre to the body block's first line centre. */
+  headGap: number;
+  /** Distance between body lines, centre to centre. */
+  lineGap: number;
+  /** Vertical centre of the heading line. */
+  headingY: number;
+  /** Vertical centre of the body block. */
+  bodyY: number;
+  /** Horizontal centre — every line is placed by its own centre. */
+  centerX: number;
+  /** Left and right margin, which is what a long line wraps against. */
+  margin: number;
+}
+
+/**
+ * Where a photo card's text lands, given the frame and the chosen layout.
+ *
+ * Here rather than in the renderer because two places draw this and they must agree: FFmpeg burns it into the
+ * video, and the screen that offers the control draws a preview of it before anything is rendered. A preview
+ * that is a second implementation of these five lines is a preview that can be wrong — and it would be wrong
+ * silently, showing the person a picture of a video that was never made (Cowork Round 440 asked for exactly
+ * this, having written the copy and said so).
+ *
+ * Pixels, not fractions, so the caller does the same rounding the renderer does. The heading is derived here
+ * too: nothing outside this function decides how big it is relative to the body.
+ */
+export function photoCardSubtitleGeometry(
+  width: number,
+  height: number,
+  layout: PhotoCardSubtitleLayout,
+  bodyLineCount: number,
+  hasHeading: boolean,
+): PhotoCardSubtitleGeometry {
+  const bodySize = Math.round(height * layout.scale);
+  const headSize = Math.round(bodySize * PHOTO_CARD_HEADING_RATIO);
+  const headGap = Math.round(headSize * 1.6);
+  const lineGap = Math.round(bodySize * 1.5);
+  const bodySpan = lineGap * Math.max(0, bodyLineCount - 1);
+  const blockHeight = (hasHeading ? headGap : 0) + bodySpan;
+  const headingY = Math.round(height * layout.center) - Math.round(blockHeight / 2);
+  return {
+    bodySize, headSize, headGap, lineGap,
+    headingY,
+    bodyY: headingY + (hasHeading ? headGap : 0) + Math.round(bodySpan / 2),
+    centerX: Math.round(width / 2),
+    margin: Math.round(width * 0.07),
+  };
+}
+
+/** How much larger the heading is than the body. Not a handle: three sizes can be set to a combination that does not fit together, and two cannot. */
+export const PHOTO_CARD_HEADING_RATIO = 1.4;
+
 export interface ApiUsageRecord {
   timestamp: string;
   projectId: string;

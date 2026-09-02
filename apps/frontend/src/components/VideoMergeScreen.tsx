@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { AudioLibraryTrack, MergeAudioSettings, MergeVideosResponse } from "@ai-animation-studio/shared";
-import { WorkflowState } from "@ai-animation-studio/shared";
+import type { AudioLibraryTrack, MergeAudioSettings, MergeVideosResponse, PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
+import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, WorkflowState } from "@ai-animation-studio/shared";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
 import { getAudioLibrary } from "../api/audioLibraryApi.js";
@@ -8,6 +8,7 @@ import type { AudioMode } from "./mergeAudio.js";
 import { AttributionNotice, AUDIO_MODE_LABELS, MergeAudioFieldset, needsTrack, toAudioSettings } from "./mergeAudio.js";
 import { finalVideoContentUrl, mergeVideos, toVideoMergeDisplayError } from "../api/videoMergeApi.js";
 import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBridge.js";
+import { PhotoCardSubtitleFieldset } from "./PhotoCardSubtitleFieldset.js";
 
 interface Props {
   projectId: string;
@@ -72,6 +73,18 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
    * video means generating one, and generating one costs money — on the one feature built to cost nothing.
    */
   const [photoCard, setPhotoCard] = useState(false);
+  /**
+   * The card's own subtitle size and height, and the line they lay out.
+   *
+   * Both start from the server: a card always comes back carrying a layout (the default filled in when nobody
+   * has chosen one), so there is no "unset" state here to guess at. The quote is the scene's narration, which
+   * is the exact string the renderer burns in — newlines and all, since the first one is what splits the
+   * 사자성어 line from the rest.
+   */
+  const [layout, setLayout] = useState<PhotoCardSubtitleLayout>(DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT);
+  const [quote, setQuote] = useState("");
+  /** The frame's shape, read from the project's one `aspectRatio` field rather than assumed — the preview box has to match the video it previews. */
+  const [aspectVertical, setAspectVertical] = useState(true);
   /** null until the project settings load, and stays null if they fail — the copy then claims nothing. */
   const [mediaMode, setMediaMode] = useState<MediaMode | null>(null);
   /** null until the project loads: the default mode is derived from what this project actually has, never assumed. */
@@ -91,6 +104,9 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
         setSceneCount(response.project.scenes.length);
         setApprovedCount(response.project.scenes.filter((scene) => scene.videoReview === "approved").length);
         setPhotoCard(response.project.photoCard === true);
+        if (response.project.subtitleLayout) setLayout(response.project.subtitleLayout);
+        setQuote(response.project.scenes[0]?.narration ?? "");
+        setAspectVertical(response.project.aspectRatio !== "16:9");
         // Derived, not assumed: a project that never generated narration cannot merge "narration only", and
         // defaulting to it would label a silent video as a narrated one (docs/06_DECISIONS.md D-011).
         setNarrationAvailable(response.project.narrationAvailable);
@@ -154,7 +170,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
     setPending(true);
     setError(null);
     try {
-      const response = await mergeVideos(projectId, audioSettings ?? undefined);
+      const response = await mergeVideos(projectId, audioSettings ?? undefined, photoCard ? layout : undefined);
       setResult(response);
       setUnplayable(false);
       setConfirmOpen(false);
@@ -209,6 +225,17 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
         <p role="status" data-testid="merge-blocked" className="rounded-xl border border-amber-400/30 bg-amber-500/[0.06] px-4 py-3 text-sm text-amber-200">
           아직 확정하지 않은 장면이 {sceneCount - approvedCount}개 있습니다. 장면 영상 화면에서 모두 확정한 뒤에 최종 영상을 만들 수 있습니다.
         </p>
+      )}
+
+      {!result && photoCard && quote.length > 0 && (
+        <PhotoCardSubtitleFieldset
+          projectId={projectId}
+          quote={quote}
+          vertical={aspectVertical}
+          layout={layout}
+          onChange={setLayout}
+          disabled={pending || confirmOpen}
+        />
       )}
 
       {!result && audioMode !== null && (

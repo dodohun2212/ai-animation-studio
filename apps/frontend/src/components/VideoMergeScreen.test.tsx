@@ -275,6 +275,49 @@ describe("VideoMergeScreen", () => {
     expect(screen.getByTestId("merge-scope-notice").textContent).toContain("그림 한 장");
   });
 
+  /**
+   * The controls exist because the only other way to see the result was to publish and look.
+   *
+   * The first card went out with its text under Instagram's own interface, unreadable. The values are carried
+   * on the merge — the one request that actually uses them — so what is stored is always a layout some video
+   * was really made with.
+   */
+  it("sends a photo card's adjusted subtitle layout with the merge", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const still: Scene[] = [{ number: 1, script: "", imagePrompt: "", motionPrompt: "", imageReview: "approved", videoReview: "pending", narration: "불광불급(不狂不及)\n미치도록 몰입한 사람만이," }];
+    renderScreen(mergeFetch, { photoCard: true, scenes: still, subtitleLayout: { scale: 0.027, center: 0.4 } });
+
+    const center = await screen.findByTestId("photo-card-subtitle-center");
+    fireEvent.change(center, { target: { value: "0.55" } });
+    expect(screen.getByTestId("photo-card-subtitle-center-value").textContent).toContain("55%");
+
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+
+    await waitFor(() => expect(mergeFetch).toHaveBeenCalled());
+    const [, init] = mergeFetch.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({ audio: { mode: "silent" }, subtitleLayout: { scale: 0.027, center: 0.55 } });
+  });
+
+  // Starts from what this card was last merged with, not from the published default — otherwise every revisit
+  // silently proposes undoing the adjustment the person already made.
+  it("starts a photo card from the layout the server sent back", async () => {
+    const still: Scene[] = [{ number: 1, script: "", imagePrompt: "", motionPrompt: "", imageReview: "approved", videoReview: "pending", narration: "문장" }];
+    renderScreen(vi.fn(), { photoCard: true, scenes: still, subtitleLayout: { scale: 0.041, center: 0.62 } });
+
+    expect((await screen.findByTestId("photo-card-subtitle-scale-value")).textContent).toContain("79px");
+    expect(screen.getByTestId("photo-card-subtitle-center-value").textContent).toContain("62%");
+  });
+
+  // An ordinary project has no card text to place, and the server refuses the field for one. Showing controls
+  // that cannot be sent would be an offer the merge would reject.
+  it("shows no subtitle controls for an ordinary project", async () => {
+    renderScreen(vi.fn());
+
+    await screen.findByTestId("merge-approved-count");
+    expect(screen.queryByTestId("photo-card-subtitle-preview")).toBeNull();
+  });
+
   // The other half: an ordinary project keeps its gate. Unblocking the card must not unblock everything.
   it("still blocks an ordinary project with an unconfirmed scene", async () => {
     const mergeFetch = vi.fn();

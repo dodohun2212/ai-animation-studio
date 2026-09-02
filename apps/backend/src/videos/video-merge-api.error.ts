@@ -5,6 +5,7 @@ type VideoMergeErrorCode =
   | "INVALID_REQUEST"
   | "VIDEO_MERGE_NOT_ALLOWED"
   | "VIDEO_MERGE_ALREADY_COMPLETED"
+  | "VIDEO_MERGE_ALREADY_PUBLISHED"
   | "VIDEO_MERGE_CLIPS_INVALID"
   | "FFMPEG_UNAVAILABLE"
   | "VIDEO_MERGE_FAILED"
@@ -30,6 +31,19 @@ export const videoMergeNotAllowed = () =>
  */
 export const videoMergeAlreadyCompleted = () =>
   new VideoMergeApiException("VIDEO_MERGE_ALREADY_COMPLETED", "This project's final video has already been rendered.", HttpStatus.CONFLICT);
+/**
+ * A photo card that has already been posted to Instagram.
+ *
+ * Every other completed card may be made again — a card costs nothing to render and its previous final video is
+ * archived first, so "already done" was protecting nothing while it locked the person out of their own text
+ * (Cowork Round 440). A published one is the exception: the file the post was made from would quietly stop
+ * being the file on disk, and nothing on either side would say the two had diverged.
+ *
+ * Its own code, not the "already rendered" one, because the two send the person to different places: this one
+ * is about a post that exists, and the way past it is a new card rather than a retry.
+ */
+export const videoMergeAlreadyPublished = () =>
+  new VideoMergeApiException("VIDEO_MERGE_ALREADY_PUBLISHED", "This photo card has already been published to Instagram.", HttpStatus.CONFLICT);
 export const videoMergeClipsInvalid = () =>
   new VideoMergeApiException("VIDEO_MERGE_CLIPS_INVALID", "The six approved scene videos are missing or invalid.", HttpStatus.CONFLICT);
 export const ffmpegUnavailable = () =>

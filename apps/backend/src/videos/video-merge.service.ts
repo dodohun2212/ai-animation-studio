@@ -12,7 +12,7 @@ import type { StoredProject, StoredUsedAudio } from "../projects/project-storage
 import { sceneValue } from "../images/image-prompt.js";
 import { AudioLibraryService } from "../audio/audio-library.service.js";
 import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
-import { ffmpegUnavailable, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeAlreadyCompleted, videoMergeInvalidRequest, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
+import { ffmpegUnavailable, videoMergeAlreadyPublished, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeAlreadyCompleted, videoMergeInvalidRequest, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
 import { shortProjectAspectRatio } from "../projects/project-aspect.js";
 
 const FINAL_VIDEO_PATH = "videos/final/instagram_reel.mp4" as const;
@@ -181,8 +181,17 @@ export class LocalVideoMergeService {
    * scenes were reviewed when none were. A gate that has to be lied to is not a gate.
    */
   private async mergeMaterial(project: StoredProject): Promise<{ paths: string[]; stillDurationSeconds?: number }> {
-    if (project.workflow_state === WorkflowState.Completed) throw videoMergeAlreadyCompleted();
-    if (project.workflow_state !== WorkflowState.VideosApproved && project.workflow_state !== WorkflowState.Failed) throw videoMergeNotAllowed();
+    // A finished photo card may be made again, and an ordinary project may not. The gate exists to stop a
+    // completed run being overwritten, and for a card there is nothing of that kind to overwrite: no paid
+    // clips, no approvals, one picture and one line of text, and the previous final video is archived before
+    // the new one is written. What it was actually stopping was a person changing their own subtitle — the
+    // card would have had to be created again, under a new name, to move one number (Cowork Round 440).
+    //
+    // Published is the one exception, and it is its own refusal: see videoMergeAlreadyPublished.
+    const remakeableCard = project.workflow_state === WorkflowState.Completed && photoCardFor(project);
+    if (remakeableCard && project.instagram_post) throw videoMergeAlreadyPublished();
+    if (project.workflow_state === WorkflowState.Completed && !remakeableCard) throw videoMergeAlreadyCompleted();
+    if (!remakeableCard && project.workflow_state !== WorkflowState.VideosApproved && project.workflow_state !== WorkflowState.Failed) throw videoMergeNotAllowed();
     if (photoCardFor(project)) {
       const picture = this.cardImage(project.project_id);
       // The picture is the whole material. Checked for real bytes the same way a clip is, and never probed —

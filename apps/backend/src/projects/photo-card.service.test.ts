@@ -207,6 +207,57 @@ describe("PhotoCardService", () => {
       .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
+  /**
+   * A card can be made again, which is the only way its own subtitle control is reachable at all.
+   *
+   * The merge gate refused a finished project a second time, and for a card that meant the text could be moved
+   * exactly once, before the first render — after which the person's only route to a bigger line was to create
+   * the card over again under a new name (Cowork Round 440). Nothing was being protected: a card has no paid
+   * clips and no approvals, and the previous final video is archived before the new one is written.
+   */
+  it("makes a finished card again, at the new layout, keeping the previous video", async () => {
+    const { projectsRoot, projects, service, asset } = await setup();
+    vi.stubGlobal("fetch", () => { throw new Error("a photo card must not reach a provider"); });
+    await service.create({ ...body(asset.asset_id), quote: "불광불급" });
+    await new LocalVideoMergeService(projects, projectsRoot, runner([])).merge("card_one");
+    const second = new Map<string, string>();
+
+    const remade = await new LocalVideoMergeService(projects, projectsRoot, runner([], second))
+      .merge("card_one", { subtitleLayout: { scale: 0.045 } });
+
+    expect([...second.values()][0]!).toContain(`,${Math.round(1920 * 0.045)},`);
+    expect(remade.project.subtitleLayout).toMatchObject({ scale: 0.045 });
+    // The one it replaced is still there — archiveExistingFinal ran before the new render.
+    const history = await fs.readdir(path.join(projectsRoot, "card_one", "videos", "final", "history")).catch(() => [] as string[]);
+    expect(history.length).toBeGreaterThan(0);
+  });
+
+  // The exception, and the reason it is its own code: the post was made from a file that would quietly stop
+  // being the file on disk, with nothing on either side saying the two had diverged.
+  it("refuses to remake a card that has already been published, in its own words", async () => {
+    const { projectsRoot, projects, service, asset } = await setup();
+    vi.stubGlobal("fetch", () => { throw new Error("a photo card must not reach a provider"); });
+    await service.create({ ...body(asset.asset_id), quote: "불광불급" });
+    await new LocalVideoMergeService(projects, projectsRoot, runner([])).merge("card_one");
+    const published = await projects.findById("card_one");
+    published.instagram_post = { media_id: "17900000000000000", ig_user_id: "1784", published_at: "2026-09-02T00:00:00.000Z", caption: "불광불급" };
+    await projects.save(published);
+
+    await expect(new LocalVideoMergeService(projects, projectsRoot, runner([])).merge("card_one"))
+      .rejects.toMatchObject({ response: { code: "VIDEO_MERGE_ALREADY_PUBLISHED" } });
+  });
+
+  // The counterpart. An ordinary project's second merge is still refused, and still says why.
+  it("still refuses a finished ordinary project a second merge", async () => {
+    const { projectsRoot, projects } = await setup();
+    const ordinary = createStoredProject("ordinary", "topic", "2026-08-23T00:00:00.000Z");
+    ordinary.workflow_state = WorkflowState.Completed;
+    await projects.create(ordinary);
+
+    await expect(new LocalVideoMergeService(projects, projectsRoot, runner([])).merge("ordinary"))
+      .rejects.toMatchObject({ response: { code: "VIDEO_MERGE_ALREADY_COMPLETED" } });
+  });
+
   /** The counterpart: an ordinary project still needs its clips and its approved reviews. */
   it("leaves an ordinary project's merge demanding clips and reviews", async () => {
     const { projectsRoot, projects } = await setup();
