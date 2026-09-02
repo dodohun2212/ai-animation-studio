@@ -17,6 +17,24 @@ function reasonFor(error: unknown): string {
   return error instanceof Error && error.message ? error.message : "unknown error";
 }
 
+/**
+ * Whether a skipped directory is a damaged project or simply not one.
+ *
+ * The projects root holds directories this app puts there for its own reasons — `_asset_library_manual` is one
+ * — and they have no `project.json` at all. Warning about those means the line fires on every listing, and a
+ * warning that is always there is read as noise and then not read (measured: it appeared in a test run's
+ * output the first time this shipped). What the log exists for is a directory that *is* a project and cannot
+ * be opened, which is what took a finished project off the screen with no error anywhere (Cowork Round 436).
+ */
+function isDamagedProject(error: unknown): boolean {
+  const code = (error as { response?: { code?: unknown } } | undefined)?.response?.code;
+  // Not a project: no project.json in it at all, or a directory name that could never be a project id — the
+  // archive lives at `.archive` and the asset library keeps `_asset_library_manual`, both put there by this
+  // app. Everything else (malformed JSON, a field the schema refuses, an unreadable file) is a project that
+  // cannot be opened, and that is what this log is for.
+  return code !== "PROJECT_NOT_FOUND" && code !== "UNSAFE_PROJECT_ID";
+}
+
 function errorCode(error: unknown): string | undefined {
   return typeof error === "object" && error !== null && "code" in error
     ? String((error as { code?: unknown }).code)
@@ -248,7 +266,7 @@ export class LocalProjectRepository {
       try {
         results.push(await this.findById(name));
       } catch (error) {
-        skipped.push(`${name} (${reasonFor(error)})`);
+        if (isDamagedProject(error)) skipped.push(`${name} (${reasonFor(error)})`);
         continue;
       }
     }

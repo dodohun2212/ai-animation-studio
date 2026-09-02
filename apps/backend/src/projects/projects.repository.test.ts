@@ -311,6 +311,15 @@ describe("LocalProjectRepository", () => {
     await fsPromises.rm(path.join(root, "broken_project"), { recursive: true, force: true });
     await quiet.list();
     expect(warnings).toEqual([]);
+
+    // And a directory that is not a project at all stays silent. The projects root holds a few of those by
+    // design (the asset library keeps one), and a warning that fires on every listing stops being read —
+    // measured: it showed up in an unrelated test run the first time this logging shipped.
+    await fsPromises.mkdir(path.join(root, "_asset_library_manual"), { recursive: true });
+    // `.archive` is the same case from the other direction: a name that could never be a project id.
+    await fsPromises.mkdir(path.join(root, ".archive"), { recursive: true });
+    await quiet.list();
+    expect(warnings).toEqual([]);
   });
 
   it("reads the paths a project recorded as places under the root it is being read from", async () => {
