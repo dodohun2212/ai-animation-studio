@@ -33,12 +33,20 @@ appropriate TypeScript layer.
 
 ## Source and target
 
-- `app/`, `tests/`, and `prompts/` are the preserved Python baseline.
-- Do not modify or delete the Python baseline unless the user explicitly asks.
+- `prompts/` is what remains of the Python baseline, and it is not only a reference: the running app reads
+  `prompts/story/story_generation.txt` and the desktop packaging copies the directory into the installer. Do
+  not delete it.
+- `app/` and `tests/` — the Python source and its suite — were removed on 2026-09-02 at the user's request,
+  after the migration was long finished and nothing in `apps/` referenced them. They are in git history if a
+  question about the original behaviour ever needs settling (`git log --diff-filter=D -- app`), which is where
+  such questions were answered from several times during the migration.
+- The repository-root `learning_data/` stays: it is the baseline's *data*, tracked in git, and a different
+  thing from `apps/backend/learning_data` (docs/06_DECISIONS.md D-032).
+- Do not modify or delete what is left of the Python baseline unless the user explicitly asks.
 - New application code belongs in `apps/`.
 - Shared frontend/backend contracts belong in `packages/shared/`.
-- The Python code is the source of truth when a legacy document disagrees with
-  actual behavior.
+- When a legacy document disagrees with actual behavior, the Python code is still
+  the arbiter — it is now read out of git history rather than the working tree.
 
 ## Fixed TypeScript stack
 
