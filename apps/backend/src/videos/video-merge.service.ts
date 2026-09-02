@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import { isPlaceholderClip } from "./placeholder-clip.js";
+import { FINAL_VIDEO_LOCK_KEY, ProjectLockTimeoutError, withProjectLock } from "./project-lock.js";
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
@@ -12,7 +13,7 @@ import type { StoredProject, StoredUsedAudio } from "../projects/project-storage
 import { sceneValue } from "../images/image-prompt.js";
 import { AudioLibraryService } from "../audio/audio-library.service.js";
 import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
-import { ffmpegUnavailable, videoMergeAlreadyPublished, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeAlreadyCompleted, videoMergeInvalidRequest, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
+import { ffmpegUnavailable, videoMergeAlreadyPublished, videoMergeBusy, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeAlreadyCompleted, videoMergeInvalidRequest, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
 import { shortProjectAspectRatio } from "../projects/project-aspect.js";
 
 const FINAL_VIDEO_PATH = "videos/final/instagram_reel.mp4" as const;
@@ -122,7 +123,8 @@ function resolveAudioSettings(project: StoredProject, request: unknown): Resolve
 export class LocalVideoMergeService {
   private readonly engine: FfmpegMergeEngine;
 
-  constructor(private readonly projects: LocalProjectRepository, private readonly projectsRoot: string, runner?: MediaCommandRunner, private readonly audioLibrary?: AudioLibraryService) {
+  /** `lockTimeoutMs` exists for the same reason withProjectLock takes one: a test can exercise the refusal in milliseconds instead of really waiting out the default. */
+  constructor(private readonly projects: LocalProjectRepository, private readonly projectsRoot: string, runner?: MediaCommandRunner, private readonly audioLibrary?: AudioLibraryService, private readonly lockTimeoutMs?: number) {
     this.engine = new FfmpegMergeEngine(runner);
   }
 
@@ -279,6 +281,29 @@ export class LocalVideoMergeService {
     const clipDurationSeconds = toShortProjectSettings(project).clipDurationSeconds;
     const rendering = { ...project, workflow_state: WorkflowState.Rendering, updated_at: new Date().toISOString() };
     try { await this.projects.save(rendering); } catch { throw videoMergeStorageError(); }
+    // Held across the render and the save that follows it. The Instagram publish takes this same key while it
+    // reads the file, so a post can never be built from a cut this merge is in the middle of replacing — the
+    // one action in this app that cannot be undone must not race the one that rewrites what it sends.
+    return withProjectLock(this.projectDirectory(project.project_id), FINAL_VIDEO_LOCK_KEY, () => this.render(rendering, audio, subtitleLayout, bgmPath, bgmAttribution, mergeScenes, clipDurationSeconds), this.lockTimeoutMs === undefined ? undefined : { timeoutMs: this.lockTimeoutMs })
+      .catch(async (error: unknown) => {
+        if (!(error instanceof ProjectLockTimeoutError)) throw error;
+        // Nothing was rendered, so the project must not be left saying it is rendering.
+        await this.projects.save({ ...project, updated_at: new Date().toISOString() }).catch(() => undefined);
+        throw videoMergeBusy();
+      });
+  }
+
+  /** The render itself, under {@link FINAL_VIDEO_LOCK_KEY}. Split out so the lock wraps exactly the work that writes the final video. */
+  private async render(
+    rendering: StoredProject,
+    audio: ResolvedAudioSettings,
+    subtitleLayout: PhotoCardSubtitleLayout,
+    bgmPath: string | undefined,
+    bgmAttribution: { attributionRequired: boolean; attributionText?: string } | undefined,
+    mergeScenes: MergeSceneInput[],
+    clipDurationSeconds: number,
+  ): Promise<MergeVideosResponse> {
+    const project = rendering;
     try {
       await this.archiveExistingFinal(project.project_id);
       const finalPath = this.final(project.project_id);

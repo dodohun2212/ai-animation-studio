@@ -2,11 +2,11 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import type { ForgetInstagramPostResponse, ForgetLongEpisodeInstagramPostResponse, PublishLongEpisodeToInstagramResponse, PublishToInstagramResponse } from "@ai-animation-studio/shared";
+import { WorkflowState, type ForgetInstagramPostResponse, ForgetLongEpisodeInstagramPostResponse, PublishLongEpisodeToInstagramResponse, PublishToInstagramResponse } from "@ai-animation-studio/shared";
 
 import { toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
-import { withProjectLock } from "../videos/project-lock.js";
+import { FINAL_VIDEO_LOCK_KEY, withProjectLock } from "../videos/project-lock.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { episodeDirectoryName, longStoryRoot } from "../long-projects/long-project-paths.js";
 import { toEpisodeDetail, toEpisodeInstagramPost, type StoredEpisodeForDetail } from "../long-projects/episode-detail.js";
@@ -19,7 +19,7 @@ import { resolveInstagramPublishTargets } from "./instagram-publish-targets.js";
 import { InstagramAdapterError, type RetryOptions } from "./instagram-request.js";
 import {
   instagramAlreadyPublished, instagramNotConnected, instagramPostNotRecorded, instagramProviderError, instagramPublishFailed,
-  instagramTargetNotFound, instagramVideoUnavailable, invalidInstagramRequest,
+  instagramTargetNotFound, instagramVideoRendering, instagramVideoUnavailable, invalidInstagramRequest,
 } from "./instagram-api.error.js";
 
 const FINAL_VIDEO_PATH = "videos/final/instagram_reel.mp4";
@@ -113,14 +113,20 @@ export class InstagramPublishService {
     const token = await this.connection.token();
     if (!token) throw instagramNotConnected();
 
-    const videoPath = this.finalVideo(id);
-    const bytes = await fs.readFile(videoPath).catch(() => undefined);
-    if (!bytes || bytes.length === 0) throw instagramVideoUnavailable();
-
-    return withProjectLock(path.join(this.projectsRoot, id), `${id}:instagram-publish`, async () => {
+    return withProjectLock(path.join(this.projectsRoot, id), FINAL_VIDEO_LOCK_KEY, async () => {
       // Re-read inside the lock: another window may have published while this call queued for it.
       const current = await this.projects.findById(id);
       if (current.instagram_post) throw instagramAlreadyPublished();
+      // A merge holds this same lock while it writes, so reaching here means no render is in flight. The state
+      // check is for the other shape of the same problem: a render that died leaves the project saying
+      // Rendering, and the bytes it left behind are not a video anyone chose to publish.
+      if (current.workflow_state === WorkflowState.Rendering) throw instagramVideoRendering();
+
+      // Read inside the lock, not before it. Read outside, the bytes could be the previous cut of a video that
+      // was re-merged while this call waited — the post would carry one video and the person's disk another,
+      // with the record saying published over both.
+      const bytes = await fs.readFile(this.finalVideo(id)).catch(() => undefined);
+      if (!bytes || bytes.length === 0) throw instagramVideoUnavailable();
 
       const { mediaId, publishedAt } = await this.sendToInstagram(token.accessToken, igUserId, caption, bytes, thumbOffsetMs);
       const updated = {
@@ -256,14 +262,17 @@ export class InstagramPublishService {
     const token = await this.connection.token();
     if (!token) throw instagramNotConnected();
 
-    const bytes = await fs.readFile(path.join(directory, FINAL_VIDEO_PATH)).catch(() => undefined);
-    if (!bytes || bytes.length === 0) throw instagramVideoUnavailable();
-
-    return withProjectLock(directory, `${id}_${episodeNumber}_instagram_publish`, async () => {
+    return withProjectLock(directory, FINAL_VIDEO_LOCK_KEY, async () => {
       // Re-read inside the lock: another window may have published while this call queued for it.
       const current = await readEpisode(episodeFile);
       if (!current) throw instagramVideoUnavailable();
       if (current.instagram_post) throw instagramAlreadyPublished();
+      if (current.state === "rendering") throw instagramVideoRendering();
+
+      // Same reason as the short project's: the bytes are read under the lock the merge also takes, so a post
+      // can never carry a cut the merge has already replaced.
+      const bytes = await fs.readFile(path.join(directory, FINAL_VIDEO_PATH)).catch(() => undefined);
+      if (!bytes || bytes.length === 0) throw instagramVideoUnavailable();
 
       const { mediaId, publishedAt } = await this.sendToInstagram(token.accessToken, igUserId, caption, bytes, thumbOffsetMs);
       const updated = {

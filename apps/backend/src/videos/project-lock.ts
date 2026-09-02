@@ -17,6 +17,18 @@ const ACQUIRE_TIMEOUT_MS = 10_000;
 /** Comfortably inside STALE_LOCK_MS, so a live holder is never mistaken for a dead one even if a refresh is missed. */
 const HEARTBEAT_MS = 15_000;
 
+/**
+ * The key every operation that writes or reads a project's final video takes.
+ *
+ * Locks here are per-key, so two callers only exclude each other when they name the same one — and the merge,
+ * the version restore and the Instagram publish are all about the same file. Publishing read the bytes off
+ * disk before taking any lock at all, so a merge running at that moment could replace the file and the post
+ * would go out as the previous video: Instagram holding one cut, the person's own disk holding another, and
+ * the record saying "published" over both. That mattered little while a finished project could not be merged
+ * twice; it matters now that a photo card can be made again (CLI Round 449).
+ */
+export const FINAL_VIDEO_LOCK_KEY = "videos:final";
+
 export class ProjectLockTimeoutError extends Error {
   constructor(key: string) { super(`Timed out waiting for project lock: ${key}`); }
 }

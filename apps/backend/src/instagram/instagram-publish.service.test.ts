@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { EpisodeScriptsService } from "../long-projects/episode-scripts.service.js";
+import { WorkflowState } from "@ai-animation-studio/shared";
+import { FINAL_VIDEO_LOCK_KEY, withProjectLock } from "../videos/project-lock.js";
 import { InstagramConnectionStore } from "./instagram-connection.store.js";
 import { InstagramPublishService } from "./instagram-publish.service.js";
 
@@ -409,6 +411,50 @@ describe("InstagramPublishService.publishEpisode", () => {
 
     await expect(service.publishEpisode("long", 1, { ...approved, igUserId: "17800000000000999" }))
       .rejects.toMatchObject({ response: { code: "INSTAGRAM_TARGET_NOT_FOUND" } });
+  });
+});
+
+
+/**
+ * What the post is built from, when the file underneath is moving.
+ *
+ * A photo card can be merged again now, so the file this reads is no longer written once and left alone. The
+ * bytes used to be read before any lock was taken, which means the post could carry the cut a re-merge had
+ * already replaced: Instagram holding one video, the person's disk holding another, and the record calling
+ * both of them published — on the one action in this app that cannot be undone (CLI Round 449).
+ */
+describe("publishing while the final video is being replaced", () => {
+  it("sends the video as it stands when the lock is free, not as it stood when the call arrived", async () => {
+    const { projectsRoot, service, fetchImpl } = await setup({ fetchImpl: graphFetch() });
+    const file = path.join(projectsRoot, "post_project", "videos", "final", "instagram_reel.mp4");
+    const remade = Buffer.concat([VIDEO, Buffer.from("-remade")]);
+    let publishing: Promise<{ mediaId: string }> | undefined;
+
+    // Whoever holds this key is writing that file — a merge does exactly this. The publish starts while it is
+    // held, so it has to wait, and what it must not do is carry bytes it read before waiting.
+    await withProjectLock(path.join(projectsRoot, "post_project"), FINAL_VIDEO_LOCK_KEY, async () => {
+      publishing = service.publish("post_project", approved);
+      // Long enough that a publish reading the file before taking the lock has certainly already read it —
+      // everything it does before that point is local disk and JSON. Without this the two race and the test
+      // passes for the wrong reason: measured, an implementation that reads before the lock still went green.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await fs.writeFile(file, remade);
+    });
+
+    expect(await publishing!).toMatchObject({ mediaId: "media-1" });
+    const calls = (fetchImpl as unknown as { mock: { calls: [unknown, RequestInit][] } }).mock.calls;
+    const upload = calls.find((call) => String(call[0]).includes("rupload.facebook.com"))!;
+    expect(Buffer.from(upload[1].body as ArrayBuffer)).toEqual(remade);
+  });
+
+  // A render that died leaves the project saying Rendering, and the bytes it left are not a video anyone chose.
+  it("refuses while a render is in flight, in its own words", async () => {
+    const { projects, service } = await setup();
+    const project = await projects.findById("post_project");
+    await projects.save({ ...project, workflow_state: WorkflowState.Rendering });
+
+    await expect(service.publish("post_project", approved))
+      .rejects.toMatchObject({ response: { code: "INSTAGRAM_VIDEO_RENDERING" } });
   });
 });
 

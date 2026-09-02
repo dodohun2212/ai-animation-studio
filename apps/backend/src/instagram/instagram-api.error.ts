@@ -10,6 +10,7 @@ export type InstagramErrorCode =
   | "INSTAGRAM_ALREADY_PUBLISHED"
   | "INSTAGRAM_POST_NOT_RECORDED"
   | "INSTAGRAM_VIDEO_UNAVAILABLE"
+  | "INSTAGRAM_VIDEO_RENDERING"
   | "INSTAGRAM_PUBLISH_FAILED";
 
 export class InstagramApiException extends HttpException {
@@ -72,6 +73,16 @@ export const instagramPostNotRecorded = () =>
 
 export const instagramVideoUnavailable = () =>
   new InstagramApiException("INSTAGRAM_VIDEO_UNAVAILABLE", "There is no merged final video to publish yet.", HttpStatus.CONFLICT);
+
+/**
+ * The final video is being written right now, so the bytes on disk are not a finished video and will not be
+ * the ones this project ends up with.
+ *
+ * Its own code rather than "there is no video": that sentence sends the person to merge, which is exactly what
+ * is already happening. Waiting is the whole answer here, and the two situations must not share a message.
+ */
+export const instagramVideoRendering = () =>
+  new InstagramApiException("INSTAGRAM_VIDEO_RENDERING", "This project's final video is being rendered right now.", HttpStatus.CONFLICT);
 
 /** The attempt ended without a post — nothing was published, so trying again is safe. */
 export const instagramPublishFailed = (message: string) =>

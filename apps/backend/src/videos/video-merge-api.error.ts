@@ -6,6 +6,7 @@ type VideoMergeErrorCode =
   | "VIDEO_MERGE_NOT_ALLOWED"
   | "VIDEO_MERGE_ALREADY_COMPLETED"
   | "VIDEO_MERGE_ALREADY_PUBLISHED"
+  | "VIDEO_MERGE_BUSY"
   | "VIDEO_MERGE_CLIPS_INVALID"
   | "FFMPEG_UNAVAILABLE"
   | "VIDEO_MERGE_FAILED"
@@ -44,6 +45,16 @@ export const videoMergeAlreadyCompleted = () =>
  */
 export const videoMergeAlreadyPublished = () =>
   new VideoMergeApiException("VIDEO_MERGE_ALREADY_PUBLISHED", "This photo card has already been published to Instagram.", HttpStatus.CONFLICT);
+/**
+ * Another operation is holding this project's final video — a publish reading it, a version being restored, or
+ * a merge already running in another window.
+ *
+ * Says "wait", and means it: nothing was rendered and nothing was changed, so pressing again once the other
+ * one finishes is the whole fix. Kept apart from the storage error, which means the opposite thing (something
+ * failed and may not succeed on a retry).
+ */
+export const videoMergeBusy = () =>
+  new VideoMergeApiException("VIDEO_MERGE_BUSY", "This project's final video is busy — another window is publishing or rendering it.", HttpStatus.CONFLICT);
 export const videoMergeClipsInvalid = () =>
   new VideoMergeApiException("VIDEO_MERGE_CLIPS_INVALID", "The six approved scene videos are missing or invalid.", HttpStatus.CONFLICT);
 export const ffmpegUnavailable = () =>

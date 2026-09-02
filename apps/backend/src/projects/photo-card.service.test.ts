@@ -11,6 +11,7 @@ import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { LocalProjectRepository } from "./projects.repository.js";
 import { PhotoCardService } from "./photo-card.service.js";
 import { LocalVideoMergeService } from "../videos/video-merge.service.js";
+import { FINAL_VIDEO_LOCK_KEY, withProjectLock } from "../videos/project-lock.js";
 import { MediaToolError, type MediaCommandRunner } from "../videos/ffmpeg-merge.service.js";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
@@ -256,6 +257,23 @@ describe("PhotoCardService", () => {
 
     await expect(new LocalVideoMergeService(projects, projectsRoot, runner([])).merge("ordinary"))
       .rejects.toMatchObject({ response: { code: "VIDEO_MERGE_ALREADY_COMPLETED" } });
+  });
+
+  // The merge takes the same lock the publish does, so the two cannot overlap. Refused, not queued: a merge
+  // that waits behind a minutes-long upload would look like a hung button, and nothing was changed by refusing.
+  it("refuses to render while the final video is held by something else, and does not leave the project rendering", async () => {
+    const { projectsRoot, projects, service, asset } = await setup();
+    vi.stubGlobal("fetch", () => { throw new Error("a photo card must not reach a provider"); });
+    await service.create(body(asset.asset_id));
+    const merge = new LocalVideoMergeService(projects, projectsRoot, runner([]), undefined, 200);
+
+    const refusal = await withProjectLock(path.join(projectsRoot, "card_one"), FINAL_VIDEO_LOCK_KEY, async () => {
+      return merge.merge("card_one").then(() => undefined).catch((error: unknown) => error);
+    }, { timeoutMs: 5_000 });
+
+    expect(refusal).toMatchObject({ response: { code: "VIDEO_MERGE_BUSY" } });
+    // Rendering is what the screen shows as "in progress" — a refusal that left it there would strand the card.
+    expect((await projects.findById("card_one")).workflow_state).not.toBe(WorkflowState.Rendering);
   });
 
   /** The counterpart: an ordinary project still needs its clips and its approved reviews. */

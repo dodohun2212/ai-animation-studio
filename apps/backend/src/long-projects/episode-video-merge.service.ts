@@ -8,7 +8,8 @@ import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "../videos/ffmpeg-merge.service.js";
 import { AudioLibraryService } from "../audio/audio-library.service.js";
 import { isPlaceholderClip } from "../videos/placeholder-clip.js";
-import { longEpisodeFfmpegUnavailable, longEpisodeMergeClipsInvalid, longEpisodeMergeFailed, longEpisodeMergeAlreadyCompleted, longEpisodeMergeNotAllowed, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { FINAL_VIDEO_LOCK_KEY, ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
+import { longEpisodeFfmpegUnavailable, longEpisodeMergeBusy, longEpisodeMergeClipsInvalid, longEpisodeMergeFailed, longEpisodeMergeAlreadyCompleted, longEpisodeMergeNotAllowed, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, episodeProjectRelativePath, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { toEpisodeDetail } from "./episode-detail.js";
@@ -37,7 +38,8 @@ export class EpisodeVideoMergeService {
   private readonly engine: FfmpegMergeEngine;
   private readonly projects: LongProjectsService;
 
-  constructor(private readonly projectsRoot: string, runner?: MediaCommandRunner, private readonly audioLibrary?: AudioLibraryService) { this.engine = new FfmpegMergeEngine(runner); this.projects = new LongProjectsService(projectsRoot); }
+  /** `lockTimeoutMs`: same test seam as the short project's merge. */
+  constructor(private readonly projectsRoot: string, runner?: MediaCommandRunner, private readonly audioLibrary?: AudioLibraryService, private readonly lockTimeoutMs?: number) { this.engine = new FfmpegMergeEngine(runner); this.projects = new LongProjectsService(projectsRoot); }
 
   private files(id: string, number: number) {
     const root = longStoryRoot(this.projectsRoot, id);
@@ -282,6 +284,28 @@ export class EpisodeVideoMergeService {
     catch (error) { if (error instanceof MediaToolError && error.kind === "unavailable") throw longEpisodeFfmpegUnavailable(); throw longEpisodeMergeClipsInvalid(); }
     const rendering = { ...episode, state: "rendering" as const, updated_at: new Date().toISOString() };
     await this.saveEpisode(id, number, rendering);
+    // Same key the Episode's Instagram publish takes while it reads the file: the post must never be built
+    // from a cut this render is replacing. Refused rather than queued if something else holds it — nothing has
+    // been rendered at that point, and a button that waits behind a minutes-long upload reads as a hang.
+    return withProjectLock(path.join(longStoryRoot(this.projectsRoot, id), episodeDirectoryName(number)), FINAL_VIDEO_LOCK_KEY,
+      () => this.render(id, number, episode, rendering, clips, audio, bgmPath, bgmTrack), this.lockTimeoutMs === undefined ? undefined : { timeoutMs: this.lockTimeoutMs })
+      .catch(async (error: unknown) => {
+        if (!(error instanceof ProjectLockTimeoutError)) throw error;
+        await this.saveEpisode(id, number, episode).catch(() => undefined);
+        throw longEpisodeMergeBusy();
+      });
+  }
+
+  /** The render itself, under {@link FINAL_VIDEO_LOCK_KEY}. */
+  private async render(
+    id: string, number: number,
+    episode: Episode,
+    rendering: Episode,
+    clips: readonly string[],
+    audio: { mode: string; trackId?: string; volume: number; fadeSeconds: number },
+    bgmPath: string | undefined,
+    bgmTrack: { attributionRequired: boolean; attributionText?: string } | undefined,
+  ): Promise<MergeLongEpisodeVideosResponse> {
     try {
       const output = this.final(id, number); await fs.mkdir(path.dirname(output), { recursive: true });
       // The cut this merge is about to replace, kept. Re-merging with different audio or after restoring a
