@@ -52,8 +52,12 @@ const CONSOLE_ALLOWED = new Set([path.join("api", "projectsApi.ts")]);
  * A floor, not an exact count: files come and go, but a sweep that suddenly matches almost nothing has broken
  * rather than passed. Without this, a wrong root or a bad filter reports success over an empty list — the
  * failure mode a guard is least likely to notice about itself.
+ *
+ * Raised from 60 when the tree had grown to 88 source files: a floor a third below the real count would have
+ * sat green while the sweep quietly stopped seeing whole directories, which is the thing it exists to catch.
+ * Kept below the real number on purpose — this must not fail because a file was deleted.
  */
-const MINIMUM_FILES_SWEPT = 60;
+const MINIMUM_FILES_SWEPT = 80;
 
 async function sourceFiles(root: string): Promise<string[]> {
   const found: string[] = [];

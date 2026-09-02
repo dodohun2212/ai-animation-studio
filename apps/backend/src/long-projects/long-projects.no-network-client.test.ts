@@ -23,7 +23,9 @@ describe("long-story directory holds no network client", () => {
     const directory = import.meta.dirname;
     const files = (await fs.readdir(directory))
       .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts") && !PROVIDER_BOUNDARY.has(name));
-    expect(files.length).toBeGreaterThan(20); // the sweep is real, not an empty list quietly passing
+    // 30 against 36 files in this one directory. The old 20 let a third of it vanish from the scan unnoticed,
+    // which is the failure this line exists to catch.
+    expect(files.length).toBeGreaterThan(30);
 
     for (const name of files) {
       const source = await fs.readFile(path.join(directory, name), "utf8");

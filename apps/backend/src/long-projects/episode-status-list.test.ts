@@ -50,7 +50,11 @@ async function collectSourceFiles(directory: string): Promise<string[]> {
 describe("Episode statuses are named once", () => {
   it("has no source file writing out most of the list instead of importing it", async () => {
     const files = await collectSourceFiles(BACKEND_SOURCE);
-    expect(files.length).toBeGreaterThan(50);
+    // 140 against 158 real backend sources. A floor this far under the real number is not a floor: at 50, the
+    // whole long-projects directory could stop being scanned and this would still pass — which is the one
+    // failure a sweep has (Cowork Round 452 found the same slack in the frontend's own guard). Deliberately
+    // under the real count so deleting a few files is not a red suite.
+    expect(files.length).toBeGreaterThan(140);
 
     let widest = 0;
     for (const file of files) {

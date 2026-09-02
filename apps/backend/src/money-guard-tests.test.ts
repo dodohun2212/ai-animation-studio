@@ -110,7 +110,11 @@ describe("paid-work guard tests", () => {
     for (const workspace of ["apps", "packages"]) await walk(path.join(repoRoot, workspace));
     // Proof the walk found the suites rather than silently matching nothing — the failure this guard exists to
     // prevent is a check that quietly stops looking.
-    expect(sources.length).toBeGreaterThan(100);
+    // 220 against the ~240 suites this walk really finds across apps/ and packages/. At 100 an entire
+    // workspace could drop out of the walk and this would stay green — and what it walks for is the guards
+    // standing in front of paid calls. Deliberately under the real count, so deleting a few suites is not a
+    // red one.
+    expect(sources.length).toBeGreaterThan(220);
 
     const all = sources.join("\n");
     const missing = MONEY_GUARDS.filter(({ title }) => !all.includes(title)).map(({ title, why }) => `${title} — ${why}`);

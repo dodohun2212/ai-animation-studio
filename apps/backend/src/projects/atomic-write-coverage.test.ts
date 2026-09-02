@@ -56,7 +56,9 @@ async function collectSourceFiles(directory: string): Promise<string[]> {
 describe("durable state is written atomically", () => {
   it("writes no JSON state through a plain writeFile outside the two files that must", async () => {
     const files = await collectSourceFiles(BACKEND_SOURCE);
-    expect(files.length).toBeGreaterThan(50);
+    // 140 against 158 real backend sources — see episode-status-list.test.ts for why a floor at a third of the
+    // real number cannot catch a sweep that has gone blind to a directory.
+    expect(files.length).toBeGreaterThan(140);
 
     let checked = 0;
     for (const file of files) {
