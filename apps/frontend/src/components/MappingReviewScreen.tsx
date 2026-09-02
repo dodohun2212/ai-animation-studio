@@ -273,12 +273,32 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
     }
   }
 
+  /**
+   * 🔴 `enabled: true` rides along with every 확인, and leaving it off cost Captain D a paid Episode.
+   *
+   * The server's two decisions are not mirror images (mappings.service.ts):
+   *
+   *   exclude → status = "excluded",  user_confirmed = false,  enabled = false
+   *   confirm → status = "confirmed", user_confirmed = true                     ← enabled is never put back
+   *
+   * So exclude-then-confirm lands on `status: "confirmed"` with `enabled: false`. Every screen reads the
+   * status and calls that row 연결됨 · 확인됨; the one thing that reads `enabled` is the code that decides
+   * what the image model is actually shown (image-reference-selection.ts: `status === "confirmed" && enabled`),
+   * and it skips the row in silence. Measured on 12/Episode04: both mappings sat at
+   * `enabled: false, status: "confirmed"`, the screen said 연결됨, and nothing warned anyone.
+   *
+   * The round trip existed before this screen had a toggle — 제외 then 확인 on the row below did the same —
+   * but the toggle put it one press away on the button people actually press, so this is the call site that
+   * has to be safe. Sending `enabled` explicitly rather than waiting for the server to be fixed: the request
+   * that says "use this one" should say so completely, and a screen that only half-restores a connection is
+   * the defect whatever the server does with it.
+   */
   async function decide(mappingId: string, decision: UpdateProjectAssetMappingDecision) {
     if (decisionBusy.current.has(mappingId)) return;
     decisionBusy.current.add(mappingId);
     setDecisionPendingIds(new Set(decisionBusy.current));
     try {
-      const response = await api.update(mappingId, { decision });
+      const response = await api.update(mappingId, decision === "confirm" ? { decision, enabled: true } : { decision });
       setMappings((current) => (current ? current.map((item) => (item.mappingId === mappingId ? response.mapping : item)) : current));
       setReview(response.review);
       setDecisionErrors((current) => {

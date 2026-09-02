@@ -158,6 +158,14 @@ describe("real OpenAI Episode image generation", () => {
     expect(regenerated, "the retry sent a nameless photo").toContain("이배드");
     expect(regenerated).toContain("왼쪽 눈가에 흉터가 있는 서른 살 남자");
 
+    // And the photo itself, not only its name. This mapping was made with `mappings.create`, which is what the
+    // screen's own button writes — `assignment_source: "manual"` — so this is the case 캡틴D is in: connected
+    // by hand, then regenerated. The request has to be an edit carrying the Asset's bytes, because a
+    // generation call with no `image[]` part would draw the character from the words alone (Round 469).
+    const [retryUrl, retryInit] = fetchMock.mock.calls[fetchMock.mock.calls.length - 1] as [string, RequestInit];
+    expect(String(retryUrl)).toContain("/images/edits");
+    expect((retryInit.body as FormData).getAll("image[]").length).toBeGreaterThan(0);
+
     // What is recorded stays the plain scene prompt. Recording what was sent would make an Asset description
     // edit read as a script change, which is what `referenceStale` is for and `imageStale` is not.
     const stored = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "generated_image_reviews.json"), "utf8")) as Array<{ scene_number: number; prompt?: string }>;

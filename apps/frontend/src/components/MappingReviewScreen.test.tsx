@@ -438,8 +438,47 @@ describe("MappingReviewScreen", () => {
 
     // Cancelling excludes rather than deletes: an excluded asset id is what stops the next Story Bible save
     // from seeding the same Asset straight back over the user's decision.
-    expect(patched).toEqual([{ decision: "exclude" }, { decision: "confirm" }]);
+    // 🔴 `enabled: true` on the way back. The server's confirm sets the status and leaves `enabled` where
+    // exclude put it (false), and the only reader of `enabled` is the code that picks the bytes the image
+    // model is shown — so without this the row reads 연결됨 and is silently left out of a paid generation.
+    expect(patched).toEqual([{ decision: "exclude" }, { decision: "confirm", enabled: true }]);
     expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "DELETE")).toBe(false);
+  });
+
+  it("re-enables the mapping when a connection is put back, not just its status", async () => {
+    const asset = makeAsset({ assetId: "ASSET-BACK", displayName: "이배드", assetType: "character" });
+    let stored = makeMapping({ mappingId: "MAP-BACK", assetId: asset.assetId, status: "excluded", enabled: false });
+    const bodies: unknown[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input).split("?")[0]!;
+      const method = (init as RequestInit | undefined)?.method ?? "GET";
+      if (url === "/assets") return jsonResponse(200, { assets: [asset] });
+      if (url === `/projects/sample_project/assets/mappings/${stored.mappingId}` && method === "PATCH") {
+        const body = JSON.parse(String((init as RequestInit).body)) as { decision?: string; enabled?: boolean };
+        bodies.push(body);
+        // Mirrors the server: confirm sets the status and does NOT touch `enabled` on its own, so a screen
+        // that omits the flag leaves a "confirmed" mapping the image step will skip without saying so.
+        stored = { ...stored, status: "confirmed", ...(body.enabled === undefined ? {} : { enabled: body.enabled }) };
+        return jsonResponse(200, { mapping: stored, review: makeReview({}) });
+      }
+      if (url === "/projects/sample_project/assets/mappings") return jsonResponse(200, { mappings: [stored] });
+      if (url === "/projects/sample_project/assets/mapping-review") return jsonResponse(200, { review: makeReview({}), sceneCount: 6 });
+      if (url === `/assets/${asset.assetId}`) return jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false });
+      throw new Error(`Unexpected fetch: ${method} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
+    fireEvent.click(within(await screen.findByRole("form", { name: "연결할 이미지 검색" })).getByRole("button", { name: "검색" }));
+
+    const candidates = await screen.findByRole("list", { name: "연결할 이미지 후보" });
+    fireEvent.click(within(candidates).getByRole("button", { name: "제외됨" }));
+    await within(candidates).findByRole("button", { name: "연결됨" });
+
+    expect(bodies).toEqual([{ decision: "confirm", enabled: true }]);
+    // A connection that says 연결됨 while `enabled` is false is invisible to the image step: paid pictures
+    // come back without the reference and nothing on any screen says why (12/Episode04).
+    expect(stored.enabled).toBe(true);
   });
 
   it("reports a failed cancellation on the row that was pressed, and leaves it connected", async () => {
