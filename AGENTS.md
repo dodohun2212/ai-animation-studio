@@ -40,8 +40,9 @@ appropriate TypeScript layer.
   after the migration was long finished and nothing in `apps/` referenced them. They are in git history if a
   question about the original behaviour ever needs settling (`git log --diff-filter=D -- app`), which is where
   such questions were answered from several times during the migration.
-- The repository-root `learning_data/` stays: it is the baseline's *data*, tracked in git, and a different
-  thing from `apps/backend/learning_data` (docs/06_DECISIONS.md D-032).
+- The repository-root `learning_data/` — the baseline's *data* — was deleted with the source, at the same
+  request. `apps/backend/learning_data` is the app's own store and is untouched by that; it is gitignored, so
+  it is the one directory here that history cannot give back. Back it up before anything drastic.
 - Do not modify or delete what is left of the Python baseline unless the user explicitly asks.
 - New application code belongs in `apps/`.
 - Shared frontend/backend contracts belong in `packages/shared/`.

@@ -19,10 +19,11 @@ export const PROJECTS_ROOT = "PROJECTS_ROOT";
  * `learning_data` relative to the cwd, which for every real launch is `apps/backend` — see story-prompt.service.ts
  * for why that is consistent rather than accidental.
  *
- * The repository root holds a directory of the same name, and it is a different thing: the Python baseline's
- * data, tracked in git, last written by the Python app. Nothing here should ever write there. When reading
- * files to answer "what did the app actually store", check which one you opened first — a stale copy of that
- * question already produced a wrong answer once (D-032).
+ * The repository root used to hold a directory of the same name — the Python baseline's data — and telling the
+ * two apart was its own decision (D-032). That copy was deleted on 2026-09-02 at the user's request, so there
+ * is one `learning_data` now and it is this one. The reason the distinction mattered has not gone away: this
+ * path still depends on the process's working directory, so a backend started from the repository root writes
+ * a fresh, empty tree there instead of finding the person's projects.
  */
 function defaultProjectsRoot(): string {
   return process.env.PROJECTS_ROOT ?? path.join(process.env.LEARNING_DATA_ROOT ?? path.join(process.cwd(), "learning_data"), "projects");

@@ -4,7 +4,7 @@
 병합하여 Instagram Reels용 MP4를 만드는 애플리케이션입니다.
 
 기존 Python/Tkinter 프로그램에서 TypeScript로의 이전은 끝났고, 지금은 실사용
-피드백을 받아 고치고 다듬는 단계입니다. 파이썬 소스(`app/`, `tests/`)는
+피드백을 받아 고치고 다듬는 단계입니다. 파이썬 소스(`app/`, `tests/`)와 그 시절 데이터(`learning_data/`)는
 2026-09-02에 저장소에서 지웠습니다 — 원본 동작을 확인해야 하면 git 히스토리에
 있습니다(`git log --diff-filter=D -- app`). 자세한 경위는
 `docs/06_DECISIONS.md`의 D-047입니다.
@@ -18,7 +18,6 @@ apps/desktop/        Electron
 packages/shared/     공통 TypeScript 계약
 prompts/             대본 생성 템플릿 — 실행 중에 읽히고 설치 프로그램에 복사됩니다
 fonts/               자막 렌더링용 폰트 — 같은 이유로 실행에 필요합니다
-learning_data/       파이썬 시절 데이터(보존). 지금 앱은 `apps/backend/learning_data`에 씁니다
 docs/                제품 명세 · 작업 기록 · 결정 기록
 ```
 
