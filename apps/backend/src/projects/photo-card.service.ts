@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { HttpException, Injectable, Logger, type LoggerService } from "@nestjs/common";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { PHOTO_CARD_QUOTE_MAX_LENGTH, RUNWAY_CLIP_DURATIONS, WorkflowState, type CreatePhotoCardRequest, type CreatePhotoCardResponse } from "@ai-animation-studio/shared";
@@ -32,7 +32,30 @@ export class PhotoCardService {
     private readonly projects: LocalProjectRepository,
     private readonly assets: LocalAssetsRepository,
     private readonly projectsRoot: string,
+    /** Optional so existing constructions keep working, and so a test can read what was written down — same shape as projects.repository.ts's own logger parameter. */
+    private readonly logger: Pick<LoggerService, "warn"> = new Logger("PhotoCard"),
   ) {}
+
+  /**
+   * Turns a failed write into this route's error, without erasing what it was.
+   *
+   * "이름이 이미 있다" and "디스크에 못 썼다" are opposite situations: one is the person's to fix in the name
+   * field, the other is not theirs at all. Both used to arrive as *"사진 카드를 저장하지 못했습니다"*, and the
+   * first one arrived on a card that had been made perfectly a moment earlier — so the person read "it failed"
+   * about work that was already sitting on disk, and pressed again (Cowork Round 432).
+   *
+   * `PROJECT_ALREADY_EXISTS` passes through: the screen already has the right sentence for it and could never
+   * receive it. Everything else still becomes PHOTO_CARD_STORAGE_ERROR — but the reason is written down, so the
+   * server is no longer the only party that cannot say whether the picture or the record was what failed.
+   */
+  private storageFailure(stage: string, error: unknown): HttpException {
+    if (error instanceof HttpException) {
+      const body = error.getResponse();
+      if (typeof body === "object" && body !== null && (body as { code?: unknown }).code === "PROJECT_ALREADY_EXISTS") return error;
+    }
+    this.logger.warn(`Photo card ${stage} failed: ${error instanceof Error ? error.message : String(error)}`);
+    return photoCardStorageError();
+  }
 
   async create(body: unknown): Promise<CreatePhotoCardResponse> {
     const request = this.parse(body);
@@ -61,17 +84,17 @@ export class PhotoCardService {
     // same defect from the other end, and it was: measured end to end, a 16:9 card merged to 1080x1920.
     project.lore_context = { ...project.lore_context, style_notes: { aspect: request.aspectRatio } };
 
-    try { await this.projects.create(project); } catch { throw photoCardStorageError(); }
+    try { await this.projects.create(project); } catch (error) { throw this.storageFailure("project creation", error); }
     const destination = path.join(this.projectsRoot, project.project_id, "images", "scene1.png");
     try {
       await fs.mkdir(path.dirname(destination), { recursive: true });
       await fs.copyFile(source, destination);
-    } catch { throw photoCardStorageError(); }
+    } catch (error) { throw this.storageFailure("picture copy", error); }
 
     // Written after the bytes are in place, never before: the record is what makes generation skip this scene,
     // and a record pointing at a file that is not there yet is the same lie in the other direction.
     const stored = { ...project, generated_images: [destination] };
-    try { await this.projects.save(stored); } catch { throw photoCardStorageError(); }
+    try { await this.projects.save(stored); } catch (error) { throw this.storageFailure("record save", error); }
     await this.writeReviewPlaceholderless(project.project_id);
     return { project: toApiProject(stored) };
   }
