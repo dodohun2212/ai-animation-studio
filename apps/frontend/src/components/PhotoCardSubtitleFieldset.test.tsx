@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT } from "@ai-animation-studio/shared";
+import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, PHOTO_CARD_SUBTITLE_CSS_RATIO } from "@ai-animation-studio/shared";
 
 import { PhotoCardSubtitleFieldset } from "./PhotoCardSubtitleFieldset.js";
 
@@ -94,6 +94,27 @@ describe("PhotoCardSubtitleFieldset", () => {
     const onChange = renderFieldset(TWO_PART, { scale: 0.03, center: 0.4 });
     fireEvent.change(screen.getByTestId("photo-card-subtitle-scale"), { target: { value: "0.045" } });
     expect(onChange).toHaveBeenCalledWith({ scale: 0.045, center: 0.4 });
+  });
+
+  /**
+   * The size CSS is set to is not the size the renderer is told.
+   *
+   * libass sizes a font by its own vertical metrics, so drawing `font-size: 52px` puts about half again as
+   * much ink across the frame as `Fontsize 52` does. The preview did exactly that and reported the largest
+   * size as overflowing when the video is fine at it (CLI Round 447 measured both faces off real frames).
+   */
+  it("draws at the measured CSS size rather than the renderer's own number", () => {
+    renderFieldset(TWO_PART, { scale: 0.027, center: 0.4 });
+    const preview = screen.getByTestId("photo-card-subtitle-preview");
+    const nodes = Array.from(preview.querySelectorAll("div")) as unknown as HTMLElement[];
+    const serif = nodes.find((node) => node.style.fontFamily.includes("Serif"));
+    const sans = nodes.find((node) => node.style.fontFamily.includes("Sans"));
+
+    // 1920 * 0.027 = 52 body, heading 1.4x that = 73; each scaled by its own measured ratio.
+    expect(parseFloat(sans!.style.fontSize)).toBeCloseTo(52 * PHOTO_CARD_SUBTITLE_CSS_RATIO.body, 3);
+    expect(parseFloat(serif!.style.fontSize)).toBeCloseTo(73 * PHOTO_CARD_SUBTITLE_CSS_RATIO.heading, 3);
+    // The two faces measure differently; one shared ratio would be wrong for one of them.
+    expect(PHOTO_CARD_SUBTITLE_CSS_RATIO.heading).not.toBe(PHOTO_CARD_SUBTITLE_CSS_RATIO.body);
   });
 
   // The bounds come from the shared constants the server refuses by, so a slider cannot reach a value the

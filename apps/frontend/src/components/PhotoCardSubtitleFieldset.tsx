@@ -4,6 +4,7 @@ import {
   DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT,
   PHOTO_CARD_HEADING_RATIO,
   PHOTO_CARD_SUBTITLE_CENTER,
+  PHOTO_CARD_SUBTITLE_CSS_RATIO,
   PHOTO_CARD_SUBTITLE_OUTLINE,
   PHOTO_CARD_SUBTITLE_SCALE,
   PHOTO_CARD_SUBTITLE_SHADOW,
@@ -109,7 +110,11 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, vertical, layout, 
           transform: "translateY(-50%)",
           paddingLeft: `${margin}px`,
           paddingRight: `${margin}px`,
-          fontSize: `${size}px`,
+          // The ASS size scaled to what CSS has to be set to for the same drawn width. libass sizes a font by
+          // its own vertical metrics, so `font-size: 52px` is about half again as wide as `Fontsize 52` —
+          // which made this preview wrap early and warn about overflow the video never had. The two ratios
+          // are measured off real rendered frames and differ between the faces, so they stay separate.
+          fontSize: `${size * (serif ? PHOTO_CARD_SUBTITLE_CSS_RATIO.heading : PHOTO_CARD_SUBTITLE_CSS_RATIO.body)}px`,
           fontWeight: serif ? 700 : 400,
           fontFamily: serif ? '"Noto Serif KR", "Nanum Myeongjo", serif' : '"Noto Sans KR", system-ui, sans-serif',
           color: "#fff",
