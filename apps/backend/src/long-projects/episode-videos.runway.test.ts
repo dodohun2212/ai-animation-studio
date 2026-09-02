@@ -196,6 +196,9 @@ describe("real Runway episode video generation", () => {
     expect(progress.retryEstimate).toEqual({
       perSceneCostUsd: 0.25,
       budget: { monthlyLimitUsd: 10, spentUsd: 4.25, remainingUsd: 5.75, estimatedRequestCostUsd: 0.25, canSpend: true },
+      // Scene 1 failed and nothing after it ever started: a retry of scene 1 resumes all six, which is what
+      // the confirmation must price (see the contract's retryEstimate doc).
+      pendingSceneCount: 6,
     });
   });
 
@@ -549,6 +552,8 @@ describe("real Runway episode video generation", () => {
     expect(progress).toMatchObject({ status: "failed", failedSceneNumbers: [5], completedSceneNumbers: [1, 2, 3, 4] });
     const boughtBeforeRetry = submits();
     expect(boughtBeforeRetry).toBe(5);
+    // The number the confirmation has to multiply, carried by the response rather than derived on two screens.
+    expect(progress.retryEstimate?.pendingSceneCount).toBe(2);
 
     // Exactly what the screen's retry button sends: scene 5, and nothing about scene 6.
     const retried = await videos.regenerate("long", 1, started.jobId, "5", { approved: true });
@@ -557,6 +562,8 @@ describe("real Runway episode video generation", () => {
 
     expect(progress).toMatchObject({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
     expect(submits() - boughtBeforeRetry).toBe(2);
+    // And it is back to nothing pending once the job is finished, so a regeneration from review says one scene.
+    expect(progress.retryEstimate?.pendingSceneCount).toBe(0);
     const spent = await deps.budget.spentThisMonth(now);
     expect(spent).toBe(0.25 * 7); // six scenes plus scene 5's failed attempt, which is charged too
   });

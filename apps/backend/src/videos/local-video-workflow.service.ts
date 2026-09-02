@@ -166,10 +166,12 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     return records;
   }
 
-  private async retryEstimate(): Promise<GenerationProgressResponse["retryEstimate"]> {
+  /** `pendingSceneCount` is every scene this job has not finished — what a retry actually resumes and pays for, see the contract's own doc comment. */
+  private async retryEstimate(records: readonly VideoRecord[]): Promise<GenerationProgressResponse["retryEstimate"]> {
     if (!this.budget) return undefined;
     const [spentUsd, remainingUsd] = await Promise.all([this.budget.spentThisMonth(), this.budget.remaining()]);
     return {
+      pendingSceneCount: records.filter((record) => record.status !== "succeeded").length,
       perSceneCostUsd: VIDEO_SCENE_ESTIMATED_COST_USD,
       budget: {
         monthlyLimitUsd: this.budget.monthlyLimitUsd, spentUsd, remainingUsd,
@@ -205,7 +207,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     // reads it already handles its absence. Retrying is still refused where it matters, at `preflight`, which
     // reads the same file and throws (docs/06_DECISIONS.md D-036: what runs on top of this number is display).
     const retryEstimate = records[0]?.execution_mode === "runway"
-      ? await this.retryEstimate().catch((error: unknown) => { if (isBudgetLedgerUnreadable(error)) return undefined; throw error; })
+      ? await this.retryEstimate(records).catch((error: unknown) => { if (isBudgetLedgerUnreadable(error)) return undefined; throw error; })
       : undefined;
     return {
       // Read off the records, not off whether a cost line came back: this is decided when the job is submitted

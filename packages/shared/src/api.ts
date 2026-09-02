@@ -483,8 +483,8 @@ export interface LongEpisodeVideoProgress {
   episode: LongEpisodeDetail;
   /** Same meaning and scope as GenerationProgressResponse.sceneErrors (see that field's doc comment). */
   sceneErrors?: Record<SceneNumber, string>;
-  /** Same meaning and scope as GenerationProgressResponse.retryEstimate (see that field's doc comment). */
-  retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview };
+  /** Same meaning and scope as GenerationProgressResponse.retryEstimate, `pendingSceneCount` included (see that field's doc comment). */
+  retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview; pendingSceneCount: number };
 }
 /** costUsd: actual cost recorded for this scene's video across every attempt, including past regenerations; absent when nothing has been recorded. */
 export interface LongEpisodeVideoReview { sceneNumber: SceneNumber; status: "pending" | "approved"; updatedAt: string; costUsd?: number; }
@@ -1546,8 +1546,22 @@ export interface GenerationProgressResponse {
    * has no way to know in advance. `budget` is the current ledger snapshot (`estimatedRequestCostUsd`/`canSpend`
    * describe a single-scene retry specifically); comparing `perSceneCostUsd * N` against `budget.remainingUsd`
    * covers the "regenerate all" case. Absent in the local fake execution mode, where nothing is charged.
+   *
+   * `pendingSceneCount` is how many scenes this job has not finished — every scene not yet `succeeded`. It is
+   * here because a retry does not buy only the scene that was selected: a failed scene halts the pipeline
+   * (scenes continue each other, so nothing skips ahead), and clearing that failure resumes the whole job, so
+   * every unfinished scene after it is submitted and charged without another confirmation. Measured: with
+   * scene 5 failed and scene 6 waiting, one press of "retry scene 5" sent two paid submissions while the
+   * screen said one (CLI Round 429).
+   *
+   * What a retry buys is `{selected} ∪ {not succeeded}`, and only two states are reachable — mid-generation,
+   * where the selected scene is itself a failed one (so the union is `pendingSceneCount`), and a finished job,
+   * where nothing is pending (so it is the number selected). `Math.max(pendingSceneCount, selectedCount)` is
+   * therefore the count to multiply, and this field exists so no screen has to derive that rule from scene
+   * arrays: the rule comes from the backend's own halting behaviour, and two screens deriving it separately is
+   * how the two ends drift apart.
    */
-  retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview };
+  retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview; pendingSceneCount: number };
 }
 
 export interface VideoReview {

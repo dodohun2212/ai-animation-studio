@@ -291,6 +291,9 @@ describe("real Runway video workflow", () => {
     expect(progress.retryEstimate).toEqual({
       perSceneCostUsd: 0.25,
       budget: { monthlyLimitUsd: 10, spentUsd: 4.25, remainingUsd: 5.75, estimatedRequestCostUsd: 0.25, canSpend: true },
+      // Scene 1 failed and nothing after it ever started: a retry of scene 1 resumes all six, which is what
+      // the confirmation must price (see the contract's retryEstimate doc).
+      pendingSceneCount: 6,
     });
   });
 

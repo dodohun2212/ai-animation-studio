@@ -191,7 +191,9 @@ describe("VideoWorkflowScreen", () => {
       status: "failed",
       completedSceneNumbers: [1],
       failedSceneNumbers: [2],
-      retryEstimate: { perSceneCostUsd: 0.25, budget: { monthlyLimitUsd: 10, spentUsd: 4, remainingUsd: 6, estimatedRequestCostUsd: 0.25, canSpend: true } },
+      // 🟠 CLI, mechanically: `pendingSceneCount` is required on retryEstimate now (Round 437) — how many scenes a
+      // retry actually resumes and pays for. Values match each fixture's own scene state; adjust freely.
+      retryEstimate: { perSceneCostUsd: 0.25, budget: { monthlyLimitUsd: 10, spentUsd: 4, remainingUsd: 6, estimatedRequestCostUsd: 0.25, canSpend: true }, pendingSceneCount: 5 },
     });
     renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, failed)));
 
@@ -208,7 +210,7 @@ describe("VideoWorkflowScreen", () => {
       status: "succeeded",
       completedSceneNumbers: [1, 2, 3, 4, 5, 6],
       // 6 scenes x $0.25 = $1.50 against only $0.40 left.
-      retryEstimate: { perSceneCostUsd: 0.25, budget: { monthlyLimitUsd: 10, spentUsd: 9.6, remainingUsd: 0.4, estimatedRequestCostUsd: 0.25, canSpend: true } },
+      retryEstimate: { perSceneCostUsd: 0.25, budget: { monthlyLimitUsd: 10, spentUsd: 9.6, remainingUsd: 0.4, estimatedRequestCostUsd: 0.25, canSpend: true }, pendingSceneCount: 0 },
     });
     const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, succeeded)).mockResolvedValueOnce(jsonResponse(200, reviewResponse(sixReviews())));
     renderScreen(fetchMock);
@@ -239,7 +241,7 @@ describe("VideoWorkflowScreen", () => {
       status: "interrupted",
       completedSceneNumbers: [],
       failedSceneNumbers: [1],
-      retryEstimate: { perSceneCostUsd: 0.25, budget: { monthlyLimitUsd: 10, spentUsd: 0.5, remainingUsd: 9.5, estimatedRequestCostUsd: 0.25, canSpend: true } },
+      retryEstimate: { perSceneCostUsd: 0.25, budget: { monthlyLimitUsd: 10, spentUsd: 0.5, remainingUsd: 9.5, estimatedRequestCostUsd: 0.25, canSpend: true }, pendingSceneCount: 6 },
     });
     renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, interrupted)));
 
@@ -755,6 +757,7 @@ describe("VideoWorkflowScreen source", () => {
       retryEstimate: {
         perSceneCostUsd: 0.25,
         budget: { monthlyLimitUsd: 10, spentUsd: 0.25, remainingUsd: 9.75, estimatedRequestCostUsd: 0.25, canSpend: true },
+        pendingSceneCount: 5,
       },
     });
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, running));
