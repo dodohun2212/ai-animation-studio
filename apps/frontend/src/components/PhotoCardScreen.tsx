@@ -4,6 +4,7 @@ import { PHOTO_CARD_QUOTE_MAX_LENGTH, RUNWAY_CLIP_DURATIONS } from "@ai-animatio
 
 import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
 import { createPhotoCard, toPhotoCardDisplayError } from "../api/photoCardsApi.js";
+import { listProjects } from "../api/projectsApi.js";
 import { Spinner } from "./Spinner.js";
 
 interface Props {
@@ -13,6 +14,16 @@ interface Props {
 }
 
 type DisplayError = { code: string; message: string };
+
+/**
+ * The server's own rule for a project id (project-id.ts's SAFE_PROJECT_ID_PATTERN), repeated so the refusal
+ * lands next to the field instead of after the button.
+ *
+ * `\p{L}` is any Unicode letter, so a Korean name is fine — what actually gets rejected is brackets, spaces
+ * and punctuation, which is exactly what someone reaches for naming a card 명언(불광불급). The server answered
+ * only "입력 내용을 확인해 주세요", naming neither the field nor the character.
+ */
+const SAFE_NAME = /^[\p{L}\p{N}_-]+$/u;
 
 
 
@@ -41,6 +52,18 @@ export function PhotoCardScreen({ onBack, onCreated }: Props) {
   const [vertical, setVertical] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<DisplayError | null>(null);
+  /**
+   * Names already in use, so "이 이름은 이미 있습니다" lands next to the field instead of arriving as a failure.
+   *
+   * The server does refuse a duplicate — a plain mkdir on the project directory either wins or returns EEXIST —
+   * but the photo-card path wraps every one of its failures in PHOTO_CARD_STORAGE_ERROR, so the second press on
+   * a name that worked the first time says "사진 카드를 저장하지 못했습니다" about a card that is sitting on disk,
+   * finished. photoCardsApi already carries the right sentence for PROJECT_ALREADY_EXISTS; nothing sends it.
+   *
+   * This is not the guard and is not treated as one: the listing is a snapshot, it need not name every project
+   * on disk, and the server's refusal stays where it is. It only stops the confusing press.
+   */
+  const [takenNames, setTakenNames] = useState<ReadonlySet<string> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,9 +73,20 @@ export function PhotoCardScreen({ onBack, onCreated }: Props) {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    listProjects()
+      // Failing to read the list is not a reason to block the button: the server still refuses duplicates.
+      .then((response) => { if (!cancelled) setTakenNames(new Set(response.projects.map((project) => project.id))); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
   const trimmedQuote = quote.trim();
   const trimmedId = projectId.trim();
-  const ready = Boolean(assetId) && trimmedQuote.length > 0 && trimmedId.length > 0 && trimmedQuote.length <= PHOTO_CARD_QUOTE_MAX_LENGTH;
+  const nameTaken = takenNames !== null && takenNames.has(trimmedId);
+  const nameUsable = trimmedId.length > 0 && SAFE_NAME.test(trimmedId) && !nameTaken;
+  const ready = Boolean(assetId) && trimmedQuote.length > 0 && nameUsable && trimmedQuote.length <= PHOTO_CARD_QUOTE_MAX_LENGTH;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -186,14 +220,27 @@ export function PhotoCardScreen({ onBack, onCreated }: Props) {
               onChange={(event) => setProjectId(event.target.value)}
             />
           </label>
-          <p className="text-xs text-slate-500">문자, 숫자, '_', '-'만 쓸 수 있습니다. 나중에 이 이름으로 찾습니다.</p>
+          <p className="text-xs text-slate-500">글자, 숫자, '_', '-'만 쓸 수 있습니다. 한글도 됩니다. 나중에 이 이름으로 찾습니다.</p>
+          {trimmedId.length > 0 && !SAFE_NAME.test(trimmedId) && (
+            <p data-testid="photo-card-id-invalid" className="text-xs text-rose-400">
+              괄호·공백·문장부호는 이름에 쓸 수 없습니다. 예: 명언_불광불급
+            </p>
+          )}
+          {nameTaken && (
+            <p data-testid="photo-card-id-taken" className="text-xs text-rose-400">
+              이 이름은 이미 있습니다. 그 카드는 프로젝트 목록에서 열면 됩니다. 다시 만들 필요가 없습니다.
+            </p>
+          )}
         </section>
 
         {/* Said here rather than discovered two screens later. Music is not part of making the card — it is
             chosen at merge time, together with the credit line that some tracks require, and that is the one
             moment where being told about attribution actually changes what a person does. */}
+        {/* Repeated next to the button, not only in the header. The header sentence is read once on the way in;
+            this one is read at the moment someone hesitates over a button that might cost money. */}
         <p className="text-sm text-slate-400" data-testid="photo-card-music-note">
-          음악은 다음 단계(영상 합치기)에서 고릅니다. 저작권 표시가 필요한 음원이면 거기서 알려드립니다.
+          <span className="font-semibold text-slate-200">이 단계는 비용이 들지 않습니다</span> — 이미 만들어 둔 그림 한 장을 그대로 쓰고
+          AI에 새로 요청하지 않습니다. 음악은 다음 단계(영상 합치기)에서 고릅니다. 저작권 표시가 필요한 음원이면 거기서 알려드립니다.
         </p>
 
         {error && (

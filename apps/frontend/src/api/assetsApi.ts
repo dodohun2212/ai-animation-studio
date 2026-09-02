@@ -1,5 +1,6 @@
 import {
   API_ROUTES,
+  ASSET_UPLOAD_FILE_FIELD,
   MAX_SCENE_COUNT,
   type AddAssetVersionResponse,
   type BackfillGeneratedImageAssetsResponse,
@@ -198,7 +199,7 @@ export async function getAsset(assetId: string): Promise<GetAssetResponse> {
 
 export function createAsset(file: File, metadata: CreateAssetMetadata): Promise<CreateAssetResponse> {
   const body = new FormData();
-  body.append("image", file);
+  body.append(ASSET_UPLOAD_FILE_FIELD, file);
   body.append("metadata", JSON.stringify(metadata));
   return request(API_ROUTES.assets, { method: "POST", body }, isCreateResponse);
 }
@@ -229,7 +230,7 @@ export async function deleteAssetFolder(assetId: string, options: DeleteAssetFol
 
 export async function addAssetVersion(assetId: string, file: File, notes: string): Promise<AddAssetVersionResponse> {
   const body = new FormData();
-  body.append("image", file);
+  body.append(ASSET_UPLOAD_FILE_FIELD, file);
   if (notes.trim()) body.append("notes", notes.trim());
   const response = await request(API_ROUTES.assetVersions(assetId), { method: "POST", body }, isAddVersionResponse);
   if (response.asset.assetId !== assetId) throw new AssetsApiError(MALFORMED.code, MALFORMED.message);
@@ -238,7 +239,7 @@ export async function addAssetVersion(assetId: string, file: File, notes: string
 
 export async function relinkAsset(assetId: string, file: File): Promise<RelinkAssetResponse> {
   const body = new FormData();
-  body.append("image", file);
+  body.append(ASSET_UPLOAD_FILE_FIELD, file);
   const response = await request(API_ROUTES.assetRelink(assetId), { method: "POST", body }, isRelinkResponse);
   if (response.asset.assetId !== assetId) throw new AssetsApiError(MALFORMED.code, MALFORMED.message);
   return response;

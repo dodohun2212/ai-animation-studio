@@ -94,6 +94,23 @@ function sceneStatus(
   return "pending";
 }
 
+/**
+ * How many scenes one retry actually buys.
+ *
+ * Retrying a failed scene does not buy that scene alone. A failed scene stops the pipeline — scenes carry
+ * continuity, so the run does not skip past it — and clearing the failure resumes the whole job, sending every
+ * scene that is not yet succeeded without asking again (CLI Round 429 counted the submissions: 5번만 재시도
+ * → +2회). So the rule is: the chosen scene, union everything still unfinished.
+ *
+ * The confirmation said 1 while two were charged. Quoting money low is the one direction this must never be
+ * wrong in, which is why it is computed rather than written as a literal.
+ */
+function scenesOneRetryBuys(sceneNumbers: readonly number[], completed: readonly number[], chosen: number): number {
+  const unfinished = new Set(sceneNumbers.filter((scene) => !completed.includes(scene)));
+  unfinished.add(chosen);
+  return unfinished.size;
+}
+
 export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: Props) {
   const [progressState, setProgressState] = useState<ProgressLoadState>({ status: "loading" });
   const [reviewState, setReviewState] = useState<ReviewLoadState>({ status: "idle" });
@@ -499,7 +516,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                           <p className="text-sm font-semibold text-amber-300">{sceneNumber}번 장면을 다시 시도할까요?</p>
                           <RetryCostNotice
                             estimate={progress.retryEstimate}
-                            sceneCount={1}
+                            sceneCount={scenesOneRetryBuys(progress.sceneNumbers, progress.completedSceneNumbers, sceneNumber)}
                             data-testid={`failed-scene-retry-cost-${sceneNumber}`}
                           />
                           {/* Same endpoint as a review regeneration, so the same one-off direction applies —

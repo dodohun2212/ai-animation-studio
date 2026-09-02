@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { jsonResponse, makeAsset, makeAssetFolder, makeProject } from "../api/testUtils.js";
+import { answerOutOfBand, jsonResponse, makeAsset, makeAssetFolder, makeProject, withStatus } from "../api/testUtils.js";
 import { PhotoCardScreen } from "./PhotoCardScreen.js";
 
 const picture = makeAsset({ assetId: "ASSET-1", displayName: "밤하늘", imageAvailable: true, contentUrl: "/assets/ASSET-1/content" });
@@ -10,11 +10,26 @@ const picture = makeAsset({ assetId: "ASSET-1", displayName: "밤하늘", imageA
 const folder = makeAssetFolder({ assetId: "FOLDER-1", displayName: "캐릭터 폴더" });
 const missing = makeAsset({ assetId: "ASSET-GONE", displayName: "파일 없는 그림", imageAvailable: false, contentUrl: null });
 
-function stub(...responses: Response[]) {
+/**
+ * The project list is answered out of band, not threaded into the call-order chain.
+ *
+ * The screen gained a second mount request — the existing project names, so a name that is already taken is
+ * refused beside the field instead of coming back as a failure. Every test below queues its responses in
+ * order, and dropping one more into that queue would hand the create response to whichever mount effect
+ * happened to run second. Only the tests that care about existing names say anything about them.
+ *
+ * `names` is either the ids that already exist, or a raw route answer (see `withStatus`) for the failure case.
+ */
+function stubWithExistingNames(names: unknown, ...responses: Response[]) {
   const fetchMock = vi.fn();
   for (const response of responses) fetchMock.mockResolvedValueOnce(response);
-  vi.stubGlobal("fetch", fetchMock);
+  const listing = Array.isArray(names) ? { projects: names.map((id: string) => makeProject({ id })) } : names;
+  vi.stubGlobal("fetch", answerOutOfBand({ "GET /projects": listing }, fetchMock));
   return fetchMock;
+}
+
+function stub(...responses: Response[]) {
+  return stubWithExistingNames([], ...responses);
 }
 
 async function fillAndSubmit() {
@@ -77,6 +92,66 @@ describe("PhotoCardScreen", () => {
     expect(submit().disabled).toBe(false);
   });
 
+  /**
+   * 명언(불광불급) was a real attempt. The server rejects the brackets and answers "입력 내용을 확인해 주세요",
+   * which names neither the field nor the character — so the refusal has to happen here, beside the box, and
+   * has to say what is actually wrong. Korean letters are fine; punctuation is not.
+   */
+  it("refuses a name the server would reject, and says which characters are the problem", async () => {
+    stub(jsonResponse(200, { assets: [picture] }));
+    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} />);
+    fireEvent.click(await screen.findByTestId("photo-card-asset-ASSET-1"));
+    fireEvent.change(screen.getByTestId("photo-card-quote"), { target: { value: "문장" } });
+    fireEvent.change(screen.getByTestId("photo-card-id"), { target: { value: "명언(불광불급)" } });
+
+    expect((await screen.findByTestId("photo-card-id-invalid")).textContent).toContain("괄호");
+    expect((screen.getByTestId("photo-card-submit") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  /**
+   * The card that was already made.
+   *
+   * 명언_불광불급 went through: the project was written, the picture copied beside it, the record saved. The
+   * second press on the same name answered "사진 카드를 저장하지 못했습니다" — about a finished card — because
+   * the photo-card path wraps the server's already-exists refusal in its storage error. Until that is
+   * untangled, and after it too, the name field is the only place that can say so before the press.
+   */
+  it("refuses a name that already belongs to a project", async () => {
+    stubWithExistingNames(["명언_불광불급"], jsonResponse(200, { assets: [picture] }));
+    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} />);
+    fireEvent.click(await screen.findByTestId("photo-card-asset-ASSET-1"));
+    fireEvent.change(screen.getByTestId("photo-card-quote"), { target: { value: "문장" } });
+    fireEvent.change(screen.getByTestId("photo-card-id"), { target: { value: "명언_불광불급" } });
+
+    expect((await screen.findByTestId("photo-card-id-taken")).textContent).toContain("이미 있습니다");
+    expect((screen.getByTestId("photo-card-submit") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  // The check is a convenience, never the guard. If the listing cannot be read the button stays usable and the
+  // server does what it has always done — otherwise one failing request would lock a screen that works.
+  it("leaves the button usable when the project list cannot be read", async () => {
+    stubWithExistingNames(withStatus(500, { code: "STORAGE_ERROR", message: "" }), jsonResponse(200, { assets: [picture] }));
+    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} />);
+    fireEvent.click(await screen.findByTestId("photo-card-asset-ASSET-1"));
+    fireEvent.change(screen.getByTestId("photo-card-quote"), { target: { value: "문장" } });
+    fireEvent.change(screen.getByTestId("photo-card-id"), { target: { value: "명언_불광불급" } });
+
+    await waitFor(() => expect((screen.getByTestId("photo-card-submit") as HTMLButtonElement).disabled).toBe(false));
+    expect(screen.queryByTestId("photo-card-id-taken")).toBeNull();
+  });
+
+  // The other half: the rule allows any letter, so a plain Korean name must not be caught by it.
+  it("accepts a Korean name without punctuation", async () => {
+    stub(jsonResponse(200, { assets: [picture] }));
+    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} />);
+    fireEvent.click(await screen.findByTestId("photo-card-asset-ASSET-1"));
+    fireEvent.change(screen.getByTestId("photo-card-quote"), { target: { value: "문장" } });
+    fireEvent.change(screen.getByTestId("photo-card-id"), { target: { value: "명언_불광불급" } });
+
+    expect(screen.queryByTestId("photo-card-id-invalid")).toBeNull();
+    expect((screen.getByTestId("photo-card-submit") as HTMLButtonElement).disabled).toBe(false);
+  });
+
   // A whitespace-only quote is not a quote. Trimming happens before the check, or the button unlocks on a line
   // the server will refuse — and the count next to it would read as though something had been typed.
   it("treats a quote of only spaces as empty", async () => {
@@ -116,6 +191,9 @@ describe("PhotoCardScreen", () => {
     stub(jsonResponse(200, { assets: [picture] }));
     render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} />);
 
-    expect((await screen.findByTestId("photo-card-music-note")).textContent).toContain("영상 합치기");
+    const note = (await screen.findByTestId("photo-card-music-note")).textContent ?? "";
+    expect(note).toContain("영상 합치기");
+    // Said where the decision is made, not only in the header far above it.
+    expect(note).toContain("비용이 들지 않습니다");
   });
 });

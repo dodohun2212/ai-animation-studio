@@ -254,6 +254,37 @@ describe("VideoMergeScreen", () => {
     expect(mergeFetch).not.toHaveBeenCalled();
   });
 
+  /**
+   * A photo card had no way out of the block above.
+   *
+   * Its one scene is a still picture, so `videoReview` is never "approved" — 0 of 1 confirmed, button disabled,
+   * forever. And the only thing the message told the person to do, confirm the scene in the video screen, means
+   * generating a scene video, which is a paid call: the dead end charged money to leave. Meanwhile the server
+   * merges the card happily; video-merge.service.ts branches on the same fact and reads the picture directly.
+   */
+  it("merges a photo card, which has no scene video to confirm", async () => {
+    const mergeFetch = vi.fn();
+    const still: Scene[] = [{ number: 1, script: "불광불급", imagePrompt: "", motionPrompt: "", imageReview: "approved", videoReview: "pending" }];
+    renderScreen(mergeFetch, { photoCard: true, scenes: still });
+
+    await screen.findByTestId("merge-scope-notice");
+    expect(screen.queryByTestId("merge-blocked")).toBeNull();
+    // The scene tally is about clips being confirmed one by one, which is not what a card is.
+    expect(screen.queryByTestId("merge-approved-count")).toBeNull();
+    expect(screen.getByTestId("open-merge-confirm-button")).not.toBeDisabled();
+    expect(screen.getByTestId("merge-scope-notice").textContent).toContain("그림 한 장");
+  });
+
+  // The other half: an ordinary project keeps its gate. Unblocking the card must not unblock everything.
+  it("still blocks an ordinary project with an unconfirmed scene", async () => {
+    const mergeFetch = vi.fn();
+    const partly = sixScenes().map((scene, index) => (index < 5 ? scene : { ...scene, videoReview: "pending" as const }));
+    renderScreen(mergeFetch, { scenes: partly });
+
+    expect((await screen.findByTestId("merge-blocked")).textContent).toContain("1개");
+    expect(screen.getByTestId("open-merge-confirm-button")).toBeDisabled();
+  });
+
   it("counts only the confirmed scenes, and does not block once they all are", async () => {
     const mergeFetch = vi.fn();
     renderScreen(mergeFetch);

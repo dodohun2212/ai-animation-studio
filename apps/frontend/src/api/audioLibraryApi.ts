@@ -1,5 +1,6 @@
 import {
   API_ROUTES,
+  AUDIO_UPLOAD_FILE_FIELD,
   type AudioLibraryTrack,
   type DeleteAudioTrackResponse,
   type GetAudioLibraryResponse,
@@ -138,11 +139,11 @@ export async function getAudioLibrary(): Promise<GetAudioLibraryResponse> {
  */
 export async function uploadAudioTrack(file: File, fields: UploadAudioTrackRequest): Promise<UploadAudioTrackResponse> {
   const form = new FormData();
-  // "audio", not "file": the server reads this part by name (FileInterceptor("audio")), and a mismatch is not
-  // an error anywhere — the file simply never arrives, the upload is refused for having no file, and the name
-  // is the one thing neither side's own tests could see. The Asset Library's upload names its part "image" for
-  // the same reason; the part is named after what it carries.
-  form.append("audio", file);
+  // The shared constant, not a literal. This part's name is read back by the server's own FileInterceptor, and
+  // a mismatch is not an error anywhere — the file simply never arrives and the upload is refused for having no
+  // file. It went wrong exactly that way once, and neither side's tests could see it: each built its own
+  // FormData or called the service with an object HTTP could never produce. Now both ends read one declaration.
+  form.append(AUDIO_UPLOAD_FILE_FIELD, file);
   if (fields.title?.trim()) form.append("title", fields.title.trim());
   if (fields.artist?.trim()) form.append("artist", fields.artist.trim());
   // Required by the server: where the track came from is only knowable while the person still has the file in

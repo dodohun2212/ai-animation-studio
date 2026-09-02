@@ -62,6 +62,16 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
   const [sceneCount, setSceneCount] = useState<number | null>(null);
   /** How many of them are actually confirmed. Null until the project loads — see `blocked` for why that matters. */
   const [approvedCount, setApprovedCount] = useState<number | null>(null);
+  /**
+   * A photo card, which has no scene videos and never will.
+   *
+   * The card is one picture the person already had; the merge reads that picture directly — video-merge
+   * .service.ts's mergeMaterial() branches on exactly this and never opens an approved-reviews file. This
+   * screen did not know that, so it counted scene videos, found 0 of 1 confirmed, and disabled the only
+   * button on a card the server would have merged. There was no way out of it either: "confirming" a scene
+   * video means generating one, and generating one costs money — on the one feature built to cost nothing.
+   */
+  const [photoCard, setPhotoCard] = useState(false);
   /** null until the project settings load, and stays null if they fail — the copy then claims nothing. */
   const [mediaMode, setMediaMode] = useState<MediaMode | null>(null);
   /** null until the project loads: the default mode is derived from what this project actually has, never assumed. */
@@ -80,6 +90,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
         if (cancelled) return;
         setSceneCount(response.project.scenes.length);
         setApprovedCount(response.project.scenes.filter((scene) => scene.videoReview === "approved").length);
+        setPhotoCard(response.project.photoCard === true);
         // Derived, not assumed: a project that never generated narration cannot merge "narration only", and
         // defaulting to it would label a silent video as a narrated one (docs/06_DECISIONS.md D-011).
         setNarrationAvailable(response.project.narrationAvailable);
@@ -158,7 +169,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
   const contentSentence = mergeContentSentence(mediaMode);
   /* Only blocks on a count we actually read. Unknown stays unblocked — the server refuses either way, and a
      button disabled on a guess is worse than one that fails honestly. Same rule as the Episode's merge. */
-  const blocked = approvedCount !== null && sceneCount !== null && approvedCount < sceneCount;
+  const blocked = !photoCard && approvedCount !== null && sceneCount !== null && approvedCount < sceneCount;
   /** Null until the project has loaded — merging before then would send a mode derived from nothing. */
   const audioSettings: MergeAudioSettings | null = toAudioSettings(audioMode, trackId);
   const modeUnready = audioMode !== null && needsTrack(audioMode) && !trackId;
@@ -181,11 +192,13 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
       </h1>
       <p className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300" data-testid="merge-scope-notice">
         이 단계는 비용이 들지 않습니다 — 유료 요청 없이, 이 컴퓨터에 설치된 영상 병합 프로그램만 실행합니다.
-        {approvedCount !== null ? ` 확정된 ${approvedCount}개` : ""} 장면 영상을 순서대로 이어 붙입니다.
+        {photoCard
+          ? " 고른 그림 한 장을 정해 둔 길이만큼 하나의 영상으로 만듭니다."
+          : `${approvedCount !== null ? ` 확정된 ${approvedCount}개` : ""} 장면 영상을 순서대로 이어 붙입니다.`}
         {contentSentence ? ` ${contentSentence}` : ""}
       </p>
 
-      {approvedCount !== null && sceneCount !== null && (
+      {!photoCard && approvedCount !== null && sceneCount !== null && (
         <p className="text-sm text-slate-300 tabular-nums" data-testid="merge-approved-count">
           장면 {sceneCount}개 중 <strong className="text-slate-100">{approvedCount}개 확정됨</strong>
         </p>
@@ -236,7 +249,11 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
               className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
             >
               <p className="text-sm font-semibold text-amber-300">
-                {approvedCount !== null ? `확정된 ${approvedCount}개 장면 영상을` : "확정된 장면 영상을"} 하나의 최종 영상으로 병합할까요?
+                {photoCard
+                  ? "고른 그림을"
+                  : approvedCount !== null
+                    ? `확정된 ${approvedCount}개 장면 영상을`
+                    : "확정된 장면 영상을"} 하나의 최종 영상으로 병합할까요?
               </p>
               <p className="text-sm text-slate-300">
                 아직 병합이 시작되지 않았습니다. 확인을 누르면 이 컴퓨터의 영상 병합 프로그램이 실행됩니다.
