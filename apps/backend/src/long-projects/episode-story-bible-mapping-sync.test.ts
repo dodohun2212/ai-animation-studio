@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import { LongProjectsService } from "./long-projects.service.js";
+import { EpisodeScriptsService } from "./episode-scripts.service.js";
 import { StoryBibleService } from "./story-bible.service.js";
 
 let root: string | undefined;
@@ -62,6 +63,46 @@ describe("Story Bible links reaching Episode mappings", () => {
     });
     expect(await mappings.load(episodeLocation(projectsRoot, 2))).toEqual([]);
   });
+
+  /**
+   * The order a person actually uses, which is the order the screen tells them to use.
+   *
+   * The mapping screen says the protagonist and the style chosen in settings "이 목록에 자동으로 올라옵니다",
+   * and the push that makes that true runs when the Story Bible is saved — over the Episode folders that exist
+   * *at that moment*. Episode folders are created when a script is written. So choosing first, which is what
+   * the screen invites, seeded nothing, and the promise was false for exactly the people who followed it:
+   * 캡틴D connected it by hand and then asked why it was not automatic (Cowork Round 463).
+   *
+   * No Episode exists when the links are saved here. One is created afterwards, the way it is in the app.
+   */
+  it("seeds an Episode created after the links were chosen — the order the screen asks for", async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "bible-sync-order-"));
+    const projectsRoot = path.join(root, "projects");
+    const long = new LongProjectsService(projectsRoot);
+    await long.create({ projectId: "long_sync", settings });
+    // The outline has to be approved before an Episode script can be written — the same door the app makes a
+    // person walk through, so the order under test is the real one.
+    const outline = await long.preview("long_sync");
+    await long.approve("long_sync", { approved: true, prompt: outline.preview.prompt, promptSha256: outline.preview.promptSha256 });
+    const assets = new LocalAssetsRepository(root);
+    const mappings = new LocalProjectAssetMappingsRepository(projectsRoot);
+    const bible = new StoryBibleService(projectsRoot, assets, mappings);
+    const protagonist = await assets.createFolder({ assetType: "character", displayName: "이배드" });
+    const style = await assets.create({ buffer: image, originalname: "style.png", mimetype: "image/png" }, { assetType: "style", displayName: "수채화", approved: true });
+
+    await bible.updateProtagonistAssetLink("long_sync", { assetLink: { assetId: protagonist.asset_id, versionPolicy: "follow_latest", pinnedVersion: null } });
+    await bible.updateStyleAssetLink("long_sync", { assetLink: { assetId: style.asset_id, versionPolicy: "snapshot", pinnedVersion: 1 } });
+    // Nothing to seed yet, and that part was never the defect.
+    expect(await mappings.load(episodeLocation(projectsRoot, 1))).toEqual([]);
+
+    await new EpisodeScriptsService(projectsRoot, undefined, undefined, assets, mappings)
+      .generate("long_sync", 1, { userRequestId: "bible-sync-order" });
+
+    const seeded = await mappings.load(episodeLocation(projectsRoot, 1));
+    expect(seeded.map((mapping) => mapping.match_reason).sort()).toEqual(["auto_protagonist", "auto_style"]);
+    expect(seeded.every((mapping) => mapping.status === "confirmed" && mapping.assignment_source === "auto")).toBe(true);
+  });
+
 
   it("follows the link when it is changed and when it is cleared", async () => {
     const { bible, assets, mappings, projectsRoot } = await setup(["script_approved"]);

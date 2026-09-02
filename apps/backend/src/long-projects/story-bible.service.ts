@@ -27,7 +27,7 @@ import { longInvalidData, longInvalidRequest, longMalformed, longNotFound, longS
 
 import { longStoryRoot } from "./long-project-paths.js";
 import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
-import { syncStoryBibleMappings } from "./episode-story-bible-mapping-sync.js";
+import { linksFromBible, syncStoryBibleMappings } from "./episode-story-bible-mapping-sync.js";
 const collections = ["secrets", "foreshadowing"] as const;
 const idKeys = { secrets: "secret_id", foreshadowing: "foreshadowing_id" } as const;
 const prefixes = { secrets: "SECRET", foreshadowing: "FORESHADOW" } as const;
@@ -100,12 +100,7 @@ export class StoryBibleService {
    */
   private async pushLinksToEpisodes(projectId: string, bible: StoredBible): Promise<void> {
     if (!this.mappings) return;
-    const style = bible.basic.style_asset_link as { asset_id?: unknown } | undefined;
-    const protagonist = bible.basic.protagonist_asset_link as { asset_id?: unknown } | undefined;
-    await syncStoryBibleMappings(this.projectsRoot, this.mappings, this.assets, projectId, {
-      ...(typeof style?.asset_id === "string" ? { styleAssetId: style.asset_id } : {}),
-      ...(typeof protagonist?.asset_id === "string" ? { protagonistAssetId: protagonist.asset_id } : {}),
-    });
+    await syncStoryBibleMappings(this.projectsRoot, this.mappings, this.assets, projectId, linksFromBible(bible));
   }
 
   private files(projectId: string): { project: string; bible: string } {

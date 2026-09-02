@@ -23,6 +23,30 @@ export interface StoryBibleLinks {
 }
 
 /**
+ * The two links, read out of a Story Bible however it was loaded.
+ *
+ * One rule in one place: the bible stores each link as an object with an `asset_id`, and two callers needed to
+ * know that — the save that pushes links into Episodes, and the Episode folder that appears later and has to
+ * pull them. A second copy of "where the asset id lives" is how the two ends of this feature drift apart.
+ */
+export function linksFromBible(bible: unknown): StoryBibleLinks {
+  const basic = (bible as { basic?: Record<string, unknown> } | undefined)?.basic;
+  const style = basic?.style_asset_link as { asset_id?: unknown } | undefined;
+  const protagonist = basic?.protagonist_asset_link as { asset_id?: unknown } | undefined;
+  return {
+    ...(typeof style?.asset_id === "string" ? { styleAssetId: style.asset_id } : {}),
+    ...(typeof protagonist?.asset_id === "string" ? { protagonistAssetId: protagonist.asset_id } : {}),
+  };
+}
+
+/** The same links, read from disk — for callers that do not already hold the bible. Missing or unreadable is "no links", never an error: this only ever seeds a convenience. */
+export async function readStoryBibleLinks(projectsRoot: string, projectId: string): Promise<StoryBibleLinks> {
+  try {
+    return linksFromBible(JSON.parse(await fs.readFile(path.join(longStoryRoot(projectsRoot, projectId), "story_bible.json"), "utf8")));
+  } catch { return {}; }
+}
+
+/**
  * Pushes the Story Bible's two Asset links into every Episode that has not generated pictures yet.
  *
  * Chosen once for the whole story and used by every Episode is exactly what the short project's Settings do,

@@ -17,6 +17,8 @@ import { longBudgetLedgerUnreadable, isLongProjectError, longEpisodeNotFound, lo
 import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { episodeSettings } from "./episode-settings.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
+import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
+import { readStoryBibleLinks, syncStoryBibleMappings } from "./episode-story-bible-mapping-sync.js";
 import { storyBibleBasicForPrompt } from "./story-bible-basic.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
@@ -45,7 +47,30 @@ export class EpisodeScriptsService {
     // Defaulted the way StoryBibleService does it, so the module factory stays as it is. Only the protagonist's
     // name is read from it — the script prompt has no use for anything else in the library.
     private readonly assets = new LocalAssetsRepository(path.dirname(projectsRoot)),
+    /**
+     * Optional, and absent means the Story Bible's links are not seeded into a newly created Episode — which is
+     * what this service did before, not a broken state.
+     */
+    private readonly mappings?: LocalProjectAssetMappingsRepository,
   ) { this.projects = new LongProjectsService(projectsRoot); }
+
+  /**
+   * Puts the Story Bible's protagonist and style into this Episode's mappings, at the moment the Episode's
+   * folder first exists.
+   *
+   * The bible's own save already pushes those links into every Episode it can find — and finds none when the
+   * person set them first, which is the order the mapping screen itself suggests ("설정에서 고른 주인공·전체
+   * 그림체는 이 목록에 자동으로 올라옵니다"). Episode folders are created here and nowhere else, so the feature
+   * worked only for someone who wrote a script *before* choosing, and the screen's promise was false for
+   * everyone else (Cowork Round 463; 캡틴D asked why it was not automatic, having connected it by hand).
+   *
+   * Never allowed to fail the save, for the same reason the bible's side is not: the script is what was asked
+   * for, and a mapping that could not be seeded is one the person can still make by hand.
+   */
+  private async seedStoryBibleMappings(projectId: string): Promise<void> {
+    if (!this.mappings) return;
+    await syncStoryBibleMappings(this.projectsRoot, this.mappings, this.assets, projectId, await readStoryBibleLinks(this.projectsRoot, projectId));
+  }
 
   private root(projectId: string): string { return longStoryRoot(this.projectsRoot, projectId); }
   private files(projectId: string, number: number) { const root = this.root(projectId); const episode = path.join(root, episodeDirectoryName(number)); return { root, project: path.join(root, "project.json"), outlines: path.join(root, "episode_outlines.json"), bible: path.join(root, "story_bible.json"), episode, episodeProject: path.join(episode, "project.json"), outline: path.join(episode, "outline.json"), script: path.join(episode, "script.json") }; }
@@ -82,7 +107,7 @@ export class EpisodeScriptsService {
   /** A project stored before scene_count existed (per-episode, snapshotted the same way duration_seconds already was) has no such field — falls back to 6, matching every Episode created back then. */
   private parseStored(value: unknown, outline: LongEpisodeOutline): StoredEpisode { const d = asObject(value); if (d.number !== outline.episodeNumber || !statuses.includes(d.state as LongEpisodeStatus) || typeof d.approved !== "boolean" || !Array.isArray(d.script_history) || !Number.isInteger(d.script_revision) || Number(d.script_revision) < 0) throw longInvalidData(); const result: StoredEpisode = { episode_id: asText(d.episode_id), number: outline.episodeNumber, title: asText(d.title), summary: asText(d.summary), core_event: asText(d.core_event), conflict: asText(d.conflict), cliffhanger: asText(d.cliffhanger), next_connection: asText(d.next_connection), duration_seconds: asNumber(d.duration_seconds), scene_count: Number.isInteger(d.scene_count) ? d.scene_count as number : 6, approved: d.approved, state: d.state as LongEpisodeStatus, script: asObject(d.script), script_history: d.script_history, script_revision: d.script_revision as number, outline: asObject(d.outline), updated_at: asText(d.updated_at), ...(typeof d.last_script_request_id === "string" ? { last_script_request_id: d.last_script_request_id } : {}), ...(d.instagram_post !== undefined ? { instagram_post: d.instagram_post } : {}), ...(d.used_audio !== undefined ? { used_audio: d.used_audio } : {}), ...(d.errors !== undefined ? { errors: d.errors } : {}), ...(d.final_video_path !== undefined ? { final_video_path: d.final_video_path } : {}) }; return result; }
   private toApi(outline: LongEpisodeOutline, stored: StoredEpisode): LongEpisodeDetail { const script = Object.keys(stored.script).length ? this.parseScript(stored.script, stored.scene_count) : undefined; return { ...outline, status: stored.state, approved: stored.approved, scriptRevision: stored.script_revision, ...(script ? { script } : {}), scriptHistoryCount: stored.script_history.length, updatedAt: typeof stored.updated_at === "string" ? stored.updated_at : new Date(0).toISOString(), ...(toEpisodeInstagramPost(stored.instagram_post) ? { instagramPost: toEpisodeInstagramPost(stored.instagram_post)! } : {}), ...(toEpisodeUsedAudio(stored.used_audio) ? { usedAudio: toEpisodeUsedAudio(stored.used_audio)! } : {}), ...(episodeErrors(stored).length > 0 ? { errors: episodeErrors(stored) } : {}), ...(typeof (stored as Record<string, unknown>).final_video_path === "string" && (stored as Record<string, unknown>).final_video_path ? { finalVideoPath: (stored as Record<string, unknown>).final_video_path as string } : {}) }; }
-  private async save(projectId: string, outline: LongEpisodeOutline, stored: StoredEpisode): Promise<LongEpisodeDetail> { const files = this.files(projectId, outline.episodeNumber); const outlines = await this.json(files.outlines); if (!Array.isArray(outlines)) throw longInvalidData(); const copy = [...outlines]; const current = asObject(copy[outline.episodeNumber - 1]); current.status = stored.state; copy[outline.episodeNumber - 1] = current; try { await fs.mkdir(files.episode, { recursive: true }); await Promise.all([atomicWriteUtf8File(files.episodeProject, JSON.stringify(stored, null, 2)), atomicWriteUtf8File(files.outline, JSON.stringify(stored.outline, null, 2)), atomicWriteUtf8File(files.script, JSON.stringify(stored.script, null, 2)), atomicWriteUtf8File(files.outlines, JSON.stringify(copy, null, 2))]); } catch { throw longStorageError(); } return this.toApi({ ...outline, status: stored.state }, stored); }
+  private async save(projectId: string, outline: LongEpisodeOutline, stored: StoredEpisode): Promise<LongEpisodeDetail> { const files = this.files(projectId, outline.episodeNumber); const outlines = await this.json(files.outlines); if (!Array.isArray(outlines)) throw longInvalidData(); const copy = [...outlines]; const current = asObject(copy[outline.episodeNumber - 1]); current.status = stored.state; copy[outline.episodeNumber - 1] = current; try { await fs.mkdir(files.episode, { recursive: true }); await Promise.all([atomicWriteUtf8File(files.episodeProject, JSON.stringify(stored, null, 2)), atomicWriteUtf8File(files.outline, JSON.stringify(stored.outline, null, 2)), atomicWriteUtf8File(files.script, JSON.stringify(stored.script, null, 2)), atomicWriteUtf8File(files.outlines, JSON.stringify(copy, null, 2))]); } catch { throw longStorageError(); } await this.seedStoryBibleMappings(projectId); return this.toApi({ ...outline, status: stored.state }, stored); }
   private async bibleContext(projectId: string): Promise<string> { const bible = asObject(await this.json(this.files(projectId, 1).bible)); const names = ["characters", "locations", "props"].flatMap((collection) => Array.isArray(bible[collection]) ? bible[collection].map((item) => asObject(item).name).filter((name): name is string => typeof name === "string" && Boolean(name.trim())) : []); return names.join(", "); }
   /**
    * Every earlier Episode's memo, split into the three most recent and the rest.
