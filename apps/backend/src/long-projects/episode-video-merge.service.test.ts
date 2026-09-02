@@ -368,6 +368,43 @@ describe("EpisodeVideoMergeService — the cut it replaces", () => {
     expect(Buffer.from(await fs.readFile(path.join(final, "history", "instagram_reel_v001.mp4"))).equals(first)).toBe(true);
   });
 
+  /**
+   * The version numbers are read off the directory, so a listing that fails must not read as "none".
+   *
+   * It did: any failure came back as an empty list, the next number restarted at v001, and the copy landed on
+   * top of a cut that was already there — a cut merged from paid Runway clips. The short project's own history
+   * listing was fixed for exactly this reason (docs/06_DECISIONS.md D-036); the Episode kept the permissive
+   * copy.
+   *
+   * The failure is injected rather than staged with real files. Putting a file where the directory belongs
+   * makes readdir fail, but it also makes the write fail, so the merge is refused either way and the test
+   * passes for both implementations — measured, that version of this test stayed green against the defect.
+   */
+  it("refuses to renumber when it cannot read what is already archived, instead of writing over v001", async () => {
+    const { projectsRoot } = await setup();
+    const final = path.join(projectsRoot, "long", "long_story", "Episode01", "videos", "final");
+    const episodeFile = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
+    const remergeable = async () => {
+      const stored = JSON.parse(await fs.readFile(episodeFile, "utf8")) as Record<string, unknown>;
+      await fs.writeFile(episodeFile, JSON.stringify({ ...stored, state: "videos_approved", final_video_path: null }));
+    };
+    await new EpisodeVideoMergeService(projectsRoot, runner({})).merge("long", 1);
+    const firstCut = await fs.readFile(path.join(final, "instagram_reel.mp4"));
+    await remergeable();
+    await new EpisodeVideoMergeService(projectsRoot, runner({})).merge("long", 1);
+    const archived = await fs.readFile(path.join(final, "history", "instagram_reel_v001.mp4"));
+    expect(Buffer.from(archived).equals(firstCut)).toBe(true);
+    await remergeable();
+
+    const blind = new EpisodeVideoMergeService(projectsRoot, runner({}), undefined, undefined,
+      async () => { throw Object.assign(new Error("locked"), { code: "EACCES" }); });
+    await expect(blind.merge("long", 1)).rejects.toMatchObject({ response: { code: expect.stringMatching(/STORAGE_ERROR|MERGE_FAILED/) } });
+
+    // v001 is still the first cut, not a copy written over it by a numbering that started again.
+    expect(Buffer.from(await fs.readFile(path.join(final, "history", "instagram_reel_v001.mp4"))).equals(firstCut)).toBe(true);
+    expect((await fs.readdir(path.join(final, "history"))).filter((name) => name.endsWith(".mp4"))).toHaveLength(1);
+  });
+
   it("archives nothing on a first merge, because there is no previous cut to keep", async () => {
     const { projectsRoot } = await setup();
     await new EpisodeVideoMergeService(projectsRoot, runner({})).merge("long", 1);

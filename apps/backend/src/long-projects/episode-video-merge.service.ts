@@ -1,3 +1,4 @@
+import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
@@ -38,8 +39,15 @@ export class EpisodeVideoMergeService {
   private readonly engine: FfmpegMergeEngine;
   private readonly projects: LongProjectsService;
 
-  /** `lockTimeoutMs`: same test seam as the short project's merge. */
-  constructor(private readonly projectsRoot: string, runner?: MediaCommandRunner, private readonly audioLibrary?: AudioLibraryService, private readonly lockTimeoutMs?: number) { this.engine = new FfmpegMergeEngine(runner); this.projects = new LongProjectsService(projectsRoot); }
+  /**
+   * `lockTimeoutMs`: same test seam as the short project's merge.
+   *
+   * `listDirectory` is a seam for one thing only — proving that a listing which fails for a reason other than
+   * "not there" does not renumber the archive on top of a cut that already exists. That failure cannot be
+   * staged with real files without also breaking the write that follows it, and then the test passes whichever
+   * way the code behaves (measured: it did).
+   */
+  constructor(private readonly projectsRoot: string, runner?: MediaCommandRunner, private readonly audioLibrary?: AudioLibraryService, private readonly lockTimeoutMs?: number, private readonly listDirectory: (directory: string) => Promise<string[]> = (directory) => fs.readdir(directory)) { this.engine = new FfmpegMergeEngine(runner); this.projects = new LongProjectsService(projectsRoot); }
 
   private files(id: string, number: number) {
     const root = longStoryRoot(this.projectsRoot, id);
@@ -95,18 +103,37 @@ export class EpisodeVideoMergeService {
    * losing the archive is bad, losing the merge someone is waiting on because the archive failed is worse.
    */
   private async archiveFinal(id: string, number: number): Promise<void> {
+    const current = this.final(id, number);
+    const bytes = await fs.readFile(current).catch(() => undefined);
+    if (!bytes || bytes.length === 0) return;
+    const directory = path.join(path.dirname(current), "history");
+    await fs.mkdir(directory, { recursive: true }).catch(() => undefined);
+
+    // "The directory is not there yet" is the first archive and reads as none. Every other failure throws, and
+    // that difference is the whole point: this list decides the next version number, so a readdir that failed
+    // for any other reason (a lock, a permission, an I/O error — none of them exotic on Windows) used to come
+    // back empty, numbering restarted at v001, and the copy landed on top of a cut that was already there.
+    // That cut was merged from paid Runway clips. The short project's own history listing was fixed for
+    // exactly this (docs/06_DECISIONS.md D-036's third question); the Episode kept the permissive copy.
+    let entries: string[];
+    try { entries = await this.listDirectory(directory); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") entries = [];
+      else throw longStorageError();
+    }
+    const versions = entries.map((name) => /^instagram_reel_v(\d{3})\.mp4$/.exec(name))
+      .filter((match): match is RegExpExecArray => Boolean(match)).map((match) => Number(match[1]));
+    const target = path.join(directory, `instagram_reel_v${String((versions.length ? Math.max(...versions) : 0) + 1).padStart(3, "0")}.mp4`);
+    // Temp then rename, like every other media write in this app: a half-written archive is a file that looks
+    // like a kept cut and is not one.
+    const temporary = `${target}.${crypto.randomUUID()}.tmp`;
+    let renamed = false;
     try {
-      const current = this.final(id, number);
-      const bytes = await fs.readFile(current).catch(() => undefined);
-      if (!bytes || bytes.length === 0) return;
-      const directory = path.join(path.dirname(current), "history");
-      let entries: string[] = [];
-      try { entries = await fs.readdir(directory); } catch { entries = []; }
-      const versions = entries.map((name) => /^instagram_reel_v(\d{3})\.mp4$/.exec(name))
-        .filter((match): match is RegExpExecArray => Boolean(match)).map((match) => Number(match[1]));
-      await fs.mkdir(directory, { recursive: true });
-      await fs.writeFile(path.join(directory, `instagram_reel_v${String((versions.length ? Math.max(...versions) : 0) + 1).padStart(3, "0")}.mp4`), bytes);
-    } catch { /* keeping a copy is best-effort; it must never be the reason a merge fails */ }
+      await fs.writeFile(temporary, bytes);
+      await fs.rename(temporary, target);
+      renamed = true;
+    } catch { throw longStorageError(); }
+    finally { if (!renamed) await fs.unlink(temporary).catch(() => undefined); }
   }
 
   private final(id: string, number: number): string { return path.join(this.files(id, number).videos, "final", "instagram_reel.mp4"); }

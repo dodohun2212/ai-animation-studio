@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { SceneNumber } from "@ai-animation-studio/shared";
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { parseShortProjectSettings, applyShortProjectSettings } from "../projects/project-settings.js";
@@ -122,6 +123,32 @@ describe("NarrationReviewService", () => {
     expect(result.sceneNumber).toBe(1);
     expect(result.narrations[0]).toMatchObject({ audio: "placeholder" });
     expect(result.retryEstimate).toBeUndefined();
+  });
+
+  /**
+   * A regeneration that cannot be written leaves the take that is already there.
+   *
+   * Both takes are paid TTS. This path used to write straight over the file and check afterwards, so a failed
+   * write — a disk error, a provider that returned nothing — took the previous narration with it and left the
+   * scene silent, with a storage error as the only explanation. Generation had always written atomically; only
+   * regeneration, the one that overwrites, did not (CLI Round 451).
+   */
+  it("keeps the previous narration when the new one cannot be written", async () => {
+    const { projectsRoot, projects, reviews } = await setup();
+    const failing = new LocalNarrationGenerationService(projects, projectsRoot, async () => { throw new Error("disk full"); });
+    const generation = new LocalNarrationGenerationService(projects, projectsRoot);
+    await generation.generate("narr", { approved: true });
+    const file = generation.narrationPath("narr", 1 as SceneNumber);
+    const before = await fs.readFile(file);
+    const reviewsWithFailingWriter = new NarrationReviewService(projects, failing, undefined, undefined, async () => undefined);
+
+    await expect(reviewsWithFailingWriter.regenerate("narr", "1", { approved: true }))
+      .rejects.toMatchObject({ response: { code: "NARRATION_STORAGE_ERROR" } });
+
+    expect(await fs.readFile(file)).toEqual(before);
+    // And the project still points at it, so the scene is not left claiming audio it no longer has.
+    expect((await projects.findById("narr")).generated_narrations[0]).toBe(file);
+    void reviews;
   });
 
   it("rejects regenerating a scene with no narration text", async () => {

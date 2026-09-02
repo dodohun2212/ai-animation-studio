@@ -160,9 +160,14 @@ export class NarrationReviewService {
     }
 
     const destination = this.generation.narrationPath(project.project_id, sceneNumber);
+    // Checked before anything is replaced, and written through generation's own atomic writer. This used to
+    // write straight over the destination and check afterwards, so a write that failed or produced an unusable
+    // file left the scene with neither the old take nor the new one — and both of them were paid for. What
+    // `validAudio` asks of the file on disk ("there are bytes in it") is asked of the bytes instead, before
+    // they can replace a take that is already there.
+    if (bytes.length === 0) throw narrationStorageError();
     try {
-      await fs.mkdir(path.dirname(destination), { recursive: true });
-      await fs.writeFile(destination, bytes);
+      await this.generation.writeNarration(destination, bytes);
       if (!(await validAudio(destination))) throw new Error("invalid audio");
     } catch { throw narrationStorageError(); }
 

@@ -89,6 +89,20 @@ export class LocalNarrationGenerationService {
     private readonly budget?: OpenAiBudget,
   ) {}
 
+  /**
+   * Writes one scene's narration file the way generation writes it — temp file, then rename, with the
+   * Windows-only rename retry.
+   *
+   * Exposed because regeneration writes the same file and was doing it by hand, straight over the previous
+   * take: a write that failed or produced an unusable file left the scene with neither the old audio nor the
+   * new one, and both of those were paid for (CLI Round 451). Callers share this one implementation rather
+   * than each having a copy, and a test that injects a writer here affects every path that writes narration.
+   */
+  async writeNarration(file: string, bytes: Buffer): Promise<void> {
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await this.writeAudio(file, bytes);
+  }
+
   narrationPath(projectId: string, scene: SceneNumber): string {
     return path.join(this.projectsRoot, projectId, "narration", `scene${scene}.mp3`);
   }
