@@ -3,21 +3,23 @@
 대본과 장면 이미지를 생성하고, 사용자가 승인한 Runway 영상들을 FFmpeg로
 병합하여 Instagram Reels용 MP4를 만드는 애플리케이션입니다.
 
-현재는 기존 Python/Tkinter 프로그램의 기능을 TypeScript 애플리케이션으로
-이전하는 단계입니다. Python 버전은 비교 기준으로 보존되며 새 기능 개발보다
-기존 기능의 동등한 재구현을 우선합니다.
+기존 Python/Tkinter 프로그램에서 TypeScript로의 이전은 끝났고, 지금은 실사용
+피드백을 받아 고치고 다듬는 단계입니다. 파이썬 소스(`app/`, `tests/`)는
+2026-09-02에 저장소에서 지웠습니다 — 원본 동작을 확인해야 하면 git 히스토리에
+있습니다(`git log --diff-filter=D -- app`). 자세한 경위는
+`docs/06_DECISIONS.md`의 D-047입니다.
 
 ## 현재 구조
 
 ```text
-app/                 기존 Python 기준 구현
-tests/               기존 Python 테스트
-prompts/             기존 프롬프트
 apps/frontend/       React + Vite
 apps/backend/        NestJS
 apps/desktop/        Electron
 packages/shared/     공통 TypeScript 계약
-docs/                현재 명세와 마이그레이션 문서
+prompts/             대본 생성 템플릿 — 실행 중에 읽히고 설치 프로그램에 복사됩니다
+fonts/               자막 렌더링용 폰트 — 같은 이유로 실행에 필요합니다
+learning_data/       파이썬 시절 데이터(보존). 지금 앱은 `apps/backend/learning_data`에 씁니다
+docs/                제품 명세 · 작업 기록 · 결정 기록
 ```
 
 ## 개발 환경
@@ -25,8 +27,7 @@ docs/                현재 명세와 마이그레이션 문서
 - Node.js 22+
 - npm workspaces
 - TypeScript strict mode
-- Python 3.12+는 기존 기준 구현을 검증할 때만 필요
-- FFmpeg는 영상 기능 구현과 검증 단계에서 필요
+- FFmpeg / ffprobe — 영상 병합과 음원 길이 확인에 실제로 쓰입니다(설치돼 있지 않으면 병합이 거절됩니다)
 
 ## 명령어
 
@@ -44,22 +45,22 @@ PowerShell 실행 정책 때문에 `npm.ps1`이 차단되면 `npm.cmd`를 사용
 
 ## 현재 구현 상태
 
-구현됨:
+동작합니다:
 
-- TypeScript monorepo 기반
-- React 프론트엔드 기반
-- NestJS 백엔드와 로컬 `GET /health`
+- 단편 프로젝트 — 대본·장면 생성(OpenAI), 장면 이미지 생성과 검토, Runway 영상 생성,
+  영상 검토, FFmpeg 병합
+- 장기 프로젝트(회차) — 개요·회차 대본, 참고 자산 매핑, 회차 이미지·영상·병합
+- 명언 카드 — 그림 한 장과 문장 하나로 만드는 무료 경로(자막 위치·크기 조절 포함)
+- 내레이션(TTS)·자막·배경음악 — 음원 보관함, 라이선스 기록, 시작 지점 선택
+- 유료 요청 앞의 승인·예산 게이트와 월 사용 원장(OpenAI·Runway 각각)
+- Instagram 게시 — 계정 선택, 커버 프레임, 게시 기록
+- 보관함 — 자산·영상·음원, 버전 보관과 복원
 - Electron 데스크톱 셸
-- 초기 공유 타입과 내부 API 계약
 
-아직 구현되지 않음:
+아직입니다:
 
-- 기존 Python 기능의 실제 마이그레이션
-- 프로젝트 저장과 기존 데이터 변환
-- OpenAI와 Runway Provider 연결
-- 승인·예산 Gate 및 작업 복구
-- 영상 검토와 FFmpeg 자동 병합
-- 설치 프로그램과 서버 배포
+- NSIS 설치 프로그램
+- 서버 배포와 사용자 계정
 
 자세한 현재 요구사항과 순서는 `docs/`를 확인합니다.
 
