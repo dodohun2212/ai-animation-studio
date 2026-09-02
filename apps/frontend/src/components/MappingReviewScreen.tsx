@@ -497,12 +497,21 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
         {addResults && addResults.length > 0 && (
           <ul aria-label="연결할 이미지 후보" className="grid gap-2 sm:grid-cols-2">
             {addResults.map((asset) => {
-              // An excluded mapping is one the user turned OFF; calling it 연결됨 said the opposite, and the
-              // button stayed dead so there was no way to act on it from here either. Naming the two states
-              // apart is the whole fix — undoing an exclusion belongs to that row's own 확인 button below.
+              // An excluded mapping is one the user turned OFF; calling it 연결됨 said the opposite. Naming
+              // the two states apart was the first half of the fix; this button now also *acts*, so the row
+              // that reports the state is the row that changes it.
+              //
+              // Both directions go through `decide`, the same call the row's own 확인/제외 buttons below make
+              // — there is no delete in this API, and there should not be one here: an exclusion is the record
+              // of a decision, and it is what stops `syncAutoMappings` from seeding the Asset straight back
+              // (project-asset-mapping-sync.ts skips excluded asset ids). Deleting the row instead would let
+              // the next Story Bible save undo the user's cancellation without telling them.
               const existing = (mappings ?? []).find((mapping) => mapping.assetId === asset.assetId);
               const excluded = existing?.status === "excluded";
               const alreadyLinked = existing !== undefined && !excluded;
+              const decisionPending = existing !== undefined && decisionPendingIds.has(existing.mappingId);
+              const addPending = addPendingIds.has(asset.assetId);
+              const rowError = existing ? decisionErrors[existing.mappingId] : undefined;
               return (
                 <li key={asset.assetId} className="flex items-center gap-3 rounded-lg border border-white/10 bg-slate-950/40 p-2.5">
                   {asset.imageAvailable && asset.contentUrl
@@ -517,13 +526,36 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
                   <span className="flex flex-col items-end gap-0.5">
                     <button
                       type="button"
+                      data-testid={`candidate-link-${asset.assetId}`}
                       className={outlineButton}
-                      disabled={alreadyLinked || excluded || addPendingIds.has(asset.assetId)}
-                      onClick={() => void addMapping(asset)}
+                      disabled={decisionPending || addPending}
+                      onClick={() => {
+                        if (!existing) return void addMapping(asset);
+                        void decide(existing.mappingId, alreadyLinked ? "exclude" : "confirm");
+                      }}
                     >
-                      {alreadyLinked ? "연결됨" : excluded ? "제외됨" : addPendingIds.has(asset.assetId) ? "연결하는 중…" : "연결"}
+                      {decisionPending
+                        ? (alreadyLinked ? "취소하는 중…" : "되돌리는 중…")
+                        : addPending ? "연결하는 중…"
+                        : alreadyLinked ? "연결됨"
+                        : excluded ? "제외됨"
+                        : "연결"}
                     </button>
-                    {excluded && <span className="text-[11px] text-slate-500">아래 목록에서 확인을 누르면 다시 씁니다</span>}
+                    {!decisionPending && !addPending && (alreadyLinked || excluded) && (
+                      <span className="text-[11px] text-slate-500">
+                        {alreadyLinked ? "한 번 더 누르면 연결을 취소합니다" : "한 번 더 누르면 다시 씁니다"}
+                      </span>
+                    )}
+                    {rowError && (
+                      <span
+                        role="alert"
+                        data-testid={`candidate-link-error-${asset.assetId}`}
+                        data-error-code={rowError.code}
+                        className="max-w-[14rem] text-right text-[11px] text-rose-400"
+                      >
+                        {rowError.message}
+                      </span>
+                    )}
                   </span>
                 </li>
               );

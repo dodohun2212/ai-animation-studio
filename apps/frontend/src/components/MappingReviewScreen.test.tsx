@@ -403,6 +403,74 @@ describe("MappingReviewScreen", () => {
     expect(within(candidates).queryByRole("button", { name: "연결됨" })).toBeNull();
   });
 
+  it("cancels a connection when 연결됨 is pressed again, and puts it back when 제외됨 is", async () => {
+    const asset = makeAsset({ assetId: "ASSET-TOGGLE", displayName: "이배드", assetType: "character" });
+    let stored = makeMapping({ mappingId: "MAP-TOGGLE", assetId: asset.assetId, status: "confirmed" });
+    const patched: unknown[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input).split("?")[0]!;
+      const method = (init as RequestInit | undefined)?.method ?? "GET";
+      if (url === "/assets") return jsonResponse(200, { assets: [asset] });
+      if (url === `/projects/sample_project/assets/mappings/${stored.mappingId}` && method === "PATCH") {
+        const body = JSON.parse(String((init as RequestInit).body)) as { decision: string };
+        patched.push(body);
+        stored = { ...stored, status: body.decision === "exclude" ? "excluded" : "confirmed" };
+        return jsonResponse(200, { mapping: stored, review: makeReview({}) });
+      }
+      if (url === "/projects/sample_project/assets/mappings") return jsonResponse(200, { mappings: [stored] });
+      if (url === "/projects/sample_project/assets/mapping-review") return jsonResponse(200, { review: makeReview({}), sceneCount: 6 });
+      if (url === `/assets/${asset.assetId}`) return jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false });
+      throw new Error(`Unexpected fetch: ${method} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
+    fireEvent.click(within(await screen.findByRole("form", { name: "연결할 이미지 검색" })).getByRole("button", { name: "검색" }));
+
+    const candidates = await screen.findByRole("list", { name: "연결할 이미지 후보" });
+    // The button that reports the state is the button that changes it — the undo used to live only on the
+    // row below, which the default filter hides the moment the exclusion lands.
+    fireEvent.click(within(candidates).getByRole("button", { name: "연결됨" }));
+    await within(candidates).findByRole("button", { name: "제외됨" });
+
+    fireEvent.click(within(candidates).getByRole("button", { name: "제외됨" }));
+    await within(candidates).findByRole("button", { name: "연결됨" });
+
+    // Cancelling excludes rather than deletes: an excluded asset id is what stops the next Story Bible save
+    // from seeding the same Asset straight back over the user's decision.
+    expect(patched).toEqual([{ decision: "exclude" }, { decision: "confirm" }]);
+    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "DELETE")).toBe(false);
+  });
+
+  it("reports a failed cancellation on the row that was pressed, and leaves it connected", async () => {
+    const asset = makeAsset({ assetId: "ASSET-KEEP", displayName: "이배드", assetType: "character" });
+    const stored = makeMapping({ mappingId: "MAP-KEEP", assetId: asset.assetId, status: "confirmed" });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input).split("?")[0]!;
+      const method = (init as RequestInit | undefined)?.method ?? "GET";
+      if (url === "/assets") return jsonResponse(200, { assets: [asset] });
+      if (url === `/projects/sample_project/assets/mappings/${stored.mappingId}` && method === "PATCH") {
+        return jsonResponse(409, { code: "ASSET_MAPPING_REVIEW_STALE", message: "internal detail never shown" });
+      }
+      if (url === "/projects/sample_project/assets/mappings") return jsonResponse(200, { mappings: [stored] });
+      if (url === "/projects/sample_project/assets/mapping-review") return jsonResponse(200, { review: makeReview({}), sceneCount: 6 });
+      if (url === `/assets/${asset.assetId}`) return jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false });
+      throw new Error(`Unexpected fetch: ${method} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
+    fireEvent.click(within(await screen.findByRole("form", { name: "연결할 이미지 검색" })).getByRole("button", { name: "검색" }));
+
+    const candidates = await screen.findByRole("list", { name: "연결할 이미지 후보" });
+    fireEvent.click(within(candidates).getByRole("button", { name: "연결됨" }));
+
+    const failure = await screen.findByTestId(`candidate-link-error-${asset.assetId}`);
+    expect(failure.textContent).not.toContain("internal detail never shown");
+    // A refused cancellation must not look like a successful one.
+    expect(within(candidates).getByRole("button", { name: "연결됨" })).toBeTruthy();
+  });
+
   it("scopes a connection to one scene when asked to", async () => {
     const asset = makeAsset({ assetId: "ASSET-BG", displayName: "지하 기록관", assetType: "background" });
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
