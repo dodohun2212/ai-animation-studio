@@ -1,5 +1,12 @@
 import type { PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
-import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE } from "@ai-animation-studio/shared";
+import {
+  DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT,
+  PHOTO_CARD_HEADING_RATIO,
+  PHOTO_CARD_SUBTITLE_CENTER,
+  PHOTO_CARD_SUBTITLE_SCALE,
+  photoCardSubtitleGeometry,
+  splitPhotoCardSubtitle,
+} from "@ai-animation-studio/shared";
 
 import { sceneImageContentUrl } from "../api/videoWorkflowApi.js";
 
@@ -18,30 +25,6 @@ const REFERENCE_HEIGHT = 1920;
 /** The preview's own height in CSS pixels; every size below is a fraction of it, exactly as the renderer works from frame height. */
 const PREVIEW_HEIGHT = 420;
 
-/**
- * The renderer's geometry, repeated here and nowhere else.
- *
- * These five lines are `subtitle-file.ts`'s, in the same order and with the same rounding rule (CLI Round 439
- * published them for this): body from the frame height, the quote line derived at 1.4x rather than being its
- * own control, and the block centred on `center` instead of sitting on a bottom margin. Repeating them is what
- * makes this a preview rather than a decoration — but it is a *repeat*, so a change to the renderer's numbers
- * has to come back here, and the fact that it is an approximation is said on screen rather than implied.
- */
-function geometry(height: number, layout: PhotoCardSubtitleLayout, quote: string) {
-  const body = Math.round(height * layout.scale);
-  const head = Math.round(body * 1.4);
-  const headGap = Math.round(head * 1.6);
-  const lineGap = Math.round(body * 1.5);
-  const parts = quote.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
-  // No newline means no 사자성어 line — the whole thing is body text. Assuming two parts would set a one-line
-  // card entirely in the quote face, which is the renderer's own rule and has to be the preview's too.
-  const headLine = parts.length > 1 ? parts[0]! : null;
-  const bodyLines = parts.length > 1 ? parts.slice(1) : parts;
-  const total = (headLine ? headGap : 0) + lineGap * Math.max(0, bodyLines.length - 1);
-  const top = height * layout.center - total / 2;
-  return { body, head, headGap, lineGap, headLine, bodyLines, top };
-}
-
 const field = "w-full accent-violet-400 disabled:opacity-50";
 const label = "flex items-baseline justify-between text-sm text-slate-300";
 
@@ -56,13 +39,21 @@ const label = "flex items-baseline justify-between text-sm text-slate-300";
 export function PhotoCardSubtitleFieldset({ projectId, quote, vertical, layout, onChange, disabled }: Props) {
   const height = PREVIEW_HEIGHT;
   const width = Math.round(height * (vertical ? 9 / 16 : 16 / 9));
-  const { body, head, headLine, bodyLines, headGap, lineGap, top } = geometry(height, layout, quote);
-  const sidePadding = Math.round(width * 0.07);
+  // The renderer's own arithmetic, called rather than repeated. It used to be five lines copied out of
+  // `subtitle-file.ts`, which is a preview that can be silently wrong — showing a picture of a video nobody
+  // made. CLI Round 441 moved the numbers into `shared` so both ends read one function; only the frame differs
+  // (this box's pixels instead of 1080x1920), which is exactly what makes it a preview rather than a copy.
+  const { heading, body: bodyLines } = splitPhotoCardSubtitle(quote);
+  const g = photoCardSubtitleGeometry(width, height, layout, bodyLines.length, heading !== undefined);
+  // `bodyY` is the block's centre; the lines are laid out from it so the block stays centred as lines are added.
+  const firstBodyY = g.bodyY - (g.lineGap * Math.max(0, bodyLines.length - 1)) / 2;
   const atDefault = layout.scale === DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT.scale && layout.center === DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT.center;
   // Scaled from the renderer's Outline 4 / Shadow 2 at 1920. A stroke that stays 4px wide in a 420px preview
   // would be a thick black border around every letter and would read as a different design.
   const stroke = Math.max(1, Math.round((4 * height) / REFERENCE_HEIGHT));
   const shadow = `0 0 ${stroke}px #000, ${stroke}px ${stroke}px ${stroke * 2}px rgba(0,0,0,0.85), -${stroke}px 0 ${stroke}px #000, ${stroke}px 0 ${stroke}px #000, 0 -${stroke}px ${stroke}px #000, 0 ${stroke}px ${stroke}px #000`;
+
+  const margin = g.margin;
 
   function line(text: string, y: number, size: number, serif: boolean, key: string) {
     return (
@@ -72,8 +63,8 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, vertical, layout, 
         style={{
           top: `${y}px`,
           transform: "translateY(-50%)",
-          paddingLeft: `${sidePadding}px`,
-          paddingRight: `${sidePadding}px`,
+          paddingLeft: `${margin}px`,
+          paddingRight: `${margin}px`,
           fontSize: `${size}px`,
           fontWeight: serif ? 700 : 400,
           fontFamily: serif ? '"Noto Serif KR", "Nanum Myeongjo", serif' : '"Noto Sans KR", system-ui, sans-serif',
@@ -101,9 +92,9 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, vertical, layout, 
             alt=""
             className="absolute inset-0 h-full w-full object-cover"
           />
-          {headLine && line(headLine, top, head, true, "head")}
+          {heading !== undefined && line(heading, g.headingY, g.headSize, true, "head")}
           {bodyLines.map((text, index) =>
-            line(text, top + (headLine ? headGap : 0) + index * lineGap, body, false, `body-${index}`))}
+            line(text, firstBodyY + index * g.lineGap, g.bodySize, false, `body-${index}`))}
         </div>
 
         <div className="min-w-[16rem] flex-1 space-y-5">
@@ -126,7 +117,7 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, vertical, layout, 
               disabled={disabled}
               onChange={(event) => onChange({ ...layout, scale: Number(event.target.value) })}
             />
-            <p className="text-xs text-slate-500">사자성어 줄은 이 크기의 1.4배로 따라 커집니다.</p>
+            <p className="text-xs text-slate-500">사자성어 줄은 이 크기의 {PHOTO_CARD_HEADING_RATIO}배로 따라 커집니다.</p>
           </div>
 
           <div>

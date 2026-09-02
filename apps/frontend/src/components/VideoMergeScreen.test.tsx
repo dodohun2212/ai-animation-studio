@@ -309,6 +309,53 @@ describe("VideoMergeScreen", () => {
     expect(screen.getByTestId("photo-card-subtitle-center-value").textContent).toContain("62%");
   });
 
+  /**
+   * Finding out the text sits too low happens by watching the finished video — which is this screen.
+   *
+   * A card had no way back: merged once, Completed forever, and the only remedy was building a new card under
+   * a new name with the same picture and the same line. Nothing was being protected by that — a card has no
+   * paid clips behind it and the old file is archived on the way out (CLI Round 441).
+   */
+  it("lets a finished photo card be made again with different subtitles", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const still: Scene[] = [{ number: 1, script: "", imagePrompt: "", motionPrompt: "", imageReview: "approved", videoReview: "pending", narration: "불광불급(不狂不及)\n미치도록 몰입한 사람만이," }];
+    renderScreen(mergeFetch, { photoCard: true, scenes: still, workflowState: WorkflowState.Completed, finalVideoPath: "videos/final/instagram_reel.mp4" });
+
+    await screen.findByTestId("merge-success");
+    expect(screen.queryByTestId("photo-card-subtitle-preview")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("photo-card-remake"));
+    fireEvent.change(await screen.findByTestId("photo-card-subtitle-center"), { target: { value: "0.5" } });
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+
+    await waitFor(() => expect(mergeFetch).toHaveBeenCalled());
+    const [, init] = mergeFetch.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({ audio: { mode: "silent" }, subtitleLayout: { scale: 0.027, center: 0.5 } });
+  });
+
+  // The one card that must not be remade. Replacing the file would leave the Instagram post pointing at a
+  // video nobody published, and neither side would record that it had changed.
+  it("refuses to remake a card that is already published, and says what to do instead", async () => {
+    const still: Scene[] = [{ number: 1, script: "", imagePrompt: "", motionPrompt: "", imageReview: "approved", videoReview: "pending", narration: "문장" }];
+    renderScreen(vi.fn(), {
+      photoCard: true, scenes: still, workflowState: WorkflowState.Completed, finalVideoPath: "videos/final/instagram_reel.mp4",
+      instagramPost: { mediaId: "m1", igUserId: "1", publishedAt: "2026-09-02T00:00:00.000Z", caption: "" },
+    });
+
+    await screen.findByTestId("merge-success");
+    expect(screen.queryByTestId("photo-card-remake")).toBeNull();
+    expect((screen.getByTestId("photo-card-remake-published")).textContent).toContain("새 이름");
+  });
+
+  // An ordinary finished project keeps its one-way door: there are paid clips behind that file.
+  it("offers no remake on an ordinary finished project", async () => {
+    renderScreen(vi.fn(), { workflowState: WorkflowState.Completed, finalVideoPath: "videos/final/instagram_reel.mp4" });
+
+    await screen.findByTestId("merge-success");
+    expect(screen.queryByTestId("photo-card-remake")).toBeNull();
+  });
+
   // An ordinary project has no card text to place, and the server refuses the field for one. Showing controls
   // that cannot be sent would be an offer the merge would reject.
   it("shows no subtitle controls for an ordinary project", async () => {

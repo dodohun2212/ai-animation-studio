@@ -349,6 +349,21 @@ export function photoCardSubtitleGeometry(
   };
 }
 
+/**
+ * The card text's stroke and drop shadow, in output pixels at the rendered frame size.
+ *
+ * Here for the same reason as the geometry, with one honest limit: a preview cannot draw this. libass strokes
+ * the glyph outline; CSS can only stack shadows around it, and at preview scale a 4px stroke drawn that way
+ * reads as a black box around every letter rather than as a thin edge. So a preview scales these to its own
+ * height and approximates the look — what it must not do is invent the numbers, because then a change here
+ * would leave the preview quietly describing the old design (Cowork Round 442 kept the approximation and
+ * flagged it, which is the right call; this is the half that can be shared).
+ *
+ * 4, not 3: the card sits over a photograph, and a thinner edge disappeared into the bright parts of it.
+ */
+export const PHOTO_CARD_SUBTITLE_OUTLINE = 4;
+export const PHOTO_CARD_SUBTITLE_SHADOW = 2;
+
 /** How much larger the heading is than the body. Not a handle: three sizes can be set to a combination that does not fit together, and two cannot. */
 export const PHOTO_CARD_HEADING_RATIO = 1.4;
 

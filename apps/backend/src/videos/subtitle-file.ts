@@ -1,4 +1,4 @@
-import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, photoCardSubtitleGeometry, splitPhotoCardSubtitle, type PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
+import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, PHOTO_CARD_SUBTITLE_OUTLINE, PHOTO_CARD_SUBTITLE_SHADOW, photoCardSubtitleGeometry, splitPhotoCardSubtitle, type PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
 
 const FONT_FAMILY = "Noto Sans KR";
 /**
@@ -91,7 +91,7 @@ function photoCardSubtitleAss(text: string, durationSeconds: number, width: numb
   // this arithmetic is a preview that can disagree with the video without anything saying so.
   const { bodySize, headSize, headingY, bodyY, centerX, margin } = photoCardSubtitleGeometry(width, height, card, body.length, heading !== undefined);
   const style = (name: string, font: string, size: number, bold: 0 | -1) =>
-    `Style: ${name},${font},${size},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,${bold},0,0,0,100,100,0,0,1,4,2,5,${margin},${margin},0,1`;
+    `Style: ${name},${font},${size},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,${bold},0,0,0,100,100,0,0,1,${PHOTO_CARD_SUBTITLE_OUTLINE},${PHOTO_CARD_SUBTITLE_SHADOW},5,${margin},${margin},0,1`;
   const cue = (styleName: string, y: number, content: string) =>
     `Dialogue: 0,${timestamp(0)},${timestamp(durationSeconds)},${styleName},,0,0,0,,{\\an5\\pos(${centerX},${y})}${escapeDialogueText(content)}`;
   return [

@@ -85,6 +85,17 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
   const [quote, setQuote] = useState("");
   /** The frame's shape, read from the project's one `aspectRatio` field rather than assumed — the preview box has to match the video it previews. */
   const [aspectVertical, setAspectVertical] = useState(true);
+  /**
+   * Whether this card is already out on Instagram, and whether the person has asked to make it again.
+   *
+   * A card can be merged again — that is the only way to change its subtitles, and there is no paid work or
+   * approval behind the old file to protect (CLI Round 441 opened the route; the previous video is archived).
+   * A *published* card cannot: the post's video would quietly become a different video, with nothing on either
+   * side recording that it had changed. The way out of that one is a new card, and the copy says so.
+   */
+  const [published, setPublished] = useState(false);
+  /** Set only by the person pressing "다시 만들기" — the finished result stays on screen until they do. */
+  const [remaking, setRemaking] = useState(false);
   /** null until the project settings load, and stays null if they fail — the copy then claims nothing. */
   const [mediaMode, setMediaMode] = useState<MediaMode | null>(null);
   /** null until the project loads: the default mode is derived from what this project actually has, never assumed. */
@@ -107,6 +118,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
         if (response.project.subtitleLayout) setLayout(response.project.subtitleLayout);
         setQuote(response.project.scenes[0]?.narration ?? "");
         setAspectVertical(response.project.aspectRatio !== "16:9");
+        setPublished(Boolean(response.project.instagramPost));
         // Derived, not assumed: a project that never generated narration cannot merge "narration only", and
         // defaulting to it would label a silent video as a narrated one (docs/06_DECISIONS.md D-011).
         setNarrationAvailable(response.project.narrationAvailable);
@@ -154,7 +166,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
 
   /** Opens the explicit confirmation panel. Never calls the network by itself. */
   function openConfirmation(): void {
-    if (busy.current || result || blocked) return;
+    if (busy.current || (result && !remaking) || blocked) return;
     setError(null);
     setConfirmOpen(true);
   }
@@ -172,6 +184,8 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
     try {
       const response = await mergeVideos(projectId, audioSettings ?? undefined, photoCard ? layout : undefined);
       setResult(response);
+      // Back to showing the finished video: the request the button existed for has been made.
+      setRemaking(false);
       setUnplayable(false);
       setConfirmOpen(false);
     } catch (caught) {
@@ -227,7 +241,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
         </p>
       )}
 
-      {!result && photoCard && quote.length > 0 && (
+      {(!result || remaking) && photoCard && quote.length > 0 && (
         <PhotoCardSubtitleFieldset
           projectId={projectId}
           quote={quote}
@@ -238,7 +252,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
         />
       )}
 
-      {!result && audioMode !== null && (
+      {(!result || remaking) && audioMode !== null && (
         <MergeAudioFieldset
           idPrefix="merge-audio"
           tracks={tracks}
@@ -251,7 +265,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
         />
       )}
 
-      {!result && (
+      {(!result || remaking) && (
         <div className="space-y-3">
           <button
             type="button"
@@ -314,6 +328,27 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
       {error && (
         <p role="alert" data-testid="merge-error" data-error-code={error.code} className="text-sm text-rose-400">
           {error.message}
+        </p>
+      )}
+
+      {result && photoCard && !remaking && !published && (
+        /* The only way to change a card's subtitles, and it has to be here: the person finds out the text sits
+           too low by looking at the finished video, which is this screen. */
+        <div className="space-y-2">
+          <button
+            type="button"
+            data-testid="photo-card-remake"
+            className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5"
+            onClick={() => { setRemaking(true); setError(null); }}
+          >
+            자막 고쳐서 다시 만들기
+          </button>
+          <p className="text-xs text-slate-500">지금 영상은 보관되고, 새로 만든 것이 최종 영상이 됩니다. 비용은 들지 않습니다.</p>
+        </div>
+      )}
+      {result && photoCard && published && (
+        <p data-testid="photo-card-remake-published" className="rounded-xl border border-amber-400/30 bg-amber-500/[0.06] px-4 py-3 text-sm text-amber-200">
+          이 카드는 이미 인스타그램에 올렸기 때문에 다시 만들 수 없습니다. 올라간 게시물의 영상이 소리 없이 다른 영상으로 바뀌기 때문입니다. 자막을 고치시려면 카드를 새 이름으로 만들어 주세요.
         </p>
       )}
 
