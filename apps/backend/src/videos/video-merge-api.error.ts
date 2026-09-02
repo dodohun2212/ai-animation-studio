@@ -7,6 +7,7 @@ type VideoMergeErrorCode =
   | "VIDEO_MERGE_ALREADY_COMPLETED"
   | "VIDEO_MERGE_ALREADY_PUBLISHED"
   | "VIDEO_MERGE_BUSY"
+  | "AUDIO_START_OUT_OF_RANGE"
   | "VIDEO_MERGE_CLIPS_INVALID"
   | "FFMPEG_UNAVAILABLE"
   | "VIDEO_MERGE_FAILED"
@@ -14,8 +15,8 @@ type VideoMergeErrorCode =
   | "VIDEO_MERGE_CONTENT_UNAVAILABLE";
 
 class VideoMergeApiException extends HttpException {
-  constructor(code: VideoMergeErrorCode, message: string, status: HttpStatus) {
-    const body: ApiError = { code, message };
+  constructor(code: VideoMergeErrorCode, message: string, status: HttpStatus, details?: Record<string, unknown>) {
+    const body: ApiError = { code, message, ...(details ? { details } : {}) };
     super(body, status);
   }
 }
@@ -55,6 +56,15 @@ export const videoMergeAlreadyPublished = () =>
  */
 export const videoMergeBusy = () =>
   new VideoMergeApiException("VIDEO_MERGE_BUSY", "This project's final video is busy — another window is publishing or rendering it.", HttpStatus.CONFLICT);
+/**
+ * The chosen music start is not inside the track.
+ *
+ * Its own code, carrying the track's real length, because the useful sentence is "this song is 2:09 long" and
+ * `INVALID_REQUEST` cannot say it — the screen would be left telling the person their number was wrong without
+ * telling them what a right one would be (Cowork Round 456 asked for exactly this).
+ */
+export const audioStartOutOfRange = (durationSeconds: number) =>
+  new VideoMergeApiException("AUDIO_START_OUT_OF_RANGE", "The chosen music start is past the end of the track.", HttpStatus.BAD_REQUEST, { durationSeconds });
 export const videoMergeClipsInvalid = () =>
   new VideoMergeApiException("VIDEO_MERGE_CLIPS_INVALID", "The six approved scene videos are missing or invalid.", HttpStatus.CONFLICT);
 export const ffmpegUnavailable = () =>

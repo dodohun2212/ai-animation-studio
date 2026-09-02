@@ -1640,6 +1640,19 @@ export interface MergeAudioSettings {
   volume?: number;
   /** Fade-in at the start and fade-out at the end of the whole final video, in seconds. Server default when omitted: 2. */
   fadeSeconds?: number;
+  /**
+   * Where in the track the music starts, in seconds. Default 0.
+   *
+   * A song is longer than a Reel — a two-minute upload is cut to the first thirty seconds — and the part
+   * someone wants is rarely the beginning. This is that choice, and only the start: the end is decided by the
+   * video's own length, so a range would be a second control that could never disagree with the first usefully
+   * (캡틴D asked for it; Cowork Round 431 proposed the single handle, Round 456 carries the go-ahead).
+   *
+   * Refused, not clamped, when it falls outside the track — with the track's real length in `details` so the
+   * screen can say how long the song actually is rather than only that the number was wrong. Looping is
+   * unchanged: a track shorter than the video still repeats, from this point each time.
+   */
+  startSeconds?: number;
 }
 
 /** Omitted entirely (not just `audio` omitted) falls back to the same narrationAvailable-derived default as an explicit request would compute server-side — see MergeAudioSettings's doc comment. */

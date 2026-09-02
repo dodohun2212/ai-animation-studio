@@ -438,6 +438,47 @@ describe("local FFmpeg video merge", () => {
       }
     });
 
+    /**
+     * A song is longer than a Reel, and the part someone wants is rarely the first thirty seconds.
+     *
+     * Refused rather than clamped when the chosen point is past the end, and the refusal carries the track's
+     * real length: "your number was wrong" leaves a person guessing, "this song is 128 seconds" does not
+     * (캡틴D asked for the control; Cowork Round 456 asked for the length in the error).
+     */
+    it("starts the music where it was asked to, and says how long the track is when that is past the end", async () => {
+      const { projectsRoot, projects, root } = await setup();
+      const { audioLibrary, uploaded, mergeRunner, calls } = await withTrack(root);
+      const service = new LocalVideoMergeService(projects, projectsRoot, mergeRunner, audioLibrary);
+
+      await service.merge("video_merge", { audio: { mode: "bgm", trackId: uploaded.track.trackId, startSeconds: 4 } });
+
+      const mix = calls.find((args) => args.includes("-stream_loop"))!;
+      // Before the input, and before the loop: after either one the opening bars come back (see
+      // bgm-start-seconds.real-ffmpeg.test.ts, which renders it and listens).
+      expect(mix.indexOf("-ss")).toBeLessThan(mix.indexOf("-stream_loop"));
+      expect(mix[mix.indexOf("-ss") + 1]).toBe("4.000");
+    });
+
+    it("refuses a start past the end of the track, with the track's length in the error", async () => {
+      const { projectsRoot, projects, root } = await setup();
+      const { audioLibrary, uploaded, mergeRunner } = await withTrack(root);
+      const service = new LocalVideoMergeService(projects, projectsRoot, mergeRunner, audioLibrary);
+
+      // The fixture track is ten seconds long — the probe in withTrack says so.
+      await expect(service.merge("video_merge", { audio: { mode: "bgm", trackId: uploaded.track.trackId, startSeconds: 30 } }))
+        .rejects.toMatchObject({ response: { code: "AUDIO_START_OUT_OF_RANGE", details: { durationSeconds: 10 } } });
+    });
+
+    it("leaves the command exactly as it was when no start is chosen", async () => {
+      const { projectsRoot, projects, root } = await setup();
+      const { audioLibrary, uploaded, mergeRunner, calls } = await withTrack(root);
+      const service = new LocalVideoMergeService(projects, projectsRoot, mergeRunner, audioLibrary);
+
+      await service.merge("video_merge", { audio: { mode: "bgm", trackId: uploaded.track.trackId } });
+
+      expect(calls.find((args) => args.includes("-stream_loop"))!).not.toContain("-ss");
+    });
+
     it("refuses music with no track named, the same way narration+bgm does", async () => {
       const { projectsRoot, projects } = await setup();
 

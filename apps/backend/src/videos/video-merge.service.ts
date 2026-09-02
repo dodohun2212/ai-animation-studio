@@ -13,7 +13,7 @@ import type { StoredProject, StoredUsedAudio } from "../projects/project-storage
 import { sceneValue } from "../images/image-prompt.js";
 import { AudioLibraryService } from "../audio/audio-library.service.js";
 import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
-import { ffmpegUnavailable, videoMergeAlreadyPublished, videoMergeBusy, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeAlreadyCompleted, videoMergeInvalidRequest, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
+import { audioStartOutOfRange, ffmpegUnavailable, videoMergeAlreadyPublished, videoMergeBusy, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeAlreadyCompleted, videoMergeInvalidRequest, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
 import { shortProjectAspectRatio } from "../projects/project-aspect.js";
 
 const FINAL_VIDEO_PATH = "videos/final/instagram_reel.mp4" as const;
@@ -22,7 +22,7 @@ const DEFAULT_BGM_FADE_SECONDS = 2;
 type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved" };
 /** Mirrors MergeAudioSettings["mode"] — the stored record and the request speak the same vocabulary. */
 type AudioMode = "narration" | "narration+bgm" | "bgm" | "silent";
-interface ResolvedAudioSettings { mode: AudioMode; trackId?: string; volume: number; fadeSeconds: number }
+interface ResolvedAudioSettings { mode: AudioMode; trackId?: string; volume: number; fadeSeconds: number; startSeconds: number }
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -97,12 +97,12 @@ function resolveSubtitleLayout(project: StoredProject, request: unknown): PhotoC
 function resolveAudioSettings(project: StoredProject, request: unknown): ResolvedAudioSettings {
   const narrationAvailable = narrationAvailableFor(project);
   const defaultMode: AudioMode = narrationAvailable && toShortProjectSettings(project).narrationEnabled ? "narration" : "silent";
-  const fallback: ResolvedAudioSettings = { mode: defaultMode, volume: DEFAULT_BGM_VOLUME, fadeSeconds: DEFAULT_BGM_FADE_SECONDS };
+  const fallback: ResolvedAudioSettings = { mode: defaultMode, volume: DEFAULT_BGM_VOLUME, fadeSeconds: DEFAULT_BGM_FADE_SECONDS, startSeconds: 0 };
   if (request === undefined) return fallback;
   if (!isObject(request) || Object.keys(request).some((key) => key !== "audio" && key !== "subtitleLayout")) throw videoMergeInvalidRequest();
   if (request.audio === undefined) return fallback;
   const audio = request.audio;
-  if (!isObject(audio) || Object.keys(audio).some((key) => !["mode", "trackId", "volume", "fadeSeconds"].includes(key))) throw videoMergeInvalidRequest();
+  if (!isObject(audio) || Object.keys(audio).some((key) => !["mode", "trackId", "volume", "fadeSeconds", "startSeconds"].includes(key))) throw videoMergeInvalidRequest();
   if (audio.mode !== "narration" && audio.mode !== "narration+bgm" && audio.mode !== "bgm" && audio.mode !== "silent") throw videoMergeInvalidRequest("audio.mode must be narration, narration+bgm, bgm, or silent.");
   // Deliberately not "bgm": music alone has nothing to mix a voice into, so a project without narration can
   // ask for it. That was the one thing the old vocabulary could not express.
@@ -111,11 +111,15 @@ function resolveAudioSettings(project: StoredProject, request: unknown): Resolve
   if (audio.trackId !== undefined && typeof audio.trackId !== "string") throw videoMergeInvalidRequest();
   if (audio.volume !== undefined && (typeof audio.volume !== "number" || !Number.isFinite(audio.volume) || audio.volume < 0 || audio.volume > 1)) throw videoMergeInvalidRequest("audio.volume must be between 0 and 1.");
   if (audio.fadeSeconds !== undefined && (typeof audio.fadeSeconds !== "number" || !Number.isFinite(audio.fadeSeconds) || audio.fadeSeconds < 0)) throw videoMergeInvalidRequest("audio.fadeSeconds must be a non-negative number.");
+  // Shape only. Whether the number is inside *this* track is asked later, where the track's real length is
+  // known — and that refusal carries the length, which is the part a person can act on.
+  if (audio.startSeconds !== undefined && (typeof audio.startSeconds !== "number" || !Number.isFinite(audio.startSeconds) || audio.startSeconds < 0)) throw videoMergeInvalidRequest("audio.startSeconds must be a non-negative number.");
   return {
     mode: audio.mode,
     ...(usesBgm(audio.mode) ? { trackId: audio.trackId as string } : {}),
     volume: typeof audio.volume === "number" ? audio.volume : defaultBgmVolume(audio.mode),
     fadeSeconds: typeof audio.fadeSeconds === "number" ? audio.fadeSeconds : DEFAULT_BGM_FADE_SECONDS,
+    startSeconds: typeof audio.startSeconds === "number" ? audio.startSeconds : 0,
   };
 }
 
@@ -264,6 +268,10 @@ export class LocalVideoMergeService {
       if (!this.audioLibrary) throw videoMergeInvalidRequest("BGM is not available in this configuration.");
       bgmPath = (await this.audioLibrary.content(audio.trackId!)).path;
       const track = await this.audioLibrary.get(audio.trackId!);
+      // Asked here because this is where the track's length is known. Refused rather than clamped: a start the
+      // person did not choose sounds like the feature ignoring them, and the sentence they need is how long
+      // the song is.
+      if (audio.startSeconds >= track.durationSeconds) throw audioStartOutOfRange(track.durationSeconds);
       bgmAttribution = { attributionRequired: track.attributionRequired, ...(track.attributionText ? { attributionText: track.attributionText } : {}) };
     }
     const material = await this.mergeMaterial(project);
@@ -313,7 +321,7 @@ export class LocalVideoMergeService {
       // portrait canvas — including landscape footage, which came out pillarboxed.
       await this.engine.merge(mergeScenes, clipDurationSeconds, finalPath, shortProjectAspectRatio(rendering));
       if (usesBgm(audio.mode) && bgmPath) {
-        await this.engine.mixBackgroundMusic(finalPath, bgmPath, audio.volume, audio.fadeSeconds, finalPath);
+        await this.engine.mixBackgroundMusic(finalPath, bgmPath, audio.volume, audio.fadeSeconds, finalPath, audio.startSeconds);
       }
       const usedAudio: StoredUsedAudio = {
         mode: audio.mode,

@@ -312,6 +312,26 @@ describe("EpisodeVideoMergeService — audio", () => {
     });
   });
 
+  // 캡틴D puts music on Episodes, so a control that only worked on short projects would not work where it is
+  // used. Same field, same refusal, same code — one sentence serves both screens (Cowork Round 456 asked).
+  it("starts an Episode's music where it was asked to, and refuses a start past the end with the track's length", async () => {
+    const { projectsRoot } = await setup();
+    const { library, uploaded, mergeRunner, calls } = await withTrack();
+
+    await new EpisodeVideoMergeService(projectsRoot, mergeRunner, library)
+      .merge("long", 1, { audio: { mode: "bgm", trackId: uploaded.track.trackId, startSeconds: 4 } });
+
+    const mix = calls.find((args) => args.includes("-stream_loop"))!;
+    expect(mix.indexOf("-ss")).toBeLessThan(mix.indexOf("-stream_loop"));
+    expect(mix[mix.indexOf("-ss") + 1]).toBe("4.000");
+
+    const { projectsRoot: second } = await setup();
+    const again = await withTrack();
+    await expect(new EpisodeVideoMergeService(second, again.mergeRunner, again.library)
+      .merge("long", 1, { audio: { mode: "bgm", trackId: again.uploaded.track.trackId, startSeconds: 30 } }))
+      .rejects.toMatchObject({ response: { code: "AUDIO_START_OUT_OF_RANGE", details: { durationSeconds: 10 } } });
+  });
+
   it("plays that music at the level it was uploaded, since there is no voice for it to sit under", async () => {
     const { projectsRoot } = await setup();
     const { library, uploaded, mergeRunner, calls } = await withTrack();

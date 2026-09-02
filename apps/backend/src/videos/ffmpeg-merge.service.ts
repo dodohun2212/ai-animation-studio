@@ -222,7 +222,14 @@ export class FfmpegMergeEngine {
    * multi-track test rig, and still keeps narration intelligible (ducking or automatic volume adjustment were both
    * acceptable approaches).
    */
-  async mixBackgroundMusic(inputPath: string, bgmPath: string, volume: number, fadeSeconds: number, outputPath: string): Promise<void> {
+  /**
+   * `startSeconds` seeks into the track before anything is read from it, so the music that lands on the video
+   * is the part someone picked rather than whatever the song opens with. It sits before `-i` deliberately —
+   * after it, FFmpeg decodes from the start and throws the beginning away, which is the same picture and a
+   * much slower one — and before `-stream_loop`, so a track shorter than the video repeats from that point
+   * instead of falling back to the opening bars halfway through.
+   */
+  async mixBackgroundMusic(inputPath: string, bgmPath: string, volume: number, fadeSeconds: number, outputPath: string, startSeconds = 0): Promise<void> {
     let duration: number;
     try {
       const result = await this.command(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", inputPath]);
@@ -238,7 +245,8 @@ export class FfmpegMergeEngine {
     const filter = `[1:a]atrim=0:${duration.toFixed(3)},afade=t=in:st=0:d=${fade.toFixed(3)},afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${fade.toFixed(3)},volume=${volume}[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]`;
     const temporary = path.join(path.dirname(outputPath), `.${path.basename(outputPath)}.${crypto.randomUUID()}.tmp.mp4`);
     try {
-      await this.command(["ffmpeg", "-y", "-i", inputPath, "-stream_loop", "-1", "-i", bgmPath, "-filter_complex", filter, "-map", "0:v:0", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", temporary]);
+      const music = startSeconds > 0 ? ["-ss", startSeconds.toFixed(3), "-stream_loop", "-1", "-i", bgmPath] : ["-stream_loop", "-1", "-i", bgmPath];
+      await this.command(["ffmpeg", "-y", "-i", inputPath, ...music, "-filter_complex", filter, "-map", "0:v:0", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", temporary]);
       const stat = await fs.stat(temporary);
       if (stat.size <= 0) throw new MediaToolError("failed", "BGM mix output is empty.");
       await fs.rename(temporary, outputPath);
