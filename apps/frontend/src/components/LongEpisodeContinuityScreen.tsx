@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { LongEpisodeContinuityMemory, LongEpisodeDetail, LongEpisodeOutline, SaveLongEpisodeContinuityRequest } from "@ai-animation-studio/shared";
+import type { LongEpisodeContinuityMemory, LongEpisodeOutline, SaveLongEpisodeContinuityRequest } from "@ai-animation-studio/shared";
 
 import { getLongEpisode, getLongEpisodeContinuity, saveLongEpisodeContinuity, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
@@ -99,7 +99,10 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<DisplayError | null>(null);
-  const [saved, setSaved] = useState<LongEpisodeDetail | null | undefined>(undefined);
+  // The outline, not the detail: the next Episode is usually one nobody has scripted yet — these notes are
+  // written before that script — and such an Episode has no record of its own to send. The sentence below
+  // already reads its status, so it says 아웃라인 준비됨 rather than claiming this was the last Episode.
+  const [saved, setSaved] = useState<LongEpisodeOutline | null | undefined>(undefined);
   /**
    * Whether the server would accept a save right now, answered by the server itself.
    *

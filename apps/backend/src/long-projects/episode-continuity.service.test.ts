@@ -67,10 +67,36 @@ describe("EpisodeContinuityService", () => {
     expect(await continuity.get("long", 1)).toMatchObject({ memory: null, canSave: true });
   });
 
-  it("rejects malformed memory on the way in, and accepts a missing next Episode as null", async () => {
+  /**
+   * 마지막 에피소드였습니다 is now said only when it is true.
+   *
+   * This assertion used to read `nextEpisode: null` here and call it "a missing next Episode" — on Episode 1 of
+   * a five-Episode project, with Episode 2 sitting in the outline the whole time. The Episode directory is
+   * created by the script save and nothing else, so a planned Episode has no record, and the save read that as
+   * the story being over. 캡틴D saw it on Episode 4 of ten. These notes are written *before* the next script
+   * exists, so anyone working in the recommended order met it every time: the sentence was almost never true.
+   *
+   * The outline is what comes back, so the screen can name the Episode, label it 아웃라인 준비됨 from the status
+   * it carries, and offer to open it — none of which it could do with a null.
+   */
+  it("names the next Episode from the outline when nobody has scripted it yet", async () => {
     const { continuity, scripts } = await setup(); await scripts.generate("long", 1, { userRequestId: "episode-continuity.service-script-7" }); await markEligible(1);
     await expect(continuity.save("long", 1, { memory: { ...memory, events: ["x", 2] } as never })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
-    await expect(continuity.save("long", 1, { memory })).resolves.toMatchObject({ nextEpisode: null });
+
+    await expect(continuity.save("long", 1, { memory })).resolves.toMatchObject({ nextEpisode: { episodeNumber: 2, status: "outline_ready" } });
+  });
+
+  /**
+   * The other half, and the only case the old sentence was ever right about: the last Episode of the project.
+   *
+   * Widening the answer is worth nothing if it starts naming an Episode that does not exist — the screen would
+   * offer to open Episode 6 of a five-Episode story.
+   */
+  it("reports no next Episode on the last one, where that is the truth", async () => {
+    const { continuity, scripts } = await setup();
+    await scripts.generate("long", 5, { userRequestId: "episode-continuity.service-script-8" }); await markEligible(5);
+
+    await expect(continuity.save("long", 5, { memory })).resolves.toMatchObject({ nextEpisode: null });
   });
 
   /**

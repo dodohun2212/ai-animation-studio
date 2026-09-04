@@ -781,7 +781,17 @@ export interface GetLongEpisodeContinuityResponse {
   canSave: boolean;
 }
 export interface SaveLongEpisodeContinuityRequest { memory: Omit<LongEpisodeContinuityMemory, "episodeNumber" | "updatedAt">; }
-export interface SaveLongEpisodeContinuityResponse { memory: LongEpisodeContinuityMemory; nextEpisode: LongEpisodeDetail | null; }
+/**
+ * nextEpisode is null only when the story has no Episode after this one.
+ *
+ * Typed as the outline rather than the detail because an Episode that is planned but not yet scripted has no
+ * record of its own — the directory holding it is created by the script save and nothing else — and it was
+ * being reported as absent, so a save on Episode 4 of ten told the person it was the last one. Anyone working
+ * in the order the app recommends meets that case every time, since these notes are written before the next
+ * script exists. An Episode that has been started still arrives with its full detail; the outline is what is
+ * guaranteed, and status says which kind it is.
+ */
+export interface SaveLongEpisodeContinuityResponse { memory: LongEpisodeContinuityMemory; nextEpisode: LongEpisodeOutline | null; }
 
 export interface SearchLongStoryBibleItemsResponse { items: LongStoryBibleItem[]; }
 export interface DuplicateLongStoryBibleItemResponse { item: LongStoryBibleItem; storyBible: LongStoryBible; }

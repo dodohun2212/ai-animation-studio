@@ -616,7 +616,7 @@ function isLongEpisodeContinuityMemory(value: unknown): value is LongEpisodeCont
 const isGetLongEpisodeContinuityResponse = (value: unknown): value is GetLongEpisodeContinuityResponse =>
   isRecord(value) && typeof value.canSave === "boolean" && (value.memory === null || isLongEpisodeContinuityMemory(value.memory));
 const isSaveLongEpisodeContinuityResponse = (value: unknown): value is SaveLongEpisodeContinuityResponse => isRecord(value)
-  && isLongEpisodeContinuityMemory(value.memory) && (value.nextEpisode === null || isLongEpisodeDetail(value.nextEpisode));
+  && isLongEpisodeContinuityMemory(value.memory) && (value.nextEpisode === null || isLongEpisodeOutline(value.nextEpisode));
 const isGetLongEpisodeContinuityReferenceResponse = (value: unknown): value is GetLongEpisodeContinuityReferenceResponse => {
   if (!isRecord(value)) return false;
   const reference = value.reference;

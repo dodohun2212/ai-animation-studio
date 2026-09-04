@@ -1,8 +1,9 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import { LONG_EPISODE_STATUSES, type GetLongEpisodeContinuityResponse, type LongEpisodeContinuityMemory, type LongEpisodeDetail, type LongEpisodeStatus, type SaveLongEpisodeContinuityRequest, type SaveLongEpisodeContinuityResponse } from "@ai-animation-studio/shared";
+import { LONG_EPISODE_STATUSES, type GetLongEpisodeContinuityResponse, type LongEpisodeContinuityMemory, type LongEpisodeDetail, type LongEpisodeOutline, type LongEpisodeStatus, type SaveLongEpisodeContinuityRequest, type SaveLongEpisodeContinuityResponse } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
+import { parseEpisodeOutlineEntry } from "./episode-outline-entry.js";
 import { isLongProjectError, longEpisodeContinuityNotAllowed, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
@@ -70,5 +71,35 @@ export class EpisodeContinuityService {
     // above: the screen a person goes to in order to write this file must not be closed by the file's absence.
     if (!episode) return { memory: null, canSave: false };
     const canSave = eligible.includes(episode.state); try { return { memory: this.fromStored(await this.json(this.files(id, number).continuity), number), canSave }; } catch (error) { if (isLongProjectError(error, "LONG_PROJECT_NOT_FOUND", "LONG_PROJECT_JSON_MALFORMED", "LONG_PROJECT_DATA_INVALID")) return { memory: null, canSave }; throw error; } }
-  async save(projectId: string, number: number, request: SaveLongEpisodeContinuityRequest): Promise<SaveLongEpisodeContinuityResponse> { const id = projectId.trim(); const current = await this.episodeOrNull(id, number); if (!current || !eligible.includes(current.state)) throw longEpisodeContinuityNotAllowed(); const memory = this.parse(request, number, true); try { await atomicWriteUtf8File(this.files(id, number).continuity, JSON.stringify(this.stored(memory), null, 2)); } catch { throw longStorageError(); } let nextEpisode: LongEpisodeDetail | null = null; try { nextEpisode = this.detail(await this.episode(id, number + 1)); } catch (error) { if (!(error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404)) throw error; } return { memory, nextEpisode }; }
+  /**
+   * The Episode after this one, or null when the story genuinely has no more.
+   *
+   * The save used to build this from `project.json` alone and treat any 404 as "there is no next Episode", so
+   * the screen said 마지막 에피소드였습니다. 다음 에피소드가 없습니다 — on Episode 4 of a ten-Episode project,
+   * to 캡틴D, right after they saved the notes meant to carry into Episode 5. That directory is created by
+   * `episode-scripts.service.ts`'s save and by nothing else, so an Episode that is planned but not yet written
+   * has no file; and since these notes are written *before* the next script, anyone working in the order the app
+   * recommends hits that case every time. The sentence was almost never true.
+   *
+   * `episodeOrNull` already draws this exact distinction for the memo itself, in this same file. The save simply
+   * did not use it. Two 404s mean different things, and only one of them means the story is over:
+   *
+   *   no outline entry     the story has no Episode there                        → null, and the screen is right
+   *   outline, no record   planned, not scripted yet                             → the outline, status outline_ready
+   *   record on disk       started                                               → its detail, as before
+   *
+   * The outline entry is what the project listing already shows for such an Episode, parsed by the same
+   * function, so the two screens cannot describe a planned Episode differently.
+   */
+  private async nextEpisode(id: string, number: number): Promise<LongEpisodeOutline | null> {
+    const next = number + 1;
+    let stored: StoredEpisode | null;
+    try { stored = await this.episodeOrNull(id, next); }
+    catch (error) { if (isLongProjectError(error, "LONG_EPISODE_NOT_FOUND")) return null; throw error; }
+    if (stored) return this.detail(stored);
+    const outlines = await this.json(this.files(id, next).outlines);
+    if (!Array.isArray(outlines) || next > outlines.length) return null;
+    return parseEpisodeOutlineEntry(outlines[next - 1], next);
+  }
+  async save(projectId: string, number: number, request: SaveLongEpisodeContinuityRequest): Promise<SaveLongEpisodeContinuityResponse> { const id = projectId.trim(); const current = await this.episodeOrNull(id, number); if (!current || !eligible.includes(current.state)) throw longEpisodeContinuityNotAllowed(); const memory = this.parse(request, number, true); try { await atomicWriteUtf8File(this.files(id, number).continuity, JSON.stringify(this.stored(memory), null, 2)); } catch { throw longStorageError(); } return { memory, nextEpisode: await this.nextEpisode(id, number) }; }
 }

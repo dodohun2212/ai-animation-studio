@@ -60,6 +60,35 @@ describe("LongEpisodeContinuityScreen", () => {
   });
 
   /**
+   * The next Episode usually has nothing but an outline, and the screen has to take it.
+   *
+   * These notes are written before the next Episode's script exists, and the directory holding an Episode's
+   * record is created by that script save and by nothing else. So the ordinary payload here carries the outline
+   * fields alone — no approved, no scriptRevision, no scriptHistoryCount. The response validator required all
+   * three, and the server was sending null instead of the outline, which is how 캡틴D was told Episode 4 of ten
+   * was the last one. Both halves have to hold, or the screen throws away a real answer as malformed.
+   */
+  it("names an unscripted next Episode from an outline-only response", async () => {
+    const fetchMock = stubFetchByRoute({
+      [`GET ${CONTINUITY_URL}`]: { memory: null, canSave: true },
+      [`GET ${EPISODE_URL}`]: outline(),
+      [`PUT ${CONTINUITY_URL}`]: { memory: memory({ episodeSummary: "Reviewed summary" }), nextEpisode: { episodeNumber: 5, title: "Episode 5", summary: "", mainEvent: "", conflict: "", cliffhanger: "", nextEpisodeHook: "", status: "outline_ready" as const } },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeContinuityScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenNextEpisode={() => {}} />);
+
+    await screen.findByTestId("continuity-save");
+    fireEvent.change(screen.getByTestId("continuity-summary"), { target: { value: "Reviewed summary" } });
+    fireEvent.click(screen.getByTestId("continuity-save"));
+
+    const success = await screen.findByTestId("continuity-save-success");
+    expect(success).toHaveTextContent("에피소드 5");
+    expect(success).not.toHaveTextContent("마지막 에피소드");
+    // Named, so it can be opened — the thing a null could never offer.
+    expect(screen.getByTestId("continuity-open-next-episode")).toBeTruthy();
+  });
+
+  /**
    * The four boxes this fills were all written and approved earlier in this same Episode's flow, and the screen
    * was asking for them again from blank. Only these four: `continuityContext()` in episode-scripts.service.ts
    * carries summary/events/character_changes/next_actions into the next Episode's prompt and nothing else, so
