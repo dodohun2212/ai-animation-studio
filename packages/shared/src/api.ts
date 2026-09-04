@@ -398,6 +398,50 @@ export interface LongEpisodeImageGenerationPreview {
 }
 export interface GetLongEpisodeImagePreviewResponse { preview: LongEpisodeImageGenerationPreview; }
 
+/**
+ * How far an Episode's image generation has got, while it is still running.
+ *
+ * The generation loop is sequential — `for (const scene of sceneNumbersFor(...))`, one paid call at a time — so
+ * at any moment exactly one scene is being drawn. The screen could not see that: its only reading during a run
+ * is the Episode's own state, which says `generating_images` and nothing more, so all six rows said 만드는 중
+ * at once. That is not vague, it is wrong, and it is why 캡틴D asked for this.
+ *
+ * Read from the files, never from a record of the run. Every finished scene has already been written to
+ * `scene{n}.png` and validated before the loop moves on, and the loop skips scenes that already have one — so
+ * the disk holds the whole answer and no new state has to be kept in step with it. A separate job record would
+ * eventually disagree with the pictures, and on that day the screen would report an image that is not there.
+ *
+ * Answerable mid-run, which the review endpoint deliberately is not: `get()` asserts every scene's image exists
+ * because a review of missing pictures is meaningless. This exists precisely for the moment when they do not
+ * all exist yet, so it asserts nothing and simply reports.
+ *
+ * Field names match LongEpisodeVideoProgress on purpose, so the two screens can say the same thing the same way.
+ */
+export interface LongEpisodeImageProgress {
+  /** Every scene in the Episode, so the screen can draw the full list without a scene-count constant of its own. */
+  sceneNumbers: SceneNumber[];
+  /**
+   * Scenes that have a usable picture on disk right now.
+   *
+   * Not "scenes this run paid for". A re-run reports the previous run's images as complete from its first
+   * moment, which is the truth about the pictures and exactly what the loop does with them (it skips them), but
+   * it is a different number from what was bought — LongEpisodeImageGenerationPreview.generatableSceneNumbers is
+   * the one that answers cost, and nothing here should be added up into money.
+   */
+  completedSceneNumbers: SceneNumber[];
+  /**
+   * The scene being drawn right now: the first one with no usable picture yet.
+   *
+   * Absent unless the Episode is actually generating. A scene number here means "this is being made at this
+   * moment"; reporting the next unfinished scene while nothing is running would say that of a scene nobody has
+   * started, which is the same lie in the other direction.
+   */
+  currentSceneNumber?: SceneNumber;
+}
+/** `episode` rides along so a screen watching a run can poll this one route instead of this plus the Episode. */
+export interface GetLongEpisodeImageProgressResponse { episode: LongEpisodeDetail; progress: LongEpisodeImageProgress; }
+
+
 export interface GetLongEpisodeImageReviewResponse {
   episode: LongEpisodeDetail;
   reviews: LongEpisodeImageReview[];
@@ -2368,6 +2412,9 @@ export const API_ROUTES = {
   /** A free, provider-free preflight: which scenes an image generation would actually buy. */
   longEpisodeImagePreview: (projectId: string, episodeNumber: number) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/images/generations/preview`,
+  /** How far a running image generation has got, scene by scene. Reads files; costs nothing; never refuses mid-run. */
+  longEpisodeImageProgress: (projectId: string, episodeNumber: number) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/images/generations/progress`,
   audioLibrary: "/audio/library",
   audioLibraryUpload: "/audio/library/upload",
   audioLibraryContent: (trackId: string) => `/audio/library/${encodeURIComponent(trackId)}/content`,

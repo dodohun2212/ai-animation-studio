@@ -7,7 +7,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import { LONG_EPISODE_STATUSES, IMAGE_ESTIMATED_COST_USD, isSceneNumber, sceneNumbersFor, type ApproveLongEpisodeImageReviewRequest, type ApproveLongEpisodeImageReviewResponse, type GetLongEpisodeImagePreviewResponse, type GetLongEpisodeImageReviewResponse, type LongEpisodeDetail, type LongEpisodeImageReview, type LongEpisodeImageStaleness, type LongEpisodeStatus, type LongEpisodeStoryBibleLinkDrift, type RegenerateLongEpisodeImageReviewRequest, type RegenerateLongEpisodeImageReviewResponse, type SceneNumber, type StartLongEpisodeImageGenerationRequest, type StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
+import { LONG_EPISODE_STATUSES, IMAGE_ESTIMATED_COST_USD, isSceneNumber, sceneNumbersFor, type ApproveLongEpisodeImageReviewRequest, type ApproveLongEpisodeImageReviewResponse, type GetLongEpisodeImagePreviewResponse, type GetLongEpisodeImageProgressResponse, type GetLongEpisodeImageReviewResponse, type LongEpisodeDetail, type LongEpisodeImageReview, type LongEpisodeImageStaleness, type LongEpisodeStatus, type LongEpisodeStoryBibleLinkDrift, type RegenerateLongEpisodeImageReviewRequest, type RegenerateLongEpisodeImageReviewResponse, type SceneNumber, type StartLongEpisodeImageGenerationRequest, type StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
 import { validateImage } from "../assets/image-validation.js";
 import { LocalAssetsRepository, type GeneratedImageSource } from "../assets/assets.repository.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
@@ -271,6 +271,38 @@ export class EpisodeImagesService {
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, estimatedCostUsd) : undefined;
     return { preview: { sceneNumbers, generatableSceneNumbers: generatable, reusableSceneNumbers: reusable, estimatedCostUsd, ...(budget ? { budget } : {}) } };
+  }
+
+  /**
+   * How far a run has got, scene by scene — the one reading the screen can take while pictures are still coming.
+   *
+   * Deliberately asserts nothing. `get()` below refuses unless every scene's image is on disk, which is right
+   * for a review, and it is why this could not simply reuse it: the moment worth reporting is exactly the one
+   * where they are not all there yet.
+   *
+   * The whole answer is on disk. Each scene is written and validated before the loop starts the next one, and a
+   * scene that already has a usable picture is skipped rather than bought again, so "which scenes are done" and
+   * "which one is being made" both fall out of the same `validImage` question `generate()` and `preview()` ask.
+   * No run record is kept for this, on purpose: a second copy of the answer is a copy that can disagree with the
+   * pictures, and the day it does the screen reports an image nobody has.
+   *
+   * `validImage` rather than a `stat`, for the same reason the generation loop uses it: a file that exists is
+   * not the same as a picture, and a half-written one must not be counted as finished.
+   */
+  async progress(projectId: string, number: number): Promise<GetLongEpisodeImageProgressResponse> {
+    const id = projectId.trim();
+    const episode = await this.episode(id, number);
+    const sceneNumbers = sceneNumbersFor(this.sceneCount(episode));
+    const completedSceneNumbers: SceneNumber[] = [];
+    const pending: SceneNumber[] = [];
+    for (const scene of sceneNumbers) {
+      if (await this.validImage(this.image(id, number, scene))) completedSceneNumbers.push(scene); else pending.push(scene);
+    }
+    // Only while the run is actually in flight. The loop is sequential, so the first scene without a picture is
+    // the one being drawn right now — but that sentence is only true during a run, and outside one the same
+    // number would claim work nobody has started.
+    const currentSceneNumber = episode.state === "generating_images" ? pending[0] : undefined;
+    return { episode: this.detail(episode), progress: { sceneNumbers, completedSceneNumbers, ...(currentSceneNumber ? { currentSceneNumber } : {}) } };
   }
 
   /**

@@ -94,6 +94,49 @@ describe("real OpenAI Episode image generation", () => {
   });
 
   /**
+   * The reading 캡틴D asked for, taken while the money is actually being spent.
+   *
+   * Every row said 만드는 중 at once, because the only thing the screen could read during a run was the
+   * Episode's state — one word for six scenes. The loop buys one picture at a time, so that display was not
+   * vague, it was false: five of those six scenes had not been started.
+   *
+   * Held mid-run rather than reconstructed afterwards. The third scene's provider call is made to wait, and the
+   * progress is read while the generation is genuinely parked inside it — so this measures the sequential loop
+   * itself, not a directory a test arranged to look like one. Nothing is paid: `fetch` is a stub.
+   */
+  it("names the scene being drawn and the ones already done, while the generation is still inside the loop", async () => {
+    const { images } = await setupWithConnectedOpenAi();
+    let calls = 0;
+    let releaseThird = () => {};
+    let announceThird = () => {};
+    const parked = new Promise<void>((resolve) => { releaseThird = resolve; });
+    const thirdCallStarted = new Promise<void>((resolve) => { announceThird = resolve; });
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      if (calls++ === 2) { announceThird(); await parked; }
+      return jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] });
+    }));
+
+    const running = images.generate("long", 1, { approved: true });
+    await thirdCallStarted;
+
+    const midRun = await images.progress("long", 1);
+    expect(midRun.progress).toEqual({ sceneNumbers: [1, 2, 3, 4, 5, 6], completedSceneNumbers: [1, 2], currentSceneNumber: 3 });
+    expect(midRun.episode.status).toBe("generating_images");
+    // The whole reason this is its own door: mid-run, the review endpoint refuses outright — generating_images
+    // is one of the states it will not read at all, before it ever gets as far as looking for the files. There
+    // was no existing route that could answer this question.
+    await expect(images.get("long", 1)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_NOT_ALLOWED" } });
+
+    releaseThird();
+    await running;
+
+    const finished = await images.progress("long", 1);
+    expect(finished.progress.completedSceneNumbers).toEqual([1, 2, 3, 4, 5, 6]);
+    // Nothing is being drawn any more, and a scene number here would say otherwise.
+    expect(finished.progress.currentSceneNumber).toBeUndefined();
+  });
+
+  /**
    * An image is only worth what the script it was drawn from is still worth. Editing a scene after paying for
    * its image left no sign anywhere — this is the image half of the same hole the video review already covers.
    *

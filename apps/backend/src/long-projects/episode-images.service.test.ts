@@ -185,6 +185,42 @@ describe("EpisodeImagesService", () => {
     await expect(images.generate("long", 1, { approved: true })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_NOT_ALLOWED" } });
   });
 
+  /**
+   * A file is not a picture, and progress must not say it is.
+   *
+   * The generation loop writes each scene's bytes and then validates them before moving on, so a file that
+   * exists but does not parse as a PNG is one being written this instant — the exact moment this route is meant
+   * to be read at. Asking `stat` instead of reading it would report that scene finished a moment early, and the
+   * screen would move its marker onto a picture nobody has yet. Same reason `preview()` counts with `validImage`
+   * before quoting a price.
+   */
+  it("does not count a half-written file as a finished scene", async () => {
+    const { images, projectsRoot } = await setup();
+    await images.generate("long", 1, { approved: true });
+    const imagesDirectory = path.join(projectsRoot, "long", "long_story", "Episode01", "images");
+    await fs.writeFile(path.join(imagesDirectory, "scene4.png"), Buffer.from([0x89, 0x50]), "utf8");
+
+    const progress = await images.progress("long", 1);
+
+    expect(progress.progress.completedSceneNumbers).toEqual([1, 2, 3, 5, 6]);
+    // Not generating any more, so nothing claims to be in flight — even though a scene is unaccounted for.
+    expect(progress.progress.currentSceneNumber).toBeUndefined();
+  });
+
+  /**
+   * Answerable before a single picture exists, which is the difference between this and the review endpoint.
+   *
+   * A screen that starts a generation and polls immediately reaches this route first; if it refused until there
+   * was something to show, the first seconds of a run — the part a person watches — would be an error.
+   */
+  it("answers for an Episode that has generated nothing yet", async () => {
+    const { images } = await setup();
+
+    const progress = await images.progress("long", 1);
+
+    expect(progress.progress).toEqual({ sceneNumbers: [1, 2, 3, 4, 5, 6], completedSceneNumbers: [] });
+  });
+
   it("carries a persisted reference-cap count through get() and preserves it across approve(), but never for a scene that never had one", async () => {
     const { images, projectsRoot } = await setup();
     await images.generate("long", 1, { approved: true });
