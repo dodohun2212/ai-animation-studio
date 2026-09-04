@@ -5,7 +5,7 @@ import { LONG_EPISODE_STATUSES, type LongEpisodeStatus } from "@ai-animation-stu
 
 import type { MappingOwner, MappingOwners } from "../mappings/mapping-owner.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
-import { longEpisodeMappingNotAllowed, longEpisodeNotFound, longInvalidData, longMalformed, longNotFound, longStorageError } from "./long-project-api.error.js";
+import { isLongProjectError, longEpisodeMappingNotAllowed, longEpisodeNotFound, longInvalidData, longMalformed, longNotFound, longStorageError } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 
 /**
@@ -171,7 +171,15 @@ export class EpisodeMappingOwners implements MappingOwners<EpisodeMappingKey> {
       throw longEpisodeNotFound();
     }
 
-    const raw = await this.json(projectFile);
+    // An Episode the outline lists but nobody has scripted has no directory yet — the script save is what
+    // creates it — so this read is ENOENT, and json() reports that as "Long project was not found". The project
+    // is right there; the person was looking at it a moment ago, and that answer sends them hunting for
+    // something that is not missing. episode-videos.service.ts made the same correction on its own route
+    // (loadEpisode) for the same reason; this is the mapping route catching up. A scripted Episode in the wrong
+    // state already answers with this code, so the two cases now agree.
+    let raw: unknown;
+    try { raw = await this.json(projectFile); }
+    catch (error) { if (isLongProjectError(error, "LONG_PROJECT_NOT_FOUND")) throw longEpisodeMappingNotAllowed(); throw error; }
     if (!isObject(raw) || raw.number !== episodeNumber || !episodeStatuses.includes(raw.state as LongEpisodeStatus)
       || !isObject(raw.script) || !Number.isInteger(raw.script_revision)) {
       throw longInvalidData();

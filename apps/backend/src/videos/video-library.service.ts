@@ -15,7 +15,7 @@ import {
   type VideoVersionSummary,
 } from "@ai-animation-studio/shared";
 
-import { toApiProject } from "../projects/project.mapper.js";
+import { photoCardFor, toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
@@ -256,6 +256,9 @@ export class VideoLibraryService {
         finalVideoAvailable: Boolean(finalFile),
         totalActualCostUsd,
         aspectRatio: aspectRatioFor(project),
+        // Said, not left to be deduced: a card has no scene videos by design, and a row that only reports
+        // "장면 0/1" beside "최종 영상 있음" reads as unfinished work. See VideoLibraryProjectSummary.photoCard.
+        ...(photoCardFor(project) ? { photoCard: true as const } : {}),
         // Carried onto the row because the publish screen picks from this list and never loads the project. The
         // alternatives were a second request, or guessing the kind from the duration.
         ...(project.used_audio?.attribution_required !== undefined ? { attributionRequired: project.used_audio.attribution_required } : {}),

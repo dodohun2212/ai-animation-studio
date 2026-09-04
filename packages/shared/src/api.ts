@@ -2187,6 +2187,16 @@ export interface VideoLibraryProjectSummary {
    */
   attributionRequired?: boolean;
   attributionText?: string;
+  /**
+   * Present only on a photo card, which has no scene videos by design.
+   *
+   * A card is one picture under a slow zoom, merged straight to a final video, so its row reads "장면 0/1" —
+   * which looks like unfinished work sitting next to "최종 영상 있음" on the same card, two lines contradicting
+   * each other. The screen could infer it from finalVideoAvailable && videosReadyCount === 0 && sceneCount === 1,
+   * and that is the shape this repository has spent a week removing: a screen deducing a fact the server knows.
+   * So the row says it.
+   */
+  photoCard?: true;
 }
 /**
  * One Episode's results in the video library.

@@ -40,6 +40,25 @@ async function setup(episode: Record<string, unknown> = {}, outlineCount = 1) {
 const read = async (file: string) => JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>;
 
 describe("EpisodeMappingOwners", () => {
+  /**
+   * An Episode nobody has scripted is not a missing project.
+   *
+   * The directory holding an Episode's record is created by the script save and by nothing else, so reading it
+   * for an outline-only Episode is ENOENT — which this file's json() reports as "Long project was not found".
+   * 캡틴D's project 12 is right there; Episode 5 simply has no script yet, and that answer sends the reader
+   * hunting for something that is not missing (Cowork Round 487, reproduced against the running server).
+   *
+   * episode-videos.service.ts made this correction on its own route already, with the same reasoning in its
+   * own comment. This is the mapping route catching up, onto the code a scripted Episode in the wrong state
+   * already gets — so the two cases agree instead of one of them lying.
+   */
+  it("says the mapping step is not allowed yet, not that the project is missing, for an unscripted Episode", async () => {
+    const { owners, directory } = await setup();
+    await fs.rm(directory, { recursive: true, force: true });
+
+    await expect(owners.get({ projectId: "long-1", episodeNumber: 1 }))
+      .rejects.toMatchObject({ response: { code: "LONG_EPISODE_MAPPING_NOT_ALLOWED" } });
+  });
   it("leaves narration out of the scenes it reports, so rewording a line does not invalidate a mapping", async () => {
     // The pipeline hashes these to ask "does this review still describe the current script". Narration is the
     // one part of a scene that says nothing about which assets appear in it, and the Episode pipeline already

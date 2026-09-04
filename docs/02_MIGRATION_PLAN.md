@@ -3388,3 +3388,14 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
 - [x] **죽은 코드 넷 제거 (Cowork 이 판단을 물은 것)**: `BudgetLine.breakdown`(8곳 호출, 아무도 안 넘겨서 렌더가 도달 불가) · `StatusChip` tone `"active"`(21곳 호출, 아무도 안 씀) · `LONG_EPISODE_OPTIONAL_FIELD_KEYS` · `LoginWindowHandle`. 전부 프로덕션 importer 0 을 직접 확인했다.
   - 🟠 `LONG_EPISODE_OPTIONAL_FIELD_KEYS` 는 **자기 자신만 검사하는 짝**이 살려두고 있었다 — 그 짝도 같이 지웠다. 죽은 상수가 쓰인 대로라고 단언하는 짝은 아무것도 증명하지 않는다.
   - 🟠 **`ProviderCredentialCard` 의 `disabled`·`onPendingChange` 는 안 지웠다.** 나머지 넷과 달리 **컴포넌트 안에서 실제로 읽힌다**(`if (disabled || …)`, `onPendingChange(true)`). 지우면 선언이 아니라 **동작이 사라진다** — 이 컴포넌트를 재사용 가능하게 둘지에 대한 설계 판단이라 넘긴다.
+- [x] **살아 있는 앱을 화면마다 열어 본 결과 — "완료된 것이 고장 난 것처럼 보이는" 자리 둘 (Cowork Round 487)**: 캡틴D가 서버를 열어 두고 검증을 부탁하셔서 네비 10개·화면 22개를 실제로 열었다. **전부 렌더되고 콘솔 에러 없다.** 다만 둘.
+  - **완료된 회차의 영상 화면에 빨간 오류**: `review()` 는 `videos_review`/`videos_approved` 에만 답하므로 `completed` 회차에서는 거절이 **정상적인 답**인데, 그 거절이 progress 읽기와 **같은 catch** 에 잡혀 **화면 자신의 실패**로 그려졌다. 이제 검토 목록만 없는 것으로 두고, 문장은 **거절이 아니라 `job.episode.status` 에서** 뽑는다.
+  - **완료된 단편이 "6개 중 0개 확정됨"**: `/projects/1` 의 장면에 `videoReview` 필드가 **아예 없어서** `undefined !== "approved"` 로 여섯 개가 미확정으로 세어졌다 — **없는 것이 아니오로 읽힌 것.** `blocked` 바로 위 주석이 이미 답을 적고 있었다(*"Unknown stays unblocked"*). 이제 **모든 장면이 답했을 때만** 숫자를 만들고 아니면 `null` 이다.
+    - 🟠 짝이 셋인 이유: 두 번째("아무 장면도 리뷰를 안 달았으면 확정 얘기를 아예 안 한다")만 있으면 **"아무것도 안 세는" 쪽으로 도망가도 통과**한다. 세 번째가 그 도피로를 막는다. 주입으로 확인했다.
+- [x] **③ 명언 카드가 영상 보관함에서 「장면 0/1」로 보인다 — 행에 `photoCard` 를 싣는다**: 포토 카드는 장면 영상이 없는 게 정상인데 그 줄이 **덜 끝난 일**로 읽히고 바로 위 「최종 영상 있음」과 부딪힌다.
+  - 🔴 **이건 예전에 일부러 뺐고 짝으로 못 박혀 있었다** — *"게시 화면이 이 목록에서 고른 뒤 그 프로젝트를 불러오고, `photoCard` 는 이미 모든 `ProjectSummary` 에 있다. 같은 논리로 두 번 다시 추가되지 않게 핀."*
+  - **그 전제가 이 화면에는 안 맞는다.** `VideoLibraryScreen` 은 **프로젝트를 아예 안 불러온다**(`getProject` 호출 0). 그리고 문제의 `장면 {videosReadyCount}/{sceneCount}` 이 **바로 그 행에서** 그려진다. 게시 화면에 대한 그 판단은 여전히 옳고, 라이브러리 화면을 덮지 않았을 뿐이다.
+  - **핀을 지우지 않고 반대 방향으로 갱신했다** — 왜 바뀌었는지를 그 자리에 적었다. 화면이 `finalVideoAvailable && videosReadyCount === 0 && sceneCount === 1` 로 추론하게 두는 건 이 저장소가 일주일 내내 걷어낸 모양이다.
+- [x] **④ 대본 없는 회차의 매핑 라우트가 "장기 프로젝트를 찾을 수 없습니다"**: 프로젝트 12는 멀쩡하고 5화가 아웃라인에만 있을 뿐인데 404 `LONG_PROJECT_NOT_FOUND` 가 나갔다 — **없지 않은 것을 찾아 나서게 만드는 답**이다.
+  - `episode-videos.service.ts` 의 `loadEpisode` 가 자기 라우트에서 이미 같은 정정을 했고 주석까지 그대로 들어맞는다. 매핑 라우트를 `LONG_EPISODE_MAPPING_NOT_ALLOWED` 로 맞췄다 — **대본은 있는데 상태가 안 맞는 회차가 이미 받는 코드**라, 두 경우가 이제 같은 말을 한다. 주입(옛 404 복원)에 빨갛다.
+- [x] **476 커버 `0` — 볼 것이 없어서 닫는다**: `instagramPublishApi.ts` 가 이미 `0` 은 선택으로 보내고 `null` 은 필드를 통째로 뺀다. 확인창도 두 경우를 다르게 쓴다(8d6f25d). Cowork 확인, 동의.

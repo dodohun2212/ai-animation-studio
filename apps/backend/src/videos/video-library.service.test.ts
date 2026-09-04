@@ -92,10 +92,15 @@ describe("VideoLibraryService.list", () => {
 
     const rows = (await service.list()).projects;
 
-    // Deliberately absent from this row. The publish screen picks a project here and then loads that project,
-    // where `photoCard` already lives on every ProjectSummary — carrying it twice made this list assert a need
-    // the screen does not have. Pinned so it is not re-added on the same reasoning a second time.
-    expect(rows.find((row) => row.projectId === "card")).not.toHaveProperty("photoCard");
+    // It was absent once, pinned against being re-added "on the same reasoning a second time": the publish
+    // screen picks a project here and then loads it, where photoCard already lives on every ProjectSummary.
+    // That reasoning was about the publish screen and it still holds there. It does not cover the Video Library
+    // screen, which never loads a project at all and renders 장면 {videosReadyCount}/{sceneCount} from this row
+    // — so a card, which has no scene videos by design, reads "장면 0/1" directly beside "최종 영상 있음"
+    // (Cowork Round 487, seen on the running app). The alternative was the screen deducing it from
+    // finalVideoAvailable && videosReadyCount === 0 && sceneCount === 1, which is the shape this repository has
+    // spent a week removing. So the row says it, and this stays pinned the other way round.
+    expect(rows.find((row) => row.projectId === "card")).toHaveProperty("photoCard", true);
     expect(rows.find((row) => row.projectId === "ordinary")).not.toHaveProperty("photoCard");
   });
 
