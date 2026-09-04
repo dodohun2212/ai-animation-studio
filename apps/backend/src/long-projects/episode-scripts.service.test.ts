@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { toEpisodeDetail } from "./episode-detail.js";
 import { EpisodeScriptsService } from "./episode-scripts.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
 import { withProjectLock } from "../videos/project-lock.js";
@@ -240,6 +241,44 @@ describe("EpisodeScriptsService", () => {
     expect(episode.finalVideoPath).toBe("videos/final/instagram_reel.mp4");
     expect(episode.openablePath, "the display path went out without the one that can be opened").toBeTruthy();
     expect(episode.openablePath).toContain("Episode01");
+  });
+
+  /**
+   * The sixth copy of the Episode detail knows every field the mapper it forked from knows.
+   *
+   * `toApi` here is a separate mapping from `toEpisodeDetail`, for stated reasons: the outline owns the six text
+   * fields, and the script goes through this service's validating parse rather than the lenient one. Those
+   * reasons are about *which value wins*, never about *which fields exist* — and twice now this copy has simply
+   * not known one. previousInstagramPosts was the first, so an Episode with three forgotten posts reported none;
+   * openablePath was the second, so a finished Episode handed out a display path with nothing openable beside
+   * it, against a contract that says the two are never apart.
+   *
+   * Comparing the key sets is what catches the third without collapsing the two functions. A value assertion
+   * would not: the copies are *supposed* to disagree about values.
+   */
+  it("answers with the same field set as the shared Episode mapper, for an Episode carrying every optional", async () => {
+    const subject = await setup();
+    await subject.generate("long", 1, { userRequestId: "episode-scripts.service-parity-1" });
+    const file = path.join(root!, "projects", "long", "long_story", "Episode01", "project.json");
+    const stored = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>;
+    const everything = {
+      ...stored,
+      final_video_path: "videos/final/instagram_reel.mp4",
+      instagram_post: { media_id: "1", ig_user_id: "2", published_at: "2026-09-04T00:00:00.000Z", caption: "c" },
+      previous_instagram_posts: [{ media_id: "0", ig_user_id: "2", published_at: "2026-09-03T00:00:00.000Z", caption: "b" }],
+      used_audio: { mode: "bgm", track_id: "t", attribution_required: true, attribution_text: "credit" },
+      errors: ["something went wrong"],
+    };
+    await fs.writeFile(file, JSON.stringify(everything, null, 2), "utf8");
+
+    const throughThisService = Object.keys((await subject.get("long", 1)).episode).sort();
+    const throughSharedMapper = Object.keys(toEpisodeDetail(everything as unknown as Parameters<typeof toEpisodeDetail>[0])).sort();
+
+    // A subset check, not an equality one. This route adds two fields the shared mapper cannot know —
+    // aspectRatio comes from the project settings and narrationAvailable from a disk read — and adding is
+    // fine. Knowing fewer is what has gone wrong twice.
+    expect(throughSharedMapper.filter((key) => !throughThisService.includes(key)),
+      "this copy is missing a field the shared mapper produces").toEqual([]);
   });
 });
 
