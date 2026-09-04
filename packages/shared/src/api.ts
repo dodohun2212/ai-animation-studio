@@ -785,11 +785,29 @@ export interface SaveLongEpisodeContinuityResponse { memory: LongEpisodeContinui
 
 export interface SearchLongStoryBibleItemsResponse { items: LongStoryBibleItem[]; }
 export interface DuplicateLongStoryBibleItemResponse { item: LongStoryBibleItem; storyBible: LongStoryBible; }
+/**
+ * Why there is no picture to carry forward — the half `available: false` could never say.
+ *
+ * Every failure in this lookup used to land in one catch and come back as the same false, so "the Episode
+ * before this one is not finished yet" and "its records could not be read" reached the screen as one sentence:
+ * *이전 에피소드의 마지막 장면 자료가 아직 없어서…*. 캡틴D saw that on three consecutive Episodes while the
+ * Episodes in question were finished and their pictures were on disk (Cowork Round 473) — the screen was giving
+ * a reason, and the reason was wrong, which is worse than giving none.
+ *
+ * - `not_finished`: the previous Episode genuinely has no approved final picture yet, or there is no previous
+ *   Episode. The ordinary case, and the only one the old sentence was ever right about.
+ * - `image_unreadable`: it says its pictures are done, but the final scene's file is missing or is not a PNG.
+ *   The record and the disk disagree — worth showing, because nothing else in the app will notice.
+ * - `unreadable`: its stored records could not be read at all. Not an answer, an admission.
+ */
+export type LongEpisodeContinuityUnavailableReason = "not_finished" | "image_unreadable" | "unreadable";
 export interface LongEpisodeContinuityReference {
   previousEpisodeNumber: number;
   /** The previous Episode's actual last scene number (its own sceneCount) — no longer always 6. */
   sourceSceneNumber: SceneNumber;
   available: boolean;
+  /** Present only when unavailable. Absent means there is a picture to carry. */
+  unavailableReason?: LongEpisodeContinuityUnavailableReason;
 }
 export interface GetLongEpisodeContinuityReferenceResponse { reference: LongEpisodeContinuityReference | null; }
 /** Archive is a recoverable local lifecycle action and requires the exact project confirmation text. */

@@ -26,11 +26,12 @@ describe("EpisodeContinuityReferenceService", () => {
   it("reports null for Episode 1, then unavailable until the previous Episode has six approved valid images", async () => {
     const { images, reference } = await setup();
     await expect(reference.get("long", 1)).resolves.toEqual({ reference: null });
-    await expect(reference.get("long", 2)).resolves.toEqual({ reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: false } });
+    await expect(reference.get("long", 2)).resolves.toEqual({ reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: false, unavailableReason: "not_finished" } });
     await approveFirstEpisode(images);
     await expect(reference.get("long", 2)).resolves.toEqual({ reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: true } });
     await fs.writeFile(episode(1, "images/scene6.png"), "not-an-image");
-    await expect(reference.get("long", 2)).resolves.toEqual({ reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: false } });
+    // Every scene approved and the file unreadable is not "not finished yet": the record and the disk disagree.
+    await expect(reference.get("long", 2)).resolves.toEqual({ reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: false, unavailableReason: "image_unreadable" } });
   });
 
   /**
@@ -71,7 +72,25 @@ describe("EpisodeContinuityReferenceService", () => {
     const stored = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>;
     await fs.writeFile(file, JSON.stringify({ ...stored, state: "completed" }, null, 2), "utf8");
 
-    await expect(reference.get("long", 2)).resolves.toEqual({ reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: false } });
+    await expect(reference.get("long", 2)).resolves.toEqual({ reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: false, unavailableReason: "not_finished" } });
+  });
+
+  /**
+   * "There is nothing to carry" and "I could not find out" stop being the same sentence.
+   *
+   * One catch used to hold every failure in this lookup, so unreadable storage came back as the same
+   * `available: false` that a genuinely unfinished Episode does — and the screen turned that into *이전
+   * 에피소드의 마지막 장면 자료가 아직 없어서…*, a reason nobody had checked. It still does not throw: this
+   * screen is entitled to open when the Episode before it cannot be read. It just no longer claims to know why.
+   */
+  it("says it could not read the previous Episode rather than calling it unfinished", async () => {
+    const { images, reference } = await setup();
+    await approveFirstEpisode(images);
+    await expect(reference.get("long", 2)).resolves.toMatchObject({ reference: { available: true } });
+
+    await fs.writeFile(episode(1, "project.json"), "{ malformed");
+
+    await expect(reference.get("long", 2)).resolves.toEqual({ reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: false, unavailableReason: "unreadable" } });
   });
 
   it("treats malformed previous storage as unavailable and never returns a storage path", async () => {
