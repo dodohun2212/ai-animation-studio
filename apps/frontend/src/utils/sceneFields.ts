@@ -112,11 +112,6 @@ export function longEpisodeFieldGroups(): { title: string; impact: string; free?
   })).filter((group) => group.fields.length > 0);
 }
 
-/** The long-script keys a stored script may legally omit — the "absent or string" set. */
-export const LONG_EPISODE_OPTIONAL_FIELD_KEYS: string[] = SCENE_FIELD_GROUPS.flatMap((group) =>
-  group.fields.filter((field) => field.longKey !== null && field.longOptional).map((field) => field.longKey as string),
-);
-
 /**
  * Plain-language label for a Runway output ratio.
  *

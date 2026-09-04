@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { LONG_EPISODE_OPTIONAL_FIELD_KEYS, longEpisodeFieldGroups, SCENE_FIELD_GROUPS, SCENE_FIELD_KEYS, videoRatioLabel } from "./sceneFields.js";
+import { longEpisodeFieldGroups, SCENE_FIELD_GROUPS, SCENE_FIELD_KEYS, videoRatioLabel } from "./sceneFields.js";
 
 /**
  * Every field on LongEpisodeScene (packages/shared/src/api.ts), which is also the list the long Episode's
@@ -47,7 +47,6 @@ describe("sceneFields", () => {
 
     expect(longFields.map((field) => field.key)).toContain("narration");
     expect(longFields.find((field) => field.key === "narration")?.optional).toBe(true);
-    expect(LONG_EPISODE_OPTIONAL_FIELD_KEYS).toEqual(["narration"]);
     // Nothing else may be optional by accident — every other field is required and a typo in `longOptional`
     // would silently widen what a malformed script is allowed to look like.
     expect(longFields.filter((field) => field.optional).map((field) => field.key)).toEqual(["narration"]);

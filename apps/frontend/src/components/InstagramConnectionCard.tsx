@@ -63,12 +63,6 @@ const LOGIN_POLL_INTERVAL_MS = 1500;
 // waiting stops; the person can press the button again, which costs them nothing.
 const LOGIN_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
-/** Only what this flow needs from an opened window: whether it is gone, and how to get rid of it. */
-export interface LoginWindowHandle {
-  readonly closed: boolean;
-  close(): void;
-}
-
 export interface PollDeps {
   /** Read afresh each round — the person may close the window at any moment, including after succeeding. */
   isWindowClosed: () => boolean;

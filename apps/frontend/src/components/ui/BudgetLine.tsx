@@ -8,8 +8,6 @@ interface BudgetLineProps {
    * per-image estimate). Omit to show only the ledger state.
    */
   estimatedRequestCostUsd?: number;
-  /** Optional breakdown shown next to the estimate, e.g. "6장 × $0.10". */
-  breakdown?: string;
   "data-testid"?: string;
 }
 
@@ -24,7 +22,7 @@ interface BudgetLineProps {
  * Renders nothing without a budget: an absent ledger means the local fake adapter, and inventing a zero there
  * would read as "this is free" on a screen that may well not be.
  */
-export function BudgetLine({ budget, estimatedRequestCostUsd, breakdown, "data-testid": testId }: BudgetLineProps) {
+export function BudgetLine({ budget, estimatedRequestCostUsd, "data-testid": testId }: BudgetLineProps) {
   if (!budget) return null;
   const overBudget =
     estimatedRequestCostUsd === undefined ? !budget.canSpend : estimatedRequestCostUsd > budget.remainingUsd || !budget.canSpend;
@@ -33,13 +31,16 @@ export function BudgetLine({ budget, estimatedRequestCostUsd, breakdown, "data-t
       {estimatedRequestCostUsd !== undefined && (
         <p className="text-xs text-slate-300 tabular-nums">
           예상 비용: ${estimatedRequestCostUsd.toFixed(2)}
-          {breakdown ? ` (${breakdown})` : ""}
         </p>
       )}
       <p className="text-xs text-slate-400 tabular-nums">
         이번 달 남은 예산: ${budget.remainingUsd.toFixed(2)} (월 한도 ${budget.monthlyLimitUsd.toFixed(2)} 중 $
         {budget.spentUsd.toFixed(2)} 사용)
       </p>
+      {/* The second half is word for word with RetryCostNotice and the two screens that write this warning
+          inline — one action was being described as 보내면 / 전송하면 / 진행하면 depending on where you read it.
+          The first half stays different on purpose: this one also fires on `!canSpend` with no estimate at all,
+          where "이번 요청의 예상 비용" would be naming a number nobody gave us. */}
       {overBudget && (
         <p role="alert" className="text-xs font-semibold text-rose-300">
           남은 월 예산이 부족합니다. 그대로 진행하면 예산 한도에 막혀 실패할 수 있습니다.
