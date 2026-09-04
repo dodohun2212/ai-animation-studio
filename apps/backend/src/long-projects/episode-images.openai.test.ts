@@ -137,6 +137,46 @@ describe("real OpenAI Episode image generation", () => {
   });
 
   /**
+   * Three scenes regenerated at once keep three records, not one.
+   *
+   * 캡틴D pressed 4, 5 and 6 together. All six pictures came out correct and the ledger charged for exactly six,
+   * but scenes 4 and 5 came back wearing 참고 이미지 바뀜 while their pictures were the newest thing on disk.
+   * Each request had read the whole review array before its own paid call and written the whole array back
+   * after, so the last one to finish overwrote the two records written while it was waiting on OpenAI. The
+   * images survived because each is its own file; the record of what they were made from did not.
+   *
+   * Held open on purpose: none of the three provider calls returns until all three have started, which is the
+   * arrangement that used to lose two records and is the only one that proves it no longer does. fetch is a
+   * stub; nothing is paid.
+   */
+  it("keeps every scene's record when three are regenerated at once", async () => {
+    const { images, projectsRoot } = await setupWithConnectedOpenAi();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    await images.generate("long", 1, { approved: true });
+    for (const scene of [1, 2, 3, 4, 5, 6] as const) await images.approve("long", 1, String(scene), { approved: true });
+    let started = 0;
+    let allStarted = () => {};
+    const everyCallStarted = new Promise<void>((resolve) => { allStarted = resolve; });
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      if (++started === 3) allStarted();
+      await everyCallStarted;
+      return jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] });
+    }));
+
+    await Promise.all([4, 5, 6].map((scene) => images.regenerate("long", 1, String(scene), { approved: true })));
+
+    const stored = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "generated_image_reviews.json"), "utf8")) as Array<{ scene_number: number; regeneration_count: number; prompt?: string }>;
+    for (const scene of [4, 5, 6]) {
+      const review = stored.find((item) => item.scene_number === scene);
+      expect(review, `scene ${scene} lost its record`).toBeTruthy();
+      expect(review!.regeneration_count, `scene ${scene} lost its regeneration count`).toBe(1);
+      expect(review!.prompt, `scene ${scene} lost the prompt it was drawn from`).toBeTruthy();
+    }
+    // The scenes nobody touched are untouched — a merge that took the file over would be its own kind of loss.
+    expect(stored.filter((item) => [1, 2, 3].includes(item.scene_number)).every((item) => item.regeneration_count === 0)).toBe(true);
+  });
+
+  /**
    * An image is only worth what the script it was drawn from is still worth. Editing a scene after paying for
    * its image left no sign anywhere — this is the image half of the same hole the video review already covers.
    *

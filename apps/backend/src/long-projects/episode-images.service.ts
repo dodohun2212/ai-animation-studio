@@ -494,11 +494,41 @@ export class EpisodeImagesService {
     const stored = await this.loadReviews(id, number);
     return { episode: this.detail(episode), reviews: this.apiReviews(stored, episode.updated_at, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, stored), storyBibleLinkDrift: await this.linkDrift(id, number), ...(budget ? { budget } : {}) };
   }
+  /**
+   * Writes one scene's review, merged into whatever is on disk at that moment rather than into a snapshot.
+   *
+   * Every scene's review lives in one array in one file, and `regenerate` used to read that array, spend thirty
+   * seconds buying a picture, and then write the whole thing back. Three regenerations started together each
+   * held the array as it was before any of them ran, so the last one to finish erased the other two's records —
+   * their prompt and their `reference_sources`. The pictures survived, each being its own file; only the record
+   * of what they were made from was lost, and the screen then reported two perfectly current scenes as drawn
+   * from references they no longer use. 캡틴D pressed exactly that: scenes 4, 5 and 6 at once, and 4 and 5 came
+   * back wearing 참고 이미지 바뀜 (Cowork Round 472).
+   *
+   * The array is per-scene and the work is per-scene, so nothing here needs the whole file to itself: the entry
+   * is recomputed from the record as it stands under the lock, and every other scene's entry is left exactly as
+   * written. Two scenes regenerating at once both keep their own history, which serialising the paid calls would
+   * also have achieved — at the cost of refusing a person who deliberately asked for three at once.
+   *
+   * `next` is handed the current entry rather than closing over one read earlier; that is the whole point, and
+   * the reason this takes a function instead of a value.
+   */
+  private async putReview(projectId: string, number: number, scene: SceneNumber, next: (current: StoredReview | undefined) => StoredReview): Promise<StoredReview[]> {
+    return withProjectLock(resolveSafeProjectDirectory(this.projectsRoot, projectId.trim()), `${projectId.trim()}:episode-${number}:image-reviews`, async () => {
+      const reviews = await this.loadReviews(projectId, number);
+      const index = reviews.findIndex((review) => review.scene_number === scene);
+      const review = next(index < 0 ? undefined : reviews[index]);
+      if (index < 0) reviews.push(review); else reviews[index] = review;
+      await this.saveReviews(projectId, number, reviews);
+      return reviews;
+    });
+  }
   async approve(projectId: string, number: number, rawScene: string, request: ApproveLongEpisodeImageReviewRequest): Promise<ApproveLongEpisodeImageReviewResponse> {
     const id = projectId.trim(); this.approval(request); const scene = sceneNumber(Number(rawScene)); if (!scene || String(scene) !== rawScene) throw longInvalidRequest("Episode image scene number is invalid."); const episode = await this.episode(id, number); await this.assertReviewable(id, number, episode);
     if (scene > this.sceneCount(episode)) throw longInvalidRequest("Episode image scene number is invalid.");
-    const reviews = await this.loadReviews(id, number); const now = new Date().toISOString(); const index = reviews.findIndex((review) => review.scene_number === scene); const old = index < 0 ? undefined : reviews[index]; const review: StoredReview = { scene_number: scene, status: "approved", updated_at: now, regeneration_count: old?.regeneration_count ?? 0, history: [...(old?.history ?? []), { event: "approved", timestamp: now }], ...(old?.references_used_count !== undefined && old.references_omitted_count !== undefined ? { references_used_count: old.references_used_count, references_omitted_count: old.references_omitted_count } : {}), ...(old?.prompt !== undefined ? { prompt: old.prompt } : {}), ...(old?.reference_sources !== undefined ? { reference_sources: old.reference_sources } : {}) }; if (index < 0) reviews.push(review); else reviews[index] = review;
-    const all = sceneNumbersFor(this.sceneCount(episode)).every((current) => reviews.some((item) => item.scene_number === current && item.status === "approved")); if (all) episode.state = "waiting_for_video_confirmation"; episode.updated_at = now; await this.saveReviews(id, number, reviews);
+    const now = new Date().toISOString();
+    const reviews = await this.putReview(id, number, scene, (old) => ({ scene_number: scene, status: "approved", updated_at: now, regeneration_count: old?.regeneration_count ?? 0, history: [...(old?.history ?? []), { event: "approved", timestamp: now }], ...(old?.references_used_count !== undefined && old.references_omitted_count !== undefined ? { references_used_count: old.references_used_count, references_omitted_count: old.references_omitted_count } : {}), ...(old?.prompt !== undefined ? { prompt: old.prompt } : {}), ...(old?.reference_sources !== undefined ? { reference_sources: old.reference_sources } : {}) }));
+    const all = sceneNumbersFor(this.sceneCount(episode)).every((current) => reviews.some((item) => item.scene_number === current && item.status === "approved")); if (all) episode.state = "waiting_for_video_confirmation"; episode.updated_at = now;
     await this.indexAssetsIfMissing(id, number, episode);
     try { await this.assets.approveGeneratedProjectImage(this.assetSource(id, number).sourceProjectId, scene, all); }
     catch { throw longStorageError(); }
@@ -507,7 +537,6 @@ export class EpisodeImagesService {
   async regenerate(projectId: string, number: number, rawScene: string, request: RegenerateLongEpisodeImageReviewRequest): Promise<RegenerateLongEpisodeImageReviewResponse> {
     const id = projectId.trim(); const additionalInstruction = this.regenerationRequest(request); const scene = sceneNumber(Number(rawScene)); if (!scene || String(scene) !== rawScene) throw longInvalidRequest("Episode image scene number is invalid."); const episode = await this.episode(id, number); await this.assertReviewable(id, number, episode, true);
     if (scene > this.sceneCount(episode)) throw longInvalidRequest("Episode image scene number is invalid.");
-    const reviews = await this.loadReviews(id, number);
     const current = this.image(id, number, scene); let bytes: Buffer; try { bytes = await fs.readFile(current); if (!await this.validImage(current)) throw new Error(); } catch { throw longEpisodeImagesInvalid(); }
 
     // Resolve the real-vs-fake regenerated bytes BEFORE touching any file: a failed real request must never
@@ -563,10 +592,13 @@ ${additionalInstruction}` : basePrompt;
 
     const originals = path.join(this.files(id, number).images, "originals"); let archive = "";
     try { await fs.mkdir(originals, { recursive: true }); const entries = await fs.readdir(originals); const versions = entries.map((name) => new RegExp(`^scene${scene}_v(\\d{3})\\.png$`).exec(name)).filter((match): match is RegExpExecArray => Boolean(match)).map((match) => Number(match[1])); archive = path.join(originals, `scene${scene}_v${String((versions.length ? Math.max(...versions) : 0) + 1).padStart(3, "0")}.png`); await this.writeImage(archive, bytes); await this.writeImage(current, regenerated); if (!await this.validImage(current)) throw new Error("invalid image"); } catch { if (archive) await fs.unlink(archive).catch(() => undefined); throw longStorageError(); }
-    const now = new Date().toISOString(); const index = reviews.findIndex((review) => review.scene_number === scene); const old = index < 0 ? undefined : reviews[index]; const review: StoredReview = { scene_number: scene, status: "pending", updated_at: now, regeneration_count: (old?.regeneration_count ?? 0) + 1, history: [...(old?.history ?? []), { event: "regenerated", timestamp: now, archive: path.basename(archive) }], ...(referenceOmission ?? {}), ...(generatedPrompt !== undefined ? { prompt: generatedPrompt } : old?.prompt !== undefined ? { prompt: old.prompt } : {}), ...(generatedSources !== undefined ? { reference_sources: generatedSources } : old?.reference_sources !== undefined ? { reference_sources: old.reference_sources } : {}) }; if (index < 0) reviews.push(review); else reviews[index] = review; episode.state = "images_review"; episode.updated_at = now;
+    const now = new Date().toISOString();
+    // Merged into the file as it stands now, not into the copy read before the paid call above — see putReview.
+    const reviews = await this.putReview(id, number, scene, (old) => ({ scene_number: scene, status: "pending", updated_at: now, regeneration_count: (old?.regeneration_count ?? 0) + 1, history: [...(old?.history ?? []), { event: "regenerated", timestamp: now, archive: path.basename(archive) }], ...(referenceOmission ?? {}), ...(generatedPrompt !== undefined ? { prompt: generatedPrompt } : old?.prompt !== undefined ? { prompt: old.prompt } : {}), ...(generatedSources !== undefined ? { reference_sources: generatedSources } : old?.reference_sources !== undefined ? { reference_sources: old.reference_sources } : {}) }));
+    episode.state = "images_review"; episode.updated_at = now;
     await this.indexAssetsIfMissing(id, number, episode);
     try { await this.assets.replaceGeneratedProjectSceneImage(this.assetSource(id, number).sourceProjectId, scene, current, archive); }
     catch { throw longStorageError(); }
-    await this.saveReviews(id, number, reviews); await this.saveEpisode(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(reviews, now, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, reviews), storyBibleLinkDrift: await this.linkDrift(id, number), sceneNumber: scene, ...(retryEstimate ? { retryEstimate } : {}) };
+    await this.saveEpisode(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(reviews, now, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, reviews), storyBibleLinkDrift: await this.linkDrift(id, number), sceneNumber: scene, ...(retryEstimate ? { retryEstimate } : {}) };
   }
 }
