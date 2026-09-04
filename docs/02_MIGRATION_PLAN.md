@@ -3425,3 +3425,12 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
   - 🟢 **지금은 빠진 필드가 없었다** — 두 벌이 아직 일치했다. **고친 것은 결함이 아니라 그 결함이 생길 자리다.**
   - 짝을 **다른 사본이 아니라 계약에 대고** 쓴다: 17개 이름을 손으로 적어 두고 `camelKeys` 와 비교한다. 같은 상수에서 유도하면 **자기 자신과 같다는 단언**이 된다(오늘 아침 지운 `LONG_EPISODE_OPTIONAL_FIELD_KEYS` 짝이 정확히 그것이었다). 그리고 `snakeKeys` 는 **위치로 짝지어 읽히므로** 인덱스 정렬까지 본다.
   - 주입(공유 목록에서 `continuityHint` 제거)에 빨갛다.
+- [x] **여섯 번째 사본이 또 한 칸 모자랐다 — `openablePath` (계약이 "같이 없거나 같이 있다" 고 적어 둔 짝)**: `LongEpisodeDetail` 을 실응답과 대조하다가 나왔다.
+  ```
+  GET /long-projects/12/episodes/4   finalVideoPath ✅   openablePath ❌
+  계약(api.ts:275)                   "Absent whenever `finalVideoPath` is."
+  ```
+  - 이유는 486 에서 적은 그것이다: `episode-scripts.service.ts` 의 `toApi` 가 **`toEpisodeDetail` 이 흡수하지 못한 여섯 번째 사본**이고, 그것만 이 칸을 몰랐다. `episode-detail.ts` 주석이 왜 둘이 같이 가야 하는지 적고 있다 — **같은 파일을 다른 기준점에서 부른 두 문자열**이라, 표시용을 데스크톱 브리지에 넘기면 **엉뚱한 프로젝트 안의 경로**를 가리킨다.
+  - 🟠 **이 사본이 한 칸 모자란 게 두 번째다**(첫 번째는 `previousInstagramPosts`, 486). 사본으로 남는 이유는 그대로 유효하다(아웃라인이 여섯 텍스트 칸의 진실, 대본은 이 서비스의 검증 파서) — **다만 필드를 덜 아는 것은 허용되지 않는다.** 두 번 겹쳤으니 다음에 또 나오면 합치는 쪽을 봐야 한다.
+  - 짝: `final_video_path` 가 있는 회차의 `get()` 이 **둘 다** 낸다. 주입(openablePath 제거)에 빨갛다. **실서버 확인**: 4화가 이제 `long_story/Episode04/videos/final/instagram_reel.mp4` 를 같이 낸다.
+  - 🟠 **다만 `openablePath` 는 아직 아무도 안 읽는다** — "탐색기에서 열기" 버튼은 **단편 전용**이고(`InstagramPostScreen` 주석), 회차 병합 화면은 경로를 **글자로만** 보여준다. 지금 고친 것은 **계약과 코드가 서로 다른 말을 하던 것**이지 사용자에게 보이는 기능이 아니다. 회차에도 그 버튼을 둘지는 제품 판단이라 캡틴D/Cowork 몫으로 남긴다 — **둔다면 필드는 이미 정직하게 나간다.**

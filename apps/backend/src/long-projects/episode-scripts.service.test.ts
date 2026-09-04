@@ -215,6 +215,32 @@ describe("EpisodeScriptsService", () => {
 
     expect(episode.previousInstagramPosts?.map((post) => post.mediaId)).toEqual(["18127867426747808", "18138514609608189"]);
   });
+
+  /**
+   * `finalVideoPath` and `openablePath` leave together, from this mapper too.
+   *
+   * The contract says outright that openablePath is "absent whenever finalVideoPath is", and episode-detail.ts
+   * carries the reason: the two are the same file addressed from different origins, and handing the display one
+   * to the desktop bridge names a path inside some other project. This mapper — the sixth copy of the Episode
+   * detail, kept because the outline owns the six text fields and the script goes through this service's own
+   * parse — emitted the first and not the second. 캡틴D's Episode 4 answered exactly that.
+   *
+   * Second time this copy has been a field short (previousInstagramPosts was the first). It stays a separate
+   * mapping for stated reasons; it does not get to know fewer fields than the one it forked from.
+   */
+  it("carries the openable path with the display path, the way the contract pairs them", async () => {
+    const subject = await setup();
+    await subject.generate("long", 1, { userRequestId: "episode-scripts.service-openable-1" });
+    const file = path.join(root!, "projects", "long", "long_story", "Episode01", "project.json");
+    const stored = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>;
+    await fs.writeFile(file, JSON.stringify({ ...stored, final_video_path: "videos/final/instagram_reel.mp4" }, null, 2), "utf8");
+
+    const episode = (await subject.get("long", 1)).episode;
+
+    expect(episode.finalVideoPath).toBe("videos/final/instagram_reel.mp4");
+    expect(episode.openablePath, "the display path went out without the one that can be opened").toBeTruthy();
+    expect(episode.openablePath).toContain("Episode01");
+  });
 });
 
 /** One Episode already on disk, so `get` reads a stored record rather than rebuilding one from the project. */
