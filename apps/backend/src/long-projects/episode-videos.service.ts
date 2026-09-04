@@ -668,7 +668,9 @@ ${additionalInstruction}`; }
       let recomputed: string | undefined;
       try { recomputed = this.prompt(current, scenes[sceneNumber - 2], durationSeconds, ratio); } catch { recomputed = undefined; }
       // The baseline, not the sent text: a clip re-submitted with one-off direction is not behind its script.
-      // Values, not labels — see describesSameScene. Renaming a prompt section is not a scene edit.
+      // Values, not labels — see describesSameScene. Renaming a prompt section is not a scene edit. A clip
+      // length or orientation change would be a third thing, but neither can move once an Episode has clips —
+      // see LongEpisodeVideoStaleness, which is why this has one list where the short project has two.
       if (recomputed !== undefined && !describesSameScene(recorded.base_prompt ?? recorded.prompt, recomputed)) videoStale.push(sceneNumber);
     }
     return { videoStale };

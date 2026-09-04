@@ -82,7 +82,7 @@ export interface VideoPromptResult {
  * existing clips while every scene was untouched — the app asserting a cause it had not checked, which is the
  * defect this repository has spent a week removing.
  *
- * So only the values are compared, never the labels or the fixed prefix and suffix. A section that gains or
+ * So only the values are compared, never the labels. A section that gains or
  * loses content still counts, because its value moves; a section that is only renamed does not, because nothing
  * a person wrote is different.
  *
@@ -93,6 +93,29 @@ export interface VideoPromptResult {
 export function describesSameScene(recorded: string, recomputed: string): boolean {
   const values = (prompt: string) => prompt.split("\n").map((line) => { const at = line.indexOf(": "); return at < 0 ? line : line.slice(at + 2); }).join("\n");
   return values(recorded) === values(recomputed);
+}
+
+/**
+ * Why a recorded video prompt no longer matches the one a resubmission would send.
+ *
+ * The first line is not fixed, although this file used to say it was: it carries the clip length and the
+ * orientation, and both are project-wide settings. Changing the clip length from 5 to 10 seconds — a setting with
+ * no guard on either project type — rewrites that line in every prompt ever recorded. Measured before it was
+ * written: with two scenes generated and nothing else touched, videoStale went from [] to [1, 2] on that save
+ * alone. There are thirty-six recorded video prompts on disk today and every one carries that line.
+ *
+ * "장면 내용이 바뀐 뒤로" is false for all of them. The clips genuinely are behind — they are the wrong length —
+ * so the warning must still fire; only the reason it gave was wrong.
+ *
+ * The scene comparison is unchanged. This only asks, when the two differ, whether the difference is confined to
+ * that first line.
+ */
+export type VideoPromptDrift = "current" | "format" | "scene";
+
+export function videoPromptDrift(recorded: string, recomputed: string): VideoPromptDrift {
+  if (describesSameScene(recorded, recomputed)) return "current";
+  const withoutFormatLine = (prompt: string) => prompt.split("\n").slice(1).join("\n");
+  return describesSameScene(withoutFormatLine(recorded), withoutFormatLine(recomputed)) ? "format" : "scene";
 }
 
 /**

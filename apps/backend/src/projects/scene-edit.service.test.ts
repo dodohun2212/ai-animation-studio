@@ -81,7 +81,7 @@ describe("SceneEditService.update — staleness", () => {
   it("reports nothing stale when no artifact has ever been generated for that scene", async () => {
     const { service } = await setup();
     const result = await service.update("scenes", "1", { scene: { narration: "새 내레이션" } });
-    expect(result.staleness).toEqual({ imageStale: [], styleStale: [], videoStale: [], narrationStale: [], referenceStale: [] });
+    expect(result.staleness).toEqual({ imageStale: [], styleStale: [], videoStale: [], videoFormatStale: [], narrationStale: [], referenceStale: [] });
   });
 
   it("does not flag every scene stale just because the project has a confirmed Asset Mapping", async () => {
@@ -118,7 +118,7 @@ describe("SceneEditService.update — staleness", () => {
     project.narration_generation_records = [{ scene_number: 1, narration: "narration 1" }];
     await projects.save(project);
     const result = await service.update("scenes", "1", { scene: { narration: "고친 내레이션" } });
-    expect(result.staleness).toEqual({ imageStale: [], styleStale: [], videoStale: [], narrationStale: [1], referenceStale: [] });
+    expect(result.staleness).toEqual({ imageStale: [], styleStale: [], videoStale: [], videoFormatStale: [], narrationStale: [1], referenceStale: [] });
   });
 
   it("does not flag narrationStale when the edited narration happens to match what's already recorded", async () => {
@@ -128,6 +128,52 @@ describe("SceneEditService.update — staleness", () => {
     await projects.save(project);
     const result = await service.update("scenes", "1", { scene: { description: "새 설명" } });
     expect(result.staleness.narrationStale).toEqual([]);
+  });
+
+  /**
+   * The clip length is a project setting, and it is the first line of every video prompt. Saving a different one
+   * therefore puts every already-generated clip behind — while no scene was opened.
+   *
+   * Measured before this was written: with two scenes generated and nothing else touched, videoStale went from []
+   * to both of them on that save alone. Folded into videoStale they read "장면 내용이 바뀐 뒤로", which sends
+   * someone to re-read a script that is character-for-character what they left.
+   */
+  it("puts a clip-length change in videoFormatStale and leaves videoStale alone", async () => {
+    const { projects } = await setup();
+    const { promptFor } = await import("../videos/video-preview.service.js");
+    const { applyShortProjectSettings, toShortProjectSettings } = await import("./project-settings.js");
+    const { computeSceneStaleness } = await import("./scene-staleness.js");
+    const project = await projects.findById("scenes");
+    const clip = toShortProjectSettings(project).clipDurationSeconds;
+    project.video_generation_records = [1, 2].map((number) => ({
+      scene_number: number,
+      prompt: promptFor(project.scenes[number - 1] as never, number > 1 ? (project.scenes[number - 2] as never) : undefined, "720:1280", clip).prompt,
+    }));
+    await projects.save(project);
+    expect(await computeSceneStaleness(await projects.findById("scenes"), undefined)).toMatchObject({ videoStale: [], videoFormatStale: [] });
+
+    const reloaded = await projects.findById("scenes");
+    await projects.save(applyShortProjectSettings(reloaded, { ...toShortProjectSettings(reloaded), clipDurationSeconds: 10 }, "2026-09-05T01:00:00.000Z"));
+
+    const after = await computeSceneStaleness(await projects.findById("scenes"), undefined);
+    expect(after.videoFormatStale).toEqual([1, 2]);
+    expect(after.videoStale, "no scene was touched").toEqual([]);
+  });
+
+  /** The other direction, so the split cannot be satisfied by sorting everything into videoFormatStale. */
+  it("still calls a motion-field edit videoStale", async () => {
+    const { service, projects } = await setup();
+    const { promptFor } = await import("../videos/video-preview.service.js");
+    const { toShortProjectSettings } = await import("./project-settings.js");
+    const project = await projects.findById("scenes");
+    const clip = toShortProjectSettings(project).clipDurationSeconds;
+    project.video_generation_records = [{ scene_number: 1, prompt: promptFor(project.scenes[0] as never, undefined, "720:1280", clip).prompt }];
+    await projects.save(project);
+
+    const result = await service.update("scenes", "1", { scene: { main_motion: "다른 동작" } });
+
+    expect(result.staleness.videoStale).toEqual([1]);
+    expect(result.staleness.videoFormatStale).toEqual([]);
   });
 
   it("flags imageStale when an image-bucket field changes after that scene's image was generated", async () => {
@@ -149,7 +195,7 @@ describe("SceneEditService.update — staleness", () => {
     project.image_generation_records = [{ scene_number: 1, prompt: imagePromptFor(project.scenes[0], styleLineFor(project)) }];
     await projects.save(project);
     const result = await service.update("scenes", "1", { scene: { description: "화면 대본만 바뀜" } });
-    expect(result.staleness).toEqual({ imageStale: [], styleStale: [], videoStale: [], narrationStale: [], referenceStale: [] });
+    expect(result.staleness).toEqual({ imageStale: [], styleStale: [], videoStale: [], videoFormatStale: [], narrationStale: [], referenceStale: [] });
   });
 
   it("flags the NEXT scene's video as stale (without editing it) when end_motion or continuity_hint changes, since both feed the next scene's continuity cue", async () => {

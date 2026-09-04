@@ -699,6 +699,14 @@ export interface LongEpisodeVideoReview { sceneNumber: SceneNumber; status: "pen
  * computed presented beside one that was — which is how a screen ends up trusting a blank. When the Episode's
  * image path starts recording its prompt, the field can be added and will mean something.
  */
+/**
+ * One list, unlike the short project's, and deliberately: an Episode cannot reach SceneStaleness.videoFormatStale's
+ * case. Its clip length is its own snapshot (`duration_seconds` on the Episode file, not the project setting),
+ * and the one route that rewrites it refuses once a script exists — which every Episode with videos has. Its
+ * orientation does come from the live project setting, but changing the aspect ratio is refused once any
+ * Episode has passed the pre-images states. Both halves of that prompt line are therefore frozen by the time
+ * a clip exists, and a second list here would be one that can never fill.
+ */
 export interface LongEpisodeVideoStaleness { videoStale: SceneNumber[]; }
 export interface GetLongEpisodeVideoReviewResponse { episode: LongEpisodeDetail; reviews: LongEpisodeVideoReview[]; staleness: LongEpisodeVideoStaleness; }
 export interface ApproveLongEpisodeVideoReviewRequest { approved: true; }
@@ -2345,6 +2353,19 @@ export interface UpdateSceneRequest {
  */
 export interface SceneStaleness {
   imageStale: SceneNumber[];
+  /**
+   * Scenes whose clips are behind the *format*, not the script.
+   *
+   * The clip length and the orientation are project-wide settings, and they are the first line of every video
+   * prompt. Saving a different clip length therefore moves every already-generated scene at once — measured, not
+   * feared: two generated scenes went from an empty list to both of them on that save alone, with no scene
+   * touched. Folded into `videoStale` they would all read "장면 내용이 바뀐 뒤로", sending someone to re-read a
+   * script that never moved.
+   *
+   * The clips are behind — they are the wrong length — so the warning still belongs. A scene appears in exactly
+   * one of the two lists.
+   */
+  videoFormatStale: SceneNumber[];
   /**
    * Scenes whose pictures are behind the *art direction*, not the script.
    *

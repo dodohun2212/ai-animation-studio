@@ -347,5 +347,5 @@ export function episodeImageStaleness(overrides: Partial<LongEpisodeImageStalene
 }
 
 export function sceneStaleness(overrides: Partial<SceneStaleness> = {}): SceneStaleness {
-  return { imageStale: [], styleStale: [], videoStale: [], narrationStale: [], referenceStale: [], ...overrides };
+  return { imageStale: [], styleStale: [], videoStale: [], videoFormatStale: [], narrationStale: [], referenceStale: [], ...overrides };
 }

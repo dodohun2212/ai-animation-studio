@@ -70,6 +70,7 @@ function isSceneStaleness(value: unknown): value is SceneStaleness {
     isSceneNumberList(value.imageStale) &&
     isSceneNumberList(value.styleStale) &&
     isSceneNumberList(value.videoStale) &&
+    isSceneNumberList(value.videoFormatStale) &&
     isSceneNumberList(value.narrationStale) &&
     isSceneNumberList(value.referenceStale)
   );

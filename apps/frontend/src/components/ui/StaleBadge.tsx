@@ -1,6 +1,6 @@
 import type { SceneNumber } from "@ai-animation-studio/shared";
 
-type StaleKind = "image" | "style" | "video" | "narration" | "reference";
+type StaleKind = "image" | "style" | "video" | "format" | "narration" | "reference";
 
 interface StaleBadgeProps {
   /** The scene numbers the server reported as stale for this artifact kind; absent when the server sent none. */
@@ -11,19 +11,22 @@ interface StaleBadgeProps {
 }
 
 /**
- * `reference` and `style` are the kinds whose cause is not the scene's own text.
+ * `reference`, `style` and `format` are the kinds whose cause is not the scene's own text.
  *
  * The other three mean "you edited this scene and did not remake this". A reference goes stale when the
  * character behind the picture changed — a different folder mapped, its representative drawing replaced, a
  * version bumped — while the scene's words stayed exactly as they were. A `style` badge means the four
  * project-wide visual-style boxes were saved, which rewrites one line of every scene's prompt at once; the
- * scene it is attached to may never have been opened. Telling someone their text changed when it did not sends
- * them to re-read a scene that is fine, so these kinds get their own sentences.
+ * scene it is attached to may never have been opened. `format` is the same story for video: the clip length
+ * and the orientation are project settings and they open every video prompt, so changing one puts every
+ * generated clip behind at once. Telling someone their text changed when it did not sends them to re-read a
+ * scene that is fine, so these kinds get their own sentences.
  */
 const KIND_SENTENCE: Record<StaleKind, string> = {
   image: "장면 내용이 바뀐 뒤로 이 이미지를 다시 만들지 않았습니다.",
   style: "그림 방향 설정이 바뀐 뒤로 이 이미지를 다시 만들지 않았습니다. 장면 내용은 그대로입니다.",
   video: "장면 내용이 바뀐 뒤로 이 영상을 다시 만들지 않았습니다.",
+  format: "영상 길이나 화면 방향 설정이 바뀐 뒤로 이 영상을 다시 만들지 않았습니다. 장면 내용은 그대로입니다.",
   narration: "장면 내용이 바뀐 뒤로 이 음성을 다시 만들지 않았습니다.",
   reference: "이 그림을 만든 뒤로 참고 이미지가 바뀌었습니다. 장면 내용은 그대로입니다.",
 };
@@ -32,6 +35,7 @@ const KIND_TEXT: Record<StaleKind, string> = {
   image: "내용 바뀜 · 이미지 다시 필요",
   style: "그림 방향 바뀜 · 이미지 다시 필요",
   video: "내용 바뀜 · 영상 다시 필요",
+  format: "영상 길이·방향 바뀜 · 영상 다시 필요",
   narration: "내용 바뀜 · 음성 다시 필요",
   reference: "참고 이미지 바뀜",
 };

@@ -754,6 +754,15 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                                 kind="video"
                                 data-testid={`video-review-stale-${review.sceneNumber}`}
                               />
+
+                              {/* The clip length or the orientation moved, not the script — one settings save
+                                  puts every generated clip here at once. */}
+                              <StaleBadge
+                                staleSceneNumbers={reviewState.status === "ready" ? reviewState.staleness?.videoFormatStale : undefined}
+                                sceneNumber={review.sceneNumber}
+                                kind="format"
+                                data-testid={`video-review-format-stale-${review.sceneNumber}`}
+                              />
                               <StatusChip tone={review.status === "approved" ? "success" : "neutral"}>
                                 {review.status === "approved" ? "확정됨" : "검토 대기"}
                               </StatusChip>

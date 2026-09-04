@@ -91,7 +91,7 @@ describe("provider-free generated image review", () => {
     expect(result.reviews).toEqual(expect.arrayContaining([{ sceneNumber: 1, status: "pending", updatedAt: expect.any(String) }]));
     await expect(fs.stat(path.join(projectsRoot, "review", "generated_image_reviews.json"))).rejects.toMatchObject({ code: "ENOENT" });
     expect(result.budget).toBeUndefined(); // no OpenAI credential/budget wired in — local fake mode
-    expect(result.staleness).toEqual({ imageStale: [], styleStale: [], videoStale: [], narrationStale: [], referenceStale: [] }); // freshly generated, nothing edited since
+    expect(result.staleness).toEqual({ imageStale: [], styleStale: [], videoStale: [], videoFormatStale: [], narrationStale: [], referenceStale: [] }); // freshly generated, nothing edited since
   });
 
   it("flags a scene's image as stale after its composition fields are edited without regenerating", async () => {

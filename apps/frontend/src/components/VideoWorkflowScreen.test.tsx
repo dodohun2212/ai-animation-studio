@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GenerationProgressResponse, GetVideoReviewResponse, Scene, VideoReview } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
-import { jsonResponse, makeProject } from "../api/testUtils.js";
+import { jsonResponse, makeProject, sceneStaleness } from "../api/testUtils.js";
 import { VideoWorkflowScreen } from "./VideoWorkflowScreen.js";
 
 const PROGRESS_URL = "/projects/sample_project/videos/generations/job_1";
@@ -66,6 +66,29 @@ describe("VideoWorkflowScreen", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  /**
+   * Two causes, two sentences. A clip goes behind its script when someone edits a scene; it goes behind its
+   * format when someone changes the project's clip length, which touches no scene at all and moves every
+   * generated clip at once. One badge for both would tell a whole project that its words changed.
+   *
+   * The video badges had no test of their own before this, so neither sentence was pinned anywhere.
+   */
+  it("separates a clip behind its script from one behind the clip length", async () => {
+    const review = { ...reviewResponse(sixReviews()), staleness: sceneStaleness({ videoStale: [1], videoFormatStale: [2] }) };
+    renderScreen(vi.fn().mockImplementation(async (url: string) =>
+      String(url).endsWith("/review") ? jsonResponse(200, review) : jsonResponse(200, makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] }))));
+
+    const script = await screen.findByTestId("video-review-stale-1");
+    expect(script.textContent).toContain("내용 바뀜");
+    expect(screen.queryByTestId("video-review-format-stale-1")).toBeNull();
+
+    const format = screen.getByTestId("video-review-format-stale-2");
+    expect(format.textContent).toContain("영상 길이·방향 바뀜");
+    expect(format.textContent).not.toContain("내용 바뀜");
+    expect(format.title).toContain("장면 내용은 그대로입니다");
+    expect(screen.queryByTestId("video-review-stale-2")).toBeNull();
   });
 
   it("shows a loading state, then loads sequential progress via GET .../videos/generations/:jobId", async () => {

@@ -75,7 +75,7 @@ describe("NarrationReviewService", () => {
     const after = await reviews.getStatus("narr");
     expect(after.narrations[0]).toMatchObject({ audio: "placeholder" });
     expect(after.narrations[1]).toMatchObject({ audio: "none" });
-    expect(after.staleness).toEqual({ imageStale: [], styleStale: [], videoStale: [], narrationStale: [], referenceStale: [] });
+    expect(after.staleness).toEqual({ imageStale: [], styleStale: [], videoStale: [], videoFormatStale: [], narrationStale: [], referenceStale: [] });
   });
 
   it("reads its own mappings when nobody handed it any, so imageStale is right in every construction", async () => {
