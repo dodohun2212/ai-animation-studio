@@ -114,6 +114,10 @@ describe("InstagramPublishService.publish", () => {
     // held the caption out of the container body. What a post said belongs on the record of that post.
     expect(result.project.instagramPost).toEqual({
       mediaId: "media-1", igUserId: IG_USER_ID, publishedAt: "2026-08-27T12:00:00.000Z", caption: "오늘의 영상",
+      // null, because this publish asked for no cover frame. Recorded rather than left out: a Reel whose cover
+      // is the first frame looks the same whether nobody chose one or somebody chose 0, and the difference is
+      // the whole question when the cover turns out wrong.
+      thumbOffsetMs: null,
     });
     const stored = await projects.findById("post_project");
     expect(stored.instagram_post).toMatchObject({ media_id: "media-1", caption: "오늘의 영상" });
@@ -285,6 +289,29 @@ describe("InstagramPublishService.publish", () => {
     expect(containerBody(fetchImpl).thumb_offset).toBe(3500);
   });
 
+  /**
+   * What cover this publish asked for survives on the record, including when the answer is 0.
+   *
+   * 캡틴D said a Reel's cover was not the frame they picked. The path from the screen to Meta's body turned out
+   * to be unbroken, and there the investigation stopped: nothing on disk said what the request carried, so
+   * "nobody chose a cover", "somebody chose the first frame" and "a real offset was ignored" were three stories
+   * with one piece of evidence between them (Cowork Round 476). Publishing cannot be undone; being unable to say
+   * afterwards what was sent is the part worth fixing first.
+   *
+   * 0 is the case that made it necessary. It produces the same Reel as sending nothing, so only the record can
+   * ever tell those two apart — and it is exactly what a player that cannot seek would hand the screen while the
+   * person believed they had chosen.
+   */
+  it("records the cover frame it asked for, and tells 0 apart from none", async () => {
+    for (const [thumbOffsetMs, recorded] of [[3500, 3500], [0, 0], [undefined, null]] as const) {
+      const { service, projects } = await setup({ fetchImpl: graphFetch() });
+      const result = await service.publish("post_project", { ...approved, ...(thumbOffsetMs === undefined ? {} : { thumbOffsetMs }) });
+
+      expect(result.project.instagramPost?.thumbOffsetMs, `sent ${String(thumbOffsetMs)}`).toBe(recorded);
+      expect((await projects.findById("post_project")).instagram_post).toMatchObject({ thumb_offset_ms: recorded });
+    }
+  });
+
   it("rejects a caption past Instagram's limit before uploading anything", async () => {
     const fetchImpl = graphFetch();
     const { service } = await setup({ fetchImpl });
@@ -375,6 +402,23 @@ describe("InstagramPublishService.publishEpisode", () => {
     // The shared path is only shared if both fields arrive by it. The caption assertion alone would pass a
     // version that threads the cover through the short project's entry point and not this one.
     expect(body.thumb_offset).toBe(8000);
+  });
+
+  /**
+   * The same record on the Episode, which is the path 캡틴D actually published through.
+   *
+   * Two entry points into one upload, and a field threaded through only one of them is the shape this repository
+   * keeps finding (D-031) — the caption test above this file exists for the same reason.
+   */
+  it("records the Episode's cover frame on the Episode itself", async () => {
+    const { service, episodeFile } = await withEpisode({ fetchImpl: graphFetch({ statuses: ["FINISHED"] }) });
+
+    const result = await service.publishEpisode("long", 1, { ...approved, thumbOffsetMs: 8000 });
+
+    expect(result.episode.instagramPost?.thumbOffsetMs).toBe(8000);
+    // Read back off disk: an answer that only the response knows is lost the moment the screen reloads.
+    const stored = JSON.parse(await fs.readFile(episodeFile, "utf8")) as { instagram_post: { thumb_offset_ms: number } };
+    expect(stored.instagram_post.thumb_offset_ms).toBe(8000);
   });
 
   it("refuses a second publish of the same Episode, which is the one mistake that cannot be walked back", async () => {

@@ -1985,6 +1985,21 @@ export interface LongEpisodeInstagramPost {
   igUserId: string;
   publishedAt: string;
   caption: string;
+    /**
+     * Which frame was asked for as the cover, in milliseconds — `null` when none was sent.
+     *
+     * Publishing cannot be undone, and until this was written nothing on disk said what cover the request
+     * carried. 캡틴D reported a Reel whose cover was not the frame they picked, and the app could not tell three
+     * cases apart: nothing was sent (Instagram then uses the first frame), `0` was sent (same result), or a real
+     * offset was sent and ignored. Cowork traced the whole path and found it unbroken — which left no way to
+     * proceed except by guessing, on an action nobody can take back (Cowork Round 476).
+     *
+     * `null` and absent are different. `null` means this publish sent no cover offset; absent means the post
+     * predates this record and nobody knows. Writing 0 for both would be the app inventing an answer for a
+     * question it never asked — the same mistake the screen already refuses to make when a video's position
+     * cannot be measured.
+     */
+  thumbOffsetMs?: number | null;
 }
 
 /** Publishing one Episode's merged final video. Same request shape as the short project's, by design. */

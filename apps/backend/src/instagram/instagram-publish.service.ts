@@ -132,7 +132,10 @@ export class InstagramPublishService {
       const updated = {
         ...current,
         updated_at: publishedAt,
-        instagram_post: { media_id: mediaId, ig_user_id: igUserId, published_at: publishedAt, caption },
+        // The cover offset is recorded with the post because publishing cannot be undone and nothing else on
+        // disk says what was asked for. null, not 0: "no cover was requested" and "the first frame was chosen"
+        // produce the same Reel and must not produce the same record (Cowork Round 476).
+        instagram_post: { media_id: mediaId, ig_user_id: igUserId, published_at: publishedAt, caption, thumb_offset_ms: thumbOffsetMs ?? null },
       };
       // Written after Instagram accepted it, so the record means "this post exists", not "we tried".
       await this.projects.save(updated);
@@ -278,7 +281,10 @@ export class InstagramPublishService {
       const updated = {
         ...current,
         updated_at: publishedAt,
-        instagram_post: { media_id: mediaId, ig_user_id: igUserId, published_at: publishedAt, caption },
+        // The cover offset is recorded with the post because publishing cannot be undone and nothing else on
+        // disk says what was asked for. null, not 0: "no cover was requested" and "the first frame was chosen"
+        // produce the same Reel and must not produce the same record (Cowork Round 476).
+        instagram_post: { media_id: mediaId, ig_user_id: igUserId, published_at: publishedAt, caption, thumb_offset_ms: thumbOffsetMs ?? null },
       };
       await atomicWriteUtf8File(episodeFile, JSON.stringify(updated, null, 2));
       return { mediaId, publishedAt, episode: toEpisodeDetail(updated) };

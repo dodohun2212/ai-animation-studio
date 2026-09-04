@@ -73,6 +73,8 @@ export interface StoredInstagramPost {
   ig_user_id: string;
   published_at: string;
   caption: string;
+  /** The cover frame this publish asked for, or null when it asked for none. Absent on posts written before this was recorded — see Project.instagramPost.thumbOffsetMs. */
+  thumb_offset_ms?: number | null;
 }
 
 export const KNOWN_STORED_PROJECT_FIELDS: ReadonlySet<string> = new Set([
@@ -235,11 +237,23 @@ function instagramPostAt(key: string, value: unknown): StoredInstagramPost {
   for (const field of ["media_id", "ig_user_id", "published_at", "caption"]) {
     if (typeof record[field] !== "string") throw dataInvalid(`Field "${key}.${field}" must be a string.`);
   }
+  // Rebuilt field by field, which means a field this function does not name is dropped on the way back in —
+  // the write reaches disk and the read throws it away, and nothing anywhere reports a loss. `thumb_offset_ms`
+  // was added to the record and to both writers and still came back missing for exactly this reason.
+  //
+  // Not required, unlike the four above: every post written before it exists has no such field, and refusing to
+  // open those projects would be a worse answer than not knowing their cover. null is a recorded "none";
+  // undefined is "this post predates the record".
+  if (!(record.thumb_offset_ms === undefined || record.thumb_offset_ms === null
+    || (typeof record.thumb_offset_ms === "number" && Number.isInteger(record.thumb_offset_ms) && record.thumb_offset_ms >= 0))) {
+    throw dataInvalid(`Field "${key}.thumb_offset_ms" must be a non-negative integer or null.`);
+  }
   return {
     media_id: record.media_id as string,
     ig_user_id: record.ig_user_id as string,
     published_at: record.published_at as string,
     caption: record.caption as string,
+    ...(record.thumb_offset_ms === undefined ? {} : { thumb_offset_ms: record.thumb_offset_ms as number | null }),
   };
 }
 

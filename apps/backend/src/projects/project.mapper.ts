@@ -122,6 +122,8 @@ export function toApiSummary(stored: StoredProject): ProjectSummary {
       igUserId: stored.instagram_post.ig_user_id,
       publishedAt: stored.instagram_post.published_at,
       caption: stored.instagram_post.caption,
+      // Absent when the record predates it; null when the publish sent no cover offset. See the field's own doc.
+      ...(stored.instagram_post.thumb_offset_ms === null || typeof stored.instagram_post.thumb_offset_ms === "number" ? { thumbOffsetMs: stored.instagram_post.thumb_offset_ms } : {}),
     } } : {}),
     // Carried out only when there is something to carry: an empty list on every project that has never
     // published would read as a fact about them rather than the absence of one.

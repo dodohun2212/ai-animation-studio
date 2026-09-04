@@ -97,6 +97,9 @@ export function toEpisodeInstagramPost(value: unknown): LongEpisodeInstagramPost
     igUserId: stored.ig_user_id as string,
     publishedAt: stored.published_at as string,
     caption: stored.caption as string,
+    // Carried only when the record has it. A post written before this was recorded knows nothing about its
+    // cover, and absent says that; null would claim the publish sent none.
+    ...(stored.thumb_offset_ms === null || typeof stored.thumb_offset_ms === "number" ? { thumbOffsetMs: stored.thumb_offset_ms } : {}),
   };
 }
 
