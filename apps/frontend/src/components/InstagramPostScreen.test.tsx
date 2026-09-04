@@ -464,6 +464,52 @@ describe("InstagramPostScreen", () => {
     expect((screen.getByTestId("post-ai-notice") as HTMLInputElement).checked).toBe(true);
   });
 
+  /**
+   * The defect the quote posts had: a photo card stores its quote twice — once as the project's topic and once
+   * as scene narration, because the renderer needs it there to draw onto the picture — so the suggestion joined
+   * the sentence to itself and it had to be deleted by hand before every post.
+   *
+   * Asserting the whole value rather than a "appears once" count on purpose: a fix that dropped the topic and
+   * kept the narration would also print the quote once, and would be wrong the moment a card's two copies stop
+   * matching.
+   */
+  it("writes a photo card's quote into the caption once", async () => {
+    const quote = "불광불급(不狂不及)\n미치도록 몰입한 사람만이, 끝내 자신만의 빛에 닿는다.";
+    renderScreen({ project: { photoCard: true, topic: quote, scenes: [scene(1, quote)] } });
+    await pickProject();
+
+    expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value).toBe(quote);
+  });
+
+  /**
+   * The photo-card branch, measured on the one case only it can answer.
+   *
+   * The test above passes with the branch deleted — a card stores its quote twice byte for byte, so the equality
+   * guard catches it too, and nothing was holding the branch up. Cowork's own reason for writing both layers is
+   * this: the day the two copies drift, the guard stops matching and the caption goes back to carrying the quote
+   * twice. That day arrives whenever someone edits the quote without redrawing the card, and the picture on
+   * screen is then the older of the two — so the caption must follow the topic, which is the one a person wrote.
+   */
+  it("writes a photo card's quote once even after the drawn copy has drifted from it", async () => {
+    const edited = "불광불급(不狂不及)\n미치도록 몰입한 사람만이, 끝내 자신만의 빛에 닿는다.";
+    const drawn = "불광불급(不狂不及)\n미치도록 몰입한 사람만이 빛에 닿는다.";
+    renderScreen({ project: { photoCard: true, topic: edited, scenes: [scene(1, drawn)] } });
+    await pickProject();
+
+    const body = (screen.getByTestId("post-body") as HTMLTextAreaElement).value;
+    expect(body).toBe(edited);
+    expect(body).not.toContain(drawn);
+  });
+
+  // The same duplication reached through the other door: an ordinary project whose one scene narrates its title.
+  // The photo-card branch does not cover this one, so it is its own test rather than a variation of the above.
+  it("does not repeat narration that already says the topic", async () => {
+    renderScreen({ project: { topic: "기록관의 밤", scenes: [scene(1, "기록관의 밤")] } });
+    await pickProject();
+
+    expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value).toBe("기록관의 밤");
+  });
+
   // The half that matters more than the filling: a body saved as empty is a person having cleared it. Refilling
   // that on the next visit is the screen undoing an edit, silently, which is the exact shape of the scene-edit
   // defect. `undefined` (never saved) and `""` (saved empty) have to stay different here.

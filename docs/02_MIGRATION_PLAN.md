@@ -3301,3 +3301,9 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
   - 짝 둘: 대본 저장이 `previous_instagram_posts`·`mapping_revision`·모르는 필드를 지킨다(그리고 자기 필드는 여전히 검증된다) · `get()` 이 지운 게시물을 보고한다. 주입 둘(스프레드 제거 · `toApi` 에서 필드 제거)에 각각 빨갛다.
   - **실서버 확인**: `GET .../episodes/4` → `previousInstagramPosts` **3건**.
   - 🟢 오늘 같은 부류가 셋이었다 — `instagramPostAt`(476) · `parseStored` · `toApi`. **저장 스키마가 화이트리스트로 다시 짓는 방식이면, 기록에 필드를 더할 때 쓰는 쪽·읽는 쪽·매핑 쪽 셋을 다 봐야 한다.**
+- [x] **명언 카드 캡션이 같은 문장을 두 번 쓴다 (Cowork Round 480 이 고쳤고, 검증·주입·보강은 여기서)**: 포토 카드는 글귀를 **`topic` 과 `scenes[0].narration` 두 군데**에 저장하는데 캡션 제안이 그 둘을 이어 붙였다. 사용자가 매번 한 벌씩 손으로 지우고 게시하고 있었다.
+  - Cowork 의 두 겹(카드 가지 + `sameText` 동등성 가드) 판단에 동의한다. 근거도 본인이 정확히 적었다 — 가드만 두면 **두 사본이 어긋나는 날** 다시 두 벌이 되고, 카드 가지만 두면 **제목을 그대로 읽는 한 장면짜리 단편**이 남는다.
+  - 🔴 **그런데 주입 ①(카드 가지 삭제)이 안 물었다 — 55개 전부 통과했다.** 카드는 두 사본이 바이트까지 같아서 **`sameText` 가 카드 짝까지 대신 만족시킨다.** 즉 **카드 가지를 붙들고 있는 짝이 하나도 없었다.**
+    - Cowork 이 그 가지의 존재 이유로 든 바로 그 경우를 짝으로 넣었다: **글귀만 고치고 카드를 다시 안 그려 두 사본이 어긋난 카드.** 그때 캡션은 `topic`(사람이 쓴 쪽)을 따라야 하고 그려진 옛 사본은 안 나와야 한다. 주입 ①에 이제 빨갛다.
+    - 주입 ②(`sameText` 를 항상 거짓으로)는 원래대로 둘째 짝을 문다.
+  - 🟢 **Cowork 질문 답 — `narration` 에 글귀를 복사하는 자리는 `photo-card.service.ts:70` 이고, 지우면 안 된다.** 그 사본은 떠도는 중복이 아니라 **자막 원본**이다: 카드는 `subtitles_enabled: true` 로 만들어지고 `video-merge.service.ts:160` 이 `sceneValue(scene, "narration")` 을 자막 텍스트로 굽는다. 즉 `narration` 이 **말하는 글과 자막 글 두 뜻**을 겸하고 있고, `narrationAvailable:false` 는 **디스크의 오디오 파일** 얘기일 뿐이다. 같은 사본을 읽는 다른 화면은 없다 — 캡션 제안은 `suggestCaptionBody` 하나뿐이고, 회차물은 `suggestEpisodeCaptionBody` 로 갈라져 있다.

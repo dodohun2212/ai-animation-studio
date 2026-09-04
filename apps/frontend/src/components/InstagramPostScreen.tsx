@@ -167,12 +167,29 @@ function describeEmptyTargets(diagnostics: InstagramTargetDiagnostics | undefine
   };
 }
 
+/**
+ * The caption a project opens with: what it is called, then what it says.
+ *
+ * A photo card breaks that shape, and the caption box showed it: a card's "narration" is not narration, it is
+ * the same quote stored a second time for the renderer to draw onto the picture, so the two blocks joined the
+ * quote to itself and every quote post began with the sentence printed twice. A card's caption is the quote,
+ * once. The equality guard below is the same defect's general form — any project whose narration comes out
+ * identical to its topic should say it once too — and it stays even though the photo-card branch above already
+ * covers the case that was reported, because a suggestion is only useful while it is worth keeping as written.
+ */
 function suggestCaptionBody(project: Project): string {
+  const topic = project.topic.trim();
+  if (project.photoCard === true) {
+    return topic;
+  }
   const narration = project.scenes
     .map((scene) => (typeof scene.narration === "string" ? scene.narration.trim() : ""))
     .filter((line) => line.length > 0)
     .join(" ");
-  return [project.topic.trim(), narration].filter((block) => block.length > 0).join("\n\n");
+  const sameText = (left: string, right: string): boolean =>
+    left.replace(/\s+/gu, " ").trim() === right.replace(/\s+/gu, " ").trim();
+  const blocks = sameText(narration, topic) ? [topic] : [topic, narration];
+  return blocks.filter((block) => block.length > 0).join("\n\n");
 }
 
 /**
