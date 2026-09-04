@@ -1,3 +1,4 @@
+import { LONG_EPISODE_STATUSES } from "@ai-animation-studio/shared";
 import type { ListLongProjectsResponse } from "@ai-animation-studio/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -57,6 +58,22 @@ describe("longProjectsApi", () => {
 
     expect(await listLongProjects()).toEqual(responseBody);
     expect(fetchMock).toHaveBeenCalledWith("/long-projects");
+  });
+
+  /**
+   * The status guard has to accept everything the contract allows, and it used to be a hand-written set of all
+   * eighteen. A status added to the contract and not to that copy would make this client call a perfectly good
+   * Episode malformed — the screen saying 서버 응답을 확인할 수 없습니다 about a server that is working.
+   *
+   * It is built from LONG_EPISODE_STATUSES now, and this is what says so: every status the contract names must
+   * come back through the client unchanged.
+   */
+  it("accepts an Episode in every status the contract allows", async () => {
+    for (const status of LONG_EPISODE_STATUSES) {
+      const project = makeLongProject({ id: "all_states", episodes: [makeLongEpisodeOutline({ status })] });
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+      await expect(getLongProject("all_states"), status).resolves.toEqual({ project });
+    }
   });
 
   it("reopens a long project via GET /long-projects/:projectId", async () => {

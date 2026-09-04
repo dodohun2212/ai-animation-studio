@@ -1,4 +1,5 @@
 import {
+  LONG_EPISODE_STATUSES,
   API_ROUTES,
   isSceneNumber as isValidSceneNumber,
   MAX_SCENE_COUNT,
@@ -326,7 +327,11 @@ const isDigest = (value: unknown): value is string => typeof value === "string" 
 
 const ASPECT_RATIOS = new Set(["9:16", "16:9"]);
 const OUTLINE_STATUSES = new Set(["planned", "outline_ready"]);
-const EPISODE_STATUSES = new Set(["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted", "rendering", "completed", "failed"]);
+// Built from the shared list, not written out again. This is a response guard: a status added to the contract
+// and not to a hand-written copy here makes the client call a perfectly good Episode malformed, and the screen
+// says 서버 응답을 확인할 수 없습니다 about a working server. OUTLINE_STATUSES above stays spelled out — a
+// two-entry gate is a decision, not a copy.
+const EPISODE_STATUSES: ReadonlySet<string> = new Set(LONG_EPISODE_STATUSES);
 
 function isLongProjectSettings(value: unknown): value is LongProjectSettings {
   if (!isRecord(value)) return false;

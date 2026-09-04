@@ -49,7 +49,13 @@ function episodeResumeTarget(status: LongEpisodeStatus): EpisodeResumeTarget | n
     // "planned" has no script yet, but it does have a plan to write — before this screen existed it was the one
     // status with no link at all, which read as "this episode is broken" rather than "this episode is next".
     case "planned": return { screen: "episodeOutline", label: "이 회차 내용 적기" };
-    default: return null;
+    default: {
+      // A status added to the contract is a compile error here, not an Episode that quietly shows no way to
+      // continue. That silence is the failure the "planned" case above was added to fix — an Episode with no
+      // link reads as broken rather than as next — and a new status would bring it straight back.
+      const unhandled: never = status;
+      return unhandled ?? null;
+    }
   }
 }
 

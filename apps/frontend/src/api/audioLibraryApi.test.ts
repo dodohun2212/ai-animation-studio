@@ -1,3 +1,4 @@
+import { AUDIO_LICENSE_KINDS } from "@ai-animation-studio/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { audioTrackContentUrl, deleteAudioTrack, getAudioLibrary, toAudioLibraryDisplayError, uploadAudioTrack } from "./audioLibraryApi.js";
@@ -34,6 +35,19 @@ describe("audioLibraryApi", () => {
 
   // A duration drives the "does this cover the whole video" judgement. Rendering "-1:00" or "NaN:00" next to a
   // real length would make the reader distrust both numbers, so a bad one fails the response instead.
+  /**
+   * The licence guard used to be a second copy of AUDIO_LICENSE_KINDS. That constant exists precisely because a
+   * union in the contract and a list in a reader is what once made a written value unreadable (Cowork Round 436)
+   * — and this reader was the second copy again. Every kind the contract allows has to come back through.
+   */
+  it("accepts every licence kind the contract allows", async () => {
+    for (const licenseKind of AUDIO_LICENSE_KINDS) {
+      const tracks = [track({ licenseKind })];
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { tracks })));
+      await expect(getAudioLibrary(), licenseKind).resolves.toMatchObject({ tracks });
+    }
+  });
+
   it("rejects a track whose duration or size is not a usable number", async () => {
     for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, -1, "95", null]) {
       vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { tracks: [track({ durationSeconds: bad })] })));

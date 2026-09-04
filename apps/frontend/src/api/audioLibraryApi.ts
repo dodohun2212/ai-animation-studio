@@ -1,4 +1,5 @@
 import {
+  AUDIO_LICENSE_KINDS,
   API_ROUTES,
   AUDIO_UPLOAD_FILE_FIELD,
   type AudioLibraryTrack,
@@ -71,10 +72,12 @@ function isNonNegativeNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
-const LICENSE_KINDS = ["cc0", "cc-by", "purchased", "self-made", "other"] as const;
-
+/**
+ * The shared list, not a second copy of it. AUDIO_LICENSE_KINDS exists because a union here and a list there
+ * is exactly what once made a written value unreadable (Cowork Round 436) — and this is the read side of that.
+ */
 function isLicenseKind(value: unknown): value is AudioLibraryTrack["licenseKind"] {
-  return typeof value === "string" && (LICENSE_KINDS as readonly string[]).includes(value);
+  return typeof value === "string" && (AUDIO_LICENSE_KINDS as readonly string[]).includes(value);
 }
 
 function isTrack(value: unknown): value is AudioLibraryTrack {
