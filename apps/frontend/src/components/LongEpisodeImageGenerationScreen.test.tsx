@@ -219,12 +219,38 @@ describe("LongEpisodeImageGenerationScreen", () => {
     const first = episode("asset_mapping_approved");
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: first }))
-      .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 0, sourceSceneNumber: 6, available: false } }))
+      // What the server actually answers for Episode 1: `reference: null`, because there is no previous
+      // Episode. The old fixture sent previousEpisodeNumber 0, which the response check rejects — so this test
+      // was passing through the failure path and only looked right because the fallback rendered the same line.
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
       .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
       .mockResolvedValue(jsonResponse(200, { episode: first, reviews: reviews(), staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] })));
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
     expect((await screen.findByTestId("episode-image-continuity-unavailable")).textContent).toContain("첫 에피소드라");
+  });
+
+  /**
+   * Episode 1 says the same thing whether the lookup answered or fell over.
+   *
+   * The new "could not check" banner is right for a later Episode: the question is open and a paid batch is
+   * about to be pressed. On Episode 1 there is no previous Episode to have failed to ask about, so a failed
+   * lookup changes nothing — showing doubt there invents it about a question that already has a definite answer.
+   *
+   * The 500 is the point of the test. The neighbouring Episode 1 case sends a valid response and so never
+   * reaches this path at all, which is how the guard came to have no test the first time.
+   */
+  it("still explains the first Episode when the continuity lookup itself fails", async () => {
+    const first = episode("asset_mapping_approved");
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: first }))
+      .mockResolvedValueOnce(jsonResponse(500, { code: "LONG_PROJECT_STORAGE_ERROR", message: "unreadable" }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
+      .mockResolvedValue(jsonResponse(200, { episode: first, reviews: reviews(), staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] })));
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    expect((await screen.findByTestId("episode-image-continuity-unavailable")).textContent).toContain("첫 에피소드라");
+    expect(screen.queryByTestId("episode-image-continuity-unknown")).toBeNull();
   });
 
   it("explains what happens instead when a later Episode has no continuity reference", async () => {

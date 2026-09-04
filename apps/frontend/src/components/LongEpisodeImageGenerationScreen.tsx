@@ -345,8 +345,11 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
       {/* Could not ask, which is not the same as asked and there is none. Amber rather than the grey of the
           line below: "there is nothing to inherit" is a settled fact the person can generate past, while this
           one is an open question sitting in front of a paid batch. */}
-      {!continuityReferenceLoading && continuityReferenceFailed && <p data-testid="episode-image-continuity-unknown" className="text-sm text-amber-300">이전 에피소드의 마지막 장면 자료를 확인하지 못했습니다. 이어받을 게 있는지 알 수 없어서, 지금 만들면 이어받지 않고 만들어질 수 있습니다.</p>}
-      {!continuityReferenceLoading && !continuityReferenceFailed && !continuityReference?.available && <p data-testid="episode-image-continuity-unavailable" className="text-sm text-slate-400">{episodeNumber <= 1 ? "첫 에피소드라 이어받을 이전 장면이 없습니다. 이 에피소드부터 새로 시작합니다." : "이전 에피소드의 마지막 장면 자료가 아직 없어서, 이어받지 않고 이 에피소드만으로 만듭니다."}</p>}
+      {/* Never on Episode 1: there is no previous Episode to have failed to ask about, so a failed lookup
+          changes nothing a person could act on. Saying "확인하지 못했습니다" there would invent a doubt about a
+          question that already has a definite answer. */}
+      {!continuityReferenceLoading && continuityReferenceFailed && episodeNumber > 1 && <p data-testid="episode-image-continuity-unknown" className="text-sm text-amber-300">이전 에피소드의 마지막 장면 자료를 확인하지 못했습니다. 이어받을 게 있는지 알 수 없어서, 지금 만들면 이어받지 않고 만들어질 수 있습니다.</p>}
+      {!continuityReferenceLoading && (!continuityReferenceFailed || episodeNumber <= 1) && !continuityReference?.available && <p data-testid="episode-image-continuity-unavailable" className="text-sm text-slate-400">{episodeNumber <= 1 ? "첫 에피소드라 이어받을 이전 장면이 없습니다. 이 에피소드부터 새로 시작합니다." : "이전 에피소드의 마지막 장면 자료가 아직 없어서, 이어받지 않고 이 에피소드만으로 만듭니다."}</p>}
       {episode && isBefore(episode.status, "asset_mapping_approved") && <p data-testid="episode-image-not-eligible" className="text-sm text-amber-300">에피소드 이미지 생성을 시작하려면 먼저 참고 이미지 연결을 승인하세요.</p>}
       {/* The short project has said all of this since the run was made pollable; the Episode showed only a list
           of scenes reading 만드는 중, with nothing about whether leaving was safe. That last sentence is the one
