@@ -164,6 +164,57 @@ describe("EpisodeScriptsService", () => {
     await subject.generate("long", 1, { userRequestId: "episode-scripts.service-script-8" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  /**
+   * A script save keeps the parts of the Episode's record this service does not own.
+   *
+   * `save()` writes the parsed object straight back, so every field `parseStored` failed to name was deleted
+   * from disk by the next unrelated save — silently, with nothing reporting a loss. Two were really being lost
+   * on 캡틴D's Episodes: `previous_instagram_posts`, whose own doc comment calls it the only memory this app has
+   * of an action it cannot undo, and `mapping_revision`, which episode-mapping-owner.ts writes.
+   *
+   * Asserted as a rule rather than as a list, because a list is what failed: an unknown key is another module's
+   * record, and this parser is not the one to decide it does not exist.
+   */
+  it("keeps another module's fields on the Episode through a script save", async () => {
+    const subject = await setup();
+    await subject.generate("long", 1, { userRequestId: "episode-scripts.service-preserve-1" });
+    const file = path.join(root!, "projects", "long", "long_story", "Episode01", "project.json");
+    const stored = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>;
+    const forgotten = [{ media_id: "18127867426747808", ig_user_id: "1784", published_at: "2026-09-04T05:02:51.319Z", caption: "지운 게시물" }];
+    await fs.writeFile(file, JSON.stringify({ ...stored, previous_instagram_posts: forgotten, mapping_revision: 10, some_future_field: { kept: true } }, null, 2), "utf8");
+
+    await subject.generate("long", 1, { userRequestId: "episode-scripts.service-preserve-2", regenerate: true });
+
+    const after = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>;
+    expect(after.previous_instagram_posts, "the only memory of a post that may still be public").toEqual(forgotten);
+    expect(after.mapping_revision).toBe(10);
+    expect(after.some_future_field).toEqual({ kept: true });
+    // And the fields this service does own still went through their checks.
+    expect(after.script_revision).toBe(2);
+  });
+
+  /**
+   * And the record reaches the screen, which is the half its doc comment promises.
+   *
+   * "carried out to the screen rather than only written to disk — a record nothing reads is a record that
+   * quietly stops being kept correctly." Episode 4 of 캡틴D's project had three such posts on disk and the API
+   * answered with none, because the field never survived the read.
+   */
+  it("reports the posts an Episode has published and forgotten", async () => {
+    const subject = await setup();
+    await subject.generate("long", 1, { userRequestId: "episode-scripts.service-preserve-3" });
+    const file = path.join(root!, "projects", "long", "long_story", "Episode01", "project.json");
+    const stored = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>;
+    await fs.writeFile(file, JSON.stringify({ ...stored, previous_instagram_posts: [
+      { media_id: "18127867426747808", ig_user_id: "1784", published_at: "2026-09-04T05:02:51.319Z", caption: "첫 번째" },
+      { media_id: "18138514609608189", ig_user_id: "1784", published_at: "2026-09-04T05:16:52.214Z", caption: "두 번째" },
+    ] }, null, 2), "utf8");
+
+    const episode = (await subject.get("long", 1)).episode;
+
+    expect(episode.previousInstagramPosts?.map((post) => post.mediaId)).toEqual(["18127867426747808", "18138514609608189"]);
+  });
 });
 
 /** One Episode already on disk, so `get` reads a stored record rather than rebuilding one from the project. */
