@@ -112,6 +112,30 @@ export type AudioLicenseKind = (typeof AUDIO_LICENSE_KINDS)[number];
 export const LONG_EPISODE_STATUSES = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted", "rendering", "completed", "failed"] as const;
 export type LongEpisodeStatus = (typeof LONG_EPISODE_STATUSES)[number];
 
+/**
+ * The states an Episode passes through before any picture of its own exists.
+ *
+ * Stated once, negatively, because the useful question is always the other one — "does this Episode have
+ * pictures yet?" — and every place that answered it by listing the states where it is true has eventually got
+ * the list wrong. There were three such lists. The one in episode-continuity-reference.ts stopped at
+ * `videos_approved` and never named `rendering` or `completed`, so an Episode became **less** usable as a
+ * continuity reference the more finished it was: 캡틴D's project 12 had three consecutive Episodes with every
+ * scene approved and a valid final image, all reporting `available: false`, and every following Episode's
+ * pictures were bought with no hand-off from the one before (Cowork Round 473).
+ *
+ * A list of what is *not* yet done fails the other way. A status added later is, by default, one where pictures
+ * exist — and the callers all check the pictures themselves anyway, so the wrong guess costs a file read rather
+ * than a silently missing reference on a paid generation.
+ *
+ * Not a gate on its own. `episode-continuity.service.ts`'s `eligible` is deliberately narrower and means
+ * something else (far enough along to write a hand-off note); do not fold the two together.
+ */
+export const LONG_EPISODE_STATUSES_BEFORE_IMAGES = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images"] as const;
+/** Whether an Episode in this state has generated pictures. Says nothing about whether they are approved or readable — ask the files for that. */
+export function longEpisodeHasImages(state: LongEpisodeStatus): boolean {
+  return !(LONG_EPISODE_STATUSES_BEFORE_IMAGES as readonly LongEpisodeStatus[]).includes(state);
+}
+
 export interface LongEpisodeScene {
   number: SceneNumber;
   description: string;

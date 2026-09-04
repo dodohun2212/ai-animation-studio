@@ -33,6 +33,47 @@ describe("EpisodeContinuityReferenceService", () => {
     await expect(reference.get("long", 2)).resolves.toEqual({ reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: false } });
   });
 
+  /**
+   * The state an Episode ends its life in is the one this refused to carry forward.
+   *
+   * The list this replaced named six states and stopped at videos_approved, so an Episode that went on to render
+   * and complete — every scene approved, final image on disk, nothing left to do — reported no reference at all.
+   * 캡틴D's project 12 had three consecutive Episodes sitting exactly there, and every following Episode's
+   * pictures were bought with nothing carried over from the one before. The more finished the Episode, the less
+   * usable it was.
+   *
+   * Runs the real states an Episode reaches after its images: rendering and completed are the two the old list
+   * forgot, and interrupted and failed are the two nobody would think to add — all four have their pictures.
+   */
+  it("carries the reference forward from an Episode that has gone on to render, complete, or fail", async () => {
+    const { images, reference } = await setup();
+    await approveFirstEpisode(images);
+    const file = episode(1, "project.json");
+
+    for (const state of ["waiting_for_video_confirmation", "videos_approved", "rendering", "completed", "interrupted", "failed"] as const) {
+      const stored = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>;
+      await fs.writeFile(file, JSON.stringify({ ...stored, state }, null, 2), "utf8");
+      await expect(reference.get("long", 2)).resolves.toEqual({ reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: true } });
+    }
+  });
+
+  /**
+   * The other half: having reached a late state is not what makes a reference: the pictures do.
+   *
+   * Widening the gate would be worth nothing if it started answering `available: true` for an Episode whose
+   * scenes are not all approved — the screen would promise a hand-off the generator then cannot make.
+   */
+  it("still refuses an Episode whose scenes are not all approved, however finished its state claims to be", async () => {
+    const { images, reference } = await setup();
+    await images.generate("long", 1, { approved: true });
+    for (const scene of [1, 2, 3, 4, 5] as const) await images.approve("long", 1, String(scene), { approved: true });
+    const file = episode(1, "project.json");
+    const stored = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>;
+    await fs.writeFile(file, JSON.stringify({ ...stored, state: "completed" }, null, 2), "utf8");
+
+    await expect(reference.get("long", 2)).resolves.toEqual({ reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: false } });
+  });
+
   it("treats malformed previous storage as unavailable and never returns a storage path", async () => {
     const { reference } = await setup(); await fs.writeFile(episode(1, "project.json"), "{ malformed");
     const result = await reference.get("long", 2);

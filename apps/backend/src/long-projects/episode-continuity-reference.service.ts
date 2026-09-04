@@ -1,12 +1,11 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import { sceneNumbersFor, type GetLongEpisodeContinuityReferenceResponse, type LongEpisodeContinuityReference, type LongEpisodeStatus } from "@ai-animation-studio/shared";
+import { longEpisodeHasImages, sceneNumbersFor, type GetLongEpisodeContinuityReferenceResponse, type LongEpisodeContinuityReference, type LongEpisodeStatus } from "@ai-animation-studio/shared";
 import { validateImage } from "../assets/image-validation.js";
 import { longEpisodeNotFound, longInvalidData, longMalformed, longNotFound, longStorageError } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 
-const COMPLETED_IMAGE_STATES: readonly LongEpisodeStatus[] = ["waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted"];
 type ObjectMap = Record<string, unknown>;
 const object = (value: unknown): value is ObjectMap => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
@@ -36,7 +35,12 @@ export class EpisodeContinuityReferenceService {
       const files = this.files(projectId, number - 1); const project = await this.json(files.project);
       if (!object(project)) return { sceneCount, available: false };
       sceneCount = Number.isInteger(project.scene_count) ? (project.scene_count as number) : 6;
-      if (!COMPLETED_IMAGE_STATES.includes(project.state as LongEpisodeStatus)) return { sceneCount, available: false };
+      // Asked as "are there pictures at all" rather than by listing the states where there are. The list this
+      // replaces named six states and stopped at videos_approved, so an Episode that had gone on to render and
+      // complete — the most finished an Episode gets — was refused as a reference. Three of 캡틴D's Episodes sat
+      // exactly there. What actually decides the answer is below: every scene approved, and the final image
+      // readable. This only skips an Episode that cannot possibly have one yet.
+      if (!longEpisodeHasImages(project.state as LongEpisodeStatus)) return { sceneCount, available: false };
       const reviews = await this.json(files.reviews);
       const scenes = sceneNumbersFor(sceneCount);
       if (!Array.isArray(reviews) || !scenes.every((scene) => reviews.some((review) => object(review) && review.scene_number === scene && review.status === "approved"))) return { sceneCount, available: false };

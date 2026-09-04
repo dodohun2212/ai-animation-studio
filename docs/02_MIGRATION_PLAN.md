@@ -3233,3 +3233,10 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
   - 이름은 영상 쪽 그대로다(`sceneNumbers`·`completedSceneNumbers`·`currentSceneNumber`) — 두 화면이 같은 말을 쓴다.
   - 짝 셋. 하나는 **실제로 루프 안에서 멈춰 세워 잰다**: 3번 장면의 프로바이더 호출을 붙잡아 둔 채 `progress()` 를 읽어 `[1,2]`·`current 3` 을 확인하고, 같은 순간 `get()` 이 거절하는 것까지 본다(유료 0, `fetch` 는 스텁). 나머지 둘은 반쯤 쓰인 파일·아직 아무것도 없는 회차. 주입 둘(`stat` 로 바꾸기 · `generating_images` 조건 빼기)에 각각 빨갛다.
   - 🟠 화면 배선은 Cowork 이 붙인다. 단편(`images.controller.ts`)에도 같은 구멍이 있고, 급한 건 회차 쪽이라 여기까지 했다.
+- [x] **🔴 이어받기 사진이 한 번도 안 갔다 — 회차가 *끝날수록* 참고로 못 쓰였다 (Cowork Round 473, 캡틴D 질문)**: *"이 내용이 다음 에피소드에도 전달되는거지? 마지막 사진이랑 같이"* — **글은 갔고 사진은 안 갔다.** 실서버가 셋 다 `available:false` 였다(2→3, 3→4, 4→5).
+  - **원인은 상태 목록 하나다.** `COMPLETED_IMAGE_STATES` 가 `videos_approved` 에서 끊겨 있어 **`rendering`·`completed` 를 몰랐다.** 실데이터로 확인: 2·3·4화 전부 `state:"completed"` · 리뷰 6개 전부 `approved` · `scene6.png` 정상(2.6MB). **나머지 조건은 다 통과하는데 목록에서만 떨어졌다** — 회차가 **더 끝나 있을수록** 이어받기가 안 되는 구조였다.
+  - 🟠 **Cowork 이 4화를 `waiting_for_video_confirmation` 로 본 건 그 시점 값이고, 지금은 `completed` 다.** 그래서 "4화는 그 설명이 안 된다" 던 가설이 뒤집혔다 — **두 원인이 아니라 하나다.**
+  - **같은 사실에 대한 목록이 셋이었다**(`COMPLETED_IMAGE_STATES` · `BEFORE_IMAGES_EXIST` · `eligible`). 앞의 둘을 공유 목록 하나로 합쳤다: `LONG_EPISODE_STATUSES_BEFORE_IMAGES` + `longEpisodeHasImages()`. **부정형으로 한 번만 적는다** — "그림이 있는 상태" 를 열거하면 나중에 상태가 추가될 때마다 조용히 틀리고, **틀리는 방향이 유료 생성에서 참고가 빠지는 쪽**이다. 부정형이면 새 상태는 기본적으로 "그림 있음" 이 되고, 어차피 리뷰·파일을 따로 본다.
+  - 🟠 `episode-continuity.service.ts` 의 `eligible` 은 **합치지 않았다** — 그건 "이어쓰기 메모를 쓸 만큼 진행됐나" 라는 **다른 질문**이고, 그 파일 주석이 이미 *"둘은 닮았고 반대를 뜻한다"* 고 경고하고 있다.
+  - 짝 둘: 늦은 상태 여섯 개(`rendering`·`completed`·`interrupted`·`failed` 포함) 전부에서 이어받는다 · **상태가 아무리 끝나 보여도 장면이 다 승인 안 됐으면 여전히 거절한다**(문을 넓힌 게 그림 없는 회차를 통과시키면 안 된다). 주입(예전 누락 복원)에 빨갛다.
+  - **실서버 확인**: 고친 뒤 2→3, 3→4, 4→5 **전부 `available:true`**.
