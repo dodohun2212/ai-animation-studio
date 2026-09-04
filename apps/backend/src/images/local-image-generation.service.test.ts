@@ -459,4 +459,75 @@ describe("real OpenAI image generation", () => {
     expect((await projects.findById("images")).workflow_state).toBe(WorkflowState.ImagesReview);
   });
 
+  /**
+   * The reading taken while the money is being spent, on the short project's own loop.
+   *
+   * Same blind spot the Episode had and the same fix a round later: the screen could read one workflow state for
+   * six scenes, so all six said 만드는 중 while five had not been started. Cowork named both in Round 468.
+   *
+   * Held mid-run rather than reconstructed: the third scene's provider call is parked and the progress is read
+   * while the generation is genuinely inside it, so this measures the sequential loop and not a directory
+   * arranged to look like one. `fetch` is a stub; nothing is paid.
+   */
+  it("names the scene being drawn and the ones already done, while the generation is still inside the loop", async () => {
+    const { service } = await setupWithConnectedOpenAi();
+    let calls = 0;
+    let releaseThird = () => {};
+    let announceThird = () => {};
+    const parked = new Promise<void>((resolve) => { releaseThird = resolve; });
+    const thirdCallStarted = new Promise<void>((resolve) => { announceThird = resolve; });
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      if (calls++ === 2) { announceThird(); await parked; }
+      return jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] });
+    }));
+
+    const running = service.generate("images", { approved: true });
+    await thirdCallStarted;
+
+    const midRun = await service.progress("images");
+    expect(midRun.progress).toEqual({ sceneNumbers: [1, 2, 3, 4, 5, 6], completedSceneNumbers: [1, 2], currentSceneNumber: 3 });
+    expect(midRun.project.workflowState).toBe(WorkflowState.GeneratingImages);
+
+    releaseThird();
+    await running;
+
+    const finished = await service.progress("images");
+    expect(finished.progress.completedSceneNumbers).toEqual([1, 2, 3, 4, 5, 6]);
+    // Nothing is being drawn any more, and a scene number here would say otherwise.
+    expect(finished.progress.currentSceneNumber).toBeUndefined();
+  });
+
+  /**
+   * A file is not a picture, and progress must not say it is.
+   *
+   * The loop writes the bytes and validates them before moving on, so a file that exists and does not parse is
+   * one being written this instant — exactly the moment this route is read at. A `stat` would report that scene
+   * finished a beat early and move the marker onto a picture nobody has.
+   */
+  it("does not count a half-written file as a finished scene", async () => {
+    const { service, projectsRoot } = await setupWithConnectedOpenAi();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    await service.generate("images", { approved: true });
+    await fs.writeFile(path.join(projectsRoot, "images", "images", "scene4.png"), Buffer.from([0x89, 0x50]));
+
+    const progress = await service.progress("images");
+
+    expect(progress.progress.completedSceneNumbers).toEqual([1, 2, 3, 5, 6]);
+    // Not generating any more, so nothing claims to be in flight even though a scene is unaccounted for.
+    expect(progress.progress.currentSceneNumber).toBeUndefined();
+  });
+
+  /**
+   * Answerable before a single picture exists — the difference between this and the review endpoint.
+   *
+   * A screen that starts a generation and polls immediately reaches this first; refusing until there was
+   * something to show would make the first seconds of a run, the part a person watches, an error.
+   */
+  it("answers for a project that has generated nothing yet", async () => {
+    const { service } = await setupWithConnectedOpenAi();
+
+    const progress = await service.progress("images");
+
+    expect(progress.progress).toEqual({ sceneNumbers: [1, 2, 3, 4, 5, 6], completedSceneNumbers: [] });
+  });
 });

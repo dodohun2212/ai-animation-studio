@@ -484,6 +484,43 @@ export interface GetLongEpisodeImagePreviewResponse { preview: LongEpisodeImageG
  *
  * Field names match LongEpisodeVideoProgress on purpose, so the two screens can say the same thing the same way.
  */
+/**
+ * How far a short project's image generation has got, while it is still running.
+ *
+ * The Episode side of this shipped first because that was where the money was going; the short project has the
+ * same loop and had the same blind spot, and Cowork named it in the same round (Round 468). One paid call at a
+ * time, and a screen that could only read the workflow state — so every scene said 만드는 중 at once while five
+ * of them had not been started.
+ *
+ * Read from what the generation itself writes: this loop records each scene on the project and validates the
+ * file before moving to the next, so a scene is done when the record names its file and that file is a readable
+ * PNG. That is the same question the loop asks before skipping a scene, which is what keeps this answer and the
+ * work from disagreeing — a run record kept only for progress would eventually claim a picture nobody has.
+ *
+ * Field names match LongEpisodeImageProgress, which matches LongEpisodeVideoProgress, so all three screens say
+ * the same thing the same way.
+ */
+export interface ImageGenerationProgress {
+  /** Every scene in the project, so the screen can draw the full list without a scene-count constant of its own. */
+  sceneNumbers: SceneNumber[];
+  /**
+   * Scenes with a usable picture right now — not scenes this run paid for.
+   *
+   * A re-run counts the previous run's pictures as complete from its first moment, which is the truth about the
+   * pictures and what the loop does with them, but a different number from what was bought. Nothing here should
+   * be added up into money.
+   */
+  completedSceneNumbers: SceneNumber[];
+  /**
+   * The scene being drawn right now: the first one not yet complete.
+   *
+   * Absent unless the project is actually generating. Naming the next unfinished scene while nothing is running
+   * would say "this is being made at this moment" of a scene nobody has started.
+   */
+  currentSceneNumber?: SceneNumber;
+}
+export interface GetImageGenerationProgressResponse { project: Project; progress: ImageGenerationProgress; }
+
 export interface LongEpisodeImageProgress {
   /** Every scene in the Episode, so the screen can draw the full list without a scene-count constant of its own. */
   sceneNumbers: SceneNumber[];
@@ -2542,6 +2579,8 @@ export const API_ROUTES = {
   /** Takes back one scene's approval. A separate route from approve so neither body can be mistaken for the other. */
   longEpisodeImageReviewUnapproval: (projectId: string, episodeNumber: number, sceneNumber: SceneNumber) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/images/review/${sceneNumber}/unapprove`,
+  /** How far a running short-project image generation has got, scene by scene. Reads files; costs nothing; never refuses mid-run. */
+  imageGenerationProgress: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/images/generations/progress`,
   audioLibrary: "/audio/library",
   audioLibraryUpload: "/audio/library/upload",
   audioLibraryContent: (trackId: string) => `/audio/library/${encodeURIComponent(trackId)}/content`,

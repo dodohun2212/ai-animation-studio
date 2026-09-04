@@ -5,7 +5,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import { IMAGE_ESTIMATED_COST_USD, MAX_SCENE_COUNT, sceneNumbersFor, WorkflowState, type SceneNumber, type StartImageGenerationResponse } from "@ai-animation-studio/shared";
+import { IMAGE_ESTIMATED_COST_USD, MAX_SCENE_COUNT, sceneNumbersFor, WorkflowState, type SceneNumber, type StartImageGenerationResponse, type GetImageGenerationProgressResponse } from "@ai-animation-studio/shared";
 import { toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
@@ -80,6 +80,34 @@ export class LocalImageGenerationService {
 
   private imagePath(projectId: string, scene: SceneNumber): string {
     return path.join(this.projectsRoot, projectId, "images", `scene${scene}.png`);
+  }
+
+  /**
+   * How far a run has got, scene by scene — readable while the pictures are still coming.
+   *
+   * Asserts nothing about the project's state on purpose. `review()` is entitled to refuse a project that has
+   * not finished, and does; this exists for the moment before that, which is the moment somebody is watching.
+   *
+   * A scene counts as done when the project's own record names its file and that file reads as a PNG — the
+   * identical question `generateCore` asks before skipping a scene. Asking it the same way is what keeps this
+   * from ever describing a picture the generation would redraw. `validPng`, not a `stat`: the loop writes the
+   * bytes and then validates them, so a file that exists but does not parse is one being written this instant,
+   * and calling it finished would move the marker onto a picture nobody has yet.
+   */
+  async progress(projectId: string): Promise<GetImageGenerationProgressResponse> {
+    const project = await this.projects.findById(projectId.trim());
+    const sceneNumbers = scenesFor(project);
+    const completedSceneNumbers: SceneNumber[] = [];
+    const pending: SceneNumber[] = [];
+    for (const number of sceneNumbers) {
+      const destination = this.imagePath(project.project_id, number);
+      if (project.generated_images[number - 1] === destination && await validPng(destination)) completedSceneNumbers.push(number);
+      else pending.push(number);
+    }
+    // Only while the run is in flight. The loop is sequential, so the first unfinished scene is the one being
+    // drawn — but that sentence is only true during a run.
+    const currentSceneNumber = project.workflow_state === WorkflowState.GeneratingImages ? pending[0] : undefined;
+    return { project: toApiProject(project), progress: { sceneNumbers, completedSceneNumbers, ...(currentSceneNumber ? { currentSceneNumber } : {}) } };
   }
 
   async content(projectId: string, rawSceneNumber: string): Promise<{ path: string; extension: ".png" }> {
