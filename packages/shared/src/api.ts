@@ -152,6 +152,15 @@ export interface LongEpisodeOutline {
 export const AUDIO_LICENSE_KINDS = ["cc0", "cc-by", "purchased", "self-made", "other"] as const;
 export type AudioLicenseKind = (typeof AUDIO_LICENSE_KINDS)[number];
 
+/**
+ * Every state an Episode can be in, **in the order the work happens** — with two exceptions that are not
+ * points on that line at all: `interrupted` and `failed` sit wherever the run stopped.
+ *
+ * The ordering is load-bearing, not incidental: the frontend derives its "which step comes next" answer
+ * from this array rather than writing the sequence out again (utils/longEpisodeLabels.ts). A status added
+ * in the wrong place therefore tells someone the wrong step is next, so add one where it belongs, not at
+ * the end. A test pins the derived order so an accidental move is visible rather than silent.
+ */
 export const LONG_EPISODE_STATUSES = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted", "rendering", "completed", "failed"] as const;
 export type LongEpisodeStatus = (typeof LONG_EPISODE_STATUSES)[number];
 

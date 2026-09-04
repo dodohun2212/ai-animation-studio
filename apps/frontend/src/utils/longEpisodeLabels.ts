@@ -1,4 +1,4 @@
-import type { LongEpisodeStatus } from "@ai-animation-studio/shared";
+import { LONG_EPISODE_STATUSES, type LongEpisodeStatus } from "@ai-animation-studio/shared";
 
 /** Korean display labels for LongEpisodeStatus (packages/shared/src/api.ts), used across the Long Project screens. */
 export const LONG_EPISODE_STATUS_LABEL: Record<LongEpisodeStatus, string> = {
@@ -48,15 +48,17 @@ export function longEpisodeStatusLabel(status: LongEpisodeStatus | string): stri
  * screen needs the same answer, and two copies of a workflow order is how two screens start disagreeing about
  * what comes after what.
  *
- * `interrupted` and `failed` are deliberately absent: they are not points on this line, so they never read as
- * "before" anything.
+ * Derived from the shared list rather than written out again. It used to name sixteen of the eighteen statuses
+ * by hand — the backend forbids exactly that shape in its own sources (episode-status-list.test.ts, threshold
+ * twelve) because a copy that misses the next status added is the defect that keeps happening; the frontend
+ * had no such guard, so this copy was invisible. Deriving makes a new status appear here by construction, and
+ * the shared array is maintained in workflow order for exactly this reason.
  */
-export const LONG_EPISODE_STATUS_ORDER: readonly LongEpisodeStatus[] = [
-  "planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review",
-  "asset_mapping_approved", "generating_images", "images_ready", "images_review",
-  "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved",
-  "rendering", "completed",
-];
+/** Not points on the line: a run stops at one of these from wherever it was, so neither is "before" anything. */
+const OFF_THE_LINE: readonly LongEpisodeStatus[] = ["interrupted", "failed"];
+
+export const LONG_EPISODE_STATUS_ORDER: readonly LongEpisodeStatus[] =
+  LONG_EPISODE_STATUSES.filter((status) => !OFF_THE_LINE.includes(status));
 
 /** True only when both statuses are on the line above and `status` comes first. Unknown never reads as before. */
 export function isLongEpisodeStatusBefore(status: LongEpisodeStatus | undefined, marker: LongEpisodeStatus): boolean {
