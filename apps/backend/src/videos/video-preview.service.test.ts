@@ -8,7 +8,7 @@ import { WorkflowState } from "@ai-animation-studio/shared";
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { RunwayBudget } from "../providers/runway-budget.js";
-import { LocalVideoPreviewService, utf16Length } from "./video-preview.service.js";
+import { LocalVideoPreviewService, utf16Length, describesSameScene, promptFor, type StoredScene } from "./video-preview.service.js";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 const roots: string[] = [];
@@ -64,8 +64,8 @@ describe("provider-free video prompt preview", () => {
     expect(result.previews).toHaveLength(6);
     expect(result.previews[0]).toMatchObject({ sceneNumber: 1, model: "gen4_turbo", ratio: "1280:720", durationSeconds: 5, estimatedCostUsd: 0.25 });
     expect(result.previews[1]?.prompt).toContain("Continuity cue: end 1 opening state");
-    expect(result.previews[1]?.prompt).toContain("Opening movement: start 2");
-    expect(result.previews[1]?.prompt).toContain("Main action: main 2");
+    expect(result.previews[1]?.prompt).toContain("Starts at: start 2");
+    expect(result.previews[1]?.prompt).toContain("Action: main 2");
     // Scene 1 has no previous scene by definition, so its continuity cue is always empty — a bare
     // "Continuity cue: " line with nothing after the colon was sent to Runway for every project's scene 1.
     expect(result.previews[0]?.prompt).not.toContain("Continuity cue");
@@ -126,5 +126,33 @@ describe("provider-free video prompt preview", () => {
     project.scenes[0] = { ...(project.scenes[0] as Record<string, unknown>), narration: 42 };
     await projects.save(project);
     await expect(service.preview("video_preview", undefined)).rejects.toMatchObject({ response: { code: "VIDEO_PREVIEW_DATA_INVALID" } });
+  });
+  /**
+   * A renamed prompt section is not a scene edit.
+   *
+   * The badge this feeds says the scene's content changed, so it has to fire when the person changed something
+   * and stay quiet when only this file did. Comparing whole prompts could not tell those apart: relabelling
+   * "Opening movement" to "Starts at" — done in this same change, because the script template asks for a pose at
+   * each end and three "movement" labels made a five-second shot start, stop and start again — would have put
+   * "장면 내용이 바뀐 뒤로 이 영상을 다시 만들지 않았습니다" on every clip 캡틴D has paid for, while every scene
+   * was untouched.
+   *
+   * The pair below is the half that must keep working: an actual edit still shows up.
+   */
+  it("does not call a clip stale because a prompt label was renamed", () => {
+    const scene = { number: 1, description: "d", visual_action: "v", start_motion: "s1", main_motion: "m1", end_motion: "e1", shot_size: "shot", camera_angle: "angle", composition: "comp", lens_feel: "lens", focus_subject: "focus", camera_motion: "cam", environment_motion: "env", motion_speed: "slow", motion_intensity: "low", expression_change: "face", continuity_hint: "hint" } as unknown as StoredScene;
+    const now = promptFor(scene, undefined, "720:1280", 5).prompt;
+    const underOldLabels = now.replace("Starts at:", "Opening movement:").replace("Action:", "Main action:").replace("Ends at:", "Ending movement:");
+
+    expect(underOldLabels).not.toBe(now);
+    expect(describesSameScene(underOldLabels, now)).toBe(true);
+  });
+
+  it("still calls a clip stale when the scene itself was edited", () => {
+    const scene = { number: 1, description: "d", visual_action: "v", start_motion: "s1", main_motion: "m1", end_motion: "e1", shot_size: "shot", camera_angle: "angle", composition: "comp", lens_feel: "lens", focus_subject: "focus", camera_motion: "cam", environment_motion: "env", motion_speed: "slow", motion_intensity: "low", expression_change: "face", continuity_hint: "hint" } as unknown as StoredScene;
+    const before = promptFor(scene, undefined, "720:1280", 5).prompt;
+    const after = promptFor({ ...scene, main_motion: "그가 뒤돌아 달린다" } as unknown as StoredScene, undefined, "720:1280", 5).prompt;
+
+    expect(describesSameScene(before, after)).toBe(false);
   });
 });

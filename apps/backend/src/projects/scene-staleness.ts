@@ -4,7 +4,7 @@ import { describeReferenceMappingsForScene, referenceSourcesForScene } from "../
 import type { LocalAssetsRepository } from "../assets/assets.repository.js";
 import type { StoredAssetMapping } from "../mappings/mapping-storage.js";
 import type { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
-import { promptFor, ratioFor, type StoredScene } from "../videos/video-preview.service.js";
+import { promptFor, ratioFor, type StoredScene, describesSameScene } from "../videos/video-preview.service.js";
 import { toShortProjectSettings } from "./project-settings.js";
 import type { StoredProject } from "./project-storage.schema.js";
 import { previousSceneContinuityImagePath } from "./project-continuity.js";
@@ -123,7 +123,8 @@ export async function computeSceneStaleness(
       const previous = number > 1 ? (project.scenes[number - 2] as StoredScene) : undefined;
       let recomputed: string | undefined;
       try { recomputed = promptFor(scene as StoredScene, previous, ratio, clipDurationSeconds).prompt; } catch { recomputed = undefined; }
-      if (recomputed !== undefined && recomputed !== recordedVideoPrompt) videoStale.push(number);
+      // Values, not labels — see describesSameScene. Renaming a prompt section is not a scene edit.
+      if (recomputed !== undefined && !describesSameScene(recordedVideoPrompt, recomputed)) videoStale.push(number);
     }
   }
   return { imageStale, videoStale, narrationStale, referenceStale };

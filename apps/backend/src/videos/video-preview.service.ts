@@ -74,6 +74,28 @@ export interface VideoPromptResult {
 }
 
 /**
+ * Whether two rendered video prompts describe the same scene — the question staleness is actually asking.
+ *
+ * The badge this feeds says "장면 내용이 바뀐 뒤로 이 영상을 다시 만들지 않았습니다", so it must fire when the
+ * scene changed and stay quiet otherwise. Comparing the two prompts as whole strings also fires when *this file*
+ * changes: renaming "Opening movement" to "Starts at" would have put that badge on all twenty-four of 캡틴D's
+ * existing clips while every scene was untouched — the app asserting a cause it had not checked, which is the
+ * defect this repository has spent a week removing.
+ *
+ * So only the values are compared, never the labels or the fixed prefix and suffix. A section that gains or
+ * loses content still counts, because its value moves; a section that is only renamed does not, because nothing
+ * a person wrote is different.
+ *
+ * This does mean a relabelled prompt is not reported. That is the honest reading: the clip on disk was made from
+ * the same scene, and whether a new label would draw it better is a question no comparison here can answer —
+ * only regenerating it can, and that is the person's money to spend.
+ */
+export function describesSameScene(recorded: string, recomputed: string): boolean {
+  const values = (prompt: string) => prompt.split("\n").map((line) => { const at = line.indexOf(": "); return at < 0 ? line : line.slice(at + 2); }).join("\n");
+  return values(recorded) === values(recomputed);
+}
+
+/**
  * Deliberately sends no character/subject description at all — the first-frame image already carries that, and
  * Runway's own Gen-4 Video Prompting Guide warns that "reiterating elements that exist within the image in high
  * detail can lead to reduced motion or unexpected results." This function's sections are all motion/camera/
@@ -93,10 +115,18 @@ export function promptFor(scene: StoredScene, previous: StoredScene | undefined,
     : "";
   const sections: Array<[string, string]> = [
     ["Continuity cue", continuity],
-    ["Opening movement", String(scene.start_motion)],
-    ["Main action", String(scene.main_motion)],
+    // Poses, not movements. The script template asks for a pose at each end — "장면 시작 순간의 자세·시선·이동
+    // 상태" and "마지막 1초에 도달해야 할 자세" — and these labels asked the model for movement three times in
+    // five seconds. A model reads its labels: three movements in a five-second shot is a shot that starts, stops
+    // and starts again, which is what 캡틴D described as 부분부분 어색한 파트 (Cowork Round 492, approved by
+    // 캡틴D as the redesign to try first). One action between two held poses is the shape the fields describe.
+    //
+    // It also makes the continuity cue legible: that line hands over the previous scene's end_motion, so
+    // "Starts at" is literally where the last shot left off.
+    ["Starts at", String(scene.start_motion)],
+    ["Action", String(scene.main_motion)],
     ["Performance", String(scene.expression_change)],
-    ["Ending movement", String(scene.end_motion)],
+    ["Ends at", String(scene.end_motion)],
     ["Motivated camera", String(scene.camera_motion)],
     ["Environment", String(scene.environment_motion)],
     ["Pacing", `motion speed ${scene.motion_speed}; intensity ${scene.motion_intensity}`],

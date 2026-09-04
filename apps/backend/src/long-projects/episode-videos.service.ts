@@ -14,7 +14,7 @@ import { RunwayBudget, RunwayBudgetExceededError } from "../providers/runway-bud
 import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceResult, type RunwaySceneState } from "../videos/runway-workflow-support.js";
 import { downloadRunwayOutput, getRunwayTask, RunwayAdapterError } from "../videos/runway-video-adapter.js";
 import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
-import { promptFor, utf16Length, type StoredScene } from "../videos/video-preview.service.js";
+import { promptFor, utf16Length, type StoredScene, describesSameScene } from "../videos/video-preview.service.js";
 import { longBudgetLedgerUnreadable, longEpisodeVideoRestoreNotAllowed, longEpisodeVideoVersionNotFound, longLocked, longEpisodeNotFound, longEpisodeVideoJobNotFound, longEpisodeVideosInvalid, longEpisodeVideosNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
@@ -668,7 +668,8 @@ ${additionalInstruction}`; }
       let recomputed: string | undefined;
       try { recomputed = this.prompt(current, scenes[sceneNumber - 2], durationSeconds, ratio); } catch { recomputed = undefined; }
       // The baseline, not the sent text: a clip re-submitted with one-off direction is not behind its script.
-      if (recomputed !== undefined && recomputed !== (recorded.base_prompt ?? recorded.prompt)) videoStale.push(sceneNumber);
+      // Values, not labels — see describesSameScene. Renaming a prompt section is not a scene edit.
+      if (recomputed !== undefined && !describesSameScene(recorded.base_prompt ?? recorded.prompt, recomputed)) videoStale.push(sceneNumber);
     }
     return { videoStale };
   }
