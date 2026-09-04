@@ -13,7 +13,7 @@ import {
   regenerateImageReview,
   toImageReviewDisplayError,
 } from "./imageReviewApi.js";
-import { jsonResponse, makeProject, nonJsonResponse } from "./testUtils.js";
+import { jsonResponse, makeProject, nonJsonResponse, sceneStaleness } from "./testUtils.js";
 
 describe("imageReviewApi", () => {
   afterEach(() => {
@@ -35,6 +35,24 @@ describe("imageReviewApi", () => {
 
     expect(await getImageReview("sample_project")).toEqual(response);
     expect(fetchMock).toHaveBeenCalledWith("/projects/sample_project/images/review");
+  });
+
+  /**
+   * Both fields are optional, so the guard's job is not presence but shape. This screen prints the budget and
+   * calls .filter on the staleness lists, so a present-but-wrong one is not a cosmetic problem.
+   */
+  it("refuses a review whose staleness or budget is present and malformed", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview });
+    const ok = { project, reviews: [], staleness: sceneStaleness() };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, ok)));
+    await expect(getImageReview("sample_project")).resolves.toMatchObject({ staleness: { styleStale: [] } });
+
+    const { styleStale: _dropped, ...short } = ok.staleness;
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { ...ok, staleness: short })));
+    await expect(getImageReview("sample_project")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { ...ok, budget: { monthlyLimitUsd: "10" } })));
+    await expect(getImageReview("sample_project")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
   });
 
   it("approves a single scene via POST /images/review/:sceneNumber/approve with { approved: true }", async () => {

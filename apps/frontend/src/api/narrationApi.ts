@@ -10,6 +10,7 @@ import {
   type StartNarrationGenerationResponse,
 } from "@ai-animation-studio/shared";
 import { BUDGET_LEDGER_UNREADABLE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "./budgetLedgerError.js";
+import { isBudgetPreview, isSceneStaleness } from "./contractGuards.js";
 
 export class NarrationApiError extends Error {
   readonly code: string;
@@ -129,7 +130,8 @@ function isStartNarrationGenerationResponse(value: unknown): value is StartNarra
 }
 
 function isGetNarrationReviewResponse(value: unknown): value is GetNarrationReviewResponse {
-  return isRecord(value) && isProject(value.project) && isNarrationReviewList(value.narrations);
+  return isRecord(value) && isProject(value.project) && isNarrationReviewList(value.narrations)
+    && isBudgetPreview(value.budget) && isSceneStaleness(value.staleness);
 }
 
 function isRegenerateNarrationResponse(value: unknown): value is RegenerateNarrationResponse {

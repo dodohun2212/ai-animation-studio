@@ -11,6 +11,7 @@ import {
   type SceneNumber,
 } from "@ai-animation-studio/shared";
 import { BUDGET_LEDGER_UNREADABLE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "./budgetLedgerError.js";
+import { isBudgetPreview, isSceneStaleness } from "./contractGuards.js";
 
 export class ImageReviewApiError extends Error {
   readonly code: string;
@@ -96,11 +97,13 @@ function isImageReviewList(value: unknown): value is ImageReview[] {
 }
 
 function isGetImageReviewResponse(value: unknown): value is GetImageReviewResponse {
-  return isRecord(value) && isProject(value.project) && isImageReviewList(value.reviews);
+  return isRecord(value) && isProject(value.project) && isImageReviewList(value.reviews)
+    && isBudgetPreview(value.budget) && isSceneStaleness(value.staleness);
 }
 
 function isApproveImageReviewResponse(value: unknown): value is ApproveImageReviewResponse {
-  return isRecord(value) && isProject(value.project) && isImageReviewList(value.reviews);
+  return isRecord(value) && isProject(value.project) && isImageReviewList(value.reviews)
+    && isBudgetPreview(value.budget) && isSceneStaleness(value.staleness);
 }
 
 function isRegenerateImageReviewResponse(value: unknown): value is RegenerateImageReviewResponse {
@@ -108,7 +111,9 @@ function isRegenerateImageReviewResponse(value: unknown): value is RegenerateIma
     isRecord(value) &&
     isProject(value.project) &&
     isImageReviewList(value.reviews) &&
-    isSceneNumber(value.sceneNumber)
+    isSceneNumber(value.sceneNumber) &&
+    isBudgetPreview(value.budget) &&
+    isSceneStaleness(value.staleness)
   );
 }
 

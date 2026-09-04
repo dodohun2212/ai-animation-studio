@@ -19,7 +19,7 @@ import {
   toVideoWorkflowDisplayError,
   VideoWorkflowApiError,
 } from "./videoWorkflowApi.js";
-import { jsonResponse, makeProject, nonJsonResponse } from "./testUtils.js";
+import { jsonResponse, makeProject, nonJsonResponse, sceneStaleness } from "./testUtils.js";
 
 function sixReviews(approved: readonly number[] = []): GetVideoReviewResponse["reviews"] {
   return [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({
@@ -156,6 +156,17 @@ describe("videoWorkflowApi", () => {
       { approved: true },
       { approved: true },
     ]);
+  });
+
+  /** Same check as the image client's, wired through this client's own response guard. */
+  it("refuses a video review whose staleness is present and missing a required list", async () => {
+    const base = { project: makeProject({ workflowState: WorkflowState.ReviewingVideos }), reviews: sixReviews() };
+    const { videoStale: _dropped, ...short } = sceneStaleness();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { ...base, staleness: sceneStaleness() })));
+    await expect(getVideoReview("sample_project", "job_1")).resolves.toMatchObject({ staleness: { videoStale: [] } });
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { ...base, staleness: short })));
+    await expect(getVideoReview("sample_project", "job_1")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
   });
 
   it("fetches review status via GET /projects/:id/videos/generations/:jobId/review", async () => {

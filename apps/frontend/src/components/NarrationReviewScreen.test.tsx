@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { NarrationAudioState } from "@ai-animation-studio/shared";
 
-import { jsonResponse, makeProject } from "../api/testUtils.js";
+import { jsonResponse, makeProject, sceneStaleness } from "../api/testUtils.js";
 import { NarrationReviewScreen } from "./NarrationReviewScreen.js";
 
 const project = makeProject({});
@@ -215,7 +215,7 @@ describe("NarrationReviewScreen", () => {
         [REVIEW]: {
           project,
           narrations: narrations([{ narration: "문장", audio: "generated" }, { narration: "문장", audio: "generated" }]),
-          staleness: { imageStale: [], videoStale: [], narrationStale: [2] },
+          staleness: sceneStaleness({ narrationStale: [2] }),
         },
         [SETTINGS]: { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       }),

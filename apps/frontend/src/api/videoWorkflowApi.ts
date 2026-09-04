@@ -12,6 +12,7 @@ import {
   type VideoReview,
 } from "@ai-animation-studio/shared";
 import { BUDGET_LEDGER_UNREADABLE_MESSAGE } from "./budgetLedgerError.js";
+import { isBudgetPreview, isSceneStaleness } from "./contractGuards.js";
 
 export class VideoWorkflowApiError extends Error {
   readonly code: string;
@@ -201,7 +202,8 @@ function isVideoReviewList(value: unknown): value is VideoReview[] {
 }
 
 function isGetVideoReviewResponse(value: unknown): value is GetVideoReviewResponse {
-  return isRecord(value) && isProject(value.project) && isVideoReviewList(value.reviews);
+  return isRecord(value) && isProject(value.project) && isVideoReviewList(value.reviews)
+    && isBudgetPreview(value.budget) && isSceneStaleness(value.staleness);
 }
 
 function isApproveVideoReviewResponse(value: unknown): value is ApproveVideoReviewResponse {

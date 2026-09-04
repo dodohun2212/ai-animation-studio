@@ -8,7 +8,7 @@ import {
   startNarrationGeneration,
   toNarrationDisplayError,
 } from "./narrationApi.js";
-import { jsonResponse } from "./testUtils.js";
+import { jsonResponse, sceneStaleness } from "./testUtils.js";
 
 /**
  * This module had no tests at all, so its safe-message table — the whole mechanism that keeps a backend's raw
@@ -23,6 +23,22 @@ const REVIEW = {
 describe("narrationApi", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  /**
+   * Same check as the image and video clients', through this client's own guard. The fixture above is
+   * deliberately route-only — that test swallows the rejection — so without this one nothing here would notice
+   * the staleness check being dropped.
+   */
+  it("refuses a review whose staleness is present and missing a required list", async () => {
+    const project = { id: "narr", topic: "t", projectType: "short_project", workflowState: "SCRIPT_APPROVED", createdAt: "2026-09-05T00:00:00.000Z", updatedAt: "2026-09-05T00:00:00.000Z", scenes: [], warnings: [], errors: [] };
+    const body = { project, narrations: [], staleness: sceneStaleness() };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, body)));
+    await expect(getNarrationReview("narr")).resolves.toMatchObject({ staleness: { narrationStale: [] } });
+
+    const { narrationStale: _dropped, ...short } = body.staleness;
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { ...body, staleness: short })));
+    await expect(getNarrationReview("narr")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
   });
 
   it("reads the review via GET, generates via POST with explicit approval, and regenerates one scene", async () => {
