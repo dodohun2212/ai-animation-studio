@@ -28,7 +28,9 @@ function sixScenes(): Scene[] {
 }
 
 function scenesOf(count: number): Scene[] {
-  return Array.from({ length: count }, (_, index) => {
+  // See the note in ImageGenerationScreen.test.tsx: the annotation has to be on the callback for a fixture's
+  // invented field to be a compile error rather than a silent extra.
+  return Array.from({ length: count }, (_, index): Scene => {
     const number = (index + 1) as Scene["number"];
     return {
       number,

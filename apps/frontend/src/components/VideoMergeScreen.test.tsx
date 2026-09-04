@@ -34,7 +34,9 @@ function makeSettings(narrationEnabled: boolean, subtitlesEnabled: boolean) {
 }
 
 function sixScenes(): Scene[] {
-  return [1, 2, 3, 4, 5, 6].map((number) => ({
+  // See ImageGenerationScreen.test.tsx: the callback carries the annotation, so an invented field is a compile
+  // error here rather than an extra the response could never have.
+  return [1, 2, 3, 4, 5, 6].map((number): Scene => ({
     number: number as Scene["number"],
     script: `Scene ${number}`,
     motionPrompt: `Motion ${number}`,

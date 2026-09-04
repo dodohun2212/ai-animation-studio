@@ -8,7 +8,11 @@ import { ImageGenerationScreen } from "./ImageGenerationScreen.js";
 import { workflowStateLabel } from "../utils/workflowStateLabels.js";
 
 function sixScenes(withImages: readonly number[] = []): Scene[] {
-  return [1, 2, 3, 4, 5, 6].map((number) => ({
+  // Annotated on the callback, not only on the function: excess-property checking fires on a literal assigned to
+  // a type, and a literal returned from an unannotated `.map` callback is inferred first and merely found
+  // assignable afterwards. That gap let imagePrompt, imageReview and videoReview live in fixtures long after the
+  // contract dropped them, and let castRole take a value no code accepts — four separate fixes this week.
+  return [1, 2, 3, 4, 5, 6].map((number): Scene => ({
     number: number as Scene["number"],
     script: `Scene ${number}`,
     motionPrompt: `Motion ${number}`,
@@ -17,7 +21,7 @@ function sixScenes(withImages: readonly number[] = []): Scene[] {
 }
 
 function sixReviews(approved: readonly number[] = []): ImageReview[] {
-  return [1, 2, 3, 4, 5, 6].map((number) => ({
+  return [1, 2, 3, 4, 5, 6].map((number): ImageReview => ({
     sceneNumber: number as ImageReview["sceneNumber"],
     status: approved.includes(number) ? "approved" : "pending",
     updatedAt: "2026-08-22T00:00:00.000Z",
