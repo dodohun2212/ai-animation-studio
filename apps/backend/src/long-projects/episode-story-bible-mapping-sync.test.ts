@@ -132,6 +132,41 @@ describe("Story Bible links reaching Episode mappings", () => {
       .toEqual([["auto_protagonist", "character", character.asset_id], ["auto_style", "style", style.asset_id]].sort());
   });
 
+  /**
+   * `generating_images` sits on the "no pictures yet" side, and nothing was testing that it does.
+   *
+   * I expected the opposite when I wrote this and had to correct it: an Episode there is spending money right
+   * now, so leaving it alone looks safer. It is not, and the run is why. generateCore loads the mappings once at
+   * the start and holds the project lock for the whole run, so a Bible change landing mid-run cannot reach the
+   * pictures being made. What it does reach is the next run — and the staleness report says so, because the
+   * recorded reference_sources will no longer match. Excluding the state would instead have the Bible link
+   * silently fail to reach an Episode, which is the failure nobody can see.
+   *
+   * Pinned because it was invisible: dropping `generating_images` from the shared list turned no test red in
+   * either app before this, and the three callers of longEpisodeHasImages all answer differently without it.
+   */
+  it("still follows the Story Bible while pictures are being generated, since the run holds its own snapshot", async () => {
+    const { bible, assets, mappings, projectsRoot } = await setup(["script_approved", "generating_images"]);
+    const folder = await assets.createFolder({ assetType: "character", displayName: "이배드" });
+
+    await bible.updateProtagonistAssetLink("long_sync", { assetLink: { assetId: folder.asset_id, versionPolicy: "follow_latest", pinnedVersion: null } });
+
+    for (const episodeNumber of [1, 2]) {
+      expect((await mappings.load(episodeLocation(projectsRoot, episodeNumber))).map((mapping) => mapping.asset_id), `Episode ${episodeNumber}`).toEqual([folder.asset_id]);
+    }
+  });
+
+  /** The other side of the same line: once the pictures exist, the Bible no longer moves them. */
+  it("leaves an Episode whose pictures already exist alone", async () => {
+    const { bible, assets, mappings, projectsRoot } = await setup(["script_approved", "images_ready"]);
+    const folder = await assets.createFolder({ assetType: "character", displayName: "이배드" });
+
+    await bible.updateProtagonistAssetLink("long_sync", { assetLink: { assetId: folder.asset_id, versionPolicy: "follow_latest", pinnedVersion: null } });
+
+    expect((await mappings.load(episodeLocation(projectsRoot, 1))).map((mapping) => mapping.asset_id)).toEqual([folder.asset_id]);
+    expect(await mappings.load(episodeLocation(projectsRoot, 2)), "already paid for; the pictures cannot change to match").toEqual([]);
+  });
+
   it("keeps going past an Episode it cannot read", async () => {
     // One unreadable folder must not cost the other Episodes their mapping. Losing all of them because of one
     // is the failure that looks like nothing happened at all, and the person has no way to tell which it was.

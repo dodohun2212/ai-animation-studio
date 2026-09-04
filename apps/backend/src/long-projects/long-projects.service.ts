@@ -23,7 +23,16 @@ import { parseEpisodeOutlineEntry } from "./episode-outline-entry.js";
 
 const MAX_EPISODES = Number(process.env.APP_MAX_LONG_PROJECT_EPISODES ?? "60");
 /** The statuses an Episode can hold before any image has been generated — the aspect ratio is free to change while every Episode is still in one of them. Named once because the save and the settings GET must not answer this differently. */
-const BEFORE_IMAGES: readonly string[] = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved"];
+/**
+ * Not the same question as LONG_EPISODE_STATUSES_BEFORE_IMAGES, and deliberately one entry shorter: this asks
+ * whether image generation has *started*, and that list asks whether pictures *exist*. `generating_images` is
+ * on that one and not this one, because a run already spending money must lock the aspect ratio even though
+ * no file has landed yet.
+ *
+ * The names read almost alike, so: do not fold them together. Doing so would either let the ratio change
+ * mid-generation, or make an Episode count as having pictures before it has any.
+ */
+const BEFORE_IMAGE_GENERATION_STARTS: readonly string[] = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved"];
 
 const settingKeys = ["title", "logline", "overview", "genre", "tone", "theme", "episodeCount", "sceneCount", "clipDurationSeconds", "aspectRatio", "audience", "notes", "startingState", "midpoint", "endingDirection", "storyFlowSummary", "narrationEnabled", "subtitlesEnabled", "visualStyle", "color", "lighting", "avoid"] as const;
 type Stored = { project_id: string; project_type: "long_story_project"; title: string; logline: string; overview: string; genre: string; tone: string; theme: string; episode_count: number; scene_count: number; clip_duration_seconds: number; aspect_ratio: "9:16" | "16:9"; audience: string; notes: string; starting_state: string; midpoint: string; ending_direction: string; story_flow_summary: string; narration_enabled: boolean; subtitles_enabled: boolean; visual_style?: string; color?: string; lighting?: string; avoid?: string; created_at: string; updated_at: string; outline_status: "planned" | "outline_ready"; outline_prompt_request?: { prompt_sha256: string; prompt: string; approved_at: string; modified: boolean }; warnings?: string[]; };
@@ -202,7 +211,7 @@ export class LongProjectsService {
    */
   private async episodeThatLocksAspectRatio(stored: Stored): Promise<number | undefined> {
     const outlines = await this.outlines(stored.project_id, stored.episode_count).catch(() => undefined);
-    return outlines?.find((episode) => !BEFORE_IMAGES.includes(episode.status))?.episodeNumber;
+    return outlines?.find((episode) => !BEFORE_IMAGE_GENERATION_STARTS.includes(episode.status))?.episodeNumber;
   }
   /**
    * Everything on the project form stays editable, with one exception.
@@ -218,7 +227,7 @@ export class LongProjectsService {
     // Read from the outline list rather than each Episode file: every writer of an Episode's state mirrors it
     // there (see EpisodeImagesService.saveEpisode), and archive already refuses on the same source.
     const outlines = await this.outlines(stored.project_id, stored.episode_count);
-    const started = outlines.find((episode) => !BEFORE_IMAGES.includes(episode.status));
+    const started = outlines.find((episode) => !BEFORE_IMAGE_GENERATION_STARTS.includes(episode.status));
     if (started) throw longAspectRatioLocked(started.episodeNumber);
   }
 

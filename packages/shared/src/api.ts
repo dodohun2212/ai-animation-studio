@@ -160,7 +160,9 @@ export type LongEpisodeStatus = (typeof LONG_EPISODE_STATUSES)[number];
  *
  * Stated once, negatively, because the useful question is always the other one — "does this Episode have
  * pictures yet?" — and every place that answered it by listing the states where it is true has eventually got
- * the list wrong. There were three such lists. The one in episode-continuity-reference.ts stopped at
+ * the list wrong. There were four such lists, not the three this comment first claimed: a fourth in
+ * episode-story-bible-mapping-sync.ts was found spelled out again a week later and folded in. The one in
+ * episode-continuity-reference.ts stopped at
  * `videos_approved` and never named `rendering` or `completed`, so an Episode became **less** usable as a
  * continuity reference the more finished it was: 캡틴D's project 12 had three consecutive Episodes with every
  * scene approved and a valid final image, all reporting `available: false`, and every following Episode's
@@ -171,7 +173,9 @@ export type LongEpisodeStatus = (typeof LONG_EPISODE_STATUSES)[number];
  * than a silently missing reference on a paid generation.
  *
  * Not a gate on its own. `episode-continuity.service.ts`'s `eligible` is deliberately narrower and means
- * something else (far enough along to write a hand-off note); do not fold the two together.
+ * something else (far enough along to write a hand-off note); do not fold the two together. Nor with
+ * long-projects.service.ts's BEFORE_IMAGE_GENERATION_STARTS, which is this list minus `generating_images`
+ * because a run already spending money must lock the aspect ratio before any file has landed.
  */
 export const LONG_EPISODE_STATUSES_BEFORE_IMAGES = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images"] as const;
 /** Whether an Episode in this state has generated pictures. Says nothing about whether they are approved or readable — ask the files for that. */

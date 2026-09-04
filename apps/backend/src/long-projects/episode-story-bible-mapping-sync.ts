@@ -1,3 +1,4 @@
+import { longEpisodeHasImages, type LongEpisodeStatus } from "@ai-animation-studio/shared";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import { syncAutoMappings } from "../projects/project-asset-mapping-sync.js";
@@ -5,16 +6,6 @@ import { EpisodeMappingOwners } from "./episode-mapping-owner.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-
-/**
- * The Episode states in which no picture has been generated yet.
- *
- * The line this draws is the one Captain D drew: an Episode that has not bought images yet follows the Story
- * Bible, and one that has does not. Changing a mapping under an Episode whose pictures already exist would
- * leave the record saying one thing and the files showing another — the exact shape this repository has spent
- * the week closing — and the pictures do not change to match, because they were already paid for.
- */
-const BEFORE_IMAGES_EXIST: readonly string[] = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images"];
 
 /** The style and protagonist links, as the two auto tags they become. */
 export interface StoryBibleLinks {
@@ -89,13 +80,24 @@ export async function syncStoryBibleMappings(
   }
 }
 
-/** Reads the Episode's own state, the same field every other service in this directory treats as authoritative. */
+/**
+ * Whether this Episode has generated no picture yet. Reads the Episode's own state, the same field every
+ * other service in this directory treats as authoritative.
+ *
+ * The line this draws is the one Captain D drew: an Episode that has not bought images yet follows the Story
+ * Bible, and one that has does not. Changing a mapping under an Episode whose pictures already exist would
+ * leave the record saying one thing and the files showing another — the exact shape this repository has spent
+ * the week closing — and the pictures do not change to match, because they were already paid for.
+ */
 async function beforeImages(projectsRoot: string, projectId: string, episodeNumber: number): Promise<boolean> {
   const file = path.join(longStoryRoot(projectsRoot, projectId), episodeDirectoryName(episodeNumber), "project.json");
   try {
     const stored: unknown = JSON.parse(await fs.readFile(file, "utf8"));
     if (!stored || typeof stored !== "object" || Array.isArray(stored)) return false;
     const state = (stored as Record<string, unknown>).state;
-    return typeof state === "string" && BEFORE_IMAGES_EXIST.includes(state);
+    // The shared answer, not a fifth copy of the list — see longEpisodeHasImages. An unrecognised state reads
+    // as "has pictures", which is what the list here did too: it is the safe direction, since changing a mapping
+    // under pictures that already exist is the thing this refuses.
+    return typeof state === "string" && !longEpisodeHasImages(state as LongEpisodeStatus);
   } catch { return false; }
 }
