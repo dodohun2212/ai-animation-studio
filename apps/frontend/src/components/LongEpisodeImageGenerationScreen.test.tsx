@@ -151,6 +151,45 @@ describe("LongEpisodeImageGenerationScreen", () => {
     expect(document.body.textContent).not.toContain("C:\\");
   });
 
+  /**
+   * The server has distinguished three reasons since the continuity check was split, and this screen restated one
+   * of them for all three. "아직 없어서" is true only when the previous Episode has not got there yet; a picture
+   * whose file cannot be read is not one that does not exist, and records that cannot be read are not an answer
+   * at all — that one has to admit it does not know, the way the request-failed line beside it already does.
+   */
+  it.each([
+    ["not_finished", "아직 없어서", "text-sm text-slate-400"],
+    ["image_unreadable", "그림 파일을 읽지 못했습니다", "text-sm text-amber-300"],
+    ["unreadable", "알 수 없습니다", "text-sm text-amber-300"],
+  ])("says why the previous Episode cannot be carried forward: %s", async (unavailableReason, sentence, className) => {
+    const target = episode("asset_mapping_approved");
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: target }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: false, unavailableReason } }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true })));
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={2} onBack={() => {}} />);
+
+    const line = await screen.findByTestId("episode-image-continuity-unavailable");
+    expect(line.textContent).toContain(sentence);
+    expect(line.className, "a guess and a known absence must not look the same").toBe(className);
+    if (unavailableReason !== "not_finished") {
+      expect(line.textContent, "only the not-finished case may claim there is nothing there yet").not.toContain("아직 없어서");
+    }
+  });
+
+  /** A reason the client does not know is a response it must not act on — showing a sentence for it would be a guess. */
+  it("refuses a continuity reference whose reason is not one the contract names", async () => {
+    const target = episode("asset_mapping_approved");
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: target }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: false, unavailableReason: "who_knows" } }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true })));
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={2} onBack={() => {}} />);
+
+    expect(await screen.findByTestId("episode-image-continuity-unknown")).toBeTruthy();
+    expect(screen.queryByTestId("episode-image-continuity-unavailable")).toBeNull();
+  });
+
   it("shows the estimated cost before generation, and the reported budget after it", async () => {
     const imageReviewEpisode = episode("images_review");
     // Script approval happens before Asset Mapping approval in the workflow, so by "asset_mapping_approved" the

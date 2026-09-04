@@ -52,6 +52,20 @@ const smallOutlineButton = "rounded-full border border-white/10 px-3 py-1.5 text
 const smallAmberButton = "rounded-full bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white shadow-[0_0_12px_rgba(245,158,11,0.35)] disabled:opacity-50";
 const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
 
+/**
+ * Why there is nothing to carry forward, in the words of the reason the server gave.
+ *
+ * Three reasons, three sentences, because they send a person to three different places: wait, go look at the
+ * previous Episode's pictures, or nobody knows. An absent reason keeps the original wording — that is what a
+ * server predating the split would send, and it is the commonest case besides.
+ */
+function continuityUnavailableSentence(episodeNumber: number, reason: LongEpisodeContinuityReference["unavailableReason"]): string {
+  if (episodeNumber <= 1) return "첫 에피소드라 이어받을 이전 장면이 없습니다. 이 에피소드부터 새로 시작합니다.";
+  if (reason === "image_unreadable") return "이전 에피소드는 마지막 장면까지 끝났는데, 그 그림 파일을 읽지 못했습니다. 이어받지 않고 이 에피소드만으로 만들어집니다.";
+  if (reason === "unreadable") return "이전 에피소드의 기록을 읽지 못해서, 이어받을 게 있는지 알 수 없습니다. 지금 만들면 이어받지 않고 만들어질 수 있습니다.";
+  return "이전 에피소드의 마지막 장면 자료가 아직 없어서, 이어받지 않고 이 에피소드만으로 만듭니다.";
+}
+
 export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onBack, onOpenVideoWorkflow }: Props) {
   const [episode, setEpisode] = useState<LongEpisodeDetail | null>(null);
   const [continuityReference, setContinuityReference] = useState<LongEpisodeContinuityReference | null>(null);
@@ -353,7 +367,11 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
           changes nothing a person could act on. Saying "확인하지 못했습니다" there would invent a doubt about a
           question that already has a definite answer. */}
       {!continuityReferenceLoading && continuityReferenceFailed && episodeNumber > 1 && <p data-testid="episode-image-continuity-unknown" className="text-sm text-amber-300">이전 에피소드의 마지막 장면 자료를 확인하지 못했습니다. 이어받을 게 있는지 알 수 없어서, 지금 만들면 이어받지 않고 만들어질 수 있습니다.</p>}
-      {!continuityReferenceLoading && (!continuityReferenceFailed || episodeNumber <= 1) && !continuityReference?.available && <p data-testid="episode-image-continuity-unavailable" className="text-sm text-slate-400">{episodeNumber <= 1 ? "첫 에피소드라 이어받을 이전 장면이 없습니다. 이 에피소드부터 새로 시작합니다." : "이전 에피소드의 마지막 장면 자료가 아직 없어서, 이어받지 않고 이 에피소드만으로 만듭니다."}</p>}
+      {/* One sentence per reason the server actually distinguishes. It has told us which of three since the
+          continuity check was split, and this line restated "아직 없어서" for all three — true for one of them.
+          A picture whose file cannot be read is not a picture that does not exist yet, and records that cannot
+          be read are not an answer at all. */}
+      {!continuityReferenceLoading && (!continuityReferenceFailed || episodeNumber <= 1) && !continuityReference?.available && <p data-testid="episode-image-continuity-unavailable" className={continuityReference?.unavailableReason === "image_unreadable" || continuityReference?.unavailableReason === "unreadable" ? "text-sm text-amber-300" : "text-sm text-slate-400"}>{continuityUnavailableSentence(episodeNumber, continuityReference?.unavailableReason)}</p>}
       {/* One sentence used to cover every state before the mapping was approved, and it named the mapping in
           all of them — so an Episode that has no script yet was sent to 참고 이미지 연결, a screen that has
           nothing to show and whose route answers 404 without a script. Telling someone to do a step they

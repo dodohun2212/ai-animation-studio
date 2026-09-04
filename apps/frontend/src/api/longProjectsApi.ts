@@ -639,7 +639,13 @@ const isGetLongEpisodeContinuityReferenceResponse = (value: unknown): value is G
   const reference = value.reference;
   if (reference === null) return true;
   return isRecord(reference) && typeof reference.previousEpisodeNumber === "number" && Number.isInteger(reference.previousEpisodeNumber) && reference.previousEpisodeNumber > 0
-    && isSceneNumber(reference.sourceSceneNumber) && typeof reference.available === "boolean";
+    && isSceneNumber(reference.sourceSceneNumber) && typeof reference.available === "boolean"
+    // Optional by contract — absent is the ordinary answer when a picture is there to carry — but a value
+    // that is present decides which sentence the screen shows, so a wrong one must not reach it.
+    && (reference.unavailableReason === undefined
+      || reference.unavailableReason === "not_finished"
+      || reference.unavailableReason === "image_unreadable"
+      || reference.unavailableReason === "unreadable");
 };
 
 async function readJsonBody(response: Response): Promise<unknown> {
