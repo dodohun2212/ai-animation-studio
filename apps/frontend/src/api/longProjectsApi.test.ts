@@ -27,7 +27,7 @@ import {
   duplicateLongEpisode,
   archiveLongEpisode,
 } from "./longProjectsApi.js";
-import { jsonResponse, makeLongEpisodeOutline, makeLongProject, makeLongProjectSettings, makeLongProjectSummary, nonJsonResponse } from "./testUtils.js";
+import { episodeImageStaleness, jsonResponse, makeLongEpisodeOutline, makeLongProject, makeLongProjectSettings, makeLongProjectSummary, nonJsonResponse } from "./testUtils.js";
 
 describe("longProjectsApi", () => {
   afterEach(() => {
@@ -154,10 +154,10 @@ describe("longProjectsApi", () => {
     const fetchMock = vi.fn()
       // `staleness` and `storyBibleLinkDrift` are both required on all three review-shaped responses, so a stub
       // missing either is malformed — which is the guard doing its job, not a test to loosen.
-      .mockResolvedValueOnce(jsonResponse(200, { episode: imageEpisode, reviews, staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: imageEpisode, reviews, staleness: episodeImageStaleness(), storyBibleLinkDrift: [] }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: imageEpisode, generatedSceneNumbers: [1, 2, 3, 4, 5, 6], reusedSceneNumbers: [] }))
-      .mockResolvedValueOnce(jsonResponse(200, { episode: imageEpisode, reviews, staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] }))
-      .mockResolvedValueOnce(jsonResponse(200, { episode: imageEpisode, reviews, staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [], sceneNumber: 2 }));
+      .mockResolvedValueOnce(jsonResponse(200, { episode: imageEpisode, reviews, staleness: episodeImageStaleness(), storyBibleLinkDrift: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: imageEpisode, reviews, staleness: episodeImageStaleness(), storyBibleLinkDrift: [], sceneNumber: 2 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await getLongEpisodeImageReview("reopen_me", 1);
@@ -182,6 +182,23 @@ describe("longProjectsApi", () => {
 
     await expect(getLongEpisodeContinuityReference("reopen_me", 2)).resolves.toEqual(response);
     expect(fetchMock).toHaveBeenCalledWith("/long-projects/reopen_me/episodes/2/continuity-reference");
+  });
+
+  /**
+   * A guard that skips a required list still tells the compiler the whole type arrived, so the field it does not
+   * look at reaches the screen typed as an array and valued as undefined — and the screen narrows these lists
+   * with .filter after a regeneration. This is what the missing check actually costs, so it is checked.
+   */
+  it("rejects an image review whose staleness is missing a list the contract requires", async () => {
+    const imageEpisode = { episodeNumber: 1, title: "Episode 1", summary: "", mainEvent: "", conflict: "", cliffhanger: "", nextEpisodeHook: "", status: "images_review" as const, approved: true, scriptRevision: 3, scriptHistoryCount: 1 };
+    const reviews = [{ sceneNumber: 1, status: "pending" as const, updatedAt: "2026-09-05T00:00:00.000Z" }];
+    const body = { episode: imageEpisode, reviews, staleness: episodeImageStaleness(), storyBibleLinkDrift: [] };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, body)));
+    await expect(getLongEpisodeImageReview("sample", 1)).resolves.toMatchObject({ staleness: { styleStale: [] } });
+
+    const { styleStale: _dropped, ...withoutStyle } = body.staleness;
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { ...body, staleness: withoutStyle })));
+    await expect(getLongEpisodeImageReview("sample", 1)).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
   });
 
   it("rejects malformed settings responses", async () => {

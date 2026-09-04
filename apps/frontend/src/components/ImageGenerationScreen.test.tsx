@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ImageReview, Scene } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
-import { jsonResponse, makeProject } from "../api/testUtils.js";
+import { jsonResponse, makeProject, sceneStaleness } from "../api/testUtils.js";
 import { ImageGenerationScreen } from "./ImageGenerationScreen.js";
 import { workflowStateLabel } from "../utils/workflowStateLabels.js";
 
@@ -177,7 +177,7 @@ describe("ImageGenerationScreen", () => {
     const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
     renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, {
       project, reviews: sixReviews(),
-      staleness: { imageStale: [1], videoStale: [], narrationStale: [], referenceStale: [2] },
+      staleness: sceneStaleness({ imageStale: [1], referenceStale: [2] }),
     })));
 
     expect((await screen.findByTestId("review-stale-1")).textContent).toContain("내용 바뀜");
@@ -198,7 +198,7 @@ describe("ImageGenerationScreen", () => {
     const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
     renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, {
       project, reviews: sixReviews(),
-      staleness: { imageStale: [], styleStale: [1, 2], videoStale: [], narrationStale: [], referenceStale: [] },
+      staleness: sceneStaleness({ styleStale: [1, 2] }),
     })));
 
     const badge = await screen.findByTestId("review-style-stale-1");

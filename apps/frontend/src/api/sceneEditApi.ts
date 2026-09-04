@@ -57,12 +57,21 @@ function isSceneNumberList(value: unknown): value is SceneNumber[] {
   return Array.isArray(value) && value.every((item) => typeof item === "number" && Number.isInteger(item) && item >= 1);
 }
 
+/**
+ * Every list the contract requires, not the three this happened to start with.
+ *
+ * A predicate that skips a field still tells the compiler the whole type is there, so the two it was not
+ * looking at reached the screen typed as arrays and valued as undefined — and the image screen narrows those
+ * lists with .filter after a regeneration.
+ */
 function isSceneStaleness(value: unknown): value is SceneStaleness {
   return (
     isRecord(value) &&
     isSceneNumberList(value.imageStale) &&
+    isSceneNumberList(value.styleStale) &&
     isSceneNumberList(value.videoStale) &&
-    isSceneNumberList(value.narrationStale)
+    isSceneNumberList(value.narrationStale) &&
+    isSceneNumberList(value.referenceStale)
   );
 }
 

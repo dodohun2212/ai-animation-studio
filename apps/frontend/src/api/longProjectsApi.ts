@@ -532,7 +532,12 @@ const isLongEpisodeImageStaleness = (value: unknown): value is LongEpisodeImageS
   isRecord(value) && Array.isArray(value.imageStale) && value.imageStale.every(isSceneNumber)
   // Required on the contract, and kept separate from imageStale on purpose: one says the description changed,
   // the other says the character did. A response missing it is malformed, not an older server.
-  && Array.isArray(value.referenceStale) && value.referenceStale.every(isSceneNumber);
+  && Array.isArray(value.referenceStale) && value.referenceStale.every(isSceneNumber)
+  // Also required, and the reason it is checked here rather than trusted: this predicate tells the compiler
+  // the value IS a LongEpisodeImageStaleness, so a field it does not look at is a field the screen reads as
+  // an array and receives as undefined. The badge would not merely be missing — narrowing the list after a
+  // regeneration calls .filter on it.
+  && Array.isArray(value.styleStale) && value.styleStale.every(isSceneNumber);
 /**
  * One Story Bible link this Episode's mapping does not match.
  *

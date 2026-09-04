@@ -6,11 +6,13 @@ import {
   type LongEpisodeOutline,
   type LongProject,
   type LongProjectSettings,
+  type LongEpisodeImageStaleness,
   type LongProjectSummary,
   type Project,
   type ProjectAssetMapping,
   type ProjectAssetMappingReview,
   type ProviderCredentialStatus,
+  type SceneStaleness,
 } from "@ai-animation-studio/shared";
 
 /** Minimal fake `Response` for mocking `fetch` in tests — no real network involved. */
@@ -327,4 +329,23 @@ export function makeReview(overrides: Partial<ProjectAssetMappingReview> = {}): 
     reviewedScenes: [],
     ...overrides,
   };
+}
+
+/**
+ * The two staleness bodies, built through a typed helper instead of written out at each call site.
+ *
+ * There were thirty-odd copies of `{ imageStale: [], referenceStale: [] }` in these tests. Adding `styleStale`
+ * to the contract left every one of them short a required list, and nothing said so: a fixture handed to
+ * `jsonResponse` is `unknown`, so the compiler never sees it. What caught it was the response guard rejecting
+ * nineteen tests at once — a useful signal, but only because that guard exists; the short project's image
+ * screen has no guard, and its fixtures would simply have gone on being wrong.
+ *
+ * Through a helper the next field added to either type is one compile error here, not a hunt.
+ */
+export function episodeImageStaleness(overrides: Partial<LongEpisodeImageStaleness> = {}): LongEpisodeImageStaleness {
+  return { imageStale: [], styleStale: [], referenceStale: [], ...overrides };
+}
+
+export function sceneStaleness(overrides: Partial<SceneStaleness> = {}): SceneStaleness {
+  return { imageStale: [], styleStale: [], videoStale: [], narrationStale: [], referenceStale: [], ...overrides };
 }

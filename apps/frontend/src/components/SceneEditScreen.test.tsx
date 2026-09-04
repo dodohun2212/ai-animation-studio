@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Scene } from "@ai-animation-studio/shared";
 
-import { jsonResponse, makeProject } from "../api/testUtils.js";
+import { jsonResponse, makeProject, sceneStaleness } from "../api/testUtils.js";
 import { SceneEditScreen } from "./SceneEditScreen.js";
 
 function scene(number: number, overrides: Record<string, string> = {}): Scene {
@@ -51,7 +51,7 @@ function renderScreen(fetchMock: ReturnType<typeof vi.fn>) {
   return render(<SceneEditScreen projectId="sample_project" onBack={() => {}} />);
 }
 
-const noStaleness = { imageStale: [], videoStale: [], narrationStale: [] };
+const noStaleness = sceneStaleness();
 
 describe("SceneEditScreen", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -116,7 +116,7 @@ describe("SceneEditScreen", () => {
     renderScreen(
       stubFetchByRoute({
         [`GET ${PROJECT_URL}`]: { project },
-        [`PATCH ${PATCH_URL}`]: { project, staleness: { imageStale: [], videoStale: [1, 2], narrationStale: [] } },
+        [`PATCH ${PATCH_URL}`]: { project, staleness: sceneStaleness({ videoStale: [1, 2] }) },
       }),
     );
 
@@ -127,6 +127,29 @@ describe("SceneEditScreen", () => {
     // Editing scene 1's ending motion also invalidates scene 2's video.
     expect((await screen.findByTestId("scene-edit-stale-video")).textContent).toContain("1, 2");
     expect(screen.queryByTestId("scene-edit-stale-image")).toBeNull();
+  });
+
+  /**
+   * The guard behind this response checked three of the five lists the contract requires, while telling the
+   * compiler all five had arrived. A response short a list is a server this screen cannot read, and saying so is
+   * the only honest answer — a saved panel built on two undefined lists is not.
+   */
+  it("refuses a save whose staleness is missing a list the contract requires", async () => {
+    const project = makeProject({ scenes: [scene(1), scene(2)] });
+    const { styleStale: _dropped, ...short } = sceneStaleness();
+    renderScreen(
+      stubFetchByRoute({
+        [`GET ${PROJECT_URL}`]: { project },
+        [`PATCH ${PATCH_URL}`]: { project, staleness: short },
+      }),
+    );
+
+    await screen.findByDisplayValue("행동 1");
+    fireEvent.change(screen.getByLabelText("마무리 동작"), { target: { value: "새 마무리" } });
+    fireEvent.click(screen.getByTestId("scene-edit-save"));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("서버 응답을 확인할 수 없습니다");
+    expect(screen.queryByTestId("scene-edit-saved")).toBeNull();
   });
 
   it("says plainly when an edit costs nothing to redo", async () => {
