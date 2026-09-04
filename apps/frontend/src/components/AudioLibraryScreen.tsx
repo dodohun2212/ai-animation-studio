@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { AudioLibraryTrack } from "@ai-animation-studio/shared";
+import { AUDIO_LICENSE_KINDS, type AudioLibraryTrack } from "@ai-animation-studio/shared";
 
 import { audioTrackContentUrl, deleteAudioTrack, getAudioLibrary, toAudioLibraryDisplayError, uploadAudioTrack } from "../api/audioLibraryApi.js";
 import { Spinner } from "./Spinner.js";
@@ -32,13 +32,24 @@ type LicenseKind = AudioLibraryTrack["licenseKind"];
  * is worse than picking slowly. `attributionRequired` follows from the choice for every kind whose answer is
  * fixed — only "other" is genuinely unknowable from the label alone, so only that one asks.
  */
-const LICENSE_OPTIONS: { value: LicenseKind; label: string; attribution: boolean | "ask" }[] = [
-  { value: "cc0", label: "CC0 · 퍼블릭 도메인 (조건 없음)", attribution: false },
-  { value: "cc-by", label: "CC BY (출처 표시 필요)", attribution: true },
-  { value: "purchased", label: "구매하거나 구독으로 받은 음원", attribution: false },
-  { value: "self-made", label: "직접 만든 음원", attribution: false },
-  { value: "other", label: "그 밖의 경우", attribution: "ask" },
-];
+/**
+ * The five kinds as a Record, and the option list derived from the contract's own array.
+ *
+ * It was a hand-written list of the five values. AUDIO_LICENSE_KINDS exists precisely because a union in the
+ * contract and a list in a reader is what once made a written value unreadable (Cowork Round 436) — and this
+ * screen is where a person picks one. Written this way, a kind added to the contract is a compile error here
+ * instead of an option that silently cannot be chosen.
+ */
+const LICENSE_DETAIL: Record<LicenseKind, { label: string; attribution: boolean | "ask" }> = {
+  cc0: { label: "CC0 · 퍼블릭 도메인 (조건 없음)", attribution: false },
+  "cc-by": { label: "CC BY (출처 표시 필요)", attribution: true },
+  purchased: { label: "구매하거나 구독으로 받은 음원", attribution: false },
+  "self-made": { label: "직접 만든 음원", attribution: false },
+  other: { label: "그 밖의 경우", attribution: "ask" },
+};
+
+const LICENSE_OPTIONS: { value: LicenseKind; label: string; attribution: boolean | "ask" }[] =
+  AUDIO_LICENSE_KINDS.map((value) => ({ value, ...LICENSE_DETAIL[value] }));
 
 export function trackDuration(seconds: number): string {
   const whole = Math.max(0, Math.round(seconds));

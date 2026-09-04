@@ -1,18 +1,28 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import type { Asset, AssetFileAuditEntry, AssetType, BackfillGeneratedImageAssetsResponse, CreateAssetMetadata, GetAssetResponse, RunLegacyReferenceMigrationResponse, UpdateAssetMetadataRequest } from "@ai-animation-studio/shared";
+import { ASSET_TYPES, type Asset, type AssetFileAuditEntry, type AssetType, type BackfillGeneratedImageAssetsResponse, type CreateAssetMetadata, type GetAssetResponse, type RunLegacyReferenceMigrationResponse, type UpdateAssetMetadataRequest } from "@ai-animation-studio/shared";
 import { addAssetVersion, backfillGeneratedImageAssets, createAsset, createAssetFolder, deleteAsset, deleteAssetFolder, deleteAssetOwnedFile, getAsset, listAssetFileAudit, listAssets, relinkAsset, runLegacyReferenceMigration, setAssetParentFolder, toAssetDisplayError, updateAsset, updateCharacterFolderReferenceSet } from "../api/assetsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
 import { GeneratedImagesSection } from "./GeneratedImagesSection.js";
 
 interface Props { onBack: () => void; initialQuery?: string }
-const TYPES: Array<{ value: AssetType; label: string }> = [
-  { value: "character", label: "캐릭터" }, { value: "style", label: "스타일" },
-  // Kept word-for-word in step with the Story Bible's tab labels — see that file's own note. A folder type
-  // named differently in the two places is a translation table the user has to hold in their head.
-  { value: "background", label: "배경" }, { value: "object", label: "소품" },
-  { value: "general_reference", label: "일반 참고" },
-];
+/**
+ * Kept word-for-word in step with the Story Bible's tab labels — see that file's own note. A folder type
+ * named differently in the two places is a translation table the user has to hold in their head.
+ *
+ * A Record, not a list of values: the compiler then requires a label for every asset type the contract adds,
+ * where the array this replaced would simply have been one option short with nothing saying so.
+ */
+const TYPE_LABEL: Record<AssetType, string> = {
+  character: "캐릭터",
+  style: "스타일",
+  background: "배경",
+  object: "소품",
+  general_reference: "일반 참고",
+};
+
+/** In the contract's order, so the filter row cannot drift from the set it filters. */
+const TYPES: Array<{ value: AssetType; label: string }> = ASSET_TYPES.map((value) => ({ value, label: TYPE_LABEL[value] }));
 const splitList = (value: string) => value.split(",").map((item) => item.trim()).filter(Boolean);
 /**
  * How the left list is grouped. The library used to be one flat list holding folders, the images inside those

@@ -1,4 +1,4 @@
-import {
+import { ASSET_MAPPING_STATUSES,
   API_ROUTES,
   isSceneNumber as isValidSceneNumber,
   type ApproveProjectAssetMappingReviewRequest,
@@ -63,7 +63,9 @@ export function toMappingDisplayError(error: unknown): { code: string; message: 
   return UNKNOWN;
 }
 
-const STATUSES: readonly AssetMappingStatus[] = ["confirmed", "suggested", "ambiguous", "unmatched", "excluded", "invalid"];
+// The contract's own array — same reason as assetsApi's: this is a response guard, and a status it does not
+// know turns a valid response into 서버 응답을 확인할 수 없습니다.
+const STATUSES: readonly AssetMappingStatus[] = ASSET_MAPPING_STATUSES;
 const SOURCES: readonly AssetMappingAssignmentSource[] = ["manual", "auto", "migrated", "approved_generated_image"];
 const POLICIES: readonly AssetMappingVersionPolicy[] = ["pinned_version", "follow_latest", "snapshot"];
 const REVIEW_STATUSES: readonly ProjectAssetMappingReviewStatus[] = ["waiting", "approved"];

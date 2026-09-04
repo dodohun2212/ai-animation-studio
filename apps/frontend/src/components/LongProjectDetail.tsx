@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ArchivedLongEpisodeSummary, LongEpisodeStatus, LongProject } from "@ai-animation-studio/shared";
 
 import { addLongEpisode, archiveLongEpisode, archiveLongProject, duplicateLongEpisode, getLongProject, listLongEpisodeArchives, restoreLongEpisode, toLongProjectDisplayError } from "../api/longProjectsApi.js";
-import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
+import { LONG_EPISODE_STATUS_ORDER, longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { ArchiveProjectDialog } from "./ArchiveProjectDialog.js";
 import { Spinner } from "./Spinner.js";
 
@@ -68,9 +68,23 @@ function episodeResumeTarget(status: LongEpisodeStatus): EpisodeResumeTarget | n
  * numbers drop as work progresses, which reads as regression. With twenty Episodes this panel is the
  * difference between knowing where the project stands and scrolling a list to count by eye.
  */
-const AFTER_OUTLINE = new Set<LongEpisodeStatus>(["outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted", "rendering", "completed"]);
-const AFTER_SCRIPT = new Set<LongEpisodeStatus>(["script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved", "generating_images", "images_ready", "images_review", "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted", "rendering", "completed"]);
-const AFTER_IMAGES = new Set<LongEpisodeStatus>(["waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved", "interrupted", "rendering", "completed"]);
+/**
+ * Each stage set is "this step onward", derived from the workflow order rather than listed out.
+ *
+ * All three were written by hand, and all three shared one failure: a status added to the contract is in none
+ * of them, so an Episode that reaches it stops counting toward every stage it has already passed. That is the
+ * numbers dropping as work progresses — exactly what the comment above says this panel is built not to do.
+ *
+ * `interrupted` is in all three and stays there: a run that stopped still finished the stages before it. It is
+ * off the order line (a run stops wherever it was), so it is added rather than sliced. `failed` is in none.
+ */
+const atOrAfter = (marker: LongEpisodeStatus): ReadonlySet<LongEpisodeStatus> => new Set<LongEpisodeStatus>([
+  ...LONG_EPISODE_STATUS_ORDER.slice(LONG_EPISODE_STATUS_ORDER.indexOf(marker)),
+  "interrupted",
+]);
+const AFTER_OUTLINE = atOrAfter("outline_ready");
+const AFTER_SCRIPT = atOrAfter("script_approved");
+const AFTER_IMAGES = atOrAfter("waiting_for_video_confirmation");
 
 function episodeStageCounts(episodes: { status: LongEpisodeStatus }[]): { label: string; value: number; highlight?: boolean }[] {
   const count = (predicate: (status: LongEpisodeStatus) => boolean) => episodes.filter((episode) => predicate(episode.status)).length;

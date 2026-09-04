@@ -1,4 +1,4 @@
-import {
+import { ASSET_STATUSES, ASSET_TYPES,
   API_ROUTES,
   ASSET_UPLOAD_FILE_FIELD,
   MAX_SCENE_COUNT,
@@ -70,8 +70,9 @@ export function toAssetDisplayError(error: unknown): { code: string; message: st
   return UNKNOWN;
 }
 
-const ASSET_TYPES: readonly AssetType[] = ["character", "style", "background", "object", "general_reference"];
-const ASSET_STATUSES: readonly AssetStatus[] = ["generated", "approved", "rejected", "replaced", "missing", "manual"];
+// The contract's own arrays, imported rather than shadowed by two local copies of the same names. These sit
+// in a response guard, so a type or status added to the contract and missing here does not disable a feature
+// — it makes this client reject a valid response and the screen report a working server as unreadable.
 const OWNERSHIPS: readonly AssetOwnership[] = ["library_manual", "project_owned", "external"];
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const isString = (value: unknown): value is string => typeof value === "string";
