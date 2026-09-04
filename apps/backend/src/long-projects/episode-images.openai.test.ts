@@ -165,13 +165,18 @@ describe("real OpenAI Episode image generation", () => {
 
     await Promise.all([4, 5, 6].map((scene) => images.regenerate("long", 1, String(scene), { approved: true })));
 
-    const stored = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "generated_image_reviews.json"), "utf8")) as Array<{ scene_number: number; regeneration_count: number; prompt?: string }>;
+    const stored = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "generated_image_reviews.json"), "utf8")) as Array<{ scene_number: number; regeneration_count: number; prompt?: string; updated_at: string }>;
     for (const scene of [4, 5, 6]) {
       const review = stored.find((item) => item.scene_number === scene);
       expect(review, `scene ${scene} lost its record`).toBeTruthy();
       expect(review!.regeneration_count, `scene ${scene} lost its regeneration count`).toBe(1);
       expect(review!.prompt, `scene ${scene} lost the prompt it was drawn from`).toBeTruthy();
     }
+    // The stored updated_at is what the screen busts its image cache on, per scene. A clobbered entry reverts it,
+    // and the browser then keeps serving the picture from before the regeneration — which is what 캡틴D saw and
+    // read as two paid images having gone missing. The record surviving is what makes the picture appear.
+    const at = (scene: number) => stored.find((item) => item.scene_number === scene)!.updated_at;
+    for (const scene of [4, 5, 6]) expect(at(scene) > at(1), `scene ${scene} was left holding the timestamp from before its regeneration`).toBe(true);
     // The scenes nobody touched are untouched — a merge that took the file over would be its own kind of loss.
     expect(stored.filter((item) => [1, 2, 3].includes(item.scene_number)).every((item) => item.regeneration_count === 0)).toBe(true);
   });
