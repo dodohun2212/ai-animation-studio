@@ -5,7 +5,10 @@ import { jsonResponse, makeLongProjectSettings, stubFetchByRoute } from "../api/
 import { LongEpisodeVideoMergeScreen } from "./LongEpisodeVideoMergeScreen.js";
 
 const episode = (status = "completed") => ({ episodeNumber: 1, title: "Episode", summary: "summary", mainEvent: "event", conflict: "conflict", cliffhanger: "cliffhanger", nextEpisodeHook: "hook", status, approved: true, scriptRevision: 1, scriptHistoryCount: 1 });
-const response = () => ({ episode: episode(), finalVideoPath: "videos/final/instagram_reel.mp4" as const });
+// openablePath is required on the response and this fixture was short of it — a body handed to jsonResponse is
+// `unknown`, so nothing said so. The two differ on purpose: one is where the file sits inside the Episode, the
+// other is the same file from the project root, which is what the desktop bridge takes.
+const response = () => ({ episode: episode(), finalVideoPath: "videos/final/instagram_reel.mp4" as const, openablePath: "long_story/Episode01/videos/final/instagram_reel.mp4" as const });
 
 /**
  * An Episode carrying a script of `count` scenes — the screen reads its scene count from exactly this.
@@ -216,6 +219,55 @@ describe("LongEpisodeVideoMergeScreen", () => {
     // rather than claiming a narration it never looked for.
     expect(JSON.parse(String(init.body))).toEqual({ audio: { mode: "silent" } });
     expect(screen.getByTestId("episode-final-video-path").textContent).toBe("파일: videos/final/instagram_reel.mp4");
+  });
+
+  /**
+   * The short project has had this button since its merge screen existed; the Episode printed the path and left
+   * the person to go find it — and 캡틴D makes far more Episodes than short projects.
+   *
+   * What it opens matters as much as that it opens: `openablePath`, not `finalVideoPath`. The Episode's file
+   * lives at long_story/EpisodeNN/... from the project root, and the displayed path is relative to the Episode.
+   * Handing the bridge the displayed one would open nothing, with a button that looks like it worked.
+   */
+  it("opens the Episode's folder through the Electron bridge, addressed from the project root", async () => {
+    const openProjectPath = vi.fn().mockResolvedValue({ opened: true });
+    (window as unknown as { electronAPI?: unknown }).electronAPI = { openProjectPath };
+    const mergeFetch = stubFetchByRoute({
+      [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) },
+      [`GET ${SETTINGS_URL}`]: mediaSettings(false, false),
+      ...audioLibrary(),
+      [`POST ${MERGE_URL}`]: response(),
+    });
+    vi.stubGlobal("fetch", mergeFetch);
+    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    fireEvent.click(screen.getByTestId("episode-open-merge-confirm"));
+    fireEvent.click(await screen.findByTestId("episode-confirm-merge"));
+    await screen.findByTestId("episode-merge-success");
+
+    fireEvent.click(await screen.findByTestId("episode-open-in-explorer-button"));
+    await waitFor(() => expect(openProjectPath).toHaveBeenCalledWith("long", "long_story/Episode01/videos/final/instagram_reel.mp4"));
+    expect(screen.queryByTestId("episode-open-in-explorer-error")).toBeNull();
+    delete (window as unknown as { electronAPI?: unknown }).electronAPI;
+  });
+
+  /** Outside the desktop shell there is nothing to open with, so the button must not be there to press. */
+  it("offers no open button outside Electron", async () => {
+    const mergeFetch = stubFetchByRoute({
+      [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) },
+      [`GET ${SETTINGS_URL}`]: mediaSettings(false, false),
+      ...audioLibrary(),
+      [`POST ${MERGE_URL}`]: response(),
+    });
+    vi.stubGlobal("fetch", mergeFetch);
+    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    fireEvent.click(screen.getByTestId("episode-open-merge-confirm"));
+    fireEvent.click(await screen.findByTestId("episode-confirm-merge"));
+    await screen.findByTestId("episode-merge-success");
+
+    expect(screen.queryByTestId("episode-open-in-explorer-button")).toBeNull();
+    expect(screen.getByTestId("episode-final-video-path"), "the path stays — it is what a person needs to find it themselves").toBeTruthy();
   });
 
   /**

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBridge.js";
 import type { AudioLibraryTrack, MergeLongEpisodeVideosResponse, UsedAudio } from "@ai-animation-studio/shared";
 
 import { getLongEpisode, getLongEpisodeCurrentVideoJob, getLongEpisodeVideoReview, getLongProjectSettings, longEpisodeFinalVideoContentUrl, mergeLongEpisodeVideos, toLongProjectDisplayError } from "../api/longProjectsApi.js";
@@ -51,6 +52,29 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<MergeLongEpisodeVideosResponse | null>(null);
+  const [openPending, setOpenPending] = useState(false);
+  const [openFailed, setOpenFailed] = useState(false);
+
+  /**
+   * Opens the merged file, addressed the way the server addressed it.
+   *
+   * `openablePath`, never `finalVideoPath`: the two differ for an Episode — one is where the file sits inside
+   * the Episode, the other is the same file from the project root, which is what the bridge takes.
+   */
+  async function openInExplorer(): Promise<void> {
+    if (openPending || !result) return;
+    setOpenPending(true);
+    setOpenFailed(false);
+    try {
+      const outcome = await openProjectPathInExplorer(projectId, result.openablePath);
+      if (!outcome?.opened) setOpenFailed(true);
+    } catch {
+      setOpenFailed(true);
+    } finally {
+      setOpenPending(false);
+    }
+  }
+
   const [error, setError] = useState<DisplayError | null>(null);
   /**
    * How many scenes this Episode actually has. Was a local `const EPISODE_SCENE_COUNT = 6` with a comment
@@ -302,6 +326,28 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
             />
           )}
           {result && <p className="text-xs text-slate-500" data-testid="episode-final-video-path">파일: {result.finalVideoPath}</p>}
+          {/* The short project has had this button since its merge screen existed; the Episode printed the path
+              and left the person to find it. `openablePath` is the field that difference costs: the contract
+              composes it (the Episode directory layout has one home, so a screen assembling the path would be a
+              second copy of it) and says the screen passes it through untouched. Nothing did. */}
+          {result && hasElectronBridge() && (
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                data-testid="episode-open-in-explorer-button"
+                className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5 disabled:opacity-50"
+                onClick={() => void openInExplorer()}
+                disabled={openPending}
+              >
+                {openPending ? "여는 중..." : "탐색기에서 열기"}
+              </button>
+              {openFailed && (
+                <p role="alert" data-testid="episode-open-in-explorer-error" className="text-sm text-rose-400">
+                  폴더를 열지 못했습니다.
+                </p>
+              )}
+            </div>
+          )}
           {/* The Episode publishes to the same Instagram under the same licence as a short project, and this is
               the screen the caption gets written from. Reading it from state that survives a reload is the
               point: the person who comes back to publish is the one who needs it (D-003). */}
