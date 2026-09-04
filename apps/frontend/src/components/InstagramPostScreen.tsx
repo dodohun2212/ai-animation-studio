@@ -1122,6 +1122,21 @@ export function InstagramPostScreen({ onBack }: Props) {
                       게시하면 되돌릴 수 없습니다. 지운다고 해도 이미 본 사람에게서는 사라지지 않습니다.
                       {selectedLabel.handleUnavailable && " 이 계정의 @핸들을 읽지 못해 페이지 이름으로 표시하고 있습니다 — 맞는 계정인지 다시 확인해 주세요."}
                     </p>
+                    {/* The cover, said here because here is where it is decided.
+                        캡틴D picked a frame, published, and got the first one — twice. The record proves the app
+                        sent no cover offset at all, so the control was simply never pressed: it lives in the
+                        left column beside the player, and its "커버는 첫 장면입니다" is a grey line a screen away
+                        from the button that ends the argument. Naming the account here was for exactly this
+                        reason; the cover is the other thing about this post that cannot be changed afterwards.
+                        Said in both directions, and worded so that not choosing reads as a state rather than an
+                        omission — because it is a perfectly good choice, just not one to make by accident. */}
+                    {!photoCard && (
+                      <p data-testid="post-publish-confirm-cover" className={coverOffsetMs === null ? "text-sm text-amber-200" : "text-sm text-slate-300"}>
+                        {coverOffsetMs === null
+                          ? "커버는 첫 장면으로 나갑니다. 다른 장면이 좋으면 돌아가서 영상을 돌린 뒤 “지금 이 장면을 커버로”를 눌러 주세요."
+                          : `커버는 ${(coverOffsetMs / 1000).toFixed(1)}초 지점입니다.`}
+                      </p>
+                    )}
                     <p className="text-xs text-slate-400">올리는 데 몇 분까지 걸릴 수 있습니다.</p>
                     <div className="flex gap-3">
                       <button

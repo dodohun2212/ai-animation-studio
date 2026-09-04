@@ -672,6 +672,38 @@ describe("InstagramPostScreen", () => {
   });
 
   /**
+   * The confirmation says which cover is about to go out, in both directions.
+   *
+   * 캡틴D published Episode 4 twice, having picked a frame both times, and got the first frame both times. The
+   * record settles what happened: the request carried no cover offset at all, so the control beside the player
+   * was never actually pressed. Nothing on the confirmation said so — it named the account and warned that
+   * publishing cannot be undone, while the only note about the cover was a grey line in the other column.
+   *
+   * The account is named on this panel because a mistaken post cannot be unseen. The cover is the other thing
+   * about the post that cannot be changed afterwards, and it belongs in the same place for the same reason.
+   */
+  it("says which cover is going out on the confirmation, chosen or not", async () => {
+    renderScreen({ targets: { targets: [{ igUserId: "1", username: "ibad_studio", pageName: "이배드" }], selectedIgUserId: "1" } });
+    await pickProject();
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "본문" } });
+
+    fireEvent.click(await screen.findByTestId("post-publish-button"));
+
+    // Nothing chosen: the panel says the first frame goes, where the person can still turn back.
+    expect((await screen.findByTestId("post-publish-confirm-cover")).textContent).toContain("첫 장면");
+
+    fireEvent.click(screen.getByTestId("post-publish-cancel"));
+    const player = await screen.findByTestId("post-video-player");
+    Object.defineProperty(player, "currentTime", { value: 12.34, configurable: true });
+    fireEvent.click(screen.getByTestId("post-cover-set"));
+    fireEvent.click(await screen.findByTestId("post-publish-button"));
+
+    const chosen = await screen.findByTestId("post-publish-confirm-cover");
+    expect(chosen.textContent).toContain("12.3초");
+    expect(chosen.textContent).not.toContain("첫 장면");
+  });
+
+  /**
    * A photo card is one picture held under a slow zoom: every frame is the same frame. The picker would ask a
    * question whose answers are identical, so it is dropped and a sentence says why — silence would read as a
    * missing feature.
