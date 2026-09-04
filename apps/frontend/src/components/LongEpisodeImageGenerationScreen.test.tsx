@@ -241,6 +241,31 @@ describe("LongEpisodeImageGenerationScreen", () => {
     expect(notice.textContent).not.toContain("첫 에피소드라");
   });
 
+  /**
+   * The one this pair could not tell apart. Both tests above hand the screen a real answer — `available: false`
+   * — and the screen was reading a failed read as the same thing, because both arrived as `null`.
+   *
+   * A 500 here is not "the previous Episode has nothing". It is "we did not find out", and the difference is
+   * six paid pictures: a person told the material is missing generates without continuity on purpose, while a
+   * person told the check failed can retry first. Asserting the negative as well as the positive, because a
+   * screen that simply stopped saying anything would also stop saying the wrong thing — and would leave the
+   * question invisible instead.
+   */
+  it("does not report a failed continuity check as the previous Episode having nothing", async () => {
+    const later = { ...episode("asset_mapping_approved"), episodeNumber: 4 };
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: later }))
+      .mockResolvedValueOnce(jsonResponse(500, { code: "LONG_PROJECT_STORAGE_ERROR", message: "raw backend detail" }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
+      .mockResolvedValue(jsonResponse(200, { episode: later, reviews: reviews(), staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] })));
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={4} onBack={() => {}} />);
+
+    const notice = await screen.findByTestId("episode-image-continuity-unknown");
+    expect(notice.textContent).toContain("확인하지 못했습니다");
+    expect(notice.textContent).not.toContain("raw backend detail");
+    expect(screen.queryByTestId("episode-image-continuity-unavailable")).toBeNull();
+  });
+
   it("draws the scene list from the server's review list, not a six it made up itself", async () => {
     // Four reviews means four scenes on screen and four in the price — the count is reported, never assumed.
     const fourReviews = [1, 2, 3, 4].map((sceneNumber) => ({ sceneNumber, status: "pending" as const, updatedAt: "2026-08-23T00:00:00.000Z" }));

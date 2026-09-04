@@ -102,6 +102,55 @@ describe("LongProjectSettingsScreen", () => {
     expect(countTo(vi.mocked(fetch), "/long-projects/long_test/settings", "PATCH")).toBe(0);
   });
 
+  /**
+   * The gap Cowork Round 475 found: an Episode passed `""` where the style line goes, so nothing anyone said
+   * about how the work should look ever reached a paid image call. The backend now carries the four fields; a
+   * screen with no boxes for them would leave the feature exactly as unreachable as before.
+   *
+   * Asserting the round trip rather than the boxes: four inputs that render and send nothing is the same
+   * feature gap wearing a different coat.
+   */
+  it("sends the art direction it was given, edited, back through PATCH", async () => {
+    const settings = makeLongProjectSettings({ visualStyle: "수채화", color: "차가운 청록", lighting: "", avoid: "" });
+    const fetchMock = stubScreenFetch({ settings });
+    render(<LongProjectSettingsScreen projectId="long_test" onBack={() => {}} />);
+
+    expect(await screen.findByDisplayValue("수채화")).toBeTruthy();
+    fireEvent.change(screen.getByDisplayValue("차가운 청록"), { target: { value: "따뜻한 주황" } });
+    fireEvent.click(screen.getByRole("button", { name: "설정 저장" }));
+
+    expect(JSON.parse(String(callTo(fetchMock, "/long-projects/long_test/settings", "PATCH")[1].body)))
+      .toMatchObject({ settings: { visualStyle: "수채화", color: "따뜻한 주황", lighting: "", avoid: "" } });
+  });
+
+  /**
+   * The one sentence this group exists to carry. 톤 and 메모 sit a few centimetres above these boxes and go to
+   * the script; these go to the picture. Nothing on screen distinguishes them but the words, and the screen's
+   * own top line says everything here reaches 대본 생성 — so without this the page contradicts itself.
+   */
+  it("says the art direction reaches the picture and not the script", async () => {
+    stubScreenFetch({ settings: makeLongProjectSettings() });
+    render(<LongProjectSettingsScreen projectId="long_test" onBack={() => {}} />);
+
+    const scope = await screen.findByTestId("long-settings-style-scope");
+    expect(scope.textContent).toContain("그림에만");
+    expect(scope.textContent).toContain("대본에는 들어가지 않습니다");
+    // And the page-wide line no longer claims otherwise about these four.
+    expect(screen.getByTestId("long-settings-scope").textContent).toContain("그림체");
+  });
+
+  /**
+   * All four blank is the default for every project that existed before these fields did, and it has to keep
+   * meaning "carry on exactly as before" rather than reading as four things left undone.
+   */
+  it("says a blank art direction changes nothing", async () => {
+    stubScreenFetch({ settings: makeLongProjectSettings() });
+    render(<LongProjectSettingsScreen projectId="long_test" onBack={() => {}} />);
+
+    const group = await screen.findByTestId("long-settings-style-group");
+    expect(group.textContent).toContain("비워 두면 지금까지와 똑같습니다");
+  });
+
   it("shows a safe error instead of the raw backend message when reopening fails", async () => {
     stubScreenFetch({ code: "LONG_PROJECT_NOT_FOUND", message: "raw backend detail" }, { settingsStatus: 404 });
     render(<LongProjectSettingsScreen projectId="missing" onBack={() => {}} />);

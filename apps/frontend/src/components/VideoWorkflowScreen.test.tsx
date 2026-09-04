@@ -771,6 +771,23 @@ describe("VideoWorkflowScreen source", () => {
     expect(notice.textContent).toContain("비용 없이 임시 영상으로 만들어집니다");
   });
 
+  /**
+   * The same lie one level up. `paidProvider` cannot be read at all until the progress GET answers, and a
+   * two-way `progress?.paidProvider` sent both "still loading" and "the read failed" to the free sentence — so
+   * a screen that knew nothing announced the cheapest possible answer, which is the direction that costs money.
+   *
+   * A 404 on a stale job id is the ordinary way to get here, and the buttons stay reachable from this state, so
+   * the assertion that matters is the negative one: whatever else it says, it must not say 비용 없이.
+   */
+  it("does not call a job free while it has not been able to read whether it is", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(404, { code: "VIDEO_JOB_NOT_FOUND", message: "raw backend detail" })));
+
+    await screen.findByTestId("progress-error");
+    const notice = screen.getByTestId("provider-mode-notice");
+    expect(notice.textContent).not.toContain("비용 없이");
+    expect(notice.textContent).toContain("아직 확인하지 못했습니다");
+  });
+
   it("warns that real money is being spent once the job reports a paid execution mode", async () => {
     const running = makeProgress({
       completedSceneNumbers: [1],

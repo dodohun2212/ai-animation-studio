@@ -140,8 +140,12 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
           same three facts: what reaches the AI, that blank is allowed, and that already-written Episodes do not
           change. Four restatements of one rule is how a screen ends up too long to read, and a person who
           stops reading misses the one line that was specific to the card in front of them. */}
+      {/* "여기 적은 내용은" was true until 그림체 arrived, and a line that is true of most of a screen is the
+          kind that stops being read. The exception is named here rather than left for the person to discover:
+          those four boxes are the only ones on this screen that do not reach the script. */}
       <p data-testid="long-settings-scope" className="text-sm text-slate-400">
-        여기 적은 내용은 <strong className="text-slate-200">회차 나누기</strong>와 <strong className="text-slate-200">대본 생성</strong> 때 AI에게 전달됩니다.
+        여기 적은 내용은 <strong className="text-slate-200">회차 나누기</strong>와 <strong className="text-slate-200">대본 생성</strong> 때 AI에게 전달됩니다
+        — <strong className="text-slate-200">그림체</strong> 칸 넷만 예외로 그림 쪽으로 갑니다.
         빈 칸은 AI가 알아서 정하고, <strong className="text-slate-200">이미 만든 회차는 다시 만들어야</strong> 반영됩니다.
       </p>
       {state.error && !state.settings && (
@@ -275,6 +279,46 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
               </span>
             </label>
           </div>
+            </div>
+          </details>
+          {/*
+            The art direction — the only fields on this screen that reach the image model.
+            Four boxes, matching the four the backend's style line is actually built from; the short project's
+            seven include three that go elsewhere, and building those here would put boxes on screen that do
+            nothing, which is the defect this repository has spent the week removing.
+
+            The summary counts what is filled rather than listing it: these are free text and any one of them
+            can be a sentence, which would push the group's own heading off the line.
+          */}
+          <details className="md:col-span-2 rounded-xl border border-white/10 bg-slate-950/30" data-testid="long-settings-style-group">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-200">
+              그림체
+              <span className="ml-2 font-normal text-slate-500">
+                {[state.settings.visualStyle, state.settings.color, state.settings.lighting, state.settings.avoid].filter((value) => value.trim()).length > 0
+                  ? `${[state.settings.visualStyle, state.settings.color, state.settings.lighting, state.settings.avoid].filter((value) => value.trim()).length}칸 채움`
+                  : "(비워 두면 지금까지와 똑같습니다)"}
+              </span>
+            </summary>
+            <div className="grid gap-4 px-4 pb-4 md:grid-cols-2">
+              {/* The whole reason this group is separate. 톤 and 메모 sit a few centimetres above and reach the
+                  script and not the picture; these reach the picture and not the script. Nothing on screen makes
+                  that visible unless it is said, and not saying it is the misunderstanding this box grew out of:
+                  Episodes were drawn for weeks with no art direction at all because there was nowhere to put it. */}
+              <p data-testid="long-settings-style-scope" className="md:col-span-2 text-sm text-slate-400">
+                이 넷은 <strong className="text-slate-200">그림에만</strong> 갑니다. 대본에는 들어가지 않습니다 — 위의 톤·메모와 반대입니다.
+                <span className="mt-1 block text-xs text-slate-500">전부 비워 두면 스타일 지시 자체가 나가지 않아, 지금까지 만들어진 회차와 똑같이 그려집니다.</span>
+              </p>
+              <Field label="시각 스타일" value={state.settings.visualStyle} onChange={(value) => setField("visualStyle", value)} />
+              <Field label="색감" value={state.settings.color} onChange={(value) => setField("color", value)} />
+              <Field label="조명" value={state.settings.lighting} onChange={(value) => setField("lighting", value)} />
+              <label className="block text-sm text-slate-300">
+                피할 요소
+                <input className={fieldClassName} value={state.settings.avoid} onChange={(event) => setField("avoid", event.target.value)} />
+                {/* Said because it is surprising and costs money to learn the other way: the video model reads
+                    negatives backwards, so this one field stops at the picture even though the three above it
+                    describe the same shot. */}
+                <span className="mt-1.5 block text-xs text-slate-500">그림에서 빼라고 전달됩니다. <strong className="text-slate-400">영상 쪽에는 가지 않습니다</strong> — 영상 AI는 &quot;~하지 마라&quot;를 반대로 알아듣습니다.</span>
+              </label>
             </div>
           </details>
           {/* Closed by default: these shape the story rather than the video, and a blank one is a complete

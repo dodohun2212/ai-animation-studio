@@ -66,6 +66,15 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
   const [continuityReference, setContinuityReference] = useState<LongEpisodeContinuityReference | null>(null);
   const [continuityReferenceLoading, setContinuityReferenceLoading] = useState(true);
   /**
+   * Whether the continuity read itself failed, kept apart from the reference being absent.
+   *
+   * Both used to land on `null`, and `null` was rendered as "이전 에피소드의 마지막 장면 자료가 아직 없어서" — a
+   * definite statement about the previous Episode, produced by a screen that had not managed to ask. A 500 or a
+   * dropped connection on Episode 4 of a running series therefore told the person the material was missing when
+   * it was sitting there, right before they bought six pictures with no continuity attached.
+   */
+  const [continuityReferenceFailed, setContinuityReferenceFailed] = useState(false);
+  /**
    * Only so the image box takes this project's real shape. A 16:9 Episode really does produce landscape images,
    * and fitting one into a portrait box shows the reviewer a tall slice of a picture that is not tall — a paid
    * approve/regenerate decision made against something the model never produced. Failure is silent on purpose:
@@ -116,9 +125,10 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
       })
       .catch((caught: unknown) => { if (!cancelled) setError(toLongProjectDisplayError(caught)); })
       .finally(() => { if (!cancelled) setLoading(false); });
+    setContinuityReferenceFailed(false);
     getLongEpisodeContinuityReference(projectId, episodeNumber)
       .then((response) => { if (!cancelled) setContinuityReference(response.reference); })
-      .catch(() => { if (!cancelled) setContinuityReference(null); })
+      .catch(() => { if (!cancelled) { setContinuityReference(null); setContinuityReferenceFailed(true); } })
       .finally(() => { if (!cancelled) setContinuityReferenceLoading(false); });
     /* Second source, not the first. The Episode now carries its own aspectRatio — added precisely so screens
        stop each landing on their own assumption — and this read only covers an Episode whose GET did not fill
@@ -332,7 +342,11 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
       {!continuityReferenceLoading && continuityReference?.available && <p data-testid="episode-image-continuity-available" className="text-sm text-violet-200">에피소드 {continuityReference.previousEpisodeNumber}의 마지막 장면({continuityReference.sourceSceneNumber}번)이 이 에피소드 1번 장면의 기준이 됩니다.</p>}
       {/* Episode 1 has no previous Episode by definition — saying a reference is "missing" there reads as a
           prerequisite the user failed to meet, when nothing is wrong at all. */}
-      {!continuityReferenceLoading && !continuityReference?.available && <p data-testid="episode-image-continuity-unavailable" className="text-sm text-slate-400">{episodeNumber <= 1 ? "첫 에피소드라 이어받을 이전 장면이 없습니다. 이 에피소드부터 새로 시작합니다." : "이전 에피소드의 마지막 장면 자료가 아직 없어서, 이어받지 않고 이 에피소드만으로 만듭니다."}</p>}
+      {/* Could not ask, which is not the same as asked and there is none. Amber rather than the grey of the
+          line below: "there is nothing to inherit" is a settled fact the person can generate past, while this
+          one is an open question sitting in front of a paid batch. */}
+      {!continuityReferenceLoading && continuityReferenceFailed && <p data-testid="episode-image-continuity-unknown" className="text-sm text-amber-300">이전 에피소드의 마지막 장면 자료를 확인하지 못했습니다. 이어받을 게 있는지 알 수 없어서, 지금 만들면 이어받지 않고 만들어질 수 있습니다.</p>}
+      {!continuityReferenceLoading && !continuityReferenceFailed && !continuityReference?.available && <p data-testid="episode-image-continuity-unavailable" className="text-sm text-slate-400">{episodeNumber <= 1 ? "첫 에피소드라 이어받을 이전 장면이 없습니다. 이 에피소드부터 새로 시작합니다." : "이전 에피소드의 마지막 장면 자료가 아직 없어서, 이어받지 않고 이 에피소드만으로 만듭니다."}</p>}
       {episode && isBefore(episode.status, "asset_mapping_approved") && <p data-testid="episode-image-not-eligible" className="text-sm text-amber-300">에피소드 이미지 생성을 시작하려면 먼저 참고 이미지 연결을 승인하세요.</p>}
       {/* The short project has said all of this since the run was made pollable; the Episode showed only a list
           of scenes reading 만드는 중, with nothing about whether leaving was safe. That last sentence is the one

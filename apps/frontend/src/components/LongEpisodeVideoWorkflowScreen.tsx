@@ -86,14 +86,24 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
    * only be set by pressing 생성 in that same page load. Money had already been spent and the screen could not
    * reach it.
    *
-   * A failed lookup falls through to the preview rather than showing an error: an Episode that never had a job
-   * is the ordinary case, and the preview's own error is the one worth reading.
+   * An Episode that never had a job is the ordinary case, and the route says so outright — it answers with
+   * `jobId: null` and a 200, never an error (episode-videos.service.ts's currentJob: "Idleness is reported as
+   * null instead of an error"). So reaching the catch means the question was not answered, which a blanket
+   * `catch { jobId = null }` turned into the answer "there is none": a 500 or a dropped connection put the paid
+   * 미리보기 and its price in front of an Episode whose clips were already bought, while the 검토 카드 and the
+   * 회수 button — the two things that reach that spent money — disappeared with no error anywhere. That is the
+   * regression this effect was written to prevent, reopened for every failure that is not "no job".
+   *
+   * The error is shown instead, and the preview is not attempted: an Episode never scripted answers this route
+   * with LONG_EPISODE_VIDEOS_NOT_ALLOWED, and the preview route answers the same way, so falling through only
+   * ever produced the same sentence one request later.
    */
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       let jobId: string | null = null;
-      try { jobId = (await getLongEpisodeCurrentVideoJob(projectId, episodeNumber)).jobId; } catch { jobId = null; }
+      try { jobId = (await getLongEpisodeCurrentVideoJob(projectId, episodeNumber)).jobId; }
+      catch (caught) { if (!cancelled) setError(toLongProjectDisplayError(caught)); return; }
       if (cancelled) return;
       if (jobId === null) { await loadPreview(); return; }
       try {

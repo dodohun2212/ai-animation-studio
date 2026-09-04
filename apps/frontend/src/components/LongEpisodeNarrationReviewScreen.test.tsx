@@ -119,6 +119,27 @@ describe("LongEpisodeNarrationReviewScreen", () => {
     expect(screen.queryByText(/대본 화면의 "읽어줄 문장" 항목에서 고치면 됩니다/)).toBeNull();
   });
 
+  /**
+   * The third state the pair above does not have: not yet read, and never read.
+   *
+   * `scriptEditable` is false in both, and false rendered the read-only sentence — so a screen that had not
+   * asked told the person, as a fact about workflow stage, that this Episode is past 대본 검토 and the sentences
+   * can no longer be fixed. Someone who believes that stops trying to correct a bad line and buys the voice for
+   * it instead, which is the per-scene charge this screen exists to let them avoid.
+   *
+   * Silence is the right answer here, not a third sentence: the error alert below already says what happened.
+   */
+  it("does not claim the script is past editing when the review could not be read", async () => {
+    renderScreen(stubFetchByRoute(
+      { [SETTINGS]: { settings: settings(), aspectRatioChangeable: true } },
+      { [REVIEW]: { status: 500, body: { code: "LONG_PROJECT_STORAGE_ERROR", message: "raw backend detail" } } },
+    ));
+
+    await screen.findByTestId("episode-narration-load-error");
+    expect(screen.queryByText(/문장을 더 고칠 수 없습니다/)).toBeNull();
+    expect(screen.queryByText(/대본 화면의 "읽어줄 문장" 항목에서 고치면 됩니다/)).toBeNull();
+  });
+
   it("hides every paid control when the project has narration turned off, and says why", async () => {
     // The backend answers LONG_EPISODE_NARRATION_NOT_ENABLED here, so an enabled button would be a button that
     // is guaranteed to fail. Subtitles-only is a real mode, and the sentences are still doing a job in it.

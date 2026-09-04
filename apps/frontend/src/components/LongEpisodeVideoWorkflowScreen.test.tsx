@@ -241,6 +241,30 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     expect(countTo(fetchMock, "/videos/preview")).toBe(0);
   });
 
+  /**
+   * The other half of that reload bug, and the half the test above could not see: it hands the lookup a real
+   * answer, so a lookup that never answered took the identical path.
+   *
+   * The route says "no job" with `jobId: null` and a 200 — it never errors to mean that — so a 500 here is the
+   * question going unanswered, and answering it as "none" put the paid 미리보기 and its $1.50 in front of an
+   * Episode whose clips were already bought, with the 검토 카드 and 회수 버튼 gone and nothing on screen saying
+   * why. Asserting the preview was not requested is the assertion that matters: the sentence alone would pass
+   * on a screen that showed an error *and* offered to buy everything again.
+   */
+  it("does not offer to buy the clips again when it could not find out whether a job exists", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /videos/generations/current": withStatus(500, { code: "LONG_PROJECT_STORAGE_ERROR", message: "raw backend detail" }),
+      "GET /videos/preview": preview,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).not.toContain("raw backend detail");
+    expect(countTo(fetchMock, "/videos/preview")).toBe(0);
+    expect(screen.queryByTestId("episode-video-open-confirm")).toBeNull();
+  });
+
   it("fetches the clips already generated without regenerating any, and names the scenes it could not fetch", async () => {
     const review = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" }));
     const recovered = { ...progress("succeeded", [1, 2, 3, 4, 5, 6]), recoveredSceneNumbers: [1, 2, 3, 4, 5], unrecoverableScenes: [{ sceneNumber: 6, reason: "출력 링크가 만료되었습니다" }] };

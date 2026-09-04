@@ -131,6 +131,12 @@ export function LongEpisodeNarrationReviewScreen({ projectId, episodeNumber, onB
    * Whether the Episode's script can still be edited. Only during script_review — once approved, the script
    * screen is read-only, so telling someone to "go fix the sentence there" would send them to a disabled
    * field. The advice changes rather than being dropped: what they can still do here is worth saying.
+   *
+   * False also covers "we have not read the Episode yet", so this may only be branched on inside a `ready`
+   * gate. Read outside one it says the Episode is past script review — a definite claim about workflow stage —
+   * while the screen is still loading, and permanently if the read fails. Someone told their sentences can no
+   * longer be fixed stops trying and buys TTS for the wrong line instead, which is the charge this screen
+   * exists to let them avoid.
    */
   const scriptEditable = state.status === "ready" && state.episodeStatus === "script_review";
   const withText = narrations.filter((item) => item.narration.trim());
@@ -224,9 +230,12 @@ export function LongEpisodeNarrationReviewScreen({ projectId, episodeNumber, onB
       <p className="text-sm leading-relaxed text-slate-400">
         음성으로 만들어질 문장입니다. 음성 생성은 장면마다 한 번씩 비용이 들기 때문에, 만들기 전에 여기서 먼저 읽어볼 수
         있게 했습니다.{" "}
-        {scriptEditable
+        {/* Only once the Episode has actually been read. Either sentence is a statement about which stage this
+            Episode is in, and neither is knowable while the load is in flight or after it failed — the loading
+            spinner and the error alert directly below say the true thing for those two states. */}
+        {state.status === "ready" && (scriptEditable
           ? "문장을 고치려면 대본 화면의 \"읽어줄 문장\" 항목에서 고치면 됩니다 — 대본을 새로 만들 필요는 없습니다."
-          : "이 에피소드는 대본 검토 단계를 지나 문장을 더 고칠 수 없습니다. 여기서는 읽어보고 음성만 만들 수 있습니다."}
+          : "이 에피소드는 대본 검토 단계를 지나 문장을 더 고칠 수 없습니다. 여기서는 읽어보고 음성만 만들 수 있습니다.")}
       </p>
 
       {state.status === "loading" && <Spinner label="내레이션을 불러오는 중..." />}

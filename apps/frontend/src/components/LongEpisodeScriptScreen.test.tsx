@@ -241,6 +241,29 @@ describe("LongEpisodeScriptScreen", () => {
       expect(screen.queryByTestId("episode-script-missing-continuity")).toBeNull();
     });
 
+    /**
+     * The gap the two "says nothing" tests above could not see. Both of them are the screen having checked and
+     * found nothing to warn about; a failed project read produced the identical silence, so the paid button was
+     * offered with a clean bill of health the screen had never actually obtained.
+     *
+     * The button stays enabled on purpose — blocking a purchase because an advisory read failed trades one
+     * wrong answer for a worse one — so the whole fix is the sentence, and that is what this asserts.
+     */
+    it("says the check failed rather than falling silent when the project cannot be read", async () => {
+      vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) =>
+        String(input) === "/long-projects/long"
+          ? jsonResponse(500, { code: "LONG_PROJECT_STORAGE_ERROR", message: "raw backend detail" })
+          : jsonResponse(200, { episode: laterEpisode })));
+      render(<LongEpisodeScriptScreen projectId="long" episodeNumber={3} onBack={() => {}} />);
+
+      const notice = await screen.findByTestId("episode-script-continuity-unknown");
+      expect(notice.textContent).toContain("확인하지 못했습니다");
+      expect(notice.textContent).not.toContain("raw backend detail");
+      // Not turned into a false positive either: it must not name an Episode it never read.
+      expect(screen.queryByTestId("episode-script-missing-continuity")).toBeNull();
+      expect(screen.getByRole("button", { name: "대본 초안 만들기" })).not.toBeDisabled();
+    });
+
     it("never asks about earlier Episodes on the first one", async () => {
       const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { episode: episode("outline_ready", false) }));
       vi.stubGlobal("fetch", fetchMock);

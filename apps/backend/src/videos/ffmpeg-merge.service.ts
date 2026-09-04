@@ -116,9 +116,11 @@ export interface MergeSceneInput {
  * belongs. `slow` buys a few percent of that quality for encode time nobody is watching; this runs once per
  * Episode, after minutes of paid generation.
  *
- * The cost is file size — roughly three times, and paid in a folder the app already prunes (`normalized/` is
- * deleted after the final file exists). A person who paid for these clips should not have them thrown away by
- * the last step, and a still-image card, which compresses almost for free, barely moves either way.
+ * The cost is file size, measured on real files rather than guessed at: Episode 4 goes from 12.5MB to 24.4MB
+ * and a 10-second photo card from 4.6MB to 10.1MB — about twice, both of them. A card is not the cheap case it
+ * looks like: the slow zoom means every frame differs from the last, so it pays for motion like anything else.
+ * Encode time roughly doubles too (4.9s to 8.3s for six scenes), once per Episode after minutes of paid
+ * generation. Worth it: a person who paid for these clips should not have them thrown away by the last step.
  *
  * Named once because both branches below encode the same scenes with the same intent, and two copies of an
  * encoder setting is how one of them silently keeps the old default.

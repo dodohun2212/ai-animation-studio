@@ -72,6 +72,15 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
    * nothing rather than inventing an absence.
    */
   const [unsavedBefore, setUnsavedBefore] = useState<number[]>([]);
+  /**
+   * Whether the check above could not be made, which the empty list cannot express.
+   *
+   * "Says nothing rather than inventing an absence" was only half right: on this screen saying nothing is
+   * itself a claim, because the paid 대본 초안 만들기 button sits directly below with no caveat on it. A failed
+   * read therefore looked exactly like a clean bill of health, right before the one purchase the warning was
+   * written to precede.
+   */
+  const [continuityCheckFailed, setContinuityCheckFailed] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
   const busy = useRef(false);
   /**
@@ -96,8 +105,9 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
   };
 
   useEffect(() => {
-    if (episodeNumber <= 1) { setUnsavedBefore([]); return; }
+    if (episodeNumber <= 1) { setUnsavedBefore([]); setContinuityCheckFailed(false); return; }
     let cancelled = false;
+    setContinuityCheckFailed(false);
     getLongProject(projectId)
       .then((response) => {
         if (cancelled) return;
@@ -105,8 +115,9 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
           .filter((episode) => episode.episodeNumber < episodeNumber && episode.continuitySaved === false)
           .map((episode) => episode.episodeNumber));
       })
-      // Advisory only. A failed read must never take the screen down or claim an absence it did not confirm.
-      .catch(() => { if (!cancelled) setUnsavedBefore([]); });
+      // Advisory only. A failed read must never take the screen down or claim an absence it did not confirm —
+      // and an empty list beside an unqualified paid button is that claim, so the failure is carried separately.
+      .catch(() => { if (!cancelled) { setUnsavedBefore([]); setContinuityCheckFailed(true); } });
     return () => { cancelled = true; };
   }, [projectId, episodeNumber]);
 
@@ -190,6 +201,14 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
               silently skips the missing ones, so the only way to learn this today is to finish the script and
               notice a character nobody introduced — by which point it is paid for. Stated as a fact with the
               way out beside it, not as a blocker: skipping a memo is allowed, and some are skipped on purpose. */}
+          {/* Could not check, which is not the same as checked and found nothing. Says only what is true — the
+              question is open — and leaves the button alone: blocking a paid action on a failed advisory read
+              would trade one wrong answer for a worse one. */}
+          {continuityCheckFailed && (
+            <p role="status" data-testid="episode-script-continuity-unknown" className="rounded-xl border border-amber-400/25 bg-amber-500/[0.06] px-4 py-3 text-sm text-amber-200">
+              앞 회차의 <span className="font-semibold text-amber-100">이어쓰기 메모</span>가 저장돼 있는지 확인하지 못했습니다. 빠진 메모가 있어도 여기서는 알 수 없으니, 그대로 진행하시려면 그 점을 감안해 주세요.
+            </p>
+          )}
           {unsavedBefore.length > 0 && (
             <p role="status" data-testid="episode-script-missing-continuity" className="rounded-xl border border-sky-400/25 bg-sky-500/[0.06] px-4 py-3 text-sm text-sky-200">
               <strong className="text-sky-100">{unsavedBefore.join("·")}화</strong>의 이어쓰기 메모가 없어서, 이 대본은 그 회차 내용을 모르는 채로 쓰입니다.

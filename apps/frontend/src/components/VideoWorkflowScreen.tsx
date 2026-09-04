@@ -404,11 +404,20 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
        * figure arrived. The inference was wrong in the direction that matters: a real paid job omits its cost
        * line when the budget ledger cannot be read, and this line then told the person their paid job was free.
        * The field is required, never optional, precisely so that "missing" can never be read as "free" again.
+       *
+       * The same rule, one level up. `progress` is null while the GET is in flight and stays null forever if it
+       * fails, and a two-way `progress?.paidProvider` sent both of those to the free sentence — so a paid job
+       * whose progress could not be read announced itself as free, which is the exact claim the field exists to
+       * make impossible. Not knowing is its own answer and gets its own line: the buttons below stay reachable
+       * (a person who came here to stop a run must still be able to), so the sentence has to say plainly that
+       * the money question is unanswered rather than answer it wrongly in the cheap direction.
        */}
       <p className="text-sm text-amber-300" data-testid="provider-mode-notice">
-        {progress?.paidProvider
-          ? "이 작업은 실제 유료 Runway API를 호출합니다. 장면마다 비용이 발생하며, 재생성하면 그만큼 다시 청구됩니다."
-          : "Runway 키가 연결되어 있지 않아 비용 없이 임시 영상으로 만들어집니다. 키를 연결하면 실제 유료 요청이 전송됩니다."}
+        {progress === null
+          ? "이 작업이 유료인지 아직 확인하지 못했습니다. 진행 상황을 읽어야 알 수 있어서, 유료일 수도 있다고 보고 다루세요."
+          : progress.paidProvider
+            ? "이 작업은 실제 유료 Runway API를 호출합니다. 장면마다 비용이 발생하며, 재생성하면 그만큼 다시 청구됩니다."
+            : "Runway 키가 연결되어 있지 않아 비용 없이 임시 영상으로 만들어집니다. 키를 연결하면 실제 유료 요청이 전송됩니다."}
       </p>
 
       {progressState.status === "loading" && <Spinner label="진행 상황을 불러오는 중..." />}
