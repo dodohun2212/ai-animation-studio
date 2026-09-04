@@ -32,10 +32,21 @@ export type { InstagramErrorCategory } from "./instagram-request.js";
  *
  * `thumbOffsetMs` is optional for the opposite reason: Meta's default is 0, the first frame, so omitting it and
  * sending 0 produce the same Reel. It rides on this call because the resumable-upload documentation lists it
- * among the optional Reels parameters of this exact request — the same list `caption` is on, and captions
- * demonstrably arrive through here, which is the closest this repository can get to verifying it without
- * publishing something real. The general media reference documents the field itself: "Location, in
- * milliseconds, of the video or reel frame to be used as the cover thumbnail image."
+ * among the optional Reels parameters of this exact request — the same list `caption` is on.
+ *
+ * The media reference states the field applies to "videos and reels" and gives its unit: "Location, in
+ * milliseconds, of the video or reel frame to be used as the cover thumbnail image. The default value is 0,
+ * which is the first frame of the video or reel." So the parameter is right, the unit is right, and the request
+ * carrying it is the right one.
+ *
+ * NEVER add `cover_url` here without removing this. The same reference: "If you specify both `cover_url` and
+ * `thumb_offset`, we use `cover_url` and ignore `thumb_offset`." A cover image added later as an extra feature
+ * would silently turn the frame picker into a control that does nothing, and nothing in this app would report
+ * it — the request would still be accepted and the record would still say which frame was asked for.
+ *
+ * What this app cannot see is what Instagram then shows: the published media is never read back, so a wrong
+ * cover and a right one look identical from here (see the confirmation panel, which promises a frame rather
+ * than reporting one).
  */
 export async function createInstagramResumableContainer(accessToken: string, igUserId: string, caption: string, thumbOffsetMs?: number, options: RetryOptions = {}): Promise<{ containerId: string }> {
   if (!igUserId.trim()) throw new InstagramAdapterError("invalid_request", "Instagram 계정 ID가 필요합니다.");
