@@ -1,23 +1,23 @@
 import type { SceneNumber } from "./domain.js";
 
-export type AssetMappingStatus =
-  | "confirmed"
-  | "suggested"
-  | "ambiguous"
-  | "unmatched"
-  | "excluded"
-  | "invalid";
+/**
+ * Arrays first, types derived — the same rule and the same reason as ASSET_TYPES in asset.ts: a union
+ * written here and a `Set` written out again in the server that reads stored mappings is two lists that
+ * must agree and cannot be made to.
+ *
+ * mapping-storage.ts held all three of these sets spelled out. They agreed today, and the direction they
+ * would have failed in is the expensive one: a value added to the contract and not to that reader makes
+ * every stored mapping carrying it unreadable, which is how a project once vanished from its own list with
+ * no error anywhere (docs/06_DECISIONS.md, Cowork Round 436).
+ */
+export const ASSET_MAPPING_STATUSES = ["confirmed", "suggested", "ambiguous", "unmatched", "excluded", "invalid"] as const;
+export type AssetMappingStatus = (typeof ASSET_MAPPING_STATUSES)[number];
 
-export type AssetMappingAssignmentSource =
-  | "manual"
-  | "auto"
-  | "migrated"
-  | "approved_generated_image";
+export const ASSET_MAPPING_ASSIGNMENT_SOURCES = ["manual", "auto", "migrated", "approved_generated_image"] as const;
+export type AssetMappingAssignmentSource = (typeof ASSET_MAPPING_ASSIGNMENT_SOURCES)[number];
 
-export type AssetMappingVersionPolicy =
-  | "pinned_version"
-  | "follow_latest"
-  | "snapshot";
+export const ASSET_MAPPING_VERSION_POLICIES = ["pinned_version", "follow_latest", "snapshot"] as const;
+export type AssetMappingVersionPolicy = (typeof ASSET_MAPPING_VERSION_POLICIES)[number];
 
 export type AssetMappingSceneScope =
   | { kind: "all" }

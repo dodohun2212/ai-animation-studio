@@ -1,4 +1,5 @@
 import {
+  ASSET_MAPPING_ASSIGNMENT_SOURCES, ASSET_MAPPING_STATUSES, ASSET_MAPPING_VERSION_POLICIES,
   MAX_SCENE_COUNT,
   type AssetMappingAssignmentSource, type AssetMappingSceneScope, type AssetMappingStatus, type AssetMappingVersionPolicy,
   type ProjectAssetMapping, type ProjectAssetMappingReview, type SceneNumber,
@@ -20,9 +21,11 @@ export interface StoredMappingReview {
   text_only_confirmed: boolean; legacy_confirmed: boolean; reviewed_scenes: SceneNumber[];
 }
 
-const statuses = new Set<AssetMappingStatus>(["confirmed", "suggested", "ambiguous", "unmatched", "excluded", "invalid"]);
-const sources = new Set<AssetMappingAssignmentSource>(["manual", "auto", "migrated", "approved_generated_image"]);
-const policies = new Set<AssetMappingVersionPolicy>(["pinned_version", "follow_latest", "snapshot"]);
+// Built from the contract, never spelled out again: this is the reader, so a value it does not know makes
+// every stored mapping carrying it unreadable rather than merely unhandled.
+const statuses: ReadonlySet<string> = new Set(ASSET_MAPPING_STATUSES);
+const sources: ReadonlySet<string> = new Set(ASSET_MAPPING_ASSIGNMENT_SOURCES);
+const policies: ReadonlySet<string> = new Set(ASSET_MAPPING_VERSION_POLICIES);
 const scene = (value: unknown): value is SceneNumber => Number.isInteger(value) && Number(value) >= 1 && Number(value) <= MAX_SCENE_COUNT;
 const iso = (value: unknown): value is string => typeof value === "string" && !Number.isNaN(Date.parse(value));
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === "string");

@@ -3,12 +3,14 @@ import type { Dirent } from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import type { AssetType, RunLegacyReferenceMigrationResponse } from "@ai-animation-studio/shared";
+import { ASSET_TYPES, type AssetType, type RunLegacyReferenceMigrationResponse } from "@ai-animation-studio/shared";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { LocalProjectAssetMappingsRepository } from "./mappings.repository.js";
 import { parseScope, type StoredAssetMapping } from "./mapping-storage.js";
 
-const REFERENCE_TYPES = new Set<AssetType>(["character", "style", "background", "object", "general_reference"]);
+// The contract's own list. Spelled out, an asset type added later would not be rejected here — it would be
+// quietly migrated as general_reference, which is worse: the file reads fine and the type is simply wrong.
+const REFERENCE_TYPES: ReadonlySet<string> = new Set(ASSET_TYPES);
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
 interface ParsedLegacyReference {

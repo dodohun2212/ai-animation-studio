@@ -1,3 +1,4 @@
+import { ASSET_MAPPING_ASSIGNMENT_SOURCES, ASSET_MAPPING_STATUSES, ASSET_MAPPING_VERSION_POLICIES } from "@ai-animation-studio/shared";
 import { describe, expect, it } from "vitest";
 import { parseMappings, parseReview, parseStoredReview, toPublicMapping } from "./mapping-storage.js";
 
@@ -13,6 +14,30 @@ describe("Project Asset Mapping snake_case storage", () => {
     const parsed = parseMappings([mapping]);
     expect(toPublicMapping(parsed[0]!)).toMatchObject({ mappingId: "MAP-ABCDEF", sceneScope: { kind: "range", startScene: 2, endScene: 4 }, snapshot: null });
   });
+  /**
+   * This is the reader for files already on disk, so the three sets it checks against had to stop being copies.
+   *
+   * A value added to the contract and not to a hand-written set here does not make a feature missing — it makes
+   * every stored mapping carrying that value **unreadable**, and the failure has a precedent: a mode written by
+   * the merge that its own storage schema refused to read back made whole projects vanish from their list with
+   * no error anywhere (Cowork Round 436). So every value the contract allows has to survive a round trip.
+   */
+  it("reads back every status, assignment source and version policy the contract allows", () => {
+    for (const status of ASSET_MAPPING_STATUSES) {
+      expect(parseMappings([{ ...mapping, status }])[0]?.status, status).toBe(status);
+    }
+    for (const assignment_source of ASSET_MAPPING_ASSIGNMENT_SOURCES) {
+      expect(parseMappings([{ ...mapping, assignment_source }])[0]?.assignment_source, assignment_source).toBe(assignment_source);
+    }
+    // `snapshot` is the one policy that needs its three snapshot fields, so it is given them rather than skipped.
+    for (const version_policy of ASSET_MAPPING_VERSION_POLICIES) {
+      const extra = version_policy === "snapshot"
+        ? { snapshot_path: "asset_snapshots/a.png", snapshot_sha256: "a".repeat(64), snapshot_source_version: 1 }
+        : {};
+      expect(parseMappings([{ ...mapping, version_policy, ...extra }])[0]?.version_policy, version_policy).toBe(version_policy);
+    }
+  });
+
   it("rejects unknown fields, unsafe snapshot paths, and incomplete approved reviews", () => {
     expect(() => parseMappings([{ ...mapping, unknown_field: true }])).toThrow();
     expect(() => parseMappings([{ ...mapping, version_policy: "snapshot", snapshot_path: "../escape.png", snapshot_sha256: "a".repeat(64), snapshot_source_version: 1 }])).toThrow();
