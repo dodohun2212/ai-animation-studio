@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toApiEpisodeScript } from "./episode-script-format.js";
+import { camelKeys, snakeKeys, toApiEpisodeScript } from "./episode-script-format.js";
 
 const scene = (overrides: Record<string, unknown> = {}) => ({
   number: 1, description: "d", visual_action: "v", start_motion: "s", main_motion: "m", end_motion: "e",
@@ -28,5 +28,30 @@ describe("toApiEpisodeScript", () => {
     const result = toApiEpisodeScript({ title: "t", synopsis: "s", ending: "e", scenes: [scene()] });
     expect(result?.scenes[0]?.narration).toBeUndefined();
     expect("narration" in result!.scenes[0]!).toBe(false);
+  });
+});
+
+/**
+ * The two spellings stay in step, and both cover the whole of LongEpisodeScene.
+ *
+ * These lists were declared twice, byte for byte, in this file and in episode-scripts.service.ts. Between them
+ * they produce every LongEpisodeScene the app ever returns, through an `as unknown as` cast that cannot check
+ * the result — so a field added to that interface had to be found in both places, and whoever found one shipped
+ * a script complete on some paths and short a field on others. There is one copy now, and this holds it against
+ * the interface rather than against the other copy, which is what a second list can only ever do.
+ */
+describe("scene field name lists", () => {
+  it("names every LongEpisodeScene field once, in both spellings, index-aligned", () => {
+    // Written out rather than derived: deriving it from the same constant the code uses would assert that a
+    // thing equals itself. This is the contract, restated by hand, so a field added to LongEpisodeScene and not
+    // to the lists turns this red.
+    const contract = ["number", "description", "visualAction", "startMotion", "mainMotion", "endMotion", "shotSize",
+      "cameraAngle", "composition", "lensFeel", "focusSubject", "cameraMotion", "environmentMotion", "motionSpeed",
+      "motionIntensity", "expressionChange", "continuityHint"];
+
+    expect([...camelKeys]).toEqual(contract);
+    expect(camelKeys).toHaveLength(snakeKeys.length);
+    // Index-aligned, because every reader zips them by position: snakeKeys[i] is camelKeys[i] in stored form.
+    expect([...snakeKeys]).toEqual(contract.map((key) => key.replace(/[A-Z]/gu, (letter) => `_${letter.toLowerCase()}`)));
   });
 });

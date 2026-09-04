@@ -23,9 +23,8 @@ import { storyBibleBasicForPrompt } from "./story-bible-basic.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
+import { camelKeys, snakeKeys } from "./episode-script-format.js";
 
-const snakeKeys = ["number", "description", "visual_action", "start_motion", "main_motion", "end_motion", "shot_size", "camera_angle", "composition", "lens_feel", "focus_subject", "camera_motion", "environment_motion", "motion_speed", "motion_intensity", "expression_change", "continuity_hint"] as const;
-const camelKeys = ["number", "description", "visualAction", "startMotion", "mainMotion", "endMotion", "shotSize", "cameraAngle", "composition", "lensFeel", "focusSubject", "cameraMotion", "environmentMotion", "motionSpeed", "motionIntensity", "expressionChange", "continuityHint"] as const;
 type StoredEpisode = Record<string, unknown> & { episode_id: string; number: number; title: string; summary: string; core_event: string; conflict: string; cliffhanger: string; next_connection: string; duration_seconds: number; scene_count: number; approved: boolean; state: LongEpisodeStatus; script: Record<string, unknown>; script_history: unknown[]; script_revision: number; outline: Record<string, unknown>; updated_at: string; last_script_request_id?: string; instagram_post?: unknown; previous_instagram_posts?: unknown; used_audio?: unknown };
 
 const asObject = (value: unknown, error = longInvalidData): Record<string, unknown> => { if (!value || typeof value !== "object" || Array.isArray(value)) throw error(); return value as Record<string, unknown>; };

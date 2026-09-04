@@ -1,7 +1,18 @@
 import type { LongEpisodeScene, LongEpisodeScript } from "@ai-animation-studio/shared";
 
-const snakeKeys = ["number", "description", "visual_action", "start_motion", "main_motion", "end_motion", "shot_size", "camera_angle", "composition", "lens_feel", "focus_subject", "camera_motion", "environment_motion", "motion_speed", "motion_intensity", "expression_change", "continuity_hint"] as const;
-const camelKeys = ["number", "description", "visualAction", "startMotion", "mainMotion", "endMotion", "shotSize", "cameraAngle", "composition", "lensFeel", "focusSubject", "cameraMotion", "environmentMotion", "motionSpeed", "motionIntensity", "expressionChange", "continuityHint"] as const;
+/**
+ * The scene field names, in the one order both spellings share, exported because two files need them.
+ *
+ * They were declared twice, byte for byte, here and in episode-scripts.service.ts — and between them they are
+ * the whole of LongEpisodeScene, produced through an `as unknown as` cast that cannot check the result. So a
+ * field added to that interface has to be found in both lists, and whoever finds one ships a script that is
+ * complete on some paths and short a field on others. That is the sentence toEpisodeDetail's own comment
+ * already carries about five copies of a mapper; this is the same shape with two.
+ *
+ * Index-aligned: snakeKeys[i] is the stored spelling of camelKeys[i], and every reader zips them by position.
+ */
+export const snakeKeys = ["number", "description", "visual_action", "start_motion", "main_motion", "end_motion", "shot_size", "camera_angle", "composition", "lens_feel", "focus_subject", "camera_motion", "environment_motion", "motion_speed", "motion_intensity", "expression_change", "continuity_hint"] as const;
+export const camelKeys = ["number", "description", "visualAction", "startMotion", "mainMotion", "endMotion", "shotSize", "cameraAngle", "composition", "lensFeel", "focusSubject", "cameraMotion", "environmentMotion", "motionSpeed", "motionIntensity", "expressionChange", "continuityHint"] as const;
 
 /**
  * The stored `episode.script` on disk is Python-compatible snake_case (see episode-scripts.service.ts's
