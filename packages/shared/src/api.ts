@@ -550,8 +550,21 @@ export interface GetLongEpisodeImageReviewResponse {
   episode: LongEpisodeDetail;
   reviews: LongEpisodeImageReview[];
   staleness: LongEpisodeImageStaleness;
-  /** Story Bible links this Episode's own mapping no longer matches; empty when they agree or cannot be read. */
+  /** Story Bible links this Episode's own mapping no longer matches. Empty means they agree — see the flag below for the case where nobody could tell. */
   storyBibleLinkDrift: LongEpisodeStoryBibleLinkDrift[];
+  /**
+   * Present only when the Story Bible could not be read, so the list above is silence rather than agreement.
+   *
+   * The two used to be the same empty array. Silence is not neutral on this screen: the paid regenerate button
+   * sits under it, and that list is what produces the one sentence able to say an Episode was drawn with a
+   * different character than the story now has. A malformed story_bible.json therefore turned off the warning
+   * that exists to stop somebody paying twice for the wrong face — quietly, and in the same week that warning
+   * was needed (Cowork Round 484 asked which other routes still conflate the two).
+   *
+   * A missing Story Bible is not this. A project that has none has nothing for its Episodes to disagree with,
+   * which is an ordinary answer and stays an empty list.
+   */
+  storyBibleLinkDriftUnreadable?: true;
   /** Same meaning and scope as StartImageGenerationResponse.budget (see that field's doc comment). */
   budget?: BudgetPreview;
 }

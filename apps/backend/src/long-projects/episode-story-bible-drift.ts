@@ -6,6 +6,9 @@ import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import type { StoredAssetMapping } from "../mappings/mapping-storage.js";
 import { longStoryRoot } from "./long-project-paths.js";
 
+/** What the comparison found, and whether it managed to look at all -- see the catch below for why those are not the same answer. */
+export interface StoryBibleLinkDriftResult { links: LongEpisodeStoryBibleLinkDrift[]; unreadable: boolean }
+
 /**
  * Whether this Episode's pictures were made from a different protagonist or style than the Story Bible now names.
  *
@@ -30,15 +33,24 @@ export async function storyBibleLinkDrift(
   assets: LocalAssetsRepository,
   projectId: string,
   mappings: readonly StoredAssetMapping[],
-): Promise<LongEpisodeStoryBibleLinkDrift[]> {
+): Promise<StoryBibleLinkDriftResult> {
   let basic: Record<string, unknown>;
   try {
     const stored: unknown = JSON.parse(await fs.readFile(path.join(longStoryRoot(projectsRoot, projectId), "story_bible.json"), "utf8"));
-    if (!stored || typeof stored !== "object" || Array.isArray(stored)) return [];
+    // A file that is not an object is not a Story Bible with no links in it; it is one nobody can read.
+    if (!stored || typeof stored !== "object" || Array.isArray(stored)) return { links: [], unreadable: true };
     const value = (stored as Record<string, unknown>).basic;
-    if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+    // `basic` absent is the ordinary case: a project that has set no links yet has nothing to disagree with.
+    if (!value || typeof value !== "object" || Array.isArray(value)) return { links: [], unreadable: false };
     basic = value as Record<string, unknown>;
-  } catch { return []; }
+  } catch (error) {
+    // No Story Bible at all is an answer. Anything else -- malformed JSON, a directory that will not read -- is
+    // this function failing to find out, and returning the same empty list for both is how a screen goes silent
+    // about a real difference. Silence is not neutral here: the paid regenerate button sits directly under it,
+    // and this list is what produces the sentence saying an Episode was drawn with a different character than
+    // the story now has.
+    return { links: [], unreadable: (error as NodeJS.ErrnoException).code !== "ENOENT" };
+  }
 
   const drift: LongEpisodeStoryBibleLinkDrift[] = [];
   for (const [link, field, tag] of [["protagonist", "protagonist_asset_link", "auto_protagonist"], ["style", "style_asset_link", "auto_style"]] as const) {
@@ -64,7 +76,7 @@ export async function storyBibleLinkDrift(
       episodeAssetName: mapped ? await displayName(assets, mapped.asset_id) : null,
     });
   }
-  return drift;
+  return { links: drift, unreadable: false };
 }
 
 /** The id itself when the Asset is gone: a name the screen cannot show is worse than an id it can quote. */

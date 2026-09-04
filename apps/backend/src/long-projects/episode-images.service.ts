@@ -478,9 +478,13 @@ export class EpisodeImagesService {
    * full of staleness markers caused by a read error, which is the worst possible way to say "I do not know".
    */
   /** Empty when the mappings cannot be read: the same "not knowing looks like not knowing" rule as staleness. */
-  private async linkDrift(projectId: string, number: number): Promise<LongEpisodeStoryBibleLinkDrift[]> {
+  /** The Story Bible comparison, plus the flag that says whether it managed to look — see LongEpisodeStoryBibleLinkDrift. */
+  private async linkDrift(projectId: string, number: number): Promise<{ storyBibleLinkDrift: LongEpisodeStoryBibleLinkDrift[]; storyBibleLinkDriftUnreadable?: true }> {
     const context = await this.referenceContext(projectId, number);
-    return context ? storyBibleLinkDrift(this.projectsRoot, this.assets, projectId, context.mappings) : [];
+    // No mappings to compare is its own ordinary answer, not a failed read.
+    if (!context) return { storyBibleLinkDrift: [] };
+    const result = await storyBibleLinkDrift(this.projectsRoot, this.assets, projectId, context.mappings);
+    return { storyBibleLinkDrift: result.links, ...(result.unreadable ? { storyBibleLinkDriftUnreadable: true as const } : {}) };
   }
 
   private async referenceContext(projectId: string, number: number): Promise<{ mappings: readonly StoredAssetMapping[]; directory: string; continuityPath: string | null } | null> {
@@ -521,7 +525,7 @@ export class EpisodeImagesService {
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, IMAGE_ESTIMATED_COST_USD) : undefined;
     const stored = await this.loadReviews(id, number);
-    return { episode: this.detail(episode), reviews: this.apiReviews(stored, episode.updated_at, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, stored), storyBibleLinkDrift: await this.linkDrift(id, number), ...(budget ? { budget } : {}) };
+    return { episode: this.detail(episode), reviews: this.apiReviews(stored, episode.updated_at, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, stored), ...(await this.linkDrift(id, number)), ...(budget ? { budget } : {}) };
   }
   /**
    * Writes one scene's review, merged into whatever is on disk at that moment rather than into a snapshot.
@@ -561,7 +565,7 @@ export class EpisodeImagesService {
     await this.indexAssetsIfMissing(id, number, episode);
     try { await this.assets.setGeneratedProjectImageApproval(this.assetSource(id, number).sourceProjectId, scene, true, all); }
     catch { throw longStorageError(); }
-    await this.saveEpisode(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(reviews, now, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, reviews), storyBibleLinkDrift: await this.linkDrift(id, number) };
+    await this.saveEpisode(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(reviews, now, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, reviews), ...(await this.linkDrift(id, number)) };
   }
   /**
    * Takes one scene's approval back — the other direction of `approve` above, and written beside it so the two
@@ -591,7 +595,7 @@ export class EpisodeImagesService {
     await this.indexAssetsIfMissing(id, number, episode);
     try { await this.assets.setGeneratedProjectImageApproval(this.assetSource(id, number).sourceProjectId, scene, false, false); }
     catch { throw longStorageError(); }
-    await this.saveEpisode(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(reviews, now, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, reviews), storyBibleLinkDrift: await this.linkDrift(id, number) };
+    await this.saveEpisode(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(reviews, now, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, reviews), ...(await this.linkDrift(id, number)) };
   }
   async regenerate(projectId: string, number: number, rawScene: string, request: RegenerateLongEpisodeImageReviewRequest): Promise<RegenerateLongEpisodeImageReviewResponse> {
     const id = projectId.trim(); const additionalInstruction = this.regenerationRequest(request); const scene = sceneNumber(Number(rawScene)); if (!scene || String(scene) !== rawScene) throw longInvalidRequest("Episode image scene number is invalid."); const episode = await this.episode(id, number); await this.assertReviewable(id, number, episode, true);
@@ -659,6 +663,6 @@ ${additionalInstruction}` : basePrompt;
     await this.indexAssetsIfMissing(id, number, episode);
     try { await this.assets.replaceGeneratedProjectSceneImage(this.assetSource(id, number).sourceProjectId, scene, current, archive); }
     catch { throw longStorageError(); }
-    await this.saveEpisode(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(reviews, now, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, reviews), storyBibleLinkDrift: await this.linkDrift(id, number), sceneNumber: scene, ...(retryEstimate ? { retryEstimate } : {}) };
+    await this.saveEpisode(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(reviews, now, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, reviews), ...(await this.linkDrift(id, number)), sceneNumber: scene, ...(retryEstimate ? { retryEstimate } : {}) };
   }
 }

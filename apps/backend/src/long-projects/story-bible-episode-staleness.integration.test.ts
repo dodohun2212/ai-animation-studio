@@ -165,7 +165,8 @@ describe("changing the Story Bible protagonist after some Episodes have drawn", 
 
     const stored = await mappingStore.load(await mappingOwners.get(key));
     expect(stored.map((mapping) => mapping.assignment_source)).toContain("manual");
-    expect(await storyBibleLinkDrift(projectsRoot, assets, "long", stored)).toEqual([]);
+    // Empty *and* readable: two different answers now, and only this pair means "they agree".
+    expect(await storyBibleLinkDrift(projectsRoot, assets, "long", stored)).toEqual({ links: [], unreadable: false });
     void root;
   });
 
@@ -191,12 +192,41 @@ describe("changing the Story Bible protagonist after some Episodes have drawn", 
     await bible.updateProtagonistAssetLink("long", { assetLink: { assetId: rival.asset_id, versionPolicy: "follow_latest", pinnedVersion: null } });
 
     const drift = await storyBibleLinkDrift(projectsRoot, assets, "long", await mappingStore.load(await mappingOwners.get(key)));
-    expect(drift).toEqual([{
+    expect(drift).toEqual({ unreadable: false, links: [{
       link: "protagonist",
       storyBibleAssetId: rival.asset_id, storyBibleAssetName: "민재",
       // 이배드, not 시장: the hand-added character is in the Episode but is not what the protagonist link owns.
       episodeAssetId: hero.asset_id, episodeAssetName: "이배드",
-    }]);
+    }] });
+  });
+
+  /**
+   * A Story Bible nobody can read is not a Story Bible everybody agrees with.
+   *
+   * Both used to come back as the same empty list, and the review screen renders an empty list as silence. That
+   * silence sits directly above the paid regenerate button, and this list is the only thing able to say an
+   * Episode was drawn with a different character than the story now has — the sentence 캡틴D needed this week.
+   * A malformed story_bible.json therefore switched that warning off without telling anyone.
+   *
+   * A missing Story Bible stays an empty, readable answer: a project that has none has nothing for its Episodes
+   * to disagree with, which is an ordinary thing to report rather than a failure to look.
+   */
+  it("says it could not read the Story Bible rather than reporting no drift", async () => {
+    const { projectsRoot, assets, bible, mappingStore, mappingOwners } = await setup();
+    const hero = await assets.createFolder({ assetType: "character", displayName: "이배드" });
+    const mappings = new ProjectAssetMappingsService<EpisodeMappingKey>(mappingStore, assets, mappingOwners);
+    const key: EpisodeMappingKey = { projectId: "long", episodeNumber: 1 };
+    await mappings.create(key, { assetId: hero.asset_id, usageRole: "character", sceneScope: { kind: "all" } });
+    await bible.updateProtagonistAssetLink("long", { assetLink: { assetId: hero.asset_id, versionPolicy: "follow_latest", pinnedVersion: null } });
+    const stored = await mappingStore.load(await mappingOwners.get(key));
+    const bibleFile = path.join(projectsRoot, "long", "long_story", "story_bible.json");
+
+    await fs.writeFile(bibleFile, "{ not json", "utf8");
+    expect(await storyBibleLinkDrift(projectsRoot, assets, "long", stored)).toEqual({ links: [], unreadable: true });
+
+    await fs.rm(bibleFile);
+    // Gone is an answer, not a failure to answer.
+    expect(await storyBibleLinkDrift(projectsRoot, assets, "long", stored)).toEqual({ links: [], unreadable: false });
   });
 
 });
