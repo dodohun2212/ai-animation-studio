@@ -160,7 +160,7 @@ export function ArchiveScreen({ onBack, onChanged }: Props) {
             aria-hidden="true"
             className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
           />
-            보관함
+            보관한 프로젝트
           </h1>
         </div>
       </header>

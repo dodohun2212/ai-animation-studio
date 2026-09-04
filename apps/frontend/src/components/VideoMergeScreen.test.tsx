@@ -213,6 +213,67 @@ describe("VideoMergeScreen", () => {
     expect(mergeFetch).not.toHaveBeenCalled();
   });
 
+  /**
+   * The load state this screen has always tracked and never shown.
+   *
+   * `loadState` was set on both branches and read nowhere, so a failed project read rendered the whole merge
+   * UI as though it had loaded — no spinner, no error, 확정 counts silently null — and the person pressed 병합
+   * and got the server's refusal instead of the sentence saying the screen never managed to read the project.
+   *
+   * The button is deliberately still reachable: the count being unknown does not block, by the same rule the
+   * screen already follows ("a button disabled on a guess is worse than one that fails honestly"). What was
+   * missing is the saying-so, and that is what this asserts.
+   */
+  it("says the project could not be read instead of rendering as if it had", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => String(input) === PROJECT_URL
+      ? jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "raw backend detail" })
+      : jsonResponse(200, { tracks: [] })));
+    render(<VideoMergeScreen projectId="sample_project" onBack={() => {}} />);
+
+    const alert = await screen.findByTestId("merge-load-error");
+    expect(alert.textContent).not.toContain("raw backend detail");
+    expect(alert).toHaveAttribute("data-error-code", "PROJECT_STORAGE_ERROR");
+    // Not a spinner that never stops either: the load is over, it just failed.
+    expect(screen.queryByTestId("merge-loading")).toBeNull();
+  });
+
+  /**
+   * Seen live on 이배드의 탄생, a COMPLETED project with six videos and a final file on disk.
+   *
+   * `videoReview` is required on the contract but the mapper omits it for scenes stored before per-scene review
+   * existed, and `undefined !== "approved"` counted all six as unconfirmed. The screen then said 장면 6개 중
+   * 0개 확정됨 and 아직 확정하지 않은 장면이 6개 있습니다 — in the same panel where it was printing the finished
+   * video's path. A person is sent to go and confirm work the screen has just shown them the result of.
+   *
+   * The rule the screen already states for this case is "unknown stays unblocked, the server is still the real
+   * gate", so the assertions are that the number and the blocker are both absent, not that they read zero.
+   */
+  it("says nothing about confirmations when no scene carries a review at all", async () => {
+    const legacy = sixScenes().map((scene) => {
+      const { videoReview: _videoReview, ...rest } = scene;
+      return rest as Scene;
+    });
+    renderScreen(vi.fn(), { workflowState: WorkflowState.Completed, scenes: legacy, finalVideoPath: "videos/final/instagram_reel.mp4" });
+
+    await waitFor(() => expect(screen.getByTestId("merge-scope-notice").textContent).toContain("이어 붙입니다"));
+    expect(screen.queryByTestId("merge-approved-count")).toBeNull();
+    expect(screen.queryByTestId("merge-blocked")).toBeNull();
+    // And the number that was wrong must not reappear anywhere in the panel's own sentence.
+    expect(screen.getByTestId("merge-scope-notice").textContent).not.toContain("확정된 0개");
+  });
+
+  /**
+   * The half that keeps the above from turning into "never count anything": a project whose scenes do answer
+   * still gets the count and the blocker.
+   */
+  it("still counts and blocks when every scene has answered", async () => {
+    const partly = sixScenes().map((scene, index) => ({ ...scene, videoReview: index < 4 ? "approved" as const : "pending" as const }));
+    renderScreen(vi.fn(), { scenes: partly });
+
+    expect((await screen.findByTestId("merge-approved-count")).textContent).toContain("4개 확정됨");
+    expect((await screen.findByTestId("merge-blocked")).textContent).toContain("2개 있습니다");
+  });
+
   it("does not call the merge endpoint on the first click — only an explicit confirmation does", async () => {
     const mergeFetch = vi.fn();
     renderScreen(mergeFetch);

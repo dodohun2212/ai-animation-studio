@@ -32,7 +32,7 @@ type DisplayError = { code: string; message: string; details?: Record<string, un
 
 const STATUS_LABELS: Record<AssetMappingStatus, string> = {
   confirmed: "확인됨", suggested: "제안됨", ambiguous: "모호함",
-  unmatched: "매칭 안됨", excluded: "제외됨", invalid: "유효하지 않음",
+  unmatched: "매칭 안 됨", excluded: "제외됨", invalid: "유효하지 않음",
 };
 const STATUS_TEXT_TONE: Record<AssetMappingStatus, string> = {
   confirmed: "text-emerald-300", suggested: "text-violet-300", ambiguous: "text-amber-300",

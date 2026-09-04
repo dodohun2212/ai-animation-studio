@@ -545,7 +545,10 @@ const isStoryBibleLinkDrift = (value: unknown): value is LongEpisodeStoryBibleLi
   && (value.episodeAssetId === null || typeof value.episodeAssetId === "string")
   && (value.episodeAssetName === null || typeof value.episodeAssetName === "string");
 const isGetEpisodeImageReviewResponse = (value: unknown): value is GetLongEpisodeImageReviewResponse => isRecord(value) && isLongEpisodeDetail(value.episode) && isEpisodeImageReviews(value.reviews) && isLongEpisodeImageStaleness(value.staleness)
-  && Array.isArray(value.storyBibleLinkDrift) && value.storyBibleLinkDrift.every(isStoryBibleLinkDrift);
+  && Array.isArray(value.storyBibleLinkDrift) && value.storyBibleLinkDrift.every(isStoryBibleLinkDrift)
+  // `?: true` on the contract — absent is the ordinary case, and the only value it may carry is `true`. A
+  // response saying `false` is a server meaning something this screen has no branch for, not an older one.
+  && (value.storyBibleLinkDriftUnreadable === undefined || value.storyBibleLinkDriftUnreadable === true);
 const isApproveEpisodeImageReviewResponse = (value: unknown): value is ApproveLongEpisodeImageReviewResponse => isGetEpisodeImageReviewResponse(value);
 const isUnapproveEpisodeImageReviewResponse = (value: unknown): value is UnapproveLongEpisodeImageReviewResponse => isGetEpisodeImageReviewResponse(value);
 const isRegenerateEpisodeImageReviewResponse = (value: unknown): value is RegenerateLongEpisodeImageReviewResponse => isRecord(value) && isGetEpisodeImageReviewResponse(value) && isSceneNumber(value.sceneNumber);

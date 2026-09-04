@@ -645,6 +645,38 @@ describe("LongEpisodeImageGenerationScreen", () => {
 
     await screen.findByTestId("episode-image-review-1");
     expect(screen.queryByTestId("episode-story-bible-drift")).toBeNull();
+    // Agreement, not an unread file — and the two must not draw the same.
+    expect(screen.queryByTestId("episode-story-bible-drift-unknown")).toBeNull();
+  });
+
+  /**
+   * The distinction the test above could not make on its own: an empty drift list meant both "nothing differs"
+   * and "the Story Bible could not be read", and silence was drawn for both.
+   *
+   * That silence sits directly above the paid 다시 만들기 button, and this list holds the only sentence able to
+   * say an Episode was drawn with a character the story no longer has — so a broken story_bible.json switched
+   * off the one warning that stops somebody paying twice for the wrong face, without saying anything.
+   *
+   * Asserting the drift section stays absent as well: an unread file is not a difference, and inventing one
+   * would trade a missing warning for a false one.
+   */
+  it("says the Story Bible could not be read rather than drawing it as agreement", async () => {
+    const reviewEpisode = episode("images_review");
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
+      .mockResolvedValue(jsonResponse(200, {
+        episode: reviewEpisode, reviews: reviews(),
+        staleness: { imageStale: [], referenceStale: [] },
+        storyBibleLinkDrift: [],
+        storyBibleLinkDriftUnreadable: true,
+      })));
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    const notice = await screen.findByTestId("episode-story-bible-drift-unknown");
+    expect(notice.textContent).toContain("확인할 수 없습니다");
+    expect(screen.queryByTestId("episode-story-bible-drift")).toBeNull();
   });
 
   /**

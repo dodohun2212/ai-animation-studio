@@ -262,7 +262,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
             )}
             {overBudget && (
               <p role="alert" data-testid="budget-exceeded-warning" className="text-sm font-semibold text-rose-300">
-                이번 요청의 예상 비용이 남은 월 예산을 초과합니다. 그대로 전송하면 예산 한도에 막혀 실패할 수 있습니다.
+                이번 요청의 예상 비용이 남은 월 예산을 초과합니다. 그대로 진행하면 예산 한도에 막혀 실패할 수 있습니다.
               </p>
             )}
           </section>

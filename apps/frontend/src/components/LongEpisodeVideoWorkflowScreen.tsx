@@ -5,6 +5,7 @@ import { approveLongEpisodeVideoReview, episodeSceneErrorMessage, getLongEpisode
 import { LongEpisodeSceneVersions } from "./LongEpisodeSceneVersions.js";
 import { Spinner } from "./Spinner.js";
 import { videoRatioLabel } from "../utils/sceneFields.js";
+import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { StatusChip } from "./ui/StatusChip.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
@@ -49,6 +50,14 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
   const [prompts, setPrompts] = useState<Partial<Record<SceneNumber, string>>>({});
   const [job, setJob] = useState<LongEpisodeVideoProgress | null>(null);
   const [reviews, setReviews] = useState<LongEpisodeVideoReview[] | null>(null);
+  /**
+   * The review list could not be fetched, which on a finished Episode is not a fault.
+   *
+   * Kept apart from `error` so a refusal of the extra request stops looking like the screen failing to load.
+   * Never a reason to hide the job: `reviews` staying null already does that, and this only supplies the
+   * sentence that says which of the two happened.
+   */
+  const [reviewsUnavailable, setReviewsUnavailable] = useState(false);
   /**
    * Scenes whose already-paid clip no longer matches the scene text, recomputed by the server from the prompt
    * recorded at generation rather than a flag someone has to remember to clear.
@@ -111,10 +120,19 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
         if (cancelled) return;
         setJob(progress);
         if (progress.status === "succeeded") {
-          const review = await getLongEpisodeVideoReview(projectId, episodeNumber, jobId);
-          setVideoStale(review.staleness.videoStale);
-          if (cancelled) return;
-          setReviews(review.reviews);
+          /* The review list is an addition to the progress above, not a precondition for it — and its refusal
+             is the ordinary answer once the Episode is past the review stage: the route serves only
+             videos_review and videos_approved. A finished Episode therefore opened this screen showing its
+             completed job and all six scenes done, with a red 지금 이 에피소드 단계에서는 영상 작업을 할 수 없습니다
+             across it, because the extra request's refusal was being rendered as the screen's own failure.
+             The cards are simply absent; everything the progress response carries stays on screen, and the
+             line below says why rather than leaving a person to guess what broke. */
+          try {
+            const review = await getLongEpisodeVideoReview(projectId, episodeNumber, jobId);
+            if (cancelled) return;
+            setVideoStale(review.staleness.videoStale);
+            setReviews(review.reviews);
+          } catch { if (!cancelled) setReviewsUnavailable(true); }
         }
       } catch (caught) { if (!cancelled) setError(toLongProjectDisplayError(caught)); }
     })();
@@ -193,7 +211,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
             )}
             {preview.budget && (preview.estimatedCostUsd > preview.budget.remainingUsd || !preview.budget.canSpend) && (
               <p role="alert" data-testid="episode-video-budget-exceeded" className="text-sm font-semibold text-rose-300">
-                이번 요청의 예상 비용이 남은 월 예산을 초과합니다. 그대로 전송하면 예산 한도에 막혀 실패할 수 있습니다.
+                이번 요청의 예상 비용이 남은 월 예산을 초과합니다. 그대로 진행하면 예산 한도에 막혀 실패할 수 있습니다.
               </p>
             )}
           </div>
@@ -265,6 +283,15 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
             ))}
           </ul>
         </section>
+      )}
+      {/* Said from the Episode's own status, which the progress response carries — never inferred from the
+          refusal that got us here. "완료" is a finished work, not a problem, and the previous screen said the
+          opposite in red. */}
+      {job?.status === "succeeded" && !reviews && reviewsUnavailable && (
+        <p data-testid="episode-video-review-unavailable" className="rounded-xl border border-white/10 bg-slate-900/60 px-4 py-3 text-sm text-slate-300">
+          이 회차는 <strong className="text-slate-100">{longEpisodeStatusLabel(job.episode.status)}</strong> 상태라 여기서 장면 영상을 다시 확정하거나 다시 만들 수 없습니다.
+          위의 장면 목록과 최종 영상은 그대로 남아 있습니다.
+        </p>
       )}
       {job?.status === "succeeded" && reviews && (
         <section data-testid="episode-video-review" className={cardSection}>

@@ -265,6 +265,35 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     expect(screen.queryByTestId("episode-video-open-confirm")).toBeNull();
   });
 
+  /**
+   * A finished Episode opening this screen looked broken.
+   *
+   * The review route serves only videos_review and videos_approved, so once the Episode reaches 완료 it refuses
+   * — an ordinary answer to an extra request. But that refusal was caught by the same block as the progress
+   * read and drawn as the screen's own error, so the page showed the completed job, all six scenes done, and a
+   * red 지금 이 에피소드 단계에서는 영상 작업을 할 수 없습니다 across it. Seen live on 이배드 4화.
+   *
+   * Asserting the absence of the alert as well as the new line: a sentence added while the red one stayed would
+   * leave the screen contradicting itself.
+   */
+  it("does not render a finished Episode's refusal of the review list as the screen failing", async () => {
+    const completed = { ...progress("succeeded", [1, 2, 3, 4, 5, 6]), episode: episode("completed") };
+    const fetchMock = stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": completed,
+      "GET /videos/generations/job/review": withStatus(409, { code: "LONG_EPISODE_VIDEOS_NOT_ALLOWED", message: "raw backend detail" }),
+      ...sceneVersionRoutes(),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    const line = await screen.findByTestId("episode-video-review-unavailable");
+    expect(line.textContent).toContain("완료");
+    expect(screen.queryByRole("alert")).toBeNull();
+    // The work itself stays on screen — the refusal costs the cards, not the job.
+    expect(screen.getByTestId("episode-video-progress")).toBeTruthy();
+  });
+
   it("fetches the clips already generated without regenerating any, and names the scenes it could not fetch", async () => {
     const review = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" }));
     const recovered = { ...progress("succeeded", [1, 2, 3, 4, 5, 6]), recoveredSceneNumbers: [1, 2, 3, 4, 5], unrecoverableScenes: [{ sceneNumber: 6, reason: "출력 링크가 만료되었습니다" }] };

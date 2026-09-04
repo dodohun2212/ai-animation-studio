@@ -169,7 +169,7 @@ const SHORT_PROJECT_SCREEN_NAMES = new Set<Screen["name"]>([
   "imageGeneration", "narrationReview", "sceneEdit", "videoPreview", "videoWorkflow", "videoMerge",
 ]);
 
-type NavIconName = "home" | "long" | "library" | "film" | "music" | "share" | "archive" | "workflow" | "settings";
+type NavIconName = "home" | "long" | "library" | "quote" | "film" | "music" | "share" | "archive" | "workflow" | "settings";
 
 function NavIcon({ name }: { name: NavIconName }) {
   const shared = {
@@ -195,6 +195,15 @@ function NavIcon({ name }: { name: NavIconName }) {
         <svg {...shared}>
           <rect x="3" y="4" width="18" height="17" rx="2" />
           <path d="M3 9h18M8 2v4M16 2v4" />
+        </svg>
+      );
+    // Its own glyph rather than the library one it used to share: a nav column is scanned by shape before it
+    // is read, and two entries drawn identically make the reader fall back to reading every label.
+    case "quote":
+      return (
+        <svg {...shared}>
+          <path d="M9.5 6.5C7 7.5 5.5 9.5 5.5 12v5.5h5V12H8c0-1.6.6-2.8 1.5-3.4z" />
+          <path d="M18 6.5c-2.5 1-4 3-4 5.5v5.5h5V12h-2.5c0-1.6.6-2.8 1.5-3.4z" />
         </svg>
       );
     case "library":
@@ -279,9 +288,10 @@ function NavBar({ current, onNavigate }: { current: Screen["name"]; onNavigate: 
     { key: "assets", icon: "library", label: "이미지 보관함", target: { name: "assets" } },
     { key: "videoLibrary", icon: "film", label: "영상 보관함", target: { name: "videoLibrary" } },
     { key: "audioLibrary", icon: "music", label: "음원 보관함", target: { name: "audioLibrary" } },
-    { key: "photoCard", icon: "library", label: "명언 카드", target: { name: "photoCard" } },
+    { key: "photoCard", icon: "quote", label: "명언 카드", target: { name: "photoCard" } },
     { key: "instagramPost", icon: "share", label: "게시물 준비", target: { name: "instagramPost" } },
-    { key: "archive", icon: "archive", label: "보관함", target: { name: "archive" } },
+    // Not "보관함": three entries above it are libraries and this one is not — it is where a project goes to be recovered or destroyed.
+    { key: "archive", icon: "archive", label: "보관한 프로젝트", target: { name: "archive" } },
     { key: "workflowGuide", icon: "workflow", label: "작업 워크플로우", target: { name: "workflowGuide" } },
     { key: "providerSettings", icon: "settings", label: "API 설정", target: { name: "providerSettings" } },
   ];
@@ -725,6 +735,7 @@ export function App() {
                 projectId={screen.projectId}
                 onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
                 onOpenMappingReview={(projectId) => setScreen({ name: "mappingReview", projectId })}
+                onOpenSettings={(projectId) => setScreen({ name: "settings", projectId })}
               />
             )}
             {screen.name === "imageGeneration" && (

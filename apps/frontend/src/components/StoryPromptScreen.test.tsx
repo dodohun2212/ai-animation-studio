@@ -92,7 +92,7 @@ function approvalCalls(fetchMock: ReturnType<typeof vi.fn>): unknown[][] {
 
 function renderScreen(fetchMock: ReturnType<typeof vi.fn>) {
   vi.stubGlobal("fetch", fetchMock);
-  return render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} />);
+  return render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} onOpenMappingReview={() => {}} onOpenSettings={() => {}} />);
 }
 
 function textarea(): HTMLTextAreaElement {
@@ -305,7 +305,7 @@ describe("StoryPromptScreen", () => {
     const fetchMock = stubByRoute({ approval: { status: 200, body: GENERATED_APPROVAL_RESPONSE } });
     const onOpenMappingReview = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} onOpenMappingReview={onOpenMappingReview} />);
+    render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} onOpenMappingReview={onOpenMappingReview} onOpenSettings={() => {}} />);
 
     await screen.findByDisplayValue(PREVIEW.originalPrompt);
     fireEvent.click(screen.getByRole("button", { name: "이 프롬프트로 승인" }));
@@ -329,7 +329,7 @@ describe("StoryPromptScreen", () => {
     });
     const onOpenMappingReview = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} onOpenMappingReview={onOpenMappingReview} />);
+    render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} onOpenMappingReview={onOpenMappingReview} onOpenSettings={() => {}} />);
 
     const panel = await screen.findByTestId("story-already-generated");
     expect(panel.textContent).toContain("대본이 이미 만들어졌습니다");
@@ -349,7 +349,7 @@ describe("StoryPromptScreen", () => {
       project: { status: 200, body: { project: makeProject({ workflowState: WorkflowState.WaitingForAssetMappingReview, scenes: brokenScenes }) } },
     });
     vi.stubGlobal("fetch", fetchMock);
-    render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} />);
+    render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} onOpenMappingReview={() => {}} onOpenSettings={() => {}} />);
 
     const panel = await screen.findByTestId("story-already-generated");
     expect(panel.textContent).toContain("이 장면에는 대본 문장이 비어 있습니다.");
@@ -364,7 +364,7 @@ describe("StoryPromptScreen", () => {
       regenerate: { status: 200, body: { project: cleared } },
     });
     vi.stubGlobal("fetch", fetchMock);
-    render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} />);
+    render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} onOpenMappingReview={() => {}} onOpenSettings={() => {}} />);
 
     await screen.findByTestId("story-already-generated");
     // One click is not enough — this destroys the whole Story.
@@ -379,6 +379,26 @@ describe("StoryPromptScreen", () => {
     expect(JSON.parse(String(init.body))).toEqual({ approved: true });
   });
 
+  /**
+   * The sentence and the door, asserted as a pair.
+   *
+   * The paragraph says a disappointing script is usually the settings' fault and to fix those first. The button
+   * beside it was gated on an optional prop that the app's one real mount never passed, so for every actual
+   * user the advice arrived with no way to follow it — and nothing failed, because a prop nobody supplies is
+   * not an error. The prop is required now, which is what really closes this; the pair is asserted here so the
+   * two can never drift apart again by someone removing one of them.
+   */
+  it("offers the way to the settings it tells you to fix", async () => {
+    const withStory = makeProject({ workflowState: WorkflowState.WaitingForAssetMappingReview, scenes: sixScenes() });
+    vi.stubGlobal("fetch", stubByRoute({ project: { status: 200, body: { project: withStory } } }));
+    const onOpenSettings = vi.fn();
+    render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} onOpenMappingReview={() => {}} onOpenSettings={onOpenSettings} />);
+
+    expect((await screen.findByTestId("story-already-generated")).textContent).toContain("프로젝트 설정을 먼저 고치는 편이 낫습니다");
+    fireEvent.click(screen.getByTestId("open-project-settings"));
+    expect(onOpenSettings).toHaveBeenCalledWith("sample_project");
+  });
+
   it("does not offer a rewrite once a scene image exists, and says why", async () => {
     // A paid image describes the current Story. Replacing the Story would orphan it, so the door is closed.
     const withImage = makeProject({
@@ -387,7 +407,7 @@ describe("StoryPromptScreen", () => {
     });
     const fetchMock = stubByRoute({ project: { status: 200, body: { project: withImage } } });
     vi.stubGlobal("fetch", fetchMock);
-    render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} />);
+    render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} onOpenMappingReview={() => {}} onOpenSettings={() => {}} />);
 
     const panel = await screen.findByTestId("story-already-generated");
     expect(panel.textContent).toContain("장면 이미지를 이미 만들어서");
@@ -401,7 +421,7 @@ describe("StoryPromptScreen", () => {
       regenerate: { status: 409, body: { code: "STORY_REGENERATION_NOT_ALLOWED", message: "internal detail" } },
     });
     vi.stubGlobal("fetch", fetchMock);
-    render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} />);
+    render(<StoryPromptScreen projectId="sample_project" onBack={() => {}} onOpenMappingReview={() => {}} onOpenSettings={() => {}} />);
 
     await screen.findByTestId("story-already-generated");
     fireEvent.click(screen.getByTestId("open-regenerate-confirm"));

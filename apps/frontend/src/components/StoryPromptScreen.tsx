@@ -11,11 +11,20 @@ import { BudgetLine } from "./ui/BudgetLine.js";
 interface Props {
   projectId: string;
   onBack: () => void;
-  /** The next pipeline step. Optional so the screen still renders standalone in tests that do not navigate. */
-  onOpenMappingReview?: (projectId: string) => void;
-  /** Where to change what the Story is written from. Offered next to 다시 만들기, since the usual reason a
-   *  Story disappoints is the settings behind it, not the roll of the dice. */
-  onOpenSettings?: (projectId: string) => void;
+  /**
+   * The next pipeline step, and where to change what the Story is written from.
+   *
+   * Required, both of them. `onOpenSettings` was optional "so the screen still renders standalone in tests",
+   * and the one real mount then never passed it — so the button below never rendered, while the paragraph above
+   * it told the person that a script they dislike is usually the settings' fault and to fix those first. Advice
+   * with no door is worse than none: it reads as a step they are expected to already know how to take, and
+   * nothing failed, because an optional prop that is never supplied is not an error anywhere.
+   *
+   * Making it required moves that from "a test might notice" to "it does not compile". A test call site that
+   * does not navigate passes a no-op, which says out loud that the screen offers the way out either way.
+   */
+  onOpenMappingReview: (projectId: string) => void;
+  onOpenSettings: (projectId: string) => void;
 }
 
 const secondaryButton = "rounded-full border border-white/15 px-3 py-1.5 text-xs text-slate-200 hover:bg-white/5 disabled:opacity-50";
@@ -241,16 +250,14 @@ export function StoryPromptScreen({ projectId, onBack, onOpenMappingReview, onOp
   function NextSteps({ testId }: { testId: string }) {
     return (
       <div className="flex flex-wrap items-center gap-3 border-t border-white/10 pt-3">
-        {onOpenMappingReview && (
-          <button
-            type="button"
-            data-testid={testId}
-            className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)]"
-            onClick={() => onOpenMappingReview(projectId)}
-          >
-            다음: 참고 이미지 연결
-          </button>
-        )}
+        <button
+          type="button"
+          data-testid={testId}
+          className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)]"
+          onClick={() => onOpenMappingReview(projectId)}
+        >
+          다음: 참고 이미지 연결
+        </button>
         <button
           type="button"
           className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
@@ -324,11 +331,9 @@ export function StoryPromptScreen({ projectId, onBack, onOpenMappingReview, onOp
                     >
                       대본 다시 만들기
                     </button>
-                    {onOpenSettings && (
-                      <button type="button" className={secondaryButton} onClick={() => onOpenSettings(projectId)}>
-                        프로젝트 설정 먼저 고치기
-                      </button>
-                    )}
+                    <button type="button" data-testid="open-project-settings" className={secondaryButton} onClick={() => onOpenSettings(projectId)}>
+                      프로젝트 설정 먼저 고치기
+                    </button>
                   </div>
                 )}
                 {regenerateConfirmOpen && (

@@ -115,7 +115,24 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
       .then((response) => {
         if (cancelled) return;
         setSceneCount(response.project.scenes.length);
-        setApprovedCount(response.project.scenes.filter((scene) => scene.videoReview === "approved").length);
+        /*
+         * Absence is not a no.
+         *
+         * `videoReview` is required on the contract, but the mapper omits it for scenes stored before per-scene
+         * review existed, and `undefined !== "approved"` counted every one of those as unconfirmed. Seen live on
+         * 이배드의 탄생: a COMPLETED project whose six videos and final file are on disk had this screen telling
+         * it 장면 6개 중 0개 확정됨, 아직 확정하지 않은 장면이 6개 있습니다 — in the same panel that was showing the
+         * finished video's path. The person is sent to confirm work the screen has just displayed the result of.
+         *
+         * A count is only produced when every scene actually answered. The comment on `blocked` below already
+         * says what to do with the other case — "unknown stays unblocked, the server is still the real gate" —
+         * and null is how that is spelled here. This is the Episode side's design, which reads the number from
+         * the review list and leaves it null when it cannot: a number nobody stated is not a number.
+         */
+        const answered = response.project.scenes.filter((scene) => typeof scene.videoReview === "string");
+        setApprovedCount(answered.length === response.project.scenes.length
+          ? answered.filter((scene) => scene.videoReview === "approved").length
+          : null);
         setPhotoCard(response.project.photoCard === true);
         if (response.project.subtitleLayout) setLayout(response.project.subtitleLayout);
         setQuote(response.project.scenes[0]?.narration ?? "");
@@ -229,6 +246,17 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
           : `${approvedCount !== null ? ` 확정된 ${approvedCount}개` : ""} 장면 영상을 순서대로 이어 붙입니다.`}
         {contentSentence ? ` ${contentSentence}` : ""}
       </p>
+
+      {/* Written since this screen was made and never read, so a failed project read rendered the whole merge
+          UI as if it had loaded: no spinner, no error, and 확정 counts sitting at null. The person then pressed
+          병합 and got the server's refusal instead of the sentence saying the screen had not managed to read
+          the project. The sibling Episode screen has no such state at all — this was vestigial, not a pattern. */}
+      {loadState.status === "loading" && <p data-testid="merge-loading" className="text-sm text-slate-400">프로젝트를 불러오는 중...</p>}
+      {loadState.status === "error" && (
+        <p role="alert" data-testid="merge-load-error" data-error-code={loadState.error.code} className="text-sm text-rose-400">
+          {loadState.error.message}
+        </p>
+      )}
 
       {!photoCard && approvedCount !== null && sceneCount !== null && (
         <p className="text-sm text-slate-300 tabular-nums" data-testid="merge-approved-count">

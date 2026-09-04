@@ -1,5 +1,4 @@
 import type { LongEpisodeStatus } from "@ai-animation-studio/shared";
-import type { AssetMappingStatus } from "@ai-animation-studio/shared";
 
 /** Korean display labels for LongEpisodeStatus (packages/shared/src/api.ts), used across the Long Project screens. */
 export const LONG_EPISODE_STATUS_LABEL: Record<LongEpisodeStatus, string> = {
@@ -27,22 +26,15 @@ export function longEpisodeStatusLabel(status: LongEpisodeStatus | string): stri
   return (LONG_EPISODE_STATUS_LABEL as Record<string, string>)[status] ?? status;
 }
 
-/** Korean display labels for the mapping-review-level status (packages/shared/src/api.ts LongEpisodeAssetMappingReview.status). */
-export const MAPPING_REVIEW_STATUS_LABEL: Record<"waiting" | "approved", string> = {
-  waiting: "검토 대기 중",
-  approved: "승인됨",
-};
-
-/** Korean display labels for AssetMappingStatus (packages/shared/src/mapping.ts), per-candidate status within a review. */
-export const ASSET_MAPPING_STATUS_LABEL: Record<AssetMappingStatus, string> = {
-  confirmed: "확정됨",
-  suggested: "제안됨",
-  ambiguous: "모호함",
-  unmatched: "매칭 안 됨",
-  excluded: "제외됨",
-  invalid: "유효하지 않음",
-};
-
-export function assetMappingStatusLabel(status: AssetMappingStatus | string): string {
-  return (ASSET_MAPPING_STATUS_LABEL as Record<string, string>)[status] ?? status;
-}
+/*
+ * Three exports lived here and nothing imported any of them: MAPPING_REVIEW_STATUS_LABEL, and a second
+ * AssetMappingStatus table with its accessor. MappingReviewScreen keeps its own copy, so the dead one had
+ * already drifted — it said 확정됨 where the screen says 확인됨, and spelled 매칭 안 됨 where the screen had
+ * 매칭 안됨. Two tables for one enum cannot be kept in step by anything but memory, and the unread one is the
+ * one that loses. The screen's is the one people actually read, so that is the one that stays — with the
+ * spacing corrected to 매칭 안 됨, which is the only place the dead table was right.
+ *
+ * The 확인됨 / 확정됨 split is deliberately left alone: 확정 is what the image and video screens call approving
+ * a thing, and reusing it here for "this link is settled" would make one word mean two jobs. That is a wording
+ * decision for a person, not a tidy-up.
+ */

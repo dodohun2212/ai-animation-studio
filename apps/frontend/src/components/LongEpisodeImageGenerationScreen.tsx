@@ -29,7 +29,7 @@ type DisplayError = { code: string; message: string };
 type ReviewState =
   | { status: "idle" | "loading" }
   | { status: "error"; error: DisplayError }
-  | { status: "ready"; reviews: LongEpisodeImageReview[]; budget?: BudgetPreview; retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview }; imageStale: SceneNumber[]; referenceStale: SceneNumber[]; drift: LongEpisodeStoryBibleLinkDrift[] };
+  | { status: "ready"; reviews: LongEpisodeImageReview[]; budget?: BudgetPreview; retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview }; imageStale: SceneNumber[]; referenceStale: SceneNumber[]; drift: LongEpisodeStoryBibleLinkDrift[]; driftUnreadable: boolean };
 /** The Story Bible's own words for these two links, so the sentence reads like the screen the person set them on. */
 const LINK_LABEL: Record<LongEpisodeStoryBibleLinkDrift["link"], string> = { protagonist: "주인공", style: "전체 그림체" };
 const SCENE_SLOT_LABEL: Record<string, string> = { generated: "생성됨", waiting: "대기 중", generating: "만드는 중", pending: "검토 대기", approved: "승인됨", done: "완료" };
@@ -162,7 +162,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
     let cancelled = false;
     setReviewState({ status: "loading" });
     getLongEpisodeImageReview(projectId, episodeNumber)
-      .then((response) => { if (!cancelled) { setEpisode(response.episode); setReviewState({ status: "ready", reviews: response.reviews, budget: response.budget, imageStale: response.staleness.imageStale, referenceStale: response.staleness.referenceStale, drift: response.storyBibleLinkDrift }); } })
+      .then((response) => { if (!cancelled) { setEpisode(response.episode); setReviewState({ status: "ready", reviews: response.reviews, budget: response.budget, imageStale: response.staleness.imageStale, referenceStale: response.staleness.referenceStale, drift: response.storyBibleLinkDrift, driftUnreadable: response.storyBibleLinkDriftUnreadable === true }); } })
       .catch((caught: unknown) => { if (!cancelled) setReviewState({ status: "error", error: toLongProjectDisplayError(caught) }); });
     return () => { cancelled = true; };
     // reviewState.status is intentionally excluded: it is set inside this effect as a start-once guard,
@@ -287,6 +287,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
         imageStale: response.staleness.imageStale,
         referenceStale: response.staleness.referenceStale,
         drift: response.storyBibleLinkDrift,
+        driftUnreadable: response.storyBibleLinkDriftUnreadable === true,
       }));
     } catch (caught) { setError(toLongProjectDisplayError(caught)); }
     finally { approvalBusy.current.delete(sceneNumber); setApprovePending(new Set(approvalBusy.current)); }
@@ -298,7 +299,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
     try {
       const response = await regenerateLongEpisodeImageReview(projectId, episodeNumber, sceneNumber, regenerateInstruction);
       setEpisode(response.episode);
-      setReviewState({ status: "ready", reviews: response.reviews, budget: response.retryEstimate?.budget, retryEstimate: response.retryEstimate, imageStale: response.staleness.imageStale, referenceStale: response.staleness.referenceStale, drift: response.storyBibleLinkDrift });
+      setReviewState({ status: "ready", reviews: response.reviews, budget: response.retryEstimate?.budget, retryEstimate: response.retryEstimate, imageStale: response.staleness.imageStale, referenceStale: response.staleness.referenceStale, drift: response.storyBibleLinkDrift, driftUnreadable: response.storyBibleLinkDriftUnreadable === true });
       setRegenerateConfirm(null);
       setRegenerateInstruction("");
     } catch (caught) { setError(toLongProjectDisplayError(caught)); }
@@ -409,6 +410,17 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
           the Story Bible changed is allowed to keep the character it was drawn with; the pictures are bought and
           correct for what they were made from. Whether to spend money redrawing is the person's call, so this
           says what is, names no action, and is styled as information rather than as a problem. */}
+      {/* An empty drift list used to mean two things — nothing differs, and the Story Bible could not be read —
+          and the screen drew both as silence. The paid 다시 만들기 button sits right under that silence, and
+          this list holds the one sentence able to say an Episode was drawn with a character the story no longer
+          has. A broken story_bible.json therefore switched that warning off without saying so. Amber, not the
+          drift section's sky: a difference is settled information, an unread file is an open question. */}
+      {reviewState.status === "ready" && reviewState.driftUnreadable && (
+        <p role="status" data-testid="episode-story-bible-drift-unknown" className="rounded-xl border border-amber-400/25 bg-amber-500/[0.06] px-4 py-3 text-sm text-amber-200">
+          설정집을 읽지 못해서, 이 에피소드가 지금 이야기와 <strong className="text-amber-100">다른 인물·그림체로 만들어졌는지 확인할 수 없습니다</strong>.
+          달라도 여기서는 알 수 없으니, 다시 만들기를 누르기 전에 그 점을 감안해 주세요.
+        </p>
+      )}
       {reviewState.status === "ready" && reviewState.drift.length > 0 && (
         <section data-testid="episode-story-bible-drift" aria-label="설정집과 다른 점" className="space-y-1.5 rounded-xl border border-sky-400/25 bg-sky-500/[0.06] px-4 py-3">
           {reviewState.drift.map((item) => (
