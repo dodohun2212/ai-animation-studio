@@ -3410,3 +3410,13 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
   - 🟠 **그래서 Cowork 의 셋째 짝("모든 장면이 답했으면 여전히 세고 막는다")은 실데이터로는 도달 불가능한 경우를 못 박고 있다.** 픽스처가 서버가 만들 수 없는 값을 공급한다. 그 짝이 막으려던 도피로("아예 안 세기")는 진짜 위험이었으니 짝 자체는 옳고, **다만 지금은 픽스처만이 그 초록을 만든다.**
   - **진짜 출처는 있다**: `GET /projects/:id/videos/generations/:jobId/review` — `Project.currentVideoJobId` 로 닿고, **`LongEpisodeVideoMergeScreen` 이 이미 그걸로 센다**(`review.reviews.filter(status === "approved")`). 실서버 확인: 프로젝트 1은 `COMPLETED` 라 그 라우트가 거절하는데 **그것도 맞다** — 끝난 프로젝트는 확정할 것이 없다.
   - **계약에서 지우는 건 화면 변경 뒤다**(지금 지우면 그 화면이 컴파일 안 된다). 대신 **사실을 계약 그 자리에 적었다** — 다음 사람이 이 두 칸을 읽고 답을 기대하지 않도록.
+- [x] **`Scene.imagePrompt` 도 같은 가짜 required 였다 — 지웠다**: `videoReview` 를 파다가 같은 `as unknown as Scene` 뒤에서 셋째를 찾았다.
+  ```
+  toApiScene 이 매핑하는 것   motion_prompts[index] → motionPrompt   ✅
+  안 하는 것                  image_prompts[index]  → imagePrompt    ❌
+  실서버 /projects/1          scenes[0] 에 imagePrompt 없음
+  프로덕션 읽는 곳            0곳 · 프롬프트를 보여주는 화면도 0곳
+  ```
+  - **디스크에는 `image_prompts` 6개가 실제로 있다.** 즉 "출처가 없다" 가 아니라 **배선이 없고 아무도 안 찾는다.** 그리고 낡음 계산은 이 필드가 아니라 `image_generation_records[].prompt` 를 쓴다 — **작동하는 메커니즘이 따로 있고 이 칸은 그 옆에서 놀고 있었다.**
+  - 앞의 둘과 달리 **막는 화면이 없어서 바로 지웠다.** 계약에서 빼고, 픽스처 열 군데를 정리했다.
+  - 🟠 **다섯 군데는 컴파일러가 못 잡았다** — 타입 없는 헬퍼가 만드는 객체라 초과 속성 검사가 안 걸린다. **지어낸 값이 짝에 남으면 다음 사람이 다시 믿는다.** 손으로 찾아 지웠다.

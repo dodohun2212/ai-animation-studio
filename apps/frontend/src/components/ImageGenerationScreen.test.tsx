@@ -11,7 +11,6 @@ function sixScenes(withImages: readonly number[] = []): Scene[] {
   return [1, 2, 3, 4, 5, 6].map((number) => ({
     number: number as Scene["number"],
     script: `Scene ${number}`,
-    imagePrompt: `Image ${number}`,
     motionPrompt: `Motion ${number}`,
     imageReview: "pending",
     videoReview: "pending",

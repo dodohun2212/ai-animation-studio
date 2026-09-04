@@ -32,7 +32,6 @@ function sixScenes(): Scene[] {
   return [1, 2, 3, 4, 5, 6].map((number) => ({
     number: number as Scene["number"],
     script: `Scene ${number}`,
-    imagePrompt: `Image ${number}`,
     motionPrompt: `Motion ${number}`,
     imageReview: "approved",
     videoReview: "approved",
@@ -325,7 +324,7 @@ describe("VideoMergeScreen", () => {
    */
   it("merges a photo card, which has no scene video to confirm", async () => {
     const mergeFetch = vi.fn();
-    const still: Scene[] = [{ number: 1, script: "불광불급", imagePrompt: "", motionPrompt: "", imageReview: "approved", videoReview: "pending" }];
+    const still: Scene[] = [{ number: 1, script: "불광불급", motionPrompt: "", imageReview: "approved", videoReview: "pending" }];
     renderScreen(mergeFetch, { photoCard: true, scenes: still });
 
     await screen.findByTestId("merge-scope-notice");
@@ -345,7 +344,7 @@ describe("VideoMergeScreen", () => {
    */
   it("sends a photo card's adjusted subtitle layout with the merge", async () => {
     const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
-    const still: Scene[] = [{ number: 1, script: "", imagePrompt: "", motionPrompt: "", imageReview: "approved", videoReview: "pending", narration: "불광불급(不狂不及)\n미치도록 몰입한 사람만이," }];
+    const still: Scene[] = [{ number: 1, script: "", motionPrompt: "", imageReview: "approved", videoReview: "pending", narration: "불광불급(不狂不及)\n미치도록 몰입한 사람만이," }];
     renderScreen(mergeFetch, { photoCard: true, scenes: still, subtitleLayout: { scale: 0.027, center: 0.4 } });
 
     const center = await screen.findByTestId("photo-card-subtitle-center");
@@ -363,7 +362,7 @@ describe("VideoMergeScreen", () => {
   // Starts from what this card was last merged with, not from the published default — otherwise every revisit
   // silently proposes undoing the adjustment the person already made.
   it("starts a photo card from the layout the server sent back", async () => {
-    const still: Scene[] = [{ number: 1, script: "", imagePrompt: "", motionPrompt: "", imageReview: "approved", videoReview: "pending", narration: "문장" }];
+    const still: Scene[] = [{ number: 1, script: "", motionPrompt: "", imageReview: "approved", videoReview: "pending", narration: "문장" }];
     renderScreen(vi.fn(), { photoCard: true, scenes: still, subtitleLayout: { scale: 0.041, center: 0.62 } });
 
     expect((await screen.findByTestId("photo-card-subtitle-scale-value")).textContent).toContain("79px");
@@ -379,7 +378,7 @@ describe("VideoMergeScreen", () => {
    */
   it("lets a finished photo card be made again with different subtitles", async () => {
     const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
-    const still: Scene[] = [{ number: 1, script: "", imagePrompt: "", motionPrompt: "", imageReview: "approved", videoReview: "pending", narration: "불광불급(不狂不及)\n미치도록 몰입한 사람만이," }];
+    const still: Scene[] = [{ number: 1, script: "", motionPrompt: "", imageReview: "approved", videoReview: "pending", narration: "불광불급(不狂不及)\n미치도록 몰입한 사람만이," }];
     renderScreen(mergeFetch, { photoCard: true, scenes: still, workflowState: WorkflowState.Completed, finalVideoPath: "videos/final/instagram_reel.mp4" });
 
     await screen.findByTestId("merge-success");
@@ -398,7 +397,7 @@ describe("VideoMergeScreen", () => {
   // The one card that must not be remade. Replacing the file would leave the Instagram post pointing at a
   // video nobody published, and neither side would record that it had changed.
   it("refuses to remake a card that is already published, and says what to do instead", async () => {
-    const still: Scene[] = [{ number: 1, script: "", imagePrompt: "", motionPrompt: "", imageReview: "approved", videoReview: "pending", narration: "문장" }];
+    const still: Scene[] = [{ number: 1, script: "", motionPrompt: "", imageReview: "approved", videoReview: "pending", narration: "문장" }];
     renderScreen(vi.fn(), {
       photoCard: true, scenes: still, workflowState: WorkflowState.Completed, finalVideoPath: "videos/final/instagram_reel.mp4",
       instagramPost: { mediaId: "m1", igUserId: "1", publishedAt: "2026-09-02T00:00:00.000Z", caption: "" },

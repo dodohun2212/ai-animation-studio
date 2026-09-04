@@ -92,7 +92,6 @@ export type JobStatus =
 export interface Scene {
   number: SceneNumber;
   script: string;
-  imagePrompt: string;
   motionPrompt: string;
   generatedImagePath?: string;
   generatedVideoPath?: string;
@@ -114,7 +113,9 @@ export interface Scene {
    * a completed project, which is also correct: a finished project has nothing left to confirm.
    *
    * Left in place only because removing them stops that screen compiling; they should go with the screen change
-   * that moves it onto the review endpoint.
+   * that moves it onto the review endpoint. `imagePrompt` was the third of this family and is gone: nothing read
+   * it either, and no screen shows an image prompt at all — the text that matters is kept in
+   * image_generation_records, which is what the staleness check actually compares against.
    */
   imageReview: ReviewDecision;
   videoReview: ReviewDecision;

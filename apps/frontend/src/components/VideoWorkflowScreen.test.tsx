@@ -44,7 +44,6 @@ function scenesFor(sceneCount: number): Scene[] {
   return Array.from({ length: sceneCount }, (_, index) => index + 1).map((number) => ({
     number,
     script: `Scene ${number} script`,
-    imagePrompt: `Scene ${number} image prompt`,
     motionPrompt: `Scene ${number} motion prompt`,
     generatedImagePath: `images/scene${number}.png`,
     generatedVideoPath: `videos/runway/scene${number}.mp4`,

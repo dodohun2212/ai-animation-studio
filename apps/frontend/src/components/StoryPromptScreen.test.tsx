@@ -33,7 +33,6 @@ function scenesOf(count: number): Scene[] {
     return {
       number,
       script: `Scene ${number}`,
-      imagePrompt: `Image ${number}`,
       motionPrompt: `Motion ${number}`,
       imageReview: "pending",
       videoReview: "pending",
