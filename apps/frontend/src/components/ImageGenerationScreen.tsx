@@ -3,7 +3,7 @@ import type { BudgetPreview, ImageReview, Project, SceneNumber, SceneStaleness, 
 import { IMAGE_ESTIMATED_COST_USD, WorkflowState, sceneNumbersFor } from "@ai-animation-studio/shared";
 
 import { getProject, toDisplayError } from "../api/projectsApi.js";
-import { startImageGeneration, toImageGenerationDisplayError } from "../api/imageGenerationApi.js";
+import { getImageGenerationProgress, startImageGeneration, toImageGenerationDisplayError } from "../api/imageGenerationApi.js";
 import {
   approveImageReview,
   getImageReview,
@@ -77,6 +77,13 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
    * — see the note on `sceneStatus`.
    */
   const [completedScenes, setCompletedScenes] = useState<Set<number>>(new Set());
+  /**
+   * The scene being drawn at this moment, straight from the server, or null when it has not said.
+   *
+   * Null is "not told", never "none" — the rows fall back to the batch-level 만드는 중 for it, which is what
+   * they said for every scene before this existed.
+   */
+  const [currentScene, setCurrentScene] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const generateBusy = useRef(false);
   const approveBusy = useRef<Set<SceneNumber>>(new Set());
@@ -241,15 +248,16 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
     if (!running) return;
     const started = Date.now();
     const ticker = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - started) / 1000)), 1000);
-    // Polled, not streamed: there is no progress endpoint, and the project is the only thing that changes
-    // while the run is in flight. A read every 3s is cheap next to an image call that takes tens of seconds.
+    /* Polled, not streamed, and now against the run's own progress route rather than the project.
+       The project was the wrong thing to ask: `generatedImagePath` is not mapped onto the scenes, so the count
+       below read 0/6 for the whole run no matter how many pictures existed — a bar that never moved while money
+       went out. The route answers from the same question the generation loop asks before skipping a scene, and
+       carries the project along with it, so this is still one request every 3s. */
     const poll = setInterval(() => {
-      void getProject(projectId)
+      void getImageGenerationProgress(projectId)
         .then((response) => {
-          const done = response.project.scenes
-            .filter((scene) => typeof scene.generatedImagePath === "string" && scene.generatedImagePath)
-            .map((scene) => scene.number as number);
-          setCompletedScenes(new Set(done));
+          setCompletedScenes(new Set<number>(response.progress.completedSceneNumbers));
+          setCurrentScene(response.progress.currentSceneNumber ?? null);
           // A found run has no POST of ours to resolve, so the poll is the only thing that can notice it
           // ended. Without this the panel would sit there claiming a run that finished minutes ago.
           if (runFound) setProjectOverride(response.project);
@@ -261,11 +269,12 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
   }, [running, runFound, projectId]);
 
   /**
-   * `generatedImagePath` is the only per-scene signal the API exposes for "this one is done". The backend
-   * currently keeps finished images in a parallel `generated_images` array that `toApiProject` does not map
-   * onto the scenes, so this reads false for every scene even after a successful run — which is why the rows
-   * below stayed 대기 forever. The moment that mapping exists, both the finished state and the live count
-   * light up with no change here; until then the elapsed clock carries the screen.
+   * Done, per scene.
+   *
+   * `completedScenes` is the run's progress route talking, and it is the half that actually works during a run:
+   * `generatedImagePath` is kept in a parallel array that `toApiProject` does not map onto the scenes, so it
+   * reads false even for a scene whose picture is on disk. It stays as the second source because it is the only
+   * one available when no run is in flight and nothing has been polled.
    */
   function sceneStatus(number: number): "completed" | "pending" {
     if (completedScenes.has(number)) return "completed";
@@ -291,6 +300,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
     setGeneratePending(true);
     setGenerateError(null);
     setCompletedScenes(new Set());
+    setCurrentScene(null);
     setElapsedSeconds(0);
     try {
       const response = await startImageGeneration(projectId);
@@ -370,10 +380,16 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
           <ol className="grid gap-2 sm:grid-cols-2" data-testid="scene-results">
             {sceneNumbers.map((number) => {
               const done = sceneStatus(number) === "completed";
-              // While a run is in flight, a row that is not finished is not "waiting" in any useful sense —
-              // it is either being worked on now or is next. Saying 대기 next to a spinning button was the
-              // part that read as "nothing is happening".
-              const label = done ? "완료" : running ? "만드는 중" : "대기";
+              /* Three states while a run is in flight, now that the server names the scene it is on: finished,
+                 the one being drawn, and the ones after it. Before this every unfinished row said 만드는 중,
+                 which was true of the batch and false of five of the six rows it was written on. A null
+                 `currentScene` means the server has not said, and that keeps the batch-level answer rather than
+                 demoting five rows to 대기 on no evidence. */
+              const label = done ? "완료"
+                : !running ? "대기"
+                : currentScene === null ? "만드는 중"
+                : currentScene === number ? "만드는 중"
+                : "대기 중";
               return (
                 <li
                   key={number}

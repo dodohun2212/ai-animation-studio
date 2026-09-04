@@ -1,6 +1,7 @@
 import {
   API_ROUTES,
   isSceneNumber,
+  type GetImageGenerationProgressResponse,
   type Project,
   type SceneNumber,
   type StartImageGenerationRequest,
@@ -109,6 +110,20 @@ function isStartImageGenerationResponse(value: unknown): value is StartImageGene
   );
 }
 
+/**
+ * `currentSceneNumber` is optional by contract and absent means "nothing is being drawn right now", so its
+ * absence passes; a present value that is not a scene number does not. Both lists are required — reading a
+ * missing `completedSceneNumbers` as an empty one would report a run that has finished five scenes as having
+ * finished none, which is the wrongness this route exists to remove.
+ */
+function isGetImageGenerationProgressResponse(value: unknown): value is GetImageGenerationProgressResponse {
+  if (!isRecord(value) || !isProject(value.project) || !isRecord(value.progress)) return false;
+  const progress = value.progress;
+  return isSceneNumberArray(progress.sceneNumbers) && isSceneNumberArray(progress.completedSceneNumbers)
+    && (progress.currentSceneNumber === undefined
+      || (typeof progress.currentSceneNumber === "number" && isSceneNumber(progress.currentSceneNumber)));
+}
+
 async function readJsonBody(response: Response): Promise<unknown> {
   try {
     return await response.json();
@@ -144,5 +159,27 @@ export async function startImageGeneration(projectId: string): Promise<StartImag
     throw new ImageGenerationApiError(apiError.code, apiError.message, apiError.details);
   }
   if (!isStartImageGenerationResponse(body)) throw new ImageGenerationApiError(MALFORMED.code, MALFORMED.message);
+  return body;
+}
+
+/**
+ * How far a running image generation has got, scene by scene. A read: free, and it never refuses mid-run.
+ *
+ * The project rides along in the same response, so a screen watching a run polls this one route rather than
+ * this plus the project.
+ */
+export async function getImageGenerationProgress(projectId: string): Promise<GetImageGenerationProgressResponse> {
+  let response: Response;
+  try {
+    response = await fetch(API_ROUTES.imageGenerationProgress(projectId));
+  } catch {
+    throw new ImageGenerationApiError(NETWORK.code, NETWORK.message);
+  }
+  const body = await readJsonBody(response);
+  if (!response.ok) {
+    const apiError = toApiErrorShape(body);
+    throw new ImageGenerationApiError(apiError.code, apiError.message, apiError.details);
+  }
+  if (!isGetImageGenerationProgressResponse(body)) throw new ImageGenerationApiError(MALFORMED.code, MALFORMED.message);
   return body;
 }

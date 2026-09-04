@@ -43,6 +43,7 @@ import {
   type StartLongEpisodeImageGenerationRequest,
   type StartLongEpisodeImageGenerationResponse,
   type GetLongEpisodeImagePreviewResponse,
+  type GetLongEpisodeImageProgressResponse,
   type GetLongEpisodeImageReviewResponse,
   type ApproveLongEpisodeImageReviewResponse,
   type UnapproveLongEpisodeImageReviewRequest,
@@ -924,6 +925,29 @@ const isGetEpisodeImagePreviewResponse = (value: unknown): value is GetLongEpiso
   // an empty one would quote nothing and charge for six.
   return isSceneNumberList(preview.sceneNumbers) && isSceneNumberList(preview.generatableSceneNumbers)
     && isSceneNumberList(preview.reusableSceneNumbers) && isFiniteNonNegative(preview.estimatedCostUsd);
+};
+
+/**
+ * How far a running image generation has got, scene by scene. Free, and never refuses mid-run.
+ *
+ * The Episode rides along in the same response, so a screen watching a run polls this instead of this plus the
+ * Episode — one request where there used to be one, not two.
+ */
+export function getLongEpisodeImageProgress(projectId: string, episodeNumber: number): Promise<GetLongEpisodeImageProgressResponse> {
+  return request(API_ROUTES.longEpisodeImageProgress(projectId, episodeNumber), undefined, isGetEpisodeImageProgressResponse);
+}
+
+/**
+ * `currentSceneNumber` is optional by contract and absent means "nothing is being drawn right now", so its
+ * absence passes; a present value that is not a scene number does not. The two lists are required: a screen
+ * that read a missing `completedSceneNumbers` as an empty one would report a run that has finished five scenes
+ * as having finished none, which is the shape of wrongness this route exists to remove.
+ */
+const isGetEpisodeImageProgressResponse = (value: unknown): value is GetLongEpisodeImageProgressResponse => {
+  if (!isRecord(value) || !isLongEpisodeDetail(value.episode) || !isRecord(value.progress)) return false;
+  const progress = value.progress;
+  return isSceneNumberList(progress.sceneNumbers) && isSceneNumberList(progress.completedSceneNumbers)
+    && (progress.currentSceneNumber === undefined || isSceneNumber(progress.currentSceneNumber));
 };
 
 export function startLongEpisodeImageGeneration(projectId: string, episodeNumber: number): Promise<StartLongEpisodeImageGenerationResponse> {

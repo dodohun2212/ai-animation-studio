@@ -704,6 +704,62 @@ describe("LongEpisodeImageGenerationScreen", () => {
     finish(jsonResponse(200, { episode: withScript(episode("images_review")), generatedSceneNumbers: [1, 2, 3, 4, 5, 6], reusedSceneNumbers: [] }));
   });
 
+  /**
+   * What the panel could not say until the Episode published progress: how far along it is, and which scene the
+   * money is on right now.
+   *
+   * Six scenes take minutes and every row read 만드는 중 for all of it, so one picture done and five done
+   * looked the same. A screen where nothing moves during a $0.60 batch is what makes a person press again — the
+   * same reasoning the batch-level panel was written from, carried one level down.
+   */
+  it("says how many scenes are done and which one is being drawn", async () => {
+    const running = withScript(episode("generating_images"));
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/images/generations/progress")) {
+        return jsonResponse(200, { episode: running, progress: { sceneNumbers: [1, 2, 3, 4, 5, 6], completedSceneNumbers: [1, 2], currentSceneNumber: 3 } });
+      }
+      if (url.endsWith("/continuity-reference")) return jsonResponse(200, { reference: null });
+      if (url.endsWith("/settings")) return jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true });
+      return jsonResponse(200, { episode: running });
+    }));
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    await screen.findByTestId("episode-generation-progress");
+    const count = await screen.findByTestId("episode-generation-progress-count", undefined, { timeout: 5000 });
+    expect(count.textContent).toContain("6장 중");
+    expect(count.textContent).toContain("2장");
+    expect(count.textContent).toContain("3번 장면");
+    // Three different true things, where there used to be one repeated six times.
+    expect(screen.getByTestId("episode-image-scene-1")).toHaveAttribute("data-status", "done");
+    expect(screen.getByTestId("episode-image-scene-3")).toHaveAttribute("data-status", "generating");
+    expect(screen.getByTestId("episode-image-scene-5")).toHaveAttribute("data-status", "waiting");
+  });
+
+  /**
+   * A poll that never answered is not a poll that answered "nothing has started".
+   *
+   * Silence has to leave the rows saying the thing that is still true — the batch is running — rather than
+   * demoting five of them to 대기 중 on no evidence, which reads as a stalled run and is the reading that costs
+   * a second batch. The count block simply does not appear: a number nobody gave us is not a number.
+   */
+  it("keeps the batch-level answer when the progress read fails", async () => {
+    const running = withScript(episode("generating_images"));
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/images/generations/progress")) return jsonResponse(500, { code: "LONG_PROJECT_STORAGE_ERROR", message: "raw backend detail" });
+      if (url.endsWith("/continuity-reference")) return jsonResponse(200, { reference: null });
+      if (url.endsWith("/settings")) return jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true });
+      return jsonResponse(200, { episode: running });
+    }));
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    await screen.findByTestId("episode-generation-progress");
+    expect(screen.getByTestId("episode-image-scene-1")).toHaveAttribute("data-status", "generating");
+    expect(screen.getByTestId("episode-image-scene-5")).toHaveAttribute("data-status", "generating");
+    expect(screen.queryByTestId("episode-generation-progress-count")).toBeNull();
+  });
+
   it("shows no progress panel when the Episode is not generating", async () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, { episode: withScript(episode("asset_mapping_approved")) }))

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { BudgetPreview, LongEpisodeContinuityReference, LongEpisodeDetail, LongEpisodeImageGenerationPreview, LongEpisodeImageReview, LongEpisodeStatus, LongEpisodeStoryBibleLinkDrift, SceneNumber, StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
+import type { BudgetPreview, LongEpisodeContinuityReference, LongEpisodeDetail, LongEpisodeImageGenerationPreview, LongEpisodeImageProgress, LongEpisodeImageReview, LongEpisodeStatus, LongEpisodeStoryBibleLinkDrift, SceneNumber, StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
 import { IMAGE_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 
 import {
@@ -8,6 +8,7 @@ import {
   getLongEpisode,
   getLongEpisodeContinuityReference,
   getLongEpisodeImagePreview,
+  getLongEpisodeImageProgress,
   getLongEpisodeImageReview,
   getLongProjectSettings,
   longEpisodeImageContentUrl,
@@ -31,7 +32,7 @@ type ReviewState =
   | { status: "ready"; reviews: LongEpisodeImageReview[]; budget?: BudgetPreview; retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview }; imageStale: SceneNumber[]; referenceStale: SceneNumber[]; drift: LongEpisodeStoryBibleLinkDrift[] };
 /** The Story Bible's own words for these two links, so the sentence reads like the screen the person set them on. */
 const LINK_LABEL: Record<LongEpisodeStoryBibleLinkDrift["link"], string> = { protagonist: "주인공", style: "전체 그림체" };
-const SCENE_SLOT_LABEL: Record<string, string> = { generated: "생성됨", waiting: "대기 중", generating: "만드는 중", pending: "검토 대기", approved: "승인됨" };
+const SCENE_SLOT_LABEL: Record<string, string> = { generated: "생성됨", waiting: "대기 중", generating: "만드는 중", pending: "검토 대기", approved: "승인됨", done: "완료" };
 const sceneSlotLabel = (status: string) => SCENE_SLOT_LABEL[status] ?? status;
 
 /**
@@ -96,6 +97,13 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
    * The screen knows such a run exists (the status says so) but not when it began, and a clock started on
    * arrival would read as the run's age, which is a number the app would be making up.
    */
+  /**
+   * Per-scene progress of the run happening right now, or null when nobody has told us.
+   *
+   * Null is not "nothing done yet" — it is "not asked, or the ask failed" — and the list below keeps the
+   * batch-level 만드는 중 for every scene in that case rather than inventing six 대기 중.
+   */
+  const [imageProgress, setImageProgress] = useState<LongEpisodeImageProgress | null>(null);
   const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [reviewState, setReviewState] = useState<ReviewState>({ status: "idle" });
@@ -189,12 +197,17 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
     if (!running) return;
     let cancelled = false;
     const timer = setInterval(() => {
-      getLongEpisode(projectId, episodeNumber)
+      /* The progress route rather than the Episode: it answers both questions in one request, so watching a run
+         scene by scene costs no more traffic than watching it as one lump did. Six scenes take minutes with
+         nothing on screen moving, and a screen where nothing moves is what makes a person press a paid button
+         a second time. */
+      getLongEpisodeImageProgress(projectId, episodeNumber)
         .then((response) => {
         // The POST's own answer is the authoritative end of the run; a poll that started before it landed
         // would otherwise write "still generating" over the finished state.
         if (cancelled || generationSettled.current) return;
         setEpisode(response.episode);
+        setImageProgress(response.progress);
         // The Episode's own GET fills this; absent means "not determined here", so the project settings below
         // stay the fallback rather than being overwritten with a guess.
         if (response.episode.aspectRatio) {
@@ -359,6 +372,23 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
           <p className="text-sm font-semibold text-violet-200">
             {sceneNumbers.length > 0 ? `장면 ${sceneNumbers.length}개의 이미지를 만드는 중입니다.` : "이미지를 만드는 중입니다."}
           </p>
+          {/* The count and the bar exist only when the server has actually said how far it got. Drawing a bar
+              from a guess is the thing this replaces: this panel said 만드는 중 about all six for the whole
+              run, so one finished picture and five finished pictures looked identical. */}
+          {imageProgress && (
+            <div data-testid="episode-generation-progress-count" className="space-y-1.5">
+              <p className="text-sm text-violet-100 tabular-nums">
+                {imageProgress.sceneNumbers.length}장 중 <strong>{imageProgress.completedSceneNumbers.length}장</strong> 완료
+                {imageProgress.currentSceneNumber !== undefined ? ` · 지금 ${imageProgress.currentSceneNumber}번 장면` : ""}
+              </p>
+              <div aria-hidden="true" className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-violet-400 to-pink-300 transition-[width] duration-500"
+                  style={{ width: `${imageProgress.sceneNumbers.length > 0 ? Math.round((imageProgress.completedSceneNumbers.length / imageProgress.sceneNumbers.length) * 100) : 0}%` }}
+                />
+              </div>
+            </div>
+          )}
           {/* No per-scene count and no bar: the Episode does not publish per-scene progress, and a bar drawn
               from nothing is a claim the screen cannot keep. */}
           {runStartedAt !== null ? (
@@ -400,7 +430,14 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
              what makes a person press the button again. Per-scene progress is not published, so this says
              what is true of the batch rather than inventing a per-scene claim. */
           const status = reviewFor(sceneNumber)?.status
-            ?? (running ? "generating"
+            /* Per-scene now, when the server has said so. `imageProgress` null still means "we have not been
+               told", and that keeps the old batch-level answer rather than turning silence into 대기 중 —
+               saying a scene has not started is a claim, and an unanswered poll does not support it. */
+            ?? (running
+              ? (imageProgress === null ? "generating"
+                : imageProgress.completedSceneNumbers.includes(sceneNumber) ? "done"
+                : imageProgress.currentSceneNumber === sceneNumber ? "generating"
+                : "waiting")
               // Past the image step the pictures exist — the gallery above is showing them — so "대기 중" here
               // was the same list being wrong at a fourth stage. Review detail is only loaded at the review
               // step; without it this says the one thing that is still true.

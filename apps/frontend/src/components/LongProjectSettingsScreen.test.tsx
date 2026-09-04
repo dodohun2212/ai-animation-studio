@@ -116,11 +116,17 @@ describe("LongProjectSettingsScreen", () => {
     render(<LongProjectSettingsScreen projectId="long_test" onBack={() => {}} />);
 
     expect(await screen.findByDisplayValue("수채화")).toBeTruthy();
+    // All four are typed into, not one. Each box is wired separately, so editing a single one leaves a dead
+    // onChange on the other three indistinguishable from a working one — the box is drawn, the value never
+    // leaves the screen, and "칸만 그리고 안 보내면 같은 구멍" is exactly the defect this test is named for.
+    fireEvent.change(screen.getByDisplayValue("수채화"), { target: { value: "손그림 수채화" } });
     fireEvent.change(screen.getByDisplayValue("차가운 청록"), { target: { value: "따뜻한 주황" } });
+    fireEvent.change(screen.getByLabelText("조명"), { target: { value: "역광" } });
+    fireEvent.change(screen.getByLabelText(/피할 요소/), { target: { value: "사진 같은 질감" } });
     fireEvent.click(screen.getByRole("button", { name: "설정 저장" }));
 
     expect(JSON.parse(String(callTo(fetchMock, "/long-projects/long_test/settings", "PATCH")[1].body)))
-      .toMatchObject({ settings: { visualStyle: "수채화", color: "따뜻한 주황", lighting: "", avoid: "" } });
+      .toMatchObject({ settings: { visualStyle: "손그림 수채화", color: "따뜻한 주황", lighting: "역광", avoid: "사진 같은 질감" } });
   });
 
   /**

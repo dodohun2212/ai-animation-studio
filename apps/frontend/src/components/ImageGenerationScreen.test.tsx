@@ -88,16 +88,22 @@ describe("ImageGenerationScreen", () => {
     const project = makeProject({ workflowState: WorkflowState.AssetMappingApproved, scenes: sixScenes() });
     const midRun = makeProject({ workflowState: WorkflowState.AssetMappingApproved, scenes: sixScenes([1, 2]) });
     let finishGeneration: (response: Response) => void = () => {};
-    let projectReads = 0;
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/images") && (init as RequestInit | undefined)?.method === "POST") {
         return new Promise<Response>((resolve) => { finishGeneration = resolve; });
       }
-      // The first read is the screen's own load; later reads are the progress poll, by which time the
-      // backend has finished two scenes.
-      projectReads += 1;
-      return Promise.resolve(jsonResponse(200, { project: projectReads === 1 ? project : midRun }));
+      /* The progress route, not the project. `generatedImagePath` is never mapped onto the scenes, so polling
+         the project reported 0/6 for the whole run however many pictures existed — the bar this test is about
+         could not move. The route answers from the same question the generation loop asks before skipping a
+         scene, and says which one is being drawn as well as how many are done. */
+      if (url.endsWith("/images/generations/progress")) {
+        return Promise.resolve(jsonResponse(200, {
+          project: midRun,
+          progress: { sceneNumbers: [1, 2, 3, 4, 5, 6], completedSceneNumbers: [1, 2], currentSceneNumber: 3 },
+        }));
+      }
+      return Promise.resolve(jsonResponse(200, { project }));
     });
     renderScreen(fetchMock);
 
@@ -108,13 +114,53 @@ describe("ImageGenerationScreen", () => {
 
     const progress = await screen.findByTestId("generation-progress");
     expect(progress.textContent).toContain("0/6장 완료");
-    // No row claims to be waiting while the run is going.
+    // Nothing has been polled yet, so no row is demoted to 대기 on no evidence.
     expect(screen.getByTestId("scene-1").textContent).toContain("만드는 중");
 
     await waitFor(() => expect(screen.getByTestId("generation-progress").textContent).toContain("2/6장 완료"), { timeout: 5000 });
     expect(screen.getByTestId("scene-1")).toHaveAttribute("data-status", "completed");
 
     finishGeneration(jsonResponse(200, { project: midRun, generatedSceneNumbers: [1, 2], reusedSceneNumbers: [] }));
+  });
+
+  /**
+   * The half the count alone cannot show: which scene the money is being spent on right now.
+   *
+   * Every unfinished row said 만드는 중 — true of the batch and false of five of the six rows carrying it. The
+   * route names the scene, so the rows can say the three different things that are actually true, and a person
+   * watching can see the run advance rather than a wall of identical labels.
+   */
+  it("marks the scene being drawn apart from the ones still queued", async () => {
+    const running = makeProject({ workflowState: WorkflowState.GeneratingImages, scenes: sixScenes() });
+    renderScreen(vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/images/generations/progress")
+      ? jsonResponse(200, { project: running, progress: { sceneNumbers: [1, 2, 3, 4, 5, 6], completedSceneNumbers: [1, 2], currentSceneNumber: 3 } })
+      : jsonResponse(200, { project: running })));
+
+    await screen.findByTestId("generation-progress");
+    // Waited on 완료, not on 만드는 중: the row already says 만드는 중 before any poll lands, from the
+    // batch-level fallback, so gating on it lets the assertions below run against the pre-progress state — the
+    // first poll is 3s away. 완료 is reachable only from completedSceneNumbers.
+    await waitFor(() => expect(screen.getByTestId("scene-1").textContent).toContain("완료"), { timeout: 5000 });
+    expect(screen.getByTestId("scene-3").textContent).toContain("만드는 중");
+    expect(screen.getByTestId("scene-5").textContent).toContain("대기 중");
+    // And the one being drawn is the only one claiming to be drawn.
+    expect(screen.getByTestId("scene-5").textContent).not.toContain("만드는 중");
+  });
+
+  /**
+   * A poll that never answered is not a poll that answered "nothing is happening". Silence has to leave the
+   * rows saying what was true before it — the batch is running — rather than demoting five of them to 대기,
+   * which would read as a stalled run and is exactly what makes a person press a paid button twice.
+   */
+  it("keeps the batch-level answer when the progress read fails", async () => {
+    const running = makeProject({ workflowState: WorkflowState.GeneratingImages, scenes: sixScenes() });
+    renderScreen(vi.fn(async (input: RequestInfo | URL) => String(input).endsWith("/images/generations/progress")
+      ? jsonResponse(500, { code: "IMAGE_STORAGE_ERROR", message: "raw backend detail" })
+      : jsonResponse(200, { project: running })));
+
+    await screen.findByTestId("generation-progress");
+    expect(screen.getByTestId("scene-1").textContent).toContain("만드는 중");
+    expect(screen.getByTestId("scene-5").textContent).toContain("만드는 중");
   });
 
   /**
