@@ -24,7 +24,7 @@ function makeProgress(overrides: Partial<GenerationProgressResponse> = {}): Gene
 }
 
 function sixReviews(approved: readonly number[] = []): VideoReview[] {
-  return [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({
+  return [1, 2, 3, 4, 5, 6].map((sceneNumber): VideoReview => ({
     sceneNumber: sceneNumber as VideoReview["sceneNumber"],
     status: approved.includes(sceneNumber) ? "approved" : "pending",
     updatedAt: "2026-08-23T00:00:00.000Z",
@@ -32,7 +32,7 @@ function sixReviews(approved: readonly number[] = []): VideoReview[] {
 }
 
 function reviewsFor(sceneCount: number, approved: readonly number[] = []): VideoReview[] {
-  return Array.from({ length: sceneCount }, (_, index) => index + 1).map((sceneNumber) => ({
+  return Array.from({ length: sceneCount }, (_, index) => index + 1).map((sceneNumber): VideoReview => ({
     sceneNumber: sceneNumber as VideoReview["sceneNumber"],
     status: approved.includes(sceneNumber) ? "approved" : "pending",
     updatedAt: "2026-08-23T00:00:00.000Z",
@@ -41,7 +41,7 @@ function reviewsFor(sceneCount: number, approved: readonly number[] = []): Video
 
 /** Scenes as the backend returns them alongside a review: each carries its source image and final motion prompt. */
 function scenesFor(sceneCount: number): Scene[] {
-  return Array.from({ length: sceneCount }, (_, index) => index + 1).map((number) => ({
+  return Array.from({ length: sceneCount }, (_, index) => index + 1).map((number): Scene => ({
     number,
     script: `Scene ${number} script`,
     motionPrompt: `Scene ${number} motion prompt`,

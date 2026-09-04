@@ -6,7 +6,7 @@ import { jsonResponse } from "../api/testUtils.js";
 import { VideoPromptPreviewScreen } from "./VideoPromptPreviewScreen.js";
 
 function makePreviews(count = 6): VideoPromptPreview[] {
-  return Array.from({ length: count }, (_, index) => index + 1).map((sceneNumber) => ({
+  return Array.from({ length: count }, (_, index) => index + 1).map((sceneNumber): VideoPromptPreview => ({
     sceneNumber: sceneNumber as VideoPromptPreview["sceneNumber"],
     prompt: `Scene ${sceneNumber} prompt`,
     model: "gen4_turbo",
