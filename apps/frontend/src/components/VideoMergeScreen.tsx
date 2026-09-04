@@ -7,6 +7,7 @@ import { getAudioLibrary } from "../api/audioLibraryApi.js";
 import type { AudioMode } from "./mergeAudio.js";
 import { AttributionNotice, AUDIO_MODE_LABELS, MergeAudioFieldset, needsTrack, toAudioSettings } from "./mergeAudio.js";
 import { finalVideoContentUrl, mergeVideos, toVideoMergeDisplayError } from "../api/videoMergeApi.js";
+import { getVideoReview } from "../api/videoWorkflowApi.js";
 import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBridge.js";
 import { PhotoCardSubtitleFieldset } from "./PhotoCardSubtitleFieldset.js";
 
@@ -116,23 +117,26 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
         if (cancelled) return;
         setSceneCount(response.project.scenes.length);
         /*
-         * Absence is not a no.
+         * The confirmed count comes from the video review, which is addressed by job id — the Episode screen's
+         * own design (LongEpisodeVideoMergeScreen), and now this one's.
          *
-         * `videoReview` is required on the contract, but the mapper omits it for scenes stored before per-scene
-         * review existed, and `undefined !== "approved"` counted every one of those as unconfirmed. Seen live on
-         * 이배드의 탄생: a COMPLETED project whose six videos and final file are on disk had this screen telling
-         * it 장면 6개 중 0개 확정됨, 아직 확정하지 않은 장면이 6개 있습니다 — in the same panel that was showing the
-         * finished video's path. The person is sent to confirm work the screen has just displayed the result of.
+         * It used to be counted off `scene.videoReview`, and that field has never existed: `project.mapper.ts`
+         * spreads the stored scene and asserts `as unknown as Scene`, so two required fields nothing writes were
+         * read as answers. Every scene came back `undefined`, `undefined !== "approved"` counted as unconfirmed,
+         * and 이배드의 탄생 — COMPLETED, six videos and a final file on disk — was told 장면 6개 중 0개 확정됨 and
+         * sent to go and confirm the work whose finished path was printed in the same panel.
          *
-         * A count is only produced when every scene actually answered. The comment on `blocked` below already
-         * says what to do with the other case — "unknown stays unblocked, the server is still the real gate" —
-         * and null is how that is spelled here. This is the Episode side's design, which reads the number from
-         * the review list and leaves it null when it cannot: a number nobody stated is not a number.
+         * Null on anything but an answer, and deliberately quiet: a finished project's review is refused
+         * (VIDEO_WORKFLOW_NOT_ALLOWED — there is nothing left to confirm), which is an ordinary answer to the
+         * question and not this screen failing. `blocked` below already says what to do with an unknown count:
+         * leave it unblocked, the server is still the real gate.
          */
-        const answered = response.project.scenes.filter((scene) => typeof scene.videoReview === "string");
-        setApprovedCount(answered.length === response.project.scenes.length
-          ? answered.filter((scene) => scene.videoReview === "approved").length
-          : null);
+        const jobId = response.project.currentVideoJobId;
+        if (jobId) {
+          void getVideoReview(projectId, jobId)
+            .then((review) => { if (!cancelled) setApprovedCount(review.reviews.filter((one) => one.status === "approved").length); })
+            .catch(() => { /* Unknown, which is what approvedCount already is. */ });
+        }
         setPhotoCard(response.project.photoCard === true);
         if (response.project.subtitleLayout) setLayout(response.project.subtitleLayout);
         setQuote(response.project.scenes[0]?.narration ?? "");

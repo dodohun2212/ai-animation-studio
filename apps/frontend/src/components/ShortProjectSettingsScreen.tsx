@@ -178,7 +178,21 @@ const AUTO_STORY_ROLES = new Set(["대표 캐릭터", "서브 캐릭터", ""]);
  * through its own endpoint, separate from the plain-text settings form above, so a search or a blur-save here
  * never depends on the settings form's own save state.
  */
-function CastEditor({ projectId, onLeadNameChange }: { projectId: string; onLeadNameChange: (name: string | null) => void }) {
+/**
+ * The cast's representative as the form above needs to know it: whether there is one at all (this being null
+ * or not), and its name when that has been resolved. The two were one `string | null` and a lead whose name
+ * had not arrived was reported as no lead.
+ */
+/**
+ * The lead the server will use, and why its name is missing when it is.
+ *
+ * `name: null` alone cannot tell 폴더가 지워졌다 from 이름을 아직 못 읽었다, and the two need different
+ * sentences: one asks the person to fix the cast, the other asks them to try again. The row inside the cast
+ * editor already draws that line off `namesLoaded`; the form above needs the same answer.
+ */
+type CastLead = { assetId: string; name: string | null; folderGone: boolean };
+
+function CastEditor({ projectId, onLeadChange }: { projectId: string; onLeadChange: (lead: CastLead | null) => void }) {
   const [cast, setCast] = useState<ShortProjectCastMember[] | null>(null);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -218,9 +232,13 @@ function CastEditor({ projectId, onLeadNameChange }: { projectId: string; onLead
           ...Object.fromEntries(response.assets.map((asset) => [asset.assetId, asset.displayName])),
           ...current,
         }));
+        setNamesLoaded(true);
       })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setNamesLoaded(true); });
+      // Success only. `namesLoaded` is what turns "this row has no name" into 지워진 폴더 · 제거해 주세요, and
+      // setting it in a `finally` said that of every saved character the moment one listAssets call failed —
+      // an instruction to delete a folder that is sitting there. The comment above promises the opposite
+      // ("the ids still render, exactly as before"), and this is what keeps it true.
+      .catch(() => {});
     return () => { cancelled = true; };
   }, [projectId]);
 
@@ -252,9 +270,20 @@ function CastEditor({ projectId, onLeadNameChange }: { projectId: string; onLead
    */
   useEffect(() => {
     const lead = (cast ?? []).find(isRepresentative);
-    if (!lead) { onLeadNameChange(null); return; }
-    onLeadNameChange(memberNames[lead.assetId] ?? null);
-  }, [cast, memberNames, onLeadNameChange]);
+    // Outer null is "this list names no lead". A lead whose name has not arrived is still a lead — collapsing
+    // the two onto `null` told the form above that its 대표 캐릭터 box was live when the server was about to
+    // prefer the folder anyway, so a name typed there was dropped and paid for.
+    onLeadChange(
+      lead
+        ? {
+            assetId: lead.assetId,
+            name: memberNames[lead.assetId] ?? null,
+            // Same predicate as the row's 지워진 폴더 badge: the library answered and this id was not in it.
+            folderGone: namesLoaded && memberNames[lead.assetId] === undefined,
+          }
+        : null,
+    );
+  }, [cast, memberNames, namesLoaded, onLeadChange]);
 
   async function persist(next: ShortProjectCastMember[]): Promise<void> {
     if (savingRef.current) return;
@@ -748,7 +777,8 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
    * controls on this screen is live at any moment and the screen has to say which. Held here because the field
    * that must say it sits in the form, while the answer is decided three sections below.
    */
-  const [castLeadName, setCastLeadName] = useState<string | null>(null);
+  const [castLead, setCastLead] = useState<CastLead | null>(null);
+  const leadLabel = castLead === null ? null : castLead.name ?? castLead.assetId;
   const [promptPreviewOpen, setPromptPreviewOpen] = useState(false);
   const [promptPreview, setPromptPreview] = useState<string | null>(null);
   const [promptPreviewLoading, setPromptPreviewLoading] = useState(false);
@@ -914,14 +944,24 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
             <input
               aria-label="대표 캐릭터"
               className={fieldClassName}
-              value={castLeadName ?? state.settings.character}
-              disabled={castLeadName !== null}
+              value={leadLabel ?? state.settings.character}
+              disabled={castLead !== null}
               onChange={(event) => setField("character", event.target.value)}
             />
             <span className="mt-1 block text-xs text-slate-500" data-testid="character-source">
-              {castLeadName !== null
-                ? <>아래 <span className="text-slate-400">등장 캐릭터</span>에서 고른 대표를 씁니다. 바꾸려면 거기서 고쳐 주세요.</>
-                : "등장 캐릭터에서 대표를 고르면 그 폴더 이름이 대신 쓰입니다."}
+              {castLead === null
+                ? "등장 캐릭터에서 대표를 고르면 그 폴더 이름이 대신 쓰입니다."
+                : castLead.name !== null
+                  ? <>아래 <span className="text-slate-400">등장 캐릭터</span>에서 고른 대표를 씁니다. 바꾸려면 거기서 고쳐 주세요.</>
+                  /* A lead is set and its name did not arrive. The field still has to be locked — the server
+                     prefers the lead either way — so what changes is the sentence, not the behaviour. Saying
+                     "고른 대표를 씁니다" beside a folder id would read as the id being the character's name.
+                     Which sentence depends on why: a deleted folder is a thing to fix in the cast below, a
+                     failed read is a thing to retry. Saying 불러오지 못해 over a deleted folder sends the
+                     person to wait for a lookup that already answered. */
+                  : castLead.folderGone
+                    ? <>아래 <span className="text-slate-400">등장 캐릭터</span>의 대표가 <span className="text-amber-300">지워진 폴더</span>를 가리킵니다. 그대로 두면 이 번호가 이름으로 쓰이니 거기서 대표를 다시 골라 주세요.</>
+                    : <>아래 <span className="text-slate-400">등장 캐릭터</span>에 대표가 지정돼 있어 그 대표가 쓰입니다. 이름을 불러오지 못해 여기에는 폴더 번호가 보입니다.</>}
             </span>
           </label>
           <div className="text-sm text-slate-300 md:col-span-2">
@@ -1117,7 +1157,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
         </aside>
         </div>
       )}
-      {state.settings && <CastEditor projectId={projectId} onLeadNameChange={setCastLeadName} />}
+      {state.settings && <CastEditor projectId={projectId} onLeadChange={setCastLead} />}
       {state.settings && <AssetReferenceEditor projectId={projectId} />}
       {state.settings && <ContinuityEditor projectId={projectId} />}
       {/* The page used to end here with nothing — the only way out was scrolling back past four sections to the

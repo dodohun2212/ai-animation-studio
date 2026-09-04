@@ -364,7 +364,20 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
           question that already has a definite answer. */}
       {!continuityReferenceLoading && continuityReferenceFailed && episodeNumber > 1 && <p data-testid="episode-image-continuity-unknown" className="text-sm text-amber-300">이전 에피소드의 마지막 장면 자료를 확인하지 못했습니다. 이어받을 게 있는지 알 수 없어서, 지금 만들면 이어받지 않고 만들어질 수 있습니다.</p>}
       {!continuityReferenceLoading && (!continuityReferenceFailed || episodeNumber <= 1) && !continuityReference?.available && <p data-testid="episode-image-continuity-unavailable" className="text-sm text-slate-400">{episodeNumber <= 1 ? "첫 에피소드라 이어받을 이전 장면이 없습니다. 이 에피소드부터 새로 시작합니다." : "이전 에피소드의 마지막 장면 자료가 아직 없어서, 이어받지 않고 이 에피소드만으로 만듭니다."}</p>}
-      {episode && isBefore(episode.status, "asset_mapping_approved") && <p data-testid="episode-image-not-eligible" className="text-sm text-amber-300">에피소드 이미지 생성을 시작하려면 먼저 참고 이미지 연결을 승인하세요.</p>}
+      {/* One sentence used to cover every state before the mapping was approved, and it named the mapping in
+          all of them — so an Episode that has no script yet was sent to 참고 이미지 연결, a screen that has
+          nothing to show and whose route answers 404 without a script. Telling someone to do a step they
+          cannot reach is the same failure as saying nothing: they arrive somewhere broken and cannot tell
+          whether the app is wrong or they are. The status already says which step is actually next. */}
+      {episode && isBefore(episode.status, "asset_mapping_approved") && (
+        <p data-testid="episode-image-not-eligible" className="text-sm text-amber-300">
+          {isBefore(episode.status, "script_review")
+            ? <>이 회차는 아직 <span className="font-semibold">대본</span>이 없습니다. 왼쪽의 <span className="font-semibold">장면 대본</span>에서 대본을 먼저 만들어 주세요.</>
+            : isBefore(episode.status, "script_approved")
+              ? <>왼쪽의 <span className="font-semibold">장면 대본</span>에서 대본을 먼저 승인해 주세요. 그 다음이 참고 이미지 연결입니다.</>
+              : <>에피소드 이미지 생성을 시작하려면 먼저 <span className="font-semibold">참고 이미지 연결</span>을 승인하세요.</>}
+        </p>
+      )}
       {/* The short project has said all of this since the run was made pollable; the Episode showed only a list
           of scenes reading 만드는 중, with nothing about whether leaving was safe. That last sentence is the one
           that stops a second $0.60 batch, and it was missing on the side where a batch costs more. */}

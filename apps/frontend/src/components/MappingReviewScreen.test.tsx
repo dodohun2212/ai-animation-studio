@@ -510,6 +510,45 @@ describe("MappingReviewScreen", () => {
     expect(within(candidates).getByRole("button", { name: "연결됨" })).toBeTruthy();
   });
 
+  /**
+   * The candidate list keeps working when the mapping list does not, and that is the problem.
+   *
+   * `(mappings ?? [])` made an unread list identical to "nothing is connected", so every candidate read 연결 —
+   * including one the person had deliberately 제외. Pressing it creates the mapping again, and an exclusion is
+   * exactly what stops `syncAutoMappings` from re-seeding that asset, so the undo is silent and then feeds the
+   * next paid image generation. This is the 12/Episode04 shape: a reference state the screen reported wrongly
+   * and six pictures bought against it.
+   *
+   * Asserting no POST as well as the label: a row that said 확인 불가 and still submitted would read right and
+   * do the same damage.
+   */
+  it("does not offer to connect a candidate while the mapping list is unread", async () => {
+    const asset = makeAsset({ assetId: "ASSET-EXCLUDED", displayName: "이배드", assetType: "character" });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input).split("?")[0]!;
+      const method = (init as RequestInit | undefined)?.method ?? "GET";
+      if (url === "/assets") return jsonResponse(200, { assets: [asset] });
+      if (url === "/projects/sample_project/assets/mappings") return jsonResponse(500, { code: "ASSET_MAPPING_STORAGE_ERROR", message: "raw" });
+      if (url === "/projects/sample_project/assets/mapping-review") return jsonResponse(200, { review: makeReview({}), sceneCount: 6 });
+      if (url === `/assets/${asset.assetId}`) return jsonResponse(200, { asset, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: false });
+      throw new Error(`Unexpected fetch: ${method} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
+    await screen.findByTestId("mappings-error");
+    fireEvent.click(within(await screen.findByRole("form", { name: "연결할 이미지 검색" })).getByRole("button", { name: "검색" }));
+
+    const candidates = await screen.findByRole("list", { name: "연결할 이미지 후보" });
+    const button = within(candidates).getByTestId(`candidate-link-${asset.assetId}`);
+    expect(button).toBeDisabled();
+    expect(button.textContent).toContain("확인 불가");
+    expect(within(candidates).getByTestId(`candidate-link-unknown-${asset.assetId}`).textContent).toContain("알 수 없습니다");
+
+    fireEvent.click(button);
+    expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith("/assets/mappings") && (init as RequestInit | undefined)?.method === "POST")).toBe(false);
+  });
+
   it("scopes a connection to one scene when asked to", async () => {
     const asset = makeAsset({ assetId: "ASSET-BG", displayName: "지하 기록관", assetType: "background" });
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

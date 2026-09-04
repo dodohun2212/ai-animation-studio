@@ -103,6 +103,12 @@ function blockedReason(mappings: ProjectAssetMapping[] | null, details: Record<s
   if (mappings && mappings.length === 0) {
     return "참고 이미지를 하나도 연결하지 않았습니다. 글만으로 그림을 만들려면 아래 \"참고 이미지 없이 진행하기\"를 눌러 주세요.";
   }
+  // Null is "the list was not read", not "there is something left to confirm in it". The sentence below points
+  // at a list that is not on screen, and names a cause the screen has no way to know — the server refused for
+  // some reason, and this one was being printed for every one of them.
+  if (mappings === null) {
+    return "연결 목록을 읽지 못해서, 무엇이 남았는지 확인할 수 없습니다. 위의 새로고침을 눌러 다시 시도해 주세요.";
+  }
   return "아직 확인하지 않은 연결이 남아 있습니다. 아래 목록에서 확인 또는 제외를 눌러 주세요.";
 }
 
@@ -526,6 +532,12 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
               // of a decision, and it is what stops `syncAutoMappings` from seeding the Asset straight back
               // (project-asset-mapping-sync.ts skips excluded asset ids). Deleting the row instead would let
               // the next Story Bible save undo the user's cancellation without telling them.
+              // `mappings === null` is the list not having been read, and `(mappings ?? [])` turned that into
+              // "nothing is connected": every candidate showed 연결 and pressing it created a mapping. An asset
+              // the person had deliberately 제외 would be seeded straight back in — and an exclusion is exactly
+              // what stops syncAutoMappings from re-adding it, so the undo would be silent and would then feed
+              // the paid image generation. Unknown means the row cannot act.
+              const listUnread = mappings === null;
               const existing = (mappings ?? []).find((mapping) => mapping.assetId === asset.assetId);
               const excluded = existing?.status === "excluded";
               const alreadyLinked = existing !== undefined && !excluded;
@@ -548,8 +560,9 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
                       type="button"
                       data-testid={`candidate-link-${asset.assetId}`}
                       className={outlineButton}
-                      disabled={decisionPending || addPending}
+                      disabled={decisionPending || addPending || listUnread}
                       onClick={() => {
+                        if (listUnread) return;
                         if (!existing) return void addMapping(asset);
                         void decide(existing.mappingId, alreadyLinked ? "exclude" : "confirm");
                       }}
@@ -557,11 +570,17 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
                       {decisionPending
                         ? (alreadyLinked ? "취소하는 중…" : "되돌리는 중…")
                         : addPending ? "연결하는 중…"
+                        : listUnread ? "확인 불가"
                         : alreadyLinked ? "연결됨"
                         : excluded ? "제외됨"
                         : "연결"}
                     </button>
-                    {!decisionPending && !addPending && (alreadyLinked || excluded) && (
+                    {listUnread && (
+                      <span data-testid={`candidate-link-unknown-${asset.assetId}`} className="max-w-[14rem] text-right text-[11px] text-amber-300">
+                        연결 목록을 읽지 못해 이미 연결된 것인지 알 수 없습니다.
+                      </span>
+                    )}
+                    {!listUnread && !decisionPending && !addPending && (alreadyLinked || excluded) && (
                       <span className="text-[11px] text-slate-500">
                         {alreadyLinked ? "한 번 더 누르면 연결을 취소합니다" : "한 번 더 누르면 다시 씁니다"}
                       </span>

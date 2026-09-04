@@ -11,12 +11,23 @@ const settings = {
 };
 
 /** Routes fetch calls by URL/method so test order doesn't depend on the settings screen's internal fetch sequencing. */
+/** A route whose value is this shape answers with `status` instead of 200 — for the reads that are allowed to fail. */
+function failing(status: number, body: unknown): { __status: number; body: unknown } {
+  return { __status: status, body };
+}
+function isFailing(value: unknown): value is { __status: number; body: unknown } {
+  return typeof value === "object" && value !== null && "__status" in value;
+}
+
 function stubFetchByRoute(routes: Record<string, unknown>): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
     const key = `${method} ${url}`;
-    if (key in routes) return jsonResponse(200, routes[key]);
+    if (key in routes) {
+      const value = routes[key];
+      return isFailing(value) ? jsonResponse(value.__status, value.body) : jsonResponse(200, value);
+    }
     throw new Error(`Unexpected fetch call in test: ${key}`);
   });
   return fetchMock;
@@ -680,7 +691,7 @@ describe("ShortProjectSettingsScreen", () => {
     const hero = makeAssetFolder({ assetId: "ASSET-CHAR-9", displayName: "이배드", assetType: "character" });
     const fetchMock = stubFetchByRoute({
       "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
-      "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "ASSET-CHAR-9", castRole: "representative", storyRole: "대표 캐릭터" }] },
+      "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "ASSET-CHAR-9", castRole: "protagonist", storyRole: "대표 캐릭터" }] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
       "GET /assets?assetType=character": { assets: [hero] },
@@ -699,7 +710,7 @@ describe("ShortProjectSettingsScreen", () => {
   it("says a cast row's folder is gone instead of showing its id", async () => {
     const fetchMock = stubFetchByRoute({
       "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
-      "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "FOLDER-GONE", castRole: "representative", storyRole: "대표 캐릭터" }] },
+      "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "FOLDER-GONE", castRole: "protagonist", storyRole: "대표 캐릭터" }] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
       "GET /assets?assetType=character": { assets: [] },
@@ -712,6 +723,33 @@ describe("ShortProjectSettingsScreen", () => {
     // The id stays reachable as the row's title attribute for matching things up by hand, but it is no longer
     // the label — the label now says what to do about it.
     expect(within(castSection).queryByText("FOLDER-GONE")).toBeNull();
+  });
+
+  /**
+   * The same deleted folder, seen from the form above.
+   *
+   * The row inside the cast editor says 지워진 폴더 · 제거해 주세요, but the 대표 캐릭터 hint used to say
+   * "이름을 불러오지 못해" for every nameless lead — so the same screen gave two different reasons for one
+   * state, and the one at the top sent the person to wait for a lookup that had already answered.
+   */
+  it("says the lead's folder is gone rather than blaming the name lookup", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings: { ...settings, character: "직접 적은 이름" }, sceneCountChangeable: true, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "FOLDER-GONE", castRole: "protagonist", storyRole: "대표 캐릭터" }] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+      // The library answered — it just does not have this folder any more.
+      "GET /assets?assetType=character": { assets: [] },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    const field = await screen.findByLabelText("대표 캐릭터");
+    await waitFor(() => expect(screen.getByTestId("character-source").textContent).toContain("지워진 폴더"));
+    expect(screen.getByTestId("character-source").textContent).not.toContain("불러오지 못해");
+    // Still locked: the server prefers the lead either way, so the typed name is not the one in use.
+    expect(field).toBeDisabled();
+    expect(field).toHaveValue("FOLDER-GONE");
   });
 
   // Two controls on this screen answer "who is the protagonist", and the server picks one:
@@ -738,6 +776,56 @@ describe("ShortProjectSettingsScreen", () => {
     // The typed value is still stored — it is what the server falls back to — so it must not be shown as if
     // it were in force, and must not be erased either.
     expect(screen.queryByDisplayValue("직접 적은 이름")).toBeNull();
+  });
+
+  /**
+   * The same row, one failed request away.
+   *
+   * "지워진 폴더 · 제거해 주세요" is an instruction to delete data, and it was produced by `namesLoaded` being
+   * set in a `finally` — so one failed `/assets` read said it of every saved character, including a perfectly
+   * good 대표. Obeying it drops the protagonist from the cast, and the next paid script and images are written
+   * without them. The comment on the read promises the opposite ("the ids still render, exactly as before").
+   */
+  it("does not call a cast row's folder deleted when the name lookup failed", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "FOLDER-ALIVE", castRole: "protagonist", storyRole: "대표 캐릭터" }] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+      "GET /assets?assetType=character": failing(500, { code: "ASSET_STORAGE_ERROR", message: "raw" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    const castSection = await screen.findByRole("region", { name: "등장 캐릭터" });
+    await within(castSection).findByText("FOLDER-ALIVE");
+    expect(within(castSection).queryByTestId("cast-missing-FOLDER-ALIVE")).toBeNull();
+  });
+
+  /**
+   * A lead whose name did not arrive is still a lead.
+   *
+   * Both cases used to reach the form as `null`, so the 대표 캐릭터 box unlocked and its hint said 등장 캐릭터에서
+   * 대표를 고르면 … — i.e. "what you type here is live". The server resolves `castLeadName ?? settings.character`
+   * from its own stored cast, so the typed name was dropped anyway and the script was paid for with the folder
+   * lead instead. Locked either way; only the sentence differs.
+   */
+  it("keeps 대표 캐릭터 locked when a lead is set but its name could not be read", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings: { ...settings, character: "직접 적은 이름" }, sceneCountChangeable: true, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "FOLDER-LEAD", castRole: "protagonist", storyRole: "대표 캐릭터" }] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+      "GET /assets?assetType=character": failing(500, { code: "ASSET_STORAGE_ERROR", message: "raw" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    const field = await screen.findByLabelText("대표 캐릭터");
+    await waitFor(() => expect(field).toBeDisabled());
+    // The folder id, not the typed name — showing 직접 적은 이름 in a locked box would say it is the one in use.
+    expect(field).toHaveValue("FOLDER-LEAD");
+    expect(screen.getByTestId("character-source").textContent).toContain("이름을 불러오지 못해");
   });
 
   // The other half: with no lead marked, the typed field is the answer and stays editable.

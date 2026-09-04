@@ -117,6 +117,9 @@ describe("LongEpisodeScriptScreen", () => {
     expect(status.textContent).not.toContain("videos_approved");
     expect(status.textContent).not.toContain("revision");
     expect(status.textContent).not.toContain("history");
+    // The count is of this Episode's own drafts, and it renders beside a notice about the memo carried from
+    // earlier Episodes. A bare "이전 기록" was readable as either, so the label has to name 대본.
+    expect(status.textContent).toContain("이전 대본 초안");
   });
 
   it("edits one field and saves the whole script, keeping every other value untouched", async () => {

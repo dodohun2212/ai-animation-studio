@@ -93,9 +93,14 @@ describe("LongProjectOutlineScreen", () => {
   });
 
   it("shows a safe error instead of the raw backend message when the preview request fails", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(jsonResponse(404, { code: "LONG_PROJECT_NOT_FOUND", message: "raw backend detail" }));
+    // Only the preview fails. The old fixture answered every route with 404, including the mount-time project
+    // read — and now that a failed read stops the screen before it asks for a preview (there is no preview to
+    // show when nobody could say whether the outline is already approved), that fixture never reached the
+    // request this test is named after.
+    const fetchMock = routedFetch({
+      project: [plannedProject()],
+      preview: [jsonResponse(404, { code: "LONG_PROJECT_NOT_FOUND", message: "raw backend detail" })],
+    });
     renderScreen(fetchMock);
 
     const alert = await screen.findByTestId("preview-error");
@@ -280,6 +285,31 @@ describe("LongProjectOutlineScreen", () => {
 
     await screen.findByTestId("outline-already-approved");
     expect(screen.queryByRole("button", { name: "이 프롬프트로 승인" })).toBeNull();
+  });
+
+  /**
+   * The gap the test above leaves: it hands the screen a real answer.
+   *
+   * A read that never answered arrived as the same `null` as "not approved yet", so the preview was built and
+   * the paid 승인 button armed — for an outline that may already be approved. That is the D-023 shape the test
+   * above exists to prevent, reopened for every failure of the project read.
+   *
+   * Asserting the button's absence, not just the notice: a warning above a live button is still an invitation.
+   */
+  it("does not arm approval when it could not find out whether the outline is already approved", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: unknown) => Promise.resolve(
+      String(url).endsWith("/outline/preview")
+        ? jsonResponse(200, { preview: PREVIEW })
+        : jsonResponse(500, { code: "LONG_PROJECT_STORAGE_ERROR", message: "raw" }),
+    )));
+
+    render(<LongProjectOutlineScreen projectId="long_test" onBack={() => {}} />);
+
+    expect((await screen.findByTestId("outline-state-unknown")).textContent).toContain("확인하지 못했습니다");
+    expect(screen.queryByRole("button", { name: "이 프롬프트로 승인" })).toBeNull();
+    expect(screen.queryByTestId("outline-already-approved")).toBeNull();
+    // A retry, not a dead end — the read is the only thing that failed.
+    expect(screen.getByTestId("outline-state-retry")).toBeTruthy();
   });
 
   it("says how long the approval takes, and that pressing again will not help", async () => {

@@ -242,7 +242,7 @@ export function InstagramPostScreen({ onBack }: Props) {
    * Null until the metadata arrives, and stays null if it never does — the planned values are then shown as
    * what they are rather than as a measurement.
    */
-  const [measured, setMeasured] = useState<{ vertical: boolean; seconds: number | null } | null>(null);
+  const [measured, setMeasured] = useState<{ vertical: boolean | null; seconds: number | null } | null>(null);
   /**
    * Which moment of the video Instagram should use as the cover, in milliseconds.
    *
@@ -266,6 +266,16 @@ export function InstagramPostScreen({ onBack }: Props) {
   const [forgetError, setForgetError] = useState<DisplayError | null>(null);
   const [targets, setTargets] = useState<TargetsState>({ status: "loading" });
   const [targetPending, setTargetPending] = useState(false);
+  /**
+   * The saved draft could not be read — which is not the same as there not being one.
+   *
+   * `getPostDraft(...).catch(() => null)` made a failed read look identical to a project that had never saved a
+   * caption, so the screen filled the box with a suggestion and labelled it 미리 채워 뒀습니다 — a positive claim
+   * that nothing was stored. Leaving the field then blur-saved that suggestion over the caption it had failed to
+   * read, and the person's own words were gone with nothing on screen having said so. A convenience must never
+   * be the thing that destroys the work it exists to preserve.
+   */
+  const [draftUnread, setDraftUnread] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [saveError, setSaveError] = useState<DisplayError | null>(null);
   const [openPending, setOpenPending] = useState(false);
@@ -372,15 +382,21 @@ export function InstagramPostScreen({ onBack }: Props) {
     Promise.all([
       getProject(projectId),
       getProjectSettings(projectId).catch(() => null),
-      getPostDraft(projectId).catch(() => null),
+      // `undefined` is a draft that answered; `"unread"` is one that did not. Both used to arrive as `null`,
+      // and `null?.body === undefined` sent a failed read down the "nothing was ever saved" path.
+      getPostDraft(projectId).catch(() => "unread" as const),
     ])
-      .then(([projectResponse, settingsResponse, draft]) => {
+      .then(([projectResponse, settingsResponse, draftOrUnread]) => {
         if (cancelled) return;
+        const unread = draftOrUnread === "unread";
+        const draft = unread ? undefined : draftOrUnread;
+        setDraftUnread(unread);
         // `draft?.body === undefined` is "no body has ever been saved", which is not the same as a saved "".
-        // Only the first case gets a suggestion; see suggestCaptionBody.
-        const suggested = draft?.body === undefined ? suggestCaptionBody(projectResponse.project) : "";
+        // Only the first case gets a suggestion; see suggestCaptionBody. An unread draft gets none either: a
+        // suggestion here would be written over the stored caption the moment the box is left.
+        const suggested = !unread && draft?.body === undefined ? suggestCaptionBody(projectResponse.project) : "";
         setBody(draft?.body ?? suggested);
-        setBodyAutoFilled(draft?.body === undefined && suggested.length > 0);
+        setBodyAutoFilled(!unread && draft?.body === undefined && suggested.length > 0);
         setMeasured(null);
         setHashtagsRaw(draft?.hashtags ?? "");
         setAiNoticeOn(draft?.aiNotice ?? true);
@@ -413,10 +429,34 @@ export function InstagramPostScreen({ onBack }: Props) {
    * Sends the whole draft every time because the endpoint replaces rather than merges: an omitted field is a
    * deleted field, so a partial save would quietly erase the other two.
    */
+  /**
+   * Asks for the saved draft again after a failed read.
+   *
+   * Only fills the boxes when it actually gets an answer: a second failure leaves the screen exactly as it is,
+   * still refusing to save over what it cannot see. Nothing here suggests a caption — the suggestion is for a
+   * project that has never saved one, and this is a project whose answer we still do not have.
+   */
+  async function reloadDraft(): Promise<void> {
+    if (picked.status !== "ready" || picked.kind !== "project") return;
+    try {
+      const draft = await getPostDraft(picked.project.id);
+      setDraftUnread(false);
+      setBody(draft.body ?? "");
+      setHashtagsRaw(draft.hashtags ?? "");
+      setAiNoticeOn(draft.aiNotice ?? true);
+      setBodyAutoFilled(false);
+    } catch { /* Still unread, and the notice below still says so. */ }
+  }
+
   async function saveDraft(next: { body?: string; hashtags?: string; aiNotice?: boolean } = {}): Promise<void> {
     // Drafts belong to short projects; an Episode has nowhere to save one, so the blur handler is a no-op there
     // rather than a request that would 404.
     if (picked.status !== "ready" || picked.kind !== "project") return;
+    // Never write over a draft we could not read. This is the automatic save that fires on leaving a field, so
+    // it would be the person's stored caption replaced by whatever this screen happened to show — without them
+    // asking for a save at all. The notice beside the box says the reading failed and offers to try again; the
+    // caption they type still goes out with the post either way.
+    if (draftUnread) return;
     const projectId = picked.project.id;
     setSaveState("saving");
     setSaveError(null);
@@ -491,7 +531,11 @@ export function InstagramPostScreen({ onBack }: Props) {
      losing the measurement must not cost the check, but it must not be reported as one either. */
   const checkedSeconds = measured?.seconds ?? plannedSeconds;
   const tooLong = checkedSeconds !== null && checkedSeconds > REEL_MAX_SECONDS;
-  const notVertical = measured ? !measured.vertical : (project?.aspectRatio ?? episode?.aspectRatio) === "16:9";
+  /* Each half is measured or it is not, separately. A browser that states a duration but no frame size is
+     ordinary, and `measured` being non-null used to be taken as both facts having been read. */
+  const notVertical = measured?.vertical != null
+    ? !measured.vertical
+    : (project?.aspectRatio ?? episode?.aspectRatio) === "16:9";
   const copyBlocked = captionOver || hashtagsOver || creditMissing;
   /* The server's own record, on either shape — never a local flag. A reload has to keep saying "already
      posted", because the mistake this prevents is a second public copy of something already out there. */
@@ -713,11 +757,16 @@ export function InstagramPostScreen({ onBack }: Props) {
               })}
             </select>
 
-            {/* The stored choice was checked against this very list by the server; its absence means the page was
-                disconnected, deleted, or lost its permission since. Saying so beats an empty selector. */}
+            {/* The field is absent for two different reasons — a stored choice that is no longer in this list,
+                and no choice ever having been made (api.ts: "Present only when a previously stored choice is
+                actually still in `targets`"). The old sentence said the first as a fact, so somebody publishing
+                for the first time on a healthy connection was told their page had been disconnected or its
+                permission revoked, and went to Meta to fix nothing. What is true either way goes first; the
+                part that only holds in one case is written as the condition it is. */}
             {!targets.selectedIgUserId && (
               <p data-testid="post-target-unset" className="text-sm text-amber-300">
-                전에 고른 계정을 지금은 찾을 수 없습니다. 연결이 끊겼거나 권한이 회수됐을 수 있습니다. 위에서 다시 골라 주세요.
+                올릴 계정이 아직 정해지지 않았습니다. 위에서 골라 주세요.
+                {" "}전에 골라 두신 적이 있다면, 그 계정이 지금 목록에 없다는 뜻입니다 — 연결이 끊겼거나 권한이 회수됐을 수 있습니다.
               </p>
             )}
 
@@ -770,11 +819,16 @@ export function InstagramPostScreen({ onBack }: Props) {
                 // A stream whose duration the browser cannot state reports Infinity or NaN. That is "not
                 // measured", not "zero seconds" — falling through to the planned value is the honest outcome.
                 const seconds = Number.isFinite(element.duration) && element.duration > 0 ? element.duration : null;
-                if (!element.videoWidth || !element.videoHeight) {
-                  setMeasured(seconds === null ? null : { vertical: !notVertical, seconds });
-                  return;
-                }
-                setMeasured({ vertical: element.videoHeight >= element.videoWidth, seconds });
+                /* No frame size is "not measured", the same way Infinity is for the duration — and it used to
+                   copy the PLANNED orientation into the measured slot, which made the line below say 위 영상
+                   파일을 직접 재어 본 값입니다 about a shape nothing had looked at. The panel's own comment
+                   says why that is the worst of the three outcomes: a check that reports the plan as a
+                   measurement is worse than no check, because it is believed. And it is believed three cards
+                   above the publish button, which is the one action here nobody can take back. */
+                const vertical = element.videoWidth && element.videoHeight
+                  ? element.videoHeight >= element.videoWidth
+                  : null;
+                setMeasured(vertical === null && seconds === null ? null : { vertical, seconds });
               }}
             />
             {/* Instagram's own uploader offers a frame strip for this; the app has the same video already on
@@ -882,10 +936,16 @@ export function InstagramPostScreen({ onBack }: Props) {
                 </>
               )}
             </div>
+            {/* Three outcomes, because there are three. Saying which half came from the file is the whole point
+                of the line: the two checks above look identical whether they were measured or assumed. */}
             <p className="text-xs text-slate-500" data-testid="post-check-source">
-              {measured
+              {measured?.vertical != null && measured.seconds !== null
                 ? "위 영상 파일을 직접 재어 본 값입니다."
-                : "아직 영상 파일을 읽지 못해 설정값으로 적었습니다. 실제 파일이 다를 수 있습니다."}
+                : measured?.vertical != null
+                  ? "화면 비율은 위 영상 파일에서 직접 쟀고, 길이는 파일이 알려주지 않아 설정값으로 적었습니다."
+                  : measured?.seconds != null
+                    ? "길이는 위 영상 파일에서 직접 쟀고, 화면 비율은 파일이 알려주지 않아 설정값으로 적었습니다."
+                    : "아직 영상 파일을 읽지 못해 설정값으로 적었습니다. 실제 파일이 다를 수 있습니다."}
             </p>
           </div>
           </div>
@@ -932,6 +992,17 @@ export function InstagramPostScreen({ onBack }: Props) {
               해시태그 {hashtags.length}/{HASHTAG_MAX}
               {hashtagsOver && " — 인스타그램이 받아주는 한도를 넘었습니다."}
             </p>
+            {/* Louder than the save-state lines below it, because it is about work that already exists: the
+                caption saved for this project is still on the server, and this screen is deliberately not
+                writing over it. Says both halves — what it could not do, and what it is therefore not doing. */}
+            {draftUnread && (
+              <p role="status" data-testid="post-draft-unread" className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-400/25 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-200">
+                <span>저장해 둔 캡션을 불러오지 못했습니다. 지워지지 않도록 <strong className="text-amber-100">자동 저장을 멈춰 뒀습니다</strong> — 여기 쓴 내용은 그대로 게시에 쓰입니다.</span>
+                <button type="button" data-testid="post-draft-reload" className="underline underline-offset-2 hover:text-amber-100" onClick={() => void reloadDraft()}>
+                  다시 불러오기
+                </button>
+              </p>
+            )}
             {saveState === "saving" && <p data-testid="post-draft-saving" className="text-xs text-slate-400">저장 중...</p>}
             {saveState === "saved" && <p data-testid="post-draft-saved" className="text-xs text-emerald-400">저장했습니다.</p>}
             {saveError && (

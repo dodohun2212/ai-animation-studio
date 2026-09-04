@@ -5,7 +5,7 @@ import { jsonResponse, makeLongProjectSettings } from "../api/testUtils.js";
 import { IMAGE_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 import { LongEpisodeImageGenerationScreen } from "./LongEpisodeImageGenerationScreen.js";
 
-const episode = (status: "planned" | "asset_mapping_approved" | "generating_images" | "images_ready" | "images_review" | "waiting_for_video_confirmation" | "completed") => ({
+const episode = (status: "planned" | "outline_ready" | "script_review" | "script_approved" | "waiting_for_asset_mapping_review" | "asset_mapping_approved" | "generating_images" | "images_ready" | "images_review" | "waiting_for_video_confirmation" | "completed") => ({
   episodeNumber: 1, title: "Episode 1", summary: "Summary", mainEvent: "Event", conflict: "Conflict", cliffhanger: "Hook", nextEpisodeHook: "Next",
   status, approved: true, scriptRevision: 2, scriptHistoryCount: 1,
 });
@@ -458,12 +458,47 @@ describe("LongEpisodeImageGenerationScreen", () => {
 
   it("still asks for the mapping approval when it genuinely has not happened", async () => {
     vi.stubGlobal("fetch", vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("planned") }))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: episode("waiting_for_asset_mapping_review") }))
       .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
       .mockResolvedValue(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true })));
 
     render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
-    expect(await screen.findByTestId("episode-image-not-eligible")).toBeTruthy();
+    expect((await screen.findByTestId("episode-image-not-eligible")).textContent).toContain("참고 이미지 연결");
+  });
+
+  /**
+   * The same notice, two steps earlier.
+   *
+   * 참고 이미지 연결 needs a script — its route answers 404 without one — so an Episode sitting at
+   * outline_ready was being pointed at a screen it cannot open. The blocked control still has to say why it is
+   * blocked; what changes is that it now names the step the person can actually take.
+   */
+  it("names the script, not the mapping, when there is no script yet", async () => {
+    for (const status of ["planned", "outline_ready"] as const) {
+      vi.stubGlobal("fetch", vi.fn()
+        .mockResolvedValueOnce(jsonResponse(200, { episode: episode(status) }))
+        .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+        .mockResolvedValue(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true })));
+
+      const view = render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+      const notice = await screen.findByTestId("episode-image-not-eligible");
+      expect(notice.textContent).toContain("장면 대본");
+      expect(notice.textContent).not.toContain("참고 이미지 연결을 승인");
+      view.unmount();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("asks for the script approval when the script exists but is not approved", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: withScript(episode("script_review")) }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValue(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true })));
+
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+    const notice = await screen.findByTestId("episode-image-not-eligible");
+    expect(notice.textContent).toContain("승인");
+    expect(notice.textContent).toContain("장면 대본");
   });
 
   // The review block is the only place the pictures appeared, and it renders only at the review step — so

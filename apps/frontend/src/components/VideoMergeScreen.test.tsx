@@ -10,6 +10,11 @@ const PROJECT_URL = "/projects/sample_project";
 const MERGE_URL = "/projects/sample_project/videos/merge";
 const SETTINGS_URL = "/projects/sample_project/settings";
 const AUDIO_LIBRARY_URL = "/audio/library";
+/** The confirmed count's real source, addressed by the job id the project carries. */
+const REVIEW_URL = "/projects/sample_project/videos/generations/job_1/review";
+/** A second job id, so the harness's stand-in answer cannot collide with a test that answers job_1 itself. */
+const DEFAULT_JOB_ID = "job_default";
+const DEFAULT_REVIEW_URL = `/projects/sample_project/videos/generations/${DEFAULT_JOB_ID}/review`;
 
 function makeTrack(overrides: Record<string, unknown> = {}) {
   return {
@@ -69,11 +74,18 @@ function renderScreen(
   settings: { narrationEnabled: boolean; subtitlesEnabled: boolean } | "fails" = { narrationEnabled: false, subtitlesEnabled: false },
   tracks: ReturnType<typeof makeTrack>[] = [],
 ) {
+  // The confirmation count comes from the video review route now, not from a field on the scene — that field
+  // never existed on any real response (see the note above the COMPLETED-project test). The tests still say what
+  // they mean through `videoReview` on their scenes, and this turns that into the answer the screen actually
+  // asks for, so each test reads as the state it describes rather than as a fetch script.
+  const scenes = (project.scenes ?? sixScenes()) as Scene[];
+  const reviews = scenes.map((scene) => ({ sceneNumber: scene.number, status: scene.videoReview === "approved" ? "approved" as const : "pending" as const, updatedAt: "2026-08-23T00:00:00.000Z" }));
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input);
     if (url === PROJECT_URL && !init) {
-      return jsonResponse(200, { project: makeProject({ workflowState: WorkflowState.VideosApproved, scenes: sixScenes(), ...project }) });
+      return jsonResponse(200, { project: makeProject({ workflowState: WorkflowState.VideosApproved, scenes, currentVideoJobId: DEFAULT_JOB_ID, ...project }) });
     }
+    if (url === DEFAULT_REVIEW_URL && !init) return jsonResponse(200, { project: makeProject({ scenes }), reviews });
     if (url === SETTINGS_URL && !init) {
       if (settings === "fails") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "raw" });
       return jsonResponse(200, { settings: makeSettings(settings.narrationEnabled, settings.subtitlesEnabled), sceneCountChangeable: true, aspectRatioChangeable: true });
@@ -239,20 +251,25 @@ describe("VideoMergeScreen", () => {
   /**
    * Seen live on 이배드의 탄생, a COMPLETED project with six videos and a final file on disk.
    *
-   * `videoReview` is required on the contract but the mapper omits it for scenes stored before per-scene review
-   * existed, and `undefined !== "approved"` counted all six as unconfirmed. The screen then said 장면 6개 중
-   * 0개 확정됨 and 아직 확정하지 않은 장면이 6개 있습니다 — in the same panel where it was printing the finished
-   * video's path. A person is sent to go and confirm work the screen has just shown them the result of.
+   * The count used to be taken off `scene.videoReview`, a field that has never existed anywhere:
+   * `project.mapper.ts` spreads the stored scene and asserts `as unknown as Scene`, so two required fields
+   * nothing writes were being read as answers. All six came back `undefined`, `undefined !== "approved"` made
+   * them unconfirmed, and the screen said 장면 6개 중 0개 확정됨 and 아직 확정하지 않은 장면이 6개 있습니다 — in
+   * the same panel that was printing the finished video's path.
    *
-   * The rule the screen already states for this case is "unknown stays unblocked, the server is still the real
-   * gate", so the assertions are that the number and the blocker are both absent, not that they read zero.
+   * A finished project's review is refused (VIDEO_WORKFLOW_NOT_ALLOWED — there is nothing left to confirm),
+   * which is an ordinary answer and not this screen failing. The rule the screen already states covers it:
+   * "unknown stays unblocked, the server is still the real gate". So the assertions are that the number and
+   * the blocker are both absent, not that they read zero.
    */
-  it("says nothing about confirmations when no scene carries a review at all", async () => {
-    const legacy = sixScenes().map((scene) => {
-      const { videoReview: _videoReview, ...rest } = scene;
-      return rest as Scene;
+  it("says nothing about confirmations when the review is refused", async () => {
+    const mergeFetch = vi.fn(async (input: RequestInfo | URL) => String(input) === REVIEW_URL
+      ? jsonResponse(409, { code: "VIDEO_WORKFLOW_NOT_ALLOWED", message: "raw" })
+      : jsonResponse(404, { code: "NOT_FOUND", message: "raw" }));
+    renderScreen(mergeFetch, {
+      workflowState: WorkflowState.Completed, scenes: sixScenes(),
+      finalVideoPath: "videos/final/instagram_reel.mp4", currentVideoJobId: "job_1",
     });
-    renderScreen(vi.fn(), { workflowState: WorkflowState.Completed, scenes: legacy, finalVideoPath: "videos/final/instagram_reel.mp4" });
 
     await waitFor(() => expect(screen.getByTestId("merge-scope-notice").textContent).toContain("이어 붙입니다"));
     expect(screen.queryByTestId("merge-approved-count")).toBeNull();
@@ -262,15 +279,34 @@ describe("VideoMergeScreen", () => {
   });
 
   /**
-   * The half that keeps the above from turning into "never count anything": a project whose scenes do answer
-   * still gets the count and the blocker.
+   * The half that keeps the above from turning into "never count anything".
+   *
+   * This shape is what the server actually sends — the same review list the Episode merge screen reads — so
+   * unlike the version it replaces, its green comes from a response the backend can really produce rather than
+   * from a scene field nothing has ever written.
    */
-  it("still counts and blocks when every scene has answered", async () => {
-    const partly = sixScenes().map((scene, index) => ({ ...scene, videoReview: index < 4 ? "approved" as const : "pending" as const }));
-    renderScreen(vi.fn(), { scenes: partly });
+  it("counts and blocks from the review list", async () => {
+    const reviews = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({
+      sceneNumber, status: sceneNumber <= 4 ? "approved" : "pending", updatedAt: "2026-08-23T00:00:00.000Z",
+    }));
+    const mergeFetch = vi.fn(async (input: RequestInfo | URL) => String(input) === REVIEW_URL
+      ? jsonResponse(200, { project: makeProject({ scenes: sixScenes() }), reviews })
+      : jsonResponse(404, { code: "NOT_FOUND", message: "raw" }));
+    renderScreen(mergeFetch, { scenes: sixScenes(), currentVideoJobId: "job_1" });
 
     expect((await screen.findByTestId("merge-approved-count")).textContent).toContain("4개 확정됨");
     expect((await screen.findByTestId("merge-blocked")).textContent).toContain("2개 있습니다");
+  });
+
+  /** No job at all: nothing to ask, so nothing is claimed — and the review route is not called. */
+  it("asks for no review when the project has no video job", async () => {
+    const mergeFetch = vi.fn(async (_input: RequestInfo | URL) => jsonResponse(404, { code: "NOT_FOUND", message: "raw" }));
+    // Said outright rather than left to the harness default, which supplies a job so the older tests can count.
+    renderScreen(mergeFetch, { scenes: sixScenes(), currentVideoJobId: undefined });
+
+    await waitFor(() => expect(screen.getByTestId("merge-scope-notice").textContent).toContain("이어 붙입니다"));
+    expect(screen.queryByTestId("merge-approved-count")).toBeNull();
+    expect(mergeFetch.mock.calls.some(([url]) => String(url) === REVIEW_URL)).toBe(false);
   });
 
   it("does not call the merge endpoint on the first click — only an explicit confirmation does", async () => {

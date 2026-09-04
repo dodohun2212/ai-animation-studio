@@ -161,9 +161,13 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
         <h2 className="flex items-center gap-2.5 text-lg font-semibold"><SectionDot />{`에피소드 ${episodeNumber} 상세 대본`}</h2>
       </div>
       {loading && <Spinner label="불러오는 중..." />}
+      {/* "이전 기록" counted this Episode's own earlier script drafts, but it renders two lines above a notice
+          about 이어쓰기 메모 — the record carried from earlier Episodes — so "이전 기록 0개" read as confirmation
+          that there is nothing earlier to carry, which is a different fact and often false. Naming what is
+          counted is the whole fix; the number was always right. */}
       {episode && (
         <p data-testid="episode-script-status" className="text-sm text-slate-400">
-          상태: {longEpisodeStatusLabel(episode.status)} · 리비전 {episode.scriptRevision} · 이전 기록 {episode.scriptHistoryCount}개
+          상태: {longEpisodeStatusLabel(episode.status)} · 리비전 {episode.scriptRevision} · 이전 대본 초안 {episode.scriptHistoryCount}개
         </p>
       )}
       {/* Without these two notices the screen rendered the header and then nothing at all: an Episode still in

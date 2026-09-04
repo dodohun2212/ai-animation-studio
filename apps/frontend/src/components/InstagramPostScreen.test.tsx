@@ -64,7 +64,8 @@ function renderScreen(options: {
   projects?: ReturnType<typeof libraryProject>[];
   project?: Parameters<typeof makeProject>[0];
   durationSeconds?: number | "fails";
-  draft?: { body?: string; hashtags?: string; aiNotice?: boolean } | "fails";
+  /** "fails" refuses every read; "fails-once" refuses the first and answers the rest — the retry path. */
+  draft?: { body?: string; hashtags?: string; aiNotice?: boolean } | "fails" | "fails-once";
   targets?: { targets: { igUserId: string; username: string; pageName: string }[]; selectedIgUserId?: string } | "not-connected";
   publish?: "ok" | "INSTAGRAM_ALREADY_PUBLISHED" | "INSTAGRAM_PUBLISH_FAILED" | "INSTAGRAM_NOT_CONNECTED";
   forget?: "ok" | "not-recorded";
@@ -72,6 +73,7 @@ function renderScreen(options: {
   episode?: Record<string, unknown>;
 } = {}) {
   const projects = options.projects ?? [libraryProject()];
+  let draftReads = 0;
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input);
     if (url === LIBRARY_URL) return jsonResponse(200, { projects, episodes: options.episodes ?? [] });
@@ -111,6 +113,10 @@ function renderScreen(options: {
     }
     if (url === "/projects/p1/post-draft") {
       if (options.draft === "fails") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "raw" });
+      if (options.draft === "fails-once") {
+        if (draftReads++ === 0) return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "raw" });
+        return jsonResponse(200, { body: "저장돼 있던 본문", hashtags: "태그", aiNotice: true });
+      }
       return jsonResponse(200, options.draft ?? {});
     }
     throw new Error(`unexpected fetch: ${url}`);
@@ -265,6 +271,31 @@ describe("InstagramPostScreen", () => {
     loadVideoMetadata({ videoWidth: 1920, videoHeight: 1080, duration: 30 });
 
     expect(screen.getByTestId("post-check-shape").textContent).toContain("가로 영상");
+  });
+
+  /**
+   * The other half of that rule, and the half that was wrong.
+   *
+   * A browser can state a duration and no frame size. The screen copied the PLANNED orientation into the
+   * measured slot for that case, so 위 영상 파일을 직접 재어 본 값입니다 appeared under a shape nothing had
+   * looked at — and a 16:9 file made from a project set to 9:16 passed as 세로 9:16, three cards above the one
+   * button in this app that cannot be taken back. The panel's own comment already names this as the worst of
+   * the three outcomes: a check that reports the plan as a measurement is believed.
+   */
+  it("does not call the planned shape a measurement when the file gave no frame size", async () => {
+    renderScreen({ durationSeconds: 30 });
+    await pickProject();
+
+    loadVideoMetadata({ videoWidth: 0, videoHeight: 0, duration: 42 });
+
+    // The length really was read, so it is used and said to be read.
+    expect(screen.getByTestId("post-check-length").textContent).toContain("0:42");
+    const source = screen.getByTestId("post-check-source").textContent ?? "";
+    expect(source).toContain("길이는 위 영상 파일에서 직접 쟀고");
+    expect(source).toContain("화면 비율은");
+    expect(source).toContain("설정값");
+    // And not the sentence that claims both.
+    expect(source).not.toBe("위 영상 파일을 직접 재어 본 값입니다.");
   });
 
   // A stream whose duration the browser cannot state reports Infinity. That is "not measured", never "0:00" —
@@ -583,13 +614,53 @@ describe("InstagramPostScreen", () => {
     expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value).toBe("본문");
   });
 
-  // Losing the draft read must not cost the screen — it opens with the same caption a project that never had a
-  // draft gets. Nothing is lost by that: a failed read means nothing saved was found, and the person can still
-  // clear the box.
-  it("still opens when the draft read fails", async () => {
-    renderScreen({ draft: "fails", project: { topic: "기록관의 밤" } });
+  /**
+   * This replaces "still opens when the draft read fails", whose comment carried the assumption that was
+   * wrong: *"a failed read means nothing saved was found"*. It does not. It means nothing was found out.
+   *
+   * The old behaviour filled the box with the suggestion and labelled it 미리 채워 뒀습니다 — a positive claim
+   * that nothing was stored — and leaving the field then PUT that suggestion over the caption it had just
+   * failed to read. The saved caption, its hashtags and the credit line in it were gone, with nothing on
+   * screen having said so. An automatic save must never be the thing that destroys what it exists to keep.
+   *
+   * The screen still opens, and the caption typed here still goes out with the post. What it does not do is
+   * write.
+   */
+  it("does not write over a saved draft it could not read", async () => {
+    const { fetchMock } = renderScreen({ draft: "fails", project: { topic: "기록관의 밤" } });
     await pickProject();
-    expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value).toBe("기록관의 밤");
+
+    // No suggestion: it would be the thing written over the stored caption.
+    expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value).toBe("");
+    expect(screen.queryByTestId("post-body-autofilled")).toBeNull();
+    expect((await screen.findByTestId("post-draft-unread")).textContent).toContain("불러오지 못했습니다");
+
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "새로 쓴 본문" } });
+    fireEvent.blur(screen.getByTestId("post-body"));
+
+    // The assertion that matters: nothing was sent.
+    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT")).toBe(false);
+    expect(screen.queryByTestId("post-draft-saved")).toBeNull();
+    // And the caption is still usable — it just is not being persisted.
+    expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value).toBe("새로 쓴 본문");
+  });
+
+  /**
+   * The way out of that state, and the half that keeps the fix from being "this project can never save again".
+   * A second answer that arrives puts the stored caption on screen and lets saving resume.
+   */
+  it("takes the saved draft back once it can be read", async () => {
+    renderScreen({ draft: "fails-once" });
+    await pickProject();
+
+    fireEvent.click(await screen.findByTestId("post-draft-reload"));
+
+    await waitFor(() => expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value).toBe("저장돼 있던 본문"));
+    expect(screen.queryByTestId("post-draft-unread")).toBeNull();
+
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "고친 본문" } });
+    fireEvent.blur(screen.getByTestId("post-body"));
+    await screen.findByTestId("post-draft-saved");
   });
 
   // Where it goes belongs beside what goes, not two screens away in settings: a credential answers "can we act
@@ -604,12 +675,23 @@ describe("InstagramPostScreen", () => {
     expect(screen.queryByTestId("post-target-unset")).toBeNull();
   });
 
-  // The server only echoes a stored choice back when it is actually still in this list, so its absence means
-  // the page was disconnected or lost its permission since. Saying so beats an empty selector.
-  it("asks the user to choose again when the stored account is no longer listed", async () => {
+  /**
+   * The field is absent for two reasons, and the screen cannot tell them apart: a stored choice that is no
+   * longer in the list, and no choice ever having been made. It used to state the first as fact, so a
+   * first-time publisher on a perfectly healthy connection was told their page had been disconnected or its
+   * permission revoked — and went to Meta to fix nothing.
+   *
+   * What has to hold is that the sentence is true in both cases: the ask comes first, and the disconnection is
+   * written as the condition it is.
+   */
+  it("asks for an account without asserting the connection broke", async () => {
     renderScreen({ targets: { targets: [{ igUserId: "1", username: "other", pageName: "다른 페이지" }] } });
 
-    expect((await screen.findByTestId("post-target-unset")).textContent).toContain("다시 골라");
+    const notice = await screen.findByTestId("post-target-unset");
+    expect(notice.textContent).toContain("아직 정해지지 않았습니다");
+    expect(notice.textContent).toContain("골라 주세요");
+    // Still says what may have happened — as a condition, not as the answer.
+    expect(notice.textContent).toContain("전에 골라 두신 적이 있다면");
     expect(screen.queryByTestId("post-target-selected")).toBeNull();
   });
 

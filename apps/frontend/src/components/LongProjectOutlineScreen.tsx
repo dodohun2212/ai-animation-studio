@@ -35,6 +35,14 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
   const [approved, setApproved] = useState<ApprovedState | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [alreadyApproved, setAlreadyApproved] = useState(false);
+  /**
+   * Whether this outline is already approved could not be read — which is not the same as it not being.
+   *
+   * Kept apart because the two lead opposite ways: not approved means show the preview and arm the paid button,
+   * and not knowing means do neither. Collapsing them onto `false` is how the screen came to invite the action
+   * its own comment says it must not (D-023, one project billed twice for the same outline).
+   */
+  const [outlineStateUnknown, setOutlineStateUnknown] = useState(false);
 
   const loadRequest = useRef(0);
   const approveBusy = useRef(false);
@@ -50,8 +58,18 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
        * it a second time reached the server — which is how one project was billed twice for the same outline
        * (D-023). The server refuses that now, but a screen that invites a refused action is still wrong.
        */
-      const existing = await getLongProject(projectId).catch(() => null);
+      // `null` used to cover both "not approved" and "we could not ask", and the second one armed the button:
+      // the very state the paragraph above says must not be offered. A read that did not answer is not an
+      // answer of no.
+      const existing = await getLongProject(projectId).catch(() => "unread" as const);
       if (requestId !== loadRequest.current) return;
+      if (existing === "unread") {
+        setAlreadyApproved(false);
+        setOutlineStateUnknown(true);
+        setPreview(null);
+        return;
+      }
+      setOutlineStateUnknown(false);
       if (existing && existing.project.outlineStatus === "outline_ready") {
         setAlreadyApproved(true);
         setPreview(null);
@@ -168,6 +186,16 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
       )}
       {/* Sits outside the preview block on purpose: an already-approved outline has no preview to show, so a
           notice nested inside it would never render — which is how it was written the first time. */}
+      {/* No preview and no button — the two things this screen would otherwise offer on the strength of an
+          answer it never got. A retry rather than a dead end: the read is the only thing that failed. */}
+      {outlineStateUnknown && (
+        <div data-testid="outline-state-unknown" className="space-y-2 rounded-xl border border-amber-400/25 bg-amber-500/[0.06] px-4 py-3 text-sm text-amber-200">
+          <p>이 작품의 스토리 개요가 이미 승인됐는지 확인하지 못했습니다. 이미 승인된 것을 한 번 더 승인하면 <strong className="text-amber-100">같은 작업에 비용이 다시 듭니다</strong>.</p>
+          <button type="button" data-testid="outline-state-retry" className="rounded-full border border-white/15 px-3.5 py-1.5 text-xs text-slate-200 hover:bg-white/5" onClick={() => void load()}>
+            다시 확인
+          </button>
+        </div>
+      )}
       {alreadyApproved && (
         <p data-testid="outline-already-approved" className="rounded-xl border border-emerald-400/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-200">
           이 작품의 스토리 개요는 이미 승인되었습니다. 회차 개요는 왼쪽 메뉴에서 볼 수 있습니다.
