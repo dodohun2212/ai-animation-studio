@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkflowState } from "@ai-animation-studio/shared";
 import { LocalProjectAssetMappingsRepository, scriptFingerprint } from "../mappings/mappings.repository.js";
 import { createStoredProject } from "../projects/project.mapper.js";
+import { applyShortProjectSettings, toShortProjectSettings } from "../projects/project-settings.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
@@ -133,6 +134,31 @@ describe("provider-free local image generation", () => {
     for (const prompt of reloaded.image_prompts) {
       expect(prompt).toContain("Style: override style, pastel, soft");
       expect(prompt).not.toContain("handheld");
+    }
+  });
+
+  /**
+   * The same direction, saved the way the settings screen saves it rather than written into the project object.
+   *
+   * Both halves are already tested, each against a fixture someone wrote for the other half: the writer's
+   * camelCase-to-snake_case mapping in project-settings.test.ts, the prompt's Style line against a style_notes
+   * object seeded by hand above. Nothing checked that the two meet. This removes the hand-written middle.
+   *
+   * Dropping the writer's `visualStyle` to `visual_style` rename reddens this and the mapping test both — so this
+   * is not the only guard on it, but it is the one that says what is lost: the direction never reaches a prompt.
+   */
+  it("appends the Style line for a direction saved through the settings writer, rename and all", async () => {
+    const { projectsRoot, projects, mappings } = await setup();
+    const stored = await projects.findById("images");
+    const settings = toShortProjectSettings(stored);
+    await projects.save(applyShortProjectSettings(stored, { ...settings, styleNotes: { visualStyle: "손그림 수채화", color: "탁한 청록", lighting: "역광", avoid: "사진 같은 질감" } }, "2026-09-05T00:00:00.000Z"));
+
+    await new LocalImageGenerationService(projects, mappings, projectsRoot).generate("images", { approved: true });
+
+    const reloaded = await new LocalProjectRepository(projectsRoot).findById("images");
+    for (const prompt of reloaded.image_prompts) {
+      expect(prompt, "the saved direction never reached the prompt").toContain("Style: 손그림 수채화, 탁한 청록, 역광");
+      expect(prompt).toContain("Avoid: 사진 같은 질감");
     }
   });
 

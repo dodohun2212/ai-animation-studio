@@ -56,7 +56,7 @@ async function setupWithConnectedOpenAi(seed?: (context: { assets: LocalAssetsRe
   await providerSettings.save("openai", { value: "sk-test-key-1234567890" });
   const budget = new OpenAiBudget(root, 10);
   const images = new EpisodeImagesService(projectsRoot, assets, mappingStore, mappingOwners, providerSettings, budget);
-  return { root, projectsRoot, assets, mappingStore, mappingOwners, providerSettings, budget, images };
+  return { root, projectsRoot, projects, assets, mappingStore, mappingOwners, providerSettings, budget, images };
 }
 
 afterEach(async () => {
@@ -155,6 +155,29 @@ describe("real OpenAI Episode image generation", () => {
     const after = (await images.get("long", 1)).staleness;
     expect(after.styleStale).toEqual([1, 2, 3, 4, 5, 6]);
     expect(after.imageStale, "the script was never touched").toEqual([]);
+  });
+
+  /**
+   * The direction saved the way the app saves it, not written into the file by this test.
+   *
+   * Every other case here writes `visual_style` straight into project.json, which proves the reader and proves
+   * nothing about the writer. The settings service rebuilds the stored object from a whitelist — the shape that
+   * has quietly dropped a field three times in this repository — and the Episode reads that same file. So the
+   * one thing worth checking is the seam: settings saved through the service, style line read by generation, no
+   * hand-written file in between.
+   */
+  it("sends the direction saved through the settings service, not only one written into the file", async () => {
+    const { images, projects } = await setupWithConnectedOpenAi();
+    await projects.updateSettings("long", { settings: { ...settings, visualStyle: "손그림 수채화", color: "탁한 청록", lighting: "역광", avoid: "사진 같은 질감" } });
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await images.generate("long", 1, { approved: true });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const { prompt } = JSON.parse(init.body as string) as { prompt: string };
+    expect(prompt, "the art direction did not survive the save").toContain("Style: 손그림 수채화, 탁한 청록, 역광");
+    expect(prompt).toContain("Avoid: 사진 같은 질감");
   });
 
   /**
