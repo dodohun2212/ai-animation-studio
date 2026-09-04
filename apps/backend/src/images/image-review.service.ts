@@ -249,7 +249,7 @@ export class ImageReviewService {
     } catch { throw imageReviewStorageError(); }
 
     const allApproved = scenes.every((scene) => reviews.some((item) => item.scene_number === scene && item.status === "approved"));
-    try { await this.indexAssetsIfMissing(project); await this.assets.approveGeneratedProjectImage(project.project_id, number, allApproved); }
+    try { await this.indexAssetsIfMissing(project); await this.assets.setGeneratedProjectImageApproval(project.project_id, number, true, allApproved); }
     catch { throw imageReviewStorageError(); }
     const updated = allApproved
       ? { ...project, workflow_state: WorkflowState.WaitingForVideoConfirmation, updated_at: timestamp }

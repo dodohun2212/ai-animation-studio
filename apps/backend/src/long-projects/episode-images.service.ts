@@ -7,7 +7,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import { LONG_EPISODE_STATUSES, IMAGE_ESTIMATED_COST_USD, longEpisodeHasImages, isSceneNumber, sceneNumbersFor, type ApproveLongEpisodeImageReviewRequest, type ApproveLongEpisodeImageReviewResponse, type GetLongEpisodeImagePreviewResponse, type GetLongEpisodeImageProgressResponse, type GetLongEpisodeImageReviewResponse, type LongEpisodeDetail, type LongEpisodeImageReview, type LongEpisodeImageStaleness, type LongEpisodeStatus, type LongEpisodeStoryBibleLinkDrift, type RegenerateLongEpisodeImageReviewRequest, type RegenerateLongEpisodeImageReviewResponse, type SceneNumber, type StartLongEpisodeImageGenerationRequest, type StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
+import { LONG_EPISODE_STATUSES, IMAGE_ESTIMATED_COST_USD, longEpisodeHasImages, isSceneNumber, sceneNumbersFor, type ApproveLongEpisodeImageReviewRequest, type ApproveLongEpisodeImageReviewResponse, type GetLongEpisodeImagePreviewResponse, type GetLongEpisodeImageProgressResponse, type GetLongEpisodeImageReviewResponse, type LongEpisodeDetail, type LongEpisodeImageReview, type LongEpisodeImageStaleness, type LongEpisodeStatus, type LongEpisodeStoryBibleLinkDrift, type RegenerateLongEpisodeImageReviewRequest, type RegenerateLongEpisodeImageReviewResponse, type SceneNumber, type StartLongEpisodeImageGenerationRequest, type StartLongEpisodeImageGenerationResponse, type UnapproveLongEpisodeImageReviewRequest, type UnapproveLongEpisodeImageReviewResponse } from "@ai-animation-studio/shared";
 import { validateImage } from "../assets/image-validation.js";
 import { LocalAssetsRepository, type GeneratedImageSource } from "../assets/assets.repository.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
@@ -168,6 +168,8 @@ export class EpisodeImagesService {
     if (!(await Promise.all(sceneNumbersFor(this.sceneCount(episode)).map((scene) => this.validImage(this.image(projectId, number, scene))))).every(Boolean)) throw longEpisodeImagesInvalid();
   }
   private approval(request: unknown): asserts request is { approved: true } { if (!object(request) || Object.keys(request).length !== 1 || request.approved !== true) throw longInvalidRequest("Episode image approval request is invalid."); }
+  /** The withdrawal body, checked as strictly as the approval: exactly `approved: false`, so neither can be sent where the other was meant. */
+  private withdrawal(request: unknown): asserts request is { approved: false } { if (!object(request) || Object.keys(request).length !== 1 || request.approved !== false) throw longInvalidRequest("Episode image approval withdrawal request is invalid."); }
 
   /**
    * The regeneration body: approval, plus optional one-off direction for this single attempt.
@@ -530,7 +532,37 @@ export class EpisodeImagesService {
     const reviews = await this.putReview(id, number, scene, (old) => ({ scene_number: scene, status: "approved", updated_at: now, regeneration_count: old?.regeneration_count ?? 0, history: [...(old?.history ?? []), { event: "approved", timestamp: now }], ...(old?.references_used_count !== undefined && old.references_omitted_count !== undefined ? { references_used_count: old.references_used_count, references_omitted_count: old.references_omitted_count } : {}), ...(old?.prompt !== undefined ? { prompt: old.prompt } : {}), ...(old?.reference_sources !== undefined ? { reference_sources: old.reference_sources } : {}) }));
     const all = sceneNumbersFor(this.sceneCount(episode)).every((current) => reviews.some((item) => item.scene_number === current && item.status === "approved")); if (all) episode.state = "waiting_for_video_confirmation"; episode.updated_at = now;
     await this.indexAssetsIfMissing(id, number, episode);
-    try { await this.assets.approveGeneratedProjectImage(this.assetSource(id, number).sourceProjectId, scene, all); }
+    try { await this.assets.setGeneratedProjectImageApproval(this.assetSource(id, number).sourceProjectId, scene, true, all); }
+    catch { throw longStorageError(); }
+    await this.saveEpisode(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(reviews, now, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, reviews), storyBibleLinkDrift: await this.linkDrift(id, number) };
+  }
+  /**
+   * Takes one scene's approval back — the other direction of `approve` above, and written beside it so the two
+   * stay legible as a pair.
+   *
+   * Everything approving did is undone, in the three places it wrote: the review returns to pending, the Asset
+   * Library's child image goes back to "generated" and its Folder stops counting as approved, and an Episode
+   * that had reached `waiting_for_video_confirmation` because this was its last approval returns to
+   * `images_review`. Leaving any one of them is how a record and the files start disagreeing.
+   *
+   * The gate is `assertReviewable(..., true)`, exactly regeneration's: only `images_review` and
+   * `waiting_for_video_confirmation` are allowed through, so an Episode whose clips have already been bought is
+   * refused without needing a rule of its own. That is the answer to Cowork's question — an Episode with paid
+   * videos standing on these pictures must not quietly go back to "under review", and unwinding that far is a
+   * decision about the videos.
+   *
+   * `regeneration_count`, `prompt` and `reference_sources` are carried over untouched: withdrawing approval says
+   * nothing about which picture this is or what it was drawn from.
+   */
+  async unapprove(projectId: string, number: number, rawScene: string, request: UnapproveLongEpisodeImageReviewRequest): Promise<UnapproveLongEpisodeImageReviewResponse> {
+    const id = projectId.trim(); this.withdrawal(request); const scene = sceneNumber(Number(rawScene)); if (!scene || String(scene) !== rawScene) throw longInvalidRequest("Episode image scene number is invalid."); const episode = await this.episode(id, number); await this.assertReviewable(id, number, episode, true);
+    if (scene > this.sceneCount(episode)) throw longInvalidRequest("Episode image scene number is invalid.");
+    const now = new Date().toISOString();
+    const reviews = await this.putReview(id, number, scene, (old) => ({ scene_number: scene, status: "pending", updated_at: now, regeneration_count: old?.regeneration_count ?? 0, history: [...(old?.history ?? []), { event: "unapproved", timestamp: now }], ...(old?.references_used_count !== undefined && old.references_omitted_count !== undefined ? { references_used_count: old.references_used_count, references_omitted_count: old.references_omitted_count } : {}), ...(old?.prompt !== undefined ? { prompt: old.prompt } : {}), ...(old?.reference_sources !== undefined ? { reference_sources: old.reference_sources } : {}) }));
+    // Not every scene is approved any more, by construction — this one is not — so the Folder cannot be.
+    episode.state = "images_review"; episode.updated_at = now;
+    await this.indexAssetsIfMissing(id, number, episode);
+    try { await this.assets.setGeneratedProjectImageApproval(this.assetSource(id, number).sourceProjectId, scene, false, false); }
     catch { throw longStorageError(); }
     await this.saveEpisode(id, number, episode); return { episode: this.detail(episode), reviews: this.apiReviews(reviews, now, this.sceneCount(episode)), staleness: await this.imageStaleness(id, number, episode, reviews), storyBibleLinkDrift: await this.linkDrift(id, number) };
   }

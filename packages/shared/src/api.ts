@@ -477,6 +477,20 @@ export interface GetLongEpisodeImageReviewResponse {
 }
 export interface ApproveLongEpisodeImageReviewRequest { approved: true; }
 export interface ApproveLongEpisodeImageReviewResponse extends GetLongEpisodeImageReviewResponse {}
+/**
+ * Takes back one scene's approval — 캡틴D asked to be able to press 확정 완료 again and undo it.
+ *
+ * `approved: false` rather than an empty body, for the same reason approving carries `approved: true`: a request
+ * that changes what a person has already signed off on says so in words, and an empty body is a request that
+ * could have been sent by accident.
+ *
+ * Refused once the Episode has moved on to video work — the same gate regeneration uses. An Episode whose clips
+ * were bought from these pictures would otherwise be left with a record saying the pictures are still under
+ * review, and the record and the paid files would disagree. Undoing that far back is a decision about the
+ * videos, made on the screen that owns them.
+ */
+export interface UnapproveLongEpisodeImageReviewRequest { approved: false; }
+export interface UnapproveLongEpisodeImageReviewResponse extends GetLongEpisodeImageReviewResponse {}
 export interface RegenerateLongEpisodeImageReviewRequest {
   approved: true;
   /**
@@ -2467,6 +2481,9 @@ export const API_ROUTES = {
   /** How far a running image generation has got, scene by scene. Reads files; costs nothing; never refuses mid-run. */
   longEpisodeImageProgress: (projectId: string, episodeNumber: number) =>
     `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/images/generations/progress`,
+  /** Takes back one scene's approval. A separate route from approve so neither body can be mistaken for the other. */
+  longEpisodeImageReviewUnapproval: (projectId: string, episodeNumber: number, sceneNumber: SceneNumber) =>
+    `/long-projects/${encodeURIComponent(projectId)}/episodes/${episodeNumber}/images/review/${sceneNumber}/unapprove`,
   audioLibrary: "/audio/library",
   audioLibraryUpload: "/audio/library/upload",
   audioLibraryContent: (trackId: string) => `/audio/library/${encodeURIComponent(trackId)}/content`,

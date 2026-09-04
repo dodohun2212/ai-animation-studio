@@ -852,15 +852,30 @@ export class LocalAssetsRepository {
       && asset.notes === GENERATED_FOLDER_NOTE);
   }
 
-  async approveGeneratedProjectImage(projectId: string, scene: number, allApproved: boolean): Promise<void> {
+  /**
+   * Records that one generated scene image is approved, or is not any more.
+   *
+   * One method with a flag rather than an approve and an unapprove that have to stay mirror images of each
+   * other. This repository has just paid for that shape once: `mappings.service.ts`'s update() had exclude turn
+   * a mapping off and confirm forget to turn it back on, and the pair sat there disagreeing until six paid
+   * Episode images went out with no reference photo (Cowork Round 469). Two functions cannot drift apart when
+   * there is one.
+   *
+   * `folderApproved` is the Folder's own state and not derived from this scene: the Folder counts as approved
+   * only when every scene is, which is the caller's question, and withdrawing one scene's approval takes it
+   * back whatever the others say.
+   */
+  async setGeneratedProjectImageApproval(projectId: string, scene: number, approved: boolean, folderApproved: boolean): Promise<void> {
     await this.serialized(async () => {
       const assets = await this.load();
       const child = assets.find((item) => !item.is_folder && item.source_project_id === projectId
         && item.source_scene_number === scene && item.notes === GENERATED_IMAGE_NOTE);
       const folder = assets.find((item) => item.is_folder && item.source_project_id === projectId && item.notes === GENERATED_FOLDER_NOTE);
       if (!child || !folder) throw assetStorageError();
-      child.status = "approved"; child.approved = true; child.updated_at = new Date().toISOString();
-      folder.approved = allApproved; folder.updated_at = child.updated_at;
+      // "generated" is what a picture nobody has approved is called — the same state replaceGeneratedProjectSceneImage
+      // puts a regenerated one back into, so a withdrawn approval and a fresh picture look alike, which they are.
+      child.status = approved ? "approved" : "generated"; child.approved = approved; child.updated_at = new Date().toISOString();
+      folder.approved = folderApproved; folder.updated_at = child.updated_at;
       await this.save(assets);
     });
   }

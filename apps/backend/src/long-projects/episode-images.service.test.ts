@@ -84,6 +84,96 @@ describe("EpisodeImagesService", () => {
     await expect(images.generate("long", 1, { approved: true })).resolves.toMatchObject({ episode: { status: "images_review" } });
   });
 
+  /**
+   * 확정 완료 → 확정 취소 → 확정 완료 lands back where it started, in all three places.
+   *
+   * Cowork asked for this before the button exists, and they asked for a reason: in Round 466 they added the
+   * mapping toggle without checking that its round trip was safe, and it was not — confirming did not switch
+   * the mapping back on, so 캡틴D paid for six Episode images with no reference photo. The cost of that was one
+   * unwritten test, so this one is written first.
+   *
+   * Three places have to come back: the stored review, the Episode's own state, and the Asset Library's record
+   * of the picture and its Folder. A round trip that restores two of them is the same defect wearing a smaller
+   * number.
+   */
+  it("takes one scene's approval back and puts it back again, in the review, the Episode and the Library", async () => {
+    const { images } = await setup();
+    await images.generate("long", 1, { approved: true });
+    const assets = new LocalAssetsRepository(root!);
+    const childOf = async () => (await assets.list()).find((asset) => !asset.is_folder && asset.source_project_id === "long/Episode01" && asset.source_scene_number === 6)!;
+    const folderOf = async () => (await assets.list()).find((asset) => asset.is_folder && asset.source_project_id === "long/Episode01")!;
+    for (const scene of [1, 2, 3, 4, 5, 6] as const) await images.approve("long", 1, String(scene), { approved: true });
+    expect((await images.get("long", 1)).episode.status).toBe("waiting_for_video_confirmation");
+    expect(await childOf()).toMatchObject({ status: "approved", approved: true });
+    expect((await folderOf()).approved).toBe(true);
+
+    const withdrawn = await images.unapprove("long", 1, "6", { approved: false });
+
+    expect(withdrawn.reviews.find((review) => review.sceneNumber === 6)?.status).toBe("pending");
+    expect(withdrawn.reviews.filter((review) => review.sceneNumber !== 6).every((review) => review.status === "approved")).toBe(true);
+    expect(withdrawn.episode.status).toBe("images_review");
+    expect(await childOf()).toMatchObject({ status: "generated", approved: false });
+    expect((await folderOf()).approved).toBe(false);
+
+    const restored = await images.approve("long", 1, "6", { approved: true });
+
+    expect(restored.reviews.every((review) => review.status === "approved")).toBe(true);
+    expect(restored.episode.status).toBe("waiting_for_video_confirmation");
+    expect(await childOf()).toMatchObject({ status: "approved", approved: true });
+    expect((await folderOf()).approved).toBe(true);
+  });
+
+  /**
+   * What it costs to withdraw: nothing about the picture itself.
+   *
+   * The prompt and the reference list say what this scene was drawn from, and that is unchanged by someone
+   * changing their mind about it. Losing them here would make a withdrawn scene report as never measured, and
+   * the staleness badges would go quiet about a picture that may well be behind its script.
+   */
+  it("keeps what the picture was made from when its approval is withdrawn", async () => {
+    const { images, projectsRoot } = await setup();
+    await images.generate("long", 1, { approved: true });
+    const file = path.join(projectsRoot, "long", "long_story", "Episode01", "generated_image_reviews.json");
+    // Written directly: the local fake path records no prompt or reference list, so this stands in for what a
+    // paid generation leaves behind — the fields whose survival is the point of the test.
+    await fs.writeFile(file, JSON.stringify([{ scene_number: 2, status: "pending", updated_at: "2026-09-01T00:00:00.000Z", regeneration_count: 3, history: [], prompt: "Scene: recorded", reference_sources: ["folder:FOLDER-1:child.png"] }], null, 2), "utf8");
+    await images.approve("long", 1, "2", { approved: true });
+
+    await images.unapprove("long", 1, "2", { approved: false });
+
+    const stored = (JSON.parse(await fs.readFile(file, "utf8")) as Array<Record<string, unknown>>).find((review) => review.scene_number === 2)!;
+    expect(stored).toMatchObject({ status: "pending", prompt: "Scene: recorded", reference_sources: ["folder:FOLDER-1:child.png"], regeneration_count: 3 });
+  });
+
+  /**
+   * The refusal Cowork asked for, and it needed no rule of its own.
+   *
+   * An Episode whose clips were bought from these pictures must not quietly go back to "under review" — the
+   * record would then say the pictures are unsettled while paid videos stand on them. `assertReviewable` already
+   * admits only the two states before video work, so every video state is refused by the gate regeneration
+   * already uses.
+   */
+  it("refuses to withdraw approval once the Episode has moved on to video work", async () => {
+    const { images, projectsRoot } = await setup();
+    await images.generate("long", 1, { approved: true });
+    for (const scene of [1, 2, 3, 4, 5, 6] as const) await images.approve("long", 1, String(scene), { approved: true });
+    const file = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
+    const stored = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>;
+    await fs.writeFile(file, JSON.stringify({ ...stored, state: "videos_approved" }, null, 2), "utf8");
+
+    await expect(images.unapprove("long", 1, "6", { approved: false })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_NOT_ALLOWED" } });
+  });
+
+  it("refuses a withdrawal body that is not exactly approved:false", async () => {
+    const { images } = await setup();
+    await images.generate("long", 1, { approved: true });
+    await images.approve("long", 1, "1", { approved: true });
+    await expect(images.unapprove("long", 1, "1", {} as never)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    // The approval body must not work here: pressing 확정 completes a different sentence from taking it back.
+    await expect(images.unapprove("long", 1, "1", { approved: true } as never)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(images.unapprove("long", 1, "1", { approved: false, extra: true } as never)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
   it("requires every review, then archives and resets only the regenerated scene", async () => {
     const { images, projectsRoot } = await setup(); await images.generate("long", 1, { approved: true });
     for (const scene of [1, 2, 3, 4, 5] as const) await images.approve("long", 1, String(scene), { approved: true });
