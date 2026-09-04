@@ -126,7 +126,7 @@ describe("EpisodeVideoMergeService", () => {
     expect(calls.filter((args) => args[0] === "ffprobe")).toHaveLength(6);
     expect(calls.filter((args) => args[0] === "ffmpeg")).toHaveLength(7);
     expect(calls.filter((args) => args[0] === "ffprobe").map((args) => path.basename(args.at(-1)!))).toEqual(["scene1.mp4", "scene2.mp4", "scene3.mp4", "scene4.mp4", "scene5.mp4", "scene6.mp4"]);
-    expect(calls.find((args) => args.includes("-vf"))!).toContain("scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p");
+    expect(calls.find((args) => args.includes("-vf"))!).toContain("scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p");
     await expect(fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "videos", "final", "instagram_reel.mp4"), "utf8")).resolves.toBe("rendered");
   });
 

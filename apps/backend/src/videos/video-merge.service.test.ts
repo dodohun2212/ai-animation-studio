@@ -95,7 +95,7 @@ describe("local FFmpeg video merge", () => {
     expect(JSON.stringify(result)).not.toContain(projectsRoot);
     expect(calls.filter((args) => args[0] === "ffprobe")).toHaveLength(6);
     expect(calls.filter((args) => args[0] === "ffmpeg")).toHaveLength(7);
-    expect(calls.find((args) => args.includes("-vf"))!).toContain("scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p");
+    expect(calls.find((args) => args.includes("-vf"))!).toContain("scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p");
     expect(await fs.readFile(path.join(projectsRoot, "video_merge", "videos", "final", "instagram_reel.mp4"), "utf8")).toBe("rendered");
   });
 
@@ -162,7 +162,7 @@ describe("local FFmpeg video merge", () => {
   it("uses the documented landscape normalization when the stored wizard aspect is 16:9", async () => {
     const { projectsRoot, projects } = await setup(); const project = await projects.findById("video_merge"); project.lore_context = { ...project.lore_context, style_notes: { aspect: "16:9" } }; await projects.save(project);
     const calls: string[][] = []; await new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge");
-    expect(calls.find((args) => args.includes("-vf"))!).toContain("scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p");
+    expect(calls.find((args) => args.includes("-vf"))!).toContain("scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p");
   });
 
   it("rejects invalid clips without changing the approved state, and reports a missing binary safely", async () => {

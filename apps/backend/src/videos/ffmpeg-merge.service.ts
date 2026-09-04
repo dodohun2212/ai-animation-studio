@@ -102,6 +102,29 @@ export interface MergeSceneInput {
  * 1.2× the output size, not 2×. The zoom only ever reaches 1.15, so 2× was four times the pixels for headroom
  * that cannot be used, and `zoompan` re-renders every output frame from that oversized input.
  */
+/**
+ * What the scene encoder is told, instead of leaving x264 on its defaults.
+ *
+ * It was left on them, and the defaults are CRF 23 / preset medium — a sensible choice for encoding a master,
+ * and the wrong one for the only thing this function ever does: re-encode video a provider has already
+ * compressed, after scaling it up. Cowork measured Episode 4 (Round 481): Runway's six clips arrive at 720x1280
+ * carrying 0.126 bits per pixel, and the merged 1080x1920 file comes out at 0.055. The picture was stretched to
+ * 2.25x the pixels and given *less* information to fill them with.
+ *
+ * CRF 18 is not "better than the source" — nothing here can be. It is close enough to transparent that the
+ * second compression stops being the thing you see, which leaves Runway's own 720p as the ceiling, where it
+ * belongs. `slow` buys a few percent of that quality for encode time nobody is watching; this runs once per
+ * Episode, after minutes of paid generation.
+ *
+ * The cost is file size — roughly three times, and paid in a folder the app already prunes (`normalized/` is
+ * deleted after the final file exists). A person who paid for these clips should not have them thrown away by
+ * the last step, and a still-image card, which compresses almost for free, barely moves either way.
+ *
+ * Named once because both branches below encode the same scenes with the same intent, and two copies of an
+ * encoder setting is how one of them silently keeps the old default.
+ */
+const X264_QUALITY = ["-crf", "18", "-preset", "slow"] as const;
+
 function kenBurns(width: number, height: number, seconds: number): string {
   const frames = Math.max(1, Math.round(seconds * 30));
   const scaled = (value: number) => Math.round(value * 1.2 / 2) * 2; // even dimensions: yuv420p needs them
@@ -156,7 +179,7 @@ export class FfmpegMergeEngine {
     const normalizedDirectory = path.join(directory, "normalized");
     await fs.mkdir(normalizedDirectory, { recursive: true });
     const normalized: string[] = [];
-    const baseFilter = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p`;
+    const baseFilter = `scale=${width}:${height}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p`;
     for (const [index, scene] of scenes.entries()) {
       const target = path.join(normalizedDirectory, `scene${index + 1}.mp4`);
       let filter = baseFilter;
@@ -178,9 +201,9 @@ export class FfmpegMergeEngine {
       const input = stillSeconds === undefined ? ["-i", scene.clip] : ["-loop", "1", "-framerate", "30", "-t", String(stillSeconds), "-i", scene.clip];
       const sceneFilter = stillSeconds === undefined ? filter : `${kenBurns(width, height, stillSeconds)},${filter}`;
       if (scene.narrationAudioPath) {
-        await this.command(["ffmpeg", "-y", ...input, "-i", scene.narrationAudioPath, "-filter_complex", "[1:a]apad[aout]", "-map", "0:v:0", "-map", "[aout]", "-vf", sceneFilter, "-c:v", "libx264", "-c:a", "aac", "-shortest", target]);
+        await this.command(["ffmpeg", "-y", ...input, "-i", scene.narrationAudioPath, "-filter_complex", "[1:a]apad[aout]", "-map", "0:v:0", "-map", "[aout]", "-vf", sceneFilter, "-c:v", "libx264", ...X264_QUALITY, "-c:a", "aac", "-shortest", target]);
       } else {
-        await this.command(["ffmpeg", "-y", ...input, "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000", "-map", "0:v:0", "-map", "1:a:0", "-vf", sceneFilter, "-c:v", "libx264", "-c:a", "aac", "-shortest", target]);
+        await this.command(["ffmpeg", "-y", ...input, "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000", "-map", "0:v:0", "-map", "1:a:0", "-vf", sceneFilter, "-c:v", "libx264", ...X264_QUALITY, "-c:a", "aac", "-shortest", target]);
       }
       normalized.push(target);
     }
@@ -188,7 +211,7 @@ export class FfmpegMergeEngine {
     await fs.writeFile(concatFile, normalized.map((item) => `file '${path.resolve(item).replaceAll("'", "''")}'`).join("\n"), "utf8");
     const temporaryFinal = path.join(directory, `.instagram_reel.${crypto.randomUUID()}.tmp.mp4`);
     try {
-      await this.command(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concatFile, "-c", "copy", temporaryFinal]);
+      await this.command(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concatFile, "-c", "copy", "-movflags", "+faststart", temporaryFinal]);
       const stat = await fs.stat(temporaryFinal);
       if (stat.size <= 0) throw new MediaToolError("failed", "Final output is empty.");
       await fs.rename(temporaryFinal, finalPath);
@@ -246,7 +269,7 @@ export class FfmpegMergeEngine {
     const temporary = path.join(path.dirname(outputPath), `.${path.basename(outputPath)}.${crypto.randomUUID()}.tmp.mp4`);
     try {
       const music = startSeconds > 0 ? ["-ss", startSeconds.toFixed(3), "-stream_loop", "-1", "-i", bgmPath] : ["-stream_loop", "-1", "-i", bgmPath];
-      await this.command(["ffmpeg", "-y", "-i", inputPath, ...music, "-filter_complex", filter, "-map", "0:v:0", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", temporary]);
+      await this.command(["ffmpeg", "-y", "-i", inputPath, ...music, "-filter_complex", filter, "-map", "0:v:0", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", "-movflags", "+faststart", temporary]);
       const stat = await fs.stat(temporary);
       if (stat.size <= 0) throw new MediaToolError("failed", "BGM mix output is empty.");
       await fs.rename(temporary, outputPath);

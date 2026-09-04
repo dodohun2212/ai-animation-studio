@@ -44,9 +44,60 @@ describe("FfmpegMergeEngine.merge narration audio mixing", () => {
     const { finalPath, fontsDir } = await setup();
     const engine = new FfmpegMergeEngine(runner(calls), fontsDir);
     await engine.merge([{ clip: "scene1.mp4" }], 5, finalPath, "9:16");
-    const normalizeCall = calls.find((args) => args.includes("scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p"))!;
+    const normalizeCall = calls.find((args) => args.includes("scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p"))!;
     expect(normalizeCall).toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
     expect(normalizeCall).not.toContain("apad");
+  });
+
+  /**
+   * The encoder is told what to do, on both branches, and the scaler is told how to enlarge.
+   *
+   * Left on x264's defaults this re-encoded Runway's already-compressed clips at CRF 23 after scaling them up
+   * 2.25x, and Cowork measured what that costs on Episode 4: 0.126 bits per pixel arriving, 0.055 leaving
+   * (Round 481). More pixels, less to fill them with. The settings are the fix, so they are what this holds —
+   * a filter assertion alone would go green with the encoder quietly back on its defaults, which is the state
+   * this whole change is about.
+   *
+   * Both branches, because a scene with narration and a scene without are encoded by two separate calls, and a
+   * setting threaded through one of two is the shape this repository keeps finding.
+   */
+  it("encodes scenes at the chosen quality and scales up with lanczos, narration or not", async () => {
+    for (const scene of [{ clip: "scene1.mp4" }, { clip: "scene1.mp4", narrationAudioPath: "scene1_narration.mp3" }]) {
+      const calls: string[][] = [];
+      const { finalPath, fontsDir } = await setup();
+      await new FfmpegMergeEngine(runner(calls), fontsDir).merge([scene], 5, finalPath, "9:16");
+
+      const encode = calls.find((args) => args.includes("libx264"))!;
+      expect(encode, JSON.stringify(scene)).toBeDefined();
+      expect(encode.join(" ")).toContain("-crf 18 -preset slow");
+      expect(encode.find((arg) => arg.startsWith("scale="))).toContain(":flags=lanczos");
+    }
+  });
+
+  /**
+   * The finished file is laid out so a player can start before it has all of it.
+   *
+   * On both writers that can produce it: the concat is the last step when there is no background music, and the
+   * music mix rewrites the container afterwards when there is. Setting it only on the first would lose it on
+   * every Episode that has music, which is the more common one.
+   */
+  it("puts the moov atom first in whichever step writes the final file", async () => {
+    const calls: string[][] = [];
+    const { finalPath, fontsDir } = await setup();
+    const engine = new FfmpegMergeEngine(runner(calls), fontsDir);
+    await engine.merge([{ clip: "scene1.mp4" }], 5, finalPath, "9:16");
+    expect(calls.find((args) => args.includes("concat"))!.join(" ")).toContain("-movflags +faststart");
+
+    calls.length = 0;
+    // The music mix probes the video first, so this runner answers that one call and records the rest.
+    const probing = new FfmpegMergeEngine(async (arguments_) => {
+      const args = [...arguments_]; calls.push(args);
+      if (args[0] === "ffprobe") return { stdout: JSON.stringify({ format: { duration: "5.0" } }), stderr: "" };
+      await fs.writeFile(args.at(-1)!, Buffer.from("rendered"));
+      return { stdout: "", stderr: "" };
+    }, fontsDir);
+    await probing.mixBackgroundMusic(finalPath, "bgm.mp3", 0.2, 1, path.join(path.dirname(finalPath), "mixed.mp4"));
+    expect(calls.find((args) => args.includes("-filter_complex"))!.join(" ")).toContain("-movflags +faststart");
   });
 
   it("mixes in a real narration file with apad instead of anullsrc when one is given for a scene", async () => {
