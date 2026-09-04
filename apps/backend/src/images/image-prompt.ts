@@ -48,6 +48,36 @@ export function imagePromptFor(scene: unknown, styleLine: string, referenceNotes
 }
 
 /**
+ * Why a recorded image prompt no longer matches the one a regeneration would send.
+ *
+ * "The prompt changed" and "the scene changed" are not the same sentence, and until now the staleness check
+ * reported the first while the badge asserted the second. The art direction (styleLineFrom's one line) is
+ * project-wide: filling in the visual-style boxes rewrites the prompt of every scene that was ever generated,
+ * without a single word of any scene having been touched. Every one of those scenes was about to be labelled
+ * "장면 내용이 바뀐 뒤로" — measured, not feared: project 1 has six recorded prompts and all six carry a Style
+ * line, and Episodes 2-4 of project 12 have eighteen more that carry none, so the first save of those boxes
+ * moves all of them at once.
+ *
+ * The style line is what the two prompts are compared without: matching there means the scene's own words are
+ * untouched and only the art direction moved. It is the last line and it is the only line that can open with
+ * `Style:` or `Avoid:` — a reference block's lines open with "- " or two spaces (image-reference-selection.ts).
+ */
+export type ImagePromptDrift = "current" | "style" | "scene";
+
+/** Drops the trailing art-direction line, leaving the scene's own labelled fields (and any reference block). */
+export function withoutStyleLine(prompt: string): string {
+  const lines = prompt.split("\n");
+  const last = lines[lines.length - 1];
+  return last !== undefined && /^(Style|Avoid): /.test(last) ? lines.slice(0, -1).join("\n") : prompt;
+}
+
+export function imagePromptDrift(recorded: string, scene: unknown, styleLine: string, referenceNotes = ""): ImagePromptDrift {
+  if (imagePromptFor(scene, styleLine, referenceNotes) === recorded) return "current";
+  // Compared without either side's style line, so an old line, a new one, and a removed one all land here alike.
+  return withoutStyleLine(recorded) === imagePromptFor(scene, "", referenceNotes) ? "style" : "scene";
+}
+
+/**
  * The image size a scene is generated at, in OpenAI's own vocabulary (Runway takes the same shape in a different
  * one — see project-aspect.ts, which owns the single reading of the setting).
  *

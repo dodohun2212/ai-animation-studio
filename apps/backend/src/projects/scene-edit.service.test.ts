@@ -81,7 +81,7 @@ describe("SceneEditService.update — staleness", () => {
   it("reports nothing stale when no artifact has ever been generated for that scene", async () => {
     const { service } = await setup();
     const result = await service.update("scenes", "1", { scene: { narration: "새 내레이션" } });
-    expect(result.staleness).toEqual({ imageStale: [], videoStale: [], narrationStale: [], referenceStale: [] });
+    expect(result.staleness).toEqual({ imageStale: [], styleStale: [], videoStale: [], narrationStale: [], referenceStale: [] });
   });
 
   it("does not flag every scene stale just because the project has a confirmed Asset Mapping", async () => {
@@ -118,7 +118,7 @@ describe("SceneEditService.update — staleness", () => {
     project.narration_generation_records = [{ scene_number: 1, narration: "narration 1" }];
     await projects.save(project);
     const result = await service.update("scenes", "1", { scene: { narration: "고친 내레이션" } });
-    expect(result.staleness).toEqual({ imageStale: [], videoStale: [], narrationStale: [1], referenceStale: [] });
+    expect(result.staleness).toEqual({ imageStale: [], styleStale: [], videoStale: [], narrationStale: [1], referenceStale: [] });
   });
 
   it("does not flag narrationStale when the edited narration happens to match what's already recorded", async () => {
@@ -149,7 +149,7 @@ describe("SceneEditService.update — staleness", () => {
     project.image_generation_records = [{ scene_number: 1, prompt: imagePromptFor(project.scenes[0], styleLineFor(project)) }];
     await projects.save(project);
     const result = await service.update("scenes", "1", { scene: { description: "화면 대본만 바뀜" } });
-    expect(result.staleness).toEqual({ imageStale: [], videoStale: [], narrationStale: [], referenceStale: [] });
+    expect(result.staleness).toEqual({ imageStale: [], styleStale: [], videoStale: [], narrationStale: [], referenceStale: [] });
   });
 
   it("flags the NEXT scene's video as stale (without editing it) when end_motion or continuity_hint changes, since both feed the next scene's continuity cue", async () => {

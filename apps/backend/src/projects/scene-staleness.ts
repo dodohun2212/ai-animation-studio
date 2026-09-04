@@ -1,5 +1,5 @@
 import { sceneNumbersFor, type SceneNumber, type SceneStaleness } from "@ai-animation-studio/shared";
-import { imagePromptFor, sceneValue, styleLineFor } from "../images/image-prompt.js";
+import { imagePromptDrift, imagePromptFor, sceneValue, styleLineFor } from "../images/image-prompt.js";
 import { describeReferenceMappingsForScene, referenceSourcesForScene } from "../images/image-reference-selection.js";
 import type { LocalAssetsRepository } from "../assets/assets.repository.js";
 import type { StoredAssetMapping } from "../mappings/mapping-storage.js";
@@ -92,6 +92,7 @@ export async function computeSceneStaleness(
   const ratio = ratioFor(project);
   const clipDurationSeconds = toShortProjectSettings(project).clipDurationSeconds;
   const imageStale: SceneNumber[] = [];
+  const styleStale: SceneNumber[] = [];
   const videoStale: SceneNumber[] = [];
   const narrationStale: SceneNumber[] = [];
   const referenceStale: SceneNumber[] = [];
@@ -101,7 +102,11 @@ export async function computeSceneStaleness(
     const recordedImagePrompt = latestRecordField(project.image_generation_records, number, "prompt");
     if (recordedImagePrompt !== undefined) {
       const referenceNotes = referenceContext ? await describeReferenceMappingsForScene(referenceContext.assets, referenceContext.mappings, number) : "";
-      if (imagePromptFor(scene, styleLine, referenceNotes) !== recordedImagePrompt) imageStale.push(number);
+      // Which list it lands in is the difference between "re-read your script" and "you changed how this
+      // project looks" — see imagePromptDrift.
+      const drift = imagePromptDrift(recordedImagePrompt, scene, styleLine, referenceNotes);
+      if (drift === "scene") imageStale.push(number);
+      else if (drift === "style") styleStale.push(number);
     }
 
     // Skipped entirely without a referenceContext, for the same reason the text block is: recomputing "no
@@ -127,5 +132,5 @@ export async function computeSceneStaleness(
       if (recomputed !== undefined && !describesSameScene(recordedVideoPrompt, recomputed)) videoStale.push(number);
     }
   }
-  return { imageStale, videoStale, narrationStale, referenceStale };
+  return { imageStale, styleStale, videoStale, narrationStale, referenceStale };
 }

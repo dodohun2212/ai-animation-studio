@@ -203,7 +203,11 @@ export function SceneEditScreen({ projectId, onBack }: Props) {
                 <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold text-slate-100">
                   {group.title}
                   {selected !== null && group.title === "구도" && (
-                    <StaleBadge staleSceneNumbers={staleness?.imageStale} sceneNumber={selected} kind="image" />
+                    <>
+                      <StaleBadge staleSceneNumbers={staleness?.imageStale} sceneNumber={selected} kind="image" />
+                      {/* At most one of the two ever renders: the server puts a scene in one list or the other. */}
+                      <StaleBadge staleSceneNumbers={staleness?.styleStale} sceneNumber={selected} kind="style" />
+                    </>
                   )}
                   {selected !== null && group.title === "내레이션 문장" && (
                     <StaleBadge staleSceneNumbers={staleness?.narrationStale} sceneNumber={selected} kind="narration" />

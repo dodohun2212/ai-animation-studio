@@ -15,7 +15,7 @@ import { ProviderSettingsService } from "../settings/provider-settings.service.j
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "../images/openai-image-adapter.js";
-import { imagePromptFor, styleLineFrom } from "../images/image-prompt.js";
+import { imagePromptDrift, imagePromptFor, styleLineFrom } from "../images/image-prompt.js";
 import { longBudgetLedgerUnreadable, longEpisodeImagesBudgetExceeded, longEpisodeImagesInvalid, longEpisodeImagesNotAllowed, longEpisodeImagesProviderError, longEpisodeNotFound, longInvalidData, longInvalidRequest, longLocked, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
@@ -448,6 +448,7 @@ export class EpisodeImagesService {
   private async imageStaleness(projectId: string, number: number, episode: StoredEpisode, reviews: StoredReview[]): Promise<LongEpisodeImageStaleness> {
     const scenes = this.scenes(episode);
     const imageStale: SceneNumber[] = [];
+    const styleStale: SceneNumber[] = [];
     const referenceStale: SceneNumber[] = [];
     // Resolved once for the whole Episode rather than per scene: the mappings and the continuity link are the
     // same for every scene, and the per-scene part (which mappings are in scope) is inside the recompute.
@@ -458,7 +459,13 @@ export class EpisodeImagesService {
     for (const scene of sceneNumbersFor(this.sceneCount(episode))) {
       const review = reviews.find((item) => item.scene_number === scene);
       const current = scenes[scene - 1];
-      if (review?.prompt !== undefined && current && imagePromptFor(current, styleLine) !== review.prompt) imageStale.push(scene);
+      if (review?.prompt !== undefined && current) {
+        // Two lists, not one: the four style boxes are project-wide, so saving them would otherwise tell
+        // every generated scene that its script changed. See imagePromptDrift.
+        const drift = imagePromptDrift(review.prompt, current, styleLine);
+        if (drift === "scene") imageStale.push(scene);
+        else if (drift === "style") styleStale.push(scene);
+      }
 
       const recordedSources = review?.reference_sources;
       if (recordedSources === undefined || !context) continue;
@@ -467,7 +474,7 @@ export class EpisodeImagesService {
       // is a different request. Comparing as sets would call a reordered reference list unchanged.
       if (now.length !== recordedSources.length || now.some((source, index) => source !== recordedSources[index])) referenceStale.push(scene);
     }
-    return { imageStale, referenceStale };
+    return { imageStale, styleStale, referenceStale };
   }
 
   /**

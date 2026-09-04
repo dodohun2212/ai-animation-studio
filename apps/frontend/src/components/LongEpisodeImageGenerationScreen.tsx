@@ -29,7 +29,7 @@ type DisplayError = { code: string; message: string };
 type ReviewState =
   | { status: "idle" | "loading" }
   | { status: "error"; error: DisplayError }
-  | { status: "ready"; reviews: LongEpisodeImageReview[]; budget?: BudgetPreview; retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview }; imageStale: SceneNumber[]; referenceStale: SceneNumber[]; drift: LongEpisodeStoryBibleLinkDrift[]; driftUnreadable: boolean };
+  | { status: "ready"; reviews: LongEpisodeImageReview[]; budget?: BudgetPreview; retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview }; imageStale: SceneNumber[]; styleStale: SceneNumber[]; referenceStale: SceneNumber[]; drift: LongEpisodeStoryBibleLinkDrift[]; driftUnreadable: boolean };
 /** The Story Bible's own words for these two links, so the sentence reads like the screen the person set them on. */
 const LINK_LABEL: Record<LongEpisodeStoryBibleLinkDrift["link"], string> = { protagonist: "주인공", style: "전체 그림체" };
 const SCENE_SLOT_LABEL: Record<string, string> = { generated: "생성됨", waiting: "대기 중", generating: "만드는 중", pending: "검토 대기", approved: "승인됨", done: "완료" };
@@ -152,7 +152,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
     let cancelled = false;
     setReviewState({ status: "loading" });
     getLongEpisodeImageReview(projectId, episodeNumber)
-      .then((response) => { if (!cancelled) { setEpisode(response.episode); setReviewState({ status: "ready", reviews: response.reviews, budget: response.budget, imageStale: response.staleness.imageStale, referenceStale: response.staleness.referenceStale, drift: response.storyBibleLinkDrift, driftUnreadable: response.storyBibleLinkDriftUnreadable === true }); } })
+      .then((response) => { if (!cancelled) { setEpisode(response.episode); setReviewState({ status: "ready", reviews: response.reviews, budget: response.budget, imageStale: response.staleness.imageStale, styleStale: response.staleness.styleStale, referenceStale: response.staleness.referenceStale, drift: response.storyBibleLinkDrift, driftUnreadable: response.storyBibleLinkDriftUnreadable === true }); } })
       .catch((caught: unknown) => { if (!cancelled) setReviewState({ status: "error", error: toLongProjectDisplayError(caught) }); });
     return () => { cancelled = true; };
     // reviewState.status is intentionally excluded: it is set inside this effect as a start-once guard,
@@ -274,7 +274,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
         retryEstimate: current.status === "ready" ? current.retryEstimate : undefined,
         // Carried from the response, not the old state: approving scene 2 must not leave scene 3's badge
         // showing what was true one request ago.
-        imageStale: response.staleness.imageStale,
+        imageStale: response.staleness.imageStale, styleStale: response.staleness.styleStale,
         referenceStale: response.staleness.referenceStale,
         drift: response.storyBibleLinkDrift,
         driftUnreadable: response.storyBibleLinkDriftUnreadable === true,
@@ -289,7 +289,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
     try {
       const response = await regenerateLongEpisodeImageReview(projectId, episodeNumber, sceneNumber, regenerateInstruction);
       setEpisode(response.episode);
-      setReviewState({ status: "ready", reviews: response.reviews, budget: response.retryEstimate?.budget, retryEstimate: response.retryEstimate, imageStale: response.staleness.imageStale, referenceStale: response.staleness.referenceStale, drift: response.storyBibleLinkDrift, driftUnreadable: response.storyBibleLinkDriftUnreadable === true });
+      setReviewState({ status: "ready", reviews: response.reviews, budget: response.retryEstimate?.budget, retryEstimate: response.retryEstimate, imageStale: response.staleness.imageStale, styleStale: response.staleness.styleStale, referenceStale: response.staleness.referenceStale, drift: response.storyBibleLinkDrift, driftUnreadable: response.storyBibleLinkDriftUnreadable === true });
       setRegenerateConfirm(null);
       setRegenerateInstruction("");
     } catch (caught) { setError(toLongProjectDisplayError(caught)); }
@@ -557,6 +557,13 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
                       sceneNumber={sceneNumber}
                       kind="image"
                       data-testid={`episode-image-stale-${sceneNumber}`}
+                    />
+                    {/* The art direction moved, not the script. */}
+                    <StaleBadge
+                      staleSceneNumbers={reviewState.styleStale}
+                      sceneNumber={sceneNumber}
+                      kind="style"
+                      data-testid={`episode-image-style-stale-${sceneNumber}`}
                     />
                     {/* Separate from the one above because the causes are separate: that one means the script
                         changed, this one means the character behind the picture did while the words stayed put.

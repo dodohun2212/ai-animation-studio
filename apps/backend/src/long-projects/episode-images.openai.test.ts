@@ -137,8 +137,12 @@ describe("real OpenAI Episode image generation", () => {
    * would make the report a lie in the one direction that costs money: a person would change how the work looks,
    * see six calm scenes, and never learn that none of them were drawn that way. The warning fires once, when it
    * becomes true, which is exactly when it should.
+   *
+   * It fires in `styleStale`, not `imageStale`. Both mean "behind"; only one of them is true about why. The
+   * script here is untouched — nobody opened a scene — and `imageStale` renders as "장면 내용이 바뀐 뒤로",
+   * which would send someone to re-read six scenes that are exactly as they left them.
    */
-  it("reports pictures as behind once a direction they were not drawn with is written", async () => {
+  it("reports pictures as behind the art direction, and not as behind a script nobody touched", async () => {
     const { images, projectsRoot } = await setupWithConnectedOpenAi();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
     await images.generate("long", 1, { approved: true });
@@ -148,7 +152,9 @@ describe("real OpenAI Episode image generation", () => {
     const stored = JSON.parse(await fs.readFile(projectFile, "utf8")) as Record<string, unknown>;
     await fs.writeFile(projectFile, JSON.stringify({ ...stored, visual_style: "손그림 수채화" }, null, 2), "utf8");
 
-    expect((await images.get("long", 1)).staleness.imageStale).toEqual([1, 2, 3, 4, 5, 6]);
+    const after = (await images.get("long", 1)).staleness;
+    expect(after.styleStale).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(after.imageStale, "the script was never touched").toEqual([]);
   });
 
   /**

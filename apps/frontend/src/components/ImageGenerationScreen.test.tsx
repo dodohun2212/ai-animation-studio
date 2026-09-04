@@ -190,6 +190,25 @@ describe("ImageGenerationScreen", () => {
   });
 
   /**
+   * The third cause, and the one that arrives without anybody having opened a scene: the four project-wide style
+   * boxes. One save moves every generated scene at once, so folding it into the script badge would tell the
+   * whole project that its words changed.
+   */
+  it("says the art direction moved rather than the script, when the server reports styleStale", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, {
+      project, reviews: sixReviews(),
+      staleness: { imageStale: [], styleStale: [1, 2], videoStale: [], narrationStale: [], referenceStale: [] },
+    })));
+
+    const badge = await screen.findByTestId("review-style-stale-1");
+    expect(badge.textContent).toContain("그림 방향 바뀜");
+    expect(badge.textContent).not.toContain("내용 바뀜");
+    expect(screen.queryByTestId("review-stale-1"), "the script badge must stay off").toBeNull();
+    expect(screen.queryByTestId("review-style-stale-3")).toBeNull();
+  });
+
+  /**
    * `generatePending` is local state, so a reload during a run left the screen showing six rows reading 대기
    * and no panel — while images were being bought. The workflow state is the fact that survives the reload.
    */

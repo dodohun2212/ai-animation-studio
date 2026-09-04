@@ -91,7 +91,7 @@ describe("provider-free generated image review", () => {
     expect(result.reviews).toEqual(expect.arrayContaining([{ sceneNumber: 1, status: "pending", updatedAt: expect.any(String) }]));
     await expect(fs.stat(path.join(projectsRoot, "review", "generated_image_reviews.json"))).rejects.toMatchObject({ code: "ENOENT" });
     expect(result.budget).toBeUndefined(); // no OpenAI credential/budget wired in — local fake mode
-    expect(result.staleness).toEqual({ imageStale: [], videoStale: [], narrationStale: [], referenceStale: [] }); // freshly generated, nothing edited since
+    expect(result.staleness).toEqual({ imageStale: [], styleStale: [], videoStale: [], narrationStale: [], referenceStale: [] }); // freshly generated, nothing edited since
   });
 
   it("flags a scene's image as stale after its composition fields are edited without regenerating", async () => {
@@ -177,6 +177,57 @@ describe("provider-free generated image review", () => {
     const result = await service.getStatus("review");
 
     expect(result.staleness?.imageStale).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  /**
+   * The short project's half of the same distinction the Episode makes.
+   *
+   * This is the path with pictures already on disk today: project 1 has six recorded prompts and every one of
+   * them carries a Style line. Changing one of the four style boxes rewrites that line in all six at once, and
+   * before this split all six came back as "장면 내용이 바뀐 뒤로" — sending someone to re-read a script that is
+   * character-for-character what they left. Behind, yes. Behind the script, no.
+   */
+  it("puts a style-notes change in styleStale and leaves imageStale alone, because no scene was touched", async () => {
+    const { projects, service } = await setup();
+    const project = await projects.findById("review");
+    const { imagePromptFor, styleLineFor } = await import("./image-prompt.js");
+    project.image_generation_records = [1, 2, 3, 4, 5, 6].map((number) => ({
+      scene_number: number,
+      prompt: imagePromptFor(project.scenes[number - 1], styleLineFor(project)),
+    }));
+    await projects.save(project);
+    expect((await service.getStatus("review")).staleness).toMatchObject({ imageStale: [], styleStale: [] });
+
+    const reloaded = await projects.findById("review");
+    reloaded.lore_context = { ...(reloaded.lore_context ?? {}), style_notes: { visual_style: "손그림 수채화", color: "탁한 청록" } } as never;
+    await projects.save(reloaded);
+
+    const after = (await service.getStatus("review")).staleness;
+    expect(after?.styleStale).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(after?.imageStale, "not one scene's words moved").toEqual([]);
+  });
+
+  /**
+   * The other direction, so the split cannot be satisfied by sorting everything into styleStale: an edit to a
+   * field the picture is actually drawn from still reads as a script change.
+   */
+  it("still calls a scene-field edit imageStale once a style line exists", async () => {
+    const { projects, service } = await setup();
+    const project = await projects.findById("review");
+    project.lore_context = { ...(project.lore_context ?? {}), style_notes: { visual_style: "손그림 수채화" } } as never;
+    await projects.save(project);
+    const written = await projects.findById("review");
+    const { imagePromptFor, styleLineFor } = await import("./image-prompt.js");
+    written.image_generation_records = [1, 2, 3, 4, 5, 6].map((number) => ({
+      scene_number: number,
+      prompt: imagePromptFor(written.scenes[number - 1], styleLineFor(written)),
+    }));
+    (written.scenes[2] as Record<string, unknown>).visual_action = "turns back at the third gate";
+    await projects.save(written);
+
+    const after = (await service.getStatus("review")).staleness;
+    expect(after?.imageStale).toEqual([3]);
+    expect(after?.styleStale).toEqual([]);
   });
 
   it("reports the real budget ledger state when an OpenAI credential is connected", async () => {

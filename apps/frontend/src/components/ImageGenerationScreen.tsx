@@ -223,6 +223,7 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
             ? {
                 ...current.staleness,
                 imageStale: current.staleness.imageStale.filter((number) => number !== sceneNumber),
+                styleStale: current.staleness.styleStale.filter((number) => number !== sceneNumber),
                 referenceStale: current.staleness.referenceStale.filter((number) => number !== sceneNumber),
               }
             : undefined,
@@ -540,6 +541,14 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                               sceneNumber={review.sceneNumber}
                               kind="image"
                               data-testid={`review-stale-${review.sceneNumber}`}
+                            />
+                            {/* The art direction moved, not the script — one save of the style boxes puts
+                                every generated scene here at once. */}
+                            <StaleBadge
+                              staleSceneNumbers={reviewState.status === "ready" ? reviewState.staleness?.styleStale : undefined}
+                              sceneNumber={review.sceneNumber}
+                              kind="style"
+                              data-testid={`review-style-stale-${review.sceneNumber}`}
                             />
                             {/* The other cause, kept apart: the character behind the picture changed while the
                                 scene's words did not. Saying "your text changed" there sends someone to re-read

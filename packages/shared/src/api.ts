@@ -403,6 +403,19 @@ export interface StartLongEpisodeImageGenerationResponse {
 export interface LongEpisodeImageStaleness {
   imageStale: SceneNumber[];
   /**
+   * Scenes whose pictures are behind the *art direction*, not the script.
+   *
+   * The four visual-style boxes are project-wide and they become one line of every scene's prompt. Saving them
+   * therefore moves every already-generated scene at once, with nobody having touched a single scene's words.
+   * Folded into `imageStale` those scenes carry the sentence "장면 내용이 바뀐 뒤로" — which sends someone to
+   * re-read a script that is exactly as they left it. That is the same failure as saying nothing: they look, find
+   * nothing changed, and cannot tell whether the app is wrong or they are.
+   *
+   * A scene appears in exactly one of the two lists. The comparison ignores both sides' style line, so a line
+   * added, changed, or removed all land here, and anything else about the prompt lands in `imageStale`.
+   */
+  styleStale: SceneNumber[];
+  /**
    * Scenes whose pictures were drawn from reference images this scene would no longer use.
    *
    * The prompt comparison above cannot see this. An Episode sends its mapped Assets to the image model as
@@ -2332,6 +2345,19 @@ export interface UpdateSceneRequest {
  */
 export interface SceneStaleness {
   imageStale: SceneNumber[];
+  /**
+   * Scenes whose pictures are behind the *art direction*, not the script.
+   *
+   * The four visual-style boxes are project-wide and they become one line of every scene's prompt. Saving them
+   * therefore moves every already-generated scene at once, with nobody having touched a single scene's words.
+   * Folded into `imageStale` those scenes carry the sentence "장면 내용이 바뀐 뒤로" — which sends someone to
+   * re-read a script that is exactly as they left it. That is the same failure as saying nothing: they look, find
+   * nothing changed, and cannot tell whether the app is wrong or they are.
+   *
+   * A scene appears in exactly one of the two lists. The comparison ignores both sides' style line, so a line
+   * added, changed, or removed all land here, and anything else about the prompt lands in `imageStale`.
+   */
+  styleStale: SceneNumber[];
   videoStale: SceneNumber[];
   narrationStale: SceneNumber[];
   /**
