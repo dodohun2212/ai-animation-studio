@@ -45,6 +45,8 @@ import {
   type GetLongEpisodeImagePreviewResponse,
   type GetLongEpisodeImageReviewResponse,
   type ApproveLongEpisodeImageReviewResponse,
+  type UnapproveLongEpisodeImageReviewRequest,
+  type UnapproveLongEpisodeImageReviewResponse,
   type RegenerateLongEpisodeImageReviewResponse,
   type GetLongEpisodeVideoPreviewResponse,
   type StartLongEpisodeVideoGenerationRequest,
@@ -544,6 +546,7 @@ const isStoryBibleLinkDrift = (value: unknown): value is LongEpisodeStoryBibleLi
 const isGetEpisodeImageReviewResponse = (value: unknown): value is GetLongEpisodeImageReviewResponse => isRecord(value) && isLongEpisodeDetail(value.episode) && isEpisodeImageReviews(value.reviews) && isLongEpisodeImageStaleness(value.staleness)
   && Array.isArray(value.storyBibleLinkDrift) && value.storyBibleLinkDrift.every(isStoryBibleLinkDrift);
 const isApproveEpisodeImageReviewResponse = (value: unknown): value is ApproveLongEpisodeImageReviewResponse => isGetEpisodeImageReviewResponse(value);
+const isUnapproveEpisodeImageReviewResponse = (value: unknown): value is UnapproveLongEpisodeImageReviewResponse => isGetEpisodeImageReviewResponse(value);
 const isRegenerateEpisodeImageReviewResponse = (value: unknown): value is RegenerateLongEpisodeImageReviewResponse => isRecord(value) && isGetEpisodeImageReviewResponse(value) && isSceneNumber(value.sceneNumber);
 
 function isEpisodeVideoPreview(value: unknown): boolean {
@@ -930,6 +933,23 @@ export function startLongEpisodeImageGeneration(projectId: string, episodeNumber
 
 export function approveLongEpisodeImageReview(projectId: string, episodeNumber: number, sceneNumber: SceneNumber): Promise<ApproveLongEpisodeImageReviewResponse> {
   return request(API_ROUTES.longEpisodeImageReviewApproval(projectId, episodeNumber, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved: true }) }, isApproveEpisodeImageReviewResponse);
+}
+
+/**
+ * Takes one scene's approval back.
+ *
+ * A separate route from approve, and `{ approved: false }` rather than an omitted field, for the reason the
+ * shared route comment gives: neither body can be mistaken for the other. A request that means "undo" must not
+ * be one dropped key away from one that means "confirm".
+ *
+ * The server refuses this once any video exists for the Episode (it reuses the same gate regeneration uses), so
+ * this call can return LONG_EPISODE_IMAGES_NOT_ALLOWED for a perfectly reasonable press. The screen shows that
+ * refusal rather than hiding the button — "you cannot undo this now, and here is why" is an answer; a control
+ * that vanishes without saying why is not.
+ */
+export function unapproveLongEpisodeImageReview(projectId: string, episodeNumber: number, sceneNumber: SceneNumber): Promise<UnapproveLongEpisodeImageReviewResponse> {
+  const requestBody: UnapproveLongEpisodeImageReviewRequest = { approved: false };
+  return request(API_ROUTES.longEpisodeImageReviewUnapproval(projectId, episodeNumber, sceneNumber), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }, isUnapproveEpisodeImageReviewResponse);
 }
 
 /** `additionalInstruction` is omitted entirely when blank — the server treats whitespace as absent, and sending "" would be a third spelling of "no direction". */

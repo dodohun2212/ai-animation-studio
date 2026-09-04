@@ -4,6 +4,7 @@ import { IMAGE_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 
 import {
   approveLongEpisodeImageReview,
+  unapproveLongEpisodeImageReview,
   getLongEpisode,
   getLongEpisodeContinuityReference,
   getLongEpisodeImagePreview,
@@ -235,11 +236,23 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
     finally { generationBusy.current = false; setGenerationPending(false); }
   }
 
-  async function approveScene(sceneNumber: SceneNumber): Promise<void> {
+  /**
+   * Confirm and take-back share one function because they share one rule: whatever the server answers is the
+   * new truth on this screen, including the badges. Splitting them invited the drift that Round 469's
+   * `update()` was — two paths that must mirror each other and quietly stop doing so.
+   *
+   * Take-back is refused once the Episode has bought any video (the server reuses regeneration's gate), and
+   * that refusal arrives as an ordinary error the banner already shows. The button is not hidden for it: a
+   * control that disappears without saying why teaches nothing, and this screen's whole recent history is
+   * about screens that gave the wrong reason.
+   */
+  async function setSceneApproval(sceneNumber: SceneNumber, approved: boolean): Promise<void> {
     if (approvalBusy.current.has(sceneNumber)) return;
     approvalBusy.current.add(sceneNumber); setApprovePending(new Set(approvalBusy.current)); setError(null);
     try {
-      const response = await approveLongEpisodeImageReview(projectId, episodeNumber, sceneNumber);
+      const response = approved
+        ? await approveLongEpisodeImageReview(projectId, episodeNumber, sceneNumber)
+        : await unapproveLongEpisodeImageReview(projectId, episodeNumber, sceneNumber);
       setEpisode(response.episode);
       setReviewState((current) => ({
         status: "ready",
@@ -509,7 +522,22 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
                   className={`${aspectRatio === "16:9" ? "aspect-video" : "aspect-[9/16]"} w-full rounded-xl border border-white/10 bg-slate-800 object-cover`}
                 />
                 <div className="flex flex-wrap justify-end gap-3">
-                  <button type="button" className={smallOutlineButton} disabled={review.status === "approved" || approving} onClick={() => void approveScene(sceneNumber)}>{approving ? "확정하는 중..." : review.status === "approved" ? "확정 완료" : "이 이미지로 확정"}</button>
+                  <span className="flex flex-col items-end gap-0.5">
+                    <button
+                      type="button"
+                      data-testid={`episode-image-approval-${sceneNumber}`}
+                      className={smallOutlineButton}
+                      disabled={approving}
+                      onClick={() => void setSceneApproval(sceneNumber, review.status !== "approved")}
+                    >
+                      {approving
+                        ? (review.status === "approved" ? "확정 푸는 중..." : "확정하는 중...")
+                        : review.status === "approved" ? "확정 완료" : "이 이미지로 확정"}
+                    </button>
+                    {review.status === "approved" && !approving && (
+                      <span className="text-[11px] text-slate-500">한 번 더 누르면 확정을 풉니다</span>
+                    )}
+                  </span>
                   <button type="button" className={smallOutlineButton} disabled={regenerating || confirming} onClick={() => { setRegenerateInstruction(""); setRegenerateConfirm(sceneNumber); }}>{regenerating ? "다시 만드는 중..." : "다시 만들기"}</button>
                 </div>
                 {confirming && (

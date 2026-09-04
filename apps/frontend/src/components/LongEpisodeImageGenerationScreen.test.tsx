@@ -84,6 +84,60 @@ describe("LongEpisodeImageGenerationScreen", () => {
     expect(screen.getByTestId("episode-image-review-1")).toHaveAttribute("data-status", "pending");
   });
 
+  it("takes an approval back on the second press, and puts it back on the third", async () => {
+    const reviewEpisode = episode("images_review");
+    const ok = (approved: number[]) => jsonResponse(200, { episode: reviewEpisode, reviews: reviews(approved), staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: true } }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
+      .mockResolvedValueOnce(ok([]))
+      .mockResolvedValueOnce(ok([1]))   // approve
+      .mockResolvedValueOnce(ok([]))    // unapprove
+      .mockResolvedValueOnce(ok([1]));  // approve again
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    const button = () => screen.getByTestId("episode-image-approval-1");
+    expect(await screen.findByTestId("episode-image-review-1")).toHaveAttribute("data-status", "pending");
+
+    fireEvent.click(button());
+    await waitFor(() => expect(screen.getByTestId("episode-image-review-1")).toHaveAttribute("data-status", "approved"));
+    expect(fetchMock.mock.calls[4]?.[0]).toBe("/long-projects/long/episodes/1/images/review/1/approve");
+    expect(JSON.parse(String((fetchMock.mock.calls[4]?.[1] as RequestInit).body))).toEqual({ approved: true });
+
+    // The button that reports the state is the button that changes it — same shape as the Asset Mapping toggle.
+    fireEvent.click(button());
+    await waitFor(() => expect(screen.getByTestId("episode-image-review-1")).toHaveAttribute("data-status", "pending"));
+    expect(fetchMock.mock.calls[5]?.[0]).toBe("/long-projects/long/episodes/1/images/review/1/unapprove");
+    // `{ approved: false }`, never an omitted key: undo must not be one dropped field away from confirm.
+    expect(JSON.parse(String((fetchMock.mock.calls[5]?.[1] as RequestInit).body))).toEqual({ approved: false });
+
+    fireEvent.click(button());
+    await waitFor(() => expect(screen.getByTestId("episode-image-review-1")).toHaveAttribute("data-status", "approved"));
+    expect(fetchMock.mock.calls[6]?.[0]).toBe("/long-projects/long/episodes/1/images/review/1/approve");
+  });
+
+  it("shows the refusal instead of hiding the button when a take-back is not allowed", async () => {
+    const reviewEpisode = episode("images_review");
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: { previousEpisodeNumber: 1, sourceSceneNumber: 6, available: true } }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
+      .mockResolvedValueOnce(jsonResponse(200, { episode: reviewEpisode, reviews: reviews([1]), staleness: { imageStale: [], referenceStale: [] }, storyBibleLinkDrift: [] }))
+      .mockResolvedValueOnce(jsonResponse(409, { code: "LONG_EPISODE_IMAGES_NOT_ALLOWED", message: "internal detail never shown" }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    expect(await screen.findByTestId("episode-image-review-1")).toHaveAttribute("data-status", "approved");
+    fireEvent.click(screen.getByTestId("episode-image-approval-1"));
+
+    // A refused take-back must not read as a successful one, and the row must stay approved.
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
+    await waitFor(() => expect(screen.getByTestId("episode-image-approval-1")).toBeTruthy());
+    expect(screen.getByTestId("episode-image-review-1")).toHaveAttribute("data-status", "approved");
+  });
+
   it("shows the separate video-confirmation transition and does not expose internal image paths", async () => {
     const done = episode("waiting_for_video_confirmation");
     vi.stubGlobal("fetch", vi.fn()
