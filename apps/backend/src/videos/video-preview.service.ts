@@ -104,6 +104,11 @@ export function promptFor(scene: StoredScene, previous: StoredScene | undefined,
   const prefix = `Create one continuous cinematic ${clipDurationSeconds}-second ${orientation} image-to-video shot from the supplied exact first frame.`;
   const suffix = "Maintain stable identity, anatomy, clothing, essential objects, lighting and scene continuity throughout the shot.";
   const render = (included: readonly [string, string][]) => [prefix, ...included.map(([label, value]) => `${label}: ${value}`), suffix].join("\n");
+  // "Pacing" is the one section this filter cannot see into: it is built as a template, so two blank fields
+  // would still render "motion speed ; intensity " and pass. That case does not arise — parseScenes above and
+  // episode-videos.service.ts's scenes() both reject any scene field that is blank, so nothing that generates
+  // a video can reach here with one. The staleness recompute (projects/scene-staleness.ts) does not validate,
+  // and there a blanked field makes the scene read as behind its recorded prompt, which is what it is.
   // Scene 1 has no `previous` by definition, so "Continuity cue" is always "" there — sent unfiltered, every
   // project's scene 1 prompt carried a bare "Continuity cue: " line with nothing after the colon. Matches
   // imagePromptFor's existing filter for the same class of empty-section bug on the image side.
