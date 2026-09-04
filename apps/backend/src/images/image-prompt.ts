@@ -63,20 +63,42 @@ export const imageSizeFor = imageSizeForAspect;
  * prompt's own style fields (project styleNotes override, falling back to the AI-set style_profile). Keeping
  * this line identical across every scene's prompt (unlike the AI-authored fields above) is what gives scene-to-
  * scene visual consistency; camera is deliberately excluded, since camera work is a video concept and would be
- * noise in a still-image prompt. Short-project-specific: LongProjectSettings has no equivalent visual-style
- * fields today, so a Long Episode caller simply passes "" as imagePromptFor's styleLine instead of calling this.
+ * noise in a still-image prompt. A Long Project keeps the same four values as flat settings fields and calls
+ * `styleLineFrom` directly — same sentence, different container.
+ */
+/**
+ * The style sentence itself, built in one place because two projects now need it and they keep it in different
+ * containers — a short project under `lore_context.style_notes` with an AI-authored fallback, a Long Project as
+ * four flat settings fields. Only the sentence has to be identical; the containers do not.
+ *
+ * Written as one function rather than one per caller for the reason this repository has met all week: the day
+ * one copy changes a separator or drops `Avoid`, two projects start drawing differently and nothing reports it.
+ *
+ * Returns "" when nothing is filled in, so a caller can append it unconditionally and get a prompt identical to
+ * one built without a style line at all.
+ */
+export function styleLineFrom(parts: { visualStyle?: string; color?: string; lighting?: string; avoid?: string }): string {
+  const kept = [parts.visualStyle, parts.color, parts.lighting].map((part) => (part ?? "").trim()).filter((part) => part.length > 0);
+  const style = kept.length > 0 ? `Style: ${kept.join(", ")}` : "";
+  // Its own labelled sentence, never an item in the style list: an entry in a comma-separated list of styles
+  // reads as something to include, and "avoid" is the opposite of that.
+  const avoid = (parts.avoid ?? "").trim();
+  return [style, avoid ? `Avoid: ${avoid}` : ""].filter(Boolean).join(". ");
+}
+
+/**
+ * A short project's style line: this project's own source and priority (the user setting overrides the AI-set
+ * `style_profile`), formatted by `styleLineFrom`. Camera is deliberately excluded — camera work is a video
+ * concept and would be noise in a still-image prompt.
  */
 export function styleLineFor(project: StoredProject): string {
   const notes = toShortProjectSettings(project).styleNotes;
   const profile = isObject(project.style_profile) ? project.style_profile : {};
   const fromProfile = (key: string): string => typeof profile[key] === "string" ? (profile[key] as string).trim() : "";
-  const parts = [notes.visualStyle ?? fromProfile("visual_style"), notes.color ?? fromProfile("color"), notes.lighting ?? fromProfile("lighting")]
-    .filter((part) => part.trim().length > 0);
-  const style = parts.length > 0 ? `Style: ${parts.join(", ")}` : "";
-  // Same source/priority as the other style fields above (user setting overrides the AI-set profile), kept as
-  // its own labeled sentence rather than folded into the Style list — an item in a comma-separated style list
-  // reads as something to include, and "avoid" is the opposite of that.
-  const avoid = (notes.avoid ?? fromProfile("avoid")).trim();
-  const avoidLine = avoid ? `Avoid: ${avoid}` : "";
-  return [style, avoidLine].filter(Boolean).join(". ");
+  return styleLineFrom({
+    visualStyle: notes.visualStyle ?? fromProfile("visual_style"),
+    color: notes.color ?? fromProfile("color"),
+    lighting: notes.lighting ?? fromProfile("lighting"),
+    avoid: notes.avoid ?? fromProfile("avoid"),
+  });
 }

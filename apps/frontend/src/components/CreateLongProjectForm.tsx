@@ -36,6 +36,12 @@ const EMPTY_SETTINGS: LongProjectSettings = {
   storyFlowSummary: "",
   narrationEnabled: false,
   subtitlesEnabled: false,
+  // Blank, which is what they mean: a new project has no art direction until someone writes one, and blank is
+  // exactly the no-style-line behaviour every Episode had before these existed.
+  visualStyle: "",
+  color: "",
+  lighting: "",
+  avoid: "",
 };
 
 const fieldClassName =

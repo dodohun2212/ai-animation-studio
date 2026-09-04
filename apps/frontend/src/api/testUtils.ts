@@ -262,6 +262,10 @@ export function makeLongProjectSettings(overrides: Partial<LongProjectSettings> 
     storyFlowSummary: "",
     narrationEnabled: false,
     subtitlesEnabled: false,
+    visualStyle: "",
+    color: "",
+    lighting: "",
+    avoid: "",
     ...overrides,
   };
 }

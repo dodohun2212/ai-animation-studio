@@ -15,7 +15,7 @@ import { ProviderSettingsService } from "../settings/provider-settings.service.j
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "../images/openai-image-adapter.js";
-import { imagePromptFor } from "../images/image-prompt.js";
+import { imagePromptFor, styleLineFrom } from "../images/image-prompt.js";
 import { longBudgetLedgerUnreadable, longEpisodeImagesBudgetExceeded, longEpisodeImagesInvalid, longEpisodeImagesNotAllowed, longEpisodeImagesProviderError, longEpisodeNotFound, longInvalidData, longInvalidRequest, longLocked, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
@@ -71,6 +71,27 @@ export class EpisodeImagesService {
     const images = path.join(episode, "images");
     return { root, outlines: path.join(root, "episode_outlines.json"), episode, project: path.join(episode, "project.json"), longProject: path.join(root, "project.json"), mapping: path.join(episode, "asset_mapping_review.json"), images, reviews: path.join(episode, "generated_image_reviews.json"), continuityMetadata: path.join(episode, "image_generation_metadata.json") };
   }
+  /**
+   * The project's art direction as one sentence, or "" when nobody has written one.
+   *
+   * Read from the Long Project rather than the Episode: how the work looks is a property of the work, and an
+   * Episode that could disagree with its own project about it would be a second place to keep the answer.
+   *
+   * Never throws. A project file that cannot be read costs the style line, not the generation — losing the whole
+   * Episode over a sentence would be the wrong trade, and "" is the value every Episode used until today, so the
+   * failure mode is exactly the previous behaviour rather than a new one.
+   */
+  private async styleLine(projectId: string): Promise<string> {
+    const stored = await this.json(this.files(projectId, 1).longProject).catch(() => null);
+    if (!object(stored)) return "";
+    return styleLineFrom({
+      visualStyle: typeof stored.visual_style === "string" ? stored.visual_style : "",
+      color: typeof stored.color === "string" ? stored.color : "",
+      lighting: typeof stored.lighting === "string" ? stored.lighting : "",
+      avoid: typeof stored.avoid === "string" ? stored.avoid : "",
+    });
+  }
+
   private async json(file: string): Promise<unknown> { try { return JSON.parse(await fs.readFile(file, "utf8")); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw longNotFound(); if (error instanceof SyntaxError) throw longMalformed(); throw longStorageError(); } }
   /**
    * Same source as episode-videos.service.ts's ratio() (project.aspect_ratio), translated into OpenAI's own
@@ -332,6 +353,9 @@ export class EpisodeImagesService {
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     const owner = apiKey && this.budget ? await this.mappingOwners.get({ projectId: id, episodeNumber: number }) : null;
     const mappings = owner ? await this.mappingStore.load(owner) : [];
+    // Resolved once per run, not per scene: keeping this line identical across every scene is what gives an
+    // Episode scene-to-scene visual consistency, the same reason the short project resolves it before its loop.
+    const styleLine = await this.styleLine(id);
     const referenceOmissions = new Map<SceneNumber, { references_used_count: number; references_omitted_count: number }>();
     const referenceSources = new Map<SceneNumber, string[]>();
     // What each scene's image was actually generated from, so a later script edit can be seen rather than guessed at.
@@ -353,12 +377,12 @@ export class EpisodeImagesService {
           // photo it is, what role the person mapped them as, or anything a picture cannot carry. Measured: an
           // Episode's paid request named nobody.
           const referenceNotes = await describeReferenceMappingsForScene(this.assets, mappings, scene);
-          const prompt = imagePromptFor(scenes[scene - 1], "", referenceNotes);
+          const prompt = imagePromptFor(scenes[scene - 1], styleLine, referenceNotes);
           // The plain scene prompt is what gets recorded, for the same reason the one-off direction below is
           // left out of it: staleness must measure the script, and folding the References block in would make a
           // scene read as behind its own script the moment somebody edits an Asset's description. Which
           // references were used is measured separately and by name, in `reference_sources` below.
-          generatedPrompts.set(scene, imagePromptFor(scenes[scene - 1], ""));
+          generatedPrompts.set(scene, imagePromptFor(scenes[scene - 1], styleLine));
           const references = await collectReferenceImages(this.assets, mappings, owner!.directory, scene, continuityPath);
           referenceSources.set(scene, references.sources);
           if (references.omittedCount > 0) referenceOmissions.set(scene, { references_used_count: references.images.length, references_omitted_count: references.omittedCount });
@@ -428,10 +452,13 @@ export class EpisodeImagesService {
     // Resolved once for the whole Episode rather than per scene: the mappings and the continuity link are the
     // same for every scene, and the per-scene part (which mappings are in scope) is inside the recompute.
     const context = await this.referenceContext(projectId, number);
+    // The same line the generation would send now, so "is this picture behind?" is asked against what a
+    // regeneration would actually produce rather than against a prompt with the art direction left out.
+    const styleLine = await this.styleLine(projectId);
     for (const scene of sceneNumbersFor(this.sceneCount(episode))) {
       const review = reviews.find((item) => item.scene_number === scene);
       const current = scenes[scene - 1];
-      if (review?.prompt !== undefined && current && imagePromptFor(current, "") !== review.prompt) imageStale.push(scene);
+      if (review?.prompt !== undefined && current && imagePromptFor(current, styleLine) !== review.prompt) imageStale.push(scene);
 
       const recordedSources = review?.reference_sources;
       if (recordedSources === undefined || !context) continue;
@@ -588,8 +615,9 @@ export class EpisodeImagesService {
       // would then be measuring the instruction rather than the thing it exists to measure.
       const owner = await this.mappingOwners.get({ projectId: id, episodeNumber: number });
       const mappings = await this.mappingStore.load(owner);
-      const recordedPrompt = imagePromptFor(scenes[scene - 1], "");
-      const basePrompt = imagePromptFor(scenes[scene - 1], "", await describeReferenceMappingsForScene(this.assets, mappings, scene));
+      const styleLine = await this.styleLine(id);
+      const recordedPrompt = imagePromptFor(scenes[scene - 1], styleLine);
+      const basePrompt = imagePromptFor(scenes[scene - 1], styleLine, await describeReferenceMappingsForScene(this.assets, mappings, scene));
       const prompt = additionalInstruction ? `${basePrompt}
 ${additionalInstruction}` : basePrompt;
       generatedPrompt = recordedPrompt;

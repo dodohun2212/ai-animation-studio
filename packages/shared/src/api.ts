@@ -51,10 +51,53 @@ export interface LongProjectSettings {
    * identical legacy fallback.
    */
   subtitlesEnabled: boolean;
+  /**
+   * The art direction, and the only part of a Long Project's settings that reaches the image model.
+   *
+   * A short project has had this since the beginning; an Episode passed `""` where the style line goes, so every
+   * Episode picture was drawn from the scene text and the reference photos alone and nothing a person said about
+   * how the work should look ever reached a paid call. The comment on `styleLineFor` said as much in one clause
+   * — "LongProjectSettings has no equivalent visual-style fields today" — and that clause was the whole feature
+   * gap (Cowork Round 475).
+   *
+   * Four flat fields rather than the short project's nested `styleNotes`. Its seven fields include three that go
+   * somewhere else entirely, and building all seven here would leave three boxes on the screen that do nothing —
+   * which is the shape of defect this repository spent a day removing. These four are exactly what the style
+   * line is made of, and `LongProjectSettings` is flat, so a lone nested object would be a second container for
+   * one idea.
+   *
+   * All empty is the default and means no style line at all — byte-identical to what Episodes sent before these
+   * existed, so nothing changes until somebody fills a box.
+   *
+   * These reach the picture and not the script. Sitting beside `tone` and `notes`, which reach the script and
+   * not the picture, that distinction is invisible unless the screen says it — and not saying it is the
+   * misunderstanding this gap grew out of.
+   */
+  visualStyle: string;
+  color: string;
+  lighting: string;
+  /**
+   * What the picture should not contain, sent as its own `Avoid:` sentence rather than folded into the style
+   * list — an item in a comma-separated list of styles reads as something to include.
+   *
+   * Present because the short project's line already has it: `styleLineFor` builds `Style: … . Avoid: …`, and a
+   * Long Project whose style line could never carry the second half would be quietly the weaker of the two for
+   * no reason anyone chose. Never sent to the video model, which reads negatives backwards
+   * (video-preview.service.ts).
+   */
+  avoid: string;
 }
 
 /** What a client actually sends: episodeDurationSeconds is derived server-side (sceneCount * clipDurationSeconds) and is rejected as an unsupported field if included — same shape as ShortProjectSettingsInput. */
-export type LongProjectSettingsInput = Omit<LongProjectSettings, "episodeDurationSeconds">;
+/**
+ * A save request. `episodeDurationSeconds` is dropped because the server recomputes it, and the four style
+ * fields are optional because absent and "" mean the same thing to them — no style line — so a caller that has
+ * never heard of them keeps working and gets exactly the behaviour it had before they existed. Every other
+ * field stays required: leaving one out of a settings save is a request that means to blank it, and the ones
+ * that can be blanked are already strings.
+ */
+export type LongProjectSettingsInput = Omit<LongProjectSettings, "episodeDurationSeconds" | "visualStyle" | "color" | "lighting" | "avoid">
+  & Partial<Pick<LongProjectSettings, "visualStyle" | "color" | "lighting" | "avoid">>;
 
 export interface LongEpisodeOutline {
   episodeNumber: number;

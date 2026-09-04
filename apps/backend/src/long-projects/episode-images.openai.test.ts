@@ -94,6 +94,83 @@ describe("real OpenAI Episode image generation", () => {
   });
 
   /**
+   * The art direction reaches the paid request — which, until now, it never did for an Episode.
+   *
+   * A short project has sent a Style line since the beginning. An Episode passed `""` where that line goes, so
+   * every Episode picture was drawn from the scene text and the reference photos alone: 캡틴D could write how the
+   * work should look and no part of it was ever sent (Cowork Round 475). The clause in styleLineFor's own comment
+   * — "LongProjectSettings has no equivalent visual-style fields today" — was the entire gap.
+   *
+   * Sent on the generation and on a regeneration both, because a person presses the second one over and over and
+   * a field threaded through one entry point is the shape this repository keeps finding (D-031). And recorded, so
+   * changing the direction later marks these pictures as behind rather than leaving them silently wrong.
+   */
+  it("sends the project's art direction with every Episode image, and records it", async () => {
+    const { images, projectsRoot } = await setupWithConnectedOpenAi();
+    const projectFile = path.join(projectsRoot, "long", "long_story", "project.json");
+    const stored = JSON.parse(await fs.readFile(projectFile, "utf8")) as Record<string, unknown>;
+    await fs.writeFile(projectFile, JSON.stringify({ ...stored, visual_style: "손그림 수채화", color: "탁한 청록", lighting: "역광", avoid: "사진 같은 질감" }, null, 2), "utf8");
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await images.generate("long", 1, { approved: true });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const { prompt } = JSON.parse(init.body as string) as { prompt: string };
+    expect(prompt, "the art direction never reached the model").toContain("Style: 손그림 수채화, 탁한 청록, 역광");
+    // Its own sentence: an item in a comma-separated list of styles reads as something to include.
+    expect(prompt).toContain("Avoid: 사진 같은 질감");
+    // Recorded too, or a later change to the direction could never be reported.
+    const reviews = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "generated_image_reviews.json"), "utf8")) as Array<{ prompt?: string }>;
+    expect(reviews[0]?.prompt).toContain("Style: 손그림 수채화, 탁한 청록, 역광");
+
+    fetchMock.mockClear();
+    await images.regenerate("long", 1, "2", { approved: true });
+    const [, again] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String((again as RequestInit).body as string)).prompt).toContain("Style: 손그림 수채화");
+  });
+
+  /**
+   * Writing a direction for the first time says the existing pictures are behind — and they are.
+   *
+   * The alternative was to leave the recorded prompt without the style line so nothing would ever go amber. That
+   * would make the report a lie in the one direction that costs money: a person would change how the work looks,
+   * see six calm scenes, and never learn that none of them were drawn that way. The warning fires once, when it
+   * becomes true, which is exactly when it should.
+   */
+  it("reports pictures as behind once a direction they were not drawn with is written", async () => {
+    const { images, projectsRoot } = await setupWithConnectedOpenAi();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    await images.generate("long", 1, { approved: true });
+    expect((await images.get("long", 1)).staleness.imageStale).toEqual([]);
+
+    const projectFile = path.join(projectsRoot, "long", "long_story", "project.json");
+    const stored = JSON.parse(await fs.readFile(projectFile, "utf8")) as Record<string, unknown>;
+    await fs.writeFile(projectFile, JSON.stringify({ ...stored, visual_style: "손그림 수채화" }, null, 2), "utf8");
+
+    expect((await images.get("long", 1)).staleness.imageStale).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  /**
+   * A project with no direction written sends exactly what it sent before these fields existed.
+   *
+   * The point of the default: nothing anyone has already made changes, and nothing goes amber, until somebody
+   * chooses to fill a box.
+   */
+  it("sends no style line at all when nothing has been written", async () => {
+    const { images } = await setupWithConnectedOpenAi();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await images.generate("long", 1, { approved: true });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const { prompt } = JSON.parse(init.body as string) as { prompt: string };
+    expect(prompt).not.toContain("Style:");
+    expect(prompt).not.toContain("Avoid:");
+  });
+
+  /**
    * The reading 캡틴D asked for, taken while the money is actually being spent.
    *
    * Every row said 만드는 중 at once, because the only thing the screen could read during a run was the
