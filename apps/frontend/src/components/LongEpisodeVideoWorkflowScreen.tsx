@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import type { GetLongEpisodeVideoPreviewResponse, LongEpisodeVideoProgress, LongEpisodeVideoReview, RecoverLongEpisodeVideosResponse, SceneNumber } from "@ai-animation-studio/shared";
+import type { GetLongEpisodeVideoPreviewResponse, LongEpisodeStatus, LongEpisodeVideoProgress, LongEpisodeVideoReview, RecoverLongEpisodeVideosResponse, SceneNumber } from "@ai-animation-studio/shared";
 
-import { approveLongEpisodeVideoReview, episodeSceneErrorMessage, getLongEpisodeCurrentVideoJob, getLongEpisodeVideoPreview, getLongEpisodeVideoProgress, getLongEpisodeVideoReview, longEpisodeVideoContentUrl, recoverLongEpisodeVideos, regenerateAllLongEpisodeVideos, regenerateLongEpisodeVideo, restartLongEpisodeVideoGeneration, startLongEpisodeVideoGeneration, stopLongEpisodeVideoGeneration, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { approveLongEpisodeVideoReview, episodeSceneErrorMessage, getLongEpisode, getLongEpisodeCurrentVideoJob, getLongEpisodeVideoPreview, getLongEpisodeVideoProgress, getLongEpisodeVideoReview, longEpisodeVideoContentUrl, recoverLongEpisodeVideos, regenerateAllLongEpisodeVideos, regenerateLongEpisodeVideo, restartLongEpisodeVideoGeneration, startLongEpisodeVideoGeneration, stopLongEpisodeVideoGeneration, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { LongEpisodeSceneVersions } from "./LongEpisodeSceneVersions.js";
 import { Spinner } from "./Spinner.js";
 import { videoRatioLabel } from "../utils/sceneFields.js";
-import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
+import { isLongEpisodeStatusBefore, longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { StatusChip } from "./ui/StatusChip.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
@@ -85,6 +85,8 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
   const [startRequestId, setStartRequestId] = useState<string | null>(null);
   const [restartConfirm, setRestartConfirm] = useState(false);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<DisplayError | null>(null);
+  /** The Episode's step, read only after a blanket refusal — see the effect below. */
+  const [blockedAt, setBlockedAt] = useState<LongEpisodeStatus | null>(null);
   const busyRef = useRef(false);
   const loadPreview = async () => { setError(null); try { const response = await getLongEpisodeVideoPreview(projectId, episodeNumber); setPreview(response); setPrompts(Object.fromEntries(response.scenes.map((scene) => [scene.sceneNumber, scene.prompt]))); } catch (caught) { setError(toLongProjectDisplayError(caught)); } };
   /**
@@ -140,6 +142,25 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
   }, [projectId, episodeNumber]);
   const loadProgress = async () => { if (!job) return; try { const next = await getLongEpisodeVideoProgress(projectId, episodeNumber, job.jobId); setJob(next); if (next.status === "succeeded") { const review = await getLongEpisodeVideoReview(projectId, episodeNumber, next.jobId); setReviews(review.reviews); setVideoStale(review.staleness.videoStale); } } catch (caught) { setError(toLongProjectDisplayError(caught)); } };
   useEffect(() => { if (!job || (job.status !== "created" && job.status !== "running")) return; const timer = setTimeout(() => void loadProgress(), 400); return () => clearTimeout(timer); }, [job]);
+  /**
+   * What step this Episode is actually at, asked only when the route has refused the whole screen.
+   *
+   * "기다린다고 풀리지 않으니 에피소드 상태를 확인해 주세요" sends the person somewhere else to look up an
+   * answer this app already has — and the refusal says nothing about which step is missing, so an Episode that
+   * simply has no script yet reads the same as one that is genuinely stuck. The message comes from
+   * `longProjectsApi`'s code table, which has no Episode to read; only the screen can add the step.
+   *
+   * One request, on the refused path alone. A failed lookup adds nothing rather than guessing — the original
+   * refusal is still on screen, which is the honest floor.
+   */
+  useEffect(() => {
+    if (error?.code !== "LONG_EPISODE_VIDEOS_NOT_ALLOWED") { setBlockedAt(null); return; }
+    let cancelled = false;
+    getLongEpisode(projectId, episodeNumber)
+      .then((response) => { if (!cancelled) setBlockedAt(response.episode.status); })
+      .catch(() => { /* Unknown, and an unknown step is exactly what the sentence below is withheld for. */ });
+    return () => { cancelled = true; };
+  }, [error?.code, projectId, episodeNumber]);
   const valid = preview !== null && preview.scenes.every((scene) => { const prompt = prompts[scene.sceneNumber] ?? ""; return prompt.trim().length > 0 && prompt.length <= LIMIT; });
   async function start(): Promise<void> { if (!preview || !valid || busyRef.current || !startRequestId) return; busyRef.current = true; setBusy(true); setError(null); try { const response = await startLongEpisodeVideoGeneration(projectId, episodeNumber, { confirmationId: preview.confirmationId, userRequestId: startRequestId, approved: true, prompts: preview.scenes.map((scene) => ({ sceneNumber: scene.sceneNumber, prompt: prompts[scene.sceneNumber] ?? "" })) }); setJob({ paidProvider: response.paidProvider, jobId: response.jobId, status: "created", completedSceneNumbers: [], failedSceneNumbers: [], sceneNumbers: preview.scenes.map((scene) => scene.sceneNumber), episode: response.episode }); setConfirmStart(false); setStartRequestId(null); } catch (caught) { setError(toLongProjectDisplayError(caught)); } finally { busyRef.current = false; setBusy(false); } }
   async function action(fn: () => Promise<LongEpisodeVideoProgress>): Promise<void> { if (busyRef.current) return; busyRef.current = true; setBusy(true); setError(null); try { setJob(await fn()); setUnplayable([]); setVideoVersion((current) => current + 1); } catch (caught) { setError(toLongProjectDisplayError(caught)); } finally { busyRef.current = false; setBusy(false); } }
@@ -470,6 +491,19 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
         </div>
       )}
       {error && <p role="alert" data-error-code={error.code} className="text-sm text-rose-400">{error.message}</p>}
+      {/* Named beneath the refusal, never instead of it: the server's sentence is still the reason, this is
+          only the step the person can go and do. Withheld once the Episode is at or past the video step,
+          where "이 단계에서는 할 수 없다" means something other than a missing earlier step. */}
+      {error?.code === "LONG_EPISODE_VIDEOS_NOT_ALLOWED" && blockedAt && isLongEpisodeStatusBefore(blockedAt, "waiting_for_video_confirmation") && (
+        <p data-testid="episode-video-next-step" className="text-sm text-amber-300">
+          지금은 <span className="font-semibold">{longEpisodeStatusLabel(blockedAt)}</span> 단계입니다.{" "}
+          {isLongEpisodeStatusBefore(blockedAt, "script_approved")
+            ? <>왼쪽의 <span className="font-semibold">장면 대본</span>부터 끝내 주세요.</>
+            : isLongEpisodeStatusBefore(blockedAt, "asset_mapping_approved")
+              ? <>왼쪽의 <span className="font-semibold">참고 이미지 연결</span>을 승인해 주세요.</>
+              : <>왼쪽의 <span className="font-semibold">장면 이미지</span>를 만들고 승인해 주세요.</>}
+        </p>
+      )}
     </section>
   );
 }

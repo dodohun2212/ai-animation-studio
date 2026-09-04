@@ -219,6 +219,51 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
   });
 
   /**
+   * "에피소드 상태를 확인해 주세요" — asked of an app that already knows.
+   *
+   * `LONG_EPISODE_VIDEOS_NOT_ALLOWED` is one sentence for every state before the video step, and it sends the
+   * person off to look up a status this screen can read. Worse, it reads identically whether the Episode has
+   * no script at all or is genuinely stuck, so there is no way to tell "do this next" from "something broke".
+   */
+  it("names the step to go and do when the video route refuses the whole screen", async () => {
+    const fetchMock = stubFetchByRoute(
+      { "GET /episodes/1": { episode: episode("outline_ready") } },
+      { "GET /videos/generations/current": { status: 409, body: { code: "LONG_EPISODE_VIDEOS_NOT_ALLOWED", message: "raw" } } },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    const step = await screen.findByTestId("episode-video-next-step");
+    expect(step.textContent).toContain("장면 대본");
+    // Beneath the refusal, not instead of it — the server's reason stays on screen.
+    expect(screen.getByRole("alert").getAttribute("data-error-code")).toBe("LONG_EPISODE_VIDEOS_NOT_ALLOWED");
+  });
+
+  it("points at the images once the mapping is approved but no images are ready", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute(
+      { "GET /episodes/1": { episode: episode("asset_mapping_approved") } },
+      { "GET /videos/generations/current": { status: 409, body: { code: "LONG_EPISODE_VIDEOS_NOT_ALLOWED", message: "raw" } } },
+    ));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    const step = await screen.findByTestId("episode-video-next-step");
+    expect(step.textContent).toContain("장면 이미지");
+    expect(step.textContent).not.toContain("장면 대본");
+  });
+
+  /** A step nobody could read is not a step to name — the refusal alone is the honest floor. */
+  it("says nothing extra when the step itself could not be read", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({}, {
+      "GET /videos/generations/current": { status: 409, body: { code: "LONG_EPISODE_VIDEOS_NOT_ALLOWED", message: "raw" } },
+      "GET /episodes/1": { status: 500, body: { code: "LONG_PROJECT_STORAGE_ERROR", message: "raw" } },
+    }));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    await screen.findByRole("alert");
+    await waitFor(() => expect(screen.queryByTestId("episode-video-next-step")).toBeNull());
+  });
+
+  /**
    * The reload bug 캡틴D found: the screen showed "이 단계에서는 영상 작업을 할 수 없습니다" and nothing else after a
    * refresh, because the job id lived only in React state. Everything paid for — the review cards, the players
    * and the recovery button — sat behind that `job`, so $1.50 of finished work had no handle on screen.

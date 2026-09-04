@@ -38,3 +38,29 @@ export function longEpisodeStatusLabel(status: LongEpisodeStatus | string): stri
  * a thing, and reusing it here for "this link is settled" would make one word mean two jobs. That is a wording
  * decision for a person, not a tidy-up.
  */
+
+/**
+ * The Episode's steps in the order they happen.
+ *
+ * A screen that refuses an action has to say which step is actually next, and "next" needs direction — the
+ * image screen learned this the hard way, with one sentence naming 참고 이미지 연결 for every state before it,
+ * including states where that screen cannot even open. It lived as a private copy in one component; the video
+ * screen needs the same answer, and two copies of a workflow order is how two screens start disagreeing about
+ * what comes after what.
+ *
+ * `interrupted` and `failed` are deliberately absent: they are not points on this line, so they never read as
+ * "before" anything.
+ */
+export const LONG_EPISODE_STATUS_ORDER: readonly LongEpisodeStatus[] = [
+  "planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review",
+  "asset_mapping_approved", "generating_images", "images_ready", "images_review",
+  "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved",
+  "rendering", "completed",
+];
+
+/** True only when both statuses are on the line above and `status` comes first. Unknown never reads as before. */
+export function isLongEpisodeStatusBefore(status: LongEpisodeStatus | undefined, marker: LongEpisodeStatus): boolean {
+  if (!status) return false;
+  const at = LONG_EPISODE_STATUS_ORDER.indexOf(status);
+  return at !== -1 && at < LONG_EPISODE_STATUS_ORDER.indexOf(marker);
+}

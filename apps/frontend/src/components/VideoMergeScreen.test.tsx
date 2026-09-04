@@ -38,8 +38,6 @@ function sixScenes(): Scene[] {
     number: number as Scene["number"],
     script: `Scene ${number}`,
     motionPrompt: `Motion ${number}`,
-    imageReview: "approved",
-    videoReview: "approved",
   }));
 }
 
@@ -73,13 +71,14 @@ function renderScreen(
   project: Partial<Project> = {},
   settings: { narrationEnabled: boolean; subtitlesEnabled: boolean } | "fails" = { narrationEnabled: false, subtitlesEnabled: false },
   tracks: ReturnType<typeof makeTrack>[] = [],
+  /** Which scenes the video review reports as confirmed. Defaults to all of them. */
+  approved?: number[],
 ) {
-  // The confirmation count comes from the video review route now, not from a field on the scene — that field
-  // never existed on any real response (see the note above the COMPLETED-project test). The tests still say what
-  // they mean through `videoReview` on their scenes, and this turns that into the answer the screen actually
-  // asks for, so each test reads as the state it describes rather than as a fetch script.
+  // The confirmation count comes from the video review route, never from a field on the scene — no response has
+  // ever carried one (see the note above the COMPLETED-project test). A test says which scenes are confirmed by
+  // number, which is the thing the route actually reports.
   const scenes = (project.scenes ?? sixScenes()) as Scene[];
-  const reviews = scenes.map((scene) => ({ sceneNumber: scene.number, status: scene.videoReview === "approved" ? "approved" as const : "pending" as const, updatedAt: "2026-08-23T00:00:00.000Z" }));
+  const reviews = scenes.map((scene) => ({ sceneNumber: scene.number, status: (approved ?? scenes.map((one) => one.number)).includes(scene.number) ? "approved" as const : "pending" as const, updatedAt: "2026-08-23T00:00:00.000Z" }));
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input);
     if (url === PROJECT_URL && !init) {
@@ -337,8 +336,7 @@ describe("VideoMergeScreen", () => {
    */
   it("names the scenes still unconfirmed and refuses to open the confirmation", async () => {
     const mergeFetch = vi.fn();
-    const partly = sixScenes().map((scene, index) => (index < 4 ? scene : { ...scene, videoReview: "pending" as const }));
-    renderScreen(mergeFetch, { scenes: partly });
+    renderScreen(mergeFetch, { scenes: sixScenes() }, undefined, undefined, [1, 2, 3, 4]);
 
     expect((await screen.findByTestId("merge-approved-count")).textContent).toContain("4개 확정됨");
     expect((await screen.findByTestId("merge-blocked")).textContent).toContain("2개");
@@ -360,8 +358,8 @@ describe("VideoMergeScreen", () => {
    */
   it("merges a photo card, which has no scene video to confirm", async () => {
     const mergeFetch = vi.fn();
-    const still: Scene[] = [{ number: 1, script: "불광불급", motionPrompt: "", imageReview: "approved", videoReview: "pending" }];
-    renderScreen(mergeFetch, { photoCard: true, scenes: still });
+    const still: Scene[] = [{ number: 1, script: "불광불급", motionPrompt: "" }];
+    renderScreen(mergeFetch, { photoCard: true, scenes: still }, undefined, undefined, []);
 
     await screen.findByTestId("merge-scope-notice");
     expect(screen.queryByTestId("merge-blocked")).toBeNull();
@@ -380,8 +378,8 @@ describe("VideoMergeScreen", () => {
    */
   it("sends a photo card's adjusted subtitle layout with the merge", async () => {
     const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
-    const still: Scene[] = [{ number: 1, script: "", motionPrompt: "", imageReview: "approved", videoReview: "pending", narration: "불광불급(不狂不及)\n미치도록 몰입한 사람만이," }];
-    renderScreen(mergeFetch, { photoCard: true, scenes: still, subtitleLayout: { scale: 0.027, center: 0.4 } });
+    const still: Scene[] = [{ number: 1, script: "", motionPrompt: "", narration: "불광불급(不狂不及)\n미치도록 몰입한 사람만이," }];
+    renderScreen(mergeFetch, { photoCard: true, scenes: still, subtitleLayout: { scale: 0.027, center: 0.4 } }, undefined, undefined, []);
 
     const center = await screen.findByTestId("photo-card-subtitle-center");
     fireEvent.change(center, { target: { value: "0.55" } });
@@ -398,8 +396,8 @@ describe("VideoMergeScreen", () => {
   // Starts from what this card was last merged with, not from the published default — otherwise every revisit
   // silently proposes undoing the adjustment the person already made.
   it("starts a photo card from the layout the server sent back", async () => {
-    const still: Scene[] = [{ number: 1, script: "", motionPrompt: "", imageReview: "approved", videoReview: "pending", narration: "문장" }];
-    renderScreen(vi.fn(), { photoCard: true, scenes: still, subtitleLayout: { scale: 0.041, center: 0.62 } });
+    const still: Scene[] = [{ number: 1, script: "", motionPrompt: "", narration: "문장" }];
+    renderScreen(vi.fn(), { photoCard: true, scenes: still, subtitleLayout: { scale: 0.041, center: 0.62 } }, undefined, undefined, []);
 
     expect((await screen.findByTestId("photo-card-subtitle-scale-value")).textContent).toContain("79px");
     expect(screen.getByTestId("photo-card-subtitle-center-value").textContent).toContain("62%");
@@ -414,8 +412,8 @@ describe("VideoMergeScreen", () => {
    */
   it("lets a finished photo card be made again with different subtitles", async () => {
     const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
-    const still: Scene[] = [{ number: 1, script: "", motionPrompt: "", imageReview: "approved", videoReview: "pending", narration: "불광불급(不狂不及)\n미치도록 몰입한 사람만이," }];
-    renderScreen(mergeFetch, { photoCard: true, scenes: still, workflowState: WorkflowState.Completed, finalVideoPath: "videos/final/instagram_reel.mp4" });
+    const still: Scene[] = [{ number: 1, script: "", motionPrompt: "", narration: "불광불급(不狂不及)\n미치도록 몰입한 사람만이," }];
+    renderScreen(mergeFetch, { photoCard: true, scenes: still, workflowState: WorkflowState.Completed, finalVideoPath: "videos/final/instagram_reel.mp4" }, undefined, undefined, []);
 
     await screen.findByTestId("merge-success");
     expect(screen.queryByTestId("photo-card-subtitle-preview")).toBeNull();
@@ -433,7 +431,7 @@ describe("VideoMergeScreen", () => {
   // The one card that must not be remade. Replacing the file would leave the Instagram post pointing at a
   // video nobody published, and neither side would record that it had changed.
   it("refuses to remake a card that is already published, and says what to do instead", async () => {
-    const still: Scene[] = [{ number: 1, script: "", motionPrompt: "", imageReview: "approved", videoReview: "pending", narration: "문장" }];
+    const still: Scene[] = [{ number: 1, script: "", motionPrompt: "", narration: "문장" }];
     renderScreen(vi.fn(), {
       photoCard: true, scenes: still, workflowState: WorkflowState.Completed, finalVideoPath: "videos/final/instagram_reel.mp4",
       instagramPost: { mediaId: "m1", igUserId: "1", publishedAt: "2026-09-02T00:00:00.000Z", caption: "" },
@@ -464,8 +462,7 @@ describe("VideoMergeScreen", () => {
   // The other half: an ordinary project keeps its gate. Unblocking the card must not unblock everything.
   it("still blocks an ordinary project with an unconfirmed scene", async () => {
     const mergeFetch = vi.fn();
-    const partly = sixScenes().map((scene, index) => (index < 5 ? scene : { ...scene, videoReview: "pending" as const }));
-    renderScreen(mergeFetch, { scenes: partly });
+    renderScreen(mergeFetch, { scenes: sixScenes() }, undefined, undefined, [1, 2, 3, 4, 5]);
 
     expect((await screen.findByTestId("merge-blocked")).textContent).toContain("1개");
     expect(screen.getByTestId("open-merge-confirm-button")).toBeDisabled();

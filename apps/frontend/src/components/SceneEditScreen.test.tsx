@@ -10,8 +10,6 @@ function scene(number: number, overrides: Record<string, string> = {}): Scene {
     number: number as Scene["number"],
     script: `Script ${number}`,
     motionPrompt: `Motion ${number}`,
-    imageReview: "pending" as const,
-    videoReview: "pending" as const,
     description: `설명 ${number}`,
     narration: `문장 ${number}`,
     visual_action: `행동 ${number}`,

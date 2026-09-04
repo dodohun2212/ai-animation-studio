@@ -47,8 +47,6 @@ function scenesFor(sceneCount: number): Scene[] {
     motionPrompt: `Scene ${number} motion prompt`,
     generatedImagePath: `images/scene${number}.png`,
     generatedVideoPath: `videos/runway/scene${number}.mp4`,
-    imageReview: "approved",
-    videoReview: "pending",
   }));
 }
 

@@ -34,8 +34,6 @@ function scenesOf(count: number): Scene[] {
       number,
       script: `Scene ${number}`,
       motionPrompt: `Motion ${number}`,
-      imageReview: "pending",
-      videoReview: "pending",
     };
   });
 }

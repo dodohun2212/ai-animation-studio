@@ -12,8 +12,6 @@ function scene(number: number, narration: string): Scene {
     number: number as Scene["number"],
     script: "",
     motionPrompt: "",
-    imageReview: "pending",
-    videoReview: "pending",
     narration,
   };
 }

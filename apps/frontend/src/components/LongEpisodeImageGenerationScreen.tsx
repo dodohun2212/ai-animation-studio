@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { BudgetPreview, LongEpisodeContinuityReference, LongEpisodeDetail, LongEpisodeImageGenerationPreview, LongEpisodeImageProgress, LongEpisodeImageReview, LongEpisodeStatus, LongEpisodeStoryBibleLinkDrift, SceneNumber, StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
+import type { BudgetPreview, LongEpisodeContinuityReference, LongEpisodeDetail, LongEpisodeImageGenerationPreview, LongEpisodeImageProgress, LongEpisodeImageReview, LongEpisodeStoryBibleLinkDrift, SceneNumber, StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
 import { IMAGE_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 
 import {
@@ -16,7 +16,7 @@ import {
   startLongEpisodeImageGeneration,
   toLongProjectDisplayError,
 } from "../api/longProjectsApi.js";
-import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
+import { isLongEpisodeStatusBefore, longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { Spinner } from "./Spinner.js";
 import { StatusChip } from "./ui/StatusChip.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
@@ -43,18 +43,8 @@ const sceneSlotLabel = (status: string) => SCENE_SLOT_LABEL[status] ?? status;
  * moment generation started — telling someone to approve a thing they had approved a second earlier, while
  * their money was being spent. A step notice has to know direction; equality does not.
  */
-const STATUS_ORDER: readonly LongEpisodeStatus[] = [
-  "planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review",
-  "asset_mapping_approved", "generating_images", "images_ready", "images_review",
-  "waiting_for_video_confirmation", "videos_generating", "videos_ready", "videos_review", "videos_approved",
-  "rendering", "completed",
-];
-/** `interrupted` and `failed` are not points on the line, so they never read as "before" anything. */
-function isBefore(status: LongEpisodeStatus | undefined, marker: LongEpisodeStatus): boolean {
-  if (!status) return false;
-  const at = STATUS_ORDER.indexOf(status);
-  return at !== -1 && at < STATUS_ORDER.indexOf(marker);
-}
+/** Moved to utils/longEpisodeLabels.ts — the video screen needs the same order, and two copies would drift. */
+const isBefore = isLongEpisodeStatusBefore;
 
 const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const primaryButton = "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";

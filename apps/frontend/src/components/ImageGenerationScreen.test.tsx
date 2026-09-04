@@ -12,8 +12,6 @@ function sixScenes(withImages: readonly number[] = []): Scene[] {
     number: number as Scene["number"],
     script: `Scene ${number}`,
     motionPrompt: `Motion ${number}`,
-    imageReview: "pending",
-    videoReview: "pending",
     ...(withImages.includes(number) ? { generatedImagePath: `images/scene${number}.png` } : {}),
   }));
 }

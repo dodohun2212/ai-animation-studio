@@ -95,30 +95,6 @@ export interface Scene {
   motionPrompt: string;
   generatedImagePath?: string;
   generatedVideoPath?: string;
-  /**
-   * 🔴 Declared here and written nowhere. Do not read these expecting an answer.
-   *
-   * No code in this repository ever sets either field on a scene: the decisions live in their own files
-   * (generated_image_reviews.json, and video_reviews on the stored project), and project.mapper.ts spreads the
-   * raw stored scene through `as unknown as Scene`, which is what lets these two be declared required while
-   * being absent from every project that has ever existed — 캡틴D's project 1 has six scenes and none of them
-   * carry either field. The only place they are ever present is test fixtures, which invent them.
-   *
-   * That cost a real screen: VideoMergeScreen counted confirmations from `videoReview` and therefore counted
-   * zero for every project, telling someone with a finished video to go and confirm the six scenes it was made
-   * from (Cowork Round 487). It now treats absence as unknown, which is correct and means it never counts.
-   *
-   * The real per-scene answer is GET /projects/:id/videos/generations/:jobId/review, reached through
-   * Project.currentVideoJobId — the same source LongEpisodeVideoMergeScreen already counts from. It refuses for
-   * a completed project, which is also correct: a finished project has nothing left to confirm.
-   *
-   * Left in place only because removing them stops that screen compiling; they should go with the screen change
-   * that moves it onto the review endpoint. `imagePrompt` was the third of this family and is gone: nothing read
-   * it either, and no screen shows an image prompt at all — the text that matters is kept in
-   * image_generation_records, which is what the staleness check actually compares against.
-   */
-  imageReview: ReviewDecision;
-  videoReview: ReviewDecision;
   /** This project type's narration/subtitle sentence — Long Episodes have their own separate LongEpisodeScene.narration field (api.ts), not this one, since a long-form Episode never uses this Scene type at all. Optional: absent on scenes stored before this field existed. Present regardless of ShortProjectSettings.narrationEnabled — only actually turned into TTS audio when that flag is on. */
   narration?: string;
   /**
