@@ -193,6 +193,40 @@ describe("real Runway video workflow", () => {
     expect(result.sceneErrors?.[1]).toBeUndefined();
   });
 
+  /**
+   * The rule the screen learned, where the money actually leaves.
+   *
+   * On 2026-09-05 a scene failed with INTERNAL.BAD_OUTPUT — documented as caused by the input — the screen said
+   * "try again shortly", the button was pressed, and the identical request bought the identical failure for
+   * another $0.25. Both screens now hold their confirm until something is written. This is the same refusal for
+   * a caller that never went through a screen.
+   */
+  it("refuses to re-buy a scene whose failure was caused by its input, unless something changed", async () => {
+    const deps = await setupWithConnectedRunway();
+    const workflow = newWorkflow(deps);
+    // FAILED with the code Runway documents as caused by the input — the one from 2026-09-05.
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.endsWith("/v1/image_to_video")) return { ok: true, status: 200, json: async () => ({ id: "task-bad" }), headers: { get: () => null } } as unknown as Response;
+      if (url.includes("/v1/tasks/")) return { ok: true, status: 200, json: async () => ({ id: "task-bad", status: "FAILED", failure: "An unexpected error occurred.", failureCode: "INTERNAL.BAD_OUTPUT.CODE01" }), headers: { get: () => null } } as unknown as Response;
+      throw new Error(`unexpected fetch: ${url}`);
+    }));
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+    await workflow.run("video_workflow", deps.accepted.jobId);
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    const failed = await workflow.getProgress("video_workflow", deps.accepted.jobId);
+    expect(failed.failedSceneNumbers).toEqual([1]);
+    expect(failed.sceneFailures?.[1]).toMatchObject({ remedy: "change_input" });
+
+    // Nothing changed: refused before anything is archived or re-submitted.
+    await expect(workflow.regenerate("video_workflow", deps.accepted.jobId, [1]))
+      .rejects.toMatchObject({ response: { code: "VIDEO_RETRY_NEEDS_CHANGED_INPUT" } });
+
+    // With something written, it goes through — the person has said what is different.
+    await expect(workflow.regenerate("video_workflow", deps.accepted.jobId, [1], "no lettering in the final beat"))
+      .resolves.toMatchObject({ regeneratedSceneNumbers: [1] });
+  });
+
   it("reports a scene whose output can no longer be fetched, and leaves its placeholder alone", async () => {
     // Reported rather than quietly regenerated: spending money is the person's decision, not a fallback.
     const deps = await setupWithConnectedRunway();

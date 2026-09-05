@@ -2,6 +2,7 @@ import * as crypto from "node:crypto";
 import { withWarning } from "../projects/warnings.js";
 import { isBudgetLedgerUnreadable, RUNWAY_LEDGER_FILE, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import { isUsableClip, PLACEHOLDER_MP4, wasPaidRun } from "./placeholder-clip.js";
+import { needsChangedInput } from "./scene-failure.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
@@ -35,7 +36,7 @@ import { LEGACY_VIDEO_JOB_ID } from "./legacy-job.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
 import { resolveVideoModel } from "./runway-video-adapter.js";
 import { sceneFailureFor } from "./scene-failure.js";
-import {
+import { videoRetryNeedsChangedInput,
   invalidVideoWorkflowRequest,
   videoContentUnavailable,
   videoJobNotFound,
@@ -615,8 +616,12 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     const allowedFailedRetry = project.workflow_state === WorkflowState.GeneratingVideos
       && selected.every((scene) => records.find((record) => record.scene_number === scene)?.status === "failed");
     if (!allowedTerminalState && !allowedFailedRetry) throw videoWorkflowNotAllowed();
-    try { for (const scene of selected) await this.archive(project.project_id, scene); } catch { throw videoStorageError(); }
     const trimmedInstruction = additionalInstruction?.trim() || undefined;
+    // Before anything is archived or reset: a scene whose failure is documented as caused by its input buys
+    // the same failure again if the same input goes back. Both screens hold their confirm until something is
+    // written; this is that rule where the money leaves, for a caller that never saw a screen.
+    if (!trimmedInstruction && records.some((record) => selected.includes(record.scene_number) && needsChangedInput(typeof record.failure_code === "string" ? record.failure_code : undefined))) throw videoRetryNeedsChangedInput();
+    try { for (const scene of selected) await this.archive(project.project_id, scene); } catch { throw videoStorageError(); }
     const reset = records.filter((record) => selected.includes(record.scene_number)).map((record) => ({
       ...record, status: "created" as const,
       runway_task_id: undefined, runway_submitted_at: undefined, runway_last_checked_at: undefined, runway_claimed_at: undefined, error: undefined,

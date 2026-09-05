@@ -3,6 +3,7 @@ import type { ApiError } from "@ai-animation-studio/shared";
 
 type VideoWorkflowErrorCode =
   | "INVALID_REQUEST"
+  | "VIDEO_RETRY_NEEDS_CHANGED_INPUT"
   | "VIDEO_JOB_NOT_FOUND"
   | "VIDEO_WORKFLOW_NOT_ALLOWED"
   | "VIDEO_REVIEW_DATA_INVALID"
@@ -19,6 +20,14 @@ class VideoWorkflowApiException extends HttpException {
 
 export const invalidVideoWorkflowRequest = () =>
   new VideoWorkflowApiException("INVALID_REQUEST", "This video operation requires explicit approval.", HttpStatus.BAD_REQUEST);
+/**
+ * A re-buy of a scene whose failure is documented as caused by its input, with the input unchanged.
+ *
+ * Its own code rather than INVALID_REQUEST, because a screen has something specific to say here and nothing to
+ * say about a malformed body: this refusal is the app declining to spend money on a repeat of a known failure.
+ */
+export const videoRetryNeedsChangedInput = () =>
+  new VideoWorkflowApiException("VIDEO_RETRY_NEEDS_CHANGED_INPUT", "This scene failed because of its input, so the same request would fail again. Say what to change before retrying.", HttpStatus.BAD_REQUEST);
 export const videoJobNotFound = () =>
   new VideoWorkflowApiException("VIDEO_JOB_NOT_FOUND", "The requested local video job was not found.", HttpStatus.NOT_FOUND);
 export const videoWorkflowNotAllowed = () =>

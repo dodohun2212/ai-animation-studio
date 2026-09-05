@@ -16,13 +16,13 @@ import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceRes
 import { downloadRunwayOutput, getRunwayTask, RunwayAdapterError } from "../videos/runway-video-adapter.js";
 import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { promptFor, utf16Length, type StoredScene, describesSameScene } from "../videos/video-preview.service.js";
-import { longBudgetLedgerUnreadable, longEpisodeVideoRestoreNotAllowed, longEpisodeVideoVersionNotFound, longLocked, longEpisodeNotFound, longEpisodeVideoJobNotFound, longEpisodeVideosInvalid, longEpisodeVideosNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { longEpisodeRetryNeedsChangedInput, longBudgetLedgerUnreadable, longEpisodeVideoRestoreNotAllowed, longEpisodeVideoVersionNotFound, longLocked, longEpisodeNotFound, longEpisodeVideoJobNotFound, longEpisodeVideosInvalid, longEpisodeVideosNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { toEpisodeDetail } from "./episode-detail.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 import { resolveVideoModel } from "../videos/runway-video-adapter.js";
-import { sceneFailureFor } from "../videos/scene-failure.js";
+import { needsChangedInput, sceneFailureFor } from "../videos/scene-failure.js";
 
 /** Matches video-preview.service.ts's SCENE_FIELDS (minus "number", "narration"): the fields promptFor() reads. */
 const MOTION_SCENE_FIELDS = ["description", "visual_action", "start_motion", "main_motion", "end_motion", "shot_size", "camera_angle", "composition", "lens_feel", "focus_subject", "camera_motion", "environment_motion", "motion_speed", "motion_intensity", "expression_change", "continuity_hint"] as const;
@@ -645,6 +645,10 @@ export class EpisodeVideosService implements OnModuleDestroy {
     const allowedFailedRetry = selection.length === 1 && episode.state === "videos_generating"
       && records.find((item) => item.scene_number === selection[0])?.status === "failed";
     if (!allowedTerminal && !allowedFailedRetry) throw longEpisodeVideosNotAllowed();
+    // Same rule as the short project, in the same place: before anything is archived. A scene whose failure
+    // is documented as caused by its input buys the same failure again if the same input goes back, and both
+    // screens already hold their confirm until something is written.
+    if (!additionalInstruction && selection.some((item) => needsChangedInput(records.find((record) => record.scene_number === item)?.failure_code))) throw longEpisodeRetryNeedsChangedInput();
 
     for (const selected of selection) {
       const file = this.video(id, number, selected);

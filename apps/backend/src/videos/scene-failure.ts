@@ -1,4 +1,4 @@
-import type { SceneFailure } from "@ai-animation-studio/shared";
+import { providerTaskFailure, type SceneFailure } from "@ai-animation-studio/shared";
 import { runwayFailureOutcome } from "./runway-video-adapter.js";
 
 /**
@@ -28,4 +28,24 @@ const NEVER_SENT = new Set(["budget_exceeded", "budget_ledger_unreadable"]);
 export function sceneFailureFor(category: string, failureCode?: string): SceneFailure {
   if (failureCode) return { category, providerCode: failureCode, ...runwayFailureOutcome(failureCode) };
   return { category, remedy: "retry", billedOnFailure: !NEVER_SENT.has(category) };
+}
+
+/**
+ * Whether re-buying this scene needs something about the input to change first.
+ *
+ * The screens learned this and the server did not. `INTERNAL.BAD_OUTPUT` and `ASSET.INVALID` are documented as
+ * caused by the input, so a byte-identical resend is a purchase of the same failure — which is exactly what
+ * happened on 2026-09-05: the screen said "try again shortly", the button was pressed, and $0.25 bought nothing
+ * a second time.
+ *
+ * Both video screens now hold the confirm until an instruction is written. This is the same rule where the
+ * money actually leaves, for a caller that never went through a screen.
+ *
+ * Deliberately only `change_input`. `not_retryable` is the safety refusals, whose cause is the first frame —
+ * regenerating the image and coming back is a legitimate route that no instruction accompanies, and refusing it
+ * here would block the fix rather than the mistake. An unknown code asks for nothing: we do not know that the
+ * input is the cause, and inventing a requirement is its own way of being wrong.
+ */
+export function needsChangedInput(failureCode: string | undefined): boolean {
+  return providerTaskFailure(failureCode)?.remedy === "change_input";
 }

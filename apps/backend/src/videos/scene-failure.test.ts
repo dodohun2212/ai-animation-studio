@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SCENE_FAILURE_REMEDIES } from "@ai-animation-studio/shared";
-import { sceneFailureFor } from "./scene-failure.js";
+import { needsChangedInput, sceneFailureFor } from "./scene-failure.js";
 import { runwayFailureOutcome } from "./runway-video-adapter.js";
 
 describe("what a screen is told about a failed scene", () => {
@@ -67,5 +67,32 @@ describe("what a screen is told about a failed scene", () => {
     expect(sceneFailureFor("budget_ledger_unreadable").billedOnFailure, "refused before anything was sent").toBe(false);
 
     expect(sceneFailureFor("timeout").providerCode, "we were not told a code, so we do not invent one").toBeUndefined();
+  });
+});
+
+/**
+ * Whether a re-buy has to change something first.
+ *
+ * The screens learned this and the server did not: both hold their confirm until an instruction is written,
+ * while `regenerate` accepted a byte-identical resend. That is the purchase that happened on 2026-09-05 — the
+ * screen said "try again shortly", the button was pressed, and $0.25 bought the same failure twice.
+ */
+describe("whether re-buying a scene needs the input to change", () => {
+  it("asks for a change on the codes documented as caused by the input", () => {
+    expect(needsChangedInput("INTERNAL.BAD_OUTPUT.CODE01")).toBe(true);
+    expect(needsChangedInput("ASSET.INVALID")).toBe(true);
+  });
+
+  it("asks for nothing on a safety refusal, whose fix is a different first frame", () => {
+    // Regenerating the image and coming back is a legitimate route that no instruction accompanies. Refusing it
+    // here would block the fix rather than the mistake.
+    expect(needsChangedInput("SAFETY.INPUT.CODE01")).toBe(false);
+    expect(needsChangedInput("SAFETY.OUTPUT")).toBe(false);
+  });
+
+  it("asks for nothing when there is no code, or none we know", () => {
+    // We do not know the input is the cause, and inventing a requirement is its own way of being wrong.
+    expect(needsChangedInput(undefined)).toBe(false);
+    expect(needsChangedInput("SOMETHING.NEW")).toBe(false);
   });
 });
