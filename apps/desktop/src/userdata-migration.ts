@@ -3,6 +3,8 @@ export interface UserDataMigrationDeps {
   rename: (from: string, to: string) => Promise<void>;
   copyRecursive: (from: string, to: string) => Promise<void>;
   mkdirForFile: (target: string) => Promise<void>;
+  /** Best-effort delete of a directory tree; only ever called on the staging folder this module itself makes. */
+  removeRecursive: (target: string) => Promise<void>;
 }
 
 /**
@@ -22,7 +24,22 @@ export async function migrateUserDataFolder(oldPath: string, newPath: string, de
   } catch {
     // Cross-device (different drive) rename fails on every platform — fall back to copying, and deliberately
     // never delete oldPath afterward even on success: a partial or failed copy must never look like data loss.
+    //
+    // Copied into a staging folder and renamed into place, never written at newPath directly. A copy that
+    // fails partway used to leave a half-populated newPath, and the check above then reads it on the next
+    // launch as "a previous migration already ran" — so the app opens on partial data while the whole of it
+    // sits untouched at oldPath. The bytes were never lost; what the person saw was missing projects. This
+    // way newPath either does not exist or is complete, and a failed attempt simply runs again next time.
+    // The final rename is within the same folder as newPath, so it cannot hit the cross-device case itself.
+    const staging = `${newPath}.migrating`;
     await deps.mkdirForFile(newPath);
-    await deps.copyRecursive(oldPath, newPath);
+    await deps.removeRecursive(staging);
+    try {
+      await deps.copyRecursive(oldPath, staging);
+      await deps.rename(staging, newPath);
+    } catch (error) {
+      await deps.removeRecursive(staging).catch(() => undefined);
+      throw error;
+    }
   }
 }

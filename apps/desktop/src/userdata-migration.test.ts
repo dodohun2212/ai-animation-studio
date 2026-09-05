@@ -11,6 +11,7 @@ function fakeDeps(existing: Set<string>) {
       rename: async (from: string, to: string) => { calls.push(`rename:${from}->${to}`); existing.delete(from); existing.add(to); },
       copyRecursive: async (from: string, to: string) => { calls.push(`copy:${from}->${to}`); existing.add(to); },
       mkdirForFile: async (target: string) => { calls.push(`mkdir:${target}`); },
+      removeRecursive: async (target: string) => { calls.push(`remove:${target}`); existing.delete(target); },
     },
   };
 }
@@ -46,13 +47,49 @@ test("renames old to new when new does not exist yet", async () => {
 
 test("falls back to copying (never deleting the old path) when rename fails, e.g. across drives", async () => {
   const existing = new Set(["/old"]);
-  const deps = {
-    pathExists: async (target: string) => existing.has(target),
-    rename: async () => { throw new Error("EXDEV: cross-device link not permitted"); },
-    copyRecursive: async (from: string, to: string) => { existing.add(to); },
-    mkdirForFile: async () => {},
+  const { deps, calls } = fakeDeps(existing);
+  const failingFirstRename = {
+    ...deps,
+    rename: async (from: string, to: string) => {
+      if (from === "/old") throw new Error("EXDEV");
+      calls.push(`rename:${from}->${to}`); existing.delete(from); existing.add(to);
+    },
   };
-  await migrateUserDataFolder("/old", "/new", deps);
-  assert.ok(existing.has("/old")); // still there — never deleted on the fallback path
-  assert.ok(existing.has("/new"));
+
+  await migrateUserDataFolder("/old", "/new", failingFirstRename);
+
+  // Copied into staging and renamed into place, never written at /new directly.
+  assert.deepEqual(calls, ["mkdir:/new", "remove:/new.migrating", "copy:/old->/new.migrating", "rename:/new.migrating->/new"]);
+  assert.equal(existing.has("/old"), true, "the old path is never deleted, even after a successful copy");
+  assert.equal(existing.has("/new"), true);
+});
+
+/**
+ * The failure that looked like data loss without ever losing a byte.
+ *
+ * Copying straight into /new left it half-populated, and the "already migrated" check above then read that on
+ * the next launch as a finished migration — so the app opened on partial data while the whole of it sat at the
+ * old path. Staging means /new either does not exist or is complete, and a failed attempt just runs again.
+ */
+test("leaves nothing at the new path when the copy fails partway, so the next launch retries", async () => {
+  const existing = new Set(["/old"]);
+  const { deps, calls } = fakeDeps(existing);
+  const failingCopy = {
+    ...deps,
+    rename: async (from: string, to: string) => {
+      if (from === "/old") throw new Error("EXDEV");
+      calls.push(`rename:${from}->${to}`); existing.delete(from); existing.add(to);
+    },
+    copyRecursive: async (from: string, to: string) => {
+      calls.push(`copy:${from}->${to}`);
+      existing.add(to);
+      throw new Error("ENOSPC halfway through");
+    },
+  };
+
+  await assert.rejects(migrateUserDataFolder("/old", "/new", failingCopy));
+
+  assert.equal(existing.has("/new"), false, "a half-written new path must not survive to be mistaken for a finished migration");
+  assert.equal(existing.has("/new.migrating"), false, "the staging folder is cleaned up too");
+  assert.equal(existing.has("/old"), true, "the data is still where it was");
 });

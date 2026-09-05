@@ -55,12 +55,31 @@ async function renameAppAndMigrateUserData(): Promise<void> {
   const oldPath = app.getPath("userData");
   app.setName(APP_DISPLAY_NAME);
   const newPath = app.getPath("userData");
-  await migrateUserDataFolder(oldPath, newPath, {
-    pathExists: (target) => fsPromises.access(target).then(() => true, () => false),
-    rename: (from, to) => fsPromises.rename(from, to),
-    copyRecursive: (from, to) => fsPromises.cp(from, to, { recursive: true }),
-    mkdirForFile: async (target) => { await fsPromises.mkdir(path.dirname(target), { recursive: true }); },
-  });
+  try {
+    await migrateUserDataFolder(oldPath, newPath, {
+      pathExists: (target) => fsPromises.access(target).then(() => true, () => false),
+      rename: (from, to) => fsPromises.rename(from, to),
+      copyRecursive: (from, to) => fsPromises.cp(from, to, { recursive: true }),
+      mkdirForFile: async (target) => { await fsPromises.mkdir(path.dirname(target), { recursive: true }); },
+      removeRecursive: (target) => fsPromises.rm(target, { recursive: true, force: true }),
+    });
+  } catch {
+    // This ran before the window and the IPC handlers were registered, so a throw here used to end startup
+    // with nothing on screen at all — the app simply never appeared. The data is untouched at oldPath either
+    // way, so the right answer is to say where it is and carry on: the person gets a working app and the one
+    // sentence they need, instead of an empty window they cannot explain or no window at all.
+    await dialog.showMessageBox({
+      type: "warning",
+      title: APP_DISPLAY_NAME,
+      message: "이전에 쓰던 데이터를 새 폴더로 옮기지 못했습니다. 그대로 남아 있으니 지우지 마세요.",
+      detail: [
+        `옮기려던 곳: ${newPath}`,
+        `데이터가 있는 곳: ${oldPath}`,
+        "",
+        "앱을 다시 시작하면 한 번 더 시도합니다.",
+      ].join("\n"),
+    });
+  }
 }
 
 let backend: BackendProcessManager | undefined;
