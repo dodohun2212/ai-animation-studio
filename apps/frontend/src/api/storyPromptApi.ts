@@ -13,6 +13,7 @@ import {
   type ShortProjectSettingsInput,
   type StoryPromptPreview,
 } from "@ai-animation-studio/shared";
+import { isSha256Hex } from "@ai-animation-studio/shared";
 import { BUDGET_LEDGER_UNREADABLE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "./budgetLedgerError.js";
 
 export class StoryPromptApiError extends Error {
@@ -89,8 +90,7 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-const DIGEST_PATTERN = /^[a-f0-9]{64}$/;
-const isDigest = (value: unknown): value is string => typeof value === "string" && DIGEST_PATTERN.test(value);
+const isDigest = isSha256Hex;
 
 function isProject(value: unknown): value is Project {
   return (

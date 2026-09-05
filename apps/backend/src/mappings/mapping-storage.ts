@@ -4,6 +4,7 @@ import {
   type AssetMappingAssignmentSource, type AssetMappingSceneScope, type AssetMappingStatus, type AssetMappingVersionPolicy,
   type ProjectAssetMapping, type ProjectAssetMappingReview, type SceneNumber,
 } from "@ai-animation-studio/shared";
+import { isSha256Hex } from "@ai-animation-studio/shared";
 
 export interface StoredAssetMapping {
   mapping_id: string; project_id: string; asset_id: string; enabled: boolean; usage_role: string;
@@ -82,7 +83,7 @@ export function parseMappings(value: unknown): StoredAssetMapping[] {
       || !policies.has(item.version_policy as AssetMappingVersionPolicy) || !(item.pinned_version === null || (Number.isInteger(item.pinned_version) && Number(item.pinned_version) >= 1))
       || typeof item.candidate_only !== "boolean" || !iso(item.created_at) || !iso(item.updated_at)
       || !(item.snapshot_path === null || (typeof item.snapshot_path === "string" && item.snapshot_path.startsWith("asset_snapshots/") && !item.snapshot_path.includes("..") && !/[\\]/.test(item.snapshot_path)))
-      || !(item.snapshot_sha256 === null || (typeof item.snapshot_sha256 === "string" && /^[a-f0-9]{64}$/.test(item.snapshot_sha256)))
+      || !(item.snapshot_sha256 === null || isSha256Hex(item.snapshot_sha256))
       || !(item.snapshot_source_version === null || (Number.isInteger(item.snapshot_source_version) && Number(item.snapshot_source_version) >= 1))
       || !strings(item.selected_child_asset_ids)) throw new Error("fields");
     const parsed = { ...item, scene_scope: parseScope(item.scene_scope) } as StoredAssetMapping;

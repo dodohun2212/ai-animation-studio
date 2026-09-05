@@ -35,6 +35,7 @@ import {
   type UpdateAssetMetadataRequest,
   type UpdateAssetResponse,
 } from "@ai-animation-studio/shared";
+import { isSha256Hex } from "@ai-animation-studio/shared";
 
 export class AssetsApiError extends Error {
   readonly code: string;
@@ -79,9 +80,8 @@ const OWNERSHIPS: readonly AssetOwnership[] = ASSET_OWNERSHIPS;
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const isString = (value: unknown): value is string => typeof value === "string";
 const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every(isString);
-const DIGEST_PATTERN = /^[a-f0-9]{64}$/;
 /** A full SHA-256 hex digest. The backend's mapper always emits one for a known content byte range. */
-const isDigest = (value: unknown): value is string => isString(value) && DIGEST_PATTERN.test(value);
+const isDigest = isSha256Hex;
 /** Reference-image digests may be an explicitly documented legacy empty string alongside a full digest (see asset-storage.ts). */
 const isLegacyOptionalDigest = (value: unknown): value is string => value === "" || isDigest(value);
 const UTC_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]00:00)$/;

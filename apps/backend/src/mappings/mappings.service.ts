@@ -1,6 +1,6 @@
 import * as crypto from "node:crypto";
 import { Injectable } from "@nestjs/common";
-import { type MappingApprovalInvalidReason, MAX_SCENE_COUNT, sceneNumbersFor } from "@ai-animation-studio/shared";
+import { isSha256Hex, type MappingApprovalInvalidReason, MAX_SCENE_COUNT, sceneNumbersFor } from "@ai-animation-studio/shared";
 import type {
   ApproveProjectAssetMappingReviewRequest, BeginProjectAssetMappingReviewRequest, CreateProjectAssetMappingRequest,
   CreateProjectAssetMappingResponse, BeginProjectAssetMappingReviewResponse, GetProjectAssetMappingReviewResponse, ApproveProjectAssetMappingReviewResponse,
@@ -140,7 +140,7 @@ export class ProjectAssetMappingsService<Key = string> {
     if (!isObject(body) || Object.keys(body).some((key) => !["scriptFingerprint", "approvedBy"].includes(key))) {
       throw invalidMappingRequest("Asset Mapping approval request is invalid.", { reason: "unexpected_fields" satisfies MappingApprovalInvalidReason });
     }
-    if (typeof body.scriptFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(body.scriptFingerprint)) {
+    if (!isSha256Hex(body.scriptFingerprint)) {
       const reason: MappingApprovalInvalidReason = body.scriptFingerprint === "" ? "no_baseline" : "fingerprint_malformed";
       throw invalidMappingRequest("Asset Mapping approval request is invalid.", { reason });
     }

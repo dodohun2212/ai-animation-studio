@@ -25,6 +25,22 @@ export const MAX_SCENE_COUNT = 12;
  */
 export const DEFAULT_SCENE_COUNT = 6;
 
+/**
+ * A SHA-256 digest as this app writes and reads them: 64 lowercase hex characters, nothing else.
+ *
+ * The pattern was retyped nine times — four request and storage validators on the server, four response
+ * guards in the client, and one screen. Every one of them is a gate on an identifier that came from disk or
+ * off the wire, and the way this shape goes wrong is quiet: drop the anchors from one copy and it starts
+ * accepting a digest with anything appended, which is a fingerprint comparison that can no longer fail.
+ *
+ * A function rather than an exported regex on purpose. A shared regex object is shared mutable state the
+ * moment somebody adds a `g` flag to it, and `lastIndex` then makes every other caller answer differently on
+ * alternate calls.
+ */
+export function isSha256Hex(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+}
+
 /** The canonical 1..count scene number sequence for a project with this many scenes. */
 export function sceneNumbersFor(sceneCount: number): SceneNumber[] {
   return Array.from({ length: sceneCount }, (_, index) => index + 1);

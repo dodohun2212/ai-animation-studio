@@ -1,4 +1,4 @@
-import { ASSET_STATUSES, ASSET_TYPES, MAX_SCENE_COUNT, type AssetStatus, type AssetType } from "@ai-animation-studio/shared";
+import { ASSET_STATUSES, ASSET_TYPES, isSha256Hex, MAX_SCENE_COUNT, type AssetStatus, type AssetType } from "@ai-animation-studio/shared";
 import { isSafeAssetId } from "./asset-id.js";
 
 export interface StoredAssetVersion { version: number; stored_path: string; content_sha256: string; created_at: string; notes: string }
@@ -29,7 +29,7 @@ const REQUIRED = ["asset_id", "asset_type", "display_name", "stored_path", "orig
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === "string");
 const timestamp = (value: unknown) => typeof value === "string" && !Number.isNaN(Date.parse(value));
-const digest = (value: unknown) => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+const digest = isSha256Hex;
 const safePathText = (value: unknown, allowEmpty = false) => typeof value === "string" && (allowEmpty || value.length > 0) && !/[\0\r\n]/u.test(value);
 const safeFilename = (value: unknown) => typeof value === "string" && value.length <= 255
   && !/[\0\r\n/\\]/u.test(value) && value !== "." && value !== "..";

@@ -6,7 +6,7 @@ import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Injectable } from "@nestjs/common";
-import { isShortProjectCastLead, STORY_ESTIMATED_COST_USD, WorkflowState } from "@ai-animation-studio/shared";
+import { isShortProjectCastLead, isSha256Hex, STORY_ESTIMATED_COST_USD, WorkflowState } from "@ai-animation-studio/shared";
 import type { ApproveStoryPromptRequest, ApproveStoryPromptResponse, CreateStoryPromptDraftPreviewResponse, CreateStoryPromptPreviewResponse, RegenerateStoryPromptResponse, StoryPromptPreview } from "@ai-animation-studio/shared";
 import { toApiProject } from "../projects/project.mapper.js";
 import { toShortProjectAssetReferences } from "../projects/project-asset-references.js";
@@ -239,7 +239,7 @@ export class StoryPromptService {
     if (typeof request !== "object" || request === null || Array.isArray(request)) throw invalidStoryRequest("Story prompt approval request is invalid.");
     const body = request as Record<string, unknown>;
     if (Object.keys(body).some((key) => !["originalPromptSha256", "prompt", "approved"].includes(key))
-      || typeof body.originalPromptSha256 !== "string" || !/^[a-f0-9]{64}$/.test(body.originalPromptSha256)
+      || !isSha256Hex(body.originalPromptSha256)
       || typeof body.prompt !== "string" || body.prompt.trim().length === 0 || body.approved !== true) {
       throw invalidStoryRequest("Story prompt approval request is invalid.");
     }
