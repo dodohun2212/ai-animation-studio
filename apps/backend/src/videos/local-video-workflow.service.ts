@@ -7,7 +7,7 @@ import * as path from "node:path";
 import { Injectable, type OnModuleDestroy } from "@nestjs/common";
 import {
   MAX_SCENE_COUNT,
-  VIDEO_SCENE_ESTIMATED_COST_USD,
+  videoSceneEstimatedCostUsd,
   WorkflowState,
   type ApproveVideoReviewResponse,
   type GenerationProgressResponse,
@@ -31,6 +31,7 @@ import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceRes
 import { downloadRunwayOutput, getRunwayTask, RunwayAdapterError } from "./runway-video-adapter.js";
 import { ProjectLockTimeoutError, withProjectLock } from "./project-lock.js";
 import { LEGACY_VIDEO_JOB_ID } from "./legacy-job.js";
+import { toShortProjectSettings } from "../projects/project-settings.js";
 import {
   invalidVideoWorkflowRequest,
   videoContentUnavailable,
@@ -167,15 +168,17 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
   }
 
   /** `pendingSceneCount` is every scene this job has not finished — what a retry actually resumes and pays for, see the contract's own doc comment. */
-  private async retryEstimate(records: readonly VideoRecord[]): Promise<GenerationProgressResponse["retryEstimate"]> {
+  /** The clip length is the project's, so a 10-second project quotes a retry at what a 10-second clip costs. */
+  private async retryEstimate(project: StoredProject, records: readonly VideoRecord[]): Promise<GenerationProgressResponse["retryEstimate"]> {
     if (!this.budget) return undefined;
+    const perSceneCostUsd = videoSceneEstimatedCostUsd(toShortProjectSettings(project).clipDurationSeconds);
     const [monthlyLimitUsd, spentUsd, remainingUsd] = await Promise.all([this.budget.monthlyLimit(), this.budget.spentThisMonth(), this.budget.remaining()]);
     return {
       pendingSceneCount: records.filter((record) => record.status !== "succeeded").length,
-      perSceneCostUsd: VIDEO_SCENE_ESTIMATED_COST_USD,
+      perSceneCostUsd,
       budget: {
         monthlyLimitUsd, spentUsd, remainingUsd,
-        estimatedRequestCostUsd: VIDEO_SCENE_ESTIMATED_COST_USD, canSpend: VIDEO_SCENE_ESTIMATED_COST_USD <= remainingUsd,
+        estimatedRequestCostUsd: perSceneCostUsd, canSpend: perSceneCostUsd <= remainingUsd,
       },
     };
   }
@@ -207,7 +210,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     // reads it already handles its absence. Retrying is still refused where it matters, at `preflight`, which
     // reads the same file and throws (docs/06_DECISIONS.md D-036: what runs on top of this number is display).
     const retryEstimate = records[0]?.execution_mode === "runway"
-      ? await this.retryEstimate(records).catch((error: unknown) => { if (isBudgetLedgerUnreadable(error)) return undefined; throw error; })
+      ? await this.retryEstimate(project, records).catch((error: unknown) => { if (isBudgetLedgerUnreadable(error)) return undefined; throw error; })
       : undefined;
     return {
       // Read off the records, not off whether a cost line came back: this is decided when the job is submitted
@@ -312,7 +315,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     try {
       result = await advanceRunwayScene(states, (scene) => this.runwayInputForScene(project, jobId, scene), {
         apiSecret: apiKey, projectId: project.project_id, apiType: "video",
-        estimatedCostPerSceneUsd: VIDEO_SCENE_ESTIMATED_COST_USD, budget: this.budget,
+        estimatedCostPerSceneUsd: videoSceneEstimatedCostUsd(toShortProjectSettings(project).clipDurationSeconds), budget: this.budget,
         beforeSubmit: (scene, claimedAt) => this.claimSceneForSubmission(project.project_id, jobId, scene, claimedAt),
       });
     } catch (error) {

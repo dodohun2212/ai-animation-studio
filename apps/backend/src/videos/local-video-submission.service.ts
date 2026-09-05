@@ -7,7 +7,6 @@ import {
   MIN_SCENE_COUNT,
   RUNWAY_PROMPT_MAX_LENGTH,
   sceneNumbersFor,
-  VIDEO_SCENE_ESTIMATED_COST_USD,
   WorkflowState,
   type SceneNumber,
   type StartVideoGenerationRequest,
@@ -177,7 +176,11 @@ export class LocalVideoSubmissionService {
     const preview = await this.previews.preview(project.project_id, undefined);
     if (!preview.confirmationId || request.confirmationId !== preview.confirmationId) throw videoConfirmationStale();
     if (scenes.length < MIN_SCENE_COUNT || scenes.length > MAX_SCENE_COUNT) throw videoCallLimitExceeded();
-    const estimatedTotalCostUsd = scenes.length * VIDEO_SCENE_ESTIMATED_COST_USD;
+    // Summed off the preview rather than recomputed: this is the number the person was shown and pressed the
+    // button under, so taking it from anywhere else is how a confirmation and a charge come to disagree. It is
+    // also already per-scene and duration-aware — a 10-second project buys twice the video, and used to be
+    // quoted the 5-second price here and everywhere else.
+    const estimatedTotalCostUsd = preview.previews.reduce((sum, item) => sum + item.estimatedCostUsd, 0);
     if (estimatedTotalCostUsd > this.monthlyBudgetUsd) throw videoBudgetExceeded();
 
     const hashes: string[] = [];
@@ -203,7 +206,7 @@ export class LocalVideoSubmissionService {
       model: "gen4_turbo",
       ratio: preview.previews[index]!.ratio,
       duration_seconds: preview.previews[index]!.durationSeconds,
-      estimated_cost_usd: VIDEO_SCENE_ESTIMATED_COST_USD,
+      estimated_cost_usd: preview.previews[index]!.estimatedCostUsd,
       status: "created",
       execution_mode: executionMode,
       approved_at: approvedAt,

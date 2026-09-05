@@ -7,7 +7,7 @@ import {
   RUNWAY_CLIP_DURATIONS,
   STORY_ESTIMATED_COST_USD,
   TTS_ESTIMATED_COST_USD,
-  VIDEO_SCENE_ESTIMATED_COST_USD,
+  videoSceneEstimatedCostUsd,
   type RunwayClipDurationSeconds,
 } from "@ai-animation-studio/shared";
 
@@ -202,7 +202,11 @@ export function WorkflowGuideScreen({ onBack }: Props) {
   const narrationCalls = narrationEnabled ? sceneCount : 0;
   const storyTotal = storyCalls * STORY_ESTIMATED_COST_USD;
   const imageTotal = imageCalls * IMAGE_ESTIMATED_COST_USD;
-  const videoTotal = videoCalls * VIDEO_SCENE_ESTIMATED_COST_USD;
+  // Priced off this project's own clip length. It used to be a flat per-scene number while the length is a
+  // setting with two values, so a 10-second project was quoted the 5-second total on the one screen whose
+  // whole job is to say what a run will cost.
+  const videoUnitCostUsd = videoSceneEstimatedCostUsd(clipDurationSeconds);
+  const videoTotal = videoCalls * videoUnitCostUsd;
   const narrationTotal = narrationCalls * TTS_ESTIMATED_COST_USD;
   const totalCalls = storyCalls + imageCalls + videoCalls + narrationCalls;
   const totalCost = storyTotal + imageTotal + videoTotal + narrationTotal;
@@ -465,7 +469,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
         provider="Runway"
         callRule="장면 1개당 1회"
         calls={videoCalls}
-        unitCostUsd={VIDEO_SCENE_ESTIMATED_COST_USD}
+        unitCostUsd={videoUnitCostUsd}
         totalCostUsd={videoTotal}
         testId="workflow-guide-stage-video"
         sends={[

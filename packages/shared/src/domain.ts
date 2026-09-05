@@ -58,7 +58,31 @@ export const RUNWAY_PROMPT_MAX_LENGTH = 1_000;
  */
 export const STORY_ESTIMATED_COST_USD = 0.05;
 export const IMAGE_ESTIMATED_COST_USD = 0.10;
-export const VIDEO_SCENE_ESTIMATED_COST_USD = 0.25;
+/**
+ * One second of generated video, and the per-scene estimate derived from it.
+ *
+ * This was a flat `VIDEO_SCENE_ESTIMATED_COST_USD = 0.25` per scene while `RUNWAY_CLIP_DURATIONS` has always
+ * offered 5 and 10 — so a project set to 10-second clips bought twice the video and was quoted the same price,
+ * everywhere: the preflight that decides whether to spend, the confirmation panel, the preview, the retry
+ * notice, the library total. Ten-second projects exist on this machine today.
+ *
+ * Which direction that is wrong in is the whole point. local-video-workflow.service.ts already says it:
+ * quoting money low is the one direction this must never be wrong in. A flat number is right for 5 seconds and
+ * half the truth for 10.
+ *
+ * $0.05/second reproduces today's $0.25 at 5 seconds exactly, so nothing about a 5-second project moves. If
+ * Runway in fact bills per clip rather than per second, this over-quotes a 10-second scene — the safe
+ * direction, and still the direction to be wrong in.
+ *
+ * There is deliberately no flat per-scene constant left to reach for. Every caller has a clip duration in hand
+ * (both a short project's settings and an Episode's carry one), and a site that cannot name a duration is a
+ * site that does not know what it is pricing. The generic workflow guide, which has no project, states the
+ * duration it is quoting.
+ */
+export const VIDEO_SECOND_ESTIMATED_COST_USD = 0.05;
+export function videoSceneEstimatedCostUsd(clipDurationSeconds: number): number {
+  return Math.round(clipDurationSeconds * VIDEO_SECOND_ESTIMATED_COST_USD * 100) / 100;
+}
 /**
  * A Long Project outline call returns the whole-project overview plus every Episode's lightweight outline in
  * one request — its output can span far more content than a single 6-scene short-project Story (a project can

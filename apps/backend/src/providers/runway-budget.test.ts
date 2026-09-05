@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { VIDEO_SCENE_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
+import { videoSceneEstimatedCostUsd } from "@ai-animation-studio/shared";
 import { RunwayBudget, RunwayBudgetExceededError, RunwayBudgetLedgerUnreadableError } from "./runway-budget.js";
 
 const roots: string[] = [];
@@ -15,7 +15,7 @@ describe("RunwayBudget", () => {
     const budget = new RunwayBudget(root, 10);
     expect(await budget.spentThisMonth()).toBe(0);
     expect(await budget.remaining()).toBe(10);
-    await expect(budget.preflight(VIDEO_SCENE_ESTIMATED_COST_USD)).resolves.toBeUndefined();
+    await expect(budget.preflight(videoSceneEstimatedCostUsd(5))).resolves.toBeUndefined();
   });
 
   it("records estimated cost as actual cost for both a succeeded and a failed attempt, in its own file separate from OpenAI's", async () => {
@@ -69,7 +69,7 @@ describe("RunwayBudget", () => {
     const budget = new RunwayBudget(root, 0.25);
     const now = new Date("2026-08-22T00:00:00.000Z");
     await budget.record("p1", 1, "video", true, 0.25, now);
-    await expect(budget.preflight(VIDEO_SCENE_ESTIMATED_COST_USD, now)).rejects.toBeInstanceOf(RunwayBudgetExceededError);
+    await expect(budget.preflight(videoSceneEstimatedCostUsd(5), now)).rejects.toBeInstanceOf(RunwayBudgetExceededError);
   });
 
   it("reloads persisted usage across separate instances, and reads a missing ledger as nothing spent", async () => {

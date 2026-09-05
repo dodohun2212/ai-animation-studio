@@ -22,6 +22,26 @@ async function setup(episodeDurationSeconds: 30 | 60 = 30, aspectRatio: "9:16" |
 afterEach(async () => { vi.unstubAllGlobals(); if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 
 describe("EpisodeVideosService", () => {
+  /**
+   * Twice the video, twice the quote.
+   *
+   * The per-scene estimate was a flat $0.25 while an Episode's clip length is a setting with two values, so a
+   * 10-second Episode was priced at half of what it buys — on the preview a person reads before pressing, and
+   * in the preflight that decides whether the month can afford it. Quoting low is the one direction this is
+   * never allowed to be wrong in.
+   */
+  it("quotes a 10-second Episode at twice a 5-second one, per scene and in total", async () => {
+    const fiveSecond = await (await setup(30)).videos.preview("long", 1);
+    expect(fiveSecond.scenes.every((scene) => scene.estimatedCostUsd === 0.25)).toBe(true);
+    expect(fiveSecond.estimatedCostUsd).toBeCloseTo(1.5, 8);
+
+    if (root) await fs.rm(root, { recursive: true, force: true });
+    const tenSecond = await (await setup(60)).videos.preview("long", 1);
+    expect(tenSecond.scenes.every((scene) => scene.estimatedCostUsd === 0.5), "each scene is twice the length").toBe(true);
+    expect(tenSecond.estimatedCostUsd, "and the total the confirmation shows follows").toBeCloseTo(3, 8);
+  });
+
+
   it("turns a second start away on the state, and answers a resent one with the job it already made", async () => {
     // Which of the two refuses matters, because they are not the same protection. The state gate is what stops a
     // second paid job from starting: the Episode is already generating, so any start is refused regardless of the
