@@ -55,7 +55,7 @@ const BILLED = new Set([
  */
 //  reads a code this app already has and returns what to do about it — no request, no
 // money. Listed rather than exempted so a later export that does spend cannot slip in beside it.
-const NOT_BILLED = new Set(["getRunwayTask", "downloadRunwayOutput", "runwayFailureOutcome"]);
+const NOT_BILLED = new Set(["getRunwayTask", "downloadRunwayOutput", "runwayFailureOutcome", "resolveVideoModel", "VIDEO_MODEL_VARIABLE"]);
 
 /**
  * The file without its whole-line comments.

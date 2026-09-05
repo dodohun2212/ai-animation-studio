@@ -15,7 +15,6 @@ import {
 } from "@ai-animation-studio/shared";
 
 import { LocalProjectRepository } from "../projects/projects.repository.js";
-import { RUNWAY_MODEL } from "./runway-video-adapter.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
@@ -103,13 +102,13 @@ export class LocalVideoSubmissionService {
     return { confirmationId: value.confirmationId, userRequestId: value.userRequestId, approved: true, prompts };
   }
 
-  private hashInput(imageBytes: Buffer, prompt: string, ratio: string, durationSeconds: number): string {
+  private hashInput(imageBytes: Buffer, prompt: string, ratio: string, durationSeconds: number, model: string): string {
     const hash = createHash("sha256");
     hash.update(imageBytes);
     hash.update(prompt, "utf8");
     // Part of the confirmation hash on purpose: a preview taken under one model must not be submittable
     // after a swap, because the price and the result both change underneath it.
-    hash.update(RUNWAY_MODEL, "ascii");
+    hash.update(model, "ascii");
     hash.update(ratio, "ascii");
     hash.update(String(durationSeconds), "ascii");
     return hash.digest("hex");
@@ -190,7 +189,7 @@ export class LocalVideoSubmissionService {
     const hashes: string[] = [];
     for (const scene of scenes) {
       const image = await fs.readFile(project.generated_images[scene - 1]!);
-      hashes.push(this.hashInput(image, request.prompts[scene - 1]!.prompt, preview.previews[scene - 1]!.ratio, preview.previews[scene - 1]!.durationSeconds));
+      hashes.push(this.hashInput(image, request.prompts[scene - 1]!.prompt, preview.previews[scene - 1]!.ratio, preview.previews[scene - 1]!.durationSeconds, preview.previews[scene - 1]!.model));
     }
     const duplicate = this.existing(project, request, hashes);
     if (duplicate) return duplicate;
@@ -207,7 +206,7 @@ export class LocalVideoSubmissionService {
       confirmation_id: request.confirmationId,
       input_hash: hashes[index]!,
       prompt: request.prompts[index]!.prompt,
-      model: RUNWAY_MODEL,
+      model: preview.previews[index]!.model,
       ratio: preview.previews[index]!.ratio,
       duration_seconds: preview.previews[index]!.durationSeconds,
       estimated_cost_usd: preview.previews[index]!.estimatedCostUsd,

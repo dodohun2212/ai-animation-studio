@@ -10,7 +10,8 @@ import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
 import { RunwayBudget } from "../providers/runway-budget.js";
-import { RUNWAY_MODEL } from "./runway-video-adapter.js";
+import { resolveVideoModel } from "./runway-video-adapter.js";
+import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import {
   invalidVideoPreviewRequest,
   videoPreviewDataInvalid,
@@ -186,6 +187,8 @@ export class LocalVideoPreviewService {
     private readonly projects: LocalProjectRepository,
     private readonly projectsRoot: string,
     private readonly budget: RunwayBudget,
+    /** Only for the chosen video model, which decides what a scene is quoted at. */
+    private readonly providerSettings?: ProviderSettingsService,
   ) {}
 
   private imagePath(projectId: string, scene: SceneNumber): string {
@@ -213,6 +216,7 @@ export class LocalVideoPreviewService {
     const project = await this.projects.findById(projectId.trim());
     const sceneNumbers = scenesFor(project);
     const clipDurationSeconds = toShortProjectSettings(project).clipDurationSeconds;
+    const model = await resolveVideoModel(this.providerSettings?.settingsStore());
     await this.assertApprovedImages(project, sceneNumbers);
     const scenes = parseScenes(project, sceneNumbers);
     const ratio = ratioFor(project);
@@ -221,10 +225,10 @@ export class LocalVideoPreviewService {
       return {
         sceneNumber: sceneNumbers[index]!,
         prompt,
-        model: RUNWAY_MODEL,
+        model,
         ratio,
         durationSeconds: clipDurationSeconds,
-        estimatedCostUsd: videoSceneEstimatedCostUsd(clipDurationSeconds),
+        estimatedCostUsd: videoSceneEstimatedCostUsd(clipDurationSeconds, model),
         ...(omittedSections.length > 0 ? { omittedSections } : {}),
       };
     });

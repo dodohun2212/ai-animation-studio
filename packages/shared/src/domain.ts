@@ -86,6 +86,46 @@ export const isAudioMode = (value: unknown): value is AudioMode => AUDIO_MODES.i
 export const VIDEO_MODELS = ["gen4_turbo"] as const;
 export type VideoModel = (typeof VIDEO_MODELS)[number];
 
+/**
+ * Everything a screen or a quote needs to know about one video model.
+ *
+ * The point of this shape is `pricePerSecondUsd`. A model picker whose price does not move with the model is
+ * worse than no picker at all: the estimate, the confirmation panel and the budget preflight would all quote
+ * the old model's price and let a run through that the month cannot afford — quoting money low being the one
+ * direction this must never be wrong in (local-video-workflow.service.ts says so about the same number).
+ *
+ * `ratios` is here before it is needed. "720:1280" is Runway's own vocabulary and eight files already know it;
+ * a second provider will not use those strings, and the day that happens the alternative is finding all eight
+ * again. `maxDurationSeconds` is the same bet at lower stakes.
+ */
+export interface VideoModelOption {
+  id: VideoModel;
+  /** Shown as-is. Not derived from the id: a person choosing what to spend money on reads a name, not a slug. */
+  label: string;
+  pricePerSecondUsd: number;
+  ratios: readonly string[];
+  maxDurationSeconds: number;
+}
+
+/**
+ * The models this app can be told to use — one today, and the mechanism for choosing is what was asked for.
+ *
+ * 🔴 A second entry needs a price somebody has confirmed. $0.05/second is not a guess: it reproduces the $0.25
+ * per five-second scene that this machine's Runway ledger has been charging all along. Adding a model with an
+ * unverified rate would put a fabricated number under the budget check, which is the failure this whole shape
+ * exists to prevent — so a new model waits for its real rate rather than a plausible one.
+ */
+export const VIDEO_MODEL_OPTIONS: readonly VideoModelOption[] = [
+  { id: "gen4_turbo", label: "Runway Gen-4 Turbo", pricePerSecondUsd: 0.05, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 10 },
+];
+
+/** The one used when nobody has chosen — today's behaviour, unchanged. */
+export const DEFAULT_VIDEO_MODEL: VideoModel = "gen4_turbo";
+
+export function videoModelOption(id: string): VideoModelOption {
+  return VIDEO_MODEL_OPTIONS.find((option) => option.id === id) ?? VIDEO_MODEL_OPTIONS[0]!;
+}
+
 export const RUNWAY_CLIP_DURATIONS = [5, 10] as const;
 export type RunwayClipDurationSeconds = (typeof RUNWAY_CLIP_DURATIONS)[number];
 
@@ -140,8 +180,15 @@ export const IMAGE_ESTIMATED_COST_USD = 0.10;
  * duration it is quoting.
  */
 export const VIDEO_SECOND_ESTIMATED_COST_USD = 0.05;
-export function videoSceneEstimatedCostUsd(clipDurationSeconds: number): number {
-  return Math.round(clipDurationSeconds * VIDEO_SECOND_ESTIMATED_COST_USD * 100) / 100;
+/**
+ * What one scene costs, from the two things that decide it: how long the clip is and which model draws it.
+ *
+ * The model argument is why this is a function and not a constant. A picker that leaves the price behind is
+ * the failure this signature prevents — every quote, confirmation and preflight passes the model it is about,
+ * and one that cannot name a model gets today's default rather than a silent zero.
+ */
+export function videoSceneEstimatedCostUsd(clipDurationSeconds: number, model: string = DEFAULT_VIDEO_MODEL): number {
+  return Math.round(clipDurationSeconds * videoModelOption(model).pricePerSecondUsd * 100) / 100;
 }
 /**
  * A Long Project outline call returns the whole-project overview plus every Episode's lightweight outline in

@@ -9,6 +9,7 @@ import {
   saveProviderCredential,
   toDisplayError,
 } from "./providerSettingsApi.js";
+import { DEFAULT_VIDEO_MODEL, VIDEO_MODEL_OPTIONS } from "@ai-animation-studio/shared";
 import { jsonResponse, makeMonthlyBudget, makeProviderStatus, nonJsonResponse } from "./testUtils.js";
 
 describe("providerSettingsApi", () => {
@@ -19,6 +20,7 @@ describe("providerSettingsApi", () => {
   it("fetches settings via GET /settings/providers", async () => {
     const responseBody: GetProviderSettingsResponse = {
       providers: [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" })],
+      videoModel: { selected: DEFAULT_VIDEO_MODEL, isDefault: true, options: VIDEO_MODEL_OPTIONS },
       monthlyBudgets: [makeMonthlyBudget({ provider: "openai" }), makeMonthlyBudget({ provider: "runway" })],
     };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responseBody));
@@ -31,6 +33,7 @@ describe("providerSettingsApi", () => {
   it("handles openai/runway regardless of response order, keyed by the provider field", async () => {
     const reversed: GetProviderSettingsResponse = {
       providers: [makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "openai" })],
+      videoModel: { selected: DEFAULT_VIDEO_MODEL, isDefault: true, options: VIDEO_MODEL_OPTIONS },
       monthlyBudgets: [makeMonthlyBudget({ provider: "runway" }), makeMonthlyBudget({ provider: "openai" })],
     };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, reversed)));

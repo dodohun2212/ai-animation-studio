@@ -1,4 +1,4 @@
-import { RUNWAY_PROMPT_MAX_LENGTH, type SceneFailureRemedy, type VideoModel } from "@ai-animation-studio/shared";
+import { DEFAULT_VIDEO_MODEL, RUNWAY_PROMPT_MAX_LENGTH, VIDEO_MODELS, type SceneFailureRemedy, type VideoModel } from "@ai-animation-studio/shared";
 import { assertRealNetworkCallAllowed } from "../providers/no-test-network.guard.js";
 import { utf16Length } from "./video-preview.service.js";
 
@@ -18,7 +18,29 @@ export const RUNWAY_VERSION = "2024-11-06";
  * there. That is the point: the client guards check a response's model against that same list, so a swap made
  * here alone used to mean the server answering correctly and both video screens calling it malformed.
  */
-export const RUNWAY_MODEL: VideoModel = "gen4_turbo";
+export const RUNWAY_MODEL: VideoModel = DEFAULT_VIDEO_MODEL;
+
+/** The name this app stores a chosen model under, in the same `.env` the monthly limits live in. */
+export const VIDEO_MODEL_VARIABLE = "VIDEO_MODEL";
+
+/** Reads a stored model exactly the way the monthly limit is read — see providers/monthly-budget-limit.ts. */
+export interface VideoModelStore { readNamed(name: string): Promise<string | null>; }
+
+/**
+ * Which model this computer is set to use.
+ *
+ * Asked per question rather than at construction, so a model chosen on the settings screen applies to the next
+ * quote instead of the next launch — the same posture the monthly limit took, and for the same reason.
+ *
+ * Anything the contract does not list falls back to the default. A stored name nobody can price would put a
+ * fabricated rate under the budget check, and the safe direction is the model whose rate this machine's own
+ * ledger has been confirming all along.
+ */
+export async function resolveVideoModel(store?: VideoModelStore, environment: NodeJS.ProcessEnv = process.env): Promise<VideoModel> {
+  const stored = store ? await store.readNamed(VIDEO_MODEL_VARIABLE).catch(() => null) : null;
+  const named = (stored ?? environment[VIDEO_MODEL_VARIABLE] ?? "").trim();
+  return VIDEO_MODELS.includes(named as VideoModel) ? named as VideoModel : DEFAULT_VIDEO_MODEL;
+}
 const MAX_DATA_URI_BYTES = 5 * 1024 * 1024;
 const DEFAULT_MAX_RETRIES = 2;
 const MAX_BACKOFF_SECONDS = 4;

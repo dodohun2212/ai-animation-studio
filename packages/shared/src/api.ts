@@ -1,4 +1,4 @@
-import type { AspectRatio, AudioMode, LongEpisodeOutlineStatus, Project, ProjectSummary, RunwayClipDurationSeconds, SceneNumber, UsedAudio, VideoJobStatus, VideoModel } from "./domain.js";
+import type { AspectRatio, AudioMode, LongEpisodeOutlineStatus, Project, VideoModelOption, ProjectSummary, RunwayClipDurationSeconds, SceneNumber, UsedAudio, VideoJobStatus, VideoModel } from "./domain.js";
 import { MAX_SCENE_COUNT, MIN_SCENE_COUNT } from "./domain.js";
 import type { Asset, AssetOwnership, AssetType } from "./asset.js";
 import type {
@@ -1833,7 +1833,22 @@ export interface ProviderMonthlyBudget {
   spendUnavailable?: true;
 }
 
-export interface GetProviderSettingsResponse { providers: ProviderCredentialStatus[]; monthlyBudgets: ProviderMonthlyBudget[]; }
+/**
+ * Which video model this computer is set to use, and everything a screen needs to say what that costs.
+ *
+ * The options travel with the choice so a picker can show the price beside each name — the estimate has to move
+ * with the selection, or a model change quotes the old rate into the budget check.
+ */
+export interface VideoModelSetting {
+  selected: VideoModel;
+  /** True when nobody has chosen and the built-in default is in use — the same distinction the monthly budget draws. */
+  isDefault: boolean;
+  options: readonly VideoModelOption[];
+}
+
+export interface GetProviderSettingsResponse { providers: ProviderCredentialStatus[]; monthlyBudgets: ProviderMonthlyBudget[]; videoModel: VideoModelSetting; }
+export interface SaveVideoModelRequest { model: VideoModel; }
+export interface SaveVideoModelResponse { videoModel: VideoModelSetting; }
 export interface SaveProviderMonthlyBudgetRequest { monthlyLimitUsd: number; }
 export interface SaveProviderMonthlyBudgetResponse { budget: ProviderMonthlyBudget; }
 export interface SaveProviderCredentialRequest { value: string; }
@@ -2764,6 +2779,8 @@ export const API_ROUTES = {
     `/settings/providers/${provider}/reconnect`,
   providerMonthlyBudget: (provider: ProviderCredentialKind) =>
     `/settings/providers/${provider}/monthly-budget`,
+  /** The video model this computer uses. Not per provider: it is one choice about what draws the clips. */
+  videoModelSetting: "/settings/video-model",
   videoPreview: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/videos/preview`,
   videoGeneration: (projectId: string) => `/projects/${projectId}/videos/generations`,
   videoProgress: (projectId: string, jobId: string) => `/projects/${projectId}/videos/generations/${jobId}`,

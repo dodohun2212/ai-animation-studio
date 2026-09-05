@@ -6,6 +6,7 @@ export type ProviderSettingsErrorCode =
   | "UNKNOWN_PROVIDER"
   | "INVALID_CREDENTIAL"
   | "INVALID_BUDGET_LIMIT"
+  | "UNKNOWN_VIDEO_MODEL"
   | "CREDENTIAL_NOT_CONFIGURED"
   | "SETTINGS_FILE_MALFORMED"
   | "SETTINGS_STORAGE_ERROR";
@@ -33,6 +34,9 @@ export const invalidCredential = (): ProviderSettingsException =>
   */
 export const invalidBudgetLimit = (): ProviderSettingsException =>
   new ProviderSettingsException("INVALID_BUDGET_LIMIT", "월 한도는 0보다 큰 금액이어야 합니다.", HttpStatus.BAD_REQUEST);
+/** A model this app cannot price must never reach a budget check — so an unrecognised one is refused, not defaulted. */
+export const unknownVideoModel = (): ProviderSettingsException =>
+  new ProviderSettingsException("UNKNOWN_VIDEO_MODEL", "고를 수 없는 영상 모델입니다.", HttpStatus.BAD_REQUEST);
 export const credentialNotConfigured = (): ProviderSettingsException =>
   new ProviderSettingsException("CREDENTIAL_NOT_CONFIGURED", "No saved credential is available for this provider.", HttpStatus.CONFLICT);
 export const settingsFileMalformed = (): ProviderSettingsException =>

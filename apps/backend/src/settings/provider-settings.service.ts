@@ -4,6 +4,9 @@ import type {
   ProviderCredentialKind,
   ProviderCredentialStatus,
   ProviderMonthlyBudget,
+  SaveVideoModelRequest,
+  SaveVideoModelResponse,
+  VideoModelSetting,
   SaveProviderCredentialRequest,
   SaveProviderCredentialResponse,
   SaveProviderMonthlyBudgetRequest,
@@ -11,7 +14,9 @@ import type {
   SetProviderConnectionResponse,
 } from "@ai-animation-studio/shared";
 
-import { credentialNotConfigured, invalidBudgetLimit, invalidCredential, invalidSettingsRequest, unknownProvider } from "./provider-settings.error.js";
+import { credentialNotConfigured, invalidBudgetLimit, invalidCredential, invalidSettingsRequest, unknownProvider, unknownVideoModel } from "./provider-settings.error.js";
+import { VIDEO_MODEL_OPTIONS } from "@ai-animation-studio/shared";
+import { VIDEO_MODEL_VARIABLE, resolveVideoModel } from "../videos/runway-video-adapter.js";
 import { ProviderSettingsRepository } from "./provider-settings.repository.js";
 import { ProviderSettingsLogger } from "./provider-settings.redaction.js";
 import { DEFAULT_MONTHLY_LIMIT_USD } from "../providers/monthly-budget-limit.js";
@@ -90,7 +95,43 @@ export class ProviderSettingsService {
       Promise.all(PROVIDERS.map((provider) => this.status(provider))),
       Promise.all(PROVIDERS.map((provider) => this.monthlyBudget(provider))),
     ]);
-    return { providers, monthlyBudgets };
+    return { providers, monthlyBudgets, videoModel: await this.videoModelSetting() };
+  }
+
+  /**
+   * Which model draws the clips, with the options and their prices alongside.
+   *
+   * The options travel with the choice so a picker can show what each one costs. A model whose price a screen
+   * cannot see is a model somebody picks without knowing what changed about the bill.
+   */
+  /**
+   * The `.env` this service owns, for the one other thing that reads it: which video model to use.
+   *
+   * Handed over as a reader rather than the repository itself — a caller that wants the model has no business
+   * with the credential methods beside it.
+   */
+  settingsStore(): { readNamed(name: string): Promise<string | null> } { return this.repository; }
+
+  async videoModelSetting(): Promise<VideoModelSetting> {
+    const stored = await this.repository.readNamed(VIDEO_MODEL_VARIABLE).catch(() => null);
+    return {
+      selected: await resolveVideoModel(this.repository),
+      isDefault: !stored && !process.env[VIDEO_MODEL_VARIABLE],
+      options: VIDEO_MODEL_OPTIONS,
+    };
+  }
+
+  /** Stored in the same `.env` as the monthly limits, and read per question, so a choice applies to the next quote. */
+  async saveVideoModel(body: unknown): Promise<SaveVideoModelResponse> {
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw invalidSettingsRequest("Request body must contain only model.");
+    const entries = Object.entries(body as Record<string, unknown>);
+    if (entries.length !== 1 || entries[0]?.[0] !== "model") throw invalidSettingsRequest("Request body must contain only model.");
+    const model = (body as SaveVideoModelRequest).model;
+    // Refused rather than silently defaulted: a model this app cannot price must never reach a budget check,
+    // and a screen offering one it did not get from `options` is a screen out of step with the server.
+    if (typeof model !== "string" || !VIDEO_MODEL_OPTIONS.some((option) => option.id === model)) throw unknownVideoModel();
+    await this.repository.saveNamed(VIDEO_MODEL_VARIABLE, model);
+    return { videoModel: await this.videoModelSetting() };
   }
 
   async saveMonthlyBudget(providerValue: string, body: unknown): Promise<SaveProviderMonthlyBudgetResponse> {

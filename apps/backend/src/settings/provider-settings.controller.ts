@@ -4,6 +4,7 @@ import {
   type GetProviderSettingsResponse,
   type SaveProviderCredentialResponse,
   type SaveProviderMonthlyBudgetResponse,
+  type SaveVideoModelResponse,
   type SetProviderConnectionResponse,
 } from "@ai-animation-studio/shared";
 
@@ -24,6 +25,11 @@ export class ProviderSettingsController {
   @Put(`${API_ROUTES.providerSettings}/:provider/monthly-budget`)
   saveMonthlyBudget(@Param("provider") provider: string, @Body() body: unknown): Promise<SaveProviderMonthlyBudgetResponse> {
     return this.settings.saveMonthlyBudget(provider, body);
+  }
+
+  @Put(API_ROUTES.videoModelSetting)
+  saveVideoModel(@Body() body: unknown): Promise<SaveVideoModelResponse> {
+    return this.settings.saveVideoModel(body);
   }
 
   @Post(`${API_ROUTES.providerSettings}/:provider/disconnect`)

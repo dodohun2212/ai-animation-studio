@@ -33,8 +33,8 @@ import { ProviderSettingsRepository } from "../settings/provider-settings.reposi
     inject: [LocalProjectRepository, PROJECTS_ROOT, RunwayBudget, OpenAiBudget],
   }, {
     provide: LocalVideoPreviewService,
-    useFactory: (projects: LocalProjectRepository, projectsRoot: string, budget: RunwayBudget) => new LocalVideoPreviewService(projects, projectsRoot, budget),
-    inject: [LocalProjectRepository, PROJECTS_ROOT, RunwayBudget],
+    useFactory: (projects: LocalProjectRepository, projectsRoot: string, budget: RunwayBudget, providerSettings: ProviderSettingsService) => new LocalVideoPreviewService(projects, projectsRoot, budget, providerSettings),
+    inject: [LocalProjectRepository, PROJECTS_ROOT, RunwayBudget, ProviderSettingsService],
   }, {
     provide: LocalVideoSubmissionService,
     useFactory: (projects: LocalProjectRepository, previews: LocalVideoPreviewService, providerSettings: ProviderSettingsService, budget: RunwayBudget) =>

@@ -9,6 +9,7 @@ import { RunwayBudget } from "../providers/runway-budget.js";
 import { ProviderSettingsException } from "./provider-settings.error.js";
 import { ProviderSettingsRepository } from "./provider-settings.repository.js";
 import { ProviderSettingsService } from "./provider-settings.service.js";
+import { videoSceneEstimatedCostUsd } from "@ai-animation-studio/shared";
 
 describe("the monthly spend limit, from the settings screen", () => {
   let root: string;
@@ -96,5 +97,67 @@ describe("the monthly spend limit, from the settings screen", () => {
     const settings = await service.getSettings();
     expect(settings.monthlyBudgets[0]).toMatchObject({ provider: "openai", monthlyLimitUsd: 10, spendUnavailable: true });
     expect(settings.monthlyBudgets[1], "the other ledger is fine and says so").not.toHaveProperty("spendUnavailable");
+  });
+});
+
+describe("which video model this computer uses", () => {
+  let root: string;
+  let service: ProviderSettingsService;
+  const previous = process.env.VIDEO_MODEL;
+
+  beforeEach(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "video-model-"));
+    delete process.env.VIDEO_MODEL;
+    service = new ProviderSettingsService(new ProviderSettingsRepository(root));
+  });
+  afterEach(async () => {
+    if (previous === undefined) delete process.env.VIDEO_MODEL; else process.env.VIDEO_MODEL = previous;
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  /**
+   * The capability Captain D asked for: not a change of model, a way to change it later.
+   *
+   * Stored in the same .env as the monthly limits and read per question, so a choice applies to the next quote
+   * rather than the next launch — the posture that turned out to matter for the budget.
+   */
+  it("reports the default until somebody chooses, and remembers a choice", async () => {
+    const before = await service.videoModelSetting();
+    expect(before).toMatchObject({ selected: "gen4_turbo", isDefault: true });
+    expect(before.options.map((option) => option.id), "and offers what it can price").toContain("gen4_turbo");
+
+    const saved = await service.saveVideoModel({ model: "gen4_turbo" });
+    expect(saved.videoModel.isDefault, "chosen is a different fact from defaulted").toBe(false);
+    expect((await service.getSettings()).videoModel.selected).toBe("gen4_turbo");
+  });
+
+  /**
+   * A model this app cannot price must never reach a budget check.
+   *
+   * Every quote and preflight multiplies that rate; accepting a name with no price would either divide by
+   * nothing or quietly reuse the previous model's, and quoting money low is the one direction this must never
+   * be wrong in.
+   */
+  it("refuses a model it has no price for, rather than defaulting quietly", async () => {
+    for (const model of ["gen4.5", "", null, 7, "GEN4_TURBO"]) {
+      await expect(service.saveVideoModel({ model }), `${String(model)} must not be storable`)
+        .rejects.toBeInstanceOf(ProviderSettingsException);
+    }
+    await expect(service.saveVideoModel({ model: "gen4_turbo", andMore: true })).rejects.toBeInstanceOf(ProviderSettingsException);
+    expect((await service.videoModelSetting()).isDefault, "nothing was written by any of those").toBe(true);
+  });
+
+  /**
+   * Every offered model carries a price a quote is computed from.
+   *
+   * 🟠 With one priced model this cannot yet catch the arithmetic going wrong: that model's rate and the
+   * module-level per-second constant are the same number, so replacing one with the other changes nothing and
+   * an injection here stays green. Said plainly rather than dressed up — it guards the shape today and becomes
+   * load-bearing the moment a second model is listed, which is the point at which the two can disagree.
+   */
+  it("prices what it offers, so a picker can show what changes", async () => {
+    for (const option of (await service.videoModelSetting()).options) {
+      expect(videoSceneEstimatedCostUsd(5, option.id), `${option.id} at five seconds`).toBeCloseTo(option.pricePerSecondUsd * 5, 10);
+    }
   });
 });

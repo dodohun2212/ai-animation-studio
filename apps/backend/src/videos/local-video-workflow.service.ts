@@ -32,6 +32,7 @@ import { downloadRunwayOutput, getRunwayTask, RunwayAdapterError } from "./runwa
 import { ProjectLockTimeoutError, withProjectLock } from "./project-lock.js";
 import { LEGACY_VIDEO_JOB_ID } from "./legacy-job.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
+import { resolveVideoModel } from "./runway-video-adapter.js";
 import { sceneFailureFor } from "./scene-failure.js";
 import {
   invalidVideoWorkflowRequest,
@@ -172,7 +173,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
   /** The clip length is the project's, so a 10-second project quotes a retry at what a 10-second clip costs. */
   private async retryEstimate(project: StoredProject, records: readonly VideoRecord[]): Promise<GenerationProgressResponse["retryEstimate"]> {
     if (!this.budget) return undefined;
-    const perSceneCostUsd = videoSceneEstimatedCostUsd(toShortProjectSettings(project).clipDurationSeconds);
+    const perSceneCostUsd = videoSceneEstimatedCostUsd(toShortProjectSettings(project).clipDurationSeconds, await resolveVideoModel(this.providerSettings?.settingsStore()));
     const [monthlyLimitUsd, spentUsd, remainingUsd] = await Promise.all([this.budget.monthlyLimit(), this.budget.spentThisMonth(), this.budget.remaining()]);
     return {
       pendingSceneCount: records.filter((record) => record.status !== "succeeded").length,
@@ -318,7 +319,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     try {
       result = await advanceRunwayScene(states, (scene) => this.runwayInputForScene(project, jobId, scene), {
         apiSecret: apiKey, projectId: project.project_id, apiType: "video",
-        estimatedCostPerSceneUsd: videoSceneEstimatedCostUsd(toShortProjectSettings(project).clipDurationSeconds), budget: this.budget,
+        estimatedCostPerSceneUsd: videoSceneEstimatedCostUsd(toShortProjectSettings(project).clipDurationSeconds, await resolveVideoModel(this.providerSettings?.settingsStore())), budget: this.budget,
         beforeSubmit: (scene, claimedAt) => this.claimSceneForSubmission(project.project_id, jobId, scene, claimedAt),
       });
     } catch (error) {
