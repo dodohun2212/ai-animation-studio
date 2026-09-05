@@ -45,6 +45,29 @@ describe("ProjectAssetMappingsService", () => {
   });
 
   /**
+   * The way out of the block above, pinned because it is now the advice a person is given.
+   *
+   * 「지금 대본 기준으로 다시 맞추기」 is beginReview, and someone told to press it after connecting their
+   * references has every reason to fear it throws that work away — the button's own description talks about
+   * having edited the script. It does not: it writes the review record and never touches the mappings.
+   */
+  it("setting the check baseline again leaves the connections already made alone", async () => {
+    const { service, asset } = await setup();
+    const created = await service.create("short_mapping", { assetId: asset.asset_id, usageRole: "style", sceneScope: { kind: "all" } });
+
+    const begun = await service.beginReview("short_mapping", { scriptRevision: 1 });
+
+    expect(begun.review.scriptFingerprint, "the empty fingerprint that caused the block is now set").toMatch(/^[a-f0-9]{64}$/);
+    const after = await service.list("short_mapping");
+    expect(after.mappings.map((mapping) => mapping.mappingId)).toEqual([created.mapping.mappingId]);
+    expect(after.mappings[0], "still confirmed, still the same asset").toMatchObject({ assetId: asset.asset_id, status: "confirmed" });
+
+    // And the approval it was blocking now goes through.
+    const approved = await service.approveReview("short_mapping", { scriptFingerprint: begun.review.scriptFingerprint });
+    expect(approved.review.status).toBe("approved");
+  });
+
+  /**
    * Captain D pressed 「연결 다 했음 · 다음 단계로」 and got "입력 내용을 확인해 주세요" — told he had mistyped
    * something, on a screen where he had typed nothing (Cowork Round 533).
    *
