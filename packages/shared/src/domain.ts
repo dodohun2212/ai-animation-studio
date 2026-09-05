@@ -26,6 +26,23 @@ export function sceneNumbersFor(sceneCount: number): SceneNumber[] {
  * and its total video length is sceneCount * that duration. Runway is the only supported video Provider today,
  * so this list is not yet keyed by provider; when a second one is added, this becomes a per-provider capability.
  */
+/**
+ * The video models this app knows how to talk about.
+ *
+ * One today. It was written out as the bare string `"gen4_turbo"` in eight places — the adapter that actually
+ * sends it, four server-side records and previews, two contract fields, and two client response guards — and
+ * nothing tied any of them to the one that goes on the wire.
+ *
+ * 🔴 The two client guards are why this is not tidiness. They read `value.model === "gen4_turbo"` and reject
+ * the whole response otherwise, so the moment the adapter's model changes the server answers correctly and both
+ * video screens say 서버 응답을 확인할 수 없습니다 about a server that is working. A model swap is a queued
+ * task here, so this is a trap with a date on it.
+ *
+ * Adding a model means adding it here, and the places that must agree stop compiling until they do.
+ */
+export const VIDEO_MODELS = ["gen4_turbo"] as const;
+export type VideoModel = (typeof VIDEO_MODELS)[number];
+
 export const RUNWAY_CLIP_DURATIONS = [5, 10] as const;
 export type RunwayClipDurationSeconds = (typeof RUNWAY_CLIP_DURATIONS)[number];
 

@@ -20,6 +20,7 @@ import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { toEpisodeDetail } from "./episode-detail.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
+import { RUNWAY_MODEL } from "../videos/runway-video-adapter.js";
 
 /** Matches video-preview.service.ts's SCENE_FIELDS (minus "number", "narration"): the fields promptFor() reads. */
 const MOTION_SCENE_FIELDS = ["description", "visual_action", "start_motion", "main_motion", "end_motion", "shot_size", "camera_angle", "composition", "lens_feel", "focus_subject", "camera_motion", "environment_motion", "motion_speed", "motion_intensity", "expression_change", "continuity_hint"] as const;
@@ -330,7 +331,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
   async preview(projectId: string, number: number): Promise<GetLongEpisodeVideoPreviewResponse> { const id = projectId.trim(); const episode = await this.loadEpisode(id, number); await this.assertReady(id, number, episode); const sceneNumbers = sceneNumbersFor(this.sceneCount(episode)); const durationSecondsPerScene = this.durationSecondsPerScene(episode); const ratio = await this.ratio(id, number); const scenes = this.scenes(episode); const items = scenes.map((item, index) => { const built = this.promptWithOmissions(item, scenes[index - 1], durationSecondsPerScene, ratio); return { sceneNumber: sceneNumbers[index]!, prompt: built.prompt, estimatedCostUsd: videoSceneEstimatedCostUsd(durationSecondsPerScene), ...(built.omittedSections.length > 0 ? { omittedSections: built.omittedSections } : {}) }; }); const hash = crypto.createHash("sha256").update(id).update(String(number)); for (const item of items) { hash.update(await fs.readFile(this.image(id, number, item.sceneNumber))); hash.update(item.prompt); } const estimatedCostUsd = items.reduce((sum, item) => sum + item.estimatedCostUsd, 0);
     // Read-only: previewing never reserves or records budget, it only reports the ledger's current state.
     const budget = await this.budgetPreview(estimatedCostUsd);
-    return { confirmationId: hash.digest("hex"), model: "gen4_turbo", ratio, durationSecondsPerScene, executionMode: "sequential", scenes: items, estimatedCostUsd, maximumProviderCalls: sceneNumbers.length, ...(budget ? { budget } : {}) }; }
+    return { confirmationId: hash.digest("hex"), model: RUNWAY_MODEL, ratio, durationSecondsPerScene, executionMode: "sequential", scenes: items, estimatedCostUsd, maximumProviderCalls: sceneNumbers.length, ...(budget ? { budget } : {}) }; }
   /**
    * Two presses at once used to produce two answers and one job.
    *

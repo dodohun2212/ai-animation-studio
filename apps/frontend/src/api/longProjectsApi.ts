@@ -88,6 +88,8 @@ import {
   type UpdateLongProjectSettingsRequest,
   type UpdateLongProjectSettingsResponse,
   BUDGET_LIMIT_ROUTE_HINT,
+  VIDEO_MODELS,
+  type VideoModel,
 } from "@ai-animation-studio/shared";
 import { BUDGET_LEDGER_UNREADABLE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "./budgetLedgerError.js";
 
@@ -582,7 +584,7 @@ function isBudgetPreview(value: unknown): value is BudgetPreview {
     && isFiniteNonNegative(value.remainingUsd) && isFiniteNonNegative(value.estimatedRequestCostUsd) && typeof value.canSpend === "boolean";
 }
 const isGetEpisodeVideoPreviewResponse = (value: unknown): value is GetLongEpisodeVideoPreviewResponse => isRecord(value)
-  && isNonEmptyString(value.confirmationId) && value.model === "gen4_turbo" && (value.ratio === "720:1280" || value.ratio === "1280:720")
+  && isNonEmptyString(value.confirmationId) && VIDEO_MODELS.includes(value.model as VideoModel) && (value.ratio === "720:1280" || value.ratio === "1280:720")
   && (value.durationSecondsPerScene === 5 || value.durationSecondsPerScene === 10) && value.executionMode === "sequential" && typeof value.estimatedCostUsd === "number"
   && Array.isArray(value.scenes) && value.scenes.length >= MIN_SCENE_COUNT && value.scenes.length <= MAX_SCENE_COUNT && value.scenes.every(isEpisodeVideoPreview)
   && (value.maximumProviderCalls === undefined || isFiniteNonNegative(value.maximumProviderCalls))

@@ -1,4 +1,4 @@
-import { RUNWAY_PROMPT_MAX_LENGTH } from "@ai-animation-studio/shared";
+import { RUNWAY_PROMPT_MAX_LENGTH, type VideoModel } from "@ai-animation-studio/shared";
 import { assertRealNetworkCallAllowed } from "../providers/no-test-network.guard.js";
 import { utf16Length } from "./video-preview.service.js";
 
@@ -11,7 +11,14 @@ import { utf16Length } from "./video-preview.service.js";
 
 export const RUNWAY_BASE_URL = "https://api.dev.runwayml.com";
 export const RUNWAY_VERSION = "2024-11-06";
-export const RUNWAY_MODEL = "gen4_turbo";
+/**
+ * The model actually put on the wire — and, now, the one every record, preview and confirmation reports.
+ *
+ * Typed against the contract's VIDEO_MODELS so changing it is a compile error until the new name is listed
+ * there. That is the point: the client guards check a response's model against that same list, so a swap made
+ * here alone used to mean the server answering correctly and both video screens calling it malformed.
+ */
+export const RUNWAY_MODEL: VideoModel = "gen4_turbo";
 const MAX_DATA_URI_BYTES = 5 * 1024 * 1024;
 const DEFAULT_MAX_RETRIES = 2;
 const MAX_BACKOFF_SECONDS = 4;

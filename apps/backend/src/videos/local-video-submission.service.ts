@@ -11,9 +11,11 @@ import {
   type SceneNumber,
   type StartVideoGenerationRequest,
   type StartVideoGenerationResponse,
+  type VideoModel,
 } from "@ai-animation-studio/shared";
 
 import { LocalProjectRepository } from "../projects/projects.repository.js";
+import { RUNWAY_MODEL } from "./runway-video-adapter.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
@@ -44,7 +46,7 @@ type VideoRecord = {
   confirmation_id: string;
   input_hash: string;
   prompt: string;
-  model: "gen4_turbo";
+  model: VideoModel;
   ratio: "720:1280" | "1280:720";
   duration_seconds: number;
   estimated_cost_usd: number;
@@ -105,7 +107,9 @@ export class LocalVideoSubmissionService {
     const hash = createHash("sha256");
     hash.update(imageBytes);
     hash.update(prompt, "utf8");
-    hash.update("gen4_turbo", "ascii");
+    // Part of the confirmation hash on purpose: a preview taken under one model must not be submittable
+    // after a swap, because the price and the result both change underneath it.
+    hash.update(RUNWAY_MODEL, "ascii");
     hash.update(ratio, "ascii");
     hash.update(String(durationSeconds), "ascii");
     return hash.digest("hex");
@@ -203,7 +207,7 @@ export class LocalVideoSubmissionService {
       confirmation_id: request.confirmationId,
       input_hash: hashes[index]!,
       prompt: request.prompts[index]!.prompt,
-      model: "gen4_turbo",
+      model: RUNWAY_MODEL,
       ratio: preview.previews[index]!.ratio,
       duration_seconds: preview.previews[index]!.durationSeconds,
       estimated_cost_usd: preview.previews[index]!.estimatedCostUsd,

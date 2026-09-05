@@ -1,4 +1,4 @@
-import type { Project, ProjectSummary, RunwayClipDurationSeconds, SceneNumber, UsedAudio } from "./domain.js";
+import type { Project, ProjectSummary, RunwayClipDurationSeconds, SceneNumber, UsedAudio, VideoModel } from "./domain.js";
 import { MAX_SCENE_COUNT, MIN_SCENE_COUNT } from "./domain.js";
 import type { Asset, AssetOwnership, AssetType } from "./asset.js";
 import type {
@@ -659,7 +659,7 @@ export interface LongEpisodeVideoPreview {
 }
 export interface GetLongEpisodeVideoPreviewResponse {
   confirmationId: string;
-  model: "gen4_turbo";
+  model: VideoModel;
   ratio: "720:1280" | "1280:720";
   /** Derived from the Episode's own LongProjectSettings.episodeDurationSeconds ÷ 6 (30 -> 5, 60 -> 10). */
   durationSecondsPerScene: 5 | 10;
@@ -1559,7 +1559,7 @@ export interface RegenerateNarrationResponse {
 export interface VideoPromptPreview {
   sceneNumber: SceneNumber;
   prompt: string;
-  model: "gen4_turbo";
+  model: VideoModel;
   ratio: "720:1280" | "1280:720";
   durationSeconds: number;
   estimatedCostUsd: number;

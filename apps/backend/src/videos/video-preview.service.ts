@@ -10,6 +10,7 @@ import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
 import { RunwayBudget } from "../providers/runway-budget.js";
+import { RUNWAY_MODEL } from "./runway-video-adapter.js";
 import {
   invalidVideoPreviewRequest,
   videoPreviewDataInvalid,
@@ -220,7 +221,7 @@ export class LocalVideoPreviewService {
       return {
         sceneNumber: sceneNumbers[index]!,
         prompt,
-        model: "gen4_turbo",
+        model: RUNWAY_MODEL,
         ratio,
         durationSeconds: clipDurationSeconds,
         estimatedCostUsd: videoSceneEstimatedCostUsd(clipDurationSeconds),

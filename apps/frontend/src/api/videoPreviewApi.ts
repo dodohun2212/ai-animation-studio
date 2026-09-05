@@ -2,9 +2,11 @@ import {
   API_ROUTES,
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
+  VIDEO_MODELS,
   type BudgetPreview,
   type GetVideoPromptPreviewResponse,
   type SceneNumber,
+  type VideoModel,
   type VideoPromptPreview,
 } from "@ai-animation-studio/shared";
 
@@ -59,7 +61,9 @@ function isVideoPromptPreview(value: unknown): value is VideoPromptPreview {
     isRecord(value) &&
     isSceneNumber(value.sceneNumber) &&
     isNonEmptyString(value.prompt) &&
-    value.model === "gen4_turbo" &&
+    // Was `=== "gen4_turbo"`. A model swap on the server would have made this call a perfectly good response
+    // malformed, and the screen say 서버 응답을 확인할 수 없습니다 about a server that is working.
+    VIDEO_MODELS.includes(value.model as VideoModel) &&
     (value.ratio === "720:1280" || value.ratio === "1280:720") &&
     value.durationSeconds === 5 &&
     typeof value.estimatedCostUsd === "number" &&
