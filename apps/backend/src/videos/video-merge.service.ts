@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import { isPlaceholderClip } from "./placeholder-clip.js";
+import { PLACEHOLDER_ADAPTER } from "../narration/local-narration-generation.service.js";
 import { FINAL_VIDEO_LOCK_KEY, ProjectLockTimeoutError, withProjectLock } from "./project-lock.js";
 import * as path from "node:path";
 
@@ -39,7 +40,26 @@ function isApprovedReviews(value: unknown, scenes: readonly SceneNumber[]): valu
 
 /** Same "real files exist" meaning as project.mapper.ts's narrationAvailableFor() — kept as its own copy per this codebase's convention (see that function's own doc comment for why a projects/ -> videos/ layering inversion is avoided by not importing it). */
 function narrationAvailableFor(project: StoredProject): boolean {
-  return project.generated_narrations.some((file) => typeof file === "string" && file.length > 0);
+  return project.generated_narrations.some((file, index) => typeof file === "string" && file.length > 0 && !isPlaceholderNarration(project, index + 1));
+}
+
+/**
+ * Whether one scene's narration is the silent stub the keyless path writes.
+ *
+ * `generated_narrations` records a path, and the keyless run fills every one of them with a four-byte silent
+ * mp3 — so "a path is recorded" said a project had a voice when it had never bought one. The mode was accepted,
+ * the merge burned the stub in, and the finished video was silent where the narration should be, with nothing
+ * anywhere saying so.
+ *
+ * Only a record that names the placeholder adapter disqualifies a scene. A scene with no record still counts:
+ * narration made before that field existed is real, and taking it away would be the same mistake pointing the
+ * other way. `local-narration-generation.service.ts` reads the same field for the same reason when it decides
+ * whether audio is still good.
+ */
+function isPlaceholderNarration(project: StoredProject, scene: number): boolean {
+  const record: unknown = project.narration_generation_records?.[scene - 1];
+  if (typeof record !== "object" || record === null) return false;
+  return (record as { adapter?: unknown }).adapter === PLACEHOLDER_ADAPTER;
 }
 
 /**
@@ -156,7 +176,10 @@ export class LocalVideoMergeService {
     const settings = toShortProjectSettings(project);
     return Promise.all(scenes.map(async (scene, index) => {
       const file = project.generated_narrations[scene - 1];
-      const narrationAudioPath = includeNarration && typeof file === "string" && (await fs.stat(file).then((stat) => stat.size > 0).catch(() => false)) ? file : null;
+      // The same question narrationAvailableFor asks, so the mode a person was allowed to pick is the mode
+      // they actually get. Asking a narrower one here is what let "나레이션" produce a silent video.
+      const narrationAudioPath = includeNarration && typeof file === "string" && !isPlaceholderNarration(project, index + 1)
+        && (await fs.stat(file).then((stat) => stat.size > 0).catch(() => false)) ? file : null;
       const subtitleText = settings.subtitlesEnabled ? sceneValue(project.scenes[scene - 1], "narration") || null : null;
       return { clip: clips[index]!, narrationAudioPath, subtitleText, ...(stillDurationSeconds !== undefined ? { stillDurationSeconds, ...(subtitleLayout ? { subtitleLayout } : {}) } : {}) };
     }));

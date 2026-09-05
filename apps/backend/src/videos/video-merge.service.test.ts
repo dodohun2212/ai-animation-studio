@@ -208,6 +208,42 @@ describe("local FFmpeg video merge", () => {
     }
   });
 
+  /**
+   * A silent stub is not a voice, and asking for one must not quietly produce silence.
+   *
+   * The keyless narration path writes a four-byte silent mp3 for every scene, and "a path is recorded with
+   * bytes behind it" counted that as narration. So a project that had never bought a voice accepted
+   * `audio.mode: "narration"`, merged, and produced a video with nothing in it where the voice should be —
+   * no error, no warning, no way to tell from the screen.
+   *
+   * Both halves are asserted together on purpose: the gate that allows the mode and the renderer that uses the
+   * file have to be answering the same question, and the Episode side was caught answering two different ones.
+   */
+  it("refuses narration made of placeholders, instead of merging silence as if it were a voice", async () => {
+    const { projectsRoot, projects } = await setup();
+    const narrationFile = path.join(projectsRoot, "video_merge", "narration", "scene1.mp3");
+    await fs.mkdir(path.dirname(narrationFile), { recursive: true });
+    // Exactly what the keyless run leaves: a file with bytes in it, recorded as the placeholder adapter.
+    await fs.writeFile(narrationFile, Buffer.from([0, 0, 0, 0]));
+    const project = await projects.findById("video_merge");
+    project.generated_narrations = [narrationFile];
+    project.narration_generation_records = [{ scene_number: 1, adapter: "local-fake-tts-adapter", narration: "장면 1 내레이션" }];
+    project.lore_context = { ...project.lore_context, narration_enabled: true };
+    project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, narration: `장면 ${number} 내레이션` }));
+    await projects.save(project);
+
+    const calls: string[][] = [];
+    const service = new LocalVideoMergeService(projects, projectsRoot, runner({}, calls));
+
+    await expect(service.merge("video_merge", { audio: { mode: "narration" } }), "the gate must not offer a voice this project does not have")
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+
+    // And the default path merges without pretending the stub is audio.
+    await service.merge("video_merge");
+    const mixed = calls.filter((args) => args[0] === "ffmpeg" && args.some((arg) => arg.includes("scene1.mp3")));
+    expect(mixed, "the renderer must not reach for the placeholder either").toEqual([]);
+  });
+
   it("does not burn in any subtitle when subtitlesEnabled is off, even for a scene with real narration audio", async () => {
     const { projectsRoot, projects } = await setup();
     const narrationFile = path.join(projectsRoot, "video_merge", "narration", "scene1.mp3");

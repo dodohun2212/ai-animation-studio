@@ -281,15 +281,30 @@ export class EpisodeVideoMergeService {
     };
   }
 
-  /** Real files on disk, matching what the Episode's own GET reports to the screen. */
+  /**
+   * Whether this Episode has narration a merge could actually use.
+   *
+   * It used to be "any .mp3 with bytes in it", and the keyless path writes a four-byte silent placeholder for
+   * every scene — so an Episode that had never bought a voice reported that it had one. `mergeScenes` below
+   * then correctly refused to use those files, and the result was the worst combination available: the mode was
+   * accepted, no error was shown, and the finished video had no voice in it. The gate and the renderer were
+   * answering two different questions about the same files.
+   *
+   * They ask the same one now. A scene whose record names the placeholder adapter does not count; a scene with
+   * no record at all still does, because narration made before that field existed is real narration and taking
+   * it away would be the opposite mistake.
+   */
   private async narrationAvailable(id: string, number: number, _episode: Episode): Promise<boolean> {
     const directory = path.join(this.files(id, number).episode, "narration");
+    const placeholders = await this.placeholderNarrationScenes(id, number);
     try {
       const entries = await fs.readdir(directory);
-      const sizes = await Promise.all(entries.filter((name) => name.endsWith(".mp3")).map(async (name) => {
+      const usable = await Promise.all(entries.filter((name) => name.endsWith(".mp3")).map(async (name) => {
+        const scene = Number(/scene(\d+)\.mp3$/.exec(name)?.[1]);
+        if (Number.isInteger(scene) && placeholders.has(scene as SceneNumber)) return 0;
         try { return (await fs.stat(path.join(directory, name))).size; } catch { return 0; }
       }));
-      return sizes.some((size) => size > 0);
+      return usable.some((size) => size > 0);
     } catch { return false; }
   }
 
