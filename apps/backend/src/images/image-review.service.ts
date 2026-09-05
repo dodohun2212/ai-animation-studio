@@ -1,4 +1,5 @@
 import { PLACEHOLDER_PNG } from "./placeholder-image.js";
+import { withWarning } from "../projects/warnings.js";
 import { OPENAI_LEDGER_FILE, isBudgetLedgerUnreadable, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -394,7 +395,7 @@ export class ImageReviewService {
       image_generation_records: records,
       workflow_state: WorkflowState.ImagesReview,
       updated_at: timestamp,
-      ...(spendUnrecorded ? { warnings: [...project.warnings, spendUnrecordedWarning(`${number}번 장면 이미지 재생성`, OPENAI_LEDGER_FILE)] } : {}),
+      ...(spendUnrecorded ? { warnings: withWarning(project.warnings, spendUnrecordedWarning(`${number}번 장면 이미지 재생성`, OPENAI_LEDGER_FILE)) } : {}),
     };
     try {
       await this.indexAssetsIfMissing(project);

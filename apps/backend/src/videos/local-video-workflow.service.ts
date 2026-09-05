@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { withWarning } from "../projects/warnings.js";
 import { isBudgetLedgerUnreadable, RUNWAY_LEDGER_FILE, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import { isUsableClip, PLACEHOLDER_MP4, wasPaidRun } from "./placeholder-clip.js";
 import * as fs from "node:fs/promises";
@@ -375,7 +376,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       if (freshRecord.status !== "created" && freshRecord.status !== "submitting") {
         const warned: StoredProject = {
           ...fresh,
-          warnings: [...fresh.warnings, `${result.sceneNumber}번 장면의 영상 요청이 중복 제출되어, 쓰이지 않는 작업이 하나 남았습니다. 진행 중인 작업은 그대로 이어집니다.`],
+          warnings: withWarning(fresh.warnings, `${result.sceneNumber}번 장면의 영상 요청이 중복 제출되어, 쓰이지 않는 작업이 하나 남았습니다. 진행 중인 작업은 그대로 이어집니다.`),
           updated_at: nowIso,
         };
         await this.projects.save(warned).catch(() => undefined);
@@ -392,7 +393,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     }
     if (result.kind === "failed") {
       const updated = this.replaceRecords(project, [{ ...record, status: "failed", error: result.error, ...(result.failureCode ? { failure_code: result.failureCode } : {}) }]);
-      if (result.spendUnrecorded) updated.warnings = [...updated.warnings, runwaySpendUnrecordedWarning(result.sceneNumber)];
+      if (result.spendUnrecorded) updated.warnings = withWarning(updated.warnings, runwaySpendUnrecordedWarning(result.sceneNumber));
       updated.updated_at = nowIso;
       await this.projects.save(updated);
       this.clearTimer(jobId);
@@ -406,7 +407,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     const paths = [...updated.generated_video_paths]; while (paths.length < jobRecords.length) paths.push("");
     paths[result.sceneNumber - 1] = this.file(project.project_id, result.sceneNumber);
     updated.generated_video_paths = paths; updated.updated_at = nowIso;
-    if (result.spendUnrecorded) updated.warnings = [...updated.warnings, runwaySpendUnrecordedWarning(result.sceneNumber)];
+    if (result.spendUnrecorded) updated.warnings = withWarning(updated.warnings, runwaySpendUnrecordedWarning(result.sceneNumber));
 
     if (this.records(updated, jobId).every((item) => item.status === "succeeded")) {
       updated.workflow_state = WorkflowState.ReviewingVideos;

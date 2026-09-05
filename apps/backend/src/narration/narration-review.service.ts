@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { withWarning } from "../projects/warnings.js";
 import { OPENAI_LEDGER_FILE, isBudgetLedgerUnreadable, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
@@ -180,7 +181,7 @@ export class NarrationReviewService {
       generated_narrations: generatedNarrations,
       narration_generation_records: records,
       updated_at: timestamp,
-      ...(spendUnrecorded ? { warnings: [...project.warnings, spendUnrecordedWarning(`${sceneNumber}번 장면 내레이션 재생성`, OPENAI_LEDGER_FILE)] } : {}),
+      ...(spendUnrecorded ? { warnings: withWarning(project.warnings, spendUnrecordedWarning(`${sceneNumber}번 장면 내레이션 재생성`, OPENAI_LEDGER_FILE)) } : {}),
     };
     try { await this.projects.save(updated); } catch { throw narrationStorageError(); }
     return {

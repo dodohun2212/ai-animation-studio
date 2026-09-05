@@ -1,4 +1,5 @@
 import { PLACEHOLDER_PNG, isPlaceholderImage } from "./placeholder-image.js";
+import { withWarning } from "../projects/warnings.js";
 import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { OPENAI_LEDGER_FILE, isBudgetLedgerUnreadable, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import * as crypto from "node:crypto";
@@ -257,7 +258,7 @@ export class LocalImageGenerationService {
     // guards against.
       const recoverable = {
         ...current, workflow_state: WorkflowState.AssetMappingApproved, updated_at: new Date().toISOString(),
-        ...(unrecordedScenes.length > 0 ? { warnings: [...current.warnings, spendUnrecordedWarning(`${unrecordedScenes.join(", ")}번 장면 이미지 생성`, OPENAI_LEDGER_FILE)] } : {}),
+        ...(unrecordedScenes.length > 0 ? { warnings: withWarning(current.warnings, spendUnrecordedWarning(`${unrecordedScenes.join(", ")}번 장면 이미지 생성`, OPENAI_LEDGER_FILE)) } : {}),
       };
       await this.projects.save(recoverable).catch(() => undefined);
       if (isBudgetLedgerUnreadable(error)) throw imageBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw imageBudgetExceeded(error.message);
@@ -269,7 +270,7 @@ export class LocalImageGenerationService {
     // Said after the fact, once, rather than per scene: the person needs one instruction, not six copies of it.
     // Saved best-effort — the response below carries the same warning either way, so they see it now regardless.
     if (unrecordedScenes.length > 0) {
-      current = { ...current, warnings: [...current.warnings, spendUnrecordedWarning(`${unrecordedScenes.join(", ")}번 장면 이미지 생성`, OPENAI_LEDGER_FILE)], updated_at: new Date().toISOString() };
+      current = { ...current, warnings: withWarning(current.warnings, spendUnrecordedWarning(`${unrecordedScenes.join(", ")}번 장면 이미지 생성`, OPENAI_LEDGER_FILE)), updated_at: new Date().toISOString() };
       await this.projects.save(current).catch(() => undefined);
     }
     // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current

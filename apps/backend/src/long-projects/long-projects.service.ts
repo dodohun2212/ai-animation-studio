@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { withWarning } from "../projects/warnings.js";
 import { readLongProjectJson } from "./long-project-json.js";
 import { OPENAI_LEDGER_FILE, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
@@ -397,8 +398,7 @@ export class LongProjectsService {
     // outline it is about rather than needing a save of its own.
     if (spendUnrecorded) {
       const message = spendUnrecordedWarning("회차 개요 생성", OPENAI_LEDGER_FILE);
-      const existing = s.warnings ?? [];
-      if (!existing.includes(message)) s.warnings = [...existing, message];
+      s.warnings = withWarning(s.warnings ?? [], message);
     }
     try { await atomicWriteUtf8File(this.files(s.project_id).project, JSON.stringify(s, null, 2)); await atomicWriteUtf8File(this.files(s.project_id).outlines, JSON.stringify(generated, null, 2)); } catch { throw longStorageError(); }
     return { project: await this.project(s.project_id), approvedAt: now, promptSha256: s.outline_prompt_request.prompt_sha256, modified };

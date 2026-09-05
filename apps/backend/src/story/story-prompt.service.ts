@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { withWarning } from "../projects/warnings.js";
 import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { isBudgetLedgerUnreadable, OPENAI_LEDGER_FILE, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import { existsSync } from "node:fs";
@@ -288,7 +289,7 @@ export class StoryPromptService {
       script_revision: generating.script_revision + 1,
       workflow_state: WorkflowState.WaitingForAssetMappingReview,
       updated_at: completedAt,
-      ...(spendUnrecorded ? { warnings: [...generating.warnings, spendUnrecordedWarning("이야기 생성", OPENAI_LEDGER_FILE)] } : {}),
+      ...(spendUnrecorded ? { warnings: withWarning(generating.warnings, spendUnrecordedWarning("이야기 생성", OPENAI_LEDGER_FILE)) } : {}),
     };
     try {
       await this.projects.save(updated);

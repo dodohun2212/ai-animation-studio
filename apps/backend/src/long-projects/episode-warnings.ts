@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { withWarning } from "../projects/warnings.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 
 /**
@@ -11,7 +12,7 @@ import { atomicWriteUtf8File } from "../projects/atomic-file.js";
  */
 export function appendEpisodeWarning(episode: Record<string, unknown>, message: string): void {
   const existing = Array.isArray(episode.warnings) ? episode.warnings.filter((item): item is string => typeof item === "string") : [];
-  episode.warnings = existing.includes(message) ? existing : [...existing, message];
+  episode.warnings = withWarning(existing, message);
 }
 
 /**

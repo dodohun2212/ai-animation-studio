@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { withWarning } from "../projects/warnings.js";
 import { OPENAI_LEDGER_FILE, isBudgetLedgerUnreadable, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import { PLACEHOLDER_ADAPTER, PLACEHOLDER_MP3 } from "./placeholder-narration.js";
 import * as fs from "node:fs/promises";
@@ -200,7 +201,7 @@ export class LocalNarrationGenerationService {
     // the scenes already bought before it broke would have gone unmentioned, which is the whole failure this
     // guards against.
       if (unrecordedScenes.length > 0) {
-        await this.projects.save({ ...current, warnings: [...current.warnings, spendUnrecordedWarning(`${unrecordedScenes.join(", ")}번 장면 내레이션 생성`, OPENAI_LEDGER_FILE)], updated_at: new Date().toISOString() }).catch(() => undefined);
+        await this.projects.save({ ...current, warnings: withWarning(current.warnings, spendUnrecordedWarning(`${unrecordedScenes.join(", ")}번 장면 내레이션 생성`, OPENAI_LEDGER_FILE)), updated_at: new Date().toISOString() }).catch(() => undefined);
       }
       if (isBudgetLedgerUnreadable(error)) throw narrationBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw narrationBudgetExceeded(error.message);
       if (error instanceof OpenAiAdapterError) throw narrationProviderError(error.category, error.message);
@@ -211,7 +212,7 @@ export class LocalNarrationGenerationService {
     // Said after the fact, once, rather than per scene: the person needs one instruction, not six copies of it.
     // Saved best-effort — the response below carries the same warning either way, so they see it now regardless.
     if (unrecordedScenes.length > 0) {
-      current = { ...current, warnings: [...current.warnings, spendUnrecordedWarning(`${unrecordedScenes.join(", ")}번 장면 내레이션 생성`, OPENAI_LEDGER_FILE)], updated_at: new Date().toISOString() };
+      current = { ...current, warnings: withWarning(current.warnings, spendUnrecordedWarning(`${unrecordedScenes.join(", ")}번 장면 내레이션 생성`, OPENAI_LEDGER_FILE)), updated_at: new Date().toISOString() };
       await this.projects.save(current).catch(() => undefined);
     }
     // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current
