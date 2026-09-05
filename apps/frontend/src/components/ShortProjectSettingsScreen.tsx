@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import {
+import { SHORT_PROJECT_LEAD_CAST_ROLE, isShortProjectCastLead,
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
   RUNWAY_CLIP_DURATIONS,
@@ -163,7 +163,7 @@ function Field({ label, value, onChange, multiline = false }: { label: string; v
  * prompt. Reading the same rule here is what makes the toggle below mean what it says.
  */
 function isRepresentative(member: ShortProjectCastMember): boolean {
-  return member.castRole === "protagonist" || member.castRole === "lead";
+  return isShortProjectCastLead(member.castRole);
 }
 
 /**
@@ -311,7 +311,7 @@ function CastEditor({ projectId, onLeadChange }: { projectId: string; onLeadChan
       const representative = member.assetId === assetId;
       return {
         ...member,
-        castRole: representative ? "protagonist" : "supporting",
+        castRole: representative ? SHORT_PROJECT_LEAD_CAST_ROLE : "supporting",
         storyRole: AUTO_STORY_ROLES.has(member.storyRole.trim()) ? (representative ? "대표 캐릭터" : "서브 캐릭터") : member.storyRole,
       };
     }));

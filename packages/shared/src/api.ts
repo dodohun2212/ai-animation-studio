@@ -1266,9 +1266,39 @@ export interface UpdateProjectSettingsResponse { project: Project; settings: Sho
  * `character_profile.cast`. This feeds the Story prompt's `character_cast_metadata` placeholder — it does not
  * create a project Asset Mapping (that stays owned by the separate Asset Mapping review feature).
  */
+/**
+ * The two `castRole` spellings this app treats as the 대표 — named here because three readers were deciding
+ * it from their own copy of the pair and the contract said nothing.
+ *
+ *     ShortProjectSettingsScreen.tsx  isRepresentative()
+ *     story-prompt.service.ts         the cast lead the Story prompt is built around
+ *     story-asset-metadata.ts         대표 캐릭터 vs 서브 캐릭터 in the prompt metadata
+ *
+ * `castRole` stays free text on purpose: Python wrote whatever it liked there and those projects still open.
+ * So this is not a union that narrows the field — it is the list the readers agree on, in one place. A value
+ * outside it is not invalid; it simply is not the 대표, which is exactly what every reader already meant.
+ *
+ * `"lead"` is read and never written — `setRepresentative` writes `"protagonist"`. It is here because
+ * Python-era projects on disk carry it, and dropping it would silently demote a cast lead someone set years
+ * ago. That asymmetry is the reason the pair has to be written down rather than remembered.
+ *
+ * Cowork Round 528 found the cost of the silence: a fixture said `castRole: "representative"`, which type
+ * checks perfectly against `string` and is a value nothing here treats as the 대표. Four fixtures carried it;
+ * three passed anyway.
+ */
+export const SHORT_PROJECT_LEAD_CAST_ROLES = ["protagonist", "lead"] as const;
+
+/** Whether this cast row is the 대표 — the one question all three readers were asking their own way. */
+export function isShortProjectCastLead(castRole: string): boolean {
+  return (SHORT_PROJECT_LEAD_CAST_ROLES as readonly string[]).includes(castRole);
+}
+
+/** What the screen writes when someone presses 대표. The first spelling, and the only one this app writes. */
+export const SHORT_PROJECT_LEAD_CAST_ROLE = SHORT_PROJECT_LEAD_CAST_ROLES[0];
+
 export interface ShortProjectCastMember {
   assetId: string;
-  /** Free text, e.g. "protagonist" or "supporting" — Python has no fixed enum here. */
+  /** Free text — Python has no fixed enum here. Which spellings count as the 대표 is SHORT_PROJECT_LEAD_CAST_ROLES. */
   castRole: string;
   /** Free text describing the character's role in the story, e.g. "서브 캐릭터". */
   storyRole: string;

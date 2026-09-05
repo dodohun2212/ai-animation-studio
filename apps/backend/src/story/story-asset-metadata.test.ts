@@ -26,6 +26,25 @@ async function setup() {
 }
 
 describe("story-asset-metadata folder description merging", () => {
+  /**
+   * `"lead"` is the spelling this app reads and never writes.
+   *
+   * The screen writes `"protagonist"` when someone presses 대표; `"lead"` is what Python-era projects carry, and
+   * they still open. Nothing covered it — dropping it from SHORT_PROJECT_LEAD_CAST_ROLES broke no test on either
+   * side, so a cast lead set years ago could quietly become a 서브 캐릭터 in the prompt that is paid for, with
+   * every suite green.
+   */
+  it("treats the Python-era spelling as the 대표, not only the one this app writes", async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "cast-lead-"));
+    const assets = new LocalAssetsRepository(root);
+    const folder = await assets.createFolder({ assetType: "character", displayName: "이배드" });
+
+    const description = await describeCharacterCast(assets, [{ assetId: folder.asset_id, castRole: "lead", storyRole: "주인공" }]);
+
+    expect(description).toContain("대표 캐릭터");
+    expect(description).not.toContain("서브 캐릭터");
+  });
+
   it("describeCharacterCast includes the Folder's common description plus each described child's individual description", async () => {
     const { assets, folder } = await setup();
     const description = await describeCharacterCast(assets, [{ assetId: folder.asset_id, castRole: "protagonist", storyRole: "주인공" }]);

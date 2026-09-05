@@ -6,7 +6,7 @@ import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Injectable } from "@nestjs/common";
-import { STORY_ESTIMATED_COST_USD, WorkflowState } from "@ai-animation-studio/shared";
+import { isShortProjectCastLead, STORY_ESTIMATED_COST_USD, WorkflowState } from "@ai-animation-studio/shared";
 import type { ApproveStoryPromptRequest, ApproveStoryPromptResponse, CreateStoryPromptDraftPreviewResponse, CreateStoryPromptPreviewResponse, RegenerateStoryPromptResponse, StoryPromptPreview } from "@ai-animation-studio/shared";
 import { toApiProject } from "../projects/project.mapper.js";
 import { toShortProjectAssetReferences } from "../projects/project-asset-references.js";
@@ -94,7 +94,7 @@ async function promptVariables(stored: StoredProject, assets?: LocalAssetsReposi
   const notes = settings.styleNotes;
   const story = object(stored.story);
   const cast = toShortProjectCast(stored);
-  const castLead = cast.find((member) => member.castRole === "protagonist" || member.castRole === "lead");
+  const castLead = cast.find((member) => isShortProjectCastLead(member.castRole));
   const castLeadName = castLead && assets ? (await assets.get(castLead.assetId).catch(() => null))?.display_name : undefined;
   const { atmosphereAssetIds, sceneReferenceAssets } = toShortProjectAssetReferences(stored);
   return {

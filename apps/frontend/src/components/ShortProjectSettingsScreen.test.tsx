@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { jsonResponse, makeAsset, makeAssetFolder, makeProject } from "../api/testUtils.js";
+import { castMember, jsonResponse, makeAsset, makeAssetFolder, makeProject } from "../api/testUtils.js";
 import { ShortProjectSettingsScreen } from "./ShortProjectSettingsScreen.js";
 
 const settings = {
@@ -221,7 +221,7 @@ describe("ShortProjectSettingsScreen", () => {
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
       "GET /assets?query=%EC%A3%BC%EC%9D%B8%EA%B3%B5&assetType=character": { assets: [hero] },
-      "PUT /projects/sample_project/settings/cast": { cast: [{ assetId: "ASSET-CHAR-1", castRole: "supporting", storyRole: "서브 캐릭터" }] },
+      "PUT /projects/sample_project/settings/cast": { cast: [castMember("ASSET-CHAR-1")] },
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
@@ -246,7 +246,7 @@ describe("ShortProjectSettingsScreen", () => {
   it("removes a cast member through the same PUT endpoint", async () => {
     const fetchMock = stubFetchByRoute({
       "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
-      "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "ASSET-CHAR-1", castRole: "protagonist", storyRole: "대표 캐릭터" }] },
+      "GET /projects/sample_project/settings/cast": { cast: [castMember("ASSET-CHAR-1", { representative: true })] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
       // The row resolves its name from the library on mount; without this it falls back to the raw id.
@@ -293,8 +293,8 @@ describe("ShortProjectSettingsScreen", () => {
       "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": {
         cast: [
-          { assetId: "ASSET-CHAR-1", castRole: "protagonist", storyRole: "대표 캐릭터" },
-          { assetId: "ASSET-CHAR-2", castRole: "supporting", storyRole: "복수를 노리는 동생" },
+          castMember("ASSET-CHAR-1", { representative: true }),
+          castMember("ASSET-CHAR-2", { storyRole: "복수를 노리는 동생" }),
         ],
       },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
@@ -305,8 +305,8 @@ describe("ShortProjectSettingsScreen", () => {
       ] },
       "PUT /projects/sample_project/settings/cast": {
         cast: [
-          { assetId: "ASSET-CHAR-1", castRole: "supporting", storyRole: "서브 캐릭터" },
-          { assetId: "ASSET-CHAR-2", castRole: "protagonist", storyRole: "복수를 노리는 동생" },
+          castMember("ASSET-CHAR-1"),
+          castMember("ASSET-CHAR-2", { representative: true, storyRole: "복수를 노리는 동생" }),
         ],
       },
     });
@@ -326,9 +326,9 @@ describe("ShortProjectSettingsScreen", () => {
     expect(JSON.parse(String((putCall[1] as RequestInit).body))).toEqual({
       cast: [
         // Demoted, and its auto-filled 대표 캐릭터 story role follows.
-        { assetId: "ASSET-CHAR-1", castRole: "supporting", storyRole: "서브 캐릭터" },
+        castMember("ASSET-CHAR-1"),
         // Promoted, but the story role the user typed themselves is left exactly as written.
-        { assetId: "ASSET-CHAR-2", castRole: "protagonist", storyRole: "복수를 노리는 동생" },
+        castMember("ASSET-CHAR-2", { representative: true, storyRole: "복수를 노리는 동생" }),
       ],
     });
   });
@@ -336,7 +336,7 @@ describe("ShortProjectSettingsScreen", () => {
   it("says so when no member is the 대표, since the prompt would then describe everyone as 서브", async () => {
     const fetchMock = stubFetchByRoute({
       "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
-      "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "ASSET-CHAR-1", castRole: "supporting", storyRole: "서브 캐릭터" }] },
+      "GET /projects/sample_project/settings/cast": { cast: [castMember("ASSET-CHAR-1")] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
     });
@@ -691,7 +691,7 @@ describe("ShortProjectSettingsScreen", () => {
     const hero = makeAssetFolder({ assetId: "ASSET-CHAR-9", displayName: "이배드", assetType: "character" });
     const fetchMock = stubFetchByRoute({
       "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
-      "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "ASSET-CHAR-9", castRole: "protagonist", storyRole: "대표 캐릭터" }] },
+      "GET /projects/sample_project/settings/cast": { cast: [castMember("ASSET-CHAR-9", { representative: true })] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
       "GET /assets?assetType=character": { assets: [hero] },
@@ -710,7 +710,7 @@ describe("ShortProjectSettingsScreen", () => {
   it("says a cast row's folder is gone instead of showing its id", async () => {
     const fetchMock = stubFetchByRoute({
       "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
-      "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "FOLDER-GONE", castRole: "protagonist", storyRole: "대표 캐릭터" }] },
+      "GET /projects/sample_project/settings/cast": { cast: [castMember("FOLDER-GONE", { representative: true })] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
       "GET /assets?assetType=character": { assets: [] },
@@ -735,7 +735,7 @@ describe("ShortProjectSettingsScreen", () => {
   it("says the lead's folder is gone rather than blaming the name lookup", async () => {
     const fetchMock = stubFetchByRoute({
       "GET /projects/sample_project/settings": { settings: { ...settings, character: "직접 적은 이름" }, sceneCountChangeable: true, aspectRatioChangeable: true },
-      "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "FOLDER-GONE", castRole: "protagonist", storyRole: "대표 캐릭터" }] },
+      "GET /projects/sample_project/settings/cast": { cast: [castMember("FOLDER-GONE", { representative: true })] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
       // The library answered — it just does not have this folder any more.
@@ -759,7 +759,7 @@ describe("ShortProjectSettingsScreen", () => {
     const hero = makeAssetFolder({ assetId: "ASSET-CHAR-9", displayName: "이배드", assetType: "character" });
     const fetchMock = stubFetchByRoute({
       "GET /projects/sample_project/settings": { settings: { ...settings, character: "직접 적은 이름" }, sceneCountChangeable: true, aspectRatioChangeable: true },
-      "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "ASSET-CHAR-9", castRole: "protagonist", storyRole: "대표 캐릭터" }] },
+      "GET /projects/sample_project/settings/cast": { cast: [castMember("ASSET-CHAR-9", { representative: true })] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
       "GET /assets?assetType=character": { assets: [hero] },
@@ -789,7 +789,7 @@ describe("ShortProjectSettingsScreen", () => {
   it("does not call a cast row's folder deleted when the name lookup failed", async () => {
     const fetchMock = stubFetchByRoute({
       "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
-      "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "FOLDER-ALIVE", castRole: "protagonist", storyRole: "대표 캐릭터" }] },
+      "GET /projects/sample_project/settings/cast": { cast: [castMember("FOLDER-ALIVE", { representative: true })] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
       "GET /assets?assetType=character": failing(500, { code: "ASSET_STORAGE_ERROR", message: "raw" }),
@@ -813,7 +813,7 @@ describe("ShortProjectSettingsScreen", () => {
   it("keeps 대표 캐릭터 locked when a lead is set but its name could not be read", async () => {
     const fetchMock = stubFetchByRoute({
       "GET /projects/sample_project/settings": { settings: { ...settings, character: "직접 적은 이름" }, sceneCountChangeable: true, aspectRatioChangeable: true },
-      "GET /projects/sample_project/settings/cast": { cast: [{ assetId: "FOLDER-LEAD", castRole: "protagonist", storyRole: "대표 캐릭터" }] },
+      "GET /projects/sample_project/settings/cast": { cast: [castMember("FOLDER-LEAD", { representative: true })] },
       "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
       "GET /projects/sample_project/settings/continuity": { link: null },
       "GET /assets?assetType=character": failing(500, { code: "ASSET_STORAGE_ERROR", message: "raw" }),

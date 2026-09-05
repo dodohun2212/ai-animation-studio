@@ -1,4 +1,4 @@
-import type { AssetType } from "@ai-animation-studio/shared";
+import { isShortProjectCastLead, type AssetType } from "@ai-animation-studio/shared";
 import type { LocalAssetsRepository } from "../assets/assets.repository.js";
 import type { ShortProjectCastMember } from "@ai-animation-studio/shared";
 
@@ -36,7 +36,7 @@ export async function describeCharacterCast(assets: LocalAssetsRepository | unde
     const childLines = await folderChildDescriptions(assets, asset);
     blocks.push([
       `${index + 1}. 이름: ${asset?.display_name ?? member.assetId}`,
-      `   구분: ${member.castRole === "protagonist" || member.castRole === "lead" ? "대표 캐릭터" : "서브 캐릭터"}`,
+      `   구분: ${isShortProjectCastLead(member.castRole) ? "대표 캐릭터" : "서브 캐릭터"}`,
       `   이야기 역할: ${member.storyRole}`,
       `   설명: ${asset?.description || "별도 설명 없음"}`,
       ...(childLines.length > 0 ? [`   하위 이미지별 개별 특징: ${childLines.join(" / ")}`] : []),

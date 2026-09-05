@@ -13,6 +13,7 @@ import {
   type ProjectAssetMappingReview,
   type ProviderCredentialStatus,
   type SceneStaleness,
+  type ShortProjectCastMember,
 } from "@ai-animation-studio/shared";
 
 /** Minimal fake `Response` for mocking `fetch` in tests — no real network involved. */
@@ -348,4 +349,36 @@ export function episodeImageStaleness(overrides: Partial<LongEpisodeImageStalene
 
 export function sceneStaleness(overrides: Partial<SceneStaleness> = {}): SceneStaleness {
   return { imageStale: [], styleStale: [], videoStale: [], videoFormatStale: [], narrationStale: [], referenceStale: [], ...overrides };
+}
+
+/**
+ * A cast row, said as "is this the 대표" rather than as a `castRole` string.
+ *
+ * 🔴 A typed fixture would not have caught the bug this exists for. `ShortProjectCastMember.castRole` is
+ * `string` in the contract — "Python has no fixed enum here" — so `castRole: "representative"` type-checked
+ * perfectly while being a value **nothing in this app treats as 대표**. Four fixtures carried it, three passed
+ * anyway because their assertions never looked at lead-ness, and the fourth failed for a reason that read as a
+ * screen bug (CLI Round 491).
+ *
+ * The pair that decides it is written out by hand in three places and named in none:
+ *
+ *     ShortProjectSettingsScreen.tsx  isRepresentative()      "protagonist" | "lead"
+ *     story-prompt.service.ts:97      cast.find(...)          "protagonist" | "lead"
+ *     story-asset-metadata.ts:39      대표 캐릭터 / 서브 캐릭터   "protagonist" | "lead"
+ *
+ * So the fix available from this side is to stop letting a fixture say it in raw text: a test asks for a
+ * representative or an ordinary member, and the string it becomes is decided in one place. `"protagonist"` is
+ * what the screen itself writes when someone presses 대표 (`setRepresentative`), so it is what a fixture
+ * standing in for that press should carry. Naming the pair in the contract is the real fix and is CLI's layer.
+ */
+export function castMember(
+  assetId: string,
+  options: { representative?: boolean; storyRole?: string } = {},
+): ShortProjectCastMember {
+  const representative = options.representative === true;
+  return {
+    assetId,
+    castRole: representative ? "protagonist" : "supporting",
+    storyRole: options.storyRole ?? (representative ? "대표 캐릭터" : "서브 캐릭터"),
+  };
 }
