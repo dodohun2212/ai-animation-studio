@@ -69,6 +69,13 @@ const MONEY_GUARDS: readonly { title: string; why: string }[] = [
     why: "the same shape one level up — a finished video with no address left anywhere in the app",
   },
   {
+    // One title, two suites: the short project's recovery and the Episode's. The entry above covers the scenes
+    // whose records say succeeded; this one covers the scenes whose records gave up while the paid task was
+    // still running, which is where the second charge actually came from.
+    title: "fetches back a scene its own record gave up on, and ends the failure with it",
+    why: "timeout and no_output are billed and leave a finished clip on Runway; skipping them leaves 다시 시도 — a second $0.25 — as the only exit",
+  },
+  {
     title: "reaches its own route, writes the downloaded bytes over the stubs, and never asks Runway to make anything",
     why: "recovery is a download; the moment it creates a task instead it costs $0.25 a scene to fetch what was already bought",
   },
