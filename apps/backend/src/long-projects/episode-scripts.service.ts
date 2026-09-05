@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { storedSceneCount } from "../projects/stored-scene-count.js";
 import { readLongProjectJson } from "./long-project-json.js";
 import { OPENAI_LEDGER_FILE, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import { persistEpisodeWarning } from "./episode-warnings.js";
@@ -122,7 +123,7 @@ export class EpisodeScriptsService {
    * taken silently, on the next unrelated save, with nothing reporting a loss. The validation above is unchanged;
    * a spread cannot weaken it, because every checked field is written after it.
    */
-  private parseStored(value: unknown, outline: LongEpisodeOutline): StoredEpisode { const d = asObject(value); if (d.number !== outline.episodeNumber || !statuses.includes(d.state as LongEpisodeStatus) || typeof d.approved !== "boolean" || !Array.isArray(d.script_history) || !Number.isInteger(d.script_revision) || Number(d.script_revision) < 0) throw longInvalidData(); const result: StoredEpisode = { ...d, episode_id: asText(d.episode_id), number: outline.episodeNumber, title: asText(d.title), summary: asText(d.summary), core_event: asText(d.core_event), conflict: asText(d.conflict), cliffhanger: asText(d.cliffhanger), next_connection: asText(d.next_connection), duration_seconds: asNumber(d.duration_seconds), scene_count: Number.isInteger(d.scene_count) ? d.scene_count as number : 6, approved: d.approved, state: d.state as LongEpisodeStatus, script: asObject(d.script), script_history: d.script_history, script_revision: d.script_revision as number, outline: asObject(d.outline), updated_at: asText(d.updated_at) }; return result; }
+  private parseStored(value: unknown, outline: LongEpisodeOutline): StoredEpisode { const d = asObject(value); if (d.number !== outline.episodeNumber || !statuses.includes(d.state as LongEpisodeStatus) || typeof d.approved !== "boolean" || !Array.isArray(d.script_history) || !Number.isInteger(d.script_revision) || Number(d.script_revision) < 0) throw longInvalidData(); const result: StoredEpisode = { ...d, episode_id: asText(d.episode_id), number: outline.episodeNumber, title: asText(d.title), summary: asText(d.summary), core_event: asText(d.core_event), conflict: asText(d.conflict), cliffhanger: asText(d.cliffhanger), next_connection: asText(d.next_connection), duration_seconds: asNumber(d.duration_seconds), scene_count: storedSceneCount(d), approved: d.approved, state: d.state as LongEpisodeStatus, script: asObject(d.script), script_history: d.script_history, script_revision: d.script_revision as number, outline: asObject(d.outline), updated_at: asText(d.updated_at) }; return result; }
   /**
    * This Episode as the API describes it — the sixth copy of that mapping, and the one `toEpisodeDetail` did
    * not collapse.

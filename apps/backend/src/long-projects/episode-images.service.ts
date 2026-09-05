@@ -1,4 +1,5 @@
 import { PLACEHOLDER_PNG, isPlaceholderImage } from "../images/placeholder-image.js";
+import { storedSceneCount } from "../projects/stored-scene-count.js";
 import { assertEpisodeListed, readLongProjectJson } from "./long-project-json.js";
 import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { resolveSafeProjectDirectory } from "../projects/project-id.js";
@@ -123,7 +124,7 @@ export class EpisodeImagesService {
     return raw as StoredEpisode;
   }
   /** Falls back to 6, matching every Episode stored before scene_count existed (see episode-scripts.service.ts's parseStored). */
-  private sceneCount(episode: StoredEpisode): number { return Number.isInteger(episode.scene_count) ? episode.scene_count as number : 6; }
+  private sceneCount(episode: StoredEpisode): number { return storedSceneCount(episode); }
   private scenes(episode: StoredEpisode): unknown[] { const scenes = episode.script.scenes; const count = this.sceneCount(episode); if (!Array.isArray(scenes) || scenes.length !== count || scenes.some((scene, index) => !object(scene) || scene.number !== index + 1 || typeof scene.description !== "string" || !scene.description.trim() || typeof scene.visual_action !== "string" || !scene.visual_action.trim())) throw longInvalidData(); return scenes; }
   private detail(episode: StoredEpisode): LongEpisodeDetail { return toEpisodeDetail(episode); }
   private async saveEpisode(projectId: string, number: number, episode: StoredEpisode): Promise<void> {

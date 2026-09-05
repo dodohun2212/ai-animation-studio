@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { storedSceneCount } from "../projects/stored-scene-count.js";
 import { assertEpisodeListed, readLongProjectJson } from "./long-project-json.js";
 import { OPENAI_LEDGER_FILE, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import { persistEpisodeWarning } from "./episode-warnings.js";
@@ -57,7 +58,7 @@ export class EpisodeNarrationService {
     return raw as StoredEpisode;
   }
   /** Falls back to 6, matching every Episode stored before scene_count existed (see episode-scripts.service.ts's parseStored). */
-  private sceneCount(episode: StoredEpisode): number { return Number.isInteger(episode.scene_count) ? episode.scene_count as number : 6; }
+  private sceneCount(episode: StoredEpisode): number { return storedSceneCount(episode); }
   private detail(episode: StoredEpisode): LongEpisodeDetail { return toEpisodeDetail(episode); }
   /** Not gated by LongEpisodeStatus (see the shared contract's doc comment on this feature) — the only requirement is that a script exists at all, since there is nothing to narrate before then. */
   private assertHasScript(episode: StoredEpisode): void { if (!Object.keys(episode.script).length) throw longEpisodeNarrationNotAllowed(); }

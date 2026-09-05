@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { storedSceneCount } from "../projects/stored-scene-count.js";
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
@@ -67,7 +68,7 @@ export class GeneratedImageLibraryService {
         const directory = path.join(storyRoot, episodeDirectoryName(episodeNumber));
         const stored = await readObject(path.join(directory, "project.json"));
         if (!stored) continue;
-        const sceneCount = Number.isInteger(stored.scene_count) ? stored.scene_count as number : 6;
+        const sceneCount = storedSceneCount(stored);
         const episodeTitle = typeof stored.title === "string" ? stored.title : `${episodeNumber}화`;
         for (const sceneNumber of sceneNumbersFor(sceneCount)) {
           const facts = await this.imageFacts(path.join(directory, "images", `scene${sceneNumber}.png`));

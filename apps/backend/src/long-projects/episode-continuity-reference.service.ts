@@ -1,4 +1,6 @@
 import * as fs from "node:fs/promises";
+import { DEFAULT_SCENE_COUNT } from "@ai-animation-studio/shared";
+import { storedSceneCount } from "../projects/stored-scene-count.js";
 import { assertEpisodeListed, readLongProjectJson } from "./long-project-json.js";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
@@ -25,12 +27,12 @@ export class EpisodeContinuityReferenceService {
   }
   /** The previous Episode's own scene_count (falls back to 6 for episodes stored before that field existed, same as episode-scripts.service.ts's parseStored) and whether its final scene's image is usable as a continuity reference. */
   private async previousReference(projectId: string, number: number): Promise<{ sceneCount: number; available: boolean; reason?: LongEpisodeContinuityUnavailableReason }> {
-    let sceneCount = 6;
+    let sceneCount = DEFAULT_SCENE_COUNT;
     try {
       await this.assertEpisode(projectId, number - 1);
       const files = this.files(projectId, number - 1); const project = await readLongProjectJson(files.project);
       if (!object(project)) return { sceneCount, available: false, reason: "unreadable" };
-      sceneCount = Number.isInteger(project.scene_count) ? (project.scene_count as number) : 6;
+      sceneCount = storedSceneCount(project);
       // Asked as "are there pictures at all" rather than by listing the states where there are. The list this
       // replaces named six states and stopped at videos_approved, so an Episode that had gone on to render and
       // complete — the most finished an Episode gets — was refused as a reference. Three of 캡틴D's Episodes sat

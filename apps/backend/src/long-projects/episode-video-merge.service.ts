@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { storedSceneCount } from "../projects/stored-scene-count.js";
 import { assertEpisodeListed, readLongProjectJson } from "./long-project-json.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -133,7 +134,7 @@ export class EpisodeVideoMergeService {
   /** Same path scheme as episode-narration.service.ts's narrationPath() — not shared to avoid a cross-service dependency, matching this file's existing "each service computes its own file paths" convention. */
   private narrationAudio(id: string, number: number, scene: SceneNumber): string { return path.join(this.files(id, number).episode, "narration", `scene${scene}.mp3`); }
   /** Falls back to 6, matching every Episode stored before scene_count existed (see episode-scripts.service.ts's parseStored). */
-  private sceneCount(episode: Episode): number { return Number.isInteger(episode.scene_count) ? episode.scene_count as number : 6; }
+  private sceneCount(episode: Episode): number { return storedSceneCount(episode); }
   /** From the contract, because this number is a price as much as a length — see clipDurationSecondsPerScene. */
   private clipDurationSeconds(episode: Episode): RunwayClipDurationSeconds { return clipDurationSecondsPerScene(Number(episode.duration_seconds), this.sceneCount(episode)); }
 

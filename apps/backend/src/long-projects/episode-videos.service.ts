@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { storedSceneCount } from "../projects/stored-scene-count.js";
 import { assertEpisodeListed, readLongProjectJson } from "./long-project-json.js";
 import { isBudgetLedgerUnreadable, RUNWAY_LEDGER_FILE, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import { persistEpisodeWarning } from "./episode-warnings.js";
@@ -103,7 +104,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
    */
   private async realVideo(file: string) { try { const bytes = await fs.readFile(file); return bytes.length > MP4.length && bytes.subarray(4, 8).toString("ascii") === "ftyp"; } catch { return false; } }
   /** Falls back to 6, matching every Episode stored before scene_count existed (see episode-scripts.service.ts's parseStored). */
-  private sceneCount(episode: Episode): number { return Number.isInteger(episode.scene_count) ? episode.scene_count as number : 6; }
+  private sceneCount(episode: Episode): number { return storedSceneCount(episode); }
   private scenes(episode: Episode): ObjectMap[] { const value = episode.script.scenes; const count = this.sceneCount(episode); if (!Array.isArray(value) || value.length !== count || value.some((item, index) => !object(item) || item.number !== index + 1 || MOTION_SCENE_FIELDS.some((key) => typeof item[key] !== "string" || !(item[key] as string).trim()))) throw longInvalidData(); return value; }
   /**
    * Runway's image-to-video generation only accepts a 5-second or 10-second duration per clip — so

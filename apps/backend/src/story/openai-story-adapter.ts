@@ -1,3 +1,4 @@
+import { DEFAULT_SCENE_COUNT } from "@ai-animation-studio/shared";
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError, classifyOpenAiHttpError } from "../providers/openai-common.js";
 import { assertRealNetworkCallAllowed } from "../providers/no-test-network.guard.js";
 import { validateStory, type StoredStory } from "./story-generation.service.js";
@@ -69,7 +70,7 @@ export async function callOpenAiStoryApi(
   const model = options.model ?? OPENAI_STORY_MODEL;
   const fetchImpl = options.fetchImpl ?? fetch;
   assertRealNetworkCallAllowed("OpenAI", fetchImpl);
-  const sceneCount = options.sceneCount ?? 6;
+  const sceneCount = options.sceneCount ?? DEFAULT_SCENE_COUNT;
 
   let response: Response;
   try {
