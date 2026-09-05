@@ -1,6 +1,6 @@
 import * as crypto from "node:crypto";
 import { isBudgetLedgerUnreadable, RUNWAY_LEDGER_FILE, spendUnrecordedWarning } from "../providers/budget-ledger.js";
-import { isPlaceholderClip, PLACEHOLDER_MP4 } from "./placeholder-clip.js";
+import { isUsableClip, PLACEHOLDER_MP4, wasPaidRun } from "./placeholder-clip.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
@@ -149,10 +149,9 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     // (see placeholder-clip.ts). Serving a 32-byte header to a `<video>` draws a black box that calls itself
     // the scene, which is the claim that let six stubbed clips be approved through a review screen. The local
     // fake path writes placeholders on purpose, so only a run that reached a provider is held to the test.
-    const paid = project.video_generation_records.some((item) => typeof item === "object" && item !== null && (item as { execution_mode?: unknown }).execution_mode === "runway");
+    const paid = wasPaidRun(project.video_generation_records);
     try {
-      const stat = await fs.stat(file);
-      if (!stat.isFile() || stat.size <= 0 || (paid && isPlaceholderClip(stat.size))) throw new Error("invalid");
+      if (!isUsableClip(await fs.stat(file), paid)) throw new Error("invalid");
     } catch {
       throw videoContentUnavailable();
     }
@@ -519,8 +518,9 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
   /** A real clip, not the placeholder standing in for one — the same distinction `content()` already makes. */
   private async realClip(projectId: string, scene: SceneNumber): Promise<boolean> {
     try {
-      const stat = await fs.stat(this.file(projectId, scene));
-      return stat.isFile() && stat.size > 0 && !isPlaceholderClip(stat.size);
+      // `true` unconditionally: what recovery is looking for is a clip somebody paid for, so the strict test
+      // is the only one that answers its question.
+      return isUsableClip(await fs.stat(this.file(projectId, scene)), true);
     } catch { return false; }
   }
 

@@ -1,5 +1,5 @@
 import * as crypto from "node:crypto";
-import { isPlaceholderClip } from "./placeholder-clip.js";
+import { isUsableClip, wasPaidRun } from "./placeholder-clip.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
@@ -15,6 +15,7 @@ import {
   type VideoLibraryLongProjectSummary,
   type VideoVersionSummary,
   FINAL_VIDEO_RELATIVE_PATH,
+  DEFAULT_SCENE_COUNT,
 } from "@ai-animation-studio/shared";
 
 import { photoCardFor, toApiProject } from "../projects/project.mapper.js";
@@ -70,7 +71,7 @@ function episodeUsedAudio(stored: Record<string, unknown>): Record<string, unkno
 async function validFile(file: string, paid = false): Promise<{ bytes: number; createdAt: string } | undefined> {
   try {
     const stat = await fs.stat(file);
-    if (!stat.isFile() || stat.size <= 0 || (paid && isPlaceholderClip(stat.size))) return undefined;
+    if (!isUsableClip(stat, paid)) return undefined;
     return { bytes: stat.size, createdAt: stat.mtime.toISOString() };
   } catch {
     return undefined;
@@ -228,8 +229,8 @@ export class VideoLibraryService {
     const stored = await storedObject(path.join(directory, "project.json"));
     if (!stored) return undefined;
     const recordList = await storedArray(path.join(directory, "video_generation_records.json"));
-    const paid = recordList.some((item) => typeof item === "object" && item !== null && (item as { execution_mode?: unknown }).execution_mode === "runway");
-    const sceneCount = Number.isInteger(stored.scene_count) ? stored.scene_count as number : 6;
+    const paid = wasPaidRun(recordList);
+    const sceneCount = Number.isInteger(stored.scene_count) ? stored.scene_count as number : DEFAULT_SCENE_COUNT;
     const scenes = await Promise.all(sceneNumbersFor(sceneCount).map((scene) => validFile(path.join(directory, "videos", `scene${scene}.mp4`), paid)));
     const videosReadyCount = scenes.filter(Boolean).length;
     const finalFile = await validFile(path.join(directory, "videos", "final", "instagram_reel.mp4"), paid);

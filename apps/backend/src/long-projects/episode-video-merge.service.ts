@@ -8,7 +8,7 @@ import { AUDIO_MODES, clipDurationSecondsPerScene, type RunwayClipDurationSecond
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "../videos/ffmpeg-merge.service.js";
 import { AudioLibraryService } from "../audio/audio-library.service.js";
-import { isPlaceholderClip } from "../videos/placeholder-clip.js";
+import { isUsableClip, wasPaidRun } from "../videos/placeholder-clip.js";
 import { FINAL_VIDEO_LOCK_KEY, ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { longAudioStartOutOfRange, longEpisodeFfmpegUnavailable, longEpisodeMergeBusy, longEpisodeMergeClipsInvalid, longEpisodeMergeFailed, longEpisodeMergeAlreadyCompleted, longEpisodeMergeNotAllowed, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, episodeProjectRelativePath, longStoryRoot } from "./long-project-paths.js";
@@ -157,8 +157,10 @@ export class EpisodeVideoMergeService {
     // It is the wrong test for a run that went to Runway: there a placeholder means the download was thrown
     // away, which is what six paid scenes looked like on disk while every earlier check read green — and
     // concatenating those produces a file that reaches the library calling itself the final video.
-    const paid = rawRecords.some((item) => (item as VideoRecord).execution_mode === "runway");
-    try { await Promise.all(clips.map(async (file) => { const { size } = await fs.stat(file); if (size <= 0 || (paid && isPlaceholderClip(size))) throw new Error("clip"); })); }
+    // The short project's wording of this, which guards the record's shape. This side wrote it as a bare cast,
+    // so one malformed entry threw a TypeError out of a merge instead of reading as "not a paid run".
+    const paid = wasPaidRun(rawRecords);
+    try { await Promise.all(clips.map(async (file) => { if (!isUsableClip(await fs.stat(file), paid)) throw new Error("clip"); })); }
     catch { throw longEpisodeMergeClipsInvalid(); }
     return clips;
   }
@@ -235,10 +237,10 @@ export class EpisodeVideoMergeService {
     const id = projectId.trim();
     await this.loadEpisode(id, number);
     const file = this.final(id, number);
-    let size: number;
-    try { const stat = await fs.stat(file); if (!stat.isFile()) throw longEpisodeMergeClipsInvalid(); size = stat.size; }
+    // `true`: a merged Episode is by definition the output of a run, and a header-sized file here means the
+    // clips that went into it were stubs.
+    try { if (!isUsableClip(await fs.stat(file), true)) throw longEpisodeMergeClipsInvalid(); }
     catch { throw longEpisodeMergeClipsInvalid(); }
-    if (size <= 0 || isPlaceholderClip(size)) throw longEpisodeMergeClipsInvalid();
     return { path: file };
   }
 

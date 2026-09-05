@@ -1,5 +1,5 @@
 import * as fs from "node:fs/promises";
-import { isPlaceholderClip } from "./placeholder-clip.js";
+import { isUsableClip, wasPaidRun } from "./placeholder-clip.js";
 import { PLACEHOLDER_ADAPTER } from "../narration/placeholder-narration.js";
 import { FINAL_VIDEO_LOCK_KEY, ProjectLockTimeoutError, withProjectLock } from "./project-lock.js";
 import * as path from "node:path";
@@ -176,10 +176,9 @@ export class LocalVideoMergeService {
     const file = this.final(project.project_id);
     // Same rule the merge itself applies to its inputs, now on the way back out. A merged file cannot be
     // smaller than the clips that went into it, so this size means placeholders were concatenated.
-    const paid = project.video_generation_records.some((item) => typeof item === "object" && item !== null && (item as { execution_mode?: unknown }).execution_mode === "runway");
+    const paid = wasPaidRun(project.video_generation_records);
     try {
-      const stat = await fs.stat(file);
-      if (!stat.isFile() || stat.size <= 0 || (paid && isPlaceholderClip(stat.size))) throw new Error("invalid");
+      if (!isUsableClip(await fs.stat(file), paid)) throw new Error("invalid");
     } catch {
       throw videoMergeContentUnavailable();
     }
@@ -233,8 +232,8 @@ export class LocalVideoMergeService {
     // for the local fake path, whose clips are placeholders by design, and wrong for a run that went to Runway,
     // where a placeholder means the download was lost. Only the paid case demands a real clip, so the
     // no-provider flow keeps working exactly as before.
-    const paid = project.video_generation_records.some((item) => typeof item === "object" && item !== null && (item as { execution_mode?: unknown }).execution_mode === "runway");
-    try { await Promise.all(clips.map(async (clip) => { const { size } = await fs.stat(clip); if (size <= 0 || (paid && isPlaceholderClip(size))) throw new Error("clip"); })); }
+    const paid = wasPaidRun(project.video_generation_records);
+    try { await Promise.all(clips.map(async (clip) => { if (!isUsableClip(await fs.stat(clip), paid)) throw new Error("clip"); })); }
     catch { throw videoMergeClipsInvalid(); }
     return clips;
   }
