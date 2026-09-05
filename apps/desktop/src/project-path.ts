@@ -1,8 +1,16 @@
 import * as path from "node:path";
 
-// Mirrors apps/backend/src/projects/project-id.ts's allow-list so a folder
-// resolved here always matches what the Backend itself would resolve.
-const SAFE_PROJECT_ID_PATTERN = /^[\p{L}\p{N}_-]+$/u;
+/**
+ * Mirrors apps/backend/src/projects/project-id.ts's allow-list so a folder resolved here always matches
+ * what the Backend itself would resolve.
+ *
+ * Exported for project-id-allowlist.test.ts, which reads the Backend's literal out of its source and
+ * compares the two. This app cannot import the Backend's copy — it has no dependency on the workspace and
+ * gaining one would change what the installer has to carry — so the mirror is checked instead of shared.
+ * Without that check the comment above is the only thing holding the two together, and the direction it
+ * fails in is a folder the Backend refuses to open being opened here.
+ */
+export const SAFE_PROJECT_ID_PATTERN = /^[\p{L}\p{N}_-]+$/u;
 
 function isSafeProjectId(projectId: string): boolean {
   return SAFE_PROJECT_ID_PATTERN.test(projectId);
