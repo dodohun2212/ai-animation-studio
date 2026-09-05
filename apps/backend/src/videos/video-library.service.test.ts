@@ -7,6 +7,7 @@ import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
+import { OpenAiBudget } from "../providers/openai-budget.js";
 import { RunwayBudget } from "../providers/runway-budget.js";
 import { VideoLibraryService } from "./video-library.service.js";
 import { PLACEHOLDER_MP4 } from "./placeholder-clip.js";
@@ -19,7 +20,8 @@ async function setup() {
   const projectsRoot = path.join(root, "projects");
   const projects = new LocalProjectRepository(projectsRoot);
   const budget = new RunwayBudget(root);
-  return { root, projectsRoot, projects, budget, service: new VideoLibraryService(projects, projectsRoot, budget) };
+  const openAiBudget = new OpenAiBudget(root);
+  return { root, projectsRoot, projects, budget, openAiBudget, service: new VideoLibraryService(projects, projectsRoot, budget, openAiBudget) };
 }
 
 async function createProjectWithVideos(projectsRoot: string, projects: LocalProjectRepository, id: string, options: { scenes?: number[]; finalVideo?: boolean; state?: WorkflowState } = {}) {
@@ -82,6 +84,38 @@ describe("VideoLibraryService.list", () => {
    * Paired: an ordinary project must not carry the mark, or a screen would drop the cover-frame choice for
    * every project in the library.
    */
+  /**
+   * The 누적 $ column reported one of the two ledgers.
+   *
+   * Runway pays for video; OpenAI pays for images, scripts, narration and outlines, and its ledger has carried
+   * the project id on every row all along. Measured on the real files when Cowork found it: the library showed
+   * $8.00 against $12.60 actually spent, so more than a third of the bill was invisible on the screen whose
+   * whole job is to say what a project cost.
+   */
+  it("adds up both ledgers, because images and scripts are money too", async () => {
+    const { projectsRoot, projects, budget, openAiBudget, service } = await setup();
+    await createProjectWithVideos(projectsRoot, projects, "both_ledgers", { scenes: [1, 2], finalVideo: true });
+    await budget.record("both_ledgers", 1, "video", true, 0.25);
+    await budget.record("both_ledgers", 2, "video", true, 0.25);
+    await openAiBudget.record("both_ledgers", "image", true, 0.4);
+    await openAiBudget.record("both_ledgers", "script", true, 0.05);
+
+    const row = (await service.list()).projects.find((item) => item.projectId === "both_ledgers");
+
+    expect(row?.totalActualCostUsd, "video alone is $0.50; the bill is $0.95").toBeCloseTo(0.95);
+  });
+
+  /** A failed call that still charged is money spent, so it counts — the ledger records the amount, not the outcome. */
+  it("counts an OpenAI call that failed after being charged", async () => {
+    const { projectsRoot, projects, openAiBudget, service } = await setup();
+    await createProjectWithVideos(projectsRoot, projects, "charged_failure", { scenes: [1], finalVideo: true });
+    await openAiBudget.record("charged_failure", "image", false, 0.2);
+
+    const row = (await service.list()).projects.find((item) => item.projectId === "charged_failure");
+
+    expect(row?.totalActualCostUsd).toBeCloseTo(0.2);
+  });
+
   it("marks a photo card on the row, and leaves an ordinary project unmarked", async () => {
     const { projectsRoot, projects, service } = await setup();
     await createProjectWithVideos(projectsRoot, projects, "card", { scenes: [1] });

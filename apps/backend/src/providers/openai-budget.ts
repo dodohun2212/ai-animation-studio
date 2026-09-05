@@ -84,6 +84,29 @@ export class OpenAiBudget {
     }
   }
 
+  /**
+   * What this project has actually cost in OpenAI calls — images, scripts, narration, outlines.
+   *
+   * The video library had only RunwayBudget, so its 누적 $ column reported video spend as if it were the
+   * whole bill. Measured on the real ledgers when Cowork found it (Round 532): $8.00 of Runway shown against
+   * $12.60 actually spent, because $4.60 of OpenAI work sat in the other file with the project id already on
+   * every row. Nothing needed recording; nothing was reading it.
+   *
+   * Display only and after the fact, the same posture as RunwayBudget.costsByScene: nothing is bought on the
+   * strength of this number, so an unreadable ledger costs the column rather than the screen. `spentThisMonth`
+   * deliberately does the opposite — that one decides whether to spend.
+   *
+   * No scene dimension, because this ledger has none: an Episode's images and scripts are recorded under the
+   * parent long project, not under `<id>:episodeN`. So an Episode row correctly adds nothing here, and the
+   * parent's own spend has no row of its own to appear on — see Round 532 ②, a display question rather than
+   * a missing number.
+   */
+  async costsByProject(projectId: string): Promise<number> {
+    let records: UsageRecord[];
+    try { records = await this.load(); } catch (error) { if (error instanceof OpenAiBudgetLedgerUnreadableError) return 0; throw error; }
+    return records.filter((record) => record.project_id === projectId).reduce((sum, record) => sum + record.actual_cost_usd, 0);
+  }
+
   async record(projectId: string, apiType: string, succeeded: boolean, estimatedCostUsd: number, now = new Date()): Promise<void> {
     const records = await this.load();
     records.push({

@@ -19,6 +19,7 @@ import { photoCardFor, toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
+import { OpenAiBudget } from "../providers/openai-budget.js";
 import { RunwayBudget } from "../providers/runway-budget.js";
 import { withProjectLock } from "./project-lock.js";
 import {
@@ -102,6 +103,8 @@ export class VideoLibraryService {
     private readonly projects: LocalProjectRepository,
     private readonly projectsRoot: string,
     private readonly budget?: RunwayBudget,
+    /** The other half of the bill — see the comment where this is summed. Optional for the same reason `budget` is: a caller that cannot read a ledger still gets a library. */
+    private readonly openAiBudget?: OpenAiBudget,
   ) {}
 
   private projectDirectory(projectId: string): string {
@@ -245,8 +248,13 @@ export class VideoLibraryService {
       const videosReadyCount = sceneFiles.filter(Boolean).length;
       const finalFile = await validFile(this.currentFile(project.project_id, { kind: "final" }), paid);
       if (videosReadyCount === 0 && !finalFile) continue; // Never reached video generation — not a library entry.
+      // Both ledgers, not one. This column read only RunwayBudget, so it reported a project's video spend as
+      // the whole bill — $8.00 shown against $12.60 actually spent across the two files, with the project id
+      // already on every OpenAI row (Cowork Round 532). Images and scripts are money too.
       const costsByScene = this.budget ? await this.budget.costsByScene(project.project_id) : {};
-      const totalActualCostUsd = Object.values(costsByScene).reduce((sum: number, value) => sum + (value ?? 0), 0);
+      const videoCostUsd = Object.values(costsByScene).reduce((sum: number, value) => sum + (value ?? 0), 0);
+      const openAiCostUsd = this.openAiBudget ? await this.openAiBudget.costsByProject(project.project_id) : 0;
+      const totalActualCostUsd = videoCostUsd + openAiCostUsd;
       rows.push({
         projectId: project.project_id,
         topic: project.topic,
