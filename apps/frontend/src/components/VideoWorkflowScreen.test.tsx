@@ -75,6 +75,29 @@ describe("VideoWorkflowScreen", () => {
    *
    * The video badges had no test of their own before this, so neither sentence was pinned anywhere.
    */
+  /**
+   * The same load-bearing line as the image screen's: the approve response carries no staleness — only the review
+   * GET does — so this screen keeps what it already had. `staleness: response.staleness` compiles, is shorter,
+   * and quietly tells the person nothing else is behind their script.
+   */
+  it("keeps the other scenes' stale badges after approving one", async () => {
+    const review = { ...reviewResponse(sixReviews()), staleness: sceneStaleness({ videoStale: [3] }) };
+    const approved = reviewResponse(sixReviews([2]));
+    renderScreen(vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") return jsonResponse(200, approved);
+      return String(url).endsWith("/review")
+        ? jsonResponse(200, review)
+        : jsonResponse(200, makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] }));
+    }));
+
+    expect(await screen.findByTestId("video-review-stale-3")).toBeTruthy();
+    const sceneTwo = await screen.findByTestId("video-review-2");
+    fireEvent.click(within(sceneTwo).getByRole("button", { name: "이 영상으로 확정" }));
+
+    await waitFor(() => expect(screen.getByTestId("video-review-2")).toHaveAttribute("data-status", "approved"));
+    expect(screen.queryByTestId("video-review-stale-3"), "scene 3 is still behind its script").toBeTruthy();
+  });
+
   it("separates a clip behind its script from one behind the clip length", async () => {
     const review = { ...reviewResponse(sixReviews()), staleness: sceneStaleness({ videoStale: [1], videoFormatStale: [2] }) };
     renderScreen(vi.fn().mockImplementation(async (url: string) =>

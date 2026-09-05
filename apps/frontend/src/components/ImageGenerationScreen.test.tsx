@@ -445,6 +445,32 @@ describe("ImageGenerationScreen", () => {
     expect(screen.queryByTestId("not-allowed")).toBeNull();
   });
 
+  /**
+   * Approving one scene must not take the other scenes' badges away.
+   *
+   * The approve response does not carry staleness — only the review GETs do, which is what that field's doc
+   * comment says. So this screen deliberately keeps the staleness it already had instead of reading it off the
+   * response. That line is load-bearing and looks like something to simplify: `staleness: response.staleness`
+   * compiles, is shorter, and silently tells the person that nothing else is behind their script.
+   */
+  it("keeps the other scenes' stale badges after approving one", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews(), staleness: sceneStaleness({ imageStale: [3] }) }))
+      // The approve response, exactly as the server sends it: reviews and project, no staleness.
+      .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews([2]) }));
+    renderScreen(fetchMock);
+
+    expect(await screen.findByTestId("review-stale-3")).toBeTruthy();
+    const sceneTwoRow = await screen.findByTestId("review-2");
+    fireEvent.click(sceneTwoRow.querySelector("button")!);
+
+    await waitFor(() => expect(screen.getByTestId("review-2")).toHaveAttribute("data-status", "approved"));
+    expect(screen.queryByTestId("review-stale-3"), "scene 3 is still behind its script; approving scene 2 did not change that").toBeTruthy();
+  });
+
   it("sends an explicit POST /images/review/:sceneNumber/approve for a single scene and preserves the others as pending", async () => {
     const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
     const fetchMock = vi
