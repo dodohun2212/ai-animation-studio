@@ -15,6 +15,16 @@ export type SceneNumber = number;
 export const MIN_SCENE_COUNT = 2;
 export const MAX_SCENE_COUNT = 12;
 
+/**
+ * How many scenes a record that does not say has.
+ *
+ * Both sides of the app fall back to it — a short project whose stored count fails validation, and an
+ * Episode written before `scene_count` existed — and each had written the number down for itself. It sits
+ * beside the bounds it has to stay inside, because a default outside them is a project that cannot be
+ * opened, and two copies is one edit away from only one of them moving.
+ */
+export const DEFAULT_SCENE_COUNT = 6;
+
 /** The canonical 1..count scene number sequence for a project with this many scenes. */
 export function sceneNumbersFor(sceneCount: number): SceneNumber[] {
   return Array.from({ length: sceneCount }, (_, index) => index + 1);

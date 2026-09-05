@@ -1,10 +1,9 @@
-import { MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, type ShortProjectSettings, type ShortProjectStyleNotes } from "@ai-animation-studio/shared";
+import { DEFAULT_SCENE_COUNT, MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, type ShortProjectSettings, type ShortProjectStyleNotes } from "@ai-animation-studio/shared";
 
 import { invalidRequest } from "./project-api.error.js";
 import { photoCardFor } from "./project.mapper.js";
 import type { StoredProject } from "./project-storage.schema.js";
 
-const DEFAULT_SCENE_COUNT = 6;
 const DEFAULT_CLIP_DURATION_SECONDS = 5;
 
 function isValidSceneCount(value: unknown, minimum: number = MIN_SCENE_COUNT): value is number {

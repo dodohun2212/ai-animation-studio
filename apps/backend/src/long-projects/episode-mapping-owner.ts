@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-import { LONG_EPISODE_STATUSES, type LongEpisodeStatus } from "@ai-animation-studio/shared";
+import { DEFAULT_SCENE_COUNT, LONG_EPISODE_STATUSES, type LongEpisodeStatus } from "@ai-animation-studio/shared";
 
 import type { MappingOwner, MappingOwners } from "../mappings/mapping-owner.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
@@ -47,8 +47,6 @@ export interface EpisodeMappingKey {
   readonly episodeNumber: number;
 }
 
-/** Matches every Episode stored before `scene_count` existed, the same fallback the rest of this directory uses. */
-const DEFAULT_SCENE_COUNT = 6;
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
