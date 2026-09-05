@@ -1,4 +1,4 @@
-import { RUNWAY_PROMPT_MAX_LENGTH, type VideoModel } from "@ai-animation-studio/shared";
+import { RUNWAY_PROMPT_MAX_LENGTH, type SceneFailureRemedy, type VideoModel } from "@ai-animation-studio/shared";
 import { assertRealNetworkCallAllowed } from "../providers/no-test-network.guard.js";
 import { utf16Length } from "./video-preview.service.js";
 
@@ -58,8 +58,36 @@ export interface RunwayTask {
   status: RunwayTaskStatus;
   outputUrls: string[];
   failure: string;
+  /**
+   * The provider's failure code on its own, beside the sentence it used to be melted into.
+   *
+   * `failure` reads "An unexpected error occurred. (Runway code: INTERNAL.BAD_OUTPUT.CODE01)", and the client
+   * looked that entire string up in a table of known codes, missed, and fell back to "잠시 후 다시 시도해
+   * 주세요." That advice was wrong for this code and was charged for twice on 2026-09-05. A code can be
+   * reasoned about; a sentence with a code inside it cannot.
+   */
+  failureCode: string;
   progress: number | null;
   terminal: boolean;
+}
+
+/**
+ * What the provider's own documentation says to do about a code, and whether a failure is still charged.
+ *
+ * From docs.dev.runwayml.com/errors/task-failures. The distinction that matters is not the documented
+ * `retryable` flag: BAD_OUTPUT is listed as retryable and fails forever until the input changes — the input is
+ * the cause, and the documented first causes are "text or logos on the input media" and "the prompt asks for
+ * text". Reporting that as "retry" is what let the same scene be bought twice for nothing.
+ *
+ * An unrecognised code is `retry` and billed: the honest default is that we do not know it is safe to press
+ * again, but we do know the provider charges for failures.
+ */
+export function runwayFailureOutcome(failureCode: string): { remedy: SceneFailureRemedy; billedOnFailure: boolean } {
+  const code = failureCode.toUpperCase();
+  if (code.startsWith("SAFETY.INPUT")) return { remedy: "not_retryable", billedOnFailure: false };
+  if (code.startsWith("SAFETY.OUTPUT")) return { remedy: "not_retryable", billedOnFailure: true };
+  if (code.startsWith("INTERNAL.BAD_OUTPUT") || code.startsWith("ASSET.INVALID")) return { remedy: "change_input", billedOnFailure: true };
+  return { remedy: "retry", billedOnFailure: true };
 }
 
 const TERMINAL_STATUSES = new Set<RunwayTaskStatus>(["SUCCEEDED", "FAILED", "CANCELLED"]);
@@ -200,7 +228,7 @@ export async function getRunwayTask(apiSecret: string, taskId: string, options: 
     ? (failureMessage ? `${failureMessage} (Runway code: ${failureCode})` : `Runway code: ${failureCode}`)
     : failureMessage;
   const progress = typeof body.progress === "number" ? body.progress : null;
-  return { taskId, status, outputUrls, failure, progress, terminal: TERMINAL_STATUSES.has(status) };
+  return { taskId, status, outputUrls, failure, failureCode, progress, terminal: TERMINAL_STATUSES.has(status) };
 }
 
 /** Download an ephemeral Runway output URL. This is a signed URL — it needs no Runway auth header. */

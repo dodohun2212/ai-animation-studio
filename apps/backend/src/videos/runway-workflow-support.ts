@@ -74,7 +74,15 @@ export type RunwayAdvanceResult =
   | { kind: "succeeded"; sceneNumber: SceneNumber; bytes: Buffer; spendUnrecorded?: true }
   /** Runway explicitly reported FAILED/CANCELLED, the task exceeded RUNWAY_TASK_TIMEOUT_SECONDS, or the succeeded
    *  response had no usable output — the only cases that should ever stop the pipeline at this scene. */
-  | { kind: "failed"; sceneNumber: SceneNumber; error: string; spendUnrecorded?: true };
+  | { kind: "failed"; sceneNumber: SceneNumber; error: string;
+      /**
+       * The provider's code, carried beside the sentence rather than inside it.
+       *
+       * Only the provider's own FAILED/CANCELLED report has one; a timeout or an empty output is this app's
+       * judgement and has no code to give. Absent means "we decided this failed", which is a different fact
+       * from "they told us why".
+       */
+      failureCode?: string; spendUnrecorded?: true };
 
 /**
  * This scene was paid for and the ledger does not know it — the outcome above still stands.
@@ -177,7 +185,7 @@ export async function advanceRunwayScene(
     }
     if (task.status === "FAILED" || task.status === "CANCELLED") {
       const missed = await spendUnrecorded(deps, running.sceneNumber, false);
-      return { kind: "failed", sceneNumber: running.sceneNumber, error: task.failure || task.status, ...unrecorded(missed) };
+      return { kind: "failed", sceneNumber: running.sceneNumber, error: task.failure || task.status, ...(task.failureCode ? { failureCode: task.failureCode } : {}), ...unrecorded(missed) };
     }
     return { kind: "still-running", sceneNumber: running.sceneNumber };
   }

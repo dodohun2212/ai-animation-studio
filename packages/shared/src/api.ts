@@ -688,6 +688,36 @@ export interface StartLongEpisodeVideoGenerationResponse {
    */
   paidProvider: boolean;
 }
+/**
+ * What to do about a scene that failed, and whether it was charged for anyway.
+ *
+ * A failure used to reach the screen as one sentence with the provider's code melted into it — "An unexpected
+ * error occurred. (Runway code: INTERNAL.BAD_OUTPUT.CODE01)" — and the client looked that whole string up in a
+ * table of known codes, missed, and fell back to "영상 생성에 실패했습니다. 잠시 후 다시 시도해 주세요."
+ *
+ * 🔴 On 2026-09-05 that advice was wrong and cost money. The provider's own documentation lists
+ * INTERNAL.BAD_OUTPUT as "the input had text or logos on it, or the prompt asked for text" — waiting changes
+ * nothing, and every press is charged. Captain D pressed it, because the screen told him to.
+ *
+ * `remedy` is three values rather than a boolean because the provider's own `retryable: yes` means "this may
+ * have been transient", not "send the same input again". BAD_OUTPUT is retryable and permanently fails until
+ * the input changes. Folding those two into one word is what produced the $0.25 nobody got anything for.
+ *
+ * `billedOnFailure` is required, not optional. It is the fact a person needs before pressing, and leaving it
+ * absent is what "we did not think about it" looks like from the screen.
+ */
+export const SCENE_FAILURE_REMEDIES = ["retry", "change_input", "not_retryable"] as const;
+export type SceneFailureRemedy = (typeof SCENE_FAILURE_REMEDIES)[number];
+
+export interface SceneFailure {
+  /** This app's own category, unchanged — still what a screen picks its sentence from. */
+  category: string;
+  /** The provider's code, alone. Its free-text message is deliberately not carried: a code can be reasoned about, a sentence cannot. */
+  providerCode?: string;
+  remedy: SceneFailureRemedy;
+  billedOnFailure: boolean;
+}
+
 export interface LongEpisodeVideoProgress {
   /** Same meaning and rule as GenerationProgressResponse.paidProvider — always present, never inferred from a missing cost line. */
   paidProvider: boolean;
@@ -701,6 +731,8 @@ export interface LongEpisodeVideoProgress {
   episode: LongEpisodeDetail;
   /** Same meaning and scope as GenerationProgressResponse.sceneErrors (see that field's doc comment). */
   sceneErrors?: Record<SceneNumber, string>;
+  /** The same failures, with the provider's code, what to do about it, and whether it was charged — see SceneFailure. `sceneErrors` stays until every screen reads this instead. */
+  sceneFailures?: Record<SceneNumber, SceneFailure>;
   /** Same meaning and scope as GenerationProgressResponse.retryEstimate, `pendingSceneCount` included (see that field's doc comment). */
   retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview; pendingSceneCount: number };
 }
@@ -1860,6 +1892,8 @@ export interface GenerationProgressResponse {
    * fails.
    */
   sceneErrors?: Record<SceneNumber, string>;
+  /** The same failures, with the provider's code, what to do about it, and whether it was charged — see SceneFailure. `sceneErrors` stays until every screen reads this instead. */
+  sceneFailures?: Record<SceneNumber, SceneFailure>;
   /**
    * Local guard information for a paid retry/regenerate action on this job — the same read-only, never-reserving
    * principle as {@link GetVideoPromptPreviewResponse.budget}. `perSceneCostUsd` is the cost of retrying exactly

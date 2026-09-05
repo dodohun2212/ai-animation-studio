@@ -32,6 +32,7 @@ import { downloadRunwayOutput, getRunwayTask, RunwayAdapterError } from "./runwa
 import { ProjectLockTimeoutError, withProjectLock } from "./project-lock.js";
 import { LEGACY_VIDEO_JOB_ID } from "./legacy-job.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
+import { sceneFailureFor } from "./scene-failure.js";
 import {
   invalidVideoWorkflowRequest,
   videoContentUnavailable,
@@ -189,6 +190,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     const failedRecords = records.filter((record) => record.status === "failed");
     const failedSceneNumbers = failedRecords.map((record) => record.scene_number);
     const sceneErrors = Object.fromEntries(failedRecords.filter((record) => record.error).map((record) => [record.scene_number, record.error!]));
+    const sceneFailures = Object.fromEntries(failedRecords.filter((record) => record.error).map((record) => [record.scene_number, sceneFailureFor(record.error!, typeof record.failure_code === "string" ? record.failure_code : undefined)]));
     // "submitting" (claimed, POST not yet resolved) reads to the user exactly like "running" — there is nothing
     // for them to act on differently while either is in flight.
     const current = records.find((record) => record.status === "running" || record.status === "submitting")?.scene_number;
@@ -219,6 +221,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       jobId, status, ...(current ? { currentSceneNumber: current } : {}), completedSceneNumbers, failedSceneNumbers,
       sceneNumbers: records.map((record) => record.scene_number),
       ...(Object.keys(sceneErrors).length > 0 ? { sceneErrors } : {}),
+      ...(Object.keys(sceneFailures).length > 0 ? { sceneFailures } : {}),
       ...(retryEstimate ? { retryEstimate } : {}),
     };
   }
@@ -388,7 +391,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       return updated;
     }
     if (result.kind === "failed") {
-      const updated = this.replaceRecords(project, [{ ...record, status: "failed", error: result.error }]);
+      const updated = this.replaceRecords(project, [{ ...record, status: "failed", error: result.error, ...(result.failureCode ? { failure_code: result.failureCode } : {}) }]);
       if (result.spendUnrecorded) updated.warnings = [...updated.warnings, runwaySpendUnrecordedWarning(result.sceneNumber)];
       updated.updated_at = nowIso;
       await this.projects.save(updated);

@@ -37,6 +37,11 @@ const ALLOWED = new Map<string, string>([
   // The mapper's own comment names a consumer for script, motionPrompt and generatedImagePath. It names none
   // for this one, and there is none: screens play a clip through its content URL, never through a path.
   ["generatedVideoPath", "screens play clips by content URL; no screen wants a path"],
+  // Handed over mid-flight on 2026-09-05 (Round 555): the server fills it, and the screen half — the wording
+  // and the buttons that follow from `remedy` — is Cowork's, on a file they were editing at that moment. The
+  // exception is the handover: the moment a screen reads it, the check below fails and this line has to go.
+  ["sceneFailures", "server half landed first; the screen half is Cowork's and is next"],
+  ["providerCode", "same handover — SceneFailure.providerCode is what the screen half will read the code from"],
 ]);
 
 async function collectSourceFiles(directory: string): Promise<string[]> {

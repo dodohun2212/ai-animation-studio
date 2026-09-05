@@ -53,7 +53,9 @@ const BILLED = new Set([
  * preflight here would be worse than useless, because it would refuse to collect work the month has already
  * been charged for whenever the budget happened to be spent (docs/06_DECISIONS.md D-037).
  */
-const NOT_BILLED = new Set(["getRunwayTask", "downloadRunwayOutput"]);
+//  reads a code this app already has and returns what to do about it — no request, no
+// money. Listed rather than exempted so a later export that does spend cannot slip in beside it.
+const NOT_BILLED = new Set(["getRunwayTask", "downloadRunwayOutput", "runwayFailureOutcome"]);
 
 /**
  * The file without its whole-line comments.

@@ -21,6 +21,7 @@ import { toApiEpisodeScript } from "./episode-script-format.js";
 import { toEpisodeDetail } from "./episode-detail.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 import { RUNWAY_MODEL } from "../videos/runway-video-adapter.js";
+import { sceneFailureFor } from "../videos/scene-failure.js";
 
 /** Matches video-preview.service.ts's SCENE_FIELDS (minus "number", "narration"): the fields promptFor() reads. */
 const MOTION_SCENE_FIELDS = ["description", "visual_action", "start_motion", "main_motion", "end_motion", "shot_size", "camera_angle", "composition", "lens_feel", "focus_subject", "camera_motion", "environment_motion", "motion_speed", "motion_intensity", "expression_change", "continuity_hint"] as const;
@@ -30,7 +31,7 @@ const statuses: readonly LongEpisodeStatus[] = LONG_EPISODE_STATUSES;
 type ObjectMap = { [key: string]: unknown };
 type Episode = ObjectMap & { number: number; state: LongEpisodeStatus; approved: boolean; script: { scenes?: unknown }; script_revision: number; updated_at: string; duration_seconds: number; scene_count?: number };
 /** `prompt` is what was actually sent to the provider — a submission has to be reproducible from it. `base_prompt` is the plain scene prompt, present only when a one-off regeneration instruction made the two differ, and it is what staleness compares against. */
-type VideoRecord = { scene_number: SceneNumber; job_id: string; user_request_id: string; confirmation_id: string; input_hash: string; prompt: string; base_prompt?: string; status: "created" | "running" | "succeeded" | "interrupted" | "failed"; execution_mode: "local_fake_no_provider" | "runway"; completed_at?: string; runway_task_id?: string; runway_submitted_at?: string; runway_last_checked_at?: string; error?: string };
+type VideoRecord = { scene_number: SceneNumber; job_id: string; user_request_id: string; confirmation_id: string; input_hash: string; prompt: string; base_prompt?: string; status: "created" | "running" | "succeeded" | "interrupted" | "failed"; execution_mode: "local_fake_no_provider" | "runway"; completed_at?: string; runway_task_id?: string; runway_submitted_at?: string; runway_last_checked_at?: string; error?: string; failure_code?: string };
 type Record = VideoRecord;
 type Review = { scene_number: SceneNumber; status: "pending" | "approved"; updated_at: string };
 const object = (value: unknown): value is ObjectMap => Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -146,7 +147,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
   // between them used to answer "succeeded" while a review was still refused. Both screens open their
   // review on exactly this word, so it has to mean the thing they use it for. Still finishing reads as
   // running, which is what it is.
-  private async progressFor(episode: Episode, job: string, records: VideoRecord[]): Promise<LongEpisodeVideoProgress> { const done = records.filter((item) => item.status === "succeeded").map((item) => item.scene_number); const failedRecords = records.filter((item) => item.status === "failed"); const failed = failedRecords.map((item) => item.scene_number); const sceneErrors = Object.fromEntries(failedRecords.filter((item) => item.error).map((item) => [item.scene_number, item.error!])); const running = records.find((item) => item.status === "running")?.scene_number; const perSceneCostUsd = videoSceneEstimatedCostUsd(this.durationSecondsPerScene(episode)); const budget = records[0]?.execution_mode === "runway" ? await this.budgetPreview(perSceneCostUsd) : undefined; return { paidProvider: records[0]?.execution_mode === "runway", jobId: job, status: episode.state === "interrupted" ? "interrupted" : failed.length > 0 ? "failed" : done.length === records.length && episode.state !== "videos_generating" ? "succeeded" : running || done.length === records.length ? "running" : "created", ...(running ? { currentSceneNumber: running } : {}), completedSceneNumbers: done, failedSceneNumbers: failed, sceneNumbers: records.map((item) => item.scene_number), episode: this.detail(episode), ...(Object.keys(sceneErrors).length > 0 ? { sceneErrors } : {}), ...(budget ? { retryEstimate: { perSceneCostUsd, budget, pendingSceneCount: records.filter((item) => item.status !== "succeeded").length } } : {}) }; }
+  private async progressFor(episode: Episode, job: string, records: VideoRecord[]): Promise<LongEpisodeVideoProgress> { const done = records.filter((item) => item.status === "succeeded").map((item) => item.scene_number); const failedRecords = records.filter((item) => item.status === "failed"); const failed = failedRecords.map((item) => item.scene_number); const sceneErrors = Object.fromEntries(failedRecords.filter((item) => item.error).map((item) => [item.scene_number, item.error!])); const sceneFailures = Object.fromEntries(failedRecords.filter((item) => item.error).map((item) => [item.scene_number, sceneFailureFor(item.error!, item.failure_code)])); const running = records.find((item) => item.status === "running")?.scene_number; const perSceneCostUsd = videoSceneEstimatedCostUsd(this.durationSecondsPerScene(episode)); const budget = records[0]?.execution_mode === "runway" ? await this.budgetPreview(perSceneCostUsd) : undefined; return { paidProvider: records[0]?.execution_mode === "runway", jobId: job, status: episode.state === "interrupted" ? "interrupted" : failed.length > 0 ? "failed" : done.length === records.length && episode.state !== "videos_generating" ? "succeeded" : running || done.length === records.length ? "running" : "created", ...(running ? { currentSceneNumber: running } : {}), completedSceneNumbers: done, failedSceneNumbers: failed, sceneNumbers: records.map((item) => item.scene_number), episode: this.detail(episode), ...(Object.keys(sceneErrors).length > 0 ? { sceneErrors } : {}), ...(Object.keys(sceneFailures).length > 0 ? { sceneFailures } : {}), ...(budget ? { retryEstimate: { perSceneCostUsd, budget, pendingSceneCount: records.filter((item) => item.status !== "succeeded").length } } : {}) }; }
   /**
    * Writes one scene's video. `bytes` is what Runway sent; the placeholder is only for the local fake path.
    *
@@ -262,7 +263,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
       return records;
     }
     if (result.kind === "failed") {
-      record.status = "failed"; record.error = result.error;
+      record.status = "failed"; record.error = result.error; if (result.failureCode) record.failure_code = result.failureCode;
       await this.saveRecords(id, number, records);
       await this.noteUnrecordedSpend(id, number, result);
       this.clearTimer(jobKey);
