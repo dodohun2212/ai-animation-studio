@@ -69,6 +69,12 @@ const MONEY_GUARDS: readonly { title: string; why: string }[] = [
     why: "the same shape one level up — a finished video with no address left anywhere in the app",
   },
   {
+    // The only control here whose failure leaves no trace at all: no project record, no ledger row, just a
+    // charge on the provider's side. D-016 is four of those, about a dollar, from before this guard existed.
+    title: "throws on a plain fetch, and names the provider so the message says what nearly went out",
+    why: "a test process reaching the real API with the key on disk is how money left with nothing to read afterwards",
+  },
+  {
     // One title, two suites: the short project's recovery and the Episode's. The entry above covers the scenes
     // whose records say succeeded; this one covers the scenes whose records gave up while the paid task was
     // still running, which is where the second charge actually came from.
