@@ -1,4 +1,4 @@
-import { DEFAULT_VIDEO_MODEL, RUNWAY_PROMPT_MAX_LENGTH, VIDEO_MODELS, type SceneFailureRemedy, type VideoModel } from "@ai-animation-studio/shared";
+import { DEFAULT_VIDEO_MODEL, NO_LEGIBLE_TEXT_VIDEO_RULE, RUNWAY_PROMPT_MAX_LENGTH, VIDEO_MODELS, type SceneFailureRemedy, type VideoModel } from "@ai-animation-studio/shared";
 import { assertRealNetworkCallAllowed } from "../providers/no-test-network.guard.js";
 import { utf16Length } from "./video-preview.service.js";
 
@@ -203,8 +203,14 @@ export async function createRunwayImageToVideoTask(
   prompt: string,
   options: RetryOptions & { model?: string; ratio?: string; durationSeconds?: number } = {},
 ): Promise<{ taskId: string }> {
-  const text = prompt.trim();
-  if (!text) throw new RunwayAdapterError("invalid_request", "Runway 프롬프트가 비어 있습니다.");
+  // Appended here rather than at either caller: this is the one door to Runway, both pipelines come through it,
+  // and a third caller cannot forget it. The prompt a person confirmed is what gets recorded; this line is only
+  // ever sent — see NO_LEGIBLE_TEXT_VIDEO_RULE for the four live scenes that ask Runway for lettering, and for
+  // why recording it instead would mark all 43 recorded prompts stale.
+  const authored = prompt.trim();
+  if (!authored) throw new RunwayAdapterError("invalid_request", "Runway 프롬프트가 비어 있습니다.");
+  const text = `${authored}
+${NO_LEGIBLE_TEXT_VIDEO_RULE}`;
   if (utf16Length(text) > RUNWAY_PROMPT_MAX_LENGTH) throw new RunwayAdapterError("invalid_request", `Runway 프롬프트가 ${RUNWAY_PROMPT_MAX_LENGTH} UTF-16 코드 유닛을 초과했습니다.`);
   const response = await requestWithRetry(`${RUNWAY_BASE_URL}/v1/image_to_video`, {
     method: "POST",

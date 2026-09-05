@@ -1,4 +1,5 @@
 import type { GetVideoPromptPreviewResponse, StartVideoGenerationResponse, VideoPromptPreview } from "@ai-animation-studio/shared";
+import { RUNWAY_PROMPT_AUTHORING_LIMIT } from "@ai-animation-studio/shared";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -24,6 +25,9 @@ function renderScreen(fetchMock: ReturnType<typeof vi.fn>) {
   vi.stubGlobal("fetch", fetchMock);
   return render(<VideoPromptPreviewScreen projectId="sample_project" onBack={() => {}} />);
 }
+
+/** The room an author actually has: the server appends a no-legible-text rule to every prompt on its way out. */
+const LIMIT = RUNWAY_PROMPT_AUTHORING_LIMIT;
 
 describe("VideoPromptPreviewScreen", () => {
   afterEach(() => {
@@ -167,39 +171,39 @@ describe("VideoPromptPreviewScreen", () => {
     await screen.findByTestId("preview-list");
     const textarea = screen.getByLabelText("Runway 프롬프트", { selector: "#prompt-1" }) as HTMLTextAreaElement;
     const baseline = "Scene 1 prompt".length;
-    expect(screen.getByTestId("prompt-length-1").textContent).toBe(`${baseline} / 1000`);
+    expect(screen.getByTestId("prompt-length-1").textContent).toBe(`${baseline} / ${LIMIT}`);
 
     fireEvent.change(textarea, { target: { value: "Scene 1 prompt😀" } });
 
     // "😀" is a surrogate pair — two UTF-16 code units for one visible emoji.
-    expect(screen.getByTestId("prompt-length-1").textContent).toBe(`${baseline + 2} / 1000`);
+    expect(screen.getByTestId("prompt-length-1").textContent).toBe(`${baseline + 2} / ${LIMIT}`);
     expect(screen.queryByTestId("prompt-limit-error-1")).toBeNull();
   });
 
-  it("flags a scene prompt that exceeds the 1000 UTF-16 code-unit limit", async () => {
+  it("flags a scene prompt that exceeds the authoring limit in UTF-16 code units", async () => {
     const response: GetVideoPromptPreviewResponse = { previews: makePreviews() };
     renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, response)));
 
     await screen.findByTestId("preview-list");
     const textarea = screen.getByLabelText("Runway 프롬프트", { selector: "#prompt-1" }) as HTMLTextAreaElement;
-    const overLong = "a".repeat(1001);
+    const overLong = "a".repeat(LIMIT + 1);
     fireEvent.change(textarea, { target: { value: overLong } });
 
-    expect(screen.getByTestId("prompt-length-1").textContent).toBe("1001 / 1000");
+    expect(screen.getByTestId("prompt-length-1").textContent).toBe(`${LIMIT + 1} / ${LIMIT}`);
     const alert = screen.getByTestId("prompt-limit-error-1");
     expect(alert).toBeTruthy();
-    expect(alert.textContent).toBe("프롬프트가 최대 글자 수(1000자)를 초과했습니다.");
+    expect(alert.textContent).toBe(`프롬프트가 최대 글자 수(${LIMIT}자)를 초과했습니다.`);
   });
 
-  it("does not flag a scene prompt exactly at the 1000 UTF-16 code-unit limit", async () => {
+  it("does not flag a scene prompt exactly at the authoring limit", async () => {
     const response: GetVideoPromptPreviewResponse = { previews: makePreviews() };
     renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, response)));
 
     await screen.findByTestId("preview-list");
     const textarea = screen.getByLabelText("Runway 프롬프트", { selector: "#prompt-1" }) as HTMLTextAreaElement;
-    fireEvent.change(textarea, { target: { value: "a".repeat(1000) } });
+    fireEvent.change(textarea, { target: { value: "a".repeat(LIMIT) } });
 
-    expect(screen.getByTestId("prompt-length-1").textContent).toBe("1000 / 1000");
+    expect(screen.getByTestId("prompt-length-1").textContent).toBe(`${LIMIT} / ${LIMIT}`);
     expect(screen.queryByTestId("prompt-limit-error-1")).toBeNull();
   });
 

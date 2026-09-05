@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { createHash } from "node:crypto";
 
 import { Injectable } from "@nestjs/common";
-import { RUNWAY_PROMPT_MAX_LENGTH, sceneNumbersFor, videoSceneEstimatedCostUsd, WorkflowState, type GetVideoPromptPreviewResponse, type SceneNumber, type VideoPromptPreview } from "@ai-animation-studio/shared";
+import { RUNWAY_PROMPT_AUTHORING_LIMIT, sceneNumbersFor, videoSceneEstimatedCostUsd, WorkflowState, type GetVideoPromptPreviewResponse, type SceneNumber, type VideoPromptPreview } from "@ai-animation-studio/shared";
 
 import { validateImage } from "../assets/image-validation.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
@@ -35,7 +35,11 @@ const SCENE_FIELDS = [
  * strict "no unexpected keys" check below does not reject newer scenes that do carry it.
  */
 const OPTIONAL_SCENE_FIELDS = ["narration"] as const;
-const UTF16_PROMPT_LIMIT = RUNWAY_PROMPT_MAX_LENGTH;
+/**
+ * Not the provider's 1,000: the room left after the no-legible-text rule the adapter appends to every prompt on
+ * its way out (RUNWAY_PROMPT_AUTHORING_LIMIT's comment says why the room is reserved rather than checked later).
+ */
+const UTF16_PROMPT_LIMIT = RUNWAY_PROMPT_AUTHORING_LIMIT;
 
 export type StoredScene = Record<(typeof SCENE_FIELDS)[number], string | number> & { narration?: string };
 

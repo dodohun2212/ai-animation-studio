@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { NO_LEGIBLE_TEXT_VIDEO_RULE, RUNWAY_PROMPT_AUTHORING_LIMIT, RUNWAY_PROMPT_MAX_LENGTH } from "@ai-animation-studio/shared";
 import {
   RunwayAdapterError, createRunwayImageToVideoTask, downloadRunwayOutput, getRunwayTask,
 } from "./runway-video-adapter.js";
@@ -14,6 +15,38 @@ function jsonResponse(status: number, body: unknown, headers: Record<string, str
 }
 const noSleep = async () => {};
 
+/**
+ * The room reserved for the rule has to be enough room, measured against the provider's real limit rather than
+ * against arithmetic that restates the constant's own definition.
+ *
+ * The failure this pins is quiet: lengthen the rule and leave the authoring limit alone, and the first prompt
+ * anyone writes near the limit is refused by the adapter after they were told it fit — no charge, but the job
+ * stops at a wall that was not there when they typed.
+ */
+describe("the room reserved for the no-legible-text rule", () => {
+  it("lets a prompt written right up to the authoring limit through the provider's own check", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse(200, { id: "task_limit" }));
+    const authored = "a".repeat(RUNWAY_PROMPT_AUTHORING_LIMIT);
+
+    await createRunwayImageToVideoTask("key", IMAGE_BYTES, "image/png", authored, { fetchImpl: fetchMock as unknown as typeof fetch });
+
+    const sent = JSON.parse(String(fetchMock.mock.calls[0]![1]!.body)).promptText as string;
+    expect(sent.endsWith(NO_LEGIBLE_TEXT_VIDEO_RULE)).toBe(true);
+    expect(sent.length).toBeLessThanOrEqual(RUNWAY_PROMPT_MAX_LENGTH);
+  });
+
+  /**
+   * 902 is not a round number — it is the longest prompt in the live projects, measured across the 43 recorded
+   * ones (493–902) when this rule was added. The authoring limit has to stay above it, or every prompt at the
+   * long end starts being refused and re-rendered a section shorter, which reads on screen as "your prompt
+   * changed" for scenes nobody touched.
+   */
+  it("still has room for the longest prompt these projects have actually written", () => {
+    const LONGEST_RECORDED_PROMPT = 902;
+    expect(RUNWAY_PROMPT_AUTHORING_LIMIT).toBeGreaterThanOrEqual(LONGEST_RECORDED_PROMPT);
+  });
+});
+
 describe("createRunwayImageToVideoTask", () => {
   it("posts the verified image_to_video request shape and returns the task ID", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1", estimatedCost: { credits: 25 } }));
@@ -26,7 +59,10 @@ describe("createRunwayImageToVideoTask", () => {
     expect(headers.authorization).toBe("Bearer secret");
     expect(headers["x-runway-version"]).toBe("2024-11-06");
     const body = JSON.parse(String(init.body));
-    expect(body).toMatchObject({ model: "gen4_turbo", promptText: "a hero walks forward", ratio: "720:1280", duration: 5 });
+    // The rule rides along on every prompt and is never recorded with one: Runway's own first cause of
+    // INTERNAL.BAD_OUTPUT is a prompt asking for text, and four live scenes do exactly that.
+    expect(body).toMatchObject({ model: "gen4_turbo", promptText: `a hero walks forward
+${NO_LEGIBLE_TEXT_VIDEO_RULE}`, ratio: "720:1280", duration: 5 });
     expect(body.promptImage).toBe(`data:image/png;base64,${IMAGE_BYTES.toString("base64")}`);
   });
 

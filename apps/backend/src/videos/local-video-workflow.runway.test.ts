@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { WorkflowState } from "@ai-animation-studio/shared";
+import { NO_LEGIBLE_TEXT_VIDEO_RULE, WorkflowState } from "@ai-animation-studio/shared";
 
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
@@ -285,7 +285,8 @@ describe("real Runway video workflow", () => {
     const project = await deps.projects.findById("video_workflow");
     const records = project.video_generation_records as Array<Record<string, unknown>>;
     const scene4 = records.find((record) => record.scene_number === 4)!;
-    expect(JSON.parse(String((submits[0]![1] as RequestInit).body))).toMatchObject({ promptText: String(scene4.prompt) });
+    expect(JSON.parse(String((submits[0]![1] as RequestInit).body))).toMatchObject({ promptText: `${String(scene4.prompt)}
+${NO_LEGIBLE_TEXT_VIDEO_RULE}` });
     // And the three already bought keep the outputs they were billed for.
     for (const scene of [1, 2, 3]) {
       expect(records.find((record) => record.scene_number === scene)!.status).toBe("succeeded");
@@ -309,7 +310,8 @@ describe("real Runway video workflow", () => {
     const basePrompt = String(recordForScene1((await deps.projects.findById("video_workflow")).video_generation_records as Array<Record<string, unknown>>).prompt);
     await workflow.regenerate("video_workflow", deps.accepted.jobId, [1], "  더 격렬하게  ");
     const submitCall = fetchMock.mock.calls.find((call) => String(call[0]).endsWith("/v1/image_to_video"))!;
-    expect(JSON.parse(String((submitCall[1] as RequestInit).body))).toMatchObject({ promptText: `${basePrompt}\n더 격렬하게` });
+    expect(JSON.parse(String((submitCall[1] as RequestInit).body))).toMatchObject({ promptText: `${basePrompt}\n더 격렬하게
+${NO_LEGIBLE_TEXT_VIDEO_RULE}` });
 
     // Not stored: the record's own prompt field stays the plain scene prompt.
     const project = await deps.projects.findById("video_workflow");

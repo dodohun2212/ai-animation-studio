@@ -150,6 +150,41 @@ export const PHOTO_CARD_QUOTE_MAX_LENGTH = 300;
 export const RUNWAY_PROMPT_MAX_LENGTH = 1_000;
 
 /**
+ * Sent with every video prompt, never recorded with one.
+ *
+ * Runway's own INTERNAL.BAD_OUTPUT documentation names two first causes: readable text or logos on the input
+ * frame, and a prompt that asks for text. The image side has been covering the first since the no-legible-text
+ * rule went into the request-time image prompt. The second was still wide open — and it is not hypothetical.
+ * Four scenes in the live projects ask for it in the fields the video prompt is built from:
+ *
+ *   12/Episode01 scene 2   end_motion 이 'IBAD' 손글씨를 드러내고, camera_motion 이 그 글씨로 돌리 인한다
+ *   12/Episode03 scene 4   광고 문구가 낙서를 덮었다가 갈라진다
+ *   IBAD/Episode01 scene 2 허공의 분류 문구가 교차 표시된다
+ *   IBAD/Episode01 scene 4 네온 간판이 물웅덩이에 흔들린다
+ *
+ * The first of those is the whole documented failure in one scene: a shot whose final beat is lettering, with
+ * a camera move onto it.
+ *
+ * Request-time only, exactly like the image rule and for the same reason: putting a constant line into the
+ * *recorded* prompt would mark all 43 recorded prompts stale — 43 scenes reading "your prompt has changed"
+ * because of a line no person wrote.
+ */
+export const NO_LEGIBLE_TEXT_VIDEO_RULE = "Do not render readable writing in frame: no signs, labels, captions or logos.";
+
+/**
+ * What a prompt may be *before* the rule above is appended — the limit every screen and every check that
+ * handles an author's prompt must use.
+ *
+ * Reserved rather than checked after the fact. A prompt accepted at the full 1,000 would exceed it the moment
+ * the rule is added, and the adapter would refuse the scene right before submitting it: no charge, but the job
+ * halts on a limit the person was told they were inside of. Room taken up front cannot run out.
+ *
+ * Today's recorded prompts are 493–902 code units, so nothing existing moves. A prompt long enough to feel this
+ * drops a removable section in the builder that already exists for it, and says which one.
+ */
+export const RUNWAY_PROMPT_AUTHORING_LIMIT = RUNWAY_PROMPT_MAX_LENGTH - (NO_LEGIBLE_TEXT_VIDEO_RULE.length + 1);
+
+/**
  * Conservative local per-request cost estimates, used both for the local budget ledgers' preflight/record
  * accounting (apps/backend/src/providers/{openai,runway}-budget.ts) and for any UI that needs to display or
  * compute an estimate — e.g. the in-app workflow guide, or a video job's own stored estimated_cost_usd. Backend

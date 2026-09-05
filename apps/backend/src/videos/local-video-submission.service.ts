@@ -5,7 +5,7 @@ import { Injectable } from "@nestjs/common";
 import {
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
-  RUNWAY_PROMPT_MAX_LENGTH,
+  RUNWAY_PROMPT_AUTHORING_LIMIT,
   sceneNumbersFor,
   WorkflowState,
   type SceneNumber,
@@ -107,7 +107,7 @@ export class LocalVideoSubmissionService {
       || !Array.isArray(value.prompts) || value.prompts.length !== scenes.length) throw invalidVideoSubmission();
     const prompts = value.prompts.map((item, index) => {
       if (!isObject(item) || Object.keys(item).length !== 2 || item.sceneNumber !== scenes[index]
-        || typeof item.prompt !== "string" || !item.prompt.trim() || utf16Length(item.prompt) > RUNWAY_PROMPT_MAX_LENGTH) throw invalidVideoSubmission();
+        || typeof item.prompt !== "string" || !item.prompt.trim() || utf16Length(item.prompt) > RUNWAY_PROMPT_AUTHORING_LIMIT) throw invalidVideoSubmission();
       return { sceneNumber: item.sceneNumber as SceneNumber, prompt: item.prompt };
     });
     return { confirmationId: value.confirmationId, userRequestId: value.userRequestId, approved: true, prompts };

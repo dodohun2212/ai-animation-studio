@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { RUNWAY_PROMPT_MAX_LENGTH } from "@ai-animation-studio/shared";
+import { RUNWAY_PROMPT_AUTHORING_LIMIT } from "@ai-animation-studio/shared";
 import type { BudgetPreview, SceneNumber, StartVideoGenerationResponse, VideoPromptPreview } from "@ai-animation-studio/shared";
 
 import { getVideoPromptPreview, toVideoPreviewDisplayError } from "../api/videoPreviewApi.js";
@@ -23,7 +23,12 @@ type LoadState =
 
 // Runway's own API limit, shared with the backend's builder and its pre-submit checks (see the constant's
 // doc comment) — never re-hardcode it here.
-const PROMPT_UTF16_LIMIT = RUNWAY_PROMPT_MAX_LENGTH;
+/**
+ * The room an author actually has, which is not the provider's 1,000: the server appends a no-legible-text rule
+ * to every prompt on its way to Runway. Counting to 1,000 here would tell somebody their 950-character prompt
+ * was fine and then have the server refuse it.
+ */
+const PROMPT_UTF16_LIMIT = RUNWAY_PROMPT_AUTHORING_LIMIT;
 const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
 
 /** JavaScript string length already counts UTF-16 code units, matching the Backend's limit. */
