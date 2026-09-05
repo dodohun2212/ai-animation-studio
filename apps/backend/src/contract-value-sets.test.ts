@@ -36,6 +36,8 @@ const SHARED_SOURCE = path.resolve(CURRENT_DIRECTORY, "..", "..", "..", "package
  * stops applying has to fail rather than sit there. Keyed by `<relative file>::<set name>`.
  */
 const ALLOWED = new Map<string, string>([
+  ["long-projects/episode-timeline.service.ts::LONG_EPISODE_OUTLINE_STATUSES",
+    "which Episodes may be archived is a decision about LongEpisodeStatus; a new outline status must not widen it by itself"],
   // It is LONG_EPISODE_STATUSES_BEFORE_IMAGES minus generating_images, and that one difference is the whole
   // point: this asks whether generation has *started* (lock the aspect ratio, money is already moving), not
   // whether pictures exist. Folding them would either let the ratio change mid-run or call an Episode

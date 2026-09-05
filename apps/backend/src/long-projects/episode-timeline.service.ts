@@ -11,7 +11,12 @@ import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generati
 import { LongProjectsService } from "./long-projects.service.js";
 
 const MAX_EPISODES = Number(process.env.APP_MAX_LONG_PROJECT_EPISODES ?? "60");
-const draftStates: readonly LongEpisodeStatus[] = LONG_EPISODE_OUTLINE_STATUSES;
+/**
+ * Archiving and restoring are allowed only while every Episode is still a draft — a decision about
+ * LongEpisodeStatus, not a copy of LONG_EPISODE_OUTLINE_STATUSES, which happens to hold the same two words.
+ * Deriving it would let a new outline status quietly widen what may be archived.
+ */
+const draftStates: readonly LongEpisodeStatus[] = ["planned", "outline_ready"];
 type ObjectMap = Record<string, unknown>;
 type StoredEpisode = ObjectMap & { number: number; state: LongEpisodeStatus };
 

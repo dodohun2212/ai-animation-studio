@@ -334,8 +334,9 @@ const ASPECT_RATIO_SET: ReadonlySet<string> = new Set(ASPECT_RATIOS);
 const OUTLINE_STATUS_SET: ReadonlySet<string> = new Set(LONG_EPISODE_OUTLINE_STATUSES);
 // Built from the shared list, not written out again. This is a response guard: a status added to the contract
 // and not to a hand-written copy here makes the client call a perfectly good Episode malformed, and the screen
-// says 서버 응답을 확인할 수 없습니다 about a working server. OUTLINE_STATUSES above stays spelled out — a
-// two-entry gate is a decision, not a copy.
+// says 서버 응답을 확인할 수 없습니다 about a working server. OUTLINE_STATUS_SET above is derived for the same
+// reason and used to be spelled out under a note calling it "a two-entry gate" — it is not a gate, it checks
+// the contract's own outlineStatus field, so a third value would have made this reject a good response too.
 const EPISODE_STATUSES: ReadonlySet<string> = new Set(LONG_EPISODE_STATUSES);
 
 function isLongProjectSettings(value: unknown): value is LongProjectSettings {

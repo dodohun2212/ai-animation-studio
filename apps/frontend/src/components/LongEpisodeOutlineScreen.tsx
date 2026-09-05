@@ -40,7 +40,12 @@ const OUTLINE_FIELDS: { key: OutlineKey; label: string; hint: string; multiline:
  * status, deliberately — not the whole project's — so Episode 5's plan stays editable after Episode 1's script
  * has moved on. The screen reads the same rule so it can explain the block instead of only reporting it.
  */
-const EDITABLE_STATUSES: ReadonlySet<string> = new Set(LONG_EPISODE_OUTLINE_STATUSES);
+/**
+ * Which Episodes this screen lets someone edit — a decision about LongEpisodeStatus, not a copy of a contract
+ * set. It reads the same two words as LONG_EPISODE_OUTLINE_STATUSES today and is deliberately not derived from
+ * it: an outline status added there would widen what is editable without anyone choosing that.
+ */
+const EDITABLE_STATUSES: ReadonlySet<string> = new Set(["planned", "outline_ready"]);
 
 const backButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const primaryButton = "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";

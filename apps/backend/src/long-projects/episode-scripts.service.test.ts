@@ -13,6 +13,44 @@ async function setup(episodeDurationSeconds: 30 | 60 = 30, sceneCount = 6) { roo
 afterEach(async () => { vi.unstubAllGlobals(); if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 
 describe("EpisodeScriptsService", () => {
+  /**
+   * A script written without knowing what happened last episode says so.
+   *
+   * Continuity memos are written by hand and are skipped when absent — right, because a missing memo must never
+   * stop a script being written, and wrong in that it was skipped in silence while the payload went into a paid
+   * prompt. Measured on the real project: Episodes 1 and 5 had no memo, so an Episode 6 script would have been
+   * written knowing nothing about the Episode immediately before it.
+   *
+   * Said only where memos are actually kept. A project where nobody writes them would otherwise carry this on
+   * every Episode from the second one on, which is how a warnings list stops being read.
+   */
+  it("says which recent Episode it knew nothing about, and only where memos are kept at all", async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-script-memo-"));
+    const projectsRoot = path.join(root, "projects");
+    const projects = new LongProjectsService(projectsRoot);
+    await projects.create({ projectId: "long", settings: { ...settings, episodeCount: 3 } });
+    const preview = await projects.preview("long");
+    await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 });
+    const scripts = new EpisodeScriptsService(projectsRoot);
+
+    for (const number of [1, 2] as const) {
+      await scripts.generate("long", number, { userRequestId: `memo-${number}` });
+      await scripts.approve("long", number, { approved: true });
+    }
+    // Episode 1 gets a memo; Episode 2 — the one right before the next script — does not. Written straight to
+    // disk because the route that saves one refuses until images are approved, and walking an Episode that far
+    // is three services away from what this test is about. The file is the shape continuityContext reads.
+    await fs.writeFile(path.join(projectsRoot, "long", "long_story", "Episode01", "continuity.json"),
+      JSON.stringify({ episode_number: 1, episode_summary: "1화 요약", events: [], character_changes: [], next_actions: [] }), "utf8");
+
+    const third = await scripts.generate("long", 3, { userRequestId: "memo-3" });
+
+    const said = third.episode.warnings?.join(" ") ?? "";
+    expect(said, "names the Episode whose story it does not have").toContain("2화");
+    expect(said).toContain("연속성 메모");
+    expect(said, "and not the one it does have").not.toContain("1화");
+  });
+
   it("starts an Episode from the project's values and lets it be given its own, which the script is then written to", async () => {
     // The point of the write path, and the only assertion that proves it is worth having: the pipeline already
     // read the Episode's own copy rather than the project's, so what was missing was any way to change that

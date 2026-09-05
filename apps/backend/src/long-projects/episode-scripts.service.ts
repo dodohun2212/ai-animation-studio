@@ -33,6 +33,7 @@ const asText = (value: unknown, error = longInvalidData): string => { if (typeof
 const asNumber = (value: unknown, error = longInvalidData): number => { if (!Number.isInteger(value)) throw error(); return value as number; };
 const statuses: readonly LongEpisodeStatus[] = LONG_EPISODE_STATUSES;
 /** A continuity memo that is not there, or is there and cannot be parsed — the two states a script must survive. */
+interface ContinuityContext { recentContinuity: unknown[]; olderCompressedSummaries: unknown[]; recentWithoutMemo: number[]; hasAnyMemo: boolean }
 const isAbsentOrUnreadableMemo = (error: unknown): boolean =>
   isLongProjectError(error, "LONG_PROJECT_NOT_FOUND", "LONG_PROJECT_JSON_MALFORMED", "LONG_PROJECT_DATA_INVALID");
 
@@ -133,7 +134,19 @@ export class EpisodeScriptsService {
    * the failure that mapper's comment predicts: whoever finds five of six ships a response that is right on
    * some screens and wrong on others.
    */
-  private toApi(outline: LongEpisodeOutline, stored: StoredEpisode): LongEpisodeDetail { const script = Object.keys(stored.script).length ? this.parseScript(stored.script, stored.scene_count) : undefined; return { ...outline, status: stored.state, approved: stored.approved, scriptRevision: stored.script_revision, ...(script ? { script } : {}), scriptHistoryCount: stored.script_history.length, updatedAt: typeof stored.updated_at === "string" ? stored.updated_at : new Date(0).toISOString(), ...(toEpisodeInstagramPost(stored.instagram_post) ? { instagramPost: toEpisodeInstagramPost(stored.instagram_post)! } : {}), ...(toEpisodePreviousInstagramPosts(stored.previous_instagram_posts).length > 0 ? { previousInstagramPosts: toEpisodePreviousInstagramPosts(stored.previous_instagram_posts) } : {}), ...(toEpisodeUsedAudio(stored.used_audio) ? { usedAudio: toEpisodeUsedAudio(stored.used_audio)! } : {}), ...(episodeErrors(stored).length > 0 ? { errors: episodeErrors(stored) } : {}), ...(typeof (stored as Record<string, unknown>).final_video_path === "string" && (stored as Record<string, unknown>).final_video_path ? { finalVideoPath: (stored as Record<string, unknown>).final_video_path as string, openablePath: episodeProjectRelativePath(stored.number, (stored as Record<string, unknown>).final_video_path as string) } : {}) }; }
+  /**
+   * The Episode as a screen reads it — including a warning written during this very call.
+   *
+   * It used to spread the outline row and nothing else for warnings, so a warning attached moments earlier by
+   * `persistEpisodeWarning` reached disk and not the response: the person saw it on the next load of some other
+   * screen. `episode-warnings.ts` says the opposite in its own doc ("the response already carries the sentence"),
+   * and for `toEpisodeDetail` it is true — this builder was the one that quietly did not. The sentence that
+   * matters most here is the one saying money was spent and the ledger does not know it.
+   *
+   * Merged and de-duplicated because both halves legitimately carry warnings: the outline row is where earlier
+   * ones live, `stored` is where this call just put one.
+   */
+  private toApi(outline: LongEpisodeOutline, stored: StoredEpisode): LongEpisodeDetail { const script = Object.keys(stored.script).length ? this.parseScript(stored.script, stored.scene_count) : undefined; const storedWarnings = Array.isArray((stored as unknown as Record<string, unknown>).warnings) ? ((stored as unknown as Record<string, unknown>).warnings as unknown[]).filter((item): item is string => typeof item === "string") : []; const warnings = [...new Set([...(outline.warnings ?? []), ...storedWarnings])]; return { ...outline, ...(warnings.length > 0 ? { warnings } : {}), status: stored.state, approved: stored.approved, scriptRevision: stored.script_revision, ...(script ? { script } : {}), scriptHistoryCount: stored.script_history.length, updatedAt: typeof stored.updated_at === "string" ? stored.updated_at : new Date(0).toISOString(), ...(toEpisodeInstagramPost(stored.instagram_post) ? { instagramPost: toEpisodeInstagramPost(stored.instagram_post)! } : {}), ...(toEpisodePreviousInstagramPosts(stored.previous_instagram_posts).length > 0 ? { previousInstagramPosts: toEpisodePreviousInstagramPosts(stored.previous_instagram_posts) } : {}), ...(toEpisodeUsedAudio(stored.used_audio) ? { usedAudio: toEpisodeUsedAudio(stored.used_audio)! } : {}), ...(episodeErrors(stored).length > 0 ? { errors: episodeErrors(stored) } : {}), ...(typeof (stored as Record<string, unknown>).final_video_path === "string" && (stored as Record<string, unknown>).final_video_path ? { finalVideoPath: (stored as Record<string, unknown>).final_video_path as string, openablePath: episodeProjectRelativePath(stored.number, (stored as Record<string, unknown>).final_video_path as string) } : {}) }; }
   private async save(projectId: string, outline: LongEpisodeOutline, stored: StoredEpisode): Promise<LongEpisodeDetail> { const files = this.files(projectId, outline.episodeNumber); const outlines = await this.json(files.outlines); if (!Array.isArray(outlines)) throw longInvalidData(); const copy = [...outlines]; const current = asObject(copy[outline.episodeNumber - 1]); current.status = stored.state; copy[outline.episodeNumber - 1] = current; try { await fs.mkdir(files.episode, { recursive: true }); await Promise.all([atomicWriteUtf8File(files.episodeProject, JSON.stringify(stored, null, 2)), atomicWriteUtf8File(files.outline, JSON.stringify(stored.outline, null, 2)), atomicWriteUtf8File(files.script, JSON.stringify(stored.script, null, 2)), atomicWriteUtf8File(files.outlines, JSON.stringify(copy, null, 2))]); } catch { throw longStorageError(); } await this.seedStoryBibleMappings(projectId); return this.toApi({ ...outline, status: stored.state }, stored); }
   private async bibleContext(projectId: string): Promise<string> { const bible = asObject(await this.json(this.files(projectId, 1).bible)); const names = ["characters", "locations", "props"].flatMap((collection) => Array.isArray(bible[collection]) ? bible[collection].map((item) => asObject(item).name).filter((name): name is string => typeof name === "string" && Boolean(name.trim())) : []); return names.join(", "); }
   /**
@@ -150,7 +163,25 @@ export class EpisodeScriptsService {
    * Silent here on purpose, and not silent to the person: `LongEpisodeOutline.continuitySaved` reports false
    * for a memo that cannot be read, which is what the timeline and the pre-generation warning are built on.
    */
-  private async continuityContext(projectId: string, episodeNumber: number): Promise<Record<string, unknown>> { const recent: unknown[] = []; const older: unknown[] = []; for (let number = 1; number < episodeNumber; number += 1) { try { const raw = asObject(await this.json(path.join(this.files(projectId, number).episode, "continuity.json"))); const record = { episodeNumber: number, summary: typeof raw.episode_summary === "string" ? raw.episode_summary : "", events: Array.isArray(raw.events) ? raw.events.filter((value): value is string => typeof value === "string") : [], characterChanges: Array.isArray(raw.character_changes) ? raw.character_changes.filter((value) => value && typeof value === "object" && !Array.isArray(value)) : [], nextActions: Array.isArray(raw.next_actions) ? raw.next_actions.filter((value): value is string => typeof value === "string") : [] }; (number >= episodeNumber - 3 ? recent : older).push(record); } catch (error) { if (!isAbsentOrUnreadableMemo(error)) throw error; } } return { recentContinuity: recent, olderCompressedSummaries: older.map((value) => ({ episodeNumber: (value as { episodeNumber: number }).episodeNumber, summary: (value as { summary: string }).summary })) }; }
+  /**
+   * Every earlier Episode's memo, and — said out loud — which of the recent ones had none.
+   *
+   * A memo is written by hand on the continuity screen, so an Episode can perfectly well have none. This skips
+   * those, which is right: a missing memo must never stop a script being written. What was wrong is that it
+   * skipped them in silence, and this payload goes into a paid prompt. Measured on the real project: Episode 1
+   * and Episode 5 have no memo, so an Episode 6 script would have been generated knowing nothing about the
+   * Episode immediately before it, and nothing anywhere would have said so.
+   *
+   * Only the recent three are reported. Those are carried in full and are the ones a script is written against;
+   * an older Episode contributes one summary line, and naming every one of those would be a warning nobody
+   * finishes reading.
+   *
+   * 🟠 And only when this project keeps memos at all. A memo is optional, so a project where nobody writes them
+   * would otherwise carry this warning on every Episode from the second one on — which is how a warnings list
+   * stops being read. "Some earlier Episode has one and this one does not" is the version a person can act on;
+   * "you have never used this feature" is not news. The caller decides that, from `hasAnyMemo`.
+   */
+  private async continuityContext(projectId: string, episodeNumber: number): Promise<ContinuityContext> { const recent: unknown[] = []; const older: unknown[] = []; const recentWithoutMemo: number[] = []; let hasAnyMemo = false; for (let number = 1; number < episodeNumber; number += 1) { try { const raw = asObject(await this.json(path.join(this.files(projectId, number).episode, "continuity.json"))); const record = { episodeNumber: number, summary: typeof raw.episode_summary === "string" ? raw.episode_summary : "", events: Array.isArray(raw.events) ? raw.events.filter((value): value is string => typeof value === "string") : [], characterChanges: Array.isArray(raw.character_changes) ? raw.character_changes.filter((value) => value && typeof value === "object" && !Array.isArray(value)) : [], nextActions: Array.isArray(raw.next_actions) ? raw.next_actions.filter((value): value is string => typeof value === "string") : [] }; hasAnyMemo = true; (number >= episodeNumber - 3 ? recent : older).push(record); } catch (error) { if (!isAbsentOrUnreadableMemo(error)) throw error; if (number >= episodeNumber - 3) recentWithoutMemo.push(number); } } return { recentContinuity: recent, olderCompressedSummaries: older.map((value) => ({ episodeNumber: (value as { episodeNumber: number }).episodeNumber, summary: (value as { summary: string }).summary })), recentWithoutMemo, hasAnyMemo }; }
   /**
    * The protagonist's name, read from the Folder the project points at.
    *
@@ -176,7 +207,7 @@ export class EpisodeScriptsService {
   }
 
   /** A direct port of Python's build_context()/StoryContextBuilder.build() call site — assembles the same payload episode-context-builder.ts's buildEpisodeContext() truncates and returns. candidate_assets is deliberately omitted: Asset Mapping review only ever begins after a script is script_approved (generate()'s own allowed-state list ends there), so at every point this can run there are never any candidates yet — matching Python's own `if asset_context:` being empty in that same window, not a TS gap. */
-  private async buildContext(projectId: string, outline: LongEpisodeOutline, stored: StoredEpisode, userInstruction = ""): Promise<Record<string, unknown>> {
+  private async buildContext(projectId: string, outline: LongEpisodeOutline, stored: StoredEpisode, continuity: ContinuityContext, userInstruction = ""): Promise<Record<string, unknown>> {
     const bible = asObject(await this.json(this.files(projectId, 1).bible));
     const projectSettings = (await this.projects.get(projectId)).project.settings;
     const protagonist = await this.protagonistName(bible.basic);
@@ -189,7 +220,6 @@ export class EpisodeScriptsService {
       audience: projectSettings.audience, notes: projectSettings.notes, starting_state: projectSettings.startingState,
       midpoint: projectSettings.midpoint, story_flow_summary: projectSettings.storyFlowSummary,
     };
-    const continuity = await this.continuityContext(projectId, outline.episodeNumber);
     const recentContinuity = (continuity.recentContinuity as Array<{ episodeNumber: number; summary: string; events: string[]; characterChanges: unknown[]; nextActions: string[] }>)
       .map((item) => ({ episode_number: item.episodeNumber, summary: item.summary, events: item.events, character_changes: item.characterChanges, next_actions: item.nextActions }));
     const olderCompressedSummaries = (continuity.olderCompressedSummaries as Array<{ episodeNumber: number; summary: string }>)
@@ -232,7 +262,7 @@ export class EpisodeScriptsService {
       `narration에는 장면당 ${clipDurationSeconds}초 안에 자연스럽게 읽을 수 있는 내레이션/자막 문장을 카메라 지시나 지문 없이 작성하십시오.`,
     ].join("\n");
   }
-  private generated(outline: LongEpisodeOutline, bibleNames: string, continuity: Record<string, unknown>, sceneCount: number): LongEpisodeScript { const subject = outline.title || `Episode ${outline.episodeNumber}`; const latest = (continuity.recentContinuity as Array<{ summary: string }>).at(-1)?.summary; const scenes = Array.from({ length: sceneCount }, (_, index) => { const number = index + 1; return { number: number as SceneNumber, description: `${subject} scene ${number}: ${outline.summary || outline.mainEvent || "the episode progresses"}.`, visualAction: `The central action develops in scene ${number}.`, startMotion: "A still opening pose shifts into motion.", mainMotion: "The character advances the episode conflict.", endMotion: "The movement settles into the next scene.", shotSize: "medium shot", cameraAngle: "eye level", composition: "centered subject with readable background", lensFeel: "natural perspective", focusSubject: bibleNames || subject, cameraMotion: "gentle forward movement", environmentMotion: "subtle ambient movement", motionSpeed: "normal", motionIntensity: "moderate", expressionChange: "focused to hopeful", continuityHint: number === 1 && latest ? `Continue from prior Episode: ${latest}` : number === 1 ? "Establish the opening visual state." : "Continue the previous scene's ending pose and direction.", narration: `Scene ${number} narration for ${subject}.` }; }); return { title: `${subject} — Local Episode Script`, synopsis: `A local ${sceneCount}-scene draft for ${subject}.${latest ? ` It continues: ${latest}` : ""}`, ending: outline.cliffhanger || "The episode reaches its next turning point.", scenes }; }
+  private generated(outline: LongEpisodeOutline, bibleNames: string, continuity: ContinuityContext, sceneCount: number): LongEpisodeScript { const subject = outline.title || `Episode ${outline.episodeNumber}`; const latest = (continuity.recentContinuity as Array<{ summary: string }>).at(-1)?.summary; const scenes = Array.from({ length: sceneCount }, (_, index) => { const number = index + 1; return { number: number as SceneNumber, description: `${subject} scene ${number}: ${outline.summary || outline.mainEvent || "the episode progresses"}.`, visualAction: `The central action develops in scene ${number}.`, startMotion: "A still opening pose shifts into motion.", mainMotion: "The character advances the episode conflict.", endMotion: "The movement settles into the next scene.", shotSize: "medium shot", cameraAngle: "eye level", composition: "centered subject with readable background", lensFeel: "natural perspective", focusSubject: bibleNames || subject, cameraMotion: "gentle forward movement", environmentMotion: "subtle ambient movement", motionSpeed: "normal", motionIntensity: "moderate", expressionChange: "focused to hopeful", continuityHint: number === 1 && latest ? `Continue from prior Episode: ${latest}` : number === 1 ? "Establish the opening visual state." : "Continue the previous scene's ending pose and direction.", narration: `Scene ${number} narration for ${subject}.` }; }); return { title: `${subject} — Local Episode Script`, synopsis: `A local ${sceneCount}-scene draft for ${subject}.${latest ? ` It continues: ${latest}` : ""}`, ending: outline.cliffhanger || "The episode reaches its next turning point.", scenes }; }
   /**
    * The one Episode read that goes to disk for `narrationAvailable`.
    *
@@ -339,12 +369,15 @@ export class EpisodeScriptsService {
     if (Object.keys(stored.script).length && request?.regenerate !== true) throw longEpisodeScriptExists();
     if (Object.keys(stored.script).length) stored.script_history.push({ created_at: new Date().toISOString(), source: "before_regeneration", script: stored.script });
 
+    // Read once, before the branch: both paths need it, and it is also what says whether this script was
+    // written knowing what happened in the Episode before it.
+    const continuity = await this.continuityContext(id, number);
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     let script: LongEpisodeScript; let historyEntry: Record<string, unknown>;
     /** The money is gone and the ledger does not know — attached to the Episode that this call is about to save. */
     let spendUnrecorded = false;
     if (apiKey && this.budget) {
-      const context = await this.buildContext(id, outline, stored);
+      const context = await this.buildContext(id, outline, stored, continuity);
       const clipDurationSeconds = stored.duration_seconds / stored.scene_count;
       const prompt = this.buildScriptPrompt(context, stored.scene_count, clipDurationSeconds);
       try {
@@ -367,7 +400,6 @@ export class EpisodeScriptsService {
       }
       historyEntry = { created_at: new Date().toISOString(), source: "openai_generation", script: this.storedScript(script!), context };
     } else {
-      const continuity = await this.continuityContext(id, number);
       script = this.generated(outline, await this.bibleContext(id), continuity, stored.scene_count);
       historyEntry = { created_at: new Date().toISOString(), source: "local_fake_generation", script: this.storedScript(script), continuity_context: continuity };
     }
@@ -378,6 +410,15 @@ export class EpisodeScriptsService {
     // Attached before the save that persists everything else about this generation. The order matters: this
     // writes the outline row's warning first, and `save()` then re-reads that row from disk to stamp the new
     // status onto it, so the warning survives rather than being written and immediately overwritten.
+    // Said after the fact on purpose: a script is the cheap step, and knowing what it was written without is
+    // what lets somebody write the memo and regenerate before the expensive ones. The Episode's warnings are
+    // read on its own screen and in the outline list, so this reaches them either way.
+    if (continuity.hasAnyMemo && continuity.recentWithoutMemo.length > 0) {
+      const files = this.files(id, number);
+      const missing = continuity.recentWithoutMemo.map((value) => `${value}화`).join(", ");
+      await persistEpisodeWarning({ project: files.episodeProject, outlines: files.outlines }, number, stored as unknown as Record<string, unknown>,
+        `이 대본은 ${missing} 이야기를 모르는 채로 만들어졌습니다. 그 회차의 연속성 메모가 없습니다 — 메모를 적고 대본을 다시 만들면 반영됩니다.`);
+    }
     if (spendUnrecorded) {
       const files = this.files(id, number);
       await persistEpisodeWarning({ project: files.episodeProject, outlines: files.outlines }, number, stored as unknown as Record<string, unknown>, spendUnrecordedWarning(`${number}화 대본 생성`, OPENAI_LEDGER_FILE));

@@ -34,7 +34,10 @@ const SHARED_SOURCE = path.resolve(CURRENT_DIRECTORY, "..", "..", "..", "package
  * Same shape as atomic-write-coverage.test.ts's exception list, and checked the same way: an exception that
  * stops applying has to fail rather than sit there. Keyed by `<relative file>::<set name>`.
  */
-const ALLOWED = new Map<string, string>([]);
+const ALLOWED = new Map<string, string>([
+  ["components/LongEpisodeOutlineScreen.tsx::LONG_EPISODE_OUTLINE_STATUSES",
+    "which Episodes this screen may edit is a decision about LongEpisodeStatus; a new outline status must not widen it by itself"],
+]);
 
 /** Naming this share of a set, and at least this many of its members, is a copy rather than a gate. */
 const COPY_RATIO = 0.7;
