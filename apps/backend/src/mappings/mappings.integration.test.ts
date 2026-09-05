@@ -45,13 +45,17 @@ describe("ProjectAssetMappingsService", () => {
   });
 
   /**
-   * Where the empty fingerprint came from in the first place.
+   * A record nobody wrote a baseline into is not a review.
    *
    * loadReview answers a missing file with a fresh record whose fingerprint is "" — right as a read, and wrong
    * the moment it is written back. invalidateReview used to write it back on any mapping change, so an Episode
-   * nobody had opened for review ended up with a persisted review saying "the baseline is the empty string".
-   * The Story Bible seeding an auto_protagonist mapping is enough to trigger it, and that is why Episode 5 of
-   * Captain D's project was already in that state before he ever pressed anything.
+   * nobody had opened for review ended up with a persisted review saying "the baseline is the empty string",
+   * and a revision counter incremented for a review that had never begun. The Story Bible seeding an
+   * auto_protagonist mapping is enough to trigger it.
+   *
+   * 🟠 It does not cause the approval block, though it was first committed as if it did: a missing file reads
+   * back the same empty fingerprint, so the refusal is identical either way (see "says which of the four
+   * things was wrong" below, which hits it with no review file at all).
    *
    * Both directions matter: before a review exists there is nothing to invalidate, and after one exists a
    * mapping change still has to invalidate it — that is what stops an approved review outliving the mappings
@@ -67,6 +71,30 @@ describe("ProjectAssetMappingsService", () => {
     expect(review.mapping_revision).toBe(0);
   });
 
+  /**
+   * The correction, made executable: the write above was never what refused the approval.
+   *
+   * Both records read back the same empty fingerprint, so the screen sends the same value and the server gives
+   * the same answer. Written down because the wrong conclusion is an easy one to reach twice — the persisted
+   * file was real, it was on Captain D's Episode 5, and it was still not the cause.
+   */
+  it("refuses the approval the same way whether or not the empty-baseline record was ever written", async () => {
+    const { service, mappings, project } = await setup();
+    const withoutFile = await service.approveReview("short_mapping", { scriptFingerprint: "" }).catch((error: unknown) => error);
+
+    const location = mappings.projectLocation("short_mapping");
+    await fs.writeFile(
+      path.join(location.directory, "asset_mapping_review.json"),
+      JSON.stringify({ project_id: project.project_id, mapping_revision: 1, script_revision: 0, script_fingerprint: "", status: "waiting", approved_at: "", approved_by: "", text_only_confirmed: false, legacy_confirmed: false, reviewed_scenes: [] }),
+      "utf8",
+    );
+    expect((await service.review("short_mapping")).review.scriptFingerprint, "the same empty value reaches the screen").toBe("");
+
+    await expect(service.approveReview("short_mapping", { scriptFingerprint: "" }))
+      .rejects.toMatchObject({ response: { details: { reason: "no_baseline" } } });
+    expect(withoutFile).toMatchObject({ response: { details: { reason: "no_baseline" } } });
+  });
+
   it("still invalidates a review that had been begun, when the mappings change under it", async () => {
     const { service, asset, mappings } = await setup();
     await service.create("short_mapping", { assetId: asset.asset_id, usageRole: "style", sceneScope: { kind: "all" } });
@@ -80,7 +108,7 @@ describe("ProjectAssetMappingsService", () => {
   });
 
   /**
-   * The way out of the block above, pinned because it is now the advice a person is given.
+   * The way out of the empty-baseline refusal, pinned because it is the advice a person is given.
    *
    * 「지금 대본 기준으로 다시 맞추기」 is beginReview, and someone told to press it after connecting their
    * references has every reason to fear it throws that work away — the button's own description talks about

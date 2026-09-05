@@ -87,14 +87,19 @@ export class LocalProjectAssetMappingsRepository {
    * `loadReview` answers a missing file with `freshReview`, whose fingerprint is the empty string — correct as
    * a read ("no baseline yet"), and wrong the moment it is written back. This method used to do exactly that:
    * any mapping write on an Episode nobody had opened for review — the Story Bible seeding an auto_protagonist
-   * is enough — persisted a review record whose fingerprint is "". The screen then reads that record, sends
-   * the empty fingerprint to approve, and the server refuses its own value with "입력 내용을 확인해 주세요".
-   * That is what stopped Captain D (Cowork Round 533), and Episode 5 of project 12 is sitting in exactly that
-   * state right now, written by this line.
+   * is enough — persisted a review record saying "the baseline is the empty string", and bumped a revision
+   * counter for a review that had never been begun.
    *
    * There is nothing to invalidate: no review has been begun, nothing is approved, and the next `beginReview`
    * writes the real fingerprint from the owner's scenes. So a missing file stays missing, and the revision
    * counter starts where it would have.
+   *
+   * 🟠 This is NOT what blocks the approval button, and the first version of this comment claimed it was. A
+   * missing file and a persisted empty-fingerprint record read back identically — both give the screen `""`,
+   * which it sends to `approve`, which refuses. So every Episode nobody has reviewed refuses the same way,
+   * with or without this write. The pair three tests down ("says which of the four things was wrong") has
+   * always proved that on a project with no review file at all. The block lives in the screen offering the
+   * button before a baseline exists — Cowork Round 533 ①, and their half.
    */
   async invalidateReview(location: MappingLocation): Promise<StoredMappingReview> {
     const previous = await this.loadReview(location);
