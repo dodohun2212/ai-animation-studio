@@ -93,6 +93,61 @@ describe.sequential("Episode Asset Mapping HTTP routes", () => {
     expect(episode.state).toBe("asset_mapping_approved");
   });
 
+  /**
+   * The path Captain D actually took, over HTTP, end to end.
+   *
+   * His Episode had one mapping he never made: the Story Bible seeds an `auto_protagonist` when a script is
+   * saved. So the screen opened showing a connected reference and a review record that says nothing, he pressed
+   * 「연결 다 했음 · 다음 단계로」 first, and got 입력 내용을 확인해 주세요 — about a value the server had just
+   * handed him. Every piece of this was covered somewhere; the walk a person actually takes was not, and that
+   * is the difference between a green suite and a working app.
+   *
+   * Pinned as three facts: a seeded mapping is not a begun review, the refusal names `no_baseline` rather than
+   * blaming the request, and 「지금 대본 기준으로 다시 맞추기」 is what gets through — with the mapping intact.
+   */
+  it("refuses approval on a Story-Bible-seeded mapping until a baseline exists, then takes it", async () => {
+    const { base, episodeDirectory } = await bootWithEpisode();
+    const assetId = await createFolderAsset(base);
+    const mappings = `${base}/long-projects/long_http/episodes/1/assets/mappings`;
+    const review = `${base}/long-projects/long_http/episodes/1/assets/mapping-review`;
+
+    // Written the way the Story Bible sync writes one: automatic, confirmed, nobody asked for it.
+    await fs.writeFile(path.join(episodeDirectory, "asset_mappings.json"), JSON.stringify([{
+      // The id shape and the Episode-scoped project_id are both what the sync really writes — copied off
+      // Captain D's Episode 5 file, because a fixture that only looks right proves nothing about his data.
+      mapping_id: "MAP-09A033276AACDC37", project_id: "long_http/Episode01", asset_id: assetId, enabled: true,
+      usage_role: "character", scene_scope: { mode: "all" }, assignment_source: "auto", confidence: null,
+      match_reason: "auto_protagonist", status: "confirmed", user_confirmed: true, version_policy: "follow_latest",
+      pinned_version: null, candidate_only: false, created_at: "2026-09-01T00:00:00.000Z",
+      updated_at: "2026-09-01T00:00:00.000Z", snapshot_path: null, snapshot_sha256: null,
+      snapshot_source_version: null, selected_child_asset_ids: [],
+    }]), "utf8");
+
+    const opened = await fetch(review);
+    expect(opened.status).toBe(200);
+    const { review: asOpened } = await opened.json() as { review: { scriptFingerprint: string; status: string } };
+    expect(asOpened.scriptFingerprint, "a seeded mapping is not somebody checking their references").toBe("");
+    expect(asOpened.status).toBe("waiting");
+
+    // What the screen sends back is exactly what it was just given.
+    const refused = await fetch(`${review}/approve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scriptFingerprint: asOpened.scriptFingerprint }) });
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toMatchObject({ code: "INVALID_REQUEST", details: { reason: "no_baseline" } });
+
+    const begun = await fetch(review, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scriptRevision: 1 }) });
+    expect(begun.status).toBe(201);
+    const { review: begunReview } = await begun.json() as { review: { scriptFingerprint: string } };
+    expect(begunReview.scriptFingerprint).toMatch(/^[a-f0-9]{64}$/);
+
+    const approved = await fetch(`${review}/approve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scriptFingerprint: begunReview.scriptFingerprint }) });
+    expect(approved.status).toBe(201);
+
+    const episode = JSON.parse(await fs.readFile(path.join(episodeDirectory, "project.json"), "utf8")) as Record<string, unknown>;
+    expect(episode.state).toBe("asset_mapping_approved");
+    const listed = await (await fetch(mappings)).json() as { mappings: { mappingId: string }[] };
+    expect(listed.mappings.map((item) => item.mappingId), "the seeded connection survived the button we told him to press").toEqual(["MAP-09A033276AACDC37"]);
+  });
+
   it("reads and writes the Episode's own files, not the Long Project's", async () => {
     // The binding is the thing under test: the short one would have resolved a directory one level up, and every
     // assertion above would still have passed while the mappings landed somewhere nobody looks.
