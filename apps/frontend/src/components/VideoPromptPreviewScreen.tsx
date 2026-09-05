@@ -6,6 +6,7 @@ import { getVideoPromptPreview, toVideoPreviewDisplayError } from "../api/videoP
 import { startVideoSubmission, toVideoSubmissionDisplayError } from "../api/videoSubmissionApi.js";
 import { Spinner } from "./Spinner.js";
 import { videoRatioLabel } from "../utils/sceneFields.js";
+import { omittedSectionLabel } from "../utils/omittedSectionLabels.js";
 
 interface Props {
   projectId: string;
@@ -30,19 +31,6 @@ function utf16Length(value: string): number {
   return value.length;
 }
 
-/** The server names the sections it drops in its own vocabulary; the screen shows the same names the rest of
- * the app uses for those fields. An unknown label passes through rather than disappearing — a section we cannot
- * name is still a section the user needs to know is missing. */
-const OMITTED_SECTION_LABELS: Record<string, string> = {
-  "Continuity cue": "장면 연결",
-  Environment: "환경 움직임",
-  Performance: "표정·연기",
-  Pacing: "움직임 속도",
-};
-
-function omittedSectionLabel(section: string): string {
-  return OMITTED_SECTION_LABELS[section] ?? section;
-}
 
 export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () => {} }: Props) {
   const [state, setState] = useState<LoadState>({ status: "loading" });

@@ -5,6 +5,7 @@ import { approveLongEpisodeVideoReview, episodeSceneErrorMessage, getLongEpisode
 import { LongEpisodeSceneVersions } from "./LongEpisodeSceneVersions.js";
 import { Spinner } from "./Spinner.js";
 import { videoRatioLabel } from "../utils/sceneFields.js";
+import { omittedSectionLabel } from "../utils/omittedSectionLabels.js";
 import { isLongEpisodeStatusBefore, longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { StatusChip } from "./ui/StatusChip.js";
@@ -256,6 +257,16 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
                   <textarea data-testid={`episode-video-prompt-${scene.sceneNumber}`} className={textareaClassName} value={prompts[scene.sceneNumber] ?? ""} disabled={confirmStart || busy} onChange={(event) => setPrompts((current) => ({ ...current, [scene.sceneNumber]: event.target.value }))} />
                 </label>
                 <span className="text-xs text-slate-500">{(prompts[scene.sceneNumber] ?? "").length} / {LIMIT}</span>
+                {/* The server drops sections in a fixed order to fit the limit and says which. The short project
+                    has shown this since its preview shipped; the Episode threw the list away, so a scene could
+                    lose its pacing or performance direction and the only way to find out was a finished clip
+                    that was wrong — after paying for it. Same sentence as the short project on purpose. */}
+                {scene.omittedSections && scene.omittedSections.length > 0 && (
+                  <p data-testid={`episode-video-omitted-${scene.sceneNumber}`} className="text-xs text-amber-300">
+                    길이 제한 때문에 이 장면에서 {scene.omittedSections.map(omittedSectionLabel).join(", ")} 설명이 빠졌습니다.
+                    꼭 필요하면 위 프롬프트에 직접 짧게 적어 주세요.
+                  </p>
+                )}
               </li>
             ))}
           </ol>

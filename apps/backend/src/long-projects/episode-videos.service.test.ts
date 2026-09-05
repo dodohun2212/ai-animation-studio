@@ -105,6 +105,33 @@ describe("EpisodeVideosService", () => {
   });
 
 
+  /**
+   * The short project's preview has named the sections it had to cut since it shipped. The Episode's threw the
+   * list away, so a scene could lose its pacing or performance direction and the only way to find out was a
+   * finished clip that was wrong — after paying for it.
+   *
+   * The Episode is also the side that will hit the limit first: measured on the real data, its prompts run
+   * 493-902 characters against the 1,000 limit while the short project's run 599-732.
+   */
+  it("names the sections it had to cut to fit the prompt limit, and says nothing when it cut none", async () => {
+    const { videos, projectsRoot } = await setup();
+    expect((await videos.preview("long", 1)).scenes.every((scene) => scene.omittedSections === undefined), "nothing was cut from these").toBe(true);
+
+    // One scene's environment description grown past what the limit can hold, the way a long script would do it.
+    const file = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
+    const episode = JSON.parse(await fs.readFile(file, "utf8")) as { script: { scenes: Record<string, unknown>[] } };
+    // Grown in main_motion, which is not on the removable list — so the only way back under the limit is to drop
+    // a removable section, and Pacing is the first one the server reaches for.
+    episode.script.scenes[1]!.main_motion = "골목을 가로질러 달린다 ".repeat(34);
+    await fs.writeFile(file, JSON.stringify(episode, null, 2));
+
+    const scene = (await videos.preview("long", 1)).scenes.find((item) => item.sceneNumber === 2);
+    // The first name, not the whole list: how much has to go depends on the prompt's exact wording, and a test
+    // that pinned the count would go red the next time a label changes without anything being wrong.
+    expect(scene?.omittedSections?.[0], "Pacing goes first, the same order the short project reports").toBe("Pacing");
+    expect(scene?.prompt).not.toContain("Pacing:");
+  });
+
   it("keeps preview provider-free, requires its exact approval snapshot, and produces six local fake clips sequentially", async () => {
     const { videos, projectsRoot } = await setup(); const preview = await videos.preview("long", 1);
     expect(preview).toMatchObject({ model: "gen4_turbo", ratio: "720:1280", durationSecondsPerScene: 5, executionMode: "sequential", estimatedCostUsd: 1.5 });

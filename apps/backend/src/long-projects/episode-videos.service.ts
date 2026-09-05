@@ -119,7 +119,18 @@ export class EpisodeVideosService implements OnModuleDestroy {
    * that setting, so a 16:9 Long Project's Episodes were always rendered as vertical video.
    */
   private prompt(current: ObjectMap, previous: ObjectMap | undefined, durationSeconds: 5 | 10, ratio: "720:1280" | "1280:720"): string {
-    try { return promptFor(current as unknown as StoredScene, previous as unknown as StoredScene | undefined, ratio, durationSeconds).prompt; }
+    return this.promptWithOmissions(current, previous, durationSeconds, ratio).prompt;
+  }
+  /**
+   * The same call, keeping what it already returned and this side used to throw away.
+   *
+   * promptFor drops sections in a fixed order to fit Runway's limit and names the ones it cut. The short
+   * project has shown that list on its preview since it shipped; the Episode discarded it, so a scene here
+   * could lose its pacing or performance direction and the only way to find out was that the finished clip
+   * was wrong — after paying for it.
+   */
+  private promptWithOmissions(current: ObjectMap, previous: ObjectMap | undefined, durationSeconds: 5 | 10, ratio: "720:1280" | "1280:720"): { prompt: string; omittedSections: string[] } {
+    try { return promptFor(current as unknown as StoredScene, previous as unknown as StoredScene | undefined, ratio, durationSeconds); }
     catch { throw longInvalidData(); }
   }
   private async assertReady(id: string, number: number, episode: Episode) { const scenes = sceneNumbersFor(this.sceneCount(episode)); if (episode.state !== "waiting_for_video_confirmation") throw longEpisodeVideosNotAllowed(); if (!(await Promise.all(scenes.map((item) => this.validImage(this.image(id, number, item))))).every(Boolean)) throw longEpisodeVideosInvalid(); const raw = await this.json(path.join(this.files(id, number).videos, "..", "generated_image_reviews.json")); if (!Array.isArray(raw) || !scenes.every((item) => raw.some((review) => object(review) && review.scene_number === item && review.status === "approved"))) throw longEpisodeVideosInvalid(); }
@@ -316,7 +327,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
     catch (error) { if (isBudgetLedgerUnreadable(error)) return undefined; throw error; }
     return { monthlyLimitUsd: this.budget.monthlyLimitUsd, spentUsd, remainingUsd, estimatedRequestCostUsd: estimatedCostUsd, canSpend: estimatedCostUsd <= remainingUsd };
   }
-  async preview(projectId: string, number: number): Promise<GetLongEpisodeVideoPreviewResponse> { const id = projectId.trim(); const episode = await this.loadEpisode(id, number); await this.assertReady(id, number, episode); const sceneNumbers = sceneNumbersFor(this.sceneCount(episode)); const durationSecondsPerScene = this.durationSecondsPerScene(episode); const ratio = await this.ratio(id, number); const scenes = this.scenes(episode); const items = scenes.map((item, index) => ({ sceneNumber: sceneNumbers[index]!, prompt: this.prompt(item, scenes[index - 1], durationSecondsPerScene, ratio), estimatedCostUsd: VIDEO_SCENE_ESTIMATED_COST_USD })); const hash = crypto.createHash("sha256").update(id).update(String(number)); for (const item of items) { hash.update(await fs.readFile(this.image(id, number, item.sceneNumber))); hash.update(item.prompt); } const estimatedCostUsd = items.reduce((sum, item) => sum + item.estimatedCostUsd, 0);
+  async preview(projectId: string, number: number): Promise<GetLongEpisodeVideoPreviewResponse> { const id = projectId.trim(); const episode = await this.loadEpisode(id, number); await this.assertReady(id, number, episode); const sceneNumbers = sceneNumbersFor(this.sceneCount(episode)); const durationSecondsPerScene = this.durationSecondsPerScene(episode); const ratio = await this.ratio(id, number); const scenes = this.scenes(episode); const items = scenes.map((item, index) => { const built = this.promptWithOmissions(item, scenes[index - 1], durationSecondsPerScene, ratio); return { sceneNumber: sceneNumbers[index]!, prompt: built.prompt, estimatedCostUsd: VIDEO_SCENE_ESTIMATED_COST_USD, ...(built.omittedSections.length > 0 ? { omittedSections: built.omittedSections } : {}) }; }); const hash = crypto.createHash("sha256").update(id).update(String(number)); for (const item of items) { hash.update(await fs.readFile(this.image(id, number, item.sceneNumber))); hash.update(item.prompt); } const estimatedCostUsd = items.reduce((sum, item) => sum + item.estimatedCostUsd, 0);
     // Read-only: previewing never reserves or records budget, it only reports the ledger's current state.
     const budget = await this.budgetPreview(estimatedCostUsd);
     return { confirmationId: hash.digest("hex"), model: "gen4_turbo", ratio, durationSecondsPerScene, executionMode: "sequential", scenes: items, estimatedCostUsd, maximumProviderCalls: sceneNumbers.length, ...(budget ? { budget } : {}) }; }

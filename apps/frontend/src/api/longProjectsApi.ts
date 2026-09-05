@@ -564,7 +564,10 @@ const isUnapproveEpisodeImageReviewResponse = (value: unknown): value is Unappro
 const isRegenerateEpisodeImageReviewResponse = (value: unknown): value is RegenerateLongEpisodeImageReviewResponse => isRecord(value) && isGetEpisodeImageReviewResponse(value) && isSceneNumber(value.sceneNumber);
 
 function isEpisodeVideoPreview(value: unknown): boolean {
-  return isRecord(value) && isSceneNumber(value.sceneNumber) && typeof value.prompt === "string" && typeof value.estimatedCostUsd === "number";
+  return isRecord(value) && isSceneNumber(value.sceneNumber) && typeof value.prompt === "string" && typeof value.estimatedCostUsd === "number"
+    // Optional — absent is the ordinary case, nothing was cut — but a present one names what the person is
+    // about to pay for without, so a malformed list must not reach the screen as if it were a section name.
+    && (value.omittedSections === undefined || (Array.isArray(value.omittedSections) && value.omittedSections.every((section) => typeof section === "string" && section.length > 0)));
 }
 const isFiniteNonNegative = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;
 /**

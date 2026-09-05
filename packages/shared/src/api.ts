@@ -649,6 +649,13 @@ export interface LongEpisodeVideoPreview {
   sceneNumber: SceneNumber;
   prompt: string;
   estimatedCostUsd: number;
+  /**
+   * Same meaning and same order as VideoPromptPreview.omittedSections — see that field. Missing here while
+   * the short project has had it since it shipped, and this is the side that needs it more: measured on the
+   * real data, Episode prompts run 493-902 characters against a 1,000 limit while the short project's run
+   * 599-732. The Episode is the one that will cross it first, and until now it crossed it in silence.
+   */
+  omittedSections?: string[];
 }
 export interface GetLongEpisodeVideoPreviewResponse {
   confirmationId: string;

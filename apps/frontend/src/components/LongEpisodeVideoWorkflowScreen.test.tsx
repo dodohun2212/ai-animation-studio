@@ -45,7 +45,28 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
    * The screen had been storing the server's answer since the start response and never reading it, showing a
    * sentence that names both cases instead. Before a run exists that is honest — nothing has been started. Once
    * one exists it makes the person work out which case applies to money they have already spent.
+   */
+  /**
+   * The short project's preview has named the sections it had to cut since it shipped; the Episode threw the
+   * server's list away. A scene could lose its pacing or performance direction and the only way to find out was
+   * a finished clip that was wrong — after paying for it. And the Episode is the side that hits the limit first:
+   * its real prompts run 493-902 characters against a 1,000 limit, the short project's 599-732.
    */
+  it("names the sections the server had to cut, and says nothing about a scene that lost none", async () => {
+    const trimmed = {
+      ...preview,
+      scenes: preview.scenes.map((scene: { sceneNumber: number }) =>
+        scene.sceneNumber === 2 ? { ...scene, omittedSections: ["Pacing"] } : scene),
+    };
+    vi.stubGlobal("fetch", stubFetchByRoute({ "GET /videos/generations/current": { jobId: null }, "GET /videos/preview": trimmed }));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    const line = await screen.findByTestId("episode-video-omitted-2");
+    expect(line.textContent, "the server's own vocabulary is not what the person reads").toContain("움직임 속도");
+    expect(line.textContent).toContain("길이 제한");
+    expect(screen.queryByTestId("episode-video-omitted-1"), "a scene that lost nothing says nothing").toBeNull();
+  });
+
   it("says whether the run in progress is paid, instead of naming both cases", async () => {
     vi.stubGlobal("fetch", stubFetchByRoute({
       "GET /videos/generations/current": { jobId: "job" },
