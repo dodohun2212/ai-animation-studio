@@ -158,6 +158,22 @@ export const RUNWAY_CLIP_DURATIONS = [5, 10] as const;
 export type RunwayClipDurationSeconds = (typeof RUNWAY_CLIP_DURATIONS)[number];
 
 /**
+ * How long one scene's clip is, for an Episode that only stores its total.
+ *
+ * 🔴 This decides what a scene costs. Runway is billed by the second, so answering 10 where the other caller
+ * answers 5 doubles the quote — and the two Episode services that needed it each wrote the expression out, one
+ * with a comment saying it matched the other. A midpoint of 7.5 written twice is a midpoint one edit away from
+ * being written two ways, and the halves that would disagree are the price shown before the button and the
+ * length actually sent to the provider.
+ *
+ * The nearest of the two lengths Runway offers, not a floor: an Episode at exactly 7.5 seconds a scene is
+ * closer to nothing, and rounding it down would quote a clip shorter than the one being made.
+ */
+export function clipDurationSecondsPerScene(totalDurationSeconds: number, sceneCount: number): RunwayClipDurationSeconds {
+  return Number(totalDurationSeconds) / sceneCount >= 7.5 ? 10 : 5;
+}
+
+/**
  * The longest quote a photo card will take.
  *
  * Here rather than on either side because both need it and they need the same one: the server refuses a longer

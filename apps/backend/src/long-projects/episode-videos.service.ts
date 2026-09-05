@@ -5,7 +5,7 @@ import { PLACEHOLDER_MP4 } from "../videos/placeholder-clip.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable, type OnModuleDestroy } from "@nestjs/common";
-import { FINAL_VIDEO_RELATIVE_PATH, SCENE_REVIEW_STATUSES, LONG_EPISODE_STATUSES, VIDEO_JOB_STATUSES, isSceneNumber, type VideoModel, RUNWAY_PROMPT_AUTHORING_LIMIT, sceneNumbersFor, videoSceneEstimatedCostUsd, type ApproveLongEpisodeVideoReviewRequest, type ApproveLongEpisodeVideoReviewResponse, type GetLongEpisodeCurrentVideoJobResponse, type GetLongEpisodeVideoPreviewResponse, type GetLongEpisodeVideoReviewResponse, type LongEpisodeDetail, type LongEpisodeStatus, type LongEpisodeVideoProgress, type LongEpisodeVideoReview, type LongEpisodeVideoStaleness, type GetVideoVersionsResponse, type RecoverLongEpisodeVideosResponse, type RegenerateLongEpisodeVideoResponse, type RestoreLongEpisodeVideoVersionResponse, type SceneNumber, type StartLongEpisodeVideoGenerationRequest, type StartLongEpisodeVideoGenerationResponse } from "@ai-animation-studio/shared";
+import { clipDurationSecondsPerScene, type RunwayClipDurationSeconds, FINAL_VIDEO_RELATIVE_PATH, SCENE_REVIEW_STATUSES, LONG_EPISODE_STATUSES, VIDEO_JOB_STATUSES, isSceneNumber, type VideoModel, RUNWAY_PROMPT_AUTHORING_LIMIT, sceneNumbersFor, videoSceneEstimatedCostUsd, type ApproveLongEpisodeVideoReviewRequest, type ApproveLongEpisodeVideoReviewResponse, type GetLongEpisodeCurrentVideoJobResponse, type GetLongEpisodeVideoPreviewResponse, type GetLongEpisodeVideoReviewResponse, type LongEpisodeDetail, type LongEpisodeStatus, type LongEpisodeVideoProgress, type LongEpisodeVideoReview, type LongEpisodeVideoStaleness, type GetVideoVersionsResponse, type RecoverLongEpisodeVideosResponse, type RegenerateLongEpisodeVideoResponse, type RestoreLongEpisodeVideoVersionResponse, type SceneNumber, type StartLongEpisodeVideoGenerationRequest, type StartLongEpisodeVideoGenerationResponse } from "@ai-animation-studio/shared";
 import { validateImage } from "../assets/image-validation.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { resolveSafeProjectDirectory } from "../projects/project-id.js";
@@ -113,7 +113,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
    * episode-timeline.service.ts's episodeData()) from the project's setting at that moment, so it can predate
    * this 5/10 constraint for an older project; coerce to the nearer valid value rather than reject.
    */
-  private durationSecondsPerScene(episode: Episode): 5 | 10 { return Number(episode.duration_seconds) / this.sceneCount(episode) >= 7.5 ? 10 : 5; }
+  private durationSecondsPerScene(episode: Episode): RunwayClipDurationSeconds { return clipDurationSecondsPerScene(Number(episode.duration_seconds), this.sceneCount(episode)); }
   /**
    * Delegates to video-preview.service.ts's promptFor() — the short-project and Long Episode script schemas use
    * the same 16 field names (see MOTION_SCENE_FIELDS/scenes() above), so the same function correctly reads all
