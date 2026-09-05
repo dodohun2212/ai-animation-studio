@@ -1712,33 +1712,12 @@ export interface SaveProviderCredentialRequest { value: string; }
 export interface SaveProviderCredentialResponse { provider: ProviderCredentialStatus; }
 export interface SetProviderConnectionResponse { provider: ProviderCredentialStatus; }
 
-export interface VideoScenePreview {
-  sceneNumber: SceneNumber;
-  prompt: string;
-  imagePath: string;
-  estimatedCostUsd: number;
-}
-
 export interface BudgetPreview {
   monthlyLimitUsd: number;
   spentUsd: number;
   remainingUsd: number;
   estimatedRequestCostUsd: number;
   canSpend: boolean;
-}
-
-export interface VideoGenerationPreviewResponse {
-  confirmationId: string;
-  model: "gen4_turbo";
-  ratio: "720:1280" | "1280:720";
-  sceneCount: number;
-  durationSecondsPerScene: number;
-  executionMode: "sequential";
-  audioEnabled: false;
-  continuityStrength: "low" | "normal" | "high";
-  maximumProviderCalls: number;
-  scenes: VideoScenePreview[];
-  budget: BudgetPreview;
 }
 
 export interface StartVideoGenerationRequest {
