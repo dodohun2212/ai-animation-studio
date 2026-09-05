@@ -44,12 +44,24 @@ describe("RunwayBudget", () => {
     expect(raw).toEqual([expect.objectContaining({ project_id: "p1", scene_number: 1, estimated_cost_usd: 0.25, actual_cost_usd: 0, succeeded: false })]);
   });
 
-  it("only counts usage from the current UTC month", async () => {
-    const root = await makeRoot();
-    const budget = new RunwayBudget(root, 10);
-    await budget.record("p1", 1, "video", true, 5, new Date("2026-07-31T23:59:59.000Z"));
-    await budget.record("p1", 1, "video", true, 3, new Date("2026-08-01T00:00:00.000Z"));
-    expect(await budget.spentThisMonth(new Date("2026-08-15T00:00:00.000Z"))).toBe(3);
+  /**
+   * Last month's spend is not this month's — and "month" is the one the person is in.
+   *
+   * This used to compare UTC months, and pinned that with two instants either side of a UTC boundary. The
+   * mechanism was never the point: nine hours of every Korean month landed in the previous one, so an
+   * exhausted budget went on refusing past local midnight. The property worth holding is this one, so the
+   * timezone is stated rather than inherited from whatever machine runs the suite.
+   */
+  it("only counts usage from the month the person is in", async () => {
+    const previous = process.env.TZ;
+    process.env.TZ = "Asia/Seoul";
+    try {
+      const root = await makeRoot();
+      const budget = new RunwayBudget(root, 10);
+      await budget.record("p1", 1, "video", true, 5, new Date("2026-07-31T14:00:00.000Z")); // KST 07-31 23:00
+      await budget.record("p1", 2, "video", true, 3, new Date("2026-07-31T15:00:00.000Z")); // KST 08-01 00:00
+      expect(await budget.spentThisMonth(new Date("2026-08-15T00:00:00.000Z"))).toBe(3);
+    } finally { if (previous === undefined) delete process.env.TZ; else process.env.TZ = previous; }
   });
 
   it("throws RunwayBudgetExceededError before any request when the estimate would exceed the remaining budget", async () => {

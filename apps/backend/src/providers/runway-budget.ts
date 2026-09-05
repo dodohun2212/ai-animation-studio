@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
+import { isInBudgetMonth } from "./budget-month.js";
 import { monthlyLimitFromEnvironment } from "./monthly-budget-limit.js";
 
 const DEFAULT_MONTHLY_LIMIT_USD = 10;
@@ -68,14 +69,9 @@ export class RunwayBudget {
     return parsed.filter(isUsageRecord);
   }
 
-  private currentMonth(now: Date): string {
-    return now.toISOString().slice(0, 7);
-  }
-
   async spentThisMonth(now = new Date()): Promise<number> {
-    const month = this.currentMonth(now);
     const records = await this.load();
-    return records.filter((record) => record.timestamp.startsWith(month)).reduce((sum, record) => sum + record.actual_cost_usd, 0);
+    return records.filter((record) => isInBudgetMonth(record.timestamp, now)).reduce((sum, record) => sum + record.actual_cost_usd, 0);
   }
 
   async remaining(now = new Date()): Promise<number> {
