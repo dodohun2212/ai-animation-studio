@@ -1,6 +1,6 @@
 import * as crypto from "node:crypto";
 import { Injectable } from "@nestjs/common";
-import { MAX_SCENE_COUNT, sceneNumbersFor } from "@ai-animation-studio/shared";
+import { type MappingApprovalInvalidReason, MAX_SCENE_COUNT, sceneNumbersFor } from "@ai-animation-studio/shared";
 import type {
   ApproveProjectAssetMappingReviewRequest, BeginProjectAssetMappingReviewRequest, CreateProjectAssetMappingRequest,
   CreateProjectAssetMappingResponse, BeginProjectAssetMappingReviewResponse, GetProjectAssetMappingReviewResponse, ApproveProjectAssetMappingReviewResponse,
@@ -130,7 +130,23 @@ export class ProjectAssetMappingsService<Key = string> {
     await this.repository.saveReview(owner, review); return { review: toPublicReview(review) };
   }
   async approveReview(key: Key, body: unknown): Promise<ApproveProjectAssetMappingReviewResponse> {
-    if (!isObject(body) || Object.keys(body).some((key) => !["scriptFingerprint", "approvedBy"].includes(key)) || typeof body.scriptFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(body.scriptFingerprint) || !(body.approvedBy === undefined || (typeof body.approvedBy === "string" && body.approvedBy.trim().length > 0 && body.approvedBy.length <= 80))) throw invalidMappingRequest("Asset Mapping approval request is invalid.");
+    // Four different failures used to leave here as one sentence, and the client turned that into "입력 내용을
+    // 확인해 주세요" — you mistyped something. The commonest of the four involves no typing at all: a project
+    // whose review file does not exist yet reads back a fingerprint of "", the screen sends back what this server
+    // just gave it, and this line refuses it. Captain D hit that and stopped (Cowork Round 533).
+    //
+    // So the reason travels with the refusal. `no_baseline` is not a malformed request — it means the check
+    // baseline was never set, and the way out is to set it, which only a screen that knows can say.
+    if (!isObject(body) || Object.keys(body).some((key) => !["scriptFingerprint", "approvedBy"].includes(key))) {
+      throw invalidMappingRequest("Asset Mapping approval request is invalid.", { reason: "unexpected_fields" satisfies MappingApprovalInvalidReason });
+    }
+    if (typeof body.scriptFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(body.scriptFingerprint)) {
+      const reason: MappingApprovalInvalidReason = body.scriptFingerprint === "" ? "no_baseline" : "fingerprint_malformed";
+      throw invalidMappingRequest("Asset Mapping approval request is invalid.", { reason });
+    }
+    if (!(body.approvedBy === undefined || (typeof body.approvedBy === "string" && body.approvedBy.trim().length > 0 && body.approvedBy.length <= 80))) {
+      throw invalidMappingRequest("Asset Mapping approval request is invalid.", { reason: "approved_by_invalid" satisfies MappingApprovalInvalidReason });
+    }
     const request = body as unknown as ApproveProjectAssetMappingReviewRequest; const owner = await this.owners.get(key); const scenes = mappingsScenes(owner); const sceneList = scenesFor(owner); const currentFingerprint = scriptFingerprint(scenes); const review = await this.repository.loadReview(owner);
     if (review.script_revision !== owner.scriptRevision || review.script_fingerprint !== currentFingerprint || request.scriptFingerprint !== currentFingerprint) { const invalidated = { ...review, mapping_revision: review.mapping_revision + 1, script_revision: owner.scriptRevision, script_fingerprint: currentFingerprint, status: "waiting" as const, approved_at: "", approved_by: "", reviewed_scenes: [] }; await this.repository.saveReview(owner, invalidated); throw fingerprintMismatch(); }
     const mappings = (await this.repository.load(owner)).filter((mapping) => !mapping.candidate_only);

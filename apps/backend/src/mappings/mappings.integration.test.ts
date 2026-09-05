@@ -44,6 +44,35 @@ describe("ProjectAssetMappingsService", () => {
     expect(withinRange.mapping.sceneScope).toEqual({ kind: "scene", sceneNumber: 4 });
   });
 
+  /**
+   * Captain D pressed 「연결 다 했음 · 다음 단계로」 and got "입력 내용을 확인해 주세요" — told he had mistyped
+   * something, on a screen where he had typed nothing (Cowork Round 533).
+   *
+   * A project whose review file does not exist yet reads back a scriptFingerprint of "", the screen sends back
+   * what this server just gave it, and this refusal rejects the server's own value. Four different failures left
+   * here as one sentence, so the client had nothing to say but the most accusatory reading of it.
+   *
+   * The reason travels with the refusal now. `no_baseline` is not a malformed request at all — the check baseline
+   * was never set, and the way out is to set it.
+   */
+  it("says which of the four things was wrong with an approval, so a screen need not guess", async () => {
+    const { service } = await setup();
+
+    // The one Captain D hit: never reviewed, so the fingerprint the server itself hands out is empty.
+    await expect(service.approveReview("short_mapping", { scriptFingerprint: "" }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST", details: { reason: "no_baseline" } } });
+
+    await expect(service.approveReview("short_mapping", { scriptFingerprint: "not-a-digest" }))
+      .rejects.toMatchObject({ response: { details: { reason: "fingerprint_malformed" } } });
+
+    const begun = await service.beginReview("short_mapping", { scriptRevision: 1 });
+    await expect(service.approveReview("short_mapping", { scriptFingerprint: begun.review.scriptFingerprint, approvedBy: "   " }))
+      .rejects.toMatchObject({ response: { details: { reason: "approved_by_invalid" } } });
+
+    await expect(service.approveReview("short_mapping", { scriptFingerprint: begun.review.scriptFingerprint, whatIsThis: true }))
+      .rejects.toMatchObject({ response: { details: { reason: "unexpected_fields" } } });
+  });
+
   it("creates, lists, snapshots, reviews and reopens local project mappings", async () => {
     const { service, asset, mappings, assets } = await setup();
     const created = await service.create("short_mapping", { assetId: asset.asset_id, usageRole: "style", sceneScope: { kind: "all" } });

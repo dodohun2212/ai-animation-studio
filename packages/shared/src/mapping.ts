@@ -148,3 +148,17 @@ export interface ApproveProjectAssetMappingReviewResponse {
 export interface SnapshotProjectAssetMappingResponse {
   mapping: ProjectAssetMapping;
 }
+
+/**
+ * Why an Asset Mapping approval request was refused, carried in the error `details` so a screen can say which.
+ *
+ * Four different failures used to arrive as one sentence, and the client turned that into "입력 내용을 확인해
+ * 주세요" — which tells someone they mistyped when the commonest case involves no typing at all. Captain D hit
+ * exactly that and stopped (Cowork Round 533): a project whose review file does not exist yet reads back a
+ * `scriptFingerprint` of "", the screen sends what the server gave it, and the server refuses its own value.
+ *
+ * `no_baseline` is that case and is not a malformed request at all — it means this project has never had its
+ * check baseline set, and the way out is to set it. The screen can only say that if the server says which.
+ */
+export const MAPPING_APPROVAL_INVALID_REASONS = ["no_baseline", "fingerprint_malformed", "approved_by_invalid", "unexpected_fields"] as const;
+export type MappingApprovalInvalidReason = (typeof MAPPING_APPROVAL_INVALID_REASONS)[number];
