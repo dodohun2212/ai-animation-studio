@@ -258,6 +258,10 @@ export class EpisodeScriptsService {
       "공개 금지 정보를 노출하지 마십시오.",
       `정확히 ${sceneCount}개 장면을 지정된 JSON 형식으로만 반환하십시오.`,
       "각 장면에는 description과 함께 visual_action, start_motion, main_motion, end_motion, camera_motion, environment_motion, motion_speed, motion_intensity, expression_change, continuity_hint를 구체적인 현재형 문장으로 작성하십시오.",
+      // The video model cannot draw readable writing, and asking for it is one of the two documented causes
+      // of a refused clip — the other being text already on the first frame. Both were met on 2026-09-05:
+      // one scene was refused twice for $0.50, and two more came back with caption boards holding the shot.
+      "화면에 글자가 나타나는 것을 장면의 주된 사건으로 삼지 마십시오. 기록·라벨·자막·간판·파형처럼 읽히는 글자는 영상 모델이 그리지 못합니다. 그 내용이 뜻하는 바를 인물의 행동·표정·빛·구도로 보여 주십시오.",
       "대사 문장을 움직임으로 복사하지 말고 화면에 보이는 행동으로 변환하며, 다음 장면은 이전 장면의 end_motion을 자연스럽게 이어받게 하십시오.",
       `narration에는 장면당 ${clipDurationSeconds}초 안에 자연스럽게 읽을 수 있는 내레이션/자막 문장을 카메라 지시나 지문 없이 작성하십시오.`,
     ].join("\n");

@@ -18,7 +18,7 @@ import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../pr
 import { OpenAiAdapterError } from "../providers/openai-common.js";
 import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "./openai-image-adapter.js";
 import { collectReferenceImages, describeReferenceMappingsForScene } from "./image-reference-selection.js";
-import { imagePromptFor, imageSizeFor, sceneValue, styleLineFor } from "./image-prompt.js";
+import { imagePromptForRequest, imagePromptFor, imageSizeFor, sceneValue, styleLineFor } from "./image-prompt.js";
 import { previousSceneContinuityImagePath } from "../projects/project-continuity.js";
 import { imageBudgetExceeded, imageBudgetLedgerUnreadable, imageContentUnavailable, imageGenerationFailed, imageGenerationLocked, imageGenerationNotAllowed, imageProviderError, imageStorageError, invalidImageRequest, mappingReviewRequired } from "./image-api.error.js";
 
@@ -189,7 +189,12 @@ export class LocalImageGenerationService {
           continue;
         }
         const referenceNotes = await describeReferenceMappingsForScene(this.assets, mappings, number);
-        const prompt = imagePromptFor(current.scenes[number - 1], styleLine, referenceNotes);
+        // Two prompts on purpose, the same split the Episode side makes. `recorded` is what staleness
+        // compares against, so it carries the scene and the style line and nothing else; `prompt` is what goes
+        // to the provider and adds the rules that are about drawing rather than about this scene. Folding the
+        // rule into the record would mark every picture ever generated as behind its own script.
+        const recorded = imagePromptFor(current.scenes[number - 1], styleLine);
+        const prompt = imagePromptForRequest(current.scenes[number - 1], styleLine, referenceNotes);
         let bytes: Buffer = PNG;
         let adapter = "local-fake-image-adapter";
         let apiCalls = 0;
@@ -226,7 +231,7 @@ export class LocalImageGenerationService {
         if (!await validPng(destination)) throw new Error("invalid png");
         current = {
           ...current,
-          image_prompts: [...current.image_prompts.slice(0, number - 1), prompt],
+          image_prompts: [...current.image_prompts.slice(0, number - 1), recorded],
           motion_prompts: [...current.motion_prompts.slice(0, number - 1), sceneValue(current.scenes[number - 1], "main_motion")],
           generated_images: [...current.generated_images.slice(0, number - 1), destination],
           image_generation_records: [...current.image_generation_records.slice(0, number - 1), { scene_number: number, prompt, checkpoint: "completed", adapter, image_api_calls: apiCalls, ...(referenceOmission ?? {}), ...(referenceSources !== undefined ? { reference_sources: referenceSources } : {}) }],

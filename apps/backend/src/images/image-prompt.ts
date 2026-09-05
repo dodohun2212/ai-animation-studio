@@ -33,6 +33,28 @@ export function sceneValue(scene: unknown, key: string): string {
  * No length truncation: OpenAI's image prompt limit (32,000 chars) is far larger than anything a single scene's
  * fields could reach.
  */
+/**
+ * What a picture must not contain, said to the model that draws it.
+ *
+ * Runway's own documentation lists two first causes for INTERNAL.BAD_OUTPUT: text or logos on the input media,
+ * and a prompt that asks for text. Both are the same failure seen from either end, and this app met both on
+ * 2026-09-05 — Episode 5 scene 3's first frame was a close-up of a tape label, the clip was refused twice, and
+ * $0.50 bought nothing. The scenes that did get through show the other half: 4번 and 6번 have red caption
+ * boards holding the frame for the whole five seconds.
+ *
+ * Kept out of the recorded prompt on purpose. The record is what staleness compares against, and a constant
+ * line added to it would mark every picture ever generated as behind its own script — the trap styleStale's
+ * own doc comment describes. This is a rule about how to draw, not a change to any scene, so it travels with
+ * the request the same way the reference notes do.
+ */
+export const NO_LEGIBLE_TEXT_RULE = "Do not render readable writing: no captions, labels, signs, screens of text, subtitles, waveforms or logos. Show what such a thing would say through the image itself.";
+
+/** The prompt as it goes to the provider — the recorded one plus the rules that are about drawing, not about the scene. */
+export function imagePromptForRequest(scene: unknown, styleLine: string, referenceNotes = ""): string {
+  return `${imagePromptFor(scene, styleLine, referenceNotes)}
+${NO_LEGIBLE_TEXT_RULE}`;
+}
+
 export function imagePromptFor(scene: unknown, styleLine: string, referenceNotes = ""): string {
   const sections: Array<[string, string]> = [
     ["Scene", sceneValue(scene, "visual_action")],

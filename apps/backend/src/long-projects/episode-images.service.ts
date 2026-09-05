@@ -15,7 +15,7 @@ import { ProviderSettingsService } from "../settings/provider-settings.service.j
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "../images/openai-image-adapter.js";
-import { imagePromptDrift, imagePromptFor, styleLineFrom } from "../images/image-prompt.js";
+import { imagePromptDrift, imagePromptFor, imagePromptForRequest, styleLineFrom } from "../images/image-prompt.js";
 import { longBudgetLedgerUnreadable, longEpisodeImagesBudgetExceeded, longEpisodeImagesInvalid, longEpisodeImagesNotAllowed, longEpisodeImagesProviderError, longEpisodeNotFound, longInvalidData, longInvalidRequest, longLocked, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
@@ -404,7 +404,7 @@ export class EpisodeImagesService {
           // photo it is, what role the person mapped them as, or anything a picture cannot carry. Measured: an
           // Episode's paid request named nobody.
           const referenceNotes = await describeReferenceMappingsForScene(this.assets, mappings, scene);
-          const prompt = imagePromptFor(scenes[scene - 1], styleLine, referenceNotes);
+          const prompt = imagePromptForRequest(scenes[scene - 1], styleLine, referenceNotes);
           // The plain scene prompt is what gets recorded, for the same reason the one-off direction below is
           // left out of it: staleness must measure the script, and folding the References block in would make a
           // scene read as behind its own script the moment somebody edits an Asset's description. Which
