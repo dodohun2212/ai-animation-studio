@@ -1,4 +1,4 @@
-import type { LongEpisodeDetail, LongEpisodeInstagramPost, LongEpisodeStatus, UsedAudio } from "@ai-animation-studio/shared";
+import { AUDIO_MODES, isAudioMode, type AudioMode, LongEpisodeDetail, LongEpisodeInstagramPost, LongEpisodeStatus, UsedAudio } from "@ai-animation-studio/shared";
 
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { episodeProjectRelativePath } from "./long-project-paths.js";
@@ -113,7 +113,7 @@ export function toEpisodeUsedAudio(value: unknown): UsedAudio | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const stored = value as Record<string, unknown>;
   const mode = stored.mode;
-  if (mode !== "narration" && mode !== "narration+bgm" && mode !== "bgm" && mode !== "silent") return undefined;
+  if (!isAudioMode(mode)) return undefined;
   return {
     mode,
     ...(typeof stored.track_id === "string" ? { trackId: stored.track_id } : {}),

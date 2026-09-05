@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import { LONG_EPISODE_STATUSES, isSceneNumber, sceneNumbersFor, type LongEpisodeDetail, type LongEpisodeStatus, type MergeLongEpisodeVideosResponse, type SceneNumber } from "@ai-animation-studio/shared";
+import { AUDIO_MODES, isAudioMode, type AudioMode, LONG_EPISODE_STATUSES, isSceneNumber, sceneNumbersFor, type LongEpisodeDetail, type LongEpisodeStatus, type MergeLongEpisodeVideosResponse, type SceneNumber } from "@ai-animation-studio/shared";
 
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "../videos/ffmpeg-merge.service.js";
@@ -253,7 +253,7 @@ export class EpisodeVideoMergeService {
    * settings say. Two spellings of the same choice would be two places to get it wrong, and one of the ways to
    * get it wrong ships a video without the credit its licence requires.
    */
-  private async resolveAudio(id: string, number: number, episode: Episode, request: unknown): Promise<{ mode: "narration" | "narration+bgm" | "bgm" | "silent"; trackId?: string; volume: number; fadeSeconds: number; startSeconds: number }> {
+  private async resolveAudio(id: string, number: number, episode: Episode, request: unknown): Promise<{ mode: AudioMode; trackId?: string; volume: number; fadeSeconds: number; startSeconds: number }> {
     const narrationAvailable = await this.narrationAvailable(id, number, episode);
     const fallbackMode = narrationAvailable && await this.narrationEnabled(id) ? "narration" as const : "silent" as const;
     const fallback = { mode: fallbackMode, volume: DEFAULT_BGM_VOLUME, fadeSeconds: DEFAULT_BGM_FADE_SECONDS, startSeconds: 0 };
@@ -263,7 +263,7 @@ export class EpisodeVideoMergeService {
     const audio = request.audio;
     if (!object(audio) || Object.keys(audio).some((key) => !["mode", "trackId", "volume", "fadeSeconds", "startSeconds"].includes(key))) throw longInvalidRequest();
     const mode = audio.mode;
-    if (mode !== "narration" && mode !== "narration+bgm" && mode !== "bgm" && mode !== "silent") throw longInvalidRequest("audio.mode must be narration, narration+bgm, bgm, or silent.");
+    if (!isAudioMode(mode)) throw longInvalidRequest(`audio.mode must be ${AUDIO_MODES.join(", ")}.`);
     if ((mode === "narration" || mode === "narration+bgm") && !narrationAvailable) throw longInvalidRequest("This Episode has no narration audio to include.");
     const needsTrack = mode === "narration+bgm" || mode === "bgm";
     if (needsTrack && (typeof audio.trackId !== "string" || !audio.trackId.trim())) throw longInvalidRequest(`audio.trackId is required for ${mode}.`);

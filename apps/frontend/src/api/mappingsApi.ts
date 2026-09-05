@@ -1,4 +1,6 @@
-import { ASSET_MAPPING_STATUSES,
+import { ASSET_MAPPING_ASSIGNMENT_SOURCES,
+  ASSET_MAPPING_STATUSES,
+  ASSET_MAPPING_VERSION_POLICIES,
   API_ROUTES,
   isSceneNumber as isValidSceneNumber,
   type ApproveProjectAssetMappingReviewRequest,
@@ -66,8 +68,8 @@ export function toMappingDisplayError(error: unknown): { code: string; message: 
 // The contract's own array — same reason as assetsApi's: this is a response guard, and a status it does not
 // know turns a valid response into 서버 응답을 확인할 수 없습니다.
 const STATUSES: readonly AssetMappingStatus[] = ASSET_MAPPING_STATUSES;
-const SOURCES: readonly AssetMappingAssignmentSource[] = ["manual", "auto", "migrated", "approved_generated_image"];
-const POLICIES: readonly AssetMappingVersionPolicy[] = ["pinned_version", "follow_latest", "snapshot"];
+const SOURCES: readonly AssetMappingAssignmentSource[] = ASSET_MAPPING_ASSIGNMENT_SOURCES;
+const POLICIES: readonly AssetMappingVersionPolicy[] = ASSET_MAPPING_VERSION_POLICIES;
 const REVIEW_STATUSES: readonly ProjectAssetMappingReviewStatus[] = ["waiting", "approved"];
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);

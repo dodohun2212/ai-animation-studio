@@ -1,4 +1,4 @@
-import { MAX_SCENE_COUNT, WorkflowState } from "@ai-animation-studio/shared";
+import { AUDIO_MODES, type AudioMode, MAX_SCENE_COUNT, WorkflowState } from "@ai-animation-studio/shared";
 
 import { dataInvalid } from "./project-api.error.js";
 
@@ -57,7 +57,8 @@ export interface StoredProject {
  * PROJECT_DATA_INVALID and the list route dropped it, which is a finished project disappearing off the screen
  * (Cowork Round 436). One list now, with the type derived from it, so the two cannot drift again.
  */
-export const USED_AUDIO_MODES = ["narration", "narration+bgm", "bgm", "silent"] as const;
+/** The contract's list, re-exported under the name this schema has always used — one set, two names, no second copy. */
+export const USED_AUDIO_MODES = AUDIO_MODES;
 
 /** What the most recently completed merge actually used — see ProjectSummary.usedAudio's own doc comment for why attribution is copied by value here rather than kept as a live reference to the track. */
 export interface StoredUsedAudio {

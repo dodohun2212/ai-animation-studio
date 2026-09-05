@@ -1,4 +1,4 @@
-import type { Project, ProjectSummary, RunwayClipDurationSeconds, SceneNumber, UsedAudio, VideoModel } from "./domain.js";
+import type { AudioMode, Project, ProjectSummary, RunwayClipDurationSeconds, SceneNumber, UsedAudio, VideoModel } from "./domain.js";
 import { MAX_SCENE_COUNT, MIN_SCENE_COUNT } from "./domain.js";
 import type { Asset, AssetOwnership, AssetType } from "./asset.js";
 import type {
@@ -1924,7 +1924,7 @@ export interface MergeAudioSettings {
    * had no word for it. `"bgm"` needs a track and does not need narration, which is the whole difference from
    * `"narration+bgm"`.
    */
-  mode: "narration" | "narration+bgm" | "bgm" | "silent";
+  mode: AudioMode;
   trackId?: string;
   /**
    * 0 (silent) to 1 (full volume) — the bgm track's own level, independent of narration's.

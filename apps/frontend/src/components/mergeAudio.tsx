@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { AudioLibraryTrack, MergeAudioSettings, UsedAudio } from "@ai-animation-studio/shared";
+import { AUDIO_MODES, type AudioLibraryTrack, type MergeAudioSettings, type UsedAudio } from "@ai-animation-studio/shared";
 
 import { audioTrackContentUrl } from "../api/audioLibraryApi.js";
 
@@ -110,7 +110,7 @@ export function MergeAudioFieldset({ idPrefix, tracks, narrationAvailable, mode,
   return (
     <fieldset data-testid={`${idPrefix}-settings`} className="space-y-2 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
       <legend className="px-1 text-sm font-semibold text-slate-200">오디오</legend>
-      {(["narration", "narration+bgm", "bgm", "silent"] as AudioMode[]).map((option) => {
+      {AUDIO_MODES.map((option) => {
         // Only offered when it can actually be produced. Both narration modes need generated narration audio —
         // "narration+bgm" mixes a voice too, and the server refuses it without one, so offering it here would
         // put a choice on screen that comes back as an error. Either music mode needs an uploaded track. An

@@ -40,6 +40,25 @@ export function sceneNumbersFor(sceneCount: number): SceneNumber[] {
  *
  * Adding a model means adding it here, and the places that must agree stop compiling until they do.
  */
+/**
+ * What a merged video's soundtrack is made of.
+ *
+ * The four names were written out by hand in seven places — the contract field itself, three request
+ * validators on the server (short project, Episode, and the Episode detail reader), the storage schema's own
+ * `USED_AUDIO_MODES`, and the client's radio-button list. They agreed; nothing made them.
+ *
+ * 🟠 This is also the hole in `contract-value-sets.test.ts`, which can only notice a copy of a set the contract
+ * declares as an array. `mode` was an inline union, so the client's `["narration", "narration+bgm", "bgm",
+ * "silent"] as AudioMode[]` — the exact shape that guard exists to catch — sat in plain sight and passed.
+ *
+ * The client list is what draws the buttons, so a mode added to the storage schema and not to it is a mode the
+ * server accepts and nobody can pick.
+ */
+export const AUDIO_MODES = ["narration", "narration+bgm", "bgm", "silent"] as const;
+export type AudioMode = (typeof AUDIO_MODES)[number];
+/** A guard rather than a bare `includes`, so a validator that used to be a chain of `!==` keeps narrowing the value it checked. */
+export const isAudioMode = (value: unknown): value is AudioMode => AUDIO_MODES.includes(value as AudioMode);
+
 export const VIDEO_MODELS = ["gen4_turbo"] as const;
 export type VideoModel = (typeof VIDEO_MODELS)[number];
 
@@ -289,7 +308,7 @@ export interface ProjectSummary {
  * without the credit its licence requires (D-003).
  */
 export interface UsedAudio {
-  mode: "narration" | "narration+bgm" | "bgm" | "silent";
+  mode: AudioMode;
   trackId?: string;
   attributionRequired?: boolean;
   attributionText?: string;

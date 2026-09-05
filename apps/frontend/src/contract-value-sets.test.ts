@@ -39,6 +39,24 @@ const ALLOWED = new Map<string, string>([]);
 /** Naming this share of a set, and at least this many of its members, is a copy rather than a gate. */
 const COPY_RATIO = 0.7;
 const COPY_MINIMUM = 5;
+/**
+ * Below COPY_MINIMUM members the proportion rule cannot tell a copy from a gate, so those sets were not
+ * watched at all — and AUDIO_MODES has four. Its whole list sat in mergeAudio.tsx as
+ * `["narration", "narration+bgm", "bgm", "silent"] as AudioMode[]`, the exact shape this file exists to catch,
+ * and passed because the contract had no array for it and four would have been too few anyway.
+ *
+ * Naming *every* member is unambiguous at any size: a gate that lists the whole set is not narrowing anything.
+ * So a complete list is a copy, and the ratio rule stays for the partial ones.
+ *
+ * Widening it found four more the same afternoon, all in api/mappingsApi.ts: the whole of
+ * ASSET_MAPPING_ASSIGNMENT_SOURCES and ASSET_MAPPING_VERSION_POLICIES, written out beside the contract arrays
+ * that already held them.
+ *
+ * 🟠 One literal can be reported against several sets when they overlap — the three version policies are also
+ * the three style-link policies, and contain both protagonist ones. That reads as four findings for one line,
+ * and the fix is the same single import, so it is left rather than given machinery of its own.
+ */
+const SMALLEST_WATCHED_SET = 2;
 
 async function collectSourceFiles(directory: string): Promise<string[]> {
   let entries: Dirent<string>[];
@@ -63,7 +81,7 @@ async function contractValueSets(): Promise<Map<string, string[]>> {
     const source = await fs.readFile(file, "utf8");
     for (const match of source.matchAll(/export const (\w+) = \[([^\]]*)\] as const;/g)) {
       const members = [...match[2]!.matchAll(/"([^"]+)"/g)].map((member) => member[1]!);
-      if (members.length >= COPY_MINIMUM) sets.set(match[1]!, members);
+      if (members.length >= SMALLEST_WATCHED_SET) sets.set(match[1]!, members);
     }
   }
   return sets;
@@ -93,7 +111,8 @@ describe("contract value sets are named once", () => {
       // Counting per file flagged three switches and two narrow gates that are doing neither.
       const literals = [...source.matchAll(/\[[^[\]]*\]/g)].map((match) => match[0]);
       for (const [name, members] of sets) {
-        const threshold = Math.max(COPY_MINIMUM, Math.ceil(members.length * COPY_RATIO));
+        // A complete list is a copy whatever the size; a partial one has to clear the proportion rule.
+        const threshold = members.length < COPY_MINIMUM ? members.length : Math.max(COPY_MINIMUM, Math.ceil(members.length * COPY_RATIO));
         const named = Math.max(0, ...literals.map((literal) => members.filter((member) => literal.includes(`"${member}"`)).length));
         const key = `${path.relative(FRONTEND_SOURCE, file).split(path.sep).join("/")}::${name}`;
         if (named >= threshold && !ALLOWED.has(key)) {
@@ -116,7 +135,7 @@ describe("contract value sets are named once", () => {
       const literals = [...source.matchAll(/\[[^[\]]*\]/g)].map((match) => match[0]);
       const named = Math.max(0, ...literals.map((literal) => members!.filter((member) => literal.includes(`"${member}"`)).length));
       expect(named, `${key} is no longer a near-complete list — drop the exception (${reason})`)
-        .toBeGreaterThanOrEqual(Math.max(COPY_MINIMUM, Math.ceil(members!.length * COPY_RATIO)));
+        .toBeGreaterThanOrEqual(members!.length < COPY_MINIMUM ? members!.length : Math.max(COPY_MINIMUM, Math.ceil(members!.length * COPY_RATIO)));
     }
   });
 });

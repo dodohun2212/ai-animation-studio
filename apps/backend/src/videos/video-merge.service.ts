@@ -4,7 +4,7 @@ import { FINAL_VIDEO_LOCK_KEY, ProjectLockTimeoutError, withProjectLock } from "
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import { isPhotoCardSubtitleLayout, PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE, sceneNumbersFor, WorkflowState, type MergeVideosResponse, type PhotoCardSubtitleLayout, type SceneNumber } from "@ai-animation-studio/shared";
+import { AUDIO_MODES, isAudioMode, type AudioMode, isPhotoCardSubtitleLayout, PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE, sceneNumbersFor, WorkflowState, type MergeVideosResponse, type PhotoCardSubtitleLayout, type SceneNumber } from "@ai-animation-studio/shared";
 
 import { photoCardFor, storedSubtitleLayout, toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
@@ -21,7 +21,7 @@ const DEFAULT_BGM_VOLUME = 0.25;
 const DEFAULT_BGM_FADE_SECONDS = 2;
 type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved" };
 /** Mirrors MergeAudioSettings["mode"] — the stored record and the request speak the same vocabulary. */
-type AudioMode = "narration" | "narration+bgm" | "bgm" | "silent";
+
 interface ResolvedAudioSettings { mode: AudioMode; trackId?: string; volume: number; fadeSeconds: number; startSeconds: number }
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -103,7 +103,7 @@ function resolveAudioSettings(project: StoredProject, request: unknown): Resolve
   if (request.audio === undefined) return fallback;
   const audio = request.audio;
   if (!isObject(audio) || Object.keys(audio).some((key) => !["mode", "trackId", "volume", "fadeSeconds", "startSeconds"].includes(key))) throw videoMergeInvalidRequest();
-  if (audio.mode !== "narration" && audio.mode !== "narration+bgm" && audio.mode !== "bgm" && audio.mode !== "silent") throw videoMergeInvalidRequest("audio.mode must be narration, narration+bgm, bgm, or silent.");
+  if (!isAudioMode(audio.mode)) throw videoMergeInvalidRequest(`audio.mode must be ${AUDIO_MODES.join(", ")}.`);
   // Deliberately not "bgm": music alone has nothing to mix a voice into, so a project without narration can
   // ask for it. That was the one thing the old vocabulary could not express.
   if ((audio.mode === "narration" || audio.mode === "narration+bgm") && !narrationAvailable) throw videoMergeInvalidRequest("This project has no narration audio to include.");
