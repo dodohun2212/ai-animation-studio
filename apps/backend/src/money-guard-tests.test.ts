@@ -69,6 +69,12 @@ const MONEY_GUARDS: readonly { title: string; why: string }[] = [
     why: "the same shape one level up — a finished video with no address left anywhere in the app",
   },
   {
+    // Three lines, and both ways of tidying them are documented incidents (D-037): a throw here loses the
+    // thing that was already paid for, and in a `finally` it also replaces the provider's real error.
+    title: "reports the write failed instead of throwing, so the thing that was bought survives",
+    why: "money is already gone when this runs; losing its result is the one outcome worse than a short ledger",
+  },
+  {
     // The only control here whose failure leaves no trace at all: no project record, no ledger row, just a
     // charge on the provider's side. D-016 is four of those, about a dollar, from before this guard existed.
     title: "throws on a plain fetch, and names the provider so the message says what nearly went out",
