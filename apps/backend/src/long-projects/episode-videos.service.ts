@@ -572,7 +572,11 @@ export class EpisodeVideosService implements OnModuleDestroy {
     let changed = false;
 
     for (const record of records) {
-      if (record.execution_mode !== "runway" || record.status !== "succeeded" || !record.runway_task_id) continue;
+      // Same reach as the short project's recovery, for the same reason: a `failed` record can hold a task
+      // Runway finished after we stopped waiting, and that clip is already paid for. The provider's own answer
+      // is the check — a task that really failed falls out as no_output below.
+      if (record.execution_mode !== "runway" || !record.runway_task_id) continue;
+      if (record.status !== "succeeded" && record.status !== "failed") continue;
       if (await this.realVideo(this.video(id, number, record.scene_number))) continue;
       let bytes: Buffer;
       try {
@@ -587,12 +591,17 @@ export class EpisodeVideosService implements OnModuleDestroy {
       // The same refusal the generation path makes: a body no bigger than a bare header is not a video, and
       // writing it would repeat exactly the failure this recovery exists to undo.
       if (bytes.length <= MP4.length) {
-        record.status = "failed"; record.error = "empty_output"; changed = true;
+        // An already-failed record keeps the provider's reason and its failure_code; only a claimed success is
+        // downgraded. Overwriting them would erase what the screen reads to decide "resend" against "change it".
+        if (record.status === "succeeded") { record.status = "failed"; record.error = "empty_output"; changed = true; }
         unrecoverableScenes.push({ sceneNumber: record.scene_number, reason: "empty_output" });
         continue;
       }
       await fs.mkdir(this.files(id, number).videos, { recursive: true });
       await this.binary(this.video(id, number, record.scene_number), bytes);
+      // Same as the short project: the failure has to end with the clip, or one halted scene keeps the Episode
+      // stopped with a paid video sitting next to it and 다시 시도 as the only exit.
+      if (record.status === "failed") { record.status = "succeeded"; delete record.error; delete record.failure_code; changed = true; }
       recoveredSceneNumbers.push(record.scene_number);
     }
 

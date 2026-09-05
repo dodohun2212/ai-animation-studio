@@ -7,7 +7,7 @@ import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { RunwayBudget } from "../providers/runway-budget.js";
-import { RUNWAY_POLL_INTERVAL_SECONDS } from "../videos/runway-workflow-support.js";
+import { RUNWAY_POLL_INTERVAL_SECONDS, RUNWAY_TASK_TIMEOUT_SECONDS } from "../videos/runway-workflow-support.js";
 import { approveEpisodeMappingReview } from "./episode-mapping-test-fixtures.js";
 import { EpisodeImagesService } from "./episode-images.service.js";
 import { EpisodeScriptsService } from "./episode-scripts.service.js";
@@ -371,6 +371,51 @@ describe("real Runway episode video generation", () => {
     // No new task, and no new charge: the whole point.
     expect(fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/v1/image_to_video")).length).toBe(submitsBefore);
     expect(await deps.budget.spentThisMonth()).toBe(spendBefore);
+  });
+
+  /**
+   * The scene this recovery could least help was the one that needed it most — same hole as the short project's.
+   *
+   * It read only records saying `succeeded`. `failed` is written for reasons that say nothing about whether
+   * Runway produced anything: `timeout` gives up while the task is still generating, `no_output` lands the
+   * instant a succeeded task has no URL yet. Both are already on the ledger, and both leave a finished clip on
+   * Runway that this endpoint then walked straight past — leaving 다시 시도, and a second charge, as the only exit.
+   */
+  it("fetches back a scene its own record gave up on, and ends the failure with it", async () => {
+    const deps = await setupWithConnectedRunway();
+    const videos = newVideos(deps);
+    // A task that never finishes while we are watching.
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.endsWith("/v1/image_to_video")) return { ok: true, status: 200, json: async () => ({ id: "slow-1" }), headers: { get: () => null } } as unknown as Response;
+      if (url.includes("/v1/tasks/")) return { ok: true, status: 200, json: async () => ({ id: "slow-1", status: "RUNNING" }), headers: { get: () => null } } as unknown as Response;
+      throw new Error(`unexpected fetch: ${url}`);
+    }));
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "late_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+    // Long enough that we stop waiting. Runway did not stop working.
+    now = new Date(now.getTime() + (RUNWAY_TASK_TIMEOUT_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    const gaveUp = await videos.progress("long", 1, started.jobId);
+    expect(gaveUp).toMatchObject({ status: "failed", failedSceneNumbers: [1] });
+    expect(gaveUp.sceneErrors?.[1]).toBe("timeout");
+
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.includes("/v1/tasks/")) return { ok: true, status: 200, json: async () => ({ id: "slow-1", status: "SUCCEEDED", output: ["https://cdn.runway/late.mp4"] }), headers: { get: () => null } } as unknown as Response;
+      if (url.startsWith("https://cdn.runway/")) return { ok: true, status: 200, arrayBuffer: async () => RUNWAY_BODY.buffer.slice(RUNWAY_BODY.byteOffset, RUNWAY_BODY.byteOffset + RUNWAY_BODY.byteLength), headers: { get: () => null } } as unknown as Response;
+      throw new Error(`unexpected fetch: ${url}`);
+    }));
+
+    const result = await videos.recover("long", 1, started.jobId, { approved: true });
+
+    expect(result.recoveredSceneNumbers).toEqual([1]);
+    expect(await fs.readFile(path.join(deps.projectsRoot, "long", "long_story", "Episode01", "videos", "scene1.mp4"))).toEqual(RUNWAY_BODY);
+    // The clip alone is not enough: a record still reading `failed` halts the Episode next to a paid video
+    // nothing plays.
+    expect(result.failedSceneNumbers).toEqual([]);
+    expect(result.sceneErrors?.[1]).toBeUndefined();
   });
 
   it("leaves a scene whose output can no longer be fetched failed, rather than buying it again", async () => {

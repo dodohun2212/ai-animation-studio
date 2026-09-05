@@ -450,7 +450,8 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
   }
 
   /**
-   * Fetches this job's already-paid Runway outputs again, for scenes left holding a placeholder.
+   * Fetches this job's already-paid Runway outputs again, for scenes left holding a placeholder — and for
+   * scenes this job wrote off while the task it paid for was still running.
    *
    * The Episode side has had this since the bug that lost those bytes was found. The short project submits the
    * same way, against the same provider, and records the same task ids — it simply had no way back to them, so
@@ -472,7 +473,12 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     const updated: VideoRecord[] = [];
 
     for (const record of records) {
-      if (record.execution_mode !== "runway" || record.status !== "succeeded" || !record.runway_task_id) continue;
+      // Any scene this job actually paid for, whatever our own record concluded. A `failed` record can hold a
+      // task that Runway went on to finish: `timeout` gives up while the task is still generating and `no_output`
+      // is written the moment a succeeded task has no URL yet — both spend, and both leave a clip sitting there.
+      // Asking the provider is the check; a task that genuinely failed comes back as no_output below.
+      if (record.execution_mode !== "runway" || !record.runway_task_id) continue;
+      if (record.status !== "succeeded" && record.status !== "failed") continue;
       if (await this.realClip(project.project_id, record.scene_number)) continue;
       let bytes: Buffer;
       try {
@@ -487,12 +493,21 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       // The same refusal the generation path makes: a body no bigger than a bare header is not a video, and
       // writing it would repeat exactly the failure this recovery exists to undo.
       if (bytes.length <= PLACEHOLDER_MP4.length) {
-        updated.push({ ...record, status: "failed", error: "empty_output" });
+        // Only a record that claimed success is downgraded. Rewriting an already-failed one would replace the
+        // provider's own reason — and its failure_code, which is what tells a screen whether resending can work
+        // and whether the attempt was billed — with a note about this fetch.
+        if (record.status === "succeeded") updated.push({ ...record, status: "failed", error: "empty_output" });
         unrecoverableScenes.push({ sceneNumber: record.scene_number, reason: "empty_output" });
         continue;
       }
       await fs.mkdir(this.videoDirectory(project.project_id), { recursive: true });
       await this.atomicBinary(this.file(project.project_id, record.scene_number), bytes);
+      // 🔴 A recovered clip has to end the failure too. Scenes are continuity-dependent, so one failed record
+      // halts the whole job; recovering the bytes and leaving the record failed would put a paid clip on disk
+      // that nothing plays and still leave 다시 시도 — buying the same seconds again — as the only way forward.
+      // It does mean the job resumes and the remaining scenes generate, which is what the person paid for when
+      // they started it, but it is spending that follows a button labelled "가져오기". The screen says so.
+      if (record.status === "failed") updated.push({ ...record, status: "succeeded", error: undefined, failure_code: undefined });
       recoveredSceneNumbers.push(record.scene_number);
     }
 

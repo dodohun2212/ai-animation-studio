@@ -10,7 +10,7 @@ import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { RunwayBudget } from "../providers/runway-budget.js";
-import { RUNWAY_POLL_INTERVAL_SECONDS, SUBMIT_CLAIM_TIMEOUT_SECONDS } from "./runway-workflow-support.js";
+import { RUNWAY_POLL_INTERVAL_SECONDS, RUNWAY_TASK_TIMEOUT_SECONDS, SUBMIT_CLAIM_TIMEOUT_SECONDS } from "./runway-workflow-support.js";
 import { LocalVideoPreviewService } from "./video-preview.service.js";
 import { LocalVideoSubmissionService } from "./local-video-submission.service.js";
 import { PLACEHOLDER_MP4 } from "./placeholder-clip.js";
@@ -148,6 +148,49 @@ describe("real Runway video workflow", () => {
     // Never a generation: the ledger must not move, so nothing may be submitted — on either mock.
     expect(fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/v1/image_to_video")).length).toBe(submitsBefore);
     expect(recoveryFetch.mock.calls.some((call) => String(call[0]).endsWith("/v1/image_to_video"))).toBe(false);
+  });
+
+  /**
+   * The scene this recovery was least able to help was the one that needed it most.
+   *
+   * It only looked at records that said `succeeded`. A record says `failed` for reasons that have nothing to do
+   * with whether Runway produced anything: `timeout` gives up while the task is still generating, `no_output`
+   * is written the instant a succeeded task has no URL yet. Both are on the ledger — the seconds were bought —
+   * and both leave a finished clip sitting on Runway. The one route back to it skipped exactly those, so the
+   * only way forward was 다시 시도, which buys the same seconds a second time.
+   *
+   * Asking the provider is the whole check. A task that genuinely failed answers no_output and stays failed.
+   */
+  it("fetches back a scene its own record gave up on, and ends the failure with it", async () => {
+    const deps = await setupWithConnectedRunway();
+    const workflow = newWorkflow(deps);
+    vi.stubGlobal("fetch", runwayFetchMock({ neverSucceedTaskId: "task_1" }));
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+    await workflow.run("video_workflow", deps.accepted.jobId);
+    // Long enough that we stop waiting. Runway did not stop working.
+    now = new Date(now.getTime() + (RUNWAY_TASK_TIMEOUT_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    const gaveUp = await workflow.getProgress("video_workflow", deps.accepted.jobId);
+    expect(gaveUp.failedSceneNumbers).toEqual([1]);
+    expect(gaveUp.sceneErrors?.[1]).toBe("timeout");
+
+    const recovered = Buffer.concat([PLACEHOLDER_MP4, Buffer.alloc(2048, 9)]);
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.includes("/v1/tasks/")) return { ok: true, status: 200, json: async () => ({ id: "task_1", status: "SUCCEEDED", output: ["https://cdn.runway/late.mp4"] }), headers: { get: () => null } } as unknown as Response;
+      if (url.startsWith("https://cdn.runway/")) return { ok: true, status: 200, arrayBuffer: async () => recovered.buffer.slice(recovered.byteOffset, recovered.byteOffset + recovered.byteLength), headers: { get: () => null } } as unknown as Response;
+      throw new Error(`unexpected fetch: ${url}`);
+    }));
+
+    const result = await workflow.recover("video_workflow", deps.accepted.jobId, { approved: true });
+
+    expect(result.recoveredSceneNumbers).toEqual([1]);
+    const file = path.join(deps.projectsRoot, "video_workflow", "videos", "runway", "scene1.mp4");
+    expect(Buffer.from(await fs.readFile(file)).equals(recovered)).toBe(true);
+    // The clip alone is not enough: scenes are continuity-dependent, so a record still reading `failed` keeps
+    // the job halted next to a paid video nothing plays.
+    expect(result.failedSceneNumbers).toEqual([]);
+    expect(result.completedSceneNumbers).toContain(1);
+    expect(result.sceneErrors?.[1]).toBeUndefined();
   });
 
   it("reports a scene whose output can no longer be fetched, and leaves its placeholder alone", async () => {
