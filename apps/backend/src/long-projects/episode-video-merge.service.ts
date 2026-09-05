@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { readLongProjectJson } from "./long-project-json.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
@@ -53,14 +54,10 @@ export class EpisodeVideoMergeService {
     return { root, outlines: path.join(root, "episode_outlines.json"), longProject: path.join(root, "project.json"), episode, project: path.join(episode, "project.json"), videos, records: path.join(episode, "video_generation_records.json"), reviews: path.join(episode, "generated_video_reviews.json") };
   }
 
-  private async json(file: string): Promise<unknown> {
-    try { return JSON.parse(await fs.readFile(file, "utf8")); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw longNotFound(); if (error instanceof SyntaxError) throw longMalformed(); throw longStorageError(); }
-  }
 
   private async loadEpisode(id: string, number: number): Promise<Episode> {
     if (!Number.isInteger(number) || number < 1) throw longEpisodeNotFound();
-    const f = this.files(id, number); const outlines = await this.json(f.outlines);
+    const f = this.files(id, number); const outlines = await readLongProjectJson(f.outlines);
     if (!Array.isArray(outlines) || number > outlines.length || !object(outlines[number - 1]) || outlines[number - 1].episode_number !== number) throw longEpisodeNotFound();
     // An Episode listed in the outline but never scripted has no directory yet, so this read is ENOENT — which
     // `json()` reports as `longNotFound()`, "Long project was not found". The project is right there; the person
@@ -71,7 +68,7 @@ export class EpisodeVideoMergeService {
     // does exactly this and says why: a per-episode project.json that is not there yet is "no script yet", not
     // a storage failure and not a missing project.
     let raw: unknown;
-    try { raw = await this.json(f.project); }
+    try { raw = await readLongProjectJson(f.project); }
     catch (error) { if (error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404) throw longEpisodeMergeNotAllowed(); throw error; }
     if (!object(raw) || raw.number !== number || !statuses.includes(raw.state as LongEpisodeStatus) || typeof raw.approved !== "boolean" || !object(raw.script) || !Number.isInteger(raw.script_revision) || typeof raw.updated_at !== "string") throw longInvalidData();
     return raw as Episode;
@@ -80,7 +77,7 @@ export class EpisodeVideoMergeService {
   private detail(episode: Episode): LongEpisodeDetail { return toEpisodeDetail(episode); }
 
   private async saveEpisode(id: string, number: number, episode: Episode): Promise<void> {
-    const f = this.files(id, number); const outlines = await this.json(f.outlines);
+    const f = this.files(id, number); const outlines = await readLongProjectJson(f.outlines);
     if (!Array.isArray(outlines) || !object(outlines[number - 1])) throw longInvalidData();
     const copy = [...outlines]; copy[number - 1] = { ...copy[number - 1], status: episode.state };
     try { await atomicWriteUtf8File(f.project, JSON.stringify(episode, null, 2)); await atomicWriteUtf8File(f.outlines, JSON.stringify(copy, null, 2)); }
@@ -149,7 +146,7 @@ export class EpisodeVideoMergeService {
     if (episode.state === "completed") throw longEpisodeMergeAlreadyCompleted();
     if (episode.state !== "videos_approved" && episode.state !== "failed") throw longEpisodeMergeNotAllowed();
     const sceneNumbers = sceneNumbersFor(this.sceneCount(episode));
-    const [rawReviews, rawRecords] = await Promise.all([this.json(this.files(id, number).reviews).catch(() => { throw longEpisodeMergeClipsInvalid(); }), this.json(this.files(id, number).records).catch(() => { throw longEpisodeMergeClipsInvalid(); })]);
+    const [rawReviews, rawRecords] = await Promise.all([readLongProjectJson(this.files(id, number).reviews).catch(() => { throw longEpisodeMergeClipsInvalid(); }), readLongProjectJson(this.files(id, number).records).catch(() => { throw longEpisodeMergeClipsInvalid(); })]);
     if (!Array.isArray(rawReviews) || rawReviews.length !== sceneNumbers.length || !rawReviews.every((item) => object(item) && scene(item.scene_number) && item.status === "approved" && typeof item.updated_at === "string") || new Set(rawReviews.map((item) => (item as Review).scene_number)).size !== sceneNumbers.length) throw longEpisodeMergeClipsInvalid();
     if (!Array.isArray(rawRecords) || rawRecords.length !== sceneNumbers.length || !rawRecords.every((item) => object(item) && scene(item.scene_number) && typeof item.job_id === "string" && item.job_id.length > 0 && item.status === "succeeded" && (item.execution_mode === "local_fake_no_provider" || item.execution_mode === "runway")) || new Set(rawRecords.map((item) => (item as VideoRecord).scene_number)).size !== sceneNumbers.length || new Set(rawRecords.map((item) => (item as VideoRecord).job_id)).size !== 1) throw longEpisodeMergeClipsInvalid();
     const clips = sceneNumbers.map((number_) => this.clip(id, number, number_));
@@ -215,7 +212,7 @@ export class EpisodeVideoMergeService {
   }
 
   private async ratio(id: string, number: number): Promise<"9:16" | "16:9"> {
-    const raw = await this.json(this.files(id, number).longProject);
+    const raw = await readLongProjectJson(this.files(id, number).longProject);
     if (!object(raw) || (raw.aspect_ratio !== "9:16" && raw.aspect_ratio !== "16:9")) throw longInvalidData();
     return raw.aspect_ratio;
   }

@@ -1,4 +1,5 @@
 import { PLACEHOLDER_PNG, isPlaceholderImage } from "../images/placeholder-image.js";
+import { readLongProjectJson } from "./long-project-json.js";
 import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { persistEpisodeWarning } from "./episode-warnings.js";
@@ -82,7 +83,7 @@ export class EpisodeImagesService {
    * failure mode is exactly the previous behaviour rather than a new one.
    */
   private async styleLine(projectId: string): Promise<string> {
-    const stored = await this.json(this.files(projectId, 1).longProject).catch(() => null);
+    const stored = await readLongProjectJson(this.files(projectId, 1).longProject).catch(() => null);
     if (!object(stored)) return "";
     return styleLineFrom({
       visualStyle: typeof stored.visual_style === "string" ? stored.visual_style : "",
@@ -92,7 +93,6 @@ export class EpisodeImagesService {
     });
   }
 
-  private async json(file: string): Promise<unknown> { try { return JSON.parse(await fs.readFile(file, "utf8")); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw longNotFound(); if (error instanceof SyntaxError) throw longMalformed(); throw longStorageError(); } }
   /**
    * Same source as episode-videos.service.ts's ratio() (project.aspect_ratio), translated into OpenAI's own
    * image-generation size vocabulary instead of a Runway ratio string — see image-prompt.ts's imageSizeFor doc
@@ -101,13 +101,13 @@ export class EpisodeImagesService {
    * this reads the same aspect_ratio field episode-videos.service.ts already trusts for the same Episode.
    */
   private async imageSize(projectId: string, number: number): Promise<"1024x1536" | "1536x1024"> {
-    const raw = await this.json(this.files(projectId, number).longProject);
+    const raw = await readLongProjectJson(this.files(projectId, number).longProject);
     if (!object(raw) || (raw.aspect_ratio !== "9:16" && raw.aspect_ratio !== "16:9")) throw longInvalidData();
     return raw.aspect_ratio === "16:9" ? "1536x1024" : "1024x1536";
   }
   private async episode(projectId: string, number: number): Promise<StoredEpisode> {
     if (!Number.isInteger(number) || number < 1) throw longEpisodeNotFound();
-    const files = this.files(projectId, number); const outlines = await this.json(files.outlines);
+    const files = this.files(projectId, number); const outlines = await readLongProjectJson(files.outlines);
     if (!Array.isArray(outlines) || number > outlines.length || !object(outlines[number - 1]) || outlines[number - 1].episode_number !== number) throw longEpisodeNotFound();
     // An Episode listed in the outline but never scripted has no directory yet, so this read is ENOENT — which
     // `json()` reports as `longNotFound()`, "Long project was not found". The project is right there; the person
@@ -118,7 +118,7 @@ export class EpisodeImagesService {
     // does exactly this and says why: a per-episode project.json that is not there yet is "no script yet", not
     // a storage failure and not a missing project.
     let raw: unknown;
-    try { raw = await this.json(files.project); }
+    try { raw = await readLongProjectJson(files.project); }
     catch (error) { if (error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404) throw longEpisodeImagesNotAllowed(); throw error; }
     if (!object(raw) || raw.number !== number || !statuses.includes(raw.state as LongEpisodeStatus) || typeof raw.approved !== "boolean" || !object(raw.script) || !Number.isInteger(raw.script_revision) || Number(raw.script_revision) < 1 || typeof raw.updated_at !== "string") throw longInvalidData();
     return raw as StoredEpisode;
@@ -128,13 +128,13 @@ export class EpisodeImagesService {
   private scenes(episode: StoredEpisode): unknown[] { const scenes = episode.script.scenes; const count = this.sceneCount(episode); if (!Array.isArray(scenes) || scenes.length !== count || scenes.some((scene, index) => !object(scene) || scene.number !== index + 1 || typeof scene.description !== "string" || !scene.description.trim() || typeof scene.visual_action !== "string" || !scene.visual_action.trim())) throw longInvalidData(); return scenes; }
   private detail(episode: StoredEpisode): LongEpisodeDetail { return toEpisodeDetail(episode); }
   private async saveEpisode(projectId: string, number: number, episode: StoredEpisode): Promise<void> {
-    const files = this.files(projectId, number); const outlines = await this.json(files.outlines);
+    const files = this.files(projectId, number); const outlines = await readLongProjectJson(files.outlines);
     if (!Array.isArray(outlines) || !object(outlines[number - 1])) throw longInvalidData();
     const copied = [...outlines]; copied[number - 1] = { ...copied[number - 1], status: episode.state };
     try { await atomicWriteUtf8File(files.project, JSON.stringify(episode, null, 2)); await atomicWriteUtf8File(files.outlines, JSON.stringify(copied, null, 2)); } catch { throw longStorageError(); }
   }
   private async mappingCurrent(projectId: string, number: number, episode: StoredEpisode): Promise<void> {
-    const mapping = await this.json(this.files(projectId, number).mapping);
+    const mapping = await readLongProjectJson(this.files(projectId, number).mapping);
     if (!object(mapping) || mapping.status !== "approved" || mapping.script_revision !== episode.script_revision || mapping.script_fingerprint !== fingerprint(this.scenes(episode))) throw longEpisodeImagesNotAllowed();
   }
   /**
@@ -195,7 +195,7 @@ export class EpisodeImagesService {
     });
     if (new Set(reviews.map((review) => review.scene_number)).size !== reviews.length) throw longInvalidData(); return reviews;
   }
-  private async loadReviews(projectId: string, number: number): Promise<StoredReview[]> { try { return this.parseReviews(await this.json(this.files(projectId, number).reviews)); } catch (error) { if (error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404) return []; throw error; } }
+  private async loadReviews(projectId: string, number: number): Promise<StoredReview[]> { try { return this.parseReviews(await readLongProjectJson(this.files(projectId, number).reviews)); } catch (error) { if (error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404) return []; throw error; } }
   private async saveReviews(projectId: string, number: number, reviews: StoredReview[]) { try { await atomicWriteUtf8File(this.files(projectId, number).reviews, JSON.stringify(reviews, null, 2)); } catch { throw longStorageError(); } }
   private async saveContinuityMetadata(projectId: string, number: number): Promise<void> {
     if (number === 1) return;
@@ -283,7 +283,7 @@ export class EpisodeImagesService {
     const descriptions = this.scenes(episode).map((scene) => String((scene as { description: string }).description));
     let title = "";
     try {
-      const outlines = await this.json(this.files(projectId, number).outlines);
+      const outlines = await readLongProjectJson(this.files(projectId, number).outlines);
       const outline = Array.isArray(outlines) ? outlines[number - 1] : undefined;
       if (object(outline) && typeof outline.title === "string") title = outline.title;
     } catch { /* The Folder's description is a nicety; a damaged outline file must not fail image generation. */ }

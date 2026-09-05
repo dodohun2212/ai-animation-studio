@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { readLongProjectJson } from "./long-project-json.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
@@ -117,8 +118,7 @@ export class StoryBibleService {
 
   private async read(projectId: string): Promise<StoredBible> {
     const files = this.files(projectId);
-    let raw: unknown;
-    try { raw = JSON.parse(await fs.readFile(files.bible, "utf8")); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw longNotFound(); if (error instanceof SyntaxError) throw longMalformed(); throw longStorageError(); }
+    const raw = await readLongProjectJson(files.bible);
     const bible = asObject(raw);
     const known = new Set(["basic", "world", "characters", "locations", "props", "secrets", "foreshadowing", "summaries", "updated_at"]);
     if (Object.keys(bible).some((key) => !known.has(key))) throw longInvalidData();

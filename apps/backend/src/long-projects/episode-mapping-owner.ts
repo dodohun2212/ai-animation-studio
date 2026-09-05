@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { readLongProjectJson } from "./long-project-json.js";
 import * as path from "node:path";
 
 import { DEFAULT_SCENE_COUNT, LONG_EPISODE_STATUSES, type LongEpisodeStatus } from "@ai-animation-studio/shared";
@@ -163,7 +164,7 @@ export class EpisodeMappingOwners implements MappingOwners<EpisodeMappingKey> {
 
     // The outline list is what decides an Episode exists at all — its own file could be present for a number the
     // Long Project has since dropped, and reading that would be answering about something nobody can reach.
-    const outlines = await this.json(path.join(root, "episode_outlines.json"));
+    const outlines = await readLongProjectJson(path.join(root, "episode_outlines.json"));
     if (!Array.isArray(outlines) || episodeNumber > outlines.length
       || !isObject(outlines[episodeNumber - 1]) || outlines[episodeNumber - 1].episode_number !== episodeNumber) {
       throw longEpisodeNotFound();
@@ -176,7 +177,7 @@ export class EpisodeMappingOwners implements MappingOwners<EpisodeMappingKey> {
     // (loadEpisode) for the same reason; this is the mapping route catching up. A scripted Episode in the wrong
     // state already answers with this code, so the two cases now agree.
     let raw: unknown;
-    try { raw = await this.json(projectFile); }
+    try { raw = await readLongProjectJson(projectFile); }
     catch (error) { if (isLongProjectError(error, "LONG_PROJECT_NOT_FOUND")) throw longEpisodeMappingNotAllowed(); throw error; }
     if (!isObject(raw) || raw.number !== episodeNumber || !episodeStatuses.includes(raw.state as LongEpisodeStatus)
       || !isObject(raw.script) || !Number.isInteger(raw.script_revision)) {
@@ -185,14 +186,4 @@ export class EpisodeMappingOwners implements MappingOwners<EpisodeMappingKey> {
     return new EpisodeMappingOwner(raw as unknown as StoredEpisode, projectId, directory, projectFile);
   }
 
-  /** Same three outcomes the rest of this directory produces, so a caller cannot tell which service read the file. */
-  private async json(file: string): Promise<unknown> {
-    try {
-      return JSON.parse(await fs.readFile(file, "utf8"));
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") throw longNotFound();
-      if (error instanceof SyntaxError) throw longMalformed();
-      throw longStorageError();
-    }
-  }
 }

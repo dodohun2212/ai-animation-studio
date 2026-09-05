@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { readLongProjectJson } from "./long-project-json.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
@@ -44,7 +45,6 @@ export class EpisodeTimelineService {
 
   private root(id: string) { return longStoryRoot(this.projectsRoot, id); }
   private files(id: string, number?: number) { const root = this.root(id); const episode = number ? path.join(root, episodeDirectoryName(number)) : undefined; return { root, project: path.join(root, "project.json"), outlines: path.join(root, "episode_outlines.json"), episode, episodeProject: episode && path.join(episode, "project.json"), outline: episode && path.join(episode, "outline.json"), script: episode && path.join(episode, "script.json"), archives: path.join(root, "episode_archives") }; }
-  private async json(file: string): Promise<unknown> { try { return JSON.parse(await fs.readFile(file, "utf8")); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw longNotFound(); if (error instanceof SyntaxError) throw longMalformed(); throw longStorageError(); } }
   private toOutline(value: unknown, number: number): LongEpisodeOutline {
     const item = object(value); const status = item.status;
     if (item.episode_number !== number || !draftStates.includes(status as LongEpisodeStatus) || ["title", "summary", "main_event", "conflict", "cliffhanger", "next_episode_hook"].some((key) => typeof item[key] !== "string")) throw longInvalidData();
@@ -54,8 +54,8 @@ export class EpisodeTimelineService {
   private async current(id: string): Promise<{ project: LongProject; rawProject: ObjectMap; rawOutlines: ObjectMap[] }> {
     const project = (await this.projects.get(id)).project;
     if (!draftStates.includes(project.outlineStatus === "planned" ? "planned" : "outline_ready") || !project.episodes.every((item) => draftStates.includes(item.status))) throw longEpisodeTimelineNotAllowed();
-    const rawProject = object(await this.json(this.files(id).project));
-    const rawOutlines = await this.json(this.files(id).outlines);
+    const rawProject = object(await readLongProjectJson(this.files(id).project));
+    const rawOutlines = await readLongProjectJson(this.files(id).outlines);
     if (!Array.isArray(rawOutlines) || rawOutlines.length !== project.episodes.length || rawProject.episode_count !== rawOutlines.length) throw longInvalidData();
     rawOutlines.forEach((item, index) => this.toOutline(item, index + 1));
     return { project, rawProject, rawOutlines: rawOutlines.map((item) => object(item)) };
@@ -99,7 +99,7 @@ export class EpisodeTimelineService {
     const files = this.files(id, number);
     if (!files.episodeProject || !files.outline) return;
     try {
-      const stored = object(await this.json(files.episodeProject));
+      const stored = object(await readLongProjectJson(files.episodeProject));
       const outline = { episode_number: number, title: entry.title, summary: entry.summary, main_event: entry.main_event, conflict: entry.conflict, cliffhanger: entry.cliffhanger, next_episode_hook: entry.next_episode_hook };
       const merged = { ...stored, title: entry.title, summary: entry.summary, core_event: entry.main_event, conflict: entry.conflict, cliffhanger: entry.cliffhanger, next_connection: entry.next_episode_hook, outline };
       await Promise.all([
@@ -148,7 +148,7 @@ export class EpisodeTimelineService {
     catch { return { archives: [] }; }
     const rows = await Promise.all(entries.map(async (archiveId) => {
       try {
-        const stored = object(await this.json(path.join(this.files(id).archives, archiveId, "project.json")));
+        const stored = object(await readLongProjectJson(path.join(this.files(id).archives, archiveId, "project.json")));
         const outline = object(stored.outline);
         if (typeof outline.title !== "string" || !Number.isInteger(stored.number)) return undefined;
         const archivedAt = archivedAtFromId(archiveId);
@@ -188,7 +188,7 @@ export class EpisodeTimelineService {
     const files = this.files(id, number);
     if (!files.episode || !files.episodeProject) throw longEpisodeNotFound();
 
-    const stored = object(await this.json(path.join(source, "project.json")));
+    const stored = object(await readLongProjectJson(path.join(source, "project.json")));
     const outline = this.toOutline({ ...object(stored.outline), status: stored.state, episode_number: number }, number);
 
     try { await fs.rename(source, files.episode); }
@@ -216,8 +216,8 @@ export class EpisodeTimelineService {
    */
   async updateOutline(projectId: string, rawNumber: number, request: UpdateLongEpisodeOutlineRequest): Promise<UpdateLongEpisodeOutlineResponse> {
     const id = projectId.trim();
-    const rawProject = object(await this.json(this.files(id).project));
-    const rawOutlinesValue = await this.json(this.files(id).outlines);
+    const rawProject = object(await readLongProjectJson(this.files(id).project));
+    const rawOutlinesValue = await readLongProjectJson(this.files(id).outlines);
     if (!Array.isArray(rawOutlinesValue)) throw longInvalidData();
     const rawOutlines = rawOutlinesValue.map((item) => object(item));
     if (!Number.isInteger(rawNumber) || rawNumber < 1 || rawNumber > rawOutlines.length) throw longEpisodeNotFound();

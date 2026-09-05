@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { readLongProjectJson } from "./long-project-json.js";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import { longEpisodeHasImages, sceneNumbersFor, type GetLongEpisodeContinuityReferenceResponse, type LongEpisodeContinuityReference, type LongEpisodeContinuityUnavailableReason, type LongEpisodeStatus } from "@ai-animation-studio/shared";
@@ -18,13 +19,9 @@ export class EpisodeContinuityReferenceService {
     const episode = path.join(root, episodeDirectoryName(number));
     return { root, outlines: path.join(root, "episode_outlines.json"), episode, project: path.join(episode, "project.json"), reviews: path.join(episode, "generated_image_reviews.json"), images: path.join(episode, "images") };
   }
-  private async json(file: string): Promise<unknown> {
-    try { return JSON.parse(await fs.readFile(file, "utf8")); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw longNotFound(); if (error instanceof SyntaxError) throw longMalformed(); throw longStorageError(); }
-  }
   private async assertEpisode(projectId: string, number: number): Promise<void> {
     if (!Number.isInteger(number) || number < 1) throw longEpisodeNotFound();
-    const files = this.files(projectId, number); const outlines = await this.json(files.outlines);
+    const files = this.files(projectId, number); const outlines = await readLongProjectJson(files.outlines);
     if (!Array.isArray(outlines) || number > outlines.length || !object(outlines[number - 1]) || outlines[number - 1].episode_number !== number) throw longEpisodeNotFound();
   }
   /** The previous Episode's own scene_count (falls back to 6 for episodes stored before that field existed, same as episode-scripts.service.ts's parseStored) and whether its final scene's image is usable as a continuity reference. */
@@ -32,7 +29,7 @@ export class EpisodeContinuityReferenceService {
     let sceneCount = 6;
     try {
       await this.assertEpisode(projectId, number - 1);
-      const files = this.files(projectId, number - 1); const project = await this.json(files.project);
+      const files = this.files(projectId, number - 1); const project = await readLongProjectJson(files.project);
       if (!object(project)) return { sceneCount, available: false, reason: "unreadable" };
       sceneCount = Number.isInteger(project.scene_count) ? (project.scene_count as number) : 6;
       // Asked as "are there pictures at all" rather than by listing the states where there are. The list this
@@ -41,7 +38,7 @@ export class EpisodeContinuityReferenceService {
       // exactly there. What actually decides the answer is below: every scene approved, and the final image
       // readable. This only skips an Episode that cannot possibly have one yet.
       if (!longEpisodeHasImages(project.state as LongEpisodeStatus)) return { sceneCount, available: false, reason: "not_finished" };
-      const reviews = await this.json(files.reviews);
+      const reviews = await readLongProjectJson(files.reviews);
       const scenes = sceneNumbersFor(sceneCount);
       if (!Array.isArray(reviews) || !scenes.every((scene) => reviews.some((review) => object(review) && review.scene_number === scene && review.status === "approved"))) return { sceneCount, available: false, reason: "not_finished" };
       // Read in its own right, so a missing or damaged final picture is reported as that rather than joining the

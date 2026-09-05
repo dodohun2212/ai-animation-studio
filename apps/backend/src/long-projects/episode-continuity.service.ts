@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { readLongProjectJson } from "./long-project-json.js";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import { LONG_EPISODE_STATUSES, type GetLongEpisodeContinuityResponse, type LongEpisodeContinuityMemory, type LongEpisodeDetail, type LongEpisodeOutline, type LongEpisodeStatus, type SaveLongEpisodeContinuityRequest, type SaveLongEpisodeContinuityResponse } from "@ai-animation-studio/shared";
@@ -30,8 +31,7 @@ export class EpisodeContinuityService {
   constructor(private readonly projectsRoot: string) {}
 
   private files(projectId: string, number: number) { const root = longStoryRoot(this.projectsRoot, projectId); const episode = path.join(root, episodeDirectoryName(number)); return { root, outlines: path.join(root, "episode_outlines.json"), project: path.join(episode, "project.json"), continuity: path.join(episode, "continuity.json") }; }
-  private async json(file: string): Promise<unknown> { try { return JSON.parse(await fs.readFile(file, "utf8")); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw longNotFound(); if (error instanceof SyntaxError) throw longMalformed(); throw longStorageError(); } }
-  private async episode(id: string, number: number): Promise<StoredEpisode> { if (!Number.isInteger(number) || number < 1) throw longEpisodeNotFound(); const files = this.files(id, number); const outlines = await this.json(files.outlines); if (!Array.isArray(outlines) || number > outlines.length || !object(outlines[number - 1]) || outlines[number - 1].episode_number !== number) throw longEpisodeNotFound(); const raw = await this.json(files.project); if (!object(raw) || raw.number !== number || !states.includes(raw.state as LongEpisodeStatus) || typeof raw.approved !== "boolean" || !Number.isInteger(raw.script_revision) || typeof raw.updated_at !== "string") throw longInvalidData(); return raw as StoredEpisode; }
+  private async episode(id: string, number: number): Promise<StoredEpisode> { if (!Number.isInteger(number) || number < 1) throw longEpisodeNotFound(); const files = this.files(id, number); const outlines = await readLongProjectJson(files.outlines); if (!Array.isArray(outlines) || number > outlines.length || !object(outlines[number - 1]) || outlines[number - 1].episode_number !== number) throw longEpisodeNotFound(); const raw = await readLongProjectJson(files.project); if (!object(raw) || raw.number !== number || !states.includes(raw.state as LongEpisodeStatus) || typeof raw.approved !== "boolean" || !Number.isInteger(raw.script_revision) || typeof raw.updated_at !== "string") throw longInvalidData(); return raw as StoredEpisode; }
   /**
    * This Episode's record, or null when it has none yet.
    *
@@ -70,7 +70,7 @@ export class EpisodeContinuityService {
     // already shows for "never written", so it opens rather than erroring. The same reasoning as the comment
     // above: the screen a person goes to in order to write this file must not be closed by the file's absence.
     if (!episode) return { memory: null, canSave: false };
-    const canSave = eligible.includes(episode.state); try { return { memory: this.fromStored(await this.json(this.files(id, number).continuity), number), canSave }; } catch (error) { if (isLongProjectError(error, "LONG_PROJECT_NOT_FOUND", "LONG_PROJECT_JSON_MALFORMED", "LONG_PROJECT_DATA_INVALID")) return { memory: null, canSave }; throw error; } }
+    const canSave = eligible.includes(episode.state); try { return { memory: this.fromStored(await readLongProjectJson(this.files(id, number).continuity), number), canSave }; } catch (error) { if (isLongProjectError(error, "LONG_PROJECT_NOT_FOUND", "LONG_PROJECT_JSON_MALFORMED", "LONG_PROJECT_DATA_INVALID")) return { memory: null, canSave }; throw error; } }
   /**
    * The Episode after this one, or null when the story genuinely has no more.
    *
@@ -97,7 +97,7 @@ export class EpisodeContinuityService {
     try { stored = await this.episodeOrNull(id, next); }
     catch (error) { if (isLongProjectError(error, "LONG_EPISODE_NOT_FOUND")) return null; throw error; }
     if (stored) return this.detail(stored);
-    const outlines = await this.json(this.files(id, next).outlines);
+    const outlines = await readLongProjectJson(this.files(id, next).outlines);
     if (!Array.isArray(outlines) || next > outlines.length) return null;
     return parseEpisodeOutlineEntry(outlines[next - 1], next);
   }

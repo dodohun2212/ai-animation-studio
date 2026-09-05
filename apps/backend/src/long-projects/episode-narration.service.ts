@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { readLongProjectJson } from "./long-project-json.js";
 import { OPENAI_LEDGER_FILE, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import { persistEpisodeWarning } from "./episode-warnings.js";
 import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
@@ -42,17 +43,16 @@ export class EpisodeNarrationService {
     const episode = path.join(root, episodeDirectoryName(number));
     return { root, outlines: path.join(root, "episode_outlines.json"), episode, project: path.join(episode, "project.json"), narration: path.join(episode, "narration"), records: path.join(episode, "narration_generation_records.json") };
   }
-  private async json(file: string): Promise<unknown> { try { return JSON.parse(await fs.readFile(file, "utf8")); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw longNotFound(); if (error instanceof SyntaxError) throw longMalformed(); throw longStorageError(); } }
   private async episode(projectId: string, number: number): Promise<StoredEpisode> {
     if (!Number.isInteger(number) || number < 1) throw longEpisodeNotFound();
-    const files = this.files(projectId, number); const outlines = await this.json(files.outlines);
+    const files = this.files(projectId, number); const outlines = await readLongProjectJson(files.outlines);
     if (!Array.isArray(outlines) || number > outlines.length || !object(outlines[number - 1]) || outlines[number - 1].episode_number !== number) throw longEpisodeNotFound();
     // Unlike the other Episode services, narration can legitimately be asked about before the Episode has ever
     // been touched by episode-scripts.service.ts (no state gate — see the shared contract's doc comment), so
     // its per-episode project.json file may not exist on disk yet at all. That is simply "no script yet", not a
     // storage error.
     let raw: unknown;
-    try { raw = await this.json(files.project); }
+    try { raw = await readLongProjectJson(files.project); }
     catch (error) { if (error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404) throw longEpisodeNarrationNotAllowed(); throw error; }
     if (!object(raw) || raw.number !== number || !statuses.includes(raw.state as LongEpisodeStatus) || typeof raw.approved !== "boolean" || !object(raw.script) || !Number.isInteger(raw.script_revision) || typeof raw.updated_at !== "string") throw longInvalidData();
     return raw as StoredEpisode;
@@ -116,7 +116,7 @@ export class EpisodeNarrationService {
 
   private async loadRecords(projectId: string, number: number): Promise<StoredRecord[]> {
     try {
-      const raw = await this.json(this.files(projectId, number).records);
+      const raw = await readLongProjectJson(this.files(projectId, number).records);
       if (!Array.isArray(raw)) throw longInvalidData();
       return raw.map((item) => { if (!object(item) || !Number.isInteger(item.scene_number) || typeof item.narration !== "string" || item.checkpoint !== "completed" || typeof item.adapter !== "string" || !Number.isInteger(item.tts_api_calls)) throw longInvalidData(); return item as StoredRecord; });
     } catch (error) { if (error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404) return []; throw error; }
