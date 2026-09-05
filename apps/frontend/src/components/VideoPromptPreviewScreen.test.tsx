@@ -356,7 +356,9 @@ describe("VideoPromptPreviewScreen", () => {
 
     it.each([
       ["VIDEO_CONFIRMATION_STALE", "미리보기 내용이 그 사이에 변경되었습니다. 새로고침 후 다시 확인해 주세요."],
-      ["VIDEO_BUDGET_EXCEEDED", "설정된 예산을 초과하여 전송할 수 없습니다."],
+      // The route sentence is appended from one shared constant (BUDGET_LIMIT_ROUTE_HINT) — this case is
+      // about the raw detail never reaching the screen, not about the exact words, so it names the fixed half.
+      ["VIDEO_BUDGET_EXCEEDED", "설정된 예산을 초과하여 전송할 수 없습니다. 설정 화면의 「이번 달 쓸 수 있는 돈」에서 한도를 올릴 수 있습니다."],
       ["VIDEO_CALL_LIMIT_EXCEEDED", "허용된 Provider 호출 횟수를 초과했습니다."],
       ["VIDEO_REQUEST_ID_CONFLICT", "이전 요청과 내용이 달라 처리할 수 없습니다. 새로고침 후 다시 시도해 주세요."],
       ["VIDEO_SUBMISSION_NOT_ALLOWED", "영상 생성 요청은 모든 장면 이미지 승인과 영상 확인 대기 상태에서만 보낼 수 있습니다."],

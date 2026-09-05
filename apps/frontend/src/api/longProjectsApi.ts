@@ -87,6 +87,7 @@ import {
   type SceneNumber,
   type UpdateLongProjectSettingsRequest,
   type UpdateLongProjectSettingsResponse,
+  BUDGET_LIMIT_ROUTE_HINT,
 } from "@ai-animation-studio/shared";
 import { BUDGET_LEDGER_UNREADABLE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "./budgetLedgerError.js";
 
@@ -128,7 +129,7 @@ const SAFE_ERRORS: Record<string, string> = {
   LONG_EPISODE_IMAGES_INVALID: "에피소드 이미지나 검토 데이터가 올바르지 않습니다.",
   // Money, not a transient failure — this must never read as "wait and retry".
   [BUDGET_LEDGER_UNREADABLE]: BUDGET_LEDGER_UNREADABLE_MESSAGE,
-  LONG_EPISODE_IMAGES_BUDGET_EXCEEDED: "이번 달 OpenAI 예산을 초과하여 요청을 보내지 않았습니다. 비용은 청구되지 않았습니다.",
+  LONG_EPISODE_IMAGES_BUDGET_EXCEEDED: `이번 달 OpenAI 예산을 초과하여 요청을 보내지 않았습니다. 비용은 청구되지 않았습니다. ${BUDGET_LIMIT_ROUTE_HINT}`,
   LONG_EPISODE_IMAGES_PROVIDER_ERROR: "이미지 생성 요청이 실패했습니다. 잠시 후 다시 시도해 주세요.",
   LONG_EPISODE_VIDEOS_NOT_ALLOWED: "지금 이 에피소드 단계에서는 영상 작업을 할 수 없습니다. 기다린다고 풀리지 않으니 에피소드 상태를 확인해 주세요.",
   LONG_EPISODE_VIDEOS_INVALID: "에피소드 영상이나 검토 데이터가 올바르지 않습니다.",
@@ -176,7 +177,7 @@ const SCENE_ERROR_CATEGORY_MESSAGES: Record<string, string> = {
   timeout: "영상 생성이 제한 시간 안에 끝나지 않았습니다. 다시 시도해 주세요.",
   no_output: "Runway가 영상 결과물을 반환하지 않았습니다. 다시 시도해 주세요.",
   invalid_state: "영상 작업 상태가 예상과 달라 처리하지 못했습니다. 다시 시도해 주세요.",
-  budget_exceeded: "이번 달 Runway 예산을 초과하여 요청을 보내지 않았습니다.",
+  budget_exceeded: `이번 달 Runway 예산을 초과하여 요청을 보내지 않았습니다. ${BUDGET_LIMIT_ROUTE_HINT}`,
   // Not budget_exceeded. Reusing that reason would be a lie about money — nothing was overspent; the ledger
   // itself could not be read, so the amount spent is unknown and the request was never sent. Same sentence as
   // the HTTP-code label because it is the same cause, and one cause reading two ways is how a person ends up
@@ -213,9 +214,9 @@ const LONG_EPISODE_MERGE_ERRORS: Record<string, string> = {
  * the one thing the user needs to know is that nothing was billed.
  */
 const LONG_TEXT_GENERATION_ERRORS: Record<string, string> = {
-  LONG_OUTLINE_BUDGET_EXCEEDED: "이번 달 OpenAI 예산을 초과하여 요청을 보내지 않았습니다. 비용은 청구되지 않았습니다.",
+  LONG_OUTLINE_BUDGET_EXCEEDED: `이번 달 OpenAI 예산을 초과하여 요청을 보내지 않았습니다. 비용은 청구되지 않았습니다. ${BUDGET_LIMIT_ROUTE_HINT}`,
   LONG_OUTLINE_PROVIDER_ERROR: "스토리 개요 생성 요청이 실패했습니다. 잠시 후 다시 시도해 주세요.",
-  LONG_EPISODE_SCRIPT_BUDGET_EXCEEDED: "이번 달 OpenAI 예산을 초과하여 요청을 보내지 않았습니다. 비용은 청구되지 않았습니다.",
+  LONG_EPISODE_SCRIPT_BUDGET_EXCEEDED: `이번 달 OpenAI 예산을 초과하여 요청을 보내지 않았습니다. 비용은 청구되지 않았습니다. ${BUDGET_LIMIT_ROUTE_HINT}`,
   LONG_EPISODE_SCRIPT_PROVIDER_ERROR: "대본 생성 요청이 실패했습니다. 잠시 후 다시 시도해 주세요.",
 };
 
@@ -225,7 +226,7 @@ const LONG_EPISODE_NARRATION_ERRORS: Record<string, string> = {
   LONG_EPISODE_NARRATION_MISSING_TEXT: "이 장면에는 읽어줄 문장이 없어 음성을 만들 수 없습니다. 대본 화면에서 문장을 채워 주세요.",
   LONG_EPISODE_NARRATION_GENERATION_FAILED: "음성 파일을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.",
   LONG_EPISODE_NARRATION_STORAGE_ERROR: "음성 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
-  LONG_EPISODE_NARRATION_BUDGET_EXCEEDED: "이번 달 OpenAI 예산을 초과하여 요청을 보내지 않았습니다. 비용은 청구되지 않았습니다.",
+  LONG_EPISODE_NARRATION_BUDGET_EXCEEDED: `이번 달 OpenAI 예산을 초과하여 요청을 보내지 않았습니다. 비용은 청구되지 않았습니다. ${BUDGET_LIMIT_ROUTE_HINT}`,
   LONG_EPISODE_NARRATION_CONTENT_UNAVAILABLE: "요청한 장면의 음성 파일을 찾을 수 없습니다.",
 };
 

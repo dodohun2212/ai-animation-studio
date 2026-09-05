@@ -1,4 +1,5 @@
 import {
+  BUDGET_LIMIT_ROUTE_HINT,
   API_ROUTES,
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
@@ -36,7 +37,7 @@ const SAFE_ERRORS: Record<string, string> = {
   PROJECT_LOCKED: "이 프로젝트에서 다른 작업이 진행 중입니다. 다시 누르지 마세요 — 그 작업이 끝나면 자동으로 반영됩니다.",
   STORY_PROMPT_STALE: "Story 프롬프트가 그 사이에 변경되었습니다. 미리보기를 다시 불러와 주세요.",
   [BUDGET_LEDGER_UNREADABLE]: BUDGET_LEDGER_UNREADABLE_MESSAGE,
-  STORY_BUDGET_EXCEEDED: "이번 달 OpenAI 예산을 초과하여 요청을 보내지 않았습니다.",
+  STORY_BUDGET_EXCEEDED: `이번 달 OpenAI 예산을 초과하여 요청을 보내지 않았습니다. ${BUDGET_LIMIT_ROUTE_HINT}`,
   STORY_PROVIDER_ERROR: "OpenAI Story 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
   // The server re-checks the same precondition the screen checks, and is the authority: the two can disagree
   // when another tab generated images in the meantime. Says what to do, not just what failed.

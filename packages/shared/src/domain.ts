@@ -79,6 +79,20 @@ export const LONG_OUTLINE_ESTIMATED_COST_USD = 0.10;
  */
 export const TTS_ESTIMATED_COST_USD = 0.01;
 
+/**
+ * Where to go after a budget refusal, said in one place because a refusal with no way out is not information.
+ *
+ * Until the monthly limit reached a settings screen, "이번 달 예산을 초과했습니다" was the whole truth: the only
+ * ways past it were to wait for the calendar month or to hand-edit the spend ledger, and neither is something to
+ * put in an error message. Now there is a door, and a refusal that does not mention it leaves the person exactly
+ * where the old one did.
+ *
+ * Appended to every budget-exceeded message rather than shown separately, so it travels with the sentence into
+ * whichever screen renders it — there is no one place these are displayed. `budget-refusal-route.test.ts` holds
+ * the rule that a new one cannot be added without it.
+ */
+export const BUDGET_LIMIT_ROUTE_HINT = "설정 화면의 「이번 달 쓸 수 있는 돈」에서 한도를 올릴 수 있습니다.";
+
 export type ProjectType = "short_project" | "long_story_project";
 export type ReviewDecision = "pending" | "approved" | "rejected";
 export type JobStatus =

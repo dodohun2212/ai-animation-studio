@@ -1,4 +1,5 @@
 import {
+  BUDGET_LIMIT_ROUTE_HINT,
   API_ROUTES,
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
@@ -64,7 +65,7 @@ const SCENE_ERROR_CATEGORY_MESSAGES: Record<string, string> = {
   timeout: "영상 생성이 제한 시간 안에 끝나지 않았습니다. 다시 시도해 주세요.",
   no_output: "Runway가 영상 결과물을 반환하지 않았습니다. 다시 시도해 주세요.",
   invalid_state: "영상 작업 상태가 예상과 달라 처리하지 못했습니다. 다시 시도해 주세요.",
-  budget_exceeded: "이번 달 Runway 예산을 초과하여 요청을 보내지 않았습니다.",
+  budget_exceeded: `이번 달 Runway 예산을 초과하여 요청을 보내지 않았습니다. ${BUDGET_LIMIT_ROUTE_HINT}`,
   // Not budget_exceeded. Reusing that reason would be a lie about money — nothing was overspent; the ledger
   // itself could not be read, so the amount spent is unknown and the request was never sent. Same sentence as
   // the HTTP-code label because it is the same cause, and one cause reading two ways is how a person ends up

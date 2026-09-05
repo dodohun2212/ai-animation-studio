@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { BUDGET_LIMIT_ROUTE_HINT } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { isInBudgetMonth } from "./budget-month.js";
 import { resolveMonthlyLimit, type MonthlyLimitStore } from "./monthly-budget-limit.js";
@@ -130,7 +131,7 @@ export class RunwayBudget {
 
 export class RunwayBudgetExceededError extends Error {
   constructor(public readonly estimatedCostUsd: number, public readonly remainingUsd: number) {
-    super(`월 Runway 예산을 초과하여 요청을 보내지 않았습니다. 예상 비용 $${estimatedCostUsd.toFixed(2)}, 남은 예산 $${remainingUsd.toFixed(2)}`);
+    super(`월 Runway 예산을 초과하여 요청을 보내지 않았습니다. 예상 비용 $${estimatedCostUsd.toFixed(2)}, 남은 예산 $${remainingUsd.toFixed(2)}. ${BUDGET_LIMIT_ROUTE_HINT}`);
   }
 }
 
