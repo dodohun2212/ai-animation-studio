@@ -3,9 +3,8 @@ import * as path from "node:path";
 import type { BudgetPreview } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { isInBudgetMonth } from "./budget-month.js";
-import { monthlyLimitFromEnvironment } from "./monthly-budget-limit.js";
+import { resolveMonthlyLimit, type MonthlyLimitStore } from "./monthly-budget-limit.js";
 
-const DEFAULT_MONTHLY_LIMIT_USD = 10;
 /** See monthly-budget-limit.ts: the default is unchanged, and it is now possible to say otherwise. */
 const OPENAI_MONTHLY_LIMIT_VARIABLE = "OPENAI_MONTHLY_BUDGET_USD";
 
@@ -31,8 +30,18 @@ const isUsageRecord = (value: unknown): value is UsageRecord => isObject(value)
 export class OpenAiBudget {
   private readonly filePath: string;
 
-  constructor(learningDataRoot: string, readonly monthlyLimitUsd: number = monthlyLimitFromEnvironment(OPENAI_MONTHLY_LIMIT_VARIABLE, DEFAULT_MONTHLY_LIMIT_USD)) {
+  /**
+   * `monthlyLimitUsd` passed directly still wins over everything — that is how the budget tests state a limit,
+   * and how a caller that has already decided one avoids a second read. Left out, the limit is looked up on
+   * every question so a number saved on the settings screen applies to the next request rather than the next
+   * launch; `limitStore` is the app's own settings file (see resolveMonthlyLimit).
+   */
+  constructor(learningDataRoot: string, private readonly fixedMonthlyLimitUsd?: number, private readonly limitStore?: MonthlyLimitStore) {
     this.filePath = path.join(learningDataRoot, "api_budget_usage.json");
+  }
+
+  async monthlyLimit(): Promise<number> {
+    return this.fixedMonthlyLimitUsd ?? resolveMonthlyLimit(OPENAI_MONTHLY_LIMIT_VARIABLE, this.limitStore);
   }
 
   /**
@@ -72,7 +81,7 @@ export class OpenAiBudget {
   }
 
   async remaining(now = new Date()): Promise<number> {
-    return Math.max(0, this.monthlyLimitUsd - (await this.spentThisMonth(now)));
+    return Math.max(0, (await this.monthlyLimit()) - (await this.spentThisMonth(now)));
   }
 
   /** Throws BEFORE any request is sent when the estimate would exceed the remaining monthly budget. */
@@ -119,8 +128,8 @@ export class OpenAiBudget {
 
 /** Read-only ledger snapshot for display — never reserves anything, same principle as RunwayBudget's equivalent (video preview/retry estimate) helpers. */
 export async function budgetPreviewFor(budget: OpenAiBudget, estimatedCostUsd: number): Promise<BudgetPreview> {
-  const [spentUsd, remainingUsd] = await Promise.all([budget.spentThisMonth(), budget.remaining()]);
-  return { monthlyLimitUsd: budget.monthlyLimitUsd, spentUsd, remainingUsd, estimatedRequestCostUsd: estimatedCostUsd, canSpend: estimatedCostUsd <= remainingUsd };
+  const [monthlyLimitUsd, spentUsd, remainingUsd] = await Promise.all([budget.monthlyLimit(), budget.spentThisMonth(), budget.remaining()]);
+  return { monthlyLimitUsd, spentUsd, remainingUsd, estimatedRequestCostUsd: estimatedCostUsd, canSpend: estimatedCostUsd <= remainingUsd };
 }
 
 export class OpenAiBudgetExceededError extends Error {

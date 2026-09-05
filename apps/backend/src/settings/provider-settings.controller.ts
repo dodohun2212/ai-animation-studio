@@ -3,6 +3,7 @@ import {
   API_ROUTES,
   type GetProviderSettingsResponse,
   type SaveProviderCredentialResponse,
+  type SaveProviderMonthlyBudgetResponse,
   type SetProviderConnectionResponse,
 } from "@ai-animation-studio/shared";
 
@@ -18,6 +19,11 @@ export class ProviderSettingsController {
   @Put(`${API_ROUTES.providerSettings}/:provider/credential`)
   save(@Param("provider") provider: string, @Body() body: unknown): Promise<SaveProviderCredentialResponse> {
     return this.settings.save(provider, body);
+  }
+
+  @Put(`${API_ROUTES.providerSettings}/:provider/monthly-budget`)
+  saveMonthlyBudget(@Param("provider") provider: string, @Body() body: unknown): Promise<SaveProviderMonthlyBudgetResponse> {
+    return this.settings.saveMonthlyBudget(provider, body);
   }
 
   @Post(`${API_ROUTES.providerSettings}/:provider/disconnect`)

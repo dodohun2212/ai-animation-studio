@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { jsonResponse, makeProviderStatus } from "../api/testUtils.js";
+import { jsonResponse, makeMonthlyBudget, makeProviderStatus } from "../api/testUtils.js";
 import { ProviderSettingsScreen } from "./ProviderSettingsScreen.js";
 
 /**
@@ -21,6 +21,9 @@ function routingInstagramAside(providerFetch: (url: RequestInfo | URL, init?: Re
   ));
 }
 
+/** Every case here is about the credential cards; the budgets just have to be present and well-formed. */
+const monthlyBudgets = [makeMonthlyBudget({ provider: "openai" }), makeMonthlyBudget({ provider: "runway" })];
+
 describe("ProviderSettingsScreen", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -28,7 +31,7 @@ describe("ProviderSettingsScreen", () => {
 
   it("shows loading, then both provider cards on success", async () => {
     const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" })];
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { providers })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { providers, monthlyBudgets })));
     render(<ProviderSettingsScreen onBack={() => {}} />);
 
     expect(screen.getByText("불러오는 중...")).toBeTruthy();
@@ -70,7 +73,7 @@ describe("ProviderSettingsScreen", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(500, { code: "SETTINGS_STORAGE_ERROR", message: "실패" }))
-      .mockResolvedValueOnce(jsonResponse(200, { providers }));
+      .mockResolvedValueOnce(jsonResponse(200, { providers, monthlyBudgets }));
     vi.stubGlobal("fetch", routingInstagramAside(fetchMock));
     render(<ProviderSettingsScreen onBack={() => {}} />);
 
@@ -85,7 +88,7 @@ describe("ProviderSettingsScreen", () => {
     const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" })];
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { providers }))
+      .mockResolvedValueOnce(jsonResponse(200, { providers, monthlyBudgets }))
       .mockResolvedValueOnce(jsonResponse(500, { code: "SETTINGS_STORAGE_ERROR", message: "internal detail, not shown" }));
     vi.stubGlobal("fetch", routingInstagramAside(fetchMock));
     render(<ProviderSettingsScreen onBack={() => {}} />);
@@ -114,7 +117,7 @@ describe("ProviderSettingsScreen", () => {
     });
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { providers: initial }))
+      .mockResolvedValueOnce(jsonResponse(200, { providers: initial, monthlyBudgets }))
       .mockResolvedValueOnce(jsonResponse(200, { provider: disconnectedOpenAi }));
     vi.stubGlobal("fetch", routingInstagramAside(fetchMock));
     render(<ProviderSettingsScreen onBack={() => {}} />);
@@ -139,7 +142,7 @@ describe("ProviderSettingsScreen", () => {
     let resolveOpenAi: (response: Response) => void = () => {};
     let resolveRunway: (response: Response) => void = () => {};
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { providers: initial }))
+      .mockResolvedValueOnce(jsonResponse(200, { providers: initial, monthlyBudgets }))
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveOpenAi = resolve; }))
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveRunway = resolve; }));
     vi.stubGlobal("fetch", routingInstagramAside(fetchMock));
@@ -174,7 +177,7 @@ describe("ProviderSettingsScreen", () => {
     ];
     let resolveRefresh: (response: Response) => void = () => {};
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { providers }))
+      .mockResolvedValueOnce(jsonResponse(200, { providers, monthlyBudgets }))
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveRefresh = resolve; }));
     vi.stubGlobal("fetch", routingInstagramAside(fetchMock));
     render(<ProviderSettingsScreen onBack={() => {}} />);
@@ -184,7 +187,7 @@ describe("ProviderSettingsScreen", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "이 앱에서 사용 안 함" })[0] as HTMLElement);
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    resolveRefresh(jsonResponse(200, { providers }));
+    resolveRefresh(jsonResponse(200, { providers, monthlyBudgets }));
     await waitFor(() => expect(screen.getByRole("button", { name: "새로고침" })).not.toBeDisabled());
   });
 
@@ -196,7 +199,7 @@ describe("ProviderSettingsScreen", () => {
     const disconnected = { ...providers[0], connected: false };
     let resolveMutation: (response: Response) => void = () => {};
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { providers }))
+      .mockResolvedValueOnce(jsonResponse(200, { providers, monthlyBudgets }))
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveMutation = resolve; }));
     vi.stubGlobal("fetch", routingInstagramAside(fetchMock));
     render(<ProviderSettingsScreen onBack={() => {}} />);
@@ -212,7 +215,7 @@ describe("ProviderSettingsScreen", () => {
 
   it("calls onBack when the back button is clicked", async () => {
     const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" })];
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { providers })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { providers, monthlyBudgets })));
     const onBack = vi.fn();
     render(<ProviderSettingsScreen onBack={onBack} />);
 
@@ -231,7 +234,7 @@ describe("ProviderSettingsScreen", () => {
     vi.stubGlobal("fetch", vi.fn().mockImplementation((url: unknown) => Promise.resolve(
       String(url).includes("/instagram/")
         ? jsonResponse(500, { code: "INSTAGRAM_STORAGE_ERROR", message: "raw backend detail" })
-        : jsonResponse(200, { providers }),
+        : jsonResponse(200, { providers, monthlyBudgets }),
     )));
     render(<ProviderSettingsScreen onBack={() => {}} />);
 
@@ -248,7 +251,7 @@ describe("ProviderSettingsScreen", () => {
     vi.stubGlobal("fetch", vi.fn().mockImplementation((url: unknown) => Promise.resolve(
       String(url).includes("/instagram/")
         ? jsonResponse(200, { appConfigured: true, tokenStored: false, callbackLoginAvailable: false })
-        : jsonResponse(200, { providers }),
+        : jsonResponse(200, { providers, monthlyBudgets }),
     )));
     render(<ProviderSettingsScreen onBack={() => {}} />);
 

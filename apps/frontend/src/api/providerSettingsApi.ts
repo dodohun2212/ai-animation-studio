@@ -3,7 +3,9 @@ import {
   type GetProviderSettingsResponse,
   type ProviderCredentialKind,
   type ProviderCredentialStatus,
+  type ProviderMonthlyBudget,
   type SaveProviderCredentialResponse,
+  type SaveProviderMonthlyBudgetResponse,
   type SetProviderConnectionResponse,
 } from "@ai-animation-studio/shared";
 
@@ -95,12 +97,40 @@ function isProviderCredentialStatusFor(
     isProviderCredentialStatus(value) && value.provider === expectedProvider;
 }
 
+const isMoney = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;
+
+/**
+ * A limit of zero is not a limit this screen will show.
+ *
+ * It would render as "월 한도 $0.00" beside a spend of whatever has been spent, which is the same thing the
+ * screen says when a real budget is exhausted — and the server refuses to save one for exactly that reason.
+ * A response carrying one is a response this app did not produce.
+ */
+function isProviderMonthlyBudget(value: unknown): value is ProviderMonthlyBudget {
+  return isRecord(value)
+    && PROVIDER_KINDS.includes(value.provider as ProviderCredentialKind)
+    && isMoney(value.monthlyLimitUsd) && value.monthlyLimitUsd > 0
+    && typeof value.isDefault === "boolean"
+    && isMoney(value.spentUsd) && isMoney(value.remainingUsd)
+    && (value.spendUnavailable === undefined || value.spendUnavailable === true);
+}
+
 function isGetProviderSettingsResponse(value: unknown): value is GetProviderSettingsResponse {
-  if (!isRecord(value) || !Array.isArray(value.providers)) return false;
-  if (!value.providers.every(isProviderCredentialStatus)) return false;
+  if (!isRecord(value) || !Array.isArray(value.providers) || !Array.isArray(value.monthlyBudgets)) return false;
+  if (!value.providers.every(isProviderCredentialStatus) || !value.monthlyBudgets.every(isProviderMonthlyBudget)) return false;
   const seenProviders = new Set((value.providers as ProviderCredentialStatus[]).map((item) => item.provider));
   if (seenProviders.size !== value.providers.length) return false;
-  return PROVIDER_KINDS.every((kind) => seenProviders.has(kind));
+  const seenBudgets = new Set((value.monthlyBudgets as ProviderMonthlyBudget[]).map((item) => item.provider));
+  if (seenBudgets.size !== value.monthlyBudgets.length) return false;
+  return PROVIDER_KINDS.every((kind) => seenProviders.has(kind) && seenBudgets.has(kind));
+}
+
+/** Same reason as the credential response below: a limit answered for the other provider must not land on this card. */
+function isSaveProviderMonthlyBudgetResponseFor(
+  expectedProvider: ProviderCredentialKind,
+): (value: unknown) => value is SaveProviderMonthlyBudgetResponse {
+  return (value: unknown): value is SaveProviderMonthlyBudgetResponse =>
+    isRecord(value) && isProviderMonthlyBudget(value.budget) && value.budget.provider === expectedProvider;
 }
 
 // The response's provider must equal the one requested — otherwise a mismatched
@@ -180,6 +210,17 @@ export async function saveProviderCredential(
     API_ROUTES.providerCredential(provider),
     { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value }) },
     isSaveProviderCredentialResponseFor(provider),
+  );
+}
+
+export async function saveProviderMonthlyBudget(
+  provider: ProviderCredentialKind,
+  monthlyLimitUsd: number,
+): Promise<SaveProviderMonthlyBudgetResponse> {
+  return requestJson(
+    API_ROUTES.providerMonthlyBudget(provider),
+    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ monthlyLimitUsd }) },
+    isSaveProviderMonthlyBudgetResponseFor(provider),
   );
 }
 

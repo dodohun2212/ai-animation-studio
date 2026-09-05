@@ -9,7 +9,7 @@ import {
   saveProviderCredential,
   toDisplayError,
 } from "./providerSettingsApi.js";
-import { jsonResponse, makeProviderStatus, nonJsonResponse } from "./testUtils.js";
+import { jsonResponse, makeMonthlyBudget, makeProviderStatus, nonJsonResponse } from "./testUtils.js";
 
 describe("providerSettingsApi", () => {
   afterEach(() => {
@@ -19,6 +19,7 @@ describe("providerSettingsApi", () => {
   it("fetches settings via GET /settings/providers", async () => {
     const responseBody: GetProviderSettingsResponse = {
       providers: [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" })],
+      monthlyBudgets: [makeMonthlyBudget({ provider: "openai" }), makeMonthlyBudget({ provider: "runway" })],
     };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responseBody));
     vi.stubGlobal("fetch", fetchMock);
@@ -30,6 +31,7 @@ describe("providerSettingsApi", () => {
   it("handles openai/runway regardless of response order, keyed by the provider field", async () => {
     const reversed: GetProviderSettingsResponse = {
       providers: [makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "openai" })],
+      monthlyBudgets: [makeMonthlyBudget({ provider: "runway" }), makeMonthlyBudget({ provider: "openai" })],
     };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, reversed)));
 

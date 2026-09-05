@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import type { InstagramConnectionStatus, ProviderCredentialKind, ProviderCredentialStatus } from "@ai-animation-studio/shared";
+import type { InstagramConnectionStatus, ProviderCredentialKind, ProviderCredentialStatus, ProviderMonthlyBudget } from "@ai-animation-studio/shared";
 import { getInstagramConnection } from "../api/instagramConnectionApi.js";
 import { getProviderSettings, toDisplayError } from "../api/providerSettingsApi.js";
 import { InstagramConnectionCard } from "./InstagramConnectionCard.js";
+import { MonthlyBudgetCard } from "./MonthlyBudgetCard.js";
 import { ProviderCredentialCard } from "./ProviderCredentialCard.js";
 import { Spinner } from "./Spinner.js";
 
 interface Props { onBack: () => void }
 type StatusMap = Record<ProviderCredentialKind, ProviderCredentialStatus>;
-interface State { statuses: StatusMap | null; error: { code: string; message: string } | null; loading: boolean }
+type BudgetMap = Record<ProviderCredentialKind, ProviderMonthlyBudget>;
+interface State { statuses: StatusMap | null; budgets: BudgetMap | null; error: { code: string; message: string } | null; loading: boolean }
 /**
  * A failed read must not be rendered as "not connected", which is a different fact — but it must not be
  * rendered as nothing either. Hiding the card on failure is what this screen used to do, and it produced the
@@ -24,7 +26,7 @@ type InstagramState =
 const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
 
 export function ProviderSettingsScreen({ onBack }: Props) {
-  const [state, setState] = useState<State>({ statuses: null, error: null, loading: true });
+  const [state, setState] = useState<State>({ statuses: null, budgets: null, error: null, loading: true });
   const [instagram, setInstagram] = useState<InstagramState>({ kind: "loading" });
   const refreshInFlight = useRef(true);
   const activeMutations = useRef(new Set<ProviderCredentialKind>());
@@ -35,9 +37,10 @@ export function ProviderSettingsScreen({ onBack }: Props) {
       setState((old) => ({ ...old, loading: true }));
     }
     try {
-      const response = await getProviderSettings(); const statuses = {} as StatusMap;
+      const response = await getProviderSettings(); const statuses = {} as StatusMap; const budgets = {} as BudgetMap;
       response.providers.forEach((item) => { statuses[item.provider] = item; });
-      setState({ statuses, error: null, loading: false });
+      response.monthlyBudgets.forEach((item) => { budgets[item.provider] = item; });
+      setState({ statuses, budgets, error: null, loading: false });
     } catch (error) { setState((old) => ({ ...old, error: toDisplayError(error), loading: false })); }
     finally { refreshInFlight.current = false; }
     // A separate store with its own failure mode — losing it costs the Instagram card, not the whole screen.
@@ -51,6 +54,7 @@ export function ProviderSettingsScreen({ onBack }: Props) {
   };
   const releaseMutation = (provider: ProviderCredentialKind) => { activeMutations.current.delete(provider); };
   const update = (status: ProviderCredentialStatus) => setState((old) => old.statuses ? { ...old, statuses: { ...old.statuses, [status.provider]: status } } : old);
+  const updateBudget = (budget: ProviderMonthlyBudget) => setState((old) => old.budgets ? { ...old, budgets: { ...old.budgets, [budget.provider]: budget } } : old);
   return (
     <section className="mt-8 max-w-2xl space-y-4">
       <div className="flex items-center justify-between">
@@ -75,6 +79,7 @@ export function ProviderSettingsScreen({ onBack }: Props) {
         <div className="space-y-4">
           <ProviderCredentialCard label="OpenAI" status={state.statuses.openai} onStatusChange={update} acquireMutation={() => acquireMutation("openai")} releaseMutation={() => releaseMutation("openai")}/>
           <ProviderCredentialCard label="Runway" status={state.statuses.runway} onStatusChange={update} acquireMutation={() => acquireMutation("runway")} releaseMutation={() => releaseMutation("runway")}/>
+          {state.budgets && <MonthlyBudgetCard budgets={state.budgets} onBudgetChange={updateBudget} />}
           {instagram.kind === "ready" && (
             <InstagramConnectionCard status={instagram.status} onStatusChange={(status) => setInstagram({ kind: "ready", status })} />
           )}

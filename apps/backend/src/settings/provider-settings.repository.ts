@@ -80,6 +80,43 @@ export class ProviderSettingsRepository {
     }
   }
 
+  /**
+   * Any other named setting in the same file — today the two monthly budget limits.
+   *
+   * The same `.env` this app already owns and already writes. A second store for one number each would be a
+   * second thing to find, back up and get wrong, and these are environment variables in every other respect:
+   * a person who sets OPENAI_MONTHLY_BUDGET_USD in their shell means exactly what the settings screen means.
+   *
+   * Provider credentials keep their own read/save because they have two accepted spellings each and a
+   * preferred one to write back; a plain setting has one name and no history.
+   */
+  async readNamed(name: string): Promise<string | null> {
+    let value: string | null = null;
+    for (const line of await this.readLines()) {
+      if (envName(line) === name) value = envValue(line) || null;
+    }
+    return value;
+  }
+
+  /** Replaces the value in place when the name is already there, so the file keeps the order a person left it in. */
+  async saveNamed(name: string, value: string): Promise<void> {
+    const output: string[] = [];
+    let written = false;
+    for (const line of await this.readLines()) {
+      if (envName(line) === name) {
+        if (!written) { output.push(`${name}=${value}`); written = true; }
+      } else {
+        output.push(line);
+      }
+    }
+    if (!written) output.push(`${name}=${value}`);
+    try {
+      await this.writeFile(this.envFile, `${output.join("\n")}\n`);
+    } catch {
+      throw settingsStorageError();
+    }
+  }
+
   private async readLines(): Promise<string[]> {
     try {
       const lines = (await this.readFile(this.envFile, "utf8")).split(/\r?\n/);

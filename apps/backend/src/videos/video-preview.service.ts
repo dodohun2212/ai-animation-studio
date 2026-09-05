@@ -241,13 +241,13 @@ export class LocalVideoPreviewService {
     }
     const estimatedRequestCostUsd = previews.reduce((sum, preview) => sum + preview.estimatedCostUsd, 0);
     // Read-only: previewing never reserves or records budget, it only reports the ledger's current state.
-    const [spentUsd, remainingUsd] = await Promise.all([this.budget.spentThisMonth(), this.budget.remaining()]);
+    const [monthlyLimitUsd, spentUsd, remainingUsd] = await Promise.all([this.budget.monthlyLimit(), this.budget.spentThisMonth(), this.budget.remaining()]);
     return {
       previews,
       confirmationId: digest.digest("hex"),
       maximumProviderCalls: sceneNumbers.length,
       budget: {
-        monthlyLimitUsd: this.budget.monthlyLimitUsd,
+        monthlyLimitUsd,
         spentUsd,
         remainingUsd,
         estimatedRequestCostUsd,

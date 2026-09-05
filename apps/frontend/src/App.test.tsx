@@ -169,6 +169,10 @@ describe("App", () => {
             { provider: "openai", configured: false, connected: false, maskedValue: null },
             { provider: "runway", configured: false, connected: false, maskedValue: null },
           ],
+          monthlyBudgets: [
+            { provider: "openai", monthlyLimitUsd: 10, isDefault: true, spentUsd: 0, remainingUsd: 10 },
+            { provider: "runway", monthlyLimitUsd: 10, isDefault: true, spentUsd: 0, remainingUsd: 10 },
+          ],
         });
       }
       throw new Error(`Unexpected fetch call in test: ${requestUrl}`);

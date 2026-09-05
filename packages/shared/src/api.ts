@@ -1765,7 +1765,30 @@ export interface ProviderCredentialStatus {
   maskedValue: string | null;
 }
 
-export interface GetProviderSettingsResponse { providers: ProviderCredentialStatus[]; }
+/**
+ * What this computer may spend on one provider in a month, and what it has spent.
+ *
+ * `monthlyLimitUsd` is the same knob as the OPENAI_MONTHLY_BUDGET_USD / RUNWAY_MONTHLY_BUDGET_USD environment
+ * variables — saving it here writes that line into the app's own settings file, and a value saved here wins
+ * over one the app was launched with. `isDefault` says nobody has chosen: it is the built-in $10, not a number
+ * anybody typed, which is the difference between "this is my limit" and "I never set one".
+ *
+ * The two spend figures come from the same ledgers the refusal is computed from, so the screen showing this is
+ * showing the number that will actually stop a request rather than a second estimate of it.
+ */
+export interface ProviderMonthlyBudget {
+  provider: ProviderCredentialKind;
+  monthlyLimitUsd: number;
+  isDefault: boolean;
+  spentUsd: number;
+  remainingUsd: number;
+  /** Absent when the ledger could not be read — the limit is still true, the spend is simply not known right now. */
+  spendUnavailable?: true;
+}
+
+export interface GetProviderSettingsResponse { providers: ProviderCredentialStatus[]; monthlyBudgets: ProviderMonthlyBudget[]; }
+export interface SaveProviderMonthlyBudgetRequest { monthlyLimitUsd: number; }
+export interface SaveProviderMonthlyBudgetResponse { budget: ProviderMonthlyBudget; }
 export interface SaveProviderCredentialRequest { value: string; }
 export interface SaveProviderCredentialResponse { provider: ProviderCredentialStatus; }
 export interface SetProviderConnectionResponse { provider: ProviderCredentialStatus; }
@@ -2668,6 +2691,8 @@ export const API_ROUTES = {
     `/settings/providers/${provider}/disconnect`,
   providerReconnect: (provider: ProviderCredentialKind) =>
     `/settings/providers/${provider}/reconnect`,
+  providerMonthlyBudget: (provider: ProviderCredentialKind) =>
+    `/settings/providers/${provider}/monthly-budget`,
   videoPreview: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/videos/preview`,
   videoGeneration: (projectId: string) => `/projects/${projectId}/videos/generations`,
   videoProgress: (projectId: string, jobId: string) => `/projects/${projectId}/videos/generations/${jobId}`,

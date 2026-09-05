@@ -169,12 +169,12 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
   /** `pendingSceneCount` is every scene this job has not finished — what a retry actually resumes and pays for, see the contract's own doc comment. */
   private async retryEstimate(records: readonly VideoRecord[]): Promise<GenerationProgressResponse["retryEstimate"]> {
     if (!this.budget) return undefined;
-    const [spentUsd, remainingUsd] = await Promise.all([this.budget.spentThisMonth(), this.budget.remaining()]);
+    const [monthlyLimitUsd, spentUsd, remainingUsd] = await Promise.all([this.budget.monthlyLimit(), this.budget.spentThisMonth(), this.budget.remaining()]);
     return {
       pendingSceneCount: records.filter((record) => record.status !== "succeeded").length,
       perSceneCostUsd: VIDEO_SCENE_ESTIMATED_COST_USD,
       budget: {
-        monthlyLimitUsd: this.budget.monthlyLimitUsd, spentUsd, remainingUsd,
+        monthlyLimitUsd, spentUsd, remainingUsd,
         estimatedRequestCostUsd: VIDEO_SCENE_ESTIMATED_COST_USD, canSpend: VIDEO_SCENE_ESTIMATED_COST_USD <= remainingUsd,
       },
     };

@@ -2,6 +2,9 @@ import * as path from "node:path";
 
 import { Module } from "@nestjs/common";
 
+import { AssetsModule, LEARNING_DATA_ROOT } from "../assets/assets.module.js";
+import { OpenAiBudget } from "../providers/openai-budget.js";
+import { RunwayBudget } from "../providers/runway-budget.js";
 import { ProviderSettingsController } from "./provider-settings.controller.js";
 import { ProviderSettingsRepository } from "./provider-settings.repository.js";
 import { ProviderSettingsService } from "./provider-settings.service.js";
@@ -28,7 +31,16 @@ function requiredProviderSettingsRoot(): string {
   return path.resolve(root);
 }
 
+/**
+ * AssetsModule is imported only for LEARNING_DATA_ROOT, which is where the two spend ledgers live.
+ *
+ * The budgets are built here rather than injected from the modules that already provide them: those modules
+ * import this one, so taking them back would close a cycle. Two readers over the same two files cost nothing —
+ * neither holds state — and the alternative was to resolve the data root a second time by hand, which is the
+ * duplication that made the settings root fail closed in the first place.
+ */
 @Module({
+  imports: [AssetsModule],
   controllers: [ProviderSettingsController],
   providers: [
     { provide: PROVIDER_SETTINGS_ROOT, useFactory: requiredProviderSettingsRoot },
@@ -37,7 +49,14 @@ function requiredProviderSettingsRoot(): string {
       useFactory: (root: string) => new ProviderSettingsRepository(root),
       inject: [PROVIDER_SETTINGS_ROOT],
     },
-    ProviderSettingsService,
+    {
+      provide: ProviderSettingsService,
+      useFactory: (repository: ProviderSettingsRepository, learningDataRoot: string) => new ProviderSettingsService(repository, {
+        openai: new OpenAiBudget(learningDataRoot, undefined, repository),
+        runway: new RunwayBudget(learningDataRoot, undefined, repository),
+      }),
+      inject: [ProviderSettingsRepository, LEARNING_DATA_ROOT],
+    },
   ],
   // PROVIDER_SETTINGS_ROOT is exported so another module storing a secret can put it under the same
   // fail-closed root instead of resolving one of its own — mirroring how AssetsModule exports

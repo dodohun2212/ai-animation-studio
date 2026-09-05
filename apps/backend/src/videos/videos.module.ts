@@ -15,16 +15,17 @@ import { LocalVideoMergeService } from "./video-merge.service.js";
 import { VideoLibraryService } from "./video-library.service.js";
 import { AudioModule } from "../audio/audio.module.js";
 import { AudioLibraryService } from "../audio/audio-library.service.js";
+import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
 
 @Module({
   imports: [ProjectsModule, ProviderSettingsModule, AssetsModule, AudioModule],
   controllers: [VideosController],
   providers: [
-    { provide: RunwayBudget, useFactory: (root: string) => new RunwayBudget(root), inject: [LEARNING_DATA_ROOT] },
+    { provide: RunwayBudget, useFactory: (root: string, settings: ProviderSettingsRepository) => new RunwayBudget(root, undefined, settings), inject: [LEARNING_DATA_ROOT, ProviderSettingsRepository] },
     // The library reports what a project cost, and that is two ledgers: Runway for video, OpenAI for images,
     // scripts and narration. Provided here rather than imported from ImagesModule to keep this module's own
     // wiring readable — the class reads a file path, so a second instance costs nothing.
-    { provide: OpenAiBudget, useFactory: (root: string) => new OpenAiBudget(root), inject: [LEARNING_DATA_ROOT] },
+    { provide: OpenAiBudget, useFactory: (root: string, settings: ProviderSettingsRepository) => new OpenAiBudget(root, undefined, settings), inject: [LEARNING_DATA_ROOT, ProviderSettingsRepository] },
     {
     provide: VideoLibraryService,
     useFactory: (projects: LocalProjectRepository, projectsRoot: string, budget: RunwayBudget, openAiBudget: OpenAiBudget) => new VideoLibraryService(projects, projectsRoot, budget, openAiBudget),

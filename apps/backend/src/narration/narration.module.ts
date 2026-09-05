@@ -3,6 +3,7 @@ import { AssetsModule, LEARNING_DATA_ROOT } from "../assets/assets.module.js";
 import { ProjectsModule, PROJECTS_ROOT } from "../projects/projects.module.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { ProviderSettingsModule } from "../settings/provider-settings.module.js";
+import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { OpenAiBudget } from "../providers/openai-budget.js";
 import { NarrationController } from "./narration.controller.js";
@@ -14,7 +15,7 @@ import { LocalAssetsRepository } from "../assets/assets.repository.js";
   imports: [ProjectsModule, AssetsModule, ProviderSettingsModule],
   controllers: [NarrationController],
   providers: [
-    { provide: OpenAiBudget, useFactory: (root: string) => new OpenAiBudget(root), inject: [LEARNING_DATA_ROOT] },
+    { provide: OpenAiBudget, useFactory: (root: string, settings: ProviderSettingsRepository) => new OpenAiBudget(root, undefined, settings), inject: [LEARNING_DATA_ROOT, ProviderSettingsRepository] },
     {
       provide: LocalNarrationGenerationService,
       useFactory: (projects: LocalProjectRepository, projectsRoot: string, providerSettings: ProviderSettingsService, budget: OpenAiBudget) =>

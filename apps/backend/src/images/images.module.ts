@@ -6,6 +6,7 @@ import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.reposi
 import { ProjectsModule, PROJECTS_ROOT } from "../projects/projects.module.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { ProviderSettingsModule } from "../settings/provider-settings.module.js";
+import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { OpenAiBudget } from "../providers/openai-budget.js";
 import { ImagesController } from "./images.controller.js";
@@ -29,7 +30,7 @@ import { GeneratedImageBackfillController } from "./generated-image-backfill.con
       useFactory: (library: GeneratedImageLibraryService, assets: LocalAssetsRepository, projectsRoot: string) => new GeneratedImageBackfillService(library, assets, projectsRoot),
       inject: [GeneratedImageLibraryService, LocalAssetsRepository, PROJECTS_ROOT],
     },
-    { provide: OpenAiBudget, useFactory: (root: string) => new OpenAiBudget(root), inject: [LEARNING_DATA_ROOT] },
+    { provide: OpenAiBudget, useFactory: (root: string, settings: ProviderSettingsRepository) => new OpenAiBudget(root, undefined, settings), inject: [LEARNING_DATA_ROOT, ProviderSettingsRepository] },
     {
       provide: LocalImageGenerationService,
       useFactory: (projects: LocalProjectRepository, mappings: LocalProjectAssetMappingsRepository, projectsRoot: string, assets: LocalAssetsRepository, providerSettings: ProviderSettingsService, budget: OpenAiBudget) =>

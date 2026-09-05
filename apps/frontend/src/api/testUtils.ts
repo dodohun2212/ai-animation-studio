@@ -12,6 +12,7 @@ import {
   type ProjectAssetMapping,
   type ProjectAssetMappingReview,
   type ProviderCredentialStatus,
+  type ProviderMonthlyBudget,
   type SceneStaleness,
   type ShortProjectCastMember,
 } from "@ai-animation-studio/shared";
@@ -158,6 +159,17 @@ export function makeProviderStatus(overrides: Partial<ProviderCredentialStatus> 
     configured: false,
     connected: false,
     maskedValue: null,
+    ...overrides,
+  };
+}
+
+export function makeMonthlyBudget(overrides: Partial<ProviderMonthlyBudget> = {}): ProviderMonthlyBudget {
+  return {
+    provider: "openai",
+    monthlyLimitUsd: 10,
+    isDefault: true,
+    spentUsd: 0,
+    remainingUsd: 10,
     ...overrides,
   };
 }
