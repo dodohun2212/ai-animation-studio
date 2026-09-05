@@ -1,4 +1,5 @@
 import type {
+  MappingApprovalInvalidReason,
   ApproveProjectAssetMappingReviewResponse,
   BeginProjectAssetMappingReviewResponse,
   GetProjectAssetMappingReviewResponse,
@@ -101,6 +102,31 @@ describe("mappingsApi", () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/projects/sample_project/assets/mapping-review/approve");
     expect(init.method).toBe("POST");
+  });
+
+  /**
+   * The reason the server gives for refusing an approval has to survive the trip, or the screen is back to one
+   * sentence for four different failures — which is what put Captain D in front of "입력 내용을 확인해 주세요"
+   * with nothing typed (Cowork Round 533).
+   *
+   * Every link exists: the service sets details.reason, toApiErrorShape keeps it, MappingsApiError carries it,
+   * toMappingDisplayError passes it through for a known code. Nothing held the chain together, and the middle of
+   * it looks like defensive clutter someone would tidy — dropping details compiles, and the screen quietly falls
+   * back to the accusatory sentence.
+   */
+  it("carries the refusal's reason all the way to the display error", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(400, {
+      code: "INVALID_REQUEST",
+      message: "Asset Mapping approval request is invalid.",
+      details: { reason: "no_baseline" satisfies MappingApprovalInvalidReason },
+    })));
+
+    const caught = await projectMappingApi("sample_project").approveReview({ scriptFingerprint: "" }).catch((error: unknown) => error);
+    const displayed = toMappingDisplayError(caught);
+
+    expect(displayed.details?.reason, "no_baseline is not a typo — it means the baseline was never set").toBe("no_baseline");
+    // The fixed sentence is still the fixed sentence: the reason is what lets a screen say more, not the raw text.
+    expect(displayed.message).toBe("입력 내용을 확인해 주세요.");
   });
 
   it("surfaces a blocked-approval error with a fixed, safe message and passes through safe detail identifiers", async () => {
