@@ -62,8 +62,10 @@ describe("LegacyReferenceMigrationService", () => {
       project_id: "legacy_project", asset_id: libraryAssets[0]!.asset_id, assignment_source: "migrated",
       status: "confirmed", user_confirmed: true, version_policy: "pinned_version", pinned_version: 1, usage_role: "character",
     });
+    // Writing mappings must not invent a review baseline for a project nobody has opened for review: a
+    // persisted empty fingerprint is what the approval button then sends back and the server refuses.
     const review = await mappings.loadReview(mappings.projectLocation("legacy_project"));
-    expect(review.mapping_revision).toBeGreaterThan(0);
+    expect(review.script_fingerprint, "still no baseline — the migration is not a review").toBe("");
 
     const secondReport = await service.migrateAll();
     expect(secondReport).toEqual({ projectsScanned: 1, migratedAssets: 0, deduplicatedAssets: 0, failedAssets: 0 });

@@ -81,8 +81,24 @@ export class LocalProjectAssetMappingsRepository {
     if (review.project_id !== location.id) throw invalidReview();
     try { parseReview(review); await atomicWriteUtf8File(this.reviewPath(location), JSON.stringify(review, null, 2)); } catch (error) { if (error instanceof Error && "getStatus" in error) throw error; throw mappingStorageError(); }
   }
+  /**
+   * Invalidating a review that was never begun writes nothing.
+   *
+   * `loadReview` answers a missing file with `freshReview`, whose fingerprint is the empty string — correct as
+   * a read ("no baseline yet"), and wrong the moment it is written back. This method used to do exactly that:
+   * any mapping write on an Episode nobody had opened for review — the Story Bible seeding an auto_protagonist
+   * is enough — persisted a review record whose fingerprint is "". The screen then reads that record, sends
+   * the empty fingerprint to approve, and the server refuses its own value with "입력 내용을 확인해 주세요".
+   * That is what stopped Captain D (Cowork Round 533), and Episode 5 of project 12 is sitting in exactly that
+   * state right now, written by this line.
+   *
+   * There is nothing to invalidate: no review has been begun, nothing is approved, and the next `beginReview`
+   * writes the real fingerprint from the owner's scenes. So a missing file stays missing, and the revision
+   * counter starts where it would have.
+   */
   async invalidateReview(location: MappingLocation): Promise<StoredMappingReview> {
     const previous = await this.loadReview(location);
+    if (!previous.script_fingerprint) return previous;
     const review = { ...previous, mapping_revision: previous.mapping_revision + 1, status: "waiting" as const, approved_at: "", approved_by: "", reviewed_scenes: [] };
     await this.saveReview(location, review); return review;
   }

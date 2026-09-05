@@ -45,6 +45,41 @@ describe("ProjectAssetMappingsService", () => {
   });
 
   /**
+   * Where the empty fingerprint came from in the first place.
+   *
+   * loadReview answers a missing file with a fresh record whose fingerprint is "" — right as a read, and wrong
+   * the moment it is written back. invalidateReview used to write it back on any mapping change, so an Episode
+   * nobody had opened for review ended up with a persisted review saying "the baseline is the empty string".
+   * The Story Bible seeding an auto_protagonist mapping is enough to trigger it, and that is why Episode 5 of
+   * Captain D's project was already in that state before he ever pressed anything.
+   *
+   * Both directions matter: before a review exists there is nothing to invalidate, and after one exists a
+   * mapping change still has to invalidate it — that is what stops an approved review outliving the mappings
+   * it approved.
+   */
+  it("does not invent a review baseline when mappings change before any review exists", async () => {
+    const { service, asset, mappings } = await setup();
+    await service.create("short_mapping", { assetId: asset.asset_id, usageRole: "style", sceneScope: { kind: "all" } });
+
+    const review = await mappings.loadReview(mappings.projectLocation("short_mapping"));
+
+    expect(review.script_fingerprint, "an empty baseline must never be written down as one").toBe("");
+    expect(review.mapping_revision).toBe(0);
+  });
+
+  it("still invalidates a review that had been begun, when the mappings change under it", async () => {
+    const { service, asset, mappings } = await setup();
+    await service.create("short_mapping", { assetId: asset.asset_id, usageRole: "style", sceneScope: { kind: "all" } });
+    const begun = await service.beginReview("short_mapping", { scriptRevision: 1 });
+
+    await service.create("short_mapping", { assetId: asset.asset_id, usageRole: "character", sceneScope: { kind: "all" } });
+
+    const after = await mappings.loadReview(mappings.projectLocation("short_mapping"));
+    expect(after.mapping_revision, "the review no longer describes the mappings").toBeGreaterThan(begun.review.mappingRevision);
+    expect(after.status).toBe("waiting");
+  });
+
+  /**
    * The way out of the block above, pinned because it is now the advice a person is given.
    *
    * 「지금 대본 기준으로 다시 맞추기」 is beginReview, and someone told to press it after connecting their
