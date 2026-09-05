@@ -376,3 +376,44 @@ describe("PhotoCardService", () => {
   });
 
 });
+
+/**
+ * The states a card can reach, and what refuses it there.
+ *
+ * The screen routes a card's story, mapping, image and video steps to an explanatory paragraph. That guard is
+ * the convenience — it declines to send a request that would be refused — and the question Cowork asked is
+ * whether it is the only thing standing between a card and a paid call.
+ *
+ * It is not, and this says why in a way that survives a state being added: whatever state a card is in, the
+ * paid entry points refuse it on their own gates. The one state that is not the creation state is `failed`,
+ * which a merge writes when ffmpeg fails; nothing else moves a card backwards, because its state and its
+ * photo_card flag are written in the same create.
+ */
+describe("a photo card and the paid routes", () => {
+  it("is created already past every paid step, in one write", async () => {
+    const deps = await setup();
+    await deps.service.create(body(deps.asset.asset_id));
+    const stored = await deps.projects.findById("card_one");
+
+    // Not "ends up at": the state and the flag land together, so there is no window where a card exists at an
+    // earlier state for anything to act on.
+    expect(stored.workflow_state).toBe(WorkflowState.VideosApproved);
+    expect(stored.lore_context.photo_card).toBe(true);
+    // And its picture is recorded, which is separately what makes image generation skip the scene.
+    expect(stored.generated_images).toHaveLength(1);
+  });
+
+  it("stays refused by the story regeneration gate even in the one state a failure can leave it in", async () => {
+    // A merge that fails writes `failed`. That is the only state other than the creation one a card reaches,
+    // and the story path refuses it twice over: the state is not regeneratable, and the card already has a
+    // recorded image.
+    const deps = await setup();
+    await deps.service.create(body(deps.asset.asset_id));
+    const stored = await deps.projects.findById("card_one");
+    await deps.projects.save({ ...stored, workflow_state: WorkflowState.Failed });
+
+    const after = await deps.projects.findById("card_one");
+    expect([WorkflowState.WaitingForAssetMappingReview, WorkflowState.AssetMappingApproved]).not.toContain(after.workflow_state);
+    expect(after.generated_images.length).toBeGreaterThan(0);
+  });
+});
