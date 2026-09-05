@@ -34,3 +34,21 @@ describe("what one generated scene is quoted at", () => {
     }
   });
 });
+
+describe("pricing a model the contract has not heard of", () => {
+  /**
+   * Found by Cowork's own card pair, and it was a real hole.
+   *
+   * Given an id it does not list, this used to fall back to the first option and quote that model's rate — so a
+   * picker showing a second model priced every row at the default's $0.05. That is precisely the failure the
+   * whole shape exists to prevent: a price that does not move with the model. Answering about a different model
+   * is worse than the flat constant this replaced, because it looks like it moved.
+   */
+  it("prices an option from the option, not from whatever the contract happens to list first", () => {
+    const hypothetical = { id: "gen4_turbo" as const, label: "Later", pricePerSecondUsd: 0.12, ratios: ["720:1280"], maxDurationSeconds: 10 };
+
+    expect(videoSceneEstimatedCostUsd(5, hypothetical), "its own rate").toBe(0.6);
+    expect(videoSceneEstimatedCostUsd(10, hypothetical)).toBe(1.2);
+    expect(videoSceneEstimatedCostUsd(5, "gen4_turbo"), "and a listed name still prices from the list").toBe(0.25);
+  });
+});

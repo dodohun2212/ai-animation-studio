@@ -187,8 +187,21 @@ export const VIDEO_SECOND_ESTIMATED_COST_USD = 0.05;
  * the failure this signature prevents — every quote, confirmation and preflight passes the model it is about,
  * and one that cannot name a model gets today's default rather than a silent zero.
  */
-export function videoSceneEstimatedCostUsd(clipDurationSeconds: number, model: string = DEFAULT_VIDEO_MODEL): number {
-  return Math.round(clipDurationSeconds * videoModelOption(model).pricePerSecondUsd * 100) / 100;
+/**
+ * 🔴 Takes the option itself, not only a name.
+ *
+ * Given an id it does not know, this used to fall back to the first listed model and quote *that* model's rate
+ * — the exact failure the shape exists to prevent, found by Cowork's own pair: a card rendering a second
+ * option priced every row at the default's $0.05. Silently answering about a different model is worse than
+ * refusing, and worse than the constant this replaced.
+ *
+ * A caller holding the option passes it and is priced from it. A caller holding only a name is on the server,
+ * where the name came from `resolveVideoModel` and is always one of ours; an unrecognised one there still
+ * resolves to the default, which is that function's documented job.
+ */
+export function videoSceneEstimatedCostUsd(clipDurationSeconds: number, model: string | VideoModelOption = DEFAULT_VIDEO_MODEL): number {
+  const rate = typeof model === "string" ? videoModelOption(model).pricePerSecondUsd : model.pricePerSecondUsd;
+  return Math.round(clipDurationSeconds * rate * 100) / 100;
 }
 /**
  * A Long Project outline call returns the whole-project overview plus every Episode's lightweight outline in

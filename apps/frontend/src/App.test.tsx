@@ -1,3 +1,4 @@
+import { DEFAULT_VIDEO_MODEL, VIDEO_MODEL_OPTIONS } from "@ai-animation-studio/shared";
 import type { CreateLongProjectRequest, CreateProjectRequest, LongProject, Project } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -173,6 +174,9 @@ describe("App", () => {
             { provider: "openai", monthlyLimitUsd: 10, isDefault: true, spentUsd: 0, remainingUsd: 10 },
             { provider: "runway", monthlyLimitUsd: 10, isDefault: true, spentUsd: 0, remainingUsd: 10 },
           ],
+          // Required on the contract, so a response without it is malformed and this screen renders its error
+          // instead of the provider cards — which is what the assertion below was actually catching.
+          videoModel: { selected: DEFAULT_VIDEO_MODEL, isDefault: true, options: VIDEO_MODEL_OPTIONS },
         });
       }
       throw new Error(`Unexpected fetch call in test: ${requestUrl}`);
