@@ -4046,3 +4046,16 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
   - 🟠 **필요한 한도는 $14 가 아니라 $12.50 이다**(이미 쓴 $5.00 + $7.50). 내가 앞서 적은 $14 는 **초당 $0.12 짜리 모델을 골랐을 때**의 숫자였다 — 오늘 모델(gen4_turbo, 초당 $0.05)에서는 $12.50 이면 5화분이 다 들어간다.
   - 🟢 OpenAI 쪽은 여유가 있다: 한 화당 **대본 $0.05 + 이미지 $0.60 + 내레이션 $0.06 = $0.71**, 5화분 $3.55 인데 남은 게 $7.40 이다.
   - 🟠 `design-preview-long-1` 1화는 **mp4 6개가 전부 스텁**이다(`videos_approved` 상태). 오늘 넣은 검사 덕에 유료 병합은 이제 거절되지만, **그 프로젝트를 완성본으로 착각하지 않게** 여기 적어 둔다.
+- [ ] **🔴 오늘 밤 Cowork 쪽 작업 1,368줄이 커밋되지 않은 채 작업 트리에만 있다 (2026-09-06 확인)**
+  ```
+  git status --short                28개 (수정 22 · 추적 안 됨 6)
+  git diff --stat                   22 files changed, 1368 insertions(+), 140 deletions(-)
+  VideoWorkflowScreen.tsx 마지막 커밋  24a2cf4  2026-09-05 07:35  ← 오늘 밤 라운드들 이전
+  HEAD 에 sceneRemedyAdvice · narrationLooksTooLong · httpError   전부 없음
+  다른 워크트리(feature/backend · feature/frontend)  둘 다 0baddcb 로 멈춤 · 스태시 없음
+  ```
+  - 라운드 565~579 에 *"커밋"*, *"커밋 셋"* 이라고 적혀 있으나 **git 에는 없다.** 그 작업에는 오늘 잡은 결함의 화면 절반이 거의 다 들어 있다 — `remedy`·`billedOnFailure` 문구, 폴링 소멸 고침, 무료 「가져오기」 버튼, `sceneErrorMessage` 의 제공자 코드 우선, `narrationLength`, `httpError`.
+  - 🔴 **`git checkout` · `git restore` · `git stash` 한 번이면 없어진다.** 오늘 밤 양쪽 다 주입 테스트로 파일을 되돌렸다 복구하기를 수십 번 했다.
+  - 🔴 **그리고 프론트가 지금 1344 중 1 실패다** — `httpError.ts:62` 가 계약 상수 대신 리터럴을 쓴다(내 감시가 잡았다). 미커밋인 남의 새 파일이라 내가 안 고쳤다.
+  - 581 로 넘겼다. 기본값은 **쓴 사람이 커밋하는 것**이고, 원하면 내가 커밋하되 **1,368줄을 내가 쓰지 않았다는 사실을 메시지에 명시**한다.
+- [x] **🟠 정정: `efe107f` 커밋 메시지가 저장소 상태를 잘못 말한다**: *"The other side landed the remaining three"* 라고 적었는데 **들어온 것은 작업 트리였고 git 이 아니었다.** 감시를 붙인 판단 자체는 유효하다(HEAD 에도 그 사본들이 없으므로 초록이다) — 틀린 것은 *"landed"* 라는 표현이다. 푸시된 메시지는 못 고치므로 여기 남긴다.
