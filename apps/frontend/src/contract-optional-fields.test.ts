@@ -37,9 +37,6 @@ const ALLOWED = new Map<string, string>([
   // The mapper's own comment names a consumer for script, motionPrompt and generatedImagePath. It names none
   // for this one, and there is none: screens play a clip through its content URL, never through a path.
   ["generatedVideoPath", "screens play clips by content URL; no screen wants a path"],
-  // Also gaps: the server honours both and applies documented defaults, and no control offers either.
-  ["volume", "the merge audio panel offers no volume control yet"],
-  ["fadeSeconds", "the merge audio panel offers no fade control yet"],
 ]);
 
 async function collectSourceFiles(directory: string): Promise<string[]> {

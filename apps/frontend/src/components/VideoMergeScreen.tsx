@@ -106,6 +106,9 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
   const [trackId, setTrackId] = useState("");
   /** Where in the chosen track the music starts. 0 is the beginning, which is also what the server does with no value. */
   const [audioStartSeconds, setAudioStartSeconds] = useState(0);
+  /** null is "untouched" — the server owns both defaults, so an untouched field is not sent. See toAudioSettings. */
+  const [bgmVolumePercent, setBgmVolumePercent] = useState<number | null>(null);
+  const [bgmFadeSeconds, setBgmFadeSeconds] = useState<number | null>(null);
   const busy = useRef(false);
 
   // A project that already finished merging (revisited later, e.g. from the dashboard) should
@@ -224,7 +227,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
      button disabled on a guess is worse than one that fails honestly. Same rule as the Episode's merge. */
   const blocked = !photoCard && approvedCount !== null && sceneCount !== null && approvedCount < sceneCount;
   /** Null until the project has loaded — merging before then would send a mode derived from nothing. */
-  const audioSettings: MergeAudioSettings | null = toAudioSettings(audioMode, trackId, audioStartSeconds);
+  const audioSettings: MergeAudioSettings | null = toAudioSettings(audioMode, trackId, audioStartSeconds, bgmVolumePercent, bgmFadeSeconds);
   const modeUnready = audioMode !== null && needsTrack(audioMode) && !trackId;
 
   return (
@@ -297,6 +300,10 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
           onTrackChange={setTrackId}
           startSeconds={audioStartSeconds}
           onStartSecondsChange={setAudioStartSeconds}
+          volumePercent={bgmVolumePercent}
+          onVolumePercentChange={setBgmVolumePercent}
+          fadeSeconds={bgmFadeSeconds}
+          onFadeSecondsChange={setBgmFadeSeconds}
           disabled={pending || confirmOpen}
         />
       )}

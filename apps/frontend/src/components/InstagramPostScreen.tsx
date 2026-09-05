@@ -1222,7 +1222,13 @@ export function InstagramPostScreen({ onBack }: Props) {
                       <p data-testid="post-publish-confirm-cover" className={coverOffsetMs === null ? "text-sm text-amber-200" : "text-sm text-slate-300"}>
                         {coverOffsetMs === null
                           ? "커버는 첫 장면으로 나갑니다. 다른 장면이 좋으면 돌아가서 영상을 돌린 뒤 “지금 이 장면을 커버로”를 눌러 주세요."
-                          : `커버는 ${(coverOffsetMs / 1000).toFixed(1)}초 지점입니다.`}
+                          /* A request, not a promise. This app sends `thumb_offset_ms` and never reads the
+                             published media back, so a cover that came out right and one that did not look
+                             identical from here — 캡틴D reported exactly that, and the record showed the app had
+                             done its part. Saying "커버는 X초 지점입니다" asserts an outcome nobody here checked;
+                             saying what was requested is the part that is true. The grid crop is named because
+                             it is the likeliest reason a correctly-sent frame still looks wrong. */
+                          : `${(coverOffsetMs / 1000).toFixed(1)}초 지점을 커버로 요청합니다. 인스타그램이 프로필 격자에서 다시 잘라 보여 줄 수 있습니다.`}
                       </p>
                     )}
                     <p className="text-xs text-slate-400">올리는 데 몇 분까지 걸릴 수 있습니다.</p>

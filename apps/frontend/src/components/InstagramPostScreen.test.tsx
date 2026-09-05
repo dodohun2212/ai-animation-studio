@@ -826,6 +826,10 @@ describe("InstagramPostScreen", () => {
     const chosen = await screen.findByTestId("post-publish-confirm-cover");
     expect(chosen.textContent).toContain("12.3초");
     expect(chosen.textContent).not.toContain("첫 장면");
+    // A request, not a result: the app never reads the published media back, so it cannot know the cover came
+    // out where it asked. Asserting the outcome is what made a correctly-sent frame look like an app bug.
+    expect(chosen.textContent).toContain("요청합니다");
+    expect(chosen.textContent).not.toContain("지점입니다");
   });
 
   /**

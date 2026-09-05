@@ -303,7 +303,67 @@ describe("LongEpisodeVideoMergeScreen", () => {
     await screen.findByTestId("episode-merge-success");
     const post = mergeFetch.mock.calls.find((call) => (call[1] as RequestInit | undefined)?.method === "POST");
     const [, init] = post as [string, RequestInit];
+    // An exact match on purpose: the two tuning fields below are optional, and an untouched one must not
+    // appear here at all — the server owns those defaults and a number nobody typed would read as a choice.
     expect(JSON.parse(String(init.body))).toEqual({ audio: { mode: "bgm", trackId: "t1" } });
+  });
+
+  /**
+   * `volume` and `fadeSeconds` have been in the request shape, validated by the server and applied by ffmpeg
+   * since bgm existed — and no screen ever sent either. Every merged video took the server default because
+   * there was nowhere to say otherwise.
+   *
+   * The pair that matters is "typed is sent" against the exact-match assertion above: filling one box must not
+   * quietly ship the other as some frontend-chosen number, because the default for `volume` depends on the
+   * mode and that rule lives in the backend.
+   */
+  it("sends the music level only once someone types one, and leaves the fade alone", async () => {
+    const mergeFetch = stubFetchByRoute({
+      [`GET ${EPISODE_URL}`]: { episode: { ...episodeWithScenes(4), narrationAvailable: false } },
+      [`GET ${SETTINGS_URL}`]: mediaSettings(false, false),
+      ...audioLibrary([track()]),
+      [`POST ${MERGE_URL}`]: response(),
+    });
+    vi.stubGlobal("fetch", mergeFetch);
+    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    await screen.findByTestId("episode-merge-audio-settings");
+    fireEvent.click(screen.getByTestId("episode-merge-audio-bgm"));
+    fireEvent.change(screen.getByTestId("episode-merge-audio-track"), { target: { value: "t1" } });
+
+    // Untouched, and saying so rather than showing a number the server would have picked.
+    expect(screen.getByTestId("episode-merge-audio-volume")).toHaveValue(null);
+    expect(screen.getByTestId("episode-merge-audio-volume-note").textContent).toContain("서버가 정합니다");
+
+    fireEvent.change(screen.getByTestId("episode-merge-audio-volume"), { target: { value: "40" } });
+    expect(screen.getByTestId("episode-merge-audio-volume-note").textContent).toContain("40%");
+
+    fireEvent.click(screen.getByTestId("episode-open-merge-confirm"));
+    fireEvent.click(await screen.findByTestId("episode-confirm-merge"));
+
+    await screen.findByTestId("episode-merge-success");
+    const post = mergeFetch.mock.calls.find((call) => (call[1] as RequestInit | undefined)?.method === "POST");
+    const [, init] = post as [string, RequestInit];
+    // Percent on screen, 0-1 on the wire — and no `fadeSeconds`, because nobody touched it.
+    expect(JSON.parse(String(init.body))).toEqual({ audio: { mode: "bgm", trackId: "t1", volume: 0.4 } });
+  });
+
+  /** Out of range is not a number to send: the server's default stands rather than a value clamped for them. */
+  it("treats an out-of-range music level as untouched", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      [`GET ${EPISODE_URL}`]: { episode: { ...episodeWithScenes(4), narrationAvailable: false } },
+      [`GET ${SETTINGS_URL}`]: mediaSettings(false, false),
+      ...audioLibrary([track()]),
+      [`POST ${MERGE_URL}`]: response(),
+    }));
+    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    await screen.findByTestId("episode-merge-audio-settings");
+    fireEvent.click(screen.getByTestId("episode-merge-audio-bgm"));
+    fireEvent.change(screen.getByTestId("episode-merge-audio-track"), { target: { value: "t1" } });
+    fireEvent.change(screen.getByTestId("episode-merge-audio-volume"), { target: { value: "400" } });
+
+    expect(screen.getByTestId("episode-merge-audio-volume-note").textContent).toContain("서버가 정합니다");
   });
 
   /**
