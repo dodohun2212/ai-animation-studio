@@ -49,13 +49,23 @@ describe("what a screen is told about a failed scene", () => {
   });
 
   /**
-   * A verdict this app reached by itself has no provider code, and no charge of its own.
+   * "We have no code" is not "it was free" — Cowork's catch, and the ledger proves it.
    *
-   * A timeout or an empty output is our reading of the situation; whatever money moved was recorded by the call
-   * that moved it, at the moment it moved. Claiming a second charge here would double-count it on screen.
+   * Episode 5 scene 3 failed twice and left two $0.25 rows; its records predate the stored failure code, so the
+   * old rule would have told Captain D those were free while his own ledger said otherwise. A wrong "you were
+   * charged" costs a moment's doubt. A wrong "you were not charged" is money.
+   *
+   * Only the refusals this app makes before sending anything are reported as free, because those are the ones
+   * it can know about. A timeout means the task was submitted and this provider charges for failures.
    */
-  it("distinguishes a failure we decided from one the provider reported", () => {
-    expect(sceneFailureFor("timeout")).toEqual({ category: "timeout", remedy: "retry", billedOnFailure: false });
+  it("reports a failure it cannot price as billed, and only a never-sent refusal as free", () => {
+    expect(sceneFailureFor("timeout")).toEqual({ category: "timeout", remedy: "retry", billedOnFailure: true });
+    expect(sceneFailureFor("no_output").billedOnFailure, "the task was submitted").toBe(true);
+    expect(sceneFailureFor("submit_interrupted").billedOnFailure, "and this one may have been").toBe(true);
+
+    expect(sceneFailureFor("budget_exceeded")).toEqual({ category: "budget_exceeded", remedy: "retry", billedOnFailure: false });
+    expect(sceneFailureFor("budget_ledger_unreadable").billedOnFailure, "refused before anything was sent").toBe(false);
+
     expect(sceneFailureFor("timeout").providerCode, "we were not told a code, so we do not invent one").toBeUndefined();
   });
 });

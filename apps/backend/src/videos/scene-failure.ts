@@ -12,11 +12,20 @@ import { runwayFailureOutcome } from "./runway-video-adapter.js";
  * `category` keeps the old string exactly, so nothing that reads it changes. What is new is the provider's code
  * on its own, what to do about it, and whether it was billed anyway.
  *
- * A failure this app decided on its own — a timeout, an empty output, a budget refusal — has no provider code,
- * and is reported as `retry` and not billed. Both are true of every one of them: they are our own verdicts, and
- * the ones that cost money record their own ledger row at the moment they spend.
+ * 🔴 Without a provider code this used to answer `billedOnFailure: false`, and Cowork was right that "we have
+ * no code" and "it was free" are not the same fact. Episode 5 scene 3 failed twice and left two $0.25 rows in
+ * the ledger; its records predate this field, so under the old rule a screen would have told Captain D those
+ * were free while his own ledger said otherwise. A wrong "you were charged" costs a moment's doubt; a wrong
+ * "you were not charged" is money.
+ *
+ * So only the refusals this app makes *before* sending anything are reported as free, because those are the
+ * ones it can actually know about. Everything else — a timeout, an empty output, an interrupted submit, or a
+ * provider sentence from before the code was stored — is reported as billed: the task had been submitted, and
+ * this provider charges for failures.
  */
+const NEVER_SENT = new Set(["budget_exceeded", "budget_ledger_unreadable"]);
+
 export function sceneFailureFor(category: string, failureCode?: string): SceneFailure {
-  if (!failureCode) return { category, remedy: "retry", billedOnFailure: false };
-  return { category, providerCode: failureCode, ...runwayFailureOutcome(failureCode) };
+  if (failureCode) return { category, providerCode: failureCode, ...runwayFailureOutcome(failureCode) };
+  return { category, remedy: "retry", billedOnFailure: !NEVER_SENT.has(category) };
 }
