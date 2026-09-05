@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { INSTAGRAM_CAPTION_MAX, INSTAGRAM_HASHTAG_MAX } from "@ai-animation-studio/shared";
 
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
@@ -130,6 +131,34 @@ describe("InstagramPublishService.publish", () => {
     await expect(service.publish("post_project", approved))
       .rejects.toMatchObject({ response: { code: "INSTAGRAM_ALREADY_PUBLISHED" } });
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Both of Instagram's caption ceilings, refused before anything is uploaded.
+   *
+   * The character limit was checked here already, with the comment that says why: a caller that skips the
+   * screen must not get a post rejected after the upload happened. The hashtag limit was on the screen alone,
+   * so that exact case was open — and it is the worse half, because the container is created first and the
+   * refusal only arrives at the publish call.
+   */
+  it("refuses a caption past either of Instagram's limits, before creating a container", async () => {
+    const fetchImpl = graphFetch();
+    const { service } = await setup({ fetchImpl });
+
+    const tooLong = { ...approved, caption: "가".repeat(INSTAGRAM_CAPTION_MAX + 1) };
+    await expect(service.publish("post_project", tooLong)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+
+    // One over, and one of them written into the body rather than the hashtag field — which is where the
+    // screen's own count used to miss it.
+    const tags = Array.from({ length: INSTAGRAM_HASHTAG_MAX }, (_, index) => `#tag${index}`).join(" ");
+    const tooMany = { ...approved, caption: `#본문태그 오늘의 영상 ${tags}` };
+    await expect(service.publish("post_project", tooMany)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+
+    // Nothing reached Meta beyond the account check, so no media was uploaded for a post that cannot go out.
+    expect(fetchImpl.mock.calls.every(([url]) => String(url).includes("/me/accounts"))).toBe(true);
+
+    // And exactly at the limit still goes.
+    await expect(service.publish("post_project", { ...approved, caption: tags })).resolves.toMatchObject({ mediaId: "media-1" });
   });
 
   it("refuses an account this login cannot actually publish to, before creating a container", async () => {

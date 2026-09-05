@@ -188,6 +188,37 @@ export const PHOTO_CARD_QUOTE_MAX_LENGTH = 300;
  */
 export const FINAL_VIDEO_RELATIVE_PATH = "videos/final/instagram_reel.mp4";
 
+/**
+ * Instagram's own two ceilings on a caption.
+ *
+ * The caption length was written down twice — once on the screen and once in the publish service, whose comment
+ * says why it checks at all: *"so a caller that skips the screen cannot get a post rejected after the upload
+ * already happened."* Two numbers holding that promise up is one number away from not holding it.
+ *
+ * 🔴 The hashtag count was written down once, on the screen only. The server never counted them, so the very
+ * case that comment describes was open: a request that does not come from the screen uploads the media, and
+ * Instagram refuses the publish at the end.
+ *
+ * Here rather than in either app because both have to agree about them, and this is the one publish that cannot
+ * be taken back.
+ */
+export const INSTAGRAM_CAPTION_MAX = 2_200;
+export const INSTAGRAM_HASHTAG_MAX = 30;
+
+/**
+ * How many hashtags a caption carries, counted the way Instagram sees it.
+ *
+ * Over the whole caption, not over the field a person types them into: a tag written in the body counts against
+ * the same limit, and a screen counting only its own field would show 29 for a caption Instagram reads as 31.
+ * The screen and the server both call this, so they cannot disagree about what a hashtag is — a server refusing
+ * what the screen accepted would arrive as a rejection after the upload, which is the failure being prevented.
+ *
+ * A bare `#` is not a tag. Unicode letters count, because Korean tags are the ordinary case here.
+ */
+export function instagramHashtagCount(caption: string): number {
+  return caption.match(/#[\p{L}\p{N}_]+/gu)?.length ?? 0;
+}
+
 export const RUNWAY_PROMPT_MAX_LENGTH = 1_000;
 
 /**

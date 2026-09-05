@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import { FINAL_VIDEO_RELATIVE_PATH, WorkflowState, type ForgetInstagramPostResponse, ForgetLongEpisodeInstagramPostResponse, PublishLongEpisodeToInstagramResponse, PublishToInstagramResponse } from "@ai-animation-studio/shared";
+import { FINAL_VIDEO_RELATIVE_PATH, instagramHashtagCount, INSTAGRAM_CAPTION_MAX, INSTAGRAM_HASHTAG_MAX, WorkflowState, type ForgetInstagramPostResponse, ForgetLongEpisodeInstagramPostResponse, PublishLongEpisodeToInstagramResponse, PublishToInstagramResponse } from "@ai-animation-studio/shared";
 
 import { toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
@@ -22,8 +22,6 @@ import {
   instagramTargetNotFound, instagramVideoRendering, instagramVideoUnavailable, invalidInstagramRequest,
 } from "./instagram-api.error.js";
 
-/** Instagram's own caption ceiling — checked here as well as on the screen, so a caller that skips the screen cannot get a post rejected after the upload already happened. */
-const CAPTION_MAX = 2200;
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -65,7 +63,11 @@ export class InstagramPublishService {
       || typeof request.igUserId !== "string" || !request.igUserId.trim()) {
       throw invalidInstagramRequest("Publishing requires explicit approval, a caption, and the account to publish to.");
     }
-    if (request.caption.length > CAPTION_MAX) throw invalidInstagramRequest(`Caption exceeds Instagram's ${CAPTION_MAX} character limit.`);
+    if (request.caption.length > INSTAGRAM_CAPTION_MAX) throw invalidInstagramRequest(`Caption exceeds Instagram's ${INSTAGRAM_CAPTION_MAX} character limit.`);
+    // The other ceiling, counted here for the same reason as the one above: a caller that skips the screen
+    // would otherwise upload the media and have Instagram refuse the publish at the end. Counted over the
+    // whole caption by the same function the screen uses, so the two cannot disagree about what a hashtag is.
+    if (instagramHashtagCount(request.caption) > INSTAGRAM_HASHTAG_MAX) throw invalidInstagramRequest(`Caption exceeds Instagram's ${INSTAGRAM_HASHTAG_MAX} hashtag limit.`);
     // A whole, non-negative number of milliseconds. Rejected rather than rounded or clamped: a cover frame the
     // person did not choose is indistinguishable to them from the feature not working, and this is the last
     // call before something goes out in public that cannot be taken back.

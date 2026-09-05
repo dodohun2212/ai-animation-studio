@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FINAL_VIDEO_RELATIVE_PATH } from "@ai-animation-studio/shared";
+import { FINAL_VIDEO_RELATIVE_PATH, instagramHashtagCount, INSTAGRAM_CAPTION_MAX, INSTAGRAM_HASHTAG_MAX } from "@ai-animation-studio/shared";
 import type { InstagramPublishTarget, InstagramTargetDiagnostics, LongEpisodeDetail, Project, VideoLibraryEpisodeSummary, VideoLibraryProjectSummary } from "@ai-animation-studio/shared";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
@@ -66,8 +66,6 @@ function parseEpisodeSelection(value: string): { projectId: string; episodeNumbe
  * reel over the duration cannot be uploaded as a reel at all. Checking them here means finding out before the
  * file is carried to another app, not after.
  */
-const CAPTION_MAX = 2200;
-const HASHTAG_MAX = 30;
 const REEL_MAX_SECONDS = 180;
 
 
@@ -516,8 +514,12 @@ export function InstagramPostScreen({ onBack }: Props) {
   const aiNotice = aiNoticeOn ? "AI로 만든 영상입니다." : "";
   const caption = composeCaption({ body, attribution: creditRequired ? creditText : "", aiNotice, hashtags });
 
-  const captionOver = caption.length > CAPTION_MAX;
-  const hashtagsOver = hashtags.length > HASHTAG_MAX;
+  const captionOver = caption.length > INSTAGRAM_CAPTION_MAX;
+  // Counted over the whole caption, not over the field above: a tag written into the body counts against the
+  // same limit, and counting only the field showed 29 for a caption Instagram reads as 31. The server counts
+  // it the same way now, so nothing this screen accepts is refused after the upload.
+  const hashtagCount = instagramHashtagCount(caption);
+  const hashtagsOver = hashtagCount > INSTAGRAM_HASHTAG_MAX;
   const plannedSeconds = picked.status === "ready" ? picked.plannedSeconds : null;
   /**
    * A photo card is one still picture held for a few seconds under a slow zoom, so every frame in it looks the
@@ -989,7 +991,7 @@ export function InstagramPostScreen({ onBack }: Props) {
               />
             </label>
             <p className={`text-xs tabular-nums ${hashtagsOver ? "text-rose-400" : "text-slate-400"}`} data-testid="post-hashtag-count">
-              해시태그 {hashtags.length}/{HASHTAG_MAX}
+              해시태그 {hashtagCount}/{INSTAGRAM_HASHTAG_MAX}
               {hashtagsOver && " — 인스타그램이 받아주는 한도를 넘었습니다."}
             </p>
             {/* Louder than the save-state lines below it, because it is about work that already exists: the
@@ -1056,7 +1058,7 @@ export function InstagramPostScreen({ onBack }: Props) {
               {caption || "아직 아무것도 없습니다."}
             </p>
             <p className={`text-xs tabular-nums ${captionOver ? "text-rose-400" : "text-slate-400"}`} data-testid="post-caption-count">
-              {caption.length}/{CAPTION_MAX}자
+              {caption.length}/{INSTAGRAM_CAPTION_MAX}자
               {captionOver && " — 인스타그램이 받아주는 한도를 넘었습니다."}
             </p>
             <div className="flex flex-wrap items-center gap-3">
