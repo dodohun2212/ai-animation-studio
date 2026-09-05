@@ -36,6 +36,17 @@ import { videoWorkflowLocked } from "./video-workflow-api.error.js";
 function scenesFor(project: StoredProject): SceneNumber[] {
   return sceneNumbersFor(toShortProjectSettings(project).sceneCount);
 }
+/**
+ * The ceiling this pre-check compares one submission against, when no budget is wired in.
+ *
+ * 🔴 It was a third hardcoded 10, disconnected from the monthly limit everywhere else reads — so raising the
+ * limit on the settings screen left this one at ten, and the refusal it produces told the person to go raise
+ * a number that would not move it. The constructor argument stays for the tests that set their own.
+ *
+ * Unreachable at today's prices — twelve scenes of ten seconds is $6.00 — and that is exactly why it was easy
+ * to leave wrong. The model capability added on 2026-09-05 is what makes it live: at $0.12 a second the same
+ * twelve scenes are $14.40, and this becomes the first thing that refuses them.
+ */
 const DEFAULT_MONTHLY_BUDGET_USD = 10;
 
 type VideoRecord = {
@@ -184,7 +195,10 @@ export class LocalVideoSubmissionService {
     // also already per-scene and duration-aware — a 10-second project buys twice the video, and used to be
     // quoted the 5-second price here and everywhere else.
     const estimatedTotalCostUsd = preview.previews.reduce((sum, item) => sum + item.estimatedCostUsd, 0);
-    if (estimatedTotalCostUsd > this.monthlyBudgetUsd) throw videoBudgetExceeded();
+    // Against the same monthly limit the rest of the app reads, so "raise it in settings" is true advice.
+    // A single request costing more than the whole month can never pass, whatever is left in the month — that
+    // is the one thing this pre-check can say before any per-scene preflight runs.
+    if (estimatedTotalCostUsd > (this.budget ? await this.budget.monthlyLimit() : this.monthlyBudgetUsd)) throw videoBudgetExceeded();
 
     const hashes: string[] = [];
     for (const scene of scenes) {

@@ -112,6 +112,36 @@ describe("local video submission approval gate", () => {
     await expect(budgeted.service.start("video_submit", await request(budgeted.previews))).rejects.toMatchObject({ response: { code: "VIDEO_BUDGET_EXCEEDED" } });
   });
 
+  /**
+   * The ceiling this pre-check uses is the one a person can actually change.
+   *
+   * It was its own hardcoded 10, disconnected from the monthly limit every other check reads — so raising the
+   * limit on the settings screen left it where it was, and the refusal told somebody to go change a number that
+   * would not move it. Unreachable at today's prices, which is why it was easy to leave wrong; the video model
+   * capability is what makes it live, because a pricier model puts twelve scenes past ten dollars.
+   */
+  it("measures a submission against the monthly limit a person can raise, not a constant of its own", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "video-submit-limit-")); roots.push(root);
+    const projectsRoot = path.join(root, "projects");
+    const projects = new LocalProjectRepository(projectsRoot);
+    const project = createStoredProject("video_submit", "topic", "2026-08-23T00:00:00.000Z");
+    project.workflow_state = WorkflowState.WaitingForVideoConfirmation;
+    project.scenes = scenes();
+    await projects.create(project);
+    const images = path.join(projectsRoot, project.project_id, "images"); await fs.mkdir(images, { recursive: true });
+    project.generated_images = await Promise.all([1, 2, 3, 4, 5, 6].map(async (number) => { const file = path.join(images, `scene${number}.png`); await fs.writeFile(file, PNG); return file; }));
+    await projects.save(project);
+    const previews = new LocalVideoPreviewService(projects, projectsRoot, new RunwayBudget(root));
+
+    // A month of one dollar cannot cover six scenes at $0.25, whatever the service's own constant says.
+    const tight = new LocalVideoSubmissionService(projects, previews, 999, undefined, new RunwayBudget(root, 1));
+    await expect(tight.start("video_submit", await request(previews))).rejects.toMatchObject({ response: { code: "VIDEO_BUDGET_EXCEEDED" } });
+
+    // And a month that covers it lets the same request through.
+    const roomy = new LocalVideoSubmissionService(projects, previews, 0.01, undefined, new RunwayBudget(root, 25));
+    await expect(roomy.start("video_submit", await request(previews, "request_2"))).resolves.toMatchObject({ jobId: expect.any(String) });
+  });
+
   it("uses input hashes to idempotently return an existing job even with a new user request ID", async () => {
     const { projects, previews, service } = await setup();
     const first = await request(previews, "request_1");
