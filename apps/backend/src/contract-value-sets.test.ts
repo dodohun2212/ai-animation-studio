@@ -178,6 +178,22 @@ describe("a contract's single-value constants are named once", () => {
     expect([...(await contractPaths()).keys()]).toEqual(expect.arrayContaining(["FINAL_VIDEO_RELATIVE_PATH", "BUDGET_LEDGER_UNREADABLE_CODE"]));
   });
 
+  /**
+   * The digest check is a regex rather than a value, so the scan above cannot see it — and it was the worst of
+   * the copies: nine spellings, every one a gate on an identifier that came off disk or the wire. An unanchored
+   * copy accepts a digest with anything appended, which turns a fingerprint comparison into one that can no
+   * longer report a mismatch, and nothing fails.
+   */
+  it("has no source file writing out the digest pattern instead of calling isSha256Hex", async () => {
+    const offenders: string[] = [];
+    for (const file of await collectSourceFiles(BACKEND_SOURCE)) {
+      if ((await fs.readFile(file, "utf8")).includes("[a-f0-9]{64}")) {
+        offenders.push(`${path.relative(BACKEND_SOURCE, file)} spells out the digest pattern — call isSha256Hex instead`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it("has no source file retyping one of them", async () => {
     const paths = await contractPaths();
     const offenders: string[] = [];
