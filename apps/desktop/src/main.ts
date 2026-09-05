@@ -107,6 +107,18 @@ function startBackend(port: number): BackendProcessManager {
       PROVIDER_SETTINGS_ROOT: runtimeRoots().providerSettingsRoot,
     },
     port,
+    // Deliberately not a quit. startProductionWindow quits when the server never came up, because there is
+    // nothing to look at yet; here the person has been working, and closing the app under them would take the
+    // screen away before they have read why. The app stays open and useless-but-honest instead of useless and
+    // silent — which is what it was, one failed request at a time.
+    onGaveUp: () => {
+      void dialog.showMessageBox({
+        type: "error",
+        title: APP_DISPLAY_NAME,
+        message: "로컬 서버가 멈췄고 다시 시작하지 못했습니다. 앱을 껐다 켜 주세요.",
+        detail: "지금까지 저장된 작업은 그대로 있습니다. 이 상태에서는 새로 만들거나 불러오는 일이 모두 실패합니다.",
+      });
+    },
   });
   manager.start();
   return manager;

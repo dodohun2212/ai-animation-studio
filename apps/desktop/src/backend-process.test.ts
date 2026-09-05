@@ -87,6 +87,61 @@ test("respawns after an unexpected exit up to the bounded restart limit, then st
   assert.equal(spawned.length, 3, "must not restart beyond maxAutoRestarts");
 });
 
+/**
+ * Running out of restarts used to be silent. The manager returned, and the shell went on showing a window
+ * pointed at a server that was not coming back — every screen failing one request at a time with nothing saying
+ * why. This directory has fixed that shape twice already (production-startup.ts is named after it).
+ */
+test("says so exactly once when the restart budget runs out, and not before", () => {
+  const spawned: FakeChild[] = [];
+  let gaveUp = 0;
+  const manager = new BackendProcessManager({
+    fork: () => { const child = new FakeChild(); spawned.push(child); return child; },
+    checkHealth: async () => true,
+    wait: async () => undefined,
+    modulePath: "unused",
+    env: {},
+    port: 4317,
+    maxAutoRestarts: 1,
+    onGaveUp: () => { gaveUp += 1; },
+  });
+  manager.start();
+
+  spawned[0]?.crash();
+  assert.equal(gaveUp, 0, "a restart that still has budget is not giving up");
+  assert.equal(spawned.length, 2);
+
+  spawned[1]?.crash();
+  assert.equal(gaveUp, 1);
+
+  // The child is gone and nothing respawns it, so a second exit cannot arrive — but a caller that shows a
+  // dialog must never be able to show two, so the flag is what guarantees it rather than that assumption.
+  spawned[1]?.crash();
+  assert.equal(gaveUp, 1, "never reported twice");
+});
+
+/** A deliberate stop is not a failure, so nobody gets told the server died. */
+test("does not report giving up when the app is the one stopping it", () => {
+  const spawned: FakeChild[] = [];
+  let gaveUp = 0;
+  const manager = new BackendProcessManager({
+    fork: () => { const child = new FakeChild(); spawned.push(child); return child; },
+    checkHealth: async () => true,
+    wait: async () => undefined,
+    modulePath: "unused",
+    env: {},
+    port: 4317,
+    maxAutoRestarts: 0,
+    onGaveUp: () => { gaveUp += 1; },
+  });
+  manager.start();
+
+  manager.stop();
+  spawned[0]?.crash();
+
+  assert.equal(gaveUp, 0);
+});
+
 test("stop() prevents any further auto-restart and kills the current child", () => {
   const spawned: FakeChild[] = [];
   const manager = new BackendProcessManager({

@@ -11,6 +11,15 @@ export interface BackendProcessDeps {
   env: NodeJS.ProcessEnv;
   port: number;
   maxAutoRestarts?: number;
+  /**
+   * Called once when the backend has exited and the restart budget is spent.
+   *
+   * Without it the manager simply returned, and the shell was left with a window pointed at a server that is
+   * not coming back — every screen failing one request at a time with nothing saying why. That is the same
+   * silent failure this directory has already fixed twice (see production-startup.ts, which exists because a
+   * missing `return` opened a window onto a dead backend).
+   */
+  onGaveUp?: () => void;
 }
 
 /**
@@ -26,6 +35,7 @@ export class BackendProcessManager {
   private child: ChildLike | undefined;
   private stopped = false;
   private restarts = 0;
+  private gaveUp = false;
   private readonly maxAutoRestarts: number;
 
   constructor(deps: BackendProcessDeps) {
@@ -35,6 +45,7 @@ export class BackendProcessManager {
 
   start(): void {
     this.stopped = false;
+    this.gaveUp = false;
     this.spawn();
   }
 
@@ -47,7 +58,12 @@ export class BackendProcessManager {
     this.child = child;
     child.once("exit", () => {
       if (this.stopped) return;
-      if (this.restarts >= this.maxAutoRestarts) return;
+      if (this.restarts >= this.maxAutoRestarts) {
+        // Once, not per exit: the child is gone and nothing respawns it, so there is no second exit to
+        // report — but a caller that shows a dialog must never be able to show two.
+        if (!this.gaveUp) { this.gaveUp = true; this.deps.onGaveUp?.(); }
+        return;
+      }
       this.restarts += 1;
       this.spawn();
     });
