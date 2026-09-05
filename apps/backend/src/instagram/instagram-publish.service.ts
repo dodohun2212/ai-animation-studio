@@ -104,6 +104,34 @@ export class InstagramPublishService {
     }
   }
 
+
+  /**
+   * Refuses a publish whose music requires a credit the caption does not carry.
+   *
+   * The screen already blocks this — it composes the credit into the caption and will not let the button go
+   * while the text is blank. The server knew nothing about it, which is the same gap the caption length and
+   * hashtag checks beside this one exist to close: *a caller that skips the screen must not get a post rejected
+   * after the upload already happened.*
+   *
+   * 🔴 Except here the failure is worse than a rejection. Instagram accepts the post either way; what is
+   * missing is the attribution a CC BY track's licence requires, on something public that cannot be taken back.
+   * A refusal before anything is uploaded is the only place this can be caught.
+   *
+   * Two refusals, not one. A track that requires a credit but stores no text to credit with is unpublishable
+   * as it stands — nothing here can invent the line — and a caption that simply does not contain the line is
+   * the case where somebody edited it out.
+   *
+   * Whitespace is collapsed before comparing: the caption joins its parts with blank lines, and a credit that
+   * is present but re-wrapped is present.
+   */
+  private assertCreditCarried(usedAudio: unknown, caption: string): void {
+    if (!isObject(usedAudio) || usedAudio.attribution_required !== true) return;
+    const credit = typeof usedAudio.attribution_text === "string" ? usedAudio.attribution_text.trim() : "";
+    if (!credit) throw invalidInstagramRequest("This video's music requires a credit and none is recorded for it. Add the credit line in the audio library first.");
+    const flat = (value: string) => value.replace(/\s+/gu, " ").trim();
+    if (!flat(caption).includes(flat(credit))) throw invalidInstagramRequest("This video's music requires a credit and the caption does not carry it.");
+  }
+
   async publish(projectId: string, request: unknown): Promise<PublishToInstagramResponse> {
     const { caption, igUserId, thumbOffsetMs } = this.parseRequest(request);
     const id = projectId.trim();
@@ -128,6 +156,7 @@ export class InstagramPublishService {
       // with the record saying published over both.
       const bytes = await fs.readFile(this.finalVideo(id)).catch(() => undefined);
       if (!bytes || bytes.length === 0) throw instagramVideoUnavailable();
+      this.assertCreditCarried(current.used_audio, caption);
 
       const { mediaId, publishedAt } = await this.sendToInstagram(token.accessToken, igUserId, caption, bytes, thumbOffsetMs);
       const updated = {
@@ -277,6 +306,7 @@ export class InstagramPublishService {
       // can never carry a cut the merge has already replaced.
       const bytes = await fs.readFile(path.join(directory, FINAL_VIDEO_RELATIVE_PATH)).catch(() => undefined);
       if (!bytes || bytes.length === 0) throw instagramVideoUnavailable();
+      this.assertCreditCarried(current.used_audio, caption);
 
       const { mediaId, publishedAt } = await this.sendToInstagram(token.accessToken, igUserId, caption, bytes, thumbOffsetMs);
       const updated = {

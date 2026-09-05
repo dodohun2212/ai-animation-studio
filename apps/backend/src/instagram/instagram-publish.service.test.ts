@@ -67,6 +67,7 @@ function graphFetch(options: { statuses?: string[]; failAt?: "container" | "uplo
 async function setup(options: {
   connected?: boolean; withVideo?: boolean; alreadyPublished?: boolean;
   fetchImpl?: typeof fetch; now?: () => number;
+  usedAudio?: Record<string, unknown>;
 } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "instagram-publish-")); roots.push(root);
   const projectsRoot = path.join(root, "projects");
@@ -75,6 +76,7 @@ async function setup(options: {
   if (options.alreadyPublished) {
     project.instagram_post = { media_id: "media-old", ig_user_id: IG_USER_ID, published_at: "2026-08-26T00:00:00.000Z", caption: "before" };
   }
+  if (options.usedAudio) (project as unknown as Record<string, unknown>).used_audio = options.usedAudio;
   await projects.create(project);
   if (options.withVideo !== false) {
     const finalDir = path.join(projectsRoot, "post_project", "videos", "final");
@@ -159,6 +161,42 @@ describe("InstagramPublishService.publish", () => {
 
     // And exactly at the limit still goes.
     await expect(service.publish("post_project", { ...approved, caption: tags })).resolves.toMatchObject({ mediaId: "media-1" });
+  });
+
+  /**
+   * Music that requires a credit, refused before anything reaches Meta.
+   *
+   * The screen already blocks this: it composes the credit into the caption and will not arm the button while
+   * the line is blank. The server knew nothing about it, which is the gap the two checks above exist to close —
+   * except this one does not end in a rejected post. Instagram accepts it either way, and what is missing is
+   * the attribution a CC BY licence requires, in public, on something that cannot be taken back.
+   */
+  it("refuses to publish a credited track's video when the caption does not carry the credit", async () => {
+    const fetchImpl = graphFetch();
+    const { service } = await setup({ fetchImpl, usedAudio: { mode: "bgm", track_id: "t1", attribution_required: true, attribution_text: "Music: Kevin (CC BY 4.0)" } });
+
+    await expect(service.publish("post_project", { ...approved, caption: "오늘의 영상" }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    expect(fetchImpl.mock.calls.every(([url]) => String(url).includes("/me/accounts"))).toBe(true);
+
+    // Present but re-wrapped is present: the caption joins its parts with blank lines.
+    await expect(service.publish("post_project", { ...approved, caption: `오늘의 영상
+
+Music: Kevin
+(CC BY 4.0)` }))
+      .resolves.toMatchObject({ mediaId: "media-1" });
+  });
+
+  it("refuses when a credit is required and none is recorded, rather than publishing without one", async () => {
+    // Nothing here can invent the line, so this video is unpublishable as it stands. Saying so is the only
+    // honest answer — the alternative is a public post missing the attribution its licence requires.
+    const { service } = await setup({ usedAudio: { mode: "bgm", track_id: "t1", attribution_required: true, attribution_text: "" } });
+    await expect(service.publish("post_project", approved)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
+  it("leaves a track that needs no credit alone", async () => {
+    const { service } = await setup({ usedAudio: { mode: "bgm", track_id: "t1", attribution_required: false } });
+    await expect(service.publish("post_project", approved)).resolves.toMatchObject({ mediaId: "media-1" });
   });
 
   it("refuses an account this login cannot actually publish to, before creating a container", async () => {
