@@ -37,6 +37,15 @@ function offendersFor(literal: string): string[] {
  * Production sources only — a test naming the bytes is stating what it is testing.
  */
 describe("what a placeholder narration is, written down once", () => {
+  /**
+   * Both checks below report emptiness as success. If the walk ever stopped finding sources — a moved file, a
+   * renamed directory — they would pass while watching nothing, which is the failure this repository has
+   * written about twice already. Deliberately under the real count, so deleting a few files is not a red build.
+   */
+  it("is still walking the server's sources at all", () => {
+    expect(sourceFiles(backendSource).length).toBeGreaterThan(140);
+  });
+
   it("has no server source but its own repeating the adapter name", () => {
     expect(offendersFor(`"${PLACEHOLDER_ADAPTER}"`), "these write the adapter name instead of importing PLACEHOLDER_ADAPTER").toEqual([]);
   });

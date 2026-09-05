@@ -96,6 +96,19 @@ async function collectDefinedIds(): Promise<string[]> {
 }
 
 describe("decision document references", () => {
+  /**
+   * Both checks below report emptiness as success, so a scan that stopped finding anything would pass while
+   * watching nothing — the failure this repository has already written about twice. These floors are the
+   * difference between "nothing is wrong" and "nothing was looked at".
+   *
+   * Deliberately under the real counts, so deleting a decision or a citation is not a red build.
+   */
+  it("is still finding the decisions and the citations", async () => {
+    const [ids, references] = await Promise.all([collectDefinedIds(), collectReferences()]);
+    expect(ids.length).toBeGreaterThan(30);
+    expect(references.length).toBeGreaterThan(10);
+  });
+
   it("defines every D-### id exactly once", async () => {
     const ids = await collectDefinedIds();
     const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
