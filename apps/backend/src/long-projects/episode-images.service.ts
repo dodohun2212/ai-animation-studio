@@ -1,4 +1,4 @@
-import { PLACEHOLDER_PNG } from "../images/placeholder-image.js";
+import { PLACEHOLDER_PNG, isPlaceholderImage } from "../images/placeholder-image.js";
 import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { persistEpisodeWarning } from "./episode-warnings.js";
@@ -158,7 +158,32 @@ export class EpisodeImagesService {
   }
 
   private image(projectId: string, number: number, scene: SceneNumber) { return path.join(this.files(projectId, number).images, `scene${scene}.png`); }
-  private async validImage(file: string): Promise<boolean> { try { return validateImage(await fs.readFile(file), "scene.png", "image/png").extension === ".png"; } catch { return false; } }
+  /**
+   * A paid run demands a real picture, not merely a file that parses.
+   *
+   * The local fake path writes PLACEHOLDER_PNG — a genuine 1×1 PNG — so "it parses" counted six stubs as
+   * finished scenes. An Episode generated with no key and then opened with one connected reported
+   * `reusableSceneNumbers: [1..6]` and `estimatedCostUsd: $0.00`, made nothing, and went forward to buy Runway
+   * clips of six blank frames. That is $1.50 of video with nothing in it, and nothing anywhere said so.
+   *
+   * `design-preview-long-1`'s Episode 1 is in exactly that state on this machine: six 68-byte scenes.
+   *
+   * The video library already draws this line the same way (`validFile(file, paid)`), and `isPlaceholderImage`
+   * has lived beside the bytes since generated-image-library.service.ts needed it. Only a run that reached a
+   * provider is held to the stricter test — writing and reading placeholders is what the fake path is for.
+   */
+  private async validImage(file: string, paid = false): Promise<boolean> {
+    try {
+      const bytes = await fs.readFile(file);
+      if (paid && isPlaceholderImage(bytes.length)) return false;
+      return validateImage(bytes, "scene.png", "image/png").extension === ".png";
+    } catch { return false; }
+  }
+  /** Whether this Episode's pictures would be bought rather than stubbed — the same condition the generation loop branches on. */
+  private async paidRun(): Promise<boolean> {
+    if (!this.budget || !this.providerSettings) return false;
+    return Boolean(await this.providerSettings.rawCredentialIfConnected("openai"));
+  }
   private async writeImage(file: string, bytes: Buffer): Promise<void> {
     const temp = path.join(path.dirname(file), `.${path.basename(file)}.${crypto.randomUUID()}.tmp`); let renamed = false;
     try { await fs.writeFile(temp, bytes); await fs.rename(temp, file); renamed = true; } finally { if (!renamed) await fs.unlink(temp).catch(() => undefined); }
@@ -285,9 +310,11 @@ export class EpisodeImagesService {
     const sceneNumbers = sceneNumbersFor(this.sceneCount(episode));
     const generatable: SceneNumber[] = [];
     const reusable: SceneNumber[] = [];
+    const paid = await this.paidRun();
     for (const scene of sceneNumbers) {
-      // The same question `generate()` asks per scene, asked here without acting on the answer.
-      if (await this.validImage(this.image(id, number, scene))) reusable.push(scene); else generatable.push(scene);
+      // The same question `generate()` asks per scene, asked here without acting on the answer — including
+      // whether this run is paid, or the quoted cost would say $0.00 for six pictures about to be bought.
+      if (await this.validImage(this.image(id, number, scene), paid)) reusable.push(scene); else generatable.push(scene);
     }
     const estimatedCostUsd = generatable.length * IMAGE_ESTIMATED_COST_USD;
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
@@ -369,7 +396,7 @@ export class EpisodeImagesService {
       const continuityPath = apiKey && this.budget ? await this.continuityImagePath(id, number) : null;
       for (const scene of sceneNumbersFor(this.sceneCount(episode))) {
         const file = this.image(id, number, scene);
-        if (await this.validImage(file)) { reused.push(scene); continue; }
+        if (await this.validImage(file, Boolean(apiKey && this.budget))) { reused.push(scene); continue; }
         let bytes: Buffer = PNG;
         if (apiKey && this.budget) {
           // The same block the short project has folded in since references were added (image-prompt.ts's

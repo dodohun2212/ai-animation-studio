@@ -13,9 +13,18 @@ import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { OpenAiBudget } from "../providers/openai-budget.js";
+import { PLACEHOLDER_PNG } from "../images/placeholder-image.js";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 const PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=";
+/**
+ * A picture that was bought, as opposed to the stub the fake path writes.
+ *
+ * PNG_BASE64 above is byte-for-byte PLACEHOLDER_PNG, so a paid run correctly refuses to count it as a finished
+ * scene — which is the whole point of the rule, and means it can no longer stand in for a generated image. A
+ * fixture that cannot be told apart from the placeholder cannot test the difference between them.
+ */
+const BOUGHT_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAuElEQVR42mNgkLeLrZm96+YPcbPQksmbLn7g1/PN6V51kkHQwD+vd83pV5wa7mmtSw4/YlSwj6uds/sWg5JjQv28vXd+S1lGlE/beuWzkGFAft/aM68ZjIMKJ6w/95ZH2yuzY/mxpyzKTokN8/fd/cPgkty08MD9f7I20VUzd1z/JmoSXDRxw/l3vAwoNr5gV3NNaV508MF/OQYUG39KmIeVTtl86aOAPgOKjVyaHultS488ZlJ0AAARc2ABihigMwAAAABJRU5ErkJggg==";
 /** A visibly different 1x1 PNG, so "which one was archived" is a question with an answer. */
 const SECOND_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 let root: string | undefined;
@@ -68,7 +77,7 @@ afterEach(async () => {
 describe("real OpenAI Episode image generation", () => {
   it("calls the real adapter for all six scenes, assembles the composition prompt (never the narrated description), and reports the budget", async () => {
     const { images } = await setupWithConnectedOpenAi();
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await images.generate("long", 1, { approved: true });
@@ -110,7 +119,7 @@ describe("real OpenAI Episode image generation", () => {
     const projectFile = path.join(projectsRoot, "long", "long_story", "project.json");
     const stored = JSON.parse(await fs.readFile(projectFile, "utf8")) as Record<string, unknown>;
     await fs.writeFile(projectFile, JSON.stringify({ ...stored, visual_style: "손그림 수채화", color: "탁한 청록", lighting: "역광", avoid: "사진 같은 질감" }, null, 2), "utf8");
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);
 
     await images.generate("long", 1, { approved: true });
@@ -144,7 +153,7 @@ describe("real OpenAI Episode image generation", () => {
    */
   it("reports pictures as behind the art direction, and not as behind a script nobody touched", async () => {
     const { images, projectsRoot } = await setupWithConnectedOpenAi();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] })));
     await images.generate("long", 1, { approved: true });
     expect((await images.get("long", 1)).staleness.imageStale).toEqual([]);
 
@@ -169,7 +178,7 @@ describe("real OpenAI Episode image generation", () => {
   it("sends the direction saved through the settings service, not only one written into the file", async () => {
     const { images, projects } = await setupWithConnectedOpenAi();
     await projects.updateSettings("long", { settings: { ...settings, visualStyle: "손그림 수채화", color: "탁한 청록", lighting: "역광", avoid: "사진 같은 질감" } });
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);
 
     await images.generate("long", 1, { approved: true });
@@ -188,7 +197,7 @@ describe("real OpenAI Episode image generation", () => {
    */
   it("sends no style line at all when nothing has been written", async () => {
     const { images } = await setupWithConnectedOpenAi();
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);
 
     await images.generate("long", 1, { approved: true });
@@ -219,7 +228,7 @@ describe("real OpenAI Episode image generation", () => {
     const thirdCallStarted = new Promise<void>((resolve) => { announceThird = resolve; });
     vi.stubGlobal("fetch", vi.fn(async () => {
       if (calls++ === 2) { announceThird(); await parked; }
-      return jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] });
+      return jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] });
     }));
 
     const running = images.generate("long", 1, { approved: true });
@@ -257,7 +266,7 @@ describe("real OpenAI Episode image generation", () => {
    */
   it("keeps every scene's record when three are regenerated at once", async () => {
     const { images, projectsRoot } = await setupWithConnectedOpenAi();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] })));
     await images.generate("long", 1, { approved: true });
     for (const scene of [1, 2, 3, 4, 5, 6] as const) await images.approve("long", 1, String(scene), { approved: true });
     let started = 0;
@@ -266,7 +275,7 @@ describe("real OpenAI Episode image generation", () => {
     vi.stubGlobal("fetch", vi.fn(async () => {
       if (++started === 3) allStarted();
       await everyCallStarted;
-      return jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] });
+      return jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] });
     }));
 
     await Promise.all([4, 5, 6].map((scene) => images.regenerate("long", 1, String(scene), { approved: true })));
@@ -297,7 +306,7 @@ describe("real OpenAI Episode image generation", () => {
    */
   it("names the scenes whose paid-for images were drawn from a script that has since changed", async () => {
     const { images, projectsRoot } = await setupWithConnectedOpenAi();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] })));
     await images.generate("long", 1, { approved: true });
     expect((await images.get("long", 1)).staleness.imageStale).toEqual([]);
 
@@ -330,7 +339,7 @@ describe("real OpenAI Episode image generation", () => {
         { assetType: "character", displayName: "이배드", description: "왼쪽 눈가에 흉터가 있는 서른 살 남자", approved: true });
       await mappings.create(key, { assetId: hero.asset_id, usageRole: "주인공", sceneScope: { kind: "all" } });
     });
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);
 
     await images.generate("long", 1, { approved: true });
@@ -378,7 +387,7 @@ describe("real OpenAI Episode image generation", () => {
     const mappings = new ProjectAssetMappingsService<EpisodeMappingKey>(mappingStore, assets, mappingOwners);
     const key: EpisodeMappingKey = { projectId: "long", episodeNumber: 1 };
 
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] })));
     await images.generate("long", 1, { approved: true });
     const generated = await images.get("long", 1);
     expect(generated.staleness.referenceStale).toEqual([]);
@@ -405,7 +414,7 @@ describe("real OpenAI Episode image generation", () => {
     const mappings = new ProjectAssetMappingsService<EpisodeMappingKey>(mappingStore, assets, mappingOwners);
     const key: EpisodeMappingKey = { projectId: "long", episodeNumber: 1 };
 
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] })));
     await images.generate("long", 1, { approved: true });
     const rival = await assets.create({ buffer: PNG, originalname: "rival.png", mimetype: "image/png" }, { assetType: "character", displayName: "민재", approved: true });
     await mappings.create(key, { assetId: rival.asset_id, usageRole: "character", sceneScope: { kind: "all" } });
@@ -423,7 +432,7 @@ describe("real OpenAI Episode image generation", () => {
       const hero = await library.create({ buffer: PNG, originalname: "hero.png", mimetype: "image/png" }, { assetType: "character", displayName: "이배드", approved: true });
       await mappings.create(key, { assetId: hero.asset_id, usageRole: "character", sceneScope: { kind: "all" } });
     });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] })));
     await images.generate("long", 1, { approved: true });
 
     await fs.writeFile(path.join(projectsRoot, "long", "long_story", "Episode01", "asset_mappings.json"), "not json", "utf8");
@@ -434,7 +443,7 @@ describe("real OpenAI Episode image generation", () => {
     // `approve` rebuilds the stored review from scratch and carries named fields forward. The prompt has to be
     // one of them, or the one action a person takes on this screen would erase what staleness is measured from.
     const { images, projectsRoot } = await setupWithConnectedOpenAi();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] })));
     await images.generate("long", 1, { approved: true });
 
     const file = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
@@ -468,7 +477,7 @@ describe("real OpenAI Episode image generation", () => {
     await providerSettings.save("openai", { value: "sk-test-key-1234567890" });
     const budget = new OpenAiBudget(root, 10);
     const images = new EpisodeImagesService(projectsRoot, assets, mappingStore, mappingOwners, providerSettings, budget);
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);
 
     await images.generate("long", 1, { approved: true });
@@ -487,7 +496,7 @@ describe("real OpenAI Episode image generation", () => {
    */
   it("appends one-off direction to the regenerated image's prompt, and only to that one request", async () => {
     const { images } = await setupWithConnectedOpenAi();
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);
     await images.generate("long", 1, { approved: true });
     const before = fetchMock.mock.calls.length;
@@ -504,7 +513,7 @@ describe("real OpenAI Episode image generation", () => {
     // Recording the instructed text would leave this scene permanently stale — staleness would then be
     // measuring the instruction instead of the thing it exists to measure.
     const { images } = await setupWithConnectedOpenAi();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] })));
     await images.generate("long", 1, { approved: true });
 
     const after = await images.regenerate("long", 1, "2", { approved: true, additionalInstruction: "조명을 더 어둡게" });
@@ -514,7 +523,7 @@ describe("real OpenAI Episode image generation", () => {
 
   it("refuses a regeneration body carrying anything else", async () => {
     const { images } = await setupWithConnectedOpenAi();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] })));
     await images.generate("long", 1, { approved: true });
 
     await expect(images.regenerate("long", 1, "2", { approved: true, additionalInstruction: 5 } as never))
@@ -533,7 +542,7 @@ describe("real OpenAI Episode image generation", () => {
    */
   it("still lists the images after the Episode has moved past image review", async () => {
     const { images, projectsRoot } = await setupWithConnectedOpenAi();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] })));
     await images.generate("long", 1, { approved: true });
     const file = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
     const stored = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>;
@@ -561,12 +570,45 @@ describe("real OpenAI Episode image generation", () => {
    * Overstating a price is not the safe direction. This app's argument for showing costs at all is that the
    * number can be trusted, and a number known to be too high stops people doing work they could afford.
    */
+  /**
+   * A stub from a keyless run is not a picture a paid run may keep.
+   *
+   * The local fake path writes PLACEHOLDER_PNG, which is a genuine 1×1 PNG, and reuse only asked "does this
+   * parse". So an Episode generated with no key and then opened with one connected quoted $0.00, bought
+   * nothing, and walked forward to buy Runway clips of six blank frames — $1.50 of video with nothing in it.
+   * `design-preview-long-1`'s Episode 1 sits in that state on the real machine.
+   *
+   * The video library has drawn this line since placeholders first counted as finished clips; this is the same
+   * line, on the side where the pictures are bought.
+   */
+  it("refuses to reuse a keyless run's placeholders once a key is connected", async () => {
+    const { images, projectsRoot } = await setupWithConnectedOpenAi();
+    const directory = path.join(projectsRoot, "long", "long_story", "Episode01", "images");
+    await fs.mkdir(directory, { recursive: true });
+    // Exactly what the fake path leaves behind: a valid PNG that is not a scene.
+    for (const scene of [1, 2, 3, 4, 5, 6]) await fs.writeFile(path.join(directory, `scene${scene}.png`), PLACEHOLDER_PNG);
+
+    const { preview } = await images.preview("long", 1);
+
+    expect(preview.reusableSceneNumbers, "a placeholder is not a picture somebody paid for").toEqual([]);
+    expect(preview.generatableSceneNumbers).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(preview.estimatedCostUsd, "and the quote says so rather than $0.00").toBeCloseTo(6 * IMAGE_ESTIMATED_COST_USD, 10);
+
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await images.generate("long", 1, { approved: true });
+
+    expect(fetchMock, "every scene is actually bought").toHaveBeenCalledTimes(6);
+    expect(result.generatedSceneNumbers).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(result.reusedSceneNumbers).toEqual([]);
+  });
+
   it("quotes only the scenes a generation would actually buy", async () => {
     const { images, projectsRoot } = await setupWithConnectedOpenAi();
     const directory = path.join(projectsRoot, "long", "long_story", "Episode01", "images");
     await fs.mkdir(directory, { recursive: true });
     // Two scenes already have a usable picture, the way a half-finished run leaves them.
-    for (const scene of [1, 2]) await fs.writeFile(path.join(directory, `scene${scene}.png`), Buffer.from(PNG_BASE64, "base64"));
+    for (const scene of [1, 2]) await fs.writeFile(path.join(directory, `scene${scene}.png`), Buffer.from(BOUGHT_PNG_BASE64, "base64"));
 
     const { preview } = await images.preview("long", 1);
 
@@ -591,7 +633,7 @@ describe("real OpenAI Episode image generation", () => {
 
   it("refuses a preflight for an Episode that is not ready to generate, rather than quoting a run that cannot happen", async () => {
     const { images } = await setupWithConnectedOpenAi();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] })));
     await images.generate("long", 1, { approved: true });
 
     await expect(images.preview("long", 1)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_NOT_ALLOWED" } });
@@ -656,7 +698,7 @@ describe("real OpenAI Episode image generation", () => {
     const ledger = path.join(usedRoot, "api_budget_usage.json");
     const fetchMock = vi.fn(async () => {
       await fs.writeFile(ledger, "{ not json", "utf8");
-      return jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] });
+      return jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] });
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -709,7 +751,7 @@ describe("real OpenAI Episode image generation", () => {
     let calls = 0;
     const failingAtFourth = vi.fn().mockImplementation(async () => {
       calls += 1;
-      return calls === 4 ? jsonResponse(401, { error: { code: "invalid_api_key" } }) : jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] });
+      return calls === 4 ? jsonResponse(401, { error: { code: "invalid_api_key" } }) : jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] });
     });
     vi.stubGlobal("fetch", failingAtFourth);
 
@@ -721,7 +763,7 @@ describe("real OpenAI Episode image generation", () => {
     expect(kept).toHaveLength(3);
 
     // The retry: three already on disk, three still to buy.
-    const succeeding = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    const succeeding = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
     vi.stubGlobal("fetch", succeeding);
     const second = await images.generate("long", 1, { approved: true });
 
@@ -732,7 +774,7 @@ describe("real OpenAI Episode image generation", () => {
 
   it("regenerates one scene via the real adapter and reports a retry cost estimate", async () => {
     const { images } = await setupWithConnectedOpenAi();
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);
     await images.generate("long", 1, { approved: true });
     for (const scene of [1, 2, 3, 4, 5] as const) await images.approve("long", 1, String(scene), { approved: true });
@@ -753,7 +795,7 @@ describe("real OpenAI Episode image generation", () => {
     const { images, projectsRoot } = await setupWithConnectedOpenAi();
     const fetchMock = vi.fn(async () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
-      return jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] });
+      return jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] });
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -786,16 +828,16 @@ describe("real OpenAI Episode image generation", () => {
     const { images, projectsRoot } = await setupWithConnectedOpenAi();
     const fetchMock = vi.fn()
       .mockResolvedValue(jsonResponse(200, { data: [{ b64_json: SECOND_PNG_BASE64 }] }))
-      .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }))
-      .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }))
-      .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }))
-      .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }))
-      .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }))
-      .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }))
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }))
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }))
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }))
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }))
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);
     await images.generate("long", 1, { approved: true });
 
-    const first = Buffer.from(PNG_BASE64, "base64");
+    const first = Buffer.from(BOUGHT_PNG_BASE64, "base64");
     const second = Buffer.from(SECOND_PNG_BASE64, "base64");
     expect(first.equals(second)).toBe(false); // the whole test rests on these differing
 
