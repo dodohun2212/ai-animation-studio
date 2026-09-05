@@ -111,14 +111,48 @@ describe("the fonts this app ships", () => {
     return found;
   }
 
-  it.each([
-    ["NotoSansKR-VariableFont_wght.ttf", "Noto Sans KR"],
-    ["NotoSerifKR-VariableFont_wght.ttf", "Noto Serif KR"],
-  ])("ships %s, and it really is called %s", async (file, family) => {
+  /**
+   * Every family the subtitles name is shipped, exactly once, and by a face that is not the family's thinnest.
+   *
+   * This used to check only that a file with the right family name existed — and it passed for two years while
+   * both shipped files were the lightest instance in their family: Noto Serif KR ExtraLight 200 and Noto Sans
+   * KR Thin 100. Captain D saw it as "글씨가 너무 얇아" in a finished video, which is the only place it was
+   * visible, because `Bold: -1` was already set on the Quote style and libass was faking weight from a 200.
+   *
+   * Two rules, and the second is the one that was missing. Exactly one file per family, because two files
+   * claiming the same typographic family leaves the choice to fontconfig's weight proximity — something this
+   * app neither controls nor can test. And a real weight, because a family whose only face is Thin cannot be
+   * made bold by asking.
+   */
+  /** OS/2 usWeightClass, read the same hand-rolled way familyNames reads the name table — no font library for one number. */
+  function usWeightClass(file: Buffer): number {
+    const tableCount = file.readUInt16BE(4);
+    for (let index = 0; index < tableCount; index += 1) {
+      const record = 12 + index * 16;
+      if (file.subarray(record, record + 4).toString("ascii") !== "OS/2") continue;
+      return file.readUInt16BE(file.readUInt32BE(record + 8) + 4);
+    }
+    throw new Error("no OS/2 table");
+  }
+
+  it("ships one real weight for each family the subtitles ask for", async () => {
     const root = path.resolve(import.meta.dirname, "../../../../fonts");
+    const files = (await fs.readdir(root)).filter((name) => name.toLowerCase().endsWith(".ttf"));
 
-    const bytes = await fs.readFile(path.join(root, file));
+    const byFamily = new Map<string, { file: string; weight: number }[]>();
+    for (const file of files) {
+      const bytes = await fs.readFile(path.join(root, file));
+      const weight = usWeightClass(bytes);
+      for (const family of new Set(familyNames(bytes))) {
+        byFamily.set(family, [...(byFamily.get(family) ?? []), { file, weight }]);
+      }
+    }
 
-    expect(familyNames(bytes)).toContain(family);
+    for (const family of ["Noto Sans KR", "Noto Serif KR"]) {
+      const faces = byFamily.get(family) ?? [];
+      expect(faces.map((face) => face.file), `${family} must be shipped by exactly one file`).toHaveLength(1);
+      expect(faces[0]!.weight, `${family} is shipped as ${faces[0]?.file}, which is too light to read on a card`)
+        .toBeGreaterThanOrEqual(500);
+    }
   });
 });

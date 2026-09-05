@@ -487,8 +487,14 @@ export const PHOTO_CARD_SUBTITLE_SHADOW = 2;
  * FFmpeg with these font files and read off the frame — 10 glyphs against 16, so glyph bearings and the
  * outline cancel out. subtitle-font-metrics.test.ts does that measurement and fails if a font file is replaced
  * by one that draws differently. Do not adjust these by eye; re-measure.
+ *
+ * Re-measured on 2026-09-05 after the two variable fonts were replaced with real Bold 700 / Medium 500 static
+ * instances: 0.662 → 0.6712 and 0.625 → 0.6346. Small, and smaller than expected — a heavier CJK face inks
+ * more of the same box rather than advancing further, so weight moves the stroke and barely moves the width.
+ * The old numbers were still inside the pair's tolerance, which is why it did not go red; they were stale all
+ * the same, and a preview drawing 1.5% narrow than the video is the thing this constant exists to stop.
  */
-export const PHOTO_CARD_SUBTITLE_CSS_RATIO = { heading: 0.662, body: 0.625 } as const;
+export const PHOTO_CARD_SUBTITLE_CSS_RATIO = { heading: 0.671, body: 0.635 } as const;
 
 /** How much larger the heading is than the body. Not a handle: three sizes can be set to a combination that does not fit together, and two cannot. */
 export const PHOTO_CARD_HEADING_RATIO = 1.4;

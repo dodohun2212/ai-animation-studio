@@ -2753,6 +2753,8 @@ export const API_ROUTES = {
   legacyReferenceMigration: "/assets/legacy-migration",
   backfillGeneratedImages: "/assets/backfill-generated-images",
   photoCards: "/photo-cards",
+  /** One subtitle font file by name, so a card preview can draw with the same bytes FFmpeg burns in. */
+  subtitleFont: (name: string) => `/fonts/${name}`,
   providerSettings: "/settings/providers",
   providerCredential: (provider: ProviderCredentialKind) =>
     `/settings/providers/${provider}/credential`,

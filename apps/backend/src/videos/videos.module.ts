@@ -7,6 +7,7 @@ import { ProviderSettingsModule } from "../settings/provider-settings.module.js"
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { OpenAiBudget } from "../providers/openai-budget.js";
 import { RunwayBudget } from "../providers/runway-budget.js";
+import { FontsController } from "./fonts.controller.js";
 import { VideosController } from "./videos.controller.js";
 import { LocalVideoPreviewService } from "./video-preview.service.js";
 import { LocalVideoSubmissionService } from "./local-video-submission.service.js";
@@ -19,7 +20,7 @@ import { ProviderSettingsRepository } from "../settings/provider-settings.reposi
 
 @Module({
   imports: [ProjectsModule, ProviderSettingsModule, AssetsModule, AudioModule],
-  controllers: [VideosController],
+  controllers: [VideosController, FontsController],
   providers: [
     { provide: RunwayBudget, useFactory: (root: string, settings: ProviderSettingsRepository) => new RunwayBudget(root, undefined, settings), inject: [LEARNING_DATA_ROOT, ProviderSettingsRepository] },
     // The library reports what a project cost, and that is two ledgers: Runway for video, OpenAI for images,

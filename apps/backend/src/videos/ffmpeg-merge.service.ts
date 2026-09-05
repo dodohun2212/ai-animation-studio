@@ -19,7 +19,7 @@ function currentModuleDirectory(): string {
  * filter so Korean glyphs render the same regardless of what fonts happen to be installed on the machine
  * running FFmpeg. See apps/desktop/package.json's extraResources for the packaged copy step.
  */
-function fontsRoot(): string {
+export function fontsRoot(): string {
   if (process.env.FONTS_ROOT) return process.env.FONTS_ROOT;
   const moduleDirectory = currentModuleDirectory();
   const candidates = [

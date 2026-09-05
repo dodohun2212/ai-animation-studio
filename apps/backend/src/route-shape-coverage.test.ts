@@ -70,11 +70,19 @@ function serverShapes(): Set<string> {
     const prefixMatch = /@Controller\(\s*(?:`([^`]*)`|"([^"]*)")?\s*\)/.exec(source);
     let prefix = resolveConstants(prefixMatch?.[1] ?? prefixMatch?.[2] ?? "");
     if (prefix && !prefix.startsWith("/")) prefix = `/${prefix}`;
-    // Three spellings, all in use: a template literal, a plain string, and the constant handed over bare
-    // (`@Get(API_ROUTES.audioLibrary)`). Reading only the first two made fifteen served routes look unserved.
-    for (const match of source.matchAll(/@(?:Get|Post|Patch|Delete|Put)\(\s*(?:`([^`]*)`|"([^"]*)"|API_ROUTES\.(\w+))?\s*\)/g)) {
-      const bare = match[3] === undefined ? undefined : (API_ROUTES as Record<string, unknown>)[match[3]];
-      let route = resolveConstants(match[1] ?? match[2] ?? (typeof bare === "string" ? bare : ""));
+    // Four spellings, all in use: a template literal, a plain string, the constant handed over bare
+    // (`@Get(API_ROUTES.audioLibrary)`), and a builder called with its parameter names
+    // (`@Get(API_ROUTES.subtitleFont(":name"))`). Reading only the first two made fifteen served routes look
+    // unserved; missing the fourth would push a single-segment parameterised route to invent a base constant
+    // that is not itself a route — and every entry in API_ROUTES has to be one, which is the rule below.
+    for (const match of source.matchAll(/@(?:Get|Post|Patch|Delete|Put)\(\s*(?:`([^`]*)`|"([^"]*)"|API_ROUTES\.(\w+)(?:\(([^)]*)\))?)?\s*\)/g)) {
+      const named = match[3] === undefined ? undefined : (API_ROUTES as Record<string, unknown>)[match[3]];
+      // A builder is called with the same parameter names the decorator declares, so its own output is the
+      // pattern — `:name` goes in and comes back out inside the path it belongs to.
+      const built = typeof named === "function" && match[4] !== undefined
+        ? String((named as (...args: string[]) => string)(...match[4].split(",").map((argument) => argument.trim().replace(/^["'`]|["'`]$/g, ""))))
+        : undefined;
+      let route = resolveConstants(match[1] ?? match[2] ?? built ?? (typeof named === "string" ? named : ""));
       if (route && !route.startsWith("/")) route = `/${route}`;
       shapes.add(normalize(prefix + route));
     }
@@ -91,10 +99,14 @@ function handlerParams(): Array<{ file: string; route: string; params: string[] 
     const prefix = resolveConstants(prefixMatch?.[1] ?? prefixMatch?.[2] ?? "");
     // The decorator, then the handler's parameter list up to the return-type colon. Bounded so a regex that
     // loses its footing stops at the next handler instead of swallowing the rest of the file.
-    for (const match of source.matchAll(/@(?:Get|Post|Patch|Delete|Put)\(\s*(?:`([^`]*)`|"([^"]*)"|API_ROUTES\.(\w+))?\s*\)([\s\S]{0,1500}?)\)\s*:/g)) {
-      const bare = match[3] === undefined ? undefined : (API_ROUTES as Record<string, unknown>)[match[3]];
-      const route = prefix + resolveConstants(match[1] ?? match[2] ?? (typeof bare === "string" ? bare : ""));
-      const params = [...(match[4] ?? "").matchAll(/@Param\(\s*"([^"]+)"\s*\)/g)].map((found) => found[1] ?? "");
+    for (const match of source.matchAll(/@(?:Get|Post|Patch|Delete|Put)\(\s*(?:`([^`]*)`|"([^"]*)"|API_ROUTES\.(\w+)(?:\(([^)]*)\))?)?\s*\)([\s\S]{0,1500}?)\)\s*:/g)) {
+      const named = match[3] === undefined ? undefined : (API_ROUTES as Record<string, unknown>)[match[3]];
+      // Same four spellings serverShapes reads; match[4] is a builder's arguments and match[5] the handler.
+      const built = typeof named === "function" && match[4] !== undefined
+        ? String((named as (...args: string[]) => string)(...match[4].split(",").map((argument) => argument.trim().replace(/^["'`]|["'`]$/g, ""))))
+        : undefined;
+      const route = prefix + resolveConstants(match[1] ?? match[2] ?? built ?? (typeof named === "string" ? named : ""));
+      const params = [...(match[5] ?? "").matchAll(/@Param\(\s*"([^"]+)"\s*\)/g)].map((found) => found[1] ?? "");
       handlers.push({ file: path.basename(file), route, params });
     }
   }
