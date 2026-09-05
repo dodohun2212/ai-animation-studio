@@ -709,6 +709,56 @@ export interface StartLongEpisodeVideoGenerationResponse {
 export const SCENE_FAILURE_REMEDIES = ["retry", "change_input", "not_retryable"] as const;
 export type SceneFailureRemedy = (typeof SCENE_FAILURE_REMEDIES)[number];
 
+/**
+ * The provider codes this app knows the meaning of, in one table.
+ *
+ * The remedy and the sentence were about to live in two places — the adapter decided `remedy` from the code,
+ * and the screen would have needed its own list of the same codes to say anything but a fallback. Two lists
+ * keyed on the same strings is the copy this repository keeps finding, and this one would drift in the worst
+ * direction: a code whose remedy says "change the input" beside a sentence that says "try again shortly".
+ *
+ * That contradiction is live right now. The screen's message table is keyed on this app's own categories, so a
+ * Runway task failure — whose category is the provider's raw English sentence — misses and falls back to
+ * "영상 생성에 실패했습니다. 잠시 후 다시 시도해 주세요." That is the exact sentence that was followed twice and
+ * charged twice on 2026-09-05, and it now appears directly above the correct advice.
+ *
+ * Prefixes, because the codes carry a variant suffix (`INTERNAL.BAD_OUTPUT.CODE01`). Causes only: whether the
+ * attempt was charged is `billedOnFailure`'s sentence to make, and saying it twice is how two sentences about
+ * one person's money end up disagreeing.
+ *
+ * From docs.dev.runwayml.com/errors/task-failures.
+ */
+export const PROVIDER_TASK_FAILURES: readonly { prefix: string; remedy: SceneFailureRemedy; billedOnFailure: boolean; message: string }[] = [
+  {
+    prefix: "SAFETY.INPUT", remedy: "not_retryable", billedOnFailure: false,
+    message: "첫 프레임이 Runway의 안전 검사에 걸렸습니다. 같은 그림으로는 통과하지 않으니 그 장면의 이미지를 바꿔야 합니다.",
+  },
+  {
+    prefix: "SAFETY.OUTPUT", remedy: "not_retryable", billedOnFailure: true,
+    message: "만들어진 영상이 Runway의 안전 검사에 걸렸습니다. 장면 지시를 바꾸지 않으면 같은 결과가 나옵니다.",
+  },
+  {
+    prefix: "INTERNAL.BAD_OUTPUT", remedy: "change_input", billedOnFailure: true,
+    message: "Runway가 이 장면을 만들지 못했습니다. 첫 프레임에 글자나 로고가 있거나 장면 지시가 글자를 요구할 때 가장 흔합니다 — 그쪽을 바꿔야 결과가 달라집니다.",
+  },
+  {
+    prefix: "ASSET.INVALID", remedy: "change_input", billedOnFailure: true,
+    message: "Runway가 첫 프레임 파일을 읽지 못했습니다. 그 장면의 이미지를 다시 만든 뒤에 다시 시도해 주세요.",
+  },
+];
+
+/**
+ * What is known about one provider code, or nothing.
+ *
+ * Nothing is an ordinary answer and must stay one: a code this table has never heard of is handled by the
+ * caller's own default — `retry`, billed, and the hedged sentence — rather than by guessing here.
+ */
+export function providerTaskFailure(providerCode: string | undefined): (typeof PROVIDER_TASK_FAILURES)[number] | undefined {
+  if (!providerCode) return undefined;
+  const code = providerCode.toUpperCase();
+  return PROVIDER_TASK_FAILURES.find((entry) => code.startsWith(entry.prefix));
+}
+
 export interface SceneFailure {
   /** This app's own category, unchanged — still what a screen picks its sentence from. */
   category: string;

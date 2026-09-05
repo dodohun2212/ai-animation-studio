@@ -1,4 +1,4 @@
-import { DEFAULT_VIDEO_MODEL, NO_LEGIBLE_TEXT_VIDEO_RULE, RUNWAY_PROMPT_MAX_LENGTH, VIDEO_MODELS, type SceneFailureRemedy, type VideoModel } from "@ai-animation-studio/shared";
+import { DEFAULT_VIDEO_MODEL, NO_LEGIBLE_TEXT_VIDEO_RULE, providerTaskFailure, RUNWAY_PROMPT_MAX_LENGTH, VIDEO_MODELS, type SceneFailureRemedy, type VideoModel } from "@ai-animation-studio/shared";
 import { assertRealNetworkCallAllowed } from "../providers/no-test-network.guard.js";
 import { utf16Length } from "./video-preview.service.js";
 
@@ -105,11 +105,11 @@ export interface RunwayTask {
  * again, but we do know the provider charges for failures.
  */
 export function runwayFailureOutcome(failureCode: string): { remedy: SceneFailureRemedy; billedOnFailure: boolean } {
-  const code = failureCode.toUpperCase();
-  if (code.startsWith("SAFETY.INPUT")) return { remedy: "not_retryable", billedOnFailure: false };
-  if (code.startsWith("SAFETY.OUTPUT")) return { remedy: "not_retryable", billedOnFailure: true };
-  if (code.startsWith("INTERNAL.BAD_OUTPUT") || code.startsWith("ASSET.INVALID")) return { remedy: "change_input", billedOnFailure: true };
-  return { remedy: "retry", billedOnFailure: true };
+  const known = providerTaskFailure(failureCode);
+  // Read from the contract's table rather than repeated here. The screen needs a sentence for the same codes,
+  // and the two lists would have been keyed on the same strings — a remedy saying "change the input" beside a
+  // sentence saying "try again shortly" is the drift this repository keeps finding, in its worst direction.
+  return known ? { remedy: known.remedy, billedOnFailure: known.billedOnFailure } : { remedy: "retry", billedOnFailure: true };
 }
 
 const TERMINAL_STATUSES = new Set<RunwayTaskStatus>(["SUCCEEDED", "FAILED", "CANCELLED"]);
