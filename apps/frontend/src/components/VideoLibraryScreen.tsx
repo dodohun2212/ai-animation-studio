@@ -421,8 +421,13 @@ export function VideoLibraryScreen({ onBack }: Props) {
                       </span>
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400 tabular-nums">
-                    장면 {project.videosReadyCount}/{project.sceneCount} · {project.aspectRatio} · 마지막 변경 {dateTime(project.updatedAt)}
+                  {/* A photo card has no scene videos by design — one picture under a slow zoom, merged
+                      straight to a final video — so the scene count reads 장면 0/1 and sits next to 최종 영상
+                      있음, two lines on the same card contradicting each other. The server already says which
+                      rows are cards (`photoCard`) precisely so this line does not have to deduce it; nothing was
+                      reading it, and all three of the cards on this machine show that pair today. */}
+                  <p className="text-xs text-slate-400 tabular-nums" data-testid={`library-summary-${project.projectId}`}>
+                    {project.photoCard === true ? "명언 카드" : `장면 ${project.videosReadyCount}/${project.sceneCount}`} · {project.aspectRatio} · 마지막 변경 {dateTime(project.updatedAt)}
                   </p>
                   {/* The card, not just the merge screen, is where the credit line has to appear: the person
                       reading a merge result made it seconds ago, while the person reading this list is the one

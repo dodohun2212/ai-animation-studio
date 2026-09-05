@@ -3669,3 +3669,9 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
   - 🟠 그러다 더 큰 걸 봤는데 **고치지 않았다**: 연속성 메모가 `resolvedForeshadowingIds` 를 **저장하고**, 컨텍스트 빌더는 **그걸 안 읽는다**. 빌더가 받는 건 메모의 다섯 필드뿐(`episodeNumber/summary/events/characterChanges/nextActions`)이고, 미해결 판정은 **Story Bible 항목의 `status` 만** 본다. 그런데 **화면은 그 status 를 아예 안 보낸다** — 이 앱에서 만든 복선은 영원히 "미해결" 이고, 회수했다고 메모에 적어도 **다음 회차 유료 대본 프롬프트에 그대로 다시 실린다.**
   - 🔴 **그런데 실제 데이터로 재니 비용이 0이다**: 프로젝트 셋 다 복선 항목 **0개**, 메모의 `resolved_foreshadowing_ids` 도 전부 비어 있다. **아무도 아직 복선을 안 썼다.**
   - 그래서 안 고쳤다. 세 가지가 겹친다 — ① 오늘 도달 불가능(Pacing 때 배운 것) ② 주석이 *"matching Python"* 이라 **물려받은 제품 동작**이지 이식 결함이 아니다 ③ 고치면 **유료 프롬프트의 내용이 바뀐다** — 그건 캡틴D 결정이다. **사실만 적어 두고 넘긴다.**
+- [x] **🔴 명언 카드가 매번 "최종 영상 있음" 옆에 "장면 0/1" 을 달고 있었다 — 서버는 이미 답을 보내는데**: Cowork 가 *"사장님이 매일 만드시는 게 BGM 깔린 명언 카드"* 라고 해서 그 경로를 봤다. 거기가 제일 안 본 자리였다.
+  - 계약이 `VideoLibraryProjectSummary.photoCard` 를 왜 만들었는지 **그 필드 주석에 그대로 적혀 있다**: *"its row reads 장면 0/1 — which looks like unfinished work sitting next to 최종 영상 있음, two lines contradicting each other… The screen could infer it… and that is the shape this repository has spent a week removing: a screen deducing a fact the server knows. So the row says it."*
+  - 🔴 **그런데 보관함 화면이 그 필드를 안 읽는다.** 행은 `장면 {videosReadyCount}/{sceneCount}` 를 무조건 찍는다. 카드는 설계상 장면 영상이 없으니 **항상 0/N**이다.
+  - 🔴 **이 컴퓨터에 실제 명언 카드가 셋 있고 전부 그 상태다**(`scenes=1 videos=0 final=true`). 매일 쓰는 화면에서 매번 보인다.
+  - 🟠 508 감시가 못 잡은 이유: 그 감시는 이름이 소스 어딘가에 나오면 통과시키는데, `photoCard` 는 **App.tsx 의 화면 이름**과 겹친다. 감시 주석에 *"우연히 겹치면 감시가 약해질 뿐"* 이라고 적어 둔 그 느슨함이 실제로 한 건을 가렸다.
+  - 카드면 `명언 카드`, 아니면 기존 장면 수를 그대로 찍는다. 🟢 주입: 되돌리면 짝이 빨개진다. 반대 방향 짝도 넣었다(장면 있는 프로젝트는 계속 센다) — 숫자를 감추는 것으로는 만족되지 않게.

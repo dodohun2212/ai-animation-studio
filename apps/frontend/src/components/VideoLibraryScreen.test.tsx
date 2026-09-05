@@ -44,6 +44,30 @@ describe("VideoLibraryScreen", () => {
     vi.unstubAllGlobals();
   });
 
+  /**
+   * A photo card has no scene videos by design — one picture under a slow zoom, merged straight to a final
+   * video. Its row therefore read "장면 0/1" right beside "최종 영상 있음": two lines on one card saying opposite
+   * things, and the second one wrong.
+   *
+   * The server has been sending `photoCard` for exactly this and nothing read it. All three cards on this
+   * machine show the pair today, and cards are the daily work — so this is the row Captain D actually looks at.
+   */
+  it("says a photo card is a card, instead of counting scene videos it will never have", async () => {
+    const card = libraryProject({ projectId: "card_1", topic: "명언", sceneCount: 1, videosReadyCount: 0, photoCard: true });
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { projects: [card] })));
+
+    const summary = await screen.findByTestId("library-summary-card_1");
+    expect(summary.textContent).toContain("명언 카드");
+    expect(summary.textContent, "0/1 next to 최종 영상 있음 is the contradiction this removes").not.toContain("장면 0/1");
+  });
+
+  /** The other side: an ordinary project still counts its scenes, so this cannot be satisfied by hiding the count. */
+  it("still counts scene videos for a project that has them", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { projects: [libraryProject()] })));
+
+    expect((await screen.findByTestId("library-summary-1")).textContent).toContain("장면 6/6");
+  });
+
   it("lists projects with their accumulated spend, and opens a scene's versions on expand", async () => {
     const fetchMock = vi
       .fn()
