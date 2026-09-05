@@ -26,31 +26,15 @@
     "directories": {
       "output": "release"
     },
-    "files": [
-      "dist/**/*"
-    ],
+    "files": ["dist/**/*"],
     "extraResources": [
-      {
-        "from": "../backend/dist-bundle",
-        "to": "backend"
-      },
-      {
-        "from": "../frontend/dist",
-        "to": "frontend"
-      },
-      {
-        "from": "../../prompts",
-        "to": "backend/prompts"
-      },
-      {
-        "from": "../../fonts",
-        "to": "backend/fonts"
-      }
+      { "from": "../backend/dist-bundle", "to": "backend" },
+      { "from": "../frontend/dist", "to": "frontend" },
+      { "from": "../../prompts", "to": "backend/prompts" },
+      { "from": "../../fonts", "to": "backend/fonts" }
     ],
     "win": {
-      "target": [
-        "nsis"
-      ]
+      "target": ["nsis"]
     }
   }
 }
