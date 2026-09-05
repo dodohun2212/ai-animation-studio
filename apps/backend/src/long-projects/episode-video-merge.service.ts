@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import { AUDIO_MODES, FINAL_VIDEO_RELATIVE_PATH, isAudioMode, type AudioMode, LONG_EPISODE_STATUSES, isSceneNumber, sceneNumbersFor, type LongEpisodeDetail, type LongEpisodeStatus, type MergeLongEpisodeVideosResponse, type SceneNumber } from "@ai-animation-studio/shared";
+import { AUDIO_MODES, DEFAULT_BGM_FADE_SECONDS, DEFAULT_BGM_VOLUME, defaultBgmVolume, FINAL_VIDEO_RELATIVE_PATH, isAudioMode, usesBgm, type AudioMode, LONG_EPISODE_STATUSES, isSceneNumber, sceneNumbersFor, type LongEpisodeDetail, type LongEpisodeStatus, type MergeLongEpisodeVideosResponse, type SceneNumber } from "@ai-animation-studio/shared";
 
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "../videos/ffmpeg-merge.service.js";
@@ -19,8 +19,6 @@ import { LongProjectsService } from "./long-projects.service.js";
 import { PLACEHOLDER_ADAPTER } from "../narration/local-narration-generation.service.js";
 
 /** Same numbers the short project's merge uses — see MergeAudioSettings for why the bgm default splits by mode. */
-const DEFAULT_BGM_VOLUME = 0.25;
-const DEFAULT_BGM_FADE_SECONDS = 2;
 const statuses: readonly LongEpisodeStatus[] = LONG_EPISODE_STATUSES;
 type ObjectMap = Record<string, unknown>;
 type Episode = ObjectMap & { number: number; state: LongEpisodeStatus; approved: boolean; script: ObjectMap; script_revision: number; updated_at: string; scene_count?: number; duration_seconds?: number };
@@ -264,7 +262,7 @@ export class EpisodeVideoMergeService {
     const mode = audio.mode;
     if (!isAudioMode(mode)) throw longInvalidRequest(`audio.mode must be ${AUDIO_MODES.join(", ")}.`);
     if ((mode === "narration" || mode === "narration+bgm") && !narrationAvailable) throw longInvalidRequest("This Episode has no narration audio to include.");
-    const needsTrack = mode === "narration+bgm" || mode === "bgm";
+    const needsTrack = usesBgm(mode);
     if (needsTrack && (typeof audio.trackId !== "string" || !audio.trackId.trim())) throw longInvalidRequest(`audio.trackId is required for ${mode}.`);
     if (audio.volume !== undefined && (typeof audio.volume !== "number" || !Number.isFinite(audio.volume) || audio.volume < 0 || audio.volume > 1)) throw longInvalidRequest("audio.volume must be between 0 and 1.");
     if (audio.fadeSeconds !== undefined && (typeof audio.fadeSeconds !== "number" || !Number.isFinite(audio.fadeSeconds) || audio.fadeSeconds < 0)) throw longInvalidRequest("audio.fadeSeconds must be a non-negative number.");
@@ -273,8 +271,7 @@ export class EpisodeVideoMergeService {
     return {
       mode,
       ...(needsTrack ? { trackId: audio.trackId as string } : {}),
-      // Same split the short merge makes: 0.25 keeps music under a voice, and with no voice that reason is gone.
-      volume: typeof audio.volume === "number" ? audio.volume : (mode === "bgm" ? 1 : DEFAULT_BGM_VOLUME),
+      volume: typeof audio.volume === "number" ? audio.volume : defaultBgmVolume(mode),
       fadeSeconds: typeof audio.fadeSeconds === "number" ? audio.fadeSeconds : DEFAULT_BGM_FADE_SECONDS,
       startSeconds: typeof audio.startSeconds === "number" ? audio.startSeconds : 0,
     };

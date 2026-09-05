@@ -83,6 +83,34 @@ export type AudioMode = (typeof AUDIO_MODES)[number];
 /** A guard rather than a bare `includes`, so a validator that used to be a chain of `!==` keeps narrowing the value it checked. */
 export const isAudioMode = (value: unknown): value is AudioMode => AUDIO_MODES.includes(value as AudioMode);
 
+/**
+ * What a merge does about background music when the request does not say.
+ *
+ * Both merges answered this identically and separately: two copies of 0.25, two copies of 2, two spellings of
+ * "which modes carry a track", and two of "bgm alone plays at full". They agreed — which is what every copy in
+ * this repository did until the day one of them did not, and the two that drifted were both found by someone
+ * reading, not by anything failing.
+ *
+ * 🔴 A drift here is audible and lands in a finished video: the same mode mixed two ways in the two pipelines,
+ * with nothing on either screen saying which one a person is hearing.
+ *
+ * In the contract rather than the backend because `MergeAudioSettings.volume` is optional — a client that omits
+ * it is entitled to know what it gets, and today it can only find out by making the video.
+ */
+export const DEFAULT_BGM_VOLUME = 0.25;
+export const DEFAULT_BGM_FADE_SECONDS = 2;
+
+/** Both modes that carry a track. Named once so a third caller cannot forget the newer of the two. */
+export const usesBgm = (mode: string): boolean => mode === "narration+bgm" || mode === "bgm";
+
+/**
+ * The bgm level to use when the request does not say.
+ *
+ * 0.25 exists to keep music under a voice. With no voice that reason is gone, and applying it anyway would make
+ * someone's own upload quiet for a cause no screen mentions.
+ */
+export const defaultBgmVolume = (mode: string): number => (mode === "bgm" ? 1 : DEFAULT_BGM_VOLUME);
+
 export const VIDEO_MODELS = ["gen4_turbo"] as const;
 export type VideoModel = (typeof VIDEO_MODELS)[number];
 

@@ -5,7 +5,7 @@ import { FINAL_VIDEO_LOCK_KEY, ProjectLockTimeoutError, withProjectLock } from "
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import { AUDIO_MODES, FINAL_VIDEO_RELATIVE_PATH, isAudioMode, type AudioMode, isPhotoCardSubtitleLayout, PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE, sceneNumbersFor, WorkflowState, type MergeVideosResponse, type PhotoCardSubtitleLayout, type SceneNumber } from "@ai-animation-studio/shared";
+import { AUDIO_MODES, DEFAULT_BGM_FADE_SECONDS, DEFAULT_BGM_VOLUME, defaultBgmVolume, FINAL_VIDEO_RELATIVE_PATH, isAudioMode, usesBgm, type AudioMode, isPhotoCardSubtitleLayout, PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE, sceneNumbersFor, WorkflowState, type MergeVideosResponse, type PhotoCardSubtitleLayout, type SceneNumber } from "@ai-animation-studio/shared";
 
 import { photoCardFor, storedSubtitleLayout, toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
@@ -17,8 +17,6 @@ import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeS
 import { audioStartOutOfRange, ffmpegUnavailable, videoMergeAlreadyPublished, videoMergeBusy, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeAlreadyCompleted, videoMergeInvalidRequest, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
 import { shortProjectAspectRatio } from "../projects/project-aspect.js";
 
-const DEFAULT_BGM_VOLUME = 0.25;
-const DEFAULT_BGM_FADE_SECONDS = 2;
 type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved" };
 /** Mirrors MergeAudioSettings["mode"] — the stored record and the request speak the same vocabulary. */
 
@@ -74,17 +72,6 @@ function isPlaceholderNarration(project: StoredProject, scene: number): boolean 
  * rejected rather than silently falling back, so a client bug can't ship a merge whose audio doesn't match what
  * the user asked for.
  */
-/** Both modes that carry a track. Named once so a third caller cannot forget the newer of the two. */
-const usesBgm = (mode: string): boolean => mode === "narration+bgm" || mode === "bgm";
-
-/**
- * The bgm level to use when the request does not say.
- *
- * 0.25 exists to keep music under a voice. With no voice, that reason is gone, and applying it anyway would
- * make someone's own upload quiet for a cause the screen never mentions.
- */
-const defaultBgmVolume = (mode: string): number => (mode === "bgm" ? 1 : DEFAULT_BGM_VOLUME);
-
 /**
  * This merge's subtitle layout for a photo card: what was asked for, on top of what the card already uses.
  *
