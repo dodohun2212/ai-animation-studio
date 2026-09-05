@@ -11,7 +11,7 @@ import {
   type RegenerateNarrationResponse,
   type SceneNumber,
 } from "@ai-animation-studio/shared";
-import { PLACEHOLDER_ADAPTER } from "./local-narration-generation.service.js";
+import { PLACEHOLDER_ADAPTER, PLACEHOLDER_MP3 } from "./placeholder-narration.js";
 import { toApiProject } from "../projects/project.mapper.js";
 import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
@@ -30,7 +30,6 @@ import type { LocalNarrationGenerationService } from "./local-narration-generati
 import { probeAudioDurationSeconds } from "./audio-duration.js";
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
-const FAKE_MP3 = Buffer.from([0xff, 0xfb, 0x90, 0x00]);
 
 function scenesFor(project: StoredProject): SceneNumber[] {
   return sceneNumbersFor(toShortProjectSettings(project).sceneCount);
@@ -126,8 +125,8 @@ export class NarrationReviewService {
     if (!text) throw narrationMissingText();
 
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
-    let bytes: Buffer = FAKE_MP3;
-    let adapter = "local-fake-tts-adapter";
+    let bytes: Buffer = PLACEHOLDER_MP3;
+    let adapter: string = PLACEHOLDER_ADAPTER;
     let apiCalls = 0;
     let retryEstimate: RegenerateNarrationResponse["retryEstimate"];
     /** The money is gone and the ledger does not know — carried to the warning and past the estimate below. */

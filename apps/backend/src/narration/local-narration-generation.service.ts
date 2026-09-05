@@ -1,5 +1,6 @@
 import * as crypto from "node:crypto";
 import { OPENAI_LEDGER_FILE, isBudgetLedgerUnreadable, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
+import { PLACEHOLDER_ADAPTER, PLACEHOLDER_MP3 } from "./placeholder-narration.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
@@ -17,15 +18,6 @@ import { callOpenAiTtsApi } from "./openai-narration-adapter.js";
 import { narrationBudgetLedgerUnreadable, invalidNarrationRequest, narrationBudgetExceeded, narrationContentUnavailable, narrationGenerationFailed, narrationNotEnabled, narrationLocked, narrationProviderError, narrationStorageError } from "./narration-api.error.js";
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
-/** A silent single-frame MP3, used in local-fake mode — mirrors the local-fake single-pixel PNG used by image generation. */
-/**
- * Four bytes of MP3 header and no audio, written when there is no TTS credential so the rest of the pipeline can
- * still be walked. It is a placeholder, and the record is the only thing that says so — the file itself is
- * indistinguishable from real narration to anything that only asks whether a file is there.
- */
-const FAKE_MP3 = Buffer.from([0xff, 0xfb, 0x90, 0x00]);
-/** Named once, because the reuse decision and the record that drives it have to agree on it exactly. */
-export const PLACEHOLDER_ADAPTER = "local-fake-tts-adapter";
 
 function scenesFor(project: StoredProject): SceneNumber[] {
   return sceneNumbersFor(toShortProjectSettings(project).sceneCount);
@@ -166,7 +158,7 @@ export class LocalNarrationGenerationService {
         const stillGood = stillGoodAudio(current.narration_generation_records[number - 1], text, Boolean(apiKey && this.budget));
         if (existing === destination && stillGood && (await validAudio(destination))) { reused.push(number); continue; }
 
-        let bytes: Buffer = FAKE_MP3;
+        let bytes: Buffer = PLACEHOLDER_MP3;
         let adapter = PLACEHOLDER_ADAPTER;
         let apiCalls = 0;
         if (apiKey && this.budget) {

@@ -2,6 +2,7 @@ import * as crypto from "node:crypto";
 import { OPENAI_LEDGER_FILE, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import { persistEpisodeWarning } from "./episode-warnings.js";
 import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
+import { PLACEHOLDER_ADAPTER, PLACEHOLDER_MP3 } from "../narration/placeholder-narration.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
@@ -22,15 +23,6 @@ import { toEpisodeDetail } from "./episode-detail.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
 
-/** A silent single-frame MP3, used in local-fake mode — mirrors narration/local-narration-generation.service.ts's identical placeholder. */
-/**
- * Four bytes of MP3 header and no audio, written when there is no TTS credential so the rest of the pipeline
- * can still be walked. It is a placeholder, and the record below is the only thing that says so — the file
- * itself is indistinguishable from real narration to anything that only asks whether a file is there.
- */
-const FAKE_MP3 = Buffer.from([0xff, 0xfb, 0x90, 0x00]);
-/** Named once, because the reuse decision and the record that drives it have to agree on it exactly. */
-const PLACEHOLDER_ADAPTER = "local-fake-tts-adapter";
 const statuses: readonly LongEpisodeStatus[] = LONG_EPISODE_STATUSES;
 type StoredEpisode = Record<string, unknown> & { number: number; state: LongEpisodeStatus; approved: boolean; script: Record<string, unknown>; script_revision: number; updated_at: string; scene_count?: number };
 type StoredRecord = { scene_number: SceneNumber; narration: string; checkpoint: "completed"; adapter: string; tts_api_calls: number; regenerated?: true };
@@ -228,7 +220,7 @@ export class EpisodeNarrationService {
         if (!text) { skipped.push(sceneNumber); continue; }
         if (await this.validAudio(destination) && this.stillGoodAudio(existingRecords, sceneNumber, text, Boolean(apiKey && this.budget))) { reused.push(sceneNumber); continue; }
 
-        let bytes: Buffer = FAKE_MP3; let adapter = PLACEHOLDER_ADAPTER; let apiCalls = 0;
+        let bytes: Buffer = PLACEHOLDER_MP3; let adapter = PLACEHOLDER_ADAPTER; let apiCalls = 0;
         if (apiKey && this.budget) {
           await this.budget.preflight(TTS_ESTIMATED_COST_USD);
           let succeeded = false;
@@ -278,7 +270,7 @@ export class EpisodeNarrationService {
     if (!text) throw longEpisodeNarrationMissingText();
 
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
-    let bytes: Buffer = FAKE_MP3; let adapter = PLACEHOLDER_ADAPTER; let apiCalls = 0;
+    let bytes: Buffer = PLACEHOLDER_MP3; let adapter = PLACEHOLDER_ADAPTER; let apiCalls = 0;
     let retryEstimate: RegenerateLongEpisodeNarrationResponse["retryEstimate"];
     /** The money is gone and the ledger does not know — carried to the warning and past the estimate below. */
     let spendUnrecorded = false;

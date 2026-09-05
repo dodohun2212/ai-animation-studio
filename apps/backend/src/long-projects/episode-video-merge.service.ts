@@ -16,7 +16,7 @@ import { toApiEpisodeScript } from "./episode-script-format.js";
 import { toEpisodeDetail } from "./episode-detail.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
-import { PLACEHOLDER_ADAPTER } from "../narration/local-narration-generation.service.js";
+import { PLACEHOLDER_ADAPTER } from "../narration/placeholder-narration.js";
 
 /** Same numbers the short project's merge uses — see MergeAudioSettings for why the bgm default splits by mode. */
 const statuses: readonly LongEpisodeStatus[] = LONG_EPISODE_STATUSES;

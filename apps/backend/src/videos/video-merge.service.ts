@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import { isPlaceholderClip } from "./placeholder-clip.js";
-import { PLACEHOLDER_ADAPTER } from "../narration/local-narration-generation.service.js";
+import { PLACEHOLDER_ADAPTER } from "../narration/placeholder-narration.js";
 import { FINAL_VIDEO_LOCK_KEY, ProjectLockTimeoutError, withProjectLock } from "./project-lock.js";
 import * as path from "node:path";
 
