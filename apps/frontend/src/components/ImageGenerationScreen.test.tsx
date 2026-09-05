@@ -578,6 +578,34 @@ describe("ImageGenerationScreen", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  /**
+   * The other half of the badge invariant. Regenerating a scene clears its own badges — it was just remade from
+   * the current text — and must leave every other scene's alone, because nothing was learned about those.
+   *
+   * The regenerate response carries no staleness either, so this screen narrows the list it already had. The same
+   * tidy-up is available here as on approve, and it fails in the more expensive direction: the badge that
+   * disappears is the one saying a paid picture is behind its script.
+   */
+  it("clears only the regenerated scene's badges, and leaves the others where they were", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews(), staleness: sceneStaleness({ imageStale: [2, 3] }) }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews(), sceneNumber: 2 }));
+    renderScreen(fetchMock);
+
+    expect(await screen.findByTestId("review-stale-2")).toBeTruthy();
+    expect(screen.getByTestId("review-stale-3")).toBeTruthy();
+
+    fireEvent.click(await screen.findByTestId("review-regenerate-2"));
+    const panel = await screen.findByTestId("regenerate-confirm-panel-2");
+    fireEvent.click(within(panel).getByRole("button", { name: "예, 다시 생성합니다" }));
+
+    await waitFor(() => expect(screen.queryByTestId("review-stale-2")).toBeNull());
+    expect(screen.queryByTestId("review-stale-3"), "nothing was learned about scene 3").toBeTruthy();
+  });
+
   it("calls POST /images/review/:sceneNumber/regenerate with { approved: true } only after the final confirmation click, resets the scene to pending, and preserves the other scenes' approvals", async () => {
     const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
     const regeneratedProject = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
