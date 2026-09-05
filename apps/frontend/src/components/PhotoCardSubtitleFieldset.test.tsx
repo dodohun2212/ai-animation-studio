@@ -170,4 +170,23 @@ describe("PhotoCardSubtitleFieldset", () => {
     renderFieldset(TWO_PART);
     expect(screen.getByTestId("photo-card-subtitle-approximate").textContent).toContain("글꼴");
   });
+
+  /**
+   * The weights have to be the ones the files actually are.
+   *
+   * Both faces used to be variable and both defaulted to their thinnest instance — Serif ExtraLight 200, Sans
+   * Thin 100 — and nothing loaded them here at all, so `fontWeight: 700` and `400` measured identically and
+   * the 사자성어 line looked thin on screen while the burned-in subtitle was already Bold. The repo now holds
+   * one static file per family, Serif Bold and Sans Medium, and styles.css declares each at that weight. Asking
+   * for a weight the file is not puts the browser back on nearest-match, which is the guess the render side
+   * deliberately stopped relying on.
+   */
+  it("asks for the weights the two subtitle files actually are", () => {
+    renderFieldset(TWO_PART);
+    const nodes = Array.from(screen.getByTestId("photo-card-subtitle-preview").querySelectorAll("div")) as unknown as HTMLElement[];
+    const quote = nodes.find((node) => node.style.fontFamily.includes("Serif"));
+    const body = nodes.find((node) => node.style.fontFamily.includes("Sans"));
+    expect(quote!.style.fontWeight).toBe("700");
+    expect(body!.style.fontWeight).toBe("500");
+  });
 });

@@ -257,6 +257,51 @@ describe("MappingReviewScreen", () => {
     await waitFor(() => expect(onOpenImageGeneration).toHaveBeenCalled());
   });
 
+  /**
+   * 🔴 캡틴D pressed 연결 다 했음 on a project whose review had never been started, and got
+   * "입력 내용을 확인해 주세요" — a sentence about input they had never given.
+   *
+   * `loadReview` answers ENOENT with `script_fingerprint: ""`, the screen sent that back, and the server's
+   * first guard rejected the shape. The screen had the same fact in hand: an empty fingerprint is not a
+   * baseline. It now says so, names the button that fixes it, and spends nothing asking.
+   */
+  it("does not ask the server to approve a review that was never started", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { mappings: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview({ scriptFingerprint: "" }), sceneCount: 6 }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
+    await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
+
+    const before = fetchMock.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "연결 다 했음 · 다음 단계로" }));
+
+    const alert = await screen.findByTestId("review-mutation-error");
+    expect(alert.textContent).toContain("검사 기준을 잡지 않았습니다");
+    expect(alert.textContent).toContain("지금 대본 기준으로 다시 맞추기");
+    // The whole point: no request goes out to be refused.
+    expect(fetchMock.mock.calls.length).toBe(before);
+    expect(alert.textContent).not.toContain("입력 내용을 확인해 주세요");
+  });
+
+  /**
+   * The hint on the only way out named one case — "대본을 고쳤다면" — so someone who had changed nothing read
+   * it as "not your case" and stayed stuck. `beginReview` is the same call either way.
+   */
+  it("tells a project with no baseline that this button is for it", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { mappings: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { review: makeReview({ scriptFingerprint: "" }), sceneCount: 6 }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<MappingReviewScreen api={projectMappingApi("sample_project")} onBack={() => {}} />);
+    await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
+
+    const hint = screen.getByTestId("mapping-rebase-hint");
+    expect(hint.textContent).toContain("아직 검사 기준이 없습니다");
+    expect(hint.textContent).toContain("연결한 것은 그대로 둡니다");
+    expect(hint.textContent).not.toContain("대본을 고쳤다면");
+  });
+
   it("offers a plain way forward when the review is already approved, and says the check is optional", async () => {
     const approved = makeReview({ scriptFingerprint: "a".repeat(64), status: "approved", approvedAt: "2026-08-22T00:00:00.000Z", approvedBy: "user", reviewedScenes: [1, 2] });
     const fetchMock = vi.fn()

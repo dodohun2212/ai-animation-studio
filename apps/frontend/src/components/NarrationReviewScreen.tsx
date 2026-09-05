@@ -16,6 +16,7 @@ import { BudgetLine } from "./ui/BudgetLine.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
 import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
+import { narrationLooksTooLong, narrationRunsTooLong } from "../utils/narrationLength.js";
 
 interface Props {
   projectId: string;
@@ -35,13 +36,6 @@ type LoadState =
       staleness?: SceneStaleness;
     };
 
-/**
- * Rough Korean narration reading pace, in characters per second. Only a fallback: once a scene's audio exists
- * the server reports its measured length, and a measured length is a fact where this is a guess (it also reads
- * Korean-calibrated, so Latin text and numbers over-trigger it). Never blocks anything either way — it flags
- * lines for a human to shorten, it does not decide for them.
- */
-const READING_CHARS_PER_SECOND = 5;
 
 const primaryButton =
   "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
@@ -119,15 +113,8 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
    */
   const voiceOff = voiceMode?.narrationEnabled === false;
   /** A guess from character count — used only for scenes whose audio has not been made yet. */
-  const looksTooLong = (item: NarrationReview) =>
-    item.audioDurationSeconds === undefined &&
-    Boolean(clipDurationSeconds) &&
-    item.narration.trim().length > (clipDurationSeconds ?? 0) * READING_CHARS_PER_SECOND;
-  /** Measured from the actual audio file — this one is a fact, not an estimate. */
-  const runsTooLong = (item: NarrationReview) =>
-    item.audioDurationSeconds !== undefined &&
-    Boolean(clipDurationSeconds) &&
-    item.audioDurationSeconds > (clipDurationSeconds ?? 0);
+  const looksTooLong = (item: NarrationReview) => narrationLooksTooLong(item, clipDurationSeconds);
+  const runsTooLong = (item: NarrationReview) => narrationRunsTooLong(item, clipDurationSeconds);
   const measuredOverLong = withText.filter(runsTooLong);
   const estimatedOverLong = withText.filter(looksTooLong);
 

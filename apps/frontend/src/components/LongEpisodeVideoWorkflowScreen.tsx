@@ -8,12 +8,26 @@ import { videoRatioLabel } from "../utils/sceneFields.js";
 import { omittedSectionLabel } from "../utils/omittedSectionLabels.js";
 import { isLongEpisodeStatusBefore, longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
+import { sceneRemedyAdvice } from "../utils/sceneFailureAdvice.js";
 import { StatusChip } from "./ui/StatusChip.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
 import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
 
 interface Props { projectId: string; episodeNumber: number; onBack: () => void; onOpenMerge: (projectId: string, episodeNumber: number) => void; }
 type DisplayError = { code: string; message: string };
+/**
+ * What a refusal on this screen is an answer to — named by what a person may conclude from it, not by which
+ * function issued the request.
+ *
+ * "video-step"  whether this Episode may do video work at all. The current-job lookup, the paid 미리보기 and
+ *               생성 시작 all sit behind the same backend readiness check, so all three refuse together and
+ *               refuse for the same reason.
+ * "progress"    reading one run's progress.
+ * "job"         an action against a run that already exists (재시도 · 전체 재생성 · 이어서 · 중단).
+ * "recover"     가져오기 — a download of clips already paid for, not a purchase.
+ * "approve"     장면 승인.
+ */
+type ErrorSubject = "video-step" | "progress" | "job" | "recover" | "approve";
 const LIMIT = 1000;
 
 const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
@@ -88,8 +102,52 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
   const [busy, setBusy] = useState(false); const [error, setError] = useState<DisplayError | null>(null);
   /** The Episode's step, read only after a blanket refusal — see the effect below. */
   const [blockedAt, setBlockedAt] = useState<LongEpisodeStatus | null>(null);
+  /**
+   * Which action the sentence in the error banner is an answer to.
+   *
+   * Every request on this screen writes into the same `error`, and the banner renders one red line with no
+   * subject. That is how a person came to read 지금 이 에피소드 단계에서는 영상 작업을 할 수 없습니다 sitting
+   * directly above a 다시 시도 button that was working, and reasonably asked whether pressing it was allowed.
+   *
+   * Both sentences were true, about different actions. The backend refuses video work outside
+   * waiting_for_video_confirmation, and separately allows regenerating one failed scene of a run already going
+   * (episode-videos.service.ts :137 and :633). Nothing on screen carried which of the two the red line meant,
+   * so it could only be read as "everything here is blocked".
+   *
+   * Recorded at the call site rather than guessed at render time: a refusal that arrived from 가져오기 or 승인
+   * must never be explained as a refusal about the Episode's step.
+   */
+  const [errorSubject, setErrorSubject] = useState<ErrorSubject | null>(null);
   const busyRef = useRef(false);
-  const loadPreview = async () => { setError(null); try { const response = await getLongEpisodeVideoPreview(projectId, episodeNumber); setPreview(response); setPrompts(Object.fromEntries(response.scenes.map((scene) => [scene.sceneNumber, scene.prompt]))); } catch (caught) { setError(toLongProjectDisplayError(caught)); } };
+  /*
+   * Paired with setError so the two cannot drift. `setError(null)` deliberately leaves the subject behind: it
+   * is only read next to a non-null error, and every non-null error is set through here.
+   */
+  function fail(subject: ErrorSubject, caught: unknown): void { setError(toLongProjectDisplayError(caught)); setErrorSubject(subject); }
+  /**
+   * The review list, fetched as an addition to whatever just succeeded — never as a precondition for it.
+   *
+   * The route serves only videos_review and videos_approved, so its refusal is the ordinary answer for an
+   * Episode past the review stage, not a failure. Rendered as the screen's own error it put a red
+   * 지금 이 에피소드 단계에서는 영상 작업을 할 수 없습니다 across a job that had finished, whose clips were
+   * bought and playing, and whose buttons still worked — which is how a person came to ask whether pressing
+   * 다시 시도 was allowed.
+   *
+   * 🔴 That was fixed once, on the mount path, and the same call had two more callers: the progress poll and
+   * 가져오기. Both still turned the refusal into a screen failure — and 가져오기's is worse, because there the
+   * recovery had already succeeded and the red line reported the opposite. One function now, so the next
+   * caller inherits the answer instead of the bug.
+   *
+   * `isCancelled` is for the mount effect, which can be torn down mid-flight; the others pass nothing.
+   */
+  async function loadReviews(jobId: string, isCancelled: () => boolean = () => false): Promise<void> {
+    try {
+      const review = await getLongEpisodeVideoReview(projectId, episodeNumber, jobId);
+      if (isCancelled()) return;
+      setReviews(review.reviews); setVideoStale(review.staleness.videoStale); setReviewsUnavailable(false);
+    } catch { if (!isCancelled()) setReviewsUnavailable(true); }
+  }
+  const loadPreview = async () => { setError(null); try { const response = await getLongEpisodeVideoPreview(projectId, episodeNumber); setPreview(response); setPrompts(Object.fromEntries(response.scenes.map((scene) => [scene.sceneNumber, scene.prompt]))); } catch (caught) { fail("video-step", caught); } };
   /**
    * Restores the Episode's existing video job on mount, before falling back to the 미리보기.
    *
@@ -115,7 +173,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
     void (async () => {
       let jobId: string | null = null;
       try { jobId = (await getLongEpisodeCurrentVideoJob(projectId, episodeNumber)).jobId; }
-      catch (caught) { if (!cancelled) setError(toLongProjectDisplayError(caught)); return; }
+      catch (caught) { if (!cancelled) fail("video-step", caught); return; }
       if (cancelled) return;
       if (jobId === null) { await loadPreview(); return; }
       try {
@@ -130,19 +188,46 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
              across it, because the extra request's refusal was being rendered as the screen's own failure.
              The cards are simply absent; everything the progress response carries stays on screen, and the
              line below says why rather than leaving a person to guess what broke. */
-          try {
-            const review = await getLongEpisodeVideoReview(projectId, episodeNumber, jobId);
-            if (cancelled) return;
-            setVideoStale(review.staleness.videoStale);
-            setReviews(review.reviews);
-          } catch { if (!cancelled) setReviewsUnavailable(true); }
+          await loadReviews(jobId, () => cancelled);
         }
-      } catch (caught) { if (!cancelled) setError(toLongProjectDisplayError(caught)); }
+      } catch (caught) { if (!cancelled) fail("progress", caught); }
     })();
     return () => { cancelled = true; };
   }, [projectId, episodeNumber]);
-  const loadProgress = async () => { if (!job) return; try { const next = await getLongEpisodeVideoProgress(projectId, episodeNumber, job.jobId); setJob(next); if (next.status === "succeeded") { const review = await getLongEpisodeVideoReview(projectId, episodeNumber, next.jobId); setReviews(review.reviews); setVideoStale(review.staleness.videoStale); } } catch (caught) { setError(toLongProjectDisplayError(caught)); } };
-  useEffect(() => { if (!job || (job.status !== "created" && job.status !== "running")) return; const timer = setTimeout(() => void loadProgress(), 400); return () => clearTimeout(timer); }, [job]);
+  /**
+   * How many polls in a row have failed — zero while the screen is current.
+   *
+   * 🔴 It also re-arms the timer. The effect below watched `job` alone, and a failed poll never called `setJob`
+   * — so `job` did not change, the effect did not re-run, and no next timer was ever scheduled. **One failed
+   * poll ended the polling for good**, while a six-scene paid run kept going behind a screen frozen at whatever
+   * it last saw, with no way out but a reload. It did not take a malformed response to get there: one network
+   * blip, or the backend restarting because a file was saved while 캡틴D runs it from source, was enough.
+   */
+  const [pollFailures, setPollFailures] = useState(0);
+  const loadProgress = async () => {
+    if (!job) return;
+    let next: LongEpisodeVideoProgress;
+    /*
+     * A failed poll is a failure to re-read, not the loss of the run.
+     *
+     * So the last progress stays on screen and nothing goes into `error`: the red banner is for a request the
+     * person is waiting on, and this one they did not ask for. What they get instead is a line saying the
+     * screen is showing an older reading and is still trying — which is true, and is what a person needs to
+     * decide whether to wait.
+     */
+    try { next = await getLongEpisodeVideoProgress(projectId, episodeNumber, job.jobId); }
+    catch { setPollFailures((count) => count + 1); return; }
+    setPollFailures(0);
+    setJob(next);
+    if (next.status === "succeeded") await loadReviews(next.jobId);
+  };
+  /* Backed off after a failure so a backend that is down is not asked twice a second — and so the sentence on
+     screen stays true rather than flickering. */
+  useEffect(() => {
+    if (!job || (job.status !== "created" && job.status !== "running")) return;
+    const timer = setTimeout(() => void loadProgress(), pollFailures > 0 ? 2000 : 400);
+    return () => clearTimeout(timer);
+  }, [job, pollFailures]);
   /**
    * What step this Episode is actually at, asked only when the route has refused the whole screen.
    *
@@ -163,8 +248,8 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
     return () => { cancelled = true; };
   }, [error?.code, projectId, episodeNumber]);
   const valid = preview !== null && preview.scenes.every((scene) => { const prompt = prompts[scene.sceneNumber] ?? ""; return prompt.trim().length > 0 && prompt.length <= LIMIT; });
-  async function start(): Promise<void> { if (!preview || !valid || busyRef.current || !startRequestId) return; busyRef.current = true; setBusy(true); setError(null); try { const response = await startLongEpisodeVideoGeneration(projectId, episodeNumber, { confirmationId: preview.confirmationId, userRequestId: startRequestId, approved: true, prompts: preview.scenes.map((scene) => ({ sceneNumber: scene.sceneNumber, prompt: prompts[scene.sceneNumber] ?? "" })) }); setJob({ paidProvider: response.paidProvider, jobId: response.jobId, status: "created", completedSceneNumbers: [], failedSceneNumbers: [], sceneNumbers: preview.scenes.map((scene) => scene.sceneNumber), episode: response.episode }); setConfirmStart(false); setStartRequestId(null); } catch (caught) { setError(toLongProjectDisplayError(caught)); } finally { busyRef.current = false; setBusy(false); } }
-  async function action(fn: () => Promise<LongEpisodeVideoProgress>): Promise<void> { if (busyRef.current) return; busyRef.current = true; setBusy(true); setError(null); try { setJob(await fn()); setUnplayable([]); setVideoVersion((current) => current + 1); } catch (caught) { setError(toLongProjectDisplayError(caught)); } finally { busyRef.current = false; setBusy(false); } }
+  async function start(): Promise<void> { if (!preview || !valid || busyRef.current || !startRequestId) return; busyRef.current = true; setBusy(true); setError(null); try { const response = await startLongEpisodeVideoGeneration(projectId, episodeNumber, { confirmationId: preview.confirmationId, userRequestId: startRequestId, approved: true, prompts: preview.scenes.map((scene) => ({ sceneNumber: scene.sceneNumber, prompt: prompts[scene.sceneNumber] ?? "" })) }); setJob({ paidProvider: response.paidProvider, jobId: response.jobId, status: "created", completedSceneNumbers: [], failedSceneNumbers: [], sceneNumbers: preview.scenes.map((scene) => scene.sceneNumber), episode: response.episode }); setConfirmStart(false); setStartRequestId(null); } catch (caught) { fail("video-step", caught); } finally { busyRef.current = false; setBusy(false); } }
+  async function action(fn: () => Promise<LongEpisodeVideoProgress>): Promise<void> { if (busyRef.current) return; busyRef.current = true; setBusy(true); setError(null); try { setJob(await fn()); setUnplayable([]); setVideoVersion((current) => current + 1); } catch (caught) { fail("job", caught); } finally { busyRef.current = false; setBusy(false); } }
   /**
    * Fetches the clips Runway already made, using the task ids on record.
    *
@@ -174,6 +259,8 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
    * is the person's decision, not a fallback.
    */
   const [recovery, setRecovery] = useState<RecoverLongEpisodeVideosResponse | null>(null);
+  /** Opened from the failed-scenes section, where pressing it has a consequence worth stating first. */
+  const [recoverConfirm, setRecoverConfirm] = useState(false);
   /* The content route refuses placeholders, so a scene that never downloaded fails to load rather than playing
      32 bytes of nothing. Which sentence the person gets depends on whether 가져오기 has already run. */
   const [unplayable, setUnplayable] = useState<readonly number[]>([]);
@@ -184,14 +271,14 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
     try {
       const response = await recoverLongEpisodeVideos(projectId, episodeNumber, job.jobId);
       setJob(response); setRecovery(response); setUnplayable([]); setVideoVersion((current) => current + 1);
-      const review = await getLongEpisodeVideoReview(projectId, episodeNumber, response.jobId);
-      setReviews(review.reviews);
-      setVideoStale(review.staleness.videoStale);
-    } catch (caught) { setError(toLongProjectDisplayError(caught)); }
+      /* Outside the catch on purpose: the clips are already back at this point, and a refused review list must
+         not be reported as "가져오기에 실패했습니다". */
+      await loadReviews(response.jobId);
+    } catch (caught) { fail("recover", caught); }
     finally { busyRef.current = false; setBusy(false); }
   }
 
-  async function approve(sceneNumber: SceneNumber): Promise<void> { if (!job) return; try { const response = await approveLongEpisodeVideoReview(projectId, episodeNumber, job.jobId, sceneNumber); setJob((current) => current ? { ...current, episode: response.episode } : current); setReviews(response.reviews); setVideoStale(response.staleness.videoStale); } catch (caught) { setError(toLongProjectDisplayError(caught)); } }
+  async function approve(sceneNumber: SceneNumber): Promise<void> { if (!job) return; try { const response = await approveLongEpisodeVideoReview(projectId, episodeNumber, job.jobId, sceneNumber); setJob((current) => current ? { ...current, episode: response.episode } : current); setReviews(response.reviews); setVideoStale(response.staleness.videoStale); } catch (caught) { fail("approve", caught); } }
   return (
     <section className="mt-8 space-y-5">
       <button type="button" className={outlineButton} onClick={onBack}>에피소드 이미지로</button>
@@ -288,6 +375,26 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
           <ol className="grid grid-cols-2 gap-2 text-sm text-slate-300 sm:grid-cols-3">
             {job.sceneNumbers.map((scene) => <li key={scene} data-testid={`episode-video-progress-${scene}`} className="rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2">{scene}: {job.completedSceneNumbers.includes(scene) ? "완료" : job.currentSceneNumber === scene ? "진행 중" : job.failedSceneNumbers.includes(scene) ? "실패" : "대기 중"}</li>)}
           </ol>
+          {/*
+            * Said where the numbers are, because the numbers are what has gone stale.
+            *
+            * Not `role="alert"` and not red: nothing has failed for the person — the run is not this screen's
+            * reading of it, and a paid run does not stop because a poll did. What is claimed is only what is
+            * known: this list is an older reading, and the screen is still trying. Whether the run itself is
+            * still going is exactly what could not be read, so it is not asserted either way.
+            *
+            * The button is the seventh twin asymmetry closed: the short project's screen has always offered a
+            * 다시 시도 in this situation and this one offered nothing, and this is the screen where six paid
+            * scenes are generated.
+            */}
+          {pollFailures > 0 && (job.status === "created" || job.status === "running") && (
+            <div data-testid="episode-video-progress-stale" className="space-y-2 rounded-lg border border-amber-400/30 bg-amber-500/[0.06] p-3">
+              <p className="text-sm text-amber-200">
+                진행 상황을 다시 읽지 못했습니다. <span className="font-semibold">위 목록은 마지막으로 확인된 상태</span>이고, 계속 다시 확인하고 있습니다.
+              </p>
+              <button type="button" data-testid="episode-video-progress-recheck" className={smallOutlineButton} onClick={() => void loadProgress()}>지금 다시 확인</button>
+            </div>
+          )}
           {(job.status === "created" || job.status === "running") && <button type="button" className={dangerOutlineButton} disabled={busy} onClick={() => void action(() => stopLongEpisodeVideoGeneration(projectId, episodeNumber, job.jobId))}>중단</button>}
           {/* Every other paid button on this screen confirms first; this one spent money on a single click. */}
           {job.status === "interrupted" && <button type="button" data-testid="episode-video-restart" className={outlineButton} disabled={busy} onClick={() => setRestartConfirm(true)}>남은 장면 이어서 만들기</button>}
@@ -305,26 +412,139 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
       {job?.status === "failed" && (
         <section data-testid="episode-video-failed-scenes" className={cardSection}>
           <p className="text-sm text-amber-300">일부 장면이 실패했습니다. 아래에서 실패한 장면을 다시 시도할 수 있습니다.</p>
+          {/*
+            * 🔴 The free exit, offered before the paid one.
+            *
+            * A `timeout` is us giving up on a task Runway was still working on, and a `no_output` is a finished
+            * task whose URL had not appeared yet. Both are written `failed`, both are already on the ledger,
+            * and both usually leave a finished clip sitting at the provider. Recovery reaches those records now
+            * (CLI's 44fea33) — but the only button this section has ever offered is 다시 시도, which buys the
+            * same seconds a second time. This section is where that costs $0.25 a scene.
+            *
+            * A confirmation rather than one click, because the consequence is not only a download. A record
+            * that comes back flips from failed to succeeded, and that failure is the only thing holding the
+            * rest of the Episode still — the run's own state never changed. Reading the progress is what
+            * advances the run, and this screen reads it immediately, so the next scene is submitted right
+            * after. Free to press, not free afterwards, and the dialog says both.
+            */}
+          <div className="space-y-2 rounded-xl border border-violet-400/25 bg-violet-500/[0.06] p-3.5">
+            <p className="text-sm text-slate-300">
+              멈춘 장면 중에는 <strong className="text-slate-100">이미 만들어져 있는 것</strong>이 있을 수 있습니다 — 기다리다 끊겼거나 결과가 늦게 붙은 경우입니다. 가져오기는 무료라서, 다시 만들기 전에 먼저 해 보실 수 있습니다.
+            </p>
+            <button type="button" data-testid="episode-video-failed-recover" className={smallOutlineButton} disabled={busy || recoverConfirm} onClick={() => setRecoverConfirm(true)}>
+              {busy ? "가져오는 중..." : "이미 만든 영상 먼저 가져오기 (무료)"}
+            </button>
+            {recoverConfirm && (
+              <div role="alertdialog" aria-label="이미 만든 영상 가져오기 확인" data-testid="episode-video-failed-recover-confirm" className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
+                <p className="text-sm text-slate-300">가져오기 자체는 <strong className="text-slate-100">비용이 들지 않습니다</strong> — 상태를 묻고 내려받기만 합니다. 못 찾으면 아무것도 바뀌지 않습니다.</p>
+                <p className="text-sm text-amber-200">
+                  다만 되찾은 장면은 <strong className="text-amber-100">실패가 풀립니다.</strong> 그러면 남은 장면이 있는 경우 <strong className="text-amber-100">곧바로 이어서 만들어지고, 그 장면들은 청구됩니다</strong>. 되찾은 것이 마지막 장면이면 검토로 넘어가고 추가 비용은 없습니다.
+                </p>
+                <div className="flex gap-2">
+                  <button type="button" className={smallOutlineButton} onClick={() => setRecoverConfirm(false)}>취소</button>
+                  <button type="button" data-testid="episode-video-failed-recover-confirm-button" className={smallAmberButton} disabled={busy} onClick={() => { setRecoverConfirm(false); void recover(); }}>예, 가져옵니다</button>
+                </div>
+              </div>
+            )}
+            {recovery && (
+              <p data-testid="episode-video-failed-recovery-result" className="text-sm text-slate-300">
+                {recovery.recoveredSceneNumbers.length}장면을 가져왔습니다.
+                {recovery.unrecoverableScenes.length > 0 && ` 가져오지 못한 장면: ${recovery.unrecoverableScenes.map((scene) => `${scene.sceneNumber}번(${scene.reason})`).join(", ")} — 다시 만들려면 장면마다 비용이 듭니다.`}
+              </p>
+            )}
+          </div>
           <ul className="space-y-2">
-            {job.failedSceneNumbers.map((scene) => (
+            {job.failedSceneNumbers.map((scene) => {
+              /*
+               * The provider's answer about this one scene, and what it means for the button beside it.
+               *
+               * 🔴 `undefined` is "no failure detail in this response", never "safe". Everything below falls
+               * back to what the screen said before the contract existed rather than reading absence as an
+               * answer — a response from a build that predates `sceneFailures` must not become a claim.
+               */
+              const failure = job.sceneFailures?.[scene];
+              const mustChangeInput = failure?.remedy === "change_input";
+              const cannotRetry = failure?.remedy === "not_retryable";
+              return (
               <li key={scene} data-testid={`episode-video-failed-${scene}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-slate-950/60 p-3">
                 <div className="flex-1 space-y-1">
                   <span className="text-sm text-slate-300">{scene}번 장면</span>
-                  <p data-testid={`episode-video-failed-reason-${scene}`} className="text-xs text-rose-300">{episodeSceneErrorMessage(job.sceneErrors?.[scene])}</p>
+                  <p data-testid={`episode-video-failed-reason-${scene}`} className="text-xs text-rose-300">{episodeSceneErrorMessage(job.sceneErrors?.[scene], failure?.providerCode)}</p>
                 </div>
-                <button type="button" data-testid={`episode-video-failed-retry-${scene}`} className={smallOutlineButton} disabled={busy || regenerate === scene} onClick={() => { setConfirmRegenerateAll(false); setRegenerateInstruction(""); setRegenerate(scene); }}>다시 시도</button>
+                {/* Withheld only on a definite not_retryable. The provider says the same request never passes
+                    — SAFETY.INPUT and SAFETY.OUTPUT — so offering a paid button here would be selling a press
+                    whose outcome is already known. The sentence takes its place rather than nothing, and
+                    「모든 장면 다시 만들기」 below is still there for a real re-do. */}
+                {cannotRetry ? (
+                  <p data-testid={`episode-video-failed-not-retryable-${scene}`} className="text-xs text-rose-200">
+                    {sceneRemedyAdvice(failure?.remedy)}
+                  </p>
+                ) : (
+                  <button type="button" data-testid={`episode-video-failed-retry-${scene}`} className={smallOutlineButton} disabled={busy || regenerate === scene} onClick={() => { setConfirmRegenerateAll(false); setRegenerateInstruction(""); setRegenerate(scene); }}>다시 시도</button>
+                )}
                 {regenerate === scene && (
                   <div role="alertdialog" data-testid={`episode-video-failed-retry-confirm-${scene}`} className="w-full space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
                     <p className="text-sm text-amber-200">{scene}번 장면을 다시 시도할까요? Runway 키가 연결되어 있으면 이번 시도분이 실제로 청구됩니다.</p>
                     <RetryCostNotice estimate={job.retryEstimate} sceneCount={scenesRetryBuys(job.retryEstimate, 1)} data-testid={`episode-video-failed-retry-cost-${scene}`} />
+                    {/*
+                     * What the sentence above leaves out, standing where the decision is made.
+                     *
+                     * "이번 시도분이 실제로 청구됩니다" reads as a statement about a successful attempt. It is not:
+                     * the ledger records the amount, not the outcome. Episode 5 scene 3 failed twice and left two
+                     * $0.25 rows behind it with no clip. Someone who believes a failed attempt is free has no
+                     * reason not to press the same button again, which is what happened.
+                     *
+                     * 🔴 Asymmetric on purpose. It is said when the contract says billed, and when the response
+                     * carries no failure detail at all — the ledger is the evidence for that second case, and it
+                     * is what this screen said before the field existed. It is NOT turned into "청구되지
+                     * 않습니다" on a false: a record stored before `failure_code` existed reports false for
+                     * having no code rather than for having been free, and a wrong "you were not charged" costs
+                     * money while a wrong "you were" costs a moment.
+                     */}
+                    {(failure === undefined || failure.billedOnFailure) && (
+                      <p data-testid={`episode-video-failed-retry-billing-${scene}`} className="text-sm text-rose-200">
+                        <strong className="font-semibold">실패해도 이 시도분은 청구됩니다.</strong>
+                      </p>
+                    )}
+                    {/* Three answers to a question that used to get one. See episodeSceneRemedyAdvice — under
+                        change_input the sentence is a certainty, not a caution, because that is what the code
+                        means. */}
+                    <p data-testid={`episode-video-failed-retry-remedy-${scene}`} className={mustChangeInput ? "text-sm font-semibold text-rose-200" : "text-sm text-slate-300"}>
+                      {sceneRemedyAdvice(failure?.remedy)}
+                    </p>
+                    {/*
+                     * The one place a retry could change anything, and it was the one place that could not.
+                     *
+                     * `additionalInstruction` exists on the request, the API function takes it, and
+                     * `episode-videos.service.ts` appends it to the scene's prompt — and this path sent none, so
+                     * pressing 다시 시도 re-sent a byte-identical request. Scene 3 of Episode 5 failed twice that
+                     * way for $0.25 each: the model was told to disintegrate a face while the prompt's own fixed
+                     * suffix says to keep anatomy stable, and no amount of retrying resolves a contradiction.
+                     * The review-stage regeneration below has carried this field all along; this one did not.
+                     */}
+                    <RegenerateInstructionField
+                      id={`episode-video-failed-retry-instruction-${scene}`}
+                      value={regenerateInstruction}
+                      onChange={setRegenerateInstruction}
+                      disabled={busy}
+                      subject="영상"
+                      placeholder="예: 얼굴은 온전하게 유지한다"
+                      data-testid={`episode-video-failed-retry-instruction-${scene}`}
+                    />
                     <div className="flex gap-2">
-                      <button type="button" className={smallOutlineButton} onClick={() => setRegenerate(null)}>취소</button>
-                      <button type="button" className={smallAmberButton} disabled={busy} onClick={() => { setRegenerate(null); void action(() => regenerateLongEpisodeVideo(projectId, episodeNumber, job.jobId, scene)); }}>다시 시도</button>
+                      <button type="button" className={smallOutlineButton} onClick={() => { setRegenerateInstruction(""); setRegenerate(null); }}>취소</button>
+                      {/* 🔴 Under change_input an unchanged request is a paid request with a known outcome, so
+                          the submit waits for the one thing that changes it. Not a lock on the person's
+                          judgement — 취소 is right there, and 모든 장면 다시 만들기 is untouched — but the
+                          default stops being "press again and hope". Never applied without the field: with no
+                          failure detail the button behaves exactly as it did. */}
+                      <button type="button" className={smallAmberButton} disabled={busy || (mustChangeInput && regenerateInstruction.trim().length === 0)} onClick={() => { const instruction = regenerateInstruction; setRegenerate(null); setRegenerateInstruction(""); void action(() => regenerateLongEpisodeVideo(projectId, episodeNumber, job.jobId, scene, instruction)); }}>다시 시도</button>
                     </div>
                   </div>
                 )}
               </li>
-            ))}
+              );
+            })}
           </ul>
         </section>
       )}
@@ -517,7 +737,22 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
       {/* Named beneath the refusal, never instead of it: the server's sentence is still the reason, this is
           only the step the person can go and do. Withheld once the Episode is at or past the video step,
           where "이 단계에서는 할 수 없다" means something other than a missing earlier step. */}
-      {error?.code === "LONG_EPISODE_VIDEOS_NOT_ALLOWED" && blockedAt && isLongEpisodeStatusBefore(blockedAt, "waiting_for_video_confirmation") && (
+      {/* At or past the video step the refusal is not about a missing earlier step, so the hint below is
+          withheld — and until now nothing took its place, leaving a bare red line above buttons that still
+          worked. Said only for a refusal recorded as being about the Episode's step: the ones from 가져오기 or
+          승인 are different refusals and must not be explained as this one. waiting_for_video_confirmation is
+          excluded because video work is allowed there, so a refusal at that step means something this screen
+          has not established. The second sentence is withheld unless a run is actually on screen — it is a
+          statement about buttons, and with no job there are none. It claims nothing about any particular
+          button, only that they are not what this line answered. */}
+      {error?.code === "LONG_EPISODE_VIDEOS_NOT_ALLOWED" && errorSubject === "video-step" && blockedAt && blockedAt !== "waiting_for_video_confirmation" && !isLongEpisodeStatusBefore(blockedAt, "waiting_for_video_confirmation") && (
+        <p data-testid="episode-video-refusal-subject" className="text-sm text-amber-300">
+          이 문장은 <span className="font-semibold">이 에피소드에서 영상 작업을 시작하는 것</span>에 대한 답입니다. 이미{" "}
+          <span className="font-semibold">{longEpisodeStatusLabel(blockedAt)}</span> 단계라 새로 시작할 수는 없습니다.
+          {job !== null && <> 위에 남아 있는 버튼들은 각각 다른 검사를 거치므로, 이 문장 때문에 막힌 것이 아닙니다.</>}
+        </p>
+      )}
+      {error?.code === "LONG_EPISODE_VIDEOS_NOT_ALLOWED" && errorSubject === "video-step" && blockedAt && isLongEpisodeStatusBefore(blockedAt, "waiting_for_video_confirmation") && (
         <p data-testid="episode-video-next-step" className="text-sm text-amber-300">
           지금은 <span className="font-semibold">{longEpisodeStatusLabel(blockedAt)}</span> 단계입니다.{" "}
           {isLongEpisodeStatusBefore(blockedAt, "script_approved")

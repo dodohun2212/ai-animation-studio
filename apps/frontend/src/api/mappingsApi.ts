@@ -3,6 +3,7 @@ import { PROJECT_ASSET_MAPPING_REVIEW_STATUSES, ASSET_MAPPING_ASSIGNMENT_SOURCES
   ASSET_MAPPING_VERSION_POLICIES,
   API_ROUTES,
   isSceneNumber as isValidSceneNumber,
+  isSha256Hex,
   type ApproveProjectAssetMappingReviewRequest,
   type ApproveProjectAssetMappingReviewResponse,
   type AssetMappingAssignmentSource,
@@ -79,8 +80,9 @@ const isSceneNumber = (value: unknown): value is number => typeof value === "num
 const isSceneNumberArray = (value: unknown): value is number[] => Array.isArray(value) && value.every(isSceneNumber);
 const UTC_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]00:00)$/;
 const isUtcIsoTimestamp = (value: unknown): value is string => isString(value) && UTC_TIMESTAMP_PATTERN.test(value) && Number.isFinite(Date.parse(value));
-const DIGEST_PATTERN = /^[a-f0-9]{64}$/;
-const isDigest = (value: unknown): value is string => isString(value) && DIGEST_PATTERN.test(value);
+/* The contract's own check. Retyping the pattern here is how one of nine copies loses its anchors and starts
+   accepting a digest with anything appended — a fingerprint comparison that can no longer fail. */
+const isDigest = isSha256Hex;
 const isVersionNumber = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= 1;
 
 function isSceneScope(value: unknown): value is AssetMappingSceneScope {

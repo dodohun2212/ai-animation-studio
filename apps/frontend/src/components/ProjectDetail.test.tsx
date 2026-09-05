@@ -243,4 +243,65 @@ describe("ProjectDetail", () => {
     expect(alert).toHaveAttribute("data-error-code", "PROJECT_ARCHIVE_NOT_ALLOWED");
     expect(alert.textContent).not.toContain("private");
   });
+
+  /**
+   * 캡틴D pressed 장면 편집 on 명언_전인미답 and got "명언 카드에는 없는 단계입니다".
+   *
+   * A card does carry a scene row with narration text — `photo-card.service.ts` writes one — so the data-shaped
+   * conditions these two buttons already had were all satisfied. What is missing is not the data but the
+   * screen: the router replaces both with the notice. Offering the door and then saying there is no door is one
+   * defect written across two files, so the same list decides both ends.
+   */
+  it("does not offer a 명언 카드 the story-only screens it would only be told it does not have", async () => {
+    const project = makeProject({
+      id: "명언_전인미답", photoCard: true, workflowState: WorkflowState.Completed,
+      scenes: [{ number: 1, prompt: "", motionPrompt: "", narration: "읽어줄 문장" } as never],
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} onOpenSceneEdit={() => {}} onOpenNarrationReview={() => {}} />);
+
+    await screen.findByText("명언_전인미답");
+    expect(screen.queryByTestId("open-scene-edit")).toBeNull();
+    await waitFor(() => expect(screen.queryByTestId("open-narration-review")).toBeNull());
+    // The card keeps what it does have: its settings, its picture, and a way to put it away.
+    expect(screen.getByRole("button", { name: "프로젝트 설정" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "생성 이미지 모음" })).toBeTruthy();
+  });
+
+  /** Same project shape without the card flag — proof the buttons are withheld for being a card, not for the data. */
+  it("still offers those screens to a short project with the same scene data", async () => {
+    const project = makeProject({
+      id: "sample_project", workflowState: WorkflowState.Completed,
+      scenes: [{ number: 1, prompt: "", motionPrompt: "", narration: "읽어줄 문장" } as never],
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} onOpenSceneEdit={() => {}} onOpenNarrationReview={() => {}} />);
+
+    expect(await screen.findByTestId("open-scene-edit")).toBeTruthy();
+    expect(screen.getByTestId("open-narration-review")).toBeTruthy();
+  });
+
+  /**
+   * The biggest button on the screen, read through the story's states.
+   *
+   * A card is written straight to VideosApproved, but nothing stops it being read at an earlier one, and the
+   * switch would then send the person to 대본 지시문 확인 — a screen the router answers with the notice. Merging
+   * is the card's actual first step and the notice's own button already leads there.
+   */
+  it("sends a 명언 카드's resume button to the merge screen whatever state it is read at", async () => {
+    for (const workflowState of [WorkflowState.Ready, WorkflowState.WaitingForAssetMappingReview, WorkflowState.VideosApproved]) {
+      const project = makeProject({ id: "명언_전인미답", photoCard: true, workflowState });
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+      const handlers = { onOpenStoryPrompt: vi.fn(), onOpenMappingReview: vi.fn(), onOpenVideoMerge: vi.fn() };
+      render(<ProjectDetail projectId={project.id} onBack={() => {}} {...handlers} />);
+
+      await screen.findByText("명언_전인미답");
+      fireEvent.click(screen.getByRole("button", { name: "이어서 진행하기 · 자막·음악 정하고 영상 만들기" }));
+      expect(handlers.onOpenVideoMerge).toHaveBeenCalledWith("명언_전인미답");
+      expect(handlers.onOpenStoryPrompt).not.toHaveBeenCalled();
+      expect(handlers.onOpenMappingReview).not.toHaveBeenCalled();
+      cleanup();
+      vi.unstubAllGlobals();
+    }
+  });
 });

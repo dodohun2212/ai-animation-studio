@@ -17,6 +17,7 @@ import {
 } from "../api/videoWorkflowApi.js";
 import { Spinner } from "./Spinner.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
+import { sceneRemedyAdvice } from "../utils/sceneFailureAdvice.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
 import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
 import { StatusChip, type StatusTone } from "./ui/StatusChip.js";
@@ -141,6 +142,8 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
   const [recoverPending, setRecoverPending] = useState(false);
   const [recoverError, setRecoverError] = useState<DisplayError | null>(null);
   const [recovery, setRecovery] = useState<RecoverVideosResponse | null>(null);
+  /** Opened from the failed-scenes section, where pressing it has a consequence worth stating first. */
+  const [recoverConfirmOpen, setRecoverConfirmOpen] = useState(false);
 
   const [regenerateAllConfirmOpen, setRegenerateAllConfirmOpen] = useState(false);
   /** One-off direction for the open single-scene confirmation; cleared whenever that panel opens or closes. */
@@ -158,16 +161,40 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
   const regenerateBusy = useRef<Set<SceneNumber>>(new Set());
   const regenerateAllBusy = useRef(false);
 
+  /**
+   * How many polls in a row have failed — zero while the screen is current.
+   *
+   * 🔴 Two things went wrong on one failed poll, and this counter fixes both.
+   *
+   * The state went to `error`, so `progress` became null and **the whole run left the screen**: the scene
+   * list, the failed-scene section with its reasons, the review cards — all of it replaced by one red line,
+   * for a request nobody asked for. And the polling effect only runs while the state is `ready`, so it also
+   * **stopped polling for good**. One network blip, or the backend restarting because a file was saved while
+   * the app runs from source, was enough to strand a six-scene paid run behind a screen that showed nothing.
+   *
+   * A poll is a re-read. Failing to re-read is not losing the run, so the run stays and the counter says the
+   * reading is old — and, because the effect watches it, the next timer still gets scheduled.
+   */
+  const [pollFailures, setPollFailures] = useState(0);
+
   async function fetchProgress(showLoading: boolean): Promise<void> {
     const requestId = ++progressRequest.current;
     if (showLoading) setProgressState({ status: "loading" });
     try {
       const progress = await getVideoProgress(projectId, jobId);
       if (requestId !== progressRequest.current) return;
+      setPollFailures(0);
       setProgressState({ status: "ready", progress });
     } catch (caught) {
       if (requestId !== progressRequest.current) return;
-      setProgressState({ status: "error", error: toVideoWorkflowDisplayError(caught) });
+      const error = toVideoWorkflowDisplayError(caught);
+      setProgressState((previous) => (
+        // `showLoading` is the person waiting on this one — the first load, or 다시 시도. Those still get the
+        // red line, because there is nothing else to show. A background poll over a run already on screen
+        // keeps the run.
+        !showLoading && previous.status === "ready" ? previous : { status: "error", error }
+      ));
+      setPollFailures((count) => count + 1);
     }
   }
 
@@ -188,11 +215,14 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
   useEffect(() => {
     if (progressState.status !== "ready") return;
     if (progressState.progress.status !== "created" && progressState.progress.status !== "running") return;
+    /* Backed off after a failure so a backend that is down is not asked twice a second, and so the sentence on
+       screen stays put rather than flickering. `pollFailures` is in the deps because on a kept-progress failure
+       `progressState` does not change — which is exactly how the polling used to end. */
     const timer = setTimeout(() => {
       void fetchProgress(false);
-    }, POLL_INTERVAL_MS);
+    }, pollFailures > 0 ? POLL_INTERVAL_MS * 5 : POLL_INTERVAL_MS);
     return () => clearTimeout(timer);
-  }, [progressState]);
+  }, [progressState, pollFailures]);
 
   const succeeded = progressState.status === "ready" && progressState.progress.status === "succeeded";
 
@@ -432,6 +462,19 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
         </div>
       )}
 
+      {/* Said where the numbers are, because the numbers are what has gone stale. Not role="alert" and not
+          red: nothing failed for the person — the run is not this screen's reading of it. What is claimed is
+          only what is known: this is an older reading and the screen is still trying. Whether the run itself is
+          still going is exactly what could not be read, so it is not asserted either way. */}
+      {pollFailures > 0 && progress && (progress.status === "created" || progress.status === "running") && (
+        <div data-testid="progress-stale" className="space-y-2 rounded-lg border border-amber-400/30 bg-amber-500/[0.06] p-3">
+          <p className="text-sm text-amber-200">
+            진행 상황을 다시 읽지 못했습니다. <span className="font-semibold">아래는 마지막으로 확인된 상태</span>이고, 계속 다시 확인하고 있습니다.
+          </p>
+          <button type="button" data-testid="progress-recheck" className={outlineButton} onClick={() => void fetchProgress(false)}>지금 다시 확인</button>
+        </div>
+      )}
+
       {progress && (
         <>
           <p className="text-sm font-semibold text-slate-200" data-testid="workflow-status">
@@ -490,28 +533,97 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                   ? "일부 장면 생성에 실패했습니다. 아래 \"이어서 생성\"으로 재개한 뒤 다시 시도할 수 있습니다."
                   : "일부 장면 생성에 실패했습니다. 아래에서 실패한 장면을 다시 시도할 수 있습니다."}
               </p>
+              {/*
+                * 🔴 The free exit, offered before the paid one.
+                *
+                * A `timeout` is us giving up on a task Runway was still working on, and a `no_output` is a
+                * finished task whose URL had not appeared yet. Both are written `failed`, both are already on
+                * the ledger, and both usually leave a finished clip at the provider. Recovery reaches those
+                * records now — but the only button this section has ever offered is 다시 시도, which buys the
+                * same seconds twice. This is the section where that costs $0.25 a scene.
+                *
+                * A confirmation rather than one click. A record that comes back flips from failed to succeeded, and
+                * that failure is the only thing holding the rest of the run still — the job's own state never
+                * changed. Reading the progress is what advances it, and this screen reads it immediately, so
+                * the next scene is submitted right after. Free to press, not free afterwards, and the dialog
+                * says both.
+                */}
+              <div className="space-y-2 rounded-xl border border-violet-400/25 bg-violet-500/[0.06] p-3.5">
+                <p className="text-sm text-slate-300">
+                  멈춘 장면 중에는 <strong className="text-slate-100">이미 만들어져 있는 것</strong>이 있을 수 있습니다 — 기다리다 끊겼거나 결과가 늦게 붙은 경우입니다. 가져오기는 무료라서, 다시 만들기 전에 먼저 해 보실 수 있습니다.
+                </p>
+                <button
+                  type="button"
+                  data-testid="failed-scenes-recover"
+                  className={smallOutlineButton}
+                  disabled={recoverPending || recoverConfirmOpen}
+                  onClick={() => setRecoverConfirmOpen(true)}
+                >
+                  {recoverPending ? "가져오는 중..." : "이미 만든 영상 먼저 가져오기 (무료)"}
+                </button>
+                {recoverConfirmOpen && (
+                  <div role="alertdialog" aria-label="이미 만든 영상 가져오기 확인" data-testid="failed-scenes-recover-confirm" className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
+                    <p className="text-sm text-slate-300">가져오기 자체는 <strong className="text-slate-100">비용이 들지 않습니다</strong> — 상태를 묻고 내려받기만 합니다. 못 찾으면 아무것도 바뀌지 않습니다.</p>
+                    <p className="text-sm text-amber-200">
+                      다만 되찾은 장면은 <strong className="text-amber-100">실패가 풀립니다.</strong> 그러면 남은 장면이 있는 경우 <strong className="text-amber-100">곧바로 이어서 만들어지고, 그 장면들은 청구됩니다</strong>. 되찾은 것이 마지막 장면이면 검토로 넘어가고 추가 비용은 없습니다.
+                    </p>
+                    <div className="flex gap-2">
+                      <button type="button" className={smallOutlineButton} onClick={() => setRecoverConfirmOpen(false)}>취소</button>
+                      <button type="button" data-testid="failed-scenes-recover-confirm-button" className={smallAmberButton} disabled={recoverPending} onClick={() => { setRecoverConfirmOpen(false); void recover(); }}>예, 가져옵니다</button>
+                    </div>
+                  </div>
+                )}
+              </div>
               <ul className="space-y-2" data-testid="failed-scenes-list">
                 {progress.failedSceneNumbers.map((sceneNumber) => {
                   const regeneratePending = regeneratePendingScenes.has(sceneNumber);
                   const regenerateError = regenerateErrors[sceneNumber];
                   const regenerateConfirmOpen = regenerateConfirmScene === sceneNumber;
+                  /*
+                   * The provider's answer about this one scene, and what it means for the button beside it.
+                   *
+                   * 🔴 This screen is where the $0.25 came from. It said "영상 생성에 실패했습니다. 잠시 후
+                   * 다시 시도해 주세요" — the generic fallback, because the code it looked up was Runway's whole
+                   * sentence — over a retry button that was always pressable and a dialog that never mentioned
+                   * that a failed attempt is charged too. The Episode screen was given the three-way answer
+                   * first; the same combination was still standing here, and `local-video-workflow.service.ts`
+                   * has been filling this field for both pipelines all along.
+                   *
+                   * 🔴 `undefined` is "no failure detail in this response", never "safe". Everything below
+                   * falls back to exactly what this screen did before, so a response from a build that predates
+                   * `sceneFailures` cannot become a claim.
+                   */
+                  const failure = progress.sceneFailures?.[sceneNumber];
+                  const mustChangeInput = failure?.remedy === "change_input";
+                  const cannotRetry = failure?.remedy === "not_retryable";
                   return (
                     <li key={sceneNumber} data-testid={`failed-scene-${sceneNumber}`} className="space-y-1.5 rounded-xl border border-white/10 bg-slate-950/40 p-3">
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-sm text-slate-300">{sceneNumber}번 장면</span>
-                        <button
-                          type="button"
-                          data-testid={`failed-scene-retry-${sceneNumber}`}
-                          className={smallOutlineButton}
-                          onClick={() => openRegenerateConfirmation(sceneNumber)}
-                          disabled={regeneratePending || regenerateConfirmOpen || canRestart}
-                        >
-                          {regeneratePending ? "다시 시도 중..." : "다시 시도"}
-                        </button>
+                        {/* Withheld only on a definite not_retryable — SAFETY.INPUT and SAFETY.OUTPUT, where
+                            the provider says the same request never passes. Offering a paid button there sells
+                            a press whose outcome is already known. The sentence below takes its place, and
+                            「모든 장면 다시 만들기」 is untouched for a real re-do. */}
+                        {!cannotRetry && (
+                          <button
+                            type="button"
+                            data-testid={`failed-scene-retry-${sceneNumber}`}
+                            className={smallOutlineButton}
+                            onClick={() => openRegenerateConfirmation(sceneNumber)}
+                            disabled={regeneratePending || regenerateConfirmOpen || canRestart}
+                          >
+                            {regeneratePending ? "다시 시도 중..." : "다시 시도"}
+                          </button>
+                        )}
                       </div>
                       <p data-testid={`failed-scene-reason-${sceneNumber}`} className="text-xs text-rose-300">
-                        {sceneErrorMessage(progress.sceneErrors?.[sceneNumber])}
+                        {sceneErrorMessage(progress.sceneErrors?.[sceneNumber], failure?.providerCode)}
                       </p>
+                      {cannotRetry && (
+                        <p data-testid={`failed-scene-not-retryable-${sceneNumber}`} className="text-xs text-rose-200">
+                          {sceneRemedyAdvice(failure?.remedy)}
+                        </p>
+                      )}
                       {/* While the job is interrupted the server rejects a per-scene retry outright, so offering it
                           here — with a price attached — only produces a confusing error after the click. */}
                       {canRestart && (
@@ -532,6 +644,25 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                             sceneCount={scenesRetryBuys(progress.retryEstimate, 1)}
                             data-testid={`failed-scene-retry-cost-${sceneNumber}`}
                           />
+                          {/*
+                           * The ledger records the amount, not the outcome — a failed attempt is charged and
+                           * this dialog never said so. Asymmetric on purpose: said when the contract says
+                           * billed, and when the response carries no failure detail at all (which is what the
+                           * ledger shows), but never inverted into "청구되지 않습니다" on a false. A record
+                           * stored before `failure_code` existed reports false for having no code rather than
+                           * for having been free, and a wrong "you were not charged" costs money while a wrong
+                           * "you were" costs a moment.
+                           */}
+                          {(failure === undefined || failure.billedOnFailure) && (
+                            <p data-testid={`failed-scene-retry-billing-${sceneNumber}`} className="text-sm text-rose-200">
+                              <strong className="font-semibold">실패해도 이 시도분은 청구됩니다.</strong>
+                            </p>
+                          )}
+                          {/* Three answers to a question that used to get one. Under change_input the sentence
+                              is a certainty, not a caution, because that is what the code means. */}
+                          <p data-testid={`failed-scene-retry-remedy-${sceneNumber}`} className={mustChangeInput ? "text-sm font-semibold text-rose-200" : "text-sm text-slate-300"}>
+                            {sceneRemedyAdvice(failure?.remedy)}
+                          </p>
                           {/* Same endpoint as a review regeneration, so the same one-off direction applies —
                               useful when the scene failed on its content rather than on a transient error. */}
                           <RegenerateInstructionField
@@ -552,11 +683,16 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                             >
                               취소
                             </button>
+                            {/* 🔴 Under change_input an unchanged request is a paid request with a known
+                                outcome, so the submit waits for the one thing that changes it. Not a lock on
+                                the person's judgement — 취소 is right there, and 모든 장면 다시 만들기 is
+                                untouched — but the default stops being "press again and hope". Never applied
+                                without the field: with no failure detail the button behaves exactly as it did. */}
                             <button
                               type="button"
                               className={smallAmberButton}
                               onClick={() => void confirmRegenerate(sceneNumber)}
-                              disabled={regeneratePending}
+                              disabled={regeneratePending || (mustChangeInput && regenerateInstruction.trim().length === 0)}
                             >
                               {regeneratePending ? "다시 시도 중..." : "예, 다시 시도합니다"}
                             </button>

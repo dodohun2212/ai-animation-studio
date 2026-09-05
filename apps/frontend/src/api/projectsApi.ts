@@ -29,6 +29,7 @@ import {
   type UpdateShortProjectCastRequest,
   type UpdateShortProjectCastResponse,
 } from "@ai-animation-studio/shared";
+import { INTERNAL_ERROR, SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
 
 export class ProjectsApiError extends Error {
   readonly code: string;
@@ -44,15 +45,6 @@ export class ProjectsApiError extends Error {
 
 const NETWORK_ERROR = { code: "CLIENT_NETWORK_ERROR", message: "서버에 연결하지 못했습니다. 네트워크 상태를 확인해주세요." };
 const MALFORMED_RESPONSE_ERROR = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 해석하지 못했습니다." };
-/**
- * A 5xx whose body is not the backend's `{ code, message }` shape — the backend is restarting, crashed, or a
- * dev proxy answered instead of it. That is a different situation from "the server replied and we could not
- * read it", and it used to be reported with the same sentence, which told the user nothing they could act on.
- */
-const SERVER_UNAVAILABLE_ERROR = {
-  code: "CLIENT_SERVER_UNAVAILABLE",
-  message: "서버가 응답하지 않습니다. 서버가 재시작 중이거나 꺼져 있을 수 있습니다. 잠시 후 다시 시도해 주세요.",
-};
 const UNKNOWN_ERROR = { code: "CLIENT_UNKNOWN_ERROR", message: "요청을 처리하지 못했습니다. 잠시 후 다시 시도해주세요." };
 
 /**
@@ -136,6 +128,7 @@ export function toDisplayError(error: unknown): { code: string; message: string 
   if (error.code === NETWORK_ERROR.code) return NETWORK_ERROR;
   if (error.code === MALFORMED_RESPONSE_ERROR.code) return MALFORMED_RESPONSE_ERROR;
   if (error.code === SERVER_UNAVAILABLE_ERROR.code) return SERVER_UNAVAILABLE_ERROR;
+  if (error.code === INTERNAL_ERROR.code) return INTERNAL_ERROR;
   if (Object.prototype.hasOwnProperty.call(SAFE_ERRORS, error.code)) {
     return { code: error.code, message: SAFE_ERRORS[error.code]! };
   }
@@ -308,7 +301,7 @@ async function requestJson<T>(
     const apiError = toApiErrorShape(body);
     // A 5xx that did not even carry the backend's own error shape means the backend never answered — it is
     // down, restarting, or something in front of it replied. Say that, instead of blaming the response body.
-    if (apiError.code === MALFORMED_RESPONSE_ERROR.code && response.status >= 500) {
+    if (isServerUnavailable(response.status, apiError.code)) {
       throw new ProjectsApiError(SERVER_UNAVAILABLE_ERROR.code, SERVER_UNAVAILABLE_ERROR.message);
     }
     throw new ProjectsApiError(apiError.code, apiError.message, apiError.details);

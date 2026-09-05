@@ -90,14 +90,33 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, vertical, layout, 
   useLayoutEffect(() => {
     const block = blockRef.current;
     if (!block) return;
-    const lines = Array.from(block.children) as unknown as { offsetTop: number; offsetHeight: number; scrollWidth: number; clientWidth: number }[];
-    setOverflowing(lines.some((node) =>
-      // Each line is centred on its own top coordinate (translateY(-50%)), so its extent is half a line either way.
-      node.offsetTop - node.offsetHeight / 2 < 0
-      || node.offsetTop + node.offsetHeight / 2 > frameHeight
-      // Sideways too, and this is not hypothetical: at the largest size the 사자성어 line is wider than the frame
-      // and runs off both edges without ever being taller than it. Seen at 96px on 불광불급(不狂不及).
-      || node.scrollWidth > node.clientWidth));
+    let cancelled = false;
+    const measure = (): void => {
+      if (cancelled) return;
+      const lines = Array.from(block.children) as unknown as { offsetTop: number; offsetHeight: number; scrollWidth: number; clientWidth: number }[];
+      setOverflowing(lines.some((node) =>
+        // Each line is centred on its own top coordinate (translateY(-50%)), so its extent is half a line either way.
+        node.offsetTop - node.offsetHeight / 2 < 0
+        || node.offsetTop + node.offsetHeight / 2 > frameHeight
+        // Sideways too, and this is not hypothetical: at the largest size the 사자성어 line is wider than the frame
+        // and runs off both edges without ever being taller than it. Seen at 96px on 불광불급(不狂不及).
+        || node.scrollWidth > node.clientWidth));
+    };
+    measure();
+    /*
+     * Measured again once the real faces have arrived.
+     *
+     * The two subtitle fonts are now loaded from the backend (styles.css), and a webfont lands after the first
+     * paint — so this first measurement is of whatever fallback the machine had, and the warning it produces
+     * would be about a font the video will not use. The overflow it reports is a real one: at 96px the
+     * 사자성어 line runs off both edges, and a warning computed in the wrong face is a warning about the wrong
+     * width.
+     *
+     * `document.fonts` is absent under jsdom, so this is a no-op in tests rather than a failure. Nothing here
+     * waits on it: the first measurement still happens immediately.
+     */
+    void document.fonts?.ready.then(measure).catch(() => { /* A face that never loads leaves the first measurement standing, which is the honest floor. */ });
+    return () => { cancelled = true; };
   }, [quote, layout.scale, layout.center, frameHeight, frameWidth]);
 
   function line(text: string, y: number, size: number, serif: boolean, key: string) {
@@ -115,7 +134,10 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, vertical, layout, 
           // which made this preview wrap early and warn about overflow the video never had. The two ratios
           // are measured off real rendered frames and differ between the faces, so they stay separate.
           fontSize: `${size * (serif ? PHOTO_CARD_SUBTITLE_CSS_RATIO.heading : PHOTO_CARD_SUBTITLE_CSS_RATIO.body)}px`,
-          fontWeight: serif ? 700 : 400,
+          // The weights the two files actually are — Serif Bold, Sans Medium — so the browser picks each face
+          // exactly rather than by nearest match, and so the preview asks for the same weight the burned-in
+          // subtitle is drawn at. See the @font-face pair in styles.css.
+          fontWeight: serif ? 700 : 500,
           fontFamily: serif ? '"Noto Serif KR", "Nanum Myeongjo", serif' : '"Noto Sans KR", system-ui, sans-serif',
           color: "#fff",
           textShadow: shadow,

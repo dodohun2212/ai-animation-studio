@@ -292,6 +292,59 @@ describe("VideoWorkflowScreen", () => {
     expect(within(cost).getByRole("alert").textContent).toContain("남은 월 예산을 초과");
   });
 
+  /**
+   * 🔴 One failed poll used to take the whole run off the screen and end the polling.
+   *
+   * The catch set `{status: "error"}`, so `progress` became null and the scene list, the failed-scene reasons
+   * and the review cards were all replaced by a red line — for a request nobody asked for. And the polling
+   * effect only runs while the state is `ready`, so nothing scheduled the next check either. A network blip,
+   * or the backend restarting because a file was saved while the app runs from source, stranded a six-scene
+   * paid run behind a blank screen with a reload as the only way back.
+   */
+  it("keeps the run on screen when a background poll fails, and says the reading is old", async () => {
+    const running = makeProgress({ paidProvider: true, status: "running", currentSceneNumber: 2, completedSceneNumbers: [1] });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, running))
+      .mockResolvedValue(jsonResponse(500, { code: "VIDEO_WORKFLOW_STORAGE_ERROR", message: "raw" }));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("workflow-status");
+    const stale = await screen.findByTestId("progress-stale");
+    expect(stale.textContent).toContain("마지막으로 확인된 상태");
+    // The run is still there — the poll failed, the job did not.
+    expect(screen.getByTestId("workflow-status")).toBeTruthy();
+    expect(screen.queryByTestId("progress-error")).toBeNull();
+    // And it is still asking: a failed poll must not be the last one.
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(2), { timeout: 4000 });
+  });
+
+  /**
+   * 🔴 The free exit, offered before the paid one.
+   *
+   * A timeout is us giving up on a task Runway was still working on; a no_output is a finished task whose URL
+   * had not appeared yet. Both are written failed, both are already on the ledger, and both usually leave a
+   * finished clip at the provider — which recovery now reaches. Until this, the only button this section
+   * offered was 다시 시도, buying the same seconds twice at $0.25 a scene.
+   */
+  it("offers the free recovery in the failed-scenes section, and states what it costs afterwards", async () => {
+    const failed = makeProgress({ paidProvider: true, status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2] });
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, failed));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("failed-scenes-section");
+    fireEvent.click(screen.getByTestId("failed-scenes-recover"));
+
+    const confirm = await screen.findByTestId("failed-scenes-recover-confirm");
+    // Both halves, because both are true and only one of them is the reassuring one.
+    expect(confirm.textContent).toContain("비용이 들지 않습니다");
+    expect(confirm.textContent).toContain("청구됩니다");
+    // Nothing was sent by opening it.
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/recovery"))).toHaveLength(0);
+
+    fireEvent.click(within(confirm).getByRole("button", { name: "예, 가져옵니다" }));
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/recovery")).length).toBe(1));
+  });
+
   it("shows no cost line at all when the job carries no retry estimate (local fake mode)", async () => {
     const failed = makeProgress({ status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2] });
     renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, failed)));
@@ -300,6 +353,96 @@ describe("VideoWorkflowScreen", () => {
     fireEvent.click(screen.getByTestId("failed-scene-retry-2"));
     await screen.findByTestId("failed-scene-retry-confirm-2");
     expect(screen.queryByTestId("failed-scene-retry-cost-2")).toBeNull();
+  });
+
+  /**
+   * 🔴 This screen is where 캡틴D's $0.25 came from, and it kept the whole combination after the Episode screen
+   * was fixed: the generic "잠시 후 다시 시도해 주세요" over an always-pressable retry, in a dialog that never
+   * said a failed attempt is charged too. `local-video-workflow.service.ts` has been filling `sceneFailures`
+   * for this pipeline all along — only the screen was not reading it.
+   */
+  const failedWith = (failure: Record<string, unknown>) => makeProgress({
+    paidProvider: true, status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2],
+    sceneErrors: { 2: "An unexpected error occurred. (Runway code: INTERNAL.BAD_OUTPUT.CODE01)" } as never,
+    sceneFailures: { 2: failure } as never,
+  });
+
+  /**
+   * 🔴 One failure, two sentences, saying the opposite.
+   *
+   * A Runway task failure's category is the provider's own English sentence, so the category table missed it
+   * every time and fell through to "영상 생성에 실패했습니다. 잠시 후 다시 시도해 주세요." — the sentence that
+   * was followed twice and charged twice — while the remedy advice right below it said the input has to
+   * change. The provider's code is what tells them apart, and the contract now carries what each one means.
+   */
+  it("names the provider's own cause instead of the fallback that told 캡틴D to wait", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, failedWith({ category: "unknown", providerCode: "INTERNAL.BAD_OUTPUT.CODE01", remedy: "change_input", billedOnFailure: true }))));
+
+    await screen.findByTestId("failed-scenes-section");
+    const reason = screen.getByTestId("failed-scene-reason-2");
+    expect(reason.textContent).toContain("글자나 로고");
+    expect(reason.textContent).not.toContain("잠시 후");
+    // Cause only — the money sentence belongs to billedOnFailure, one place, not two.
+    expect(reason.textContent).not.toContain("청구");
+    expect(document.body.textContent).not.toContain("An unexpected error occurred");
+  });
+
+  it("holds the retry until something is changed when the provider says the input is the cause", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, failedWith({ category: "unknown", providerCode: "INTERNAL.BAD_OUTPUT.CODE01", remedy: "change_input", billedOnFailure: true }))));
+
+    await screen.findByTestId("failed-scenes-section");
+    fireEvent.click(screen.getByTestId("failed-scene-retry-2"));
+
+    const remedy = await screen.findByTestId("failed-scene-retry-remedy-2");
+    expect(remedy.textContent).toContain("그대로 다시 보내면 다시 실패합니다");
+    expect(remedy.textContent).not.toContain("잠시 후");
+    expect((await screen.findByTestId("failed-scene-retry-billing-2")).textContent).toContain("실패해도 이 시도분은 청구됩니다");
+
+    const panel = screen.getByTestId("failed-scene-retry-confirm-2");
+    expect(within(panel).getByRole("button", { name: "예, 다시 시도합니다" })).toBeDisabled();
+    fireEvent.change(screen.getByTestId("failed-scene-retry-instruction-2"), { target: { value: "움직임을 단순하게" } });
+    expect(within(panel).getByRole("button", { name: "예, 다시 시도합니다" })).not.toBeDisabled();
+  });
+
+  /** SAFETY.INPUT / SAFETY.OUTPUT: the same request never passes, so a paid button here sells a known outcome. */
+  it("offers no retry at all when the provider says the request cannot pass", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, failedWith({ category: "unknown", providerCode: "SAFETY.INPUT.01", remedy: "not_retryable", billedOnFailure: false }))));
+
+    await screen.findByTestId("failed-scenes-section");
+    expect(screen.queryByTestId("failed-scene-retry-2")).toBeNull();
+    expect(screen.getByTestId("failed-scene-not-retryable-2").textContent).toContain("같은 요청으로는 통과하지 않습니다");
+  });
+
+  /**
+   * 🔴 The billing sentence is asymmetric on purpose. A record stored before `failure_code` existed reports
+   * `billedOnFailure: false` for having no code, not for having been free — a wrong "청구되지 않습니다" costs
+   * money, a wrong "청구됩니다" costs a moment. So it is withheld on a false rather than inverted.
+   */
+  it("does not turn a not-billed failure into a promise that nothing was charged", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, failedWith({ category: "timeout", remedy: "retry", billedOnFailure: false }))));
+
+    await screen.findByTestId("failed-scenes-section");
+    fireEvent.click(screen.getByTestId("failed-scene-retry-2"));
+
+    expect((await screen.findByTestId("failed-scene-retry-remedy-2")).textContent).toContain("그대로 다시 보내도 됩니다");
+    expect(screen.queryByTestId("failed-scene-retry-billing-2")).toBeNull();
+    expect(document.body.textContent).not.toContain("청구되지 않");
+    const panel = screen.getByTestId("failed-scene-retry-confirm-2");
+    expect(within(panel).getByRole("button", { name: "예, 다시 시도합니다" })).not.toBeDisabled();
+  });
+
+  /** A response from a build with no `sceneFailures` must behave exactly as it did — absence is not an answer. */
+  it("keeps the pre-contract wording when the response carries no failure detail", async () => {
+    const failed = makeProgress({ paidProvider: true, status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2] });
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, failed)));
+
+    await screen.findByTestId("failed-scenes-section");
+    fireEvent.click(screen.getByTestId("failed-scene-retry-2"));
+
+    expect((await screen.findByTestId("failed-scene-retry-billing-2")).textContent).toContain("실패해도 이 시도분은 청구됩니다");
+    expect(screen.getByTestId("failed-scene-retry-remedy-2").textContent).toContain("같은 이유로 다시 실패할 수 있습니다");
+    const panel = screen.getByTestId("failed-scene-retry-confirm-2");
+    expect(within(panel).getByRole("button", { name: "예, 다시 시도합니다" })).not.toBeDisabled();
   });
 
   // Regression: the server rejects a per-scene retry unless the job is actively generating, so while the job is

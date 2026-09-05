@@ -1,5 +1,40 @@
 @import "tailwindcss";
 
+/*
+ * The two faces the finished video is burned with, so the preview shows the letters the render will.
+ *
+ * The subtitle preview has always asked for "Noto Serif KR" and "Noto Sans KR" by name, and nothing ever
+ * loaded either one — so it drew whatever the machine happened to have and `font-weight: 700` measured
+ * identically to 400. That is why the 사자성어 line looked thin on screen while the burned-in subtitle was
+ * already Bold: the preview and the render were never looking at the same font.
+ *
+ * Served by the backend from the repo's own fonts/ directory (API_ROUTES.subtitleFont), which is where the
+ * renderer reads them from too — one copy, so the two cannot drift.
+ *
+ * The weights are the files' real ones, not the ones we wish for: Serif is Bold 700 and Sans is Medium 500,
+ * and the preview asks for exactly those. Declaring a weight the file is not would put us back on the
+ * browser's nearest-match guess, which is the same weight-proximity fallback the render side deliberately
+ * stopped relying on. `font-synthesis: none` below means a face that fails to load is not faked either.
+ *
+ * Both are large (14MB and 6MB) and both are lazy: a browser fetches a face only when something on screen is
+ * set in it, so this costs nothing on any screen without a subtitle preview.
+ */
+@font-face {
+  font-family: "Noto Serif KR";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/NotoSerifKR-Bold.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Noto Sans KR";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/NotoSansKR-Medium.ttf") format("truetype");
+}
+
 :root {
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   color-scheme: dark;

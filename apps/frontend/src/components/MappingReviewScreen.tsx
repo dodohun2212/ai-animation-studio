@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { sceneNumbersFor } from "@ai-animation-studio/shared";
+import { isSha256Hex, sceneNumbersFor } from "@ai-animation-studio/shared";
 import type {
   Asset,
   AssetMappingSceneScope,
@@ -385,8 +385,30 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
     } finally { beginBusy.current = false; setBeginPending(false); }
   }
 
+  /**
+   * A review that was never started carries no baseline to approve against.
+   *
+   * `loadReview` answers ENOENT with `script_fingerprint: ""` (mappings.repository.ts), the screen sent that
+   * empty string straight back, and the server's first guard rejected it as a malformed request — which
+   * `mappingsApi` renders as "입력 내용을 확인해 주세요". 캡틴D pressed 연결 다 했음 on a project with no
+   * review yet and was told to check input they had never given. The server now names the reason
+   * (`no_baseline`, CLI Round 534), but the honest move is not to send a request we know will be refused:
+   * the screen has the same fact in its hand.
+   */
+  /* The contract's check, not a tenth copy of the pattern. This is the line that decides `baselineMissing`,
+     so an anchorless copy here would have read a review with a damaged fingerprint as one that has a baseline
+     — and sent the request this whole branch exists to withhold. */
+  const baselineMissing = review !== null && !isSha256Hex(review.scriptFingerprint);
+
   async function approve() {
     if (approveBusy.current || !review) return;
+    if (baselineMissing) {
+      setReviewMutationError({
+        code: "MAPPING_REVIEW_NO_BASELINE",
+        message: "이 프로젝트는 아직 검사 기준을 잡지 않았습니다. 위의 「지금 대본 기준으로 다시 맞추기」를 먼저 눌러 주세요 — 연결한 것은 그대로 둡니다.",
+      });
+      return;
+    }
     approveBusy.current = true;
     setApprovePending(true);
     setReviewMutationError(null);
@@ -656,7 +678,16 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
         </details>
         <div className="flex flex-wrap items-center gap-3">
           <button type="button" className={outlineButton} onClick={() => void beginReview()} disabled={beginPending}>지금 대본 기준으로 다시 맞추기</button>
-          <span className="text-xs text-slate-500">대본을 고쳤다면 눌러 주세요. 바뀐 대본에 맞춰 검사 기준을 새로 잡습니다.</span>
+          {/* This is the only way out of an unstarted review, and its hint used to name one case only —
+              "대본을 고쳤다면" — so the person who had changed nothing read it as "not your case" and stayed
+              stuck. `beginReview` is the same call either way: it sets the baseline the first time and resets
+              it afterwards. CLI Round 536 confirmed and pinned that it does not drop existing links, so the
+              sentence can say so. */}
+          <span data-testid="mapping-rebase-hint" className="text-xs text-slate-500">
+            {baselineMissing
+              ? "이 프로젝트는 아직 검사 기준이 없습니다. 먼저 눌러 주세요 — 연결한 것은 그대로 둡니다."
+              : "대본을 고쳤다면 눌러 주세요. 바뀐 대본에 맞춰 검사 기준을 새로 잡습니다. 연결한 것은 그대로 둡니다."}
+          </span>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button

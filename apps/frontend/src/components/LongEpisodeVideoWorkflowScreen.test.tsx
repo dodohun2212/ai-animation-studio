@@ -189,6 +189,39 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     expect(callTo(fetchMock, "/scenes/2/regenerate")[0]).toBe("/long-projects/long/episodes/1/videos/generations/job/scenes/2/regenerate");
   });
 
+  /**
+   * 🔴 The retry that could not change anything.
+   *
+   * `additionalInstruction` is on the request, the API function takes it, and the service appends it to the
+   * scene's prompt — and this path sent none, so pressing 다시 시도 re-sent a byte-identical request. Episode
+   * 5 scene 3 failed twice that way at $0.25 each (`INTERNAL.BAD_OUTPUT.CODE01`): the prompt asked for a face
+   * to disintegrate while its own fixed suffix asks for anatomy to stay stable, and retrying a contradiction
+   * resolves nothing. The review-stage regeneration below has carried this field all along.
+   */
+  it("sends the typed direction with a failed scene's retry", async () => {
+    const failedJob = {
+      paidProvider: true, jobId: "job", status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2],
+      sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
+      sceneErrors: { 2: "An unexpected error occurred. (Runway code: INTERNAL.BAD_OUTPUT.CODE01)" },
+    };
+    const fetchMock = stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": failedJob,
+      "POST /videos/generations/job/scenes/2/regenerate": { jobId: "job", status: "running", completedSceneNumbers: [1], failedSceneNumbers: [], sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    await screen.findByTestId("episode-video-failed-scenes");
+    fireEvent.click(screen.getByTestId("episode-video-failed-retry-2"));
+    fireEvent.change(await screen.findByTestId("episode-video-failed-retry-instruction-2"), { target: { value: "얼굴은 온전하게 유지한다" } });
+    fireEvent.click(within(await screen.findByTestId("episode-video-failed-retry-confirm-2")).getByRole("button", { name: "다시 시도" }));
+
+    await waitFor(() => expect(countTo(fetchMock, "/scenes/2/regenerate")).toBe(1));
+    const body = JSON.parse(String((callTo(fetchMock, "/scenes/2/regenerate")[1] as RequestInit).body));
+    expect(body.additionalInstruction).toBe("얼굴은 온전하게 유지한다");
+  });
+
   it("handles stale API errors without exposing internal paths", async () => { vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(409, { code: "VIDEO_CONFIRMATION_STALE", message: "raw C:\\\\private" }))); render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />); const alert = await screen.findByRole("alert"); expect(alert).toHaveAttribute("data-error-code", "CLIENT_UNKNOWN_ERROR"); expect(document.body.textContent).not.toContain("C:\\private"); });
 
   it("says up front that a connected Runway key means real paid requests", async () => {
@@ -378,6 +411,299 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     expect(screen.queryByRole("alert")).toBeNull();
     // The work itself stays on screen — the refusal costs the cards, not the job.
     expect(screen.getByTestId("episode-video-progress")).toBeTruthy();
+  });
+
+  /**
+   * 🔴 The same refusal, on the path that actually runs while a job is going.
+   *
+   * The fix above landed on the mount path and nowhere else. `loadProgress` — the poll that repeats every
+   * 400ms — made the same review request inside the same try, so the moment a run finished into an Episode
+   * past the review stage the red 지금 이 에피소드 단계에서는 영상 작업을 할 수 없습니다 appeared across a
+   * finished job whose clips were bought and whose buttons still worked. All three callers of that request go
+   * through one function now.
+   */
+  /**
+   * 🔴 One failed poll used to end the polling for good.
+   *
+   * The catch called `fail("progress", …)` and never `setJob`, so `job` did not change — and the timer effect
+   * watched `job` alone, so no next check was ever scheduled. A six-scene paid run kept going behind a screen
+   * frozen at whatever it last saw, with a reload as the only way out. It did not take a malformed response:
+   * one network blip, or the backend restarting because a file was saved while the app runs from source.
+   */
+  it("keeps the last progress on screen when a poll fails, says the reading is old, and keeps asking", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": sequence([
+        progress("running", [1]),
+        withStatus(500, { code: "LONG_PROJECT_STORAGE_ERROR", message: "raw" }),
+      ]),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    await screen.findByTestId("episode-video-progress");
+    const stale = await screen.findByTestId("episode-video-progress-stale");
+    expect(stale.textContent).toContain("마지막으로 확인된 상태");
+    // The scene list is still there — the poll failed, the run did not — and no red banner claims otherwise.
+    expect(screen.getByTestId("episode-video-progress-1")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    // The button the short project's screen has always had in this situation, and this one never did.
+    expect(screen.getByTestId("episode-video-progress-recheck")).toBeTruthy();
+    await waitFor(() => expect(countTo(fetchMock, "/videos/generations/job")).toBeGreaterThan(2), { timeout: 6000 });
+  });
+
+  /**
+   * 🔴 The free exit, offered before the paid one.
+   *
+   * A timeout is us giving up on a task Runway was still working on; a no_output is a finished task whose URL
+   * had not appeared yet. Both are written failed, both are already on the ledger, and both usually leave a
+   * finished clip at the provider — which recovery now reaches. Until this, the only button in this section
+   * was 다시 시도, buying the same seconds twice at $0.25 a scene.
+   */
+  it("offers the free recovery in the failed-scenes section, and states what it costs afterwards", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": {
+        paidProvider: true, jobId: "job", status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2],
+        sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
+        sceneErrors: { 2: "timeout" },
+      },
+      "POST /videos/generations/job/recovery": {
+        paidProvider: true, jobId: "job", status: "running", completedSceneNumbers: [1, 2], failedSceneNumbers: [],
+        sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
+        recoveredSceneNumbers: [2], unrecoverableScenes: [],
+      },
+      ...sceneVersionRoutes(),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    await screen.findByTestId("episode-video-failed-scenes");
+    fireEvent.click(screen.getByTestId("episode-video-failed-recover"));
+
+    const confirm = await screen.findByTestId("episode-video-failed-recover-confirm");
+    // Both halves, because both are true and only one of them is the reassuring one.
+    expect(confirm.textContent).toContain("비용이 들지 않습니다");
+    expect(confirm.textContent).toContain("청구됩니다");
+    expect(countTo(fetchMock, "/recovery")).toBe(0);
+
+    fireEvent.click(screen.getByTestId("episode-video-failed-recover-confirm-button"));
+    await waitFor(() => expect(countTo(fetchMock, "/recovery")).toBe(1));
+  });
+
+  it("does not render the review list's refusal as a failure when the progress poll meets it", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": sequence([
+        progress("running", [1, 2, 3]),
+        { ...progress("succeeded", [1, 2, 3, 4, 5, 6]), episode: episode("completed") },
+      ]),
+      "GET /videos/generations/job/review": withStatus(409, { code: "LONG_EPISODE_VIDEOS_NOT_ALLOWED", message: "raw" }),
+      ...sceneVersionRoutes(),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    const line = await screen.findByTestId("episode-video-review-unavailable");
+    expect(line.textContent).toContain("완료");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  /**
+   * 🔴 The third copy, and the one that reported the opposite of what happened.
+   *
+   * 가져오기 asked for the review list after a successful recovery, inside the same try. The clips were already
+   * back and the download costs nothing — and a refusal of that extra request replaced the recovery's own
+   * result with a red line saying the Episode could not do video work.
+   */
+  it("keeps a successful 가져오기 successful when the review list is refused afterwards", async () => {
+    const review = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z" }));
+    const recovered = { ...progress("succeeded", [1, 2, 3, 4, 5, 6]), recoveredSceneNumbers: [1, 2, 3, 4, 5, 6], unrecoverableScenes: [] };
+    const fetchMock = stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": progress("succeeded", [1, 2, 3, 4, 5, 6]),
+      "GET /videos/generations/job/review": sequence([
+        { episode: episode("videos_review"), reviews: review, staleness: { videoStale: [] } },
+        withStatus(409, { code: "LONG_EPISODE_VIDEOS_NOT_ALLOWED", message: "raw" }),
+      ]),
+      "POST /videos/generations/job/recovery": recovered,
+      ...sceneVersionRoutes(),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    fireEvent.click(await screen.findByTestId("episode-video-recover"));
+
+    await screen.findByTestId("episode-video-recovery-result");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  /**
+   * 캡틴D asked, looking at a red line above a working button: "다시 시도 눌러도 되는거야?"
+   *
+   * The refusal is about starting video work on this Episode; the buttons above it are actions against a run
+   * that already exists, which the backend checks separately. The sentence names its own subject rather than
+   * leaving the whole screen to be read as blocked — and the earlier-step advice stays away, because at this
+   * step there is no earlier step to go and do.
+   */
+  it("says which action a refusal is about once the Episode is at or past the video step", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute(
+      { "GET /episodes/1": { episode: episode("videos_review") } },
+      { "GET /videos/generations/current": { status: 409, body: { code: "LONG_EPISODE_VIDEOS_NOT_ALLOWED", message: "raw" } } },
+    ));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    const said = await screen.findByTestId("episode-video-refusal-subject");
+    expect(said.textContent).toContain("영상 검토 중");
+    expect(screen.queryByTestId("episode-video-next-step")).toBeNull();
+    // Beneath the refusal, never instead of it.
+    expect(screen.getByRole("alert").getAttribute("data-error-code")).toBe("LONG_EPISODE_VIDEOS_NOT_ALLOWED");
+  });
+
+  /**
+   * The ledger records the amount, not the outcome: Episode 5 scene 3 failed twice and left two $0.25 rows
+   * behind it with no clip. "이번 시도분이 실제로 청구됩니다" reads as a statement about a successful attempt,
+   * and someone who believes a failed attempt is free has no reason not to press the same button again.
+   */
+  it("says a failed retry is billed too, before the retry is confirmed", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": {
+        paidProvider: true, jobId: "job", status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2],
+        sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
+        sceneErrors: { 2: "An unexpected error occurred. (Runway code: INTERNAL.BAD_OUTPUT.CODE01)" },
+      },
+    }));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    await screen.findByTestId("episode-video-failed-scenes");
+    expect(screen.queryByTestId("episode-video-failed-retry-billing-2")).toBeNull();
+    fireEvent.click(screen.getByTestId("episode-video-failed-retry-2"));
+
+    const billing = await screen.findByTestId("episode-video-failed-retry-billing-2");
+    expect(billing.textContent).toContain("실패해도 이 시도분은 청구됩니다");
+  });
+
+  /**
+   * The three answers that used to be one.
+   *
+   * `sceneErrors` carried a sentence, the client looked the whole sentence up in a table of codes, missed, and
+   * fell back to "잠시 후 다시 시도해 주세요" — for the one code whose documented cause is the input itself.
+   * 캡틴D followed that advice twice at $0.25 a press. `remedy` is what tells the cases apart, and each case
+   * gets a different sentence and a different button.
+   */
+  const failedWith = (failure: Record<string, unknown>) => ({
+    paidProvider: true, jobId: "job", status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2],
+    sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
+    sceneErrors: { 2: "An unexpected error occurred. (Runway code: INTERNAL.BAD_OUTPUT.CODE01)" },
+    sceneFailures: { 2: failure },
+  });
+
+  /**
+   * 🔴 One failure, two sentences, saying the opposite.
+   *
+   * A Runway task failure's category is the provider's own English sentence, so the category table missed it
+   * every time and fell through to "영상 생성에 실패했습니다. 잠시 후 다시 시도해 주세요." — the sentence that
+   * was followed twice and charged twice — while the remedy advice right below it said the input has to
+   * change. The provider's code is what tells them apart, and the contract now carries what each one means.
+   */
+  it("names the provider's own cause instead of the fallback that told 캡틴D to wait", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": failedWith({ category: "unknown", providerCode: "INTERNAL.BAD_OUTPUT.CODE01", remedy: "change_input", billedOnFailure: true }),
+    }));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    await screen.findByTestId("episode-video-failed-scenes");
+    const reason = screen.getByTestId("episode-video-failed-reason-2");
+    expect(reason.textContent).toContain("글자나 로고");
+    expect(reason.textContent).not.toContain("잠시 후");
+    // Cause only — the money sentence belongs to billedOnFailure, one place, not two.
+    expect(reason.textContent).not.toContain("청구");
+    // And the provider's raw English never reaches the screen.
+    expect(document.body.textContent).not.toContain("An unexpected error occurred");
+  });
+
+  it("holds the retry until something is changed when the provider says the input is the cause", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": failedWith({ category: "unknown", providerCode: "INTERNAL.BAD_OUTPUT.CODE01", remedy: "change_input", billedOnFailure: true }),
+    }));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    await screen.findByTestId("episode-video-failed-scenes");
+    fireEvent.click(screen.getByTestId("episode-video-failed-retry-2"));
+
+    const remedy = await screen.findByTestId("episode-video-failed-retry-remedy-2");
+    // A certainty, not a caution — that is what the code means.
+    expect(remedy.textContent).toContain("그대로 다시 보내면 다시 실패합니다");
+    expect(remedy.textContent).not.toContain("잠시 후");
+    const panel = screen.getByTestId("episode-video-failed-retry-confirm-2");
+    const submit = within(panel).getByRole("button", { name: "다시 시도" });
+    expect(submit.hasAttribute("disabled")).toBe(true);
+
+    fireEvent.change(screen.getByTestId("episode-video-failed-retry-instruction-2"), { target: { value: "간판 글자를 빼고 인물 표정으로 보여준다" } });
+    expect(within(panel).getByRole("button", { name: "다시 시도" }).hasAttribute("disabled")).toBe(false);
+  });
+
+  /** SAFETY.INPUT / SAFETY.OUTPUT: the same request never passes, so a paid button here sells a known outcome. */
+  it("offers no retry at all when the provider says the request cannot pass", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": failedWith({ category: "unknown", providerCode: "SAFETY.INPUT.01", remedy: "not_retryable", billedOnFailure: false }),
+    }));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    await screen.findByTestId("episode-video-failed-scenes");
+    expect(screen.queryByTestId("episode-video-failed-retry-2")).toBeNull();
+    expect(screen.getByTestId("episode-video-failed-not-retryable-2").textContent).toContain("같은 요청으로는 통과하지 않습니다");
+  });
+
+  /**
+   * 🔴 The billing sentence is asymmetric on purpose.
+   *
+   * A record stored before `failure_code` existed reports `billedOnFailure: false` for having no code, not for
+   * having been free. A wrong "청구되지 않습니다" costs money; a wrong "청구됩니다" costs a moment. So the
+   * sentence is withheld on a false rather than inverted.
+   */
+  it("does not turn a not-billed failure into a promise that nothing was charged", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": failedWith({ category: "timeout", remedy: "retry", billedOnFailure: false }),
+    }));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    await screen.findByTestId("episode-video-failed-scenes");
+    fireEvent.click(screen.getByTestId("episode-video-failed-retry-2"));
+
+    const remedy = await screen.findByTestId("episode-video-failed-retry-remedy-2");
+    expect(remedy.textContent).toContain("그대로 다시 보내도 됩니다");
+    expect(screen.queryByTestId("episode-video-failed-retry-billing-2")).toBeNull();
+    expect(document.body.textContent).not.toContain("청구되지 않");
+    // Nothing is held back: this failure has no input to change.
+    const panel = screen.getByTestId("episode-video-failed-retry-confirm-2");
+    expect(within(panel).getByRole("button", { name: "다시 시도" }).hasAttribute("disabled")).toBe(false);
+  });
+
+  /** A response from a build with no `sceneFailures` must behave exactly as it did — absence is not an answer. */
+  it("keeps the pre-contract wording when the response carries no failure detail", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": {
+        paidProvider: true, jobId: "job", status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2],
+        sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
+        sceneErrors: { 2: "An unexpected error occurred." },
+      },
+    }));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    await screen.findByTestId("episode-video-failed-scenes");
+    fireEvent.click(screen.getByTestId("episode-video-failed-retry-2"));
+
+    expect((await screen.findByTestId("episode-video-failed-retry-billing-2")).textContent).toContain("실패해도 이 시도분은 청구됩니다");
+    expect(screen.getByTestId("episode-video-failed-retry-remedy-2").textContent).toContain("같은 이유로 다시 실패할 수 있습니다");
+    const panel = screen.getByTestId("episode-video-failed-retry-confirm-2");
+    expect(within(panel).getByRole("button", { name: "다시 시도" }).hasAttribute("disabled")).toBe(false);
   });
 
   it("fetches the clips already generated without regenerating any, and names the scenes it could not fetch", async () => {

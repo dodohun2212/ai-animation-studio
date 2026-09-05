@@ -4,6 +4,7 @@ import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { archiveProject, getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
+import { PHOTO_CARD_STEPS, isPhotoCardSkippedScreen } from "../utils/photoCardSteps.js";
 import { projectTypeLabel, workflowStateLabel } from "../utils/workflowStateLabels.js";
 import { ArchiveProjectDialog } from "./ArchiveProjectDialog.js";
 import { Spinner } from "./Spinner.js";
@@ -55,6 +56,22 @@ const secondaryButton =
 /** Maps a project's current workflow state to the single screen that continues it, matching the fixed product flow. */
 /** `label` is the complete button text — each case phrases its own lead-in, since "이어서 진행하기" only fits an in-progress state, not a finished one. */
 function resumeTarget(project: Project): ResumeTarget | null {
+  /*
+   * A 명언 카드 first, because the states below are the story's and a card wears them without having lived
+   * them: `photo-card.service.ts` writes one straight to VideosApproved. Read through the switch, a card at an
+   * earlier state would be sent to 대본 지시문 확인 — a screen the router answers with "명언 카드에는 없는
+   * 단계입니다", which is the app arguing with itself over its own biggest button.
+   *
+   * Merging is genuinely the card's first step and the notice screen's own button already leads there, so this
+   * is the same destination said in one more place rather than a new claim. Failed and cancelled keep the null
+   * the switch gives them: there is nothing to continue.
+   */
+  if (project.photoCard === true) {
+    if (project.workflowState === WorkflowState.Failed || project.workflowState === WorkflowState.Cancelled) return null;
+    return project.workflowState === WorkflowState.Completed
+      ? { screen: "videoMerge", label: "최종 영상 결과 보기" }
+      : { screen: "videoMerge", label: `이어서 진행하기 · ${PHOTO_CARD_STEPS[0].label}` };
+  }
   switch (project.workflowState) {
     case WorkflowState.Init:
     case WorkflowState.Ready:
@@ -138,6 +155,14 @@ export function ProjectDetail({
     return () => { cancelled = true; };
   }, [projectId]);
 
+  /*
+   * Only true on a loaded project. While the read is in flight `state.status` is not "success", so nothing is
+   * hidden on a guess — the buttons render as they always did and disappear only once the app knows the
+   * project is a card. Hiding a real screen on an unknown is the more expensive mistake of the two.
+   */
+  const photoCard = state.status === "success" && state.project.photoCard === true;
+  const skipped = (screenName: string): boolean => photoCard && isPhotoCardSkippedScreen(screenName);
+
   useEffect(() => {
     let cancelled = false;
     setState({ status: "loading" });
@@ -205,7 +230,14 @@ export function ProjectDetail({
             <button type="button" className={secondaryButton} onClick={() => onOpenSettings(projectId)}>
               프로젝트 설정
             </button>
-            {state.project.scenes.length > 0 && (
+            {/*
+              * Withheld for a card, not because the data is missing — a card does have a scene row and a
+              * narration string, which is exactly why these two rendered — but because the router replaces
+              * both screens with 명언 카드에는 없는 단계입니다. 캡틴D pressed 장면 편집 on 명언_전인미답 and
+              * got that sentence. One list in photoCardSteps.ts decides both ends, so removing a name from it
+              * brings the button back on its own.
+              */}
+            {state.project.scenes.length > 0 && !skipped("sceneEdit") && (
               <button
                 type="button"
                 data-testid="open-scene-edit"
@@ -215,7 +247,7 @@ export function ProjectDetail({
                 장면 편집
               </button>
             )}
-            {narrationInUse !== false && state.project.scenes.some((scene) => typeof scene.narration === "string" && scene.narration.trim()) && (
+            {narrationInUse !== false && !skipped("narrationReview") && state.project.scenes.some((scene) => typeof scene.narration === "string" && scene.narration.trim()) && (
               <button
                 type="button"
                 data-testid="open-narration-review"

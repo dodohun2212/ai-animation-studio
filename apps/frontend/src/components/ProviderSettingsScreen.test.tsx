@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { DEFAULT_VIDEO_MODEL, VIDEO_MODEL_OPTIONS } from "@ai-animation-studio/shared";
+
 import { jsonResponse, makeMonthlyBudget, makeProviderStatus } from "../api/testUtils.js";
 import { ProviderSettingsScreen } from "./ProviderSettingsScreen.js";
 
@@ -23,6 +25,12 @@ function routingInstagramAside(providerFetch: (url: RequestInfo | URL, init?: Re
 
 /** Every case here is about the credential cards; the budgets just have to be present and well-formed. */
 const monthlyBudgets = [makeMonthlyBudget({ provider: "openai" }), makeMonthlyBudget({ provider: "runway" })];
+/**
+ * Required by the contract, so present in every fixture here for the same reason the budgets are: a settings
+ * response without it is not one this app produces, and the client refuses it rather than rendering a model
+ * picker with no price in it.
+ */
+const videoModel = { selected: DEFAULT_VIDEO_MODEL, isDefault: true, options: VIDEO_MODEL_OPTIONS };
 
 describe("ProviderSettingsScreen", () => {
   afterEach(() => {
@@ -31,7 +39,7 @@ describe("ProviderSettingsScreen", () => {
 
   it("shows loading, then both provider cards on success", async () => {
     const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" })];
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { providers, monthlyBudgets })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { providers, monthlyBudgets, videoModel })));
     render(<ProviderSettingsScreen onBack={() => {}} />);
 
     expect(screen.getByText("불러오는 중...")).toBeTruthy();
@@ -73,7 +81,7 @@ describe("ProviderSettingsScreen", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(500, { code: "SETTINGS_STORAGE_ERROR", message: "실패" }))
-      .mockResolvedValueOnce(jsonResponse(200, { providers, monthlyBudgets }));
+      .mockResolvedValueOnce(jsonResponse(200, { providers, monthlyBudgets, videoModel }));
     vi.stubGlobal("fetch", routingInstagramAside(fetchMock));
     render(<ProviderSettingsScreen onBack={() => {}} />);
 
@@ -88,7 +96,7 @@ describe("ProviderSettingsScreen", () => {
     const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" })];
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { providers, monthlyBudgets }))
+      .mockResolvedValueOnce(jsonResponse(200, { providers, monthlyBudgets, videoModel }))
       .mockResolvedValueOnce(jsonResponse(500, { code: "SETTINGS_STORAGE_ERROR", message: "internal detail, not shown" }));
     vi.stubGlobal("fetch", routingInstagramAside(fetchMock));
     render(<ProviderSettingsScreen onBack={() => {}} />);
@@ -117,7 +125,7 @@ describe("ProviderSettingsScreen", () => {
     });
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { providers: initial, monthlyBudgets }))
+      .mockResolvedValueOnce(jsonResponse(200, { providers: initial, monthlyBudgets, videoModel }))
       .mockResolvedValueOnce(jsonResponse(200, { provider: disconnectedOpenAi }));
     vi.stubGlobal("fetch", routingInstagramAside(fetchMock));
     render(<ProviderSettingsScreen onBack={() => {}} />);
@@ -142,7 +150,7 @@ describe("ProviderSettingsScreen", () => {
     let resolveOpenAi: (response: Response) => void = () => {};
     let resolveRunway: (response: Response) => void = () => {};
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { providers: initial, monthlyBudgets }))
+      .mockResolvedValueOnce(jsonResponse(200, { providers: initial, monthlyBudgets, videoModel }))
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveOpenAi = resolve; }))
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveRunway = resolve; }));
     vi.stubGlobal("fetch", routingInstagramAside(fetchMock));
@@ -177,7 +185,7 @@ describe("ProviderSettingsScreen", () => {
     ];
     let resolveRefresh: (response: Response) => void = () => {};
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { providers, monthlyBudgets }))
+      .mockResolvedValueOnce(jsonResponse(200, { providers, monthlyBudgets, videoModel }))
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveRefresh = resolve; }));
     vi.stubGlobal("fetch", routingInstagramAside(fetchMock));
     render(<ProviderSettingsScreen onBack={() => {}} />);
@@ -187,7 +195,7 @@ describe("ProviderSettingsScreen", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "이 앱에서 사용 안 함" })[0] as HTMLElement);
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    resolveRefresh(jsonResponse(200, { providers, monthlyBudgets }));
+    resolveRefresh(jsonResponse(200, { providers, monthlyBudgets, videoModel }));
     await waitFor(() => expect(screen.getByRole("button", { name: "새로고침" })).not.toBeDisabled());
   });
 
@@ -199,7 +207,7 @@ describe("ProviderSettingsScreen", () => {
     const disconnected = { ...providers[0], connected: false };
     let resolveMutation: (response: Response) => void = () => {};
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { providers, monthlyBudgets }))
+      .mockResolvedValueOnce(jsonResponse(200, { providers, monthlyBudgets, videoModel }))
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveMutation = resolve; }));
     vi.stubGlobal("fetch", routingInstagramAside(fetchMock));
     render(<ProviderSettingsScreen onBack={() => {}} />);
@@ -215,7 +223,7 @@ describe("ProviderSettingsScreen", () => {
 
   it("calls onBack when the back button is clicked", async () => {
     const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" })];
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { providers, monthlyBudgets })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { providers, monthlyBudgets, videoModel })));
     const onBack = vi.fn();
     render(<ProviderSettingsScreen onBack={onBack} />);
 
@@ -234,7 +242,7 @@ describe("ProviderSettingsScreen", () => {
     vi.stubGlobal("fetch", vi.fn().mockImplementation((url: unknown) => Promise.resolve(
       String(url).includes("/instagram/")
         ? jsonResponse(500, { code: "INSTAGRAM_STORAGE_ERROR", message: "raw backend detail" })
-        : jsonResponse(200, { providers, monthlyBudgets }),
+        : jsonResponse(200, { providers, monthlyBudgets, videoModel }),
     )));
     render(<ProviderSettingsScreen onBack={() => {}} />);
 
@@ -251,11 +259,49 @@ describe("ProviderSettingsScreen", () => {
     vi.stubGlobal("fetch", vi.fn().mockImplementation((url: unknown) => Promise.resolve(
       String(url).includes("/instagram/")
         ? jsonResponse(200, { appConfigured: true, tokenStored: false, callbackLoginAvailable: false })
-        : jsonResponse(200, { providers, monthlyBudgets }),
+        : jsonResponse(200, { providers, monthlyBudgets, videoModel }),
     )));
     render(<ProviderSettingsScreen onBack={() => {}} />);
 
     expect(await screen.findByTestId("instagram-connection")).toBeTruthy();
     expect(screen.queryByTestId("instagram-unavailable")).toBeNull();
+  });
+
+  /**
+   * 캡틴D: "모델 교체는 내가 원할 때 가능하게 기능만 만들어놔."
+   *
+   * So the card renders the server's own option list rather than a hardcoded row — one entry today, a real
+   * choice the day there are two, with no further work. The price is asserted alongside because a picker whose
+   * price does not move with the model is the failure the whole shape exists to prevent: every estimate
+   * downstream multiplies this rate.
+   */
+  it("shows the video model with its price, and says plainly that there is only one to pick", async () => {
+    const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" })];
+    vi.stubGlobal("fetch", routingInstagramAside(vi.fn().mockResolvedValue(jsonResponse(200, { providers, monthlyBudgets, videoModel }))));
+    render(<ProviderSettingsScreen onBack={() => {}} />);
+
+    const card = await screen.findByTestId("video-model-card");
+    expect(card.textContent).toContain(VIDEO_MODEL_OPTIONS[0]!.label);
+    // $0.05/second is what reproduces the $0.25 five-second scene this machine's ledger has been charging.
+    expect(card.textContent).toContain("5초 장면 $0.25");
+    expect(card.textContent).toContain("10초 장면 $0.50");
+    expect(screen.getByTestId("video-model-single")).toBeTruthy();
+    expect(screen.getByTestId("video-model-default")).toBeTruthy();
+    expect((screen.getByRole("radio", { name: new RegExp(VIDEO_MODEL_OPTIONS[0]!.label) }) as HTMLInputElement).checked).toBe(true);
+  });
+
+  /**
+   * A settings response with no `videoModel` is not one this app produces — the field is required by the
+   * contract. Refusing it is deliberate: the alternative is a picker rendering a price from nothing, in front
+   * of the button that spends the month's budget.
+   */
+  it("refuses a settings response that carries no video model", async () => {
+    const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" })];
+    vi.stubGlobal("fetch", routingInstagramAside(vi.fn().mockResolvedValue(jsonResponse(200, { providers, monthlyBudgets }))));
+    render(<ProviderSettingsScreen onBack={() => {}} />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.getAttribute("data-error-code")).toBe("CLIENT_MALFORMED_RESPONSE");
+    expect(screen.queryByTestId("video-model-card")).toBeNull();
   });
 });

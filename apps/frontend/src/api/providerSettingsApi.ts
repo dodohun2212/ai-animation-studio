@@ -1,7 +1,12 @@
 import {
   PROVIDER_CREDENTIAL_KINDS,
   API_ROUTES,
+  VIDEO_MODELS,
   type GetProviderSettingsResponse,
+  type SaveVideoModelResponse,
+  type VideoModel,
+  type VideoModelOption,
+  type VideoModelSetting,
   type ProviderCredentialKind,
   type ProviderCredentialStatus,
   type ProviderMonthlyBudget,
@@ -9,6 +14,7 @@ import {
   type SaveProviderMonthlyBudgetResponse,
   type SetProviderConnectionResponse,
 } from "@ai-animation-studio/shared";
+import { INTERNAL_ERROR, SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
 
 export class ProviderSettingsApiError extends Error {
   readonly code: string;
@@ -24,11 +30,6 @@ export class ProviderSettingsApiError extends Error {
 
 const NETWORK_ERROR = { code: "CLIENT_NETWORK_ERROR", message: "서버에 연결하지 못했습니다. 네트워크 상태를 확인해주세요." };
 const MALFORMED_RESPONSE_ERROR = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 해석하지 못했습니다." };
-/** Same distinction as projectsApi: a 5xx with no backend error shape means the server never answered. */
-const SERVER_UNAVAILABLE_ERROR = {
-  code: "CLIENT_SERVER_UNAVAILABLE",
-  message: "서버가 응답하지 않습니다. 서버가 재시작 중이거나 꺼져 있을 수 있습니다. 잠시 후 다시 시도해 주세요.",
-};
 const UNKNOWN_ERROR = { code: "CLIENT_UNKNOWN_ERROR", message: "요청을 처리하지 못했습니다. 잠시 후 다시 시도해주세요." };
 
 const PROVIDER_KINDS: readonly ProviderCredentialKind[] = PROVIDER_CREDENTIAL_KINDS;
@@ -48,6 +49,7 @@ const CLIENT_ERROR_MESSAGES: Record<string, string> = {
   [NETWORK_ERROR.code]: NETWORK_ERROR.message,
   [MALFORMED_RESPONSE_ERROR.code]: MALFORMED_RESPONSE_ERROR.message,
   [SERVER_UNAVAILABLE_ERROR.code]: SERVER_UNAVAILABLE_ERROR.message,
+  [INTERNAL_ERROR.code]: INTERNAL_ERROR.message,
   [UNKNOWN_ERROR.code]: UNKNOWN_ERROR.message,
 };
 
@@ -116,8 +118,43 @@ function isProviderMonthlyBudget(value: unknown): value is ProviderMonthlyBudget
     && (value.spendUnavailable === undefined || value.spendUnavailable === true);
 }
 
+/**
+ * One model, checked because its price is about to be quoted.
+ *
+ * `pricePerSecondUsd` is what every estimate on the paid screens multiplies — the confirmation panel, the
+ * retry notice, the preflight that decides whether a run fits the month. A number that arrived unchecked here
+ * becomes a dollar figure in front of a button, and quoting money low is the one direction that must never be
+ * wrong (domain.ts says so about this same number).
+ *
+ * 🔴 `id` is compared against the contract's own `VIDEO_MODELS`, never a list retyped here: a model added to
+ * the contract must not be rejected by a copy in this file that never heard of it. That is the whole point of
+ * a picker — it has to work the first time a second model exists.
+ */
+function isVideoModelOption(value: unknown): value is VideoModelOption {
+  return isRecord(value)
+    && (VIDEO_MODELS as readonly string[]).includes(value.id as string)
+    && typeof value.label === "string" && value.label.length > 0
+    && isMoney(value.pricePerSecondUsd) && value.pricePerSecondUsd > 0
+    && Array.isArray(value.ratios) && value.ratios.every((ratio) => typeof ratio === "string" && ratio.length > 0)
+    && typeof value.maxDurationSeconds === "number" && Number.isFinite(value.maxDurationSeconds) && value.maxDurationSeconds > 0;
+}
+
+/**
+ * The choice and the options together, with the selected one required to be among them.
+ *
+ * A `selected` the option list does not contain is the shape that renders a picker with nothing chosen and a
+ * price of whichever entry happened to be first — a screen quoting one model's rate for another. It is not a
+ * state this app produces, so it is refused rather than rendered.
+ */
+function isVideoModelSetting(value: unknown): value is VideoModelSetting {
+  if (!isRecord(value) || typeof value.isDefault !== "boolean") return false;
+  if (!Array.isArray(value.options) || value.options.length === 0 || !value.options.every(isVideoModelOption)) return false;
+  return (value.options as VideoModelOption[]).some((option) => option.id === value.selected);
+}
+
 function isGetProviderSettingsResponse(value: unknown): value is GetProviderSettingsResponse {
   if (!isRecord(value) || !Array.isArray(value.providers) || !Array.isArray(value.monthlyBudgets)) return false;
+  if (!isVideoModelSetting(value.videoModel)) return false;
   if (!value.providers.every(isProviderCredentialStatus) || !value.monthlyBudgets.every(isProviderMonthlyBudget)) return false;
   const seenProviders = new Set((value.providers as ProviderCredentialStatus[]).map((item) => item.provider));
   if (seenProviders.size !== value.providers.length) return false;
@@ -182,7 +219,7 @@ async function requestJson<T>(
 
   if (!response.ok) {
     const apiError = toApiErrorShape(body);
-    if (apiError.code === MALFORMED_RESPONSE_ERROR.code && response.status >= 500) {
+    if (isServerUnavailable(response.status, apiError.code)) {
       throw new ProviderSettingsApiError(SERVER_UNAVAILABLE_ERROR.code, SERVER_UNAVAILABLE_ERROR.message);
     }
     throw new ProviderSettingsApiError(apiError.code, apiError.message, apiError.details);
@@ -230,6 +267,21 @@ export async function disconnectProvider(provider: ProviderCredentialKind): Prom
     API_ROUTES.providerDisconnect(provider),
     { method: "POST" },
     isSetProviderConnectionResponseFor(provider),
+  );
+}
+
+/**
+ * Which model this computer uses from now on.
+ *
+ * The response carries the whole setting back rather than an acknowledgement, and the screen renders that
+ * instead of what it optimistically assumed: the price beside each name comes from the server's own option
+ * list, so a save that lands differently from what was pressed must show as what landed.
+ */
+export async function saveVideoModel(model: VideoModel): Promise<SaveVideoModelResponse> {
+  return requestJson(
+    API_ROUTES.videoModelSetting,
+    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model }) },
+    (value: unknown): value is SaveVideoModelResponse => isRecord(value) && isVideoModelSetting(value.videoModel),
   );
 }
 

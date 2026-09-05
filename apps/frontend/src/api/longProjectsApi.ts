@@ -5,6 +5,8 @@ import {
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
   RUNWAY_CLIP_DURATIONS,
+  isSha256Hex,
+  providerTaskFailure,
   type ArchiveProjectRequest,
   type ArchiveProjectResponse,
   type BudgetPreview,
@@ -95,6 +97,7 @@ import {
   FINAL_VIDEO_RELATIVE_PATH,
 } from "@ai-animation-studio/shared";
 import { BUDGET_LEDGER_UNREADABLE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "./budgetLedgerError.js";
+import { isSceneFailureMap } from "./contractGuards.js";
 
 export class LongProjectsApiError extends Error {
   readonly code: string;
@@ -191,9 +194,25 @@ const SCENE_ERROR_CATEGORY_MESSAGES: Record<string, string> = {
 };
 const SCENE_ERROR_FALLBACK = "영상 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.";
 
-/** Maps a per-scene failure code (see LongEpisodeVideoProgress.sceneErrors) to a safe, actionable
- * Korean message. Falls back to a generic message for any code outside the known set. */
-export function episodeSceneErrorMessage(code: string | undefined): string {
+/**
+ * The sentence for one failed scene — the provider's code first, this app's categories after.
+ *
+ * 🔴 A Runway task failure's `category` is the provider's own English sentence
+ * ("An unexpected error occurred. (Runway code: INTERNAL.BAD_OUTPUT.CODE01)"), so it missed the table above
+ * every time and fell through to "영상 생성에 실패했습니다. 잠시 후 다시 시도해 주세요." That is the sentence
+ * that was followed twice and charged twice on 2026-09-05 — and since the remedy advice shipped, it has been
+ * sitting directly above it saying the opposite. One failure, two sentences, and no way to tell which is right.
+ *
+ * The codes and their causes live in the contract's `PROVIDER_TASK_FAILURES`, not here: the adapter already
+ * decides `remedy` from those same strings, and a second list keyed on them in this file is the copy this
+ * repository keeps finding — one that would drift in the worst direction.
+ *
+ * Cause only. Whether the attempt was charged is `billedOnFailure`'s sentence to make, one screen away, and
+ * two sentences about one person's money is how the two end up disagreeing.
+ */
+export function episodeSceneErrorMessage(code: string | undefined, providerCode?: string): string {
+  const known = providerTaskFailure(providerCode);
+  if (known) return known.message;
   if (!code) return SCENE_ERROR_FALLBACK;
   return SCENE_ERROR_CATEGORY_MESSAGES[code] ?? SCENE_ERROR_FALLBACK;
 }
@@ -328,8 +347,9 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-const DIGEST_PATTERN = /^[a-f0-9]{64}$/;
-const isDigest = (value: unknown): value is string => typeof value === "string" && DIGEST_PATTERN.test(value);
+/* The contract's own check. Retyping the pattern here is how one of nine copies loses its anchors and
+   starts accepting a digest with anything appended — a fingerprint comparison that can no longer fail. */
+const isDigest = isSha256Hex;
 
 const ASPECT_RATIO_SET: ReadonlySet<string> = new Set(ASPECT_RATIOS);
 const OUTLINE_STATUS_SET: ReadonlySet<string> = new Set(LONG_EPISODE_OUTLINE_STATUSES);
@@ -607,7 +627,7 @@ function isEpisodeVideoProgress(value: unknown): value is LongEpisodeVideoProgre
     && Array.isArray(value.sceneNumbers) && value.sceneNumbers.every(isSceneNumber)
     && isNonEmptyString(value.jobId) && (value.status === "created" || value.status === "running" || value.status === "succeeded" || value.status === "failed" || value.status === "interrupted")
     && (value.currentSceneNumber === undefined || isSceneNumber(value.currentSceneNumber)) && Array.isArray(value.completedSceneNumbers) && value.completedSceneNumbers.every(isSceneNumber)
-    && Array.isArray(value.failedSceneNumbers) && value.failedSceneNumbers.every(isSceneNumber) && isLongEpisodeDetail(value.episode) && isSceneErrorMap(value.sceneErrors);
+    && Array.isArray(value.failedSceneNumbers) && value.failedSceneNumbers.every(isSceneNumber) && isLongEpisodeDetail(value.episode) && isSceneErrorMap(value.sceneErrors) && isSceneFailureMap(value.sceneFailures);
 }
 /**
  * `paidProvider` again, and this is the response whose comment says why it is here at all: the screen shows a

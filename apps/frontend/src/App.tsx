@@ -40,6 +40,7 @@ import { ArchiveScreen } from "./components/ArchiveScreen.js";
 import { WorkflowGuideScreen } from "./components/WorkflowGuideScreen.js";
 import { NarrationReviewScreen } from "./components/NarrationReviewScreen.js";
 import { SceneEditScreen } from "./components/SceneEditScreen.js";
+import { PHOTO_CARD_SKIPPED_SCREEN_NAMES, PHOTO_CARD_STEPS } from "./utils/photoCardSteps.js";
 
 type Screen =
   | { name: "list" }
@@ -408,16 +409,17 @@ const SHORT_PIPELINE_CONTEXT_SCREENS = new Set<Screen["name"]>([
  *
  * Two steps are what a card actually has, and they are both real: choose the subtitle layout and music and
  * merge, then publish.
+ *
+ * 🔴 Both lists moved to utils/photoCardSteps.ts. The project detail screen needs the same answers — it was
+ * still offering 장면 편집 and 내레이션 확인 for a card, buttons whose only destination is the notice this
+ * router renders — and a second handwritten copy there is how the two would drift apart.
+ *
+ * The typed shapes stay here, and that is the point: assigning the plain names into `Screen["name"]` is where
+ * the compiler checks each one is a real screen. Renaming a screen breaks these two lines instead of quietly
+ * emptying the gate.
  */
-const PHOTO_CARD_PIPELINE: { name: Screen["name"]; label: string }[] = [
-  { name: "videoMerge", label: "자막·음악 정하고 영상 만들기" },
-  { name: "instagramPost", label: "게시물 준비" },
-];
-
-/** The story-only screens. Reachable by an old link or Back, so they explain themselves rather than 404-ing. */
-const PHOTO_CARD_SKIPPED_SCREENS = new Set<Screen["name"]>([
-  "storyPrompt", "mappingReview", "imageGeneration", "videoPreview", "videoWorkflow", "sceneEdit", "narrationReview",
-]);
+const PHOTO_CARD_PIPELINE: { name: Screen["name"]; label: string }[] = [...PHOTO_CARD_STEPS];
+const PHOTO_CARD_SKIPPED_SCREENS = new Set<Screen["name"]>(PHOTO_CARD_SKIPPED_SCREEN_NAMES);
 
 /** Merged and published is the only card state past the first step; everything else is still at it. */
 const PHOTO_CARD_REACH: Partial<Record<WorkflowState, number>> = {
