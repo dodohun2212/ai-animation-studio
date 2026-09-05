@@ -27,6 +27,31 @@ describe("long Story Bible API", () => {
     expect(fetchMock.mock.calls[3]?.[0]).toBe("/long-projects/long%20id/story-bible/secrets/SECRET%2F1");
   });
 
+  /**
+   * The link the PATCH exists to set was the one the response guard never looked at.
+   *
+   * isStoryBible validated the style link and walked past the protagonist one — on every response, including the
+   * one returned by the request that just changed it. This is not a cosmetic field: it decides which Folder an
+   * Episode's images are generated from, through the auto_protagonist mapping.
+   *
+   * "snapshot" is the sharp case. It is a valid policy for the style link and not for this one, so a guard
+   * written by copying the style predicate would accept it — and the screen would show a policy the server
+   * cannot honour here.
+   */
+  it("refuses a protagonist link whose version policy belongs to the style link", async () => {
+    const good = { ...bible, protagonistAssetLink: { assetId: "FOLDER-1", versionPolicy: "follow_latest", pinnedVersion: null } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { storyBible: good })));
+    await expect(getLongProjectStoryBible("long")).resolves.toMatchObject({ storyBible: { protagonistAssetLink: { versionPolicy: "follow_latest" } } });
+
+    const snapshot = { ...bible, protagonistAssetLink: { assetId: "FOLDER-1", versionPolicy: "snapshot", pinnedVersion: 1 } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { storyBible: snapshot })));
+    await expect(getLongProjectStoryBible("long")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+
+    const noAsset = { ...bible, protagonistAssetLink: { assetId: "", versionPolicy: "follow_latest", pinnedVersion: null } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { storyBible: noAsset })));
+    await expect(getLongProjectStoryBible("long")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+  });
+
   it("rejects malformed responses and never displays a raw backend message", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(409, { code: "STORY_BIBLE_ITEM_ALREADY_EXISTS", message: "raw internal detail" })));
     await expect(createLongStoryBibleItem("p", "secrets", { item: { name: "출생의 비밀" } })).rejects.toMatchObject({ code: "STORY_BIBLE_ITEM_ALREADY_EXISTS" });

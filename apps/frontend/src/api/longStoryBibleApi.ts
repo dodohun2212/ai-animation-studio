@@ -1,4 +1,4 @@
-import {
+import { type LongStoryBibleProtagonistLink,
   API_ROUTES,
   type CreateLongStoryBibleItemRequest,
   type CreateLongStoryBibleItemResponse,
@@ -63,6 +63,23 @@ function isStyleAssetLink(value: unknown): value is LongStoryBibleStyleAssetLink
     && Number.isInteger(value.pinnedVersion) && (value.pinnedVersion as number) >= 1;
 }
 
+/**
+ * The protagonist link, which nothing was checking.
+ *
+ * `isStoryBible` validated the style link and walked straight past this one, including on the response to the
+ * PATCH that sets it — so the one field that request exists to change was the one field never verified. It is
+ * not a cosmetic value either: this link is what an Episode's images are generated from, through the
+ * auto_protagonist mapping.
+ *
+ * Not a reuse of isStyleAssetLink, because the two are genuinely different: style allows "snapshot" and
+ * requires a pinned version number; this one allows only the two live policies and takes null.
+ */
+function isProtagonistAssetLink(value: unknown): value is LongStoryBibleProtagonistLink {
+  return isRecord(value) && isString(value.assetId) && value.assetId.trim().length > 0
+    && (value.versionPolicy === "pinned_version" || value.versionPolicy === "follow_latest")
+    && (value.pinnedVersion === null || (Number.isInteger(value.pinnedVersion) && (value.pinnedVersion as number) >= 1));
+}
+
 function isItem(value: unknown): value is LongStoryBibleItem {
   if (!isRecord(value) || !isString(value.id) || !value.id.trim()) return false;
   return ["name", "status", "description"].every((key) => value[key] === undefined || isString(value[key]))
@@ -73,6 +90,7 @@ function isItem(value: unknown): value is LongStoryBibleItem {
 function isStoryBible(value: unknown): value is LongStoryBible {
   if (!isRecord(value) || !isRecord(value.basic) || !isRecord(value.world) || !isString(value.updatedAt)) return false;
   return (value.styleAssetLink === undefined || isStyleAssetLink(value.styleAssetLink))
+    && (value.protagonistAssetLink === undefined || isProtagonistAssetLink(value.protagonistAssetLink))
     && COLLECTIONS.every((collection) => Array.isArray(value[collection]) && value[collection].every(isItem));
 }
 
