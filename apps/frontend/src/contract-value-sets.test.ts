@@ -165,25 +165,32 @@ describe("contract value sets are named once", () => {
  * imported — and the parser is checked below, so a contract reorganised out from under it fails instead of
  * quietly finding nothing.
  */
-describe("a contract's path constants are named once", () => {
+describe("a contract's single-value constants are named once", () => {
   async function contractPaths(): Promise<Map<string, string>> {
     const found = new Map<string, string>();
     for (const file of await collectSourceFiles(SHARED_SOURCE)) {
       const source = await fs.readFile(file, "utf8");
-      for (const match of source.matchAll(/export const ([A-Z][A-Z0-9_]*) = "([^"]*\/[^"]*)"/g)) found.set(match[1]!, match[2]!);
+      // Path-shaped or code-shaped: the two kinds that get retyped rather than imported. A screaming-snake
+      // value is an error code, and the one that prompted this had seven spellings of itself.
+      for (const match of source.matchAll(/export const ([A-Z][A-Z0-9_]*) = "([^"]*)"/g)) {
+        if (match[2]!.includes("/") || /^[A-Z][A-Z0-9_]{4,}$/.test(match[2]!)) found.set(match[1]!, match[2]!);
+      }
     }
     return found;
   }
 
   it("finds the constants it is supposed to be watching", async () => {
-    expect([...(await contractPaths()).keys()]).toContain("FINAL_VIDEO_RELATIVE_PATH");
+    expect([...(await contractPaths()).keys()]).toEqual(expect.arrayContaining(["FINAL_VIDEO_RELATIVE_PATH", "BUDGET_LEDGER_UNREADABLE_CODE"]));
   });
 
   it("has no source file retyping one of them", async () => {
     const paths = await contractPaths();
     const offenders: string[] = [];
     for (const file of await collectSourceFiles(FRONTEND_SOURCE)) {
-      const source = await fs.readFile(file, "utf8");
+      // Union members are skipped, and only they: a `type Code = ... | "SOME_CODE"` line is checked by the
+      // compiler already — the factory passes the constant into a constructor typed by that union, so a value
+      // the union no longer contains does not build. What is unguarded is a factory writing the bare string.
+      const source = (await fs.readFile(file, "utf8")).split(String.fromCharCode(10)).filter((line) => !line.includes("|")).join(String.fromCharCode(10));
       for (const [name, value] of paths) {
         if (source.includes(`"${value}"`)) offenders.push(`${path.relative(FRONTEND_SOURCE, file)} writes out ${name}'s value — import ${name} instead`);
       }

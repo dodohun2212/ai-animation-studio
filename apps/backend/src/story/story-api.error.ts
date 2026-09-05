@@ -1,5 +1,6 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { ApiError } from "@ai-animation-studio/shared";
+import { BUDGET_LEDGER_UNREADABLE_CODE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "../providers/budget-ledger.js";
 
 type StoryErrorCode = "INVALID_REQUEST" | "PROJECT_NOT_FOUND" | "STORY_PROMPT_STALE" | "STORY_PROMPT_STORAGE_ERROR" | "STORY_GENERATION_NOT_ALLOWED" | "STORY_GENERATION_FAILED" | "STORY_BUDGET_EXCEEDED" | "STORY_PROVIDER_ERROR" | "STORY_REGENERATION_NOT_ALLOWED" | "BUDGET_LEDGER_UNREADABLE" | "PROJECT_LOCKED";
 
@@ -35,7 +36,7 @@ export const storyRegenerationNotAllowed = () =>
  * (docs/06_DECISIONS.md D-036).
  */
 export const storyBudgetLedgerUnreadable = () =>
-  new StoryApiException("BUDGET_LEDGER_UNREADABLE", "Monthly spend could not be read, so no paid request was sent.", HttpStatus.CONFLICT);
+  new StoryApiException(BUDGET_LEDGER_UNREADABLE_CODE, BUDGET_LEDGER_UNREADABLE_MESSAGE, HttpStatus.CONFLICT);
 
 /** A Story generation for this project is already running — see imageGenerationLocked for why this code and why it refuses instead of queuing. */
 export const storyLocked = () =>

@@ -1,5 +1,6 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { ApiError } from "@ai-animation-studio/shared";
+import { BUDGET_LEDGER_UNREADABLE_CODE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "../providers/budget-ledger.js";
 
 type ImageErrorCode = "INVALID_REQUEST" | "IMAGE_GENERATION_NOT_ALLOWED" | "ASSET_MAPPING_REVIEW_REQUIRED" | "IMAGE_GENERATION_FAILED" | "IMAGE_STORAGE_ERROR" | "IMAGE_BUDGET_EXCEEDED" | "IMAGE_PROVIDER_ERROR" | "IMAGE_CONTENT_UNAVAILABLE" | "BUDGET_LEDGER_UNREADABLE" | "PROJECT_LOCKED";
 
@@ -35,7 +36,7 @@ export const imageContentUnavailable = () =>
  * (docs/06_DECISIONS.md D-036).
  */
 export const imageBudgetLedgerUnreadable = () =>
-  new ImageApiException("BUDGET_LEDGER_UNREADABLE", "Monthly spend could not be read, so no paid request was sent.", HttpStatus.CONFLICT);
+  new ImageApiException(BUDGET_LEDGER_UNREADABLE_CODE, BUDGET_LEDGER_UNREADABLE_MESSAGE, HttpStatus.CONFLICT);
 
 /**
  * A generation for this project is already running.

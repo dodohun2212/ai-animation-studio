@@ -13,6 +13,6 @@
  * sends the reader to press a button that cannot succeed until a file is fixed. A code with no label is worse
  * than no code at all here, which is why the label lands before the server starts sending the code.
  */
-export const BUDGET_LEDGER_UNREADABLE = "BUDGET_LEDGER_UNREADABLE";
+export { BUDGET_LEDGER_UNREADABLE_CODE as BUDGET_LEDGER_UNREADABLE } from "@ai-animation-studio/shared";
 export const BUDGET_LEDGER_UNREADABLE_MESSAGE =
   "사용 기록 파일을 읽을 수 없어 이번 달 사용액을 확인하지 못했습니다. 확인하기 전에는 유료 요청을 보내지 않습니다. 다시 눌러도 같은 결과이니 파일을 확인해 주세요.";

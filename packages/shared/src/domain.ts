@@ -202,6 +202,17 @@ export const FINAL_VIDEO_RELATIVE_PATH = "videos/final/instagram_reel.mp4";
  * Here rather than in either app because both have to agree about them, and this is the one publish that cannot
  * be taken back.
  */
+/**
+ * The one code every module sends when the spend ledger cannot be read.
+ *
+ * docs/06_DECISIONS.md D-036 states the rule as "every module sends this one code so the person reads one
+ * sentence" — and it was held up by seven separate spellings of the string: five error factories writing it
+ * out, the backend's own named constant, and the frontend's. Six of them agreeing is not the same as one of
+ * them existing; the seventh disagreeing is a paid path answering a code no screen knows, which falls back to
+ * a generic message about a failure that is specifically not generic.
+ */
+export const BUDGET_LEDGER_UNREADABLE_CODE = "BUDGET_LEDGER_UNREADABLE";
+
 export const INSTAGRAM_CAPTION_MAX = 2_200;
 export const INSTAGRAM_HASHTAG_MAX = 30;
 

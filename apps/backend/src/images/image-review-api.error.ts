@@ -1,5 +1,6 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { ApiError } from "@ai-animation-studio/shared";
+import { BUDGET_LEDGER_UNREADABLE_CODE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "../providers/budget-ledger.js";
 
 type ImageReviewErrorCode =
   | "INVALID_REQUEST"
@@ -47,6 +48,6 @@ export const imageReviewProviderError = (category: string, message: string) =>
  * press a button that was certain to refuse again (docs/06_DECISIONS.md D-036).
  */
 export const imageReviewBudgetLedgerUnreadable = () =>
-  new ImageReviewApiException("BUDGET_LEDGER_UNREADABLE", "Monthly spend could not be read, so no paid request was sent.", HttpStatus.CONFLICT);
+  new ImageReviewApiException(BUDGET_LEDGER_UNREADABLE_CODE, BUDGET_LEDGER_UNREADABLE_MESSAGE, HttpStatus.CONFLICT);
 export const imageReviewLocked = () =>
   new ImageReviewApiException("PROJECT_LOCKED", "This scene's image is already being regenerated.", HttpStatus.CONFLICT);

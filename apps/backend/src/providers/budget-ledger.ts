@@ -17,8 +17,10 @@ export function isBudgetLedgerUnreadable(error: unknown): boolean {
   return error instanceof OpenAiBudgetLedgerUnreadableError || error instanceof RunwayBudgetLedgerUnreadableError;
 }
 
-/** The single code both sides agree on. The frontend keeps the sentence; the server only ever sends this string. */
-export const BUDGET_LEDGER_UNREADABLE_CODE = "BUDGET_LEDGER_UNREADABLE";
+/** The single code both sides agree on, from the contract. The frontend keeps the sentence; the server only
+ * ever sends this string — and the English one below, which five error factories used to spell out each. */
+export { BUDGET_LEDGER_UNREADABLE_CODE } from "@ai-animation-studio/shared";
+export const BUDGET_LEDGER_UNREADABLE_MESSAGE = "Monthly spend could not be read, so no paid request was sent.";
 
 /**
  * Writes down money that is already gone, and never destroys what it bought.
