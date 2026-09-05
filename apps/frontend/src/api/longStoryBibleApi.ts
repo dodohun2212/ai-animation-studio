@@ -6,7 +6,11 @@ import { type LongStoryBibleProtagonistLink,
   type DuplicateLongStoryBibleItemResponse,
   type GetLongProjectStoryBibleResponse,
   type LongStoryBible,
+  LONG_STORY_BIBLE_PROTAGONIST_LINK_POLICIES,
+  LONG_STORY_BIBLE_STYLE_LINK_POLICIES,
   type LongStoryBibleCollection,
+  type LongStoryBibleProtagonistLinkPolicy,
+  type LongStoryBibleStyleLinkPolicy,
   type LongStoryBibleItem,
   type LongStoryBibleStyleAssetLink,
   type SearchLongStoryBibleItemsResponse,
@@ -59,7 +63,7 @@ const isStringArray = (value: unknown): value is string[] => Array.isArray(value
 
 function isStyleAssetLink(value: unknown): value is LongStoryBibleStyleAssetLink {
   return isRecord(value) && isString(value.assetId) && value.assetId.trim().length > 0
-    && (value.versionPolicy === "pinned_version" || value.versionPolicy === "follow_latest" || value.versionPolicy === "snapshot")
+    && LONG_STORY_BIBLE_STYLE_LINK_POLICIES.includes(value.versionPolicy as LongStoryBibleStyleLinkPolicy)
     && Number.isInteger(value.pinnedVersion) && (value.pinnedVersion as number) >= 1;
 }
 
@@ -72,11 +76,13 @@ function isStyleAssetLink(value: unknown): value is LongStoryBibleStyleAssetLink
  * auto_protagonist mapping.
  *
  * Not a reuse of isStyleAssetLink, because the two are genuinely different: style allows "snapshot" and
- * requires a pinned version number; this one allows only the two live policies and takes null.
+ * requires a pinned version number; this one allows only the two live policies and takes null. Both sets come
+ * from the contract now — they used to be written out here, one `||` chain each, and a policy added to either
+ * union would have compiled on both sides and been refused at runtime by this file alone.
  */
 function isProtagonistAssetLink(value: unknown): value is LongStoryBibleProtagonistLink {
   return isRecord(value) && isString(value.assetId) && value.assetId.trim().length > 0
-    && (value.versionPolicy === "pinned_version" || value.versionPolicy === "follow_latest")
+    && LONG_STORY_BIBLE_PROTAGONIST_LINK_POLICIES.includes(value.versionPolicy as LongStoryBibleProtagonistLinkPolicy)
     && (value.pinnedVersion === null || (Number.isInteger(value.pinnedVersion) && (value.pinnedVersion as number) >= 1));
 }
 

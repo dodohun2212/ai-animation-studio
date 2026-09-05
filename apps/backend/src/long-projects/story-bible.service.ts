@@ -21,6 +21,12 @@ import type {
   UpdateLongStoryBibleItemRequest,
   UpdateLongStoryBibleItemResponse,
 } from "@ai-animation-studio/shared";
+import {
+  LONG_STORY_BIBLE_PROTAGONIST_LINK_POLICIES as protagonistPolicies,
+  LONG_STORY_BIBLE_STYLE_LINK_POLICIES as stylePolicies,
+  type LongStoryBibleProtagonistLinkPolicy,
+  type LongStoryBibleStyleLinkPolicy,
+} from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId, storyBibleItemExists, storyBibleItemNotFound } from "./long-project-api.error.js";
@@ -46,7 +52,7 @@ const allowed: Record<LongStoryBibleCollection, readonly string[]> = {
 const camel: Record<string, string> = { reveal_available_episode: "revealAvailableEpisode" };
 const snake: Record<string, string> = Object.fromEntries(Object.entries(camel).map(([key, value]) => [value, key]));
 const safeItemId = /^[\p{L}\p{N}_-]+$/u;
-const stylePolicies = ["pinned_version", "follow_latest", "snapshot"] as const;
+
 
 /**
  * `retired` carries the character/location/prop arrays of an older Story Bible through a save untouched.
@@ -131,7 +137,7 @@ export class StoryBibleService {
   private protagonistLink(value: unknown, error = longInvalidData): Record<string, unknown> {
     const link = asObject(value, error);
     if (Object.keys(link).length !== 3 || !["asset_id", "version_policy", "pinned_version"].every((key) => key in link)) throw error();
-    if (link.version_policy !== "pinned_version" && link.version_policy !== "follow_latest") throw error();
+    if (!protagonistPolicies.includes(link.version_policy as LongStoryBibleProtagonistLinkPolicy)) throw error();
     if (link.version_policy === "pinned_version" && (!Number.isInteger(link.pinned_version) || Number(link.pinned_version) < 1)) throw error();
     if (link.version_policy === "follow_latest" && link.pinned_version !== null) throw error();
     return { asset_id: asText(link.asset_id, error), version_policy: link.version_policy, pinned_version: link.pinned_version };
@@ -140,7 +146,7 @@ export class StoryBibleService {
   private styleAssetLink(value: unknown, error = longInvalidData): Record<string, unknown> {
     const link = asObject(value, error);
     if (Object.keys(link).length !== 3 || !["asset_id", "version_policy", "pinned_version"].every((key) => key in link)
-      || !stylePolicies.includes(link.version_policy as typeof stylePolicies[number]) || !Number.isInteger(link.pinned_version) || Number(link.pinned_version) < 1) throw error();
+      || !stylePolicies.includes(link.version_policy as LongStoryBibleStyleLinkPolicy) || !Number.isInteger(link.pinned_version) || Number(link.pinned_version) < 1) throw error();
     return { asset_id: asText(link.asset_id, error), version_policy: link.version_policy, pinned_version: link.pinned_version };
   }
 
@@ -200,7 +206,7 @@ export class StoryBibleService {
     const { style_asset_link: storedStyle, protagonist_asset_link: storedProtagonist, ...basic } = bible.basic;
     const style = storedStyle === undefined ? undefined : this.styleAssetLink(storedStyle);
     const protagonist = storedProtagonist === undefined ? undefined : this.protagonistLink(storedProtagonist);
-    return { basic, world: bible.world, ...(style ? { styleAssetLink: { assetId: style.asset_id as string, versionPolicy: style.version_policy as "pinned_version" | "follow_latest" | "snapshot", pinnedVersion: style.pinned_version as number } } : {}), ...(protagonist ? { protagonistAssetLink: { assetId: protagonist.asset_id as string, versionPolicy: protagonist.version_policy as "pinned_version" | "follow_latest", pinnedVersion: protagonist.pinned_version as number | null } } : {}), secrets: bible.secrets.map((item) => this.toApiItem("secrets", item)), foreshadowing: bible.foreshadowing.map((item) => this.toApiItem("foreshadowing", item)), updatedAt: bible.updated_at };
+    return { basic, world: bible.world, ...(style ? { styleAssetLink: { assetId: style.asset_id as string, versionPolicy: style.version_policy as LongStoryBibleStyleLinkPolicy, pinnedVersion: style.pinned_version as number } } : {}), ...(protagonist ? { protagonistAssetLink: { assetId: protagonist.asset_id as string, versionPolicy: protagonist.version_policy as LongStoryBibleProtagonistLinkPolicy, pinnedVersion: protagonist.pinned_version as number | null } } : {}), secrets: bible.secrets.map((item) => this.toApiItem("secrets", item)), foreshadowing: bible.foreshadowing.map((item) => this.toApiItem("foreshadowing", item)), updatedAt: bible.updated_at };
   }
 
   private async save(projectId: string, bible: StoredBible): Promise<void> {

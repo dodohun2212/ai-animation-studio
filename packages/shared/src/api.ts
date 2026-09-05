@@ -1145,16 +1145,37 @@ export interface LongStoryBibleItem {
  * Its Folder name is the name the script prompt is given. Before this, no path put a character name into a real
  * script prompt at all: the Story Bible's character collection never reached `buildEpisodeContext`.
  */
+/**
+ * Which version of the linked asset a Story Bible link follows.
+ *
+ * Written down once because six places had their own copy: two validators and two casts on the server, and two
+ * runtime guards on the client. They agreed, and nothing made them agree — the style link's own set was a local
+ * `stylePolicies` array in one service, and the protagonist's was a pair of `!==` comparisons in the next
+ * method down. Adding a fourth policy would have compiled everywhere and been rejected at runtime by whichever
+ * copy nobody remembered.
+ *
+ * The two sets are deliberately separate and not derived from each other or from ASSET_MAPPING_VERSION_POLICIES,
+ * which happens to hold the same three strings today. Nothing carries a link's policy into the mapping it seeds
+ * — `episode-story-bible-mapping-sync.ts` never reads it — so tying them together would pin a relationship this
+ * app does not have, and the day one of them gains a policy the other cannot take, that has to be a decision
+ * rather than a build error.
+ */
+export const LONG_STORY_BIBLE_PROTAGONIST_LINK_POLICIES = ["pinned_version", "follow_latest"] as const;
+export type LongStoryBibleProtagonistLinkPolicy = (typeof LONG_STORY_BIBLE_PROTAGONIST_LINK_POLICIES)[number];
+/** The style link additionally takes a snapshot, and always carries a version number — see the protagonist set above. */
+export const LONG_STORY_BIBLE_STYLE_LINK_POLICIES = ["pinned_version", "follow_latest", "snapshot"] as const;
+export type LongStoryBibleStyleLinkPolicy = (typeof LONG_STORY_BIBLE_STYLE_LINK_POLICIES)[number];
+
 export interface LongStoryBibleProtagonistLink {
   assetId: string;
-  versionPolicy: "pinned_version" | "follow_latest";
+  versionPolicy: LongStoryBibleProtagonistLinkPolicy;
   pinnedVersion: number | null;
 }
 
 /** Project-wide visual style reference stored as `basic.style_asset_link`. */
 export interface LongStoryBibleStyleAssetLink {
   assetId: string;
-  versionPolicy: "pinned_version" | "follow_latest" | "snapshot";
+  versionPolicy: LongStoryBibleStyleLinkPolicy;
   pinnedVersion: number;
 }
 
