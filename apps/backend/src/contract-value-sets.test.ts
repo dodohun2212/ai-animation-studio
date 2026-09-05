@@ -53,6 +53,11 @@ const COPY_MINIMUM = 5;
  *
  * Naming *every* member is unambiguous at any size — a gate that lists the whole set narrows nothing. So a
  * complete list is a copy, and the ratio rule stays for the partial ones.
+ *
+ * 🟠 "Complete" has to mean the literal names the whole set *and nothing else*. Without that, a legitimate
+ * longer list is reported for every small set it happens to contain — the six Episode draft states contain both
+ * LONG_EPISODE_OUTLINE_STATUSES, and the six stored video-record statuses contain all five VIDEO_JOB_STATUSES
+ * plus "submitting", which the API deliberately does not have. Those are different lists, not copies.
  */
 const SMALLEST_WATCHED_SET = 2;
 
@@ -109,7 +114,12 @@ describe("contract value sets are named once", () => {
       for (const [name, members] of sets) {
         // A complete list is a copy whatever the size; a partial one has to clear the proportion rule.
         const threshold = members.length < COPY_MINIMUM ? members.length : Math.max(COPY_MINIMUM, Math.ceil(members.length * COPY_RATIO));
-        const named = Math.max(0, ...literals.map((literal) => members.filter((member) => literal.includes(`"${member}"`)).length));
+        const named = Math.max(0, ...literals.map((literal) => {
+          const inSet = members.filter((member) => literal.includes(`"${member}"`)).length;
+          // A literal naming values beyond this set is a different list, not a copy of it.
+          const total = [...literal.matchAll(/"[^"]*"/g)].length;
+          return inSet === members.length && total > members.length ? 0 : inSet;
+        }));
         const key = `${path.relative(BACKEND_SOURCE, file).split(path.sep).join("/")}::${name}`;
         if (named >= threshold && !ALLOWED.has(key)) {
           offenders.push(`${path.relative(BACKEND_SOURCE, file)} names ${named} of ${name}'s ${members.length} values in one literal — import ${name} instead of copying it`);

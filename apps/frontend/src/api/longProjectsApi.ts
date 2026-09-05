@@ -87,7 +87,9 @@ import {
   type SceneNumber,
   type UpdateLongProjectSettingsRequest,
   type UpdateLongProjectSettingsResponse,
+  ASPECT_RATIOS,
   BUDGET_LIMIT_ROUTE_HINT,
+  LONG_EPISODE_OUTLINE_STATUSES,
   VIDEO_MODELS,
   type VideoModel,
 } from "@ai-animation-studio/shared";
@@ -328,8 +330,8 @@ function isNonEmptyString(value: unknown): value is string {
 const DIGEST_PATTERN = /^[a-f0-9]{64}$/;
 const isDigest = (value: unknown): value is string => typeof value === "string" && DIGEST_PATTERN.test(value);
 
-const ASPECT_RATIOS = new Set(["9:16", "16:9"]);
-const OUTLINE_STATUSES = new Set(["planned", "outline_ready"]);
+const ASPECT_RATIO_SET: ReadonlySet<string> = new Set(ASPECT_RATIOS);
+const OUTLINE_STATUS_SET: ReadonlySet<string> = new Set(LONG_EPISODE_OUTLINE_STATUSES);
 // Built from the shared list, not written out again. This is a response guard: a status added to the contract
 // and not to a hand-written copy here makes the client call a perfectly good Episode malformed, and the screen
 // says 서버 응답을 확인할 수 없습니다 about a working server. OUTLINE_STATUSES above stays spelled out — a
@@ -350,7 +352,7 @@ function isLongProjectSettings(value: unknown): value is LongProjectSettings {
   // absent or out-of-range value would silently misrender either control.
   if (!Number.isInteger(value.sceneCount) || (value.sceneCount as number) < MIN_SCENE_COUNT || (value.sceneCount as number) > MAX_SCENE_COUNT) return false;
   if (!(RUNWAY_CLIP_DURATIONS as readonly number[]).includes(value.clipDurationSeconds as number)) return false;
-  if (!ASPECT_RATIOS.has(value.aspectRatio as string)) return false;
+  if (!ASPECT_RATIO_SET.has(value.aspectRatio as string)) return false;
   // Checked rather than assumed: the settings screen binds these straight to checkbox `checked`, and an
   // absent value would silently turn a controlled input into an uncontrolled one.
   if (typeof value.narrationEnabled !== "boolean" || typeof value.subtitlesEnabled !== "boolean") return false;
@@ -364,7 +366,7 @@ function isLongProjectSummary(value: unknown): value is LongProjectSummary {
     typeof value.title === "string" &&
     typeof value.logline === "string" &&
     Number.isInteger(value.episodeCount) &&
-    OUTLINE_STATUSES.has(value.outlineStatus as string) &&
+    OUTLINE_STATUS_SET.has(value.outlineStatus as string) &&
     isNonEmptyString(value.createdAt) &&
     isNonEmptyString(value.updatedAt)
   );

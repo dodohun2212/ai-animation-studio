@@ -1,4 +1,4 @@
-import type { AudioMode, Project, ProjectSummary, RunwayClipDurationSeconds, SceneNumber, UsedAudio, VideoModel } from "./domain.js";
+import type { AspectRatio, AudioMode, LongEpisodeOutlineStatus, Project, ProjectSummary, RunwayClipDurationSeconds, SceneNumber, UsedAudio, VideoJobStatus, VideoModel } from "./domain.js";
 import { MAX_SCENE_COUNT, MIN_SCENE_COUNT } from "./domain.js";
 import type { Asset, AssetOwnership, AssetType } from "./asset.js";
 import type {
@@ -34,7 +34,7 @@ export interface LongProjectSettings {
   sceneCount: number;
   /** One of RUNWAY_CLIP_DURATIONS (domain.ts) — Runway is the only supported video Provider today, so this is not yet keyed by provider. Same constraint as ShortProjectSettings.clipDurationSeconds. */
   clipDurationSeconds: number;
-  aspectRatio: "9:16" | "16:9";
+  aspectRatio: AspectRatio;
   audience: string;
   notes: string;
   startingState: string;
@@ -273,7 +273,7 @@ export interface LongEpisodeDetail extends LongEpisodeOutline {
    * and responses that carry an Episode alongside something else leave it absent rather than asserting a value
    * they never looked up.
    */
-  aspectRatio?: "9:16" | "16:9";
+  aspectRatio?: AspectRatio;
   /**
    * What this Episode has to show for a failure, and where its finished video is.
    *
@@ -692,7 +692,7 @@ export interface LongEpisodeVideoProgress {
   /** Same meaning and rule as GenerationProgressResponse.paidProvider — always present, never inferred from a missing cost line. */
   paidProvider: boolean;
   jobId: string;
-  status: "created" | "running" | "succeeded" | "failed" | "interrupted";
+  status: VideoJobStatus;
   currentSceneNumber?: SceneNumber;
   completedSceneNumbers: SceneNumber[];
   failedSceneNumbers: SceneNumber[];
@@ -990,7 +990,7 @@ export interface LongProjectSummary {
   title: string;
   logline: string;
   episodeCount: number;
-  outlineStatus: "planned" | "outline_ready";
+  outlineStatus: LongEpisodeOutlineStatus;
   createdAt: string;
   updatedAt: string;
   /**
@@ -1730,7 +1730,7 @@ export interface CreatePhotoCardRequest {
   assetId: string;
   quote: string;
   clipDurationSeconds: RunwayClipDurationSeconds;
-  aspectRatio: "9:16" | "16:9";
+  aspectRatio: AspectRatio;
 }
 
 export interface CreatePhotoCardResponse {
@@ -1828,7 +1828,7 @@ export interface GenerationProgressResponse {
    * and this is the field they will read.
    */
   paidProvider: boolean;
-  status: "created" | "running" | "succeeded" | "failed" | "interrupted";
+  status: VideoJobStatus;
   currentSceneNumber?: SceneNumber;
   completedSceneNumbers: SceneNumber[];
   failedSceneNumbers: SceneNumber[];
@@ -2272,7 +2272,7 @@ export interface VideoLibraryProjectSummary {
   /** Sum of every recorded Runway spend for this project (RunwayBudget.costsByScene, across every attempt, not just this month) — 0 for a project that never used a real Runway credential (local-fake execution mode). */
   totalActualCostUsd: number;
   /** Same meaning and source as ProjectSummary.aspectRatio (see that field's doc comment) — lets a library card's thumbnail box match the shape this project's videos were actually rendered in. */
-  aspectRatio: "9:16" | "16:9";
+  aspectRatio: AspectRatio;
   /**
    * Derived from ProjectSummary.usedAudio — trimmed to just the two fields a library card actually needs
    * (whether to show a credit-line notice, and what it says), not the full mode/trackId shape, since a
@@ -2353,7 +2353,7 @@ export interface VideoLibraryEpisodeSummary {
   finalVideoAvailable: boolean;
   /** Same meaning as the short row's: every recorded Runway spend for this Episode, across every attempt. */
   totalActualCostUsd: number;
-  aspectRatio: "9:16" | "16:9";
+  aspectRatio: AspectRatio;
   /**
    * Same two fields, same meaning, same source as the short row's — see VideoLibraryProjectSummary.
    *

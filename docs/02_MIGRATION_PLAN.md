@@ -3786,3 +3786,10 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
 - [x] **🟢 서버 쪽 같은 짝도 같은 사각지대였다 — 넓혔고, 거기엔 복사본이 없었다**: `apps/backend/src/contract-value-sets.test.ts` 도 `COPY_MINIMUM = 5` 미만 집합을 안 보고 있었다. 화면 쪽과 **같은 규칙**(전부를 적으면 크기와 무관하게 복사본)으로 맞췄다.
   - 🟢 **찾은 건 없다.** 그래도 넣는다 — 두 짝이 서로 다른 규칙을 들고 있으면, 다음에 어느 쪽에서 새는지가 규칙이 아니라 **우연**이 된다.
   - 🟢 주입: `episode-detail.ts` 에 네 모드를 리터럴로 되돌리면 파일과 집합 이름을 대며 빨개진다.
+- [x] **🔴 계약이 인라인 유니온으로 쓴 집합은 짝이 구조적으로 못 본다 — 재 보니 19개, 실제 복사본 23벌**: 550 에서 `AUDIO_MODES` 가 그 이유로 통과한 걸 보고 **계약 전체를 훑었다.** 배열로 선언된 집합은 15개인데, **문자열 유니온으로만 선언된 것이 19개** 더 있었고 그중 열 개가 앱 어딘가에 손으로 다시 적혀 있었다.
+  - 결과가 제일 나쁜 셋을 먼저 배열로 내렸다: **`VIDEO_JOB_STATUSES`(5)** · **`ASPECT_RATIOS`(2)** · **`LONG_EPISODE_OUTLINE_STATUSES`(2)**.
+  - 🔴 `VIDEO_JOB_STATUSES` 는 **화면 폴링 가드**에 복사돼 있었다 — 서버가 상태를 하나 더하면 **작업이 도는 중에 그 화면이 죽는다**(응답 전체를 형식 오류로 버린다).
+  - 🟠 **규칙에 구멍이 있어서 좁혔다**: "전부를 적으면 복사본" 만으로는 **더 긴 정당한 목록**이 작은 집합을 포함할 때마다 오탐이 난다 — 회차 초안 상태 여섯이 outline 상태 둘을 품고, 저장 레코드 상태 여섯이 API 상태 다섯 + `submitting` 을 품는다. **`submitting` 은 API 에 일부러 없다.** 그래서 *"전부를 적었고 그 외엔 없다"* 로 바꿨다 — 오탐 둘이 사라지고 진짜 여섯만 남았다.
+  - 고친 여섯: `videoWorkflowApi.ts` · `longProjectsApi.ts`(둘) · `LongEpisodeOutlineScreen.tsx` · `episode-videos.service.ts` · `episode-timeline.service.ts`.
+  - 🟠 **남은 일곱 유니온은 아직 배열이 아니다**(`NarrationAudioState` · `AssetOwnership` · `ReviewDecision` · `AssetFileAuditClassification` · `LongStoryBibleCollection` · `ProviderCredentialKind` · 리뷰 `pending|approved` 등). 복사본이 각 1~3벌이고 결과가 가볍다 — 다음 차례로 적어 둔다.
+  - 🟢 주입: 화면 가드를 리터럴로 되돌리면 짝이 파일과 집합 이름을 대며 빨개진다.

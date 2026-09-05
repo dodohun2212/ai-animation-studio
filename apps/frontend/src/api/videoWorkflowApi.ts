@@ -1,4 +1,4 @@
-import {
+import { VIDEO_JOB_STATUSES,
   BUDGET_LIMIT_ROUTE_HINT,
   API_ROUTES,
   MAX_SCENE_COUNT,
@@ -123,7 +123,7 @@ function isJobSceneNumbers(value: unknown): value is SceneNumber[] {
   );
 }
 
-const PROGRESS_STATUSES = ["created", "running", "succeeded", "failed", "interrupted"] as const;
+const PROGRESS_STATUSES = VIDEO_JOB_STATUSES;
 
 /** Keys arrive over JSON as numeric strings (object keys are always strings); each must resolve to a
  * valid scene number and every value must be a non-empty failure code string. */

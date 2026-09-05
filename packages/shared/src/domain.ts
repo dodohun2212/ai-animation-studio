@@ -54,6 +54,30 @@ export function sceneNumbersFor(sceneCount: number): SceneNumber[] {
  * The client list is what draws the buttons, so a mode added to the storage schema and not to it is a mode the
  * server accepts and nobody can pick.
  */
+/**
+ * The shapes a project renders in.
+ *
+ * Written out as `"9:16" | "16:9"` on nine contract fields and copied into two more places, one of them a
+ * client response guard. Same reason as AUDIO_MODES below: a union the contract states inline is a set neither
+ * copy-guard can watch, because there is no array to compare a literal against.
+ */
+export const ASPECT_RATIOS = ["9:16", "16:9"] as const;
+export type AspectRatio = (typeof ASPECT_RATIOS)[number];
+
+/**
+ * A video generation job's status, as both screens poll it.
+ *
+ * The client guards check a polled status against their own copy of this list and call the whole response
+ * malformed otherwise — so a status added on the server and not there stops a job's screen dead while the job
+ * runs. Five members, three copies.
+ */
+export const VIDEO_JOB_STATUSES = ["created", "running", "succeeded", "failed", "interrupted"] as const;
+export type VideoJobStatus = (typeof VIDEO_JOB_STATUSES)[number];
+
+/** The two states an Episode outline can be in while the timeline is still editable. */
+export const LONG_EPISODE_OUTLINE_STATUSES = ["planned", "outline_ready"] as const;
+export type LongEpisodeOutlineStatus = (typeof LONG_EPISODE_OUTLINE_STATUSES)[number];
+
 export const AUDIO_MODES = ["narration", "narration+bgm", "bgm", "silent"] as const;
 export type AudioMode = (typeof AUDIO_MODES)[number];
 /** A guard rather than a bare `includes`, so a validator that used to be a chain of `!==` keeps narrowing the value it checked. */
@@ -239,7 +263,7 @@ export interface ProjectSummary {
    * fact instead of assuming a default independently. Three screens/services had already done that
    * independently and landed on three different wrong assumptions before this field existed.
    */
-  aspectRatio: "9:16" | "16:9";
+  aspectRatio: AspectRatio;
   /**
    * Whether this project has at least one real generated narration audio file today — not simply whether
    * ShortProjectSettings.narrationEnabled is on, since a project can have the setting on with nothing generated

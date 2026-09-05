@@ -2,6 +2,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
+import { LONG_EPISODE_OUTLINE_STATUSES } from "@ai-animation-studio/shared";
 import type { AddLongEpisodeRequest, AddLongEpisodeResponse, ArchiveLongEpisodeRequest, ArchiveLongEpisodeResponse, DuplicateLongEpisodeResponse, ListArchivedLongEpisodesResponse, RestoreLongEpisodeResponse, LongEpisodeOutline, LongEpisodeStatus, LongProject, UpdateLongEpisodeOutlineRequest, UpdateLongEpisodeOutlineResponse } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { longEpisodeLimitReached, longEpisodeNotFound, longEpisodeTimelineNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
@@ -10,7 +11,7 @@ import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generati
 import { LongProjectsService } from "./long-projects.service.js";
 
 const MAX_EPISODES = Number(process.env.APP_MAX_LONG_PROJECT_EPISODES ?? "60");
-const draftStates: readonly LongEpisodeStatus[] = ["planned", "outline_ready"];
+const draftStates: readonly LongEpisodeStatus[] = LONG_EPISODE_OUTLINE_STATUSES;
 type ObjectMap = Record<string, unknown>;
 type StoredEpisode = ObjectMap & { number: number; state: LongEpisodeStatus };
 
