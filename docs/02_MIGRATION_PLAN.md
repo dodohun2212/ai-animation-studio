@@ -4117,3 +4117,10 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
   - **`BAD_OUTPUT` 이 "알 수 없는 오류" 로 뭉개진다** → 계약·서버는 `6bb5ec6`, **화면 절반은 `31c5281`** 에 들어갔다. 확인했다: `longProjectsApi`·`videoWorkflowApi` 둘 다 `providerTaskFailure(providerCode)` 를 먼저 보고, 두 화면이 `failure?.providerCode` 를 넘긴다.
   - 🟠 이건 `D-047`·`D-018` 과 같은 규칙이다 — **한 시점에 참이었던 것을 계속 참인 것처럼 표시하지 않는다.** 할 일 목록에서는 그게 "안 끝난 일" 로 읽힌다.
   - 🟠 **`project-lock` 깜빡임 항목은 열어 둔다.** 한 번 본 것이 전부이고, 두 번째가 나오면 계측을 붙이겠다는 것이 그 항목의 내용이다 — 그건 아직 참이다.
+- [x] **🔴 주석이 가리킨 보호막에 정작 그 경우가 없었다 — Meta 비밀은 dotenv 줄이 아니라 질의 문자열에 탄다**: `instagram-oauth.ts` 는 `client_secret` 을 URL 에 싣는다(Meta 가 문서화한 모양이다). 그 함수 주석이 이렇게 적혀 있다:
+  > *"It is HTTPS-only and **must never be logged** — see ProviderSettingsLogger for the redaction this codebase already applies."*
+  - 🔴 **그 리댁터에는 그 패턴이 없었다.** `OPENAI_API_KEY=` · `RUNWAY_API_SECRET=` · 맨 `sk-` 셋뿐이라, **주석이 가리킨 보호막이 그 경우를 안 덮고 있었다.**
+  - 🟠 **오늘 이게 더 중요해졌다**: 전역 예외 필터가 **예상 못 한 실패가 들고 있던 것을 그대로** 로그로 보낸다. Meta 토큰 요청 중 뭔가 던지면 그 URL 이 로그로 갈 수 있는 경로가 오늘 생겼다.
+  - 🟢 `client_secret` · `access_token` · `input_token` · `fb_exchange_token` · `code` 를 질의 문자열 모양으로 추가했다. **`&` 에서 멈춘다** — `\S+` 로 잡으면 질의의 나머지를 통째로 먹고, 그건 **실제보다 많이 가린 것처럼 읽히면서** 그 줄이 어느 호출이었는지도 지운다.
+  - 🟠 **짝을 한 번 고쳐 썼다.** 처음 쓴 것은 비밀 **앞**에 오는 매개변수만 확인해서, 탐욕적 패턴을 주입해도 **초록이었다.** 비밀 **뒤**에 오는 것을 확인하게 바꾸자 주입이 빨개졌다 — 짝이 무엇을 붙들고 있는지는 주입해 봐야 안다.
+  - 🟢 짝 셋 + 주입. 타입체크 0 · 백엔드 1494.
