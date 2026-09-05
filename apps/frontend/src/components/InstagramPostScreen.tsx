@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { FINAL_VIDEO_RELATIVE_PATH } from "@ai-animation-studio/shared";
 import type { InstagramPublishTarget, InstagramTargetDiagnostics, LongEpisodeDetail, Project, VideoLibraryEpisodeSummary, VideoLibraryProjectSummary } from "@ai-animation-studio/shared";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
@@ -69,7 +70,6 @@ const CAPTION_MAX = 2200;
 const HASHTAG_MAX = 30;
 const REEL_MAX_SECONDS = 180;
 
-const FINAL_VIDEO_PATH = "videos/final/instagram_reel.mp4";
 
 const outlineButton =
   "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
@@ -481,7 +481,7 @@ export function InstagramPostScreen({ onBack }: Props) {
     setOpenPending(true);
     setOpenFailed(false);
     try {
-      const outcome = await openProjectPathInExplorer(picked.project.id, FINAL_VIDEO_PATH);
+      const outcome = await openProjectPathInExplorer(picked.project.id, FINAL_VIDEO_RELATIVE_PATH);
       if (!outcome?.opened) setOpenFailed(true);
     } catch {
       setOpenFailed(true);
@@ -880,7 +880,7 @@ export function InstagramPostScreen({ onBack }: Props) {
               </p>
             )}
             <p className="text-sm text-slate-300" data-testid="post-video-path">
-              저장 위치: {episode ? `${episode.episodeNumber}화 폴더의 ${FINAL_VIDEO_PATH}` : FINAL_VIDEO_PATH}
+              저장 위치: {episode ? `${episode.episodeNumber}화 폴더의 ${FINAL_VIDEO_RELATIVE_PATH}` : FINAL_VIDEO_RELATIVE_PATH}
             </p>
             {episode && (
               /* Said rather than left to be discovered: the caption box on this screen saves itself for short

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { AudioLibraryTrack, MergeAudioSettings, MergeVideosResponse, PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
-import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, WorkflowState } from "@ai-animation-studio/shared";
+import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, FINAL_VIDEO_RELATIVE_PATH, WorkflowState } from "@ai-animation-studio/shared";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
 import { getAudioLibrary } from "../api/audioLibraryApi.js";
@@ -149,7 +149,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
         // defaulting to it would label a silent video as a narrated one (docs/06_DECISIONS.md D-011).
         setNarrationAvailable(response.project.narrationAvailable);
         setAudioMode(response.project.narrationAvailable ? "narration" : "silent");
-        if (response.project.workflowState === WorkflowState.Completed && response.project.finalVideoPath === "videos/final/instagram_reel.mp4") {
+        if (response.project.workflowState === WorkflowState.Completed && response.project.finalVideoPath === FINAL_VIDEO_RELATIVE_PATH) {
           setResult({ project: response.project, finalVideoPath: response.project.finalVideoPath });
         }
         setLoadState({ status: "ready" });

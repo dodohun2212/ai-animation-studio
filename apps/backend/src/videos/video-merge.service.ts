@@ -5,7 +5,7 @@ import { FINAL_VIDEO_LOCK_KEY, ProjectLockTimeoutError, withProjectLock } from "
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import { AUDIO_MODES, isAudioMode, type AudioMode, isPhotoCardSubtitleLayout, PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE, sceneNumbersFor, WorkflowState, type MergeVideosResponse, type PhotoCardSubtitleLayout, type SceneNumber } from "@ai-animation-studio/shared";
+import { AUDIO_MODES, FINAL_VIDEO_RELATIVE_PATH, isAudioMode, type AudioMode, isPhotoCardSubtitleLayout, PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE, sceneNumbersFor, WorkflowState, type MergeVideosResponse, type PhotoCardSubtitleLayout, type SceneNumber } from "@ai-animation-studio/shared";
 
 import { photoCardFor, storedSubtitleLayout, toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
@@ -17,7 +17,6 @@ import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeS
 import { audioStartOutOfRange, ffmpegUnavailable, videoMergeAlreadyPublished, videoMergeBusy, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeAlreadyCompleted, videoMergeInvalidRequest, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
 import { shortProjectAspectRatio } from "../projects/project-aspect.js";
 
-const FINAL_VIDEO_PATH = "videos/final/instagram_reel.mp4" as const;
 const DEFAULT_BGM_VOLUME = 0.25;
 const DEFAULT_BGM_FADE_SECONDS = 2;
 type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved" };
@@ -156,7 +155,7 @@ export class LocalVideoMergeService {
   private clip(projectId: string, scene: SceneNumber): string { return path.join(this.projectDirectory(projectId), "videos", "runway", `scene${scene}.mp4`); }
   /** A photo card's single picture, kept where every project's scene images live so nothing needs a second convention. */
   private cardImage(projectId: string): string { return path.join(this.projectDirectory(projectId), "images", "scene1.png"); }
-  private final(projectId: string): string { return path.join(this.projectDirectory(projectId), FINAL_VIDEO_PATH); }
+  private final(projectId: string): string { return path.join(this.projectDirectory(projectId), FINAL_VIDEO_RELATIVE_PATH); }
 
   /**
    * A narration file that is missing, empty, or was recorded under a path this machine no longer resolves to
@@ -357,9 +356,9 @@ export class LocalVideoMergeService {
       const loreContext = photoCardFor(rendering)
         ? { ...rendering.lore_context, subtitle_scale: subtitleLayout.scale, subtitle_center: subtitleLayout.center }
         : rendering.lore_context;
-      const completed = { ...rendering, lore_context: loreContext, workflow_state: WorkflowState.Completed, updated_at: new Date().toISOString(), final_video_path: FINAL_VIDEO_PATH, used_audio: usedAudio };
+      const completed = { ...rendering, lore_context: loreContext, workflow_state: WorkflowState.Completed, updated_at: new Date().toISOString(), final_video_path: FINAL_VIDEO_RELATIVE_PATH, used_audio: usedAudio };
       await this.projects.save(completed);
-      return { project: toApiProject(completed), finalVideoPath: FINAL_VIDEO_PATH };
+      return { project: toApiProject(completed), finalVideoPath: FINAL_VIDEO_RELATIVE_PATH };
     } catch (error) {
       await this.saveFailure(rendering);
       if (error instanceof MediaToolError && error.kind === "unavailable") throw ffmpegUnavailable();

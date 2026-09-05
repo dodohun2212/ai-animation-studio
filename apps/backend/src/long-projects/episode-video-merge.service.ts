@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import { AUDIO_MODES, isAudioMode, type AudioMode, LONG_EPISODE_STATUSES, isSceneNumber, sceneNumbersFor, type LongEpisodeDetail, type LongEpisodeStatus, type MergeLongEpisodeVideosResponse, type SceneNumber } from "@ai-animation-studio/shared";
+import { AUDIO_MODES, FINAL_VIDEO_RELATIVE_PATH, isAudioMode, type AudioMode, LONG_EPISODE_STATUSES, isSceneNumber, sceneNumbersFor, type LongEpisodeDetail, type LongEpisodeStatus, type MergeLongEpisodeVideosResponse, type SceneNumber } from "@ai-animation-studio/shared";
 
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "../videos/ffmpeg-merge.service.js";
@@ -18,7 +18,6 @@ import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generati
 import { LongProjectsService } from "./long-projects.service.js";
 import { PLACEHOLDER_ADAPTER } from "../narration/local-narration-generation.service.js";
 
-const FINAL_PATH = "videos/final/instagram_reel.mp4" as const;
 /** Same numbers the short project's merge uses — see MergeAudioSettings for why the bgm default splits by mode. */
 const DEFAULT_BGM_VOLUME = 0.25;
 const DEFAULT_BGM_FADE_SECONDS = 2;
@@ -372,9 +371,9 @@ export class EpisodeVideoMergeService {
         ...(bgmTrack?.attributionRequired !== undefined ? { attribution_required: bgmTrack.attributionRequired } : {}),
         ...(bgmTrack?.attributionText !== undefined ? { attribution_text: bgmTrack.attributionText } : {}),
       };
-      const completed = { ...rendering, state: "completed" as const, updated_at: new Date().toISOString(), final_video_path: FINAL_PATH, used_audio: usedAudio };
+      const completed = { ...rendering, state: "completed" as const, updated_at: new Date().toISOString(), final_video_path: FINAL_VIDEO_RELATIVE_PATH, used_audio: usedAudio };
       await this.saveEpisode(id, number, completed);
-      return { episode: this.detail(completed), finalVideoPath: FINAL_PATH, openablePath: episodeProjectRelativePath(number, FINAL_PATH) };
+      return { episode: this.detail(completed), finalVideoPath: FINAL_VIDEO_RELATIVE_PATH, openablePath: episodeProjectRelativePath(number, FINAL_VIDEO_RELATIVE_PATH) };
     } catch (error) {
       await this.fail(id, number, rendering);
       if (error instanceof MediaToolError && error.kind === "unavailable") throw longEpisodeFfmpegUnavailable();

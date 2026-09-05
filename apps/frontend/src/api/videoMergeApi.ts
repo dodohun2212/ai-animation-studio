@@ -1,4 +1,4 @@
-import { API_ROUTES, type MergeAudioSettings, type MergeVideosResponse, type PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
+import { API_ROUTES, FINAL_VIDEO_RELATIVE_PATH, type MergeAudioSettings, type MergeVideosResponse, type PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
 
 export class VideoMergeApiError extends Error {
   readonly code: string;
@@ -90,7 +90,7 @@ function isProject(value: unknown): value is MergeVideosResponse["project"] {
 
 /** The only allowed final render marker — a fixed relative path, never a raw filesystem path. */
 function isMergeVideosResponse(value: unknown): value is MergeVideosResponse {
-  return isRecord(value) && isProject(value.project) && value.finalVideoPath === "videos/final/instagram_reel.mp4";
+  return isRecord(value) && isProject(value.project) && value.finalVideoPath === FINAL_VIDEO_RELATIVE_PATH;
 }
 
 async function readJsonBody(response: Response): Promise<unknown> {

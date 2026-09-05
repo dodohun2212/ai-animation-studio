@@ -147,6 +147,19 @@ export const PHOTO_CARD_QUOTE_MAX_LENGTH = 300;
  * `.length` and Runway's own counting. When a rendered video prompt would exceed this, the caller drops optional
  * sections in priority order rather than truncating mid-sentence.
  */
+/**
+ * Where a finished video is written, relative to whatever owns it — a short project, or one Episode.
+ *
+ * This literal had ten homes: five in the backend, four in the frontend (two of them inside response guards
+ * that reject anything else), and the contract's own two response fields, which type the field as this exact
+ * string. Ten copies of a value the contract already declares, and two of them decide whether a merge response
+ * is believed at all — so a rename would not break loudly, it would make finished videos stop being recognised.
+ *
+ * The Episode's directory layout was consolidated for exactly this reason (`LONG_STORY_DIRECTORY`); the file at
+ * the end of it was not.
+ */
+export const FINAL_VIDEO_RELATIVE_PATH = "videos/final/instagram_reel.mp4";
+
 export const RUNWAY_PROMPT_MAX_LENGTH = 1_000;
 
 /**

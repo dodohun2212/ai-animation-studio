@@ -5,7 +5,7 @@ import { PLACEHOLDER_MP4 } from "../videos/placeholder-clip.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable, type OnModuleDestroy } from "@nestjs/common";
-import { SCENE_REVIEW_STATUSES, LONG_EPISODE_STATUSES, VIDEO_JOB_STATUSES, isSceneNumber, type VideoModel, RUNWAY_PROMPT_AUTHORING_LIMIT, sceneNumbersFor, videoSceneEstimatedCostUsd, type ApproveLongEpisodeVideoReviewRequest, type ApproveLongEpisodeVideoReviewResponse, type GetLongEpisodeCurrentVideoJobResponse, type GetLongEpisodeVideoPreviewResponse, type GetLongEpisodeVideoReviewResponse, type LongEpisodeDetail, type LongEpisodeStatus, type LongEpisodeVideoProgress, type LongEpisodeVideoReview, type LongEpisodeVideoStaleness, type GetVideoVersionsResponse, type RecoverLongEpisodeVideosResponse, type RegenerateLongEpisodeVideoResponse, type RestoreLongEpisodeVideoVersionResponse, type SceneNumber, type StartLongEpisodeVideoGenerationRequest, type StartLongEpisodeVideoGenerationResponse } from "@ai-animation-studio/shared";
+import { FINAL_VIDEO_RELATIVE_PATH, SCENE_REVIEW_STATUSES, LONG_EPISODE_STATUSES, VIDEO_JOB_STATUSES, isSceneNumber, type VideoModel, RUNWAY_PROMPT_AUTHORING_LIMIT, sceneNumbersFor, videoSceneEstimatedCostUsd, type ApproveLongEpisodeVideoReviewRequest, type ApproveLongEpisodeVideoReviewResponse, type GetLongEpisodeCurrentVideoJobResponse, type GetLongEpisodeVideoPreviewResponse, type GetLongEpisodeVideoReviewResponse, type LongEpisodeDetail, type LongEpisodeStatus, type LongEpisodeVideoProgress, type LongEpisodeVideoReview, type LongEpisodeVideoStaleness, type GetVideoVersionsResponse, type RecoverLongEpisodeVideosResponse, type RegenerateLongEpisodeVideoResponse, type RestoreLongEpisodeVideoVersionResponse, type SceneNumber, type StartLongEpisodeVideoGenerationRequest, type StartLongEpisodeVideoGenerationResponse } from "@ai-animation-studio/shared";
 import { validateImage } from "../assets/image-validation.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { resolveSafeProjectDirectory } from "../projects/project-id.js";
@@ -551,7 +551,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
       // restore is the opposite: it *is* the merged video, so the Episode comes back completed and pointing at
       // it. Treating both the same would have thrown away the very cut the person just chose.
       const restored: Episode = value === "final"
-        ? { ...episode, updated_at: new Date().toISOString(), final_video_path: "videos/final/instagram_reel.mp4", state: "completed" as const }
+        ? { ...episode, updated_at: new Date().toISOString(), final_video_path: FINAL_VIDEO_RELATIVE_PATH, state: "completed" as const }
         : { ...episode, updated_at: new Date().toISOString(), final_video_path: null };
       if (value !== "final" && episode.state === "completed") restored.state = "videos_approved";
       await this.saveEpisode(id, number, restored);

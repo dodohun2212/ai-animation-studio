@@ -14,6 +14,7 @@ import {
   type VideoLibraryEpisodeSummary,
   type VideoLibraryLongProjectSummary,
   type VideoVersionSummary,
+  FINAL_VIDEO_RELATIVE_PATH,
 } from "@ai-animation-studio/shared";
 
 import { photoCardFor, toApiProject } from "../projects/project.mapper.js";
@@ -33,7 +34,6 @@ import {
 import { shortProjectAspectRatio } from "../projects/project-aspect.js";
 import { episodeDirectoryName, longStoryRoot } from "../long-projects/long-project-paths.js";
 
-const FINAL_VIDEO_PATH = "videos/final/instagram_reel.mp4" as const;
 
 function scenesFor(project: StoredProject): SceneNumber[] {
   return sceneNumbersFor(toShortProjectSettings(project).sceneCount);
@@ -114,7 +114,7 @@ export class VideoLibraryService {
 
   private currentFile(projectId: string, target: Target): string {
     return target.kind === "final"
-      ? path.join(this.projectDirectory(projectId), FINAL_VIDEO_PATH)
+      ? path.join(this.projectDirectory(projectId), FINAL_VIDEO_RELATIVE_PATH)
       : path.join(this.projectDirectory(projectId), "videos", "runway", `scene${target.scene}.mp4`);
   }
 
@@ -372,7 +372,7 @@ export class VideoLibraryService {
           updated = { ...updated, workflow_state: WorkflowState.VideosApproved };
         }
       } else {
-        updated = { ...updated, final_video_path: FINAL_VIDEO_PATH };
+        updated = { ...updated, final_video_path: FINAL_VIDEO_RELATIVE_PATH };
       }
       try { await this.projects.save(updated); } catch { throw videoLibraryStorageError(); }
       return { project: toApiProject(updated) };

@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import { WorkflowState, type ForgetInstagramPostResponse, ForgetLongEpisodeInstagramPostResponse, PublishLongEpisodeToInstagramResponse, PublishToInstagramResponse } from "@ai-animation-studio/shared";
+import { FINAL_VIDEO_RELATIVE_PATH, WorkflowState, type ForgetInstagramPostResponse, ForgetLongEpisodeInstagramPostResponse, PublishLongEpisodeToInstagramResponse, PublishToInstagramResponse } from "@ai-animation-studio/shared";
 
 import { toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
@@ -22,7 +22,6 @@ import {
   instagramTargetNotFound, instagramVideoRendering, instagramVideoUnavailable, invalidInstagramRequest,
 } from "./instagram-api.error.js";
 
-const FINAL_VIDEO_PATH = "videos/final/instagram_reel.mp4";
 /** Instagram's own caption ceiling — checked here as well as on the screen, so a caller that skips the screen cannot get a post rejected after the upload already happened. */
 const CAPTION_MAX = 2200;
 
@@ -55,7 +54,7 @@ export class InstagramPublishService {
   ) {}
 
   private finalVideo(projectId: string): string {
-    return path.join(this.projectsRoot, projectId, FINAL_VIDEO_PATH);
+    return path.join(this.projectsRoot, projectId, FINAL_VIDEO_RELATIVE_PATH);
   }
 
   private parseRequest(request: unknown): { caption: string; igUserId: string; thumbOffsetMs?: number } {
@@ -274,7 +273,7 @@ export class InstagramPublishService {
 
       // Same reason as the short project's: the bytes are read under the lock the merge also takes, so a post
       // can never carry a cut the merge has already replaced.
-      const bytes = await fs.readFile(path.join(directory, FINAL_VIDEO_PATH)).catch(() => undefined);
+      const bytes = await fs.readFile(path.join(directory, FINAL_VIDEO_RELATIVE_PATH)).catch(() => undefined);
       if (!bytes || bytes.length === 0) throw instagramVideoUnavailable();
 
       const { mediaId, publishedAt } = await this.sendToInstagram(token.accessToken, igUserId, caption, bytes, thumbOffsetMs);

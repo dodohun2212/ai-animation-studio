@@ -92,6 +92,7 @@ import {
   LONG_EPISODE_OUTLINE_STATUSES,
   VIDEO_MODELS,
   type VideoModel,
+  FINAL_VIDEO_RELATIVE_PATH,
 } from "@ai-animation-studio/shared";
 import { BUDGET_LEDGER_UNREADABLE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "./budgetLedgerError.js";
 
@@ -627,7 +628,7 @@ const isRegenerateEpisodeVideoResponse = (value: unknown): value is RegenerateLo
   return Array.isArray(record.regeneratedSceneNumbers) && record.regeneratedSceneNumbers.every(isSceneNumber);
 };
 const isMergeLongEpisodeVideosResponse = (value: unknown): value is MergeLongEpisodeVideosResponse => isRecord(value)
-  && isLongEpisodeDetail(value.episode) && value.finalVideoPath === "videos/final/instagram_reel.mp4";
+  && isLongEpisodeDetail(value.episode) && value.finalVideoPath === FINAL_VIDEO_RELATIVE_PATH;
 
 function isUnknownRecordArray(value: unknown): value is Array<Record<string, unknown>> {
   return Array.isArray(value) && value.every(isRecord);

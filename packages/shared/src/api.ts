@@ -1,5 +1,5 @@
 import type { AspectRatio, AudioMode, LongEpisodeOutlineStatus, Project, VideoModelOption, ProjectSummary, RunwayClipDurationSeconds, SceneNumber, UsedAudio, VideoJobStatus, VideoModel } from "./domain.js";
-import { MAX_SCENE_COUNT, MIN_SCENE_COUNT } from "./domain.js";
+import { FINAL_VIDEO_RELATIVE_PATH, MAX_SCENE_COUNT, MIN_SCENE_COUNT } from "./domain.js";
 import type { Asset, AssetOwnership, AssetType } from "./asset.js";
 import type {
   ApproveProjectAssetMappingReviewRequest,
@@ -820,7 +820,7 @@ export interface MergeLongEpisodeVideosResponse {
    * either nothing at all or — for an id that is also a short project — somebody else's finished video.
    * Display this; open `openablePath`.
    */
-  finalVideoPath: "videos/final/instagram_reel.mp4";
+  finalVideoPath: typeof FINAL_VIDEO_RELATIVE_PATH;
   /**
    * The same file, addressed from the project root: `long_story/Episode07/videos/final/instagram_reel.mp4`.
    *
@@ -2037,7 +2037,7 @@ export interface MergeVideosRequest {
 /** The local FFmpeg render result never exposes an absolute filesystem path. */
 export interface MergeVideosResponse {
   project: Project;
-  finalVideoPath: "videos/final/instagram_reel.mp4";
+  finalVideoPath: typeof FINAL_VIDEO_RELATIVE_PATH;
 }
 
 /**

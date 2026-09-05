@@ -152,3 +152,42 @@ describe("contract value sets are named once", () => {
     }
   });
 });
+
+/**
+ * A value set is not the only shape a copy takes. One string can be a contract too.
+ *
+ * `FINAL_VIDEO_RELATIVE_PATH` had ten homes when it was collapsed on 2026-09-06 — five in the backend, four in
+ * the frontend, and the contract's own two response fields, which type the field as this exact string. Two of
+ * the frontend copies sit inside response guards: a rename would not have failed loudly, it would have made
+ * finished videos stop being recognised as finished.
+ *
+ * Only path-shaped values are watched, because a path is the kind of constant that gets retyped rather than
+ * imported — and the parser is checked below, so a contract reorganised out from under it fails instead of
+ * quietly finding nothing.
+ */
+describe("a contract's path constants are named once", () => {
+  async function contractPaths(): Promise<Map<string, string>> {
+    const found = new Map<string, string>();
+    for (const file of await collectSourceFiles(SHARED_SOURCE)) {
+      const source = await fs.readFile(file, "utf8");
+      for (const match of source.matchAll(/export const ([A-Z][A-Z0-9_]*) = "([^"]*\/[^"]*)"/g)) found.set(match[1]!, match[2]!);
+    }
+    return found;
+  }
+
+  it("finds the constants it is supposed to be watching", async () => {
+    expect([...(await contractPaths()).keys()]).toContain("FINAL_VIDEO_RELATIVE_PATH");
+  });
+
+  it("has no source file retyping one of them", async () => {
+    const paths = await contractPaths();
+    const offenders: string[] = [];
+    for (const file of await collectSourceFiles(FRONTEND_SOURCE)) {
+      const source = await fs.readFile(file, "utf8");
+      for (const [name, value] of paths) {
+        if (source.includes(`"${value}"`)) offenders.push(`${path.relative(FRONTEND_SOURCE, file)} writes out ${name}'s value — import ${name} instead`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
