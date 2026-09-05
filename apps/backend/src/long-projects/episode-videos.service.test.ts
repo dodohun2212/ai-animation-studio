@@ -61,6 +61,35 @@ describe("EpisodeVideosService", () => {
       .rejects.toMatchObject({ response: { code: "LONG_EPISODE_VIDEOS_NOT_ALLOWED" } });
   });
 
+  /**
+   * A finished Episode can still be looked at.
+   *
+   * The review list required `videos_review` or `videos_approved`, so once an Episode merged and reached
+   * `completed` its own clips answered 409 LONG_EPISODE_VIDEOS_NOT_ALLOWED — about a read, with nothing being
+   * attempted. Cowork measured that on Episode 5 and had to wrap three separate calls on the screen to keep a
+   * finished Episode from reporting that video work is not allowed.
+   *
+   * The image side has said this in its own pair since it was written: reading is not reviewing. Both halves
+   * are asserted here, because loosening the read without re-gating the act would have let a merged Episode be
+   * approved again — `approve` used `review` as its gate.
+   */
+  it("lists the clips of an Episode that has already been merged, and still refuses to approve them", async () => {
+    const { videos, projectsRoot } = await setup();
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "merged_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+
+    const episodeFile = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
+    const episode = JSON.parse(await fs.readFile(episodeFile, "utf8")) as Record<string, unknown>;
+    await fs.writeFile(episodeFile, JSON.stringify({ ...episode, state: "completed", final_video_path: "videos/final/instagram_reel.mp4" }), "utf8");
+
+    const { reviews } = await videos.review("long", 1, started.jobId);
+    expect(reviews.map((item) => item.sceneNumber), "the clips are still there and still readable").toEqual([1, 2, 3, 4, 5, 6]);
+
+    await expect(videos.approve("long", 1, started.jobId, "1", { approved: true }), "but the stage has moved on")
+      .rejects.toMatchObject({ response: { code: "LONG_EPISODE_VIDEOS_NOT_ALLOWED" } });
+  });
+
   it("does not call a job succeeded while the Episode is still being moved to review", async () => {
     // The two facts land one write apart: the last scene's record is saved as succeeded, then the Episode state
     // moves to videos_review. A poll in between used to answer "succeeded" — and the screen opens its review on
@@ -80,8 +109,13 @@ describe("EpisodeVideosService", () => {
     const midway = await videos.progress("long", 1, started.jobId);
     expect(midway.status).toBe("running");
     expect(midway.completedSceneNumbers).toHaveLength(6);
-    // And the refusal the screen would have hit is still there, which is why the word had to change.
-    await expect(videos.review("long", 1, started.jobId)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_VIDEOS_NOT_ALLOWED" } });
+    // The refusal that used to sit here has moved to where it belongs. Listing the clips is a read, and the
+    // clips are on disk, so it answers — the image side has always drawn that line ("reading is not
+    // reviewing"), and gating the read is what made a merged Episode 409 its own review list. What must still
+    // refuse is the act, and it does: approving needs the stage, not just the files.
+    await expect(videos.review("long", 1, started.jobId), "the clips are there, so reading them is allowed").resolves.toBeDefined();
+    await expect(videos.approve("long", 1, started.jobId, "1", { approved: true }), "approving is not")
+      .rejects.toMatchObject({ response: { code: "LONG_EPISODE_VIDEOS_NOT_ALLOWED" } });
   });
 
   it("generates from the prompt the person edited, not the one it previewed", async () => {
