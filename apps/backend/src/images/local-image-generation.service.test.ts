@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkflowState } from "@ai-animation-studio/shared";
 import { LocalProjectAssetMappingsRepository, scriptFingerprint } from "../mappings/mappings.repository.js";
+import { PLACEHOLDER_PNG } from "./placeholder-image.js";
 import { createStoredProject } from "../projects/project.mapper.js";
 import { applyShortProjectSettings, toShortProjectSettings } from "../projects/project-settings.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
@@ -38,6 +39,14 @@ async function setup() {
 }
 
 const PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=";
+/**
+ * A picture that was bought, as opposed to the stub this service writes with no credential.
+ *
+ * PNG_BASE64 above is byte-for-byte PLACEHOLDER_PNG, so a paid run now correctly refuses to count it as a
+ * finished scene — which means it can no longer stand in for a generated image. A fixture indistinguishable
+ * from the placeholder cannot test the difference between them.
+ */
+const BOUGHT_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAuElEQVR42mNgkLeLrZm96+YPcbPQksmbLn7g1/PN6V51kkHQwD+vd83pV5wa7mmtSw4/YlSwj6uds/sWg5JjQv28vXd+S1lGlE/beuWzkGFAft/aM68ZjIMKJ6w/95ZH2yuzY/mxpyzKTokN8/fd/cPgkty08MD9f7I20VUzd1z/JmoSXDRxw/l3vAwoNr5gV3NNaV508MF/OQYUG39KmIeVTtl86aOAPgOKjVyaHultS488ZlJ0AAARc2ABihigMwAAAABJRU5ErkJggg==";
 function jsonResponse(status: number, body: unknown): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => body, headers: { get: () => null } } as unknown as Response;
 }
@@ -240,9 +249,42 @@ describe("provider-free local image generation", () => {
 });
 
 describe("real OpenAI image generation", () => {
+  /**
+   * A keyless run's stubs are not pictures a paid run may keep.
+   *
+   * This service writes PLACEHOLDER_PNG when no credential is configured, and it is a genuine 1×1 PNG — so the
+   * reuse branch, which only asked whether the bytes parse, kept all six and generated nothing the moment a key
+   * was connected. The project then walks on and buys video of blank frames. The Episode side had the same hole,
+   * found on real data (`design-preview-long-1`'s six 68-byte scenes) and fixed the same way.
+   */
+  it("does not keep a keyless run's placeholders once a key is connected", async () => {
+    const { projectsRoot, service } = await setupWithConnectedOpenAi();
+    const projects = new LocalProjectRepository(projectsRoot);
+    const project = await projects.findById("images");
+    // Exactly the state a keyless run leaves: every scene recorded, every file a stub.
+    const directory = path.join(projectsRoot, "images", "images");
+    await fs.mkdir(directory, { recursive: true });
+    project.generated_images = [];
+    for (const number of [1, 2, 3, 4, 5, 6]) {
+      const file = path.join(directory, `scene${number}.png`);
+      await fs.writeFile(file, PLACEHOLDER_PNG);
+      project.generated_images.push(file);
+    }
+    await projects.save(project);
+
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await service.generate("images", { approved: true });
+
+    expect(result.reusedSceneNumbers, "a placeholder is not a picture somebody paid for").toEqual([]);
+    expect(result.generatedSceneNumbers).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(fetchMock, "every scene is actually bought").toHaveBeenCalledTimes(6);
+  });
+
   it("calls the real adapter for all six scenes and records the real model as the adapter", async () => {
     const { projectsRoot, service } = await setupWithConnectedOpenAi();
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await service.generate("images", { approved: true });
@@ -264,7 +306,7 @@ describe("real OpenAI image generation", () => {
     const project = await projects.findById("images");
     project.lore_context = { ...project.lore_context, style_notes: { aspect: "16:9" } };
     await projects.save(project);
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);
 
     await service.generate("images", { approved: true });
@@ -278,7 +320,7 @@ describe("real OpenAI image generation", () => {
 
   it("defaults the requested image size to portrait when the project has no aspect setting (matching the vertical default everywhere else)", async () => {
     const { service } = await setupWithConnectedOpenAi();
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);
 
     await service.generate("images", { approved: true });
@@ -307,7 +349,7 @@ describe("real OpenAI image generation", () => {
     // same script_fingerprint, same as any real re-review of an unchanged script.
     await base.mappings.saveReview(base.mappings.projectLocation("images"), { project_id: "images", mapping_revision: 2, script_revision: 1, script_fingerprint: scriptFingerprint((await base.projects.findById("images")).scenes), status: "approved", approved_at: now, approved_by: "user", text_only_confirmed: false, legacy_confirmed: false, reviewed_scenes: [1, 2, 3, 4, 5, 6] });
     // 1 (setup's own confirmed character) + 16 extra = 17 eligible for every scene, 1 over the 16-image cap.
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);
 
     await base.service.generate("images", { approved: true });
@@ -323,7 +365,7 @@ describe("real OpenAI image generation", () => {
     const project = await projects.findById("images");
     project.lore_context = { ...project.lore_context, style_notes: { aspect: "16:9" } };
     await projects.save(project);
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);
 
     await service.generate("images", { approved: true });
@@ -373,7 +415,7 @@ describe("real OpenAI image generation", () => {
 
   it("sends the confirmed Asset Mapping's approved Reference image via images/edits for every scene, recording the :edit adapter", async () => {
     const { projectsRoot, service, character } = await setupWithConnectedOpenAiAndConfirmedReference();
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);
 
     await service.generate("images", { approved: true });
@@ -401,7 +443,7 @@ describe("real OpenAI image generation", () => {
     const project = await projects.findById("images");
     project.lore_context = { ...project.lore_context, previous_scene_link: { source_kind: "short_project", user_selected: true, project_id: "other", project_name: "Other", label: "Other · Scene 6", scene_number: 6, story_context: "context", image_path: continuityImage } };
     await projects.save(project);
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);
 
     await service.generate("images", { approved: true });
@@ -417,7 +459,7 @@ describe("real OpenAI image generation", () => {
 
   it("falls back to reference-free images/generations when no Asset Mapping is confirmed", async () => {
     const { service } = await setupWithConnectedOpenAi();
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
     vi.stubGlobal("fetch", fetchMock);
 
     await service.generate("images", { approved: true });
@@ -437,7 +479,7 @@ describe("real OpenAI image generation", () => {
     const ledger = path.join(root, "api_budget_usage.json");
     const fetchMock = vi.fn(async () => {
       await fs.writeFile(ledger, "{ not json", "utf8");
-      return jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] });
+      return jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] });
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -468,7 +510,7 @@ describe("real OpenAI image generation", () => {
     const { projects, service } = await setupWithConnectedOpenAi();
     const fetchMock = vi.fn(async () => {
       await new Promise((resolve) => setTimeout(resolve, 5)); // hold the run open so the second press really overlaps
-      return jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] });
+      return jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] });
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -504,7 +546,7 @@ describe("real OpenAI image generation", () => {
     const thirdCallStarted = new Promise<void>((resolve) => { announceThird = resolve; });
     vi.stubGlobal("fetch", vi.fn(async () => {
       if (calls++ === 2) { announceThird(); await parked; }
-      return jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] });
+      return jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] });
     }));
 
     const running = service.generate("images", { approved: true });
@@ -532,7 +574,7 @@ describe("real OpenAI image generation", () => {
    */
   it("does not count a half-written file as a finished scene", async () => {
     const { service, projectsRoot } = await setupWithConnectedOpenAi();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] })));
     await service.generate("images", { approved: true });
     await fs.writeFile(path.join(projectsRoot, "images", "images", "scene4.png"), Buffer.from([0x89, 0x50]));
 

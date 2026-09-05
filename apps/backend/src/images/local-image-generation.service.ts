@@ -1,4 +1,4 @@
-import { PLACEHOLDER_PNG } from "./placeholder-image.js";
+import { PLACEHOLDER_PNG, isPlaceholderImage } from "./placeholder-image.js";
 import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { OPENAI_LEDGER_FILE, isBudgetLedgerUnreadable, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import * as crypto from "node:crypto";
@@ -51,9 +51,21 @@ async function atomicWriteImage(file: string, bytes: Buffer): Promise<void> {
   } finally { if (!renamed) await fs.unlink(temporary).catch(() => undefined); }
 }
 
-async function validPng(file: string): Promise<boolean> {
+/**
+ * A paid run demands a real picture, not merely a file that parses.
+ *
+ * PLACEHOLDER_PNG — what this service writes with no credential — is a genuine 1×1 PNG, so "it parses" let a
+ * keyless run's stubs count as scenes somebody had bought. Connect a key afterwards and the reuse branch below
+ * keeps all six, generates nothing, and the project walks on to buy video of blank frames.
+ *
+ * The Episode side had the same hole and the same fix earlier today (`episode-images.service.ts`); the video
+ * library has drawn this line since placeholders first counted as finished clips. Only a run that reaches a
+ * provider is held to the stricter test — writing and reading stubs is exactly what the keyless path is for.
+ */
+async function validPng(file: string, paid = false): Promise<boolean> {
   try {
     const bytes = await fs.readFile(file);
+    if (paid && isPlaceholderImage(bytes.length)) return false;
     return validateImage(bytes, "scene.png", "image/png").extension === ".png";
   } catch { return false; }
 }
@@ -172,7 +184,7 @@ export class LocalImageGenerationService {
       for (const number of scenes) {
         const destination = this.imagePath(current.project_id, number);
         const existing = current.generated_images[number - 1];
-        if (existing === destination && await validPng(destination)) {
+        if (existing === destination && await validPng(destination, Boolean(apiKey && this.budget))) {
           reused.push(number);
           continue;
         }
