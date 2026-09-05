@@ -5,6 +5,7 @@ import {
   type RestoreVideoVersionResponse,
   type SceneNumber,
   type VideoLibraryEpisodeSummary,
+  type VideoLibraryLongProjectSummary,
   type VideoLibraryProjectSummary,
   type VideoVersionSummary,
 } from "@ai-animation-studio/shared";
@@ -87,6 +88,22 @@ function isLibraryEpisode(value: unknown): value is VideoLibraryEpisodeSummary {
   );
 }
 
+/**
+ * One story's own spend, which sits above its episodes rather than inside any of them.
+ *
+ * Dropped rather than fatal, for the same reason the episode rows are: a shell built before this field existed
+ * answers without it, and a library that refuses to render is a worse answer than one missing a header line.
+ */
+function isLibraryLongProject(value: unknown): value is VideoLibraryLongProjectSummary {
+  return (
+    isRecord(value)
+    && isNonEmptyString(value.projectId)
+    && typeof value.title === "string"
+    && isCostUsd(value.ownCostUsd)
+    && isCostUsd(value.episodesCostUsd)
+  );
+}
+
 function isLibraryProject(value: unknown): value is VideoLibraryProjectSummary {
   return (
     isRecord(value)
@@ -150,7 +167,8 @@ export async function getVideoLibrary(): Promise<GetVideoLibraryResponse> {
   // Episodes are checked but do not invalidate the answer: a screen that has not been taught about them yet
   // should still show the short projects rather than the malformed-response banner.
   const episodes = Array.isArray(body.episodes) ? body.episodes.filter(isLibraryEpisode) : [];
-  return { projects: body.projects, episodes };
+  const longProjects = Array.isArray(body.longProjects) ? body.longProjects.filter(isLibraryLongProject) : [];
+  return { projects: body.projects, episodes, longProjects };
 }
 
 /** Every stored copy of one scene's video, or of the final merged video. Read-only; never charges anything. */

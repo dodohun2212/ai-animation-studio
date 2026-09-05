@@ -2365,7 +2365,27 @@ export interface VideoLibraryEpisodeSummary {
   attributionRequired?: boolean;
   attributionText?: string;
 }
-export interface GetVideoLibraryResponse { projects: VideoLibraryProjectSummary[]; episodes: VideoLibraryEpisodeSummary[]; }
+/**
+ * A long project's own spend, which had no row anywhere.
+ *
+ * The OpenAI ledger has no scene or episode dimension: an Episode's script, images and narration are all
+ * recorded under the parent project's id, not under `<id>:episodeN`. So the episode rows correctly add nothing
+ * for them, and until now the money simply did not appear — $3.45 on the real ledger with no line on any screen
+ * showing it. Not a missing number: a number with nowhere to go.
+ *
+ * It belongs to the story rather than to any one episode, so it is its own row, above the episodes it paid for.
+ * Splitting it across them would invent a division the ledger does not record.
+ */
+export interface VideoLibraryLongProjectSummary {
+  projectId: string;
+  title: string;
+  /** Scripts, images, narration and the outline, all recorded against the parent id. Never includes Runway spend, which is on the episode rows. */
+  ownCostUsd: number;
+  /** The episodes' own Runway spend added up, so the header can say what the story cost in total without the screen adding money itself. */
+  episodesCostUsd: number;
+}
+
+export interface GetVideoLibraryResponse { projects: VideoLibraryProjectSummary[]; episodes: VideoLibraryEpisodeSummary[]; longProjects: VideoLibraryLongProjectSummary[]; }
 
 /**
  * One stored copy of a scene's video, or of the final merged video — the "current" file plus every version

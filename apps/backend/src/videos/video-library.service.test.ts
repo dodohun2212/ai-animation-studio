@@ -464,6 +464,51 @@ describe("VideoLibraryService.list — Episodes", () => {
   });
 
   /**
+   * The parent story's own spend, which had no row anywhere.
+   *
+   * The OpenAI ledger has no episode dimension: an Episode's scripts, images and narration are recorded under
+   * the parent project id, so `costsByScene("<id>:episodeN")` correctly finds nothing and every episode row
+   * correctly adds nothing. Measured on the real ledger: $3.45 against project 12, appearing on no screen at
+   * all. Not a missing number — a number with nowhere to go.
+   */
+  it("reports a story's own spend on its own row, separate from what its episodes cost in video", async () => {
+    const { projectsRoot, budget, openAiBudget, service } = await setup();
+    await createEpisodeWithVideos(projectsRoot, "story_costs", 1, { finalVideo: true });
+    await createEpisodeWithVideos(projectsRoot, "story_costs", 2, { finalVideo: true });
+    await budget.record("story_costs:episode1", 1, "video", true, 0.25);
+    await budget.record("story_costs:episode2", 1, "video", true, 0.75);
+    // Billed to the parent, which is the whole reason this row exists.
+    await openAiBudget.record("story_costs", "episode_story", true, 0.3);
+    await openAiBudget.record("story_costs", "image", true, 3.15);
+
+    const result = await service.list();
+
+    expect(result.longProjects).toHaveLength(1);
+    expect(result.longProjects[0]).toMatchObject({ projectId: "story_costs", title: "story story_costs", episodesCostUsd: 1 });
+    // Summed raw, like every other cost on these rows — the screen is what rounds to cents.
+    expect(result.longProjects[0]!.ownCostUsd).toBeCloseTo(3.45, 8);
+    expect(result.episodes.map((row) => row.totalActualCostUsd), "and the episodes still carry only their own")
+      .toEqual([0.25, 0.75]);
+  });
+
+  /**
+   * A story with nothing in the library gets no row.
+   *
+   * This list is a results archive, so a header for a project that never reached a video would be a line about
+   * money spent on work that is not here — next to rows that are.
+   */
+  it("gives no story row to a project with no episodes in the library", async () => {
+    const { projectsRoot, openAiBudget, service } = await setup();
+    await createEpisodeWithVideos(projectsRoot, "story_unfinished", 1, { scenes: [], finalVideo: false });
+    await openAiBudget.record("story_unfinished", "episode_story", true, 0.3);
+
+    const result = await service.list();
+
+    expect(result.episodes).toEqual([]);
+    expect(result.longProjects).toEqual([]);
+  });
+
+  /**
    * The credit line belongs on the card someone comes back to. Publishing happens days after merging, and the
    * short row has carried these two fields for exactly that reason — an Episode built on a CC BY track was the
    * one kind of card that said nothing, while its own merge screen already knew.

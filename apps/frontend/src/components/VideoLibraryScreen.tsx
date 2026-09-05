@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { sceneNumbersFor, type SceneNumber, type VideoLibraryEpisodeSummary, type VideoLibraryProjectSummary, type VideoVersionSummary } from "@ai-animation-studio/shared";
+import { sceneNumbersFor, type SceneNumber, type VideoLibraryEpisodeSummary, type VideoLibraryLongProjectSummary, type VideoLibraryProjectSummary, type VideoVersionSummary } from "@ai-animation-studio/shared";
 
 import {
   getVideoLibrary,
@@ -20,7 +20,7 @@ type DisplayError = { code: string; message: string };
 type LibraryState =
   | { status: "loading" }
   | { status: "error"; error: DisplayError }
-  | { status: "ready"; projects: VideoLibraryProjectSummary[]; episodes: VideoLibraryEpisodeSummary[] };
+  | { status: "ready"; projects: VideoLibraryProjectSummary[]; episodes: VideoLibraryEpisodeSummary[]; longProjects: VideoLibraryLongProjectSummary[] };
 type VersionsState =
   | { status: "loading" }
   | { status: "error"; error: DisplayError }
@@ -287,7 +287,7 @@ export function VideoLibraryScreen({ onBack }: Props) {
   function load(): void {
     setState({ status: "loading" });
     getVideoLibrary()
-      .then((response) => setState({ status: "ready", projects: response.projects, episodes: response.episodes }))
+      .then((response) => setState({ status: "ready", projects: response.projects, episodes: response.episodes, longProjects: response.longProjects }))
       .catch((caught: unknown) => setState({ status: "error", error: toVideoLibraryDisplayError(caught) }));
   }
 
@@ -341,6 +341,21 @@ export function VideoLibraryScreen({ onBack }: Props) {
   const filteredEpisodes = term
     ? episodes.filter((one) => one.title.toLowerCase().includes(term) || one.projectTitle.toLowerCase().includes(term) || one.projectId.toLowerCase().includes(term))
     : episodes;
+  /**
+   * Grouped by story, so the story's own spend has somewhere to be.
+   *
+   * An Episode's scripts, images and narration are billed to the parent project id, not to the Episode — so
+   * every episode row correctly added nothing for them and the money appeared nowhere at all. It belongs to
+   * the story, so it goes on a header above the episodes it paid for rather than being divided among them,
+   * which would invent a split the ledger does not record.
+   *
+   * A story is listed only when the search left it with episodes; the header without them would be a total
+   * for rows that are not on screen.
+   */
+  const longProjects = state.status === "ready" ? state.longProjects : [];
+  const episodeGroups = longProjects
+    .map((project) => ({ project, rows: filteredEpisodes.filter((one) => one.projectId === project.projectId) }))
+    .filter((group) => group.rows.length > 0);
 
   return (
     <section className="mt-8 max-w-4xl space-y-5">
@@ -474,8 +489,21 @@ export function VideoLibraryScreen({ onBack }: Props) {
           {Boolean(filteredEpisodes.length) && (
             <div className="space-y-3" data-testid="library-episodes">
               <h2 className="text-base font-semibold text-slate-100">장기 프로젝트 회차</h2>
+              {episodeGroups.map((group) => (
+                <div key={group.project.projectId} className="space-y-3">
+                  <div data-testid={`library-long-project-${group.project.projectId}`} className="flex flex-wrap items-baseline justify-between gap-2 border-b border-white/10 pb-1.5 pt-2">
+                    <span className="text-sm font-semibold text-slate-200">{group.project.title}</span>
+                    {/* Two numbers rather than one total, because they answer different questions and come from
+                        different ledgers: what the story cost outside its episodes (scripts, images, narration —
+                        all billed to the parent id) and what its episodes cost in video. Added up here only
+                        after both have been said. */}
+                    <span className="text-xs tabular-nums text-slate-400" data-testid={`library-long-project-cost-${group.project.projectId}`}>
+                      공통 ${group.project.ownCostUsd.toFixed(2)} · 회차 ${group.project.episodesCostUsd.toFixed(2)}
+                      <span className="ml-1.5 text-slate-300">합계 ${(group.project.ownCostUsd + group.project.episodesCostUsd).toFixed(2)}</span>
+                    </span>
+                  </div>
               <ul className="space-y-3">
-                {filteredEpisodes.map((one) => {
+                {group.rows.map((one) => {
                   const episodeTarget: VersionTarget = { kind: "episode", projectId: one.projectId, episodeNumber: one.episodeNumber };
                   const episodeOpen = sameTarget(openTarget, episodeTarget);
                   return (
@@ -552,6 +580,8 @@ export function VideoLibraryScreen({ onBack }: Props) {
                   );
                 })}
               </ul>
+                </div>
+              ))}
             </div>
           )}
         </>

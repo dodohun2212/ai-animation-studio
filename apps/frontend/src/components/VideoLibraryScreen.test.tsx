@@ -34,6 +34,10 @@ function libraryEpisode(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function libraryLongProject(overrides: Record<string, unknown> = {}) {
+  return { projectId: "12", title: "이배드 연대기", ownCostUsd: 3.45, episodesCostUsd: 1.5, ...overrides };
+}
+
 function renderScreen(fetchMock: ReturnType<typeof vi.fn>) {
   vi.stubGlobal("fetch", fetchMock);
   return render(<VideoLibraryScreen onBack={() => {}} />);
@@ -229,7 +233,7 @@ describe("VideoLibraryScreen", () => {
   });
 
   it("lists Episodes in their own section and plays a finished one", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { projects: [libraryProject()], episodes: [libraryEpisode()] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { projects: [libraryProject()], episodes: [libraryEpisode()], longProjects: [libraryLongProject()] }));
     renderScreen(fetchMock);
 
     const card = await screen.findByTestId("library-episode-12-1");
@@ -241,7 +245,7 @@ describe("VideoLibraryScreen", () => {
 
   it("draws no Episode section for someone who only makes short projects", async () => {
     // A heading for a thing you do not have is the kind of length this screen was asked to lose.
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { projects: [libraryProject()], episodes: [] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { projects: [libraryProject()], episodes: [], longProjects: [] }));
     renderScreen(fetchMock);
 
     await screen.findByTestId("library-project-1");
@@ -252,6 +256,7 @@ describe("VideoLibraryScreen", () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {
       projects: [],
       episodes: [libraryEpisode({ finalVideoAvailable: false, videosReadyCount: 4 })],
+      longProjects: [libraryLongProject()],
     }));
     renderScreen(fetchMock);
 
@@ -264,7 +269,7 @@ describe("VideoLibraryScreen", () => {
   it("finds an Episode by its own title or by the story it belongs to", async () => {
     // One box, one question: "where is my finished video". Searching only short projects would make the
     // Episode section vanish the moment anyone typed.
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { projects: [libraryProject()], episodes: [libraryEpisode()] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { projects: [libraryProject()], episodes: [libraryEpisode()], longProjects: [libraryLongProject()] }));
     renderScreen(fetchMock);
 
     await screen.findByTestId("library-episode-12-1");
@@ -278,7 +283,7 @@ describe("VideoLibraryScreen", () => {
     // The other direction, and it is the one that fails silently: a screen that never filters Episodes passes
     // the test above unchanged, because the Episode survives every search including the ones it should not.
     // Removing the Episode filter turns this red and leaves that one green — which is why both exist.
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { projects: [libraryProject()], episodes: [libraryEpisode()] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { projects: [libraryProject()], episodes: [libraryEpisode()], longProjects: [libraryLongProject()] }));
     renderScreen(fetchMock);
 
     await screen.findByTestId("library-episode-12-1");
@@ -300,11 +305,11 @@ describe("VideoLibraryScreen", () => {
       { versionId: "v001", createdAt: "2026-08-26T16:00:00.000Z", bytes: 2000000, isCurrent: false },
     ];
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(200, { projects: [], episodes: [libraryEpisode()] }))
+      .mockResolvedValueOnce(jsonResponse(200, { projects: [], episodes: [libraryEpisode()], longProjects: [libraryLongProject()] }))
       .mockResolvedValueOnce(jsonResponse(200, { versions: before }))
       .mockResolvedValueOnce(jsonResponse(200, { episode: { episodeNumber: 1 } }))
       .mockResolvedValueOnce(jsonResponse(200, { versions: before }))
-      .mockResolvedValueOnce(jsonResponse(200, { projects: [], episodes: [libraryEpisode()] }));
+      .mockResolvedValueOnce(jsonResponse(200, { projects: [], episodes: [libraryEpisode()], longProjects: [libraryLongProject()] }));
     renderScreen(fetchMock);
 
     fireEvent.click(await screen.findByTestId("library-episode-versions-12-1"));
@@ -327,6 +332,7 @@ describe("VideoLibraryScreen", () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {
       projects: [],
       episodes: [libraryEpisode({ attributionRequired: true, attributionText: "Music by ○○○" })],
+      longProjects: [libraryLongProject()],
     }));
     renderScreen(fetchMock);
 
@@ -339,7 +345,7 @@ describe("VideoLibraryScreen", () => {
    * told they had no videos — directly above a list of their videos.
    */
   it("does not claim the library is empty when it holds only Episodes", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { projects: [], episodes: [libraryEpisode()] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { projects: [], episodes: [libraryEpisode()], longProjects: [libraryLongProject()] }));
     renderScreen(fetchMock);
 
     await screen.findByTestId("library-episode-12-1");
@@ -347,10 +353,47 @@ describe("VideoLibraryScreen", () => {
   });
 
   it("still says the library is empty when it holds neither", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { projects: [], episodes: [] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { projects: [], episodes: [], longProjects: [] }));
     renderScreen(fetchMock);
 
     // The counterpart the rule above needs: without it, removing the empty state entirely would pass.
     expect(await screen.findByTestId("library-empty")).toBeTruthy();
+  });
+  /**
+   * The story's own spend had nowhere to be.
+   *
+   * An Episode's scripts, images and narration are billed to the parent project id, so every episode row
+   * correctly adds nothing for them — and the money appeared on no screen at all. $3.45 on the real ledger,
+   * invisible. It goes on a header above the episodes it paid for rather than being split across them, which
+   * would invent a division the ledger does not record.
+   */
+  it("shows a story's own spend on a header above its episodes, and the total beside it", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {
+      projects: [],
+      episodes: [libraryEpisode()],
+      longProjects: [libraryLongProject({ ownCostUsd: 3.45, episodesCostUsd: 1.5 })],
+    }));
+    renderScreen(fetchMock);
+
+    const header = await screen.findByTestId("library-long-project-cost-12");
+    expect(header).toHaveTextContent("공통 $3.45");
+    expect(header).toHaveTextContent("회차 $1.50");
+    expect(header, "added up only after both have been said").toHaveTextContent("합계 $4.95");
+  });
+
+  /** A header with no rows under it would be a total for episodes that are not on screen. */
+  it("drops a story whose episodes the search filtered out", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {
+      projects: [],
+      episodes: [libraryEpisode()],
+      longProjects: [libraryLongProject(), libraryLongProject({ projectId: "13", title: "다른 이야기" })],
+    }));
+    renderScreen(fetchMock);
+    await screen.findByTestId("library-long-project-12");
+
+    expect(screen.queryByTestId("library-long-project-13"), "no episodes came with it").not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText("주제로 검색"), { target: { value: "없는이름" } });
+    expect(screen.queryByTestId("library-long-project-12")).not.toBeInTheDocument();
   });
 });

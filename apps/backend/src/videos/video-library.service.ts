@@ -12,6 +12,7 @@ import {
   type RestoreVideoVersionResponse,
   type SceneNumber,
   type VideoLibraryEpisodeSummary,
+  type VideoLibraryLongProjectSummary,
   type VideoVersionSummary,
 } from "@ai-animation-studio/shared";
 
@@ -184,10 +185,11 @@ export class VideoLibraryService {
    *
    * Fails soft per Episode. A story whose outline cannot be read should not empty the whole library.
    */
-  private async episodeRows(): Promise<VideoLibraryEpisodeSummary[]> {
+  private async episodeRows(): Promise<{ episodes: VideoLibraryEpisodeSummary[]; longProjects: VideoLibraryLongProjectSummary[] }> {
     let entries: string[];
-    try { entries = (await fs.readdir(this.projectsRoot, { withFileTypes: true })).filter((item) => item.isDirectory()).map((item) => item.name); } catch { return []; }
+    try { entries = (await fs.readdir(this.projectsRoot, { withFileTypes: true })).filter((item) => item.isDirectory()).map((item) => item.name); } catch { return { episodes: [], longProjects: [] }; }
     const rows: VideoLibraryEpisodeSummary[] = [];
+    const longProjects: VideoLibraryLongProjectSummary[] = [];
     for (const projectId of entries) {
       let storyRoot: string;
       try { storyRoot = longStoryRoot(this.projectsRoot, projectId); } catch { continue; }
@@ -196,12 +198,29 @@ export class VideoLibraryService {
       const projectTitle = typeof project.title === "string" ? project.title : projectId;
       const aspectRatio = project.aspect_ratio === "16:9" ? "16:9" as const : "9:16" as const;
       const list = await storedArray(path.join(storyRoot, "episode_outlines.json"));
+      const own: VideoLibraryEpisodeSummary[] = [];
       for (let index = 0; index < list.length; index += 1) {
         const row = await this.episodeRow(projectId, projectTitle, aspectRatio, storyRoot, index + 1, list[index]);
-        if (row) rows.push(row);
+        if (row) own.push(row);
+      }
+      rows.push(...own);
+      // Only for a story that has episodes in this library. A header for a project with nothing under it would
+      // be a row about spend on work that never reached a video, in a list that is a results archive.
+      if (own.length > 0) {
+        longProjects.push({
+          projectId,
+          title: projectTitle,
+          // Scripts, images, narration and the outline are all recorded against the parent id — that is why the
+          // episode rows correctly add nothing for them, and why this money had nowhere to appear.
+          ownCostUsd: this.openAiBudget ? await this.openAiBudget.costsByProject(projectId) : 0,
+          episodesCostUsd: own.reduce((sum, row) => sum + row.totalActualCostUsd, 0),
+        });
       }
     }
-    return rows.sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+    return {
+      episodes: rows.sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt)),
+      longProjects: longProjects.sort((left, right) => left.title.localeCompare(right.title, "ko")),
+    };
   }
 
   private async episodeRow(projectId: string, projectTitle: string, aspectRatio: "9:16" | "16:9", storyRoot: string, episodeNumber: number, outline: unknown): Promise<VideoLibraryEpisodeSummary | undefined> {
@@ -274,7 +293,8 @@ export class VideoLibraryService {
       });
     }
     rows.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
-    return { projects: rows, episodes: await this.episodeRows() };
+    const { episodes, longProjects } = await this.episodeRows();
+    return { projects: rows, episodes, longProjects };
   }
 
   private async versionsFor(projectId: string, target: Target): Promise<VideoVersionSummary[]> {
