@@ -4,7 +4,8 @@ import { NestFactory } from "@nestjs/core";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { projectNotFound } from "./projects/project-api.error.js";
-import { INTERNAL_ERROR_CODE, UnexpectedErrorFilter } from "./unexpected-error.filter.js";
+import { INTERNAL_ERROR_CODE } from "@ai-animation-studio/shared";
+import { UnexpectedErrorFilter } from "./unexpected-error.filter.js";
 
 @Controller("filter-probe")
 class ProbeController {

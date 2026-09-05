@@ -1,13 +1,11 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from "@nestjs/common";
-import type { ApiError } from "@ai-animation-studio/shared";
+import { INTERNAL_ERROR_CODE, type ApiError } from "@ai-animation-studio/shared";
 
 interface HttpResponse {
   status(code: number): HttpResponse;
   json(body: unknown): void;
 }
 
-/** The code a client sees when this server failed in a way nobody wrote a sentence for. */
-export const INTERNAL_ERROR_CODE = "INTERNAL_ERROR";
 
 /**
  * Shapes the one kind of failure that was leaving this app without a code: an unexpected throw.

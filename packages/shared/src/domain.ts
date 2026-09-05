@@ -253,6 +253,16 @@ export const FINAL_VIDEO_RELATIVE_PATH = "videos/final/instagram_reel.mp4";
  * them existing; the seventh disagreeing is a paid path answering a code no screen knows, which falls back to
  * a generic message about a failure that is specifically not generic.
  */
+/**
+ * The code a client sees when this server failed in a way nobody wrote a sentence for.
+ *
+ * Beside the other one because a client has to be able to tell them apart, and because both are answers this
+ * app gives about itself rather than about a project. Until it existed, an unexpected throw left with no code
+ * at all, and a client could not distinguish a server that failed from a server that was not there — which put
+ * two different sentences on screen during one outage.
+ */
+export const INTERNAL_ERROR_CODE = "INTERNAL_ERROR";
+
 export const BUDGET_LEDGER_UNREADABLE_CODE = "BUDGET_LEDGER_UNREADABLE";
 
 export const INSTAGRAM_CAPTION_MAX = 2_200;
