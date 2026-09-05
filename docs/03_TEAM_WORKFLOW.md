@@ -82,6 +82,17 @@ npm run dev:desktop  =  백엔드 package(빌드+번들)  →  desktop build  �
 
 브라우저 쪽(`dev:backend` + `dev:frontend`)은 원래부터 소스를 watch하므로 이 문제가 없다.
 
+### 설치 프로그램도 같은 함정에 빠져 있었다
+
+`dev:desktop`은 위처럼 고쳐졌는데 **패키징은 그대로였다**. `package`와 `package:installer`는 `electron-builder`만 실행했고, electron-builder는 `apps/backend/dist-bundle`과 `apps/frontend/dist`를 **그대로 복사**한다 — 즉 그 순간 트리에 놓여 있던 것이 사용자 손에 가는 설치본에 들어갔다. 개발자는 재시작으로 알아채지만, **설치본 안에서는 이걸 볼 방법이 없다**. 첫 증상은 며칠 전에 고친 버그가 남의 컴퓨터에서 되살아난 모습이다.
+
+```
+npm run package[:installer]  =  build:release  →  electron-builder
+build:release                =  shared build  →  백엔드 package(빌드+번들)  →  frontend build  →  desktop build
+```
+
+`apps/desktop/src/packaging-inputs.test.ts`가 이 규칙을 지킨다: **설치 프로그램이 복사하는 것 중 깨끗한 체크아웃에 없는 것(= `.gitignore`가 막는 빌드 산출물)은 먼저 도는 빌드에 이름이 있어야 한다.** `extraResources`에 새 산출물을 더하고 빌드를 안 붙이면 거기서 실패한다.
+
 ## 세션 시작 규칙
 
 새 세션은 이전 대화를 기억하지 못한다. 시작 시 다음을 수행한다.
