@@ -1,13 +1,13 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { NarrationAudioState } from "@ai-animation-studio/shared";
+import type { LongEpisodeDetail, LongEpisodeStatus, NarrationAudioState } from "@ai-animation-studio/shared";
 
 import { jsonResponse, makeLongProjectSettings } from "../api/testUtils.js";
 import { LongEpisodeNarrationReviewScreen } from "./LongEpisodeNarrationReviewScreen.js";
 
-const episode = (status = "script_approved") => ({
+const episode = (status: LongEpisodeStatus = "script_approved"): LongEpisodeDetail => ({
   episodeNumber: 2, title: "Episode", summary: "", mainEvent: "", conflict: "", cliffhanger: "", nextEpisodeHook: "",
-  status, approved: true, scriptRevision: 1, scriptHistoryCount: 0,
+  status, approved: true, scriptRevision: 1, scriptHistoryCount: 0, updatedAt: "2026-09-05T00:00:00.000Z",
 });
 
 function narrations(entries: { narration: string; audio?: NarrationAudioState; audioDurationSeconds?: number }[]) {

@@ -1,14 +1,15 @@
+import type { LongEpisodeDetail, LongEpisodeStatus, MergeLongEpisodeVideosResponse } from "@ai-animation-studio/shared";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { jsonResponse, makeLongProjectSettings, stubFetchByRoute } from "../api/testUtils.js";
 import { LongEpisodeVideoMergeScreen } from "./LongEpisodeVideoMergeScreen.js";
 
-const episode = (status = "completed") => ({ episodeNumber: 1, title: "Episode", summary: "summary", mainEvent: "event", conflict: "conflict", cliffhanger: "cliffhanger", nextEpisodeHook: "hook", status, approved: true, scriptRevision: 1, scriptHistoryCount: 1 });
+const episode = (status: LongEpisodeStatus = "completed"): LongEpisodeDetail => ({ episodeNumber: 1, title: "Episode", summary: "summary", mainEvent: "event", conflict: "conflict", cliffhanger: "cliffhanger", nextEpisodeHook: "hook", status, approved: true, scriptRevision: 1, scriptHistoryCount: 1, updatedAt: "2026-09-05T00:00:00.000Z" });
 // openablePath is required on the response and this fixture was short of it — a body handed to jsonResponse is
 // `unknown`, so nothing said so. The two differ on purpose: one is where the file sits inside the Episode, the
 // other is the same file from the project root, which is what the desktop bridge takes.
-const response = () => ({ episode: episode(), finalVideoPath: "videos/final/instagram_reel.mp4" as const, openablePath: "long_story/Episode01/videos/final/instagram_reel.mp4" as const });
+const response = (): MergeLongEpisodeVideosResponse => ({ episode: episode(), finalVideoPath: "videos/final/instagram_reel.mp4" as const, openablePath: "long_story/Episode01/videos/final/instagram_reel.mp4" as const });
 
 /**
  * An Episode carrying a script of `count` scenes — the screen reads its scene count from exactly this.
@@ -18,7 +19,7 @@ const response = () => ({ episode: episode(), finalVideoPath: "videos/final/inst
  * now that a finished Episode shows its player on sight: every pre-merge test would have rendered the success
  * block before merging anything, and the one test that waits for that block would have passed without it.
  */
-const episodeWithScenes = (count: number, status = "videos_approved") => ({
+const episodeWithScenes = (count: number, status: LongEpisodeStatus = "videos_approved") => ({
   ...episode(status),
   script: {
     title: "Episode",

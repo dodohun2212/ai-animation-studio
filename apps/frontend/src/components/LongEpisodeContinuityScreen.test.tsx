@@ -1,10 +1,11 @@
+import type { LongEpisodeContinuityMemory, LongEpisodeDetail, LongEpisodeOutline } from "@ai-animation-studio/shared";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { stubFetchByRoute } from "../api/testUtils.js";
 import { LongEpisodeContinuityScreen } from "./LongEpisodeContinuityScreen.js";
 
-const memory = (overrides = {}) => ({
+const memory = (overrides: Partial<LongEpisodeContinuityMemory> = {}): LongEpisodeContinuityMemory => ({
   episodeNumber: 1, episodeSummary: "The hero enters the ruins.", events: ["map recovered"], appearedCharacterIds: ["hero"], characterChanges: [{ id: "hero", change: "injured" }], appearedLocationIds: ["ruins"], itemChanges: [{ id: "map", change: "recovered" }], resolvedConflicts: [], newConflicts: ["guard arrives"], revealedSecretIds: [], remainingSecretIds: ["secret-1"], newForeshadowingIds: ["foreshadow-1"], resolvedForeshadowingIds: [], nextActions: ["escape"], timeElapsed: "one hour", worldChanges: ["the gate is open"], userEdits: "Keep the injury in the next Episode.", updatedAt: "2026-08-23T00:00:00.000Z", ...overrides,
 });
 const CONTINUITY_URL = "/long-projects/long/episodes/1/continuity";
@@ -14,11 +15,17 @@ const EPISODE_URL = "/long-projects/long/episodes/1";
  * prefilled. Blank by default: a test that says nothing about the outline gets no prefill and sees the blank
  * form it always saw.
  */
-const outline = (overrides = {}) => ({
-  episode: { episodeNumber: 1, title: "Episode", summary: "", mainEvent: "", conflict: "", cliffhanger: "", nextEpisodeHook: "", status: "videos_approved" as const, approved: true, scriptRevision: 1, scriptHistoryCount: 1, ...overrides },
-});
+const outline = (overrides: Partial<LongEpisodeDetail> = {}): { episode: LongEpisodeDetail } => {
+  const base: LongEpisodeDetail = {
+    episodeNumber: 1, title: "Episode", summary: "", mainEvent: "", conflict: "", cliffhanger: "", nextEpisodeHook: "",
+    status: "videos_approved", approved: true, scriptRevision: 1, scriptHistoryCount: 1, updatedAt: "2026-09-05T00:00:00.000Z",
+  };
+  return { episode: { ...base, ...overrides } };
+};
 
-const nextEpisode = { episodeNumber: 2, title: "Episode 2", summary: "", mainEvent: "", conflict: "", cliffhanger: "", nextEpisodeHook: "", status: "outline_ready" as const, approved: false, scriptRevision: 0, scriptHistoryCount: 0 };
+// approved/scriptRevision/scriptHistoryCount used to be here. They are LongEpisodeDetail fields, and this is an
+// outline — the server never sends them on it. Typing the fixture is what said so.
+const nextEpisode: LongEpisodeOutline = { episodeNumber: 2, title: "Episode 2", summary: "", mainEvent: "", conflict: "", cliffhanger: "", nextEpisodeHook: "", status: "outline_ready" };
 
 describe("LongEpisodeContinuityScreen", () => {
   afterEach(() => vi.unstubAllGlobals());

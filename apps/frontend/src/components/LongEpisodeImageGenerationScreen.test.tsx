@@ -1,3 +1,4 @@
+import type { LongEpisodeScene } from "@ai-animation-studio/shared";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -15,7 +16,7 @@ const episode = (status: "planned" | "outline_ready" | "script_review" | "script
  * list and the gallery a test is asserting about never exist. The screen also refuses to guess scene numbers,
  * so a state that has no reviews yet needs this to have any scenes at all.
  */
-const scriptScenes = (count = 6) => Array.from({ length: count }, (_, index) => ({
+const scriptScenes = (count = 6): LongEpisodeScene[] => Array.from({ length: count }, (_, index): LongEpisodeScene => ({
   number: index + 1, description: "d", visualAction: "v", startMotion: "s", mainMotion: "m", endMotion: "e",
   shotSize: "s", cameraAngle: "c", composition: "c", lensFeel: "l", focusSubject: "f", cameraMotion: "c",
   environmentMotion: "e", motionSpeed: "n", motionIntensity: "m", expressionChange: "x", continuityHint: "h",
