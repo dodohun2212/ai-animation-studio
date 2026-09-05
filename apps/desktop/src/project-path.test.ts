@@ -26,3 +26,25 @@ test("rejects a relative path that escapes the project folder", () => {
   assert.equal(resolveProjectPath(ROOT, "demo", "../other-project/secret.txt"), undefined);
   assert.equal(resolveProjectPath(ROOT, "demo", "..\\..\\other-project"), undefined);
 });
+
+/**
+ * The highest-consequence input this function takes, and the one nothing was pinning.
+ *
+ * Whatever comes back from here is handed to the shell to open. A relative path is checked for escaping with
+ * "..", but an absolute one does not need to escape — path.resolve simply discards the base and returns it. The
+ * containment check below catches that today; without a test, a refactor that compared the *relative* string
+ * instead of the resolved one would open anything on the machine and every existing assertion would still pass.
+ */
+test("rejects an absolute or UNC path, which does not need \"..\" to leave the project", () => {
+  assert.equal(resolveProjectPath(ROOT, "demo", path.join("C:", "Windows", "System32")), undefined);
+  assert.equal(resolveProjectPath(ROOT, "demo", "/etc/passwd"), undefined);
+  assert.equal(resolveProjectPath(ROOT, "demo", "\\server\share\secret.txt"), undefined);
+});
+
+/** The Episode shape the merge screen now sends: one more level than the short project, and still inside. */
+test("resolves an Episode's final video, which sits two directories deeper", () => {
+  assert.equal(
+    resolveProjectPath(ROOT, "demo", "long_story/Episode01/videos/final/instagram_reel.mp4"),
+    path.join(ROOT, "demo", "long_story", "Episode01", "videos", "final", "instagram_reel.mp4"),
+  );
+});
