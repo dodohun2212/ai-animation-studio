@@ -2,8 +2,11 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { BudgetPreview } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
+import { monthlyLimitFromEnvironment } from "./monthly-budget-limit.js";
 
 const DEFAULT_MONTHLY_LIMIT_USD = 10;
+/** See monthly-budget-limit.ts: the default is unchanged, and it is now possible to say otherwise. */
+const OPENAI_MONTHLY_LIMIT_VARIABLE = "OPENAI_MONTHLY_BUDGET_USD";
 
 interface UsageRecord {
   timestamp: string;
@@ -27,7 +30,7 @@ const isUsageRecord = (value: unknown): value is UsageRecord => isObject(value)
 export class OpenAiBudget {
   private readonly filePath: string;
 
-  constructor(learningDataRoot: string, readonly monthlyLimitUsd: number = DEFAULT_MONTHLY_LIMIT_USD) {
+  constructor(learningDataRoot: string, readonly monthlyLimitUsd: number = monthlyLimitFromEnvironment(OPENAI_MONTHLY_LIMIT_VARIABLE, DEFAULT_MONTHLY_LIMIT_USD)) {
     this.filePath = path.join(learningDataRoot, "api_budget_usage.json");
   }
 
