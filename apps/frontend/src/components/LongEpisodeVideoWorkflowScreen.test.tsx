@@ -40,6 +40,23 @@ const sceneVersionRoutes = () => Object.fromEntries([1, 2, 3, 4, 5, 6].map((scen
 
 describe("LongEpisodeVideoWorkflowScreen", () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  /**
+   * The screen had been storing the server's answer since the start response and never reading it, showing a
+   * sentence that names both cases instead. Before a run exists that is honest — nothing has been started. Once
+   * one exists it makes the person work out which case applies to money they have already spent.
+   */
+  it("says whether the run in progress is paid, instead of naming both cases", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": { ...progress("running", [1]), paidProvider: true },
+    }));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    const notice = await screen.findByTestId("episode-video-provider-notice");
+    await waitFor(() => expect(notice.textContent).toContain("실제 유료 Runway API를 호출합니다"));
+    expect(notice.textContent, "the run's own answer replaces the two-branch sentence").not.toContain("연결되어 있으면");
+  });
 
   it("shows the remaining monthly budget and call cap before approval, warning when the estimate exceeds it", async () => {
     const withBudget = {
@@ -93,7 +110,7 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     const fetchMock = stubFetchByRoute({
       "GET /videos/generations/current": { jobId: null },
       "GET /videos/preview": preview,
-      "POST /videos/generations": { jobId: "job", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") },
+      "POST /videos/generations": { paidProvider: false, jobId: "job", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") },
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
@@ -106,7 +123,7 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     const fetchMock = stubFetchByRoute({
       "GET /videos/generations/current": { jobId: null },
       "GET /videos/preview": preview,
-      "POST /videos/generations": { jobId: "job", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") },
+      "POST /videos/generations": { paidProvider: false, jobId: "job", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") },
       "GET /videos/generations/job": progress("succeeded", [1, 2, 3, 4, 5, 6]),
       "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review, staleness: { videoStale: [] } },
       "POST /videos/generations/job/review/1/approve": { episode: episode("videos_review"), reviews: [{ ...review[0], status: "approved" }, ...review.slice(1)], staleness: { videoStale: [] } },
@@ -130,7 +147,7 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     const fetchMock = stubFetchByRoute({
       "GET /videos/generations/current": { jobId: null },
       "GET /videos/preview": preview,
-      "POST /videos/generations": { jobId: "job", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") },
+      "POST /videos/generations": { paidProvider: false, jobId: "job", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") },
       "GET /videos/generations/job": failedJob,
       "POST /videos/generations/job/scenes/2/regenerate": retriedJob,
     });
@@ -174,7 +191,7 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
       // always-failing and a plain body is always 200, so neither alone can say "this one, then that one".
       "POST /videos/generations": sequence([
         withStatus(500, { code: "LONG_PROJECT_STORAGE_ERROR", message: "raw" }),
-        { jobId: "job", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") },
+        { paidProvider: false, jobId: "job", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") },
       ]),
     });
     vi.stubGlobal("fetch", fetchMock);

@@ -196,7 +196,19 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
       <button type="button" className={outlineButton} onClick={onBack}>에피소드 이미지로</button>
       <header className="space-y-1">
         <h2 className="flex items-center gap-2.5 text-lg font-semibold">{dot}{`에피소드 ${episodeNumber} 영상 작업`}</h2>
-        <p data-testid="episode-video-provider-notice" className="text-sm text-amber-300">Runway 키가 연결되어 있으면 장면마다 실제 유료 요청이 전송됩니다. 연결되어 있지 않으면 비용 없이 임시 영상으로 만들어집니다.</p>
+        {/*
+          * Before a run exists this is genuinely conditional and says both branches. Once one exists it is not:
+          * the server answered with `paidProvider`, this screen has been storing that answer since the start
+          * response and never reading it, and leaving the two-branch sentence up makes the person work out
+          * which case they are in about their own money. The short project says which; this now does too.
+          */}
+        <p data-testid="episode-video-provider-notice" className="text-sm text-amber-300">
+          {job === null
+            ? "Runway 키가 연결되어 있으면 장면마다 실제 유료 요청이 전송됩니다. 연결되어 있지 않으면 비용 없이 임시 영상으로 만들어집니다."
+            : job.paidProvider
+              ? "이 작업은 실제 유료 Runway API를 호출합니다. 장면마다 비용이 발생하며, 재생성하면 그만큼 다시 청구됩니다."
+              : "Runway 키가 연결되어 있지 않아 비용 없이 임시 영상으로 만들어집니다. 키를 연결하면 실제 유료 요청이 전송됩니다."}
+        </p>
       </header>
       {!preview && !job && !error && <Spinner label="영상 작업을 불러오는 중..." />}
       {preview && !job && (
