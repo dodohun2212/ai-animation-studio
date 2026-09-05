@@ -1,7 +1,7 @@
-import { Controller, Get, HttpStatus, Module } from "@nestjs/common";
+import { Controller, Get, HttpStatus, Logger, Module } from "@nestjs/common";
 import { APP_FILTER } from "@nestjs/core";
 import { NestFactory } from "@nestjs/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { projectNotFound } from "./projects/project-api.error.js";
 import { INTERNAL_ERROR_CODE } from "@ai-animation-studio/shared";
@@ -11,6 +11,9 @@ import { UnexpectedErrorFilter } from "./unexpected-error.filter.js";
 class ProbeController {
   @Get("throws")
   throws(): never { throw new Error("a stack trace and a file path live in here"); }
+
+  @Get("throws-with-a-secret")
+  leaks(): never { throw new Error("connect failed: OPENAI_API_KEY=sk-abcdefghijklmnop"); }
 
   @Get("refuses")
   refuses(): never { throw projectNotFound("probe_project"); }
@@ -59,6 +62,21 @@ describe("an unexpected failure still answers in this app's shape", () => {
     const { body } = await probe("throws");
     expect(JSON.stringify(body)).not.toContain("stack trace");
     expect(JSON.stringify(body)).not.toContain("file path");
+  });
+
+  it("does not write a credential into the log either", async () => {
+    // The body already says nothing; the log is the other half. "API keys and secrets appear in neither
+    // responses nor logs" is a rule this repository states, and this filter logs whatever an unplanned failure
+    // happened to be carrying — so it goes through the redactor the app already has.
+    const logged: string[] = [];
+    const spy = vi.spyOn(Logger.prototype, "error").mockImplementation((message: unknown) => { logged.push(String(message)); });
+    try {
+      await probe("throws-with-a-secret");
+    } finally {
+      spy.mockRestore();
+    }
+    expect(logged.join(" ")).not.toContain("sk-abcdefghijklmnop");
+    expect(logged.join(" ")).toContain("[REDACTED]");
   });
 
   it("leaves a deliberate refusal exactly as it was", async () => {

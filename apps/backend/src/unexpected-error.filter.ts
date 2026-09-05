@@ -1,6 +1,8 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from "@nestjs/common";
 import { INTERNAL_ERROR_CODE, type ApiError } from "@ai-animation-studio/shared";
 
+import { ProviderSettingsRedactor } from "./settings/provider-settings.redaction.js";
+
 interface HttpResponse {
   status(code: number): HttpResponse;
   json(body: unknown): void;
@@ -35,6 +37,13 @@ interface HttpResponse {
 @Catch()
 export class UnexpectedErrorFilter implements ExceptionFilter {
   private readonly logger = new Logger("UnexpectedError");
+  /**
+   * The app's secret patterns, not the settings feature's, despite where the class lives: `OPENAI_API_KEY=`,
+   * `RUNWAY_API_SECRET=` and bare `sk-` tokens. This filter logs whatever an unplanned failure carried, and
+   * "API keys and secrets appear in neither responses nor logs" is a rule this repository already states —
+   * a second copy of those patterns here would be the thing today was spent removing.
+   */
+  private readonly redactor = new ProviderSettingsRedactor();
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<HttpResponse>();
@@ -42,7 +51,7 @@ export class UnexpectedErrorFilter implements ExceptionFilter {
       response.status(exception.getStatus()).json(exception.getResponse());
       return;
     }
-    this.logger.error(exception instanceof Error ? (exception.stack ?? exception.message) : String(exception));
+    this.logger.error(this.redactor.redact(exception instanceof Error ? (exception.stack ?? exception.message) : String(exception)));
     const body: ApiError = { code: INTERNAL_ERROR_CODE, message: "The request could not be completed." };
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).json(body);
   }
