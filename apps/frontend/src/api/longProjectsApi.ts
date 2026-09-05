@@ -591,8 +591,11 @@ function isSceneErrorMap(value: unknown): value is Partial<Record<SceneNumber, s
   return Object.entries(value).every(([key, message]) => isSceneNumber(Number(key)) && isNonEmptyString(message));
 }
 
+/** Same two required fields, same reason as videoWorkflowApi's isGenerationProgressResponse — see its comment. */
 function isEpisodeVideoProgress(value: unknown): value is LongEpisodeVideoProgress {
-  return isRecord(value) && isNonEmptyString(value.jobId) && (value.status === "created" || value.status === "running" || value.status === "succeeded" || value.status === "failed" || value.status === "interrupted")
+  return isRecord(value) && typeof value.paidProvider === "boolean"
+    && Array.isArray(value.sceneNumbers) && value.sceneNumbers.every(isSceneNumber)
+    && isNonEmptyString(value.jobId) && (value.status === "created" || value.status === "running" || value.status === "succeeded" || value.status === "failed" || value.status === "interrupted")
     && (value.currentSceneNumber === undefined || isSceneNumber(value.currentSceneNumber)) && Array.isArray(value.completedSceneNumbers) && value.completedSceneNumbers.every(isSceneNumber)
     && Array.isArray(value.failedSceneNumbers) && value.failedSceneNumbers.every(isSceneNumber) && isLongEpisodeDetail(value.episode) && isSceneErrorMap(value.sceneErrors);
 }

@@ -781,6 +781,25 @@ describe("VideoWorkflowScreen source", () => {
     expect(notice.textContent).not.toContain("비용 없이");
   });
 
+  /**
+   * The third way the same lie got out, and the one nothing was watching: the field simply absent.
+   *
+   * Both tests around this one hand the screen a paidProvider, so both were checking what the screen does with an
+   * answer. The client guard was not checking that an answer arrived — undefined reached the notice, read falsy,
+   * and a paid run announced itself as free. Fourteen fixtures in this app were that shape.
+   *
+   * Refusing it is the right answer rather than a third sentence here: the screen already has one for "not read
+   * yet", and a response missing a required field is a server this client cannot read, not a run of unknown price.
+   */
+  it("refuses a progress response that does not say whether the run is paid", async () => {
+    const { paidProvider: _absent, ...withoutPaidProvider } = makeProgress({ completedSceneNumbers: [1] });
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, withoutPaidProvider)));
+
+    const notice = await screen.findByTestId("provider-mode-notice");
+    expect(notice.textContent, "an unreadable response must not become the cheap answer").not.toContain("비용 없이");
+    expect(notice.textContent).toContain("아직 확인하지 못했습니다");
+  });
+
   // The other half: without it, a screen that simply always warned about money would pass the test above and
   // tell every local-fake run it was being charged.
   it("still says a free run is free", async () => {

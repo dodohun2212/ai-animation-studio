@@ -461,6 +461,9 @@ describe("App", () => {
       }
       if (url === "/projects/sample_project/videos/generations/job_42") {
         return jsonResponse(200, {
+          // Stated, not left out: the client refuses a progress response without it, because a missing
+          // paidProvider used to be read as "free" on a run that was charging.
+          paidProvider: false,
           jobId: "job_42",
           status: "succeeded",
           completedSceneNumbers: [1, 2, 3, 4, 5, 6],
@@ -530,7 +533,7 @@ describe("App", () => {
         return jsonResponse(200, { jobId: "job_42", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6] });
       }
       if (url === "/projects/sample_project/videos/generations/job_42" && method === "GET") {
-        return jsonResponse(200, { jobId: "job_42", status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6], failedSceneNumbers: [], sceneNumbers: [1, 2, 3, 4, 5, 6] });
+        return jsonResponse(200, { paidProvider: false, jobId: "job_42", status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6], failedSceneNumbers: [], sceneNumbers: [1, 2, 3, 4, 5, 6] });
       }
       if (url === "/projects/sample_project/videos/generations/job_42/review" && method === "GET") {
         return jsonResponse(200, { project, reviews });

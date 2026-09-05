@@ -132,9 +132,19 @@ function isSceneErrorMap(value: unknown): value is Partial<Record<SceneNumber, s
   return Object.entries(value).every(([key, message]) => isSceneNumber(Number(key)) && isNonEmptyString(message));
 }
 
+/**
+ * `paidProvider` is checked first and by type, not merely read.
+ *
+ * The field is required precisely so that "missing" can never be read as "free" — a real paid run omits its
+ * cost line when the budget ledger cannot be read, and the screen used to infer free from that. A guard that
+ * skips it puts the inference back in a worse place: the value arrives as undefined, the notice reads it as
+ * falsy, and the screen tells someone their Runway run costs nothing. The contract's comment and the
+ * screen's both say this must be impossible; this is what makes it so.
+ */
 function isGenerationProgressResponse(value: unknown): value is GenerationProgressResponse {
   return (
     isRecord(value) &&
+    typeof value.paidProvider === "boolean" &&
     isNonEmptyString(value.jobId) &&
     (PROGRESS_STATUSES as readonly unknown[]).includes(value.status) &&
     (value.currentSceneNumber === undefined || isSceneNumber(value.currentSceneNumber)) &&

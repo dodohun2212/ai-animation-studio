@@ -1,11 +1,14 @@
+import type { LongEpisodeStatus, LongEpisodeDetail, LongEpisodeVideoProgress } from "@ai-animation-studio/shared";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, sequence, stubFetchByRoute, withStatus } from "../api/testUtils.js";
 import { LongEpisodeVideoWorkflowScreen } from "./LongEpisodeVideoWorkflowScreen.js";
 
-const episode = (status: string) => ({ episodeNumber: 1, title: "Episode", summary: "s", mainEvent: "e", conflict: "c", cliffhanger: "h", nextEpisodeHook: "n", status, approved: true, scriptRevision: 1, scriptHistoryCount: 1 });
+const episode = (status: LongEpisodeStatus): LongEpisodeDetail => ({ episodeNumber: 1, title: "Episode", summary: "s", mainEvent: "e", conflict: "c", cliffhanger: "h", nextEpisodeHook: "n", status, approved: true, scriptRevision: 1, scriptHistoryCount: 1, updatedAt: "2026-09-05T00:00:00.000Z" });
 const preview = { confirmationId: "confirm", model: "gen4_turbo", ratio: "720:1280", durationSecondsPerScene: 5, executionMode: "sequential", estimatedCostUsd: 1.5, scenes: [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, prompt: `prompt ${sceneNumber}`, estimatedCostUsd: .25 })) };
-const progress = (status: "created" | "running" | "succeeded" | "interrupted", completed: number[] = []) => ({ jobId: "job", status, completedSceneNumbers: completed, failedSceneNumbers: [], sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode(status === "succeeded" ? "videos_review" : "videos_generating") });
+// paidProvider is required and stated, never inferred: a run whose cost line is missing is not a free run. The
+// fixture said nothing, which is exactly the shape the client now refuses.
+const progress = (status: "created" | "running" | "succeeded" | "interrupted", completed: number[] = []): LongEpisodeVideoProgress => ({ paidProvider: false, jobId: "job", status, completedSceneNumbers: completed, failedSceneNumbers: [], sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode(status === "succeeded" ? "videos_review" : "videos_generating") });
 /**
  * Assertions here name the request they mean instead of counting to it.
  *
@@ -120,7 +123,7 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
   });
   it("offers a retry for a scene Runway reported failed, only submitting after explicit confirmation, and shows an actionable reason", async () => {
     const failedJob = {
-      jobId: "job", status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2, 3], sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
+      paidProvider: false, jobId: "job", status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2, 3], sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
       sceneErrors: { 2: "authentication", 3: "Runway rejected the prompt: explicit content detected" },
     };
     const retriedJob = { jobId: "job", status: "running", completedSceneNumbers: [1], currentSceneNumber: 2, failedSceneNumbers: [], sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") };
