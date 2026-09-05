@@ -3664,3 +3664,8 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
   - `SHORT_PROJECT_LEAD_CAST_ROLES` + `isShortProjectCastLead()` + `SHORT_PROJECT_LEAD_CAST_ROLE`(쓰는 쪽) 를 계약에 넣고 셋을 전부 그쪽으로 돌렸다. **`castRole` 은 자유 문자열로 남긴다** — 파이썬이 뭘 적었든 그 프로젝트는 열려야 한다. 좁히는 유니온이 아니라 **읽는 쪽들이 합의한 목록**이다.
   - 🔴 **`"lead"` 는 아무도 안 지키고 있었다.** 목록에서 빼도 **두 앱 전부 초록**이었다. 이 앱은 `"protagonist"` 만 쓰고 `"lead"` 는 파이썬 시절 데이터에만 있으니, **몇 년 전 정한 대표가 조용히 서브가 되고 유료 프롬프트가 그대로 나가도** 아무도 몰랐다는 뜻이다. 짝을 넣었다 — 목록에서 빼면 빨개진다.
   - 🟢 Cowork 가 부탁한 검증: 빌더가 `"representative"` 를 내도록 망가뜨리면 **타입체크는 0 그대로, 런타임 짝 넷이 빨개진다.** 빌더의 값어치는 "틀릴 수 있는 자리를 15개에서 1개로" 이고, 그 1개는 짝이 지킨다 — 그쪽이 적은 그대로다.
+- [x] **528의 부류("읽기만 하고 쓰지 않는 옛 철자")를 더 훑었다 — 하나는 이미 지켜지고 있었고, 하나는 오늘 비용이 0이라 안 고쳤다**:
+  - 🟢 `episode-context-builder.ts` 의 `status === "open" || status === "planned"` — `"lead"` 와 같은 모양이라 주입해 봤더니 **짝이 문다**(`"splits secrets by reveal_available_episode and keeps only open/planned foreshadowing"`). 지켜지고 있다.
+  - 🟠 그러다 더 큰 걸 봤는데 **고치지 않았다**: 연속성 메모가 `resolvedForeshadowingIds` 를 **저장하고**, 컨텍스트 빌더는 **그걸 안 읽는다**. 빌더가 받는 건 메모의 다섯 필드뿐(`episodeNumber/summary/events/characterChanges/nextActions`)이고, 미해결 판정은 **Story Bible 항목의 `status` 만** 본다. 그런데 **화면은 그 status 를 아예 안 보낸다** — 이 앱에서 만든 복선은 영원히 "미해결" 이고, 회수했다고 메모에 적어도 **다음 회차 유료 대본 프롬프트에 그대로 다시 실린다.**
+  - 🔴 **그런데 실제 데이터로 재니 비용이 0이다**: 프로젝트 셋 다 복선 항목 **0개**, 메모의 `resolved_foreshadowing_ids` 도 전부 비어 있다. **아무도 아직 복선을 안 썼다.**
+  - 그래서 안 고쳤다. 세 가지가 겹친다 — ① 오늘 도달 불가능(Pacing 때 배운 것) ② 주석이 *"matching Python"* 이라 **물려받은 제품 동작**이지 이식 결함이 아니다 ③ 고치면 **유료 프롬프트의 내용이 바뀐다** — 그건 캡틴D 결정이다. **사실만 적어 두고 넘긴다.**
