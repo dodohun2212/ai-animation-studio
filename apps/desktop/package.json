@@ -7,10 +7,11 @@
   "scripts": {
     "dev": "npm run build && electron .",
     "build": "tsc -p tsconfig.build.json && node -e \"require('node:fs').copyFileSync('src/preload.cjs','dist/preload.cjs')\"",
+    "build:release": "npm --prefix ../../packages/shared run build && npm --prefix ../backend run package && npm --prefix ../frontend run build && npm run build",
     "test": "node --test",
     "typecheck": "tsc --noEmit --pretty false",
-    "package": "electron-builder --dir",
-    "package:installer": "electron-builder --win nsis"
+    "package": "npm run build:release && electron-builder --dir",
+    "package:installer": "npm run build:release && electron-builder --win nsis"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
@@ -25,15 +26,31 @@
     "directories": {
       "output": "release"
     },
-    "files": ["dist/**/*"],
+    "files": [
+      "dist/**/*"
+    ],
     "extraResources": [
-      { "from": "../backend/dist-bundle", "to": "backend" },
-      { "from": "../frontend/dist", "to": "frontend" },
-      { "from": "../../prompts", "to": "backend/prompts" },
-      { "from": "../../fonts", "to": "backend/fonts" }
+      {
+        "from": "../backend/dist-bundle",
+        "to": "backend"
+      },
+      {
+        "from": "../frontend/dist",
+        "to": "frontend"
+      },
+      {
+        "from": "../../prompts",
+        "to": "backend/prompts"
+      },
+      {
+        "from": "../../fonts",
+        "to": "backend/fonts"
+      }
     ],
     "win": {
-      "target": ["nsis"]
+      "target": [
+        "nsis"
+      ]
     }
   }
 }
