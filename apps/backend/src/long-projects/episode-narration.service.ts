@@ -1,5 +1,5 @@
 import * as crypto from "node:crypto";
-import { readLongProjectJson } from "./long-project-json.js";
+import { assertEpisodeListed, readLongProjectJson } from "./long-project-json.js";
 import { OPENAI_LEDGER_FILE, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import { persistEpisodeWarning } from "./episode-warnings.js";
 import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
@@ -44,9 +44,8 @@ export class EpisodeNarrationService {
     return { root, outlines: path.join(root, "episode_outlines.json"), episode, project: path.join(episode, "project.json"), narration: path.join(episode, "narration"), records: path.join(episode, "narration_generation_records.json") };
   }
   private async episode(projectId: string, number: number): Promise<StoredEpisode> {
-    if (!Number.isInteger(number) || number < 1) throw longEpisodeNotFound();
-    const files = this.files(projectId, number); const outlines = await readLongProjectJson(files.outlines);
-    if (!Array.isArray(outlines) || number > outlines.length || !object(outlines[number - 1]) || outlines[number - 1].episode_number !== number) throw longEpisodeNotFound();
+    const files = this.files(projectId, number);
+    await assertEpisodeListed(files.outlines, number);
     // Unlike the other Episode services, narration can legitimately be asked about before the Episode has ever
     // been touched by episode-scripts.service.ts (no state gate — see the shared contract's doc comment), so
     // its per-episode project.json file may not exist on disk yet at all. That is simply "no script yet", not a

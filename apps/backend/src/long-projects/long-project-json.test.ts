@@ -4,7 +4,7 @@ import * as path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { readLongProjectJson } from "./long-project-json.js";
+import { assertEpisodeListed, readLongProjectJson } from "./long-project-json.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true }))); });
@@ -53,5 +53,49 @@ describe("reading a long project's JSON", () => {
     const file = path.join(root, "episode_outlines.json");
     await fs.writeFile(file, JSON.stringify([{ episode_number: 1 }]));
     expect(await readLongProjectJson(file)).toEqual([{ episode_number: 1 }]);
+  });
+});
+
+/**
+ * Whether a project's outline lists the Episode being asked about.
+ *
+ * Six services each wrote out the same four conditions. It is the answer to "does Episode 7 exist", and a copy
+ * that softens one of them does not fail — it opens an Episode the other five refuse, or refuses one they open,
+ * on one screen only.
+ */
+describe("whether an Episode is listed at all", () => {
+  async function outline(entries: unknown): Promise<string> {
+    const root = await tempRoot();
+    const file = path.join(root, "episode_outlines.json");
+    await fs.writeFile(file, JSON.stringify(entries));
+    return file;
+  }
+  const notFound = { response: { code: "LONG_EPISODE_NOT_FOUND" } };
+
+  it("accepts a number the outline lists at that position", async () => {
+    const file = await outline([{ episode_number: 1 }, { episode_number: 2 }]);
+    await expect(assertEpisodeListed(file, 2)).resolves.toBeUndefined();
+  });
+
+  it("refuses a number past the end, and a number that is not one", async () => {
+    const file = await outline([{ episode_number: 1 }]);
+    await expect(assertEpisodeListed(file, 2)).rejects.toMatchObject(notFound);
+    await expect(assertEpisodeListed(file, 0)).rejects.toMatchObject(notFound);
+    await expect(assertEpisodeListed(file, -1)).rejects.toMatchObject(notFound);
+    await expect(assertEpisodeListed(file, 1.5)).rejects.toMatchObject(notFound);
+  });
+
+  it("refuses an entry whose stored number does not match its position", async () => {
+    // The condition that looks redundant and is not. The outline is a list, and position agreeing with the
+    // stored number is what makes "the second entry" and "Episode 2" the same Episode — without it, an outline
+    // written with a gap hands back a neighbour's Episode under the number that was asked for.
+    const file = await outline([{ episode_number: 1 }, { episode_number: 3 }]);
+    await expect(assertEpisodeListed(file, 2)).rejects.toMatchObject(notFound);
+  });
+
+  it("refuses an outline that is not a list of records", async () => {
+    await expect(assertEpisodeListed(await outline({ episode_number: 1 }), 1)).rejects.toMatchObject(notFound);
+    await expect(assertEpisodeListed(await outline([null]), 1)).rejects.toMatchObject(notFound);
+    await expect(assertEpisodeListed(await outline([[]]), 1)).rejects.toMatchObject(notFound);
   });
 });

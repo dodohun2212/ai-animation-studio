@@ -1,5 +1,5 @@
 import * as crypto from "node:crypto";
-import { readLongProjectJson } from "./long-project-json.js";
+import { assertEpisodeListed, readLongProjectJson } from "./long-project-json.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
@@ -56,9 +56,8 @@ export class EpisodeVideoMergeService {
 
 
   private async loadEpisode(id: string, number: number): Promise<Episode> {
-    if (!Number.isInteger(number) || number < 1) throw longEpisodeNotFound();
-    const f = this.files(id, number); const outlines = await readLongProjectJson(f.outlines);
-    if (!Array.isArray(outlines) || number > outlines.length || !object(outlines[number - 1]) || outlines[number - 1].episode_number !== number) throw longEpisodeNotFound();
+    const f = this.files(id, number);
+    await assertEpisodeListed(f.outlines, number);
     // An Episode listed in the outline but never scripted has no directory yet, so this read is ENOENT — which
     // `json()` reports as `longNotFound()`, "Long project was not found". The project is right there; the person
     // was looking at it a moment ago. Measured over real data: Episode 2 of a real long project answered 200 for

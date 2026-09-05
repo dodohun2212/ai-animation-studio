@@ -1,5 +1,5 @@
 import * as fs from "node:fs/promises";
-import { readLongProjectJson } from "./long-project-json.js";
+import { assertEpisodeListed, readLongProjectJson } from "./long-project-json.js";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import { LONG_EPISODE_STATUSES, type GetLongEpisodeContinuityResponse, type LongEpisodeContinuityMemory, type LongEpisodeDetail, type LongEpisodeOutline, type LongEpisodeStatus, type SaveLongEpisodeContinuityRequest, type SaveLongEpisodeContinuityResponse } from "@ai-animation-studio/shared";
@@ -31,7 +31,7 @@ export class EpisodeContinuityService {
   constructor(private readonly projectsRoot: string) {}
 
   private files(projectId: string, number: number) { const root = longStoryRoot(this.projectsRoot, projectId); const episode = path.join(root, episodeDirectoryName(number)); return { root, outlines: path.join(root, "episode_outlines.json"), project: path.join(episode, "project.json"), continuity: path.join(episode, "continuity.json") }; }
-  private async episode(id: string, number: number): Promise<StoredEpisode> { if (!Number.isInteger(number) || number < 1) throw longEpisodeNotFound(); const files = this.files(id, number); const outlines = await readLongProjectJson(files.outlines); if (!Array.isArray(outlines) || number > outlines.length || !object(outlines[number - 1]) || outlines[number - 1].episode_number !== number) throw longEpisodeNotFound(); const raw = await readLongProjectJson(files.project); if (!object(raw) || raw.number !== number || !states.includes(raw.state as LongEpisodeStatus) || typeof raw.approved !== "boolean" || !Number.isInteger(raw.script_revision) || typeof raw.updated_at !== "string") throw longInvalidData(); return raw as StoredEpisode; }
+  private async episode(id: string, number: number): Promise<StoredEpisode> { const files = this.files(id, number); await assertEpisodeListed(files.outlines, number); const raw = await readLongProjectJson(files.project); if (!object(raw) || raw.number !== number || !states.includes(raw.state as LongEpisodeStatus) || typeof raw.approved !== "boolean" || !Number.isInteger(raw.script_revision) || typeof raw.updated_at !== "string") throw longInvalidData(); return raw as StoredEpisode; }
   /**
    * This Episode's record, or null when it has none yet.
    *

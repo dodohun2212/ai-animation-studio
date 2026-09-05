@@ -1,5 +1,5 @@
 import { PLACEHOLDER_PNG, isPlaceholderImage } from "../images/placeholder-image.js";
-import { readLongProjectJson } from "./long-project-json.js";
+import { assertEpisodeListed, readLongProjectJson } from "./long-project-json.js";
 import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { persistEpisodeWarning } from "./episode-warnings.js";
@@ -106,9 +106,8 @@ export class EpisodeImagesService {
     return raw.aspect_ratio === "16:9" ? "1536x1024" : "1024x1536";
   }
   private async episode(projectId: string, number: number): Promise<StoredEpisode> {
-    if (!Number.isInteger(number) || number < 1) throw longEpisodeNotFound();
-    const files = this.files(projectId, number); const outlines = await readLongProjectJson(files.outlines);
-    if (!Array.isArray(outlines) || number > outlines.length || !object(outlines[number - 1]) || outlines[number - 1].episode_number !== number) throw longEpisodeNotFound();
+    const files = this.files(projectId, number);
+    await assertEpisodeListed(files.outlines, number);
     // An Episode listed in the outline but never scripted has no directory yet, so this read is ENOENT — which
     // `json()` reports as `longNotFound()`, "Long project was not found". The project is right there; the person
     // was looking at it a moment ago. Measured over real data: Episode 2 of a real long project answered 200 for

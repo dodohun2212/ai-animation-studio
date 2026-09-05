@@ -1,5 +1,5 @@
 import * as fs from "node:fs/promises";
-import { readLongProjectJson } from "./long-project-json.js";
+import { assertEpisodeListed, readLongProjectJson } from "./long-project-json.js";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import { longEpisodeHasImages, sceneNumbersFor, type GetLongEpisodeContinuityReferenceResponse, type LongEpisodeContinuityReference, type LongEpisodeContinuityUnavailableReason, type LongEpisodeStatus } from "@ai-animation-studio/shared";
@@ -20,9 +20,8 @@ export class EpisodeContinuityReferenceService {
     return { root, outlines: path.join(root, "episode_outlines.json"), episode, project: path.join(episode, "project.json"), reviews: path.join(episode, "generated_image_reviews.json"), images: path.join(episode, "images") };
   }
   private async assertEpisode(projectId: string, number: number): Promise<void> {
-    if (!Number.isInteger(number) || number < 1) throw longEpisodeNotFound();
-    const files = this.files(projectId, number); const outlines = await readLongProjectJson(files.outlines);
-    if (!Array.isArray(outlines) || number > outlines.length || !object(outlines[number - 1]) || outlines[number - 1].episode_number !== number) throw longEpisodeNotFound();
+    const files = this.files(projectId, number);
+    await assertEpisodeListed(files.outlines, number);
   }
   /** The previous Episode's own scene_count (falls back to 6 for episodes stored before that field existed, same as episode-scripts.service.ts's parseStored) and whether its final scene's image is usable as a continuity reference. */
   private async previousReference(projectId: string, number: number): Promise<{ sceneCount: number; available: boolean; reason?: LongEpisodeContinuityUnavailableReason }> {

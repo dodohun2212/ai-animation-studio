@@ -1,5 +1,5 @@
 import * as crypto from "node:crypto";
-import { readLongProjectJson } from "./long-project-json.js";
+import { assertEpisodeListed, readLongProjectJson } from "./long-project-json.js";
 import { isBudgetLedgerUnreadable, RUNWAY_LEDGER_FILE, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import { persistEpisodeWarning } from "./episode-warnings.js";
 import { PLACEHOLDER_MP4 } from "../videos/placeholder-clip.js";
@@ -61,7 +61,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
     if (!object(raw) || (raw.aspect_ratio !== "9:16" && raw.aspect_ratio !== "16:9")) throw longInvalidData();
     return raw.aspect_ratio === "16:9" ? "1280:720" : "720:1280";
   }
-  private async loadEpisode(id: string, number: number): Promise<Episode> { if (!Number.isInteger(number) || number < 1) throw longEpisodeNotFound(); const f = this.files(id, number); const outlines = await readLongProjectJson(f.outlines); if (!Array.isArray(outlines) || number > outlines.length || !object(outlines[number - 1]) || outlines[number - 1].episode_number !== number) throw longEpisodeNotFound(); let raw: unknown;
+  private async loadEpisode(id: string, number: number): Promise<Episode> { const f = this.files(id, number); await assertEpisodeListed(f.outlines, number); let raw: unknown;
     // See episode-images.service.ts's episode(): an Episode listed in the outline but never scripted has no
     // directory yet, and reporting that as "Long project was not found" sends the person looking for something
     // that is not missing. A scripted Episode in the wrong state already gets this answer.
