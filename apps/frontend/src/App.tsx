@@ -397,6 +397,33 @@ const SHORT_PIPELINE_CONTEXT_SCREENS = new Set<Screen["name"]>([
   "videoPreview", "videoWorkflow", "videoMerge",
 ]);
 
+/**
+ * A 명언 카드 is not a short story, and the pipeline above is the story's.
+ *
+ * `photo-card.service.ts` creates one already at `VideosApproved`: the picture is copied from the Library, the
+ * scene record is written, and no provider is ever called. So a card has not "finished" 대본 · 참고 이미지
+ * 연결 · 장면 이미지 · 영상 만들기 — it never had them. The six-step list showed all six filled in anyway, and
+ * clicking one landed on a screen whose gate then blamed the person's input: 캡틴D pressed 연결 다 했음 on a
+ * card and got "입력 내용을 확인해 주세요" for a fingerprint no one had ever been asked to produce.
+ *
+ * Two steps are what a card actually has, and they are both real: choose the subtitle layout and music and
+ * merge, then publish.
+ */
+const PHOTO_CARD_PIPELINE: { name: Screen["name"]; label: string }[] = [
+  { name: "videoMerge", label: "자막·음악 정하고 영상 만들기" },
+  { name: "instagramPost", label: "게시물 준비" },
+];
+
+/** The story-only screens. Reachable by an old link or Back, so they explain themselves rather than 404-ing. */
+const PHOTO_CARD_SKIPPED_SCREENS = new Set<Screen["name"]>([
+  "storyPrompt", "mappingReview", "imageGeneration", "videoPreview", "videoWorkflow", "sceneEdit", "narrationReview",
+]);
+
+/** Merged and published is the only card state past the first step; everything else is still at it. */
+const PHOTO_CARD_REACH: Partial<Record<WorkflowState, number>> = {
+  [WorkflowState.Completed]: 1,
+};
+
 // videoWorkflow carries a required jobId we don't always have on hand (e.g. jumping in from
 // storyPrompt) — fall back to detail, which already knows how to resume into the right job.
 function shortPipelineTarget(stepName: ShortPipelineStepName, projectId: string, currentScreen: Screen): Screen {
@@ -446,28 +473,26 @@ const PIPELINE_REACH: Readonly<Record<WorkflowState, number>> = {
  * looking" while looking exactly like an answer to "how far have I got". Now the dots come from the project's
  * own workflow state and do not move when you navigate; the row you are viewing is marked separately.
  */
-function ShortProjectPipeline({ screen, onNavigate }: { screen: Screen; onNavigate: (screen: Screen) => void }) {
-  const inContext = SHORT_PIPELINE_CONTEXT_SCREENS.has(screen.name) && "projectId" in screen;
+function ShortProjectPipeline({ screen, onNavigate, shell }: { screen: Screen; onNavigate: (screen: Screen) => void; shell: ShortProjectShell | null }) {
+  const card = shell?.photoCard === true;
+  // A card is reachable from its own two steps as well as the story ones it never had, so the bar stays up on
+  // both sets — otherwise the way back disappears exactly where someone is most lost.
+  const inContext = "projectId" in screen
+    && (SHORT_PIPELINE_CONTEXT_SCREENS.has(screen.name) || (card && PHOTO_CARD_SKIPPED_SCREENS.has(screen.name)));
   const projectId = inContext ? (screen as { projectId: string }).projectId : null;
-  const [reached, setReached] = useState(-1);
-
-  useEffect(() => {
-    if (!projectId) { setReached(-1); return; }
-    let cancelled = false;
-    getProject(projectId)
-      .then((response) => { if (!cancelled) setReached(PIPELINE_REACH[response.project.workflowState] ?? -1); })
-      // Silent: this only decides how many dots are filled. A failed read leaves the list unlit rather than
-      // replacing the sidebar with an error nobody can act on from here.
-      .catch(() => { if (!cancelled) setReached(-1); });
-    return () => { cancelled = true; };
-    // Re-read on every screen change too: finishing a step is exactly what moves this, and the user lands on
-    // another screen the moment it happens.
-  }, [projectId, screen.name]);
+  // Unlit until the read lands, and unlit again if it failed: the dots say how far the project got, and
+  // "not known" is not a distance.
+  const steps = card ? PHOTO_CARD_PIPELINE : SHORT_PROJECT_PIPELINE;
+  const reached = shell === null
+    ? -1
+    : card
+      ? PHOTO_CARD_REACH[shell.workflowState] ?? 0
+      : PIPELINE_REACH[shell.workflowState] ?? -1;
 
   if (!inContext || !projectId) return null;
   return (
-    <nav aria-label="단기 프로젝트 진행 단계" className="mt-6 flex flex-col gap-0.5 border-t border-white/10 pt-6">
-      {SHORT_PROJECT_PIPELINE.map((step, index) => {
+    <nav aria-label={card ? "명언 카드 진행 단계" : "단기 프로젝트 진행 단계"} data-testid={card ? "photo-card-pipeline" : "short-project-pipeline"} className="mt-6 flex flex-col gap-0.5 border-t border-white/10 pt-6">
+      {steps.map((step, index) => {
         const viewing = step.name === screen.name;
         const done = index < reached;
         const inProgress = index === reached;
@@ -477,7 +502,11 @@ function ShortProjectPipeline({ screen, onNavigate }: { screen: Screen; onNaviga
             type="button"
             aria-current={viewing ? "step" : undefined}
             data-step-state={done ? "done" : inProgress ? "current" : "upcoming"}
-            onClick={() => onNavigate(shortPipelineTarget(step.name, projectId, screen))}
+            onClick={() => onNavigate(card
+              // 게시물 준비 is not a per-project screen — it picks the project itself — so a card's second step
+              // is a plain jump rather than something shortPipelineTarget could address.
+              ? (step.name === "instagramPost" ? { name: "instagramPost" } : { name: "videoMerge", projectId })
+              : shortPipelineTarget(step.name as ShortPipelineStepName, projectId, screen))}
             className={`flex items-center gap-3 rounded-lg px-2 py-1.5 text-left text-sm ${viewing ? "bg-white/[0.07]" : "hover:bg-white/[0.04]"}`}
           >
             <span
@@ -500,7 +529,72 @@ function ShortProjectPipeline({ screen, onNavigate }: { screen: Screen; onNaviga
   );
 }
 
-function Sidebar({ screen, onNavigate }: { screen: Screen; onNavigate: (screen: Screen) => void }) {
+/**
+ * The two facts the shell needs about the short project on screen, read once and shared.
+ *
+ * The pipeline used to fetch this for itself; the router now needs the same answer to decide whether a
+ * story-only screen applies at all, and two fetches of one project is how two parts of a shell start
+ * disagreeing about what it is.
+ *
+ * 🔴 `null` is "not known", never "not a card". A screen is only ever replaced on a definite answer — while
+ * the read is in flight, or after it failed, every screen renders exactly as it did before. Hiding a real
+ * screen on a guess is the more expensive mistake of the two.
+ */
+type ShortProjectShell = { workflowState: WorkflowState; photoCard: boolean };
+
+function useShortProjectShell(screen: Screen): ShortProjectShell | null {
+  const projectId = SHORT_PROJECT_SCREEN_NAMES.has(screen.name) && "projectId" in screen
+    ? (screen as { projectId: string }).projectId
+    : null;
+  const [shell, setShell] = useState<ShortProjectShell | null>(null);
+  useEffect(() => {
+    if (!projectId) { setShell(null); return; }
+    let cancelled = false;
+    getProject(projectId)
+      .then((response) => {
+        if (cancelled) return;
+        setShell({ workflowState: response.project.workflowState, photoCard: response.project.photoCard === true });
+      })
+      // Silent, and back to "not known": a failed read must leave the screens alone, not hide them.
+      .catch(() => { if (!cancelled) setShell(null); });
+    return () => { cancelled = true; };
+    // Re-read on every screen change too: finishing a step is exactly what moves this, and the person lands
+    // on another screen the moment it happens.
+  }, [projectId, screen.name]);
+  return shell;
+}
+
+/**
+ * Said where the person arrived, not where they came from.
+ *
+ * A card can still reach these screens by an old link or the Back button. Rendering the story screen there is
+ * what produced a gate refusing input nobody gave; rendering nothing would read as the app being broken.
+ */
+function PhotoCardStepNotice({ projectId, onOpenMerge }: { projectId: string; onOpenMerge: () => void }) {
+  return (
+    <section className="mt-8 max-w-2xl space-y-4" data-testid="photo-card-step-skipped">
+      <h2 className="text-lg font-semibold text-slate-100">명언 카드에는 없는 단계입니다</h2>
+      <p className="text-sm text-slate-300">
+        명언 카드는 골라 둔 그림 한 장에 글귀를 얹는 것이라, 대본·참고 이미지·장면 이미지·영상 만들기를
+        <span className="font-semibold text-slate-100"> 아예 거치지 않습니다</span>. 건너뛴 게 아니라 처음부터 없는 단계입니다.
+      </p>
+      <p className="text-sm text-slate-300">
+        카드에서 하실 일은 둘입니다 — <span className="font-semibold text-slate-100">자막·음악을 정해 영상으로 만들고</span>, 게시하는 것.
+      </p>
+      <button
+        type="button"
+        data-testid="photo-card-step-skipped-merge"
+        className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)]"
+        onClick={onOpenMerge}
+      >
+        자막·음악 정하러 가기
+      </button>
+      <p className="text-xs text-slate-500" data-testid="photo-card-step-skipped-id">{projectId}</p>
+    </section>
+  );
+}
+
+function Sidebar({ screen, onNavigate, shell }: { screen: Screen; onNavigate: (screen: Screen) => void; shell: ShortProjectShell | null }) {
   return (
     <aside className="flex w-64 flex-shrink-0 flex-col overflow-y-auto border-r border-white/10 bg-slate-900 px-5 py-8">
       <p className="text-xs font-semibold uppercase tracking-[0.24em] text-violet-400">
@@ -508,7 +602,7 @@ function Sidebar({ screen, onNavigate }: { screen: Screen; onNavigate: (screen: 
       </p>
       <NavBar current={screen.name} onNavigate={onNavigate} />
       <LongWorkspaceNav screen={screen} onNavigate={onNavigate} />
-      <ShortProjectPipeline screen={screen} onNavigate={onNavigate} />
+      <ShortProjectPipeline screen={screen} onNavigate={onNavigate} shell={shell} />
     </aside>
   );
 }
@@ -523,6 +617,16 @@ export function App() {
    * to its normal form, and the next pass finds the two equal).
    */
   const [screen, setScreen] = useState<Screen>(() => screenFromHash(window.location.hash));
+  const shortProjectShell = useShortProjectShell(screen);
+  /**
+   * A story-only screen opened on a 명언 카드.
+   *
+   * Only ever true on a definite answer — see useShortProjectShell. The card gets the sentence instead of the
+   * screen, which is what stops a gate built for a six-scene story from refusing input a card never had.
+   */
+  const photoCardSkippedScreen = shortProjectShell?.photoCard === true
+    && PHOTO_CARD_SKIPPED_SCREENS.has(screen.name)
+    && "projectId" in screen;
   const [listRefreshToken, setListRefreshToken] = useState(0);
   const [longListRefreshToken, setLongListRefreshToken] = useState(0);
 
@@ -581,7 +685,7 @@ export function App() {
           "radial-gradient(1100px 640px at 8% -12%, rgba(139,92,246,0.16), transparent 62%), radial-gradient(900px 700px at 100% 100%, rgba(76,29,149,0.14), transparent 65%), repeating-linear-gradient(0deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 34px), repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 34px)",
       }}
     >
-      <Sidebar screen={screen} onNavigate={setScreen} />
+      <Sidebar screen={screen} onNavigate={setScreen} shell={shortProjectShell} />
       <main className="relative flex-1 overflow-y-auto px-12 py-12">
         {screen.name === "list" && (
           <>
@@ -716,7 +820,7 @@ export function App() {
                 onArchived={() => { setListRefreshToken((token) => token + 1); setScreen({ name: "list" }); }}
               />
             )}
-            {screen.name === "mappingReview" && (
+            {screen.name === "mappingReview" && !photoCardSkippedScreen && (
               <MappingReviewScreen
                 api={projectMappingApi(screen.projectId)}
                 onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
@@ -730,7 +834,7 @@ export function App() {
                 onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
               />
             )}
-            {screen.name === "storyPrompt" && (
+            {screen.name === "storyPrompt" && !photoCardSkippedScreen && (
               <StoryPromptScreen
                 projectId={screen.projectId}
                 onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
@@ -738,20 +842,20 @@ export function App() {
                 onOpenSettings={(projectId) => setScreen({ name: "settings", projectId })}
               />
             )}
-            {screen.name === "imageGeneration" && (
+            {screen.name === "imageGeneration" && !photoCardSkippedScreen && (
               <ImageGenerationScreen
                 projectId={screen.projectId}
                 onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
               />
             )}
-            {screen.name === "videoPreview" && (
+            {screen.name === "videoPreview" && !photoCardSkippedScreen && (
               <VideoPromptPreviewScreen
                 projectId={screen.projectId}
                 onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
                 onSubmitted={(projectId, jobId) => setScreen({ name: "videoWorkflow", projectId, jobId })}
               />
             )}
-            {screen.name === "videoWorkflow" && (
+            {screen.name === "videoWorkflow" && !photoCardSkippedScreen && (
               <VideoWorkflowScreen
                 projectId={screen.projectId}
                 jobId={screen.jobId}
@@ -763,6 +867,15 @@ export function App() {
               <VideoMergeScreen
                 projectId={screen.projectId}
                 onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
+              />
+            )}
+            {/* One notice for all seven: the screens stay as they are, and the router decides they do not
+                apply to this project kind. Guarding inside each screen would put the same paragraph in seven
+                files and let them drift. */}
+            {photoCardSkippedScreen && "projectId" in screen && (
+              <PhotoCardStepNotice
+                projectId={screen.projectId}
+                onOpenMerge={() => setScreen({ name: "videoMerge", projectId: (screen as { projectId: string }).projectId })}
               />
             )}
             {screen.name === "providerSettings" && (
@@ -780,13 +893,13 @@ export function App() {
               />
             )}
             {screen.name === "instagramPost" && <InstagramPostScreen onBack={() => setScreen({ name: "list" })} />}
-            {screen.name === "sceneEdit" && (
+            {screen.name === "sceneEdit" && !photoCardSkippedScreen && (
               <SceneEditScreen
                 projectId={screen.projectId}
                 onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
               />
             )}
-            {screen.name === "narrationReview" && (
+            {screen.name === "narrationReview" && !photoCardSkippedScreen && (
               <NarrationReviewScreen
                 projectId={screen.projectId}
                 onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}

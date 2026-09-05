@@ -357,6 +357,89 @@ describe("App", () => {
     expect(await stepStates()).toEqual(["done", "done", "done", "current", "upcoming", "upcoming"]);
   });
 
+  /**
+   * 명언 카드 is a different kind of thing, and the shell now says so.
+   *
+   * `photo-card.service.ts` creates a card already at `VideosApproved` — the picture is copied from the
+   * Library and no provider is ever called — so 대본 · 참고 이미지 연결 · 장면 이미지 · 영상 만들기 were never
+   * steps it took. The six-step bar showed all six filled anyway, and clicking one landed on a gate that then
+   * blamed the person's input: 캡틴D pressed 연결 다 했음 on a card and was told "입력 내용을 확인해 주세요"
+   * for a fingerprint nobody had ever been asked to produce.
+   */
+  const photoCardProject = (workflowState: WorkflowState): Project => ({
+    id: "명언_카드", topic: "백절불굴", projectType: "short_project", workflowState,
+    createdAt: "2026-09-01T00:00:00.000Z", updatedAt: "2026-09-01T00:00:00.000Z",
+    aspectRatio: "9:16", narrationAvailable: false, photoCard: true, scenes: [], warnings: [], errors: [],
+  });
+  const stubPhotoCard = (project: Project) => {
+    const fetchMock = vi.fn<FakeFetch>(async (input) => {
+      const url = String(input).split("?")[0]!;
+      if (url === "/projects") return jsonResponse(200, { projects: [project] });
+      if (url === `/projects/${project.id}`) return jsonResponse(200, { project });
+      return jsonResponse(404, { code: "PROJECT_NOT_FOUND", message: "" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  };
+
+  it("gives a 명언 카드 its own two steps instead of the story pipeline", async () => {
+    stubPhotoCard(photoCardProject(WorkflowState.VideosApproved));
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /백절불굴/ }));
+
+    const nav = await screen.findByTestId("photo-card-pipeline");
+    expect([...nav.querySelectorAll("button")].map((button) => button.textContent)).toEqual([
+      "자막·음악 정하고 영상 만들기", "게시물 준비",
+    ]);
+    // The story bar is gone, not merely relabelled — its steps are what led onto the refusing gates.
+    expect(screen.queryByTestId("short-project-pipeline")).toBeNull();
+    expect(screen.queryByRole("button", { name: "참고 이미지 연결" })).toBeNull();
+  });
+
+  it("says a story-only screen does not apply to a card, instead of rendering its gate", async () => {
+    stubPhotoCard(photoCardProject(WorkflowState.VideosApproved));
+    render(<App />);
+    window.location.hash = "#/mappingReview?projectId=%EB%AA%85%EC%96%B8_%EC%B9%B4%EB%93%9C";
+    fireEvent(window, new HashChangeEvent("hashchange"));
+
+    await screen.findByTestId("photo-card-step-skipped");
+    // The gate that produced "입력 내용을 확인해 주세요" is not on screen at all.
+    expect(screen.queryByTestId("approve-review-button")).toBeNull();
+    // And the way out is the step the card actually has.
+    fireEvent.click(screen.getByTestId("photo-card-step-skipped-merge"));
+    await waitFor(() => expect(window.location.hash).toContain("videoMerge"));
+  });
+
+  /**
+   * The half that matters more: "not known" must never read as "not a card", and never as "is a card".
+   * A failed project read hid nothing before this change, and must go on hiding nothing.
+   */
+  it("leaves every screen alone while the project kind is still unknown", async () => {
+    vi.stubGlobal("fetch", vi.fn<FakeFetch>(async (input) => {
+      const url = String(input).split("?")[0]!;
+      if (url === "/projects") return jsonResponse(200, { projects: [] });
+      // The one read that would answer "is this a card" fails.
+      if (url === "/projects/sample_project") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "" });
+      if (url === "/projects/sample_project/assets/mappings") return jsonResponse(200, { mappings: [] });
+      if (url === "/projects/sample_project/assets/mapping-review") {
+        return jsonResponse(200, {
+          review: {
+            projectId: "sample_project", mappingRevision: 0, scriptRevision: 0, scriptFingerprint: "",
+            status: "waiting", approvedAt: null, approvedBy: null, textOnlyConfirmed: false, legacyConfirmed: false, reviewedScenes: [],
+          },
+        });
+      }
+      return jsonResponse(404, { code: "PROJECT_NOT_FOUND", message: "" });
+    }));
+    render(<App />);
+    window.location.hash = "#/mappingReview?projectId=sample_project";
+    fireEvent(window, new HashChangeEvent("hashchange"));
+
+    // The real screen, not the notice.
+    await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
+    expect(screen.queryByTestId("photo-card-step-skipped")).toBeNull();
+  });
+
   it("opens 참고 이미지 연결 검토 from a project's detail view and returns to that same detail on back", async () => {
     const project: Project = {
       id: "sample_project",
