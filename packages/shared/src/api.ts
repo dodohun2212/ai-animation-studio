@@ -377,7 +377,7 @@ export interface GetLongEpisodeCurrentVideoJobResponse { jobId: string | null; }
 
 export interface LongEpisodeImageReview {
   sceneNumber: SceneNumber;
-  status: "pending" | "approved";
+  status: SceneReviewStatus;
   updatedAt: string;
   /**
    * Present only when this scene's confirmed Reference images (plus, for scene 1, a linked previous project's
@@ -705,7 +705,7 @@ export interface LongEpisodeVideoProgress {
   retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview; pendingSceneCount: number };
 }
 /** costUsd: actual cost recorded for this scene's video across every attempt, including past regenerations; absent when nothing has been recorded. */
-export interface LongEpisodeVideoReview { sceneNumber: SceneNumber; status: "pending" | "approved"; updatedAt: string; costUsd?: number; }
+export interface LongEpisodeVideoReview { sceneNumber: SceneNumber; status: SceneReviewStatus; updatedAt: string; costUsd?: number; }
 /**
  * Which already-paid-for clips no longer match the script they were made from.
  *
@@ -831,7 +831,18 @@ export interface StartLongEpisodeNarrationGenerationResponse {
  * to be able to press play and hear that there is nothing there. What it must not do is pass as narration,
  * which is what "음성 있음" beside it used to do, and what a merge treating it as audio still does.
  */
-export type NarrationAudioState = "none" | "placeholder" | "generated";
+/**
+ * Whether one generated scene has been looked at and accepted.
+ *
+ * The same two words on four contract fields — a short project's image review, an Episode's image review, an
+ * Episode's video review, a short project's video review — and copied into three services. One set, because a
+ * screen that learns to read one review reads them all.
+ */
+export const SCENE_REVIEW_STATUSES = ["pending", "approved"] as const;
+export type SceneReviewStatus = (typeof SCENE_REVIEW_STATUSES)[number];
+
+export const NARRATION_AUDIO_STATES = ["none", "placeholder", "generated"] as const;
+export type NarrationAudioState = (typeof NARRATION_AUDIO_STATES)[number];
 
 /** One scene's narration text and whether audio has been synthesized for it yet — provider-free to read (no TTS call happens from a GET). */
 export interface LongEpisodeNarrationReview {
@@ -958,7 +969,8 @@ export interface DuplicateLongStoryBibleItemResponse { item: LongStoryBibleItem;
  *   The record and the disk disagree — worth showing, because nothing else in the app will notice.
  * - `unreadable`: its stored records could not be read at all. Not an answer, an admission.
  */
-export type LongEpisodeContinuityUnavailableReason = "not_finished" | "image_unreadable" | "unreadable";
+export const LONG_EPISODE_CONTINUITY_UNAVAILABLE_REASONS = ["not_finished", "image_unreadable", "unreadable"] as const;
+export type LongEpisodeContinuityUnavailableReason = (typeof LONG_EPISODE_CONTINUITY_UNAVAILABLE_REASONS)[number];
 export interface LongEpisodeContinuityReference {
   previousEpisodeNumber: number;
   /** The previous Episode's actual last scene number (its own sceneCount) — no longer always 6. */
@@ -1116,7 +1128,8 @@ export interface UpdateLongEpisodeOutlineResponse { project: LongProject; episod
  * The two collections whose text reaches the script prompt. Characters, locations and props were removed with
  * the screen that edited them: `buildEpisodeContext` never carried them, and nothing else read them either.
  */
-export type LongStoryBibleCollection = "secrets" | "foreshadowing";
+export const LONG_STORY_BIBLE_COLLECTIONS = ["secrets", "foreshadowing"] as const;
+export type LongStoryBibleCollection = (typeof LONG_STORY_BIBLE_COLLECTIONS)[number];
 
 /**
  * A secret or a piece of foreshadowing. Only these two collections remain: their text is what reaches the script
@@ -1443,7 +1456,7 @@ export interface StartImageGenerationResponse {
 /** Provider-free persisted decision for one generated short-project image. */
 export interface ImageReview {
   sceneNumber: SceneNumber;
-  status: "pending" | "approved";
+  status: SceneReviewStatus;
   updatedAt: string;
   /** Same meaning, scope, and "quiet unless it happened" principle as LongEpisodeImageReview.referencesUsedCount/referencesOmittedCount (see that field's doc comment). */
   referencesUsedCount?: number;
@@ -1679,7 +1692,8 @@ export interface AddAssetVersionResponse { asset: Asset; }
 /** Repoints an Asset's current version at replacement bytes while preserving its stable identity. */
 export interface RelinkAssetResponse { asset: Asset; }
 
-export type AssetFileAuditClassification = "healthy" | "missing" | "damaged";
+export const ASSET_FILE_AUDIT_CLASSIFICATIONS = ["healthy", "missing", "damaged"] as const;
+export type AssetFileAuditClassification = (typeof ASSET_FILE_AUDIT_CLASSIFICATIONS)[number];
 export interface AssetFileAuditEntry {
   assetId: string;
   displayName: string;
@@ -1756,7 +1770,8 @@ export interface RunLegacyReferenceMigrationResponse {
  * written by the same login and stop being true together (app id, app secret, token, token expiry), so it has
  * its own store rather than a single masked string — see InstagramConnectionStatus.
  */
-export type ProviderCredentialKind = "openai" | "runway";
+export const PROVIDER_CREDENTIAL_KINDS = ["openai", "runway"] as const;
+export type ProviderCredentialKind = (typeof PROVIDER_CREDENTIAL_KINDS)[number];
 
 export interface ProviderCredentialStatus {
   provider: ProviderCredentialKind;
@@ -1873,7 +1888,7 @@ export interface GenerationProgressResponse {
 
 export interface VideoReview {
   sceneNumber: SceneNumber;
-  status: "pending" | "approved";
+  status: SceneReviewStatus;
   updatedAt: string;
   /** Actual cost recorded for this scene's video across every attempt, including past regenerations; absent when nothing has been recorded (e.g. the local fake execution mode). */
   costUsd?: number;

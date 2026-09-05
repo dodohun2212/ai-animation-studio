@@ -67,4 +67,5 @@ export interface Asset {
   sortOrder: number;
 }
 
-export type AssetOwnership = "library_manual" | "project_owned" | "external";
+export const ASSET_OWNERSHIPS = ["library_manual", "project_owned", "external"] as const;
+export type AssetOwnership = (typeof ASSET_OWNERSHIPS)[number];

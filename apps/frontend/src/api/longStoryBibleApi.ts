@@ -1,4 +1,5 @@
-import { type LongStoryBibleProtagonistLink,
+import {
+  LONG_STORY_BIBLE_COLLECTIONS, type LongStoryBibleProtagonistLink,
   API_ROUTES,
   type CreateLongStoryBibleItemRequest,
   type CreateLongStoryBibleItemResponse,
@@ -56,7 +57,7 @@ export function toLongStoryBibleDisplayError(error: unknown): { code: string; me
   return UNKNOWN;
 }
 
-const COLLECTIONS: readonly LongStoryBibleCollection[] = ["secrets", "foreshadowing"];
+const COLLECTIONS: readonly LongStoryBibleCollection[] = LONG_STORY_BIBLE_COLLECTIONS;
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const isString = (value: unknown): value is string => typeof value === "string";
 const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every(isString);

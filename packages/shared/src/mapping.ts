@@ -84,7 +84,8 @@ export interface UpdateProjectAssetMappingResponse {
   review: ProjectAssetMappingReview;
 }
 
-export type ProjectAssetMappingReviewStatus = "waiting" | "approved";
+export const PROJECT_ASSET_MAPPING_REVIEW_STATUSES = ["waiting", "approved"] as const;
+export type ProjectAssetMappingReviewStatus = (typeof PROJECT_ASSET_MAPPING_REVIEW_STATUSES)[number];
 
 export interface ProjectAssetMappingReview {
   projectId: string;

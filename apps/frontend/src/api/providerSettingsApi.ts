@@ -1,4 +1,5 @@
 import {
+  PROVIDER_CREDENTIAL_KINDS,
   API_ROUTES,
   type GetProviderSettingsResponse,
   type ProviderCredentialKind,
@@ -30,7 +31,7 @@ const SERVER_UNAVAILABLE_ERROR = {
 };
 const UNKNOWN_ERROR = { code: "CLIENT_UNKNOWN_ERROR", message: "요청을 처리하지 못했습니다. 잠시 후 다시 시도해주세요." };
 
-const PROVIDER_KINDS: readonly ProviderCredentialKind[] = ["openai", "runway"];
+const PROVIDER_KINDS: readonly ProviderCredentialKind[] = PROVIDER_CREDENTIAL_KINDS;
 
 // Fixed, safe Korean text for every backend error code. The server's own
 // `message` (and `details`) is never displayed — only this trusted mapping is.

@@ -15,8 +15,9 @@ import { credentialNotConfigured, invalidBudgetLimit, invalidCredential, invalid
 import { ProviderSettingsRepository } from "./provider-settings.repository.js";
 import { ProviderSettingsLogger } from "./provider-settings.redaction.js";
 import { DEFAULT_MONTHLY_LIMIT_USD } from "../providers/monthly-budget-limit.js";
+import { PROVIDER_CREDENTIAL_KINDS } from "@ai-animation-studio/shared";
 
-const PROVIDERS: readonly ProviderCredentialKind[] = ["openai", "runway"];
+const PROVIDERS: readonly ProviderCredentialKind[] = PROVIDER_CREDENTIAL_KINDS;
 /** The same names the budgets read, so the screen and the environment are one knob rather than two. */
 const BUDGET_VARIABLE: Record<ProviderCredentialKind, string> = {
   openai: "OPENAI_MONTHLY_BUDGET_USD",

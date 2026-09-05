@@ -1,4 +1,4 @@
-import { ASSET_MAPPING_ASSIGNMENT_SOURCES,
+import { PROJECT_ASSET_MAPPING_REVIEW_STATUSES, ASSET_MAPPING_ASSIGNMENT_SOURCES,
   ASSET_MAPPING_STATUSES,
   ASSET_MAPPING_VERSION_POLICIES,
   API_ROUTES,
@@ -70,7 +70,7 @@ export function toMappingDisplayError(error: unknown): { code: string; message: 
 const STATUSES: readonly AssetMappingStatus[] = ASSET_MAPPING_STATUSES;
 const SOURCES: readonly AssetMappingAssignmentSource[] = ASSET_MAPPING_ASSIGNMENT_SOURCES;
 const POLICIES: readonly AssetMappingVersionPolicy[] = ASSET_MAPPING_VERSION_POLICIES;
-const REVIEW_STATUSES: readonly ProjectAssetMappingReviewStatus[] = ["waiting", "approved"];
+const REVIEW_STATUSES: readonly ProjectAssetMappingReviewStatus[] = PROJECT_ASSET_MAPPING_REVIEW_STATUSES;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const isString = (value: unknown): value is string => typeof value === "string";

@@ -5,7 +5,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { Injectable, type OnModuleDestroy } from "@nestjs/common";
-import {
+import { SCENE_REVIEW_STATUSES,
   MAX_SCENE_COUNT,
   videoSceneEstimatedCostUsd,
   WorkflowState,
@@ -97,7 +97,7 @@ function parseReviews(raw: unknown): StoredReview[] {
   const reviews = raw.map((item) => {
     if (!isObject(item) || Object.keys(item).some((key) => !["scene_number", "status", "updated_at"].includes(key))) throw videoReviewDataInvalid();
     const number = sceneNumber(item.scene_number);
-    if (!number || !["pending", "approved"].includes(String(item.status)) || typeof item.updated_at !== "string") throw videoReviewDataInvalid();
+    if (!number || !(SCENE_REVIEW_STATUSES as readonly string[]).includes(String(item.status)) || typeof item.updated_at !== "string") throw videoReviewDataInvalid();
     return { scene_number: number, status: item.status as StoredReview["status"], updated_at: item.updated_at };
   });
   if (new Set(reviews.map((review) => review.scene_number)).size !== reviews.length) throw videoReviewDataInvalid();

@@ -178,7 +178,8 @@ export const TTS_ESTIMATED_COST_USD = 0.01;
 export const BUDGET_LIMIT_ROUTE_HINT = "설정 화면의 「이번 달 쓸 수 있는 돈」에서 한도를 올릴 수 있습니다.";
 
 export type ProjectType = "short_project" | "long_story_project";
-export type ReviewDecision = "pending" | "approved" | "rejected";
+export const REVIEW_DECISIONS = ["pending", "approved", "rejected"] as const;
+export type ReviewDecision = (typeof REVIEW_DECISIONS)[number];
 export type JobStatus =
   | "created"
   | "running"

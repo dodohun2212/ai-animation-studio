@@ -1,4 +1,6 @@
-import { ASSET_STATUSES, ASSET_TYPES,
+import {
+  ASSET_FILE_AUDIT_CLASSIFICATIONS,
+  ASSET_OWNERSHIPS, ASSET_STATUSES, ASSET_TYPES,
   API_ROUTES,
   ASSET_UPLOAD_FILE_FIELD,
   MAX_SCENE_COUNT,
@@ -73,7 +75,7 @@ export function toAssetDisplayError(error: unknown): { code: string; message: st
 // The contract's own arrays, imported rather than shadowed by two local copies of the same names. These sit
 // in a response guard, so a type or status added to the contract and missing here does not disable a feature
 // — it makes this client reject a valid response and the screen report a working server as unreadable.
-const OWNERSHIPS: readonly AssetOwnership[] = ["library_manual", "project_owned", "external"];
+const OWNERSHIPS: readonly AssetOwnership[] = ASSET_OWNERSHIPS;
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const isString = (value: unknown): value is string => typeof value === "string";
 const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every(isString);
@@ -157,7 +159,7 @@ const isDeleteOwnedFileResponse = (value: unknown): value is DeleteAssetOwnedFil
   isRecord(value) && isString(value.assetId) && value.deletedOwnedFile === true;
 const isDeleteFolderResponse = (value: unknown): value is DeleteAssetFolderResponse =>
   isRecord(value) && isString(value.assetId) && isStringArray(value.removedChildAssetIds) && isNonNegativeInteger(value.deletedFiles);
-const AUDIT_CLASSIFICATIONS: readonly AssetFileAuditClassification[] = ["healthy", "missing", "damaged"];
+const AUDIT_CLASSIFICATIONS: readonly AssetFileAuditClassification[] = ASSET_FILE_AUDIT_CLASSIFICATIONS;
 const isAuditEntry = (value: unknown): value is AssetFileAuditEntry => isRecord(value)
   && isString(value.assetId) && isString(value.displayName) && AUDIT_CLASSIFICATIONS.includes(value.classification as AssetFileAuditClassification)
   && (value.sourceKind === "manual" || value.sourceKind === "project") && isString(value.message);

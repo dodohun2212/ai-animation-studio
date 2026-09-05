@@ -34,7 +34,8 @@ import { longInvalidData, longInvalidRequest, longMalformed, longNotFound, longS
 import { longStoryRoot } from "./long-project-paths.js";
 import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import { linksFromBible, syncStoryBibleMappings } from "./episode-story-bible-mapping-sync.js";
-const collections = ["secrets", "foreshadowing"] as const;
+import { LONG_STORY_BIBLE_COLLECTIONS } from "@ai-animation-studio/shared";
+const collections = LONG_STORY_BIBLE_COLLECTIONS;
 const idKeys = { secrets: "secret_id", foreshadowing: "foreshadowing_id" } as const;
 const prefixes = { secrets: "SECRET", foreshadowing: "FORESHADOW" } as const;
 /**

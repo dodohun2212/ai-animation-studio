@@ -3793,3 +3793,8 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
   - 고친 여섯: `videoWorkflowApi.ts` · `longProjectsApi.ts`(둘) · `LongEpisodeOutlineScreen.tsx` · `episode-videos.service.ts` · `episode-timeline.service.ts`.
   - 🟠 **남은 일곱 유니온은 아직 배열이 아니다**(`NarrationAudioState` · `AssetOwnership` · `ReviewDecision` · `AssetFileAuditClassification` · `LongStoryBibleCollection` · `ProviderCredentialKind` · 리뷰 `pending|approved` 등). 복사본이 각 1~3벌이고 결과가 가볍다 — 다음 차례로 적어 둔다.
   - 🟢 주입: 화면 가드를 리터럴로 되돌리면 짝이 파일과 집합 이름을 대며 빨개진다.
+- [x] **🟢 남은 유니온까지 다 내렸다 — 이제 계약 집합의 손글씨 복사본이 0이다**: 앞 항목에서 셋만 하고 일곱을 미뤄 뒀는데, 이어서 끝냈다. **배열 15개 → 27개.**
+  - 내린 것: `NARRATION_AUDIO_STATES` · `LONG_EPISODE_CONTINUITY_UNAVAILABLE_REASONS` · `LONG_STORY_BIBLE_COLLECTIONS` · `ASSET_FILE_AUDIT_CLASSIFICATIONS` · `PROVIDER_CREDENTIAL_KINDS` · `ASSET_OWNERSHIPS` · `REVIEW_DECISIONS` · `SCENE_REVIEW_STATUSES` · `PROJECT_ASSET_MAPPING_REVIEW_STATUSES`.
+  - 고친 복사본 열하나. 🟠 그중 하나는 **오늘 내가 쓴 것**이다 — `MonthlyBudgetCard.tsx` 의 `ORDER = ["openai", "runway"]`. 짝을 넓힌 그 오후에 같은 손으로 새 복사본을 하나 만들어 놨다는 뜻이고, **규칙이 사람보다 오래 간다**는 근거이기도 하다.
+  - **재측정: 계약 집합을 손으로 다시 적은 자리가 앱 전체에 하나도 없다.** 남은 유니온 일곱은 어디에도 복사돼 있지 않아 그대로 둔다 — 복사본이 없는 유니온은 배열로 만들 값어치가 없다(Pacing 규칙: 닿지 않는 것은 고치지 않는다).
+  - 🟢 주입: 마지막으로 고친 자리를 리터럴로 되돌리면 짝이 파일과 집합 이름을 대며 빨개진다.

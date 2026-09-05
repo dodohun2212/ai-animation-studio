@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ProviderCredentialKind, ProviderMonthlyBudget } from "@ai-animation-studio/shared";
 import { saveProviderMonthlyBudget, toDisplayError } from "../api/providerSettingsApi.js";
+import { PROVIDER_CREDENTIAL_KINDS } from "@ai-animation-studio/shared";
 
 interface Props {
   budgets: Record<ProviderCredentialKind, ProviderMonthlyBudget>;
@@ -11,7 +12,7 @@ const LABEL: Record<ProviderCredentialKind, string> = {
   openai: "OpenAI — 글·그림·목소리",
   runway: "Runway — 영상",
 };
-const ORDER: readonly ProviderCredentialKind[] = ["openai", "runway"];
+const ORDER: readonly ProviderCredentialKind[] = PROVIDER_CREDENTIAL_KINDS;
 const money = (value: number) => `$${value.toFixed(2)}`;
 
 /**
