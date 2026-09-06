@@ -33,7 +33,14 @@ function isValidClipDuration(value: unknown): value is number {
 }
 
 const STYLE_KEYS = ["visualStyle", "color", "lighting", "camera", "dialogue", "avoid", "aspect"] as const;
-const SETTINGS_KEYS = ["projectName", "topic", "genre", "mood", "character", "lore", "fullStory", "sceneCount", "clipDurationSeconds", "additionalNotes", "styleNotes", "narrationEnabled", "subtitlesEnabled"] as const;
+const SETTINGS_KEYS = ["projectName", "topic", "genre", "mood", "character", "lore", "fullStory", "sceneCount", "clipDurationSeconds", "additionalNotes", "styleNotes", "narrationEnabled", "subtitlesEnabled", "sceneImageContinuityEnabled"] as const;
+
+/**
+ * Accepted but not demanded. SETTINGS_KEYS does double duty — it is both what a request may contain and what it
+ * must contain — and a field added after clients were already running cannot be in the second list without
+ * making every existing page's save fail on a name it has never heard of.
+ */
+const OPTIONAL_SETTINGS_KEYS: ReadonlySet<string> = new Set(["sceneImageContinuityEnabled"]);
 
 function asObject(value: unknown, field: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -103,6 +110,10 @@ export function toShortProjectSettings(stored: StoredProject): ShortProjectSetti
     subtitlesEnabled: "subtitles_enabled" in stored.lore_context
       ? stored.lore_context.subtitles_enabled === true
       : stored.lore_context.narration_enabled === true,
+    // No fallback to another field, unlike subtitlesEnabled: there is nothing older that meant the same thing,
+    // and a project stored before this existed was drawn without the chain. Reading it as on would say its
+    // pictures came from references they never saw.
+    sceneImageContinuityEnabled: stored.lore_context.scene_image_continuity_enabled === true,
   };
 }
 
@@ -116,7 +127,7 @@ export function parseShortProjectSettings(value: unknown, minimumSceneCount: num
   const settings = asObject(value, "settings");
   rejectUnknownFields(settings, SETTINGS_KEYS, "settings");
   for (const key of SETTINGS_KEYS) {
-    if (!(key in settings)) {
+    if (!(key in settings) && !OPTIONAL_SETTINGS_KEYS.has(key)) {
       throw invalidRequest(`settings.${key} is required.`, { field: `settings.${key}` });
     }
   }
@@ -141,6 +152,13 @@ export function parseShortProjectSettings(value: unknown, minimumSceneCount: num
   if (typeof settings.subtitlesEnabled !== "boolean") {
     throw invalidRequest("settings.subtitlesEnabled must be a boolean.", { field: "settings.subtitlesEnabled" });
   }
+
+  // Absent is accepted and means off — see ShortProjectSettingsInput's doc comment. A present value must still
+  // be a boolean: "the client did not know about this" and "the client sent something else" are different, and
+  // only the first one is safe to read as false.
+  if (settings.sceneImageContinuityEnabled !== undefined && typeof settings.sceneImageContinuityEnabled !== "boolean") {
+    throw invalidRequest("settings.sceneImageContinuityEnabled must be a boolean.", { field: "settings.sceneImageContinuityEnabled" });
+  }
   return {
     projectName: requiredString(settings.projectName, "settings.projectName"),
     topic: requiredString(settings.topic, "settings.topic"),
@@ -157,6 +175,7 @@ export function parseShortProjectSettings(value: unknown, minimumSceneCount: num
     styleNotes: normalizedStyleNotes,
     narrationEnabled: settings.narrationEnabled,
     subtitlesEnabled: settings.subtitlesEnabled,
+    sceneImageContinuityEnabled: settings.sceneImageContinuityEnabled === true,
   };
 }
 
@@ -186,6 +205,7 @@ export function applyShortProjectSettings(stored: StoredProject, settings: Short
       style_notes: styleNotes,
       narration_enabled: settings.narrationEnabled,
       subtitles_enabled: settings.subtitlesEnabled,
+      scene_image_continuity_enabled: settings.sceneImageContinuityEnabled,
     },
   };
 }

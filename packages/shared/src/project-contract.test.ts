@@ -89,7 +89,13 @@ describe("project routes and DTO shape", () => {
     };
     // durationSeconds is derived server-side (sceneCount * clipDurationSeconds), so the response's full
     // ShortProjectSettings adds it back rather than reusing the request's narrower ShortProjectSettingsInput.
-    const response: GetProjectSettingsResponse = { settings: { ...settings.settings, durationSeconds: 30 }, sceneCountChangeable: true, aspectRatioChangeable: true };
+    // sceneImageContinuityEnabled is the second asymmetry, and a different one: the request may leave it out
+    // (a page built before it existed does), while the response always states it. Absent on the way in means
+    // off, so the answer is never 「we did not say」 about a setting that decides what a picture is drawn from.
+    const response: GetProjectSettingsResponse = {
+      settings: { ...settings.settings, durationSeconds: 30, sceneImageContinuityEnabled: settings.settings.sceneImageContinuityEnabled ?? false },
+      sceneCountChangeable: true, aspectRatioChangeable: true,
+    };
 
     expect(API_ROUTES.projectSettings("한글 id")).toBe(
       "/projects/%ED%95%9C%EA%B8%80%20id/settings",

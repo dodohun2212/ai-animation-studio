@@ -105,7 +105,12 @@ describe("ProjectsService", () => {
 
     expect(saved.project.topic).toBe("별을 찾는 아이");
     // durationSeconds is derived server-side (sceneCount * clipDurationSeconds), not part of the request.
-    expect(await restarted.getProjectSettings("wizard_project")).toEqual({ settings: { ...settings, durationSeconds: 30 }, sceneCountChangeable: true, aspectRatioChangeable: true });
+    // The request above never mentions sceneImageContinuityEnabled — a page built before that field existed
+    // does not — and it is accepted and reads back as off, which is what absent means for it.
+    expect(await restarted.getProjectSettings("wizard_project")).toEqual({
+      settings: { ...settings, durationSeconds: 30, sceneImageContinuityEnabled: false },
+      sceneCountChangeable: true, aspectRatioChangeable: true,
+    });
   });
 
   it("refuses to change the scene count once a Story has been written, while leaving the rest of the form editable", async () => {

@@ -20,6 +20,7 @@ const settings = {
   styleNotes: { visualStyle: "수채화", lighting: "달빛", aspect: "16:9" },
   narrationEnabled: true,
   subtitlesEnabled: true,
+  sceneImageContinuityEnabled: false,
 };
 
 // What a client actually sends in a request body: no durationSeconds field (SETTINGS_KEYS rejects it as unsupported).
@@ -52,6 +53,7 @@ describe("short project settings", () => {
       clipDurationSeconds: 5,
       narrationEnabled: false,
       subtitlesEnabled: false,
+      sceneImageContinuityEnabled: false,
     });
   });
 
@@ -97,6 +99,28 @@ describe("short project settings", () => {
     expect(toShortProjectSettings(createStoredProject("sample", "topic", "2026-08-22T00:00:00.000Z")).narrationEnabled).toBe(false);
     expect(parseShortProjectSettings({ ...settingsRequest, narrationEnabled: true }).narrationEnabled).toBe(true);
     expect(parseShortProjectSettings({ ...settingsRequest, narrationEnabled: false }).narrationEnabled).toBe(false);
+  });
+
+  /**
+   * The one settings field a request may leave out, and the reason is today's other lesson: it arrived after
+   * pages were already running, so requiring it would have made every save from an existing page fail on a name
+   * that page has never heard of — the shape that cost 캡틴D the whole video step when a client guard was one
+   * clip length behind the contract. Absent means off. A present non-boolean is still refused, because 「the
+   * client did not know about this」 and 「the client sent something else」 are different things.
+   */
+  it("accepts a request that omits sceneImageContinuityEnabled, reads it as off, and still refuses a non-boolean", () => {
+    // settingsRequest is what an existing page sends: it has never carried this field.
+    expect(parseShortProjectSettings(settingsRequest).sceneImageContinuityEnabled).toBe(false);
+    expect(parseShortProjectSettings({ ...settingsRequest, sceneImageContinuityEnabled: true }).sceneImageContinuityEnabled).toBe(true);
+    expect(() => parseShortProjectSettings({ ...settingsRequest, sceneImageContinuityEnabled: "true" })).toThrow();
+  });
+
+  /** A project stored before the field existed is off, and nothing older is read as meaning the same thing. */
+  it("reads a project that predates the field as having the chain off", () => {
+    const stored = createStoredProject("old", "topic", "2026-08-22T00:00:00.000Z");
+    stored.lore_context = { narration_enabled: true, subtitles_enabled: true };
+
+    expect(toShortProjectSettings(stored).sceneImageContinuityEnabled).toBe(false);
   });
 
   it("round-trips subtitlesEnabled true/false through settings independently of narrationEnabled", () => {

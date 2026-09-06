@@ -1352,10 +1352,33 @@ export interface ShortProjectSettings {
    * subtitles the first time this is read.
    */
   subtitlesEnabled: boolean;
+  /**
+   * Whether each scene's picture is drawn with the previous scene's approved picture as a reference.
+   *
+   * Off by default, and off for every project stored before this field existed. Not a global rule, because a
+   * story with people usually changes place between scenes and handing the model the last scene would fight
+   * that; a 꽃말 reel is the opposite — one flower, one pot, one light, a single forward movement — and there
+   * the chain is the point rather than a feature. Being off by default is also what keeps existing projects
+   * from all reporting their references as changed the moment this shipped: a project with the switch off
+   * resolves exactly the references it always did.
+   */
+  sceneImageContinuityEnabled: boolean;
 }
 
-/** What a client actually sends: durationSeconds is derived server-side (sceneCount * clipDurationSeconds) and is rejected as an unsupported field if included. */
-export type ShortProjectSettingsInput = Omit<ShortProjectSettings, "durationSeconds">;
+/**
+ * What a client actually sends: durationSeconds is derived server-side (sceneCount * clipDurationSeconds) and
+ * is rejected as an unsupported field if included.
+ *
+ * sceneImageContinuityEnabled is optional here while its two boolean siblings are required, and the difference
+ * is deliberate. They were required from the start, so no client ever existed that did not send them. This one
+ * arrived after builds were already running in browsers, and making it required would have made every one of
+ * those saves fail on a field the page has never heard of — the exact shape that cost Captain D the whole video
+ * step when a client guard was one clip length behind the contract. Absent means off, which is what it means
+ * everywhere else.
+ */
+export type ShortProjectSettingsInput =
+  Omit<ShortProjectSettings, "durationSeconds" | "sceneImageContinuityEnabled">
+  & { sceneImageContinuityEnabled?: boolean };
 
 /**
  * Two flags rather than one, because this form has two locks and they close at different moments.
