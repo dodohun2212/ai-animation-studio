@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+import { confirmationMatches } from "../utils/confirmationMatch.js";
+
 interface ArchiveProjectDialogProps {
   confirmationText: string;
   projectKind: "short" | "long";
@@ -12,14 +14,18 @@ export function ArchiveProjectDialog({ confirmationText, projectKind, onCancel, 
   const [confirmation, setConfirmation] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
-  const matches = confirmation === confirmationText;
+  // Compared on what the screen actually rendered, not on the raw stored string: HTML collapses a newline
+  // inside a topic into a space, and this one-line box cannot hold one. See utils/confirmationMatch.ts.
+  const matches = confirmationMatches(confirmation, confirmationText);
 
   async function submit(): Promise<void> {
     if (!matches || pending) return;
     setPending(true);
     setError(null);
     try {
-      await onConfirm(confirmation);
+      // The reader proved intent by retyping what was displayed; the server compares against what is
+      // stored. Send the stored value, or a topic with a newline would pass here and fail there.
+      await onConfirm(confirmationText);
     } catch (caught: unknown) {
       const display = caught as { code?: unknown; message?: unknown };
       setError({

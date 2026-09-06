@@ -10,6 +10,7 @@ import {
   restoreProject,
   toArchiveDisplayError,
 } from "../api/archiveApi.js";
+import { confirmationMatches } from "../utils/confirmationMatch.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
 
@@ -92,7 +93,9 @@ export function ArchiveScreen({ onBack, onChanged }: Props) {
 
   async function confirmAction(): Promise<void> {
     if (!pending || actionBusy.current) return;
-    if (pending.kind === "delete" && deleteConfirmation !== pending.label) return;
+    // Matched against the rendered label rather than the raw stored one — a topic saved with a newline
+    // renders as a space and cannot be typed back into a one-line box. See utils/confirmationMatch.ts.
+    if (pending.kind === "delete" && !confirmationMatches(deleteConfirmation, pending.label)) return;
     actionBusy.current = true;
     setActionPending(true);
     setActionError(null);
@@ -100,9 +103,9 @@ export function ArchiveScreen({ onBack, onChanged }: Props) {
       if (pending.kind === "restore") {
         await (pending.scope === "short" ? restoreProject(pending.id) : restoreLongProject(pending.id));
       } else if (pending.scope === "short") {
-        await deleteArchivedProject(pending.id, { confirmation: deleteConfirmation });
+        await deleteArchivedProject(pending.id, { confirmation: pending.label });
       } else {
-        await deleteArchivedLongProject(pending.id, { confirmation: deleteConfirmation });
+        await deleteArchivedLongProject(pending.id, { confirmation: pending.label });
       }
       setPending(null);
       setDeleteConfirmation("");
@@ -267,7 +270,7 @@ export function ArchiveScreen({ onBack, onChanged }: Props) {
               data-testid="archive-delete-proceed"
               className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(225,29,72,0.3)] disabled:opacity-50"
               onClick={() => void confirmAction()}
-              disabled={actionPending || deleteConfirmation !== pending.label}
+              disabled={actionPending || !confirmationMatches(deleteConfirmation, pending.label)}
             >
               {actionPending ? "삭제하는 중…" : "완전히 삭제"}
             </button>

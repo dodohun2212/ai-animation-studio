@@ -226,6 +226,37 @@ describe("ProjectDetail", () => {
     });
   });
 
+  /**
+   * 캡틴D could not archive 꽃말_장미. Its topic is stored as "빨간 장미\n열렬한 사랑"; HTML rendered the
+   * newline as a space, and a one-line input cannot contain a newline — so 보관하기 stayed disabled no
+   * matter how exactly the topic on screen was retyped, and the screen gave no hint why. The box must
+   * accept what it displayed, and send the server what is stored.
+   */
+  it("accepts the topic as displayed when the stored topic holds a newline, and sends the stored one", async () => {
+    const project = makeProject({ id: "flower_rose", topic: "빨간 장미\n열렬한 사랑" });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/archive")) return jsonResponse(200, { archivedProjectId: project.id });
+      if (url.endsWith("/settings")) return jsonResponse(500, { code: "PROJECT_NOT_FOUND", message: "" });
+      return jsonResponse(200, { project });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const onArchived = vi.fn();
+    render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} onArchived={onArchived} />);
+
+    await screen.findByText(project.id);
+    fireEvent.click(screen.getByRole("button", { name: "프로젝트 보관하기" }));
+    // The only form of the topic the reader can produce from a one-line box.
+    fireEvent.change(screen.getByLabelText("위 내용 그대로 입력"), { target: { value: "빨간 장미 열렬한 사랑" } });
+    expect(screen.getByRole("button", { name: "보관하기" })).not.toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "보관하기" }));
+    await waitFor(() => expect(onArchived).toHaveBeenCalledTimes(1));
+    // The server still compares exactly, so the stored topic is what goes on the wire.
+    expect(fetchMock).toHaveBeenLastCalledWith("/projects/flower_rose/archive", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirmation: project.topic }),
+    });
+  });
+
   it("keeps the archive dialog open with a safe error when archiving fails", async () => {
     const project = makeProject({ id: "sample_project", topic: "Exact project topic" });
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {

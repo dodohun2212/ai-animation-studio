@@ -112,6 +112,37 @@ describe("ArchiveScreen", () => {
     await waitFor(() => expect(screen.queryByTestId("archived-long-long-1")).toBeNull());
   });
 
+  /**
+   * The same trap 캡틴D hit on 보관하기, one step further down: a topic stored as "빨간 장미\n열렬한 사랑"
+   * renders with the newline collapsed to a space, and this one-line box cannot produce a newline — so an
+   * exact comparison would leave 완전히 삭제 disabled forever with no way to tell why.
+   */
+  it("accepts a topic whose stored newline the input cannot type, and sends the stored topic", async () => {
+    const withNewline = { ...shortArchived, id: "flower-1", topic: "빨간 장미\n열렬한 사랑" };
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/archived": [{ projects: [withNewline] }, { projects: [] }],
+      "GET /long-projects/archived": { projects: [] },
+      "DELETE /projects/flower-1/archive": { deletedProjectId: "flower-1" },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ArchiveScreen onBack={() => {}} />);
+    await screen.findByTestId("archived-short-flower-1");
+
+    fireEvent.click(screen.getByTestId("archived-delete-flower-1"));
+    const panel = await screen.findByTestId("archive-delete-confirm");
+    const proceed = screen.getByTestId("archive-delete-proceed");
+    expect(proceed).toBeDisabled();
+    // The only form of the topic the reader can produce from a one-line box.
+    fireEvent.change(within(panel).getByLabelText("위 내용 그대로 입력"), { target: { value: "빨간 장미 열렬한 사랑" } });
+    expect(proceed).not.toBeDisabled();
+    fireEvent.click(proceed);
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => String(url) === "/projects/flower-1/archive" && (init as RequestInit | undefined)?.method === "DELETE")).toBe(true));
+    const [, init] = fetchMock.mock.calls.find(([url, i]) => String(url) === "/projects/flower-1/archive" && (i as RequestInit | undefined)?.method === "DELETE")! as [string, RequestInit];
+    // The server compares exactly, so the stored topic goes on the wire — not the typed collapsed form.
+    expect(JSON.parse(String(init.body))).toEqual({ confirmation: "빨간 장미\n열렬한 사랑" });
+  });
+
   it("shows a fixed, safe message for a restore collision without leaking the raw backend text", async () => {
     const fetchMock = stubFetchByRoute(
       {
