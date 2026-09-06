@@ -71,14 +71,22 @@ function presetSettings(
       lighting: "부드러운 역광의 아침 햇살",
       camera: "거의 고정, 아주 느린 접근",
       dialogue: "",
-      // 🔴 This one is not decoration. Each scene's video is generated from its own separately-drawn picture —
-      // nothing carries the previous clip's last frame forward — so the flower can come out looking different
-      // in each shot. `avoid` is one of the four style fields that actually reach the image prompt.
+      // 🔴 This one is not decoration, and its reason changed today. It used to read 「nothing carries the
+      // previous clip's last frame forward」, which was true until 장면 이어 그리기 existed — 캡틴D reported
+      // exactly that as a pot changing between scenes. The chain (below) now hands scene N the picture scene
+      // N-1 became, so this line is no longer the only thing holding the flower steady; it is what keeps the
+      // things that must never appear out of every frame. `avoid` is one of the four style fields that
+      // actually reach the image prompt.
       avoid: "사람, 손, 글자, 로고, 화분이나 배경이 장면마다 바뀌는 것",
       aspect: aspectRatio,
     },
     narrationEnabled: true,
     subtitlesEnabled: true,
+    // On for this preset and off by default everywhere else, which is the whole distinction the setting was
+    // built around: a story that changes place between scenes is held back by the previous picture, and a
+    // flower reel is the opposite — one flower, one pot, one light, a single forward movement. The brief above
+    // already asks for 「장면이 넘어가도 같은 화분」; this is what lets the pictures obey it.
+    sceneImageContinuityEnabled: true,
   };
 }
 
@@ -96,8 +104,18 @@ export function CreateFlowerReelForm({ onCreated, onCancel }: Props) {
   const [originHint, setOriginHint] = useState("");
   const [projectId, setProjectId] = useState("");
   const [idTouched, setIdTouched] = useState(false);
-  const [sceneCount, setSceneCount] = useState<SceneCount>(2);
-  const [clipDurationSeconds, setClipDurationSeconds] = useState<RunwayClipDurationSeconds>(10);
+  /*
+   * Four five-second scenes rather than two ten-second ones: 씨앗 → 싹 → 봉오리 → 개화.
+   *
+   * Two scenes jumps from a sprout to a fully open flower in one cut, and that jump remains however steady the
+   * pot is. The video cost is identical — the same total length at the same per-second rate — and the images
+   * cost $0.20 more, which is what buys the two missing beats.
+   *
+   * Held back until the chain existed, on purpose: with more scenes and no chain, the pot simply changes more
+   * times (Cowork Round 617 ④, agreed in CLI Round 618 ④). Both halves are in now.
+   */
+  const [sceneCount, setSceneCount] = useState<SceneCount>(4);
+  const [clipDurationSeconds, setClipDurationSeconds] = useState<RunwayClipDurationSeconds>(5);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("9:16");
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   /**

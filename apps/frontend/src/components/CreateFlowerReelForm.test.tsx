@@ -49,15 +49,21 @@ describe("CreateFlowerReelForm", () => {
     expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ projectId: "꽃말_장미", topic: "장미의 꽃말 — 열정" });
 
     const saved = JSON.parse(String(calls[1]!.init.body)) as { settings: Record<string, unknown> };
-    const settings = saved.settings as { fullStory: string; sceneCount: number; styleNotes: Record<string, string>; narrationEnabled: boolean };
+    const settings = saved.settings as { fullStory: string; sceneCount: number; clipDurationSeconds: number; styleNotes: Record<string, string>; narrationEnabled: boolean; sceneImageContinuityEnabled: boolean };
     expect(settings.fullStory).toContain("장미");
     // The growth arc and the sameness clause are the whole brief — an image prompt built without them draws a
     // different flower in every shot, which is the one failure this preset exists to fight.
     expect(settings.fullStory).toContain("씨앗");
     expect(settings.fullStory).toContain("같은 각도");
     expect(settings.styleNotes.avoid).toContain("장면마다 바뀌는 것");
-    expect(settings.sceneCount).toBe(2);
+    // 씨앗 → 싹 → 봉오리 → 개화. Two scenes jumped from a sprout to an open flower in one cut, and that jump
+    // survived however steady the pot was kept; the video cost is unchanged and the images cost $0.20 more.
+    expect(settings.sceneCount).toBe(4);
+    expect(settings.clipDurationSeconds).toBe(5);
     expect(settings.narrationEnabled).toBe(true);
+    // The preset turns the chain on, which is the setting's whole distinction: one flower, one pot, one
+    // forward movement. The brief above asks for 「같은 화분」 and this is what lets the pictures obey it.
+    expect(settings.sceneImageContinuityEnabled).toBe(true);
     // durationSeconds is derived server-side and rejected as an unsupported field if sent.
     expect(settings).not.toHaveProperty("durationSeconds");
   });
