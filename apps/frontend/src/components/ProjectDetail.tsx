@@ -4,7 +4,8 @@ import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { archiveProject, getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
-import { PHOTO_CARD_STEPS, isPhotoCardSkippedScreen } from "../utils/photoCardSteps.js";
+import { isPhotoCardSkippedScreen } from "../utils/photoCardSteps.js";
+import { resumeTarget, type ResumeTarget } from "../utils/resumeTarget.js";
 import { projectTypeLabel, workflowStateLabel } from "../utils/workflowStateLabels.js";
 import { ArchiveProjectDialog } from "./ArchiveProjectDialog.js";
 import { Spinner } from "./Spinner.js";
@@ -42,69 +43,8 @@ type DetailState =
   | { status: "error"; error: { code: string; message: string } }
   | { status: "success"; project: Project };
 
-type ResumeTarget =
-  | { screen: "storyPrompt"; label: string }
-  | { screen: "mappingReview"; label: string }
-  | { screen: "imageGeneration"; label: string }
-  | { screen: "videoPreview"; label: string }
-  | { screen: "videoWorkflow"; jobId: string; label: string }
-  | { screen: "videoMerge"; label: string };
-
 const secondaryButton =
   "rounded-full border border-violet-400/30 px-4 py-2 text-sm text-violet-300 hover:bg-violet-500/10";
-
-/** Maps a project's current workflow state to the single screen that continues it, matching the fixed product flow. */
-/** `label` is the complete button text — each case phrases its own lead-in, since "이어서 진행하기" only fits an in-progress state, not a finished one. */
-function resumeTarget(project: Project): ResumeTarget | null {
-  /*
-   * A 명언 카드 first, because the states below are the story's and a card wears them without having lived
-   * them: `photo-card.service.ts` writes one straight to VideosApproved. Read through the switch, a card at an
-   * earlier state would be sent to 대본 지시문 확인 — a screen the router answers with "명언 카드에는 없는
-   * 단계입니다", which is the app arguing with itself over its own biggest button.
-   *
-   * Merging is genuinely the card's first step and the notice screen's own button already leads there, so this
-   * is the same destination said in one more place rather than a new claim. Failed and cancelled keep the null
-   * the switch gives them: there is nothing to continue.
-   */
-  if (project.photoCard === true) {
-    if (project.workflowState === WorkflowState.Failed || project.workflowState === WorkflowState.Cancelled) return null;
-    return project.workflowState === WorkflowState.Completed
-      ? { screen: "videoMerge", label: "최종 영상 결과 보기" }
-      : { screen: "videoMerge", label: `이어서 진행하기 · ${PHOTO_CARD_STEPS[0].label}` };
-  }
-  switch (project.workflowState) {
-    case WorkflowState.Init:
-    case WorkflowState.Ready:
-    case WorkflowState.GeneratingStory:
-      return { screen: "storyPrompt", label: "이어서 진행하기 · 대본 지시문 확인" };
-    case WorkflowState.WaitingForAssetMappingReview:
-      return { screen: "mappingReview", label: "이어서 진행하기 · 참고 이미지 연결 검토" };
-    case WorkflowState.AssetMappingApproved:
-    case WorkflowState.GeneratingImages:
-    case WorkflowState.ImagesReady:
-    case WorkflowState.ImagesReview:
-      return { screen: "imageGeneration", label: "이어서 진행하기 · 장면 이미지 생성/검토" };
-    case WorkflowState.WaitingForVideoConfirmation:
-      return { screen: "videoPreview", label: "이어서 진행하기 · 영상 프롬프트 및 비용 확인" };
-    case WorkflowState.GeneratingVideos:
-    case WorkflowState.VideosReady:
-    case WorkflowState.ReviewingVideos:
-    case WorkflowState.Interrupted:
-      return project.currentVideoJobId
-        ? { screen: "videoWorkflow", jobId: project.currentVideoJobId, label: "이어서 진행하기 · 영상 생성/검토" }
-        : { screen: "videoPreview", label: "이어서 진행하기 · 영상 프롬프트 및 비용 확인" };
-    case WorkflowState.VideosApproved:
-    case WorkflowState.Rendering:
-      return { screen: "videoMerge", label: "이어서 진행하기 · 최종 영상 병합" };
-    case WorkflowState.Completed:
-      // Nothing left to do, but the finished result should still be reachable to watch again
-      // or open in Explorer — VideoMergeScreen shows the existing video instead of re-merging.
-      return { screen: "videoMerge", label: "최종 영상 결과 보기" };
-    default:
-      // Failed / Cancelled have no next step to resume into.
-      return null;
-  }
-}
 
 export function ProjectDetail({
   projectId,
@@ -155,14 +95,6 @@ export function ProjectDetail({
     return () => { cancelled = true; };
   }, [projectId]);
 
-  /*
-   * Only true on a loaded project. While the read is in flight `state.status` is not "success", so nothing is
-   * hidden on a guess — the buttons render as they always did and disappear only once the app knows the
-   * project is a card. Hiding a real screen on an unknown is the more expensive mistake of the two.
-   */
-  const photoCard = state.status === "success" && state.project.photoCard === true;
-  const skipped = (screenName: string): boolean => photoCard && isPhotoCardSkippedScreen(screenName);
-
   useEffect(() => {
     let cancelled = false;
     setState({ status: "loading" });
@@ -182,6 +114,14 @@ export function ProjectDetail({
       cancelled = true;
     };
   }, [projectId]);
+
+  /**
+   * A card has no story steps, and the router answers those screens with "명언 카드에는 없는 단계입니다" — so a
+   * button leading to one is a door onto a wall. Offering the door and then saying there is no door is one
+   * defect across two files; both ends read the same list.
+   */
+  const photoCard = state.status === "success" && state.project.photoCard === true;
+  const skipped = (screenName: string): boolean => photoCard && isPhotoCardSkippedScreen(screenName);
 
   return (
     <section className="mt-8 max-w-4xl space-y-5">
@@ -230,13 +170,6 @@ export function ProjectDetail({
             <button type="button" className={secondaryButton} onClick={() => onOpenSettings(projectId)}>
               프로젝트 설정
             </button>
-            {/*
-              * Withheld for a card, not because the data is missing — a card does have a scene row and a
-              * narration string, which is exactly why these two rendered — but because the router replaces
-              * both screens with 명언 카드에는 없는 단계입니다. 캡틴D pressed 장면 편집 on 명언_전인미답 and
-              * got that sentence. One list in photoCardSteps.ts decides both ends, so removing a name from it
-              * brings the button back on its own.
-              */}
             {state.project.scenes.length > 0 && !skipped("sceneEdit") && (
               <button
                 type="button"

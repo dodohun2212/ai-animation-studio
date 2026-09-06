@@ -39,6 +39,7 @@ import { LongEpisodeSettingsScreen } from "./components/LongEpisodeSettingsScree
 import { ArchiveScreen } from "./components/ArchiveScreen.js";
 import { WorkflowGuideScreen } from "./components/WorkflowGuideScreen.js";
 import { NarrationReviewScreen } from "./components/NarrationReviewScreen.js";
+import type { ResumeTarget } from "./utils/resumeTarget.js";
 import { SceneEditScreen } from "./components/SceneEditScreen.js";
 import { PHOTO_CARD_SKIPPED_SCREEN_NAMES, PHOTO_CARD_STEPS } from "./utils/photoCardSteps.js";
 
@@ -632,6 +633,24 @@ export function App() {
   const [listRefreshToken, setListRefreshToken] = useState(0);
   const [longListRefreshToken, setLongListRefreshToken] = useState(0);
 
+  /**
+   * Routes a resumeTarget to its screen. The same mapping ProjectDetail applies to its own 「이어서 진행하기」
+   * button, expressed once here so a screen that offers the shortcut lands exactly where the project screen
+   * would have sent the reader.
+   */
+  function resumeScreenFor(projectId: string, target: ResumeTarget): void {
+    // Written out rather than spread from `target.screen`: Screen is a discriminated union, and a widened
+    // `name` satisfies none of its members. Each case also documents that these six are the whole flow.
+    switch (target.screen) {
+      case "storyPrompt": setScreen({ name: "storyPrompt", projectId }); return;
+      case "mappingReview": setScreen({ name: "mappingReview", projectId }); return;
+      case "imageGeneration": setScreen({ name: "imageGeneration", projectId }); return;
+      case "videoPreview": setScreen({ name: "videoPreview", projectId }); return;
+      case "videoWorkflow": setScreen({ name: "videoWorkflow", projectId, jobId: target.jobId }); return;
+      case "videoMerge": setScreen({ name: "videoMerge", projectId }); return;
+    }
+  }
+
   // Writing the hash is what creates the history entry, so Back walks the screens the person actually visited.
   useEffect(() => {
     const next = hashFromScreen(screen);
@@ -906,6 +925,7 @@ export function App() {
               <NarrationReviewScreen
                 projectId={screen.projectId}
                 onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
+                onResume={(target) => resumeScreenFor(screen.projectId, target)}
               />
             )}
             {screen.name === "workflowGuide" && (

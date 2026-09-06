@@ -17,10 +17,18 @@ import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
 import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
 import { narrationLooksTooLong, narrationRunsTooLong } from "../utils/narrationLength.js";
+import type { ResumeTarget } from "../utils/resumeTarget.js";
+import { ContinueToNextStep } from "./ui/ContinueToNextStep.js";
 
 interface Props {
   projectId: string;
   onBack: () => void;
+  /**
+   * Optional: when wired, the screen offers the project's own next step directly instead of making the reader
+   * go back to the project screen to find it. Left optional so a caller that has nowhere to route to (a test,
+   * a future embed) simply gets the screen without the shortcut.
+   */
+  onResume?: (target: ResumeTarget) => void;
 }
 
 type DisplayError = { code: string; message: string };
@@ -47,7 +55,7 @@ const smallAmberButton =
   "rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-400 disabled:opacity-50";
 const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
 
-export function NarrationReviewScreen({ projectId, onBack }: Props) {
+export function NarrationReviewScreen({ projectId, onBack, onResume }: Props) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   /**
    * Loaded separately and treated as optional: the clip length only powers a soft "this line looks long"
@@ -192,6 +200,9 @@ export function NarrationReviewScreen({ projectId, onBack }: Props) {
         음성으로 만들어질 문장입니다. 음성 생성은 장면마다 한 번씩 비용이 들기 때문에, 만들기 전에 여기서 먼저 읽어볼 수
         있게 했습니다. 문장 자체를 고치려면 대본을 다시 만들어야 합니다.
       </p>
+      {/* Reading these sentences is a check on the way through, not a destination — this screen used to end at
+          「프로젝트로 돌아가기」, so continuing meant going back and reading the next step off a button there. */}
+      {onResume && <ContinueToNextStep projectId={projectId} onResume={onResume} />}
 
       {state.status === "loading" && <Spinner label="내레이션을 불러오는 중..." />}
       {state.status === "error" && (
