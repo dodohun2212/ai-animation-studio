@@ -73,6 +73,38 @@ describe("real OpenAI Long Episode script generation", () => {
     expect(body.input).toContain("내레이션");
   });
 
+  /**
+   * Episode 6 scene 6 failed at Runway with INTERNAL.BAD_OUTPUT.CODE01 on 2026-09-06 — $0.25 charged, the five
+   * scenes before it fine. Its prompt asked one five-second shot for two camera moves and three separate
+   * deformations of a face, while the fixed closing line of every video request demands stable identity,
+   * anatomy and clothing throughout.
+   *
+   * Neither fact reached the model that wrote it. The clip length appeared only on the narration line, so the
+   * motion fields were written without knowing how long the shot they become is, and the stability requirement
+   * is appended downstream by code the model never sees. The pacing rule already here holds the speed steady
+   * and says nothing about how many things happen at that speed.
+   */
+  it("tells the model how long one shot is and that the subject has to survive it", async () => {
+    const { subject } = await setupWithConnectedOpenAi();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responsesBody(aiStory(6))));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await subject.generate("long", 1, { userRequestId: "episode-scripts.openai-shot-budget" });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const input = (JSON.parse(String(init.body)) as { input: string }).input;
+    const motionInstruction = input.split(/\r?\n/).find((line) => line.startsWith("움직임 항목(")) ?? "";
+    expect(motionInstruction).toContain("주요 동작 하나");
+    // The Episode's own clip length, not a literal five. A fixture that happens to be five cannot tell the two
+    // apart, so this compares the number against the narration line's — the one place the same value already
+    // had to be interpolated. Hardcoding either one makes them disagree.
+    const narrationInstruction = input.split(/\r?\n/).find((line) => line.startsWith("narration에는")) ?? "";
+    const seconds = (line: string) => /(\d+)초/.exec(line)?.[1];
+    expect(seconds(motionInstruction)).toBeDefined();
+    expect(seconds(motionInstruction)).toBe(seconds(narrationInstruction));
+    expect(input).toContain("정체성·신체·의상이 컷 내내 유지");
+  });
+
   it("assembles the Episode context from the story bible, project settings, and outline into the prompt", async () => {
     const { subject, projectsRoot } = await setupWithConnectedOpenAi();
     const biblePath = path.join(projectsRoot, "long", "long_story", "story_bible.json");
