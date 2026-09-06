@@ -4176,3 +4176,8 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
   - 🔴 **그래서 스물두 군데를 하나로 미는 건 잘못된 수리였다** — `cardSection` 상수가 여섯 파일에서 같은 값으로 쓰이는데, 문서에 맞추려고 그걸 밀면 **실제로 합의돼 있던 규칙을 문서 때문에 깨는 것**이 된다.
   - 🟢 문서를 실제에 맞추고(§2.3 을 세 층 표로), **실제로 어긋난 일곱 군데만 고쳤다**: 화면 본문 래퍼 셋(`App` 명언 건너뜀 안내 · `ProviderSettingsScreen` · `LongProjectSettingsScreen`)과 카드 더미 둘은 나머지 스무 화면과 같은 `space-y-5` 로, 카드도 섹션도 아닌 둘(`VideoPromptPreviewScreen` 미리보기 목록 · `LongEpisodeContinuityScreen` 기록 칸 내부)은 `space-y-3` 으로.
   - 🟠 **"왜 지금 `space-y-4` 가 많은지" 를 문서에 같이 적었다** — 안 적으면 다음에 훑는 사람이 좋은 뜻으로 열세 군데를 되돌린다. `D-048` 과 같은 이유다.
+- [x] **🔴 글꼴을 바꾸기 직전에 확인한 것: 폴백 짝은 살아 있었지만 **가족 목록을 손으로 들고 있어서** 바꾸는 순간 옛 가족을 지키게 돼 있었다 (2026-09-06)**: Cowork Round 590 이 `subtitle-file.ts:8` 주석이 가리키는 `subtitle-font.test.ts` 가 없다고 보고했다. **짝은 있다** — `subtitle-file.photo-card.test.ts` 안에 있고, `.ttf` 의 name 테이블에서 가족명을, OS/2 에서 굵기를 직접 읽는다. 주석의 파일명만 낡았다.
+  - 🔴 **그런데 그 짝이 지킬 가족을 `["Noto Sans KR", "Noto Serif KR"]` 로 손수 적고 있었다.** 주석은 *"자막이 이름을 대는 모든 가족"* 이라고 말하는데 실제로는 **그때 이름을 대던 가족**이었다. `QUOTE_FONT_FAMILY` 를 나눔명조로 바꾸는 순간, 이 짝은 **아무도 이름을 대지 않는 가족을 계속 검사하며 초록**이고 **새 가족은 아무도 안 본다** — 그리고 libass 의 폴백도 조용하다. 침묵 둘이 겹치는 자리다.
+  - 🟢 두 상수를 내보내고 짝이 **코드에서 읽게** 했다. 주입으로 확인: `QUOTE_FONT_FAMILY` 를 `NanumMyeongjo` 로 바꾸면 `NanumMyeongjo must be shipped by exactly one file` 로 빨개진다 — **고치기 전에는 같은 주입에 이 짝이 초록이었다.**
+  - 🟠 *"캡틴D가 고른 두 얼굴"* 을 못 박는 짝(`quoteFont === "Noto Serif KR"`)은 **일부러 리터럴로 뒀다.** 그건 배선이 아니라 **제품 결정**이라, 글꼴이 바뀌는 날 빨개지는 게 맞다 — 사람이 의식하고 고쳐야 하는 자리다.
+  - 🟠 그래서 ③ 글꼴 교체의 순서는 이제 안전하다: `.ttf` 를 넣고 `QUOTE_FONT_FAMILY` 를 바꾸면 **짝이 파일 안의 실제 가족명과 굵기를 대조해서 답을 준다** — 이름을 추측해서 적을 필요가 없다. 백엔드 1520.

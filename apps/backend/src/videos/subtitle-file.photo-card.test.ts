@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE } from "@ai-animation-studio/shared";
 
-import { sceneSubtitleAss } from "./subtitle-file.js";
+import { FONT_FAMILY, QUOTE_FONT_FAMILY, sceneSubtitleAss } from "./subtitle-file.js";
 
 const HEIGHT = 1920;
 const WIDTH = 1080;
@@ -148,7 +148,10 @@ describe("the fonts this app ships", () => {
       }
     }
 
-    for (const family of ["Noto Sans KR", "Noto Serif KR"]) {
+    // Read from the code rather than repeated here: a hand-written list would go on checking the family the
+    // subtitles used to name, and say nothing about the one they name now — silently, which is the same way
+    // libass fails when the name and the file disagree.
+    for (const family of new Set([FONT_FAMILY, QUOTE_FONT_FAMILY])) {
       const faces = byFamily.get(family) ?? [];
       expect(faces.map((face) => face.file), `${family} must be shipped by exactly one file`).toHaveLength(1);
       expect(faces[0]!.weight, `${family} is shipped as ${faces[0]?.file}, which is too light to read on a card`)

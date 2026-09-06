@@ -1,13 +1,18 @@
 import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, PHOTO_CARD_SUBTITLE_OUTLINE, PHOTO_CARD_SUBTITLE_SHADOW, photoCardSubtitleGeometry, splitPhotoCardSubtitle, type PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
 
-const FONT_FAMILY = "Noto Sans KR";
+/**
+ * The families the subtitles name, exported so the guard that checks `fonts/` reads them from here rather than
+ * keeping its own list — a list that would go on validating a family nothing names any more, and leave the new
+ * one unwatched, on the day one of these changes.
+ */
+export const FONT_FAMILY = "Noto Sans KR";
 /**
  * The photo card's first line only. Named here, matched by libass against the file in `fonts/` — so the name
  * and the file's own internal family name have to agree exactly, and a disagreement is silent: libass falls
  * back to whatever the machine has installed, which renders on the author's computer and differently on every
- * other one. subtitle-font.test.ts reads the family out of the file itself for that reason.
+ * other one. subtitle-file.photo-card.test.ts reads the family out of the file itself for that reason.
  */
-const QUOTE_FONT_FAMILY = "Noto Serif KR";
+export const QUOTE_FONT_FAMILY = "Noto Serif KR";
 
 /**
  * The numbers live in packages/shared because the screen that offers the control and the render that obeys it
