@@ -10,6 +10,9 @@ const PREVIEW = {
   projectId: "sample_project",
   originalPrompt: "우주를 여행하는 고양이 이야기",
   originalPromptSha256: "a".repeat(64),
+  castCount: 14,
+  // The deprecated alias the server still sends. Kept in the fixture so the screen is proved to read the new
+  // name rather than to be reading whichever one happens to be present.
   characterCount: 14,
   sceneCount: 6 as const,
 };
@@ -119,8 +122,35 @@ describe("StoryPromptScreen", () => {
    * 캡틴D read "글자 수: 0" above a screen full of prompt text and asked whether something had gone wrong.
    * Nothing had: the number counts the cast, and a 꽃말 릴스 has no people in it on purpose.
    */
+  /**
+   * Which of the two names the screen actually reads. The contract ships both while the screens move over, so a
+   * response where they disagree is the only way to tell — and the two must never disagree in production, which
+   * is what the contract and backend pairs assert. Here they are made to, deliberately, to catch a screen still
+   * reading the name that is about to be removed.
+   */
+  it("reads castCount, not the deprecated alias beside it", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { preview: { ...PREVIEW, castCount: 3, characterCount: 99 } })));
+
+    await screen.findByDisplayValue(PREVIEW.originalPrompt);
+    expect(screen.getByText(/등장인물 수: 3/)).toBeTruthy();
+    expect(screen.queryByText(/99/)).toBeNull();
+  });
+
+  /**
+   * The guard must not require the alias either, because the alias is the half that leaves next. Once this
+   * build is the one people are running, `characterCount` comes out of the contract — and a guard demanding it
+   * would refuse a good response the moment it does.
+   */
+  it("accepts a preview that has already dropped the deprecated alias", async () => {
+    const { characterCount, ...withoutAlias } = PREVIEW;
+    void characterCount;
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { preview: withoutAlias })));
+
+    expect(await screen.findByDisplayValue(PREVIEW.originalPrompt)).toBeTruthy();
+  });
+
   it("labels the cast count as people, not as letters", async () => {
-    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { preview: { ...PREVIEW, characterCount: 0 } })));
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { preview: { ...PREVIEW, castCount: 0, characterCount: 0 } })));
 
     await screen.findByDisplayValue(PREVIEW.originalPrompt);
     expect(screen.getByText(/등장인물 수: 0/)).toBeTruthy();

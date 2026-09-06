@@ -115,8 +115,12 @@ function isPreview(value: unknown): value is StoryPromptPreview {
     isNonEmptyString(value.projectId) &&
     typeof value.originalPrompt === "string" &&
     isDigest(value.originalPromptSha256) &&
-    typeof value.characterCount === "number" &&
-    value.characterCount >= 0 &&
+    // Guards the name the screen reads. `characterCount` still ships beside it as a deprecated alias, and is
+    // deliberately not required here: a guard that demands a field the contract is about to drop would refuse
+    // a perfectly good response the moment it goes — which is exactly how a client guard cost 캡틴D the whole
+    // video step this morning, one clip length behind the contract.
+    typeof value.castCount === "number" &&
+    value.castCount >= 0 &&
     typeof value.sceneCount === "number" &&
     Number.isInteger(value.sceneCount) &&
     value.sceneCount >= MIN_SCENE_COUNT &&

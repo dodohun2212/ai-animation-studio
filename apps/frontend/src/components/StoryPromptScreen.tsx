@@ -386,12 +386,13 @@ export function StoryPromptScreen({ projectId, onBack, onOpenMappingReview, onOp
 
       {preview && !alreadyGenerated && (
         <div className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6">
-          {/* `characterCount` counts the cast, not letters — story-prompt.service.ts's characterCount() returns
-              `character_profile.cast.length`. Rendered as "글자 수" it told 캡틴D the prompt was 0 글자 with a
-              full prompt sitting directly underneath, and on a flower reel — which deliberately has no people —
-              0 was the right answer to a question this label was not asking. */}
+          {/* `castCount` counts the cast, not letters. Under its old contract name `characterCount` this was
+              rendered as "글자 수", telling 캡틴D the prompt was 0 글자 with a full prompt sitting directly
+              underneath — on a flower reel, which deliberately has no people, 0 was the right answer to a
+              question the label was not asking. The screen was corrected first and the contract followed; this
+              is the second half, which is what lets `characterCount` come out of the contract entirely. */}
           <p className="text-sm text-slate-400">
-            등장인물 수: {preview.characterCount} · 장면 수: {preview.sceneCount}
+            등장인물 수: {preview.castCount} · 장면 수: {preview.sceneCount}
           </p>
           <label className="block text-sm text-slate-300" htmlFor="story-prompt">
             대본 지시문
