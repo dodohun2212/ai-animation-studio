@@ -5,7 +5,7 @@ import { jsonResponse, makeLongProject } from "../api/testUtils.js";
 import { CreateLongProjectForm } from "./CreateLongProjectForm.js";
 
 function fillRequiredFields(projectId: string, title: string, logline: string): void {
-  fireEvent.change(screen.getByLabelText("폴더 이름 (영문·숫자)"), { target: { value: projectId } });
+  fireEvent.change(screen.getByLabelText("폴더 이름"), { target: { value: projectId } });
   fireEvent.change(screen.getByLabelText("제목"), { target: { value: title } });
   fireEvent.change(screen.getByLabelText("한 줄 줄거리"), { target: { value: logline } });
 }
@@ -19,7 +19,7 @@ describe("CreateLongProjectForm", () => {
     vi.stubGlobal("fetch", vi.fn());
     render(<CreateLongProjectForm onCreated={() => {}} onCancel={() => {}} />);
 
-    expect(screen.getByLabelText("폴더 이름 (영문·숫자)")).toBeTruthy();
+    expect(screen.getByLabelText("폴더 이름")).toBeTruthy();
     expect(screen.getByLabelText("제목")).toBeTruthy();
     expect(screen.getByLabelText("한 줄 줄거리")).toBeTruthy();
     expect(screen.getByLabelText("에피소드 수")).toBeTruthy();
