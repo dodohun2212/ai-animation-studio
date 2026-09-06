@@ -212,6 +212,22 @@ export function clipDurationSecondsPerScene(totalDurationSeconds: number, sceneC
 export const PHOTO_CARD_QUOTE_MAX_LENGTH = 300;
 
 /**
+ * What a flower reel refuses, in the one place both ends read it.
+ *
+ * 🔴 Here for the reason PHOTO_CARD_QUOTE_MAX_LENGTH is here, and the cost of getting it wrong is worse: a
+ * flower reel is several scenes of text typed in one sitting, so a screen that says "fine" over a server that
+ * refuses does not cost one sentence, it costs the whole form after Captain D has written all of it.
+ *
+ * The two ceilings differ because the two fields become different things. A `caption` is burnt in as a subtitle
+ * and read at a glance, so it is short. A `description` is only ever an image prompt — nobody reads it on a
+ * frame — so it has the room a prompt needs.
+ */
+export const FLOWER_CARD_NAME_MAX_LENGTH = 60;
+export const FLOWER_CARD_MEANING_MAX_LENGTH = 120;
+export const FLOWER_CARD_DESCRIPTION_MAX_LENGTH = 500;
+export const FLOWER_CARD_CAPTION_MAX_LENGTH = 120;
+
+/**
  * Runway Gen-4 Turbo's API `prompt` field maxLength (confirmed against docs.aimlapi.com's schema, the same source
  * already cited for {@link RUNWAY_CLIP_DURATIONS}). Measured in UTF-16 code units, matching JavaScript's native
  * `.length` and Runway's own counting. When a rendered video prompt would exceed this, the caller drops optional

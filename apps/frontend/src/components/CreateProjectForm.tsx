@@ -3,6 +3,7 @@ import type { Project } from "@ai-animation-studio/shared";
 
 import { createProject, toDisplayError } from "../api/projectsApi.js";
 import { isSafeProjectId } from "../validation/projectId.js";
+import { CreateFlowerReelForm } from "./CreateFlowerReelForm.js";
 
 interface CreateProjectFormProps {
   onCreated: (project: Project) => void;
@@ -17,7 +18,18 @@ interface FieldErrors {
 const fieldClassName =
   "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 
+/**
+ * How the script gets written — the one thing that differs between what this door can make.
+ *
+ * 🔴 Both branches produce the same kind of project: same pipeline, same images, same videos, same merge, same
+ * publish. Only the script's author changes. That is why the flower reel lives here as a branch rather than as
+ * its own sidebar entry — 명언 카드 has its own door because its *result* is a different thing (it skips five
+ * of these steps and costs nothing), and this one's result is not.
+ */
+type ScriptSource = "ai" | "flower";
+
 export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProps) {
+  const [source, setSource] = useState<ScriptSource>("ai");
   const [projectId, setProjectId] = useState("");
   const [topic, setTopic] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -40,7 +52,7 @@ export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProp
     if (!trimmedId) {
       errors.projectId = "폴더 이름을 입력하세요.";
     } else if (!isSafeProjectId(trimmedId)) {
-      errors.projectId = "폴더 이름에는 영문, 숫자, '_', '-'만 쓸 수 있습니다. 한글과 띄어쓰기는 폴더 이름으로 쓸 수 없습니다.";
+      errors.projectId = "폴더 이름에는 한글, 영문, 숫자와 '_', '-'만 쓸 수 있습니다. 띄어쓰기는 쓸 수 없습니다.";
     }
     if (!trimmedTopic) {
       errors.topic = "영상 주제를 입력하세요.";
@@ -64,21 +76,57 @@ export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProp
     }
   }
 
+  const choice = (value: ScriptSource, label: string, note: string) => (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={source === value}
+      data-testid={`create-source-${value}`}
+      disabled={submitting}
+      onClick={() => setSource(value)}
+      className={`flex-1 rounded-xl border p-3.5 text-left disabled:opacity-50 ${source === value ? "border-violet-400/70 bg-violet-500/10" : "border-white/10 hover:bg-white/5"}`}
+    >
+      <span className="block text-sm font-semibold text-slate-100">{label}</span>
+      <span className="mt-1 block text-xs text-slate-400">{note}</span>
+    </button>
+  );
+
+  const picker = (
+    <div role="radiogroup" aria-label="대본을 누가 쓰는지" className="mt-8 flex max-w-2xl flex-wrap gap-3">
+      {choice("ai", "주제만 주고 AI가 대본 쓰기", "주제 한 줄을 적으면 장면과 대사를 AI가 만듭니다.")}
+      {choice("flower", "꽃말 릴스 — 내가 대본 쓰기", "꽃이 씨앗에서 피어나는 흐름으로, 문장은 직접 적습니다. 만들기까지는 무료입니다.")}
+    </div>
+  );
+
+  if (source === "flower") {
+    return (
+      <>
+        {picker}
+        <CreateFlowerReelForm onCreated={onCreated} onCancel={onCancel} />
+      </>
+    );
+  }
+
   return (
+    <>
+    {picker}
     <form
-      className="mt-8 max-w-xl space-y-5 rounded-2xl border border-white/10 bg-slate-900/70 p-6"
+      className="mt-5 max-w-xl space-y-5 rounded-2xl border border-white/10 bg-slate-900/70 p-6"
       onSubmit={handleSubmit}
       noValidate
     >
       <div>
         <label className="block text-sm text-slate-300" htmlFor="projectId">
-          폴더 이름 (영문·숫자)
+          폴더 이름
         </label>
         {/* Was labelled "프로젝트 ID" with no explanation — the first field of the app asked a creator to invent
             a machine identifier and obey a charset rule. It is really the folder this project gets on disk, so
             it is named that, and the constraint is stated before it can be violated rather than after. */}
+        {/* 🔴 The rule said 한글을 쓸 수 없다 and that was not true: both allow-lists are `\p{L}`, which accepts
+            Hangul, and every 명언 card on this machine is named in Korean. The first field of the app was
+            refusing names the server would have taken. Only the space is a real refusal. */}
         <p className="mt-1 text-xs text-slate-500">
-          이 이름으로 컴퓨터에 프로젝트 폴더가 만들어집니다. 영문·숫자와 _ - 만 쓸 수 있고, 만든 뒤에는 바꿀 수 없습니다.
+          이 이름으로 컴퓨터에 프로젝트 폴더가 만들어집니다. 한글·영문·숫자와 _ - 를 쓸 수 있고 띄어쓰기는 쓸 수 없습니다. 만든 뒤에는 바꿀 수 없습니다.
         </p>
         <input
           id="projectId"
@@ -133,5 +181,6 @@ export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProp
         </button>
       </div>
     </form>
+    </>
   );
 }

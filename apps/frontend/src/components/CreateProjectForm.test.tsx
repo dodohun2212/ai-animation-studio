@@ -5,7 +5,7 @@ import { jsonResponse, makeProject } from "../api/testUtils.js";
 import { CreateProjectForm } from "./CreateProjectForm.js";
 
 function fillForm(projectId: string, topic: string): void {
-  fireEvent.change(screen.getByLabelText("폴더 이름 (영문·숫자)"), { target: { value: projectId } });
+  fireEvent.change(screen.getByLabelText("폴더 이름"), { target: { value: projectId } });
   fireEvent.change(screen.getByLabelText("영상 주제"), { target: { value: topic } });
 }
 
@@ -18,7 +18,7 @@ describe("CreateProjectForm", () => {
     vi.stubGlobal("fetch", vi.fn());
     render(<CreateProjectForm onCreated={() => {}} onCancel={() => {}} />);
 
-    expect(screen.getByLabelText("폴더 이름 (영문·숫자)")).toBeTruthy();
+    expect(screen.getByLabelText("폴더 이름")).toBeTruthy();
     expect(screen.getByLabelText("영상 주제")).toBeTruthy();
     expect(screen.queryByLabelText("프로젝트 이름")).toBeNull();
     // Was queryByLabelText(/이름/) — a stand-in for "no separate display-name field". The folder field is now
@@ -148,7 +148,7 @@ describe("CreateProjectForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "프로젝트 생성" }));
 
     await screen.findByRole("alert");
-    expect(screen.getByLabelText("폴더 이름 (영문·숫자)")).toHaveValue("dup_project");
+    expect(screen.getByLabelText("폴더 이름")).toHaveValue("dup_project");
     expect(screen.getByLabelText("영상 주제")).toHaveValue("우주를 여행하는 고양이");
   });
 
@@ -160,5 +160,24 @@ describe("CreateProjectForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "취소" }));
 
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+  /**
+   * The flower reel is a branch of this door, not a door of its own.
+   *
+   * Both branches make the same kind of project — same pipeline, same merge, same publish — and only the
+   * script's author differs. 명언 카드 got its own sidebar entry because its *result* skips five of those
+   * steps; this one's does not, so a second entry would be two doors to one place.
+   */
+  it("offers the flower reel as a branch, and leaves the AI form as the default", () => {
+    render(<CreateProjectForm onCreated={() => {}} onCancel={() => {}} />);
+
+    // Default is untouched: the topic field is what a person sees first.
+    expect(screen.getByLabelText("영상 주제")).toBeTruthy();
+    expect(screen.queryByTestId("flower-name")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("create-source-flower"));
+
+    expect(screen.getByTestId("flower-name")).toBeTruthy();
+    expect(screen.queryByLabelText("영상 주제")).toBeNull();
   });
 });

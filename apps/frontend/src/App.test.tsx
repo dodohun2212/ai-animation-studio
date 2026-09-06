@@ -108,7 +108,7 @@ describe("App", () => {
     await screen.findByText("아직 생성된 프로젝트가 없습니다.");
 
     fireEvent.click(screen.getByRole("button", { name: "새 프로젝트" }));
-    fireEvent.change(screen.getByLabelText("폴더 이름 (영문·숫자)"), { target: { value: "sample_project" } });
+    fireEvent.change(screen.getByLabelText("폴더 이름"), { target: { value: "sample_project" } });
     fireEvent.change(screen.getByLabelText("영상 주제"), { target: { value: "우주를 여행하는 고양이" } });
     fireEvent.click(screen.getByRole("button", { name: "프로젝트 생성" }));
 
@@ -778,6 +778,8 @@ describe("App", () => {
     await screen.findByText("아직 생성된 장기 프로젝트가 없습니다.");
 
     fireEvent.click(screen.getByRole("button", { name: "새 장기 프로젝트" }));
+    // 장기 프로젝트 keeps the older label: CreateLongProjectForm was not part of the short form's rename, and
+    // it still tells people Korean cannot be used — see the round note, that form is the one left saying it.
     fireEvent.change(screen.getByLabelText("폴더 이름 (영문·숫자)"), { target: { value: "long_test" } });
     fireEvent.change(screen.getByLabelText("제목"), { target: { value: seed.title } });
     fireEvent.change(screen.getByLabelText("한 줄 줄거리"), { target: { value: seed.logline } });
