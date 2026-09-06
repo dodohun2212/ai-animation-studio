@@ -115,6 +115,18 @@ describe("StoryPromptScreen", () => {
     expect((previewCall![1] as RequestInit).method).toBe("POST");
   });
 
+  /**
+   * 캡틴D read "글자 수: 0" above a screen full of prompt text and asked whether something had gone wrong.
+   * Nothing had: the number counts the cast, and a 꽃말 릴스 has no people in it on purpose.
+   */
+  it("labels the cast count as people, not as letters", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { preview: { ...PREVIEW, characterCount: 0 } })));
+
+    await screen.findByDisplayValue(PREVIEW.originalPrompt);
+    expect(screen.getByText(/등장인물 수: 0/)).toBeTruthy();
+    expect(screen.queryByText(/글자 수/)).toBeNull();
+  });
+
   it("shows a safe error instead of the raw backend message when the preview request fails", async () => {
     const fetchMock = vi
       .fn()
