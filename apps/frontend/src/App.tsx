@@ -574,7 +574,7 @@ function useShortProjectShell(screen: Screen): ShortProjectShell | null {
  */
 function PhotoCardStepNotice({ projectId, onOpenMerge }: { projectId: string; onOpenMerge: () => void }) {
   return (
-    <section className="mt-8 max-w-2xl space-y-4" data-testid="photo-card-step-skipped">
+    <section className="mt-8 max-w-2xl space-y-5" data-testid="photo-card-step-skipped">
       <h2 className="text-lg font-semibold text-slate-100">명언 카드에는 없는 단계입니다</h2>
       <p className="text-sm text-slate-300">
         명언 카드는 골라 둔 그림 한 장에 글귀를 얹는 것이라, 대본·참고 이미지·장면 이미지·영상 만들기를

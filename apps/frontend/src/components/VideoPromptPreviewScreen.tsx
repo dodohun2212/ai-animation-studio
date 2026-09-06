@@ -175,7 +175,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
           <p className="text-sm text-slate-400" data-testid="preview-summary">
             모델: {previews[0]!.model} · 비율: {videoRatioLabel(previews[0]!.ratio)} · 장면당 길이: {previews[0]!.durationSeconds}초
           </p>
-          <ul className="space-y-4" data-testid="preview-list">
+          <ul className="space-y-3" data-testid="preview-list">
             {previews.map((preview) => {
               const promptText = promptFor(preview);
               const length = utf16Length(promptText);

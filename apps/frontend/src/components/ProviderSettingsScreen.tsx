@@ -58,7 +58,7 @@ export function ProviderSettingsScreen({ onBack }: Props) {
   const updateBudget = (budget: ProviderMonthlyBudget) => setState((old) => old.budgets ? { ...old, budgets: { ...old.budgets, [budget.provider]: budget } } : old);
   const updateVideoModel = (videoModel: VideoModelSetting) => setState((old) => ({ ...old, videoModel }));
   return (
-    <section className="mt-8 max-w-2xl space-y-4">
+    <section className="mt-8 max-w-2xl space-y-5">
       <div className="flex items-center justify-between">
         <button type="button" className={outlineButton} onClick={onBack}>목록으로</button>
         <h2 className="flex items-center gap-2.5 text-lg font-semibold">
@@ -78,7 +78,7 @@ export function ProviderSettingsScreen({ onBack }: Props) {
         </div>
       )}
       {state.statuses && (
-        <div className="space-y-4">
+        <div className="space-y-5">
           <ProviderCredentialCard label="OpenAI" status={state.statuses.openai} onStatusChange={update} acquireMutation={() => acquireMutation("openai")} releaseMutation={() => releaseMutation("openai")}/>
           <ProviderCredentialCard label="Runway" status={state.statuses.runway} onStatusChange={update} acquireMutation={() => acquireMutation("runway")} releaseMutation={() => releaseMutation("runway")}/>
           {state.budgets && <MonthlyBudgetCard budgets={state.budgets} onBudgetChange={updateBudget} />}

@@ -120,7 +120,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
 
   if (state.loading && !state.settings) return <Spinner label="불러오는 중…" className="mt-8" />;
   return (
-    <section className="mt-8 max-w-3xl space-y-4">
+    <section className="mt-8 max-w-3xl space-y-5">
       <button
         type="button"
         className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"

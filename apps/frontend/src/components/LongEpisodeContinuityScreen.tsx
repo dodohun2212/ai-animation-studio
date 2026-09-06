@@ -219,7 +219,7 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
               and it has a real answer. */}
           <details data-testid="continuity-record-only" className="rounded-xl border border-white/10 bg-slate-950/40 p-4 text-sm">
             <summary className="cursor-pointer text-slate-300 hover:text-slate-100">기록용 칸 (저장은 되지만 다음 화 대본에는 들어가지 않습니다)</summary>
-            <div className="mt-3 space-y-4">
+            <div className="mt-3 space-y-3">
               <p className="text-xs text-slate-400">
                 나중에 이 회차가 어땠는지 찾아보려고 남기는 칸입니다. 비워 두셔도 다음 화에는 아무 영향이 없습니다.
                 <br />

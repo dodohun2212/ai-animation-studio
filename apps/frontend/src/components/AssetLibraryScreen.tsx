@@ -812,7 +812,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
       )}
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-5">
       {!selected && !detailLoading && !detailError && !importOpen && !folderCreateOpen && (
         <p className="rounded-2xl border border-dashed border-white/10 p-6 text-sm text-slate-500">
           왼쪽 목록에서 항목을 선택하면 상세 정보가 여기에 표시됩니다. 새 항목은 위의 "새 에셋 등록" 또는 "새 폴더 만들기" 버튼으로 추가할 수 있습니다.
