@@ -88,6 +88,28 @@ describe("videoPreviewApi", () => {
     await expect(getVideoPromptPreview("sample_project")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
   });
 
+  /**
+   * 캡틴D's first 10-second project could not reach the video step at all: the backend answered correctly with
+   * durationSeconds 10 — a length `RUNWAY_CLIP_DURATIONS` has always allowed and the settings screen has always
+   * offered — and this guard's `=== 5` called that response malformed. The screen then said 서버 응답을 확인할 수
+   * 없습니다 about a server that was working, and 「다시 시도」 could never succeed.
+   */
+  it("accepts a ten-second clip, the other length the contract has always allowed", async () => {
+    const previews = makePreviews(2).map((preview) => ({ ...preview, durationSeconds: 10 as const, estimatedCostUsd: 0.5 }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { previews })));
+
+    const response = await getVideoPromptPreview("sample_project");
+    expect(response.previews.map((preview) => preview.durationSeconds)).toEqual([10, 10]);
+  });
+
+  it("still rejects a clip length the contract does not allow", async () => {
+    const previews = makePreviews(2);
+    (previews[0] as unknown as { durationSeconds: number }).durationSeconds = 7;
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { previews })));
+
+    await expect(getVideoPromptPreview("sample_project")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+  });
+
   it("maps a non-JSON error body to the safe malformed-response error", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(nonJsonResponse(400)));
 

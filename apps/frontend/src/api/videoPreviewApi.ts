@@ -2,9 +2,11 @@ import {
   API_ROUTES,
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
+  RUNWAY_CLIP_DURATIONS,
   VIDEO_MODELS,
   type BudgetPreview,
   type GetVideoPromptPreviewResponse,
+  type RunwayClipDurationSeconds,
   type SceneNumber,
   type VideoModel,
   type VideoPromptPreview,
@@ -68,7 +70,12 @@ function isVideoPromptPreview(value: unknown): value is VideoPromptPreview {
     // malformed, and the screen say 서버 응답을 확인할 수 없습니다 about a server that is working.
     VIDEO_MODELS.includes(value.model as VideoModel) &&
     (value.ratio === "720:1280" || value.ratio === "1280:720") &&
-    value.durationSeconds === 5 &&
+    // Was `=== 5`, and it cost 캡틴D the whole video step on the first 10-second project: the server answered
+    // correctly with durationSeconds 10, this guard called it malformed, and the screen said 서버 응답을 확인할
+    // 수 없습니다 about a server that was working. Exactly the failure the `model` comment above describes, left
+    // in the line below it. `RUNWAY_CLIP_DURATIONS` is the contract's own list of what a clip may be, so a third
+    // length added there can never make a good response unreadable here again.
+    RUNWAY_CLIP_DURATIONS.includes(value.durationSeconds as RunwayClipDurationSeconds) &&
     typeof value.estimatedCostUsd === "number" &&
     value.estimatedCostUsd >= 0
   );
