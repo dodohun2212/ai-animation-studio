@@ -68,6 +68,7 @@ async function setup(options: {
   connected?: boolean; withVideo?: boolean; alreadyPublished?: boolean;
   fetchImpl?: typeof fetch; now?: () => number;
   usedAudio?: Record<string, unknown>;
+  lockTimeoutMs?: number;
 } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "instagram-publish-")); roots.push(root);
   const projectsRoot = path.join(root, "projects");
@@ -94,6 +95,7 @@ async function setup(options: {
     { processingTimeoutMs: 60_000, intervalMs: 0 },
     async () => {},
     options.now ?? (() => Date.parse("2026-08-27T12:00:00.000Z")),
+    options.lockTimeoutMs,
   );
   return { root, projectsRoot, projects, service, fetchImpl };
 }
@@ -641,5 +643,39 @@ describe("InstagramPublishService.forgetPost", () => {
       .rejects.toMatchObject({ response: { code: "INSTAGRAM_POST_NOT_RECORDED" } });
     await expect(service.forgetEpisodePost("long", 9, { acknowledged: true }))
       .rejects.toMatchObject({ response: { code: "INSTAGRAM_POST_NOT_RECORDED" } });
+  });
+});
+
+describe("a publish that is already running", () => {
+  /**
+   * The lock is acquired with a ten-second timeout and a real publish holds it for minutes (upload, then up to
+   * three minutes of processing polls), so a second press during a live publish always reached the timeout — and
+   * this was the one project-locked operation that never mapped it, so it escaped as an unexplained 500. The
+   * person pressing is someone who already believes the first attempt failed, on the one action that cannot be
+   * undone; an unnamed failure is read as a second failure and pressed again.
+   */
+  it("is named, rather than failing without a name, when a second call cannot get the lock", async () => {
+    const { projectsRoot, service } = await setup({ lockTimeoutMs: 0 });
+
+    await withProjectLock(path.join(projectsRoot, "post_project"), FINAL_VIDEO_LOCK_KEY, async () => {
+      await expect(service.publish("post_project", approved))
+        .rejects.toMatchObject({ response: { code: "INSTAGRAM_PUBLISH_IN_PROGRESS" } });
+    });
+  });
+
+  /**
+   * Clearing the record took a key of its own while the publish took `videos:final`, under a comment saying they
+   * were the same lock. They were not, so a clear could run beside a live publish and the two would race on one
+   * file. Losing that race deletes the record of a post that exists, and a project with no record may be
+   * published again — the duplicate D-005 forbids, reached through the button meant to make republishing
+   * deliberate.
+   */
+  it("will not clear the record out from under a publish that is holding the lock", async () => {
+    const { projectsRoot, service } = await setup({ alreadyPublished: true, lockTimeoutMs: 0 });
+
+    await withProjectLock(path.join(projectsRoot, "post_project"), FINAL_VIDEO_LOCK_KEY, async () => {
+      await expect(service.forgetPost("post_project", { acknowledged: true }))
+        .rejects.toMatchObject({ response: { code: "INSTAGRAM_PUBLISH_IN_PROGRESS" } });
+    });
   });
 });

@@ -6,7 +6,7 @@ import { FINAL_VIDEO_RELATIVE_PATH, instagramHashtagCount, INSTAGRAM_CAPTION_MAX
 
 import { toApiProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
-import { FINAL_VIDEO_LOCK_KEY, withProjectLock } from "../videos/project-lock.js";
+import { FINAL_VIDEO_LOCK_KEY, ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { episodeDirectoryName, longStoryRoot } from "../long-projects/long-project-paths.js";
 import { toEpisodeDetail, toEpisodeInstagramPost, type StoredEpisodeForDetail } from "../long-projects/episode-detail.js";
@@ -18,7 +18,7 @@ import {
 import { resolveInstagramPublishTargets } from "./instagram-publish-targets.js";
 import { InstagramAdapterError, type RetryOptions } from "./instagram-request.js";
 import {
-  instagramAlreadyPublished, instagramNotConnected, instagramPostNotRecorded, instagramProviderError, instagramPublishFailed,
+  instagramAlreadyPublished, instagramNotConnected, instagramPostNotRecorded, instagramProviderError, instagramPublishFailed, instagramPublishInProgress,
   instagramTargetNotFound, instagramVideoRendering, instagramVideoUnavailable, invalidInstagramRequest,
 } from "./instagram-api.error.js";
 
@@ -30,6 +30,7 @@ export interface PublishPollOptions {
   processingTimeoutMs?: number;
   intervalMs?: number;
 }
+
 
 /**
  * Publishing a finished video to Instagram: container, upload, wait for processing, publish.
@@ -49,7 +50,35 @@ export class InstagramPublishService {
     private readonly poll: PublishPollOptions = {},
     private readonly sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     private readonly now: () => number = Date.now,
+    /**
+     * How long a second caller waits for a publish already in flight before being told so. The default is the
+     * shared one; a test overrides it because a real publish holds this lock for minutes and the point being
+     * proved — that the wait ends in a sentence rather than an unexplained failure — does not need the wait.
+     */
+    private readonly lockTimeoutMs: number | undefined = undefined,
   ) {}
+
+  /**
+   * The lock every publish and every record-clear takes, with the one sentence they were missing.
+   *
+   * Two defects met here. The clear-record paths took a key of their own (`${id}:instagram-publish`) while the
+   * publish took `videos:final`, directly under a comment saying they were the same lock — so a clear could run
+   * beside a live publish and the two would race on one file. Losing that race removes the record of a post that
+   * exists, and a project with no record may be published again: the duplicate post D-005 says must never happen,
+   * reached through the button meant to make republishing deliberate.
+   *
+   * And the timeout went unmapped. Every other project-locked operation in this app converts it into a sentence;
+   * this one let it escape as an unexplained 500 — on the single action that cannot be walked back, pressed by
+   * someone who already believes the first attempt failed.
+   */
+  private async withPublishLock<T>(directory: string, run: () => Promise<T>): Promise<T> {
+    try {
+      return await withProjectLock(directory, FINAL_VIDEO_LOCK_KEY, run, this.lockTimeoutMs === undefined ? undefined : { timeoutMs: this.lockTimeoutMs });
+    } catch (error) {
+      if (error instanceof ProjectLockTimeoutError) throw instagramPublishInProgress();
+      throw error;
+    }
+  }
 
   private finalVideo(projectId: string): string {
     return path.join(this.projectsRoot, projectId, FINAL_VIDEO_RELATIVE_PATH);
@@ -142,7 +171,7 @@ export class InstagramPublishService {
     const token = await this.connection.token();
     if (!token) throw instagramNotConnected();
 
-    return withProjectLock(path.join(this.projectsRoot, id), FINAL_VIDEO_LOCK_KEY, async () => {
+    return this.withPublishLock(path.join(this.projectsRoot, id), async () => {
       // Re-read inside the lock: another window may have published while this call queued for it.
       const current = await this.projects.findById(id);
       if (current.instagram_post) throw instagramAlreadyPublished();
@@ -192,7 +221,7 @@ export class InstagramPublishService {
     const id = projectId.trim();
     await this.projects.findById(id);
 
-    return withProjectLock(path.join(this.projectsRoot, id), `${id}:instagram-publish`, async () => {
+    return this.withPublishLock(path.join(this.projectsRoot, id), async () => {
       // The same lock the publish takes, so this cannot clear a record a publish is midway through writing.
       const current = await this.projects.findById(id);
       if (!current.instagram_post) throw instagramPostNotRecorded();
@@ -216,7 +245,7 @@ export class InstagramPublishService {
     const episodeFile = path.join(directory, "project.json");
     if (!await readEpisode(episodeFile)) throw instagramPostNotRecorded();
 
-    return withProjectLock(directory, `${id}_${episodeNumber}_instagram_publish`, async () => {
+    return this.withPublishLock(directory, async () => {
       const current = await readEpisode(episodeFile);
       if (!current) throw instagramPostNotRecorded();
       const post = toEpisodeInstagramPost(current.instagram_post);
@@ -295,7 +324,7 @@ export class InstagramPublishService {
     const token = await this.connection.token();
     if (!token) throw instagramNotConnected();
 
-    return withProjectLock(directory, FINAL_VIDEO_LOCK_KEY, async () => {
+    return this.withPublishLock(directory, async () => {
       // Re-read inside the lock: another window may have published while this call queued for it.
       const current = await readEpisode(episodeFile);
       if (!current) throw instagramVideoUnavailable();

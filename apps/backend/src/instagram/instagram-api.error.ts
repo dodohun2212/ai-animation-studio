@@ -11,6 +11,7 @@ export type InstagramErrorCode =
   | "INSTAGRAM_POST_NOT_RECORDED"
   | "INSTAGRAM_VIDEO_UNAVAILABLE"
   | "INSTAGRAM_VIDEO_RENDERING"
+  | "INSTAGRAM_PUBLISH_IN_PROGRESS"
   | "INSTAGRAM_PUBLISH_FAILED";
 
 export class InstagramApiException extends HttpException {
@@ -83,6 +84,22 @@ export const instagramVideoUnavailable = () =>
  */
 export const instagramVideoRendering = () =>
   new InstagramApiException("INSTAGRAM_VIDEO_RENDERING", "This project's final video is being rendered right now.", HttpStatus.CONFLICT);
+
+/**
+ * A publish for this project is already running and this call could not get in.
+ *
+ * Every other project-locked operation already maps the lock timeout to a sentence of its own; publishing was
+ * the one that did not, and it is the one that cannot be undone. The timeout is ten seconds and a publish holds
+ * the lock for minutes (upload, then up to three minutes of processing polls), so a second press during a real
+ * publish always hit it — and, uncaught, came back as an unexplained 500. A person who already believes the
+ * first attempt failed reads that as a second failure and presses again.
+ *
+ * The message says not to press again rather than to wait, because the request that appears to have failed may
+ * well be succeeding: the record is written only after Instagram accepts, so during those minutes the app
+ * genuinely does not know yet. 「Nothing was published」 is the one thing this must never imply.
+ */
+export const instagramPublishInProgress = () =>
+  new InstagramApiException("INSTAGRAM_PUBLISH_IN_PROGRESS", "A publish for this project is already running. Do not publish again until it finishes — check the Instagram account before retrying.", HttpStatus.CONFLICT);
 
 /** The attempt ended without a post — nothing was published, so trying again is safe. */
 export const instagramPublishFailed = (message: string) =>
