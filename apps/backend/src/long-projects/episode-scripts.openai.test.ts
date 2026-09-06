@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { STORY_SCENE_FIELDS } from "../story/openai-story-adapter.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EpisodeScriptsService } from "./episode-scripts.service.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
@@ -84,6 +85,29 @@ describe("real OpenAI Long Episode script generation", () => {
    * is appended downstream by code the model never sees. The pacing rule already here holds the speed steady
    * and says nothing about how many things happen at that speed.
    */
+  /**
+   * The schema requires all eighteen scene fields with additionalProperties false, so a field this prompt does
+   * not describe is not a field the model may skip — it is one the model fills without being told what it is
+   * for. That passes validation and returns as a wrong picture, which is worse than a failure that stops
+   * (Cowork Round 614 ②).
+   *
+   * Ten were named here and eighteen were demanded. The five missing ones — shot_size, camera_angle,
+   * composition, lens_feel, focus_subject — are exactly the five image-prompt.ts reads, so every Episode image
+   * was drawn partly from guesses at what those words meant. The short project's template has described all
+   * eighteen since it was written; this is the copy that fell behind, and nothing compared them.
+   */
+  it("names every scene field its own schema demands", async () => {
+    const { subject } = await setupWithConnectedOpenAi();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responsesBody(aiStory(6))));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await subject.generate("long", 1, { userRequestId: "episode-scripts.openai-field-coverage" });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const input = (JSON.parse(String(init.body)) as { input: string }).input;
+    for (const field of STORY_SCENE_FIELDS) expect(input).toContain(field);
+  });
+
   it("tells the model how long one shot is and that the subject has to survive it", async () => {
     const { subject } = await setupWithConnectedOpenAi();
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responsesBody(aiStory(6))));

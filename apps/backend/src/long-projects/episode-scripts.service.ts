@@ -259,7 +259,16 @@ export class EpisodeScriptsService {
       "이번 Episode만 작성하고 다른 Episode의 상세 대본은 생성하지 마십시오.",
       "공개 금지 정보를 노출하지 마십시오.",
       `정확히 ${sceneCount}개 장면을 지정된 JSON 형식으로만 반환하십시오.`,
+      // 🔴 This list named ten fields and the schema requires eighteen (STORY_SCENE_FIELDS, with
+      // additionalProperties false), so five were demanded and never explained: shot_size, camera_angle,
+      // composition, lens_feel and focus_subject. A required field with no description is not omitted — it is
+      // filled by a model that was not told what it is for, which passes validation and comes back as a wrong
+      // picture (Cowork Round 614 ②). Those five are exactly the ones image-prompt.ts reads, so every Episode
+      // image was drawn partly from guesses. The short project's template has described all eighteen since it
+      // was written; this prompt is the copy that fell behind.
       "각 장면에는 description과 함께 visual_action, start_motion, main_motion, end_motion, camera_motion, environment_motion, motion_speed, motion_intensity, expression_change, continuity_hint를 구체적인 현재형 문장으로 작성하십시오.",
+      "그리고 한 장의 정지 이미지를 위한 shot_size(샷 크기), camera_angle(카메라 앵글), composition(화면 내 위치와 여백), lens_feel(원근감·렌즈 느낌), focus_subject(가장 먼저 보여야 할 초점 대상)도 장면마다 작성하십시오. number에는 장면 순번을 적으십시오.",
+      "이 다섯 칸은 프로젝트의 전체 카메라 느낌을 바탕으로 정하되, 현재 장면의 서사와 감정을 우선하십시오. camera_motion은 영상용 움직임이므로 정지 이미지 구도와 분리해서 쓰십시오.",
       // motion_speed and motion_intensity are rendered into the video prompt as one "Pacing" line, and the
       // model kept writing changes into them — "정적 후 급격함", "느림에서 빠름으로 전환". That is the same
       // three-beat instruction the Opening/Main/Ending labels used to carry, arriving by another door:
