@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { SceneNumber } from "@ai-animation-studio/shared";
 import type { StoredAssetMapping } from "../mappings/mapping-storage.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
-import { collectReferenceImages, describeReferenceMappingsForScene } from "./image-reference-selection.js";
+import { collectReferenceImages, describeReferenceMappingsForScene, referenceSourcesForScene } from "./image-reference-selection.js";
 
 const pngA = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 const pngB = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
@@ -116,5 +116,48 @@ describe("describeReferenceMappingsForScene", () => {
 
     expect(await describeReferenceMappingsForScene(assets, [outOfScope, unconfirmed], 1)).toBe("");
     expect(await describeReferenceMappingsForScene(assets, [], 1)).toBe("");
+  });
+});
+
+describe("the continuity image's recorded name", () => {
+  /**
+   * The name was the constant "continuity", so the record said a continuity image existed and never which one.
+   * Relinking scene 1 to a different project, or the linked project redrawing its final scene, left the recorded
+   * name character-for-character identical — the staleness check could see the reference appear and disappear and
+   * never see it become a different picture, so pictures drawn from a reference that no longer exists reported
+   * themselves as current. Regeneration rewrites the same path, so the path cannot carry this either.
+   */
+  it("changes when the linked picture is replaced, though the path it lives at does not", async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "image-reference-continuity-"));
+    const assets = new LocalAssetsRepository(root);
+    const continuityPath = path.join(root, "previous-final-scene.png");
+    await fs.writeFile(continuityPath, pngA);
+
+    const before = await referenceSourcesForScene(assets, [], root, 1 as SceneNumber, continuityPath);
+
+    // The same path, a different picture — exactly what a regeneration in the linked project leaves behind.
+    await fs.writeFile(continuityPath, Buffer.concat([pngB, Buffer.alloc(64)]));
+    const after = await referenceSourcesForScene(assets, [], root, 1 as SceneNumber, continuityPath);
+
+    expect(before).toHaveLength(1);
+    expect(after).toHaveLength(1);
+    expect(after[0]).not.toEqual(before[0]);
+  });
+
+  it("still says nothing at all when there is no continuity image, and never leaks an absolute path into the record", async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "image-reference-continuity-none-"));
+    const assets = new LocalAssetsRepository(root);
+    const continuityPath = path.join(root, "previous-final-scene.png");
+    await fs.writeFile(continuityPath, pngA);
+
+    expect(await referenceSourcesForScene(assets, [], root, 1 as SceneNumber, null)).toEqual([]);
+    // Scene 2 has never been offered the previous project's picture — only scene 1 is.
+    expect(await referenceSourcesForScene(assets, [], root, 2 as SceneNumber, continuityPath)).toEqual([]);
+
+    // A recorded name is compared across runs and read by a person; the machine's directory layout is neither
+    // stable nor meaningful, and a moved data directory would otherwise read as every reference having changed.
+    const [source = ""] = await referenceSourcesForScene(assets, [], root, 1 as SceneNumber, continuityPath);
+    expect(source.startsWith("continuity:")).toBe(true);
+    expect(source).not.toContain(root);
   });
 });

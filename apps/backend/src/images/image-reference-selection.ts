@@ -73,8 +73,31 @@ function referenceSourceName(mapping: StoredAssetMapping, filePath: string, isFo
   return "asset:" + mapping.asset_id + "@" + String(resolvedVersion ?? "latest");
 }
 
-/** The continuity image is a reference like any other and can be swapped like one, so it is named too. */
-const CONTINUITY_SOURCE = "continuity";
+/**
+ * Names the continuity image by the file it currently is, not by the fact that there is one.
+ *
+ * This used to be the constant string "continuity", under a comment saying the image "can be swapped like
+ * any other reference, so it is named too". The sentence was right and the name did not carry it: swapping the
+ * link to a different project, or redrawing the linked project's final scene, left the recorded name identical,
+ * so the staleness check could see that a continuity image had appeared or gone and never that it had become a
+ * different picture. The pictures downstream were drawn from something that no longer existed and nothing said
+ * so.
+ *
+ * A version number is what names an Asset reference, and there is none to use here: a generated scene image is
+ * not an Asset Library entry, and regenerating one rewrites the same path (`writeBinary` renames onto the
+ * existing filename), so neither the path nor any stored number moves when the picture does. What does move is
+ * the file itself, and `resolveReferences` already stats it — so the stat is the identity, at no extra read.
+ *
+ * Not a hash of the bytes, which would be exact: this runs once per scene every time staleness is recomputed,
+ * and hashing would turn a screen read into a full read of every reference image. The cost of the cheaper
+ * answer is that copying a project directory (a backup restore, a move between machines) changes mtime without
+ * changing any picture, and those scenes would report their references as changed — a wrong badge on a screen,
+ * never a wrong picture or a wrong charge. Recording a hash when the image is written would beat both and is a
+ * larger change than this one.
+ */
+function continuitySourceName(filePath: string, stat: { readonly mtimeMs: number; readonly size: number }): string {
+  return "continuity:" + path.basename(filePath) + "@" + String(Math.trunc(stat.mtimeMs)) + ":" + String(stat.size);
+}
 
 interface ResolvedReference { readonly filePath: string; readonly source: string }
 
@@ -128,9 +151,12 @@ async function resolveReferences(
     resolved.push({ filePath, source: referenceSourceName(mapping, filePath, isFolder, version) });
   }
 
-  if (sceneNumber === 1 && continuityImagePath && await fs.stat(continuityImagePath).then((stat) => stat.isFile()).catch(() => false)) {
+  const continuityStat = sceneNumber === 1 && continuityImagePath
+    ? await fs.stat(continuityImagePath).then((stat) => stat.isFile() ? stat : null).catch(() => null)
+    : null;
+  if (continuityImagePath && continuityStat) {
     if (resolved.length >= MAX_REFERENCE_IMAGES) omittedCount += 1;
-    else resolved.push({ filePath: continuityImagePath, source: CONTINUITY_SOURCE });
+    else resolved.push({ filePath: continuityImagePath, source: continuitySourceName(continuityImagePath, continuityStat) });
   }
 
   return { resolved, omittedCount };
