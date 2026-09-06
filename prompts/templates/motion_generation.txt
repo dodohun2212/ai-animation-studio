@@ -1,3 +1,10 @@
+[이 파일은 쓰이지 않습니다 — 파이썬 시절 템플릿]
+실행 중에 읽히지 않습니다. 코드가 읽는 프롬프트는 prompts/story/story_generation.txt 하나뿐입니다.
+🔴 지금은 움직임을 따로 만드는 호출이 없습니다. 아래 자리에 해당하는 값들은 장면 생성이 한 번에 같이 쓰고
+   (story_generation.txt), Runway 프롬프트는 그 장면 필드에서 조립됩니다
+   (apps/backend/src/videos/video-preview.service.ts 의 promptFor).
+지우지 않고 남긴 이유는 docs/06_DECISIONS.md 의 D-047 에 있습니다.
+
 시작 움직임: $start_motion
 주요 움직임: $main_motion
 종료 움직임: $end_motion

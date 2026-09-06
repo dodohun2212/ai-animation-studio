@@ -1,3 +1,11 @@
+[이 파일은 쓰이지 않습니다 — 파이썬 시절 템플릿]
+실행 중에 읽히지 않습니다. 코드가 읽는 프롬프트는 prompts/story/story_generation.txt 하나뿐입니다.
+🔴 아래 $character(대표 캐릭터) · $lore(세계관) · $style(장르) 자리를 지금 동작으로 읽지 마십시오.
+   TypeScript 이미지 프롬프트에 들어가는 것은 시각 스타일 · 색감 · 조명 · 피할 요소뿐이고,
+   대표 캐릭터 · 세계관 · 장르는 들어가지 않습니다 (apps/backend/src/images/image-prompt.ts).
+   카메라는 일부러 뺍니다 — 영상의 개념이라 정지 이미지에서는 소음입니다.
+지우지 않고 남긴 이유는 docs/06_DECISIONS.md 의 D-047 에 있습니다.
+
 [1. 장면 정보]
 프로젝트/작품 이름: $project_name
 영상/Episode 주제: $topic
