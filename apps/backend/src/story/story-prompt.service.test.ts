@@ -501,6 +501,39 @@ describe("local Story generator", () => {
 
 });
 
+describe("the number above the prompt box", () => {
+  /**
+   * It counts people and was called characterCount, so the screen read 「글자 수: 0」 over a box full of prompt
+   * text. 0 was the right answer — a 꽃말 reel has no cast — and Captain D stopped to ask what was broken. The
+   * screen was corrected first; the contract keeps the name until the screens read the new one, because a
+   * response is read by whatever build is already open, and a page guarding on a field that vanished calls a
+   * working server malformed.
+   */
+  it("counts the cast under both names, and the two never disagree", async () => {
+    const { service, repository } = await setup();
+    const stored = await repository.findById("sample");
+    stored.character_profile = { name: "", cast: [{ asset_id: "CHAR-1" }, { asset_id: "CHAR-2" }] };
+    await repository.save(stored);
+
+    const { preview } = await service.preview("sample");
+
+    expect(preview.castCount).toBe(2);
+    expect(preview.characterCount).toBe(preview.castCount);
+  });
+
+  /** A flower reel: no cast, and 0 is the honest answer rather than a sign of an empty prompt. */
+  it("is zero for a project with nobody in it, while the prompt itself is not empty", async () => {
+    const root = await fsPromises.mkdtemp(path.join(os.tmpdir(), "story-prompt-castcount-")); roots.push(root);
+    const repository = new LocalProjectRepository(path.join(root, "projects"));
+    await repository.create(createStoredProject("no_cast_count", "빨간 장미의 꽃말", "2026-08-22T00:00:00.000Z"));
+
+    const { preview } = await new StoryPromptService(repository).preview("no_cast_count");
+
+    expect(preview.castCount).toBe(0);
+    expect(preview.originalPrompt.length).toBeGreaterThan(0);
+  });
+});
+
 describe("the real template's scene field list", () => {
   /**
    * The response schema marks all eighteen `required` with `additionalProperties: false`, so a field deleted from

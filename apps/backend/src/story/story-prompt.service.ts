@@ -172,7 +172,8 @@ async function promptVariables(stored: StoredProject, assets?: LocalAssetsReposi
   };
 }
 
-function characterCount(stored: StoredProject): number {
+/** People in the cast. Named for what it counts — see StoryPromptPreview.castCount for what the old name cost. */
+function castCount(stored: StoredProject): number {
   const cast = object(stored.character_profile).cast;
   if (Array.isArray(cast)) return cast.length;
   return value(object(stored.character_profile), "name").trim() ? 1 : 0;
@@ -225,7 +226,7 @@ export class StoryPromptService {
     const stored = await this.projects.findById(projectId.trim());
     const originalPrompt = await this.original(stored);
     const sceneCount = toShortProjectSettings(stored).sceneCount;
-    const preview: StoryPromptPreview = { projectId: stored.project_id, originalPrompt, originalPromptSha256: sha256(originalPrompt), characterCount: characterCount(stored), sceneCount };
+    const preview: StoryPromptPreview = { projectId: stored.project_id, originalPrompt, originalPromptSha256: sha256(originalPrompt), castCount: castCount(stored), characterCount: castCount(stored), sceneCount };
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     // Read-only, same as a preview's budget field elsewhere — never reserves anything, just reports the ledger's current state.
     const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, STORY_ESTIMATED_COST_USD) : undefined;
@@ -292,7 +293,7 @@ export class StoryPromptService {
           prompt_sha256: sha256(prompt),
           approved_at: approvedAt,
           model: apiKey ? OPENAI_STORY_MODEL : "local-fake-story-adapter",
-          character_count: characterCount(stored),
+          character_count: castCount(stored),
         },
       },
     };

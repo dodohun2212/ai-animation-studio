@@ -106,13 +106,17 @@ describe("project routes and DTO shape", () => {
 
   it("requires an explicit approval payload for a provider-free Story prompt preview", () => {
     const preview: CreateStoryPromptPreviewResponse = {
-      preview: { projectId: "sample_project", originalPrompt: "exact prompt", originalPromptSha256: "a".repeat(64), characterCount: 12, sceneCount: 6 },
+      // Both names, the same number: castCount is what it is, characterCount is what already-open pages read.
+      preview: { projectId: "sample_project", originalPrompt: "exact prompt", originalPromptSha256: "a".repeat(64), castCount: 12, characterCount: 12, sceneCount: 6 },
     };
     const approval: ApproveStoryPromptRequest = { originalPromptSha256: preview.preview.originalPromptSha256, prompt: "edited exact prompt", approved: true };
     expect(API_ROUTES.storyPromptPreview("sample project")).toBe("/projects/sample%20project/story/preview");
     expect(API_ROUTES.storyPromptApproval("sample project")).toBe("/projects/sample%20project/story/approval");
     expect(API_ROUTES.storyPromptDraftPreview("sample project")).toBe("/projects/sample%20project/story/draft-preview");
     expect(approval.approved).toBe(true);
+    // The deprecated name must keep agreeing with the new one for as long as it ships: two names that can
+    // disagree are worse than one bad name, and a reader who picks the wrong one gets no warning.
+    expect(preview.preview.characterCount).toBe(preview.preview.castCount);
   });
 
   it("requires explicit approval for local image generation", () => {

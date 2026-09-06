@@ -1508,6 +1508,23 @@ export interface StoryPromptPreview {
   projectId: string;
   originalPrompt: string;
   originalPromptSha256: string;
+  /**
+   * How many people are in this project's cast — not how many letters are in the prompt.
+   *
+   * The old name is `characterCount`, and it did real damage on the way out: the screen above the prompt box
+   * read 「글자 수: 0」 on a 꽃말 reel, which is a correct cast count and an alarming letter count, and Captain D
+   * stopped to ask whether something was broken. The screen was fixed first; leaving the contract saying
+   * `character` would have let the next reader take the word at face value again.
+   */
+  castCount: number;
+  /**
+   * @deprecated The same number as `castCount`, kept only until the screens read the new name.
+   *
+   * Not renamed in place, because a response is read by whatever build is already open in a browser. A page
+   * that guards on this field — `storyPromptApi.ts` does — would call a perfectly good response malformed and
+   * say 서버 응답을 확인할 수 없습니다 about a working server, which is exactly what cost Captain D the whole
+   * video step this morning. Both names ship, the screens move, then this one goes.
+   */
   characterCount: number;
   sceneCount: number;
 }
