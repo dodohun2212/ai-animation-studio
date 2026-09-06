@@ -74,14 +74,28 @@ function referenceSourceName(mapping: StoredAssetMapping, filePath: string, isFo
 }
 
 /**
+ * A picture handed to this scene because of where it sits, rather than because someone mapped an Asset to it.
+ *
+ * Two of them exist and they are not the same thing. Scene 1 may receive the final picture of a linked previous
+ * project — a person chose that link. Scene N may receive scene N-1's picture, which nobody chose scene by
+ * scene; the project's `sceneImageContinuityEnabled` switch chose it once for the whole run. They are recorded
+ * under different names because a record that cannot tell them apart cannot say what changed.
+ */
+export interface ContinuityReference {
+  readonly filePath: string;
+  readonly kind: "previous-project" | "previous-scene";
+  /** Which scene the picture came from — `previous-scene` only, and part of its recorded name. */
+  readonly fromScene?: SceneNumber;
+}
+
+/**
  * Names the continuity image by the file it currently is, not by the fact that there is one.
  *
  * This used to be the constant string "continuity", under a comment saying the image "can be swapped like
  * any other reference, so it is named too". The sentence was right and the name did not carry it: swapping the
  * link to a different project, or redrawing the linked project's final scene, left the recorded name identical,
  * so the staleness check could see that a continuity image had appeared or gone and never that it had become a
- * different picture. The pictures downstream were drawn from something that no longer existed and nothing said
- * so.
+ * different picture.
  *
  * A version number is what names an Asset reference, and there is none to use here: a generated scene image is
  * not an Asset Library entry, and regenerating one rewrites the same path (`writeBinary` renames onto the
@@ -94,9 +108,45 @@ function referenceSourceName(mapping: StoredAssetMapping, filePath: string, isFo
  * changing any picture, and those scenes would report their references as changed — a wrong badge on a screen,
  * never a wrong picture or a wrong charge. Recording a hash when the image is written would beat both and is a
  * larger change than this one.
+ *
+ * The `previous-project` prefix is unchanged from when it was the only kind, so projects already carrying that
+ * reference do not all read as changed the moment the second kind was added.
  */
-function continuitySourceName(filePath: string, stat: { readonly mtimeMs: number; readonly size: number }): string {
-  return "continuity:" + path.basename(filePath) + "@" + String(Math.trunc(stat.mtimeMs)) + ":" + String(stat.size);
+function continuitySourceName(reference: ContinuityReference, stat: { readonly mtimeMs: number; readonly size: number }): string {
+  const head = reference.kind === "previous-scene"
+    ? "prev-scene:" + String(reference.fromScene)
+    : "continuity:" + path.basename(reference.filePath);
+  return head + "@" + String(Math.trunc(stat.mtimeMs)) + ":" + String(stat.size);
+}
+
+/**
+ * Which picture, if any, this scene gets for sitting where it does. The one place that decides, because three
+ * callers ask — the generation that pays for the picture, the regeneration, and the staleness check that tells
+ * the user their pictures are behind — and a second copy of this rule is how the first two come to disagree
+ * with the third (D-031).
+ *
+ * Scene 1 keeps exactly what it had: the linked previous project's final picture, when a person linked one.
+ * Later scenes get the scene before them, and only when the project's switch is on — a story with people
+ * usually changes place between scenes, and forcing the last picture in would stop the pictures following
+ * where the story goes. Episodes pass `chainEnabled: false` and so keep the scene-1-only behaviour they had.
+ */
+export function continuityForScene(options: {
+  readonly directory: string;
+  readonly sceneNumber: SceneNumber;
+  readonly previousProjectImagePath: string | null;
+  readonly chainEnabled: boolean;
+}): ContinuityReference | null {
+  if (options.sceneNumber === 1) {
+    return options.previousProjectImagePath ? { filePath: options.previousProjectImagePath, kind: "previous-project" } : null;
+  }
+  if (!options.chainEnabled) return null;
+  const previous = (options.sceneNumber - 1) as SceneNumber;
+  return { filePath: sceneImagePath(options.directory, previous), kind: "previous-scene", fromScene: previous };
+}
+
+/** Where a short project's scene picture lives. Written by the generation and read back here, so it is spelled once. */
+export function sceneImagePath(directory: string, sceneNumber: SceneNumber): string {
+  return path.join(directory, "images", "scene" + String(sceneNumber) + ".png");
 }
 
 interface ResolvedReference { readonly filePath: string; readonly source: string }
@@ -118,10 +168,26 @@ async function resolveReferences(
   mappings: readonly StoredAssetMapping[],
   directory: string,
   sceneNumber: SceneNumber,
-  continuityImagePath: string | null,
+  continuity: ContinuityReference | null,
 ): Promise<{ readonly resolved: ResolvedReference[]; readonly omittedCount: number }> {
   const resolved: ResolvedReference[] = [];
   let omittedCount = 0;
+  const continuityStat = continuity
+    ? await fs.stat(continuity.filePath).then((stat) => stat.isFile() ? stat : null).catch(() => null)
+    : null;
+
+  /*
+   * A chained scene goes in front of the mapped Assets, and the previous project's picture stays behind them.
+   *
+   * The cap drops whatever does not fit, so this order is a statement about what may be dropped. Someone who
+   * turned the chain on is saying the pictures must follow each other — for a 꽃말 reel that is the premise, not
+   * a feature — so it is the last thing to give up, not the first. Scene 1's linked previous project keeps its
+   * old place at the end: it was already last, and moving it would change the recorded reference order of every
+   * project that has one, which is itself read as "these pictures are behind".
+   */
+  if (continuity?.kind === "previous-scene" && continuityStat) {
+    resolved.push({ filePath: continuity.filePath, source: continuitySourceName(continuity, continuityStat) });
+  }
 
   for (const mapping of relevantMappingsForScene(mappings, sceneNumber)) {
     let filePath: string | null = null;
@@ -151,12 +217,9 @@ async function resolveReferences(
     resolved.push({ filePath, source: referenceSourceName(mapping, filePath, isFolder, version) });
   }
 
-  const continuityStat = sceneNumber === 1 && continuityImagePath
-    ? await fs.stat(continuityImagePath).then((stat) => stat.isFile() ? stat : null).catch(() => null)
-    : null;
-  if (continuityImagePath && continuityStat) {
+  if (continuity?.kind === "previous-project" && continuityStat) {
     if (resolved.length >= MAX_REFERENCE_IMAGES) omittedCount += 1;
-    else resolved.push({ filePath: continuityImagePath, source: continuitySourceName(continuityImagePath, continuityStat) });
+    else resolved.push({ filePath: continuity.filePath, source: continuitySourceName(continuity, continuityStat) });
   }
 
   return { resolved, omittedCount };
@@ -174,9 +237,9 @@ export async function referenceSourcesForScene(
   mappings: readonly StoredAssetMapping[],
   directory: string,
   sceneNumber: SceneNumber,
-  continuityImagePath: string | null,
+  continuity: ContinuityReference | null,
 ): Promise<string[]> {
-  return (await resolveReferences(assets, mappings, directory, sceneNumber, continuityImagePath)).resolved.map((item) => item.source);
+  return (await resolveReferences(assets, mappings, directory, sceneNumber, continuity)).resolved.map((item) => item.source);
 }
 
 /**
@@ -201,9 +264,9 @@ export async function collectReferenceImages(
    */
   directory: string,
   sceneNumber: SceneNumber,
-  continuityImagePath: string | null,
+  continuity: ContinuityReference | null,
 ): Promise<CollectedReferenceImages> {
-  const { resolved, omittedCount } = await resolveReferences(assets, mappings, directory, sceneNumber, continuityImagePath);
+  const { resolved, omittedCount } = await resolveReferences(assets, mappings, directory, sceneNumber, continuity);
   const results: Buffer[] = [];
   const sources: string[] = [];
   for (const reference of resolved) {

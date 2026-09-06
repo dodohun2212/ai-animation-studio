@@ -18,7 +18,7 @@ import { ProviderSettingsService } from "../settings/provider-settings.service.j
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OpenAiAdapterError } from "../providers/openai-common.js";
 import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "./openai-image-adapter.js";
-import { collectReferenceImages, describeReferenceMappingsForScene } from "./image-reference-selection.js";
+import { collectReferenceImages, continuityForScene, describeReferenceMappingsForScene } from "./image-reference-selection.js";
 import { imagePromptForRequest, imagePromptFor, imageSizeFor, sceneValue, styleLineFor } from "./image-prompt.js";
 import { previousSceneContinuityImagePath } from "../projects/project-continuity.js";
 import { imageBudgetExceeded, imageBudgetLedgerUnreadable, imageContentUnavailable, imageGenerationFailed, imageGenerationLocked, imageGenerationNotAllowed, imageProviderError, imageStorageError, invalidImageRequest, mappingReviewRequired } from "./image-api.error.js";
@@ -175,7 +175,10 @@ export class LocalImageGenerationService {
 
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     const mappings = apiKey && this.budget ? await this.mappings.load(this.mappings.projectLocation(current.project_id)) : [];
-    const continuityImagePath = previousSceneContinuityImagePath(current);
+    const previousProjectImagePath = previousSceneContinuityImagePath(current);
+    const chainEnabled = toShortProjectSettings(current).sceneImageContinuityEnabled;
+    const directory = this.mappings.projectLocation(current.project_id).directory;
+    const continuity = (scene: SceneNumber) => continuityForScene({ directory, sceneNumber: scene, previousProjectImagePath, chainEnabled });
     const styleLine = styleLineFor(current);
     const generated: SceneNumber[] = [];
     /** Scenes whose paid call landed but whose cost could not be written down — see providers/budget-ledger.ts. */
@@ -206,7 +209,7 @@ export class LocalImageGenerationService {
         // would make while leaving the description word-for-word identical.
         let referenceSources: string[] | undefined;
         if (apiKey && this.budget) {
-          const references = await collectReferenceImages(this.assets, mappings, this.mappings.projectLocation(current.project_id).directory, number, continuityImagePath);
+          const references = await collectReferenceImages(this.assets, mappings, directory, number, continuity(number));
           referenceSources = references.sources;
           if (references.omittedCount > 0) referenceOmission = { references_used_count: references.images.length, references_omitted_count: references.omittedCount };
           await this.budget.preflight(IMAGE_ESTIMATED_COST_USD);

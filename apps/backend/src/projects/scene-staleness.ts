@@ -1,6 +1,6 @@
 import { sceneNumbersFor, type SceneNumber, type SceneStaleness } from "@ai-animation-studio/shared";
 import { imagePromptDrift, imagePromptFor, sceneValue, styleLineFor } from "../images/image-prompt.js";
-import { describeReferenceMappingsForScene, referenceSourcesForScene } from "../images/image-reference-selection.js";
+import { continuityForScene, describeReferenceMappingsForScene, referenceSourcesForScene } from "../images/image-reference-selection.js";
 import type { LocalAssetsRepository } from "../assets/assets.repository.js";
 import type { StoredAssetMapping } from "../mappings/mapping-storage.js";
 import type { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
@@ -117,7 +117,12 @@ export async function computeSceneStaleness(
     if (recordedSources !== undefined && referenceContext) {
       // Order as well as membership — the model is shown the images in this order, and a reordered list is a
       // different request.
-      const now = await referenceSourcesForScene(referenceContext.assets, referenceContext.mappings, referenceContext.directory, number, previousSceneContinuityImagePath(project));
+      const now = await referenceSourcesForScene(referenceContext.assets, referenceContext.mappings, referenceContext.directory, number, continuityForScene({
+        directory: referenceContext.directory,
+        sceneNumber: number,
+        previousProjectImagePath: previousSceneContinuityImagePath(project),
+        chainEnabled: toShortProjectSettings(project).sceneImageContinuityEnabled,
+      }));
       if (now.length !== recordedSources.length || now.some((source, index) => source !== recordedSources[index])) referenceStale.push(number);
     }
 

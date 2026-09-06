@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { SceneNumber } from "@ai-animation-studio/shared";
 import type { StoredAssetMapping } from "../mappings/mapping-storage.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
-import { collectReferenceImages, describeReferenceMappingsForScene, referenceSourcesForScene } from "./image-reference-selection.js";
+import { collectReferenceImages, continuityForScene, describeReferenceMappingsForScene, referenceSourcesForScene, sceneImagePath } from "./image-reference-selection.js";
 
 const pngA = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 const pngB = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
@@ -133,11 +133,11 @@ describe("the continuity image's recorded name", () => {
     const continuityPath = path.join(root, "previous-final-scene.png");
     await fs.writeFile(continuityPath, pngA);
 
-    const before = await referenceSourcesForScene(assets, [], root, 1 as SceneNumber, continuityPath);
+    const before = await referenceSourcesForScene(assets, [], root, 1 as SceneNumber, { filePath: continuityPath, kind: "previous-project" });
 
     // The same path, a different picture — exactly what a regeneration in the linked project leaves behind.
     await fs.writeFile(continuityPath, Buffer.concat([pngB, Buffer.alloc(64)]));
-    const after = await referenceSourcesForScene(assets, [], root, 1 as SceneNumber, continuityPath);
+    const after = await referenceSourcesForScene(assets, [], root, 1 as SceneNumber, { filePath: continuityPath, kind: "previous-project" });
 
     expect(before).toHaveLength(1);
     expect(after).toHaveLength(1);
@@ -151,13 +151,76 @@ describe("the continuity image's recorded name", () => {
     await fs.writeFile(continuityPath, pngA);
 
     expect(await referenceSourcesForScene(assets, [], root, 1 as SceneNumber, null)).toEqual([]);
-    // Scene 2 has never been offered the previous project's picture — only scene 1 is.
-    expect(await referenceSourcesForScene(assets, [], root, 2 as SceneNumber, continuityPath)).toEqual([]);
+    // Which scene may have the previous project's picture is now continuityForScene's rule, so it is asserted
+    // where it lives rather than through the resolver that merely does as it is told.
+    const forScene = (sceneNumber: SceneNumber, chainEnabled: boolean) =>
+      continuityForScene({ directory: root!, sceneNumber, previousProjectImagePath: continuityPath, chainEnabled });
+    expect(forScene(2 as SceneNumber, false)).toBeNull();
+    expect(forScene(1 as SceneNumber, true)).toMatchObject({ kind: "previous-project", filePath: continuityPath });
 
     // A recorded name is compared across runs and read by a person; the machine's directory layout is neither
     // stable nor meaningful, and a moved data directory would otherwise read as every reference having changed.
-    const [source = ""] = await referenceSourcesForScene(assets, [], root, 1 as SceneNumber, continuityPath);
+    const [source = ""] = await referenceSourcesForScene(assets, [], root, 1 as SceneNumber, { filePath: continuityPath, kind: "previous-project" });
     expect(source.startsWith("continuity:")).toBe(true);
     expect(source).not.toContain(root);
+  });
+});
+
+describe("drawing each scene from the one before it", () => {
+  /**
+   * 캡틴D's first episode came back with scene 1 on black soil in a matte pot and scene 2 in a terracotta one.
+   * The script had asked for the same pot throughout and had been obeyed; the pictures were the problem, because
+   * nothing ever handed scene 2 what scene 1 had become. Within one project the path did not exist at all.
+   */
+  it("gives scene N the scene before it, once the project asks for that", async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "image-reference-chain-"));
+    const assets = new LocalAssetsRepository(root);
+    await fs.mkdir(path.join(root, "images"), { recursive: true });
+    await fs.writeFile(sceneImagePath(root, 1 as SceneNumber), pngA);
+
+    const on = continuityForScene({ directory: root, sceneNumber: 2 as SceneNumber, previousProjectImagePath: null, chainEnabled: true });
+    const off = continuityForScene({ directory: root, sceneNumber: 2 as SceneNumber, previousProjectImagePath: null, chainEnabled: false });
+
+    expect(off).toBeNull();
+    expect(await referenceSourcesForScene(assets, [], root, 2 as SceneNumber, on)).toEqual([
+      expect.stringMatching(/^prev-scene:1@/) as unknown as string,
+    ]);
+    // A project that never turned it on resolves exactly what it always did, which is why shipping this marks
+    // no existing project's pictures as behind.
+    expect(await referenceSourcesForScene(assets, [], root, 2 as SceneNumber, off)).toEqual([]);
+  });
+
+  /** Redrawing scene 1 must move scene 2's recorded reference, or nothing would ever say scene 2 is behind it. */
+  it("changes scene N's recorded reference when the scene before it is redrawn", async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "image-reference-chain-redraw-"));
+    const assets = new LocalAssetsRepository(root);
+    await fs.mkdir(path.join(root, "images"), { recursive: true });
+    await fs.writeFile(sceneImagePath(root, 1 as SceneNumber), pngA);
+    const chain = continuityForScene({ directory: root, sceneNumber: 2 as SceneNumber, previousProjectImagePath: null, chainEnabled: true });
+
+    const before = await referenceSourcesForScene(assets, [], root, 2 as SceneNumber, chain);
+    await fs.writeFile(sceneImagePath(root, 1 as SceneNumber), Buffer.concat([pngB, Buffer.alloc(64)]));
+    const after = await referenceSourcesForScene(assets, [], root, 2 as SceneNumber, chain);
+
+    expect(after[0]).not.toEqual(before[0]);
+  });
+
+  /**
+   * The cap drops whatever does not fit, so the order says what may be dropped. Someone who turned the chain on
+   * is saying the pictures must follow each other, so it is the last thing to give up rather than the first —
+   * which is where it sat when the only continuity was scene 1's linked project.
+   */
+  it("puts the previous scene ahead of the mapped Assets, so the cap cannot drop it first", async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "image-reference-chain-order-"));
+    const assets = new LocalAssetsRepository(root);
+    const asset = await assets.create({ buffer: pngB, originalname: "mood.png" }, { assetType: "style", displayName: "Mood" });
+    await fs.mkdir(path.join(root, "images"), { recursive: true });
+    await fs.writeFile(sceneImagePath(root, 1 as SceneNumber), pngA);
+    const chain = continuityForScene({ directory: root, sceneNumber: 2 as SceneNumber, previousProjectImagePath: null, chainEnabled: true });
+
+    const sources = await referenceSourcesForScene(assets, [fixtureMapping({ asset_id: asset.asset_id })], root, 2 as SceneNumber, chain);
+
+    expect(sources[0]).toMatch(/^prev-scene:1@/);
+    expect(sources).toHaveLength(2);
   });
 });

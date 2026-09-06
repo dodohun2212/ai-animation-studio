@@ -31,7 +31,7 @@ import { ProviderSettingsService } from "../settings/provider-settings.service.j
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "./openai-image-adapter.js";
-import { collectReferenceImages, describeReferenceMappingsForScene } from "./image-reference-selection.js";
+import { collectReferenceImages, continuityForScene, describeReferenceMappingsForScene } from "./image-reference-selection.js";
 import { imagePromptFor, imageSizeFor, sceneValue, styleLineFor } from "./image-prompt.js";
 import { previousSceneContinuityImagePath } from "../projects/project-continuity.js";
 import { computeSceneStaleness } from "../projects/scene-staleness.js";
@@ -312,8 +312,11 @@ export class ImageReviewService {
       const referenceNotes = await describeReferenceMappingsForScene(this.assets, mappings, number);
       const basePrompt = imagePromptFor(project.scenes[number - 1], styleLineFor(project), referenceNotes);
       const prompt = additionalInstruction ? `${basePrompt}\n${additionalInstruction}` : basePrompt;
-      const continuityImagePath = previousSceneContinuityImagePath(project);
-      const references = await collectReferenceImages(this.assets, mappings, this.mappings.projectLocation(project.project_id).directory, number, continuityImagePath);
+      const previousProjectImagePath = previousSceneContinuityImagePath(project);
+      const chainEnabled = toShortProjectSettings(project).sceneImageContinuityEnabled;
+      const directory = this.mappings.projectLocation(project.project_id).directory;
+      const continuity = (scene: SceneNumber) => continuityForScene({ directory, sceneNumber: scene, previousProjectImagePath, chainEnabled });
+      const references = await collectReferenceImages(this.assets, mappings, directory, number, continuity(number));
       referenceSources = references.sources;
       if (references.omittedCount > 0) referenceOmission = { references_used_count: references.images.length, references_omitted_count: references.omittedCount };
       try {

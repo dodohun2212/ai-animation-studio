@@ -26,7 +26,7 @@ import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generati
 import { EpisodeContinuityReferenceService } from "./episode-continuity-reference.service.js";
 import type { StoredAssetMapping } from "../mappings/mapping-storage.js";
 import { storyBibleLinkDrift } from "./episode-story-bible-drift.js";
-import { describeReferenceMappingsForScene } from "../images/image-reference-selection.js";
+import { continuityForScene, describeReferenceMappingsForScene } from "../images/image-reference-selection.js";
 import { collectReferenceImages, referenceSourcesForScene } from "../images/image-reference-selection.js";
 import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import { EpisodeMappingOwners } from "./episode-mapping-owner.js";
@@ -410,7 +410,7 @@ export class EpisodeImagesService {
           // scene read as behind its own script the moment somebody edits an Asset's description. Which
           // references were used is measured separately and by name, in `reference_sources` below.
           generatedPrompts.set(scene, imagePromptFor(scenes[scene - 1], styleLine));
-          const references = await collectReferenceImages(this.assets, mappings, owner!.directory, scene, continuityPath);
+          const references = await collectReferenceImages(this.assets, mappings, owner!.directory, scene, continuityForScene({ directory: owner!.directory, sceneNumber: scene, previousProjectImagePath: continuityPath, chainEnabled: false }));
           referenceSources.set(scene, references.sources);
           if (references.omittedCount > 0) referenceOmissions.set(scene, { references_used_count: references.images.length, references_omitted_count: references.omittedCount });
           const size = await this.imageSize(id, number);
@@ -496,7 +496,7 @@ export class EpisodeImagesService {
 
       const recordedSources = review?.reference_sources;
       if (recordedSources === undefined || !context) continue;
-      const now = await referenceSourcesForScene(this.assets, context.mappings, context.directory, scene, context.continuityPath);
+      const now = await referenceSourcesForScene(this.assets, context.mappings, context.directory, scene, continuityForScene({ directory: context.directory, sceneNumber: scene, previousProjectImagePath: context.continuityPath, chainEnabled: false }));
       // Order matters as much as membership: the model is shown the images in this order, and a different order
       // is a different request. Comparing as sets would call a reordered reference list unchanged.
       if (now.length !== recordedSources.length || now.some((source, index) => source !== recordedSources[index])) referenceStale.push(scene);
@@ -660,7 +660,7 @@ export class EpisodeImagesService {
 ${additionalInstruction}` : basePrompt;
       generatedPrompt = recordedPrompt;
       const continuityPath = await this.continuityImagePath(id, number);
-      const references = await collectReferenceImages(this.assets, mappings, owner.directory, scene, continuityPath);
+      const references = await collectReferenceImages(this.assets, mappings, owner.directory, scene, continuityForScene({ directory: owner!.directory, sceneNumber: scene, previousProjectImagePath: continuityPath, chainEnabled: false }));
       generatedSources = references.sources;
       if (references.omittedCount > 0) referenceOmission = { references_used_count: references.images.length, references_omitted_count: references.omittedCount };
       try {
