@@ -3,10 +3,10 @@ import { WorkflowState, type ProjectSummary } from "@ai-animation-studio/shared"
 
 import { listProjects, toDisplayError } from "../api/projectsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
-import { workflowStateLabel } from "../utils/workflowStateLabels.js";
+import { workflowStateLabel, workflowStateTone } from "../utils/workflowStateLabels.js";
 import { Spinner } from "./Spinner.js";
 import { WorkflowProgressBar, progressPercent } from "./WorkflowProgressBar.js";
-import { StatusChip, type StatusTone } from "./ui/StatusChip.js";
+import { StatusChip } from "./ui/StatusChip.js";
 
 interface ProjectListProps {
   refreshToken: number;
@@ -35,22 +35,6 @@ interface ListState {
   projects: ProjectSummary[] | null;
   error: { code: string; message: string } | null;
   loading: boolean;
-}
-
-/**
- * Workflow state → status chip tone, per the design system's fixed grammar (§2.1/§3.4): emerald only for a
- * genuinely finished project, amber while something is running, rose on failure, neutral for the waiting and
- * review steps. `Ready` is deliberately neutral — it means "set up, not started", not "done".
- */
-function statusTone(state: WorkflowState): StatusTone {
-  if (state === WorkflowState.Failed || state === WorkflowState.Cancelled) return "danger";
-  if (state === WorkflowState.Completed) return "success";
-  if (state === WorkflowState.Interrupted) return "progress";
-  if (
-    state === WorkflowState.GeneratingStory || state === WorkflowState.GeneratingImages
-    || state === WorkflowState.GeneratingVideos || state === WorkflowState.Rendering
-  ) return "progress";
-  return "neutral";
 }
 
 function PlusIcon() {
@@ -114,7 +98,19 @@ export function ProjectList({ refreshToken, onOpenProject, onCreateNew }: Projec
     };
   }, [refreshToken]);
 
-  const projects = state.projects ?? [];
+  /**
+   * Photo cards are excluded, and this is the only place that decides it.
+   *
+   * A card IS a short project on disk — same storage, same merge, same publish — and `ProjectSummary.photoCard`
+   * exists precisely so a screen can branch without a second project type. But on screen it is not one: it has
+   * its own sidebar entry, its own front door, and a pipeline that skips five of this list's steps. Leaving
+   * cards here put 명언_전인미답 and four siblings under a heading the person never chose for them, above a
+   * progress bar counting steps their pipeline does not have.
+   *
+   * 🔴 The other half of this is PhotoCardScreen's own list. Filtering here without that would not tidy the
+   * cards away — it would make finished work unreachable. The two ship together.
+   */
+  const projects = (state.projects ?? []).filter((project) => project.photoCard !== true);
   const waitingCount = waitingForVideoCount(projects);
 
   return (
@@ -145,12 +141,12 @@ export function ProjectList({ refreshToken, onOpenProject, onCreateNew }: Projec
         </p>
       )}
 
-      {state.projects !== null && state.projects.length === 0 && (
+      {state.projects !== null && projects.length === 0 && (
         <p className="mt-4 text-slate-400">아직 생성된 프로젝트가 없습니다.</p>
       )}
-      {state.projects !== null && state.projects.length > 0 && (
+      {state.projects !== null && projects.length > 0 && (
         <ul className="mt-4 space-y-3">
-          {state.projects.map((project) => (
+          {projects.map((project) => (
             <li key={project.id}>
               <button
                 type="button"
@@ -166,7 +162,7 @@ export function ProjectList({ refreshToken, onOpenProject, onCreateNew }: Projec
                   <span className="block truncate text-sm font-semibold text-slate-100">{project.topic || project.id}</span>
                   <span className="block truncate text-xs text-slate-400">{project.id}</span>
                   <span className="mt-1.5 flex flex-wrap items-center gap-2">
-                    <StatusChip tone={statusTone(project.workflowState)}>
+                    <StatusChip tone={workflowStateTone(project.workflowState)}>
                       {workflowStateLabel(project.workflowState)}
                     </StatusChip>
                     <span className="text-xs text-slate-400 tabular-nums" title={project.updatedAt}>

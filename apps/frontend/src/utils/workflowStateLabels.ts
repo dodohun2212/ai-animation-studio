@@ -1,6 +1,8 @@
 import { WorkflowState } from "@ai-animation-studio/shared";
 import type { ProjectType } from "@ai-animation-studio/shared";
 
+import type { StatusTone } from "../components/ui/StatusChip.js";
+
 /** Korean display labels for WorkflowState (packages/shared/src/workflow.ts), used on the short-project screens. */
 export const WORKFLOW_STATE_LABEL: Record<WorkflowState, string> = {
   [WorkflowState.Init]: "초기화",
@@ -25,6 +27,26 @@ export const WORKFLOW_STATE_LABEL: Record<WorkflowState, string> = {
 
 export function workflowStateLabel(state: WorkflowState): string {
   return WORKFLOW_STATE_LABEL[state] ?? state;
+}
+
+/**
+ * The same mapping's other half: workflow state → status-chip tone, per the design system's fixed grammar
+ * (§2.1/§3.4). Emerald only for a genuinely finished project, amber while something is running, rose on
+ * failure, neutral for the waiting and review steps. `Ready` is deliberately neutral — it means "set up, not
+ * started", not "done".
+ *
+ * It lives beside the label rather than inside one screen because a second screen now shows the same states,
+ * and a copied tone table is how two lists come to disagree about what "실패" looks like.
+ */
+export function workflowStateTone(state: WorkflowState): StatusTone {
+  if (state === WorkflowState.Failed || state === WorkflowState.Cancelled) return "danger";
+  if (state === WorkflowState.Completed) return "success";
+  if (state === WorkflowState.Interrupted) return "progress";
+  if (
+    state === WorkflowState.GeneratingStory || state === WorkflowState.GeneratingImages
+    || state === WorkflowState.GeneratingVideos || state === WorkflowState.Rendering
+  ) return "progress";
+  return "neutral";
 }
 
 /** Korean display labels for ProjectType (packages/shared/src/domain.ts). */

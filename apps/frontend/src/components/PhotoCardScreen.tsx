@@ -1,16 +1,26 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { Asset, RunwayClipDurationSeconds } from "@ai-animation-studio/shared";
+import type { Asset, ProjectSummary, RunwayClipDurationSeconds } from "@ai-animation-studio/shared";
 import { PHOTO_CARD_QUOTE_MAX_LENGTH, RUNWAY_CLIP_DURATIONS } from "@ai-animation-studio/shared";
 
 import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
 import { createPhotoCard, toPhotoCardDisplayError } from "../api/photoCardsApi.js";
-import { listProjects } from "../api/projectsApi.js";
+import { listProjects, toDisplayError } from "../api/projectsApi.js";
+import { formatDateTime } from "../utils/formatDateTime.js";
+import { workflowStateLabel, workflowStateTone } from "../utils/workflowStateLabels.js";
 import { Spinner } from "./Spinner.js";
+import { StatusChip } from "./ui/StatusChip.js";
 
 interface Props {
   onBack: () => void;
   /** Where to go once the card exists: its merge screen, which is where music and the credit line live. */
   onCreated: (projectId: string) => void;
+  /**
+   * Where a card that already exists opens.
+   *
+   * Required, not optional. Cards no longer appear in 단기 프로젝트 — this screen is the only door to them,
+   * and an optional callback would let a caller render rows that go nowhere.
+   */
+  onOpenCard: (projectId: string) => void;
 }
 
 type DisplayError = { code: string; message: string };
@@ -42,7 +52,7 @@ const outlineButton =
  * the line. This screen is that front door and nothing more; it hands the finished card to the merge screen,
  * which is where music and its credit line already live and where they will keep living.
  */
-export function PhotoCardScreen({ onBack, onCreated }: Props) {
+export function PhotoCardScreen({ onBack, onCreated, onOpenCard }: Props) {
   const [assets, setAssets] = useState<Asset[] | null>(null);
   const [listError, setListError] = useState<DisplayError | null>(null);
   const [assetId, setAssetId] = useState("");
@@ -64,6 +74,15 @@ export function PhotoCardScreen({ onBack, onCreated }: Props) {
    * on disk, and the server's refusal stays where it is. It only stops the confusing press.
    */
   const [takenNames, setTakenNames] = useState<ReadonlySet<string> | null>(null);
+  /**
+   * The cards that already exist, listed on this screen because they are no longer listed anywhere else.
+   *
+   * 🔴 This is why the same request's failure is now shown instead of swallowed. While cards sat in 단기
+   * 프로젝트 a failed listing cost only the duplicate-name warning; now it is the difference between finished
+   * work being reachable and being invisible, so it has to say so.
+   */
+  const [cards, setCards] = useState<ProjectSummary[] | null>(null);
+  const [cardsError, setCardsError] = useState<DisplayError | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,8 +96,12 @@ export function PhotoCardScreen({ onBack, onCreated }: Props) {
     let cancelled = false;
     listProjects()
       // Failing to read the list is not a reason to block the button: the server still refuses duplicates.
-      .then((response) => { if (!cancelled) setTakenNames(new Set(response.projects.map((project) => project.id))); })
-      .catch(() => undefined);
+      .then((response) => {
+        if (cancelled) return;
+        setTakenNames(new Set(response.projects.map((project) => project.id)));
+        setCards(response.projects.filter((project) => project.photoCard === true));
+      })
+      .catch((caught: unknown) => { if (!cancelled) setCardsError(toDisplayError(caught)); });
     return () => { cancelled = true; };
   }, []);
 
@@ -122,6 +145,37 @@ export function PhotoCardScreen({ onBack, onCreated }: Props) {
         보관함의 그림 한 장에 문장을 얹어 짧은 영상으로 만듭니다. 그림은 이미 만들어 둔 것을 그대로 쓰기 때문에{" "}
         <span className="font-semibold text-slate-200">여기서는 돈이 나가지 않습니다.</span>
       </p>
+
+      {cardsError && (
+        <p role="alert" data-testid="photo-card-existing-error" data-error-code={cardsError.code} className="text-sm text-rose-400">
+          {cardsError.message} — 이미 만들어 둔 카드 목록을 불러오지 못했습니다. 새로 만드는 것은 그대로 됩니다.
+        </p>
+      )}
+      {cards !== null && cards.length > 0 && (
+        <section aria-label="만들어 둔 카드" className={cardSection} data-testid="photo-card-existing">
+          <h2 className="text-base font-semibold text-slate-100">만들어 둔 카드</h2>
+          <ul className="space-y-3">
+            {cards.map((card) => (
+              <li key={card.id}>
+                <button
+                  type="button"
+                  data-testid={`photo-card-open-${card.id}`}
+                  className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-3 text-left transition-colors duration-150 hover:border-violet-400/40 hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/30"
+                  onClick={() => onOpenCard(card.id)}
+                >
+                  <span className="min-w-0 flex-1">
+                    {/* The quote is what a person recognises a card by; the id is the handle underneath it. */}
+                    <span className="block truncate text-sm font-semibold text-slate-100">{card.topic || card.id}</span>
+                    <span className="block truncate text-xs text-slate-400">{card.id}</span>
+                  </span>
+                  <StatusChip tone={workflowStateTone(card.workflowState)}>{workflowStateLabel(card.workflowState)}</StatusChip>
+                  <span className="text-xs tabular-nums text-slate-400" title={card.updatedAt}>{formatDateTime(card.updatedAt)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <form className="space-y-5" onSubmit={(event) => void submit(event)}>
         <section aria-label="그림 고르기" className={cardSection}>
@@ -228,7 +282,7 @@ export function PhotoCardScreen({ onBack, onCreated }: Props) {
           )}
           {nameTaken && (
             <p data-testid="photo-card-id-taken" className="text-xs text-rose-400">
-              이 이름은 이미 있습니다. 그 카드는 프로젝트 목록에서 열면 됩니다. 다시 만들 필요가 없습니다.
+              이 이름은 이미 있습니다. 그 카드는 아래 "만들어 둔 카드"에서 열면 됩니다. 다시 만들 필요가 없습니다.
             </p>
           )}
         </section>

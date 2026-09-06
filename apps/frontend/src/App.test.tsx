@@ -393,7 +393,11 @@ describe("App", () => {
   it("gives a 명언 카드 its own two steps instead of the story pipeline", async () => {
     stubPhotoCard(photoCardProject(WorkflowState.VideosApproved));
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: /백절불굴/ }));
+    // In through the card's own door. Cards left 단기 프로젝트, so 명언 카드's "만들어 둔 카드" list is the
+    // only way to one — which makes this the place that proves the new door actually lands on the card.
+    window.location.hash = "#/photoCard";
+    fireEvent(window, new HashChangeEvent("hashchange"));
+    fireEvent.click(await screen.findByTestId("photo-card-open-명언_카드"));
 
     const nav = await screen.findByTestId("photo-card-pipeline");
     expect([...nav.querySelectorAll("button")].map((button) => button.textContent)).toEqual([

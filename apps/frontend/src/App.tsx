@@ -892,6 +892,7 @@ export function App() {
               <PhotoCardScreen
                 onBack={() => setScreen({ name: "list" })}
                 onCreated={(projectId) => setScreen({ name: "videoMerge", projectId })}
+                onOpenCard={(projectId) => setScreen({ name: "detail", projectId })}
               />
             )}
             {screen.name === "instagramPost" && <InstagramPostScreen onBack={() => setScreen({ name: "list" })} />}

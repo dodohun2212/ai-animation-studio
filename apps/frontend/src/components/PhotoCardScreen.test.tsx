@@ -47,7 +47,7 @@ describe("PhotoCardScreen", () => {
   // things that can actually be used.
   it("offers only assets that are real, readable pictures", async () => {
     stub(jsonResponse(200, { assets: [picture, folder, missing] }));
-    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} />);
+    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} onOpenCard={() => {}} />);
 
     expect(await screen.findByTestId("photo-card-asset-ASSET-1")).toBeTruthy();
     expect(screen.queryByTestId("photo-card-asset-FOLDER-1")).toBeNull();
@@ -60,7 +60,7 @@ describe("PhotoCardScreen", () => {
       jsonResponse(200, { project: makeProject({ id: "quote_01", photoCard: true }) }),
     );
     const onCreated = vi.fn();
-    render(<PhotoCardScreen onBack={() => {}} onCreated={onCreated} />);
+    render(<PhotoCardScreen onBack={() => {}} onCreated={onCreated} onOpenCard={() => {}} />);
     await fillAndSubmit();
 
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith("quote_01"));
@@ -79,7 +79,7 @@ describe("PhotoCardScreen", () => {
   // person presses it, waits, and reads a refusal that only says what they could have been told before.
   it("will not submit until a picture, a quote and a name are all there", async () => {
     stub(jsonResponse(200, { assets: [picture] }));
-    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} />);
+    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} onOpenCard={() => {}} />);
     await screen.findByTestId("photo-card-asset-ASSET-1");
 
     const submit = () => screen.getByTestId("photo-card-submit") as HTMLButtonElement;
@@ -99,7 +99,7 @@ describe("PhotoCardScreen", () => {
    */
   it("refuses a name the server would reject, and says which characters are the problem", async () => {
     stub(jsonResponse(200, { assets: [picture] }));
-    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} />);
+    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} onOpenCard={() => {}} />);
     fireEvent.click(await screen.findByTestId("photo-card-asset-ASSET-1"));
     fireEvent.change(screen.getByTestId("photo-card-quote"), { target: { value: "문장" } });
     fireEvent.change(screen.getByTestId("photo-card-id"), { target: { value: "명언(불광불급)" } });
@@ -118,7 +118,7 @@ describe("PhotoCardScreen", () => {
    */
   it("refuses a name that already belongs to a project", async () => {
     stubWithExistingNames(["명언_불광불급"], jsonResponse(200, { assets: [picture] }));
-    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} />);
+    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} onOpenCard={() => {}} />);
     fireEvent.click(await screen.findByTestId("photo-card-asset-ASSET-1"));
     fireEvent.change(screen.getByTestId("photo-card-quote"), { target: { value: "문장" } });
     fireEvent.change(screen.getByTestId("photo-card-id"), { target: { value: "명언_불광불급" } });
@@ -131,7 +131,7 @@ describe("PhotoCardScreen", () => {
   // server does what it has always done — otherwise one failing request would lock a screen that works.
   it("leaves the button usable when the project list cannot be read", async () => {
     stubWithExistingNames(withStatus(500, { code: "STORAGE_ERROR", message: "" }), jsonResponse(200, { assets: [picture] }));
-    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} />);
+    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} onOpenCard={() => {}} />);
     fireEvent.click(await screen.findByTestId("photo-card-asset-ASSET-1"));
     fireEvent.change(screen.getByTestId("photo-card-quote"), { target: { value: "문장" } });
     fireEvent.change(screen.getByTestId("photo-card-id"), { target: { value: "명언_불광불급" } });
@@ -143,7 +143,7 @@ describe("PhotoCardScreen", () => {
   // The other half: the rule allows any letter, so a plain Korean name must not be caught by it.
   it("accepts a Korean name without punctuation", async () => {
     stub(jsonResponse(200, { assets: [picture] }));
-    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} />);
+    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} onOpenCard={() => {}} />);
     fireEvent.click(await screen.findByTestId("photo-card-asset-ASSET-1"));
     fireEvent.change(screen.getByTestId("photo-card-quote"), { target: { value: "문장" } });
     fireEvent.change(screen.getByTestId("photo-card-id"), { target: { value: "명언_불광불급" } });
@@ -156,7 +156,7 @@ describe("PhotoCardScreen", () => {
   // the server will refuse — and the count next to it would read as though something had been typed.
   it("treats a quote of only spaces as empty", async () => {
     stub(jsonResponse(200, { assets: [picture] }));
-    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} />);
+    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} onOpenCard={() => {}} />);
     fireEvent.click(await screen.findByTestId("photo-card-asset-ASSET-1"));
     fireEvent.change(screen.getByTestId("photo-card-id"), { target: { value: "quote_01" } });
     fireEvent.change(screen.getByTestId("photo-card-quote"), { target: { value: "    " } });
@@ -174,7 +174,7 @@ describe("PhotoCardScreen", () => {
       jsonResponse(500, { code: "PHOTO_CARD_ASSET_UNUSABLE", message: "raw C:\\assets\\ASSET-1.png" }),
     );
     const onCreated = vi.fn();
-    const rendered = render(<PhotoCardScreen onBack={() => {}} onCreated={onCreated} />);
+    const rendered = render(<PhotoCardScreen onBack={() => {}} onCreated={onCreated} onOpenCard={() => {}} />);
     await fillAndSubmit();
 
     const alert = await screen.findByTestId("photo-card-error");
@@ -189,11 +189,70 @@ describe("PhotoCardScreen", () => {
   // difference between "this screen forgot about music" and "music comes next".
   it("says where music is chosen instead of leaving it unmentioned", async () => {
     stub(jsonResponse(200, { assets: [picture] }));
-    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} />);
+    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} onOpenCard={() => {}} />);
 
     const note = (await screen.findByTestId("photo-card-music-note")).textContent ?? "";
     expect(note).toContain("영상 합치기");
     // Said where the decision is made, not only in the header far above it.
     expect(note).toContain("비용이 들지 않습니다");
+  });
+
+  /**
+   * 🔴 This screen is now the only door to a card that already exists.
+   *
+   * ProjectList stopped listing photo cards on the same day these tests were written — a card under
+   * 단기 프로젝트 sat under a heading the person never chose for it, above a progress bar counting steps its
+   * pipeline skips. Filtering there without listing here would not tidy the cards away; it would make finished
+   * work unreachable. That is why these three exist, and why the pair ships together.
+   */
+  it("lists the cards that already exist, and opens the one that is pressed", async () => {
+    const onOpenCard = vi.fn();
+    // The listing is given raw rather than as bare ids: the helper's id shortcut builds ordinary projects, and
+    // `photoCard` is the whole thing under test here.
+    stubWithExistingNames(
+      { projects: [
+        makeProject({ id: "명언_불광불급", photoCard: true }),
+        makeProject({ id: "sample_project" }),
+      ] },
+      jsonResponse(200, { assets: [picture] }),
+    );
+    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} onOpenCard={onOpenCard} />);
+
+    // 🔴 Only the cards. An ordinary short project belongs in 단기 프로젝트 and would be a second listing of it.
+    expect(await screen.findByTestId("photo-card-open-명언_불광불급")).toBeTruthy();
+    expect(screen.queryByTestId("photo-card-open-sample_project")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("photo-card-open-명언_불광불급"));
+    expect(onOpenCard).toHaveBeenCalledWith("명언_불광불급");
+  });
+
+  // Nothing to list is not a failure and gets no empty state: the screen someone opened is the one for making
+  // a card, and an "아직 없습니다" box above the form only pushes the form down on the very first visit.
+  it("shows no card list at all when none exist yet", async () => {
+    stub(jsonResponse(200, { assets: [picture] }));
+    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} onOpenCard={() => {}} />);
+
+    await screen.findByTestId("photo-card-asset-ASSET-1");
+    expect(screen.queryByTestId("photo-card-existing")).toBeNull();
+  });
+
+  /**
+   * 🔴 The same request's failure used to be swallowed on purpose — it only fed the duplicate-name warning,
+   * and the server refuses duplicates anyway. It is not the same request any more: it is the one that decides
+   * whether existing cards are reachable, so a silent failure would look exactly like "you have no cards".
+   */
+  it("says so when the existing-card list cannot be read, and still lets a new card be made", async () => {
+    stubWithExistingNames(
+      withStatus(500, { code: "PROJECT_STORAGE_ERROR", message: "raw backend detail" }),
+      jsonResponse(200, { assets: [picture] }),
+    );
+    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} onOpenCard={() => {}} />);
+
+    const alert = await screen.findByTestId("photo-card-existing-error");
+    expect(alert.textContent).toContain("목록을 불러오지 못했습니다");
+    expect(alert.textContent).not.toContain("raw backend detail");
+    expect(screen.queryByTestId("photo-card-existing")).toBeNull();
+    // The form is untouched by it — making a new card never needed that listing.
+    expect(screen.getByTestId("photo-card-submit")).toBeTruthy();
   });
 });

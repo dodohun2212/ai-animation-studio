@@ -44,6 +44,41 @@ describe("ProjectList", () => {
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(["/projects"]);
   });
 
+  /**
+   * A photo card is a short project on disk and must not be one on screen.
+   *
+   * 🔴 This list showed five 명언 cards under 단기 프로젝트 with a progress bar counting steps their pipeline
+   * skips. They have their own sidebar entry, their own front door, and now their own list there — so the only
+   * honest thing this list can say about them is nothing.
+   *
+   * The summary count is asserted too: it reads the same filtered set, so "단기 프로젝트 N개" cannot drift
+   * back to counting rows the person cannot see here.
+   */
+  it("leaves photo cards out — they are not short projects on screen", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { projects: [
+      makeProject({ id: "sample_project", workflowState: WorkflowState.Ready }),
+      makeProject({ id: "명언_불광불급", workflowState: WorkflowState.Completed, photoCard: true }),
+      makeProject({ id: "명언_전인미답", workflowState: WorkflowState.Completed, photoCard: true }),
+    ] })));
+    render(<ProjectList refreshToken={0} onOpenProject={() => {}} onCreateNew={() => {}} />);
+
+    expect(await screen.findByText("sample_project")).toBeTruthy();
+    expect(screen.queryByText("명언_불광불급")).toBeNull();
+    expect(screen.queryByText("명언_전인미답")).toBeNull();
+    expect(screen.getByTestId("dashboard-summary").textContent).toContain("단기 프로젝트 1개");
+  });
+
+  // Cards filling the whole answer is not an empty store, but it is an empty list — and the sentence a person
+  // reads has to match what they see, not what the response carried.
+  it("shows the empty-store message when every project in the answer is a photo card", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { projects: [
+      makeProject({ id: "명언_불광불급", workflowState: WorkflowState.Completed, photoCard: true }),
+    ] })));
+    render(<ProjectList refreshToken={0} onOpenProject={() => {}} onCreateNew={() => {}} />);
+
+    expect(await screen.findByText("아직 생성된 프로젝트가 없습니다.")).toBeTruthy();
+  });
+
   it("shows a loading state, then an empty-store message", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { projects: [] })));
     render(<ProjectList refreshToken={0} onOpenProject={() => {}} onCreateNew={() => {}} />);
