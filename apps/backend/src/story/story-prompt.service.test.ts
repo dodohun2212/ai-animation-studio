@@ -11,6 +11,7 @@ import { ProviderSettingsService } from "../settings/provider-settings.service.j
 import { OpenAiBudget } from "../providers/openai-budget.js";
 import { StoryPromptService, renderTemplate } from "./story-prompt.service.js";
 import { generateLocalStory, validateStory } from "./story-generation.service.js";
+import { STORY_SCENE_FIELDS } from "./openai-story-adapter.js";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
 const roots: string[] = [];
@@ -499,3 +500,44 @@ describe("local Story generator", () => {
   });
 
 });
+
+describe("the real template's scene field list", () => {
+  /**
+   * The response schema marks all eighteen `required` with `additionalProperties: false`, so a field deleted from
+   * the template does not become a field the model may omit — it becomes one the model fills without having been
+   * told what it is for. That passes validation and comes back as a wrong picture, which is worse than a failure
+   * that stops. Nothing connected the two lists, so tidying the prompt could have cost a paid image call.
+   */
+  it("asks for exactly the fields the response schema requires, no more and no fewer", async () => {
+    const template = await fsPromises.readFile(
+      path.join(url.fileURLToPath(new URL("../../../../", import.meta.url)), "prompts", "story", "story_generation.txt"), "utf8");
+    const asked = template.split(/\r?\n/).flatMap((line) => {
+      const match = /^- ([a-z_]+):/.exec(line);
+      return match ? [match[1]!] : [];
+    });
+
+    expect(asked).toEqual([...STORY_SCENE_FIELDS]);
+  });
+
+  /**
+   * 캡틴D asked whether the fields not needed for a flower reel could be dropped; the answer was that none can,
+   * and measuring that turned up the real defect — the descriptions assumed a person. 「자세·시선」, 「신체·소품」,
+   * 「표정」 and 「인물」 name things a flower does not have, on a project whose [7] 피할 요소 begins with 사람, so
+   * the model was being asked to describe a body in a video that must not contain one. Widening the subject costs
+   * a project with people nothing — a person is a 피사체 too — which is why this is a rewording and not a removal.
+   */
+  it("describes those fields without assuming the subject is a person", async () => {
+    const template = await fsPromises.readFile(
+      path.join(url.fileURLToPath(new URL("../../../../", import.meta.url)), "prompts", "story", "story_generation.txt"), "utf8");
+    const fieldLines = template.split(/\r?\n/).filter((line) => /^- [a-z_]+:/.test(line));
+
+    for (const word of ["시선", "신체", "인물"]) {
+      expect(fieldLines.filter((line) => line.includes(word))).toEqual([]);
+    }
+    // 표정 stays, because a face is a real thing to describe when there is one — what changed is that the line
+    // now says what to write when there is not, instead of leaving the model to invent a face for a flower.
+    const expression = fieldLines.find((line) => line.startsWith("- expression_change:")) ?? "";
+    expect(expression).toContain("표정이 없는 피사체라면");
+  });
+});
+

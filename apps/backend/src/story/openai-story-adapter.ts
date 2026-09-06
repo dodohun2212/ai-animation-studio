@@ -8,6 +8,22 @@ export { OpenAiAdapterError as OpenAiStoryAdapterError };
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
+/**
+ * The scene fields the model must return, in the order the prompt asks for them.
+ *
+ * Named rather than spelled inline because the prompt template lists the same eighteen and the two must not
+ * drift. `additionalProperties: false` plus this `required` list means the model has to fill every one of them,
+ * so a field dropped from the template does not become a field the model may omit — it becomes a field the
+ * model fills without having been told what it is for. That failure passes validation and comes back as a
+ * wrong picture, which is worse than the one that stops (Cowork Round 614 ②).
+ */
+export const STORY_SCENE_FIELDS = [
+  "number", "description", "visual_action", "start_motion", "main_motion", "end_motion",
+  "shot_size", "camera_angle", "composition", "lens_feel", "focus_subject",
+  "camera_motion", "environment_motion", "motion_speed", "motion_intensity",
+  "expression_change", "continuity_hint", "narration",
+] as const;
+
 /** The scene count is a per-project setting (2-12, see MIN/MAX_SCENE_COUNT in shared/domain.ts), so this schema is built per request rather than a fixed constant. */
 function storySchema(sceneCount: number) {
   return {
@@ -22,12 +38,7 @@ function storySchema(sceneCount: number) {
         type: "array", minItems: sceneCount, maxItems: sceneCount,
         items: {
           type: "object", additionalProperties: false,
-          required: [
-            "number", "description", "visual_action", "start_motion", "main_motion", "end_motion",
-            "shot_size", "camera_angle", "composition", "lens_feel", "focus_subject",
-            "camera_motion", "environment_motion", "motion_speed", "motion_intensity",
-            "expression_change", "continuity_hint", "narration",
-          ],
+          required: [...STORY_SCENE_FIELDS],
           properties: {
             number: { type: "integer", minimum: 1, maximum: sceneCount },
             description: { type: "string" }, visual_action: { type: "string" },
