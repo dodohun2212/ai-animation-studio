@@ -559,6 +559,47 @@ describe("the real template's scene field list", () => {
    * the model was being asked to describe a body in a video that must not contain one. Widening the subject costs
    * a project with people nothing — a person is a 피사체 too — which is why this is a rewording and not a removal.
    */
+  /**
+   * Episode 6 scene 6 failed at Runway with INTERNAL.BAD_OUTPUT.CODE01, and its prompt asked a five-second shot
+   * for two camera moves, three separate deformations of a face, and 「빠르고 불안정 / 최고조」 — while the fixed
+   * closing line of every video request demands stable identity, anatomy and clothing throughout. One half asked
+   * for the face to be swallowed and the other half forbade the body from changing.
+   *
+   * Nothing told the story model either fact. The clip length appeared only in the narration field's own
+   * description, so the motion fields were written with no idea how long the shot they become is, and the
+   * stability requirement is added downstream by code the model never sees. Both are now said where the fields
+   * are asked for — the cheapest place, since it costs one story call rather than a video that fails.
+   */
+  it("tells the model how long the shot is and that the subject has to survive it", async () => {
+    const root = await fsPromises.mkdtemp(path.join(os.tmpdir(), "story-prompt-shot-budget-")); roots.push(root);
+    const repository = new LocalProjectRepository(path.join(root, "projects"));
+    const stored = createStoredProject("shot_budget", "밤하늘", "2026-08-22T00:00:00.000Z");
+    stored.lore_context = { clip_duration_seconds: 5, scene_count: 6 };
+    await repository.create(stored);
+
+    const { preview } = await new StoryPromptService(repository).preview("shot_budget");
+
+    // The length reaches the motion fields, not only the narration line it used to live on.
+    const motionInstruction = preview.originalPrompt.split(/\r?\n/).find((line) => line.startsWith("움직임 항목(")) ?? "";
+    expect(motionInstruction).toContain("5초");
+    expect(motionInstruction).toContain("주요 동작 하나");
+    // And the requirement the video request adds downstream, said to the one writer who can avoid contradicting it.
+    expect(preview.originalPrompt).toContain("정체성·신체·의상이 컷 내내 유지");
+  });
+
+  it("carries the project's own clip length into that instruction, not a fixed five", async () => {
+    const root = await fsPromises.mkdtemp(path.join(os.tmpdir(), "story-prompt-shot-budget-ten-")); roots.push(root);
+    const repository = new LocalProjectRepository(path.join(root, "projects"));
+    const stored = createStoredProject("shot_budget_ten", "밤하늘", "2026-08-22T00:00:00.000Z");
+    stored.lore_context = { clip_duration_seconds: 10, scene_count: 2 };
+    await repository.create(stored);
+
+    const { preview } = await new StoryPromptService(repository).preview("shot_budget_ten");
+
+    const motionInstruction = preview.originalPrompt.split(/\r?\n/).find((line) => line.startsWith("움직임 항목(")) ?? "";
+    expect(motionInstruction).toContain("10초");
+  });
+
   it("describes those fields without assuming the subject is a person", async () => {
     const template = await fsPromises.readFile(
       path.join(url.fileURLToPath(new URL("../../../../", import.meta.url)), "prompts", "story", "story_generation.txt"), "utf8");
