@@ -3,6 +3,8 @@ import * as path from "node:path";
 import * as url from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { SCENE_FIELDS } from "../videos/video-preview.service.js";
+import { STORY_SCENE_FIELDS } from "./openai-story-adapter.js";
 import { CLIP_DURATION_PLACEHOLDER, NO_TEXT_AS_EVENT_RULE, ONE_PACE_RULE, SUBJECT_SURVIVES_RULE, shotBudgetRule } from "./motion-field-rules.js";
 
 /**
@@ -56,5 +58,24 @@ describe("the motion-field rules both script prompts carry", () => {
     }
     expect(SUBJECT_SURVIVES_RULE).toContain("움직임 항목");
     expect(SUBJECT_SURVIVES_RULE).toContain("description");
+  });
+});
+
+/**
+ * The three lists of scene field names, which have to agree because the same scene travels through all three.
+ *
+ * STORY_SCENE_FIELDS is what the model is required to return. SCENE_FIELDS is what the video prompt reads and
+ * what both video paths validate against. They differ by exactly one name — narration, which only narration/TTS
+ * uses — and that difference is a decision, not drift. Stating it here means adding a field to one list and not
+ * the other stops being silent: today it would have left a scene passing validation with a field the video
+ * prompt then renders empty.
+ */
+describe("the scene field lists the pipeline shares", () => {
+  it("differ from each other by narration and nothing else", () => {
+    const story = [...STORY_SCENE_FIELDS] as string[];
+    const video = [...SCENE_FIELDS] as string[];
+
+    expect(story.filter((field) => !video.includes(field))).toEqual(["narration"]);
+    expect(video.filter((field) => !story.includes(field))).toEqual([]);
   });
 });

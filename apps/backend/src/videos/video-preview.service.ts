@@ -23,7 +23,7 @@ import { runwayRatioForAspect } from "../projects/project-aspect.js";
 function scenesFor(project: StoredProject): SceneNumber[] {
   return sceneNumbersFor(toShortProjectSettings(project).sceneCount);
 }
-const SCENE_FIELDS = [
+export const SCENE_FIELDS = [
   "number", "description", "visual_action", "start_motion", "main_motion", "end_motion",
   "shot_size", "camera_angle", "composition", "lens_feel", "focus_subject", "camera_motion",
   "environment_motion", "motion_speed", "motion_intensity", "expression_change", "continuity_hint",

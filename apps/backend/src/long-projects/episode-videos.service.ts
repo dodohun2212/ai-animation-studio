@@ -16,7 +16,7 @@ import { RunwayBudget, RunwayBudgetExceededError } from "../providers/runway-bud
 import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceResult, type RunwaySceneState } from "../videos/runway-workflow-support.js";
 import { downloadRunwayOutput, getRunwayTask, RunwayAdapterError } from "../videos/runway-video-adapter.js";
 import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
-import { promptFor, utf16Length, type StoredScene, describesSameScene } from "../videos/video-preview.service.js";
+import { SCENE_FIELDS, describesSameScene, promptFor, utf16Length, type StoredScene } from "../videos/video-preview.service.js";
 import { longEpisodeRetryNeedsChangedInput, longBudgetLedgerUnreadable, longEpisodeVideoRestoreNotAllowed, longEpisodeVideoVersionNotFound, longLocked, longEpisodeNotFound, longEpisodeVideoJobNotFound, longEpisodeVideosInvalid, longEpisodeVideosNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
@@ -25,8 +25,19 @@ import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generati
 import { resolveVideoModel } from "../videos/runway-video-adapter.js";
 import { needsChangedInput, sceneFailureFor } from "../videos/scene-failure.js";
 
-/** Matches video-preview.service.ts's SCENE_FIELDS (minus "number", "narration"): the fields promptFor() reads. */
-const MOTION_SCENE_FIELDS = ["description", "visual_action", "start_motion", "main_motion", "end_motion", "shot_size", "camera_angle", "composition", "lens_feel", "focus_subject", "camera_motion", "environment_motion", "motion_speed", "motion_intensity", "expression_change", "continuity_hint"] as const;
+/**
+ * The fields promptFor() reads, derived rather than restated.
+ *
+ * This was a hand-written list under a comment saying it matched SCENE_FIELDS minus `number`. It did match —
+ * checked, sixteen against seventeen — and that is the whole problem: a copy that is correct today is not a
+ * copy that stays correct. A field added to SCENE_FIELDS would leave this validation one short, and the scene
+ * missing it would pass `scenes()`, reach `promptFor`, render an empty section, have that section filtered out,
+ * and be bought as a video built from an incomplete prompt. Nothing would refuse it.
+ *
+ * `number` is excluded because it is validated separately just below (`item.number !== index + 1`), which is a
+ * stronger check than 'is a non-empty string' — it is the only field whose correct value is known in advance.
+ */
+const MOTION_SCENE_FIELDS = SCENE_FIELDS.filter((field) => field !== "number");
 /** The local fake path's bytes, shared so nothing can hold a second opinion about them. */
 const MP4 = PLACEHOLDER_MP4;
 const statuses: readonly LongEpisodeStatus[] = LONG_EPISODE_STATUSES;
