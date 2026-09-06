@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE } from "@ai-animation-studio/shared";
 
+import { familyNames, usWeightClass } from "./font-file-tables.js";
 import { FONT_FAMILY, QUOTE_FONT_FAMILY, sceneSubtitleAss } from "./subtitle-file.js";
 
 const HEIGHT = 1920;
@@ -81,37 +82,6 @@ describe("photo card subtitles", () => {
 
 describe("the fonts this app ships", () => {
   /**
-   * libass matches a style's `Fontname` against the family names inside the files in `fontsdir`, and a miss is
-   * silent: it falls back to a system font, so the card renders on the author's machine and differently on
-   * every other one. Nothing else in the suite can see that, so this reads the family straight out of the file
-   * (Cowork Round 434 asked for exactly this check).
-   */
-  function familyNames(file: Buffer): string[] {
-    const tableCount = file.readUInt16BE(4);
-    let offset = 12;
-    let nameTable: number | undefined;
-    for (let index = 0; index < tableCount; index++) {
-      if (file.toString("ascii", offset, offset + 4) === "name") nameTable = file.readUInt32BE(offset + 8);
-      offset += 16;
-    }
-    if (nameTable === undefined) throw new Error("no name table");
-    const count = file.readUInt16BE(nameTable + 2);
-    const storage = nameTable + file.readUInt16BE(nameTable + 4);
-    const found: string[] = [];
-    for (let index = 0; index < count; index++) {
-      const record = nameTable + 6 + index * 12;
-      const platform = file.readUInt16BE(record);
-      const nameId = file.readUInt16BE(record + 6);
-      const length = file.readUInt16BE(record + 8);
-      const at = storage + file.readUInt16BE(record + 10);
-      if (nameId !== 1 && nameId !== 16) continue;
-      const raw = file.subarray(at, at + length);
-      found.push(platform === 3 ? Buffer.from(raw).swap16().toString("utf16le") : raw.toString("ascii"));
-    }
-    return found;
-  }
-
-  /**
    * Every family the subtitles name is shipped, exactly once, and by a face that is not the family's thinnest.
    *
    * This used to check only that a file with the right family name existed — and it passed for two years while
@@ -124,17 +94,6 @@ describe("the fonts this app ships", () => {
    * app neither controls nor can test. And a real weight, because a family whose only face is Thin cannot be
    * made bold by asking.
    */
-  /** OS/2 usWeightClass, read the same hand-rolled way familyNames reads the name table — no font library for one number. */
-  function usWeightClass(file: Buffer): number {
-    const tableCount = file.readUInt16BE(4);
-    for (let index = 0; index < tableCount; index += 1) {
-      const record = 12 + index * 16;
-      if (file.subarray(record, record + 4).toString("ascii") !== "OS/2") continue;
-      return file.readUInt16BE(file.readUInt32BE(record + 8) + 4);
-    }
-    throw new Error("no OS/2 table");
-  }
-
   it("ships one real weight for each family the subtitles ask for", async () => {
     const root = path.resolve(import.meta.dirname, "../../../../fonts");
     const files = (await fs.readdir(root)).filter((name) => name.toLowerCase().endsWith(".ttf"));

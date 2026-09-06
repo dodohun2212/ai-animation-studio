@@ -723,8 +723,16 @@ export const PHOTO_CARD_SUBTITLE_SHADOW = 2;
  * more of the same box rather than advancing further, so weight moves the stroke and barely moves the width.
  * The old numbers were still inside the pair's tolerance, which is why it did not go red; they were stale all
  * the same, and a preview drawing 1.5% narrow than the video is the thing this constant exists to stop.
+ *
+ * 🔴 Corrected on 2026-09-06, and every number above it was measured with a term missing. The division was
+ * `libass advance ÷ ASS size`, which silently assumes a face advances a Hangul syllable one full em. Neither
+ * face does: Noto Sans KR Medium advances 0.920 em and Noto Serif KR Bold 0.966 (their own `hmtx`, and a
+ * browser agrees to five places). So every ratio here was too small by exactly that factor — 0.6898 × 0.920 is
+ * 0.6346, the number that sat here — and the preview drew 8% narrow, wrapping in the video a line it had shown
+ * fitting on one. 🔴 The pair could not catch it: it divided the same way, so it was checking the constant
+ * against the arithmetic the constant came from. It reads the em out of the file now.
  */
-export const PHOTO_CARD_SUBTITLE_CSS_RATIO = { heading: 0.671, body: 0.635 } as const;
+export const PHOTO_CARD_SUBTITLE_CSS_RATIO = { heading: 0.697, body: 0.690 } as const;
 
 /** How much larger the heading is than the body. Not a handle: three sizes can be set to a combination that does not fit together, and two cannot. */
 export const PHOTO_CARD_HEADING_RATIO = 1.4;

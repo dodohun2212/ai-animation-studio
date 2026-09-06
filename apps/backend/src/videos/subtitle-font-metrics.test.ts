@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { PHOTO_CARD_SUBTITLE_CSS_RATIO } from "@ai-animation-studio/shared";
 
 import { runMediaCommand } from "./ffmpeg-merge.service.js";
-import { escapeForFfmpegFilterPath, sceneSubtitleAss } from "./subtitle-file.js";
+import { fontFileForFamily, hangulEmAdvance } from "./font-file-tables.js";
+import { FONT_FAMILY, QUOTE_FONT_FAMILY, escapeForFfmpegFilterPath, sceneSubtitleAss } from "./subtitle-file.js";
 
 /**
  * How wide the card's text actually is, read off a rendered frame.
@@ -91,10 +92,30 @@ describe("what a card's text really measures on the frame", () => {
     const bodyAdvance = (await inkWidth(root, "body16", `.\n${"가".repeat(16)}`, bodyBand)
       - await inkWidth(root, "body10", `.\n${"가".repeat(10)}`, bodyBand)) / 6;
 
-    // Within a scan step of the published ratio. Wider than that and the preview is drawing a different video.
-    expect(headingAdvance / headSize).toBeCloseTo(PHOTO_CARD_SUBTITLE_CSS_RATIO.heading, 1);
-    expect(bodyAdvance / bodySize).toBeCloseTo(PHOTO_CARD_SUBTITLE_CSS_RATIO.body, 1);
+    /**
+     * The em advance is the term this comparison spent a year without, and its absence is invisible: dividing
+     * libass's advance by the ASS size alone asks "what CSS size draws this width **if the face advances a
+     * syllable one full em**", and neither of these faces does — 0.920 and 0.966. The ratio that came out was
+     * wrong by exactly that factor, and this pair stayed green the whole time because it was checking the same
+     * wrong arithmetic the constant was built from. Read from the files so a new font brings its own number
+     * (Cowork Round 598; 캡틴D saw it as a line that wrapped in the video and not in the preview).
+     */
+    const headingEm = hangulEmAdvance(await fontFileForFamily(fontsDirectory, QUOTE_FONT_FAMILY));
+    const bodyEm = hangulEmAdvance(await fontFileForFamily(fontsDirectory, FONT_FAMILY));
+
+    /**
+     * Within 2% of the published ratio, as a fraction rather than toBeCloseTo's decimal steps.
+     *
+     * 🔴 The precision-1 tolerance this replaces was ±0.05, which on 0.635 is ±7.9% — and the error it let
+     * through was 8.0%. It cleared by a tenth of a percent. 2% is loose enough for the spread between libass
+     * builds (6.1 and 9.0 measure the same string a couple of percent apart) and tight enough that the mistake
+     * this pair exists to catch cannot fit inside it again.
+     */
+    const within2Percent = (measured: number, published: number) =>
+      expect(Math.abs(measured - published) / published).toBeLessThan(0.02);
+    within2Percent(headingAdvance / (headingEm * headSize), PHOTO_CARD_SUBTITLE_CSS_RATIO.heading);
+    within2Percent(bodyAdvance / (bodyEm * bodySize), PHOTO_CARD_SUBTITLE_CSS_RATIO.body);
     // And the two faces really are different widths — one ratio for both would be wrong for one of them.
-    expect(headingAdvance / headSize).not.toBeCloseTo(bodyAdvance / bodySize, 2);
+    expect(headingAdvance / (headingEm * headSize)).not.toBeCloseTo(bodyAdvance / (bodyEm * bodySize), 2);
   }, 180000);
 });
