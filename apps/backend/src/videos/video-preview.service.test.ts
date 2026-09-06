@@ -8,7 +8,7 @@ import { WorkflowState } from "@ai-animation-studio/shared";
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { RunwayBudget } from "../providers/runway-budget.js";
-import { LocalVideoPreviewService, utf16Length, describesSameScene, promptFor, type StoredScene } from "./video-preview.service.js";
+import { LocalVideoPreviewService, utf16Length, describesSameScene, promptFor, STABILITY_RULE, type StoredScene } from "./video-preview.service.js";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 const roots: string[] = [];
@@ -146,6 +146,33 @@ describe("provider-free video prompt preview", () => {
 
     expect(underOldLabels).not.toBe(now);
     expect(describesSameScene(underOldLabels, now)).toBe(true);
+  });
+
+  /**
+   * The last line is the same for every scene ever rendered, so it is not something a person wrote about this
+   * one — and until now it was compared as though it were. Rendering it with a single word changed reported a
+   * different scene, which means editing that sentence would have put 「장면 내용이 바뀐 뒤로」 on all thirty-six
+   * recorded prompts on disk while no script had moved. The first line was found to have this exact shape on
+   * 2026-09-05; the last line kept it.
+   *
+   * The image side never had the problem: NO_LEGIBLE_TEXT_RULE is kept out of the recorded prompt entirely, and
+   * its comment says why. This is the same conclusion reached from the other end — the line stays in what was
+   * recorded and sent, because that is what the provider was actually asked, and only the comparison ignores it.
+   */
+  it("does not call a clip stale because the constant closing rule was reworded", () => {
+    const scene = { number: 1, description: "d", visual_action: "v", start_motion: "s1", main_motion: "m1", end_motion: "e1", shot_size: "shot", camera_angle: "angle", composition: "comp", lens_feel: "lens", focus_subject: "focus", camera_motion: "cam", environment_motion: "env", motion_speed: "slow", motion_intensity: "low", expression_change: "face", continuity_hint: "hint" } as unknown as StoredScene;
+    const recorded = promptFor(scene, undefined, "720:1280", 5).prompt;
+    const reworded = recorded.replace(STABILITY_RULE, "Keep the same person, clothing and place as the first frame.");
+
+    expect(recorded).toContain(STABILITY_RULE);
+    expect(reworded).not.toBe(recorded);
+    expect(describesSameScene(recorded, reworded)).toBe(true);
+  });
+
+  /** And it is still sent: ignoring it in the comparison must not quietly drop it from what the provider is asked. */
+  it("still ends every request with that rule", () => {
+    const scene = { number: 1, description: "d", visual_action: "v", start_motion: "s1", main_motion: "m1", end_motion: "e1", shot_size: "shot", camera_angle: "angle", composition: "comp", lens_feel: "lens", focus_subject: "focus", camera_motion: "cam", environment_motion: "env", motion_speed: "slow", motion_intensity: "low", expression_change: "face", continuity_hint: "hint" } as unknown as StoredScene;
+    expect(promptFor(scene, undefined, "720:1280", 5).prompt.endsWith(STABILITY_RULE)).toBe(true);
   });
 
   it("still calls a clip stale when the scene itself was edited", () => {

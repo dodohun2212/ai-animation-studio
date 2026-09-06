@@ -80,6 +80,28 @@ export interface VideoPromptResult {
 }
 
 /**
+ * The one line every video request ends with, and the only line in the prompt that is the same for every scene.
+ *
+ * Compared apart from the scene, for the reason the image side already worked out: a constant rule inside the
+ * recorded text is a rule the staleness check reads as content. `NO_LEGIBLE_TEXT_RULE` is kept out of the image
+ * record entirely and its comment says why — a constant line added to it would mark every picture ever generated
+ * as behind its own script. The video side put its rule inside the rendered prompt instead, and
+ * `describesSameScene` compares a line with no ': ' as a whole value, so this line was compared as though
+ * someone had written it about this scene.
+ *
+ * Measured: rendering it with one word changed reports a different scene. Editing this sentence would have
+ * marked all thirty-six recorded video prompts on disk as 장면 내용이 바뀐 뒤로 다시 만들지 않았습니다, false for
+ * every one of them — the defect found on 2026-09-05 in the first line, still sitting in the last. The prefix
+ * was examined then and the suffix was not.
+ *
+ * It stays in the text that is recorded and sent, because that is what was actually asked of the provider. Only
+ * the comparison strips it, so the sentence can be fixed later without telling every existing clip that its
+ * scene was rewritten. Episode 6 scene 6 is why that matters: this line demands stable anatomy while the story
+ * model had written a face being swallowed, and the two cannot both be obeyed.
+ */
+export const STABILITY_RULE = "Maintain stable identity, anatomy, clothing, essential objects, lighting and scene continuity throughout the shot.";
+
+/**
  * Whether two rendered video prompts describe the same scene — the question staleness is actually asking.
  *
  * The badge this feeds says "장면 내용이 바뀐 뒤로 이 영상을 다시 만들지 않았습니다", so it must fire when the
@@ -97,7 +119,16 @@ export interface VideoPromptResult {
  * only regenerating it can, and that is the person's money to spend.
  */
 export function describesSameScene(recorded: string, recomputed: string): boolean {
-  const values = (prompt: string) => prompt.split("\n").map((line) => { const at = line.indexOf(": "); return at < 0 ? line : line.slice(at + 2); }).join("\n");
+  // The closing rule is dropped by shape, not by its current wording: matching the exact sentence would only
+  // strip it from whichever side already has today's version, and the comparison that matters is an old record
+  // against a reworded recompute. Every section renders as `Label: value`, so a final line with no separator is
+  // that rule and nothing else. The first line has no separator either and is deliberately left in — that is how
+  // videoPromptDrift tells a clip-length or orientation change apart from a scene edit.
+  const withoutClosingRule = (lines: string[]) => lines.length > 1 && !lines[lines.length - 1]!.includes(": ")
+    ? lines.slice(0, -1)
+    : lines;
+  const values = (prompt: string) => withoutClosingRule(prompt.split("\n"))
+    .map((line) => { const at = line.indexOf(": "); return at < 0 ? line : line.slice(at + 2); }).join("\n");
   return values(recorded) === values(recomputed);
 }
 
@@ -161,8 +192,7 @@ export function promptFor(scene: StoredScene, previous: StoredScene | undefined,
     ["Pacing", `motion speed ${scene.motion_speed}; intensity ${scene.motion_intensity}`],
   ];
   const prefix = `Create one continuous cinematic ${clipDurationSeconds}-second ${orientation} image-to-video shot from the supplied exact first frame.`;
-  const suffix = "Maintain stable identity, anatomy, clothing, essential objects, lighting and scene continuity throughout the shot.";
-  const render = (included: readonly [string, string][]) => [prefix, ...included.map(([label, value]) => `${label}: ${value}`), suffix].join("\n");
+  const render = (included: readonly [string, string][]) => [prefix, ...included.map(([label, value]) => `${label}: ${value}`), STABILITY_RULE].join("\n");
   // "Pacing" is the one section this filter cannot see into: it is built as a template, so two blank fields
   // would still render "motion speed ; intensity " and pass. That case does not arise — parseScenes above and
   // episode-videos.service.ts's scenes() both reject any scene field that is blank, so nothing that generates
