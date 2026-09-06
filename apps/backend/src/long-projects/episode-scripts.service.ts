@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { SUBJECT_SURVIVES_RULE, shotBudgetRule } from "../story/motion-field-rules.js";
 import { storedSceneCount } from "../projects/stored-scene-count.js";
 import { readLongProjectJson } from "./long-project-json.js";
 import { OPENAI_LEDGER_FILE, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
@@ -274,12 +275,12 @@ export class EpisodeScriptsService {
       // how long the shot is — the clip length appeared only on the narration line below — so nothing capped
       // what could be asked of it. The pacing rule above holds the speed steady and says nothing about how many
       // things happen at that speed.
-      `움직임 항목(start_motion·main_motion·end_motion·camera_motion·environment_motion)은 장면당 ${clipDurationSeconds}초짜리 연속된 한 컷으로 만들어집니다. 시작 자세와 종료 자세 사이에 주요 동작 하나와 카메라 이동 하나가 들어갈 분량으로 쓰고, 한 컷에 여러 동작이나 여러 번의 카메라 전환을 넣지 마십시오.`,
+      shotBudgetRule(clipDurationSeconds),
       // The other half of that failure: every video request ends with a fixed line demanding stable identity,
       // anatomy and clothing, and the script had written a face being swallowed by glitch into end_motion. The
       // two authors never met — the model does not see the line that will be appended to what it writes. Said
       // here in the same words the short project's template uses, so the two paths cannot drift apart.
-      `영상 생성 요청은 인물의 정체성·신체·의상이 컷 내내 유지되도록 함께 요구합니다. 그러므로 얼굴이나 신체가 부서지거나 다른 것으로 바뀌거나 사라지는 변화는 움직임 항목에 쓰지 마십시오. 그런 사건이 이야기에 필요하면 description에 서술하고, 움직임 항목에는 그 직전까지의 동작만 쓰십시오.`,
+      SUBJECT_SURVIVES_RULE,
       "대사 문장을 움직임으로 복사하지 말고 화면에 보이는 행동으로 변환하며, 다음 장면은 이전 장면의 end_motion을 자연스럽게 이어받게 하십시오.",
       `narration에는 장면당 ${clipDurationSeconds}초 안에 자연스럽게 읽을 수 있는 내레이션/자막 문장을 카메라 지시나 지문 없이 작성하십시오.`,
     ].join("\n");
