@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { OPENAI_TTS_MODEL } from "./openai-narration-adapter.js";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -72,6 +73,30 @@ describe("narration generation with a connected OpenAI credential", () => {
     expect(result.budget).toMatchObject({ spentUsd: expect.closeTo(0.02, 8) });
     const bytes = await fs.readFile(generation.narrationPath("narr", 1));
     expect(bytes).toEqual(AUDIO_BYTES);
+  });
+
+  /**
+   * The record names what made the audio, and four call sites wrote that name out by hand while the adapter
+   * that actually sends the request reads it from OPENAI_TTS_MODEL. The image and story paths both record from
+   * their own constants; narration was the one family that did not, so changing the model would have left every
+   * narration record naming a model that produced none of it.
+   *
+   * Asserted against the constant rather than the string, so re-typing the literal is what turns this red.
+   */
+  it("records the model the adapter actually calls, not a copy of its name", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(audioResponse(200, AUDIO_BYTES));
+    vi.stubGlobal("fetch", fetchMock);
+    const { generation, projects } = await setup();
+
+    await generation.generate("narr", { approved: true });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const sent = JSON.parse(String(init.body)) as { model?: string };
+    expect(sent.model).toBe(OPENAI_TTS_MODEL);
+    const stored = await projects.findById("narr");
+    const adapters = stored.narration_generation_records.map((record) => (record as { adapter?: string }).adapter);
+    expect(adapters.length).toBeGreaterThan(0);
+    expect(adapters.every((adapter) => adapter === OPENAI_TTS_MODEL)).toBe(true);
   });
 
   it("falls back to local-fake audio when no OpenAI credential is connected", async () => {

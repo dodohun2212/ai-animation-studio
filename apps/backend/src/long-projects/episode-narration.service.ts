@@ -16,7 +16,7 @@ import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
-import { callOpenAiTtsApi } from "../narration/openai-narration-adapter.js";
+import { OPENAI_TTS_MODEL, callOpenAiTtsApi } from "../narration/openai-narration-adapter.js";
 import { probeAudioDurationSeconds } from "../narration/audio-duration.js";
 import { longBudgetLedgerUnreadable, longEpisodeNarrationBudgetExceeded, longEpisodeNarrationContentUnavailable, longEpisodeNarrationGenerationFailed, longEpisodeNarrationMissingText, longEpisodeNarrationNotAllowed, longEpisodeNarrationNotEnabled, longEpisodeNarrationProviderError, longEpisodeNarrationStorageError, longEpisodeNotFound, longInvalidData, longLocked, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
@@ -231,7 +231,7 @@ export class EpisodeNarrationService {
           // (providers/budget-ledger.ts, docs/06_DECISIONS.md D-037).
             if (await recordSpend(() => this.budget!.record(id, "tts", succeeded, TTS_ESTIMATED_COST_USD))) unrecordedScenes.push(sceneNumber);
           }
-          adapter = "gpt-4o-mini-tts"; apiCalls = 1;
+          adapter = OPENAI_TTS_MODEL; apiCalls = 1;
         }
         await this.writeAudio(destination, bytes);
         if (!(await this.validAudio(destination))) throw new Error("invalid audio");
@@ -292,7 +292,7 @@ export class EpisodeNarrationService {
         if (error instanceof OpenAiAdapterError) throw longEpisodeNarrationProviderError(error.category, error.message);
         throw longEpisodeNarrationProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown);
       }
-      adapter = "gpt-4o-mini-tts"; apiCalls = 1;
+      adapter = OPENAI_TTS_MODEL; apiCalls = 1;
       // Read-only, computed after the fact. Skipped when the record could not be written — same file, so it
       // would throw and take the response, and the audio just paid for, with it. The field is already optional.
       if (!spendUnrecorded) retryEstimate = { perSceneCostUsd: TTS_ESTIMATED_COST_USD, budget: await budgetPreviewFor(this.budget, TTS_ESTIMATED_COST_USD) };

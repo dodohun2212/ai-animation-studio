@@ -22,7 +22,7 @@ import { sceneValue } from "../images/image-prompt.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
-import { callOpenAiTtsApi } from "./openai-narration-adapter.js";
+import { OPENAI_TTS_MODEL, callOpenAiTtsApi } from "./openai-narration-adapter.js";
 import { narrationBudgetLedgerUnreadable, invalidNarrationRequest, narrationBudgetExceeded, narrationMissingText, narrationNotEnabled, narrationLocked, narrationProviderError, narrationStorageError } from "./narration-api.error.js";
 import { computeSceneStaleness, sceneReferenceContext } from "../projects/scene-staleness.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
@@ -151,7 +151,7 @@ export class NarrationReviewService {
         if (error instanceof OpenAiAdapterError) throw narrationProviderError(error.category, error.message);
         throw narrationProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown);
       }
-      adapter = "gpt-4o-mini-tts";
+      adapter = OPENAI_TTS_MODEL;
       apiCalls = 1;
       // Read-only, computed after the fact: reflects the ledger's state right after this regeneration's own
       // record(). Skipped when that record could not be written — same file, so it would throw and take the

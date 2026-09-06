@@ -15,7 +15,7 @@ import { sceneValue } from "../images/image-prompt.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OpenAiAdapterError } from "../providers/openai-common.js";
-import { callOpenAiTtsApi } from "./openai-narration-adapter.js";
+import { OPENAI_TTS_MODEL, callOpenAiTtsApi } from "./openai-narration-adapter.js";
 import { narrationBudgetLedgerUnreadable, invalidNarrationRequest, narrationBudgetExceeded, narrationContentUnavailable, narrationGenerationFailed, narrationNotEnabled, narrationLocked, narrationProviderError, narrationStorageError } from "./narration-api.error.js";
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -175,7 +175,7 @@ export class LocalNarrationGenerationService {
             // (providers/budget-ledger.ts, docs/06_DECISIONS.md D-037).
             if (await recordSpend(() => this.budget!.record(current.project_id, "tts", succeeded, TTS_ESTIMATED_COST_USD))) unrecordedScenes.push(number);
           }
-          adapter = "gpt-4o-mini-tts";
+          adapter = OPENAI_TTS_MODEL;
           apiCalls = 1;
         }
         await fs.mkdir(path.dirname(destination), { recursive: true });
