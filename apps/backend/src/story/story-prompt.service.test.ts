@@ -421,6 +421,62 @@ describe("local Story generator", () => {
     expect(preview.originalPrompt).not.toContain("예전에 적어둔 다른 이름");
   });
 
+
+  /**
+   * 캡틴D read the prompt of a 꽃말 reel before approving it and found the app arguing with itself: [2] said
+   * 「등록된 Character Asset 없음」 and then ordered the model to keep 대표 캐릭터 at the centre of the whole
+   * script, while [7] 피할 요소 began with 사람. Both halves went out on the same paid request. Those four
+   * lines were flat template text, so nothing made them conditional and nothing here caught them — the suite
+   * was fully green with the contradiction in it.
+   *
+   * The real template on purpose: the defect lived half in the file and half in the variable, and a hand-written
+   * fixture would have proved only the half it spelled out.
+   */
+  it("does not order a lead kept at the centre of a project that has just been told it has no characters", async () => {
+    const root = await fsPromises.mkdtemp(path.join(os.tmpdir(), "story-prompt-no-cast-")); roots.push(root);
+    const repository = new LocalProjectRepository(path.join(root, "projects"));
+    await repository.create(createStoredProject("no_cast", "빨간 장미의 꽃말", "2026-08-22T00:00:00.000Z"));
+
+    const { preview } = await new StoryPromptService(repository).preview("no_cast");
+
+    expect(preview.originalPrompt).toContain("등록된 Character Asset 없음");
+    expect(preview.originalPrompt).not.toContain("대표 캐릭터는 대본 전체의 중심으로 유지하십시오.");
+    expect(preview.originalPrompt).not.toContain("서로 다른 Character Asset의 이름, 외형과 역할을 섞지 마십시오.");
+    // The conditional sentences of sections 3-6 stay. With no value they ask for nothing, so removing them
+    // would be a rewrite of working text rather than the removal of a contradiction.
+    expect(preview.originalPrompt).toContain("이전 장면이 연결된 경우");
+  });
+
+  it("still gives those instructions to a project that actually has a cast", async () => {
+    const root = await fsPromises.mkdtemp(path.join(os.tmpdir(), "story-prompt-with-cast-")); roots.push(root);
+    const assets = new LocalAssetsRepository(root);
+    const folder = await assets.createFolder({ assetType: "character", displayName: "이배드" });
+    const repository = new LocalProjectRepository(path.join(root, "projects"));
+    const stored = createStoredProject("with_cast", "밤하늘", "2026-08-22T00:00:00.000Z");
+    stored.character_profile = { name: "", cast: [{ asset_id: folder.asset_id, cast_role: "protagonist", story_role: "주인공" }] };
+    await repository.create(stored);
+
+    const { preview } = await new StoryPromptService(repository, undefined, undefined, undefined, undefined, assets).preview("with_cast");
+
+    expect(preview.originalPrompt).toContain("대표 캐릭터는 대본 전체의 중심으로 유지하십시오.");
+    expect(preview.originalPrompt).toContain("서로 다른 Character Asset의 이름, 외형과 역할을 섞지 마십시오.");
+  });
+
+  /** A typed name with no Asset behind it is still a named lead: the two lead sentences must survive where there is no cast block to carry them. */
+  it("keeps the lead instructions for a name typed into settings with no Character Asset registered", async () => {
+    const root = await fsPromises.mkdtemp(path.join(os.tmpdir(), "story-prompt-typed-lead-")); roots.push(root);
+    const repository = new LocalProjectRepository(path.join(root, "projects"));
+    const stored = createStoredProject("typed_lead", "밤하늘", "2026-08-22T00:00:00.000Z");
+    stored.character_profile = { name: "이배드", cast: [] };
+    await repository.create(stored);
+
+    const { preview } = await new StoryPromptService(repository).preview("typed_lead");
+
+    expect(preview.originalPrompt).toContain("대표 캐릭터: 이배드");
+    expect(preview.originalPrompt).toContain("대표 캐릭터는 대본 전체의 중심으로 유지하십시오.");
+    // No Character Asset exists, so there is nothing to keep apart and nothing to keep out of the wrong scene.
+    expect(preview.originalPrompt).not.toContain("서로 다른 Character Asset의 이름, 외형과 역할을 섞지 마십시오.");
+  });
   it("pays for one Story when two approvals arrive together, and refuses the second instead of queuing it", async () => {
     // The prompt hash guards against approving a *stale* prompt. It does nothing about two identical approvals
     // racing: both read READY, both decide they may run, and both pay.

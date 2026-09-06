@@ -44,6 +44,33 @@ const value = (record: Record<string, unknown>, key: string, fallback = "") => t
 const AUTONOMOUS_SETTING = "자율";
 
 /**
+ * The cast block plus the sentences that only mean something once there is a cast to mean it about.
+ *
+ * These four lines used to sit in the template as flat text under $character_cast_metadata, which made them
+ * unconditional. On a project with no Character Asset and no typed lead the prompt therefore said 「등록된
+ * Character Asset 없음」 and then, four lines later, 「대표 캐릭터는 대본 전체의 중심으로 유지하십시오」 — it
+ * named a thing as absent and then ordered the model to build the script around it. 캡틴D found this on a
+ * 꽃말 reel whose [7] 피할 요소 begins with 사람: one half of the prompt forbade people and the other half
+ * required a protagonist, and the only way to obey both was to not obey one.
+ *
+ * Sections 3-6 look the same and are not. Their trailing text is conditional — 「…이 있으면 반영하십시오」,
+ * 「이전 장면이 연결된 경우 …」 — so with no value they ask for nothing. A leftover sentence is noise when it
+ * is a conditional and a contradiction when it is an imperative; only the imperatives are moved here.
+ *
+ * Split in two because the two halves answer different questions. The lead sentences hold whenever anyone is
+ * named as 대표 캐릭터 — a typed name with no Asset behind it is still a named lead, and dropping them there
+ * would lose the instruction on exactly the projects that have no cast block to carry it. The Asset sentences
+ * hold only when Character Assets exist, since there is nothing to keep apart otherwise.
+ */
+function characterCastMetadata(description: string, hasNamedLead: boolean, castSize: number): string {
+  const instructions = [
+    ...(hasNamedLead ? ["대표 캐릭터는 대본 전체의 중심으로 유지하십시오.", "위 대표 캐릭터 설정을 대본 전체에서 일관되게 유지하십시오."] : []),
+    ...(castSize > 0 ? ["서브 캐릭터는 각자의 이야기 역할에 맞게 필요한 장면에만 등장시키십시오.", "서로 다른 Character Asset의 이름, 외형과 역할을 섞지 마십시오."] : []),
+  ];
+  return instructions.length > 0 ? `${description}\n\n${instructions.join("\n")}` : description;
+}
+
+/**
  * The source is real ESM (apps/backend's package.json has `"type": "module"`), where `import.meta.url` is the
  * correct way to find this module's own directory — but the `package` script also bundles this same source into a
  * single CJS file with esbuild, and esbuild empties `import.meta` in CJS output rather than shimming it (it warns
@@ -97,6 +124,7 @@ async function promptVariables(stored: StoredProject, assets?: LocalAssetsReposi
   const cast = toShortProjectCast(stored);
   const castLead = cast.find((member) => isShortProjectCastLead(member.castRole));
   const castLeadName = castLead && assets ? (await assets.get(castLead.assetId).catch(() => null))?.display_name : undefined;
+  const characterName = castLeadName || settings.character || AUTONOMOUS_SETTING;
   const { atmosphereAssetIds, sceneReferenceAssets } = toShortProjectAssetReferences(stored);
   return {
     project_name: settings.projectName || "별도 이름 없음",
@@ -113,8 +141,8 @@ async function promptVariables(stored: StoredProject, assets?: LocalAssetsReposi
     // `?? settings.character` still lands on the empty string when nobody has named anyone — the baseline left
     // this one bare too, and a project created and generated straight away sends `대표 캐릭터:` with nothing
     // after it. Same word as the other open choices: it is a choice left open, not a value that went missing.
-    character: castLeadName || settings.character || AUTONOMOUS_SETTING,
-    character_cast_metadata: await describeCharacterCast(assets, cast),
+    character: characterName,
+    character_cast_metadata: characterCastMetadata(await describeCharacterCast(assets, cast), characterName !== AUTONOMOUS_SETTING, cast.length),
     atmosphere_asset_metadata: await describeAtmosphereAssets(assets, atmosphereAssetIds),
     scene_reference_asset_metadata: await describeSceneReferenceAssets(assets, sceneReferenceAssets),
     // `??` was wrong here as well as blank: a stored empty string is not "absent", so `?? fallback` kept it and

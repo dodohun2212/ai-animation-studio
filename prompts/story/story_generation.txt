@@ -11,11 +11,6 @@
 대표 캐릭터 Asset 및 프로젝트 등장 캐릭터 정보:
 $character_cast_metadata
 
-대표 캐릭터는 대본 전체의 중심으로 유지하십시오.
-위 대표 캐릭터 설정을 대본 전체에서 일관되게 유지하십시오.
-서브 캐릭터는 각자의 이야기 역할에 맞게 필요한 장면에만 등장시키십시오.
-서로 다른 Character Asset의 이름, 외형과 역할을 섞지 마십시오.
-
 [3. 영상·장면 전체 분위기 Reference Asset]
 $atmosphere_asset_metadata
 
