@@ -102,10 +102,19 @@ export function MergeAudioFieldset({ idPrefix, tracks, narrationAvailable, mode,
   const bgmSelectable = tracks.length > 0;
   const selectedTrack = tracks.find((track) => track.trackId === trackId);
   const player = useRef<HTMLAudioElement | null>(null);
+  /**
+   * Why the last 「여기부터」 press was refused, or null.
+   *
+   * The two guards below were correct and completely silent: a press that landed on an unmeasured position, or
+   * at the very end of the song, simply did nothing. 캡틴D pressed it, nothing happened, and the screen offered
+   * no reason — the same shape as the archive box that demanded a character it could not accept. A control that
+   * refuses has to say so.
+   */
+  const [startRefusal, setStartRefusal] = useState<string | null>(null);
 
   // A start point belongs to the track it was heard in. Keeping it across a change would silently apply "1분 20초"
   // to a song that may be a minute long — and the server would refuse a merge nobody meant to ask for.
-  useEffect(() => { onStartSecondsChange(0); onVolumePercentChange(null); }, [trackId]);
+  useEffect(() => { onStartSecondsChange(0); onVolumePercentChange(null); setStartRefusal(null); }, [trackId]);
 
   return (
     <fieldset data-testid={`${idPrefix}-settings`} className="space-y-2 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
@@ -197,10 +206,17 @@ export function MergeAudioFieldset({ idPrefix, tracks, narrationAvailable, mode,
                 if (!element) return;
                 // Not measured is not zero: a position the browser cannot state must not be recorded as "the
                 // beginning", which is a choice nobody made. Same rule as the cover frame.
-                if (!Number.isFinite(element.currentTime) || element.currentTime < 0) return;
+                if (!Number.isFinite(element.currentTime) || element.currentTime < 0) {
+                  setStartRefusal("재생 위치를 아직 읽지 못했습니다. 잠깐 재생했다가 다시 눌러 주세요.");
+                  return;
+                }
                 // Refused by the server at or past the end, so it is refused here first — with the reason on
                 // screen rather than after a merge attempt.
-                if (element.currentTime >= selectedTrack.durationSeconds) return;
+                if (element.currentTime >= selectedTrack.durationSeconds) {
+                  setStartRefusal(`곡의 끝(${formatSeconds(selectedTrack.durationSeconds)})에서는 시작할 수 없습니다. 더 앞으로 옮겨 주세요.`);
+                  return;
+                }
+                setStartRefusal(null);
                 onStartSecondsChange(element.currentTime);
               }}
             >
@@ -227,6 +243,11 @@ export function MergeAudioFieldset({ idPrefix, tracks, narrationAvailable, mode,
               </span>
             )}
           </div>
+          {startRefusal && (
+            <p role="alert" data-testid={`${idPrefix}-start-refused`} className="text-xs text-amber-300">
+              {startRefusal}
+            </p>
+          )}
         </div>
       )}
       {/*

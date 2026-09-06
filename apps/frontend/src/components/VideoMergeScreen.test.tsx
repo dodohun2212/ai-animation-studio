@@ -527,7 +527,10 @@ describe("VideoMergeScreen", () => {
 
   // The server refuses a start at or past the end; refusing it here first keeps that from being discovered by
   // pressing merge and reading an error about a choice already made.
-  it("will not take a position at or past the end of the track", async () => {
+  //
+  // 캡틴D pressed 「여기부터」 and reported it dead. Both guards were correct and completely silent, so a refused
+  // press and a broken button look exactly alike from the outside — the refusal has to say which one it is.
+  it("will not take a position at or past the end of the track, and says why", async () => {
     renderScreen(vi.fn(), { narrationAvailable: false }, { narrationEnabled: false, subtitlesEnabled: false }, [makeTrack({ durationSeconds: 40 })]);
 
     fireEvent.click(await screen.findByTestId("merge-audio-bgm"));
@@ -537,6 +540,38 @@ describe("VideoMergeScreen", () => {
     fireEvent.click(screen.getByTestId("merge-audio-start-set"));
 
     expect(screen.getByTestId("merge-audio-start-unset")).toBeTruthy();
+    expect(screen.getByTestId("merge-audio-start-refused").textContent).toContain("0:40");
+  });
+
+  it("says so when the position could not be read at all, instead of doing nothing", async () => {
+    renderScreen(vi.fn(), { narrationAvailable: false }, { narrationEnabled: false, subtitlesEnabled: false }, [makeTrack({ durationSeconds: 40 })]);
+
+    fireEvent.click(await screen.findByTestId("merge-audio-bgm"));
+    fireEvent.change(screen.getByTestId("merge-audio-track"), { target: { value: "t1" } });
+    const player = await screen.findByTestId("merge-audio-start-player");
+    // What a browser reports before it has measured the track — never recorded as "the beginning".
+    Object.defineProperty(player, "currentTime", { value: Number.NaN, configurable: true });
+    fireEvent.click(screen.getByTestId("merge-audio-start-set"));
+
+    expect(screen.getByTestId("merge-audio-start-unset")).toBeTruthy();
+    expect(screen.getByTestId("merge-audio-start-refused")).toBeTruthy();
+  });
+
+  // A press that succeeds must clear whatever the last refusal said, or the reason outlives the problem.
+  it("clears the refusal once a position is accepted", async () => {
+    renderScreen(vi.fn(), { narrationAvailable: false }, { narrationEnabled: false, subtitlesEnabled: false }, [makeTrack({ durationSeconds: 40 })]);
+
+    fireEvent.click(await screen.findByTestId("merge-audio-bgm"));
+    fireEvent.change(screen.getByTestId("merge-audio-track"), { target: { value: "t1" } });
+    const player = await screen.findByTestId("merge-audio-start-player");
+    Object.defineProperty(player, "currentTime", { value: 40, configurable: true });
+    fireEvent.click(screen.getByTestId("merge-audio-start-set"));
+    expect(screen.getByTestId("merge-audio-start-refused")).toBeTruthy();
+
+    Object.defineProperty(player, "currentTime", { value: 12, configurable: true });
+    fireEvent.click(screen.getByTestId("merge-audio-start-set"));
+    expect(screen.queryByTestId("merge-audio-start-refused")).toBeNull();
+    expect(screen.getByTestId("merge-audio-start-at").textContent).toContain("0:12");
   });
 
   it("cancels the confirmation without ever calling the merge endpoint", async () => {
