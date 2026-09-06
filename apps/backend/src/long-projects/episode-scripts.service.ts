@@ -1,5 +1,5 @@
 import * as fs from "node:fs/promises";
-import { SUBJECT_SURVIVES_RULE, shotBudgetRule } from "../story/motion-field-rules.js";
+import { NO_TEXT_AS_EVENT_RULE, ONE_PACE_RULE, SUBJECT_SURVIVES_RULE, shotBudgetRule } from "../story/motion-field-rules.js";
 import { storedSceneCount } from "../projects/stored-scene-count.js";
 import { readLongProjectJson } from "./long-project-json.js";
 import { OPENAI_LEDGER_FILE, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
@@ -265,11 +265,11 @@ export class EpisodeScriptsService {
       // three-beat instruction the Opening/Main/Ending labels used to carry, arriving by another door:
       // Cowork read it off the frames as 멈춤 → 급발진 in Episode 4, and Episode 5 scene 6 (느림에서
       // 빠름으로 전환) blows out to white at 3.7s. One five-second shot holds one pace.
-      "motion_speed와 motion_intensity에는 장면 전체에 걸친 하나의 상태만 적으십시오. \"느림에서 빠름으로 전환\"처럼 도중에 바뀌는 변화나 두 가지 속도를 한 장면에 담지 마십시오. 속도가 달라져야 하는 이야기라면 장면을 나누십시오.",
+      ONE_PACE_RULE,
       // The video model cannot draw readable writing, and asking for it is one of the two documented causes
       // of a refused clip — the other being text already on the first frame. Both were met on 2026-09-05:
       // one scene was refused twice for $0.50, and two more came back with caption boards holding the shot.
-      "화면에 글자가 나타나는 것을 장면의 주된 사건으로 삼지 마십시오. 기록·라벨·자막·간판·파형처럼 읽히는 글자는 영상 모델이 그리지 못합니다. 그 내용이 뜻하는 바를 인물의 행동·표정·빛·구도로 보여 주십시오.",
+      NO_TEXT_AS_EVENT_RULE,
       // Episode 6 scene 6 failed at Runway with INTERNAL.BAD_OUTPUT.CODE01 on 2026-09-06, and its prompt asked
       // one five-second shot for two camera moves and three separate deformations of a face. Nothing here said
       // how long the shot is — the clip length appeared only on the narration line below — so nothing capped

@@ -3,7 +3,7 @@ import * as path from "node:path";
 import * as url from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { CLIP_DURATION_PLACEHOLDER, SUBJECT_SURVIVES_RULE, shotBudgetRule } from "./motion-field-rules.js";
+import { CLIP_DURATION_PLACEHOLDER, NO_TEXT_AS_EVENT_RULE, ONE_PACE_RULE, SUBJECT_SURVIVES_RULE, shotBudgetRule } from "./motion-field-rules.js";
 
 /**
  * Two prompts ask for the same eighteen scene fields, and only one of them is a file.
@@ -34,6 +34,19 @@ describe("the motion-field rules both script prompts carry", () => {
 
   it("states the identity rule in the story template in the same words the Episode prompt uses", async () => {
     expect(await template()).toContain(SUBJECT_SURVIVES_RULE);
+  });
+
+  /**
+   * These two were bought on 2026-09-05 — a scene refused twice for $0.50 because readable writing was its
+   * event, and Episode 5 scene 6 blowing out to white at 3.7s because its pace changed mid-shot — and the fix
+   * went into the Episode prompt only. A short project could still write either of them, on the same video
+   * model, for the same money. Nothing said so, because nothing compared the two prompts.
+   */
+  it("states the pace rule and the no-text-as-event rule in the story template too", async () => {
+    const rendered = await template();
+
+    expect(rendered).toContain(ONE_PACE_RULE);
+    expect(rendered).toContain(NO_TEXT_AS_EVENT_RULE);
   });
 
   /** Both rules are about the motion fields, so both must name them — a rule that names nothing is advice. */
