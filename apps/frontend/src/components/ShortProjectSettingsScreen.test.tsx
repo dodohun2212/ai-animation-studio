@@ -7,7 +7,7 @@ import { ShortProjectSettingsScreen } from "./ShortProjectSettingsScreen.js";
 const settings = {
   projectName: "별의 지도", topic: "별을 찾는 아이", genre: "판타지", mood: "따뜻함", character: "아이",
   lore: "별의 세계", fullStory: "별을 찾는다.", durationSeconds: 30, sceneCount: 6, clipDurationSeconds: 5,
-  additionalNotes: "", styleNotes: { aspect: "16:9", lighting: "달빛" }, narrationEnabled: false, subtitlesEnabled: false,
+  additionalNotes: "", styleNotes: { aspect: "16:9", lighting: "달빛" }, narrationEnabled: false, subtitlesEnabled: false, sceneImageContinuityEnabled: false,
 };
 
 /** Routes fetch calls by URL/method so test order doesn't depend on the settings screen's internal fetch sequencing. */
@@ -524,6 +524,53 @@ describe("ShortProjectSettingsScreen", () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => String(url) === "/projects/sample_project/settings" && (init as RequestInit | undefined)?.method === "PATCH")).toBe(true));
     const patchCall = fetchMock.mock.calls.find(([url, init]) => String(url) === "/projects/sample_project/settings" && (init as RequestInit | undefined)?.method === "PATCH")!;
     expect(JSON.parse(String((patchCall[1] as RequestInit).body))).toMatchObject({ settings: { narrationEnabled: true } });
+  });
+
+  /**
+   * The setting existed with no way to reach it. 캡틴D reported an Episode whose scene 1 and scene 2 had
+   * nothing to do with each other, the server side was fixed the same day, and the switch that turns it on was
+   * the missing piece — a fix nobody could ask for.
+   *
+   * Off is asserted first because that is what every existing project must keep answering: a project that never
+   * asked for the chain resolves exactly the references it always did, which is what allowed this to ship.
+   */
+  it("sends 장면 이어 그리기 when it is turned on, and leaves it off until then", async () => {
+    const project = makeProject({});
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+      "PATCH /projects/sample_project/settings": { project, settings: { ...settings, sceneImageContinuityEnabled: true } },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    await screen.findByDisplayValue("별의 지도");
+    const toggle = screen.getByTestId("settings-scene-image-continuity-enabled") as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: "설정 저장" }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => String(url) === "/projects/sample_project/settings" && (init as RequestInit | undefined)?.method === "PATCH")).toBe(true));
+    const patchCall = fetchMock.mock.calls.find(([url, init]) => String(url) === "/projects/sample_project/settings" && (init as RequestInit | undefined)?.method === "PATCH")!;
+    expect(JSON.parse(String((patchCall[1] as RequestInit).body))).toMatchObject({ settings: { sceneImageContinuityEnabled: true } });
+  });
+
+  /** Says when to turn it off as well as on — this is a choice between two kinds of video, not a better setting. */
+  it("explains the case for leaving it off, not only the case for turning it on", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    await screen.findByDisplayValue("별의 지도");
+    expect(screen.getByText(/장면마다 장소가 바뀌는 이야기라면 꺼 두세요/)).toBeTruthy();
   });
 
   it("reopens an existing project with narration already on", async () => {

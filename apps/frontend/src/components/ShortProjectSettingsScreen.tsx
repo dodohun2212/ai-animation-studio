@@ -1100,6 +1100,37 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
               </span>
             </label>
           </div>
+          {/*
+            * Its own box rather than a line in the 내레이션 group: that group is about sound and this decides
+            * what the pictures are drawn from.
+            *
+            * 캡틴D reported scene 1 and scene 2 of an Episode having nothing to do with each other — black soil
+            * and a matte pot became a terracotta pot against a different background — while the script had asked
+            * for the same pot throughout and been obeyed. Within one project, nothing ever handed scene N what
+            * scene N-1 had become.
+            */}
+          <div className="md:col-span-2 space-y-3 rounded-xl border border-white/10 bg-slate-950/40 p-3.5">
+            <p className="text-sm font-semibold text-slate-200">장면 이어 그리기</p>
+            {/* Says when to turn it off as well as on, because this is a choice between two kinds of video
+                rather than a feature that is simply better. Explaining only the on case would have everyone
+                turn it on, and a story that changes place between scenes is held back by the previous
+                picture — the same reason the server defaults it to off (Cowork Round 625 ⑤, whose wording
+                this is). */}
+            <p className="text-xs leading-relaxed text-slate-400">앞 장면 그림을 참고해서 다음 장면을 그립니다. 같은 사물이 계속 나오는 영상에 켜세요. 장면마다 장소가 바뀌는 이야기라면 꺼 두세요.</p>
+            <label className="flex items-start gap-2.5 text-sm text-slate-200">
+              <input
+                type="checkbox"
+                data-testid="settings-scene-image-continuity-enabled"
+                className="mt-0.5 h-4 w-4 flex-shrink-0 accent-violet-500"
+                checked={state.settings.sceneImageContinuityEnabled}
+                onChange={(event) => setField("sceneImageContinuityEnabled", event.target.checked)}
+              />
+              <span>
+                앞 장면 이어서 그리기
+                <span className="mt-1 block text-xs text-slate-400">장면마다 참고 이미지가 한 장 늘어납니다. <span className="text-slate-300">비용 없음.</span></span>
+              </span>
+            </label>
+          </div>
           <p className="text-sm text-slate-400 md:col-span-2">
             예상 총 영상 길이: {state.settings.sceneCount * state.settings.clipDurationSeconds}초 ({state.settings.sceneCount}장면 × {state.settings.clipDurationSeconds}초)
           </p>
