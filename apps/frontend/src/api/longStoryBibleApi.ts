@@ -24,6 +24,7 @@ import {
   type UpdateLongStoryBibleStyleAssetLinkRequest,
   type UpdateLongStoryBibleStyleAssetLinkResponse,
 } from "@ai-animation-studio/shared";
+import { INTERNAL_ERROR, SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
 
 export class LongStoryBibleApiError extends Error {
   readonly code: string;
@@ -54,6 +55,8 @@ export function toLongStoryBibleDisplayError(error: unknown): { code: string; me
   if (Object.prototype.hasOwnProperty.call(SAFE_ERRORS, error.code)) return { code: error.code, message: SAFE_ERRORS[error.code]! };
   if (error.code === NETWORK.code) return NETWORK;
   if (error.code === MALFORMED.code) return MALFORMED;
+  if (error.code === SERVER_UNAVAILABLE_ERROR.code) return SERVER_UNAVAILABLE_ERROR;
+  if (error.code === INTERNAL_ERROR.code) return INTERNAL_ERROR;
   return UNKNOWN;
 }
 
@@ -119,6 +122,11 @@ async function request<T>(url: string, init: RequestInit | undefined, guard: (va
   try { body = await response.json(); } catch { body = undefined; }
   if (!response.ok) {
     const code = isRecord(body) && isString(body.code) && body.code.trim() ? body.code : MALFORMED.code;
+    // A 5xx that did not even carry the backend's own error shape means the backend never answered — it is
+    // down, restarting, or something in front of it replied. Say that, instead of blaming the response body.
+    if (isServerUnavailable(response.status, code)) {
+      throw new LongStoryBibleApiError(SERVER_UNAVAILABLE_ERROR.code, SERVER_UNAVAILABLE_ERROR.message);
+    }
     throw new LongStoryBibleApiError(code, SAFE_ERRORS[code] ?? UNKNOWN.message);
   }
   if (!guard(body)) throw new LongStoryBibleApiError(MALFORMED.code, MALFORMED.message);

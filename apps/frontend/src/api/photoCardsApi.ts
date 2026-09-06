@@ -1,4 +1,5 @@
 import { API_ROUTES, type CreatePhotoCardRequest, type CreatePhotoCardResponse } from "@ai-animation-studio/shared";
+import { INTERNAL_ERROR, SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
 
 /**
  * Creating one photo card — a single picture, a line of text burned under it, and a few seconds of slow zoom.
@@ -40,6 +41,8 @@ export function toPhotoCardDisplayError(error: unknown): { code: string; message
   }
   if (error.code === NETWORK.code) return NETWORK;
   if (error.code === MALFORMED.code) return MALFORMED;
+  if (error.code === SERVER_UNAVAILABLE_ERROR.code) return SERVER_UNAVAILABLE_ERROR;
+  if (error.code === INTERNAL_ERROR.code) return INTERNAL_ERROR;
   return UNKNOWN;
 }
 
@@ -66,6 +69,12 @@ export async function createPhotoCard(request: CreatePhotoCardRequest): Promise<
   let body: unknown;
   try { body = await response.json(); } catch { body = undefined; }
   if (!response.ok) {
+    const carriedCode = isRecord(body) && typeof body.code === "string" && body.code.trim() ? body.code : MALFORMED.code;
+    // A 5xx that did not even carry the backend's own error shape means the backend never answered — it is
+    // down, restarting, or something in front of it replied. Say that, instead of blaming the response body.
+    if (isServerUnavailable(response.status, carriedCode)) {
+      throw new PhotoCardsApiError(SERVER_UNAVAILABLE_ERROR.code, SERVER_UNAVAILABLE_ERROR.message);
+    }
     const code = isRecord(body) && typeof body.code === "string" ? body.code : UNKNOWN.code;
     const details = isRecord(body) && isRecord(body.details) ? body.details : undefined;
     throw new PhotoCardsApiError(code, "", details);

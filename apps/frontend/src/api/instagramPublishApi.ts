@@ -1,4 +1,5 @@
 import { API_ROUTES, type ForgetInstagramPostResponse, type ForgetLongEpisodeInstagramPostResponse, type PublishLongEpisodeToInstagramResponse, type PublishToInstagramResponse } from "@ai-animation-studio/shared";
+import { SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
 
 export class InstagramPublishApiError extends Error {
   readonly code: string;
@@ -44,6 +45,7 @@ export function toInstagramPublishDisplayError(error: unknown): { code: string; 
   }
   if (error.code === NETWORK.code) return NETWORK;
   if (error.code === MALFORMED.code) return MALFORMED;
+  if (error.code === SERVER_UNAVAILABLE_ERROR.code) return SERVER_UNAVAILABLE_ERROR;
   return UNKNOWN;
 }
 
@@ -106,6 +108,11 @@ export async function publishToInstagram(
     if (isRecord(body) && isNonEmptyString(body.code) && isNonEmptyString(body.message)) {
       throw new InstagramPublishApiError(body.code, body.message);
     }
+    // A 5xx that did not even carry the backend's own error shape means the backend never answered — it is
+    // down, restarting, or something in front of it replied. Say that, instead of blaming the response body.
+    if (isServerUnavailable(response.status, MALFORMED.code)) {
+      throw new InstagramPublishApiError(SERVER_UNAVAILABLE_ERROR.code, SERVER_UNAVAILABLE_ERROR.message);
+    }
     throw new InstagramPublishApiError(MALFORMED.code, MALFORMED.message);
   }
 
@@ -151,6 +158,11 @@ export async function publishLongEpisodeToInstagram(
   if (!response.ok) {
     if (isRecord(body) && isNonEmptyString(body.code) && isNonEmptyString(body.message)) {
       throw new InstagramPublishApiError(body.code, body.message);
+    }
+    // A 5xx that did not even carry the backend's own error shape means the backend never answered — it is
+    // down, restarting, or something in front of it replied. Say that, instead of blaming the response body.
+    if (isServerUnavailable(response.status, MALFORMED.code)) {
+      throw new InstagramPublishApiError(SERVER_UNAVAILABLE_ERROR.code, SERVER_UNAVAILABLE_ERROR.message);
     }
     throw new InstagramPublishApiError(MALFORMED.code, MALFORMED.message);
   }
@@ -204,6 +216,11 @@ async function deletePostRecord(url: string, carried: "project" | "episode"): Pr
   if (!response.ok) {
     if (isRecord(body) && isNonEmptyString(body.code) && isNonEmptyString(body.message)) {
       throw new InstagramPublishApiError(body.code, body.message);
+    }
+    // A 5xx that did not even carry the backend's own error shape means the backend never answered — it is
+    // down, restarting, or something in front of it replied. Say that, instead of blaming the response body.
+    if (isServerUnavailable(response.status, MALFORMED.code)) {
+      throw new InstagramPublishApiError(SERVER_UNAVAILABLE_ERROR.code, SERVER_UNAVAILABLE_ERROR.message);
     }
     throw new InstagramPublishApiError(MALFORMED.code, MALFORMED.message);
   }

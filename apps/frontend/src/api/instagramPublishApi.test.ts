@@ -96,9 +96,22 @@ describe("instagramPublishApi", () => {
   // An error body that is not JSON must not be shown as if it were a reason — "the server said something we
   // could not read" is a different fact from "the server refused for reason X".
   it("treats an unreadable error body as malformed rather than inventing a reason", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(nonJsonResponse(502)));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(nonJsonResponse(409)));
     const caught = await publishToInstagram("p1", "본문", "1").catch((error: unknown) => error);
     expect(toInstagramPublishDisplayError(caught).code).toBe("CLIENT_MALFORMED_RESPONSE");
+  });
+
+  /**
+   * The status is what separates the two. A 4xx whose body cannot be read is something answering badly; a 5xx
+   * that carries no error shape at all is nothing answering — the backend is down, restarting, or something in
+   * front of it replied.
+   * 🔴 On 2026-09-05 the backend died for thirteen minutes and this path said "서버 응답을 확인할 수 없습니다",
+   * which blames the response for a server that was not running and sends the person looking in the wrong place.
+   */
+  it("reports a 5xx with no error shape as the server not answering, not as a bad answer", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(nonJsonResponse(502)));
+    const caught = await publishToInstagram("p1", "본문", "1").catch((error: unknown) => error);
+    expect(toInstagramPublishDisplayError(caught).code).toBe("CLIENT_SERVER_UNAVAILABLE");
   });
 });
 

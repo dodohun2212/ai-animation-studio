@@ -13,6 +13,7 @@ import {
 } from "@ai-animation-studio/shared";
 import { BUDGET_LEDGER_UNREADABLE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "./budgetLedgerError.js";
 import { isBudgetPreview, isSceneStaleness } from "./contractGuards.js";
+import { SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
 
 export class ImageReviewApiError extends Error {
   readonly code: string;
@@ -54,6 +55,7 @@ export function toImageReviewDisplayError(error: unknown): { code: string; messa
   }
   if (error.code === NETWORK.code) return NETWORK;
   if (error.code === MALFORMED.code) return MALFORMED;
+  if (error.code === SERVER_UNAVAILABLE_ERROR.code) return SERVER_UNAVAILABLE_ERROR;
   return UNKNOWN;
 }
 
@@ -144,6 +146,11 @@ async function request<T>(url: string, init: RequestInit | undefined, guard: (va
   const body = await readJsonBody(response);
   if (!response.ok) {
     const apiError = toApiErrorShape(body);
+    // A 5xx that did not even carry the backend's own error shape means the backend never answered — it is
+    // down, restarting, or something in front of it replied. Say that, instead of blaming the response body.
+    if (isServerUnavailable(response.status, apiError.code)) {
+      throw new ImageReviewApiError(SERVER_UNAVAILABLE_ERROR.code, SERVER_UNAVAILABLE_ERROR.message);
+    }
     throw new ImageReviewApiError(apiError.code, apiError.message, apiError.details);
   }
   if (!guard(body)) throw new ImageReviewApiError(MALFORMED.code, MALFORMED.message);

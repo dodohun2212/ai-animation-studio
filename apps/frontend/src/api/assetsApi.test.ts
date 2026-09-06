@@ -372,11 +372,28 @@ describe("assetsApi", () => {
   });
 
   it("treats a missing/empty error code as the safe malformed-response fallback", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(500, { message: "internal only" })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(400, { message: "internal only" })));
 
     const error = (await listAssets().catch((caught: unknown) => caught)) as AssetsApiError;
     expect(error.code).toBe("CLIENT_MALFORMED_RESPONSE");
     expect(toAssetDisplayError(error).message).not.toContain("internal only");
+  });
+
+  /**
+   * The status is what separates the two. A 4xx whose body cannot be read is something answering badly; a 5xx
+   * that carries no error shape at all is nothing answering — the backend is down, restarting, or something in
+   * front of it replied.
+   * 🔴 On 2026-09-05 the backend died for thirteen minutes and this path said "서버 응답을 확인할 수 없습니다",
+   * which blames the response for a server that was not running and sends the person looking in the wrong place.
+   */
+  it("reports a 5xx with no error shape as the server not answering, not as a bad answer", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(500, { message: "internal only" })));
+
+    const error = (await listAssets().catch((caught: unknown) => caught)) as AssetsApiError;
+    expect(error.code).toBe("CLIENT_SERVER_UNAVAILABLE");
+    const display = toAssetDisplayError(error);
+    expect(display.message).toContain("서버가 응답하지 않습니다");
+    expect(display.message).not.toContain("internal only");
   });
 
   it("toAssetDisplayError falls back to a safe generic result for a non-AssetsApiError", () => {

@@ -8,6 +8,7 @@ import {
   type ListArchivedProjectsResponse,
   type RestoreProjectResponse,
 } from "@ai-animation-studio/shared";
+import { INTERNAL_ERROR, SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
 
 export class ArchiveApiError extends Error {
   readonly code: string;
@@ -39,6 +40,8 @@ const UNKNOWN = { code: "CLIENT_UNKNOWN_ERROR", message: "요청을 처리하지
 /** Maps any thrown error to a fixed, safe display shape — raw backend text is never shown. */
 export function toArchiveDisplayError(error: unknown): { code: string; message: string } {
   if (error instanceof ArchiveApiError) {
+    if (error.code === SERVER_UNAVAILABLE_ERROR.code) return SERVER_UNAVAILABLE_ERROR;
+    if (error.code === INTERNAL_ERROR.code) return INTERNAL_ERROR;
     return { code: error.code, message: SAFE_ERRORS[error.code] ?? UNKNOWN.message };
   }
   return UNKNOWN;
@@ -118,6 +121,12 @@ async function requestJson<T>(
   const body = await readJsonBody(response);
 
   if (!response.ok) {
+    const carriedCode = isRecord(body) && isNonEmptyString(body.code) ? body.code : MALFORMED.code;
+    // A 5xx that did not even carry the backend's own error shape means the backend never answered — it is
+    // down, restarting, or something in front of it replied. Say that, instead of blaming the response body.
+    if (isServerUnavailable(response.status, carriedCode)) {
+      throw new ArchiveApiError(SERVER_UNAVAILABLE_ERROR.code, SERVER_UNAVAILABLE_ERROR.message);
+    }
     if (isRecord(body) && isNonEmptyString(body.code)) {
       throw new ArchiveApiError(body.code, SAFE_ERRORS[body.code] ?? UNKNOWN.message, isRecord(body.details) ? body.details : undefined);
     }

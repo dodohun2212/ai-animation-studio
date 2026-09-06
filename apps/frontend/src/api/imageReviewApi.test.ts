@@ -85,9 +85,22 @@ describe("imageReviewApi", () => {
   });
 
   it("maps a non-JSON error body to the safe malformed-response error", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(nonJsonResponse(500)));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(nonJsonResponse(400)));
 
     await expect(getImageReview("sample_project")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+  });
+
+  /**
+   * The status is what separates the two. A 4xx whose body cannot be read is something answering badly; a 5xx
+   * that carries no error shape at all is nothing answering — the backend is down, restarting, or something in
+   * front of it replied.
+   * 🔴 On 2026-09-05 the backend died for thirteen minutes and this path said "서버 응답을 확인할 수 없습니다",
+   * which blames the response for a server that was not running and sends the person looking in the wrong place.
+   */
+  it("reports a 5xx with no error shape as the server not answering, not as a bad answer", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(nonJsonResponse(500)));
+
+    await expect(getImageReview("sample_project")).rejects.toMatchObject({ code: "CLIENT_SERVER_UNAVAILABLE" });
   });
 
   it("never surfaces the backend's raw error message — only a fixed, safe message per known code", async () => {

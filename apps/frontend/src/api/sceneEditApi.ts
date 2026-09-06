@@ -6,6 +6,7 @@ import {
   type UpdateSceneRequest,
   type UpdateSceneResponse,
 } from "@ai-animation-studio/shared";
+import { INTERNAL_ERROR, SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
 
 export class SceneEditApiError extends Error {
   readonly code: string;
@@ -42,6 +43,8 @@ export function toSceneEditDisplayError(error: unknown): { code: string; message
   }
   if (error.code === NETWORK.code) return NETWORK;
   if (error.code === MALFORMED.code) return MALFORMED;
+  if (error.code === SERVER_UNAVAILABLE_ERROR.code) return SERVER_UNAVAILABLE_ERROR;
+  if (error.code === INTERNAL_ERROR.code) return INTERNAL_ERROR;
   return UNKNOWN;
 }
 
@@ -130,6 +133,11 @@ export async function updateScene(
   const body = await readJsonBody(response);
   if (!response.ok) {
     const apiError = toApiErrorShape(body);
+    // A 5xx that did not even carry the backend's own error shape means the backend never answered — it is
+    // down, restarting, or something in front of it replied. Say that, instead of blaming the response body.
+    if (isServerUnavailable(response.status, apiError.code)) {
+      throw new SceneEditApiError(SERVER_UNAVAILABLE_ERROR.code, SERVER_UNAVAILABLE_ERROR.message);
+    }
     throw new SceneEditApiError(apiError.code, apiError.message, apiError.details);
   }
   if (!isUpdateSceneResponse(body)) throw new SceneEditApiError(MALFORMED.code, MALFORMED.message);

@@ -23,6 +23,7 @@ import { PROJECT_ASSET_MAPPING_REVIEW_STATUSES, ASSET_MAPPING_ASSIGNMENT_SOURCES
   type UpdateProjectAssetMappingRequest,
   type UpdateProjectAssetMappingResponse,
 } from "@ai-animation-studio/shared";
+import { INTERNAL_ERROR, SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
 
 export class MappingsApiError extends Error {
   readonly code: string;
@@ -63,6 +64,8 @@ export function toMappingDisplayError(error: unknown): { code: string; message: 
   }
   if (error.code === NETWORK.code) return NETWORK;
   if (error.code === MALFORMED.code) return MALFORMED;
+  if (error.code === SERVER_UNAVAILABLE_ERROR.code) return SERVER_UNAVAILABLE_ERROR;
+  if (error.code === INTERNAL_ERROR.code) return INTERNAL_ERROR;
   return UNKNOWN;
 }
 
@@ -177,6 +180,11 @@ async function request<T>(url: string, init: RequestInit | undefined, guard: (va
   }
   if (!response.ok) {
     const apiError = toApiErrorShape(body);
+    // A 5xx that did not even carry the backend's own error shape means the backend never answered — it is
+    // down, restarting, or something in front of it replied. Say that, instead of blaming the response body.
+    if (isServerUnavailable(response.status, apiError.code)) {
+      throw new MappingsApiError(SERVER_UNAVAILABLE_ERROR.code, SERVER_UNAVAILABLE_ERROR.message);
+    }
     throw new MappingsApiError(apiError.code, apiError.message, apiError.details);
   }
   if (!guard(body)) throw new MappingsApiError(MALFORMED.code, MALFORMED.message);

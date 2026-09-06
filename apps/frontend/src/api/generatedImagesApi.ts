@@ -5,6 +5,7 @@ import {
   type GetGeneratedImagesResponse,
   type SceneNumber,
 } from "@ai-animation-studio/shared";
+import { INTERNAL_ERROR, SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
 
 export class GeneratedImagesApiError extends Error {
   readonly code: string;
@@ -25,6 +26,8 @@ export function toGeneratedImagesDisplayError(error: unknown): { code: string; m
   if (!(error instanceof GeneratedImagesApiError)) return UNKNOWN;
   if (error.code === NETWORK.code) return NETWORK;
   if (error.code === MALFORMED.code) return MALFORMED;
+  if (error.code === SERVER_UNAVAILABLE_ERROR.code) return SERVER_UNAVAILABLE_ERROR;
+  if (error.code === INTERNAL_ERROR.code) return INTERNAL_ERROR;
   return UNKNOWN;
 }
 
@@ -76,6 +79,11 @@ export async function getGeneratedImages(): Promise<GetGeneratedImagesResponse> 
     const shape = isRecord(body) && isNonEmptyString(body.code) && isNonEmptyString(body.message)
       ? { code: body.code, message: body.message }
       : MALFORMED;
+    // A 5xx that did not even carry the backend's own error shape means the backend never answered — it is
+    // down, restarting, or something in front of it replied. Say that, instead of blaming the response body.
+    if (isServerUnavailable(response.status, shape.code)) {
+      throw new GeneratedImagesApiError(SERVER_UNAVAILABLE_ERROR.code, SERVER_UNAVAILABLE_ERROR.message);
+    }
     throw new GeneratedImagesApiError(shape.code, shape.message);
   }
   if (!isRecord(body) || !Array.isArray(body.projects) || !body.projects.every(isGeneratedImage)) {

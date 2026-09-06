@@ -1,4 +1,5 @@
 import { API_ROUTES, FINAL_VIDEO_RELATIVE_PATH, type MergeAudioSettings, type MergeVideosResponse, type PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
+import { INTERNAL_ERROR, SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
 
 export class VideoMergeApiError extends Error {
   readonly code: string;
@@ -62,6 +63,8 @@ export function toVideoMergeDisplayError(error: unknown): { code: string; messag
   }
   if (error.code === NETWORK.code) return NETWORK;
   if (error.code === MALFORMED.code) return MALFORMED;
+  if (error.code === SERVER_UNAVAILABLE_ERROR.code) return SERVER_UNAVAILABLE_ERROR;
+  if (error.code === INTERNAL_ERROR.code) return INTERNAL_ERROR;
   return UNKNOWN;
 }
 
@@ -138,6 +141,11 @@ export async function mergeVideos(
   const body = await readJsonBody(response);
   if (!response.ok) {
     const apiError = toApiErrorShape(body);
+    // A 5xx that did not even carry the backend's own error shape means the backend never answered — it is
+    // down, restarting, or something in front of it replied. Say that, instead of blaming the response body.
+    if (isServerUnavailable(response.status, apiError.code)) {
+      throw new VideoMergeApiError(SERVER_UNAVAILABLE_ERROR.code, SERVER_UNAVAILABLE_ERROR.message);
+    }
     throw new VideoMergeApiError(apiError.code, apiError.message, apiError.details);
   }
   if (!isMergeVideosResponse(body)) throw new VideoMergeApiError(MALFORMED.code, MALFORMED.message);

@@ -6,6 +6,7 @@ import {
   type StartInstagramLoginRequest,
   type StartInstagramLoginResponse,
 } from "@ai-animation-studio/shared";
+import { INTERNAL_ERROR, SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
 
 export class InstagramConnectionApiError extends Error {
   readonly code: string;
@@ -38,6 +39,8 @@ export function instagramConnectionErrorForCode(code: string): { code: string; m
   if (Object.prototype.hasOwnProperty.call(SAFE_ERRORS, code)) return { code, message: SAFE_ERRORS[code]! };
   if (code === NETWORK.code) return NETWORK;
   if (code === MALFORMED.code) return MALFORMED;
+  if (code === SERVER_UNAVAILABLE_ERROR.code) return SERVER_UNAVAILABLE_ERROR;
+  if (code === INTERNAL_ERROR.code) return INTERNAL_ERROR;
   return UNKNOWN;
 }
 
@@ -98,6 +101,11 @@ async function request(url: string, init?: RequestInit): Promise<unknown> {
   const body = await readJsonBody(response);
   if (!response.ok) {
     const apiError = toApiErrorShape(body);
+    // A 5xx that did not even carry the backend's own error shape means the backend never answered — it is
+    // down, restarting, or something in front of it replied. Say that, instead of blaming the response body.
+    if (isServerUnavailable(response.status, apiError.code)) {
+      throw new InstagramConnectionApiError(SERVER_UNAVAILABLE_ERROR.code, SERVER_UNAVAILABLE_ERROR.message);
+    }
     throw new InstagramConnectionApiError(apiError.code, apiError.message);
   }
   return body;
