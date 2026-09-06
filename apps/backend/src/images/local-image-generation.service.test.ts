@@ -457,6 +457,55 @@ describe("real OpenAI image generation", () => {
     }
   });
 
+  /**
+   * The chain proved through the service that pays for the pictures, not through the resolver alone.
+   *
+   * A fresh run is the case the unit test cannot reach: scene 2 needs scene 1's file to already be on disk, and
+   * whether it is depends on the loop having written it a moment earlier — wiring, not resolution. Every defect
+   * this pair of sessions found today was a wiring gap sitting under a green unit test, so this one is asked at
+   * the level where the three callers meet.
+   */
+  it("hands every scene after the first the picture the scene before it just got, on one run", async () => {
+    const { projectsRoot, projects, service, character } = await setupWithConnectedOpenAiAndConfirmedReference();
+    const project = await projects.findById("images");
+    project.lore_context = { ...project.lore_context, scene_image_continuity_enabled: true };
+    await projects.save(project);
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await service.generate("images", { approved: true });
+
+    const editCalls = fetchMock.mock.calls.filter((call) => call[0] === "https://api.openai.com/v1/images/edits");
+    expect(editCalls).toHaveLength(6);
+    // Scene 1 has nothing before it and is unchanged; every later scene carries one image more.
+    expect(((editCalls[0]![1] as RequestInit).body as FormData).getAll("image[]")).toHaveLength(1);
+    for (const call of editCalls.slice(1)) {
+      expect(((call[1] as RequestInit).body as FormData).getAll("image[]")).toHaveLength(2);
+    }
+
+    const reloaded = await new LocalProjectRepository(projectsRoot).findById("images");
+    const sceneTwo = reloaded.image_generation_records.find((record) => (record as { scene_number?: number }).scene_number === 2) as { reference_sources?: string[] };
+    // The chained picture is first, so the cap can never drop it before a mapped Asset — and it is named for
+    // the scene it came from, so redrawing scene 1 later marks scene 2 behind on its own.
+    expect(sceneTwo.reference_sources?.[0]).toMatch(/^prev-scene:1@/);
+    expect(sceneTwo.reference_sources?.[1]).toBe(`asset:${character.asset_id}@1`);
+  });
+
+  /** The same project with the switch off buys exactly what it always bought — the guarantee that let this ship. */
+  it("sends nothing extra when the project never asked for the chain", async () => {
+    const { projectsRoot, service, character } = await setupWithConnectedOpenAiAndConfirmedReference();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await service.generate("images", { approved: true });
+
+    const editCalls = fetchMock.mock.calls.filter((call) => call[0] === "https://api.openai.com/v1/images/edits");
+    for (const call of editCalls) expect(((call[1] as RequestInit).body as FormData).getAll("image[]")).toHaveLength(1);
+    const reloaded = await new LocalProjectRepository(projectsRoot).findById("images");
+    const sceneTwo = reloaded.image_generation_records.find((record) => (record as { scene_number?: number }).scene_number === 2) as { reference_sources?: string[] };
+    expect(sceneTwo.reference_sources).toEqual([`asset:${character.asset_id}@1`]);
+  });
+
   it("falls back to reference-free images/generations when no Asset Mapping is confirmed", async () => {
     const { service } = await setupWithConnectedOpenAi();
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
