@@ -1,3 +1,4 @@
+import { RUNWAY_CLIP_DURATIONS } from "@ai-animation-studio/shared";
 import { LONG_EPISODE_STATUSES } from "@ai-animation-studio/shared";
 import type { ListLongProjectsResponse } from "@ai-animation-studio/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -415,6 +416,30 @@ describe("longProjectsApi", () => {
     await expect(getLongEpisodeVideoPreview("long", 1)).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(409, { code: "VIDEO_CONFIRMATION_STALE", message: "C:\\\\private" })));
     await expect(startLongEpisodeVideoGeneration("long", 1, { confirmationId: "confirm", userRequestId: "request", approved: true, prompts: [1,2,3,4,5,6].map((sceneNumber) => ({ sceneNumber: sceneNumber as 1|2|3|4|5|6, prompt: "prompt" })) })).rejects.toMatchObject({ code: "VIDEO_CONFIRMATION_STALE" });
+  });
+
+  /**
+   * This guard spelled out `=== 5 || === 10` beside a model check that had already been widened for exactly
+   * this reason. The values were right, and that is the danger: the short project's twin of the line said
+   * `=== 5`, called a correct server response malformed, and cost 캡틴D the entire video step this morning.
+   *
+   * Both allowed lengths are asserted rather than only the second, because a guard rewritten to accept just ten
+   * would pass a test that only tried ten.
+   */
+  it("accepts every clip length the contract allows, and still rejects one it does not", async () => {
+    const preview = (durationSecondsPerScene: number) => ({
+      confirmationId: "x", model: "gen4_turbo", ratio: "720:1280", durationSecondsPerScene,
+      executionMode: "sequential", estimatedCostUsd: 1.5, scenes: [1, 2].map((sceneNumber) => ({ sceneNumber, prompt: "p", estimatedCostUsd: 0.25, omittedSections: [] })),
+    });
+
+    for (const seconds of RUNWAY_CLIP_DURATIONS) {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, preview(seconds))));
+      const response = await getLongEpisodeVideoPreview("long", 1);
+      expect(response.durationSecondsPerScene).toBe(seconds);
+    }
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, preview(7))));
+    await expect(getLongEpisodeVideoPreview("long", 1)).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
   });
 
   it("reads Episode settings with the project defaults and the changeable flag", async () => {
