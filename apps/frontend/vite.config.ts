@@ -30,7 +30,6 @@ export default defineConfig({
       "/audio": "http://127.0.0.1:3000",
       "/videos": "http://127.0.0.1:3000",
       "/photo-cards": "http://127.0.0.1:3000",
-      "/flower-cards": "http://127.0.0.1:3000",
       // The subtitle fonts, so a card preview in the dev browser draws with the same bytes FFmpeg burns in.
       "/fonts": "http://127.0.0.1:3000",
     },

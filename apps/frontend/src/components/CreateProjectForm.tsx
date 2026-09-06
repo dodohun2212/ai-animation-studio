@@ -19,12 +19,17 @@ const fieldClassName =
   "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 
 /**
- * How the script gets written — the one thing that differs between what this door can make.
+ * Which brief the new project starts from.
  *
- * 🔴 Both branches produce the same kind of project: same pipeline, same images, same videos, same merge, same
- * publish. Only the script's author changes. That is why the flower reel lives here as a branch rather than as
- * its own sidebar entry — 명언 카드 has its own door because its *result* is a different thing (it skips five
- * of these steps and costs nothing), and this one's result is not.
+ * 🔴 Both branches make exactly the same thing — an ordinary short project, same pipeline, same story call,
+ * same images, videos, merge and publish. The flower branch only pre-fills the settings that a flower reel
+ * always wants: the seed-to-bloom arc, the look, two ten-second scenes. That is why it is a branch here and
+ * not its own sidebar entry: 명언 카드 has its own door because its *result* differs (it skips five of these
+ * steps and costs nothing), and this one's result does not.
+ *
+ * 🟠 An earlier version of this branch wrote the script by hand instead. It could create a project that the
+ * image step then refused, because the prompts read seventeen scene fields and only story generation fills
+ * them (CLI Round 609). Preset, not pipeline.
  */
 type ScriptSource = "ai" | "flower";
 
@@ -92,9 +97,9 @@ export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProp
   );
 
   const picker = (
-    <div role="radiogroup" aria-label="대본을 누가 쓰는지" className="mt-8 flex max-w-2xl flex-wrap gap-3">
-      {choice("ai", "주제만 주고 AI가 대본 쓰기", "주제 한 줄을 적으면 장면과 대사를 AI가 만듭니다.")}
-      {choice("flower", "꽃말 릴스 — 내가 대본 쓰기", "꽃이 씨앗에서 피어나는 흐름으로, 문장은 직접 적습니다. 만들기까지는 무료입니다.")}
+    <div role="radiogroup" aria-label="무엇으로 시작할지" className="mt-8 flex max-w-2xl flex-wrap gap-3">
+      {choice("ai", "빈 프로젝트에서 시작", "주제 한 줄을 적고, 나머지는 설정 화면에서 채웁니다.")}
+      {choice("flower", "꽃말 릴스 서식", "꽃 이름과 꽃말만 적으면 씨앗에서 꽃이 피기까지의 구성과 화면 스타일이 채워집니다.")}
     </div>
   );
 

@@ -1,44 +1,96 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { jsonResponse, makeProject } from "../api/testUtils.js";
+import { jsonResponse, makeProject, withStatus } from "../api/testUtils.js";
 import { CreateFlowerReelForm } from "./CreateFlowerReelForm.js";
 
-const created = { project: makeProject({ id: "꽃말_장미" }), review: { scriptRevision: 1, items: [] } };
+const project = makeProject({ id: "꽃말_장미" });
 
 function fill() {
   fireEvent.change(screen.getByTestId("flower-name"), { target: { value: "장미" } });
   fireEvent.change(screen.getByTestId("flower-meaning"), { target: { value: "열정" } });
-  fireEvent.change(screen.getByTestId("flower-caption-0"), { target: { value: "모든 꽃은 흙 속에서 시작한다." } });
-  fireEvent.change(screen.getByTestId("flower-caption-1"), { target: { value: "장미의 꽃말은 열정이다." } });
+}
+
+/** Both calls succeed: create, then the preset save. */
+function stubOk() {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/projects") return jsonResponse(200, { project });
+    if (url.endsWith("/settings")) {
+      return jsonResponse(200, { project, settings: { projectName: "", topic: "", genre: "", mood: "", character: "", lore: "", fullStory: "", durationSeconds: 20, sceneCount: 2, clipDurationSeconds: 10, additionalNotes: "", styleNotes: {}, narrationEnabled: true, subtitlesEnabled: true } });
+    }
+    throw new Error(`Unexpected fetch: ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
 }
 
 describe("CreateFlowerReelForm", () => {
   afterEach(() => { vi.unstubAllGlobals(); });
 
-  it("sends the flower, its meaning and every typed scene, then hands the project on", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, created));
-    vi.stubGlobal("fetch", fetchMock);
+  /**
+   * 🔴 This form writes a brief, not a script.
+   *
+   * An earlier version typed two fields per scene by hand and the image prompt came out empty — the prompts
+   * read seventeen scene fields, and only story generation fills them. So what this asserts is that the flower
+   * facts reach the *settings* the story prompt is built from, and that nothing here tries to author scenes.
+   */
+  it("creates an ordinary project and saves the flower brief into its settings", async () => {
+    const fetchMock = stubOk();
     const onCreated = vi.fn();
     render(<CreateFlowerReelForm onCreated={onCreated} onCancel={() => {}} />);
 
     fill();
     fireEvent.click(screen.getByTestId("flower-submit"));
 
-    await waitFor(() => expect(onCreated).toHaveBeenCalled());
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/flower-cards");
-    const sent = JSON.parse(String(init.body)) as { flowerName: string; scenes: { caption: string }[] };
-    expect(sent.flowerName).toBe("장미");
-    expect(sent.scenes).toHaveLength(2);
-    expect(sent.scenes[1]!.caption).toBe("장미의 꽃말은 열정이다.");
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(project));
+    const calls = fetchMock.mock.calls.map(([url, init]) => ({ url: String(url), init: init as RequestInit }));
+    expect(calls[0]!.url).toBe("/projects");
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ projectId: "꽃말_장미", topic: "장미의 꽃말 — 열정" });
+
+    const saved = JSON.parse(String(calls[1]!.init.body)) as { settings: Record<string, unknown> };
+    const settings = saved.settings as { fullStory: string; sceneCount: number; styleNotes: Record<string, string>; narrationEnabled: boolean };
+    expect(settings.fullStory).toContain("장미");
+    // The growth arc and the sameness clause are the whole brief — an image prompt built without them draws a
+    // different flower in every shot, which is the one failure this preset exists to fight.
+    expect(settings.fullStory).toContain("씨앗");
+    expect(settings.fullStory).toContain("같은 각도");
+    expect(settings.styleNotes.avoid).toContain("장면마다 바뀌는 것");
+    expect(settings.sceneCount).toBe(2);
+    expect(settings.narrationEnabled).toBe(true);
+    // durationSeconds is derived server-side and rejected as an unsupported field if sent.
+    expect(settings).not.toHaveProperty("durationSeconds");
   });
 
-  // The folder name is offered, not demanded — but it is still the real allow-list, which accepts Hangul.
-  it("suggests a folder name from the flower and keeps a typed one", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, created)));
+  it("passes a typed origin through, and leaves it out when blank", async () => {
+    const fetchMock = stubOk();
     render(<CreateFlowerReelForm onCreated={() => {}} onCancel={() => {}} />);
+    fill();
+    fireEvent.change(screen.getByTestId("flower-origin"), { target: { value: "그리스 신화에서 유래한다" } });
+    fireEvent.click(screen.getByTestId("flower-submit"));
 
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBe(2));
+    const settings = (JSON.parse(String((fetchMock.mock.calls[1]![1] as RequestInit).body)) as { settings: { fullStory: string } }).settings;
+    expect(settings.fullStory).toContain("그리스 신화에서 유래한다");
+  });
+
+  /**
+   * 🔴 The money sentence has to match what the button does.
+   *
+   * While this form wrote the script itself it truthfully said 비용이 들지 않습니다. The script now comes from
+   * a paid call, so that sentence would be a promise the screen no longer keeps — on the button that spends.
+   */
+  it("says the script generation charge is next, not that this is free", () => {
+    render(<CreateFlowerReelForm onCreated={() => {}} onCancel={() => {}} />);
+    const note = screen.getByTestId("flower-cost-note").textContent ?? "";
+    expect(note).toContain("$0.05");
+    expect(note).not.toContain("비용이 들지 않습니다");
+    // And the origin field says where a wrong fact gets corrected, before any image is bought.
+    expect(screen.getByTestId("flower-origin-note").textContent).toContain("이미지를 만들기 전에");
+  });
+
+  it("suggests a folder name from the flower and keeps a typed one", () => {
+    render(<CreateFlowerReelForm onCreated={() => {}} onCancel={() => {}} />);
     fireEvent.change(screen.getByTestId("flower-name"), { target: { value: "장미" } });
     expect((screen.getByTestId("flower-project-id") as HTMLInputElement).value).toBe("꽃말_장미");
 
@@ -48,48 +100,34 @@ describe("CreateFlowerReelForm", () => {
   });
 
   /**
-   * 🔴 The pre-written beats are the screen's only lever against the seam.
+   * 🔴 Only the first of the two calls is irreversible.
    *
-   * Each scene's video is generated from its own separately-drawn picture — nothing carries the previous
-   * clip's last frame forward — so the flower can come out different in each shot. Naming the flower in every
-   * beat, and repeating that the pot, angle and light do not change, is what fights that. A template that
-   * stopped following the flower name would quietly drop half of it.
+   * When the preset save fails the folder already exists, so retrying must not create it again — pressing the
+   * button a second time would only ever get PROJECT_ALREADY_EXISTS about the project this screen just made.
    */
-  it("keeps the pre-written beats following the flower name, until one is edited", () => {
+  it("says the project was made when only the preset failed, and retries just the preset", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/projects") return jsonResponse(200, { project });
+      return withStatus(500, { code: "PROJECT_STORAGE_ERROR", message: "raw" }) as unknown as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
     render(<CreateFlowerReelForm onCreated={() => {}} onCancel={() => {}} />);
 
-    fireEvent.change(screen.getByTestId("flower-name"), { target: { value: "장미" } });
-    expect((screen.getByTestId("flower-description-0") as HTMLTextAreaElement).value).toContain("장미");
-    expect((screen.getByTestId("flower-description-1") as HTMLTextAreaElement).value).toContain("같은 각도");
-
-    fireEvent.change(screen.getByTestId("flower-description-0"), { target: { value: "내가 쓴 묘사" } });
-    fireEvent.change(screen.getByTestId("flower-name"), { target: { value: "수국" } });
-    // Edited stays; untouched follows.
-    expect((screen.getByTestId("flower-description-0") as HTMLTextAreaElement).value).toBe("내가 쓴 묘사");
-    expect((screen.getByTestId("flower-description-1") as HTMLTextAreaElement).value).toContain("수국");
-  });
-
-  it("adds beats when the scene count grows, and asks for a caption on each", () => {
-    render(<CreateFlowerReelForm onCreated={() => {}} onCancel={() => {}} />);
     fill();
-    expect(screen.getByTestId("flower-submit")).not.toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByTestId("flower-submit"));
 
-    fireEvent.change(screen.getByTestId("flower-scene-count"), { target: { value: "3" } });
+    const partial = await screen.findByTestId("flower-partial");
+    expect(partial.textContent).toContain("꽃말_장미");
+    expect(screen.getByTestId("flower-submit").textContent).toContain("다시 저장");
 
-    expect((screen.getByTestId("flower-description-2") as HTMLTextAreaElement).value.length).toBeGreaterThan(0);
-    // The new scene has no caption yet, so the button waits rather than sending a beat with no line under it.
-    expect((screen.getByTestId("flower-submit") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByTestId("flower-submit"));
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBe(3));
+    // Three calls, and only one of them was the create.
+    expect(fetchMock.mock.calls.filter(([url]) => String(url) === "/projects")).toHaveLength(1);
   });
 
-  // Said here because it is the difference between this door and the other one, and it is why the script is typed.
-  it("says the create step costs nothing", () => {
-    render(<CreateFlowerReelForm onCreated={() => {}} onCancel={() => {}} />);
-    expect(screen.getByTestId("flower-free-note").textContent).toContain("비용이 들지 않습니다");
-    // And warns about the seam, which is the honest limit of making each scene separately.
-    expect(screen.getByTestId("flower-seam-note").textContent).toContain("달라질 수 있습니다");
-  });
-
-  it("does not submit until the flower, the meaning and every caption are filled", () => {
+  it("does not submit until the flower and its meaning are filled", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     render(<CreateFlowerReelForm onCreated={() => {}} onCancel={() => {}} />);

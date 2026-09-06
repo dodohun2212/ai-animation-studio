@@ -168,7 +168,7 @@ describe("CreateProjectForm", () => {
    * script's author differs. 명언 카드 got its own sidebar entry because its *result* skips five of those
    * steps; this one's does not, so a second entry would be two doors to one place.
    */
-  it("offers the flower reel as a branch, and leaves the AI form as the default", () => {
+  it("offers the flower reel as a branch, and leaves the plain form as the default", () => {
     render(<CreateProjectForm onCreated={() => {}} onCancel={() => {}} />);
 
     // Default is untouched: the topic field is what a person sees first.

@@ -1834,50 +1834,6 @@ export interface CreatePhotoCardResponse {
   project: Project;
 }
 
-/**
- * One scene, written by a person rather than generated.
- *
- * The flower reel exists because the thing it narrates is a fact — where a flower's meaning came from — and a
- * story model asked for a fact produces something shaped like one. 🔴 Captain D chose to write these by hand
- * for that reason, so this is the one pipeline whose script does not come from a paid call.
- */
-export interface FlowerCardSceneInput {
-  /** What is on screen. Seeds the image prompt and, through it, the video prompt. */
-  description: string;
-  /** The line under that scene. Becomes the subtitle, and the narration text if a voice is ever made. */
-  caption: string;
-}
-
-/**
- * 🔴 This request must not cost anything. It writes a project and its scenes and calls no provider — the
- * first paid step is image generation, which has its own confirmation. A flag here that could start a paid
- * call would hide one behind a 만들기 button, which is what `narration` is deliberately not.
- */
-export interface CreateFlowerCardRequest {
-  projectId: string;
-  /** The flower. First line of `topic`, and the thing every scene's picture has to be of. */
-  flowerName: string;
-  /** Its meaning. Second line of `topic`. */
-  meaning: string;
-  /** At least MIN_SCENE_COUNT, at most MAX_SCENE_COUNT. */
-  scenes: FlowerCardSceneInput[];
-  clipDurationSeconds: RunwayClipDurationSeconds;
-  aspectRatio: AspectRatio;
-}
-
-export interface CreateFlowerCardResponse {
-  project: Project;
-  /**
-   * The Asset Mapping review this project starts with, already opened.
-   *
-   * 🔴 Not decoration, and not something the screen can do for itself. Approving a mapping review checks the
-   * script fingerprint against a baseline, and a project whose review was never begun reads back `""` — which
-   * comes out of approval as `no_baseline`, the refusal Captain D hit and stopped at (Cowork Round 533). Story
-   * generation sets that baseline as part of finishing; this route has no story call, so it does the same thing
-   * here rather than leaving every flower reel unable to leave the mapping screen.
-   */
-  review: ProjectAssetMappingReview;
-}
 
 export interface BackfillGeneratedImageAssetsResponse {
   scanned: number;
@@ -2864,7 +2820,6 @@ export const API_ROUTES = {
   legacyReferenceMigration: "/assets/legacy-migration",
   backfillGeneratedImages: "/assets/backfill-generated-images",
   photoCards: "/photo-cards",
-  flowerCards: "/flower-cards",
   /** One subtitle font file by name, so a card preview can draw with the same bytes FFmpeg burns in. */
   subtitleFont: (name: string) => `/fonts/${name}`,
   providerSettings: "/settings/providers",
