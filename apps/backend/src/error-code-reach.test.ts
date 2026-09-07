@@ -59,20 +59,30 @@ const FRONTEND_API = path.join(FRONTEND_SOURCE, "api");
  * applying fails instead of sitting here quietly.
  */
 const UNNAMED_BY_A_SCREEN = new Map<string, string>([
-  // 🟠 Decisions, and the only kind of entry that belongs here. A 500 from a disk that will not write is not a
-  // sentence a person can act on, and every catch-all in this app already says the true and complete thing
-  // about it: it did not work. Naming these would add words without adding an action.
-  //
-  // The nine 🔴 gaps this list opened with on 2026-09-08 are gone — every one was a code whose sentence the
-  // screen had never been given, and all nine were written the same day (Cowork Round 647). The guard is what
-  // made that a finite list of nine rather than an ongoing condition, and the test below is what made the list
-  // shrink instead of being carried.
-  // 🔴 Gap, and the one this guard's own blind spot was hiding: a video model the app cannot price is refused
-  // here, and the settings screen has no sentence for it. Reported to Cowork (CLI Round 651).
+  // 🔴 Gap, found when this guard's filter was widened to every `*.error.ts`: a video model the app cannot
+  // price is refused here, and the settings screen has no sentence for it. Reported to Cowork (CLI Round 651).
   ["UNKNOWN_VIDEO_MODEL", "🔴 gap: 「고를 수 없는 영상 모델입니다」 exists in the backend and reaches nobody"],
-  ["VIDEO_LIBRARY_STORAGE_ERROR", "storage failure — the catch-all already says the whole of what is knowable"],
-  ["STORY_PROMPT_STORAGE_ERROR", "storage failure — same"],
-  ["STORY_GENERATION_FAILED", "local fake-mode generation only; a real run answers STORY_PROVIDER_ERROR"],
+  // 🟠 Decisions — and the reasons were rewritten on 2026-09-08 after being checked, because all three were
+  // written from memory and all three were wrong in their wording. One was wrong in substance. An exception's
+  // reason is the only thing standing between it and being deleted by the next person, so a reason nobody
+  // measured is worse than no entry at all: it is trusted, and it was here for hours with Cowork agreeing to it.
+  //
+  // What the catch-all actually says, checked rather than recalled, is 「요청을 처리하지 못했습니다. 잠시 후
+  // 다시 시도해 주세요」 — that is a recommendation, not just a report, which is the part the first version of
+  // these reasons left out.
+  //
+  // A retry is a fair recommendation for these two: a failed write here is most often a transient lock, and
+  // atomic-file.ts already retries EPERM/EBUSY/EACCES for exactly the antivirus and OneDrive cases before
+  // giving up. So the sentence is right by luck of the domain, not because the failure is unspeakable.
+  ["VIDEO_LIBRARY_STORAGE_ERROR", "write failure; the catch-all's 「잠시 후 다시 시도」 is apt because these are usually transient locks"],
+  ["STORY_PROMPT_STORAGE_ERROR", "write failure — same, and the same reason"],
+  // 🔴 The one that was wrong. This is not "local fake-mode only": it is the fallback arm of a catch, so an
+  // unexpected error on the *paid* path lands here too. It stays an exception on the corrected reasoning that
+  // every known failure of the real path is mapped before it — budget ledger, budget exceeded, and the
+  // provider's own error — leaving this as a genuine unknown, which is what a catch-all is for. The backend's
+  // own message still says "Local Story generation…", which is the same overstatement in a second place; it
+  // reaches no screen, so it misleads only the next reader, and it is left for a round that changes that file.
+  ["STORY_GENERATION_FAILED", "the fallback arm for an unexpected error; every known failure of the paid path is mapped before it"],
 ]);
 
 /**
