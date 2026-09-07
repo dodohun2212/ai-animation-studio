@@ -517,6 +517,45 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
                     {reviewState.reviews.length}장면 중{" "}
                     {reviewState.reviews.filter((review) => review.status === "approved").length}장면 확정
                   </p>
+                {/*
+                 * The scenes in order, adjacent, with nothing between them.
+                 *
+                 * 캡틴D found that 꽃말_빨간_장미's pot changed between scenes — at the VIDEO screen, after $1.00.
+                 * The evidence was already here and free: the two pictures. It was not visible because the review
+                 * grid puts a card of badges and buttons around each one and wraps them across rows, so the only
+                 * two frames that must match are never next to each other.
+                 *
+                 * This is the same pictures with the chrome removed. It decides nothing and costs nothing — it
+                 * exists so a break in continuity is seen at the last free step rather than the first paid one.
+                 */}
+                {reviewState.reviews.length > 1 && (
+                  <section
+                    aria-label="장면 순서"
+                    data-testid="scene-filmstrip"
+                    className="space-y-1.5 rounded-xl border border-white/10 bg-slate-950/40 p-3"
+                  >
+                    <p className="text-xs text-slate-400">
+                      영상은 이 순서로 이어집니다.{" "}
+                      <span className="text-slate-300">장면이 넘어갈 때 사물·배경·빛이 바뀌면 여기서 보입니다</span>
+                      {" "}— 고치려면 지금이 마지막 무료 지점입니다.
+                    </p>
+                    <ol className="flex gap-2 overflow-x-auto pb-1">
+                      {reviewState.reviews.map((review) => (
+                        <li key={review.sceneNumber} className="shrink-0">
+                          <img
+                            src={imageReviewContentUrl(projectId, review.sceneNumber, review.updatedAt)}
+                            alt={`${review.sceneNumber}번 장면`}
+                            data-testid={`filmstrip-image-${review.sceneNumber}`}
+                            className={`${currentProject?.aspectRatio === "16:9" ? "aspect-video w-40" : "aspect-[9/16] w-24"} rounded-lg border border-white/10 bg-slate-800 object-cover`}
+                          />
+                          <span className="mt-1 block text-center text-[11px] tabular-nums text-slate-500">
+                            {review.sceneNumber}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+                )}
                 <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-testid="review-list">
                   {reviewState.reviews.map((review) => {
                     const pending = approvePendingScenes.has(review.sceneNumber);

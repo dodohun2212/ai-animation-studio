@@ -173,6 +173,35 @@ describe("ImageGenerationScreen", () => {
    * Two badges rather than one because the causes differ. "장면 내용이 바뀌었다" is false here — the words are
    * untouched — and saying it sends someone to re-read a scene that is fine.
    */
+  /**
+   * 꽃말_빨간_장미's pot changed between scene 1 and scene 2. 캡틴D saw it at the VIDEO screen, after $1.00 —
+   * and the evidence had been on this screen the whole time, for free, in the two pictures themselves.
+   *
+   * It was not visible because the review grid wraps a card of badges and buttons around each image, so the two
+   * frames that have to match are never adjacent. The strip is those same pictures with the chrome taken off,
+   * in scene order — a continuity break becomes something you see rather than something you pay to discover.
+   */
+  it("shows the scenes in order, adjacent, so a continuity break is visible before any video is paid for", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { project, reviews: sixReviews() })));
+
+    const strip = await screen.findByTestId("scene-filmstrip");
+    const shown = Array.from(strip.querySelectorAll("img")).map((image) => image.getAttribute("alt"));
+    expect(shown).toEqual(["1번 장면", "2번 장면", "3번 장면", "4번 장면", "5번 장면", "6번 장면"]);
+    // It decides nothing: no approve, no regenerate, nothing that spends.
+    expect(strip.querySelectorAll("button")).toHaveLength(0);
+    expect(strip.textContent).toContain("마지막 무료 지점");
+  });
+
+  /** One scene has nothing to be continuous with, so the strip would be a picture of itself. */
+  it("does not draw the strip for a single-scene project", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1]) });
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { project, reviews: sixReviews().slice(0, 1) })));
+
+    await screen.findByTestId("review-1");
+    expect(screen.queryByTestId("scene-filmstrip")).toBeNull();
+  });
+
   it("separates a picture behind its script from one behind its references", async () => {
     const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
     renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, {
