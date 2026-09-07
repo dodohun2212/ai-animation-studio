@@ -150,7 +150,7 @@ export class InstagramPublishService {
    * already published carries no media id we could record, and reporting a post we cannot name would put a
    * made-up record where the screen reads the real one.
    */
-  private async waitUntilPublishable(accessToken: string, containerId: string): Promise<void> {
+  private async waitUntilPublishable(accessToken: string, containerId: string, directory: string, igUserId: string): Promise<void> {
     const deadline = this.now() + (this.poll.processingTimeoutMs ?? 3 * 60 * 1000);
     const interval = this.poll.intervalMs ?? 3000;
     for (;;) {
@@ -159,7 +159,26 @@ export class InstagramPublishService {
       if (statusCode === "ERROR" || statusCode === "EXPIRED") {
         throw instagramPublishFailed("Instagram could not process this video.");
       }
-      if (statusCode === "PUBLISHED") throw instagramPublishFailed("This video is already published on Instagram. Check the account before trying again.");
+      /*
+       * Meta says this container is already published, so something is on the account.
+       *
+       * 🔴 This threw INSTAGRAM_PUBLISH_FAILED, whose whole documented meaning is the opposite — the screen
+       * renders that code as 「아무것도 게시되지 않았으니 다시 시도해도 됩니다」, and instagramPublishApi.ts's
+       * own comment says blurring it with "already published" would tell that case to do the one thing it must
+       * not. The English sentence beside the throw was correct and never reached anyone: the screen branches on
+       * the code and shows its own fixed text. A true message behind a false code is not a half-fix, it is the
+       * false one, because only the code is read.
+       *
+       * The outcome is reported as unknown rather than as a recorded post because there is nothing to record:
+       * a container Meta has already published carries no media id here, and naming a post we cannot name would
+       * put an invented record where the screen reads the real one. What the person must do is identical to
+       * every other unknown — look at the account — and until they say what they saw, the trace refuses the
+       * next press, because pressing again while something is up is how one post becomes two.
+       */
+      if (statusCode === "PUBLISHED") {
+        await recordPublishAttempt(directory, { startedAt: new Date(this.now()).toISOString(), igUserId });
+        throw instagramPublishOutcomeUnknown({ startedAt: new Date(this.now()).toISOString(), igUserId });
+      }
       if (this.now() >= deadline) throw instagramPublishFailed("Instagram is still processing this video. Try again in a few minutes.");
       await this.sleep(interval);
     }
@@ -344,7 +363,7 @@ export class InstagramPublishService {
     try {
       const { containerId } = await createInstagramResumableContainer(accessToken, igUserId, caption, thumbOffsetMs, this.requestOptions);
       await uploadInstagramResumableVideo(accessToken, containerId, bytes, this.requestOptions);
-      await this.waitUntilPublishable(accessToken, containerId);
+      await this.waitUntilPublishable(accessToken, containerId, directory, igUserId);
       /*
        * The last line before the irreversible one, and the only place the trace is written.
        *

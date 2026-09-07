@@ -269,18 +269,25 @@ Music: Kevin
     expect(result.project.instagramPost).toMatchObject({ caption });
   });
 
-  it("refuses a container Instagram reports as already published, rather than publishing it a second time", async () => {
-    // The comment here used to say a re-publish was "refused below"; nothing below refused it. On the one path
-    // that cannot be undone, the guard has to be real or the promise has to go.
+  /**
+   * The refusal is real — that part was fixed when a comment claimed a guard that did not exist. What stayed
+   * wrong for longer was which refusal: INSTAGRAM_PUBLISH_FAILED, the code the screen renders as
+   * 「아무것도 게시되지 않았으니 다시 시도해도 됩니다」. Something is on the account here. The English sentence
+   * beside the throw said so and never reached anyone, because the screen branches on the code.
+   */
+  it("does not tell someone nothing was published when Instagram says this container already was", async () => {
     const fetchImpl = graphFetch({ statuses: ["PUBLISHED"] });
-    const { service, projects } = await setup({ fetchImpl });
+    const { service, projects, projectsRoot } = await setup({ fetchImpl });
 
     await expect(service.publish("post_project", approved))
-      .rejects.toMatchObject({ response: { code: "INSTAGRAM_PUBLISH_FAILED" } });
+      .rejects.toMatchObject({ response: { code: "INSTAGRAM_PUBLISH_OUTCOME_UNKNOWN" } });
 
     expect(fetchImpl.mock.calls.some(([url]) => String(url).includes("/media_publish"))).toBe(false);
     // No record either: a post we cannot name is not a post we can claim.
     expect((await projects.findById("post_project")).instagram_post).toBeNull();
+    // And the next press is held until a person says what is actually on the account — pressing again while
+    // something is up is how one post becomes two.
+    expect(await readPublishAttempt(path.join(projectsRoot, "post_project"))).toMatchObject({ igUserId: IG_USER_ID });
   });
 
   it("reports not-connected when there is no stored token", async () => {
