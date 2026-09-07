@@ -2363,6 +2363,19 @@ export interface PublishLongEpisodeToInstagramRequest {
    * which is not true of an omitted caption (see createInstagramResumableContainer).
    */
   thumbOffsetMs?: number;
+  /**
+   * "I checked the account and the previous attempt is not up there."
+   *
+   * Only meaningful after a publish is refused with INSTAGRAM_PUBLISH_OUTCOME_UNKNOWN: a previous attempt
+   * reached Meta and the process died before it could write down the answer, so the app knows a publish
+   * happened and cannot know whether it succeeded. Nothing it can call settles that — Meta will list the
+   * account's pages, not say whether a given Reel came from here — so, exactly like
+   * ForgetInstagramPostRequest.acknowledged, the fact is supplied by the only party who can see it.
+   *
+   * Literally `true` or absent, never `false`. A coerced or defaulted value would turn "the person did not
+   * answer" into "the person said no post is up", on the one action that cannot be taken back.
+   */
+  acknowledgedUnknownAttempt?: true;
 }
 export interface PublishLongEpisodeToInstagramResponse {
   mediaId: string;
@@ -2387,6 +2400,19 @@ export interface PublishToInstagramRequest {
    * which is not true of an omitted caption (see createInstagramResumableContainer).
    */
   thumbOffsetMs?: number;
+  /**
+   * "I checked the account and the previous attempt is not up there."
+   *
+   * Only meaningful after a publish is refused with INSTAGRAM_PUBLISH_OUTCOME_UNKNOWN: a previous attempt
+   * reached Meta and the process died before it could write down the answer, so the app knows a publish
+   * happened and cannot know whether it succeeded. Nothing it can call settles that — Meta will list the
+   * account's pages, not say whether a given Reel came from here — so, exactly like
+   * ForgetInstagramPostRequest.acknowledged, the fact is supplied by the only party who can see it.
+   *
+   * Literally `true` or absent, never `false`. A coerced or defaulted value would turn "the person did not
+   * answer" into "the person said no post is up", on the one action that cannot be taken back.
+   */
+  acknowledgedUnknownAttempt?: true;
 }
 export interface PublishToInstagramResponse {
   mediaId: string;

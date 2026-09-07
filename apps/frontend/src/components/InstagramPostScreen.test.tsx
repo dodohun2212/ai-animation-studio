@@ -5,6 +5,7 @@ import type { Scene } from "@ai-animation-studio/shared";
 
 import { jsonResponse, makeProject } from "../api/testUtils.js";
 import { InstagramPostScreen } from "./InstagramPostScreen.js";
+import { formatDateTime } from "../utils/formatDateTime.js";
 
 /** Every required Scene field, plus the one the caption suggestion actually reads. */
 function scene(number: number, narration: string): Scene {
@@ -65,13 +66,20 @@ function renderScreen(options: {
   /** "fails" refuses every read; "fails-once" refuses the first and answers the rest — the retry path. */
   draft?: { body?: string; hashtags?: string; aiNotice?: boolean } | "fails" | "fails-once";
   targets?: { targets: { igUserId: string; username: string; pageName: string }[]; selectedIgUserId?: string } | "not-connected";
-  publish?: "ok" | "INSTAGRAM_ALREADY_PUBLISHED" | "INSTAGRAM_PUBLISH_FAILED" | "INSTAGRAM_NOT_CONNECTED";
+  publish?: "ok" | "INSTAGRAM_ALREADY_PUBLISHED" | "INSTAGRAM_PUBLISH_FAILED" | "INSTAGRAM_NOT_CONNECTED"
+    /** Refuses every attempt as "we do not know what happened last time". */
+    | "INSTAGRAM_PUBLISH_OUTCOME_UNKNOWN"
+    /** Refuses the first attempt that way and accepts the next — the path a person takes after checking. */
+    | "unknown-then-ok";
+  /** What the backend could read off the interrupted attempt. Omitted stands for a trace it could not read. */
+  unknownDetails?: { startedAt: string; igUserId: string };
   forget?: "ok" | "not-recorded";
   episodes?: ReturnType<typeof libraryEpisode>[];
   episode?: Record<string, unknown>;
 } = {}) {
   const projects = options.projects ?? [libraryProject()];
   let draftReads = 0;
+  let publishAttempts = 0;
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input);
     if (url === LIBRARY_URL) return jsonResponse(200, { projects, episodes: options.episodes ?? [] });
@@ -90,7 +98,17 @@ function renderScreen(options: {
       return jsonResponse(200, { settings: makeSettings(options.durationSeconds ?? 30), sceneCountChangeable: true, aspectRatioChangeable: true });
     }
     if (url === "/projects/p1/instagram/publish") {
-      if (options.publish && options.publish !== "ok") {
+      publishAttempts += 1;
+      const unknownRefusal = options.publish === "INSTAGRAM_PUBLISH_OUTCOME_UNKNOWN"
+        || (options.publish === "unknown-then-ok" && publishAttempts === 1);
+      if (unknownRefusal) {
+        return jsonResponse(409, {
+          code: "INSTAGRAM_PUBLISH_OUTCOME_UNKNOWN",
+          message: "raw backend detail",
+          ...(options.unknownDetails ? { details: options.unknownDetails } : {}),
+        });
+      }
+      if (options.publish && options.publish !== "ok" && options.publish !== "unknown-then-ok") {
         return jsonResponse(409, { code: options.publish, message: "raw backend detail" });
       }
       return jsonResponse(200, {
@@ -826,10 +844,6 @@ describe("InstagramPostScreen", () => {
     const chosen = await screen.findByTestId("post-publish-confirm-cover");
     expect(chosen.textContent).toContain("12.3초");
     expect(chosen.textContent).not.toContain("첫 장면");
-    // A request, not a result: the app never reads the published media back, so it cannot know the cover came
-    // out where it asked. Asserting the outcome is what made a correctly-sent frame look like an app bug.
-    expect(chosen.textContent).toContain("요청합니다");
-    expect(chosen.textContent).not.toContain("지점입니다");
   });
 
   /**
@@ -937,6 +951,98 @@ describe("InstagramPostScreen", () => {
     const error = await screen.findByTestId("post-publish-error");
     expect(error.textContent).toContain("이미 게시");
     expect(error.textContent).not.toContain("다시 시도");
+  });
+
+  /**
+   * The third thing that can be true after a publish, and the only one this app cannot resolve by itself.
+   *
+   * Instagram was told to publish and the app stopped before it could write down what came back. "다시 시도해도
+   * 됩니다" would risk a second public post; "이미 게시되었습니다" would strand a video that may never have gone
+   * out. Only the account knows, and only a person can read it — so this refusal is a question, and it gets a
+   * panel rather than the red line the other refusals share.
+   */
+  it("asks the reader to check the account instead of guessing, and says when and where", async () => {
+    renderScreen({
+      targets: { targets: [{ igUserId: "1", username: "ibad_studio", pageName: "이배드" }], selectedIgUserId: "1" },
+      publish: "INSTAGRAM_PUBLISH_OUTCOME_UNKNOWN",
+      unknownDetails: { startedAt: "2026-09-07T10:30:58.000Z", igUserId: "17841400000000000" },
+    });
+    await pickProject();
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "본문" } });
+    fireEvent.click(await screen.findByTestId("post-publish-button"));
+    fireEvent.click(await screen.findByTestId("post-publish-confirm-button"));
+
+    const panel = await screen.findByTestId("post-unknown-attempt");
+    expect(panel.textContent).toContain("이미 올라가 있을 수도 있고");
+    expect(panel.textContent).toContain("두 번 올라갑니다");
+    const detail = screen.getByTestId("post-unknown-attempt-detail").textContent ?? "";
+    expect(detail).toContain(formatDateTime("2026-09-07T10:30:58.000Z"));
+    expect(detail).toContain("17841400000000000");
+    // A question, not a dead end: the red line would sit above the only control that resolves it.
+    expect(screen.queryByTestId("post-publish-error")).toBeNull();
+    expect(panel.textContent).not.toContain("raw backend detail");
+  });
+
+  /** Absent details is not empty details — the panel must not look more certain than it is. */
+  it("says which part it could not read when the trace itself was unreadable", async () => {
+    renderScreen({
+      targets: { targets: [{ igUserId: "1", username: "ibad_studio", pageName: "이배드" }], selectedIgUserId: "1" },
+      publish: "INSTAGRAM_PUBLISH_OUTCOME_UNKNOWN",
+    });
+    await pickProject();
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "본문" } });
+    fireEvent.click(await screen.findByTestId("post-publish-button"));
+    fireEvent.click(await screen.findByTestId("post-publish-confirm-button"));
+
+    await screen.findByTestId("post-unknown-attempt");
+    expect(screen.queryByTestId("post-unknown-attempt-detail")).toBeNull();
+    expect(screen.getByTestId("post-unknown-attempt-detail-missing").textContent).toContain("읽지 못했습니다");
+  });
+
+  it("sends nothing more when the reader backs out of that question", async () => {
+    const { fetchMock } = renderScreen({
+      targets: { targets: [{ igUserId: "1", username: "ibad_studio", pageName: "이배드" }], selectedIgUserId: "1" },
+      publish: "INSTAGRAM_PUBLISH_OUTCOME_UNKNOWN",
+    });
+    await pickProject();
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "본문" } });
+    fireEvent.click(await screen.findByTestId("post-publish-button"));
+    fireEvent.click(await screen.findByTestId("post-publish-confirm-button"));
+    await screen.findByTestId("post-unknown-attempt");
+    const before = fetchMock.mock.calls.filter(([url]) => String(url).includes("/instagram/publish")).length;
+
+    fireEvent.click(screen.getByTestId("post-unknown-attempt-cancel"));
+
+    expect(screen.queryByTestId("post-unknown-attempt")).toBeNull();
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/instagram/publish"))).toHaveLength(before);
+  });
+
+  /**
+   * The acknowledgement is `true` or absent, never `false`: a form defaulting a box to unchecked and a person
+   * who read the warning and looked at the account would otherwise arrive as the same request.
+   */
+  it("carries the acknowledgement only after the reader answers, and publishes on that answer", async () => {
+    const { fetchMock } = renderScreen({
+      targets: { targets: [{ igUserId: "1", username: "ibad_studio", pageName: "이배드" }], selectedIgUserId: "1" },
+      publish: "unknown-then-ok",
+    });
+    await pickProject();
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "본문" } });
+    const caption = screen.getByTestId("post-caption-preview").textContent;
+    fireEvent.click(await screen.findByTestId("post-publish-button"));
+    fireEvent.click(await screen.findByTestId("post-publish-confirm-button"));
+    await screen.findByTestId("post-unknown-attempt");
+
+    const publishes = () => fetchMock.mock.calls.filter(([url]) => String(url).includes("/instagram/publish"));
+    // The first press did not carry it — nobody had been asked yet.
+    expect(JSON.parse(String((publishes()[0]?.[1] as RequestInit).body))).toEqual({ approved: true, caption, igUserId: "1" });
+
+    fireEvent.click(screen.getByTestId("post-unknown-attempt-proceed"));
+
+    await waitFor(() => expect(publishes()).toHaveLength(2));
+    expect(JSON.parse(String((publishes()[1]?.[1] as RequestInit).body)))
+      .toEqual({ approved: true, caption, igUserId: "1", acknowledgedUnknownAttempt: true });
+    await waitFor(() => expect(screen.queryByTestId("post-unknown-attempt")).toBeNull());
   });
 
   it("backs out of the confirmation without sending anything", async () => {

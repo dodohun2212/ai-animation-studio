@@ -3,12 +3,37 @@ import { SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
 
 export class InstagramPublishApiError extends Error {
   readonly code: string;
+  /**
+   * Only ever set for `INSTAGRAM_PUBLISH_OUTCOME_UNKNOWN`, and only when the backend could actually read the
+   * trace the interrupted publish left behind. Absent means the trace was there but unreadable — which is not
+   * the same as "no detail", and the dialog says so rather than drawing empty fields.
+   */
+  readonly unknownAttempt?: UnknownAttemptDetails;
 
-  constructor(code: string, message: string) {
+  constructor(code: string, message: string, unknownAttempt?: UnknownAttemptDetails) {
     super(message);
     this.name = "InstagramPublishApiError";
     this.code = code;
+    if (unknownAttempt) this.unknownAttempt = unknownAttempt;
   }
+}
+
+/** When the interrupted publish started, and which account it was aimed at. */
+export interface UnknownAttemptDetails {
+  startedAt: string;
+  igUserId: string;
+}
+
+/**
+ * The backend sends `details` absent — not empty — when the trace could not be read, so this returns undefined
+ * rather than a half-filled object. A dialog printing "언제: " with nothing after it claims to know something
+ * it does not, on the screen whose whole job is to say exactly what is and is not known.
+ */
+function toUnknownAttemptDetails(value: unknown): UnknownAttemptDetails | undefined {
+  if (!isRecord(value)) return undefined;
+  const { startedAt, igUserId } = value;
+  if (!isNonEmptyString(startedAt) || !isNonEmptyString(igUserId)) return undefined;
+  return { startedAt, igUserId };
 }
 
 /**
@@ -32,6 +57,11 @@ const SAFE_ERRORS: Record<string, string> = {
   /* "지울 게 없었다" 와 "지웠다" 는 남는 상태가 같습니다. 다른 것은 다음에 올리기를 누르는 사람이 무엇을 믿고
      누르느냐고, 그래서 성공으로 삼키지 않고 이렇게 말합니다. */
   INSTAGRAM_POST_NOT_RECORDED: "이 영상에는 지울 게시 기록이 없습니다. 이미 풀려 있어 지금 올릴 수 있습니다.",
+  /* The third thing that can be true, and it is neither of the two the block above separates: the last publish
+     stopped between telling Instagram and writing that down, so nobody here knows which side of the line it
+     fell on. "다시 시도해도 됩니다" would risk a second public post; "이미 게시되었습니다" would strand a video
+     that never went out. The only honest instruction is to go and look. */
+  INSTAGRAM_PUBLISH_OUTCOME_UNKNOWN: "직전 게시가 끝까지 갔는지 알 수 없습니다. 인스타그램 계정을 먼저 확인해 주세요 — 이미 올라가 있을 수 있습니다.",
 };
 const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };
@@ -71,6 +101,18 @@ function coverField(thumbOffsetMs: number | null | undefined): { thumbOffsetMs?:
 }
 
 /**
+ * The "I looked, and nothing is up" answer, present only when someone actually gave it.
+ *
+ * Sent as literal `true` or left out entirely — never `false`. The server refuses `false` on purpose: a form
+ * whose box defaults to unchecked and a person who read the warning and answered "no post is up" would arrive
+ * as the same request, and only one of them has looked at the account. Same shape, same reason, as
+ * `coverField` above — an unanswered question is not an answer.
+ */
+function acknowledgementField(acknowledged: boolean | undefined): { acknowledgedUnknownAttempt?: true } {
+  return acknowledged === true ? { acknowledgedUnknownAttempt: true } : {};
+}
+
+/**
  * Publishes this project's final video. Irreversible and public — the only call in this app whose mistake cannot
  * be undone by anyone, including Instagram.
  *
@@ -85,13 +127,14 @@ export async function publishToInstagram(
   caption: string,
   igUserId: string,
   thumbOffsetMs?: number | null,
+  acknowledgedUnknownAttempt?: boolean,
 ): Promise<PublishToInstagramResponse> {
   let response: Response;
   try {
     response = await fetch(API_ROUTES.instagramPublish(projectId), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ approved: true, caption, igUserId, ...coverField(thumbOffsetMs) }),
+      body: JSON.stringify({ approved: true, caption, igUserId, ...coverField(thumbOffsetMs), ...acknowledgementField(acknowledgedUnknownAttempt) }),
     });
   } catch {
     throw new InstagramPublishApiError(NETWORK.code, NETWORK.message);
@@ -106,7 +149,7 @@ export async function publishToInstagram(
 
   if (!response.ok) {
     if (isRecord(body) && isNonEmptyString(body.code) && isNonEmptyString(body.message)) {
-      throw new InstagramPublishApiError(body.code, body.message);
+      throw new InstagramPublishApiError(body.code, body.message, toUnknownAttemptDetails(body.details));
     }
     // A 5xx that did not even carry the backend's own error shape means the backend never answered — it is
     // down, restarting, or something in front of it replied. Say that, instead of blaming the response body.
@@ -136,13 +179,14 @@ export async function publishLongEpisodeToInstagram(
   caption: string,
   igUserId: string,
   thumbOffsetMs?: number | null,
+  acknowledgedUnknownAttempt?: boolean,
 ): Promise<PublishLongEpisodeToInstagramResponse> {
   let response: Response;
   try {
     response = await fetch(API_ROUTES.longEpisodeInstagramPublish(projectId, episodeNumber), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ approved: true, caption, igUserId, ...coverField(thumbOffsetMs) }),
+      body: JSON.stringify({ approved: true, caption, igUserId, ...coverField(thumbOffsetMs), ...acknowledgementField(acknowledgedUnknownAttempt) }),
     });
   } catch {
     throw new InstagramPublishApiError(NETWORK.code, NETWORK.message);
@@ -157,7 +201,7 @@ export async function publishLongEpisodeToInstagram(
 
   if (!response.ok) {
     if (isRecord(body) && isNonEmptyString(body.code) && isNonEmptyString(body.message)) {
-      throw new InstagramPublishApiError(body.code, body.message);
+      throw new InstagramPublishApiError(body.code, body.message, toUnknownAttemptDetails(body.details));
     }
     // A 5xx that did not even carry the backend's own error shape means the backend never answered — it is
     // down, restarting, or something in front of it replied. Say that, instead of blaming the response body.
@@ -215,7 +259,7 @@ async function deletePostRecord(url: string, carried: "project" | "episode"): Pr
 
   if (!response.ok) {
     if (isRecord(body) && isNonEmptyString(body.code) && isNonEmptyString(body.message)) {
-      throw new InstagramPublishApiError(body.code, body.message);
+      throw new InstagramPublishApiError(body.code, body.message, toUnknownAttemptDetails(body.details));
     }
     // A 5xx that did not even carry the backend's own error shape means the backend never answered — it is
     // down, restarting, or something in front of it replied. Say that, instead of blaming the response body.

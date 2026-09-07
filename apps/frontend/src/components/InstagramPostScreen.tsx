@@ -3,7 +3,8 @@ import { FINAL_VIDEO_RELATIVE_PATH, instagramHashtagCount, INSTAGRAM_CAPTION_MAX
 import type { InstagramPublishTarget, InstagramTargetDiagnostics, LongEpisodeDetail, Project, VideoLibraryEpisodeSummary, VideoLibraryProjectSummary } from "@ai-animation-studio/shared";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
-import { forgetInstagramPost, forgetLongEpisodeInstagramPost, publishLongEpisodeToInstagram, publishToInstagram, toInstagramPublishDisplayError } from "../api/instagramPublishApi.js";
+import { forgetInstagramPost, forgetLongEpisodeInstagramPost, InstagramPublishApiError, publishLongEpisodeToInstagram, publishToInstagram, toInstagramPublishDisplayError, type UnknownAttemptDetails } from "../api/instagramPublishApi.js";
+import { formatDateTime } from "../utils/formatDateTime.js";
 import { getInstagramTargets, setInstagramTarget, targetLabel, toInstagramTargetsDisplayError } from "../api/instagramTargetsApi.js";
 import { getPostDraft, putPostDraft, toPostDraftDisplayError } from "../api/postDraftApi.js";
 import { getVideoLibrary, toVideoLibraryDisplayError } from "../api/videoLibraryApi.js";
@@ -218,6 +219,9 @@ function suggestEpisodeCaptionBody(episode: LongEpisodeDetail): string {
  * (docs/06_DECISIONS.md D-015). This screen never talks to Meta directly — the token lives on the server and
  * never reaches the page.
  */
+/** The backend's name for "the last publish stopped before it could record what happened". */
+const UNKNOWN_ATTEMPT_CODE = "INSTAGRAM_PUBLISH_OUTCOME_UNKNOWN";
+
 export function InstagramPostScreen({ onBack }: Props) {
   const [list, setList] = useState<ListState>({ status: "loading" });
   /** The picker's raw value: a short project's id, or `episode:<projectId>|<n>`. */
@@ -258,6 +262,15 @@ export function InstagramPostScreen({ onBack }: Props) {
   const [confirmPublish, setConfirmPublish] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<DisplayError | null>(null);
+  /**
+   * A previous publish stopped between telling Instagram and writing that down, so this app does not know
+   * whether the video is up. null while that has not happened; an object once it has — with `details` absent
+   * when even the trace could not be read.
+   *
+   * Its own state rather than a branch on `publishError`, because it is not an error to read and dismiss: it is
+   * a question only the person can answer, and the answer is what unblocks the button.
+   */
+  const [unknownAttempt, setUnknownAttempt] = useState<{ details?: UnknownAttemptDetails } | null>(null);
   /** The unlock is its own two-step, kept apart from the publish confirmation so neither can stand in for the other. */
   const [confirmForget, setConfirmForget] = useState(false);
   const [forgetting, setForgetting] = useState(false);
@@ -563,25 +576,35 @@ export function InstagramPostScreen({ onBack }: Props) {
    * The one irreversible, public action in this app. Reached only from a panel that named the account, and the
    * account it names travels with the request so the two provably match.
    */
-  async function publish(): Promise<void> {
+  async function publish(acknowledgedUnknownAttempt?: boolean): Promise<void> {
     if (publishing || !selectedTarget || picked.status !== "ready") return;
     setPublishing(true);
     setPublishError(null);
     try {
       if (picked.kind === "episode") {
-        const response = await publishLongEpisodeToInstagram(picked.projectId, picked.episodeNumber, caption, selectedTarget.igUserId, coverOffsetMs);
+        const response = await publishLongEpisodeToInstagram(picked.projectId, picked.episodeNumber, caption, selectedTarget.igUserId, coverOffsetMs, acknowledgedUnknownAttempt);
         setConfirmPublish(false);
+        setUnknownAttempt(null);
         // Same reasoning as the project path: the Episode comes back carrying instagramPost, so "already
         // published" is the server's record and survives a reload.
         setPicked((current) => (current.status === "ready" && current.kind === "episode" ? { ...current, episode: response.episode } : current));
         return;
       }
-      const response = await publishToInstagram(picked.project.id, caption, selectedTarget.igUserId, coverOffsetMs);
+      const response = await publishToInstagram(picked.project.id, caption, selectedTarget.igUserId, coverOffsetMs, acknowledgedUnknownAttempt);
       setConfirmPublish(false);
+      setUnknownAttempt(null);
       // The response carries the project with instagramPost set, so the screen switches to "already published"
       // from the server's own record rather than from a local flag that a refresh would forget.
       setPicked((current) => (current.status === "ready" && current.kind === "project" ? { ...current, project: response.project } : current));
     } catch (caught) {
+      /*
+       * This one refusal is a question, not a failure, so it gets the panel instead of the red line — showing
+       * both would put a dead-end sentence above the only control that resolves it.
+       */
+      if (caught instanceof InstagramPublishApiError && caught.code === UNKNOWN_ATTEMPT_CODE) {
+        setUnknownAttempt(caught.unknownAttempt ? { details: caught.unknownAttempt } : {});
+        return;
+      }
       setPublishError(toInstagramPublishDisplayError(caught));
     } finally {
       setPublishing(false);
@@ -1257,6 +1280,70 @@ export function InstagramPostScreen({ onBack }: Props) {
                   </div>
                 )}
               </>
+            )}
+
+            {/*
+              * The one refusal in this app that asks the person to go and look somewhere else.
+              *
+              * Instagram was told to publish and then this app stopped before it could write down what came
+              * back, so both "it is up" and "it never went out" are still possible. Retrying blind risks a
+              * second public post; refusing forever strands a video that may never have gone out. Neither this
+              * screen nor the server can tell — only the account can, and only a person can read it.
+              *
+              * A dialog and not a checkbox, and not a checkbox anywhere else either: a box can be ticked before
+              * the publish button is ever pressed and then sit ticked, so the warning would be answered by
+              * someone who never saw it. This exists only after the refusal and only until it is answered, the
+              * same shape as 「보관하기」 and 「게시 기록 지우기」 — an irreversible action gets one more
+              * deliberate movement of the hand.
+              */}
+            {unknownAttempt && (
+              <div
+                role="alertdialog"
+                aria-label="직전 게시 결과 확인"
+                data-testid="post-unknown-attempt"
+                className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
+              >
+                <p className="text-sm font-semibold text-amber-300">직전 게시가 끝까지 갔는지 알 수 없습니다.</p>
+                <p className="text-sm text-slate-300">
+                  인스타그램에 보내는 데까지는 갔는데, 그 결과를 기록하기 전에 멈췄습니다.{" "}
+                  <span className="text-slate-100">이미 올라가 있을 수도 있고, 안 올라갔을 수도 있습니다.</span>{" "}
+                  계정을 먼저 열어서 확인해 주세요 — 여기서는 알 수 없습니다.
+                </p>
+                {unknownAttempt.details ? (
+                  <p data-testid="post-unknown-attempt-detail" className="text-xs text-slate-400 tabular-nums">
+                    {formatDateTime(unknownAttempt.details.startedAt)} · 계정 {unknownAttempt.details.igUserId}
+                  </p>
+                ) : (
+                  /* Absent details is not empty details. The one thing this panel must never do is look more
+                     certain than it is, so it says which part it could not read instead of leaving a blank. */
+                  <p data-testid="post-unknown-attempt-detail-missing" className="text-xs text-slate-400">
+                    언제 어느 계정이었는지는 읽지 못했습니다. 최근 게시물을 확인해 주세요.
+                  </p>
+                )}
+                <p className="text-xs text-amber-200">
+                  이미 올라가 있는데 아래를 누르면 같은 영상이 두 번 올라갑니다. 두 번째는 되돌릴 수 없습니다.
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    className={outlineButton}
+                    data-testid="post-unknown-attempt-cancel"
+                    disabled={publishing}
+                    onClick={() => setUnknownAttempt(null)}
+                  >
+                    돌아가기
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(225,29,72,0.3)] disabled:opacity-50"
+                    data-testid="post-unknown-attempt-proceed"
+                    disabled={publishing}
+                    onClick={() => void publish(true)}
+                  >
+                    {publishing ? "올리는 중입니다..." : "확인했습니다 — 올라가 있지 않습니다. 게시합니다"}
+                  </button>
+                </div>
+              </div>
             )}
 
             {publishError && (
