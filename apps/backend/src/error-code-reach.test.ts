@@ -31,10 +31,21 @@ import { describe, expect, it } from "vitest";
  * fix was correct and local. Nothing stopped the same thing being true of the eleven other codes below.
  *
  * Deliberately lenient about what counts as reaching: any exact mention of the code in non-test frontend
- * source. A coincidental match makes the guard weaker, never wrong, and the failure worth catching is a code
- * named nowhere at all. Exact, though — matching loosely is how this was mis-verified the first time round,
- * because `VIDEO_RESTORE_NOT_ALLOWED` is a substring of `LONG_EPISODE_VIDEO_RESTORE_NOT_ALLOWED` and a plain
- * `includes` reported a dead entry as a live one.
+ * source. A coincidental match makes the guard weaker, never wrong. Exact, though — matching loosely is how
+ * this was mis-verified the first time round, because `VIDEO_RESTORE_NOT_ALLOWED` is a substring of
+ * `LONG_EPISODE_VIDEO_RESTORE_NOT_ALLOWED` and a plain `includes` reported a dead entry as a live one.
+ *
+ * 🔴 What that leniency costs, measured on 2026-09-08 rather than assumed: a code can have a sentence in one
+ * module's table and still arrive through a different module that has no table. `generatedImagesApi.ts`
+ * renders only client-side codes and falls everything else to the catch-all, so IMAGE_CONTENT_UNAVAILABLE
+ * reaches a person as 「요청을 처리하지 못했습니다」 through that module while its real sentence sits in
+ * `imageGenerationApi.ts`. This guard is green about it, because the code is named — somewhere.
+ *
+ * So the claim this file can make is narrower than "every refusal reaches a person": it is "no refusal is
+ * unspeakable anywhere in the app". Closing the gap properly means knowing which module answers which route,
+ * which is the route-table parsing this repo already declined once for being wrong twice before it was right.
+ * The limit is written here instead, because a guard that overstates its reach is the thing it exists to
+ * prevent, one level up.
  *
  * Lives at the root of apps/backend/src for the reason decision-doc-references.test.ts gives: its scope is the
  * repo, and this workspace's suite is the one that runs in every verification pass.
