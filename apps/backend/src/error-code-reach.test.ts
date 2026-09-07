@@ -38,6 +38,13 @@ import { describe, expect, it } from "vitest";
  *
  * Lives at the root of apps/backend/src for the reason decision-doc-references.test.ts gives: its scope is the
  * repo, and this workspace's suite is the one that runs in every verification pass.
+ *
+ * 🔴 This shipped blind to one module of seventeen. The first version read `*-api.error.ts`, and
+ * `settings/provider-settings.error.ts` does not carry the `api` — so every provider-settings code was
+ * invisible in both directions while the guard reported green, and widening the filter immediately surfaced a
+ * tenth unreachable code. A guard is also a claim about its own coverage, and that claim is the part nothing
+ * else checks: the count assertions below are there so a collector that quietly stops finding things fails
+ * instead of passing.
  */
 
 const CURRENT_DIRECTORY = fileURLToPath(new URL(".", import.meta.url));
@@ -60,6 +67,9 @@ const UNNAMED_BY_A_SCREEN = new Map<string, string>([
   // screen had never been given, and all nine were written the same day (Cowork Round 647). The guard is what
   // made that a finite list of nine rather than an ongoing condition, and the test below is what made the list
   // shrink instead of being carried.
+  // 🔴 Gap, and the one this guard's own blind spot was hiding: a video model the app cannot price is refused
+  // here, and the settings screen has no sentence for it. Reported to Cowork (CLI Round 651).
+  ["UNKNOWN_VIDEO_MODEL", "🔴 gap: 「고를 수 없는 영상 모델입니다」 exists in the backend and reaches nobody"],
   ["VIDEO_LIBRARY_STORAGE_ERROR", "storage failure — the catch-all already says the whole of what is knowable"],
   ["STORY_PROMPT_STORAGE_ERROR", "storage failure — same"],
   ["STORY_GENERATION_FAILED", "local fake-mode generation only; a real run answers STORY_PROVIDER_ERROR"],
@@ -104,7 +114,11 @@ async function collectSourceFiles(directory: string): Promise<string[]> {
 async function declaredBackendCodes(): Promise<Map<string, string>> {
   const codes = new Map<string, string>();
   for (const file of await collectSourceFiles(BACKEND_SOURCE)) {
-    if (!file.endsWith("api.error.ts")) continue;
+    // Every `*.error.ts`, not just `*-api.error.ts`. One module of seventeen — `settings/provider-settings.error.ts`
+    // — does not carry the `api` in its name, and filtering on that spelling made this guard blind to it in
+    // both directions while reporting green. A filter narrower than the thing it is filtering for is how a
+    // guard says nothing convincingly.
+    if (!file.endsWith(".error.ts")) continue;
     const source = await fs.readFile(file, "utf8");
     for (const union of source.matchAll(/type \w*Code\w* =([^;]+);/g)) {
       for (const code of union[1]!.matchAll(/"([A-Z][A-Z0-9_]{3,})"/g)) {
@@ -145,11 +159,16 @@ describe("an error code and the sentence a person reads for it can find each oth
     const declared = await declaredBackendCodes();
     const mapped = await frontendMappedCodes();
 
-    expect(declared.size).toBeGreaterThan(100);
+    // A floor, not a tuned number: it catches a collector that has stopped finding things, but it would not
+    // have caught the `*-api.error.ts` filter, which hid one module and still left well over a hundred codes.
+    expect(declared.size).toBeGreaterThan(150);
     expect(mapped.size).toBeGreaterThan(100);
-    // Two specimens with opposite roles: one every screen renders, one deliberately listed as unnamed below.
+    // Specimens, because a count cannot say *which* things were found. The first two are ordinary; the third
+    // is from `settings/provider-settings.error.ts`, the module the original filter spelled its way past — so
+    // narrowing the filter again fails here by name rather than by an arithmetic that still looks healthy.
     expect(declared.has("INSTAGRAM_ALREADY_PUBLISHED")).toBe(true);
     expect(declared.has("INSTAGRAM_PUBLISH_IN_PROGRESS")).toBe(true);
+    expect(declared.has("SETTINGS_STORAGE_ERROR")).toBe(true);
     expect(mapped.has("INSTAGRAM_ALREADY_PUBLISHED")).toBe(true);
   });
 
