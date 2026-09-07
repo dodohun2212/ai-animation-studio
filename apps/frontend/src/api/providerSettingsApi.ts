@@ -43,6 +43,12 @@ const KNOWN_ERROR_MESSAGES: Record<string, string> = {
   CREDENTIAL_NOT_CONFIGURED: "저장된 credential이 없습니다.",
   SETTINGS_FILE_MALFORMED: "설정을 불러오지 못했습니다.",
   SETTINGS_STORAGE_ERROR: "설정을 저장하지 못했습니다.",
+  /* Normally unreachable: this screen builds its list from VIDEO_MODEL_OPTIONS, so the id it sends is always
+     one the server knows. Arriving here at all means the screen and the contract have drifted apart — and that
+     is exactly the moment "잠시 후 다시 시도해주세요" is the least useful thing that could be said, because
+     waiting changes nothing and the same id will be refused identically. Names the cause instead, and says the
+     one thing that does help: reload, so the list is rebuilt from the contract the server is actually using. */
+  UNKNOWN_VIDEO_MODEL: "이 앱이 값을 매길 수 없는 영상 모델이라 고를 수 없습니다. 화면을 새로 고친 뒤 목록에서 다시 골라 주세요.",
 };
 
 const CLIENT_ERROR_MESSAGES: Record<string, string> = {

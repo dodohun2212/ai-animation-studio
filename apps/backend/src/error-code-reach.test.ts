@@ -59,9 +59,6 @@ const FRONTEND_API = path.join(FRONTEND_SOURCE, "api");
  * applying fails instead of sitting here quietly.
  */
 const UNNAMED_BY_A_SCREEN = new Map<string, string>([
-  // 🔴 Gap, found when this guard's filter was widened to every `*.error.ts`: a video model the app cannot
-  // price is refused here, and the settings screen has no sentence for it. Reported to Cowork (CLI Round 651).
-  ["UNKNOWN_VIDEO_MODEL", "🔴 gap: 「고를 수 없는 영상 모델입니다」 exists in the backend and reaches nobody"],
   // 🟠 Decisions — and the reasons were rewritten on 2026-09-08 after being checked, because all three were
   // written from memory and all three were wrong in their wording. One was wrong in substance. An exception's
   // reason is the only thing standing between it and being deleted by the next person, so a reason nobody

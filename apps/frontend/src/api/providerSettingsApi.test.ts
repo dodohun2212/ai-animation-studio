@@ -235,6 +235,23 @@ describe("providerSettingsApi", () => {
       expect(result.message).not.toContain("some internal detail");
     });
 
+    /**
+     * A model this app cannot price must never reach a budget check, so the server refuses an unrecognised id
+     * rather than defaulting it. The screen had no row for that refusal, so it arrived as "잠시 후 다시
+     * 시도해주세요" — and waiting is the one thing that cannot help: the same id will be refused identically.
+     *
+     * It is normally unreachable, because this screen builds its list from VIDEO_MODEL_OPTIONS. Arriving here
+     * means the screen and the contract have drifted, which is precisely when a catch-all is worst.
+     */
+    it("names a model the app cannot price, instead of telling the reader to wait", () => {
+      const result = toDisplayError(new ProviderSettingsApiError("UNKNOWN_VIDEO_MODEL", "raw server message"));
+      expect(result.code).toBe("UNKNOWN_VIDEO_MODEL");
+      expect(result.message).toContain("고를 수 없습니다");
+      expect(result.message).toContain("새로 고친");
+      expect(result.message).not.toContain("잠시 후");
+      expect(result.message).not.toContain("raw server message");
+    });
+
     it("replaces an untrusted server error code with the fixed safe fallback", () => {
       const secretCode = "UNKNOWN_C:\\Users\\secret\\sk-live-value";
       const result = toDisplayError(new ProviderSettingsApiError(secretCode, "raw server message"));
