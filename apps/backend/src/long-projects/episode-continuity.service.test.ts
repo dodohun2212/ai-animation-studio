@@ -81,9 +81,40 @@ describe("EpisodeContinuityService", () => {
    */
   it("names the next Episode from the outline when nobody has scripted it yet", async () => {
     const { continuity, scripts } = await setup(); await scripts.generate("long", 1, { userRequestId: "episode-continuity.service-script-7" }); await markEligible(1);
-    await expect(continuity.save("long", 1, { memory: { ...memory, events: ["x", 2] } as never })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(continuity.save("long", 1, { memory: { ...memory, events: ["x", 2] } as never })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_CONTINUITY_INVALID" } });
 
     await expect(continuity.save("long", 1, { memory })).resolves.toMatchObject({ nextEpisode: { episodeNumber: 2, status: "outline_ready" } });
+  });
+
+  /**
+   * The refusal has its own name because the screen had already written the sentence for it and could never
+   * show it. `longProjectsApi.ts` has carried a LONG_EPISODE_CONTINUITY_INVALID entry — "연결 기억을 저장하려면
+   * 검토한 값이 올바르게 채워져 있어야 합니다" — for a code nothing threw, so every malformed save arrived as
+   * INVALID_REQUEST and rendered as the catch-all "입력 내용을 확인해 주세요".
+   *
+   * Both halves existed and neither could reach the other, which is why this is checked on the shapes a person
+   * actually produces rather than on one specimen: a field left out, a list past its ceiling, an entry that is
+   * not text. Only the request path is renamed — a continuity.json already on disk that no longer parses is not
+   * a request anybody made, and calling it an invalid request would send someone to look at the form.
+   */
+  it("names the malformed-memo refusal, on every shape of malformed, and only for the request", async () => {
+    const { continuity, scripts } = await setup(); await scripts.generate("long", 1, { userRequestId: "episode-continuity.service-script-8" }); await markEligible(1);
+
+    const { events, ...missingField } = memory;
+    for (const bad of [
+      missingField,
+      { ...memory, events: Array.from({ length: 101 }, (_, index) => `event ${index}`) },
+      { ...memory, episodeSummary: 7 },
+    ]) {
+      await expect(continuity.save("long", 1, { memory: bad } as never))
+        .rejects.toMatchObject({ response: { code: "LONG_EPISODE_CONTINUITY_INVALID" } });
+    }
+
+    // A stored memo that no longer parses stays LONG_PROJECT_DATA_INVALID — the read path answers about a file,
+    // not about anything the person just typed.
+    await continuity.save("long", 1, { memory });
+    await fs.writeFile(path.join(path.dirname(episodePath(1)), "continuity.json"), JSON.stringify({ episode_number: 1, events: "not a list" }));
+    await expect(continuity.get("long", 1)).resolves.toMatchObject({ memory: null });
   });
 
   /**
