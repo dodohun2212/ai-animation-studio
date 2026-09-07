@@ -1,8 +1,10 @@
 import { useRef, useState, type FormEvent } from "react";
 import {
+  IMAGE_ESTIMATED_COST_USD,
   MIN_SCENE_COUNT,
   RUNWAY_CLIP_DURATIONS,
   STORY_ESTIMATED_COST_USD,
+  VIDEO_SECOND_ESTIMATED_COST_USD,
   type AspectRatio,
   type Project,
   type RunwayClipDurationSeconds,
@@ -283,6 +285,30 @@ export function CreateFlowerReelForm({ onCreated, onCancel }: Props) {
       <p className="text-sm text-slate-400" data-testid="flower-cost-note">
         <span className="font-semibold text-slate-200">만들면 곧바로 대본 생성(${STORY_ESTIMATED_COST_USD.toFixed(2)})이 이어집니다.</span>{" "}
         이미지와 영상은 그 뒤에 따로 확인하고 만듭니다. 각 단계마다 금액이 나옵니다.
+      </p>
+
+      {/*
+       * What the whole thing costs, said once, before the first cent.
+       *
+       * Every step already states its own price at the moment it charges — and that is exactly why nobody ever
+       * saw the total: it arrived in four pieces, each after the previous one was already spent. 캡틴D finished
+       * a reel and only then knew what a reel costs. The number that changes a decision here is the one that
+       * moves when 장면 수 and 장면당 길이 move, and those two controls are directly above this line.
+       *
+       * Deliberately says 약: these are the app's own per-step estimates, the same ones each confirmation panel
+       * shows, and the provider bills what it bills. Voice is left out because it is off unless someone turns it
+       * on later, and a total that includes what you did not ask for is not the total you will be charged.
+       */}
+      <p className="text-sm text-slate-400" data-testid="flower-total-cost">
+        다 만들면{" "}
+        <span className="font-semibold text-slate-200 tabular-nums">
+          약 ${(STORY_ESTIMATED_COST_USD + sceneCount * IMAGE_ESTIMATED_COST_USD + sceneCount * clipDurationSeconds * VIDEO_SECOND_ESTIMATED_COST_USD).toFixed(2)}
+        </span>{" "}
+        <span className="text-slate-500 tabular-nums">
+          (대본 ${STORY_ESTIMATED_COST_USD.toFixed(2)} + 이미지 {sceneCount}장 ${(sceneCount * IMAGE_ESTIMATED_COST_USD).toFixed(2)}
+          {" "}+ 영상 {sceneCount * clipDurationSeconds}초 ${(sceneCount * clipDurationSeconds * VIDEO_SECOND_ESTIMATED_COST_USD).toFixed(2)})
+        </span>
+        {" "}— 단계마다 다시 여쭙고, 중간에 그만두셔도 됩니다.
       </p>
 
       {created !== null && error !== null && (

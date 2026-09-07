@@ -95,6 +95,28 @@ describe("CreateFlowerReelForm", () => {
     expect(screen.getByTestId("flower-origin-note").textContent).toContain("이미지를 만들기 전에");
   });
 
+  /**
+   * The whole price, before the first cent.
+   *
+   * Every step already names its own charge — which is why nobody ever saw the total: it arrived in four pieces,
+   * each after the previous one was spent. 캡틴D finished a reel and only then knew what a reel costs. The number
+   * that changes a decision belongs beside the two controls that move it.
+   */
+  it("states the whole estimated cost, and moves it when the scene count and length move", () => {
+    render(<CreateFlowerReelForm onCreated={() => {}} onCancel={() => {}} />);
+    const total = () => screen.getByTestId("flower-total-cost").textContent ?? "";
+
+    fireEvent.change(screen.getByTestId("flower-scene-count"), { target: { value: "2" } });
+    fireEvent.change(screen.getByTestId("flower-clip-duration"), { target: { value: "10" } });
+    // 0.05 script + 2 x 0.10 images + 20s x 0.05 video
+    expect(total()).toContain("$1.25");
+
+    fireEvent.change(screen.getByTestId("flower-scene-count"), { target: { value: "4" } });
+    fireEvent.change(screen.getByTestId("flower-clip-duration"), { target: { value: "5" } });
+    // Same 20 seconds of video, two more pictures: the difference the choice actually makes.
+    expect(total()).toContain("$1.45");
+  });
+
   it("suggests a folder name from the flower and keeps a typed one", () => {
     render(<CreateFlowerReelForm onCreated={() => {}} onCancel={() => {}} />);
     fireEvent.change(screen.getByTestId("flower-name"), { target: { value: "장미" } });
