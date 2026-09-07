@@ -71,4 +71,42 @@ describe("packaging ships what it just built", () => {
       );
     }
   });
+
+  /**
+   * The two static asset directories are found at runtime by looking beside the bundle, and that arrangement
+   * is stated only in prose — in comments on `fontsRoot()` and `promptsRoot()` that say "shipped as a sibling
+   * of the bundle (see apps/desktop/package.json's extraResources)". Nothing compares the comment to the
+   * manifest, which is how `vite.config.ts`'s identical claim about API_ROUTES stopped being true.
+   *
+   * Both resolvers try three candidate depths and take the first that exists, so a `to:` that stops matching
+   * does not throw — it silently returns the first candidate, a path that is not there. What follows is quiet
+   * in both cases and expensive in both:
+   *
+   *   fonts    FFmpeg gets a fontsdir that does not exist and burns subtitles in whatever font the machine
+   *            happens to have — the exact fallback measured and fixed on 2026-09-08, back again and only in
+   *            the packaged build, where nobody is watching a dev console
+   *   prompts  the story template is not found at the first paid call
+   *
+   * The marker each resolver actually tests for is asserted too, not just the directory: `promptsRoot()`
+   * matches its packaged candidate only when `story/story_generation.txt` is inside it, so moving that one file
+   * breaks the packaged app while every test that reads prompts from the repo keeps passing.
+   */
+  it("ships fonts and prompts where the backend looks for them — beside the bundle, with the marker each resolver tests", () => {
+    const bundle = manifest.build.extraResources.find((resource) => resource.from.endsWith("/dist-bundle"));
+    assert.ok(bundle, "the backend bundle is no longer in extraResources");
+
+    for (const [name, marker] of [["fonts", "NotoSerifKR-Bold.ttf"], ["prompts", path.join("story", "story_generation.txt")]] as const) {
+      const shipped = manifest.build.extraResources.find((resource) => path.basename(resource.from) === name);
+      assert.ok(shipped, `${name} is no longer copied into the installer`);
+      assert.equal(
+        shipped.to,
+        `${bundle.to}/${name}`,
+        `${name} must land beside the bundle — ${name}Root()'s packaged candidate is path.resolve(moduleDirectory, "${name}")`,
+      );
+      assert.ok(
+        fs.existsSync(path.join(repoRoot, name, marker)),
+        `${name}/${marker} is what the resolver tests for; without it the packaged app falls back to a path that does not exist`,
+      );
+    }
+  });
 });
