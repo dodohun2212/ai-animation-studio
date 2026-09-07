@@ -1,0 +1,206 @@
+import type { Dirent } from "node:fs";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { describe, expect, it } from "vitest";
+
+/**
+ * Repo-wide guard: an error code and the sentence a person reads for it must be able to find each other.
+ *
+ * Every refusal in this app is two halves in two workspaces. The backend picks a code, and a map in
+ * `apps/frontend/src/api` turns that code into the one sentence the person actually sees — the backend's own
+ * English message never reaches anyone. So a code with no entry falls through to a catch-all like
+ * 「요청을 처리하지 못했습니다」, and an entry whose code nothing throws is a sentence that can never appear.
+ * Both halves typecheck perfectly, both look right when read on their own, and neither can see the other.
+ *
+ * Not hypothetical, and not rare. Found by hand on 2026-09-08, all in one sweep:
+ *
+ *   LONG_EPISODE_CONTINUITY_INVALID   the screen's sentence existed; nothing threw the code
+ *   INSTAGRAM_PUBLISH_IN_PROGRESS     "do not press again" — on the one action that cannot be undone
+ *   VIDEO_RETRY_NEEDS_CHANGED_INPUT   the guard built after 2026-09-05 charged $0.25 twice
+ *
+ * The last two are the shape that costs money: the app knows exactly what happened and says the sentence that
+ * means "something went wrong", which reads as "try again". docs/06_DECISIONS.md D-010 is this same reasoning
+ * about paid retries; this is it about refusals in general.
+ *
+ * And it had already been found once, by hand, in one place. `audioLibraryApi.ts`'s own comment records a table
+ * that listed three codes the backend never sends while missing the two it does, so every refused upload fell
+ * through to 「요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.」 — wrong twice over, as that comment puts
+ * it: it names no cause and it recommends a retry for a file that will be refused identically every time. That
+ * fix was correct and local. Nothing stopped the same thing being true of the eleven other codes below.
+ *
+ * Deliberately lenient about what counts as reaching: any exact mention of the code in non-test frontend
+ * source. A coincidental match makes the guard weaker, never wrong, and the failure worth catching is a code
+ * named nowhere at all. Exact, though — matching loosely is how this was mis-verified the first time round,
+ * because `VIDEO_RESTORE_NOT_ALLOWED` is a substring of `LONG_EPISODE_VIDEO_RESTORE_NOT_ALLOWED` and a plain
+ * `includes` reported a dead entry as a live one.
+ *
+ * Lives at the root of apps/backend/src for the reason decision-doc-references.test.ts gives: its scope is the
+ * repo, and this workspace's suite is the one that runs in every verification pass.
+ */
+
+const CURRENT_DIRECTORY = fileURLToPath(new URL(".", import.meta.url));
+const REPOSITORY_ROOT = path.resolve(CURRENT_DIRECTORY, "../../..");
+const BACKEND_SOURCE = path.join(REPOSITORY_ROOT, "apps", "backend", "src");
+const FRONTEND_SOURCE = path.join(REPOSITORY_ROOT, "apps", "frontend", "src");
+const FRONTEND_API = path.join(FRONTEND_SOURCE, "api");
+
+/**
+ * Codes no screen names, each with the reason — and where the reason is a gap rather than a decision, that is
+ * what it says. Same shape and same rule as apps/frontend's own ALLOWED lists: an entry that has stopped
+ * applying fails instead of sitting here quietly.
+ */
+const UNNAMED_BY_A_SCREEN = new Map<string, string>([
+  // 🔴 Gaps, not decisions. Each is a code whose whole reason for existing is a sentence the catch-all cannot
+  // say, and today the catch-all is what a person gets. Reported to Cowork (CLI Round 646) — the maps they
+  // belong in are apps/frontend's.
+  ["INSTAGRAM_PUBLISH_IN_PROGRESS", "🔴 gap: 「do not press again」 on the irreversible action, currently rendered as the catch-all"],
+  ["VIDEO_RETRY_NEEDS_CHANGED_INPUT", "🔴 gap: 「say what to change」 — the guard built after 2026-09-05 charged twice"],
+  ["LONG_EPISODE_RETRY_NEEDS_CHANGED_INPUT", "🔴 gap: the Episode half of the same guard"],
+  ["VIDEO_MERGE_ALREADY_PUBLISHED", "🔴 gap: why a merge over a published card is refused"],
+  ["VIDEO_LIBRARY_VERSION_NOT_FOUND", "🔴 gap: the screen maps VIDEO_VERSION_NOT_FOUND, which nothing throws — the prefix differs"],
+  ["VIDEO_LIBRARY_RESTORE_NOT_ALLOWED", "🔴 gap: the screen maps VIDEO_RESTORE_NOT_ALLOWED, which nothing throws — the prefix differs"],
+  ["VIDEO_LIBRARY_CONTENT_UNAVAILABLE", "🔴 gap: the restored version's file is missing, said as a generic failure"],
+  ["LONG_EPISODE_VIDEO_VERSION_NOT_FOUND", "🔴 gap: the Episode restore path has no entry at all, not even a mismatched one"],
+  ["LONG_EPISODE_VIDEO_RESTORE_NOT_ALLOWED", "🔴 gap: the Episode half of the same restore flow"],
+  // 🟠 Decisions. A 500 from a disk that will not write is not a sentence a person can act on, and every
+  // catch-all in this app already says the true and complete thing about it: it did not work. Naming these
+  // would add words without adding an action.
+  ["VIDEO_LIBRARY_STORAGE_ERROR", "storage failure — the catch-all already says the whole of what is knowable"],
+  ["STORY_PROMPT_STORAGE_ERROR", "storage failure — same"],
+  ["STORY_GENERATION_FAILED", "local fake-mode generation only; a real run answers STORY_PROVIDER_ERROR"],
+]);
+
+/**
+ * Sentences whose code nothing throws, same rules.
+ *
+ * These two are the other face of the `VIDEO_LIBRARY_` entries above rather than separate defects: the backend
+ * throws `VIDEO_LIBRARY_RESTORE_NOT_ALLOWED` and the screen answers `VIDEO_RESTORE_NOT_ALLOWED`, so one rename
+ * on the screen's side clears all four entries at once. They are listed here as well because both statements
+ * are true today, and the last test in this file makes each stop being listed the moment it stops being true.
+ */
+const REACHING_NOTHING = new Map<string, string>([
+  ["VIDEO_RESTORE_NOT_ALLOWED", "🔴 gap: the backend's name for this is VIDEO_LIBRARY_RESTORE_NOT_ALLOWED"],
+  ["VIDEO_VERSION_NOT_FOUND", "🔴 gap: the backend's name for this is VIDEO_LIBRARY_VERSION_NOT_FOUND"],
+]);
+
+const SOURCE_EXTENSIONS = new Set([".ts", ".tsx"]);
+
+async function collectSourceFiles(directory: string): Promise<string[]> {
+  let entries: Dirent<string>[];
+  try {
+    entries = await fs.readdir(directory, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const files: string[] = [];
+  for (const entry of entries) {
+    const full = path.join(directory, entry.name);
+    if (entry.isDirectory()) files.push(...await collectSourceFiles(full));
+    else if (SOURCE_EXTENSIONS.has(path.extname(entry.name)) && !entry.name.includes(".test.")) files.push(full);
+  }
+  return files;
+}
+
+/**
+ * Every code the backend declares it can answer with.
+ *
+ * Read off the `type …Code… = "A" | "B"` unions in the `*-api.error.ts` files rather than off the throw sites,
+ * because the union is the list each module maintains as its contract — a factory that builds its code from a
+ * variable is invisible to a throw-site scan, and that is exactly the miss which made the first hand-run of
+ * this sweep report eight false candidates.
+ */
+async function declaredBackendCodes(): Promise<Map<string, string>> {
+  const codes = new Map<string, string>();
+  for (const file of await collectSourceFiles(BACKEND_SOURCE)) {
+    if (!file.endsWith("api.error.ts")) continue;
+    const source = await fs.readFile(file, "utf8");
+    for (const union of source.matchAll(/type \w*Code\w* =([^;]+);/g)) {
+      for (const code of union[1]!.matchAll(/"([A-Z][A-Z0-9_]{3,})"/g)) {
+        if (!codes.has(code[1]!)) codes.set(code[1]!, path.basename(file));
+      }
+    }
+  }
+  return codes;
+}
+
+/** The keys of the code→sentence maps: a SCREAMING_CASE key with a string literal after it, in the API layer. */
+async function frontendMappedCodes(): Promise<Map<string, string>> {
+  const codes = new Map<string, string>();
+  for (const file of await collectSourceFiles(FRONTEND_API)) {
+    const source = await fs.readFile(file, "utf8");
+    for (const entry of source.matchAll(/^\s{2}([A-Z][A-Z0-9_]{3,}):\s*[`"]/gm)) {
+      if (!codes.has(entry[1]!)) codes.set(entry[1]!, path.basename(file));
+    }
+  }
+  return codes;
+}
+
+/** Exact, never a substring — see the file comment for the mis-verification that makes this the whole point. */
+function names(source: string, code: string): boolean {
+  return new RegExp(`(?<![A-Z0-9_])${code}(?![A-Z0-9_])`).test(source);
+}
+
+async function frontendText(): Promise<string> {
+  const files = await collectSourceFiles(FRONTEND_SOURCE);
+  // Well under the real count, so deleting a few files is not a red suite, and far enough above zero that a
+  // collector which stopped finding anything cannot pass by finding every code unreachable.
+  expect(files.length).toBeGreaterThan(70);
+  return (await Promise.all(files.map((file) => fs.readFile(file, "utf8")))).join("\n");
+}
+
+describe("an error code and the sentence a person reads for it can find each other", () => {
+  it("finds the two lists it is supposed to be comparing", async () => {
+    const declared = await declaredBackendCodes();
+    const mapped = await frontendMappedCodes();
+
+    expect(declared.size).toBeGreaterThan(100);
+    expect(mapped.size).toBeGreaterThan(100);
+    // Two specimens with opposite roles: one every screen renders, one deliberately listed as unnamed below.
+    expect(declared.has("INSTAGRAM_ALREADY_PUBLISHED")).toBe(true);
+    expect(declared.has("INSTAGRAM_PUBLISH_IN_PROGRESS")).toBe(true);
+    expect(mapped.has("INSTAGRAM_ALREADY_PUBLISHED")).toBe(true);
+  });
+
+  it("has no backend code that no screen can say anything about", async () => {
+    const declared = await declaredBackendCodes();
+    const source = await frontendText();
+
+    const unreachable = [...declared.keys()]
+      .filter((code) => !names(source, code))
+      .filter((code) => !UNNAMED_BY_A_SCREEN.has(code))
+      .sort();
+    expect(unreachable).toEqual([]);
+  });
+
+  it("has no screen sentence whose code nothing can throw", async () => {
+    const declared = await declaredBackendCodes();
+    const mapped = await frontendMappedCodes();
+    const backendText = (await Promise.all(
+      (await collectSourceFiles(BACKEND_SOURCE)).map((file) => fs.readFile(file, "utf8")),
+    )).join("\n");
+
+    const stranded = [...mapped.keys()]
+      .filter((code) => !declared.has(code) && !names(backendText, code))
+      // Client-side codes are minted by the frontend itself for network and parse failures, so no backend
+      // module declares them and none should.
+      .filter((code) => !code.startsWith("CLIENT_"))
+      .filter((code) => !REACHING_NOTHING.has(code))
+      .sort();
+    expect(stranded).toEqual([]);
+  });
+
+  it("keeps only exceptions that are still true, so one cannot outlive its reason", async () => {
+    const declared = await declaredBackendCodes();
+    const source = await frontendText();
+
+    for (const [code, reason] of UNNAMED_BY_A_SCREEN) {
+      expect(declared.has(code), `${code} is no longer a declared backend code — drop the exception (${reason})`).toBe(true);
+      expect(names(source, code), `${code} is named by a screen now — drop the exception (${reason})`).toBe(false);
+    }
+    for (const [code, reason] of REACHING_NOTHING) {
+      expect(declared.has(code), `${code} is thrown now — drop the exception (${reason})`).toBe(false);
+    }
+  });
+});
