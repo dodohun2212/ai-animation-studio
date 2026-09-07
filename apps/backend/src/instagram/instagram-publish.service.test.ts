@@ -782,6 +782,28 @@ describe("a publish whose outcome was never recorded", () => {
     expect(await readPublishAttempt(traceDirectory(projectsRoot))).toMatchObject({ igUserId: IG_USER_ID });
   });
 
+  /**
+   * One attempt, one time. The trace is what a later press is refused with and the error's `details` is what
+   * this press puts on screen, and both exist so somebody can line the attempt up against what they see on the
+   * account — two readings of the clock put two different times on the same event.
+   *
+   * A clock that moves on every call is the only way to see it: with a fixed one the bug is invisible, which
+   * is exactly why it survived being written.
+   */
+  it("puts one time on one attempt, not one per reading of the clock", async () => {
+    let tick = Date.parse("2026-09-08T03:00:00.000Z");
+    const { service, projectsRoot } = await setup({
+      fetchImpl: graphFetch({ statuses: ["PUBLISHED"] }),
+      now: () => (tick += 1000),
+    });
+
+    const error = await service.publish("post_project", approved).catch((thrown: unknown) => thrown);
+    const details = (error as { response: { details?: { startedAt?: string } } }).response.details;
+
+    expect(details?.startedAt).toBeDefined();
+    expect((await readPublishAttempt(traceDirectory(projectsRoot)))?.startedAt).toBe(details?.startedAt);
+  });
+
   it("refuses the next publish, without reaching Meta at all, and says which attempt it is about", async () => {
     const fetchImpl = graphFetch();
     const { service, projectsRoot } = await setup({ fetchImpl });

@@ -176,8 +176,12 @@ export class InstagramPublishService {
        * next press, because pressing again while something is up is how one post becomes two.
        */
       if (statusCode === "PUBLISHED") {
-        await recordPublishAttempt(directory, { startedAt: new Date(this.now()).toISOString(), igUserId });
-        throw instagramPublishOutcomeUnknown({ startedAt: new Date(this.now()).toISOString(), igUserId });
+        // One reading of the clock, not two. The trace is what a later press is refused with and the error is
+        // what this press shows, so two readings put two different times on one attempt — and the whole job of
+        // both is to let somebody line this up against what they can see on the account.
+        const attempt = { startedAt: new Date(this.now()).toISOString(), igUserId };
+        await recordPublishAttempt(directory, attempt);
+        throw instagramPublishOutcomeUnknown(attempt);
       }
       if (this.now() >= deadline) throw instagramPublishFailed("Instagram is still processing this video. Try again in a few minutes.");
       await this.sleep(interval);
