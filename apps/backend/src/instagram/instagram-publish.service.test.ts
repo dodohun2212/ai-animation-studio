@@ -12,6 +12,7 @@ import { WorkflowState } from "@ai-animation-studio/shared";
 import { FINAL_VIDEO_LOCK_KEY, withProjectLock } from "../videos/project-lock.js";
 import { InstagramConnectionStore } from "./instagram-connection.store.js";
 import { InstagramPublishService } from "./instagram-publish.service.js";
+import { readPublishAttempt, recordPublishAttempt } from "./publish-attempt.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true }))); });
@@ -29,7 +30,7 @@ function jsonResponse(status: number, body: unknown): Response {
  * Answers the whole publish sequence by URL, so a test can change one step without re-stating the rest.
  * `statuses` is consumed one per status poll, letting a test hold the container in IN_PROGRESS first.
  */
-function graphFetch(options: { statuses?: string[]; failAt?: "container" | "upload" | "publish"; granularOnly?: boolean } = {}) {
+function graphFetch(options: { statuses?: string[]; failAt?: "container" | "upload" | "publish"; unansweredAt?: "publish"; unnamedAt?: "publish"; granularOnly?: boolean } = {}) {
   const statuses = [...(options.statuses ?? ["FINISHED"])];
   return vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
     void init;
@@ -51,6 +52,11 @@ function graphFetch(options: { statuses?: string[]; failAt?: "container" | "uplo
     }
     if (target.includes("/media_publish")) {
       if (options.failAt === "publish") return jsonResponse(400, { error: { message: "rejected", code: 100 } });
+      // The connection dies with the request in it. Meta may have received it and published; the answer is what
+      // was lost. This is the shape of the ECONNRESET 캡틴D hit on 2026-09-06, not a refusal.
+      if (options.unansweredAt === "publish") throw new Error("read ECONNRESET");
+      // Meta said yes and did not say what to. The post is up and cannot be named.
+      if (options.unnamedAt === "publish") return jsonResponse(200, {});
       return jsonResponse(200, { id: "media-1" });
     }
     if (target.includes("/media")) {
@@ -677,5 +683,174 @@ describe("a publish that is already running", () => {
       await expect(service.forgetPost("post_project", { acknowledged: true }))
         .rejects.toMatchObject({ response: { code: "INSTAGRAM_PUBLISH_IN_PROGRESS" } });
     });
+  });
+});
+
+/**
+ * The window a lock cannot close: Meta accepted `media_publish` and the record saying so was never written.
+ *
+ * Everything else about publishing twice is already answered — the record refuses the second press, the
+ * cross-process lock keeps two windows from both being mid-publish — and all of it assumes the process lives
+ * long enough to write down what it did. `nest start --watch` restarts the backend on every file save, which is
+ * the same fact D-005 gives for why the lock is a file. These pairs are about what is left behind when it does
+ * not live that long.
+ */
+describe("a publish whose outcome was never recorded", () => {
+  const traceDirectory = (projectsRoot: string) => path.join(projectsRoot, "post_project");
+
+  it("leaves a trace when the publish call went out and no answer came back", async () => {
+    const { service, projectsRoot } = await setup({ fetchImpl: graphFetch({ unansweredAt: "publish" }) });
+
+    await expect(service.publish("post_project", approved)).rejects.toBeDefined();
+
+    // Written before the irreversible call, so it survives the process that made it.
+    expect(await readPublishAttempt(traceDirectory(projectsRoot))).toEqual({
+      startedAt: "2026-08-27T12:00:00.000Z", igUserId: IG_USER_ID,
+    });
+  });
+
+  /**
+   * The other half, and the one that keeps the guard worth reading. Meta answering "no" is not an unknown
+   * outcome — it is a known one. A trace left behind for every rejected publish would demand somebody go and
+   * check the account before each retry, which is how a warning stops being read at exactly the moment it
+   * matters. `diagnostics.status` is set only from a real HTTP response, which is what separates the two.
+   */
+  it("leaves no trace when Meta answered, and its answer was no", async () => {
+    const { service, projectsRoot } = await setup({ fetchImpl: graphFetch({ failAt: "publish" }) });
+
+    await expect(service.publish("post_project", approved)).rejects.toBeDefined();
+
+    expect(await readPublishAttempt(traceDirectory(projectsRoot))).toBeUndefined();
+  });
+
+  it("leaves no trace when the attempt died before anything could be published", async () => {
+    // A container is not a post and an uploaded video is not a post. Only `media_publish` is irreversible.
+    const { service, projectsRoot } = await setup({ fetchImpl: graphFetch({ failAt: "upload" }) });
+
+    await expect(service.publish("post_project", approved)).rejects.toBeDefined();
+
+    expect(await readPublishAttempt(traceDirectory(projectsRoot))).toBeUndefined();
+  });
+
+  it("leaves no trace behind a publish that finished", async () => {
+    const { service, projectsRoot } = await setup();
+
+    await service.publish("post_project", approved);
+
+    expect(await readPublishAttempt(traceDirectory(projectsRoot))).toBeUndefined();
+  });
+
+  /**
+   * The whole feature, end to end, in the shape it was built for: Meta accepted the publish and the record
+   * saying so never got written.
+   *
+   * `save` throwing stands in for the process dying there — the pair cannot kill the runner, and what matters
+   * is not *how* the write failed but that the post is public and nothing on disk says so. The order this
+   * proves is the one line of the change that matters: the trace is removed only after the record is safely
+   * written. Cleared first, this reads exactly like a publish that never happened, and the next press puts a
+   * second copy of the same video on the account.
+   */
+  it("survives the record it stands in for never being written, and refuses the next press", async () => {
+    const { service, projects, projectsRoot } = await setup();
+    vi.spyOn(projects, "save").mockRejectedValue(new Error("process went away"));
+
+    await expect(service.publish("post_project", approved)).rejects.toBeDefined();
+    expect(await readPublishAttempt(traceDirectory(projectsRoot))).toMatchObject({ igUserId: IG_USER_ID });
+
+    vi.restoreAllMocks();
+    await expect(service.publish("post_project", approved))
+      .rejects.toMatchObject({ response: { code: "INSTAGRAM_PUBLISH_OUTCOME_UNKNOWN" } });
+  });
+
+  /**
+   * The likeliest unknown of all, and the one an error category alone gets wrong: Meta accepted the publish and
+   * answered without a media id. The adapter is right to refuse — a record naming a post we cannot name would
+   * be a made-up one — but "this attempt failed" is not what happened. Something is on the account.
+   */
+  it("leaves a trace when Meta accepted the publish and would not say what it published", async () => {
+    const { service, projectsRoot } = await setup({ fetchImpl: graphFetch({ unnamedAt: "publish" }) });
+
+    await expect(service.publish("post_project", approved)).rejects.toBeDefined();
+
+    expect(await readPublishAttempt(traceDirectory(projectsRoot))).toMatchObject({ igUserId: IG_USER_ID });
+  });
+
+  it("refuses the next publish, without reaching Meta at all, and says which attempt it is about", async () => {
+    const fetchImpl = graphFetch();
+    const { service, projectsRoot } = await setup({ fetchImpl });
+    await recordPublishAttempt(traceDirectory(projectsRoot), { startedAt: "2026-09-06T10:30:58.000Z", igUserId: IG_USER_ID });
+
+    await expect(service.publish("post_project", approved)).rejects.toMatchObject({
+      response: {
+        code: "INSTAGRAM_PUBLISH_OUTCOME_UNKNOWN",
+        details: { startedAt: "2026-09-06T10:30:58.000Z", igUserId: IG_USER_ID },
+      },
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("still refuses when the trace survived but its contents did not, and claims no details", async () => {
+    const { service, projectsRoot } = await setup();
+    await fs.writeFile(path.join(traceDirectory(projectsRoot), ".instagram-publish-attempt"), "{ half a wri");
+
+    const error = await service.publish("post_project", approved).catch((thrown: unknown) => thrown);
+    const response = (error as { response: Record<string, unknown> }).response;
+
+    expect(response.code).toBe("INSTAGRAM_PUBLISH_OUTCOME_UNKNOWN");
+    // Absent, not empty. `details: {}` reads to a screen as "there are details" — the opposite of what this
+    // case knows, which is that an attempt happened and nothing about it survived.
+    expect("details" in response).toBe(false);
+  });
+
+  it("publishes when a person says they checked the account, and does not ask again afterwards", async () => {
+    const { service, projects, projectsRoot } = await setup();
+    await recordPublishAttempt(traceDirectory(projectsRoot), { startedAt: "2026-09-06T10:30:58.000Z", igUserId: IG_USER_ID });
+
+    const result = await service.publish("post_project", { ...approved, acknowledgedUnknownAttempt: true });
+
+    expect(result.mediaId).toBe("media-1");
+    expect((await projects.findById("post_project")).instagram_post).toMatchObject({ media_id: "media-1" });
+    expect(await readPublishAttempt(traceDirectory(projectsRoot))).toBeUndefined();
+  });
+
+  /**
+   * `false` is not an answer. The two callers that send it — a person who declined, and a form that defaulted
+   * the box — are indistinguishable here, and reading either as consent would let a screen publish past this
+   * guard by forgetting to ask. The same shape `approved` and `acknowledged` are already checked with.
+   */
+  it("will not take a declined acknowledgement as an acknowledgement", async () => {
+    const fetchImpl = graphFetch();
+    const { service, projectsRoot } = await setup({ fetchImpl });
+    await recordPublishAttempt(traceDirectory(projectsRoot), { startedAt: "2026-09-06T10:30:58.000Z", igUserId: IG_USER_ID });
+
+    await expect(service.publish("post_project", { ...approved, acknowledgedUnknownAttempt: false }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A recorded post is a fact and a trace is the absence of one, so the fact wins. Reporting the unknown here
+   * would send someone to check an account about a post the app can already name.
+   */
+  it("says a recorded post is a recorded post, even with a trace left beside it", async () => {
+    const { service, projectsRoot } = await setup({ alreadyPublished: true });
+    await recordPublishAttempt(traceDirectory(projectsRoot), { startedAt: "2026-09-06T10:30:58.000Z", igUserId: IG_USER_ID });
+
+    await expect(service.publish("post_project", approved))
+      .rejects.toMatchObject({ response: { code: "INSTAGRAM_ALREADY_PUBLISHED" } });
+  });
+
+  /**
+   * Clearing the record is the person answering this same question — "is that video up on Instagram?" — with
+   * the answer that permits a republish. Leaving the trace would ask them again, in different words, the moment
+   * they pressed publish.
+   */
+  it("is cleared along with the record when a person forgets a post", async () => {
+    const { service, projectsRoot } = await setup({ alreadyPublished: true });
+    await recordPublishAttempt(traceDirectory(projectsRoot), { startedAt: "2026-09-06T10:30:58.000Z", igUserId: IG_USER_ID });
+
+    await service.forgetPost("post_project", { acknowledged: true });
+
+    expect(await readPublishAttempt(traceDirectory(projectsRoot))).toBeUndefined();
   });
 });

@@ -19,8 +19,9 @@ import { resolveInstagramPublishTargets } from "./instagram-publish-targets.js";
 import { InstagramAdapterError, type RetryOptions } from "./instagram-request.js";
 import {
   instagramAlreadyPublished, instagramNotConnected, instagramPostNotRecorded, instagramProviderError, instagramPublishFailed, instagramPublishInProgress,
-  instagramTargetNotFound, instagramVideoRendering, instagramVideoUnavailable, invalidInstagramRequest,
+  instagramPublishOutcomeUnknown, instagramTargetNotFound, instagramVideoRendering, instagramVideoUnavailable, invalidInstagramRequest,
 } from "./instagram-api.error.js";
+import { clearPublishAttempt, readPublishAttempt, recordPublishAttempt } from "./publish-attempt.js";
 
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -84,13 +85,19 @@ export class InstagramPublishService {
     return path.join(this.projectsRoot, projectId, FINAL_VIDEO_RELATIVE_PATH);
   }
 
-  private parseRequest(request: unknown): { caption: string; igUserId: string; thumbOffsetMs?: number } {
-    if (!isObject(request) || Object.keys(request).length < 3 || Object.keys(request).length > 4
-      || Object.keys(request).some((key) => !["approved", "caption", "igUserId", "thumbOffsetMs"].includes(key))
+  private parseRequest(request: unknown): { caption: string; igUserId: string; thumbOffsetMs?: number; acknowledgedUnknownAttempt: boolean } {
+    if (!isObject(request) || Object.keys(request).length < 3 || Object.keys(request).length > 5
+      || Object.keys(request).some((key) => !["approved", "caption", "igUserId", "thumbOffsetMs", "acknowledgedUnknownAttempt"].includes(key))
       || request.approved !== true
       || typeof request.caption !== "string"
       || typeof request.igUserId !== "string" || !request.igUserId.trim()) {
       throw invalidInstagramRequest("Publishing requires explicit approval, a caption, and the account to publish to.");
+    }
+    // Literally true or absent, checked the way `approved` is. `false` is rejected rather than read as "no",
+    // because the two ways a caller sends `false` — a person who declined, and a form that defaulted the box —
+    // are indistinguishable here, and one of them is not an answer at all.
+    if (request.acknowledgedUnknownAttempt !== undefined && request.acknowledgedUnknownAttempt !== true) {
+      throw invalidInstagramRequest("Publishing past an unknown previous attempt requires acknowledging that the account was checked.");
     }
     if (request.caption.length > INSTAGRAM_CAPTION_MAX) throw invalidInstagramRequest(`Caption exceeds Instagram's ${INSTAGRAM_CAPTION_MAX} character limit.`);
     // The other ceiling, counted here for the same reason as the one above: a caller that skips the screen
@@ -104,7 +111,32 @@ export class InstagramPublishService {
       && (typeof request.thumbOffsetMs !== "number" || !Number.isInteger(request.thumbOffsetMs) || request.thumbOffsetMs < 0)) {
       throw invalidInstagramRequest("Cover frame position must be a whole number of milliseconds from the start.");
     }
-    return { caption: request.caption, igUserId: request.igUserId.trim(), ...(request.thumbOffsetMs !== undefined ? { thumbOffsetMs: request.thumbOffsetMs } : {}) };
+    return {
+      caption: request.caption,
+      igUserId: request.igUserId.trim(),
+      acknowledgedUnknownAttempt: request.acknowledgedUnknownAttempt === true,
+      ...(request.thumbOffsetMs !== undefined ? { thumbOffsetMs: request.thumbOffsetMs } : {}),
+    };
+  }
+
+  /**
+   * The guard for the window a lock cannot close — see publish-attempt.ts for why the trace exists at all.
+   *
+   * Placed beside the "already published" check because the two answer the same question, one with a fact and
+   * one with the absence of one, and a person told the wrong one acts on it. It is checked *after* that one on
+   * purpose: a trace left beside a recorded post is bookkeeping the person cannot act on, and
+   * INSTAGRAM_ALREADY_PUBLISHED is the sentence that actually describes their project.
+   *
+   * The acknowledgement clears the trace before publishing rather than after. If it cleared afterwards, a
+   * process that died during *this* attempt would leave the trace the person just answered for, and they would
+   * be asked the same question about an attempt they already checked — while the new attempt, the one nobody
+   * has looked at, would be the one going unrecorded. The new attempt writes its own trace moments later.
+   */
+  private async assertNoUnknownAttempt(directory: string, acknowledged: boolean): Promise<void> {
+    const attempt = await readPublishAttempt(directory);
+    if (!attempt) return;
+    if (!acknowledged) throw instagramPublishOutcomeUnknown(attempt);
+    await clearPublishAttempt(directory);
   }
 
   /**
@@ -162,7 +194,7 @@ export class InstagramPublishService {
   }
 
   async publish(projectId: string, request: unknown): Promise<PublishToInstagramResponse> {
-    const { caption, igUserId, thumbOffsetMs } = this.parseRequest(request);
+    const { caption, igUserId, thumbOffsetMs, acknowledgedUnknownAttempt } = this.parseRequest(request);
     const id = projectId.trim();
     const project = await this.projects.findById(id);
     // Checked before anything reaches Meta: re-publishing is the one mistake that cannot be walked back.
@@ -171,10 +203,12 @@ export class InstagramPublishService {
     const token = await this.connection.token();
     if (!token) throw instagramNotConnected();
 
-    return this.withPublishLock(path.join(this.projectsRoot, id), async () => {
+    const directory = path.join(this.projectsRoot, id);
+    return this.withPublishLock(directory, async () => {
       // Re-read inside the lock: another window may have published while this call queued for it.
       const current = await this.projects.findById(id);
       if (current.instagram_post) throw instagramAlreadyPublished();
+      await this.assertNoUnknownAttempt(directory, acknowledgedUnknownAttempt);
       // A merge holds this same lock while it writes, so reaching here means no render is in flight. The state
       // check is for the other shape of the same problem: a render that died leaves the project saying
       // Rendering, and the bytes it left behind are not a video anyone chose to publish.
@@ -187,7 +221,7 @@ export class InstagramPublishService {
       if (!bytes || bytes.length === 0) throw instagramVideoUnavailable();
       this.assertCreditCarried(current.used_audio, caption);
 
-      const { mediaId, publishedAt } = await this.sendToInstagram(token.accessToken, igUserId, caption, bytes, thumbOffsetMs);
+      const { mediaId, publishedAt } = await this.sendToInstagram(token.accessToken, igUserId, caption, bytes, thumbOffsetMs, directory);
       const updated = {
         ...current,
         updated_at: publishedAt,
@@ -198,6 +232,9 @@ export class InstagramPublishService {
       };
       // Written after Instagram accepted it, so the record means "this post exists", not "we tried".
       await this.projects.save(updated);
+      // Only now: the trace exists to outlive a death between those two lines, so removing it before the record
+      // it stands in for is on disk would reopen the window it was written to cover.
+      await clearPublishAttempt(directory);
       return { mediaId, publishedAt, project: toApiProject(updated) };
     });
   }
@@ -221,7 +258,8 @@ export class InstagramPublishService {
     const id = projectId.trim();
     await this.projects.findById(id);
 
-    return this.withPublishLock(path.join(this.projectsRoot, id), async () => {
+    const directory = path.join(this.projectsRoot, id);
+    return this.withPublishLock(directory, async () => {
       // The same lock the publish takes, so this cannot clear a record a publish is midway through writing.
       const current = await this.projects.findById(id);
       if (!current.instagram_post) throw instagramPostNotRecorded();
@@ -232,6 +270,12 @@ export class InstagramPublishService {
         previous_instagram_posts: [...current.previous_instagram_posts, current.instagram_post],
       };
       await this.projects.save(updated);
+      /*
+       * A leftover trace goes with the record. Clearing a post is the person answering *this same question* —
+       * "is that video up on Instagram?" — with the answer that lets a republish happen, and leaving the trace
+       * behind would ask them again in different words the moment they pressed publish.
+       */
+      await clearPublishAttempt(directory);
       return { project: toApiProject(updated) };
     });
   }
@@ -258,6 +302,12 @@ export class InstagramPublishService {
         previous_instagram_posts: [...previous, current.instagram_post],
       };
       await atomicWriteUtf8File(episodeFile, JSON.stringify(updated, null, 2));
+      /*
+       * A leftover trace goes with the record. Clearing a post is the person answering *this same question* —
+       * "is that video up on Instagram?" — with the answer that lets a republish happen, and leaving the trace
+       * behind would ask them again in different words the moment they pressed publish.
+       */
+      await clearPublishAttempt(directory);
       return { episode: toEpisodeDetail(updated) };
     });
   }
@@ -279,7 +329,7 @@ export class InstagramPublishService {
    * copy of it is a second place for the container-then-publish order, the processing wait, or the target
    * check to be got wrong — while looking correct beside its twin.
    */
-  private async sendToInstagram(accessToken: string, igUserId: string, caption: string, bytes: Buffer, thumbOffsetMs?: number): Promise<{ mediaId: string; publishedAt: string }> {
+  private async sendToInstagram(accessToken: string, igUserId: string, caption: string, bytes: Buffer, thumbOffsetMs: number | undefined, directory: string): Promise<{ mediaId: string; publishedAt: string }> {
     let targets;
     try {
       // The same resolver the account list uses, on purpose: this check refuses what that list offered the
@@ -295,7 +345,31 @@ export class InstagramPublishService {
       const { containerId } = await createInstagramResumableContainer(accessToken, igUserId, caption, thumbOffsetMs, this.requestOptions);
       await uploadInstagramResumableVideo(accessToken, containerId, bytes, this.requestOptions);
       await this.waitUntilPublishable(accessToken, containerId);
-      const { mediaId } = await publishInstagramContainer(accessToken, igUserId, containerId, this.requestOptions);
+      /*
+       * The last line before the irreversible one, and the only place the trace is written.
+       *
+       * Not at the top of the publish: everything above this can be retried freely — a container is not a post
+       * and an uploaded video is not a post — and a trace spanning the whole sequence would refuse later
+       * publishes over failures that are plainly failures. A guard that cries wolf about the one thing nobody
+       * can check is worse than no guard, because the way past it is a person asserting they checked.
+       *
+       * Awaited, and its failure allowed to propagate. Refusing to publish because the trace could not be
+       * written is recoverable; publishing without being able to record it is what this exists to prevent.
+       */
+      await recordPublishAttempt(directory, { startedAt: new Date(this.now()).toISOString(), igUserId });
+      const { mediaId } = await publishInstagramContainer(accessToken, igUserId, containerId, this.requestOptions).catch(async (error: unknown) => {
+        /*
+         * Meta answered, and its answer was no. `diagnostics.status` is set only from a real HTTP response
+         * (see classifyErrorResponse); a transport failure throws category "network" with no status at all,
+         * and that one is genuinely unknown — the request may have been received and the answer lost.
+         *
+         * So a rejection clears the trace and an unanswered call keeps it. Getting this backwards in the safe-
+         * looking direction would make every rejected publish demand that somebody go and check the account
+         * before retrying, which is how a warning stops being read.
+         */
+        if (error instanceof InstagramAdapterError && error.diagnostics.status !== undefined) await clearPublishAttempt(directory);
+        throw error;
+      });
       return { mediaId, publishedAt: new Date(this.now()).toISOString() };
     } catch (error) {
       throw this.asApiError(error);
@@ -311,7 +385,7 @@ export class InstagramPublishService {
    * would offer to do it twice.
    */
   async publishEpisode(projectId: string, episodeNumber: number, request: unknown): Promise<PublishLongEpisodeToInstagramResponse> {
-    const { caption, igUserId, thumbOffsetMs } = this.parseRequest(request);
+    const { caption, igUserId, thumbOffsetMs, acknowledgedUnknownAttempt } = this.parseRequest(request);
     const id = projectId.trim();
     if (!Number.isInteger(episodeNumber) || episodeNumber < 1) throw instagramVideoUnavailable();
     const directory = path.join(longStoryRoot(this.projectsRoot, id), episodeDirectoryName(episodeNumber));
@@ -329,6 +403,7 @@ export class InstagramPublishService {
       const current = await readEpisode(episodeFile);
       if (!current) throw instagramVideoUnavailable();
       if (current.instagram_post) throw instagramAlreadyPublished();
+      await this.assertNoUnknownAttempt(directory, acknowledgedUnknownAttempt);
       if (current.state === "rendering") throw instagramVideoRendering();
 
       // Same reason as the short project's: the bytes are read under the lock the merge also takes, so a post
@@ -337,7 +412,7 @@ export class InstagramPublishService {
       if (!bytes || bytes.length === 0) throw instagramVideoUnavailable();
       this.assertCreditCarried(current.used_audio, caption);
 
-      const { mediaId, publishedAt } = await this.sendToInstagram(token.accessToken, igUserId, caption, bytes, thumbOffsetMs);
+      const { mediaId, publishedAt } = await this.sendToInstagram(token.accessToken, igUserId, caption, bytes, thumbOffsetMs, directory);
       const updated = {
         ...current,
         updated_at: publishedAt,
@@ -347,6 +422,8 @@ export class InstagramPublishService {
         instagram_post: { media_id: mediaId, ig_user_id: igUserId, published_at: publishedAt, caption, thumb_offset_ms: thumbOffsetMs ?? null },
       };
       await atomicWriteUtf8File(episodeFile, JSON.stringify(updated, null, 2));
+      // Same order and the same reason as the short project's: the record first, the trace after it.
+      await clearPublishAttempt(directory);
       return { mediaId, publishedAt, episode: toEpisodeDetail(updated) };
     });
   }

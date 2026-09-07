@@ -12,6 +12,7 @@ export type InstagramErrorCode =
   | "INSTAGRAM_VIDEO_UNAVAILABLE"
   | "INSTAGRAM_VIDEO_RENDERING"
   | "INSTAGRAM_PUBLISH_IN_PROGRESS"
+  | "INSTAGRAM_PUBLISH_OUTCOME_UNKNOWN"
   | "INSTAGRAM_PUBLISH_FAILED";
 
 export class InstagramApiException extends HttpException {
@@ -100,6 +101,36 @@ export const instagramVideoRendering = () =>
  */
 export const instagramPublishInProgress = () =>
   new InstagramApiException("INSTAGRAM_PUBLISH_IN_PROGRESS", "A publish for this project is already running. Do not publish again until it finishes — check the Instagram account before retrying.", HttpStatus.CONFLICT);
+
+/**
+ * A previous publish reached Meta and never wrote down what came back, so whether it went out is unknown.
+ *
+ * Its own code, and deliberately not INSTAGRAM_PUBLISH_FAILED. That one's whole meaning is "nothing was
+ * published, so trying again is safe" — the sentence this situation cannot say. It is not
+ * INSTAGRAM_ALREADY_PUBLISHED either: that one is a fact, and asserting it here would stop someone republishing
+ * a video that never went out at all.
+ *
+ * 409 rather than 500 for the same reason the in-progress refusal is: nothing is broken. The app is in a state
+ * it can describe exactly, and the way out of it is a person looking at the account — not a retry, and not a
+ * bug report. `startedAt` and `igUserId` travel in details so the screen can say *which* attempt and *whose*
+ * account, which is the difference between a sentence someone can act on and one they can only be alarmed by.
+ * Both are absent when the trace survived but could not be read; the refusal still stands, because the trace
+ * existing is the finding (see publish-attempt.ts).
+ */
+export const instagramPublishOutcomeUnknown = (attempt: { startedAt?: string; igUserId?: string } = {}) => {
+  const details = {
+    ...(attempt.startedAt ? { startedAt: attempt.startedAt } : {}),
+    ...(attempt.igUserId ? { igUserId: attempt.igUserId } : {}),
+  };
+  return new InstagramApiException(
+    "INSTAGRAM_PUBLISH_OUTCOME_UNKNOWN",
+    "A previous publish for this project stopped before it could record what happened. Check the Instagram account — the video may already be posted — before publishing again.",
+    HttpStatus.CONFLICT,
+    // Empty rather than absent would put `details: {}` on the wire, which reads to a screen as "there are
+    // details" — the unreadable-trace case says the opposite: the attempt is real and nothing is known about it.
+    Object.keys(details).length > 0 ? details : undefined,
+  );
+};
 
 /** The attempt ended without a post — nothing was published, so trying again is safe. */
 export const instagramPublishFailed = (message: string) =>
