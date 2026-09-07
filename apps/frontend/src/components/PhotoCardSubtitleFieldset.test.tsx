@@ -117,6 +117,34 @@ describe("PhotoCardSubtitleFieldset", () => {
     expect(PHOTO_CARD_SUBTITLE_CSS_RATIO.heading).not.toBe(PHOTO_CARD_SUBTITLE_CSS_RATIO.body);
   });
 
+  /**
+   * Where the line breaks, which the size ratio above does not settle.
+   *
+   * 캡틴D read 불요불굴 off the finished video and off this preview and got different line breaks. The width was
+   * right; the breaking was wrong in two independent ways. CSS breaks Korean between any two syllables, so the
+   * preview split 마라. into 마 and 라.; and CSS fills a line greedily while libass's WrapStyle 0 evens the
+   * lines out, so a two-line card previewed as 916px + 118px where the render drew 491 + 515.
+   *
+   * The five finished cards were rendered through the real FFmpeg with the real font files and measured against
+   * the same texts in a browser: with these two properties the preview picks the render's break in all five,
+   * without them it picks a different one in all five. jsdom does no line breaking at all, so this pair can only
+   * check that the rules are asked for — the measurement itself lives in the round that made the change.
+   */
+  it("asks for the renderer's own breaking rules: only at spaces, and evened out", () => {
+    renderFieldset(TWO_PART);
+    const preview = screen.getByTestId("photo-card-subtitle-preview");
+    const nodes = Array.from(preview.querySelectorAll("div")) as unknown as HTMLElement[];
+    const drawn = nodes.filter((node) => node.style.fontFamily.includes("Noto"));
+
+    expect(drawn.length).toBeGreaterThan(0);
+    for (const node of drawn) {
+      // Korean has no spaces inside a word; without this the browser breaks mid-word and libass never does.
+      expect(node.style.wordBreak).toBe("keep-all");
+      // WrapStyle 0 is "smart" wrapping — the renderer evens the lines rather than filling the first one.
+      expect(node.style.textWrap).toBe("balance");
+    }
+  });
+
   // The bounds come from the shared constants the server refuses by, so a slider cannot reach a value the
   // merge would reject. Hard-coding them here is how they drift apart.
   it("cannot be dragged outside the range the server accepts", () => {

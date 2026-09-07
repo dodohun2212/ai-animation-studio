@@ -137,6 +137,29 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, vertical, layout, 
           // The weights the two files actually are — Serif Bold, Sans Medium — so the browser picks each face
           // exactly rather than by nearest match, and so the preview asks for the same weight the burned-in
           // subtitle is drawn at. See the @font-face pair in styles.css.
+          /*
+           * How the line breaks, not just how wide it is — the other half of matching the video.
+           *
+           * The CSS_RATIO above made a line the same WIDTH as the render; these two make it break in the same
+           * PLACES. libass differs from a browser's default in two ways at once, and both showed on 불요불굴:
+           *
+           *   keep-all   CSS breaks Korean between any two syllables, so the preview split 마라. into 마 / 라.
+           *              libass breaks only at spaces. keep-all is that rule.
+           *   balance    libass's WrapStyle 0 is "smart" wrapping — it evens the lines out. CSS fills greedily,
+           *              so a two-line card previewed as one nearly-full line and a stub (916px / 118px against
+           *              the render's 491 / 515).
+           *
+           * Measured, not reasoned: the five finished cards were rendered through the real FFmpeg with the real
+           * font files and their line boxes read off the frames, then the same texts measured here. With both
+           * properties the preview picks the render's break in all five, line widths within 3% (an ink bounding
+           * box against an advance width). Without them it picks a different break in all five.
+           *
+           * 🟠 An approximation, not the same algorithm: `text-wrap: balance` is the browser's own balancer and
+           * browsers stop balancing past a handful of lines. It agrees with libass on cards this size; a much
+           * longer body could still disagree, and the overflow warning below stays the honest backstop.
+           */
+          wordBreak: "keep-all",
+          textWrap: "balance",
           fontWeight: serif ? 700 : 500,
           fontFamily: serif ? '"Noto Serif KR", "Nanum Myeongjo", serif' : '"Noto Sans KR", system-ui, sans-serif',
           color: "#fff",
