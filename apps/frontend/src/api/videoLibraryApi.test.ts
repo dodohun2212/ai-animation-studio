@@ -6,6 +6,7 @@ import {
   getVideoVersions,
   restoreVideoVersion,
   toVideoLibraryDisplayError,
+  VideoLibraryApiError,
   videoVersionContentUrl,
 } from "./videoLibraryApi.js";
 
@@ -84,13 +85,16 @@ describe("videoLibraryApi", () => {
   it("maps a known backend code to a fixed message and never leaks the raw one", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(jsonResponse(409, { code: "VIDEO_RESTORE_NOT_ALLOWED", message: "raw backend detail" })),
+      // 🔴 This stub said `VIDEO_RESTORE_NOT_ALLOWED`, a code this backend has never thrown, so the test proved
+      // the mapping worked for a name nothing sends — and went on passing while the real refusal fell through
+      // to the catch-all. A stub is an assertion about the server too, and this one was wrong.
+      vi.fn().mockResolvedValue(jsonResponse(409, { code: "VIDEO_LIBRARY_RESTORE_NOT_ALLOWED", message: "raw backend detail" })),
     );
 
     const caught = await restoreVideoVersion("1", 1, "v001").catch((error: unknown) => error);
     const display = toVideoLibraryDisplayError(caught);
 
-    expect(display.code).toBe("VIDEO_RESTORE_NOT_ALLOWED");
+    expect(display.code).toBe("VIDEO_LIBRARY_RESTORE_NOT_ALLOWED");
     expect(display.message).not.toContain("raw backend detail");
   });
 
@@ -98,6 +102,26 @@ describe("videoLibraryApi", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
     const caught = await getVideoLibrary().catch((error: unknown) => error);
     expect(toVideoLibraryDisplayError(caught).code).toBe("CLIENT_NETWORK_ERROR");
+  });
+
+  /**
+   * 🔴 These two rows were keyed `VIDEO_VERSION_NOT_FOUND` and `VIDEO_RESTORE_NOT_ALLOWED`, which this backend
+   * has never thrown — its library codes all carry the `VIDEO_LIBRARY_` prefix, and it cannot drop it without
+   * colliding with `LONG_EPISODE_VIDEO_*`. So both refusals fell through to the catch-all's "잠시 후 다시 시도",
+   * which is wrong twice: a version that does not exist will not appear on a retry, and a state that forbids
+   * restoring does not change by waiting. The sentences were already right; nothing could reach them.
+   */
+  it("names the library's own codes, prefix and all, so its refusals reach their sentences", () => {
+    const missing = toVideoLibraryDisplayError(new VideoLibraryApiError("VIDEO_LIBRARY_VERSION_NOT_FOUND", "raw"));
+    expect(missing.message).toContain("이 버전을 찾을 수 없습니다");
+    const forbidden = toVideoLibraryDisplayError(new VideoLibraryApiError("VIDEO_LIBRARY_RESTORE_NOT_ALLOWED", "raw"));
+    expect(forbidden.message).toContain("되돌릴 수 없습니다");
+    // A row exists and its file does not: reloading cannot bring a deleted file back, so it must not say retry.
+    const gone = toVideoLibraryDisplayError(new VideoLibraryApiError("VIDEO_LIBRARY_CONTENT_UNAVAILABLE", "raw"));
+    expect(gone.message).toContain("파일이 없습니다");
+    expect(gone.message).not.toContain("다시 시도");
+    // The unprefixed names are nobody's: leaving them behind would keep a dead row looking alive.
+    expect(toVideoLibraryDisplayError(new VideoLibraryApiError("VIDEO_VERSION_NOT_FOUND", "raw")).code).toBe("CLIENT_UNKNOWN_ERROR");
   });
 
   it("builds a playback URL without fetching anything", () => {

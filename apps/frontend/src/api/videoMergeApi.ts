@@ -22,6 +22,11 @@ const SAFE_ERRORS: Record<string, string> = {
   // Whether a re-merge should be allowed at all is a separate, product question; until it is, saying the true
   // reason is the least this can do.
   VIDEO_MERGE_ALREADY_COMPLETED: "이미 최종 영상이 만들어진 프로젝트입니다. 다시 만들려면 먼저 지금 영상을 정리해 주세요.",
+  /* Deliberately not the sentence above, for the reason the backend's own comment gives: the two send the
+     reader to different places. "Already rendered" is undone by tidying this project's video; a card that is
+     already public is not, because re-merging would quietly make the file on disk stop being the file the post
+     was made from. The way past this one is a new card. */
+  VIDEO_MERGE_ALREADY_PUBLISHED: "이미 인스타그램에 게시된 카드입니다. 지금 영상을 바꾸면 올라간 것과 달라집니다 — 고치시려면 카드를 새로 만들어 주세요.",
   /* Not a refusal to fix — nothing is wrong and nothing changed. Something else is holding this exact file
      right now (a publish reading its bytes, or another render writing them), and the only correct move is to
      wait a moment. Saying "다시 시도" without saying that reads as "it failed", which sends people looking for

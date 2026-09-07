@@ -52,21 +52,14 @@ const FRONTEND_API = path.join(FRONTEND_SOURCE, "api");
  * applying fails instead of sitting here quietly.
  */
 const UNNAMED_BY_A_SCREEN = new Map<string, string>([
-  // 🔴 Gaps, not decisions. Each is a code whose whole reason for existing is a sentence the catch-all cannot
-  // say, and today the catch-all is what a person gets. Reported to Cowork (CLI Round 646) — the maps they
-  // belong in are apps/frontend's.
-  ["INSTAGRAM_PUBLISH_IN_PROGRESS", "🔴 gap: 「do not press again」 on the irreversible action, currently rendered as the catch-all"],
-  ["VIDEO_RETRY_NEEDS_CHANGED_INPUT", "🔴 gap: 「say what to change」 — the guard built after 2026-09-05 charged twice"],
-  ["LONG_EPISODE_RETRY_NEEDS_CHANGED_INPUT", "🔴 gap: the Episode half of the same guard"],
-  ["VIDEO_MERGE_ALREADY_PUBLISHED", "🔴 gap: why a merge over a published card is refused"],
-  ["VIDEO_LIBRARY_VERSION_NOT_FOUND", "🔴 gap: the screen maps VIDEO_VERSION_NOT_FOUND, which nothing throws — the prefix differs"],
-  ["VIDEO_LIBRARY_RESTORE_NOT_ALLOWED", "🔴 gap: the screen maps VIDEO_RESTORE_NOT_ALLOWED, which nothing throws — the prefix differs"],
-  ["VIDEO_LIBRARY_CONTENT_UNAVAILABLE", "🔴 gap: the restored version's file is missing, said as a generic failure"],
-  ["LONG_EPISODE_VIDEO_VERSION_NOT_FOUND", "🔴 gap: the Episode restore path has no entry at all, not even a mismatched one"],
-  ["LONG_EPISODE_VIDEO_RESTORE_NOT_ALLOWED", "🔴 gap: the Episode half of the same restore flow"],
-  // 🟠 Decisions. A 500 from a disk that will not write is not a sentence a person can act on, and every
-  // catch-all in this app already says the true and complete thing about it: it did not work. Naming these
-  // would add words without adding an action.
+  // 🟠 Decisions, and the only kind of entry that belongs here. A 500 from a disk that will not write is not a
+  // sentence a person can act on, and every catch-all in this app already says the true and complete thing
+  // about it: it did not work. Naming these would add words without adding an action.
+  //
+  // The nine 🔴 gaps this list opened with on 2026-09-08 are gone — every one was a code whose sentence the
+  // screen had never been given, and all nine were written the same day (Cowork Round 647). The guard is what
+  // made that a finite list of nine rather than an ongoing condition, and the test below is what made the list
+  // shrink instead of being carried.
   ["VIDEO_LIBRARY_STORAGE_ERROR", "storage failure — the catch-all already says the whole of what is knowable"],
   ["STORY_PROMPT_STORAGE_ERROR", "storage failure — same"],
   ["STORY_GENERATION_FAILED", "local fake-mode generation only; a real run answers STORY_PROVIDER_ERROR"],
@@ -75,15 +68,12 @@ const UNNAMED_BY_A_SCREEN = new Map<string, string>([
 /**
  * Sentences whose code nothing throws, same rules.
  *
- * These two are the other face of the `VIDEO_LIBRARY_` entries above rather than separate defects: the backend
- * throws `VIDEO_LIBRARY_RESTORE_NOT_ALLOWED` and the screen answers `VIDEO_RESTORE_NOT_ALLOWED`, so one rename
- * on the screen's side clears all four entries at once. They are listed here as well because both statements
- * are true today, and the last test in this file makes each stop being listed the moment it stops being true.
+ * Empty, and it took one round to get here: the two entries this held were `VIDEO_RESTORE_NOT_ALLOWED` and
+ * `VIDEO_VERSION_NOT_FOUND`, the screen's names for codes the backend calls `VIDEO_LIBRARY_…`. Renaming the
+ * keys on the screen's side cleared these two and two more above, which is what being the same defect seen
+ * from both ends means.
  */
-const REACHING_NOTHING = new Map<string, string>([
-  ["VIDEO_RESTORE_NOT_ALLOWED", "🔴 gap: the backend's name for this is VIDEO_LIBRARY_RESTORE_NOT_ALLOWED"],
-  ["VIDEO_VERSION_NOT_FOUND", "🔴 gap: the backend's name for this is VIDEO_LIBRARY_VERSION_NOT_FOUND"],
-]);
+const REACHING_NOTHING = new Map<string, string>();
 
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx"]);
 

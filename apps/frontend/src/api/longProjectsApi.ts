@@ -149,6 +149,14 @@ const SAFE_ERRORS: Record<string, string> = {
   // reason is the least this can do.
   LONG_EPISODE_MERGE_ALREADY_COMPLETED: "이미 최종 영상이 만들어진 회차입니다. 다시 만들려면 먼저 지금 영상을 정리해 주세요.",
   LONG_EPISODE_VIDEO_JOB_NOT_FOUND: "에피소드 영상 작업을 찾을 수 없습니다.",
+  /* The Episode halves of three refusals the short-project screens already word. Each was declared, thrown and
+     never named here, so all three arrived as the catch-all — which tells the reader to try again, and is
+     wrong in the same way each time: a version that does not exist will not appear on a retry, a state that
+     forbids restoring will not change by itself, and a scene that failed on its input will fail identically
+     and charge for it. Found by CLI's error-code-reach sweep. */
+  LONG_EPISODE_VIDEO_VERSION_NOT_FOUND: "이 버전을 찾을 수 없습니다. 목록을 새로 불러온 뒤 다시 시도해 주세요.",
+  LONG_EPISODE_VIDEO_RESTORE_NOT_ALLOWED: "현재 회차 상태에서는 되돌릴 수 없습니다.",
+  LONG_EPISODE_RETRY_NEEDS_CHANGED_INPUT: "이 장면은 입력이 원인이라 그대로 다시 만들면 똑같이 실패합니다. 무엇을 바꿀지 적은 뒤에 다시 눌러 주세요.",
   STORY_BIBLE_ITEM_NOT_FOUND: "Story Bible 항목을 찾을 수 없습니다.",
   STORY_BIBLE_ITEM_ALREADY_EXISTS: "같은 ID의 Story Bible 항목이 이미 있습니다.",
   // Two windows on the same Episode, both advancing video generation. Wording matters more here than in any

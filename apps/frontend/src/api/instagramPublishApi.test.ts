@@ -87,6 +87,34 @@ describe("instagramPublishApi", () => {
     expect(toInstagramPublishDisplayError(errorFrom("SOMETHING_NEW")).code).toBe("CLIENT_UNKNOWN_ERROR");
   });
 
+  /**
+   * 🔴 The most dangerous missing row in the app.
+   *
+   * A publish is running right now and the lock says so. The person reading it is, by definition, someone who
+   * believes the first press failed — and with no row this arrived as "요청을 처리하지 못했습니다", which they
+   * read as a second failure before pressing again. The record is written only after Instagram accepts, so
+   * during those minutes the app genuinely does not know: 「아무것도 안 올라갔다」 is the one thing it must
+   * never imply. It says do not press, not try later.
+   */
+  it("never implies a running publish has failed, and never invites another press", () => {
+    const displayed = toInstagramPublishDisplayError(new InstagramPublishApiError("INSTAGRAM_PUBLISH_IN_PROGRESS", "raw"));
+    expect(displayed.code).toBe("INSTAGRAM_PUBLISH_IN_PROGRESS");
+    expect(displayed.message).toContain("다시 누르지 마세요");
+    expect(displayed.message).not.toContain("다시 시도");
+    expect(displayed.message).not.toContain("실패");
+    expect(displayed.message).not.toContain("raw");
+  });
+
+  /** The refusal that asks the reader to go and look, kept apart from both certainties above. */
+  it("keeps 「we do not know」 separate from 「it went out」 and 「it did not」", () => {
+    const unknown = toInstagramPublishDisplayError(new InstagramPublishApiError("INSTAGRAM_PUBLISH_OUTCOME_UNKNOWN", "raw"));
+    expect(unknown.message).toContain("알 수 없습니다");
+    expect(unknown.message).toContain("확인해 주세요");
+    // Neither of the two sentences that assert an outcome.
+    expect(unknown.message).not.toContain("아무것도 게시되지 않았");
+    expect(unknown.message).not.toContain("이미 게시되었습니다");
+  });
+
   it("reports a network failure as its own code rather than as a server answer", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
     const caught = await publishToInstagram("p1", "본문", "1").catch((error: unknown) => error);

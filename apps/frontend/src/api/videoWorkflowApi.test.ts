@@ -286,6 +286,21 @@ describe("videoWorkflowApi", () => {
     expect(displayed.message).not.toContain("다시 시도");
   });
 
+  /**
+   * The refusal that exists to stop money being spent twice on the same failure — and which said nothing.
+   *
+   * The backend gave it its own code precisely so a screen would have something specific to say; the table had
+   * no row, so it arrived as "잠시 후 다시 시도해 주세요". Here that sentence means "pay for the identical
+   * failure again", which is what happened on 2026-09-05 at $0.25 a press.
+   */
+  it("tells the reader to change the input rather than to retry a scene that will fail identically", () => {
+    const displayed = toVideoWorkflowDisplayError(new VideoWorkflowApiError("VIDEO_RETRY_NEEDS_CHANGED_INPUT", "raw"));
+    expect(displayed.code).toBe("VIDEO_RETRY_NEEDS_CHANGED_INPUT");
+    expect(displayed.message).toContain("무엇을 바꿀지");
+    expect(displayed.message).not.toContain("잠시 후");
+    expect(displayed.message).not.toContain("raw");
+  });
+
   it("falls back to a generic unknown error for an unrecognized code", () => {
     const displayError = toVideoWorkflowDisplayError(new VideoWorkflowApiError("SOMETHING_NEW", "raw"));
     expect(displayError.code).toBe("CLIENT_UNKNOWN_ERROR");

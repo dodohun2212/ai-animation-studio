@@ -35,6 +35,11 @@ const SAFE_ERRORS: Record<string, string> = {
   VIDEO_JOB_NOT_FOUND: "요청한 로컬 영상 생성 작업을 찾을 수 없습니다.",
   VIDEO_WORKFLOW_NOT_ALLOWED: "현재 프로젝트 상태에서는 이 작업을 수행할 수 없습니다.",
   VIDEO_REVIEW_DATA_INVALID: "영상 검토 데이터를 확인할 수 없습니다.",
+  /* The app declining to spend money on a repeat of a known failure. The catch-all says "잠시 후 다시 시도해
+     주세요", which here means "pay $0.50 for the same failure again" — 2026-09-05 is when that was paid twice.
+     The screen normally keeps the button shut when `remedy = change_input`, so arriving here at all means that
+     guard was bypassed; that is exactly the moment the sentence has to name what to do. */
+  VIDEO_RETRY_NEEDS_CHANGED_INPUT: "이 장면은 입력이 원인이라 그대로 다시 만들면 똑같이 실패합니다. 무엇을 바꿀지 적은 뒤에 다시 눌러 주세요.",
   VIDEO_STORAGE_ERROR: "영상 작업 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
   VIDEO_CONTENT_UNAVAILABLE: "영상을 불러올 수 없습니다.",
   // Two windows on the same project, both advancing video generation. Wording matters more here than in any

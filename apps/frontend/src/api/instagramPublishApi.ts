@@ -54,6 +54,13 @@ const SAFE_ERRORS: Record<string, string> = {
   INSTAGRAM_NOT_CONNECTED: "인스타그램 로그인이 만료되었습니다. API 설정에서 다시 로그인해 주세요.",
   INSTAGRAM_TARGET_NOT_FOUND: "고른 계정으로는 지금 올릴 수 없습니다. 계정을 다시 골라 주세요.",
   INSTAGRAM_PUBLISH_FAILED: "올리지 못했습니다. 아무것도 게시되지 않았으니 다시 시도해도 됩니다.",
+  /* 🔴 A publish is running right now, in this app, and this refusal is the lock saying so.
+     It had no entry at all, so it arrived as "요청을 처리하지 못했습니다" — and the person seeing it is, by
+     definition, someone who already believes the first press failed. They read a second failure and press
+     again. The backend's own comment names the trap: the record is written only after Instagram accepts, so
+     during those minutes the app does not yet know, and 「아무것도 안 올라갔다」 is the one thing this must
+     never imply. So it says do not press, not try later. */
+  INSTAGRAM_PUBLISH_IN_PROGRESS: "이 프로젝트의 게시가 지금 진행 중입니다. 끝날 때까지 다시 누르지 마세요 — 올라가고 있는 중일 수 있습니다. 확인하시려면 인스타그램 계정을 먼저 보세요.",
   /* "지울 게 없었다" 와 "지웠다" 는 남는 상태가 같습니다. 다른 것은 다음에 올리기를 누르는 사람이 무엇을 믿고
      누르느냐고, 그래서 성공으로 삼키지 않고 이렇게 말합니다. */
   INSTAGRAM_POST_NOT_RECORDED: "이 영상에는 지울 게시 기록이 없습니다. 이미 풀려 있어 지금 올릴 수 있습니다.",

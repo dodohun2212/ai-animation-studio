@@ -102,6 +102,19 @@ describe("videoMergeApi", () => {
     expect(displayError.message).not.toContain("C:/Users");
   });
 
+  /**
+   * Two "already" refusals that send the reader to different places, which is why the backend keeps them apart.
+   * Already rendered is undone by tidying this project's video; already published is not — re-merging would
+   * make the file on disk stop being the file the post was made from, silently. The way past it is a new card.
+   */
+  it("does not send a published card back to the re-merge advice meant for an unpublished one", () => {
+    const published = toVideoMergeDisplayError(new VideoMergeApiError("VIDEO_MERGE_ALREADY_PUBLISHED", "raw"));
+    expect(published.code).toBe("VIDEO_MERGE_ALREADY_PUBLISHED");
+    expect(published.message).toContain("카드를 새로 만들어");
+    expect(published.message).not.toContain("지금 영상을 정리해");
+    expect(published.message).not.toContain("raw");
+  });
+
   it("falls back to a generic unknown error for an unrecognized code", () => {
     const displayError = toVideoMergeDisplayError(new VideoMergeApiError("SOMETHING_NEW", "raw"));
     expect(displayError.code).toBe("CLIENT_UNKNOWN_ERROR");

@@ -24,8 +24,18 @@ export class VideoLibraryApiError extends Error {
 const SAFE_ERRORS: Record<string, string> = {
   INVALID_REQUEST: "요청 형식이 올바르지 않습니다.",
   PROJECT_NOT_FOUND: "프로젝트를 찾을 수 없습니다.",
-  VIDEO_VERSION_NOT_FOUND: "이 버전을 찾을 수 없습니다. 목록을 새로 불러온 뒤 다시 시도해 주세요.",
-  VIDEO_RESTORE_NOT_ALLOWED: "현재 프로젝트 상태에서는 되돌릴 수 없습니다.",
+  /* 🔴 These two were `VIDEO_VERSION_NOT_FOUND` and `VIDEO_RESTORE_NOT_ALLOWED`, and the backend has never
+     thrown either name: the library's codes all carry the `VIDEO_LIBRARY_` prefix, and the prefix cannot be
+     dropped there because `LONG_EPISODE_VIDEO_*` would collide with it. So both refusals fell through to the
+     catch-all, which says "잠시 후 다시 시도해 주세요" — advice that is wrong for a version that does not exist
+     and wrong for a restore the current state forbids. The sentences were right the whole time; the keys were
+     never reachable. Found by CLI's error-code-reach sweep, which matches exactly rather than by substring —
+     a substring match is what had reported these two as fine. */
+  VIDEO_LIBRARY_VERSION_NOT_FOUND: "이 버전을 찾을 수 없습니다. 목록을 새로 불러온 뒤 다시 시도해 주세요.",
+  VIDEO_LIBRARY_RESTORE_NOT_ALLOWED: "현재 프로젝트 상태에서는 되돌릴 수 없습니다.",
+  /* The version row exists and its file does not — a different fact from "no such version", and the reader's
+     next move is different too: reload cannot conjure a file back. */
+  VIDEO_LIBRARY_CONTENT_UNAVAILABLE: "이 버전의 영상 파일이 없습니다. 파일이 지워졌거나 옮겨졌을 수 있습니다.",
   VIDEO_STORAGE_ERROR: "영상 파일을 읽고 쓰는 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
   VIDEO_MERGE_CONTENT_UNAVAILABLE: "영상을 불러올 수 없습니다.",
 };
