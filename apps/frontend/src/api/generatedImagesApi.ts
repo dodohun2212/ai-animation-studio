@@ -21,7 +21,25 @@ const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연�
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };
 const UNKNOWN = { code: "CLIENT_UNKNOWN_ERROR", message: "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요." };
 
-/** Never surfaces the backend's raw message or any filesystem path — the same rule the other libraries follow. */
+/**
+ * Never surfaces the backend's raw message or any filesystem path — the same rule the other libraries follow.
+ *
+ * 🟠 And, unlike every other api module here, it carries no table of backend codes. That is measured, not an
+ * oversight: this module fetches exactly one route, `GET /images/generated`, and the service behind it
+ * (`generated-image-library.service.ts`) contains no `throw` at all. Every read it makes is wrapped —
+ * an unreadable story file becomes `undefined`, an unreadable directory becomes `[]` — because one broken
+ * project must not empty a listing of everything the app has ever drawn. So there is no domain refusal to
+ * name here; what remains is the four client-side conditions below, and all four are named.
+ *
+ * A table of codes that route cannot send would be exactly the defect we spent 2026-09-07 removing: rows that
+ * look like coverage and can never be reached. If the listing ever starts refusing instead of degrading —
+ * a storage error raised rather than swallowed — this is where its sentence goes, and this comment is what
+ * says why it was not needed before.
+ *
+ * The image *bytes* are a different route and never come through here: screens address them with
+ * `generatedImageContentUrl` in an `<img src>`, so `IMAGE_CONTENT_UNAVAILABLE` is answered by the browser's
+ * own broken-image handling, not by this function.
+ */
 export function toGeneratedImagesDisplayError(error: unknown): { code: string; message: string } {
   if (!(error instanceof GeneratedImagesApiError)) return UNKNOWN;
   if (error.code === NETWORK.code) return NETWORK;
