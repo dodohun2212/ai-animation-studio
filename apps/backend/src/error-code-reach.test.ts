@@ -80,8 +80,8 @@ const UNNAMED_BY_A_SCREEN = new Map<string, string>([
   // unexpected error on the *paid* path lands here too. It stays an exception on the corrected reasoning that
   // every known failure of the real path is mapped before it — budget ledger, budget exceeded, and the
   // provider's own error — leaving this as a genuine unknown, which is what a catch-all is for. The backend's
-  // own message still says "Local Story generation…", which is the same overstatement in a second place; it
-  // reaches no screen, so it misleads only the next reader, and it is left for a round that changes that file.
+  // own message repeated the same overstatement and has been corrected too (it also claimed a fixed six
+  // scenes, untrue since scene count became a setting).
   ["STORY_GENERATION_FAILED", "the fallback arm for an unexpected error; every known failure of the paid path is mapped before it"],
 ]);
 

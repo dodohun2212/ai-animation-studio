@@ -68,10 +68,14 @@ function extractOutputText(body: unknown): string {
 }
 
 /**
- * Real OpenAI Responses API call for the strict six-scene Story JSON schema, using a plain fetch request
+ * Real OpenAI Responses API call for the strict Story JSON schema, using a plain fetch request
  * (no SDK dependency). Never retried — generation is paid and non-idempotent, and a `fetch` failure does not
  * mean OpenAI never generated (and billed) a Story, only that we never saw the response (see
  * OPENAI_DEFAULT_MAX_RETRIES's doc comment).
+ *
+ * The schema is built per call from `sceneCount`, not fixed at six: `storySchema` takes it for the array's
+ * minItems/maxItems and for each scene's number range, and `validateStory` is given the same value. This said
+ * "six-scene" until 2026-09-08, which stopped being true when scene count became a project setting.
  */
 export async function callOpenAiStoryApi(
   apiKey: string,

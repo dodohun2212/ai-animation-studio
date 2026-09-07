@@ -19,8 +19,21 @@ export const storyStorageError = () =>
   new StoryApiException("STORY_PROMPT_STORAGE_ERROR", "Story prompt storage operation failed.", HttpStatus.INTERNAL_SERVER_ERROR);
 export const storyGenerationNotAllowed = () =>
   new StoryApiException("STORY_GENERATION_NOT_ALLOWED", "Story generation requires a project in READY state.", HttpStatus.CONFLICT);
+/**
+ * Story generation ended for a reason nothing above it recognised.
+ *
+ * The message said "Local Story generation did not produce a valid six-scene Story", and both halves were
+ * wrong. This is the fallback arm of a catch in StoryPromptService.approve, so an unexpected error on the
+ * *paid* path lands here too — the known ones (budget ledger, budget exceeded, the provider's own error) are
+ * each mapped ahead of it. And the scene count comes from the project's settings: `generateLocalStory` builds
+ * `sceneCount` scenes and the adapter builds its schema from the same number, so a fixed six has been untrue
+ * since scene count became a setting.
+ *
+ * Neither half ever reached a person — screens branch on the code and render their own text — so this misled
+ * only the next reader of this file, which is exactly who a message like this is for.
+ */
 export const storyGenerationFailed = () =>
-  new StoryApiException("STORY_GENERATION_FAILED", "Local Story generation did not produce a valid six-scene Story.", HttpStatus.INTERNAL_SERVER_ERROR);
+  new StoryApiException("STORY_GENERATION_FAILED", "Story generation failed for a reason this app does not recognise.", HttpStatus.INTERNAL_SERVER_ERROR);
 export const storyBudgetExceeded = (message: string) =>
   new StoryApiException("STORY_BUDGET_EXCEEDED", message, HttpStatus.CONFLICT);
 export const storyProviderError = (category: string, message: string) =>
