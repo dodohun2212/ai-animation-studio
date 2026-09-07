@@ -117,6 +117,12 @@ describe("ShortProjectSettingsScreen", () => {
 
     await screen.findByDisplayValue("별의 지도");
     expect(screen.queryByTestId("just-created-notice")).toBeNull();
+    /*
+     * 캡틴D reached this screen on a 꽃말 릴스 — not just created, so no notice — found fifteen boxes mostly full,
+     * and asked whether they had filled them in. They had typed three; a 서식 wrote the rest. The line says so
+     * without naming the 서식, because a project carries no mark saying which one made it.
+     */
+    expect(screen.getByTestId("settings-prefilled-note").textContent).toContain("서식으로 만드셨다면");
     expect(screen.queryByTestId("finish-setup-button")).toBeNull();
     // By testid, not by name: the header carries a back button with the same words, and both do the same thing.
     // The point here is that the bar at the end of the form still offers a way out when nothing was just created.

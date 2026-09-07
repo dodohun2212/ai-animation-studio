@@ -918,6 +918,19 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
         />
         프로젝트 설정
       </h2>
+      {/*
+       * 캡틴D opened this on a 꽃말 릴스 and asked "이렇게 많은 정보를 입력한다고 내가 했었나?" — fifteen boxes,
+       * most of them already full, and nothing on the screen saying who filled them. They had typed three.
+       *
+       * Deliberately does not name the 서식: a project carries no mark saying which template made it, and CLI
+       * left it that way on purpose — a 꽃말 릴스 is an ordinary short project all the way down, which is what
+       * makes the whole pipeline work for it. A line claiming "꽃말 릴스 서식이 채웠습니다" would be a guess this
+       * screen cannot check. What is true of every project here is enough to answer the question that was asked.
+       */}
+      <p className="text-sm text-slate-400" data-testid="settings-prefilled-note">
+        채워져 있는 값은 그대로 두셔도 됩니다 — 서식으로 만드셨다면 이미 채워진 상태입니다.
+        <span className="text-slate-500"> 빈 칸은 비운 채로 나가고, 그 부분은 대본 AI가 알아서 정합니다.</span>
+      </p>
       {justCreated && (
         <p className="rounded-xl border border-violet-400/30 bg-violet-500/10 px-4 py-3 text-sm text-violet-200" data-testid="just-created-notice">
           프로젝트가 생성되었습니다. 대본을 생성하기 전에 아래에서 장르·분위기와 등장 캐릭터, 참고 이미지, 이전 장면 연결을
