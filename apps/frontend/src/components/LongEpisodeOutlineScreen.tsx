@@ -5,6 +5,7 @@ import { Spinner } from "./Spinner.js";
 import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { LONG_EPISODE_OUTLINE_STATUSES } from "@ai-animation-studio/shared";
 import { cardSectionWide as cardSection, primaryButton } from "./ui/surfaces.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
 
 interface Props {
   projectId: string;
@@ -135,17 +136,12 @@ export function LongEpisodeOutlineScreen({ projectId, episodeNumber, onBack, onO
 
   return (
     <section aria-label="이 회차 내용" className="space-y-5">
-      <button type="button" className={backButton} onClick={onBack}>
-        목록으로
-      </button>
-      <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
-        <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
-        {episodeNumber}화 내용
-      </h2>
-      <p className="text-sm text-slate-400">
-        이 회차가 어떤 이야기인지 직접 적는 자리입니다. 개요를 승인하면 AI가 회차마다 이 칸들을 채워 두는데, 여기서 마음에 안 드는
-        부분을 고칠 수 있습니다. 저장해도 AI를 부르지 않아 비용이 들지 않습니다.
-      </p>
+      <ScreenHeader
+        title={`${episodeNumber}화 내용`}
+        backLabel="목록으로"
+        onBack={onBack}
+        description="이 회차가 어떤 이야기인지 직접 적는 자리입니다. 개요를 승인하면 AI가 회차마다 이 칸들을 채워 두는데, 여기서 마음에 안 드는 부분을 고칠 수 있습니다. 저장해도 AI를 부르지 않아 비용이 들지 않습니다."
+      />
 
       {error && (
         <p role="alert" data-testid="episode-outline-error" data-error-code={error.code} className="text-sm text-rose-400">

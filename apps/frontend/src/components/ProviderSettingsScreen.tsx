@@ -132,8 +132,8 @@ export function ProviderSettingsScreen({ onBack }: Props) {
                 </ul>
                 <p className="mt-1.5 text-xs text-slate-500">이 키가 없으면 대본·이미지까지는 되지만 영상이 안 만들어집니다.</p>
               </div>
-              <div className="rounded-xl border border-sky-400/25 bg-sky-500/5 p-3">
-                <p className="text-sm font-semibold text-sky-200">Instagram — 완성한 영상 올리기</p>
+              <div className="rounded-xl border border-sky-400/30 bg-sky-500/10 p-3">
+                <p className="text-sm font-semibold text-sky-300">Instagram — 완성한 영상 올리기</p>
                 <ul className="mt-1.5 space-y-1 text-xs text-slate-400">
                   <li>· 올릴 <span className="text-slate-300">계정</span> 목록 가져오기</li>
                   <li>· 완성된 영상을 <span className="text-slate-300">릴스로 게시</span>하기</li>

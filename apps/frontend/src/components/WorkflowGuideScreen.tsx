@@ -18,27 +18,30 @@ interface Props {
 
 type StageTone = "story" | "image" | "video" | "narration";
 
+/*
+ * 🔴 One card treatment for all four stages, on purpose — this table used to give each stage its own colour.
+ *
+ * It read as decoration and was a rule violation underneath: §2.1 fixes emerald to "완료", rose to "실패·위험",
+ * amber to "진행 중". Painting 내레이션 emerald and 영상 rose said "this stage succeeded" and "this stage is
+ * dangerous" to anyone who had learned the grammar from the rest of the app. Colour as a category axis and
+ * colour as a status grammar cannot share one palette; the grammar wins, because it is the one that carries
+ * information a person acts on.
+ *
+ * What actually distinguishes these four is the number and the name, and both are already on the card. The
+ * accent is the brand violet everywhere — it marks "this figure is the point of the card", not "this stage is
+ * the violet one".
+ */
+const STAGE_STYLE = {
+  border: "border-white/10",
+  chip: "border-white/15 bg-white/5 text-slate-300",
+  accent: "text-violet-200",
+};
+
 const STAGE_STYLES: Record<StageTone, { border: string; chip: string; accent: string }> = {
-  story: {
-    border: "border-violet-400/30",
-    chip: "border-violet-400/50 bg-violet-500/15 text-violet-200",
-    accent: "text-violet-200",
-  },
-  image: {
-    border: "border-sky-400/30",
-    chip: "border-sky-400/45 bg-sky-500/15 text-sky-200",
-    accent: "text-sky-200",
-  },
-  video: {
-    border: "border-rose-400/30",
-    chip: "border-rose-400/45 bg-rose-500/15 text-rose-200",
-    accent: "text-rose-200",
-  },
-  narration: {
-    border: "border-emerald-400/30",
-    chip: "border-emerald-400/45 bg-emerald-500/15 text-emerald-200",
-    accent: "text-emerald-200",
-  },
+  story: STAGE_STYLE,
+  image: STAGE_STYLE,
+  video: STAGE_STYLE,
+  narration: STAGE_STYLE,
 };
 
 const usd = (value: number) => `$${value.toFixed(2)}`;

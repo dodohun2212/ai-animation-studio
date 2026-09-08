@@ -638,9 +638,12 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
           onClick={() => setMaintenanceOpen((current) => !current)}
         >
           <span className="flex items-center gap-2.5">
+            {/* 🔴 A bar, not the glow dot. §2.5 allows one glowing dot per screen and the screen title
+                already spends it — this was the second on this screen, and the last one anywhere outside
+                ScreenHeader. A disclosure label is not a screen title. */}
             <span
               aria-hidden="true"
-              className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
+              className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400"
             />
             관리 도구 (파일 점검 · 레거시 자료 이전)
           </span>

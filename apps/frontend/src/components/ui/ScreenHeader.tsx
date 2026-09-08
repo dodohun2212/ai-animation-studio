@@ -16,6 +16,14 @@ interface Props {
   onBack?: () => void;
   /** The words alone — the arrow is this component's, and putting one here would be announced aloud. */
   backLabel?: string;
+  /**
+   * Facts about the thing this screen is about — a MetaGrid, usually — sat under the description.
+   *
+   * 🔴 Separate from `actions` because they are a different kind of thing: `actions` is a row of controls and
+   * gets a controls row's spacing, `meta` is read. The slot exists because LongProjectDetail needed it and the
+   * alternative on offer was a second hand-written copy of this component's markup, which §3.8 exists to stop.
+   */
+  meta?: ReactNode;
   /** Buttons that act on the whole screen, not on one card inside it. */
   actions?: ReactNode;
   className?: string;
@@ -33,7 +41,7 @@ interface Props {
  * corner, so the title sits on a surface rather than on the page background. Both are decorative and both are
  * `aria-hidden` — nothing here is announced twice.
  */
-export function ScreenHeader({ title, eyebrow, description, onBack, backLabel = "프로젝트로 돌아가기", actions, className = "" }: Props) {
+export function ScreenHeader({ title, eyebrow, description, onBack, backLabel = "프로젝트로 돌아가기", meta, actions, className = "" }: Props) {
   return (
     <header className={`relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6 ${className}`}>
       <span
@@ -67,6 +75,7 @@ export function ScreenHeader({ title, eyebrow, description, onBack, backLabel = 
           {title}
         </h1>
         {description && <p className="max-w-2xl text-sm leading-relaxed text-slate-400">{description}</p>}
+        {meta && <div className="pt-1">{meta}</div>}
       </div>
       {actions && <div className="relative mt-4 flex flex-wrap items-center gap-2">{actions}</div>}
     </header>

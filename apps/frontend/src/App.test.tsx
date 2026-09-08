@@ -353,9 +353,15 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /sample_project/ }));
 
+    /*
+     * 🔴 Reads every step, not every button. A step with nowhere to go renders as a plain <span> rather than a
+     * button — 영상 만들어지는 중 has no screen until a video job exists — so counting buttons answers "how many
+     * steps happen to be clickable right now" while looking exactly like an answer to "what are the lights".
+     * It only ever agreed with the second question because every step used to be a button.
+     */
     const stepStates = async () => {
       const nav = await screen.findByRole("navigation", { name: "단기 프로젝트 진행 단계" });
-      return [...nav.querySelectorAll("button")].map((button) => button.getAttribute("data-step-state"));
+      return [...nav.querySelectorAll("[data-step-state]")].map((step) => step.getAttribute("data-step-state"));
     };
 
     // WAITING_FOR_VIDEO_CONFIRMATION: 대본·참고 이미지 연결·장면 이미지 done, 영상 보내기 전 확인 current.
@@ -366,6 +372,45 @@ describe("App", () => {
     await screen.findByText("등록된 참고 이미지 연결이 없습니다.");
     // Same lights after moving backwards through the list.
     expect(await stepStates()).toEqual(["done", "done", "done", "current", "upcoming", "upcoming"]);
+  });
+
+  /**
+   * 🔴 A step that cannot be reached does not pretend to be pressable.
+   *
+   * 영상 만들어지는 중 has a screen only once a video job exists. Before that the bar used to render it as a
+   * button anyway, and pressing it fell through to the project screen — which, pressed FROM the project
+   * screen, did nothing at all. "Navigates to where you already are" and "is broken" look identical, which is
+   * why this went unnoticed until someone clicked it.
+   *
+   * The pair above reads all six steps regardless of how each is drawn, so it would stay green if this
+   * regressed. This one is the assertion that would not.
+   */
+  it("does not offer 영상 만들어지는 중 as a button while the project has no video job to watch", async () => {
+    const project: Project = {
+      id: "sample_project", topic: "우주를 여행하는 고양이", projectType: "short_project",
+      workflowState: WorkflowState.WaitingForVideoConfirmation,
+      createdAt: "2026-09-01T00:00:00.000Z", updatedAt: "2026-09-01T00:00:00.000Z",
+      aspectRatio: "9:16", narrationAvailable: false, scenes: [], warnings: [], errors: [],
+    };
+    const fetchMock = vi.fn<FakeFetch>(async (input) => {
+      const url = String(input).split("?")[0]!;
+      if (url === "/projects") return jsonResponse(200, { projects: [project] });
+      if (url === "/projects/sample_project") return jsonResponse(200, { project });
+      return jsonResponse(404, { code: "PROJECT_NOT_FOUND", message: "" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /sample_project/ }));
+    const nav = await screen.findByRole("navigation", { name: "단기 프로젝트 진행 단계" });
+
+    await waitFor(() => {
+      const step = nav.querySelector('[data-testid="step-ribbon-videoWorkflow"]');
+      expect(step).toBeTruthy();
+      expect(step!.tagName).toBe("SPAN");
+    });
+    // Every other step still opens its own screen — this is one step being honest, not the bar going dead.
+    expect(nav.querySelector('[data-testid="step-ribbon-storyPrompt"]')!.tagName).toBe("BUTTON");
   });
 
   /**
@@ -791,7 +836,7 @@ describe("App", () => {
     await screen.findByText(seed.title);
     expect(screen.getByText(seed.logline)).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "목록으로" }));
+    fireEvent.click(screen.getByRole("button", { name: "장편 프로젝트 목록으로" }));
     const projectButton = await screen.findByRole("button", { name: new RegExp(seed.title) });
     fireEvent.click(projectButton);
     await screen.findByText(seed.title);

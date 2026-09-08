@@ -259,13 +259,12 @@ export function StoryPromptScreen({ projectId, onBack, onOpenMappingReview, onOp
         >
           다음: 참고 이미지 연결
         </button>
-        <button
-          type="button"
-          className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
-          onClick={onBack}
-        >
-          프로젝트 화면으로
-        </button>
+        {/*
+          * 🔴 The second button here went to the same place as the header's 「← 프로젝트로 돌아가기」, under
+          * different words. Two buttons wearing different names for one destination is worse than one: a
+          * person has to press one to learn they were the same. This row now says only what is NEXT; the
+          * way back is where it is on every other screen, at the top.
+          */}
       </div>
     );
   }

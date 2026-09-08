@@ -5,6 +5,7 @@ import { getLongEpisode, getLongEpisodeContinuity, saveLongEpisodeContinuity, to
 import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { Spinner } from "./Spinner.js";
 import { cardSectionWide as cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
 
 interface Props {
   projectId: string;
@@ -160,14 +161,12 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
 
   return (
     <section className="mt-8 space-y-5" data-testid="episode-continuity-screen">
-      <button type="button" className={outlineButton} onClick={onBack}>최종 에피소드 영상으로</button>
-      <header className="space-y-1">
-        <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
-          <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
-          {`에피소드 ${episodeNumber} 이어쓰기 메모`}
-        </h2>
-        <p className="text-sm text-slate-400">다음 에피소드를 준비하기 전에 이 내용을 검토하고 직접 저장하세요. 이 화면을 여는 것만으로는 아무것도 저장되지 않습니다.</p>
-      </header>
+      <ScreenHeader
+        title={`에피소드 ${episodeNumber} 이어쓰기 메모`}
+        backLabel="최종 에피소드 영상으로"
+        onBack={onBack}
+        description="다음 에피소드를 준비하기 전에 이 내용을 검토하고 직접 저장하세요. 이 화면을 여는 것만으로는 아무것도 저장되지 않습니다."
+      />
       {!loading && !canSave && (
         <p data-testid="continuity-not-saveable" className="rounded-xl border border-amber-400/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-200">
           이어쓰기 메모는 이 회차의 <span className="font-semibold">영상 작업이 시작된 뒤</span>에 저장할 수 있습니다 —

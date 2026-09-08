@@ -6,6 +6,7 @@ import { approveLongProjectOutline, createLongProjectOutlinePreview, getLongProj
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { Spinner } from "./Spinner.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
 
 interface Props {
   projectId: string;
@@ -157,17 +158,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
 
   return (
     <section className="mt-8 max-w-3xl space-y-5">
-      <button
-        type="button"
-        className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
-        onClick={onBack}
-      >
-        프로젝트로 돌아가기
-      </button>
-      <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
-        <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
-        회차 나누기 — AI에게 보낼 내용 확인
-      </h2>
+      <ScreenHeader title="회차 나누기 — AI에게 보낼 내용 확인" backLabel="프로젝트로 돌아가기" onBack={onBack} />
       {/* What was here explained where OTHER things are written — 세계관 goes in 작품 기본 설정, character
           looks come from image folders — on a screen with no text input of any kind. Orienting someone away
           from a screen they cannot type into anyway is not help; it is a paragraph between them and the button

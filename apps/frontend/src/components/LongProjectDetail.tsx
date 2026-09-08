@@ -5,7 +5,12 @@ import { addLongEpisode, archiveLongEpisode, archiveLongProject, duplicateLongEp
 import { LONG_EPISODE_STATUS_ORDER, longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { ArchiveProjectDialog } from "./ArchiveProjectDialog.js";
 import { Spinner } from "./Spinner.js";
+import { MetaGrid } from "./ui/MetaGrid.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { outlineButton, secondaryButton } from "./ui/surfaces.js";
+
+/** One name for the one way out of this screen, used by both the header and the pre-load fallback. */
+const BACK_LABEL = "장편 프로젝트 목록으로";
 
 interface LongProjectDetailProps {
   projectId: string; onBack: () => void; onOpenSettings: (projectId: string) => void; onOpenOutline: (projectId: string) => void;
@@ -193,11 +198,44 @@ export function LongProjectDetail({
 
   return (
     <section className="mt-8 max-w-4xl space-y-5">
-      <button type="button" className={outlineButton} onClick={onBack}>목록으로</button>
+      {/* 🔴 The screen had no heading at all — it opened on a row of five buttons and then a field list, and
+          the work's own title sat inside that list as a value under 「제목」. Every other screen leads with
+          what it is about; this one now does too, with the same hero shape the short project detail uses. */}
+      {/* 🔴 The same words in every state. This button used to say 「목록으로」 while the loaded screen's said
+          「장편 프로젝트 목록으로」 — one action, one destination, two names, and nobody asked for the split. */}
+      {state.status !== "success" && (
+        <button type="button" className={outlineButton} onClick={onBack}>{BACK_LABEL}</button>
+      )}
       {state.status === "loading" && <Spinner label="불러오는 중..." className="mt-4" />}
       {state.status === "error" && <p className="mt-4 text-sm text-rose-400" role="alert" data-error-code={state.error.code}>{state.error.message}</p>}
       {state.status === "success" && (
         <>
+          {/*
+            * 🔴 `ScreenHeader`, not a copy of it. The first version of this header was the component's markup
+            * written out again by hand — same surface, same hairline, same corner glow, same glow dot, same
+            * arrow — which is the exact thing §3.8 exists to stop, and it put the arrow's `aria-hidden` rule
+            * back outside the component that owns it. What this screen actually needed and the component did
+            * not have was somewhere to put the two facts below the logline, so the component grew a `meta`
+            * slot. A shape the part cannot hold is a reason to widen the part, not to copy it.
+            */}
+          <ScreenHeader
+            title={state.project.title || state.project.id}
+            description={state.project.logline || undefined}
+            backLabel={BACK_LABEL}
+            onBack={onBack}
+            meta={
+              /* 🔴 No 전체 에피소드 here. The stage summary below owns that number by an earlier decision — it
+                 was moved there precisely so it would not be listed twice — and putting it back would undo
+                 that for the sake of a fuller-looking row. `episode-stage-전체` is the pair that says so. */
+              <MetaGrid
+                columns={2}
+                items={[
+                  { label: "스토리 개요 상태", value: <span data-testid="outline-status">{longEpisodeStatusLabel(state.project.outlineStatus)}</span> },
+                  { label: "화면 비율", value: state.project.settings.aspectRatio },
+                ]}
+              />
+            }
+          />
           <div className="flex flex-wrap gap-3">
             <button type="button" className={secondaryButton} onClick={() => onOpenSettings(projectId)}>장기 프로젝트 설정</button>
             <button type="button" className={secondaryButton} onClick={() => onOpenOutline(projectId)}>스토리 개요 확인</button>
@@ -234,14 +272,16 @@ export function LongProjectDetail({
               ))}
             </ul>
           ) : null}
-          <dl className="grid grid-cols-1 gap-x-8 gap-y-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6 text-slate-100 sm:grid-cols-2">
-            <div><dt className="text-xs uppercase tracking-wide text-slate-400">ID</dt><dd className="mt-0.5">{state.project.id}</dd></div>
-            <div><dt className="text-xs uppercase tracking-wide text-slate-400">제목</dt><dd className="mt-0.5">{state.project.title}</dd></div>
-            <div className="sm:col-span-2"><dt className="text-xs uppercase tracking-wide text-slate-400">한 줄 줄거리</dt><dd className="mt-0.5">{state.project.logline}</dd></div>
-            <div><dt className="text-xs uppercase tracking-wide text-slate-400">스토리 개요 상태</dt><dd className="mt-0.5" data-testid="outline-status">{longEpisodeStatusLabel(state.project.outlineStatus)}</dd></div>
-            <div><dt className="text-xs uppercase tracking-wide text-slate-400">장르</dt><dd className="mt-0.5">{state.project.settings.genre || "—"}</dd></div>
-            <div><dt className="text-xs uppercase tracking-wide text-slate-400">화면 비율</dt><dd className="mt-0.5">{state.project.settings.aspectRatio}</dd></div>
-          </dl>
+          {/* Four of these six moved into the header, where they answer "what is this and how far is it"
+              without scrolling. What is left is what the header does not say. */}
+          <MetaGrid
+            columns={2}
+            className="rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6"
+            items={[
+              { label: "ID", value: <span className="break-all">{state.project.id}</span> },
+              { label: "장르", value: state.project.settings.genre || "—" },
+            ]}
+          />
           {/* Episode 수 moved into this panel as "전체 에피소드" rather than being listed twice. */}
           <dl data-testid="episode-stage-summary" className="grid grid-cols-2 gap-x-8 gap-y-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6 text-slate-100 sm:grid-cols-3">
             {episodeStageCounts(state.project.episodes).map((entry) => (

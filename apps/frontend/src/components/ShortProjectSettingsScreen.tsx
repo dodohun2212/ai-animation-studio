@@ -1249,7 +1249,15 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
               className={onResume ? outlineButton : primaryButton}
               onClick={onBack}
             >
-              {justCreated ? "프로젝트로 이동" : "프로젝트로 돌아가기"}
+              {/*
+                * 🔴 Not the same words as the header's back button, though it is the same destination.
+                * This screen is long enough that an exit at the bottom earns its place — the comment above
+                * records why it was added — but showing 「프로젝트로 돌아가기」 twice on one screen reads as
+                * two ways out rather than one way out offered twice. At the end of a settings page the true
+                * thing to say is that setting up is finished, which is also what the testid has always
+                * called it.
+                */}
+              {justCreated ? "프로젝트로 이동" : "설정 끝내기"}
             </button>
             {onResume && <ContinueToNextStep projectId={projectId} onResume={onResume} disabled={formUnsaved} />}
           </div>

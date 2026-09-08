@@ -409,15 +409,22 @@ const PHOTO_CARD_REACH: Partial<Record<WorkflowState, number>> = {
 
 // videoWorkflow carries a required jobId we don't always have on hand (e.g. jumping in from
 // storyPrompt) — fall back to detail, which already knows how to resume into the right job.
-function shortPipelineTarget(stepName: ShortPipelineStepName, projectId: string, currentScreen: Screen): Screen {
+function shortPipelineTarget(stepName: ShortPipelineStepName, projectId: string, currentScreen: Screen, videoJobId: string | null): Screen {
   switch (stepName) {
     case "storyPrompt": return { name: "storyPrompt", projectId };
     case "mappingReview": return { name: "mappingReview", projectId };
     case "imageGeneration": return { name: "imageGeneration", projectId };
     case "videoPreview": return { name: "videoPreview", projectId };
     case "videoMerge": return { name: "videoMerge", projectId };
+    /*
+     * 🔴 영상 만들어지는 중 is the one step whose screen needs a second thing to exist — the job. It used to be
+     * unable to reach it: the bar knew the project but not the job, so pressing the step fell through to the
+     * project screen, and pressing it FROM the project screen did nothing whatsoever. The shell now reads the
+     * job id along with the workflow state, so the step either opens the run or does not click at all.
+     */
     case "videoWorkflow":
-      return currentScreen.name === "videoWorkflow" ? currentScreen : { name: "detail", projectId };
+      if (currentScreen.name === "videoWorkflow") return currentScreen;
+      return videoJobId ? { name: "videoWorkflow", projectId, jobId: videoJobId } : { name: "detail", projectId };
   }
 }
 
@@ -469,11 +476,15 @@ function ShortProjectPipeline({ screen, onNavigate, shell }: { screen: Screen; o
           label: step.label,
           state: index < reached ? "done" : index === reached ? "current" : "upcoming",
           viewing: step.name === screen.name,
-          onSelect: () => onNavigate(card
-            // 게시물 준비 is not a per-project screen — it picks the project itself — so a card's second step
-            // is a plain jump rather than something shortPipelineTarget could address.
-            ? (step.name === "instagramPost" ? { name: "instagramPost" } : { name: "videoMerge", projectId })
-            : shortPipelineTarget(step.name as ShortPipelineStepName, projectId, screen)),
+          // A step with no handler renders as a plain marker: 영상 만들어지는 중 has no screen until a job
+          // exists, and a control that goes nowhere is worse than one that plainly does not click.
+          onSelect: (!card && step.name === "videoWorkflow" && !shell?.currentVideoJobId)
+            ? undefined
+            : () => onNavigate(card
+              // 게시물 준비 is not a per-project screen — it picks the project itself — so a card's second step
+              // is a plain jump rather than something shortPipelineTarget could address.
+              ? (step.name === "instagramPost" ? { name: "instagramPost" } : { name: "videoMerge", projectId })
+              : shortPipelineTarget(step.name as ShortPipelineStepName, projectId, screen, shell?.currentVideoJobId ?? null)),
         }))}
       />
     </nav>
@@ -491,7 +502,12 @@ function ShortProjectPipeline({ screen, onNavigate, shell }: { screen: Screen; o
  * the read is in flight, or after it failed, every screen renders exactly as it did before. Hiding a real
  * screen on a guess is the more expensive mistake of the two.
  */
-type ShortProjectShell = { workflowState: WorkflowState; photoCard: boolean };
+/*
+ * 🔴 `currentVideoJobId` is here so the bar can tell a step that HAS a screen from one that does not.
+ * 영상 만들어지는 중 only has something to watch once a job exists; before that the step used to render as a
+ * button that navigated to the project screen — pressed from the project screen, it did nothing at all.
+ */
+type ShortProjectShell = { workflowState: WorkflowState; photoCard: boolean; currentVideoJobId: string | null };
 
 function useShortProjectShell(screen: Screen): ShortProjectShell | null {
   const projectId = SHORT_PROJECT_SCREEN_NAMES.has(screen.name) && "projectId" in screen
@@ -504,7 +520,11 @@ function useShortProjectShell(screen: Screen): ShortProjectShell | null {
     getProject(projectId)
       .then((response) => {
         if (cancelled) return;
-        setShell({ workflowState: response.project.workflowState, photoCard: response.project.photoCard === true });
+        setShell({
+          workflowState: response.project.workflowState,
+          photoCard: response.project.photoCard === true,
+          currentVideoJobId: response.project.currentVideoJobId ?? null,
+        });
       })
       // Silent, and back to "not known": a failed read must leave the screens alone, not hide them.
       .catch(() => { if (!cancelled) setShell(null); });

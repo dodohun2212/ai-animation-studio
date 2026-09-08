@@ -7,6 +7,7 @@ import { STORY_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { longEpisodeFieldGroups } from "../utils/sceneFields.js";
 import { cardSectionWide as cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
 
 interface Props { projectId: string; episodeNumber: number; onBack: () => void; onOpenMappingReview?: (projectId: string, episodeNumber: number) => void; }
 type ErrorState = { code: string; message: string };
@@ -41,10 +42,6 @@ function isScript(value: unknown): value is LongEpisodeScript { if (!value || ty
 const amberOutlineButton = "rounded-full border border-amber-400/40 px-4 py-2 text-sm text-amber-300 hover:bg-amber-500/10 disabled:opacity-50";
 const violetOutlineButton = "rounded-full border border-violet-400/40 px-4 py-2 text-sm text-violet-200 hover:bg-violet-500/10";
 const fieldClassName = "mt-1 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/20 disabled:opacity-50";
-function SectionDot() {
-  return <span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />;
-}
-
 function sceneValue(script: LongEpisodeScript | null, sceneNumber: number, key: string): string {
   const scene = script?.scenes.find((item) => item.number === sceneNumber) as Record<string, unknown> | undefined;
   const value = scene?.[key];
@@ -153,13 +150,7 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
 
   return (
     <section className="mt-8 max-w-4xl space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <button type="button" className={outlineButton} onClick={onBack}>프로젝트로 돌아가기</button>
-        <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
-          <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
-          <SectionDot />{`에피소드 ${episodeNumber} 상세 대본`}
-        </h2>
-      </div>
+      <ScreenHeader title={`에피소드 ${episodeNumber} 상세 대본`} backLabel="프로젝트로 돌아가기" onBack={onBack} />
       {loading && <Spinner label="불러오는 중..." />}
       {/* "이전 기록" counted this Episode's own earlier script drafts, but it renders two lines above a notice
           about 이어쓰기 메모 — the record carried from earlier Episodes — so "이전 기록 0개" read as confirmation
@@ -176,7 +167,7 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
           empty page with no way to learn that "회차 나누기(AI)" is the missing step. A withheld control has to
           say why it is withheld; otherwise a correct refusal is indistinguishable from a broken screen. */}
       {!hasScript && episode?.status === "planned" && (
-        <p data-testid="episode-script-needs-outline" className="rounded-xl border border-sky-400/20 bg-sky-500/5 px-4 py-3 text-sm text-sky-200">
+        <p data-testid="episode-script-needs-outline" className="rounded-xl border border-sky-400/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-300">
           아직 이 회차의 개요가 없어 대본을 만들 수 없습니다. 왼쪽 메뉴의 <span className="font-semibold">회차 나누기(AI)</span>를 먼저 실행하면 여기에 대본 초안 버튼이 나타납니다.
         </p>
       )}
@@ -214,9 +205,9 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
             </p>
           )}
           {unsavedBefore.length > 0 && (
-            <p role="status" data-testid="episode-script-missing-continuity" className="rounded-xl border border-sky-400/25 bg-sky-500/[0.06] px-4 py-3 text-sm text-sky-200">
-              <strong className="text-sky-100">{unsavedBefore.join("·")}화</strong>의 이어쓰기 메모가 없어서, 이 대본은 그 회차 내용을 모르는 채로 쓰입니다.
-              그 회차의 <span className="font-semibold text-sky-100">이어쓰기 메모</span>를 먼저 저장하면 반영됩니다. 그대로 진행하셔도 됩니다.
+            <p role="status" data-testid="episode-script-missing-continuity" className="rounded-xl border border-sky-400/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-300">
+              <strong className="text-slate-100">{unsavedBefore.join("·")}화</strong>의 이어쓰기 메모가 없어서, 이 대본은 그 회차 내용을 모르는 채로 쓰입니다.
+              그 회차의 <span className="font-semibold text-slate-100">이어쓰기 메모</span>를 먼저 저장하면 반영됩니다. 그대로 진행하셔도 됩니다.
             </p>
           )}
           <button type="button" className={primaryButton} disabled={pending} onClick={() => void run(() => generateLongEpisodeScript(projectId, episodeNumber, scriptRequest(false)))}>

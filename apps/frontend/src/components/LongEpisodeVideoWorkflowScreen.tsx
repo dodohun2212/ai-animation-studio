@@ -13,6 +13,7 @@ import { StatusChip } from "./ui/StatusChip.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
 import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
 import { cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
 
 interface Props { projectId: string; episodeNumber: number; onBack: () => void; onOpenMerge: (projectId: string, episodeNumber: number) => void; }
 type DisplayError = { code: string; message: string };
@@ -35,7 +36,6 @@ const dangerOutlineButton = "rounded-full border border-rose-400/30 px-4 py-2 te
 const smallOutlineButton = "rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const smallAmberButton = "rounded-full bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white shadow-[0_0_12px_rgba(245,158,11,0.35)] disabled:opacity-50";
 const textareaClassName = "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
-const dot = <span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />;
 
 /**
  * How many scenes a paid action here actually buys.
@@ -279,12 +279,8 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
   async function approve(sceneNumber: SceneNumber): Promise<void> { if (!job) return; try { const response = await approveLongEpisodeVideoReview(projectId, episodeNumber, job.jobId, sceneNumber); setJob((current) => current ? { ...current, episode: response.episode } : current); setReviews(response.reviews); setVideoStale(response.staleness.videoStale); } catch (caught) { fail("approve", caught); } }
   return (
     <section className="mt-8 space-y-5">
-      <button type="button" className={outlineButton} onClick={onBack}>에피소드 이미지로</button>
+      <ScreenHeader title={`에피소드 ${episodeNumber} 영상 작업`} backLabel="에피소드 이미지로" onBack={onBack} />
       <header className="space-y-1">
-        <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
-          <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
-          {dot}{`에피소드 ${episodeNumber} 영상 작업`}
-        </h2>
         {/*
           * Before a run exists this is genuinely conditional and says both branches. Once one exists it is not:
           * the server answered with `paidProvider`, this screen has been storing that answer since the start
@@ -562,7 +558,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
         <section data-testid="episode-video-review" className={cardSection}>
           <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
             <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
-            {dot}영상 검토
+            영상 검토
           </h3>
           {/* Recovery, not regeneration — the difference is $1.50 an Episode, so the button says which one it
               is before it is pressed. */}

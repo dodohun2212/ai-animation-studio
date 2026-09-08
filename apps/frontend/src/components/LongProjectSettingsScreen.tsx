@@ -7,6 +7,7 @@ import { ProtagonistAssetCard } from "./ProtagonistAssetCard.js";
 import { Spinner } from "./Spinner.js";
 import { StorySecretsCard } from "./StorySecretsCard.js";
 import { StoryWorldCard } from "./StoryWorldCard.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
 
 interface Props {
   projectId: string;
@@ -121,17 +122,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
   if (state.loading && !state.settings) return <Spinner label="불러오는 중…" className="mt-8" />;
   return (
     <section className="mt-8 max-w-3xl space-y-5">
-      <button
-        type="button"
-        className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
-        onClick={onBack}
-      >
-        돌아가기
-      </button>
-      <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
-        <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
-        장기 프로젝트 설정
-      </h2>
+      <ScreenHeader title="장기 프로젝트 설정" backLabel="돌아가기" onBack={onBack} />
       {/* Said once, here, instead of four times below.
           Every card on this screen — 주인공, 전체 그림체, 세계관 설명, 비밀·복선 — carried its own copy of the
           same three facts: what reaches the AI, that blank is allowed, and that already-written Episodes do not

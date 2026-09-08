@@ -24,6 +24,7 @@ import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
 import { BudgetLine } from "./ui/BudgetLine.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
 
 interface Props { projectId: string; episodeNumber: number; onBack: () => void; onOpenVideoWorkflow?: (projectId: string, episodeNumber: number) => void; }
 type DisplayError = { code: string; message: string };
@@ -346,14 +347,9 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
 
   return (
     <section className="mt-8 space-y-5">
-      <button type="button" className={outlineButton} onClick={onBack}>참고 이미지 연결 검토로</button>
-      <header className="space-y-1">
-        <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
-          <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
-          {`에피소드 ${episodeNumber} 이미지 생성`}
-        </h2>
-        <p data-testid="episode-image-cost-notice" className="text-sm text-amber-300">OpenAI 키가 연결되어 있으면 장면마다 실제 유료 요청이 전송됩니다. 연결되어 있지 않으면 비용 없이 임시 이미지로 생성됩니다.</p>
-      </header>
+      <ScreenHeader title={`에피소드 ${episodeNumber} 이미지 생성`} backLabel="참고 이미지 연결 검토로" onBack={onBack} />
+      {/* Kept out of the header: this is a warning about money, not a description of the screen. */}
+      <p data-testid="episode-image-cost-notice" className="text-sm text-amber-300">OpenAI 키가 연결되어 있으면 장면마다 실제 유료 요청이 전송됩니다. 연결되어 있지 않으면 비용 없이 임시 이미지로 생성됩니다.</p>
       {loading && <Spinner label="에피소드 이미지 상태를 불러오는 중..." />}
       {episode && <p data-testid="episode-image-status" className="text-sm text-slate-400">에피소드 상태: {longEpisodeStatusLabel(episode.status)}</p>}
       {continuityReferenceLoading && <p data-testid="episode-image-continuity-loading" className="text-sm text-slate-400">이전 에피소드 연속성 참고 자료를 확인하는 중...</p>}
@@ -443,13 +439,13 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
         </p>
       )}
       {reviewState.status === "ready" && reviewState.drift.length > 0 && (
-        <section data-testid="episode-story-bible-drift" aria-label="설정집과 다른 점" className="space-y-1.5 rounded-xl border border-sky-400/25 bg-sky-500/[0.06] px-4 py-3">
+        <section data-testid="episode-story-bible-drift" aria-label="설정집과 다른 점" className="space-y-1.5 rounded-xl border border-sky-400/30 bg-sky-500/10 px-4 py-3">
           {reviewState.drift.map((item) => (
-            <p key={item.link} data-testid={`episode-drift-${item.link}`} className="text-sm text-sky-200">
+            <p key={item.link} data-testid={`episode-drift-${item.link}`} className="text-sm text-sky-300">
               이 에피소드는 {LINK_LABEL[item.link]}{" "}
-              <strong className="text-sky-100">{item.episodeAssetName ?? item.episodeAssetId ?? "연결 없음"}</strong>
+              <strong className="text-slate-100">{item.episodeAssetName ?? item.episodeAssetId ?? "연결 없음"}</strong>
               (으)로 만들어졌습니다. 지금 설정집의 {LINK_LABEL[item.link]}은(는){" "}
-              <strong className="text-sky-100">{item.storyBibleAssetName || item.storyBibleAssetId}</strong>입니다.
+              <strong className="text-slate-100">{item.storyBibleAssetName || item.storyBibleAssetId}</strong>입니다.
             </p>
           ))}
           {/* Said once for the section rather than per line: the reason it is not an instruction. */}
