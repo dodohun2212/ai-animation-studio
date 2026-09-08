@@ -163,10 +163,20 @@ export class EpisodeVideoMergeService {
   }
 
   /**
-   * Exactly the same gating as video-merge.service.ts's identical mergeScenes() (see that doc comment for the
-   * full reasoning) — narrationAudioPath is gated on narrationEnabled AND file existence/validity (a stale or
-   * toggled-off file must never fail the merge, it just falls back to silence for that scene); subtitleText is
-   * independent, gated on subtitlesEnabled AND that scene having narration text, regardless of audio existence.
+   * The same gating as video-merge.service.ts's mergeScenes() (see that doc comment for the full reasoning) —
+   * narrationAudioPath is gated on narrationEnabled AND file existence/validity (a stale or toggled-off file
+   * must never fail the merge, it just falls back to silence for that scene); subtitleText is independent,
+   * gated on subtitlesEnabled AND that scene having narration text, regardless of audio existence.
+   *
+   * 🟠 It used to say "exactly the same", and that stopped being true without anyone noticing. The short
+   * pipeline's version now also passes `sceneSubtitleLayout` — the size and height a person picked for the
+   * scene subtitle — and this one does not, so an episode is always burned with the published defaults.
+   *
+   * 🔴 What that costs is the HANDLE, not the look: `sceneSubtitleAss` falls back to
+   * DEFAULT_SCENE_SUBTITLE_LAYOUT, which is the same 0.050/0.66 캡틴D picked off the reference, so an episode
+   * and a reel come out looking alike today. What an episode has no way to do is be adjusted — and nobody
+   * decided that, it is the short-versus-long asymmetry docs/01_CURRENT_PRODUCT_SPEC.md's screen table exists
+   * to make visible, occurring on the render side where that table does not reach.
    */
   /**
    * Scenes whose narration audio was written without a TTS credential.
