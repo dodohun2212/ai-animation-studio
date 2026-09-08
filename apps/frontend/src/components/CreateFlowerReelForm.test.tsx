@@ -57,6 +57,22 @@ describe("CreateFlowerReelForm", () => {
     // different flower in every shot, which is the one failure this preset exists to fight.
     expect(settings.fullStory).toContain("씨앗");
     expect(settings.fullStory).toContain("같은 각도");
+    /*
+     * 🔴 캡틴D watched 개나리's clips and the plant did not grow. The brief described the arc ACROSS the reel
+     * and said nothing about what has to happen inside one five-second clip, so the story model filled every
+     * scene with `motion_speed: 느림` / `motion_intensity: 약함` and a slow push-in — a shot where the light and
+     * the background move and the plant stands still. Those two fields go to Runway verbatim.
+     *
+     * Asserted as the checkable half — a difference between the first and last frame — rather than the adjective.
+     */
+    expect(settings.fullStory).toContain("타임랩스");
+    expect(settings.fullStory).toContain("첫 프레임과 마지막 프레임");
+    // One step per scene, and the next scene starts where this one stopped: the chain the images already follow.
+    expect(settings.fullStory).toContain("한 단계만");
+    // 🔴 The camera line asked for 「아주 느린 접근」 and the model applied that slowness to the subject too.
+    // A locked-off camera also removes Runway's cheapest way to look like it moved without growing anything.
+    expect(settings.styleNotes.camera).toContain("움직이지 않는다");
+    expect(settings.styleNotes.camera).not.toContain("느린");
     expect(settings.styleNotes.avoid).toContain("장면마다 바뀌는 것");
     // 씨앗 → 싹 → 봉오리 → 개화. Two scenes jumped from a sprout to an open flower in one cut, and that jump
     // survived however steady the pot was kept; the video cost is unchanged and the images cost $0.20 more.

@@ -67,9 +67,25 @@ function presetSettings(
     // No cast: a flower reel has no character, and a name here would put one in the story prompt.
     character: "",
     lore: "",
+    /*
+     * 🔴 캡틴D: 「영상을 봤는데 식물이 가만히 있고 성장을 안 하는데?」 — and the brief was half the reason.
+     *
+     * It described the arc across the reel and said nothing about what has to happen INSIDE one five-second
+     * clip. The story model filled the motion fields the way the rest of this preset pointed: 개나리's four
+     * scenes all came back `motion_speed: 느림`, `motion_intensity: 약함`, and a slow push-in for every
+     * `camera_motion` — which is a shot where the plant is allowed to stand still while the camera and the
+     * background do the moving. Those two fields are rendered into the Runway prompt verbatim as
+     * `Pacing: motion speed 느림; intensity 약함` (video-preview.service.ts promptFor).
+     *
+     * So the brief now says the growth is the shot, and says it as a checkable difference between the first and
+     * last frame rather than as an adjective.
+     */
     fullStory:
       `${name}의 꽃말인 "${meaning.trim()}"의 유래와 의미를 설명한다.\n`
       + `화면은 ${name} 씨앗이 흙에 심기는 데서 시작해, 싹이 트고 줄기가 자라 꽃이 활짝 피기까지 한 방향으로 진행한다.\n`
+      + `각 장면은 식물이 자라는 과정을 압축해 보여주는 타임랩스다. 한 장면 안에서 식물이 눈에 띄게 자라야 하고, `
+      + `첫 프레임과 마지막 프레임의 크기·형태가 분명히 달라야 한다. 빛이나 배경만 흔들리고 식물이 그대로인 장면은 안 된다.\n`
+      + `한 장면에서는 한 단계만 자란다. 그 장면이 끝난 모습이 다음 장면이 시작하는 모습이 된다.\n`
       + `장면이 넘어가도 같은 ${name}, 같은 화분, 같은 각도, 같은 빛을 유지한다.`
       + (known ? `\n\n유래에 대해 알고 있는 것: ${known}` : ""),
     sceneCount: FLOWER_SCENE_COUNT,
@@ -81,10 +97,20 @@ function presetSettings(
       // hedge writes "전해진다" instead of a confident date, and a hedge is far easier to spot and fix.
       + `확실하지 않은 유래는 단정하지 말고 "전해진다" 처럼 쓴다.`,
     styleNotes: {
-      visualStyle: "사실적인 자연 접사 촬영, 얕은 심도",
+      visualStyle: "사실적인 식물 성장 타임랩스, 자연 접사, 얕은 심도",
       color: "따뜻한 아침 햇빛, 부드러운 초록과 흙빛",
       lighting: "부드러운 역광의 아침 햇살",
-      camera: "거의 고정, 아주 느린 접근",
+      /*
+       * 🔴 「아주 느린 접근」 was here, and it is what the story model copied into all four scenes.
+       *
+       * Two things were conflated: the camera should hold still (a moving camera makes the between-scene match
+       * harder, which is the problem this preset was built around), and the SUBJECT should move a lot. Written
+       * as one line about slowness, the model applied the slowness to both — and a slow push-in is also
+       * Runway's cheapest way to satisfy "some motion happened" without animating the growth at all.
+       *
+       * Now it asks for a locked-off camera and nothing else, so the only thing left that can move is the plant.
+       */
+      camera: "삼각대에 고정된 카메라. 프레임·각도·거리를 처음부터 끝까지 그대로 두고 움직이지 않는다",
       dialogue: "",
       // 🔴 This one is not decoration, and its reason changed today. It used to read 「nothing carries the
       // previous clip's last frame forward」, which was true until 장면 이어 그리기 existed — 캡틴D reported
