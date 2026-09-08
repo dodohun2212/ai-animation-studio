@@ -867,6 +867,7 @@ export function App() {
               <ImageGenerationScreen
                 projectId={screen.projectId}
                 onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
+                onResume={(target) => resumeScreenFor(screen.projectId, target)}
               />
             )}
             {screen.name === "videoPreview" && !photoCardSkippedScreen && (

@@ -5,6 +5,7 @@ import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { jsonResponse, makeProject, sceneStaleness } from "../api/testUtils.js";
 import { ImageGenerationScreen } from "./ImageGenerationScreen.js";
+import type { ResumeTarget } from "../utils/resumeTarget.js";
 import { workflowStateLabel } from "../utils/workflowStateLabels.js";
 
 function sixScenes(withImages: readonly number[] = []): Scene[] {
@@ -28,9 +29,9 @@ function sixReviews(approved: readonly number[] = []): ImageReview[] {
   }));
 }
 
-function renderScreen(fetchMock: ReturnType<typeof vi.fn>) {
+function renderScreen(fetchMock: ReturnType<typeof vi.fn>, onResume?: (target: ResumeTarget) => void) {
   vi.stubGlobal("fetch", fetchMock);
-  return render(<ImageGenerationScreen projectId="sample_project" onBack={() => {}} />);
+  return render(<ImageGenerationScreen projectId="sample_project" onBack={() => {}} onResume={onResume} />);
 }
 
 describe("ImageGenerationScreen", () => {
@@ -573,6 +574,60 @@ describe("ImageGenerationScreen", () => {
     for (const number of [1, 2, 3, 4, 5, 6]) {
       expect(screen.getByTestId(`review-${number}`)).toHaveAttribute("data-status", "approved");
     }
+  });
+
+  /**
+   * 🔴 The sentence above said the step had happened; nothing on the screen performed it.
+   *
+   * 캡틴D approved the last scene, read 「영상 생성 확인 단계로 이동했습니다」, and the only control left was
+   * 프로젝트로 돌아가기 at the top of the page. The move was real — the project comes back as
+   * WAITING_FOR_VIDEO_CONFIRMATION — and it was simply never offered, which is the same class of defect as a
+   * screen stating something untrue: a true thing put where nobody can act on it.
+   *
+   * The destination is not decided here. resumeTarget maps that state to videoPreview for every screen that
+   * continues the flow, so this asserts the state reaches it, not a screen name typed twice.
+   */
+  it("offers the video-confirmation step it says the project moved to", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: sixScenes([1, 2, 3, 4, 5, 6]) });
+    const waitingProject = makeProject({
+      workflowState: WorkflowState.WaitingForVideoConfirmation,
+      scenes: sixScenes([1, 2, 3, 4, 5, 6]),
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project }))
+      .mockResolvedValueOnce(jsonResponse(200, { project, reviews: sixReviews([1, 2, 3, 4, 5]) }))
+      .mockResolvedValueOnce(jsonResponse(200, { project: waitingProject, reviews: sixReviews([1, 2, 3, 4, 5, 6]) }));
+    const onResume = vi.fn();
+    renderScreen(fetchMock, onResume);
+
+    // Not there yet while scenes are still being approved: at IMAGES_REVIEW the next step is this very screen,
+    // and a button that reloads the page you are on is worse than no button.
+    await screen.findByTestId("review-6");
+    expect(screen.queryByTestId("image-review-continue")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("review-6").querySelector("button")!);
+
+    const forward = await screen.findByTestId("image-review-continue");
+    expect(forward.textContent).toContain("영상");
+    fireEvent.click(forward);
+    expect(onResume).toHaveBeenCalledWith({ screen: "videoPreview", label: expect.any(String) });
+  });
+
+  /** No handler, no button — the screen renders standalone without a control that would do nothing. */
+  it("shows no forward button when no resume handler was given", async () => {
+    const waitingProject = makeProject({
+      workflowState: WorkflowState.WaitingForVideoConfirmation,
+      scenes: sixScenes([1, 2, 3, 4, 5, 6]),
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { project: waitingProject }))
+      .mockResolvedValueOnce(jsonResponse(200, { project: waitingProject, reviews: sixReviews([1, 2, 3, 4, 5, 6]) }));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("video-confirmation-transition");
+    expect(screen.queryByTestId("image-review-continue")).toBeNull();
   });
 
   it("does not call the regenerate endpoint on the first click — it only opens an explicit per-scene confirmation panel", async () => {

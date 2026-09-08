@@ -18,10 +18,16 @@ import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { BudgetLine } from "./ui/BudgetLine.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
 import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
+import { resumeTarget, type ResumeTarget } from "../utils/resumeTarget.js";
 
 interface Props {
   projectId: string;
   onBack: () => void;
+  /**
+   * Optional so the screen still renders in isolation; when it is passed, the last free step offers the step
+   * that follows it instead of only announcing that it happened.
+   */
+  onResume?: (target: ResumeTarget) => void;
 }
 
 type DisplayError = { code: string; message: string };
@@ -49,7 +55,7 @@ const smallApproveButton =
 const smallAmberButton =
   "rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-400 disabled:opacity-50";
 
-export function ImageGenerationScreen({ projectId, onBack }: Props) {
+export function ImageGenerationScreen({ projectId, onBack, onResume }: Props) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [generatePending, setGeneratePending] = useState(false);
@@ -143,6 +149,8 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
   const running = generatePending || runFound;
   const reviewable = currentProject?.workflowState === WorkflowState.ImagesReview;
   const videoConfirmationReached = currentProject?.workflowState === WorkflowState.WaitingForVideoConfirmation;
+  /** null whenever the parent gave no handler, so the button never appears as decoration that does nothing. */
+  const nextStep: ResumeTarget | null = onResume && currentProject ? resumeTarget(currentProject) : null;
 
   useEffect(() => {
     if (!reviewable && !videoConfirmationReached) return;
@@ -734,9 +742,34 @@ export function ImageGenerationScreen({ projectId, onBack }: Props) {
           )}
 
           {videoConfirmationReached && (
-            <p data-testid="video-confirmation-transition" className="text-sm font-semibold text-emerald-400">
-              장면 이미지 {totalScenes}장이 모두 승인되어 영상 생성 확인 단계로 이동했습니다.
-            </p>
+            <div className={cardSection} data-testid="video-confirmation-transition-card">
+              <p data-testid="video-confirmation-transition" className="text-sm font-semibold text-emerald-400">
+                장면 이미지 {totalScenes}장이 모두 승인되어 영상 생성 확인 단계로 이동했습니다.
+              </p>
+              {/*
+               * The step the sentence above says already happened.
+               *
+               * 캡틴D approved the fourth scene, read 「영상 생성 확인 단계로 이동했습니다」, and had nowhere to go
+               * — the only control left on the screen was 프로젝트로 돌아가기 at the top. The move is real; the
+               * project's workflowState is WaitingForVideoConfirmation. It was just never offered.
+               *
+               * 🔴 Deliberately not ContinueToNextStep: that component fetches the project itself and fails
+               * silent, which on this screen would reproduce the exact complaint — a sentence saying the step
+               * happened with no button under it — whenever the fetch fails. This screen already holds the
+               * project it needs, so the button cannot go missing while the sentence is up. resumeTarget stays
+               * the single place that decides where the flow goes next.
+               */}
+              {nextStep !== null && (
+                <button
+                  type="button"
+                  data-testid="image-review-continue"
+                  className={primaryButton}
+                  onClick={() => onResume?.(nextStep)}
+                >
+                  {nextStep.label}
+                </button>
+              )}
+            </div>
           )}
         </>
       )}
