@@ -117,7 +117,7 @@ export function MergeAudioFieldset({ idPrefix, tracks, narrationAvailable, mode,
   useEffect(() => { onStartSecondsChange(0); onVolumePercentChange(null); setStartRefusal(null); }, [trackId]);
 
   return (
-    <fieldset data-testid={`${idPrefix}-settings`} className="space-y-2 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
+    <fieldset data-testid={`${idPrefix}-settings`} className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
       <legend className="px-1 text-sm font-semibold text-slate-200">오디오</legend>
       {AUDIO_MODES.map((option) => {
         // Only offered when it can actually be produced. Both narration modes need generated narration audio —
@@ -161,7 +161,7 @@ export function MergeAudioFieldset({ idPrefix, tracks, narrationAvailable, mode,
           <select
             id={`${idPrefix}-track`}
             data-testid={`${idPrefix}-track`}
-            className="mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+            className="mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
             value={trackId}
             disabled={disabled}
             onChange={(event) => onTrackChange(event.target.value)}
@@ -277,7 +277,7 @@ export function MergeAudioFieldset({ idPrefix, tracks, narrationAvailable, mode,
                 step={1}
                 inputMode="numeric"
                 placeholder="기본값"
-                className="mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
+                className="mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
                 value={volumePercent === null ? "" : String(volumePercent)}
                 disabled={disabled}
                 onChange={(event) => {
@@ -306,7 +306,7 @@ export function MergeAudioFieldset({ idPrefix, tracks, narrationAvailable, mode,
                 step={0.5}
                 inputMode="decimal"
                 placeholder="기본값"
-                className="mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
+                className="mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
                 value={fadeSeconds === null ? "" : String(fadeSeconds)}
                 disabled={disabled}
                 onChange={(event) => {

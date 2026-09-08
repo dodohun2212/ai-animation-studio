@@ -8,6 +8,8 @@ import {
 
 import { getLongEpisodeSettings, toLongProjectDisplayError, updateLongEpisodeSettings } from "../api/longProjectsApi.js";
 import { Spinner } from "./Spinner.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
+import { cardSectionWide as cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
 
 interface Props {
   projectId: string;
@@ -23,13 +25,7 @@ type State =
   | { status: "ready"; loaded: Loaded };
 
 const fieldClassName =
-  "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
-const primaryButton =
-  "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
-const outlineButton =
-  "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
-const cardSection = "space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
-
+  "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 /**
  * One Episode's own scene count and clip length.
  *
@@ -115,16 +111,7 @@ export function LongEpisodeSettingsScreen({ projectId, episodeNumber, onBack }: 
 
   return (
     <section className="mt-8 max-w-2xl space-y-5">
-      <button type="button" className="text-xs text-slate-400 hover:text-slate-300" onClick={onBack}>
-        <span aria-hidden="true">←</span> 회차로 돌아가기
-      </button>
-      <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-slate-100">
-        <span
-          aria-hidden="true"
-          className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-        />
-        {episodeNumber}회차 설정
-      </h1>
+      <ScreenHeader title={`${episodeNumber}회차 설정`} backLabel="회차로 돌아가기" onBack={onBack} />
       <p className="text-sm leading-relaxed text-slate-400">
         이 회차만의 장면 수와 클립 길이입니다. 작품 설정에서 정한 값으로 시작하고, 여기서 바꾼 것은 이 회차에만
         적용됩니다. <strong className="text-slate-300">화면 비율은 작품 전체에 하나</strong>라 여기에 없습니다 —

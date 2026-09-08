@@ -11,6 +11,7 @@ import { getVideoReview } from "../api/videoWorkflowApi.js";
 import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBridge.js";
 import { PhotoCardSubtitleFieldset } from "./PhotoCardSubtitleFieldset.js";
 import { SceneSubtitleFieldset, type SubtitledScene } from "./SceneSubtitleFieldset.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
 
 interface Props {
   projectId: string;
@@ -266,20 +267,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
 
   return (
     <section className="mt-8 max-w-2xl space-y-5">
-      <button
-        type="button"
-        className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
-        onClick={onBack}
-      >
-        프로젝트로 돌아가기
-      </button>
-      <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-slate-100">
-        <span
-          aria-hidden="true"
-          className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-        />
-        최종 영상 병합
-      </h1>
+      <ScreenHeader title="최종 영상 병합" backLabel="프로젝트로 돌아가기" onBack={onBack} />
       <p className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300" data-testid="merge-scope-notice">
         이 단계는 비용이 들지 않습니다 — 유료 요청 없이, 이 컴퓨터에 설치된 영상 병합 프로그램만 실행합니다.
         {photoCard
@@ -378,7 +366,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
               role="alertdialog"
               aria-label="최종 영상 병합 확인"
               data-testid="merge-confirm-panel"
-              className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
+              className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
             >
               <p className="text-sm font-semibold text-amber-300">
                 {photoCard
@@ -444,7 +432,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
       )}
 
       {result && (
-        <div data-testid="merge-success" className="space-y-3 rounded-2xl border border-emerald-400/30 bg-slate-900/70 p-5">
+        <div data-testid="merge-success" className="space-y-3 rounded-2xl border border-emerald-400/30 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
           <p className="text-sm font-semibold text-emerald-400">
             최종 영상 병합이 완료되었습니다. 이 단계에서는 유료 요청이 전송되지 않았습니다.
           </p>

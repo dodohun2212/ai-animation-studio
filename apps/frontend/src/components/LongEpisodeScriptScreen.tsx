@@ -6,6 +6,7 @@ import { Spinner } from "./Spinner.js";
 import { STORY_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { longEpisodeFieldGroups } from "../utils/sceneFields.js";
+import { cardSectionWide as cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
 
 interface Props { projectId: string; episodeNumber: number; onBack: () => void; onOpenMappingReview?: (projectId: string, episodeNumber: number) => void; }
 type ErrorState = { code: string; message: string };
@@ -37,13 +38,9 @@ const SCRIPT_FIELDS: { key: "title" | "synopsis" | "ending"; label: string }[] =
 
 function isScript(value: unknown): value is LongEpisodeScript { if (!value || typeof value !== "object" || Array.isArray(value)) return false; const item = value as Record<string, unknown>; return typeof item.title === "string" && typeof item.synopsis === "string" && typeof item.ending === "string" && Array.isArray(item.scenes) && item.scenes.length >= MIN_SCENE_COUNT && item.scenes.length <= MAX_SCENE_COUNT && item.scenes.every((scene, index) => !!scene && typeof scene === "object" && !Array.isArray(scene) && (scene as Record<string, unknown>).number === index + 1 && SCENE_FIELDS.every((field) => typeof (scene as Record<string, unknown>)[field] === "string") && OPTIONAL_SCENE_FIELDS.every((field) => { const value = (scene as Record<string, unknown>)[field]; return value === undefined || typeof value === "string"; })); }
 
-const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
-const primaryButton = "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
 const amberOutlineButton = "rounded-full border border-amber-400/40 px-4 py-2 text-sm text-amber-300 hover:bg-amber-500/10 disabled:opacity-50";
 const violetOutlineButton = "rounded-full border border-violet-400/40 px-4 py-2 text-sm text-violet-200 hover:bg-violet-500/10";
 const fieldClassName = "mt-1 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/20 disabled:opacity-50";
-const cardSection = "space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
-
 function SectionDot() {
   return <span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />;
 }
@@ -329,7 +326,7 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
               </>
             )}
             {confirming && (
-              <div role="alertdialog" data-testid="episode-script-approve-confirm" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
+              <div role="alertdialog" data-testid="episode-script-approve-confirm" className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
                 <p className="text-sm text-amber-300">이 대본을 승인할까요? 다음 참고 이미지 연결 단계는 아직 시작하지 않습니다.</p>
                 <div className="flex gap-3">
                   <button type="button" className={outlineButton} disabled={pending} onClick={() => setConfirming(false)}>돌아가기</button>

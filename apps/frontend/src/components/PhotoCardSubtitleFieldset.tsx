@@ -160,7 +160,10 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, vertical, layout, 
            */
           wordBreak: "keep-all",
           textWrap: "balance",
-          fontWeight: serif ? 700 : 500,
+          // Both faces are Bold now: 3a56577 flipped the card's Body style as well as the reel's Default,
+          // because SCENE_SUBTITLE_CSS_RATIO is derived from PHOTO_CARD_SUBTITLE_CSS_RATIO.body — one number
+          // cannot describe two layouts drawn from different files.
+          fontWeight: 700,
           fontFamily: serif ? '"Noto Serif KR", "Nanum Myeongjo", serif' : '"Noto Sans KR", system-ui, sans-serif',
           color: "#fff",
           textShadow: shadow,
@@ -172,7 +175,7 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, vertical, layout, 
   }
 
   return (
-    <section aria-label="자막 위치와 크기" className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6">
+    <section aria-label="자막 위치와 크기" className="space-y-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6">
       <h2 className="text-base font-semibold text-slate-100">자막</h2>
 
       <div className="flex flex-wrap items-start gap-5">

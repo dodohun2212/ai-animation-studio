@@ -11,6 +11,8 @@ import {
 import { listLongEpisodeVideoVersions, longEpisodeFinalVideoContentUrl, longEpisodeVideoVersionContentUrl, restoreLongEpisodeVideoVersion } from "../api/longProjectsApi.js";
 import { Spinner } from "./Spinner.js";
 import { StatusChip } from "./ui/StatusChip.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
+import { cardSection, outlineButton } from "./ui/surfaces.js";
 
 interface Props {
   onBack: () => void;
@@ -29,14 +31,10 @@ type VersionsState =
 /** A scene slot, or the merged result — the same address space the versions endpoint accepts. */
 type Slot = SceneNumber | "final";
 
-const outlineButton =
-  "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const smallOutlineButton =
   "rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const smallAmberButton =
   "rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-400 disabled:opacity-50";
-const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
-
 function slotLabel(slot: Slot): string {
   return slot === "final" ? "최종 영상" : `${slot}번 장면`;
 }
@@ -83,7 +81,6 @@ const versionContentUrlFor = (target: VersionTarget, slot: Slot, versionId: stri
   target.kind === "project"
     ? videoVersionContentUrl(target.projectId, slot, versionId)
     : longEpisodeVideoVersionContentUrl(target.projectId, target.episodeNumber, slot, versionId);
-
 
 interface VersionSlotsProps {
   target: VersionTarget;
@@ -206,7 +203,7 @@ function VersionSlots({
                   role="alertdialog"
                   aria-label={`${slotLabel(openSlot)} 되돌리기 확인`}
                   data-testid={`version-restore-confirm-${version.versionId}`}
-                  className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3"
+                  className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
                 >
                   <p className="text-sm font-semibold text-amber-300">이 버전으로 되돌릴까요?</p>
                   <p className="text-xs text-slate-300">
@@ -359,19 +356,13 @@ export function VideoLibraryScreen({ onBack }: Props) {
 
   return (
     <section className="mt-8 max-w-4xl space-y-5">
-      <button type="button" className={outlineButton} onClick={onBack}>
-        돌아가기
-      </button>
-      <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-slate-100">
-        <span
-          aria-hidden="true"
-          className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-        />
-        영상 보관함
-      </h1>
-      <p className="text-sm text-slate-400">
-        만들어진 영상과, 다시 만들 때마다 밀려난 예전 영상이 모두 남아 있습니다. 되돌리기는 무료이며 파일을 지우지 않습니다.
-      </p>
+      <ScreenHeader
+        title="영상 보관함"
+        eyebrow="보관함"
+        backLabel="돌아가기"
+        onBack={onBack}
+        description="만들어진 영상과, 다시 만들 때마다 밀려난 예전 영상이 모두 남아 있습니다. 되돌리기는 무료이며 파일을 지우지 않습니다."
+      />
 
       {state.status === "loading" && <Spinner label="보관함을 불러오는 중..." />}
       {state.status === "error" && (
@@ -392,7 +383,7 @@ export function VideoLibraryScreen({ onBack }: Props) {
             <input
               id="library-search"
               data-testid="library-search"
-              className="mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+              className="mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
               placeholder="주제로 검색"
               value={query}
               onChange={(event) => setQuery(event.target.value)}

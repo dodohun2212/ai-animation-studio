@@ -11,6 +11,10 @@ import { ArchiveProjectDialog } from "./ArchiveProjectDialog.js";
 import { Spinner } from "./Spinner.js";
 import { WorkflowProgressBar } from "./WorkflowProgressBar.js";
 import { StatusChip, type StatusTone } from "./ui/StatusChip.js";
+import { CoverThumb } from "./ui/CoverThumb.js";
+import { MetaGrid } from "./ui/MetaGrid.js";
+import { sceneImageContentUrl } from "../api/videoWorkflowApi.js";
+import { secondaryButton } from "./ui/surfaces.js";
 
 /** Workflow state → status chip tone, per design system §3.4's documented mapping. */
 function workflowTone(state: WorkflowState): StatusTone {
@@ -42,9 +46,6 @@ type DetailState =
   | { status: "loading" }
   | { status: "error"; error: { code: string; message: string } }
   | { status: "success"; project: Project };
-
-const secondaryButton =
-  "rounded-full border border-violet-400/30 px-4 py-2 text-sm text-violet-300 hover:bg-violet-500/10";
 
 export function ProjectDetail({
   projectId,
@@ -142,15 +143,33 @@ export function ProjectDetail({
         <>
           {/* §4.1: every screen leads with its own title. The project's topic is what identifies it —
               previously the screen opened straight into a row of buttons with no heading at all. */}
-          <header className="space-y-2">
-            <h1 className="text-2xl font-semibold text-slate-100">{state.project.topic || state.project.id}</h1>
-            <div className="flex flex-wrap items-center gap-2">
-              <StatusChip tone={workflowTone(state.project.workflowState)}>
-                {workflowStateLabel(state.project.workflowState)}
-              </StatusChip>
-              <span className="text-xs text-slate-400">{projectTypeLabel(state.project.projectType)}</span>
+          {/*
+            * The project, as one card that answers "what is this and how far is it" without scrolling.
+            *
+            * The three facts were already all here — title, state chip, progress — but stacked as three loose
+            * rows above a button, so the screen opened looking like a form. The picture is the project's own
+            * first scene: it is the fastest way to tell two flower reels apart, and it costs no new data.
+            */}
+          <header className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5 sm:flex-row sm:items-start">
+            <CoverThumb src={sceneImageContentUrl(state.project.id, 1)} className="h-28 w-28 sm:h-32 sm:w-32" />
+            <div className="min-w-0 flex-1 space-y-2.5">
+              <h1 className="text-2xl font-semibold text-slate-100">{state.project.topic || state.project.id}</h1>
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusChip tone={workflowTone(state.project.workflowState)}>
+                  {workflowStateLabel(state.project.workflowState)}
+                </StatusChip>
+                <span className="text-xs text-slate-400">{projectTypeLabel(state.project.projectType)}</span>
+              </div>
+              <WorkflowProgressBar state={state.project.workflowState} className="max-w-md" />
+              <MetaGrid
+                columns={3}
+                items={[
+                  { label: "ID", value: <span className="break-all">{state.project.id}</span> },
+                  { label: "만든 시각", value: <span className="tabular-nums" title={state.project.createdAt}>{formatDateTime(state.project.createdAt)}</span> },
+                  { label: "마지막 수정", value: <span className="tabular-nums" title={state.project.updatedAt}>{formatDateTime(state.project.updatedAt)}</span> },
+                ]}
+              />
             </div>
-            <WorkflowProgressBar state={state.project.workflowState} className="max-w-md" />
           </header>
           {resumeTarget(state.project) && (
             <button
@@ -242,26 +261,6 @@ export function ProjectDetail({
               </ul>
             </section>
           )}
-          <dl className="grid grid-cols-1 gap-x-8 gap-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6 sm:grid-cols-2">
-            <div>
-              <dt className="text-xs text-slate-400">ID</dt>
-              <dd className="mt-0.5 text-sm text-slate-300">{state.project.id}</dd>
-            </div>
-            {/* Topic, project type and workflow state are the screen heading and its chips above; this list
-                carries only what the heading does not — repeating them showed the same value twice. */}
-            <div>
-              <dt className="text-xs text-slate-400">만든 시각</dt>
-              <dd className="mt-0.5 text-sm text-slate-300 tabular-nums" title={state.project.createdAt}>
-                {formatDateTime(state.project.createdAt)}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-slate-400">마지막 수정</dt>
-              <dd className="mt-0.5 text-sm text-slate-300 tabular-nums" title={state.project.updatedAt}>
-                {formatDateTime(state.project.updatedAt)}
-              </dd>
-            </div>
-          </dl>
         </>
       )}
     </section>

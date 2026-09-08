@@ -7,6 +7,8 @@ import { MonthlyBudgetCard } from "./MonthlyBudgetCard.js";
 import { ProviderCredentialCard } from "./ProviderCredentialCard.js";
 import { VideoModelCard } from "./VideoModelCard.js";
 import { Spinner } from "./Spinner.js";
+import { outlineButton } from "./ui/surfaces.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
 
 interface Props { onBack: () => void }
 type StatusMap = Record<ProviderCredentialKind, ProviderCredentialStatus>;
@@ -23,8 +25,6 @@ type InstagramState =
   | { kind: "loading" }
   | { kind: "ready"; status: InstagramConnectionStatus }
   | { kind: "unavailable" };
-
-const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
 
 export function ProviderSettingsScreen({ onBack }: Props) {
   const [state, setState] = useState<State>({ statuses: null, budgets: null, videoModel: null, error: null, loading: true });
@@ -59,20 +59,19 @@ export function ProviderSettingsScreen({ onBack }: Props) {
   const updateVideoModel = (videoModel: VideoModelSetting) => setState((old) => ({ ...old, videoModel }));
   return (
     <section className="mt-8 max-w-2xl space-y-5">
-      <div className="flex items-center justify-between">
-        <button type="button" className={outlineButton} onClick={onBack}>목록으로</button>
-        <h2 className="flex items-center gap-2.5 text-lg font-semibold">
-          <span
-            aria-hidden="true"
-            className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-          />
-          API 설정
-        </h2>
-        <button type="button" className={outlineButton} onClick={() => void load()} disabled={state.loading}>새로고침</button>
-      </div>
+      {/* 🔴 This screen had no <h1> at all: its name sat in an <h2> wedged between two buttons, so the one
+          element that says which screen you are on read as the middle item of a toolbar. Every other
+          screen leads with its title; this one now does too, and the 새로고침 button moves to the header's
+          own action row rather than being balanced against 목록으로 for symmetry. */}
+      <ScreenHeader
+        title="API 설정"
+        backLabel="목록으로"
+        onBack={onBack}
+        actions={<button type="button" className={outlineButton} onClick={() => void load()} disabled={state.loading}>새로고침</button>}
+      />
       {!state.statuses && state.loading && <Spinner label="불러오는 중..." className="mt-4" />}
       {state.error && (
-        <div className="mt-4 space-y-2 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
+        <div className="mt-4 space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
           <p role="alert" data-error-code={state.error.code} className="text-sm text-rose-400">{state.error.message}</p>
           <button type="button" className={outlineButton} onClick={() => void load()} disabled={state.loading}>다시 시도</button>
         </div>
@@ -91,7 +90,7 @@ export function ProviderSettingsScreen({ onBack }: Props) {
           {instagram.kind === "unavailable" && (
             // Deliberately not role="alert": the Instagram store being unreachable does not stop the rest of
             // this screen working, and announcing it as an alert would rank it with the failures that do.
-            <div className="space-y-2 rounded-2xl border border-white/10 bg-slate-900/70 p-5" data-testid="instagram-unavailable">
+            <div className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5" data-testid="instagram-unavailable">
               <h3 className="text-base font-semibold text-slate-100">Instagram — 게시</h3>
               <p className="text-sm text-amber-300">인스타그램 연결 정보를 불러오지 못했습니다.</p>
               {/* Named because it is the cause that leaves no other trace: the packaged shell runs a
@@ -106,7 +105,7 @@ export function ProviderSettingsScreen({ onBack }: Props) {
 
           {/* The screen listed two provider names and nothing about what either one is for, so there was no way
               to tell which key a stuck step needs — or what stops working if you disconnect one. */}
-          <section aria-label="어떤 AI가 어디에 쓰이나" className="space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
+          <section aria-label="어떤 AI가 어디에 쓰이나" className="space-y-3 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
             <h3 className="text-sm font-semibold text-slate-200">어떤 AI가 어디에 쓰이나</h3>
             <div className="space-y-2">
               <div className="rounded-xl border border-violet-400/25 bg-violet-500/5 p-3">

@@ -3,6 +3,7 @@ import { MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, type LongProje
 
 import { createLongProject, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { isSafeProjectId } from "../validation/projectId.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
 
 interface CreateLongProjectFormProps {
   onCreated: (project: LongProject) => void;
@@ -45,7 +46,7 @@ const EMPTY_SETTINGS: LongProjectSettings = {
 };
 
 const fieldClassName =
-  "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
+  "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 
 function Field({
   label,
@@ -138,8 +139,18 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
   }
 
   return (
+    <>
+      {/* 🔴 Same gap as the short form had: the screen began at 폴더 이름 with nothing saying what was
+          being made or how to leave. */}
+      <ScreenHeader
+        title="새 장편 프로젝트 만들기"
+        description="여러 회차로 이어지는 작품입니다. 여기서는 폴더 이름과 작품 전체에 적용될 설정만 정합니다."
+        backLabel="장편 프로젝트 목록으로"
+        onBack={onCancel}
+        className="mt-8"
+      />
     <form
-      className="mt-8 grid gap-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6 md:grid-cols-2"
+      className="mt-5 grid gap-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6 md:grid-cols-2"
       onSubmit={handleSubmit}
       noValidate
     >
@@ -303,5 +314,6 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
         </button>
       </div>
     </form>
+    </>
   );
 }

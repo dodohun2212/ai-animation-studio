@@ -3,6 +3,7 @@ import type { LongStoryBible, LongStoryBibleCollection, LongStoryBibleItem, Long
 
 import { CollapsibleCard } from "./CollapsibleCard.js";
 import { createLongStoryBibleItem, deleteLongStoryBibleItem, getLongProjectStoryBible, toLongStoryBibleDisplayError, updateLongStoryBibleItem } from "../api/longStoryBibleApi.js";
+import { outlineButton } from "./ui/surfaces.js";
 
 interface Props { projectId: string; }
 type DisplayError = { code: string; message: string };
@@ -28,9 +29,7 @@ function itemInput(item: LongStoryBibleItem): LongStoryBibleItemInput {
 }
 
 const fieldClassName =
-  "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
-const outlineButton =
-  "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
+  "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 const smallOutlineButton =
   "rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const smallRemoveButton =
@@ -233,7 +232,7 @@ export function StorySecretsCard({ projectId }: Props) {
         );
       })}
       {deleteTarget && (
-        <div role="alertdialog" aria-label="비밀·복선 삭제 확인" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
+        <div role="alertdialog" aria-label="비밀·복선 삭제 확인" className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
           <p className="text-sm font-semibold text-amber-300">{deleteTarget.item.name || deleteTarget.item.id}을(를) 삭제할까요?</p>
           <div className="flex gap-3">
             <button type="button" className={outlineButton} disabled={pending} onClick={() => setDeleteTarget(null)}>

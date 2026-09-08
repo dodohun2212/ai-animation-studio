@@ -42,6 +42,8 @@ import { NarrationReviewScreen } from "./components/NarrationReviewScreen.js";
 import type { ResumeTarget } from "./utils/resumeTarget.js";
 import { SceneEditScreen } from "./components/SceneEditScreen.js";
 import { PHOTO_CARD_SKIPPED_SCREEN_NAMES, PHOTO_CARD_STEPS } from "./utils/photoCardSteps.js";
+import { PIPELINE_REACH, SHORT_PROJECT_PIPELINE, type ShortPipelineStepName } from "./utils/shortPipeline.js";
+import { StepRibbon, type RibbonStep } from "./components/ui/StepRibbon.js";
 
 type Screen =
   | { name: "list" }
@@ -372,28 +374,6 @@ function LongWorkspaceNav({ screen, onNavigate }: { screen: Screen; onNavigate: 
   );
 }
 
-type ShortPipelineStepName =
-  | "storyPrompt"
-  | "mappingReview"
-  | "imageGeneration"
-  | "videoPreview"
-  | "videoWorkflow"
-  | "videoMerge";
-
-/**
- * Named by what happens at each step. Three of these had "영상" in them and one was called "워크플로우" — a
- * category word, not a step — so the last three read as one thing split into three for no visible reason.
- * They are actually before / during / after the paid Runway call, and the names now say that.
- */
-const SHORT_PROJECT_PIPELINE: { name: ShortPipelineStepName; label: string }[] = [
-  { name: "storyPrompt", label: "대본" },
-  { name: "mappingReview", label: "참고 이미지 연결" },
-  { name: "imageGeneration", label: "장면 이미지" },
-  { name: "videoPreview", label: "영상 보내기 전 확인" },
-  { name: "videoWorkflow", label: "영상 만들어지는 중" },
-  { name: "videoMerge", label: "최종 영상 합치기" },
-];
-
 const SHORT_PIPELINE_CONTEXT_SCREENS = new Set<Screen["name"]>([
   "detail", "settings", "storyPrompt", "mappingReview", "imageGeneration",
   "videoPreview", "videoWorkflow", "videoMerge",
@@ -442,33 +422,6 @@ function shortPipelineTarget(stepName: ShortPipelineStepName, projectId: string,
 }
 
 /**
- * How far the project itself has actually got, as an index into SHORT_PROJECT_PIPELINE. `-1` means nothing has
- * started. Several states share a step because they are phases of the same one (making images, images ready,
- * reviewing images are all "장면 이미지"). Failure states light nothing: whatever the run reached, it is not a
- * position the person can read progress from.
- */
-const PIPELINE_REACH: Readonly<Record<WorkflowState, number>> = {
-  [WorkflowState.Init]: -1,
-  [WorkflowState.Ready]: 0,
-  [WorkflowState.GeneratingStory]: 0,
-  [WorkflowState.WaitingForAssetMappingReview]: 1,
-  [WorkflowState.AssetMappingApproved]: 2,
-  [WorkflowState.GeneratingImages]: 2,
-  [WorkflowState.ImagesReady]: 2,
-  [WorkflowState.ImagesReview]: 2,
-  [WorkflowState.WaitingForVideoConfirmation]: 3,
-  [WorkflowState.GeneratingVideos]: 4,
-  [WorkflowState.Interrupted]: 4,
-  [WorkflowState.VideosReady]: 4,
-  [WorkflowState.ReviewingVideos]: 4,
-  [WorkflowState.VideosApproved]: 5,
-  [WorkflowState.Rendering]: 5,
-  [WorkflowState.Completed]: 5,
-  [WorkflowState.Failed]: -1,
-  [WorkflowState.Cancelled]: -1,
-};
-
-/**
  * Where the project stands in the fixed short-project pipeline.
  *
  * The filled dots used to be derived from the screen being viewed, which meant simply clicking a step
@@ -494,40 +447,35 @@ function ShortProjectPipeline({ screen, onNavigate, shell }: { screen: Screen; o
 
   if (!inContext || !projectId) return null;
   return (
-    <nav aria-label={card ? "명언 카드 진행 단계" : "단기 프로젝트 진행 단계"} data-testid={card ? "photo-card-pipeline" : "short-project-pipeline"} className="mt-6 flex flex-col gap-0.5 border-t border-white/10 pt-6">
-      {steps.map((step, index) => {
-        const viewing = step.name === screen.name;
-        const done = index < reached;
-        const inProgress = index === reached;
-        return (
-          <button
-            key={step.name}
-            type="button"
-            aria-current={viewing ? "step" : undefined}
-            data-step-state={done ? "done" : inProgress ? "current" : "upcoming"}
-            onClick={() => onNavigate(card
-              // 게시물 준비 is not a per-project screen — it picks the project itself — so a card's second step
-              // is a plain jump rather than something shortPipelineTarget could address.
-              ? (step.name === "instagramPost" ? { name: "instagramPost" } : { name: "videoMerge", projectId })
-              : shortPipelineTarget(step.name as ShortPipelineStepName, projectId, screen))}
-            className={`flex items-center gap-3 rounded-lg px-2 py-1.5 text-left text-sm ${viewing ? "bg-white/[0.07]" : "hover:bg-white/[0.04]"}`}
-          >
-            <span
-              aria-hidden="true"
-              className={
-                inProgress
-                  ? "h-2.5 w-2.5 flex-shrink-0 rounded-full bg-violet-400 shadow-[0_0_0_4px_rgba(167,139,250,0.25)]"
-                  : done
-                    ? "h-2.5 w-2.5 flex-shrink-0 rounded-full bg-violet-300/70"
-                    : "h-2.5 w-2.5 flex-shrink-0 rounded-full border border-slate-600"
-              }
-            />
-            <span className={done || inProgress ? (viewing ? "font-medium text-white" : "text-slate-200") : viewing ? "font-medium text-slate-300" : "text-slate-500"}>
-              {step.label}
-            </span>
-          </button>
-        );
-      })}
+    /*
+     * The pipeline reads left to right, above the work, instead of down the sidebar beside it.
+     *
+     * 🔴 It moved for a reason the sidebar could not fix: a column of six labels answers "what are the steps"
+     * but not "which one am I on out of how many", because a vertical list has no length a person can take in
+     * at a glance. The same six across the top do — and the screen they belong to is right underneath, which
+     * is where someone looks after reading them.
+     *
+     * `data-step-state` and the two testids are kept exactly as they were: the shell's tests read both, and
+     * this is a change of appearance, not of what the bar means.
+     */
+    <nav
+      aria-label={card ? "명언 카드 진행 단계" : "단기 프로젝트 진행 단계"}
+      data-testid={card ? "photo-card-pipeline" : "short-project-pipeline"}
+      className="mb-8"
+    >
+      <StepRibbon
+        steps={steps.map((step, index): RibbonStep => ({
+          key: step.name,
+          label: step.label,
+          state: index < reached ? "done" : index === reached ? "current" : "upcoming",
+          viewing: step.name === screen.name,
+          onSelect: () => onNavigate(card
+            // 게시물 준비 is not a per-project screen — it picks the project itself — so a card's second step
+            // is a plain jump rather than something shortPipelineTarget could address.
+            ? (step.name === "instagramPost" ? { name: "instagramPost" } : { name: "videoMerge", projectId })
+            : shortPipelineTarget(step.name as ShortPipelineStepName, projectId, screen)),
+        }))}
+      />
     </nav>
   );
 }
@@ -597,7 +545,7 @@ function PhotoCardStepNotice({ projectId, onOpenMerge }: { projectId: string; on
   );
 }
 
-function Sidebar({ screen, onNavigate, shell }: { screen: Screen; onNavigate: (screen: Screen) => void; shell: ShortProjectShell | null }) {
+function Sidebar({ screen, onNavigate }: { screen: Screen; onNavigate: (screen: Screen) => void }) {
   return (
     <aside className="flex w-64 flex-shrink-0 flex-col overflow-y-auto border-r border-white/10 bg-slate-900 px-5 py-8">
       <p className="text-xs font-semibold uppercase tracking-[0.24em] text-violet-400">
@@ -605,7 +553,6 @@ function Sidebar({ screen, onNavigate, shell }: { screen: Screen; onNavigate: (s
       </p>
       <NavBar current={screen.name} onNavigate={onNavigate} />
       <LongWorkspaceNav screen={screen} onNavigate={onNavigate} />
-      <ShortProjectPipeline screen={screen} onNavigate={onNavigate} shell={shell} />
     </aside>
   );
 }
@@ -706,8 +653,9 @@ export function App() {
           "radial-gradient(1100px 640px at 8% -12%, rgba(139,92,246,0.16), transparent 62%), radial-gradient(900px 700px at 100% 100%, rgba(76,29,149,0.14), transparent 65%), repeating-linear-gradient(0deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 34px), repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 34px)",
       }}
     >
-      <Sidebar screen={screen} onNavigate={setScreen} shell={shortProjectShell} />
+      <Sidebar screen={screen} onNavigate={setScreen} />
       <main className="relative flex-1 overflow-y-auto px-12 py-12">
+        <ShortProjectPipeline screen={screen} onNavigate={setScreen} shell={shortProjectShell} />
         {screen.name === "list" && (
           <>
             <img

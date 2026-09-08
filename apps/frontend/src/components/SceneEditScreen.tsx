@@ -6,6 +6,8 @@ import { toSceneEditDisplayError, updateScene } from "../api/sceneEditApi.js";
 import { Spinner } from "./Spinner.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
 import { SCENE_FIELD_GROUPS, SCENE_FIELD_KEYS } from "../utils/sceneFields.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
+import { cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
 
 interface Props {
   projectId: string;
@@ -19,14 +21,8 @@ type LoadState =
   | { status: "error"; error: DisplayError }
   | { status: "ready"; project: Project };
 
-const primaryButton =
-  "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
-const outlineButton =
-  "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const fieldClassName =
   "mt-1 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/20 disabled:opacity-50";
-const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
-
 function valueOf(scene: Scene | undefined, key: string): string {
   if (!scene) return "";
   const value = (scene as unknown as Record<string, unknown>)[key];
@@ -110,22 +106,12 @@ export function SceneEditScreen({ projectId, onBack }: Props) {
 
   return (
     <section className="mt-8 max-w-4xl space-y-5">
-      <header className="space-y-1.5">
-        <button type="button" className="text-xs text-slate-400 hover:text-slate-300" onClick={onBack}>
-          <span aria-hidden="true">←</span> 프로젝트로 돌아가기
-        </button>
-        <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-slate-100">
-          <span
-            aria-hidden="true"
-            className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-          />
-          장면 편집
-        </h1>
-      </header>
-      <p className="text-sm leading-relaxed text-slate-400">
-        장면 하나만 고칠 수 있습니다. 대본 전체를 다시 만들지 않아도 되고, 이미 확정한 이미지와 영상도 지워지지
-        않습니다. 다만 고친 내용에 따라 다시 만들어야 하는 것이 생기는데, 항목마다 무엇이 그런지 아래에 적어뒀습니다.
-      </p>
+      <ScreenHeader
+        title="장면 편집"
+        backLabel="프로젝트로 돌아가기"
+        onBack={onBack}
+        description={'장면 하나만 고칠 수 있습니다. 대본 전체를 다시 만들지 않아도 되고, 이미 확정한 이미지와 영상도 지워지지 않습니다. 다만 고친 내용에 따라 다시 만들어야 하는 것이 생기는데, 항목마다 무엇이 그런지 아래에 적어뒀습니다.'}
+      />
 
       {state.status === "loading" && <Spinner label="장면을 불러오는 중..." />}
       {state.status === "error" && (

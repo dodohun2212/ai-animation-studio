@@ -7,6 +7,8 @@ import { startVideoSubmission, toVideoSubmissionDisplayError } from "../api/vide
 import { Spinner } from "./Spinner.js";
 import { videoRatioLabel } from "../utils/sceneFields.js";
 import { omittedSectionLabel } from "../utils/omittedSectionLabels.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
+import { outlineButton } from "./ui/surfaces.js";
 
 interface Props {
   projectId: string;
@@ -29,13 +31,10 @@ type LoadState =
  * was fine and then have the server refuse it.
  */
 const PROMPT_UTF16_LIMIT = RUNWAY_PROMPT_AUTHORING_LIMIT;
-const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
-
 /** JavaScript string length already counts UTF-16 code units, matching the Backend's limit. */
 function utf16Length(value: string): number {
   return value.length;
 }
-
 
 export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () => {} }: Props) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
@@ -139,20 +138,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
 
   return (
     <section className="mt-8 max-w-3xl space-y-5">
-      <button
-        type="button"
-        className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
-        onClick={onBack}
-      >
-        프로젝트로 돌아가기
-      </button>
-      <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-slate-100">
-        <span
-          aria-hidden="true"
-          className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-        />
-        영상 프롬프트 및 비용 확인
-      </h1>
+      <ScreenHeader title="영상 프롬프트 및 비용 확인" backLabel="프로젝트로 돌아가기" onBack={onBack} />
       <p className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300" data-testid="no-provider-notice">
         지금 이 화면을 여는 것만으로는 아무 요청도 나가지 않습니다. 아래 "이 프롬프트로 전송 승인"을 누르고 확인까지 마쳐야
         실제 요청이 전송되고 비용이 발생합니다. 여기서 고친 프롬프트는 이 화면에서만 쓰이고 저장되지 않습니다.
@@ -184,7 +170,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
                 <li
                   key={preview.sceneNumber}
                   data-testid={`preview-${preview.sceneNumber}`}
-                  className="space-y-1.5 rounded-2xl border border-white/10 bg-slate-900/70 p-4"
+                  className="space-y-1.5 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-slate-200">{preview.sceneNumber}번 장면</span>
@@ -237,7 +223,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
           </ul>
           <section
             aria-label="비용 및 예산 확인"
-            className={`space-y-1.5 rounded-2xl border p-4 ${overBudget ? "border-rose-400/40 bg-rose-950/20" : "border-white/10 bg-slate-900/70"}`}
+            className={`space-y-1.5 rounded-2xl border p-4 ${overBudget ? "border-rose-400/40 bg-rose-950/20" : "border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55"}`}
           >
             <p className="text-sm font-semibold text-slate-200" data-testid="total-cost">
               총 예상 비용: ${totalCostUsd.toFixed(2)}
@@ -284,7 +270,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
               role="alertdialog"
               aria-label="영상 생성 요청 전송 확인"
               data-testid="submit-confirm-panel"
-              className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
+              className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
             >
               <p className="text-sm font-semibold text-amber-300">이 프롬프트로 {previews.length}개 장면 영상을 만들까요?</p>
               <p className="text-sm text-slate-300">
@@ -354,7 +340,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
           )}
 
           {submitted && (
-            <div data-testid="submit-success" className="space-y-2 rounded-2xl border border-emerald-400/30 bg-slate-900/70 p-4">
+            <div data-testid="submit-success" className="space-y-2 rounded-2xl border border-emerald-400/30 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
               <p className="text-sm font-semibold text-emerald-400">
                 영상 생성 작업이 접수되었습니다. 진행 상황은 다음 화면에서 확인할 수 있습니다.
               </p>

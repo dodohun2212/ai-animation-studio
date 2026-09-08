@@ -9,6 +9,8 @@ import { formatDateTime } from "../utils/formatDateTime.js";
 import { workflowStateLabel, workflowStateTone } from "../utils/workflowStateLabels.js";
 import { Spinner } from "./Spinner.js";
 import { StatusChip } from "./ui/StatusChip.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
+import { cardSectionRoomy as cardSection } from "./ui/surfaces.js";
 
 interface Props {
   onBack: () => void;
@@ -35,11 +37,8 @@ type DisplayError = { code: string; message: string };
  */
 const SAFE_NAME = /^[\p{L}\p{N}_-]+$/u;
 
-
-
 const field =
-  "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
-const cardSection = "space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6";
+  "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 const outlineButton =
   "rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-slate-200 hover:bg-white/5 disabled:opacity-50";
 
@@ -134,13 +133,7 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard }: Props) {
 
   return (
     <section className="space-y-5">
-      <button type="button" className="text-sm text-slate-400 hover:text-slate-200" onClick={onBack}>
-        ← 프로젝트 목록으로
-      </button>
-      <h1 className="flex items-center gap-2.5 text-2xl font-semibold">
-        <span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />
-        명언 카드
-      </h1>
+      <ScreenHeader title="명언 카드" backLabel="프로젝트 목록으로" onBack={onBack} />
       <p className="text-sm text-slate-400">
         보관함의 그림 한 장에 문장을 얹어 짧은 영상으로 만듭니다. 그림은 이미 만들어 둔 것을 그대로 쓰기 때문에{" "}
         <span className="font-semibold text-slate-200">여기서는 돈이 나가지 않습니다.</span>

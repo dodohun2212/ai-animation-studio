@@ -55,7 +55,7 @@ export function MonthlyBudgetCard({ budgets, onBudgetChange }: Props) {
   }
 
   return (
-    <section aria-label="이번 달 예산" data-testid="monthly-budget-card" className="space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
+    <section aria-label="이번 달 예산" data-testid="monthly-budget-card" className="space-y-3 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
       <div>
         <h3 className="text-base font-semibold text-slate-100">이번 달 쓸 수 있는 돈</h3>
         <p className="mt-1 text-xs text-slate-500">

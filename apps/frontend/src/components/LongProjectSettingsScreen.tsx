@@ -31,7 +31,7 @@ type State = {
 };
 
 const fieldClassName =
-  "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
+  "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
 
 function Field({ label, value, onChange, multiline = false }: { label: string; value: string; onChange: (value: string) => void; multiline?: boolean }) {
   return (
@@ -159,7 +159,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
           Grouping does not hide anything; it stops the rarely-touched half from being in the way of the part
           someone came to change. */}
       {state.settings && (
-        <form className="grid gap-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6 md:grid-cols-2" onSubmit={submit} noValidate>
+        <form className="grid gap-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6 md:grid-cols-2" onSubmit={submit} noValidate>
           <div className="grid gap-4 md:col-span-2 md:grid-cols-2">
           <Field label="제목" value={state.settings.title} onChange={(value) => setField("title", value)} />
           <Field label="한 줄 줄거리" value={state.settings.logline} onChange={(value) => setField("logline", value)} />

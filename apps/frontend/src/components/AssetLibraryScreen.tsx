@@ -4,6 +4,8 @@ import { addAssetVersion, backfillGeneratedImageAssets, createAsset, createAsset
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
 import { GeneratedImagesSection } from "./GeneratedImagesSection.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
+import { cardSection, primaryButton } from "./ui/surfaces.js";
 
 interface Props { onBack: () => void; initialQuery?: string }
 /**
@@ -51,9 +53,7 @@ const CHARACTER_ROLE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = 
 ];
 
 const fieldClassName =
-  "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
-const primaryButton =
-  "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
+  "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 const outlineButton =
   "rounded-full border border-white/20 bg-white/[0.06] px-4 py-2 text-sm font-medium text-slate-200 shadow-sm hover:border-white/30 hover:bg-white/10 disabled:opacity-50";
 const dangerOutlineButton =
@@ -64,8 +64,6 @@ const smallAddButton =
   "rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300 hover:border-emerald-400/60 hover:bg-emerald-500/15 disabled:opacity-50";
 const smallRemoveButton =
   "rounded-full border border-rose-400/40 bg-rose-500/10 px-3 py-1 text-xs font-medium text-rose-300 hover:border-rose-400/60 hover:bg-rose-500/15 disabled:opacity-50";
-const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
-
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
     <h3 className="flex items-center gap-2.5 text-base font-semibold">
@@ -570,20 +568,11 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
 
   return (
     <section className="mt-8 max-w-6xl space-y-5">
-      <header className="space-y-1.5">
-        <button type="button" className="text-xs text-slate-400 hover:text-slate-300" onClick={onBack}>
-          <span aria-hidden="true">←</span> 프로젝트 목록으로
-        </button>
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-slate-100">
-          <span
-            aria-hidden="true"
-            className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-          />
-            이미지 보관함
-          </h1>
-        </div>
-      </header>
+      <ScreenHeader
+        title="이미지 보관함"
+        backLabel="프로젝트 목록으로"
+        onBack={onBack}
+      />
       {error && (
         <p role="alert" data-error-code={error.code} className="text-sm text-rose-400">
           {error.message}
@@ -779,7 +768,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                 type="button"
                 onClick={() => void open(asset.assetId, { toggle: true })}
                 className={`flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition hover:border-violet-400/40 hover:bg-slate-900 ${
-                  selected?.asset.assetId === asset.assetId ? "border-violet-400/50 bg-slate-900" : "border-white/10 bg-slate-900/70"
+                  selected?.asset.assetId === asset.assetId ? "border-violet-400/50 bg-slate-900" : "border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55"
                 }`}
               >
                 {asset.imageAvailable && asset.contentUrl ? (
@@ -940,7 +929,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
         </p>
       )}
       {selected && (
-        <section aria-label="에셋 상세" className="space-y-4 rounded-2xl border border-violet-400/30 bg-slate-900/70 p-5">
+        <section aria-label="에셋 상세" className="space-y-4 rounded-2xl border border-violet-400/30 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
           <h3 className="text-xl font-semibold text-slate-100">{selected.asset.displayName}</h3>
           {selected.asset.imageAvailable && selected.asset.contentUrl && (
             <img src={selected.asset.contentUrl} alt={`${selected.asset.displayName} 미리보기`} className="max-h-64 rounded-xl object-contain" />
@@ -1334,7 +1323,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
               role="alertdialog"
               aria-label="위험 동작 확인"
               data-testid="asset-confirm-panel"
-              className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
+              className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
             >
               <p className="text-sm text-slate-200">
                 {confirmAction === "delete-asset" && `'${selected.asset.displayName}' 에셋을 라이브러리 목록에서 삭제할까요? 원본 파일은 삭제하지 않습니다.`}

@@ -19,6 +19,8 @@ import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
 import { narrationLooksTooLong, narrationRunsTooLong } from "../utils/narrationLength.js";
 import type { ResumeTarget } from "../utils/resumeTarget.js";
 import { ContinueToNextStep } from "./ui/ContinueToNextStep.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
+import { cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
 
 interface Props {
   projectId: string;
@@ -44,17 +46,10 @@ type LoadState =
       staleness?: SceneStaleness;
     };
 
-
-const primaryButton =
-  "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
-const outlineButton =
-  "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const smallOutlineButton =
   "rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const smallAmberButton =
   "rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-400 disabled:opacity-50";
-const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
-
 export function NarrationReviewScreen({ projectId, onBack, onResume }: Props) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   /**
@@ -184,22 +179,12 @@ export function NarrationReviewScreen({ projectId, onBack, onResume }: Props) {
 
   return (
     <section className="mt-8 max-w-4xl space-y-5">
-      <header className="space-y-1.5">
-        <button type="button" className="text-xs text-slate-400 hover:text-slate-300" onClick={onBack}>
-          <span aria-hidden="true">←</span> 프로젝트로 돌아가기
-        </button>
-        <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-slate-100">
-          <span
-            aria-hidden="true"
-            className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-          />
-          내레이션 확인
-        </h1>
-      </header>
-      <p className="text-sm leading-relaxed text-slate-400">
-        음성으로 만들어질 문장입니다. 음성 생성은 장면마다 한 번씩 비용이 들기 때문에, 만들기 전에 여기서 먼저 읽어볼 수
-        있게 했습니다. 문장 자체를 고치려면 대본을 다시 만들어야 합니다.
-      </p>
+      <ScreenHeader
+        title="내레이션 확인"
+        backLabel="프로젝트로 돌아가기"
+        onBack={onBack}
+        description={'음성으로 만들어질 문장입니다. 음성 생성은 장면마다 한 번씩 비용이 들기 때문에, 만들기 전에 여기서 먼저 읽어볼 수 있게 했습니다. 문장 자체를 고치려면 대본을 다시 만들어야 합니다.'}
+      />
       {/* Reading these sentences is a check on the way through, not a destination — this screen used to end at
           「프로젝트로 돌아가기」, so continuing meant going back and reading the next step off a button there. */}
       {onResume && <ContinueToNextStep projectId={projectId} onResume={onResume} />}
@@ -291,7 +276,7 @@ export function NarrationReviewScreen({ projectId, onBack, onResume }: Props) {
                 role="alertdialog"
                 aria-label="음성 생성 확인"
                 data-testid="narration-generate-confirm"
-                className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
+                className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
               >
                 <p className="text-sm font-semibold text-amber-300">{withText.length}개 장면의 음성을 만들까요?</p>
                 <p className="text-sm text-slate-300">
@@ -430,7 +415,7 @@ export function NarrationReviewScreen({ projectId, onBack, onResume }: Props) {
                         role="alertdialog"
                         aria-label={`${item.sceneNumber}번 장면 음성 재생성 확인`}
                         data-testid={`narration-regenerate-confirm-${item.sceneNumber}`}
-                        className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3"
+                        className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
                       >
                         <p className="text-sm text-amber-200">
                           {item.sceneNumber}번 장면 음성을 다시 만들까요? OpenAI 키가 연결되어 있으면 이번 재생성분이 실제로

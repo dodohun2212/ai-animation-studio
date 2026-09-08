@@ -19,6 +19,8 @@ import { BudgetLine } from "./ui/BudgetLine.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
 import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
 import { resumeTarget, type ResumeTarget } from "../utils/resumeTarget.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
+import { cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
 
 interface Props {
   projectId: string;
@@ -43,11 +45,6 @@ type ReviewLoadState =
   | { status: "error"; error: DisplayError }
   | { status: "ready"; reviews: ImageReview[]; budget?: BudgetPreview; retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview }; staleness?: SceneStaleness };
 
-const primaryButton =
-  "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
-const outlineButton =
-  "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
-const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
 const smallOutlineButton =
   "rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const smallApproveButton =
@@ -326,16 +323,7 @@ export function ImageGenerationScreen({ projectId, onBack, onResume }: Props) {
 
   return (
     <section className="mt-8 max-w-3xl space-y-5">
-      <button type="button" className={outlineButton} onClick={onBack}>
-        프로젝트로 돌아가기
-      </button>
-      <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-slate-100">
-        <span
-          aria-hidden="true"
-          className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-        />
-        장면 이미지 생성
-      </h1>
+      <ScreenHeader title="장면 이미지 생성" backLabel="프로젝트로 돌아가기" onBack={onBack} />
 
       {state.status === "loading" && <Spinner label="불러오는 중..." />}
       {state.status === "error" && (
@@ -447,7 +435,7 @@ export function ImageGenerationScreen({ projectId, onBack, onResume }: Props) {
               role="alertdialog"
               aria-label="장면 이미지 생성 확인"
               data-testid="generate-confirm-panel"
-              className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
+              className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
             >
               <p className="text-sm font-semibold text-amber-300">
                 {alreadyMadeCount > 0 ? `남은 장면 이미지 ${toMakeCount}장을 생성할까요?` : `장면 이미지 ${totalScenes}장을 생성할까요?`}
@@ -677,7 +665,7 @@ export function ImageGenerationScreen({ projectId, onBack, onResume }: Props) {
                               role="alertdialog"
                               aria-label={`${review.sceneNumber}번 장면 재생성 확인`}
                               data-testid={`regenerate-confirm-panel-${review.sceneNumber}`}
-                              className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3"
+                              className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
                             >
                               <p className="text-sm font-semibold text-amber-300">
                                 {review.sceneNumber}번 장면 이미지를 다시 생성할까요?

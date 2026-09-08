@@ -15,6 +15,7 @@ import { getAsset, listAssets, toAssetDisplayError } from "../api/assetsApi.js";
 import { type MappingApi, toMappingDisplayError } from "../api/mappingsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
 
 interface Props {
   /**
@@ -48,7 +49,7 @@ const MANUAL_SOURCE_PROJECT_ID = "_asset_library_manual";
 const outlineButton =
   "rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50 disabled:hover:bg-transparent";
 const selectClassName =
-  "mt-1 rounded-lg border border-white/10 bg-slate-900/70 px-2.5 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
+  "mt-1 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-2.5 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
 
 function scopeIncludesScene(scope: AssetMappingSceneScope, sceneNumber: SceneNumber): boolean {
   if (scope.kind === "all") return true;
@@ -438,21 +439,12 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
 
   return (
     <section className="mt-8 max-w-5xl space-y-6">
-      <header className="space-y-1.5">
-        <button type="button" className="text-xs text-slate-400 hover:text-slate-300" onClick={onBack}>
-          <span aria-hidden="true">←</span> 프로젝트로 돌아가기
-        </button>
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-slate-100">
-          <span
-            aria-hidden="true"
-            className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-          />
-            참고 이미지 연결 검토
-          </h1>
-          <button type="button" className={outlineButton} onClick={() => void load()}>새로고침</button>
-        </div>
-      </header>
+      <ScreenHeader
+        title="참고 이미지 연결 검토"
+        backLabel="프로젝트로 돌아가기"
+        onBack={onBack}
+        actions={<button type="button" className={outlineButton} onClick={() => void load()}>새로고침</button>}
+      />
 
       {/* The old copy said these connections were made "자동으로" — nothing in this codebase auto-matches an
           Asset to a scene. Every row here was connected by hand (or migrated from the old Python data), and a
@@ -625,7 +617,7 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
         )}
       </section>
 
-      <section aria-label="검토 상태" className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6">
+      <section aria-label="검토 상태" className="space-y-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6">
         {reviewLoading && !review && <Spinner label="검토 상태를 불러오는 중..." />}
         {reviewError && (
           <p role="alert" data-testid="review-error" data-error-code={reviewError.code} className="text-sm text-rose-400">{reviewError.message}</p>
@@ -795,7 +787,7 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
             const decisionBusyNow = decisionPendingIds.has(mapping.mappingId);
             const snapshotBusyNow = snapshotPendingIds.has(mapping.mappingId);
             return (
-              <li key={mapping.mappingId} className="space-y-2 rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+              <li key={mapping.mappingId} className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
                 {asset ? (
                   <div className="flex items-baseline gap-2">
                     {asset.imageAvailable && asset.contentUrl && (

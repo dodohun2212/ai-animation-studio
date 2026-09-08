@@ -4,6 +4,7 @@ import type { LongEpisodeContinuityMemory, LongEpisodeOutline, SaveLongEpisodeCo
 import { getLongEpisode, getLongEpisodeContinuity, saveLongEpisodeContinuity, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { Spinner } from "./Spinner.js";
+import { cardSectionWide as cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
 
 interface Props {
   projectId: string;
@@ -88,11 +89,7 @@ function toRequest(form: FormState): SaveLongEpisodeContinuityRequest | null {
   return { memory: { ...form, characterChanges, itemChanges } };
 }
 
-const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
-const primaryButton = "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
-const fieldClassName = "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
-const cardSection = "space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
-
+const fieldClassName = "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 /** A user-reviewed, explicit save point before the next Episode is opened. */
 export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, onOpenNextEpisode }: Props) {
   const [form, setForm] = useState<FormState>(blankForm);
@@ -175,7 +172,7 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
         </p>
       )}
       {!loading && prefilled && (
-        <p data-testid="continuity-prefilled" className="rounded-xl border border-white/10 bg-slate-900/70 px-4 py-3 text-sm text-slate-300">
+        <p data-testid="continuity-prefilled" className="rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-4 py-3 text-sm text-slate-300">
           아직 저장된 메모가 없어서 <span className="font-semibold text-slate-100">이 회차의 개요</span>로 미리 채워 뒀습니다 — 요약, 있었던 일, 다음에서 할 일, 그리고 아래 기록용 칸의 새로 생긴 갈등.
           고쳐 쓰셔도 되고, 그대로 두셔도 됩니다. <span className="font-semibold text-slate-100">저장을 눌러야 저장됩니다.</span>
         </p>

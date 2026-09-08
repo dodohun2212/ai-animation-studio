@@ -21,6 +21,8 @@ import { sceneRemedyAdvice } from "../utils/sceneFailureAdvice.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
 import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
 import { StatusChip, type StatusTone } from "./ui/StatusChip.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
+import { cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
 
 type SceneStatus = "completed" | "running" | "failed" | "pending";
 
@@ -71,13 +73,8 @@ const STATUS_LABEL: Record<GenerationProgressResponse["status"], string> = {
   interrupted: "중지됨",
 };
 
-const primaryButton =
-  "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
-const outlineButton =
-  "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const dangerOutlineButton =
   "rounded-full border border-rose-400/30 px-4 py-2 text-sm text-rose-300 hover:bg-rose-500/10 disabled:opacity-50";
-const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
 const smallOutlineButton =
   "rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const smallApproveButton =
@@ -419,16 +416,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
 
   return (
     <section className="mt-8 max-w-3xl space-y-5">
-      <button type="button" className={outlineButton} onClick={onBack}>
-        프로젝트로 돌아가기
-      </button>
-      <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-slate-100">
-        <span
-          aria-hidden="true"
-          className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-        />
-        영상 생성 진행 상황
-      </h1>
+      <ScreenHeader title="영상 생성 진행 상황" backLabel="프로젝트로 돌아가기" onBack={onBack} />
       {/*
        * Read from `paidProvider`, which the server states outright, rather than inferred from whether a cost
        * figure arrived. The inference was wrong in the direction that matters: a real paid job omits its cost
@@ -562,7 +550,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                   {recoverPending ? "가져오는 중..." : "이미 만든 영상 먼저 가져오기 (무료)"}
                 </button>
                 {recoverConfirmOpen && (
-                  <div role="alertdialog" aria-label="이미 만든 영상 가져오기 확인" data-testid="failed-scenes-recover-confirm" className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
+                  <div role="alertdialog" aria-label="이미 만든 영상 가져오기 확인" data-testid="failed-scenes-recover-confirm" className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3">
                     <p className="text-sm text-slate-300">가져오기 자체는 <strong className="text-slate-100">비용이 들지 않습니다</strong> — 상태를 묻고 내려받기만 합니다. 못 찾으면 아무것도 바뀌지 않습니다.</p>
                     <p className="text-sm text-amber-200">
                       다만 되찾은 장면은 <strong className="text-amber-100">실패가 풀립니다.</strong> 그러면 남은 장면이 있는 경우 <strong className="text-amber-100">곧바로 이어서 만들어지고, 그 장면들은 청구됩니다</strong>. 되찾은 것이 마지막 장면이면 검토로 넘어가고 추가 비용은 없습니다.
@@ -636,7 +624,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                           role="alertdialog"
                           aria-label={`${sceneNumber}번 장면 다시 시도 확인`}
                           data-testid={`failed-scene-retry-confirm-${sceneNumber}`}
-                          className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3"
+                          className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
                         >
                           <p className="text-sm font-semibold text-amber-300">{sceneNumber}번 장면을 다시 시도할까요?</p>
                           <RetryCostNotice
@@ -824,7 +812,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                       role="alertdialog"
                       aria-label="전체 장면 재생성 확인"
                       data-testid="regenerate-all-confirm-panel"
-                      className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3"
+                      className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
                     >
                       <p className="text-sm font-semibold text-amber-300">{totalScenes}개 장면 영상을 모두 다시 생성할까요?</p>
                       <p className="text-xs text-slate-300">
@@ -984,7 +972,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                                 role="alertdialog"
                                 aria-label={`${review.sceneNumber}번 장면 재생성 확인`}
                                 data-testid={`video-regenerate-confirm-panel-${review.sceneNumber}`}
-                                className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3"
+                                className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
                               >
                                 <p className="text-sm font-semibold text-amber-300">
                                   {review.sceneNumber}번 장면 영상을 다시 생성할까요?

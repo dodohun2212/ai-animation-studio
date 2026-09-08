@@ -37,7 +37,7 @@ export function VideoModelCard({ setting, onChange }: { setting: VideoModelSetti
   }
 
   return (
-    <section aria-label="영상 모델" data-testid="video-model-card" className="space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
+    <section aria-label="영상 모델" data-testid="video-model-card" className="space-y-3 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="text-base font-semibold text-slate-100">영상 모델</h3>
         {/* Same distinction the monthly budget draws: nobody has chosen yet is not the same as chose this. */}

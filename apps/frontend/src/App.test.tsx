@@ -403,7 +403,9 @@ describe("App", () => {
     fireEvent.click(await screen.findByTestId("photo-card-open-명언_카드"));
 
     const nav = await screen.findByTestId("photo-card-pipeline");
-    expect([...nav.querySelectorAll("button")].map((button) => button.textContent)).toEqual([
+    // The step markers now carry a position badge beside the label, and it is `aria-hidden` but still in
+    // `textContent` — so this reads the label element rather than the whole button.
+    expect([...nav.querySelectorAll("[data-testid=\"step-ribbon-label\"]")].map((label) => label.textContent)).toEqual([
       "자막·음악 정하고 영상 만들기", "게시물 준비",
     ]);
     // The story bar is gone, not merely relabelled — its steps are what led onto the refusing gates.

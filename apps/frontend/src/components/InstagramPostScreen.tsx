@@ -13,6 +13,8 @@ import { finalVideoContentUrl } from "../api/videoMergeApi.js";
 import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBridge.js";
 import { Spinner } from "./Spinner.js";
 import { StatusChip } from "./ui/StatusChip.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
+import { cardSection, outlineButton } from "./ui/surfaces.js";
 
 interface Props {
   onBack: () => void;
@@ -69,12 +71,8 @@ function parseEpisodeSelection(value: string): { projectId: string; episodeNumbe
  */
 const REEL_MAX_SECONDS = 180;
 
-
-const outlineButton =
-  "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
-const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
 const fieldClass =
-  "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
+  "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
 
 /** `#` is optional in what the person types — they are listing topics, not writing markup. */
 function parseHashtags(raw: string): string[] {
@@ -650,16 +648,7 @@ export function InstagramPostScreen({ onBack }: Props) {
 
   return (
     <section className="mt-8 max-w-5xl space-y-5">
-      <button type="button" className={outlineButton} onClick={onBack}>
-        돌아가기
-      </button>
-      <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-slate-100">
-        <span
-          aria-hidden="true"
-          className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-        />
-        게시물 준비
-      </h1>
+      <ScreenHeader title="게시물 준비" backLabel="돌아가기" onBack={onBack} />
       {/* Said once, plainly, at the top: this screen never reaches Instagram. Nothing else on it would tell a
           person that, and "prepare" is a word that could mean either. */}
       <p className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300" data-testid="post-scope-notice">
@@ -1156,7 +1145,7 @@ export function InstagramPostScreen({ onBack }: Props) {
                     role="alertdialog"
                     aria-label="게시 기록 지우기 확인"
                     data-testid="post-forget-confirm"
-                    className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
+                    className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
                   >
                     <p className="text-sm font-semibold text-amber-300">인스타그램에서 그 게시물을 지우셨습니까?</p>
                     <p className="text-xs text-slate-300">
@@ -1224,7 +1213,7 @@ export function InstagramPostScreen({ onBack }: Props) {
                     role="alertdialog"
                     aria-label="인스타그램 게시 확인"
                     data-testid="post-publish-confirm"
-                    className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
+                    className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
                   >
                     {/* The account is named here, always — including when there is only one. A mistaken charge
                         can be argued about afterwards; a mistaken post cannot be unseen by whoever saw it. */}
@@ -1301,7 +1290,7 @@ export function InstagramPostScreen({ onBack }: Props) {
                 role="alertdialog"
                 aria-label="직전 게시 결과 확인"
                 data-testid="post-unknown-attempt"
-                className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
+                className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
               >
                 <p className="text-sm font-semibold text-amber-300">직전 게시가 끝까지 갔는지 알 수 없습니다.</p>
                 <p className="text-sm text-slate-300">

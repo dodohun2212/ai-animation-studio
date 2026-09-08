@@ -4,6 +4,7 @@ import type { Asset, LongStoryBibleStyleAssetLink } from "@ai-animation-studio/s
 import { CollapsibleCard } from "./CollapsibleCard.js";
 import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
 import { getLongProjectStoryBible, toLongStoryBibleDisplayError, updateLongStoryBibleStyleAssetLink } from "../api/longStoryBibleApi.js";
+import { outlineButton } from "./ui/surfaces.js";
 
 interface Props {
   projectId: string;
@@ -12,10 +13,7 @@ interface Props {
 type DisplayError = { code: string; message: string };
 
 const fieldClassName =
-  "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
-const outlineButton =
-  "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
-
+  "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 /**
  * The one picture that applies to the whole work: its drawing style.
  *

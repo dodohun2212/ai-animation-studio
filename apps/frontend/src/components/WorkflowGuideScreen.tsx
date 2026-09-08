@@ -10,6 +10,7 @@ import {
   videoSceneEstimatedCostUsd,
   type RunwayClipDurationSeconds,
 } from "@ai-animation-studio/shared";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
 
 interface Props {
   onBack: () => void;
@@ -72,7 +73,7 @@ function StageCard({
     <section
       data-testid={testId}
       aria-label={title}
-      className={`space-y-3 rounded-2xl border ${style.border} bg-slate-900/70 p-5`}
+      className={`space-y-3 rounded-2xl border ${style.border} bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5`}
     >
       <header className="flex flex-wrap items-center gap-2.5">
         <span className={`rounded-full border px-2.5 py-0.5 text-xs font-bold ${style.chip}`}>{step}단계</span>
@@ -133,7 +134,7 @@ function PipelineDiagram({ steps, testId }: { steps: { icon: string; title: stri
   const toneClass = (tone: StageTone | "local") =>
     tone === "local"
       ? "border-white/15 bg-slate-800/50 text-slate-300"
-      : `${STAGE_STYLES[tone].border} bg-slate-900/70 ${STAGE_STYLES[tone].accent}`;
+      : `${STAGE_STYLES[tone].border} bg-gradient-to-b from-slate-900/80 to-slate-900/55 ${STAGE_STYLES[tone].accent}`;
   return (
     <ol data-testid={testId} className="flex flex-wrap items-stretch gap-1.5">
       {steps.map((step, index) => (
@@ -226,22 +227,12 @@ export function WorkflowGuideScreen({ onBack }: Props) {
 
   return (
     <section className="mt-8 max-w-4xl space-y-5">
-      <header className="space-y-1.5">
-        <button type="button" className="text-xs text-slate-400 hover:text-slate-300" onClick={onBack}>
-          <span aria-hidden="true">←</span> 프로젝트 목록으로
-        </button>
-        <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-slate-100">
-          <span
-            aria-hidden="true"
-            className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-          />
-          작업 워크플로우
-        </h1>
-      </header>
-      <p className="text-sm leading-relaxed text-slate-400">
-        영상 하나가 만들어지기까지 AI를 순서대로 나눠 부릅니다. 아래에서 조건을 바꾸면 실제로 몇 번 호출되고 비용이 얼마나
-        드는지 바로 계산됩니다.
-      </p>
+      <ScreenHeader
+        title="작업 워크플로우"
+        backLabel="프로젝트 목록으로"
+        onBack={onBack}
+        description={'영상 하나가 만들어지기까지 AI를 순서대로 나눠 부릅니다. 아래에서 조건을 바꾸면 실제로 몇 번 호출되고 비용이 얼마나 드는지 바로 계산됩니다.'}
+      />
 
       {/* The two project kinds run different pipelines and were explained as one, so the long-project flow
           (a whole-work outline first, then the short pipeline repeated per episode) was nowhere on screen. */}
@@ -265,7 +256,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
         ))}
       </div>
 
-      <section aria-label="전체 흐름 그림" className="space-y-2 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
+      <section aria-label="전체 흐름 그림" className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
         <h2 className="text-sm font-semibold text-slate-200">
           {projectKind === "short" ? "단기 프로젝트 — 영상 하나" : "장기 프로젝트 — 여러 회차"}
         </h2>
@@ -326,7 +317,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
         </section>
       )}
 
-      <section aria-label="계산 조건" className="space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
+      <section aria-label="계산 조건" className="space-y-3 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
         <h2 className="text-sm font-semibold text-slate-200">계산 조건{projectKind === "long" ? " (회차 하나 기준)" : ""}</h2>
         <div className="flex flex-wrap gap-4">
           <label className="text-sm text-slate-300" htmlFor="workflow-guide-scene-count">
@@ -511,7 +502,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
         </>
       )}
 
-      <section aria-label="알아두면 좋은 것" className="space-y-2.5 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
+      <section aria-label="알아두면 좋은 것" className="space-y-2.5 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
         <h2 className="text-sm font-semibold text-slate-200">알아두면 좋은 것</h2>
         <ul className="space-y-2 text-sm leading-relaxed text-slate-400">
           <li>

@@ -45,7 +45,7 @@ export function GeneratedImagesSection() {
   if (!loaded || (total === 0 && !error)) return null;
 
   return (
-    <details data-testid="generated-images" className="rounded-2xl border border-white/10 bg-slate-900/70">
+    <details data-testid="generated-images" className="rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55">
       {/* The split is named before the list opens. It used to say only the total, and the short project's grid
           is what appears first — so someone looking for an Episode's pictures scanned that grid, did not find
           them, and concluded the library had never collected them. They were four rows further down. A count

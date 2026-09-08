@@ -7,6 +7,8 @@ import { workflowStateLabel, workflowStateTone } from "../utils/workflowStateLab
 import { Spinner } from "./Spinner.js";
 import { WorkflowProgressBar, progressPercent } from "./WorkflowProgressBar.js";
 import { StatusChip } from "./ui/StatusChip.js";
+import { CoverThumb } from "./ui/CoverThumb.js";
+import { sceneImageContentUrl } from "../api/videoWorkflowApi.js";
 
 interface ProjectListProps {
   refreshToken: number;
@@ -49,27 +51,6 @@ function ArrowIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-4 w-4 flex-shrink-0">
       <path d="M9 6l6 6-6 6" />
-    </svg>
-  );
-}
-
-/** A generic gradient placeholder thumbnail — no per-project image exists yet, so this stands in as a consistent brand mark rather than a broken image. */
-function ProjectThumbnail() {
-  return (
-    <svg viewBox="0 0 48 48" aria-hidden="true" className="h-9 w-9">
-      <defs>
-        <linearGradient id="projectThumbGradient" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#c4b5fd" />
-          <stop offset="100%" stopColor="#f0abfc" />
-        </linearGradient>
-      </defs>
-      <path
-        d="M24 4 L42 14 L42 34 L24 44 L6 34 L6 14 Z M24 4 L24 24 L42 14 M24 24 L6 14 M24 24 L24 44"
-        fill="none"
-        stroke="url(#projectThumbGradient)"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
     </svg>
   );
 }
@@ -150,12 +131,18 @@ export function ProjectList({ refreshToken, onOpenProject, onCreateNew }: Projec
             <li key={project.id}>
               <button
                 type="button"
-                className="flex w-full items-center gap-4 rounded-2xl border border-white/10 bg-slate-900/70 p-3 text-left text-slate-100 transition-colors duration-150 hover:border-violet-400/40 hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/30"
+                className="flex w-full items-center gap-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3 text-left text-slate-100 transition-colors duration-150 hover:border-violet-400/40 hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/30"
                 onClick={() => onOpenProject(project.id)}
               >
-                <span className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-xl bg-slate-800">
-                  <ProjectThumbnail />
-                </span>
+                {/*
+                  * The project's own first scene, not a house glyph.
+                  *
+                  * The glyph was here because the comment above it was true when it was written — no project
+                  * had a picture. Every project that has reached image generation has had one since, and a
+                  * list of six identical purple cubes is a list nobody can scan. CoverThumb keeps the glyph
+                  * for the projects that genuinely have no picture yet.
+                  */}
+                <CoverThumb src={sceneImageContentUrl(project.id, 1)} className="h-16 w-16" />
                 <span className="min-w-0 flex-1">
                   {/* The topic is what the user recognizes a project by; the generated id is the machine
                       handle and belongs underneath it, not as the headline. */}

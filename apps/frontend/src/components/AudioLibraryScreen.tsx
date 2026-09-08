@@ -3,6 +3,8 @@ import { AUDIO_LICENSE_KINDS, type AudioLibraryTrack } from "@ai-animation-studi
 
 import { audioTrackContentUrl, deleteAudioTrack, getAudioLibrary, toAudioLibraryDisplayError, uploadAudioTrack } from "../api/audioLibraryApi.js";
 import { Spinner } from "./Spinner.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
+import { cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
 
 interface Props {
   onBack: () => void;
@@ -14,14 +16,8 @@ type State =
   | { status: "error"; error: DisplayError }
   | { status: "ready"; tracks: AudioLibraryTrack[] };
 
-const outlineButton =
-  "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
-const primaryButton =
-  "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
 const fieldClassName =
-  "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
-const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
-
+  "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 /** Accepted by the server; stated here too so the picker does not offer files it will reject. */
 const ACCEPTED = ".mp3,.wav,.m4a,.ogg,audio/mpeg,audio/wav,audio/mp4,audio/ogg";
 
@@ -142,19 +138,13 @@ export function AudioLibraryScreen({ onBack }: Props) {
 
   return (
     <section className="mt-8 max-w-3xl space-y-5">
-      <button type="button" className={outlineButton} onClick={onBack}>
-        돌아가기
-      </button>
-      <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-slate-100">
-        <span
-          aria-hidden="true"
-          className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-        />
-        음원 보관함
-      </h1>
-      <p className="text-sm text-slate-400">
-        여기 올린 음원은 최종 영상을 합칠 때 배경음악으로 넣을 수 있습니다. 나레이션이 있으면 그 위에 낮은 볼륨으로 깔립니다.
-      </p>
+      <ScreenHeader
+        title="음원 보관함"
+        eyebrow="보관함"
+        backLabel="돌아가기"
+        onBack={onBack}
+        description="여기 올린 음원은 최종 영상을 합칠 때 배경음악으로 넣을 수 있습니다. 나레이션이 있으면 그 위에 낮은 볼륨으로 깔립니다."
+      />
       {/* Said once, up front, because the consequence lands after publishing — not while using this screen. */}
       <p data-testid="audio-license-notice" className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300">
         올리시는 음원의 사용 권한은 직접 확인해 주세요. 완성된 영상 파일 안에 음악이 들어가므로,
@@ -346,7 +336,7 @@ export function AudioLibraryScreen({ onBack }: Props) {
                   role="alertdialog"
                   aria-label={`${track.title} 삭제 확인`}
                   data-testid={`audio-track-delete-confirm-${track.trackId}`}
-                  className="space-y-2 rounded-lg border border-rose-400/40 bg-slate-900/70 p-3"
+                  className="space-y-2 rounded-lg border border-rose-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
                 >
                   <p className="text-sm font-semibold text-rose-300">이 음원을 보관함에서 지울까요?</p>
                   <p className="text-xs text-slate-300">보관함에서만 사라집니다. 원본 파일은 컴퓨터에 그대로 있습니다.</p>

@@ -23,6 +23,7 @@ import { StaleBadge } from "./ui/StaleBadge.js";
 import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
 import { BudgetLine } from "./ui/BudgetLine.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
+import { cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
 
 interface Props { projectId: string; episodeNumber: number; onBack: () => void; onOpenVideoWorkflow?: (projectId: string, episodeNumber: number) => void; }
 type DisplayError = { code: string; message: string };
@@ -46,12 +47,8 @@ const sceneSlotLabel = (status: string) => SCENE_SLOT_LABEL[status] ?? status;
 /** Moved to utils/longEpisodeLabels.ts — the video screen needs the same order, and two copies would drift. */
 const isBefore = isLongEpisodeStatusBefore;
 
-const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
-const primaryButton = "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
 const smallOutlineButton = "rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const smallAmberButton = "rounded-full bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white shadow-[0_0_12px_rgba(245,158,11,0.35)] disabled:opacity-50";
-const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
-
 /**
  * Why there is nothing to carry forward, in the words of the reason the server gave.
  *
@@ -489,7 +486,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
           video step is exactly when "what did scene 3 look like" gets asked. A stage is not a reason to hide
           what that stage produced. */}
       {episode && !isBefore(episode.status, "images_ready") && !reviewable && sceneNumbers.length > 0 && (
-        <section aria-label="만든 장면 이미지" data-testid="episode-image-gallery" className="space-y-2 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
+        <section aria-label="만든 장면 이미지" data-testid="episode-image-gallery" className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
           <h3 className="text-base font-semibold text-slate-100">만든 장면 이미지</h3>
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {sceneNumbers.map((sceneNumber) => (
@@ -512,7 +509,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
       )}
       {eligible && !generation && <button type="button" disabled={confirmingGeneration} className={primaryButton} onClick={openGenerationConfirmation}>이미지 생성 시작</button>}
       {confirmingGeneration && (
-        <div role="alertdialog" data-testid="episode-image-generate-confirm" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
+        <div role="alertdialog" data-testid="episode-image-generate-confirm" className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
           <p className="text-sm text-amber-200">
             {alreadyMadeCount > 0
               ? `남은 장면 이미지 ${toMakeCount}장을 생성할까요?`
@@ -635,7 +632,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
                   <button type="button" className={smallOutlineButton} disabled={regenerating || confirming} onClick={() => { setRegenerateInstruction(""); setRegenerateConfirm(sceneNumber); }}>{regenerating ? "다시 만드는 중..." : "다시 만들기"}</button>
                 </div>
                 {confirming && (
-                  <div role="alertdialog" data-testid={`episode-image-regenerate-confirm-${sceneNumber}`} className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
+                  <div role="alertdialog" data-testid={`episode-image-regenerate-confirm-${sceneNumber}`} className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3">
                     <p className="text-sm text-amber-200">{sceneNumber}번 장면만 다시 만들까요? OpenAI 키가 연결되어 있으면 이번 재생성분이 실제로 청구됩니다.</p>
                     <RetryCostNotice
                       estimate={reviewState.status === "ready" ? reviewState.retryEstimate : undefined}

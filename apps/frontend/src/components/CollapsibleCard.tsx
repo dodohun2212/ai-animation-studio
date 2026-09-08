@@ -26,7 +26,7 @@ export function CollapsibleCard({ title, summary, defaultOpen = false, testId, c
     <details
       open={defaultOpen}
       data-testid={testId}
-      className="group rounded-2xl border border-white/10 bg-slate-900/70 [&[open]]:pb-5"
+      className="group rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 [&[open]]:pb-5"
     >
       <summary className="flex cursor-pointer list-none items-center gap-3 rounded-2xl px-5 py-4 hover:bg-white/[0.03]">
         <span

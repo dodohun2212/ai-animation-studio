@@ -5,6 +5,7 @@ import { addLongEpisode, archiveLongEpisode, archiveLongProject, duplicateLongEp
 import { LONG_EPISODE_STATUS_ORDER, longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { ArchiveProjectDialog } from "./ArchiveProjectDialog.js";
 import { Spinner } from "./Spinner.js";
+import { outlineButton, secondaryButton } from "./ui/surfaces.js";
 
 interface LongProjectDetailProps {
   projectId: string; onBack: () => void; onOpenSettings: (projectId: string) => void; onOpenOutline: (projectId: string) => void;
@@ -26,8 +27,6 @@ type EpisodeResumeTarget =
   | { screen: "videoWorkflow"; label: string } | { screen: "videoMerge"; label: string } | { screen: "continuity"; label: string }
   | { screen: "episodeOutline"; label: string };
 
-const secondaryButton = "rounded-full border border-violet-400/30 px-4 py-2 text-sm text-violet-300 hover:bg-violet-500/10";
-const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const amberButton = "rounded-full bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-400 disabled:opacity-50";
 /** Short local date, or the raw value when it will not parse — never a guessed time. */
 function dateLabel(iso: string): string {
@@ -35,7 +34,7 @@ function dateLabel(iso: string): string {
   return Number.isNaN(at.getTime()) ? iso : at.toLocaleDateString("ko-KR", { dateStyle: "short" });
 }
 const fieldClassName =
-  "rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
+  "rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
 
 /** Maps an Episode's current status to the single screen that continues it, matching the long-project fixed flow. */
 function episodeResumeTarget(status: LongEpisodeStatus): EpisodeResumeTarget | null {
@@ -235,7 +234,7 @@ export function LongProjectDetail({
               ))}
             </ul>
           ) : null}
-          <dl className="grid grid-cols-1 gap-x-8 gap-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6 text-slate-100 sm:grid-cols-2">
+          <dl className="grid grid-cols-1 gap-x-8 gap-y-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6 text-slate-100 sm:grid-cols-2">
             <div><dt className="text-xs uppercase tracking-wide text-slate-400">ID</dt><dd className="mt-0.5">{state.project.id}</dd></div>
             <div><dt className="text-xs uppercase tracking-wide text-slate-400">제목</dt><dd className="mt-0.5">{state.project.title}</dd></div>
             <div className="sm:col-span-2"><dt className="text-xs uppercase tracking-wide text-slate-400">한 줄 줄거리</dt><dd className="mt-0.5">{state.project.logline}</dd></div>
@@ -244,7 +243,7 @@ export function LongProjectDetail({
             <div><dt className="text-xs uppercase tracking-wide text-slate-400">화면 비율</dt><dd className="mt-0.5">{state.project.settings.aspectRatio}</dd></div>
           </dl>
           {/* Episode 수 moved into this panel as "전체 에피소드" rather than being listed twice. */}
-          <dl data-testid="episode-stage-summary" className="grid grid-cols-2 gap-x-8 gap-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6 text-slate-100 sm:grid-cols-3">
+          <dl data-testid="episode-stage-summary" className="grid grid-cols-2 gap-x-8 gap-y-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6 text-slate-100 sm:grid-cols-3">
             {episodeStageCounts(state.project.episodes).map((entry) => (
               <div key={entry.label} data-testid={`episode-stage-${entry.label}`}>
                 <dt className="text-xs uppercase tracking-wide text-slate-400">{entry.label}</dt>
@@ -254,7 +253,7 @@ export function LongProjectDetail({
               </div>
             ))}
           </dl>
-          <div data-testid="episode-list" className="space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-6">
+          <div data-testid="episode-list" className="space-y-3 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6">
             <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-200">
               <span
                 aria-hidden="true"
@@ -435,7 +434,7 @@ export function LongProjectDetail({
 
           {/* The shelf the archive confirmation has been promising. Until this existed that sentence pointed at
               nothing — the data and the routes were both there, and only the way back was missing. */}
-          <details data-testid="episode-archives" className="rounded-2xl border border-white/10 bg-slate-900/70" onToggle={(event) => { if ((event.currentTarget as HTMLDetailsElement).open) loadArchives(); }}>
+          <details data-testid="episode-archives" className="rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55" onToggle={(event) => { if ((event.currentTarget as HTMLDetailsElement).open) loadArchives(); }}>
             <summary data-testid="episode-archives-summary" className="cursor-pointer px-5 py-4 text-base font-semibold text-slate-100">보관한 회차</summary>
             <div className="space-y-3 px-5 pb-5">
 
@@ -480,7 +479,7 @@ export function LongProjectDetail({
                       </span>
                     </div>
                     {restoreConfirmId === archive.archiveId ? (
-                      <div role="alertdialog" aria-label="회차 되돌리기 확인" data-testid={`episode-restore-confirm-${archive.archiveId}`} className="space-y-2 rounded-lg border border-amber-400/40 bg-slate-900/70 p-3">
+                      <div role="alertdialog" aria-label="회차 되돌리기 확인" data-testid={`episode-restore-confirm-${archive.archiveId}`} className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3">
                         {/* The one thing this screen must not let someone assume. Archiving only ever takes the
                             last Episode and the project may have grown since, so putting it back where it left
                             from would either overwrite an Episode or renumber the ones after it. */}

@@ -11,6 +11,7 @@ import {
 
 import { createProject, toDisplayError, updateProjectSettings } from "../api/projectsApi.js";
 import { isSafeProjectId } from "../validation/projectId.js";
+import { cardSectionWide as cardSection } from "./ui/surfaces.js";
 
 interface Props {
   onCreated: (project: Project) => void;
@@ -18,9 +19,7 @@ interface Props {
 }
 
 const field =
-  "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
-const cardSection = "space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
-
+  "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 /**
  * The shape of a flower reel, decided here rather than asked here.
  *

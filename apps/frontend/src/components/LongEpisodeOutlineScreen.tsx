@@ -4,6 +4,7 @@ import { getLongEpisode, toLongProjectDisplayError, updateLongEpisodeOutline } f
 import { Spinner } from "./Spinner.js";
 import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { LONG_EPISODE_OUTLINE_STATUSES } from "@ai-animation-studio/shared";
+import { cardSectionWide as cardSection, primaryButton } from "./ui/surfaces.js";
 
 interface Props {
   projectId: string;
@@ -48,11 +49,8 @@ const OUTLINE_FIELDS: { key: OutlineKey; label: string; hint: string; multiline:
 const EDITABLE_STATUSES: ReadonlySet<string> = new Set(["planned", "outline_ready"]);
 
 const backButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
-const primaryButton = "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
 const violetOutlineButton = "rounded-full border border-violet-400/40 px-4 py-2 text-sm text-violet-200 hover:bg-violet-500/10 disabled:opacity-50";
 const fieldClassName = "mt-1 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/20 disabled:opacity-50";
-const cardSection = "space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
-
 function draftFrom(episode: LongEpisodeDetail): Record<OutlineKey, string> {
   return {
     title: episode.title,

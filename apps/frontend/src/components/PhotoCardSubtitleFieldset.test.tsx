@@ -200,14 +200,22 @@ describe("PhotoCardSubtitleFieldset", () => {
   });
 
   /**
-   * The weights have to be the ones the files actually are.
+   * The rule: the preview asks for the weight the RENDER's own file actually is.
    *
-   * Both faces used to be variable and both defaulted to their thinnest instance — Serif ExtraLight 200, Sans
-   * Thin 100 — and nothing loaded them here at all, so `fontWeight: 700` and `400` measured identically and
-   * the 사자성어 line looked thin on screen while the burned-in subtitle was already Bold. The repo now holds
-   * one static file per family, Serif Bold and Sans Medium, and styles.css declares each at that weight. Asking
-   * for a weight the file is not puts the browser back on nearest-match, which is the guess the render side
-   * deliberately stopped relying on.
+   * 🔴 The rule is the durable part; the answer is not. Both faces used to be variable and defaulted to their
+   * thinnest instance — Serif ExtraLight 200, Sans Thin 100 — and nothing loaded them here at all, so
+   * `fontWeight: 700` and `400` measured identically and the 사자성어 line looked thin on screen while the
+   * burned-in subtitle was already Bold. That was fixed by shipping static files and declaring each at the
+   * weight it is. This assertion then hard-coded the answer of the day (Sans Medium 500) and went stale the
+   * moment `3a56577` set the card's `Body` style to `Bold: -1` and libass began drawing NotoSansKR-Bold.ttf.
+   *
+   * So: `fonts/` now holds TWO Sans faces, 500 and 700, and styles.css declares both. The card body is drawn
+   * from the 700 one — it had to move together with the reel's subtitle, because SCENE_SUBTITLE_CSS_RATIO is
+   * derived from PHOTO_CARD_SUBTITLE_CSS_RATIO.body and one number cannot describe two layouts drawn from
+   * different files. Asking for a weight no declared face has puts the browser back on nearest-match, which is
+   * the guess the render side deliberately stopped relying on.
+   *
+   * If a face is ever added or a `Bold` flag flipped again, change these numbers — but keep the rule.
    */
   it("asks for the weights the two subtitle files actually are", () => {
     renderFieldset(TWO_PART);
@@ -215,6 +223,6 @@ describe("PhotoCardSubtitleFieldset", () => {
     const quote = nodes.find((node) => node.style.fontFamily.includes("Serif"));
     const body = nodes.find((node) => node.style.fontFamily.includes("Sans"));
     expect(quote!.style.fontWeight).toBe("700");
-    expect(body!.style.fontWeight).toBe("500");
+    expect(body!.style.fontWeight).toBe("700");
   });
 });

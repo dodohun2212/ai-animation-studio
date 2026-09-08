@@ -149,9 +149,11 @@ export function SceneSubtitleFieldset({ projectId, scenes, vertical, layout, onC
           // preview picks a different break than the render, which is the whole thing it exists to show.
           wordBreak: "keep-all",
           textWrap: "balance",
-          // The weight the shipped file actually is — NotoSansKR-Medium — so the browser asks for the same
-          // weight the burned-in subtitle is drawn at rather than synthesising one.
-          fontWeight: 500,
+          // The weight the shipped file actually is — NotoSansKR-Bold, since 3a56577 set the ASS style's
+          // `Bold` field to -1 — so the browser asks for the same weight the burned-in subtitle is drawn at
+          // rather than synthesising one. The 700 @font-face in styles.css is what makes this land; without
+          // it `font-synthesis: none` would keep drawing Medium here and the preview would be too thin.
+          fontWeight: 700,
           fontFamily: '"Noto Sans KR", system-ui, sans-serif',
           color: "#fff",
           textShadow: shadow,
@@ -163,7 +165,7 @@ export function SceneSubtitleFieldset({ projectId, scenes, vertical, layout, onC
   }
 
   return (
-    <section aria-label="장면 자막 위치와 크기" className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6">
+    <section aria-label="장면 자막 위치와 크기" className="space-y-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6">
       <h2 className="text-base font-semibold text-slate-100">장면 자막</h2>
 
       <div className="flex flex-wrap items-start gap-5">

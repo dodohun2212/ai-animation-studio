@@ -117,7 +117,7 @@ export function LongProjectList({ refreshToken, onOpenProject, onCreateNew }: Lo
             <li key={project.id}>
               <button
                 type="button"
-                className="flex w-full items-center gap-4 rounded-2xl border border-white/10 bg-slate-900/70 p-3 text-left text-slate-100"
+                className="flex w-full items-center gap-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3 text-left text-slate-100"
                 onClick={() => onOpenProject(project.id)}
               >
                 <span className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-xl bg-slate-800">

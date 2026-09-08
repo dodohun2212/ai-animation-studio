@@ -259,7 +259,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
         /* Restored after Cowork Round 458 dropped it: the Episode's merge is one-way (the server answers
            LONG_EPISODE_MERGE_ALREADY_COMPLETED), so offering the button again is an offer that cannot be taken.
            Card re-merging opened cards only, deliberately — an Episode's final cut sits on paid clips. */
-        <p data-testid="episode-merge-already-completed" className="rounded-xl border border-white/10 bg-slate-900/70 px-4 py-3 text-sm text-slate-300">
+        <p data-testid="episode-merge-already-completed" className="rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-4 py-3 text-sm text-slate-300">
           이 회차는 이미 최종 영상이 만들어졌습니다.
         </p>
       )}
@@ -280,7 +280,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
             </p>
           )}
           {confirmationOpen && (
-            <div role="alertdialog" aria-label="에피소드 최종 영상 확인" data-testid="episode-merge-confirm-panel" className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4">
+            <div role="alertdialog" aria-label="에피소드 최종 영상 확인" data-testid="episode-merge-confirm-panel" className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
               <p className="text-sm text-slate-300">
                 아직 시작되지 않았습니다. 확인을 눌러야 최종 영상 만들기가 시작됩니다.
                 {contentSentence ? ` ${contentSentence}` : ""} 유료 요청은 전송되지 않습니다.
@@ -314,7 +314,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
         </p>
       )}
       {(result || alreadyMerged) && (
-        <div data-testid="episode-merge-success" className="space-y-3 rounded-2xl border border-emerald-400/30 bg-slate-900/70 p-5">
+        <div data-testid="episode-merge-success" className="space-y-3 rounded-2xl border border-emerald-400/30 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
           <p className="text-sm font-semibold text-emerald-400">에피소드 최종 영상이 완성되었습니다.</p>
           {unplayable ? (
             <p data-testid="episode-final-video-missing" className="rounded-lg border border-amber-400/30 bg-amber-500/[0.06] px-3 py-2 text-sm text-amber-200">

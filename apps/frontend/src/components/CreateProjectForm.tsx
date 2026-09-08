@@ -4,6 +4,7 @@ import type { Project } from "@ai-animation-studio/shared";
 import { createProject, toDisplayError } from "../api/projectsApi.js";
 import { isSafeProjectId } from "../validation/projectId.js";
 import { CreateFlowerReelForm } from "./CreateFlowerReelForm.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
 
 interface CreateProjectFormProps {
   onCreated: (project: Project) => void;
@@ -16,7 +17,7 @@ interface FieldErrors {
 }
 
 const fieldClassName =
-  "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
+  "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 
 /**
  * Which brief the new project starts from.
@@ -96,8 +97,23 @@ export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProp
     </button>
   );
 
+  /*
+   * 🔴 This screen opened with a radio group and then a field labelled 폴더 이름 — no title anywhere, so the
+   * first thing the app ever asks a person is a question with no heading above it. The two branches below
+   * both render `picker`, so the heading sits with it and is written once.
+   */
+  const header = (
+    <ScreenHeader
+      title="새 프로젝트 만들기"
+      description="무엇으로 시작할지 고르고, 이름과 주제만 정하면 됩니다. 나머지 설정은 만든 뒤에 바꿀 수 있습니다."
+      backLabel="프로젝트 목록으로"
+      onBack={onCancel}
+      className="mt-8"
+    />
+  );
+
   const picker = (
-    <div role="radiogroup" aria-label="무엇으로 시작할지" className="mt-8 flex max-w-2xl flex-wrap gap-3">
+    <div role="radiogroup" aria-label="무엇으로 시작할지" className="mt-5 flex max-w-2xl flex-wrap gap-3">
       {choice("ai", "빈 프로젝트에서 시작", "주제 한 줄을 적고, 나머지는 설정 화면에서 채웁니다.")}
       {choice("flower", "꽃말 릴스 서식", "꽃 이름과 꽃말만 적으면 씨앗에서 꽃이 피기까지의 구성과 화면 스타일이 채워집니다.")}
     </div>
@@ -106,6 +122,7 @@ export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProp
   if (source === "flower") {
     return (
       <>
+        {header}
         {picker}
         <CreateFlowerReelForm onCreated={onCreated} onCancel={onCancel} />
       </>
@@ -114,9 +131,10 @@ export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProp
 
   return (
     <>
+    {header}
     {picker}
     <form
-      className="mt-5 max-w-xl space-y-5 rounded-2xl border border-white/10 bg-slate-900/70 p-6"
+      className="mt-5 max-w-xl space-y-5 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6"
       onSubmit={handleSubmit}
       noValidate
     >

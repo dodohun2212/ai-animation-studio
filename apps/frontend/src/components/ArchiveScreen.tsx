@@ -13,6 +13,8 @@ import {
 import { confirmationMatches } from "../utils/confirmationMatch.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
+import { cardSection } from "./ui/surfaces.js";
 
 interface Props {
   onBack: () => void;
@@ -31,8 +33,6 @@ const smallOutlineButton =
   "rounded-full border border-white/20 bg-white/[0.06] px-3 py-1 text-xs font-medium text-slate-200 hover:border-white/30 hover:bg-white/10 disabled:opacity-50";
 const smallDangerButton =
   "rounded-full border border-rose-400/40 bg-rose-500/10 px-3 py-1 text-xs font-medium text-rose-300 hover:border-rose-400/60 hover:bg-rose-500/15 disabled:opacity-50";
-const cardSection = "space-y-3 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
-
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
     <h3 className="flex items-center gap-2.5 text-base font-semibold">
@@ -153,24 +153,12 @@ export function ArchiveScreen({ onBack, onChanged }: Props) {
 
   return (
     <section className="mt-8 max-w-4xl space-y-5">
-      <header className="space-y-1.5">
-        <button type="button" className="text-xs text-slate-400 hover:text-slate-300" onClick={onBack}>
-          <span aria-hidden="true">←</span> 프로젝트 목록으로
-        </button>
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-slate-100">
-          <span
-            aria-hidden="true"
-            className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-          />
-            보관한 프로젝트
-          </h1>
-        </div>
-      </header>
-      <p className="text-sm text-slate-400">
-        보관한 프로젝트는 데이터가 그대로 남아 있어 언제든 "복구"로 다시 꺼낼 수 있습니다. "완전히 삭제"는 파일까지 진짜로
-        지우는 되돌릴 수 없는 동작이라, 프로젝트의 주제/제목을 정확히 입력해야만 실행됩니다.
-      </p>
+      <ScreenHeader
+        title="보관한 프로젝트"
+        backLabel="프로젝트 목록으로"
+        onBack={onBack}
+        description={'보관한 프로젝트는 데이터가 그대로 남아 있어 언제든 "복구"로 다시 꺼낼 수 있습니다. "완전히 삭제"는 파일까지 진짜로 지우는 되돌릴 수 없는 동작이라, 프로젝트의 주제/제목을 정확히 입력해야만 실행됩니다.'}
+      />
 
       {loading && !shortProjects && !longProjects && <Spinner label="보관함을 불러오는 중..." />}
       {listError && (
@@ -208,7 +196,7 @@ export function ArchiveScreen({ onBack, onChanged }: Props) {
           role="alertdialog"
           aria-label="복구 확인"
           data-testid="archive-restore-confirm"
-          className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
+          className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
         >
           <p className="text-sm text-slate-200">
             '{pending.label || pending.id}' 프로젝트를 보관함에서 꺼내 다시 활성 목록으로 되돌릴까요?

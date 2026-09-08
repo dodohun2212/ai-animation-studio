@@ -20,6 +20,8 @@ import { createStoryPromptDraftPreview, toStoryDisplayError } from "../api/story
 import { Spinner } from "./Spinner.js";
 import { ContinueToNextStep } from "./ui/ContinueToNextStep.js";
 import type { ResumeTarget } from "../utils/resumeTarget.js";
+import { cardSectionWide as cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
 
 interface Props {
   projectId: string;
@@ -56,13 +58,9 @@ const EMPTY_SETTINGS: ShortProjectSettings = {
 };
 
 const fieldClassName =
-  "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
+  "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 const inlineInput =
   "rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
-const primaryButton =
-  "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50";
-const outlineButton =
-  "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const dangerOutlineButton =
   "rounded-full border border-rose-400/30 px-4 py-2 text-sm text-rose-300 hover:bg-rose-500/10 disabled:opacity-50";
 const smallOutlineButton =
@@ -71,8 +69,6 @@ const smallAddButton =
   "rounded-full border border-emerald-400/30 px-3 py-1.5 text-xs text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50";
 const smallRemoveButton =
   "rounded-full border border-rose-400/30 px-3 py-1.5 text-xs text-rose-300 hover:bg-rose-500/10 disabled:opacity-50";
-const cardSection = "space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
-
 /**
  * "This section saves on every click."
  *
@@ -933,16 +929,14 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
   if (state.loading && !state.settings) return <Spinner label="불러오는 중…" className="mt-8" />;
   return (
     <section className="mt-8 max-w-3xl space-y-5">
-      <button type="button" className={outlineButton} onClick={onBack}>
-        {justCreated ? "프로젝트로 이동" : "프로젝트로 돌아가기"}
-      </button>
-      <h2 className="flex items-center gap-2.5 text-lg font-semibold">
-        <span
-          aria-hidden="true"
-          className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-        />
-        프로젝트 설정
-      </h2>
+      {/* 🔴 The screen's name was an <h2>, so this screen had no <h1> at all — the browser, a screen reader
+          and the eye all read it as a subsection of something that was not there. Every other screen leads
+          with its title; this one now does too. */}
+      <ScreenHeader
+        title="프로젝트 설정"
+        backLabel={justCreated ? "프로젝트로 이동" : "프로젝트로 돌아가기"}
+        onBack={onBack}
+      />
       {/*
        * 캡틴D opened this on a 꽃말 릴스 and asked "이렇게 많은 정보를 입력한다고 내가 했었나?" — fifteen boxes,
        * most of them already full, and nothing on the screen saying who filled them. They had typed three.
@@ -969,7 +963,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
       )}
       {state.settings && (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
-        <form className="grid gap-4 rounded-2xl border border-white/10 bg-slate-900/70 p-6 md:grid-cols-2" onSubmit={submit} noValidate>
+        <form className="grid gap-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6 md:grid-cols-2" onSubmit={submit} noValidate>
           <Field label="프로젝트 이름" value={state.settings.projectName} onChange={(value) => setField("projectName", value)} />
           <Field label="영상 주제" value={state.settings.topic} onChange={(value) => setField("topic", value)} />
           <Field label="장르" value={state.settings.genre} onChange={(value) => setField("genre", value)} />
@@ -1033,7 +1027,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
                         <li key={folder.assetId}>
                           <button
                             type="button"
-                            className="w-full rounded-lg border border-white/10 bg-slate-900/70 p-1.5 text-left hover:border-violet-400/40"
+                            className="w-full rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-1.5 text-left hover:border-violet-400/40"
                             onClick={() => pickCharacter(folder)}
                           >
                             {thumbnail?.contentUrl ? (
@@ -1193,7 +1187,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
             {state.loading ? "저장 중…" : "설정 저장"}
           </button>
         </form>
-        <aside aria-label="대본 프롬프트 실시간 미리보기" className="space-y-2 rounded-2xl border border-white/10 bg-slate-900/70 p-4 lg:sticky lg:top-4">
+        <aside aria-label="대본 프롬프트 실시간 미리보기" className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4 lg:sticky lg:top-4">
           <button type="button" className={smallOutlineButton} onClick={() => setPromptPreviewOpen((open) => !open)}>
             {promptPreviewOpen ? "프롬프트 미리보기 닫기" : "프롬프트 미리보기 보기"}
           </button>

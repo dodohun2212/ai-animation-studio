@@ -203,7 +203,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
       )}
 
       {preview && (
-        <div className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
+        <div className="space-y-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
           <p className="text-sm text-slate-400">에피소드 수: {preview.episodeCount}</p>
           <label className="block text-sm text-slate-300" htmlFor="outline-prompt">
             스토리 개요 프롬프트
@@ -268,7 +268,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
               role="alertdialog"
               aria-label="스토리 개요 승인 확인"
               data-testid="approve-confirm-panel"
-              className="space-y-3 rounded-xl border border-amber-400/40 bg-slate-900/70 p-4"
+              className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
             >
               <p className="text-sm font-semibold text-amber-300">스토리 개요를 승인할까요?</p>
               <p className="text-sm text-slate-300">
