@@ -161,6 +161,30 @@ videos/
   알아내는 데 드는 시간이 매번 다시 든다.
 - 🟠 화면이 계속 움직이는 중이라 이 표는 낡을 수 있다. 낡은 표는 셋째 칸이 말해 준다 —
   **없는 표는 아무 말도 안 한다.**
+### 화면 아래 — 서비스 짝
+
+🔴 **화면 짝이 맞는데 서비스 짝이 어긋난 경우가 실제로 나왔다.** 릴은 자막 크기·높이를
+사람이 정할 수 있고 회차는 못 하는데, 두 화면은 똑같이 생겼다 — 차이가 렌더 쪽에만 있어서
+위 표로는 영영 안 걸린다(Cowork Round 696 ⑤). 그래서 **짝이 갈라진 것만** 여기 적는다.
+
+🟠 **서비스는 화면보다 많고 전부 적으면 표가 안 읽힌다.** 기준은 하나다 — **한쪽에만 있는
+것, 또는 같은 일을 하는데 다르게 하는 것.** 나란히 잘 가는 짝은 여기 없어도 된다.
+
+| 하는 일 | 단기 | 장편 | 어긋난 곳 |
+|---|---|---|---|
+| 최종 병합 | `video-merge.service.ts` | `episode-video-merge.service.ts` | 🔴 `sceneSubtitleLayout` 을 단기만 넘긴다 — 회차는 조절 손잡이가 없다 (2026-09-09, 미해결) |
+| 장면 이미지 | `images/local-image-generation.service.ts` | `episode-images.service.ts` | 대조 안 함 |
+| 내레이션 | `narration/local-narration-generation.service.ts` | `episode-narration.service.ts` | 대조 안 함 |
+| 대본 | `story/story-generation.service.ts` | `episode-scripts.service.ts` | 다른 단계다(위 「합치면 안 됨」 참조) |
+| 장면 영상 | `videos/local-video-workflow.service.ts` | `episode-videos.service.ts` | 대조 안 함 |
+| 버려진 생성 회수 | `projects/orphaned-generation-recovery.service.ts` | `orphaned-episode-generation-recovery.service.ts` | 대조 안 함 |
+
+- 🟠 **「대조 안 함」은 「같다」가 아니다.** 이 표를 만든 이유가 그 구별이다 — 위에서 한 번
+  틀렸다(전 행을 대조한 것처럼 적었다).
+- 🔴 **주석이 「exactly the same」이라고 말하는 것을 근거로 삼지 않는다.** 병합 짝의 어긋남이
+  그렇게 숨어 있었다: 손잡이가 생긴 날 그 문장이 거짓이 됐고, **확인된 것처럼 들려서** 아무도
+  다시 안 봤다.
+
 - 🟠 **「합칠 수 있는가」는 이 표가 답해야 할 다음 질문이다.** `MappingReviewScreen` 이 하나로
   되는 이유는 「무엇에 대한 화면인가」가 **인자 하나 차이**(프로젝트냐 회차냐)라서다. 같은
   성질로 보이는 후보가 셋 있다 — 이미지 생성 · 영상 작업 · 영상 병합은 셋 다 「장면 묶음에
