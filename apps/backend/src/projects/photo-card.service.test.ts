@@ -196,16 +196,29 @@ describe("PhotoCardService", () => {
     expect((await projects.findById("card_one")).lore_context.subtitle_center).toBeUndefined();
   });
 
-  // An ordinary project has no such control: its subtitle stays at the bottom, out of the action. Ignoring the
-  // field would let a screen believe it had a knob that does nothing.
-  it("refuses the layout for an ordinary project rather than ignoring it", async () => {
-    const { projectsRoot, projects } = await setup();
+  /**
+   * An ordinary project has its own subtitle control now, under its own name — and this field is still not it.
+   *
+   * The two carry the same two numbers and TypeScript cannot tell the shapes apart, so a card's 0.40 arriving
+   * as a scene layout would put the narration across the middle of the shot with nothing red anywhere. Each
+   * field is therefore refused on the other kind of project rather than ignored; ignoring it would also let a
+   * screen believe it had a knob that does nothing. The mirror of this is in video-merge.service.test.ts.
+   */
+  it("refuses each kind of project the other kind's subtitle field rather than ignoring it", async () => {
+    const { projectsRoot, projects, service, asset } = await setup();
+    vi.stubGlobal("fetch", () => { throw new Error("a photo card must not reach a provider"); });
     const ordinary = createStoredProject("ordinary", "topic", "2026-08-23T00:00:00.000Z");
     ordinary.workflow_state = WorkflowState.VideosApproved;
     await projects.create(ordinary);
+    await service.create(body(asset.asset_id));
+    const merge = new LocalVideoMergeService(projects, projectsRoot, runner([]));
 
-    await expect(new LocalVideoMergeService(projects, projectsRoot, runner([])).merge("ordinary", { subtitleLayout: { center: 0.4 } }))
+    await expect(merge.merge("ordinary", { subtitleLayout: { center: 0.4 } }))
       .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(merge.merge("card_one", { sceneSubtitleLayout: { center: 0.78 } }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    // A card is not given the scene field on the way out either — it has no scene subtitle to place.
+    expect((await projects.findById("card_one")).lore_context.scene_subtitle_center).toBeUndefined();
   });
 
   /**

@@ -1,4 +1,4 @@
-import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, isPhotoCardSubtitleLayout, WorkflowState, type PhotoCardSubtitleLayout, type Project, type ProjectSummary, type ProjectType, type Scene } from "@ai-animation-studio/shared";
+import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, isPhotoCardSubtitleLayout, isSceneSubtitleLayout, WorkflowState, type PhotoCardSubtitleLayout, type SceneSubtitleLayout, type Project, type ProjectSummary, type ProjectType, type Scene } from "@ai-animation-studio/shared";
 
 import { LEGACY_VIDEO_JOB_ID } from "../videos/legacy-job.js";
 
@@ -105,6 +105,29 @@ export function storedSubtitleLayout(stored: StoredProject): PhotoCardSubtitleLa
   return isPhotoCardSubtitleLayout(candidate) ? candidate : DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT;
 }
 
+/**
+ * The subtitle layout this project's scenes are using: what its last merge stored, filled in with the defaults
+ * for anything it has never set.
+ *
+ * The same shape and the same reasoning as storedSubtitleLayout, against different keys — `scene_subtitle_*`
+ * rather than `subtitle_*`, so a project that has been both (nothing makes that impossible; the card flag is a
+ * field in the same file) can never have one layout read as the other. Out-of-range values fall back to the
+ * defaults for the same reason: a number the screen's own slider could not produce did not come from a person.
+ *
+ * Every project written before this existed has neither key, which is exactly the case the defaults are for —
+ * and the default is the position 캡틴D chose, not the bottom those videos were actually made at. That is
+ * deliberate: this answers "what will the next merge do", which is the question the screen is asking.
+ */
+export function storedSceneSubtitleLayout(stored: StoredProject): SceneSubtitleLayout {
+  const scale = stored.lore_context.scene_subtitle_scale;
+  const center = stored.lore_context.scene_subtitle_center;
+  const candidate = {
+    scale: typeof scale === "number" ? scale : DEFAULT_SCENE_SUBTITLE_LAYOUT.scale,
+    center: typeof center === "number" ? center : DEFAULT_SCENE_SUBTITLE_LAYOUT.center,
+  };
+  return isSceneSubtitleLayout(candidate) ? candidate : DEFAULT_SCENE_SUBTITLE_LAYOUT;
+}
+
 export function toApiSummary(stored: StoredProject): ProjectSummary {
   return {
     id: stored.project_id,
@@ -115,7 +138,12 @@ export function toApiSummary(stored: StoredProject): ProjectSummary {
     updatedAt: stored.updated_at,
     aspectRatio: aspectRatioFor(stored),
     narrationAvailable: narrationAvailableFor(stored),
-    ...(photoCardFor(stored) ? { photoCard: true, subtitleLayout: storedSubtitleLayout(stored) } : {}),
+    // Exactly one of the two, decided by the same flag the merge branches on: a card has text and no scenes,
+    // a project has scenes and no card text. A screen reading the wrong field gets undefined, not the other
+    // layout's numbers — which is the whole reason these are two fields and not one.
+    ...(photoCardFor(stored)
+      ? { photoCard: true, subtitleLayout: storedSubtitleLayout(stored) }
+      : { sceneSubtitleLayout: storedSceneSubtitleLayout(stored) }),
     ...(usedAudioFor(stored) !== undefined ? { usedAudio: usedAudioFor(stored) } : {}),
     ...(stored.instagram_post ? { instagramPost: {
       mediaId: stored.instagram_post.media_id,

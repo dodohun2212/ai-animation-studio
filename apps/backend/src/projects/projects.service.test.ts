@@ -2,7 +2,7 @@ import * as fsPromises from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { WorkflowState } from "@ai-animation-studio/shared";
+import { DEFAULT_SCENE_SUBTITLE_LAYOUT, WorkflowState } from "@ai-animation-studio/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
@@ -38,6 +38,7 @@ describe("ProjectsService", () => {
       updatedAt: response.project.updatedAt,
       aspectRatio: "9:16",
       narrationAvailable: false,
+      sceneSubtitleLayout: DEFAULT_SCENE_SUBTITLE_LAYOUT,
       scenes: [],
       warnings: [],
       errors: [],

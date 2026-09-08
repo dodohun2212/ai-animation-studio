@@ -48,7 +48,7 @@ async function inkWidth(directory: string, label: string, text: string, band: { 
   const rendered = path.join(directory, `${label}.png`);
   const difference = path.join(directory, `${label}-diff.png`);
   const assPath = path.join(directory, `${label}.ass`);
-  await fs.writeFile(assPath, sceneSubtitleAss(text, 5, FRAME_WIDTH, FRAME_HEIGHT, "photo-card", { scale: 0.027, center: 0.4 }), "utf8");
+  await fs.writeFile(assPath, sceneSubtitleAss(text, 5, FRAME_WIDTH, FRAME_HEIGHT, "photo-card", { card: { scale: 0.027, center: 0.4 } }), "utf8");
   await runMediaCommand(["ffmpeg", "-y", "-loglevel", "error", "-i", plain,
     "-vf", `subtitles='${escapeForFfmpegFilterPath(assPath)}':fontsdir='${escapeForFfmpegFilterPath(fontsDirectory)}'`,
     "-frames:v", "1", rendered]);

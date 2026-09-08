@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE } from "@ai-animation-studio/shared";
+import { PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE, SCENE_SUBTITLE_CENTER } from "@ai-animation-studio/shared";
 
 import { familyNames, usWeightClass } from "./font-file-tables.js";
 import { FONT_FAMILY, QUOTE_FONT_FAMILY, sceneSubtitleAss } from "./subtitle-file.js";
@@ -70,13 +70,22 @@ describe("photo card subtitles", () => {
     expect(Number(marginR)).toBe(Math.round(WIDTH * 0.07));
   });
 
-  // Raising a scene's subtitle to the middle would sit it over the action the shot exists to show.
-  it("leaves the scene layout where it was", () => {
+  /**
+   * A scene now positions its text the same WAY a card does, and is still not a card.
+   *
+   * 🔴 This test used to assert `not.toContain("pos(")` — that a scene was bottom-aligned, with no positioning
+   * at all. That was the defect: the block sat inside the bottom eighth of the frame, under the caption and
+   * buttons Reels draws there, which is the exact thing the card layout above exists to avoid (Cowork Round
+   * 664 ①). A scene got the mechanism; what it did not get is the card's numbers, and that is what is checked
+   * here. 0.78 stays below the action rather than across it, which is the other true reason this is a branch.
+   */
+  it("gives a scene the card's positioning but not the card's look or its centre", () => {
     const scene = sceneSubtitleAss("장면 자막", 5, WIDTH, HEIGHT);
 
     expect(scene).toContain("Noto Sans KR");
     expect(scene).not.toContain("Noto Serif KR");
-    expect(scene).not.toContain("pos(");
+    expect(cueY(scene, "Default")).toBe(Math.round(HEIGHT * SCENE_SUBTITLE_CENTER.default));
+    expect(cueY(scene, "Default")).toBeGreaterThan(Math.round(HEIGHT * PHOTO_CARD_SUBTITLE_CENTER.default));
   });
 });
 

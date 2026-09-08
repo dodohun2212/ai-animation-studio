@@ -2124,6 +2124,20 @@ export interface MergeVideosRequest {
    * scene subtitle has no such control and silently ignoring the field would let a screen believe it had one.
    */
   subtitleLayout?: { scale?: number; center?: number };
+  /**
+   * Ordinary projects only: where the scene subtitles go in the video this merge is about to make.
+   *
+   * Everything `subtitleLayout` above says about carrying this on the merge applies here unchanged — stored
+   * only at the moment it is used, either number omittable, out of range refused rather than clamped — and the
+   * two are refused in opposite directions: this one on a photo card, that one on a project with scenes. A
+   * card has no scene subtitle and a scene has no card text, so a request naming the wrong one is a screen
+   * that thinks it is looking at a different project, which is worth an error rather than a shrug.
+   *
+   * 🔴 A separate field, not a shared one, although the two carry the same two numbers. The layouts differ
+   * (0.40 against 0.78) and TypeScript cannot tell the two shapes apart, so the only thing keeping a card
+   * layout out of a scene's subtitle is that they never share a name — see {@link SceneSubtitleLayout}.
+   */
+  sceneSubtitleLayout?: { scale?: number; center?: number };
 }
 
 /** The local FFmpeg render result never exposes an absolute filesystem path. */

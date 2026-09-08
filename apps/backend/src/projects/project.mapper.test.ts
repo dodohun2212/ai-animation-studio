@@ -1,4 +1,4 @@
-import { WorkflowState } from "@ai-animation-studio/shared";
+import { DEFAULT_SCENE_SUBTITLE_LAYOUT, WorkflowState } from "@ai-animation-studio/shared";
 import { describe, expect, it } from "vitest";
 
 import { createStoredProject, toApiProject, toApiSummary } from "./project.mapper.js";
@@ -35,8 +35,12 @@ describe("toApiSummary / toApiProject", () => {
       updatedAt: "2026-08-21T00:00:00.000Z",
       aspectRatio: "9:16",
       narrationAvailable: false,
+      // Every project with scenes carries the layout its next merge will use — a card carries subtitleLayout
+      // instead, and neither ever carries both.
+      sceneSubtitleLayout: DEFAULT_SCENE_SUBTITLE_LAYOUT,
     });
     expect("userId" in summary).toBe(false);
+    expect("subtitleLayout" in summary).toBe(false);
 
     const project = toApiProject(stored);
     expect(project).toEqual({

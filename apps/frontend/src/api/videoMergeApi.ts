@@ -1,4 +1,4 @@
-import { API_ROUTES, FINAL_VIDEO_RELATIVE_PATH, type MergeAudioSettings, type MergeVideosResponse, type PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
+import { API_ROUTES, FINAL_VIDEO_RELATIVE_PATH, type MergeAudioSettings, type MergeVideosResponse, type PhotoCardSubtitleLayout, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
 import { INTERNAL_ERROR, SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
 
 export class VideoMergeApiError extends Error {
@@ -130,13 +130,19 @@ export async function mergeVideos(
    * outright by the server for an ordinary project — so it is never passed "just in case".
    */
   subtitleLayout?: PhotoCardSubtitleLayout,
+  /**
+   * A project's scene subtitle size and height — the same two numbers as above, for the other kind of project,
+   * and refused outright by the server for a photo card. Kept a separate parameter rather than one that means
+   * either, because the two are the same shape and nothing but the name keeps a card's centre out of a scene.
+   */
+  sceneSubtitleLayout?: SceneSubtitleLayout,
 ): Promise<MergeVideosResponse> {
   let response: Response;
   try {
     // Omitting the body entirely is not the same as sending an empty one: the server then keeps the project's
     // own narration/subtitle toggles, which is the right behaviour for a caller that has no opinion. Only a
     // caller that actually asked the user sends `audio` — and the same rule holds for `subtitleLayout`.
-    const payload = { ...(audio ? { audio } : {}), ...(subtitleLayout ? { subtitleLayout } : {}) };
+    const payload = { ...(audio ? { audio } : {}), ...(subtitleLayout ? { subtitleLayout } : {}), ...(sceneSubtitleLayout ? { sceneSubtitleLayout } : {}) };
     response = await fetch(API_ROUTES.videoMerge(projectId), Object.keys(payload).length > 0
       ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }
       : { method: "POST" });

@@ -1,4 +1,4 @@
-import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, PHOTO_CARD_SUBTITLE_OUTLINE, PHOTO_CARD_SUBTITLE_SHADOW, photoCardSubtitleGeometry, splitPhotoCardSubtitle, type PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
+import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, PHOTO_CARD_SUBTITLE_OUTLINE, PHOTO_CARD_SUBTITLE_SHADOW, SCENE_SUBTITLE_OUTLINE, SCENE_SUBTITLE_SHADOW, photoCardSubtitleGeometry, sceneSubtitleGeometry, splitPhotoCardSubtitle, type PhotoCardSubtitleLayout, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
 
 /**
  * The families the subtitles name, exported so the guard that checks `fonts/` reads them from here rather than
@@ -44,10 +44,17 @@ function escapeDialogueText(text: string): string {
  * FILE is supplied at burn time via the `subtitles` filter's `fontsdir` option (see ffmpeg-merge.service.ts),
  * not embedded here.
  */
-export function sceneSubtitleAss(text: string, durationSeconds: number, width: number, height: number, layout: SubtitleLayout = "scene", card: PhotoCardSubtitleLayout = DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT): string {
-  if (layout === "photo-card") return photoCardSubtitleAss(text, durationSeconds, width, height, card);
-  const fontSize = Math.round(height * 0.033); // ~64px at a 1920-tall portrait frame, scales with resolution
-  const margin = Math.round(height * 0.042);
+export function sceneSubtitleAss(
+  text: string,
+  durationSeconds: number,
+  width: number,
+  height: number,
+  layout: SubtitleLayout = "scene",
+  layouts: SubtitleLayouts = {},
+): string {
+  if (layout === "photo-card") return photoCardSubtitleAss(text, durationSeconds, width, height, layouts.card ?? DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT);
+  // Every number comes from the shared geometry, which the screen offering the slider previews from too.
+  const { size, y, centerX, margin } = sceneSubtitleGeometry(width, height, layouts.scene ?? DEFAULT_SCENE_SUBTITLE_LAYOUT);
   return [
     "[Script Info]",
     "ScriptType: v4.00+",
@@ -58,11 +65,14 @@ export function sceneSubtitleAss(text: string, durationSeconds: number, width: n
     "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    `Style: Default,${FONT_FAMILY},${fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,3,1,2,${margin},${margin},${margin},1`,
+    // Alignment 5 and MarginV 0, like the card's: the cue carries its own `\pos`, and a positioned line takes
+    // no vertical margin. Leaving Alignment 2 here would make the file say two different things about where
+    // the text goes, and only one of them would be obeyed.
+    `Style: Default,${FONT_FAMILY},${size},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,${SCENE_SUBTITLE_OUTLINE},${SCENE_SUBTITLE_SHADOW},5,${margin},${margin},0,1`,
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
-    `Dialogue: 0,${timestamp(0)},${timestamp(durationSeconds)},Default,,0,0,0,,${escapeDialogueText(text)}`,
+    `Dialogue: 0,${timestamp(0)},${timestamp(durationSeconds)},Default,,0,0,0,,{\\an5\\pos(${centerX},${y})}${escapeDialogueText(text)}`,
     "",
   ].join("\n");
 }
@@ -74,8 +84,32 @@ export function sceneSubtitleAss(text: string, durationSeconds: number, width: n
  * A photo card is one still picture with one line of text over it, read at a glance; a scene is a moving shot
  * whose subtitle must stay out of the action. Raising the scene subtitle to the middle of the frame would put
  * it over the very thing the shot is showing, so this stays a branch rather than a new default.
+ *
+ * 🟠 The two branches now place text the same WAY — `\an5\pos` on a block centre, from a shared geometry — and
+ * that is not the same as being one layout. What still differs is what each is placing: a card splits its text
+ * into a serif heading and a sans body and positions two cues; a scene is one cue, one face, wrapped
+ * automatically, at a centre far enough down to leave the shot alone. The old scene branch used bottom
+ * alignment with a vertical margin, which put the block inside the fifth of the frame Reels covers with its
+ * own caption and buttons — the defect the card had already been moved off (Cowork Round 664 ①).
  */
 export type SubtitleLayout = "scene" | "photo-card";
+
+/**
+ * The chosen numbers for whichever branch runs, by name.
+ *
+ * 🔴 Named keys rather than two more positional parameters, and this is the whole defence. `SceneSubtitleLayout`
+ * and `PhotoCardSubtitleLayout` are both `{ scale, center }`, so TypeScript accepts either in either position —
+ * two trailing arguments of the same shape could be swapped and nothing would be red. What it would produce is
+ * not a subtle difference: a card's 0.40 on a scene puts the narration across the middle of the shot, which is
+ * the one place subtitle-file.ts has always refused to put it. Under this shape a mix-up has to be written as
+ * the wrong property name, which is checked (Cowork Round 664 ⑤ asked for the separation and gave this reason).
+ *
+ * Both optional: each branch reads only its own, and an absent one means that layout's published default.
+ */
+export interface SubtitleLayouts {
+  scene?: SceneSubtitleLayout;
+  card?: PhotoCardSubtitleLayout;
+}
 
 /**
  * A photo card's text: an optional first line in a serif face, the rest below it, the block centred on

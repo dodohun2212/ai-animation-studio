@@ -489,6 +489,19 @@ export interface ProjectSummary {
    */
   subtitleLayout?: PhotoCardSubtitleLayout;
   /**
+   * Where this project's scene subtitles sit and how big they are — the values its last merge used, or the
+   * defaults for a project that has never been merged with a choice.
+   *
+   * The mirror image of {@link subtitleLayout}: present for every project that has scenes, and absent for a
+   * photo card, which has no scene subtitle to place. A project therefore carries exactly one of the two, and
+   * a screen reading the wrong one gets `undefined` rather than the other layout's numbers.
+   *
+   * Sent for the same reason the card's is — so the screen offering the slider starts from what the video
+   * actually looks like, not from the defaults the person already moved away from. See
+   * {@link SCENE_SUBTITLE_CENTER} for the numbers and what is measured about them.
+   */
+  sceneSubtitleLayout?: SceneSubtitleLayout;
+  /**
    * Same source and priority as video-preview.service.ts's ratioFor()/image-prompt.ts's imageSizeFor()
    * (style_profile.aspect, "16:9" vs anything else defaulting to vertical) — added here so every screen that
    * needs to know this project's shape (a review thumbnail's aspect box, a video library card) reads the one
@@ -578,6 +591,19 @@ export interface Project extends ProjectSummary {
   warnings: string[];
   errors: string[];
 }
+
+/**
+ * Left and right margin for burned-in text, as a fraction of frame WIDTH — the edge a long line wraps against.
+ *
+ * Width, not height, and one constant for both layouts. Both are the same physical thing: how close to the
+ * side of the frame text may come before it reads as falling off it, which is a horizontal question. The scene
+ * subtitle used to take its side margin from the height (0.042 of it), which happens to land near this number
+ * on a portrait frame — 81px against 76px at 1080x1920 — and goes wrong the moment the frame is not portrait:
+ * on a 1920x1080 landscape it gives 45px, so a line runs to within 2% of the edge, while this gives 134px.
+ * Cowork Round 664 flagged that as odd without measuring the landscape case; the arithmetic above is the
+ * measurement, and it is the reason the scene branch moved onto this.
+ */
+export const SUBTITLE_SIDE_MARGIN_RATIO = 0.07;
 
 /**
  * A photo card's subtitle size and position, as fractions of the frame height.
@@ -687,7 +713,7 @@ export function photoCardSubtitleGeometry(
     headingY,
     bodyY: headingY + (hasHeading ? headGap : 0) + Math.round(bodySpan / 2),
     centerX: Math.round(width / 2),
-    margin: Math.round(width * 0.07),
+    margin: Math.round(width * SUBTITLE_SIDE_MARGIN_RATIO),
   };
 }
 
@@ -737,6 +763,140 @@ export const PHOTO_CARD_SUBTITLE_CSS_RATIO = { heading: 0.697, body: 0.690 } as 
 
 /** How much larger the heading is than the body. Not a handle: three sizes can be set to a combination that does not fit together, and two cannot. */
 export const PHOTO_CARD_HEADING_RATIO = 1.4;
+
+/**
+ * A scene subtitle's size and position, as fractions of the frame — the same two handles a card has, with the
+ * scene's own numbers.
+ *
+ * 🔴 Deliberately a second type rather than a reuse of {@link PhotoCardSubtitleLayout}, which is structurally
+ * identical. The two carry different numbers for opposite reasons — a card's text IS the frame and sits at
+ * 0.40, a scene's text sits under the action at 0.78 — and a card layout that reached a scene would put the
+ * narration across the middle of the shot, a value nobody asked for. TypeScript cannot tell two identical
+ * shapes apart, so the separation is carried by the NAMES instead, everywhere the value travels: the request
+ * field, the stored keys, the API field and the renderer's argument are all `sceneSubtitleLayout`, and
+ * subtitle-file.ts takes them as named keys rather than as two trailing positional arguments that could be
+ * swapped. Cowork Round 664 ⑤ asked for exactly this and was right about why (a brand would also work, and
+ * was not used: these values arrive as parsed JSON, so every construction site would need a cast, and a cast
+ * is a place the check is turned off).
+ *
+ * Where the numbers came from: 캡틴D reported the subtitle unreadable, and it was the same defect the card
+ * fixed once already — the block sat inside the bottom 13.3% of the frame, which is where Reels draws its own
+ * caption, account name and buttons. The card's answer (raise it to 0.40) is wrong here, because
+ * subtitle-file.ts's other reason is still true: the middle of the frame is the thing the shot is showing.
+ * So this is a handle, not a new fixed position, and its default is the one 캡틴D picked from four rendered
+ * drafts (Cowork Round 664 ②③, rendered through the real FFmpeg with the shipped font files).
+ */
+export interface SceneSubtitleLayout {
+  /** Text height as a fraction of frame height. */
+  scale: number;
+  /** Vertical centre of the wrapped block as a fraction of frame height. */
+  center: number;
+}
+
+/**
+ * Text size: 0.033 of frame height is 63px at 1920 — the size scenes already render at.
+ *
+ * 🟠 The default deliberately does not move in the change that introduced this handle. Position and outline
+ * are what 캡틴D asked for; moving the size at the same time would leave nobody able to say which of the three
+ * made the next reel look different. The range exists so the handle is useful, not because a number in it was
+ * chosen.
+ */
+export const SCENE_SUBTITLE_SCALE = { default: 0.033, min: 0.024, max: 0.050 } as const;
+/**
+ * Block centre: 0.78 of frame height.
+ *
+ * 🔴 The upper end is measured, and what the measurement says is narrower than it first looks. Rendered
+ * through the real FFmpeg at 1080x1920 with the shipped font, at the largest size (0.050): a four-line block
+ * at 0.85 clears the bottom of the frame by 109px, and a six-line block at the same 0.85 has ink on the last
+ * row of the picture — it is being cut off. The same six lines at the default 0.78 clear it by 99px. So 0.85
+ * is not "the last safe centre"; it is the last centre that was safe for the sentence it was measured with
+ * (Cowork Round 664 ③ measured five lines and read it the first way, which is the reading this corrects).
+ *
+ * 🔴 That is the honest limit, and no pair of bounds can close it: the block's height depends on how much text
+ * there is, so a range can bound the CONTROL and cannot promise the text stays inside the frame. The card's
+ * range has the same hole and it was accepted there for the same reason. What closes it is the preview on the
+ * screen that offers the slider, which measures the actually-wrapped block and warns — which makes that
+ * warning load-bearing rather than a nicety. See {@link SCENE_SUBTITLE_CSS_RATIO}.
+ *
+ * 0.30 is not an optimum either, simply "high enough to be a real choice": a scene subtitle up there covers
+ * the subject, which is why this is a slider a person looks at rather than a value the app picks.
+ */
+export const SCENE_SUBTITLE_CENTER = { default: 0.78, min: 0.30, max: 0.85 } as const;
+
+/** The layout a scene gets when nobody has chosen one — today's size, at the position 캡틴D picked. */
+export const DEFAULT_SCENE_SUBTITLE_LAYOUT: SceneSubtitleLayout = {
+  scale: SCENE_SUBTITLE_SCALE.default,
+  center: SCENE_SUBTITLE_CENTER.default,
+};
+
+/** True when both numbers are real, finite and inside their published ranges — the one definition the server's refusal and the screen's own check both read. */
+export function isSceneSubtitleLayout(value: unknown): value is SceneSubtitleLayout {
+  if (typeof value !== "object" || value === null) return false;
+  const { scale, center } = value as { scale?: unknown; center?: unknown };
+  return typeof scale === "number" && Number.isFinite(scale) && scale >= SCENE_SUBTITLE_SCALE.min && scale <= SCENE_SUBTITLE_SCALE.max
+    && typeof center === "number" && Number.isFinite(center) && center >= SCENE_SUBTITLE_CENTER.min && center <= SCENE_SUBTITLE_CENTER.max;
+}
+
+/** Every number a scene's subtitle is drawn from, in output pixels. */
+export interface SceneSubtitleGeometry {
+  /** Text height. */
+  size: number;
+  /** Vertical centre of the wrapped block — where `\an5\pos` puts it, whatever the line count turns out to be. */
+  y: number;
+  /** Horizontal centre; the block is placed by its own centre. */
+  centerX: number;
+  /** Left and right margin, which is what a long line wraps against. */
+  margin: number;
+}
+
+/**
+ * Where a scene's subtitle lands, given the frame and the chosen layout.
+ *
+ * Here rather than in the renderer for the reason {@link photoCardSubtitleGeometry} is: FFmpeg burns it in and
+ * the screen offering the slider draws a preview of it, and a preview that re-implements this arithmetic is a
+ * preview that can be wrong without saying so.
+ *
+ * 🟢 No line count, unlike the card's. `\an5\pos` centres the WRAPPED BLOCK on `y`, not its first line —
+ * measured at four positions through real FFmpeg renders, ink centres landing within 2px of the target every
+ * time (Cowork Round 664 ②). The card needs a line count only because it places two separately-styled cues and
+ * has to know how far apart to put them; a scene is one cue and one style, so the block's centre is the whole
+ * answer. That is also why this cannot silently go wrong as the text grows: a longer block grows in both
+ * directions from the same `y`.
+ */
+export function sceneSubtitleGeometry(width: number, height: number, layout: SceneSubtitleLayout): SceneSubtitleGeometry {
+  return {
+    size: Math.round(height * layout.scale),
+    y: Math.round(height * layout.center),
+    centerX: Math.round(width / 2),
+    margin: Math.round(width * SUBTITLE_SIDE_MARGIN_RATIO),
+  };
+}
+
+/**
+ * The scene text's stroke and drop shadow, in output pixels at the rendered frame size.
+ *
+ * 4 and 2, the same pair the card uses and for the same reason — a thinner edge disappears into the bright
+ * parts of a photograph, and every scene in a flower reel is a photograph. It was 3 and 1 here until 캡틴D said
+ * the subtitle was hard to read; the card had already been moved off those numbers and the scene branch never
+ * got the change.
+ *
+ * 🟠 Not derived from {@link PHOTO_CARD_SUBTITLE_OUTLINE} even though the values match today. The card's
+ * stroke answers "text over one still photograph the viewer studies"; this one answers "text over moving
+ * footage read in passing", and they are free to diverge. A constant that means two things is the harder one
+ * to change later, not the safer one.
+ */
+export const SCENE_SUBTITLE_OUTLINE = 4;
+export const SCENE_SUBTITLE_SHADOW = 2;
+
+/**
+ * ASS `Fontsize` to CSS `font-size` for the scene subtitle, so a preview wraps where the video wraps.
+ *
+ * Derived, not copied: the scene subtitle is drawn in Noto Sans KR, which is the same face the card's body
+ * uses, and this ratio is a property of that FONT FILE rather than of either layout. Re-measuring
+ * the font moves both, which is the point — the card's constant carries the full account of how that
+ * measurement is done and how it was wrong twice.
+ */
+export const SCENE_SUBTITLE_CSS_RATIO = PHOTO_CARD_SUBTITLE_CSS_RATIO.body;
 
 export interface ApiUsageRecord {
   timestamp: string;

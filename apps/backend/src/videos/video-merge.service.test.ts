@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
-import { WorkflowState } from "@ai-animation-studio/shared";
+import { DEFAULT_SCENE_SUBTITLE_LAYOUT, SCENE_SUBTITLE_CENTER, WorkflowState } from "@ai-animation-studio/shared";
 
 import { MediaToolError, type MediaCommandRunner } from "./ffmpeg-merge.service.js";
 import { createStoredProject } from "../projects/project.mapper.js";
@@ -284,6 +284,109 @@ describe("local FFmpeg video merge", () => {
       expect(call.find((arg) => arg.includes("subtitles="))).toBeUndefined();
     }
     expect(assFiles.get("scene2.ass")).toContain("장면 2 내레이션");
+  });
+
+  /** A project whose scenes carry narration text, so every merge below actually writes a subtitle file. */
+  async function withSubtitles(projects: LocalProjectRepository): Promise<void> {
+    const project = await projects.findById("video_merge");
+    project.lore_context = { ...project.lore_context, subtitles_enabled: true };
+    project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({ number, narration: `장면 ${number} 내레이션` }));
+    await projects.save(project);
+  }
+
+  /**
+   * 캡틴D: 「자막이 잘 안 보이고 너무 내려가 있다」 — and it was the defect the photo card had already been
+   * moved off once, reaching the scene subtitle a second time (Cowork Round 664 ①).
+   *
+   * Both halves are checked here for the reason the card's equivalent test states: a layout that renders but is
+   * never stored means the next merge silently undoes the adjustment, and one that is stored but never renders
+   * means the screen shows a number the video was not made from.
+   */
+  it("renders the scenes at the subtitle layout it was given, and remembers it for the next merge", async () => {
+    const assFiles = new Map<string, string>();
+    const { projectsRoot, projects } = await setup();
+    await withSubtitles(projects);
+
+    const merged = await new LocalVideoMergeService(projects, projectsRoot, runner({}, [], assFiles))
+      .merge("video_merge", { sceneSubtitleLayout: { scale: 0.04, center: 0.5 } });
+
+    const ass = assFiles.get("scene1.ass")!;
+    expect(ass).toContain(`,${Math.round(1920 * 0.04)},`); // the text size it asked for
+    expect(ass).toContain(`\\pos(540,${Math.round(1920 * 0.5)})`);
+    expect(merged.project.sceneSubtitleLayout).toEqual({ scale: 0.04, center: 0.5 });
+    const stored = await projects.findById("video_merge");
+    expect(stored.lore_context.scene_subtitle_center).toBe(0.5);
+    // The card's keys are untouched: a project carries one layout or the other, never both.
+    expect(stored.lore_context.subtitle_center).toBeUndefined();
+  });
+
+  /**
+   * 🔴 The default is the fix, not the handle.
+   *
+   * A merge that asks for nothing still has to come out of the strip Reels covers with its own caption,
+   * account name and buttons — that is what 캡틴D reported, and a slider nobody touches would leave it exactly
+   * where it was. Checked against the bottom 15% rather than against the default's own number, so moving the
+   * default cannot make this pass for a video that is still unreadable.
+   */
+  it("keeps an unadjusted project's subtitle out of the platform's own strip", async () => {
+    const assFiles = new Map<string, string>();
+    const { projectsRoot, projects } = await setup();
+    await withSubtitles(projects);
+
+    const merged = await new LocalVideoMergeService(projects, projectsRoot, runner({}, [], assFiles)).merge("video_merge");
+
+    const y = Number(/\\pos\(\d+,(\d+)\)/.exec(assFiles.get("scene1.ass")!)![1]);
+    expect(y).toBeLessThan(1920 * 0.85);
+    expect(merged.project.sceneSubtitleLayout).toEqual(DEFAULT_SCENE_SUBTITLE_LAYOUT);
+  });
+
+  /** Sending one number moves one number: the other stays where the person put it last time, not at the default. */
+  it("merges a partial scene layout onto the stored one instead of the defaults", async () => {
+    const assFiles = new Map<string, string>();
+    const { projectsRoot, projects } = await setup();
+    await withSubtitles(projects);
+    const project = await projects.findById("video_merge");
+    project.lore_context = { ...project.lore_context, scene_subtitle_scale: 0.045, scene_subtitle_center: 0.5 };
+    await projects.save(project);
+
+    const merged = await new LocalVideoMergeService(projects, projectsRoot, runner({}, [], assFiles))
+      .merge("video_merge", { sceneSubtitleLayout: { center: 0.6 } });
+
+    expect(merged.project.sceneSubtitleLayout).toEqual({ scale: 0.045, center: 0.6 });
+    expect(assFiles.get("scene1.ass")).toContain(`,${Math.round(1920 * 0.045)},`);
+  });
+
+  // Clamping was the alternative, and it is how a screen ends up showing one number while the video was made
+  // from another, with nothing anywhere saying so.
+  it("refuses a scene layout outside the published range instead of quietly correcting it", async () => {
+    const { projectsRoot, projects } = await setup();
+    await withSubtitles(projects);
+    const merge = new LocalVideoMergeService(projects, projectsRoot, runner());
+
+    await expect(merge.merge("video_merge", { sceneSubtitleLayout: { center: 0.95 } }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(merge.merge("video_merge", { sceneSubtitleLayout: { scale: 0.2 } }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    // The published end of the range is accepted — it is a bound on the control, not a promise that the text
+    // fits, which no bound can make while the block's height depends on the sentence (see SCENE_SUBTITLE_CENTER).
+    await expect(merge.merge("video_merge", { sceneSubtitleLayout: { center: SCENE_SUBTITLE_CENTER.max } }))
+      .resolves.toBeDefined();
+    expect((await projects.findById("video_merge")).lore_context.scene_subtitle_center).toBe(SCENE_SUBTITLE_CENTER.max);
+  });
+
+  /**
+   * 🔴 The two layouts are the same two numbers with different meanings, and nothing but the field name keeps
+   * them apart — a card's 0.40 on a scene puts the narration across the middle of the shot.
+   *
+   * So each is refused where it does not belong. This is the half a card cannot check: an ordinary project
+   * asked for the card's field is already refused (photo-card.service.test.ts), and this is the mirror.
+   */
+  it("refuses the photo card's subtitle field on a project that has scenes", async () => {
+    const { projectsRoot, projects } = await setup();
+    await withSubtitles(projects);
+
+    await expect(new LocalVideoMergeService(projects, projectsRoot, runner()).merge("video_merge", { subtitleLayout: { center: 0.4 } }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
   it("never fails the merge over a missing or empty narration file — that scene just falls back to silence", async () => {

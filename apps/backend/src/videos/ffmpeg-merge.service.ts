@@ -4,7 +4,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
-import type { PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
+import type { PhotoCardSubtitleLayout, SceneSubtitleLayout } from "@ai-animation-studio/shared";
 import { escapeForFfmpegFilterPath, sceneSubtitleAss } from "./subtitle-file.js";
 
 function currentModuleDirectory(): string {
@@ -72,6 +72,14 @@ export interface MergeSceneInput {
   stillDurationSeconds?: number;
   /** Photo cards only, alongside stillDurationSeconds: where this card's text goes. Absent means the defaults. */
   subtitleLayout?: PhotoCardSubtitleLayout;
+  /**
+   * Ordinary scenes only: where this scene's subtitle goes. Absent means the defaults.
+   *
+   * The other half of the pair above, and named apart from it on purpose — the two types are structurally
+   * identical, so the names are the only thing that keeps a card's 0.40 out of a scene (see SceneSubtitleLayout).
+   * The branch below picks by `stillDurationSeconds`, and each branch reads only its own field.
+   */
+  sceneSubtitleLayout?: SceneSubtitleLayout;
   /** Path to that scene's narration audio, or null/undefined to fall back to silence. */
   narrationAudioPath?: string | null;
   /** That scene's narration text, or null/undefined to burn in no subtitle line. Independent of narrationAudioPath — video-merge.service.ts sets this based on ShortProjectSettings.subtitlesEnabled, which can be on with no narration audio at all (subtitles-only, no TTS spend, a real Shorts use case since many viewers watch muted). */
@@ -191,7 +199,7 @@ export class FfmpegMergeEngine {
         // frame rather than a caption under the action — it gets its own layout. Nothing new has to be threaded
         // through for that: the field that says "this is a still" is already here.
         const layout = scene.stillDurationSeconds === undefined ? "scene" : "photo-card";
-        await fs.writeFile(assPath, sceneSubtitleAss(scene.subtitleText, clipDurationSeconds, width, height, layout, scene.subtitleLayout), "utf8");
+        await fs.writeFile(assPath, sceneSubtitleAss(scene.subtitleText, clipDurationSeconds, width, height, layout, { scene: scene.sceneSubtitleLayout, card: scene.subtitleLayout }), "utf8");
         filter += `,subtitles='${escapeForFfmpegFilterPath(assPath)}':fontsdir='${escapeForFfmpegFilterPath(this.fontsDir)}'`;
       }
       // A still is looped for its own held duration and given the slow zoom before the shared filter runs; a
