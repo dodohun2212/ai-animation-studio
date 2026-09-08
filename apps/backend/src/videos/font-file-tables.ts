@@ -102,18 +102,39 @@ export function hangulEmAdvance(file: Buffer): number {
 }
 
 /**
- * The file in `fonts/` that libass will resolve a family name to.
+ * The weight an ASS style asks the font files for, which is the style's `Bold` field and nothing else.
  *
- * Throws when it is not exactly one file: two files claiming a family leaves the choice to fontconfig's weight
- * proximity, which this app neither controls nor can test, and none means the silent fallback above.
+ * A subtitle style names a family and says bold or not; the file that draws it is chosen from those two facts
+ * together. Written here rather than in subtitle-file.ts because it is a statement about matching FILES.
  */
-export async function fontFileForFamily(directory: string, family: string): Promise<Buffer> {
+export const ASS_WEIGHT = { regular: 400, bold: 700 } as const;
+
+/**
+ * The file in `fonts/` that libass will resolve a family name and a Bold flag to.
+ *
+ * 🟠 Two files claiming one family used to be refused outright, on the ground that the choice between them was
+ * fontconfig's weight proximity — "which this app neither controls nor can test". Half of that is now measured
+ * and false: with a 500 and a 700 shipped under one family name, a non-bold style renders byte-identically to
+ * the 500 alone and a bold style byte-identically to the 700 alone, with no synthetic emboldening
+ * (subtitle-font-weight.test.ts renders all four and compares the frames). That is the arrangement 캡틴D's bold
+ * scene subtitle needs, and it is the only one available: the shipped Noto Sans KR Medium declares "Noto Sans
+ * KR" as both its family (nameID 1) and its typographic family (nameID 16), so a Bold of the same face cannot
+ * introduce a name nothing else claims. Weight, not a second family name, is what tells the two apart.
+ *
+ * What stays refused is the half that is still true. Nothing claiming the family is the silent fallback to
+ * whatever the machine has installed; two files equally far from the requested weight is a choice this code
+ * would be guessing at, and the render would be guessing with it.
+ */
+export async function fontFileForFamily(directory: string, family: string, weight: number = ASS_WEIGHT.regular): Promise<Buffer> {
   const names = (await fs.readdir(directory)).filter((name) => name.toLowerCase().endsWith(".ttf"));
-  const matches: Buffer[] = [];
+  const matches: { bytes: Buffer; distance: number }[] = [];
   for (const name of names) {
     const bytes = await fs.readFile(path.join(directory, name));
-    if (familyNames(bytes).includes(family)) matches.push(bytes);
+    if (familyNames(bytes).includes(family)) matches.push({ bytes, distance: Math.abs(usWeightClass(bytes) - weight) });
   }
-  if (matches.length !== 1) throw new Error(`${family} is shipped by ${matches.length} files, expected exactly 1`);
-  return matches[0]!;
+  if (matches.length === 0) throw new Error(`${family} is shipped by no file, expected exactly 1`);
+  const nearest = Math.min(...matches.map((match) => match.distance));
+  const closest = matches.filter((match) => match.distance === nearest);
+  if (closest.length !== 1) throw new Error(`${family} at weight ${weight} is answered by ${closest.length} files, expected exactly 1`);
+  return closest[0]!.bytes;
 }
