@@ -68,7 +68,14 @@ export function sceneSubtitleAss(
     // Alignment 5 and MarginV 0, like the card's: the cue carries its own `\pos`, and a positioned line takes
     // no vertical margin. Leaving Alignment 2 here would make the file say two different things about where
     // the text goes, and only one of them would be obeyed.
-    `Style: Default,${FONT_FAMILY},${size},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,${SCENE_SUBTITLE_OUTLINE},${SCENE_SUBTITLE_SHADOW},5,${margin},${margin},0,1`,
+    //
+    // 🔴 `Bold: -1` is what CHOOSES THE FILE, and it is only honest while `fonts/` ships a real 700. Measured:
+    // with NotoSansKR-Bold.ttf present this line renders byte-identically to a directory holding only that
+    // file, and DIFFERENTLY from the same line against a Medium-only directory — that third frame is libass
+    // faking the weight, a face nobody picked. So this flag and the file are one change, never two
+    // (subtitle-font-weight.test.ts renders the comparison; the guard in subtitle-file.photo-card.test.ts
+    // reads this very line and demands a 700 in `fonts/` for as long as it says -1).
+    `Style: Default,${FONT_FAMILY},${size},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,${SCENE_SUBTITLE_OUTLINE},${SCENE_SUBTITLE_SHADOW},5,${margin},${margin},0,1`,
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -129,6 +136,8 @@ function photoCardSubtitleAss(text: string, durationSeconds: number, width: numb
   // Every number comes from the shared geometry, which the preview screen draws from too — a second copy of
   // this arithmetic is a preview that can disagree with the video without anything saying so.
   const { bodySize, headSize, headingY, bodyY, centerX, margin } = photoCardSubtitleGeometry(width, height, card, body.length, heading !== undefined);
+  // Both styles ask for bold today; the parameter stays because the ASS field is per style, and the pair that
+  // reads these rows checks the field rather than a family name (subtitle-file.photo-card.test.ts).
   const style = (name: string, font: string, size: number, bold: 0 | -1) =>
     `Style: ${name},${font},${size},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,${bold},0,0,0,100,100,0,0,1,${PHOTO_CARD_SUBTITLE_OUTLINE},${PHOTO_CARD_SUBTITLE_SHADOW},5,${margin},${margin},0,1`;
   const cue = (styleName: string, y: number, content: string) =>
@@ -144,7 +153,7 @@ function photoCardSubtitleAss(text: string, durationSeconds: number, width: numb
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
     style("Quote", QUOTE_FONT_FAMILY, headSize, -1),
-    style("Body", FONT_FAMILY, bodySize, 0),
+    style("Body", FONT_FAMILY, bodySize, -1),
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",

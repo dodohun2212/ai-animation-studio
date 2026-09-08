@@ -46,12 +46,20 @@ describe("photo card subtitles", () => {
     const ass = card("불광불급\n미치지 않으면 미치지 못한다");
 
     const [, quoteFont, quoteSize, , , , , quoteBold] = styleRow(ass, "Quote");
-    const [, bodyFont, bodySize] = styleRow(ass, "Body");
+    const [, bodyFont, bodySize, , , , , bodyBold] = styleRow(ass, "Body");
     expect(quoteFont).toBe("Noto Serif KR");
     expect(bodyFont).toBe("Noto Sans KR");
     expect(Number(bodySize)).toBe(Math.round(HEIGHT * PHOTO_CARD_SUBTITLE_SCALE.default)); // 52 at 1920
     expect(Number(quoteSize)).toBe(Math.round(Math.round(HEIGHT * PHOTO_CARD_SUBTITLE_SCALE.default) * 1.4)); // 73
     expect(quoteBold).toBe("-1");
+    /*
+     * 🟠 The body asks for bold too, and it did not used to. Both sans styles were flipped together on purpose:
+     * SCENE_SUBTITLE_CSS_RATIO is DERIVED from the card body's, on the ground that the ratio is a property of
+     * the face rather than of either layout. Bolding only the scene would have made that derivation false —
+     * two layouts drawing in two different files behind one shared number — and the preview reading it would
+     * have been wrong for whichever of them lost the coin toss.
+     */
+    expect(bodyBold).toBe("-1");
   });
 
   // The quote is typed by hand, so "the first line is the idiom" is an assumption and not a fact. Assuming it
@@ -83,6 +91,8 @@ describe("photo card subtitles", () => {
 
     expect(scene).toContain("Noto Sans KR");
     expect(scene).not.toContain("Noto Serif KR");
+    // The weight 캡틴D picked off the reference, and the field that picks the FILE rather than a faked stroke.
+    expect(styleRow(scene, "Default")[7]).toBe("-1");
     expect(cueY(scene, "Default")).toBe(Math.round(HEIGHT * SCENE_SUBTITLE_CENTER.default));
     expect(cueY(scene, "Default")).toBeGreaterThan(Math.round(HEIGHT * PHOTO_CARD_SUBTITLE_CENTER.default));
   });

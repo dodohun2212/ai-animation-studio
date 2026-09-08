@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { PHOTO_CARD_SUBTITLE_CSS_RATIO } from "@ai-animation-studio/shared";
 
 import { runMediaCommand } from "./ffmpeg-merge.service.js";
-import { fontFileForFamily, hangulEmAdvance } from "./font-file-tables.js";
+import { ASS_WEIGHT, fontFileForFamily, hangulEmAdvance } from "./font-file-tables.js";
 import { FONT_FAMILY, QUOTE_FONT_FAMILY, escapeForFfmpegFilterPath, sceneSubtitleAss } from "./subtitle-file.js";
 
 /**
@@ -72,6 +72,22 @@ async function inkWidth(directory: string, label: string, text: string, band: { 
   return FRAME_WIDTH - low - left;
 }
 
+/**
+ * The weight one of the card's styles asks its family for, read out of the file the renderer writes.
+ *
+ * 🔴 Not a constant written here. The em advance below is divided into an advance measured from a frame drawn
+ * by whichever FILE the `Bold` flag resolved to, so the two halves have to name the same file. Held as a
+ * literal, the day a style's `Bold` flipped this pair would go on dividing by the lighter face's em and stay
+ * green while the published ratio drifted — the same shape of silent staleness the em term itself was missing
+ * for a year.
+ */
+function weightAsked(styleName: string): number {
+  const ass = sceneSubtitleAss("불광불급\n미치지 않으면 미치지 못한다", 5, FRAME_WIDTH, FRAME_HEIGHT, "photo-card", { card: { scale: 0.027, center: 0.4 } });
+  const row = ass.split("\n").find((line) => line.startsWith(`Style: ${styleName},`));
+  if (!row) throw new Error(`no style ${styleName} in the card's file`);
+  return row.slice("Style: ".length).split(",")[7] === "-1" ? ASS_WEIGHT.bold : ASS_WEIGHT.regular;
+}
+
 describe("what a card's text really measures on the frame", () => {
   it("draws each face at the ratio the preview is told to use", async ({ skip }) => {
     const available = await runMediaCommand(["ffmpeg", "-version"]).then(() => true).catch(() => false);
@@ -100,8 +116,8 @@ describe("what a card's text really measures on the frame", () => {
      * wrong arithmetic the constant was built from. Read from the files so a new font brings its own number
      * (Cowork Round 598; 캡틴D saw it as a line that wrapped in the video and not in the preview).
      */
-    const headingEm = hangulEmAdvance(await fontFileForFamily(fontsDirectory, QUOTE_FONT_FAMILY));
-    const bodyEm = hangulEmAdvance(await fontFileForFamily(fontsDirectory, FONT_FAMILY));
+    const headingEm = hangulEmAdvance(await fontFileForFamily(fontsDirectory, QUOTE_FONT_FAMILY, weightAsked("Quote")));
+    const bodyEm = hangulEmAdvance(await fontFileForFamily(fontsDirectory, FONT_FAMILY, weightAsked("Body")));
 
     /**
      * Within 2% of the published ratio, as a fraction rather than toBeCloseTo's decimal steps.

@@ -751,6 +751,14 @@ export const PHOTO_CARD_SUBTITLE_SHADOW = 2;
  * The old numbers were still inside the pair's tolerance, which is why it did not go red; they were stale all
  * the same, and a preview drawing 1.5% narrow than the video is the thing this constant exists to stop.
  *
+ * 🟢 Re-measured on 2026-09-09, after both sans styles flipped to `Bold: -1` and the render started drawing
+ * from NotoSansKR-Bold.ttf instead of Medium: 0.6898 against the published 0.690, and the face's own Hangul em
+ * advance is 0.9200 — the SAME number Medium carries. So the numbers here did not move, and that is the useful
+ * result rather than a null one: **weight changes the stroke, not the advance**, so a preview that follows this
+ * flip needs a heavier FACE and not a different ratio. 🟠 The one way it can still go wrong is on the CSS side —
+ * a browser given only a 500 webfont and asked for `font-weight: 700` synthesizes the weight by smearing, and a
+ * smeared glyph IS wider. The preview has to load a real 700, or it will wrap earlier than the video again.
+ *
  * 🔴 Corrected on 2026-09-06, and every number above it was measured with a term missing. The division was
  * `libass advance ÷ ASS size`, which silently assumes a face advances a Hangul syllable one full em. Neither
  * face does: Noto Sans KR Medium advances 0.920 em and Noto Serif KR Bold 0.966 (their own `hmtx`, and a
