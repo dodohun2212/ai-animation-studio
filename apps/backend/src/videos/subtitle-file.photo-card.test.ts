@@ -1,3 +1,4 @@
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -98,6 +99,22 @@ describe("photo card subtitles", () => {
   });
 });
 
+/**
+ * Every (family, weight) pair the renderer hands to libass, read off the files it actually writes.
+ *
+ * Read rather than listed, and that is the whole point: a hand-written list goes on checking the face the
+ * subtitles used to ask for and says nothing about the one they ask for now — silently, which is the same way
+ * libass fails when a name and a file disagree.
+ */
+function subtitleFontRequests(): { family: string; weight: number }[] {
+  return [sceneSubtitleAss("불광불급\n미치지 않으면 미치지 못한다", 5, WIDTH, HEIGHT, "photo-card"), sceneSubtitleAss("장면 자막", 5, WIDTH, HEIGHT)]
+    .flatMap((ass) => ass.split("\n").filter((line) => line.startsWith("Style: ")))
+    .map((line) => {
+      const [, family, , , , , , bold] = line.slice("Style: ".length).split(",");
+      return { family: family!, weight: bold === "-1" ? ASS_WEIGHT.bold : ASS_WEIGHT.regular };
+    });
+}
+
 describe("the fonts this app ships", () => {
   /**
    * Every face the subtitles ask for is shipped, unambiguously, and heavy enough for the weight it was asked at.
@@ -121,17 +138,7 @@ describe("the fonts this app ships", () => {
   it("ships one real weight for each face the subtitles ask for", async () => {
     const root = path.resolve(import.meta.dirname, "../../../../fonts");
 
-    /*
-     * The requests are read off the files the renderer hands to libass, not listed here. A hand-written list
-     * would go on checking the face the subtitles used to ask for and say nothing about the one they ask for
-     * now — silently, which is the same way libass fails when a name and a file disagree.
-     */
-    const requests = [sceneSubtitleAss("불광불급\n미치지 않으면 미치지 못한다", 5, WIDTH, HEIGHT, "photo-card"), sceneSubtitleAss("장면 자막", 5, WIDTH, HEIGHT)]
-      .flatMap((ass) => ass.split("\n").filter((line) => line.startsWith("Style: ")))
-      .map((line) => {
-        const [, family, , , , , , bold] = line.slice("Style: ".length).split(",");
-        return { family: family!, weight: bold === "-1" ? ASS_WEIGHT.bold : ASS_WEIGHT.regular };
-      });
+    const requests = subtitleFontRequests();
     // Named, because a parse that quietly returned nothing would leave this whole pair asserting about an empty
     // list. Three is what the two layouts write today: a scene's Default, and the card's Quote and Body.
     expect(requests.map((request) => request.family)).toEqual([QUOTE_FONT_FAMILY, FONT_FAMILY, FONT_FAMILY]);
@@ -142,6 +149,65 @@ describe("the fonts this app ships", () => {
       const floor = weight === ASS_WEIGHT.bold ? 700 : 500;
       expect(usWeightClass(face), `${family} at weight ${weight} is answered by a face libass would have to fake`)
         .toBeGreaterThanOrEqual(floor);
+    }
+  });
+
+  /**
+   * The preview declares a real face for every weight the RENDER asks for, pointing at the same file.
+   *
+   * 🔴 This crosses into apps/frontend on purpose, because the defect it guards lives between the two and
+   * neither side can see it alone. The preview exists to show what the video will look like; when it draws
+   * with a different face than libass does, nothing is red anywhere and the difference surfaces only in a
+   * finished video. That has already happened twice. The first time the preview named two families the
+   * browser had never heard of and fell back to a system font, so `font-weight: 700` did nothing — 캡틴D saw
+   * it as "글씨가 너무 얇아". The second time is the one this pair is written for: the scene style flipped to
+   * `Bold: -1` (3a56577) and the render started drawing from a 700 file while styles.css declared only a 500.
+   *
+   * 🔴 And that second one is silent in the direction that matters. `font-synthesis: none` means the browser
+   * does NOT fake the missing weight — it quietly keeps drawing the 500. So the preview looks fine, shows a
+   * thinner line than the video, and the overflow warning it exists to raise comes late. Nothing throws.
+   *
+   * What is compared is the FILE, not the number. A declaration may say any weight it likes as long as it is
+   * the weight the file actually is: asking for a weight no shipped face has puts the browser back on
+   * nearest-match, which is the guess the render side deliberately stopped relying on (D-049).
+   *
+   * 🟠 If this goes red because the stylesheet moved or was renamed, that is not a false alarm to route
+   * around — the invariant needs a new home, not a deleted pair.
+   */
+  it("declares a preview face for every weight the render asks for, from the same file", async () => {
+    const root = path.resolve(import.meta.dirname, "../../../../fonts");
+    const stylesheetPath = path.resolve(import.meta.dirname, "../../../../apps/frontend/src/styles.css");
+    const stylesheet = await fs.readFile(stylesheetPath, "utf8").catch(() => undefined);
+    expect(stylesheet, `${stylesheetPath} is where the subtitle preview declares its faces; it is not there any more`)
+      .toBeDefined();
+
+    /*
+     * The three fields this guard needs, per @font-face block. Deliberately a small hand-rolled parse of a
+     * file this repository writes and controls — the same reasoning font-file-tables.ts is written under.
+     */
+    const declared = [...stylesheet!.matchAll(/@font-face\s*\{([^}]*)\}/g)].map((block) => ({
+      family: /font-family:\s*"([^"]+)"/.exec(block[1]!)?.[1],
+      weight: Number(/font-weight:\s*(\d+)/.exec(block[1]!)?.[1]),
+      file: /src:\s*url\("[^"]*\/([^"/]+)"/.exec(block[1]!)?.[1],
+    }));
+    // Named, so a regex that quietly matched nothing cannot leave the loop below asserting about an empty list.
+    expect(declared.map((face) => `${face.family} ${face.weight}`)).toEqual(["Noto Serif KR 700", "Noto Sans KR 500", "Noto Sans KR 700"]);
+
+    // A face that fails to load is not faked either — which is what makes a missing declaration silent rather
+    // than merely wrong, and is therefore part of what this pair is protecting.
+    expect(stylesheet).toContain("font-synthesis: none");
+
+    const names = await fs.readdir(root);
+    for (const { family, weight } of subtitleFontRequests()) {
+      const wanted = await fontFileForFamily(root, family, weight);
+      // Which file in fonts/ the renderer resolved to, by its bytes rather than by a name written here.
+      const wantedName = (await Promise.all(names.map(async (name) => ({ name, bytes: await fs.readFile(path.join(root, name)) }))))
+        .find((candidate) => candidate.bytes.equals(wanted))!.name;
+      const match = declared.find((face) => face.family === family && face.file === wantedName);
+      expect(match, `the preview draws ${family} at weight ${weight} with something other than ${wantedName}, which is what the video is burned with`)
+        .toBeDefined();
+      expect(match!.weight, `${wantedName} is a ${usWeightClass(wanted)}, and the preview declares it as a ${match!.weight} — the browser will pick by proximity from here`)
+        .toBe(usWeightClass(wanted));
     }
   });
 });
