@@ -15,6 +15,7 @@ import { CoverThumb } from "./ui/CoverThumb.js";
 import { MetaGrid } from "./ui/MetaGrid.js";
 import { sceneImageContentUrl } from "../api/videoWorkflowApi.js";
 import { secondaryButton } from "./ui/surfaces.js";
+import { ScreenHeader } from "./ui/ScreenHeader.js";
 
 /** Workflow state → status chip tone, per design system §3.4's documented mapping. */
 function workflowTone(state: WorkflowState): StatusTone {
@@ -126,13 +127,11 @@ export function ProjectDetail({
 
   return (
     <section className="mt-8 max-w-4xl space-y-5">
-      <button
-        type="button"
-        className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
-        onClick={onBack}
-      >
-        목록으로
-      </button>
+      {/* Only while there is no header to carry it — the loaded screen's way back lives in the header,
+          under the same words. */}
+      {state.status !== "success" && (
+        <button type="button" className={secondaryButton} onClick={onBack}>목록으로</button>
+      )}
       {state.status === "loading" && <Spinner label="불러오는 중..." className="mt-4" />}
       {state.status === "error" && (
         <p className="mt-4 text-sm text-rose-400" role="alert" data-error-code={state.error.code}>
@@ -150,27 +149,42 @@ export function ProjectDetail({
             * rows above a button, so the screen opened looking like a form. The picture is the project's own
             * first scene: it is the fastest way to tell two flower reels apart, and it costs no new data.
             */}
-          <header className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5 sm:flex-row sm:items-start">
-            <CoverThumb src={sceneImageContentUrl(state.project.id, 1)} className="h-28 w-28 sm:h-32 sm:w-32" />
-            <div className="min-w-0 flex-1 space-y-2.5">
-              <h1 className="text-2xl font-semibold text-slate-100">{state.project.topic || state.project.id}</h1>
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusChip tone={workflowTone(state.project.workflowState)}>
-                  {workflowStateLabel(state.project.workflowState)}
-                </StatusChip>
-                <span className="text-xs text-slate-400">{projectTypeLabel(state.project.projectType)}</span>
+          {/*
+            * The project, as one card that answers "what is this and how far is it" without scrolling.
+            *
+            * 🔴 `ScreenHeader`, not a second hero. The long-form detail screen already uses it, and the two
+            * were drifting apart in the way a person would actually notice — one card had the hairline and the
+            * corner glow, the other did not. What this screen has and that one does not is a picture, so the
+            * picture goes in the component's `leading` slot rather than into a copy of the component.
+            *
+            * The picture is the project's own first scene: it is the fastest way to tell two flower reels
+            * apart, and it costs no new data.
+            */}
+          <ScreenHeader
+            title={state.project.topic || state.project.id}
+            backLabel="목록으로"
+            onBack={onBack}
+            leading={<CoverThumb src={sceneImageContentUrl(state.project.id, 1)} className="h-28 w-28 sm:h-32 sm:w-32" />}
+            meta={
+              <div className="space-y-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusChip tone={workflowTone(state.project.workflowState)}>
+                    {workflowStateLabel(state.project.workflowState)}
+                  </StatusChip>
+                  <span className="text-xs text-slate-400">{projectTypeLabel(state.project.projectType)}</span>
+                </div>
+                <WorkflowProgressBar state={state.project.workflowState} className="max-w-md" />
+                <MetaGrid
+                  columns={3}
+                  items={[
+                    { label: "ID", value: <span className="break-all">{state.project.id}</span> },
+                    { label: "만든 시각", value: <span className="tabular-nums" title={state.project.createdAt}>{formatDateTime(state.project.createdAt)}</span> },
+                    { label: "마지막 수정", value: <span className="tabular-nums" title={state.project.updatedAt}>{formatDateTime(state.project.updatedAt)}</span> },
+                  ]}
+                />
               </div>
-              <WorkflowProgressBar state={state.project.workflowState} className="max-w-md" />
-              <MetaGrid
-                columns={3}
-                items={[
-                  { label: "ID", value: <span className="break-all">{state.project.id}</span> },
-                  { label: "만든 시각", value: <span className="tabular-nums" title={state.project.createdAt}>{formatDateTime(state.project.createdAt)}</span> },
-                  { label: "마지막 수정", value: <span className="tabular-nums" title={state.project.updatedAt}>{formatDateTime(state.project.updatedAt)}</span> },
-                ]}
-              />
-            </div>
-          </header>
+            }
+          />
           {resumeTarget(state.project) && (
             <button
               type="button"

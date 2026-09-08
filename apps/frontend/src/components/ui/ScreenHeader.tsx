@@ -17,6 +17,14 @@ interface Props {
   /** The words alone — the arrow is this component's, and putting one here would be announced aloud. */
   backLabel?: string;
   /**
+   * A picture of the thing this screen is about, sat to the left of the title on anything wider than a phone.
+   *
+   * 🔴 Optional, and only ever a picture. A screen whose subject has no image leaves it out and the header
+   * stacks exactly as before; passing a control here would put something pressable where the eye expects the
+   * subject, which is what `actions` is for.
+   */
+  leading?: ReactNode;
+  /**
    * Facts about the thing this screen is about — a MetaGrid, usually — sat under the description.
    *
    * 🔴 Separate from `actions` because they are a different kind of thing: `actions` is a row of controls and
@@ -41,7 +49,7 @@ interface Props {
  * corner, so the title sits on a surface rather than on the page background. Both are decorative and both are
  * `aria-hidden` — nothing here is announced twice.
  */
-export function ScreenHeader({ title, eyebrow, description, onBack, backLabel = "프로젝트로 돌아가기", meta, actions, className = "" }: Props) {
+export function ScreenHeader({ title, eyebrow, description, onBack, backLabel = "프로젝트로 돌아가기", leading, meta, actions, className = "" }: Props) {
   return (
     <header className={`relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6 ${className}`}>
       <span
@@ -52,30 +60,33 @@ export function ScreenHeader({ title, eyebrow, description, onBack, backLabel = 
         aria-hidden="true"
         className="pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full bg-violet-500/10 blur-2xl"
       />
-      <div className="relative space-y-1.5">
-        {onBack && (
-          /*
-           * 🔴 The arrow is drawn here and is `aria-hidden`, so `backLabel` is the whole accessible name.
-           *
-           * It was briefly part of the label string instead, and that broke both ends at once: a screen
-           * reader announced "left arrow 프로젝트 목록으로", and — because a caller could simply forget the
-           * character — ten of the twenty-one screens silently lost the arrow. A decoration that every
-           * caller has to remember is a decoration half of them will not.
-           */
-          <button type="button" className="text-xs text-slate-400 hover:text-slate-300" onClick={onBack}>
-            <span aria-hidden="true">←</span> {backLabel}
-          </button>
-        )}
-        {eyebrow && <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">{eyebrow}</p>}
-        <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-slate-100">
-          <span
-            aria-hidden="true"
-            className="h-2 w-2 flex-shrink-0 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-          />
-          {title}
-        </h1>
-        {description && <p className="max-w-2xl text-sm leading-relaxed text-slate-400">{description}</p>}
-        {meta && <div className="pt-1">{meta}</div>}
+      <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start">
+        {leading}
+        <div className="min-w-0 flex-1 space-y-1.5">
+          {onBack && (
+            /*
+             * 🔴 The arrow is drawn here and is `aria-hidden`, so `backLabel` is the whole accessible name.
+             *
+             * It was briefly part of the label string instead, and that broke both ends at once: a screen
+             * reader announced "left arrow 프로젝트 목록으로", and — because a caller could simply forget the
+             * character — ten of the twenty-one screens silently lost the arrow. A decoration that every
+             * caller has to remember is a decoration half of them will not.
+             */
+            <button type="button" className="text-xs text-slate-400 hover:text-slate-300" onClick={onBack}>
+              <span aria-hidden="true">←</span> {backLabel}
+            </button>
+          )}
+          {eyebrow && <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">{eyebrow}</p>}
+          <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-slate-100">
+            <span
+              aria-hidden="true"
+              className="h-2 w-2 flex-shrink-0 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
+            />
+            {title}
+          </h1>
+          {description && <p className="max-w-2xl text-sm leading-relaxed text-slate-400">{description}</p>}
+          {meta && <div className="pt-1">{meta}</div>}
+        </div>
       </div>
       {actions && <div className="relative mt-4 flex flex-wrap items-center gap-2">{actions}</div>}
     </header>
