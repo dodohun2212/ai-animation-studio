@@ -853,6 +853,7 @@ export function App() {
                 projectId={screen.projectId}
                 justCreated={screen.justCreated}
                 onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
+                onResume={(target) => resumeScreenFor(screen.projectId, target)}
               />
             )}
             {screen.name === "storyPrompt" && !photoCardSkippedScreen && (

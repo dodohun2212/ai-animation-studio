@@ -7,6 +7,14 @@ import { resumeTarget, type ResumeTarget } from "../../utils/resumeTarget.js";
 interface Props {
   projectId: string;
   onResume: (target: ResumeTarget) => void;
+  /**
+   * Rendered but refused, with the caller saying why beside it.
+   *
+   * A screen that has work still unsaved must not offer a shortcut past it, and hiding the button instead would
+   * make the screen look like the one that never had a next step — which is the thing this component exists to
+   * fix. So it stays visible and inert.
+   */
+  disabled?: boolean;
 }
 
 /**
@@ -16,7 +24,7 @@ interface Props {
  * request that fails must leave the screen exactly as it was rather than put an error on it. 「프로젝트로
  * 돌아가기」 is always still there, and that path already reports its own failures.
  */
-export function ContinueToNextStep({ projectId, onResume }: Props) {
+export function ContinueToNextStep({ projectId, onResume, disabled }: Props) {
   const [project, setProject] = useState<Project | null>(null);
 
   useEffect(() => {
@@ -34,7 +42,8 @@ export function ContinueToNextStep({ projectId, onResume }: Props) {
     <button
       type="button"
       data-testid="continue-to-next-step"
-      className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)]"
+      className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+      disabled={disabled}
       onClick={() => onResume(target)}
     >
       {target.label}

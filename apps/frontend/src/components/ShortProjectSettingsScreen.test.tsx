@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { WorkflowState } from "@ai-animation-studio/shared";
+
 import { castMember, jsonResponse, makeAsset, makeAssetFolder, makeProject } from "../api/testUtils.js";
 import { ShortProjectSettingsScreen } from "./ShortProjectSettingsScreen.js";
 
@@ -100,9 +102,41 @@ describe("ShortProjectSettingsScreen", () => {
     render(<ShortProjectSettingsScreen projectId="sample_project" onBack={onBack} justCreated />);
 
     await screen.findByTestId("just-created-notice");
-    expect(screen.getByRole("button", { name: "프로젝트로 이동" })).toBeTruthy();
-    fireEvent.click(await screen.findByRole("button", { name: "설정 완료 · 계속 진행하기" }));
+    // By testid now: the header and the closing bar both say 프로젝트로 이동, which is the point — one label for
+    // one destination. The bar used to say 「설정 완료 · 계속 진행하기」 and go to the project screen anyway.
+    expect(screen.getAllByRole("button", { name: "프로젝트로 이동" })).toHaveLength(2);
+    fireEvent.click(screen.getByTestId("finish-setup-button"));
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * 🔴 캡틴D asked why this page only offered a way back. It did, and one of the two buttons said otherwise.
+   *
+   * The forward button is refused rather than hidden while the top box holds unsaved edits: that box is the one
+   * thing here that does not save on its own, its own copy says so, and this is the one control that could carry
+   * someone past it — into a paid script generated from settings that were never sent.
+   */
+  it("offers the next step, and refuses it while the form has unsaved edits", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+      "GET /projects/sample_project": { project: makeProject({ workflowState: WorkflowState.Ready }) },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const onResume = vi.fn();
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} onResume={onResume} />);
+
+    const forward = await screen.findByTestId("continue-to-next-step");
+    expect(forward.textContent).toContain("대본 지시문");
+    expect(screen.queryByTestId("settings-unsaved-warning")).toBeNull();
+
+    fireEvent.change(await screen.findByDisplayValue("별의 지도"), { target: { value: "다른 이름" } });
+    expect(screen.getByTestId("settings-unsaved-warning")).toBeTruthy();
+    expect((screen.getByTestId("continue-to-next-step") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByTestId("continue-to-next-step"));
+    expect(onResume).not.toHaveBeenCalled();
   });
 
   it("omits the setup banner and finish button when reopened later for an existing project", async () => {
@@ -118,7 +152,7 @@ describe("ShortProjectSettingsScreen", () => {
     await screen.findByDisplayValue("별의 지도");
     expect(screen.queryByTestId("just-created-notice")).toBeNull();
     /*
-     * 캡틴D reached this screen on a 꽃말 릴스 — not just created, so no notice — found fifteen boxes mostly full,
+     * 캡틴D reached this screen on a 꽃말 릴스 — not just created, so no notice — found fifteen boxes mostly full,
      * and asked whether they had filled them in. They had typed three; a 서식 wrote the rest. The line says so
      * without naming the 서식, because a project carries no mark saying which one made it.
      */

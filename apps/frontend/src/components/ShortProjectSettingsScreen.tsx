@@ -18,8 +18,16 @@ import {
 } from "../api/projectsApi.js";
 import { createStoryPromptDraftPreview, toStoryDisplayError } from "../api/storyPromptApi.js";
 import { Spinner } from "./Spinner.js";
+import { ContinueToNextStep } from "./ui/ContinueToNextStep.js";
+import type { ResumeTarget } from "../utils/resumeTarget.js";
 
-interface Props { projectId: string; onBack: () => void; justCreated?: boolean; }
+interface Props {
+  projectId: string;
+  onBack: () => void;
+  justCreated?: boolean;
+  /** Optional so the screen still renders in isolation; when passed, the page offers the step that follows it. */
+  onResume?: (target: ResumeTarget) => void;
+}
 type State = {
   settings: ShortProjectSettings | null;
   loading: boolean;
@@ -765,7 +773,7 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
   );
 }
 
-export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = false }: Props) {
+export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = false, onResume }: Props) {
   const [state, setState] = useState<State>({ settings: null, loading: true, error: null, sceneCountChangeable: true, aspectRatioChangeable: true });
   const saving = useRef(false);
   const [characterOptions, setCharacterOptions] = useState<Asset[] | null>(null);
@@ -787,6 +795,15 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
   const [promptPreviewError, setPromptPreviewError] = useState<{ code: string; message: string } | null>(null);
   const promptPreviewRequest = useRef(0);
   const [justSaved, setJustSaved] = useState(false);
+  /**
+   * The form as the server last confirmed it, so the page can tell whether the box at the top is still unsaved.
+   *
+   * 🔴 Needed only because of the forward button below. The three sections under the form save on every click,
+   * but this box does not — it waits for 「설정 저장」, and its own copy says so. Offering a step forward beside a
+   * box that quietly holds unsaved edits would turn a stated rule into a trap, and the edits it would drop are
+   * the ones that decide what the paid script is generated from.
+   */
+  const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
   const justSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -830,7 +847,9 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
   useEffect(() => {
     let cancelled = false;
     getProjectSettings(projectId).then(({ settings, sceneCountChangeable, aspectRatioChangeable }) => {
-      if (!cancelled) setState({ settings, loading: false, error: null, sceneCountChangeable, aspectRatioChangeable });
+      if (cancelled) return;
+      setState({ settings, loading: false, error: null, sceneCountChangeable, aspectRatioChangeable });
+      setSavedSnapshot(JSON.stringify(settings));
     }).catch((error: unknown) => {
       if (!cancelled) setState({ settings: null, loading: false, error: toDisplayError(error), sceneCountChangeable: true, aspectRatioChangeable: true });
     });
@@ -897,6 +916,9 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
       // and the response does not carry them. Replacing the whole state here dropped both, which typechecked
       // as an error and would have shown the locked fields as editable again right after a save.
       setState((old) => ({ ...old, settings: response.settings, loading: false, error: null }));
+      // The server's own copy, not what was sent — it trims and derives, so comparing against the request would
+      // report the form as unsaved the instant it was saved.
+      setSavedSnapshot(JSON.stringify(response.settings));
       setJustSaved(true);
       if (justSavedTimer.current) clearTimeout(justSavedTimer.current);
       justSavedTimer.current = setTimeout(() => setJustSaved(false), 4000);
@@ -904,6 +926,9 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
       setState((old) => ({ ...old, loading: false, error: toDisplayError(error) }));
     } finally { saving.current = false; }
   }
+
+  /** True only when the form is known to differ from what the server confirmed. An unknown snapshot is not "dirty". */
+  const formUnsaved = state.settings !== null && savedSnapshot !== null && JSON.stringify(state.settings) !== savedSnapshot;
 
   if (state.loading && !state.settings) return <Spinner label="불러오는 중…" className="mt-8" />;
   return (
@@ -1211,15 +1236,39 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
           settings later hit a dead end. The bar now always renders; only its wording changes.
           The note is not filler: the three sections above save on every click, the form at the top does not. */}
       {state.settings && (
-        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-white/10 pt-4">
-          {justCreated ? (
-            <button type="button" data-testid="finish-setup-button" className={primaryButton} onClick={onBack}>
-              설정 완료 · 계속 진행하기
+        <div className="space-y-2 border-t border-white/10 pt-4">
+          {/*
+           * 🔴 캡틴D: 「여기서 프로젝트로 돌아가기는 이상하지 않아? 다음 단계로 이어져야 하지 않나?」
+           *
+           * Both buttons here called `onBack`, and one of them said 「설정 완료 · 계속 진행하기」 while doing it —
+           * a label that promised the next step and delivered the project screen. That is the same defect as the
+           * image-review screen announcing a move it did not offer, in its more embarrassing form: the words were
+           * already right and only the destination was missing.
+           *
+           * 🟠 `ContinueToNextStep` is used here, unlike on the image-review screen where I argued against it.
+           * The reason it was wrong there is the reason it is fine here: it loads the project itself and fails
+           * silent, so it can vanish — and there it was the ONLY way forward, which would have reproduced the
+           * complaint. This screen keeps its own two exits either way, so a silent failure costs a shortcut
+           * rather than the way out.
+           */}
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <button
+              type="button"
+              data-testid={justCreated ? "finish-setup-button" : "settings-done-button"}
+              className={onResume ? outlineButton : primaryButton}
+              onClick={onBack}
+            >
+              {justCreated ? "프로젝트로 이동" : "프로젝트로 돌아가기"}
             </button>
-          ) : (
-            <button type="button" data-testid="settings-done-button" className={primaryButton} onClick={onBack}>
-              프로젝트로 돌아가기
-            </button>
+            {onResume && <ContinueToNextStep projectId={projectId} onResume={onResume} disabled={formUnsaved} />}
+          </div>
+          {onResume && formUnsaved && (
+            /* Refused rather than hidden, and the reason names the button that clears it. The box at the top is
+               the one thing on this page that does not save itself, and this is the one control that could carry
+               someone past it. */
+            <p role="status" data-testid="settings-unsaved-warning" className="text-right text-xs text-amber-300">
+              위 상자에 저장하지 않은 내용이 있습니다. <span className="font-semibold">설정 저장</span>을 먼저 눌러 주세요.
+            </p>
           )}
         </div>
       )}

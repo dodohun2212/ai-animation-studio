@@ -114,7 +114,10 @@ describe("App", () => {
 
     // Successful creation lands on setup (cast/atmosphere/continuity) first, not the bare detail view.
     await screen.findByTestId("just-created-notice");
-    fireEvent.click(screen.getByRole("button", { name: "설정 완료 · 계속 진행하기" }));
+    // By testid: the closing bar's exit now says the same thing as the header's, because both go to the same
+    // place. Its old label 「설정 완료 · 계속 진행하기」 promised the next step and delivered the project screen,
+    // and the step it promised is a second button beside it now.
+    fireEvent.click(screen.getByTestId("finish-setup-button"));
 
     // That hands off to the detail view for the same project.
     await screen.findByText("sample_project");
