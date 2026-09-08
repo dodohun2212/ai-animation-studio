@@ -70,10 +70,39 @@ describe("withProjectLock", () => {
       });
     });
     await firstStarted;
-    // A real call site never overrides timeoutMs — only this test does, so it can
-    // exercise the timeout path in milliseconds instead of the real 10s ACQUIRE_TIMEOUT_MS.
-    await expect(withProjectLock(directory, "busy_job", async () => "should not run", { timeoutMs: 100 }))
-      .rejects.toThrow(ProjectLockTimeoutError);
+    /*
+     * 🟠 Instrumented rather than asserted with `rejects.toThrow`, because this pair has now failed twice in a
+     * full-suite run and passed both times on its own and on re-run (2026-09-07 and 2026-09-09) — and neither
+     * failure said which way it went. `rejects.toThrow` reports "did not throw the expected error" for three
+     * genuinely different bugs, and they need different fixes: the second arrival WON the lock (the guard is
+     * broken), it lost with a different error (a filesystem error is escaping the acquire loop — plausible on
+     * Windows, where a `wx` create under load can come back EPERM rather than EEXIST and this code rethrows
+     * anything that is not EEXIST), or it simply took too long (a starved event loop, and nothing is wrong).
+     *
+     * So the outcome is captured and named. Nothing is retried and nothing is tolerated — the assertions below
+     * are exactly as strict as the one they replace. What changed is that the next occurrence arrives with the
+     * answer attached instead of sending someone back to reproduce a load-dependent flake.
+     *
+     * A real call site never overrides timeoutMs — only this test does, so it can exercise the timeout path in
+     * milliseconds instead of really waiting the 10s ACQUIRE_TIMEOUT_MS out.
+     */
+    const startedAt = Date.now();
+    const outcome = await withProjectLock(directory, "busy_job", async () => "should not run", { timeoutMs: 100 })
+      .then((value) => ({ kind: "resolved" as const, value }))
+      .catch((error: unknown) => ({ kind: "rejected" as const, error }));
+    const elapsedMs = Date.now() - startedAt;
+    // Whether the first holder's file was still on disk when the second arrival gave up. If this is false the
+    // lock was released or reclaimed underneath the attempt, which is a different story from a busy lock.
+    const lockStillHeld = await fs.readFile(path.join(directory, ".lock-busy_job"), "utf8").then(() => true, () => false);
+    const detail = (error: unknown) => {
+      const asError = error as { name?: string; code?: string; message?: string } | null;
+      return `${asError?.name ?? typeof error}/${asError?.code ?? "-"}: ${asError?.message ?? String(error)}`;
+    };
+
+    expect(outcome.kind, `the second arrival WON a held lock after ${elapsedMs}ms (holder's file still on disk: ${lockStillHeld})`)
+      .toBe("rejected");
+    expect(outcome.kind === "rejected" && outcome.error, `waited ${elapsedMs}ms and failed for another reason — ${outcome.kind === "rejected" ? detail(outcome.error) : ""} (holder's file still on disk: ${lockStillHeld})`)
+      .toBeInstanceOf(ProjectLockTimeoutError);
     releaseFirst();
   });
 
