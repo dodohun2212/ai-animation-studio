@@ -455,7 +455,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
           only what is known: this is an older reading and the screen is still trying. Whether the run itself is
           still going is exactly what could not be read, so it is not asserted either way. */}
       {pollFailures > 0 && progress && (progress.status === "created" || progress.status === "running") && (
-        <div data-testid="progress-stale" className="space-y-2 rounded-lg border border-amber-400/30 bg-amber-500/[0.06] p-3">
+        <div data-testid="progress-stale" className="space-y-2 rounded-xl border border-amber-400/30 bg-amber-500/[0.06] p-3">
           <p className="text-sm text-amber-200">
             진행 상황을 다시 읽지 못했습니다. <span className="font-semibold">아래는 마지막으로 확인된 상태</span>이고, 계속 다시 확인하고 있습니다.
           </p>
@@ -465,7 +465,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
 
       {progress && (
         <>
-          <p className="text-sm font-semibold text-slate-200" data-testid="workflow-status">
+          <p className="text-sm font-semibold text-slate-100" data-testid="workflow-status">
             상태: {STATUS_LABEL[progress.status]}
             {progress.status === "running" && progress.currentSceneNumber
               ? ` · 현재 ${progress.currentSceneNumber}번 장면`
@@ -550,7 +550,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                   {recoverPending ? "가져오는 중..." : "이미 만든 영상 먼저 가져오기 (무료)"}
                 </button>
                 {recoverConfirmOpen && (
-                  <div role="alertdialog" aria-label="이미 만든 영상 가져오기 확인" data-testid="failed-scenes-recover-confirm" className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3">
+                  <div role="alertdialog" aria-label="이미 만든 영상 가져오기 확인" data-testid="failed-scenes-recover-confirm" className="space-y-2 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3">
                     <p className="text-sm text-slate-300">가져오기 자체는 <strong className="text-slate-100">비용이 들지 않습니다</strong> — 상태를 묻고 내려받기만 합니다. 못 찾으면 아무것도 바뀌지 않습니다.</p>
                     <p className="text-sm text-amber-200">
                       다만 되찾은 장면은 <strong className="text-amber-100">실패가 풀립니다.</strong> 그러면 남은 장면이 있는 경우 <strong className="text-amber-100">곧바로 이어서 만들어지고, 그 장면들은 청구됩니다</strong>. 되찾은 것이 마지막 장면이면 검토로 넘어가고 추가 비용은 없습니다.
@@ -624,7 +624,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                           role="alertdialog"
                           aria-label={`${sceneNumber}번 장면 다시 시도 확인`}
                           data-testid={`failed-scene-retry-confirm-${sceneNumber}`}
-                          className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
+                          className="space-y-2 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
                         >
                           <p className="text-sm font-semibold text-amber-300">{sceneNumber}번 장면을 다시 시도할까요?</p>
                           <RetryCostNotice
@@ -809,7 +809,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                       role="alertdialog"
                       aria-label="전체 장면 재생성 확인"
                       data-testid="regenerate-all-confirm-panel"
-                      className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
+                      className="space-y-2 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
                     >
                       <p className="text-sm font-semibold text-amber-300">{totalScenes}개 장면 영상을 모두 다시 생성할까요?</p>
                       <p className="text-xs text-slate-300">
@@ -936,7 +936,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                             {scene?.motionPrompt && (
                               <details data-testid={`video-review-prompt-${review.sceneNumber}`} className="text-xs text-slate-400">
                                 <summary className="cursor-pointer text-slate-300">이 영상을 만든 프롬프트 보기</summary>
-                                <p className="mt-1 whitespace-pre-wrap break-words rounded-lg border border-white/10 bg-slate-900/60 p-2 text-slate-300">
+                                <p className="mt-1 whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-slate-900/60 p-2 text-slate-300">
                                   {scene.motionPrompt}
                                 </p>
                               </details>
@@ -969,7 +969,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                                 role="alertdialog"
                                 aria-label={`${review.sceneNumber}번 장면 재생성 확인`}
                                 data-testid={`video-regenerate-confirm-panel-${review.sceneNumber}`}
-                                className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
+                                className="space-y-2 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
                               >
                                 <p className="text-sm font-semibold text-amber-300">
                                   {review.sceneNumber}번 장면 영상을 다시 생성할까요?

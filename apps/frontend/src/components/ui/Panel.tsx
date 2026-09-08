@@ -1,17 +1,23 @@
 import type { ReactNode } from "react";
 
 /**
- * §3.4's meanings, not a colour picker. `warning` is amber, `danger` rose, `success` emerald, `accent` violet —
+ * §2.1's meanings, not a colour picker. `warning` is amber, `danger` rose, `success` emerald, `accent` violet —
  * a panel takes a tone because of what it says, never because the screen wanted variety.
+ */
+/*
+ * 🔴 Every colour here is on §7's list. The first draft reached for `teal-300` and `orange-300` to make the
+ * two-stop bars prettier, and neither is on it — §7 names `teal` in its refusals. A tone that means one
+ * thing does not need two hues to say it, so each bar is now one hue light-to-dark. Violet→fuchsia stays
+ * because that pair IS the brand gradient, and both are on the list.
  */
 export type PanelTone = "default" | "accent" | "success" | "warning" | "danger";
 
 const TONE: Record<PanelTone, { border: string; surface: string; bar: string }> = {
   default: { border: "border-white/10", surface: "bg-gradient-to-b from-slate-900/80 to-slate-900/55", bar: "from-violet-400 to-fuchsia-400" },
   accent: { border: "border-violet-400/25", surface: "bg-violet-500/[0.07]", bar: "from-violet-400 to-fuchsia-400" },
-  success: { border: "border-emerald-400/30", surface: "bg-emerald-500/[0.05]", bar: "from-emerald-400 to-teal-300" },
-  warning: { border: "border-amber-400/30", surface: "bg-amber-500/[0.05]", bar: "from-amber-400 to-orange-300" },
-  danger: { border: "border-rose-400/30", surface: "bg-rose-500/[0.05]", bar: "from-rose-400 to-pink-300" },
+  success: { border: "border-emerald-400/30", surface: "bg-emerald-500/[0.05]", bar: "from-emerald-400 to-emerald-300" },
+  warning: { border: "border-amber-400/30", surface: "bg-amber-500/[0.05]", bar: "from-amber-400 to-amber-300" },
+  danger: { border: "border-rose-400/30", surface: "bg-rose-500/[0.05]", bar: "from-rose-400 to-rose-300" },
 };
 
 interface Props {
@@ -30,7 +36,7 @@ interface Props {
 /**
  * One card of a screen.
  *
- * 🔴 The heading takes an accent bar rather than a second glow dot. §3.6 allows exactly three glows and the
+ * 🔴 The heading takes an accent bar rather than a second glow dot. §2.5 allows exactly three glows and the
  * screen title already spends one; a screen with nine glowing cards is a screen where the glow has stopped
  * meaning "this is the title".
  */

@@ -94,7 +94,7 @@ function StageCard({
         </div>
         <div className="rounded-xl border border-white/10 bg-slate-950/50 p-3">
           <dt className="text-xs text-slate-400">1회당 비용</dt>
-          <dd className="mt-0.5 text-lg font-semibold tabular-nums text-slate-200">{usd(unitCostUsd)}</dd>
+          <dd className="mt-0.5 text-lg font-semibold tabular-nums text-slate-100">{usd(unitCostUsd)}</dd>
           <p className="mt-1 text-xs text-slate-500">예상 기준값</p>
         </div>
         <div className="rounded-xl border border-white/10 bg-slate-950/50 p-3">
@@ -285,7 +285,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
             회차 수
             <select
               id="workflow-guide-episode-count"
-              className="ml-2 rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none"
+              className="ml-2 rounded-xl border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none"
               value={episodeCount}
               onChange={(event) => setEpisodeCount(Number(event.target.value))}
             >
@@ -303,7 +303,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
             </div>
             <div className="rounded-xl border border-white/10 bg-slate-950/50 p-3">
               <p className="text-xs text-slate-400">회차 하나당</p>
-              <p data-testid="workflow-guide-long-per-episode" className="mt-0.5 text-lg font-semibold tabular-nums text-slate-200">
+              <p data-testid="workflow-guide-long-per-episode" className="mt-0.5 text-lg font-semibold tabular-nums text-slate-100">
                 {longPerEpisodeCalls}회 · {usd(longPerEpisodeCost)}
               </p>
               <p className="mt-1 text-xs text-slate-500">대본 1 + 이미지 {imageCalls} + 영상 {videoCalls}{narrationEnabled ? ` + 음성 ${narrationCalls}` : ""}</p>
@@ -334,7 +334,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
             장면 수
             <select
               id="workflow-guide-scene-count"
-              className="ml-2 rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none"
+              className="ml-2 rounded-xl border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none"
               value={sceneCount}
               onChange={(event) => setSceneCount(Number(event.target.value))}
             >
@@ -349,7 +349,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
             장면당 길이
             <select
               id="workflow-guide-clip-duration"
-              className="ml-2 rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none"
+              className="ml-2 rounded-xl border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none"
               value={clipDurationSeconds}
               onChange={(event) => setClipDurationSeconds(Number(event.target.value) as RunwayClipDurationSeconds)}
             >

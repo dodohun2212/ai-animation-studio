@@ -132,7 +132,7 @@ export function StorySecretsCard({ projectId }: Props) {
         const editingHere = editing?.collection === collection;
         return (
           <div key={collection} className="space-y-2 rounded-xl border border-white/10 bg-slate-950/40 p-3.5">
-            <p className="text-sm font-medium text-slate-200">{label}</p>
+            <p className="text-sm font-medium text-slate-100">{label}</p>
             <p className="text-xs text-slate-500">{hint}</p>
             {bible && items.length === 0 && (
               <p data-testid={`story-secrets-empty-${collection}`} className="text-sm text-slate-400">
@@ -142,7 +142,7 @@ export function StorySecretsCard({ projectId }: Props) {
             {items.length > 0 && (
               <ul aria-label={`${label} 목록`} className="space-y-2">
                 {items.map((item) => (
-                  <li key={item.id} className="rounded-lg border border-white/10 bg-slate-900/60 p-3">
+                  <li key={item.id} className="rounded-xl border border-white/10 bg-slate-900/60 p-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <strong className="text-slate-100">{item.name || item.id}</strong>
                       <span className="text-xs text-violet-300">
@@ -175,7 +175,7 @@ export function StorySecretsCard({ projectId }: Props) {
                 ))}
               </ul>
             )}
-            <div className="space-y-2 rounded-lg border border-violet-400/25 bg-slate-900/60 p-3">
+            <div className="space-y-2 rounded-xl border border-violet-400/25 bg-slate-900/60 p-3">
               <p className="text-xs font-medium text-slate-300">{editingHere ? `${label} 수정` : `${label} 추가`}</p>
               <label className="block text-xs text-slate-400">
                 이름

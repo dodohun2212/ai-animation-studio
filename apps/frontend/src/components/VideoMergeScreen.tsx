@@ -417,7 +417,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
           <button
             type="button"
             data-testid="photo-card-remake"
-            className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5"
+            className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
             onClick={() => { setRemaking(true); setError(null); }}
           >
             자막 고쳐서 다시 만들기
@@ -438,7 +438,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
           </p>
           <AttributionNotice usedAudio={result.project.usedAudio} />
           {unplayable ? (
-            <p data-testid="final-video-missing" className="rounded-lg border border-amber-400/30 bg-amber-500/[0.06] px-3 py-2 text-sm text-amber-200">
+            <p data-testid="final-video-missing" className="rounded-xl border border-amber-400/30 bg-amber-500/[0.06] px-3 py-2 text-sm text-amber-200">
               최종 영상 파일을 재생할 수 없습니다. 장면 영상 중에 내용이 비어 있는 것이 섞여 있을 수 있습니다 — 장면 영상 화면에서 하나씩 재생해 확인해 주세요.
             </p>
           ) : (
@@ -461,7 +461,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
               <button
                 type="button"
                 data-testid="open-in-explorer-button"
-                className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5 disabled:opacity-50"
+                className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50"
                 onClick={() => void openInExplorer()}
                 disabled={openPending}
               >

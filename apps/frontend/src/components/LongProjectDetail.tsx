@@ -329,7 +329,7 @@ export function LongProjectDetail({
                       now — not when they come back to restore and find a different number. */}
                   다만 <strong className="text-slate-100">돌아올 때는 마지막 회차 번호</strong>가 됩니다.
                 </p>
-                <label className="mt-3 block text-sm text-slate-200" htmlFor="episode-archive-confirmation">
+                <label className="mt-3 block text-sm text-slate-300" htmlFor="episode-archive-confirmation">
                   맞으면 회차 번호 <strong className="text-slate-100">{selectedEpisode.episodeNumber}</strong>을(를) 입력해 주세요
                 </label>
                 <input
@@ -383,7 +383,7 @@ export function LongProjectDetail({
                       <button
                         type="button"
                         data-testid={`open-episode-narration-${episode.episodeNumber}`}
-                        className="ml-auto text-slate-400 hover:text-slate-200"
+                        className="ml-auto text-slate-400 hover:text-slate-100"
                         onClick={() => onOpenNarrationReview(projectId, episode.episodeNumber)}
                       >
                         내레이션
@@ -397,7 +397,7 @@ export function LongProjectDetail({
                       <button
                         type="button"
                         data-testid={`open-episode-outline-${episode.episodeNumber}`}
-                        className="text-slate-400 hover:text-slate-200"
+                        className="text-slate-400 hover:text-slate-100"
                         onClick={() => onOpenEpisodeOutline(projectId, episode.episodeNumber)}
                       >
                         이 회차 내용
@@ -476,11 +476,11 @@ export function LongProjectDetail({
                       </span>
                     </div>
                     {restoreConfirmId === archive.archiveId ? (
-                      <div role="alertdialog" aria-label="회차 되돌리기 확인" data-testid={`episode-restore-confirm-${archive.archiveId}`} className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3">
+                      <div role="alertdialog" aria-label="회차 되돌리기 확인" data-testid={`episode-restore-confirm-${archive.archiveId}`} className="space-y-2 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3">
                         {/* The one thing this screen must not let someone assume. Archiving only ever takes the
                             last Episode and the project may have grown since, so putting it back where it left
                             from would either overwrite an Episode or renumber the ones after it. */}
-                        <p className="text-sm text-slate-200">
+                        <p className="text-sm text-slate-300">
                           <strong className="text-slate-100">{archive.episodeNumber}화가 아니라 마지막 회차로 돌아옵니다.</strong>{" "}
                           지금 {lastEpisodeNumber}화까지 있으니 {lastEpisodeNumber + 1}화가 됩니다. 내용은 보관할 때 그대로입니다.
                         </p>

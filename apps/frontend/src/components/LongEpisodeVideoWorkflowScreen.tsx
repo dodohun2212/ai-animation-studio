@@ -374,7 +374,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
         <section data-testid="episode-video-progress" className={cardSection}>
           <p className="text-sm text-slate-300">작업 상태: {{ created: "생성됨", running: "진행 중", succeeded: "완료됨", failed: "실패", interrupted: "중단됨" }[job.status] ?? "상태 확인 중"}</p>
           <ol className="grid grid-cols-2 gap-2 text-sm text-slate-300 sm:grid-cols-3">
-            {job.sceneNumbers.map((scene) => <li key={scene} data-testid={`episode-video-progress-${scene}`} className="rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2">{scene}: {job.completedSceneNumbers.includes(scene) ? "완료" : job.currentSceneNumber === scene ? "진행 중" : job.failedSceneNumbers.includes(scene) ? "실패" : "대기 중"}</li>)}
+            {job.sceneNumbers.map((scene) => <li key={scene} data-testid={`episode-video-progress-${scene}`} className="rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2">{scene}: {job.completedSceneNumbers.includes(scene) ? "완료" : job.currentSceneNumber === scene ? "진행 중" : job.failedSceneNumbers.includes(scene) ? "실패" : "대기 중"}</li>)}
           </ol>
           {/*
             * Said where the numbers are, because the numbers are what has gone stale.
@@ -389,7 +389,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
             * scenes are generated.
             */}
           {pollFailures > 0 && (job.status === "created" || job.status === "running") && (
-            <div data-testid="episode-video-progress-stale" className="space-y-2 rounded-lg border border-amber-400/30 bg-amber-500/[0.06] p-3">
+            <div data-testid="episode-video-progress-stale" className="space-y-2 rounded-xl border border-amber-400/30 bg-amber-500/[0.06] p-3">
               <p className="text-sm text-amber-200">
                 진행 상황을 다시 읽지 못했습니다. <span className="font-semibold">위 목록은 마지막으로 확인된 상태</span>이고, 계속 다시 확인하고 있습니다.
               </p>
@@ -400,7 +400,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
           {/* Every other paid button on this screen confirms first; this one spent money on a single click. */}
           {job.status === "interrupted" && <button type="button" data-testid="episode-video-restart" className={outlineButton} disabled={busy} onClick={() => setRestartConfirm(true)}>남은 장면 이어서 만들기</button>}
           {restartConfirm && (
-            <div role="alertdialog" data-testid="episode-video-restart-confirm" className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3">
+            <div role="alertdialog" data-testid="episode-video-restart-confirm" className="space-y-2 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3">
               <p className="text-sm text-amber-200">중단된 지점부터 남은 장면 영상을 이어서 만들까요? Runway 키가 연결되어 있으면 만드는 장면 수만큼 실제로 청구됩니다.</p>
               <div className="flex gap-2">
                 <button type="button" className={smallOutlineButton} onClick={() => setRestartConfirm(false)}>취소</button>
@@ -436,7 +436,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
               {busy ? "가져오는 중..." : "이미 만든 영상 먼저 가져오기 (무료)"}
             </button>
             {recoverConfirm && (
-              <div role="alertdialog" aria-label="이미 만든 영상 가져오기 확인" data-testid="episode-video-failed-recover-confirm" className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3">
+              <div role="alertdialog" aria-label="이미 만든 영상 가져오기 확인" data-testid="episode-video-failed-recover-confirm" className="space-y-2 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3">
                 <p className="text-sm text-slate-300">가져오기 자체는 <strong className="text-slate-100">비용이 들지 않습니다</strong> — 상태를 묻고 내려받기만 합니다. 못 찾으면 아무것도 바뀌지 않습니다.</p>
                 <p className="text-sm text-amber-200">
                   다만 되찾은 장면은 <strong className="text-amber-100">실패가 풀립니다.</strong> 그러면 남은 장면이 있는 경우 <strong className="text-amber-100">곧바로 이어서 만들어지고, 그 장면들은 청구됩니다</strong>. 되찾은 것이 마지막 장면이면 검토로 넘어가고 추가 비용은 없습니다.
@@ -467,7 +467,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
               const mustChangeInput = failure?.remedy === "change_input";
               const cannotRetry = failure?.remedy === "not_retryable";
               return (
-              <li key={scene} data-testid={`episode-video-failed-${scene}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-slate-950/60 p-3">
+              <li key={scene} data-testid={`episode-video-failed-${scene}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-950/60 p-3">
                 <div className="flex-1 space-y-1">
                   <span className="text-sm text-slate-300">{scene}번 장면</span>
                   <p data-testid={`episode-video-failed-reason-${scene}`} className="text-xs text-rose-300">{episodeSceneErrorMessage(job.sceneErrors?.[scene], failure?.providerCode)}</p>
@@ -484,7 +484,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
                   <button type="button" data-testid={`episode-video-failed-retry-${scene}`} className={smallOutlineButton} disabled={busy || regenerate === scene} onClick={() => { setConfirmRegenerateAll(false); setRegenerateInstruction(""); setRegenerate(scene); }}>다시 시도</button>
                 )}
                 {regenerate === scene && (
-                  <div role="alertdialog" data-testid={`episode-video-failed-retry-confirm-${scene}`} className="w-full space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3">
+                  <div role="alertdialog" data-testid={`episode-video-failed-retry-confirm-${scene}`} className="w-full space-y-2 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3">
                     <p className="text-sm text-amber-200">{scene}번 장면을 다시 시도할까요? Runway 키가 연결되어 있으면 이번 시도분이 실제로 청구됩니다.</p>
                     <RetryCostNotice estimate={job.retryEstimate} sceneCount={scenesRetryBuys(job.retryEstimate, 1)} data-testid={`episode-video-failed-retry-cost-${scene}`} />
                     {/*
@@ -667,7 +667,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
                 </span>
               </div>
               {unplayable.includes(review.sceneNumber) ? (
-                <p data-testid={`episode-video-missing-${review.sceneNumber}`} className="rounded-lg border border-amber-400/30 bg-amber-500/[0.06] px-3 py-2 text-sm text-amber-200">
+                <p data-testid={`episode-video-missing-${review.sceneNumber}`} className="rounded-xl border border-amber-400/30 bg-amber-500/[0.06] px-3 py-2 text-sm text-amber-200">
                   {recovery
                     ? "이 장면 영상은 남아 있지 않습니다. 보려면 다시 만들어야 하고, 비용이 듭니다."
                     : "영상을 아직 가져오지 않았습니다. 위의 '이미 만든 영상 가져오기'를 눌러 주세요."}
@@ -675,7 +675,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
               ) : (
                 <video
                   data-testid={`episode-video-player-${review.sceneNumber}`}
-                  className="w-full rounded-lg border border-white/10 bg-black"
+                  className="w-full rounded-xl border border-white/10 bg-black"
                   controls
                   preload="metadata"
                   src={longEpisodeVideoContentUrl(projectId, episodeNumber, review.sceneNumber, String(videoVersion))}
@@ -705,7 +705,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
                 }}
               />
               {regenerate === review.sceneNumber && (
-                <div role="alertdialog" data-testid={`episode-video-regenerate-confirm-${review.sceneNumber}`} className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3">
+                <div role="alertdialog" data-testid={`episode-video-regenerate-confirm-${review.sceneNumber}`} className="space-y-2 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3">
                   <p className="text-sm text-amber-200">{review.sceneNumber}번 장면을 다시 만들까요? Runway 키가 연결되어 있으면 이번 재생성분이 실제로 청구됩니다.</p>
                   <RetryCostNotice estimate={job.retryEstimate} sceneCount={scenesRetryBuys(job.retryEstimate, 1)} data-testid={`episode-video-regenerate-cost-${review.sceneNumber}`} />
                   {/* The same field the short project's video retry uses. Used once and never stored, so the

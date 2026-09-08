@@ -398,7 +398,7 @@ export function LongEpisodeNarrationReviewScreen({ projectId, episodeNumber, onB
                       </span>
                     </div>
                     {stale && (
-                      <p data-testid={`episode-narration-stale-${item.sceneNumber}`} className="rounded-lg border border-rose-400/30 bg-rose-500/[0.06] px-3 py-2 text-sm text-rose-200">
+                      <p data-testid={`episode-narration-stale-${item.sceneNumber}`} className="rounded-xl border border-rose-400/30 bg-rose-500/[0.06] px-3 py-2 text-sm text-rose-200">
                         녹음된 음성이 지금 문장과 다릅니다. 아래 문장이 맞으면 이 장면만 다시 만들어 주세요.
                       </p>
                     )}
@@ -445,7 +445,7 @@ export function LongEpisodeNarrationReviewScreen({ projectId, episodeNumber, onB
                         role="alertdialog"
                         aria-label={`${item.sceneNumber}번 장면 음성 재생성 확인`}
                         data-testid={`episode-narration-regenerate-confirm-${item.sceneNumber}`}
-                        className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
+                        className="space-y-2 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
                       >
                         <p className="text-sm text-amber-200">
                           {item.sceneNumber}번 장면 음성을 다시 만들까요? OpenAI 키가 연결되어 있으면 이번 재생성분이 실제로

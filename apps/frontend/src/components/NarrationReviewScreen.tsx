@@ -415,7 +415,7 @@ export function NarrationReviewScreen({ projectId, onBack, onResume }: Props) {
                         role="alertdialog"
                         aria-label={`${item.sceneNumber}번 장면 음성 재생성 확인`}
                         data-testid={`narration-regenerate-confirm-${item.sceneNumber}`}
-                        className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
+                        className="space-y-2 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
                       >
                         <p className="text-sm text-amber-200">
                           {item.sceneNumber}번 장면 음성을 다시 만들까요? OpenAI 키가 연결되어 있으면 이번 재생성분이 실제로

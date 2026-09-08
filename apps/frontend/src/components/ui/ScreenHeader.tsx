@@ -25,7 +25,7 @@ interface Props {
  * The band every screen opens with.
  *
  * Sixteen screens had already converged on the same five lines of markup — back button, then an <h1> carrying
- * the glow dot from §3.6 — by copy. Copies drift: five of them had drifted onto `text-slate-200`, which the
+ * the glow dot from §2.5 — by copy. Copies drift: five of them had drifted onto `text-slate-300`, which the
  * design system does not have. One component is how the next screen inherits the decision instead of the
  * paste.
  *

@@ -28,7 +28,7 @@ interface Props {
   onOpenSettings: (projectId: string) => void;
 }
 
-const secondaryButton = "rounded-full border border-white/15 px-3 py-1.5 text-xs text-slate-200 hover:bg-white/5 disabled:opacity-50";
+const secondaryButton = "rounded-full border border-white/15 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const dangerButton = "rounded-full border border-rose-400/40 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-200 hover:bg-rose-500/15 disabled:opacity-50";
 
 type DisplayError = { code: string; message: string; details?: Record<string, unknown> };
@@ -228,7 +228,7 @@ export function StoryPromptScreen({ projectId, onBack, onOpenMappingReview, onOp
           const script = textOf(scene?.script);
           const narration = textOf(scene?.narration);
           return (
-            <li key={number} data-testid={`generated-scene-${number}`} className="rounded-lg border border-white/5 bg-slate-900/50 p-3">
+            <li key={number} data-testid={`generated-scene-${number}`} className="rounded-xl border border-white/5 bg-slate-900/50 p-3">
               <p className="text-xs font-semibold text-violet-300">{number}번 장면</p>
               {script.trim() ? (
                 <p className="mt-1 whitespace-pre-wrap text-sm text-slate-300">{script}</p>
@@ -296,15 +296,15 @@ export function StoryPromptScreen({ projectId, onBack, onOpenMappingReview, onOp
               <>
                 <p className="mt-1 text-sm text-slate-300">
                   장면 이미지를 이미 만들어서 대본은 다시 만들 수 없습니다. 지금 대본을 갈아엎으면 이미 만든 이미지가
-                  없는 이야기를 그린 것이 됩니다. 내용을 바꾸려면 아래 장면을 <span className="text-slate-200">장면 편집</span>에서
-                  고치거나, 설정을 바꿔 <span className="text-slate-200">새 프로젝트</span>를 만들어 주세요.
+                  없는 이야기를 그린 것이 됩니다. 내용을 바꾸려면 아래 장면을 <span className="text-slate-300">장면 편집</span>에서
+                  고치거나, 설정을 바꿔 <span className="text-slate-300">새 프로젝트</span>를 만들어 주세요.
                 </p>
                 <p className="mt-1 text-xs text-slate-500">이 화면에서 비용이 나갈 일은 없습니다.</p>
               </>
             ) : (
               <>
                 <p className="mt-1 text-sm text-slate-300">
-                  아직 장면 이미지를 만들기 전이라 <span className="text-slate-200">대본을 다시 만들 수 있습니다.</span>{" "}
+                  아직 장면 이미지를 만들기 전이라 <span className="text-slate-300">대본을 다시 만들 수 있습니다.</span>{" "}
                   같은 설정으로 다시 뽑으면 비슷한 이야기가 나오니, 마음에 안 든 부분이 설정에서 온 것이라면
                   프로젝트 설정을 먼저 고치는 편이 낫습니다.
                 </p>
@@ -329,11 +329,11 @@ export function StoryPromptScreen({ projectId, onBack, onOpenMappingReview, onOp
                     role="alertdialog"
                     aria-label="대본 다시 만들기 확인"
                     data-testid="regenerate-confirm-panel"
-                    className="mt-2.5 space-y-2 rounded-lg border border-amber-400/40 bg-slate-950/60 p-3"
+                    className="mt-2.5 space-y-2 rounded-xl border border-amber-400/40 bg-slate-950/60 p-3"
                   >
                     <p className="text-sm font-semibold text-amber-300">지금 대본을 지우고 다시 만들까요?</p>
                     <p className="text-sm text-slate-300">
-                      지금 장면 {existing.scenes.length}개가 <strong className="text-slate-200">모두 지워집니다.</strong>{" "}
+                      지금 장면 {existing.scenes.length}개가 <strong className="text-slate-300">모두 지워집니다.</strong>{" "}
                       되돌릴 수 없습니다. 지우기 자체는 비용이 들지 않고, 새 대본을 만들 때 다시 승인 단계를 거칩니다
                       (그때 ${STORY_ESTIMATED_COST_USD.toFixed(2)}).
                     </p>
@@ -366,7 +366,7 @@ export function StoryPromptScreen({ projectId, onBack, onOpenMappingReview, onOp
               </>
             )}
           </div>
-          <p className="text-sm font-semibold text-slate-200">지금 대본 · 장면 {existing.scenes.length}개</p>
+          <p className="text-sm font-semibold text-slate-100">지금 대본 · 장면 {existing.scenes.length}개</p>
           <SceneList scenes={existing.scenes} testId="existing-scene-list" />
           <NextSteps testId="existing-continue-to-mapping-review" />
         </div>
@@ -486,7 +486,7 @@ export function StoryPromptScreen({ projectId, onBack, onOpenMappingReview, onOp
               돌아가기 at the top of the page. Both are fixed here. */}
           {approved && approved.workflowState === WorkflowState.WaitingForAssetMappingReview && approved.scenes.length > 0 && (
             <div data-testid="generated-scenes" className="space-y-3 rounded-xl border border-white/10 bg-slate-950/60 p-4">
-              <p className="text-sm font-semibold text-slate-200">대본에서 {approved.scenes.length}개 장면이 생성되었습니다.</p>
+              <p className="text-sm font-semibold text-slate-100">대본에서 {approved.scenes.length}개 장면이 생성되었습니다.</p>
               <SceneList scenes={approved.scenes} testId="generated-scene-list" />
               <p className="text-xs text-slate-500">
                 내용을 고치려면 프로젝트 화면의 <span className="text-slate-400">장면 편집</span>에서 장면마다 바꿀 수 있습니다.

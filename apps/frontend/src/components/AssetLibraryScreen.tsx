@@ -55,11 +55,11 @@ const CHARACTER_ROLE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = 
 const fieldClassName =
   "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 const outlineButton =
-  "rounded-full border border-white/20 bg-white/[0.06] px-4 py-2 text-sm font-medium text-slate-200 shadow-sm hover:border-white/30 hover:bg-white/10 disabled:opacity-50";
+  "rounded-full border border-white/20 bg-white/[0.06] px-4 py-2 text-sm font-medium text-slate-100 shadow-sm hover:border-white/30 hover:bg-white/10 disabled:opacity-50";
 const dangerOutlineButton =
   "rounded-full border border-rose-400/40 bg-rose-500/10 px-4 py-2 text-sm font-medium text-rose-300 shadow-sm hover:border-rose-400/60 hover:bg-rose-500/15 disabled:opacity-50";
 const smallOutlineButton =
-  "rounded-full border border-white/20 bg-white/[0.06] px-3 py-1 text-xs font-medium text-slate-200 hover:border-white/30 hover:bg-white/10 disabled:opacity-50";
+  "rounded-full border border-white/20 bg-white/[0.06] px-3 py-1 text-xs font-medium text-slate-100 hover:border-white/30 hover:bg-white/10 disabled:opacity-50";
 const smallAddButton =
   "rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300 hover:border-emerald-400/60 hover:bg-emerald-500/15 disabled:opacity-50";
 const smallRemoveButton =
@@ -667,7 +667,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
               {audit && audit.length > 0 && (
                 <ul aria-label="파일 상태 목록" className="space-y-1.5 text-sm text-slate-300">
                   {audit.map((entry) => (
-                    <li key={entry.assetId} className="rounded-lg border border-white/10 bg-slate-950/40 p-2.5">
+                    <li key={entry.assetId} className="rounded-xl border border-white/10 bg-slate-950/40 p-2.5">
                       {entry.displayName} · {entry.classification === "healthy" ? "정상" : entry.classification === "missing" ? "파일 없음" : "손상됨"} ·{" "}
                       {entry.sourceKind === "manual" ? "수동 등록" : "프로젝트 생성"}
                       {entry.message && <span> — {entry.message}</span>}
@@ -769,7 +769,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                 }`}
               >
                 {asset.imageAvailable && asset.contentUrl ? (
-                  <img src={asset.contentUrl} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+                  <img src={asset.contentUrl} alt="" className="h-10 w-10 shrink-0 rounded-xl object-cover" />
                 ) : (
                   <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-slate-950/40 text-sm text-slate-500">
                     {asset.isFolder ? "📁" : "🖼"}
@@ -820,7 +820,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
             type="file"
             accept="image/*"
             disabled={importPending}
-            className="mt-1.5 block w-full text-sm text-slate-300 file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-slate-200 disabled:opacity-50"
+            className="mt-1.5 block w-full text-sm text-slate-300 file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-slate-100 disabled:opacity-50"
             onChange={(event) => { setFile(event.target.files?.[0] ?? null); setImportValidationError(null); }}
           />
         </label>
@@ -947,7 +947,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                 폴더 이름
                 <input value={editName} required disabled={editPending} className={fieldClassName} onChange={(event) => setEditName(event.target.value)} />
               </label>
-              <h4 className="pt-1 text-sm font-semibold text-slate-200">이 폴더 전체의 특징</h4>
+              <h4 className="pt-1 text-sm font-semibold text-slate-100">이 폴더 전체의 특징</h4>
               <p className="text-xs text-slate-400">
                 {selected.asset.assetType === "character"
                   ? "이 캐릭터가 어떻게 생겼는지, 어떤 성격인지 적어 주세요. 이 폴더 안의 모든 이미지에 공통으로 적용되고, 그림을 만들 때마다 AI에게 함께 전달됩니다."
@@ -977,7 +977,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
 
           {selected.asset.isFolder && (
             <section aria-label="폴더 구성" className="space-y-3 rounded-xl border border-white/10 bg-slate-950/30 p-3.5">
-              <h4 className="text-sm font-semibold text-slate-200">폴더 구성</h4>
+              <h4 className="text-sm font-semibold text-slate-100">폴더 구성</h4>
               <details>
               <summary className="cursor-pointer text-xs text-slate-500 hover:text-slate-400">이 폴더가 하는 일</summary>
               <p className="mt-1 text-xs text-slate-500">
@@ -1001,7 +1001,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                   {folderChildren.map((child, index) => (
                     <li key={child.assetId} className="space-y-2 rounded-xl border border-white/10 bg-slate-900/60 p-2.5 text-sm text-slate-300">
                       <div className="flex flex-wrap items-center gap-2">
-                        {child.imageAvailable && child.contentUrl && <img src={child.contentUrl} alt="" className="h-10 w-10 rounded-lg object-cover" />}
+                        {child.imageAvailable && child.contentUrl && <img src={child.contentUrl} alt="" className="h-10 w-10 rounded-xl object-cover" />}
                         <span className="flex-1">
                           {index + 1}. {child.displayName}
                           {selected.asset.thumbnailAssetId === child.assetId ? " (대표 이미지)" : ""}
@@ -1010,7 +1010,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                           <label className="flex items-center gap-1.5 text-xs text-slate-400">
                             역할
                             <select
-                              className="rounded-lg border border-white/10 bg-slate-950/60 px-2 py-1 text-xs text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
+                              className="rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1 text-xs text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
                               value={CHARACTER_ROLE_OPTIONS.some((option) => option.value === child.role) ? child.role : "other"}
                               disabled={folderMutationPending}
                               onChange={(event) => void updateChildRole(child.assetId, event.target.value)}
@@ -1026,7 +1026,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                         <label className="flex min-w-0 flex-1 items-center gap-1.5">
                           개별 특징
                           <input
-                            className="min-w-0 flex-1 rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
+                            className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
                             placeholder="이 이미지만의 특징 (예: 정면, 웃는 표정)"
                             value={childDescriptionDrafts[child.assetId] ?? child.description}
                             disabled={folderMutationPending}
@@ -1082,9 +1082,9 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                   everything below it off the screen. Content stays in the DOM — a closed <details> hides it
                   visually without removing it. */}
               <details className="border-t border-white/10 pt-3">
-              <summary className="cursor-pointer text-sm font-medium text-slate-300 hover:text-slate-200">이 폴더에 새 이미지 등록</summary>
+              <summary className="cursor-pointer text-sm font-medium text-slate-300 hover:text-slate-100">이 폴더에 새 이미지 등록</summary>
               <form onSubmit={submitFolderUpload} aria-label="이 폴더에 새 이미지 등록" className="mt-2 space-y-2">
-                <p className="text-sm font-semibold text-slate-200">이 폴더에 새 이미지 등록</p>
+                <p className="text-sm font-semibold text-slate-100">이 폴더에 새 이미지 등록</p>
                 <p className="text-xs text-slate-400">
                   아직 이미지 보관함에 없는 이미지를 바로 이 폴더 안으로 등록합니다. 유형은 이 폴더와 같은 것으로 들어갑니다.
                 </p>
@@ -1100,7 +1100,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                     type="file"
                     accept="image/*"
                     disabled={folderUploadPending}
-                    className="mt-1.5 block w-full text-sm text-slate-300 file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-slate-200 disabled:opacity-50"
+                    className="mt-1.5 block w-full text-sm text-slate-300 file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-slate-100 disabled:opacity-50"
                     onChange={(event) => { setFolderUploadFile(event.target.files?.[0] ?? null); setFolderUploadValidationError(null); }}
                   />
                 </label>
@@ -1146,14 +1146,14 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
               </form>
               </details>
               <details className="border-t border-white/10 pt-3">
-              <summary className="cursor-pointer text-sm font-medium text-slate-300 hover:text-slate-200">이미 등록된 이미지 넣기</summary>
+              <summary className="cursor-pointer text-sm font-medium text-slate-300 hover:text-slate-100">이미 등록된 이미지 넣기</summary>
               <form onSubmit={searchFolderLinkCandidates} aria-label="폴더에 추가할 이미지 검색" className="mt-2 space-y-2">
-                <p className="text-sm font-semibold text-slate-200">이미 등록된 이미지 넣기</p>
+                <p className="text-sm font-semibold text-slate-100">이미 등록된 이미지 넣기</p>
                 <p className="text-xs text-slate-400">이미지 보관함에 이미 등록된 같은 유형의 이미지를 검색해서 이 폴더에 추가할 수 있습니다.</p>
                 <div className="flex flex-wrap items-end gap-2">
                   <label className="flex flex-col gap-1 text-xs text-slate-400">
                     이미지 검색
-                    <input className="rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30" value={folderLinkQuery} onChange={(event) => setFolderLinkQuery(event.target.value)} />
+                    <input className="rounded-xl border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30" value={folderLinkQuery} onChange={(event) => setFolderLinkQuery(event.target.value)} />
                   </label>
                   <button type="submit" className={smallOutlineButton} disabled={folderLinkSearchLoading}>검색</button>
                 </div>
@@ -1170,7 +1170,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                       .map((asset) => (
                         <li key={asset.assetId} className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/40 p-2.5">
                           {asset.imageAvailable && asset.contentUrl && <img src={asset.contentUrl} alt="" className="h-8 w-8 rounded-md object-cover" />}
-                          <span className="flex-1 text-sm text-slate-200">{asset.displayName}</span>
+                          <span className="flex-1 text-sm text-slate-300">{asset.displayName}</span>
                           <button type="button" className={smallAddButton} disabled={folderMutationPending} onClick={() => void linkAssetToFolder(asset.assetId)}>
                             폴더에 넣기
                           </button>
@@ -1190,7 +1190,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
               screen twice, one of them behind a disclosure. */}
           {!selected.asset.isFolder && (
             <form onSubmit={submitEdit} aria-label="에셋 정보 편집" className="space-y-3 rounded-xl border border-white/10 bg-slate-950/30 p-3.5">
-              <h4 className="text-sm font-semibold text-slate-200">이미지 정보</h4>
+              <h4 className="text-sm font-semibold text-slate-100">이미지 정보</h4>
               <label className="block text-sm text-slate-300">
                 이름
                 <input value={editName} required disabled={editPending} className={fieldClassName} onChange={(event) => setEditName(event.target.value)} />
@@ -1211,7 +1211,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
 
           {!selected.asset.isFolder && (
             <section aria-label="버전 기록" className="space-y-3 rounded-xl border border-white/10 bg-slate-950/30 p-3.5">
-              <h4 className="text-sm font-semibold text-slate-200">버전 기록</h4>
+              <h4 className="text-sm font-semibold text-slate-100">버전 기록</h4>
               <ol aria-label="버전 목록" className="space-y-1 text-sm text-slate-300">
                 {selected.asset.versions.map((version) => (
                   <li key={version.version}>
@@ -1230,7 +1230,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                     type="file"
                     accept="image/*"
                     disabled={versionPending}
-                    className="mt-1.5 block w-full text-sm text-slate-300 file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-slate-200 disabled:opacity-50"
+                    className="mt-1.5 block w-full text-sm text-slate-300 file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-slate-100 disabled:opacity-50"
                     onChange={(event) => setVersionFile(event.target.files?.[0] ?? null)}
                   />
                 </label>
@@ -1251,7 +1251,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                     type="file"
                     accept="image/*"
                     disabled={relinkPending}
-                    className="mt-1.5 block w-full text-sm text-slate-300 file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-slate-200 disabled:opacity-50"
+                    className="mt-1.5 block w-full text-sm text-slate-300 file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-slate-100 disabled:opacity-50"
                     onChange={(event) => setRelinkFile(event.target.files?.[0] ?? null)}
                   />
                 </label>
@@ -1278,7 +1278,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
           {selected.asset.isFolder && (
             <section aria-label="폴더 삭제" className="rounded-xl border border-rose-400/20 bg-rose-950/10 p-3.5">
               <details>
-              <summary className="cursor-pointer text-sm font-semibold text-slate-200 hover:text-rose-200">폴더 삭제</summary>
+              <summary className="cursor-pointer text-sm font-semibold text-slate-100 hover:text-rose-200">폴더 삭제</summary>
               <div className="mt-2 space-y-2">
               <label className="flex items-center gap-2 text-sm text-slate-300">
                 <input
@@ -1325,7 +1325,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
               data-testid="asset-confirm-panel"
               className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
             >
-              <p className="text-sm text-slate-200">
+              <p className="text-sm text-slate-300">
                 {confirmAction === "delete-asset" && `'${selected.asset.displayName}' 에셋을 라이브러리 목록에서 삭제할까요? 원본 파일은 삭제하지 않습니다.`}
                 {confirmAction === "relink" && `'${selected.asset.displayName}' 에셋의 현재 버전 파일을 교체할까요?`}
                 {confirmAction === "delete-owned-file" && `'${selected.asset.displayName}' 에셋과 원본 이미지 파일을 함께 삭제할까요? 이 작업은 되돌릴 수 없습니다.`}

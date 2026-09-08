@@ -81,7 +81,7 @@ export function GeneratedImagesSection() {
                 <img
                   src={generatedImageContentUrl(image)}
                   alt={`${image.projectTitle} ${image.sceneNumber}번 장면`}
-                  className="w-full rounded-lg border border-white/10 object-cover"
+                  className="w-full rounded-xl border border-white/10 object-cover"
                 />
                 <span className="block truncate text-xs text-slate-300">{image.projectTitle}</span>
                 <span className="block text-xs text-slate-500 tabular-nums">{image.sceneNumber}번 장면 · {dateLabel(image.updatedAt)}</span>
@@ -102,7 +102,7 @@ export function GeneratedImagesSection() {
                   <img
                     src={generatedEpisodeImageContentUrl(image)}
                     alt={`${image.projectTitle} ${image.episodeNumber}화 ${image.sceneNumber}번 장면`}
-                    className="w-full rounded-lg border border-white/10 object-cover"
+                    className="w-full rounded-xl border border-white/10 object-cover"
                   />
                   <span className="block truncate text-xs text-slate-300">{image.projectTitle} · {image.episodeNumber}화</span>
                   <span className="block text-xs text-slate-500 tabular-nums">{image.sceneNumber}번 장면 · {dateLabel(image.updatedAt)}</span>

@@ -73,14 +73,14 @@ export function MonthlyBudgetCard({ budgets, onBudgetChange }: Props) {
         return (
           <div key={provider} data-testid={`monthly-budget-${provider}`} className="space-y-2 rounded-xl border border-white/10 bg-slate-950/40 p-3.5">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <p className="text-sm font-semibold text-slate-200">{LABEL[provider]}</p>
+              <p className="text-sm font-semibold text-slate-100">{LABEL[provider]}</p>
               {budget.spendUnavailable ? (
                 // Not "$0.00 쓴 상태": that is the most permissive thing this card could say, right next to a
                 // field for raising a spending limit. The limit is still true and still changeable.
                 <p className="text-xs text-amber-300">사용액을 읽지 못했습니다</p>
               ) : (
                 <p className="text-xs tabular-nums text-slate-400">
-                  이번 달 {money(budget.spentUsd)} 씀 · <span className="text-slate-200">{money(budget.remainingUsd)} 남음</span>
+                  이번 달 {money(budget.spentUsd)} 씀 · <span className="text-slate-300">{money(budget.remainingUsd)} 남음</span>
                 </p>
               )}
             </div>
@@ -93,7 +93,7 @@ export function MonthlyBudgetCard({ budgets, onBudgetChange }: Props) {
                   type="text"
                   inputMode="decimal"
                   aria-label={`${LABEL[provider]} 월 한도`}
-                  className="w-24 rounded-lg border border-white/10 bg-slate-900 px-2.5 py-1.5 text-sm tabular-nums text-slate-100"
+                  className="w-24 rounded-xl border border-white/10 bg-slate-900 px-2.5 py-1.5 text-sm tabular-nums text-slate-100"
                   value={draft}
                   disabled={pending === provider}
                   onChange={(event) => setDrafts((old) => ({ ...old, [provider]: event.target.value }))}

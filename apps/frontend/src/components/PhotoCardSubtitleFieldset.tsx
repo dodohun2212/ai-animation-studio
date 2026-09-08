@@ -256,7 +256,7 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, vertical, layout, 
           <button
             type="button"
             data-testid="photo-card-subtitle-reset"
-            className="rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-slate-200 hover:bg-white/5 disabled:opacity-50"
+            className="rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50"
             disabled={disabled || atDefault}
             onClick={() => onChange({ ...DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT })}
           >

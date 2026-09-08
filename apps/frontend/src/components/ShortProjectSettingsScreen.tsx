@@ -60,7 +60,7 @@ const EMPTY_SETTINGS: ShortProjectSettings = {
 const fieldClassName =
   "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 const inlineInput =
-  "rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
+  "rounded-xl border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 const dangerOutlineButton =
   "rounded-full border border-rose-400/30 px-4 py-2 text-sm text-rose-300 hover:bg-rose-500/10 disabled:opacity-50";
 const smallOutlineButton =
@@ -363,7 +363,7 @@ function CastEditor({ projectId, onLeadChange }: { projectId: string; onLeadChan
               {/* A cast row can outlive the folder it points at — the folder is deleted in the library and
                   nothing here notices. It used to render the raw id, which reads as a glitch rather than as
                   "this one is gone, remove it". */}
-              <span className="text-sm font-medium text-slate-200" title={member.assetId}>
+              <span className="text-sm font-medium text-slate-100" title={member.assetId}>
                 {memberNames[member.assetId]
                   ?? (namesLoaded
                     ? <span data-testid={`cast-missing-${member.assetId}`} className="text-amber-300">지워진 폴더 · 제거해 주세요</span>
@@ -431,7 +431,7 @@ function CastEditor({ projectId, onLeadChange }: { projectId: string; onLeadChan
         <ul aria-label="캐릭터 검색 결과" className="space-y-1">
           {results.map((asset) => (
             <li key={asset.assetId} className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/40 p-2.5">
-              <span className="text-sm text-slate-200">{asset.displayName}</span>
+              <span className="text-sm text-slate-300">{asset.displayName}</span>
               <button
                 type="button"
                 className={smallAddButton}
@@ -533,7 +533,7 @@ function ContinuityEditor({ projectId }: { projectId: string }) {
         <ul aria-label="이전 프로젝트 선택 목록" className="space-y-1">
           {options.map((option) => (
             <li key={option.projectId} className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/40 p-2.5">
-              <span className="text-sm text-slate-200">{option.label}</span>
+              <span className="text-sm text-slate-300">{option.label}</span>
               <button type="button" className={smallAddButton} disabled={saving} onClick={() => void applyLink(option.projectId)}>
                 선택
               </button>
@@ -647,8 +647,8 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
           {atmosphereAssetIds.length > 0 && (
             <ul aria-label="선택된 분위기 이미지 목록" className="space-y-1">
               {atmosphereAssetIds.map((assetId) => (
-                <li key={assetId} className="flex items-center gap-2 rounded-lg border border-white/10 bg-slate-900/60 p-2.5">
-                  <span className="text-sm text-slate-200">{assetId}</span>
+                <li key={assetId} className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-900/60 p-2.5">
+                  <span className="text-sm text-slate-300">{assetId}</span>
                   <button type="button" className={smallRemoveButton} disabled={saving} onClick={() => removeAtmosphere(assetId)}>
                     제거
                   </button>
@@ -677,8 +677,8 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
           {atmosphereResults && (
             <ul aria-label="분위기 이미지 검색 결과" className="space-y-1">
               {atmosphereResults.map((asset) => (
-                <li key={asset.assetId} className="flex items-center gap-2 rounded-lg border border-white/10 bg-slate-900/60 p-2.5">
-                  <span className="text-sm text-slate-200">{asset.displayName}</span>
+                <li key={asset.assetId} className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-900/60 p-2.5">
+                  <span className="text-sm text-slate-300">{asset.displayName}</span>
                   <button type="button" className={smallAddButton} disabled={saving || selectedIds.has(asset.assetId)} onClick={() => addAtmosphere(asset)}>
                     추가
                   </button>
@@ -697,8 +697,8 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
           {sceneReferenceAssets.length > 0 && (
             <ul aria-label="고른 장면 참고 이미지 목록" className="space-y-2">
               {sceneReferenceAssets.map((item) => (
-                <li key={item.assetId} className="flex flex-wrap items-center gap-3 rounded-lg border border-white/10 bg-slate-900/60 p-3">
-                  <span className="text-sm font-medium text-slate-200">{item.assetId}</span>
+                <li key={item.assetId} className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-slate-900/60 p-3">
+                  <span className="text-sm font-medium text-slate-100">{item.assetId}</span>
                   <label className="flex items-center gap-1.5 text-xs text-slate-400">
                     사용 목적
                     <input
@@ -737,8 +737,8 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
           {sceneResults && (
             <ul aria-label="장면 참고 이미지 검색 결과" className="space-y-1">
               {sceneResults.map((asset) => (
-                <li key={asset.assetId} className="flex flex-wrap items-center gap-3 rounded-lg border border-white/10 bg-slate-900/60 p-3">
-                  <span className="text-sm text-slate-200">{asset.displayName}</span>
+                <li key={asset.assetId} className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-slate-900/60 p-3">
+                  <span className="text-sm text-slate-300">{asset.displayName}</span>
                   <label className="flex items-center gap-1.5 text-xs text-slate-400">
                     사용 목적
                     <input
@@ -1024,7 +1024,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
                         <li key={folder.assetId}>
                           <button
                             type="button"
-                            className="w-full rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-1.5 text-left hover:border-violet-400/40"
+                            className="w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-1.5 text-left hover:border-violet-400/40"
                             onClick={() => pickCharacter(folder)}
                           >
                             {thumbnail?.contentUrl ? (
@@ -1032,7 +1032,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
                             ) : (
                               <span className="flex h-16 w-full items-center justify-center rounded bg-slate-950/40 text-xs text-slate-500">이미지 없음</span>
                             )}
-                            <span className="mt-1 block truncate text-xs text-slate-200">{folder.displayName}</span>
+                            <span className="mt-1 block truncate text-xs text-slate-300">{folder.displayName}</span>
                             <span className="block text-[11px] text-slate-500">이미지 {folder.childAssetIds.length}장</span>
                           </button>
                         </li>
@@ -1098,11 +1098,11 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
           <AspectField value={state.settings.styleNotes.aspect ?? ""} changeable={state.aspectRatioChangeable} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, aspect: value })} />
           <Field label="추가 지시사항" value={state.settings.additionalNotes} onChange={(value) => setField("additionalNotes", value)} multiline />
           <div className="md:col-span-2 space-y-3 rounded-xl border border-white/10 bg-slate-950/40 p-3.5">
-            <p className="text-sm font-semibold text-slate-200">내레이션</p>
+            <p className="text-sm font-semibold text-slate-100">내레이션</p>
             {/* Matched to the long project's wording after it was cut there — the same feature was explained
                 at two lengths on two screens. */}
             <p className="text-xs leading-relaxed text-slate-400">장면마다 읽어줄 문장이 대본에 함께 들어갑니다. 인물이 말하는 게 아니라 읽어주는 방식입니다.</p>
-            <label className="flex items-start gap-2.5 text-sm text-slate-200">
+            <label className="flex items-start gap-2.5 text-sm text-slate-300">
               <input
                 type="checkbox"
                 data-testid="settings-narration-enabled"
@@ -1115,7 +1115,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
                 <span className="mt-1 block text-xs text-slate-400">실제 목소리로 만들어 영상에 입힙니다. 장면마다 비용이 듭니다.</span>
               </span>
             </label>
-            <label className="flex items-start gap-2.5 text-sm text-slate-200">
+            <label className="flex items-start gap-2.5 text-sm text-slate-300">
               <input
                 type="checkbox"
                 data-testid="settings-subtitles-enabled"
@@ -1139,14 +1139,14 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
             * scene N-1 had become.
             */}
           <div className="md:col-span-2 space-y-3 rounded-xl border border-white/10 bg-slate-950/40 p-3.5">
-            <p className="text-sm font-semibold text-slate-200">장면 이어 그리기</p>
+            <p className="text-sm font-semibold text-slate-100">장면 이어 그리기</p>
             {/* Says when to turn it off as well as on, because this is a choice between two kinds of video
                 rather than a feature that is simply better. Explaining only the on case would have everyone
                 turn it on, and a story that changes place between scenes is held back by the previous
                 picture — the same reason the server defaults it to off (Cowork Round 625 ⑤, whose wording
                 this is). */}
             <p className="text-xs leading-relaxed text-slate-400">앞 장면 그림을 참고해서 다음 장면을 그립니다. 같은 사물이 계속 나오는 영상에 켜세요. 장면마다 장소가 바뀌는 이야기라면 꺼 두세요.</p>
-            <label className="flex items-start gap-2.5 text-sm text-slate-200">
+            <label className="flex items-start gap-2.5 text-sm text-slate-300">
               <input
                 type="checkbox"
                 data-testid="settings-scene-image-continuity-enabled"

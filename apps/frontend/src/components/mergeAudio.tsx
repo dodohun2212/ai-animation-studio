@@ -118,7 +118,7 @@ export function MergeAudioFieldset({ idPrefix, tracks, narrationAvailable, mode,
 
   return (
     <fieldset data-testid={`${idPrefix}-settings`} className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
-      <legend className="px-1 text-sm font-semibold text-slate-200">오디오</legend>
+      <legend className="px-1 text-sm font-semibold text-slate-100">오디오</legend>
       {AUDIO_MODES.map((option) => {
         // Only offered when it can actually be produced. Both narration modes need generated narration audio —
         // "narration+bgm" mixes a voice too, and the server refuses it without one, so offering it here would
@@ -199,7 +199,7 @@ export function MergeAudioFieldset({ idPrefix, tracks, narrationAvailable, mode,
             <button
               type="button"
               data-testid={`${idPrefix}-start-set`}
-              className="rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-slate-200 hover:bg-white/5 disabled:opacity-50"
+              className="rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50"
               disabled={disabled}
               onClick={() => {
                 const element = player.current;
@@ -230,7 +230,7 @@ export function MergeAudioFieldset({ idPrefix, tracks, narrationAvailable, mode,
                 <button
                   type="button"
                   data-testid={`${idPrefix}-start-clear`}
-                  className="text-xs text-slate-400 underline underline-offset-2 hover:text-slate-200 disabled:opacity-50"
+                  className="text-xs text-slate-400 underline underline-offset-2 hover:text-slate-100 disabled:opacity-50"
                   disabled={disabled}
                   onClick={() => onStartSecondsChange(0)}
                 >
@@ -373,7 +373,7 @@ export function AttributionNotice({ usedAudio }: { usedAudio: UsedAudio | undefi
       <p className="text-sm font-semibold text-amber-300">이 영상은 캡션에 출처를 함께 적어야 합니다.</p>
       {text ? (
         <>
-          <p data-testid="merge-attribution-text" className="select-all rounded-lg bg-slate-950/60 px-3 py-2 text-sm text-slate-200">
+          <p data-testid="merge-attribution-text" className="select-all rounded-xl bg-slate-950/60 px-3 py-2 text-sm text-slate-300">
             {text}
           </p>
           <div className="flex items-center gap-3">

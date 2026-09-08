@@ -36,7 +36,7 @@ export function RegenerateInstructionField({
       <input
         id={id}
         data-testid={testId}
-        className="w-full rounded-lg border border-white/10 bg-slate-950/60 px-3 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/20 disabled:opacity-50"
+        className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/20 disabled:opacity-50"
         value={value}
         disabled={disabled}
         placeholder={placeholder}

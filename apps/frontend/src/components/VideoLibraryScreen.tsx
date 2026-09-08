@@ -145,7 +145,7 @@ function VersionSlots({
 
     {openSlot !== null && (
       <div className="space-y-2 rounded-xl border border-white/10 bg-slate-950/40 p-3">
-        <p className="text-sm font-semibold text-slate-200">{slotLabel(openSlot)}</p>
+        <p className="text-sm font-semibold text-slate-100">{slotLabel(openSlot)}</p>
         {versions.status === "loading" && <Spinner label="버전을 불러오는 중..." />}
         {versions.status === "error" && (
           <p role="alert" data-testid="versions-error" data-error-code={versions.error.code} className="text-sm text-rose-400">
@@ -165,7 +165,7 @@ function VersionSlots({
               key={version.versionId}
               data-testid={`version-${version.versionId}`}
               data-current={version.isCurrent ? "true" : "false"}
-              className={`space-y-2 rounded-lg border p-3 ${version.isCurrent ? "border-emerald-400/30" : "border-white/10"}`}
+              className={`space-y-2 rounded-xl border p-3 ${version.isCurrent ? "border-emerald-400/30" : "border-white/10"}`}
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs text-slate-300 tabular-nums">
@@ -178,7 +178,7 @@ function VersionSlots({
               {/* eslint-disable-next-line jsx-a11y/media-has-caption -- generated clips carry no caption track */}
               <video
                 data-testid={`version-player-${version.versionId}`}
-                className={`${aspectRatio === "16:9" ? "aspect-video" : "aspect-[9/16]"} w-full rounded-lg border border-white/10 bg-slate-800`}
+                className={`${aspectRatio === "16:9" ? "aspect-video" : "aspect-[9/16]"} w-full rounded-xl border border-white/10 bg-slate-800`}
                 controls
                 preload="none"
                 src={versionContentUrlFor(target, openSlot, version.versionId)}
@@ -203,7 +203,7 @@ function VersionSlots({
                   role="alertdialog"
                   aria-label={`${slotLabel(openSlot)} 되돌리기 확인`}
                   data-testid={`version-restore-confirm-${version.versionId}`}
-                  className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
+                  className="space-y-2 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
                 >
                   <p className="text-sm font-semibold text-amber-300">이 버전으로 되돌릴까요?</p>
                   <p className="text-xs text-slate-300">
@@ -219,7 +219,7 @@ function VersionSlots({
                   {attributionRequired && (
                     <p data-testid={`version-restore-credit-warning-${version.versionId}`} className="text-xs text-amber-300">
                       되돌리고 나면 이 영상에 출처 표시가 필요한지 앱이 더 이상 알 수 없습니다. 지금 문구를 적어 두세요:
-                      <span className="mt-1 block select-all text-slate-200">
+                      <span className="mt-1 block select-all text-slate-300">
                         {attributionText?.trim() || "(문구가 비어 있습니다 — 음원 보관함에서 확인하세요)"}
                       </span>
                     </p>
@@ -440,10 +440,10 @@ export function VideoLibraryScreen({ onBack }: Props) {
                       coming back months later to finally publish it — the one who has forgotten
                       (docs/06_DECISIONS.md D-003). */}
                   {project.attributionRequired && (
-                    <p data-testid={`library-credit-${project.projectId}`} className="rounded-lg border border-amber-400/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-300">
+                    <p data-testid={`library-credit-${project.projectId}`} className="rounded-xl border border-amber-400/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-300">
                       올릴 때 캡션에 출처를 적어야 합니다
                       {project.attributionText?.trim()
-                        ? <span className="mt-1 block select-all text-slate-200">{project.attributionText.trim()}</span>
+                        ? <span className="mt-1 block select-all text-slate-300">{project.attributionText.trim()}</span>
                         : <span className="mt-1 block text-slate-300">적을 문구가 비어 있습니다 — 음원 보관함에서 채워 주세요.</span>}
                     </p>
                   )}
@@ -486,7 +486,7 @@ export function VideoLibraryScreen({ onBack }: Props) {
               {episodeGroups.map((group) => (
                 <div key={group.project.projectId} className="space-y-3">
                   <div data-testid={`library-long-project-${group.project.projectId}`} className="flex flex-wrap items-baseline justify-between gap-2 border-b border-white/10 pb-1.5 pt-2">
-                    <span className="text-sm font-semibold text-slate-200">{group.project.title}</span>
+                    <span className="text-sm font-semibold text-slate-100">{group.project.title}</span>
                     {/* Two numbers rather than one total, because they answer different questions and come from
                         different ledgers: what the story cost outside its episodes (scripts, images, narration —
                         all billed to the parent id) and what its episodes cost in video. Added up here only
@@ -520,10 +520,10 @@ export function VideoLibraryScreen({ onBack }: Props) {
                         who comes back months later to publish this is the one who has to write it, and until
                         now only half of them were told. Absent, not false, when the server did not look. */}
                     {one.attributionRequired && (
-                      <p data-testid={`library-episode-credit-${one.projectId}-${one.episodeNumber}`} className="rounded-lg border border-amber-400/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-300">
+                      <p data-testid={`library-episode-credit-${one.projectId}-${one.episodeNumber}`} className="rounded-xl border border-amber-400/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-300">
                         올릴 때 캡션에 출처를 적어야 합니다
                         {one.attributionText?.trim()
-                          ? <span className="mt-1 block select-all text-slate-200">{one.attributionText.trim()}</span>
+                          ? <span className="mt-1 block select-all text-slate-300">{one.attributionText.trim()}</span>
                           : <span className="mt-1 block text-slate-300">적을 문구가 비어 있습니다 — 음원 보관함에서 채워 주세요.</span>}
                       </p>
                     )}
@@ -532,7 +532,7 @@ export function VideoLibraryScreen({ onBack }: Props) {
                          above already refuses to call a placeholder "ready", so what plays here is real. */
                       <video
                         data-testid={`library-episode-final-${one.projectId}-${one.episodeNumber}`}
-                        className="w-full rounded-lg border border-white/10 bg-black"
+                        className="w-full rounded-xl border border-white/10 bg-black"
                         controls
                         preload="none"
                         src={longEpisodeFinalVideoContentUrl(one.projectId, one.episodeNumber, one.updatedAt)}

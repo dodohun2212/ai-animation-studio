@@ -716,7 +716,7 @@ export function InstagramPostScreen({ onBack }: Props) {
           on screen: not asking and not showing are different things, and the day a second account appears is
           exactly the day a wrong destination costs something that cannot be taken back. */}
       <div className={cardSection} data-testid="post-target">
-        <p className="text-sm font-semibold text-slate-200">올릴 계정</p>
+        <p className="text-sm font-semibold text-slate-100">올릴 계정</p>
 
         {targets.status === "loading" && <Spinner label="계정을 불러오는 중..." />}
 
@@ -735,7 +735,7 @@ export function InstagramPostScreen({ onBack }: Props) {
             it, which is a different thing for the user to go fix. */}
         {targets.status === "ready" && !targets.targets.length && (
           <div data-testid="post-target-none" className="space-y-1">
-            <p className="text-sm text-slate-200">{describeEmptyTargets(targets.diagnostics).headline}</p>
+            <p className="text-sm text-slate-300">{describeEmptyTargets(targets.diagnostics).headline}</p>
             <p className="text-sm text-slate-400">{describeEmptyTargets(targets.diagnostics).detail}</p>
             {targets.diagnostics?.permissionsChecked && (
               /* What the token actually holds, not what we think is missing. "Asked for and refused" and "never
@@ -853,7 +853,7 @@ export function InstagramPostScreen({ onBack }: Props) {
               <button
                 type="button"
                 data-testid="post-cover-set"
-                className="rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-slate-200 hover:bg-white/5 disabled:opacity-50"
+                className="rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50"
                 disabled={!!published}
                 onClick={() => {
                   const element = videoRef.current;
@@ -878,7 +878,7 @@ export function InstagramPostScreen({ onBack }: Props) {
                   <button
                     type="button"
                     data-testid="post-cover-clear"
-                    className="text-xs text-slate-400 underline underline-offset-2 hover:text-slate-200 disabled:opacity-50"
+                    className="text-xs text-slate-400 underline underline-offset-2 hover:text-slate-100 disabled:opacity-50"
                     disabled={!!published}
                     onClick={() => setCoverOffsetMs(null)}
                   >
@@ -929,7 +929,7 @@ export function InstagramPostScreen({ onBack }: Props) {
               visible: a check that reports the plan as a measurement is worse than no check, because it is
               believed. */}
           <div className={cardSection} data-testid="post-checks">
-            <p className="text-sm font-semibold text-slate-200">올리기 전 확인</p>
+            <p className="text-sm font-semibold text-slate-100">올리기 전 확인</p>
             <div className="flex flex-wrap items-center gap-2" data-testid="post-check-shape">
               <StatusChip tone={notVertical ? "progress" : "success"}>{notVertical ? "가로 영상" : "세로 9:16"}</StatusChip>
               {notVertical && (
@@ -1010,7 +1010,7 @@ export function InstagramPostScreen({ onBack }: Props) {
                 caption saved for this project is still on the server, and this screen is deliberately not
                 writing over it. Says both halves — what it could not do, and what it is therefore not doing. */}
             {draftUnread && (
-              <p role="status" data-testid="post-draft-unread" className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-400/25 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-200">
+              <p role="status" data-testid="post-draft-unread" className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-400/25 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-200">
                 <span>저장해 둔 캡션을 불러오지 못했습니다. 지워지지 않도록 <strong className="text-amber-100">자동 저장을 멈춰 뒀습니다</strong> — 여기 쓴 내용은 그대로 게시에 쓰입니다.</span>
                 <button type="button" data-testid="post-draft-reload" className="underline underline-offset-2 hover:text-amber-100" onClick={() => void reloadDraft()}>
                   다시 불러오기
@@ -1051,7 +1051,7 @@ export function InstagramPostScreen({ onBack }: Props) {
             {creditRequired && !creditMissing && (
               <div data-testid="post-credit" className="space-y-1 rounded-xl border border-amber-400/30 bg-amber-500/5 p-3">
                 <p className="text-xs font-semibold text-amber-300">이 음원은 출처 표시가 필요해 캡션에 자동으로 들어갑니다.</p>
-                <p className="text-sm text-slate-200">{creditText}</p>
+                <p className="text-sm text-slate-300">{creditText}</p>
               </div>
             )}
             {creditMissing && (
@@ -1062,10 +1062,10 @@ export function InstagramPostScreen({ onBack }: Props) {
           </div>
 
           <div className={cardSection}>
-            <p className="text-sm font-semibold text-slate-200">완성된 캡션</p>
+            <p className="text-sm font-semibold text-slate-100">완성된 캡션</p>
             <p
               data-testid="post-caption-preview"
-              className="select-all whitespace-pre-wrap rounded-xl bg-slate-950/60 px-3.5 py-3 text-sm text-slate-200"
+              className="select-all whitespace-pre-wrap rounded-xl bg-slate-950/60 px-3.5 py-3 text-sm text-slate-300"
             >
               {caption || "아직 아무것도 없습니다."}
             </p>
@@ -1106,7 +1106,7 @@ export function InstagramPostScreen({ onBack }: Props) {
                 </p>
                 <ul className="space-y-2">
                   {previousPosts.map((post) => (
-                    <li key={post.mediaId} className="rounded-lg bg-slate-950/60 px-3 py-2">
+                    <li key={post.mediaId} className="rounded-xl bg-slate-950/60 px-3 py-2">
                       <p className="text-xs text-slate-400 tabular-nums">{dateOnly(post.publishedAt)}</p>
                       {/* The caption, because that is where the licence credit and the AI disclosure lived —
                           "what did that one actually say" is the question asked exactly when it matters. */}
@@ -1185,7 +1185,7 @@ export function InstagramPostScreen({ onBack }: Props) {
               </>
             ) : (
               <>
-                <p className="text-sm font-semibold text-slate-200">인스타그램에 올리기</p>
+                <p className="text-sm font-semibold text-slate-100">인스타그램에 올리기</p>
 
                 {!confirmPublish && (
                   <button

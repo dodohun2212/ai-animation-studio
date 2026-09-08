@@ -43,7 +43,7 @@ export function ArchiveProjectDialog({ confirmationText, projectKind, onCancel, 
         이 프로젝트를 보관함으로 옮깁니다(나중에 다시 꺼낼 수 있어요). 계속하려면 정확한 {projectKind === "short" ? "주제" : "제목"}을 입력하세요:
         <span className="ml-1 font-semibold text-slate-100">{confirmationText}</span>
       </p>
-      <label className="mt-3 block text-sm text-slate-200" htmlFor="archive-confirmation">
+      <label className="mt-3 block text-sm text-slate-300" htmlFor="archive-confirmation">
         위 내용 그대로 입력
       </label>
       <input
@@ -55,7 +55,7 @@ export function ArchiveProjectDialog({ confirmationText, projectKind, onCancel, 
       />
       {error && <p className="mt-3 text-sm text-rose-300" role="alert" data-error-code={error.code}>{error.message}</p>}
       <div className="mt-4 flex gap-3">
-        <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5 disabled:opacity-50" onClick={onCancel} disabled={pending}>취소</button>
+        <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50" onClick={onCancel} disabled={pending}>취소</button>
         <button type="button" className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(225,29,72,0.3)] disabled:opacity-50" onClick={() => { void submit(); }} disabled={!matches || pending}>
           {pending ? "보관하는 중…" : "보관하기"}
         </button>

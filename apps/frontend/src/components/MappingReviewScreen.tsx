@@ -49,7 +49,7 @@ const MANUAL_SOURCE_PROJECT_ID = "_asset_library_manual";
 const outlineButton =
   "rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50 disabled:hover:bg-transparent";
 const selectClassName =
-  "mt-1 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-2.5 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
+  "mt-1 rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-2.5 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
 
 function scopeIncludesScene(scope: AssetMappingSceneScope, sceneNumber: SceneNumber): boolean {
   if (scope.kind === "all") return true;
@@ -457,14 +457,14 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
           has to be visible is the two-channel split (settings choices arrive here on their own); the rest is
           reference material and folds. */}
       <p className="text-sm text-slate-400">
-        각 장면이 어떤 이미지를 참고할지 정하는 곳입니다. 여기서 연결한 것은 <strong className="text-slate-200">그림을 만들 때 실제 이미지로 전달</strong>됩니다.
+        각 장면이 어떤 이미지를 참고할지 정하는 곳입니다. 여기서 연결한 것은 <strong className="text-slate-300">그림을 만들 때 실제 이미지로 전달</strong>됩니다.
       </p>
       <details data-testid="reference-image-definition" className="rounded-xl border border-white/10 bg-slate-950/40 p-3 text-sm text-slate-400">
         <summary className="cursor-pointer text-slate-300">작품 기본 설정에서 고른 것과 무엇이 다른가</summary>
         <p className="mt-2">
           설정에서 고른 <span className="text-slate-300">주인공</span>·<span className="text-slate-300">전체 그림체</span>는
-          <strong className="text-slate-200"> 이 목록에 자동으로 올라옵니다</strong> — 같은 선택이 그림에는 이미지로, 대본에는 글로 전달됩니다.
-          그래서 이 화면에서 할 일은 <strong className="text-slate-200">조정</strong>입니다: 서브 캐릭터·배경·소품을 더하거나,
+          <strong className="text-slate-300"> 이 목록에 자동으로 올라옵니다</strong> — 같은 선택이 그림에는 이미지로, 대본에는 글로 전달됩니다.
+          그래서 이 화면에서 할 일은 <strong className="text-slate-300">조정</strong>입니다: 서브 캐릭터·배경·소품을 더하거나,
           특정 장면에만 붙이거나, 쓰지 않을 연결을 빼는 것.
         </p>
         <p className="mt-2">직접 연결한 것은 연결하는 순간 확정됩니다 — 다시 승인할 필요 없습니다.</p>
@@ -487,7 +487,7 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
               value={addQuery}
               onChange={(event) => setAddQuery(event.target.value)}
               placeholder="비워 두면 전체"
-              className="w-56 rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none"
+              className="w-56 rounded-xl border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none"
             />
           </label>
           <button type="submit" className={outlineButton} disabled={addSearchLoading}>
@@ -498,7 +498,7 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-xs text-slate-400">
             어떤 용도로 쓰나요
-            <select value={addRole} onChange={(event) => setAddRole(event.target.value)} className="rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100">
+            <select value={addRole} onChange={(event) => setAddRole(event.target.value)} className="rounded-xl border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100">
               <option value="character">등장인물</option>
               <option value="background">배경</option>
               <option value="object">소품</option>
@@ -507,7 +507,7 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
           </label>
           <label className="flex flex-col gap-1 text-xs text-slate-400">
             어느 장면에
-            <select value={addScope} onChange={(event) => setAddScope(event.target.value as "all" | "scene")} className="rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100">
+            <select value={addScope} onChange={(event) => setAddScope(event.target.value as "all" | "scene")} className="rounded-xl border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100">
               <option value="all">모든 장면</option>
               {/* Withheld until the scene count is known: picking it would open a picker with nothing valid in it. */}
               <option value="scene" disabled={sceneNumbers.length === 0}>한 장면만</option>
@@ -520,7 +520,7 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
                 aria-label="연결할 장면 번호"
                 value={addScene}
                 onChange={(event) => setAddScene(Number(event.target.value) as SceneNumber)}
-                className="rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100"
+                className="rounded-xl border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100"
               >
                 {sceneNumbers.map((number) => <option key={number} value={number}>{number}번 장면</option>)}
               </select>
@@ -562,12 +562,12 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
               const addPending = addPendingIds.has(asset.assetId);
               const rowError = existing ? decisionErrors[existing.mappingId] : undefined;
               return (
-                <li key={asset.assetId} className="flex items-center gap-3 rounded-lg border border-white/10 bg-slate-950/40 p-2.5">
+                <li key={asset.assetId} className="flex items-center gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-2.5">
                   {asset.imageAvailable && asset.contentUrl
                     ? <img src={asset.contentUrl} alt="" className="h-12 w-12 rounded object-cover" />
                     : <span className="flex h-12 w-12 items-center justify-center rounded bg-slate-900 text-[10px] text-slate-500">{asset.isFolder ? "폴더" : "없음"}</span>}
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm text-slate-200">{asset.displayName}</span>
+                    <span className="block truncate text-sm text-slate-300">{asset.displayName}</span>
                     <span className="block text-xs text-slate-500">
                       {asset.isFolder ? `폴더 · 이미지 ${asset.childAssetIds.length}장` : "이미지 1장"}
                     </span>

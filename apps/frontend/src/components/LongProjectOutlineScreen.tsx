@@ -188,7 +188,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
       {outlineStateUnknown && (
         <div data-testid="outline-state-unknown" className="space-y-2 rounded-xl border border-amber-400/25 bg-amber-500/[0.06] px-4 py-3 text-sm text-amber-200">
           <p>이 작품의 스토리 개요가 이미 승인됐는지 확인하지 못했습니다. 이미 승인된 것을 한 번 더 승인하면 <strong className="text-amber-100">같은 작업에 비용이 다시 듭니다</strong>.</p>
-          <button type="button" data-testid="outline-state-retry" className="rounded-full border border-white/15 px-3.5 py-1.5 text-xs text-slate-200 hover:bg-white/5" onClick={() => void load()}>
+          <button type="button" data-testid="outline-state-retry" className="rounded-full border border-white/15 px-3.5 py-1.5 text-xs text-slate-300 hover:bg-white/5" onClick={() => void load()}>
             다시 확인
           </button>
         </div>
@@ -318,7 +318,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
           )}
           {approved && (
             <div data-testid="episode-outline-list" className="space-y-2 rounded-xl border border-white/10 bg-slate-950/40 p-4">
-              <p className="text-sm font-semibold text-slate-200">회차별 개요 상태</p>
+              <p className="text-sm font-semibold text-slate-100">회차별 개요 상태</p>
               <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-300">
                 {approved.episodes.map((episode) => (
                   <li key={episode.episodeNumber} data-testid={`episode-outline-${episode.episodeNumber}`} data-status={episode.status}>

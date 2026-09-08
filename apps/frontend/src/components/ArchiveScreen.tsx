@@ -28,9 +28,9 @@ type DisplayError = { code: string; message: string };
 type PendingAction = { kind: "restore" | "delete"; scope: "short" | "long"; id: string; label: string };
 
 const outlineButton =
-  "rounded-full border border-white/20 bg-white/[0.06] px-4 py-2 text-sm font-medium text-slate-200 shadow-sm hover:border-white/30 hover:bg-white/10 disabled:opacity-50";
+  "rounded-full border border-white/20 bg-white/[0.06] px-4 py-2 text-sm font-medium text-slate-100 shadow-sm hover:border-white/30 hover:bg-white/10 disabled:opacity-50";
 const smallOutlineButton =
-  "rounded-full border border-white/20 bg-white/[0.06] px-3 py-1 text-xs font-medium text-slate-200 hover:border-white/30 hover:bg-white/10 disabled:opacity-50";
+  "rounded-full border border-white/20 bg-white/[0.06] px-3 py-1 text-xs font-medium text-slate-100 hover:border-white/30 hover:bg-white/10 disabled:opacity-50";
 const smallDangerButton =
   "rounded-full border border-rose-400/40 bg-rose-500/10 px-3 py-1 text-xs font-medium text-rose-300 hover:border-rose-400/60 hover:bg-rose-500/15 disabled:opacity-50";
 function SectionHeading({ children }: { children: React.ReactNode }) {
@@ -195,7 +195,7 @@ export function ArchiveScreen({ onBack, onChanged }: Props) {
           data-testid="archive-restore-confirm"
           className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
         >
-          <p className="text-sm text-slate-200">
+          <p className="text-sm text-slate-300">
             '{pending.label || pending.id}' 프로젝트를 보관함에서 꺼내 다시 활성 목록으로 되돌릴까요?
           </p>
           {actionError && (
@@ -231,7 +231,7 @@ export function ArchiveScreen({ onBack, onChanged }: Props) {
             이미지·영상을 포함한 모든 파일이 디스크에서 지워지며, 이 작업은 되돌릴 수 없습니다. 계속하려면 아래에 정확히 입력하세요:
             <span className="ml-1 font-semibold text-slate-100">{pending.label}</span>
           </p>
-          <label className="block text-sm text-slate-200" htmlFor="archive-delete-confirmation">
+          <label className="block text-sm text-slate-300" htmlFor="archive-delete-confirmation">
             위 내용 그대로 입력
           </label>
           <input

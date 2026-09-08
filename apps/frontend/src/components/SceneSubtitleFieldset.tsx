@@ -273,7 +273,7 @@ export function SceneSubtitleFieldset({ projectId, scenes, vertical, layout, onC
           <button
             type="button"
             data-testid="scene-subtitle-reset"
-            className="rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-slate-200 hover:bg-white/5 disabled:opacity-50"
+            className="rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50"
             disabled={disabled || atDefault}
             onClick={() => onChange({ ...DEFAULT_SCENE_SUBTITLE_LAYOUT })}
           >

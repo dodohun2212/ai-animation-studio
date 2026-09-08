@@ -46,7 +46,7 @@ export function VideoModelCard({ setting, onChange }: { setting: VideoModelSetti
         {/* Same distinction the monthly budget draws: nobody has chosen yet is not the same as chose this. */}
         {setting.isDefault && <span data-testid="video-model-default" className="text-xs text-slate-500">아직 고른 적이 없어 기본값을 쓰는 중입니다</span>}
       </div>
-      <p className="text-sm text-slate-400">장면 이미지를 움직이는 영상으로 만드는 AI입니다. 바꾸면 <span className="text-slate-200">앞으로 만드는 영상</span>부터 적용되고, 이미 만들어 둔 클립은 그대로 남습니다.</p>
+      <p className="text-sm text-slate-400">장면 이미지를 움직이는 영상으로 만드는 AI입니다. 바꾸면 <span className="text-slate-300">앞으로 만드는 영상</span>부터 적용되고, 이미 만들어 둔 클립은 그대로 남습니다.</p>
 
       <ul className="space-y-2">
         {setting.options.map((option) => {

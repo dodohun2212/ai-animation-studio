@@ -58,11 +58,11 @@ export function LongEpisodeSceneVersions({ projectId, episodeNumber, sceneNumber
   const past = versions.filter((version) => !version.isCurrent);
 
   return (
-    <details data-testid={`episode-video-versions-${sceneNumber}`} className="rounded-lg border border-white/10 bg-slate-950/40">
+    <details data-testid={`episode-video-versions-${sceneNumber}`} className="rounded-xl border border-white/10 bg-slate-950/40">
       <summary className="cursor-pointer px-3 py-2 text-xs text-slate-400">이전 판 {past.length}개</summary>
       <ul className="space-y-2 px-3 pb-3">
         {past.map((version) => (
-          <li key={version.versionId} data-testid={`episode-video-version-${sceneNumber}-${version.versionId}`} className="space-y-1.5 rounded-lg border border-white/10 p-2">
+          <li key={version.versionId} data-testid={`episode-video-version-${sceneNumber}-${version.versionId}`} className="space-y-1.5 rounded-xl border border-white/10 p-2">
             <p className="text-xs text-slate-400 tabular-nums">{dateLabel(version.createdAt)} · {sizeLabel(version.bytes)}</p>
             <video
               data-testid={`episode-video-version-player-${sceneNumber}-${version.versionId}`}
@@ -77,7 +77,7 @@ export function LongEpisodeSceneVersions({ projectId, episodeNumber, sceneNumber
             {confirm === version.versionId && (
               /* The cost of this button is not money — it is the merged Episode. Said before the press, because
                  afterwards the person finds out by discovering their final video is gone. */
-              <div role="alertdialog" data-testid={`episode-video-version-confirm-${sceneNumber}-${version.versionId}`} className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-2.5">
+              <div role="alertdialog" data-testid={`episode-video-version-confirm-${sceneNumber}-${version.versionId}`} className="space-y-2 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-2.5">
                 <p className="text-xs text-amber-200">
                   이 판으로 되돌립니다. 비용은 들지 않고 지금 쓰는 영상도 보관되니 언제든 되돌아올 수 있습니다.
                   다만 <strong className="text-amber-100">이미 만든 최종 영상은 무효가 되어 다시 합쳐야 합니다</strong> — 장면이 바뀌기 때문입니다.

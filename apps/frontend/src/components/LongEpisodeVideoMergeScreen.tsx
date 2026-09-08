@@ -314,7 +314,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
         <div data-testid="episode-merge-success" className="space-y-3 rounded-2xl border border-emerald-400/30 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
           <p className="text-sm font-semibold text-emerald-400">에피소드 최종 영상이 완성되었습니다.</p>
           {unplayable ? (
-            <p data-testid="episode-final-video-missing" className="rounded-lg border border-amber-400/30 bg-amber-500/[0.06] px-3 py-2 text-sm text-amber-200">
+            <p data-testid="episode-final-video-missing" className="rounded-xl border border-amber-400/30 bg-amber-500/[0.06] px-3 py-2 text-sm text-amber-200">
               최종 영상 파일을 재생할 수 없습니다. 장면 영상 중에 내용이 비어 있는 것이 섞여 있을 수 있습니다 — 장면 영상 화면에서 하나씩 재생해 확인해 주세요.
             </p>
           ) : (
@@ -322,7 +322,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
                nobody can play is that same blindness one layer up. */
             <video
               data-testid="episode-final-video"
-              className="w-full rounded-lg border border-white/10 bg-black"
+              className="w-full rounded-xl border border-white/10 bg-black"
               controls
               preload="metadata"
               src={longEpisodeFinalVideoContentUrl(projectId, episodeNumber, String(videoVersion))}
@@ -339,7 +339,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
               <button
                 type="button"
                 data-testid="episode-open-in-explorer-button"
-                className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5 disabled:opacity-50"
+                className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50"
                 onClick={() => void openInExplorer()}
                 disabled={openPending}
               >
@@ -359,7 +359,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
           {onOpenContinuity && (
             <button
               type="button"
-              className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5"
+              className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
               data-testid="open-episode-continuity"
               onClick={() => onOpenContinuity(projectId, episodeNumber)}
             >

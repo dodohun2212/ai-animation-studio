@@ -392,7 +392,7 @@ export function ImageGenerationScreen({ projectId, onBack, onResume }: Props) {
                   key={number}
                   data-testid={`scene-${number}`}
                   data-status={sceneStatus(number)}
-                  className={`rounded-lg border p-2.5 text-sm ${
+                  className={`rounded-xl border p-2.5 text-sm ${
                     done ? "border-emerald-400/30 text-emerald-300" : running ? "border-violet-400/25 text-violet-200" : "border-white/10 text-slate-300"
                   }`}
                 >
@@ -418,7 +418,7 @@ export function ImageGenerationScreen({ projectId, onBack, onResume }: Props) {
                     <img
                       src={imageReviewContentUrl(projectId, number, currentProject?.updatedAt ?? "")}
                       alt={`${number}번 장면 이미지`}
-                          className="w-full rounded-lg border border-white/10 object-cover"
+                          className="w-full rounded-xl border border-white/10 object-cover"
                     />
                     <span className="block text-xs text-slate-400">{number}번 장면</span>
                   </li>
@@ -542,7 +542,7 @@ export function ImageGenerationScreen({ projectId, onBack, onResume }: Props) {
                             src={imageReviewContentUrl(projectId, review.sceneNumber, review.updatedAt)}
                             alt={`${review.sceneNumber}번 장면`}
                             data-testid={`filmstrip-image-${review.sceneNumber}`}
-                            className={`${currentProject?.aspectRatio === "16:9" ? "aspect-video w-40" : "aspect-[9/16] w-24"} rounded-lg border border-white/10 bg-slate-800 object-cover`}
+                            className={`${currentProject?.aspectRatio === "16:9" ? "aspect-video w-40" : "aspect-[9/16] w-24"} rounded-xl border border-white/10 bg-slate-800 object-cover`}
                           />
                           <span className="mt-1 block text-center text-[11px] tabular-nums text-slate-500">
                             {review.sceneNumber}
@@ -665,7 +665,7 @@ export function ImageGenerationScreen({ projectId, onBack, onResume }: Props) {
                               role="alertdialog"
                               aria-label={`${review.sceneNumber}번 장면 재생성 확인`}
                               data-testid={`regenerate-confirm-panel-${review.sceneNumber}`}
-                              className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
+                              className="space-y-2 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
                             >
                               <p className="text-sm font-semibold text-amber-300">
                                 {review.sceneNumber}번 장면 이미지를 다시 생성할까요?

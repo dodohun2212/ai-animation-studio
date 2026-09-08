@@ -505,7 +505,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
                   /* Eager: six pictures on a screen someone opened to look at them, and a lazy loader that
                      does not fire leaves six empty boxes with no error anywhere. */
                   alt={`${sceneNumber}번 장면 이미지`}
-                  className="w-full rounded-lg border border-white/10 object-cover"
+                  className="w-full rounded-xl border border-white/10 object-cover"
                 />
                 <span className="block text-xs text-slate-400">{sceneNumber}번 장면</span>
               </li>
@@ -641,7 +641,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
                   <button type="button" className={smallOutlineButton} disabled={regenerating || confirming} onClick={() => { setRegenerateInstruction(""); setRegenerateConfirm(sceneNumber); }}>{regenerating ? "다시 만드는 중..." : "다시 만들기"}</button>
                 </div>
                 {confirming && (
-                  <div role="alertdialog" data-testid={`episode-image-regenerate-confirm-${sceneNumber}`} className="space-y-2 rounded-lg border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3">
+                  <div role="alertdialog" data-testid={`episode-image-regenerate-confirm-${sceneNumber}`} className="space-y-2 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3">
                     <p className="text-sm text-amber-200">{sceneNumber}번 장면만 다시 만들까요? OpenAI 키가 연결되어 있으면 이번 재생성분이 실제로 청구됩니다.</p>
                     <RetryCostNotice
                       estimate={reviewState.status === "ready" ? reviewState.retryEstimate : undefined}

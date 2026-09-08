@@ -339,7 +339,7 @@ export function AudioLibraryScreen({ onBack }: Props) {
                   role="alertdialog"
                   aria-label={`${track.title} 삭제 확인`}
                   data-testid={`audio-track-delete-confirm-${track.trackId}`}
-                  className="space-y-2 rounded-lg border border-rose-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
+                  className="space-y-2 rounded-xl border border-rose-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3"
                 >
                   <p className="text-sm font-semibold text-rose-300">이 음원을 보관함에서 지울까요?</p>
                   <p className="text-xs text-slate-300">보관함에서만 사라집니다. 원본 파일은 컴퓨터에 그대로 있습니다.</p>

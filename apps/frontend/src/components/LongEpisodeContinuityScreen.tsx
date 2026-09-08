@@ -185,7 +185,7 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
         <div className={cardSection}>
           {/* The four the next Episode actually reads, first and unfolded. */}
           <p className="text-xs text-slate-400">
-            여기 네 칸이 <span className="font-semibold text-slate-200">다음 화 대본을 쓸 때 읽히는</span> 내용입니다.
+            여기 네 칸이 <span className="font-semibold text-slate-100">다음 화 대본을 쓸 때 읽히는</span> 내용입니다.
           </p>
           <label className="block text-sm text-slate-300">
             에피소드 요약

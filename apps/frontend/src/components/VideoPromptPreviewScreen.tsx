@@ -173,7 +173,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
                   className="space-y-1.5 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-slate-200">{preview.sceneNumber}번 장면</span>
+                    <span className="text-sm font-semibold text-slate-100">{preview.sceneNumber}번 장면</span>
                     <span className="text-xs text-slate-400" data-testid={`cost-${preview.sceneNumber}`}>
                       예상 비용: ${preview.estimatedCostUsd.toFixed(2)}
                     </span>
@@ -225,7 +225,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
             aria-label="비용 및 예산 확인"
             className={`space-y-1.5 rounded-2xl border p-4 ${overBudget ? "border-rose-400/40 bg-rose-950/20" : "border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55"}`}
           >
-            <p className="text-sm font-semibold text-slate-200" data-testid="total-cost">
+            <p className="text-sm font-semibold text-slate-100" data-testid="total-cost">
               총 예상 비용: ${totalCostUsd.toFixed(2)}
             </p>
             {maximumProviderCalls !== undefined && (

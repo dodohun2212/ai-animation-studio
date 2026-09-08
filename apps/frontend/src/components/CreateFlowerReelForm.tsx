@@ -263,14 +263,14 @@ export function CreateFlowerReelForm({ onCreated, onCancel }: Props) {
         * form long and taught nothing; this line states the preset and points at where it is changed.
         */}
       <p className="text-sm text-slate-400" data-testid="flower-shape-note">
-        <span className="font-semibold text-slate-200 tabular-nums">
+        <span className="font-semibold text-slate-100 tabular-nums">
           {FLOWER_SCENE_COUNT}장면 × {FLOWER_CLIP_DURATION_SECONDS}초 = {FLOWER_TOTAL_SECONDS}초
         </span>
         , 세로 화면({FLOWER_ASPECT_RATIO})으로 맞춰 둡니다 — 씨앗 · 싹 · 봉오리 · 개화.{" "}
         <span className="text-slate-300">바꾸시려면 다음 설정 화면에서 바꾸시면 됩니다.</span>
       </p>
       <p className="text-sm text-slate-400" data-testid="flower-seam-note">
-        장면마다 영상을 따로 만들기 때문에 <span className="font-semibold text-slate-200">이음매마다 꽃 모양이 조금 달라질 수 있습니다.</span>
+        장면마다 영상을 따로 만들기 때문에 <span className="font-semibold text-slate-100">이음매마다 꽃 모양이 조금 달라질 수 있습니다.</span>
         {" "}장면을 적게, 길게 잡을수록 그 자리가 줄어듭니다 — 그것도 다음 설정 화면에서 바꾸실 수 있습니다.
       </p>
 
@@ -278,7 +278,7 @@ export function CreateFlowerReelForm({ onCreated, onCancel }: Props) {
           while this form wrote the script itself. The script now comes from a paid call, so the old line would
           be a screen promising something it no longer does, on the button that spends the money. */}
       <p className="text-sm text-slate-400" data-testid="flower-cost-note">
-        <span className="font-semibold text-slate-200">만들면 곧바로 대본 생성(${STORY_ESTIMATED_COST_USD.toFixed(2)})이 이어집니다.</span>{" "}
+        <span className="font-semibold text-slate-100">만들면 곧바로 대본 생성(${STORY_ESTIMATED_COST_USD.toFixed(2)})이 이어집니다.</span>{" "}
         이미지와 영상은 그 뒤에 따로 확인하고 만듭니다. 각 단계마다 금액이 나옵니다.
       </p>
 
@@ -300,7 +300,7 @@ export function CreateFlowerReelForm({ onCreated, onCancel }: Props) {
        */}
       <p className="text-sm text-slate-400" data-testid="flower-total-cost">
         다 만들면{" "}
-        <span className="font-semibold text-slate-200 tabular-nums">
+        <span className="font-semibold text-slate-100 tabular-nums">
           약 ${(STORY_ESTIMATED_COST_USD + FLOWER_SCENE_COUNT * IMAGE_ESTIMATED_COST_USD + FLOWER_TOTAL_SECONDS * VIDEO_SECOND_ESTIMATED_COST_USD).toFixed(2)}
         </span>{" "}
         <span className="text-slate-500 tabular-nums">

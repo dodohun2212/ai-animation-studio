@@ -40,7 +40,7 @@ const SAFE_NAME = /^[\p{L}\p{N}_-]+$/u;
 const field =
   "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 const outlineButton =
-  "rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-slate-200 hover:bg-white/5 disabled:opacity-50";
+  "rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50";
 
 /**
  * A quote over a picture, made from a picture the app already has.
@@ -136,7 +136,7 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard }: Props) {
       <ScreenHeader title="명언 카드" backLabel="프로젝트 목록으로" onBack={onBack} />
       <p className="text-sm text-slate-400">
         보관함의 그림 한 장에 문장을 얹어 짧은 영상으로 만듭니다. 그림은 이미 만들어 둔 것을 그대로 쓰기 때문에{" "}
-        <span className="font-semibold text-slate-200">여기서는 돈이 나가지 않습니다.</span>
+        <span className="font-semibold text-slate-100">여기서는 돈이 나가지 않습니다.</span>
       </p>
 
       {cardsError && (
@@ -205,7 +205,7 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard }: Props) {
                       onClick={() => setAssetId(asset.assetId)}
                     >
                       {asset.contentUrl && (
-                        <img src={asset.contentUrl} alt={asset.displayName} className="w-full rounded-lg border border-white/10 object-cover" />
+                        <img src={asset.contentUrl} alt={asset.displayName} className="w-full rounded-xl border border-white/10 object-cover" />
                       )}
                       <span className="block truncate text-xs text-slate-300">{asset.displayName}</span>
                     </button>
@@ -292,7 +292,7 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard }: Props) {
         {/* Repeated next to the button, not only in the header. The header sentence is read once on the way in;
             this one is read at the moment someone hesitates over a button that might cost money. */}
         <p className="text-sm text-slate-400" data-testid="photo-card-music-note">
-          <span className="font-semibold text-slate-200">이 단계는 비용이 들지 않습니다</span> — 이미 만들어 둔 그림 한 장을 그대로 쓰고
+          <span className="font-semibold text-slate-100">이 단계는 비용이 들지 않습니다</span> — 이미 만들어 둔 그림 한 장을 그대로 쓰고
           AI에 새로 요청하지 않습니다. 음악은 다음 단계(영상 합치기)에서 고릅니다. 저작권 표시가 필요한 음원이면 거기서 알려드립니다.
         </p>
 

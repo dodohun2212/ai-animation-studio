@@ -141,9 +141,9 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
           kind that stops being read. The exception is named here rather than left for the person to discover:
           those four boxes are the only ones on this screen that do not reach the script. */}
       <p data-testid="long-settings-scope" className="text-sm text-slate-400">
-        여기 적은 내용은 <strong className="text-slate-200">회차 나누기</strong>와 <strong className="text-slate-200">대본 생성</strong> 때 AI에게 전달됩니다
-        — <strong className="text-slate-200">그림체</strong> 칸 넷만 예외로 그림 쪽으로 갑니다.
-        빈 칸은 AI가 알아서 정하고, <strong className="text-slate-200">이미 만든 회차는 다시 만들어야</strong> 반영됩니다.
+        여기 적은 내용은 <strong className="text-slate-300">회차 나누기</strong>와 <strong className="text-slate-300">대본 생성</strong> 때 AI에게 전달됩니다
+        — <strong className="text-slate-300">그림체</strong> 칸 넷만 예외로 그림 쪽으로 갑니다.
+        빈 칸은 AI가 알아서 정하고, <strong className="text-slate-300">이미 만든 회차는 다시 만들어야</strong> 반영됩니다.
       </p>
       {state.error && !state.settings && (
         <p className="text-sm text-rose-400" role="alert" data-error-code={state.error.code}>
@@ -169,7 +169,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
               while collapsing everything else was the inconsistency — the summary says what is set, so opening
               it is for changing, not for checking. */}
           <details className="md:col-span-2 rounded-xl border border-white/10 bg-slate-950/30" data-testid="long-settings-video-group">
-            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-200">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-100">
               영상 만들기
               <span className="ml-2 font-normal text-slate-500">
                 {state.settings.episodeCount}화 · {state.settings.sceneCount}장면 × {state.settings.clipDurationSeconds}초 · {state.settings.aspectRatio}
@@ -247,9 +247,9 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
             )}
           </label>
           <div className="md:col-span-2 space-y-3 rounded-xl border border-white/10 bg-slate-950/40 p-3.5">
-            <p className="text-sm font-semibold text-slate-200">내레이션</p>
+            <p className="text-sm font-semibold text-slate-100">내레이션</p>
             <p className="text-xs leading-relaxed text-slate-400">장면마다 읽어줄 문장이 대본에 함께 들어갑니다. 인물이 말하는 게 아니라 읽어주는 방식입니다.</p>
-            <label className="flex items-start gap-2.5 text-sm text-slate-200">
+            <label className="flex items-start gap-2.5 text-sm text-slate-300">
               <input
                 type="checkbox"
                 data-testid="long-settings-narration-enabled"
@@ -262,7 +262,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
                 <span className="mt-1 block text-xs text-slate-400">실제 목소리로 만들어 영상에 입힙니다. 에피소드마다, 장면마다 한 번씩 비용이 듭니다.</span>
               </span>
             </label>
-            <label className="flex items-start gap-2.5 text-sm text-slate-200">
+            <label className="flex items-start gap-2.5 text-sm text-slate-300">
               <input
                 type="checkbox"
                 data-testid="long-settings-subtitles-enabled"
@@ -288,7 +288,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
             can be a sentence, which would push the group's own heading off the line.
           */}
           <details className="md:col-span-2 rounded-xl border border-white/10 bg-slate-950/30" data-testid="long-settings-style-group">
-            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-200">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-100">
               그림체
               <span className="ml-2 font-normal text-slate-500">
                 {[state.settings.visualStyle, state.settings.color, state.settings.lighting, state.settings.avoid].filter((value) => value.trim()).length > 0
@@ -302,7 +302,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
                   that visible unless it is said, and not saying it is the misunderstanding this box grew out of:
                   Episodes were drawn for weeks with no art direction at all because there was nowhere to put it. */}
               <p data-testid="long-settings-style-scope" className="md:col-span-2 text-sm text-slate-400">
-                이 넷은 <strong className="text-slate-200">그림에만</strong> 갑니다. 대본에는 들어가지 않습니다 — 위의 톤·메모와 반대입니다.
+                이 넷은 <strong className="text-slate-300">그림에만</strong> 갑니다. 대본에는 들어가지 않습니다 — 위의 톤·메모와 반대입니다.
                 <span className="mt-1 block text-xs text-slate-500">전부 비워 두면 스타일 지시 자체가 나가지 않아, 지금까지 만들어진 회차와 똑같이 그려집니다.</span>
               </p>
               <Field label="시각 스타일" value={state.settings.visualStyle} onChange={(value) => setField("visualStyle", value)} />
@@ -321,7 +321,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
           {/* Closed by default: these shape the story rather than the video, and a blank one is a complete
               answer — the AI decides. Someone with nothing particular in mind never has to open it. */}
           <details className="md:col-span-2 rounded-xl border border-white/10 bg-slate-950/30" data-testid="long-settings-story-group">
-            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-200">이야기 흐름 <span className="font-normal text-slate-500">(비워 둬도 됩니다)</span></summary>
+            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-100">이야기 흐름 <span className="font-normal text-slate-500">(비워 둬도 됩니다)</span></summary>
             <div className="grid gap-4 px-4 pb-4 md:grid-cols-2">
           <Field label="누가 볼 영상인가" value={state.settings.audience} onChange={(value) => setField("audience", value)} />
           <Field label="메모" value={state.settings.notes} onChange={(value) => setField("notes", value)} multiline />

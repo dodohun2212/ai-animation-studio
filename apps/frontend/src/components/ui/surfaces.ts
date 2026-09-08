@@ -3,13 +3,13 @@
  *
  * 🔴 These are not new styles. `outlineButton` was written identically in 21 files, `primaryButton` in 15 and
  * `cardSection` in 19 — and the copies had already begun to disagree: three of them sat on `text-slate-200`,
- * a shade §3.2 does not have. A shared constant is the only version of "every screen looks the same" that
+ * a shade §2.1 does not have. A shared constant is the only version of "every screen looks the same" that
  * stays true after the next screen is added.
  *
  * What changed while gathering them is deliberately small: a card is a gentle vertical gradient rather than
  * one flat fill, so a stack of cards reads as separate surfaces instead of one long slab, and the outline
- * button's border brightens on hover so it answers the pointer. Both stay inside §3.2's palette — no new
- * colour, and no fourth glow beyond the three §3.6 allows.
+ * button's border brightens on hover so it answers the pointer. Both stay inside §2.1's palette — no new
+ * colour, and no fourth glow beyond the three §2.5 allows.
  */
 
 /** A card. The default: a heading and a few rows. */
@@ -28,7 +28,7 @@ export const cardSectionRoomy =
 export const outlineButton =
   "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 transition-colors hover:border-white/20 hover:bg-white/5 disabled:opacity-50";
 
-/** The one call to action per screen, carrying §3.6's glow-cta. */
+/** The one call to action per screen, carrying §2.5's glow-cta. */
 export const primaryButton =
   "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] transition-opacity disabled:opacity-50";
 

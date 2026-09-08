@@ -160,7 +160,7 @@ export function LongEpisodeOutlineScreen({ projectId, episodeNumber, onBack, onO
       {episode && draft && (
         <section aria-label="회차 정보" className={cardSection}>
           <p className="text-sm text-slate-400">
-            현재 상태: <span className="text-slate-200">{longEpisodeStatusLabel(episode.status)}</span>
+            현재 상태: <span className="text-slate-300">{longEpisodeStatusLabel(episode.status)}</span>
           </p>
           {!editable && (
             <p data-testid="episode-outline-locked" className="text-sm text-amber-300">
