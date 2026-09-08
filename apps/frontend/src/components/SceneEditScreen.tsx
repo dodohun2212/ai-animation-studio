@@ -186,17 +186,18 @@ export function SceneEditScreen({ projectId, onBack }: Props) {
           {SCENE_FIELD_GROUPS.map((group) => (
             <section key={group.title} aria-label={group.title} data-testid={`scene-edit-group-${group.title}`} className={cardSection}>
               <header className="space-y-1">
-                <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold text-slate-100">
+                <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
+                  <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
                   {group.title}
                   {selected !== null && group.title === "구도" && (
-                    <>
-                      <StaleBadge staleSceneNumbers={staleness?.imageStale} sceneNumber={selected} kind="image" />
-                      {/* At most one of the two ever renders: the server puts a scene in one list or the other. */}
-                      <StaleBadge staleSceneNumbers={staleness?.styleStale} sceneNumber={selected} kind="style" />
-                    </>
+                  <>
+                  <StaleBadge staleSceneNumbers={staleness?.imageStale} sceneNumber={selected} kind="image" />
+                  {/* At most one of the two ever renders: the server puts a scene in one list or the other. */}
+                  <StaleBadge staleSceneNumbers={staleness?.styleStale} sceneNumber={selected} kind="style" />
+                  </>
                   )}
                   {selected !== null && group.title === "내레이션 문장" && (
-                    <StaleBadge staleSceneNumbers={staleness?.narrationStale} sceneNumber={selected} kind="narration" />
+                  <StaleBadge staleSceneNumbers={staleness?.narrationStale} sceneNumber={selected} kind="narration" />
                   )}
                 </h2>
                 <p className={`text-xs ${group.free ? "text-slate-400" : "text-amber-300"}`}>{group.impact}</p>

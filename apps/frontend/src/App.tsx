@@ -524,7 +524,10 @@ function useShortProjectShell(screen: Screen): ShortProjectShell | null {
 function PhotoCardStepNotice({ projectId, onOpenMerge }: { projectId: string; onOpenMerge: () => void }) {
   return (
     <section className="mt-8 max-w-2xl space-y-5" data-testid="photo-card-step-skipped">
-      <h2 className="text-lg font-semibold text-slate-100">명언 카드에는 없는 단계입니다</h2>
+      <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
+        <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+        명언 카드에는 없는 단계입니다
+      </h2>
       <p className="text-sm text-slate-300">
         명언 카드는 골라 둔 그림 한 장에 글귀를 얹는 것이라, 대본·참고 이미지·장면 이미지·영상 만들기를
         <span className="font-semibold text-slate-100"> 아예 거치지 않습니다</span>. 건너뛴 게 아니라 처음부터 없는 단계입니다.

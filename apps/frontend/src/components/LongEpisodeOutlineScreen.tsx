@@ -138,8 +138,8 @@ export function LongEpisodeOutlineScreen({ projectId, episodeNumber, onBack, onO
       <button type="button" className={backButton} onClick={onBack}>
         목록으로
       </button>
-      <h2 className="flex items-center gap-2.5 text-lg font-semibold">
-        <span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />
+      <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
+        <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
         {episodeNumber}화 내용
       </h2>
       <p className="text-sm text-slate-400">

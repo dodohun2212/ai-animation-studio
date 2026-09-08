@@ -35,7 +35,7 @@ export function CollapsibleCard({ title, summary, defaultOpen = false, testId, c
         >
           ▶
         </span>
-        <span className="text-base font-semibold text-slate-100">{title}</span>
+        <span className="text-sm font-semibold text-slate-100">{title}</span>
         {/* Hidden once open: the same words would then sit directly above the control that states them. */}
         <span className="ml-auto truncate text-sm text-slate-400 group-open:hidden">{summary}</span>
       </summary>

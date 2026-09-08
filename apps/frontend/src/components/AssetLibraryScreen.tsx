@@ -66,11 +66,8 @@ const smallRemoveButton =
   "rounded-full border border-rose-400/40 bg-rose-500/10 px-3 py-1 text-xs font-medium text-rose-300 hover:border-rose-400/60 hover:bg-rose-500/15 disabled:opacity-50";
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className="flex items-center gap-2.5 text-base font-semibold">
-      <span
-        aria-hidden="true"
-        className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-      />
+    <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
+      <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
       {children}
     </h3>
   );
@@ -774,7 +771,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                 {asset.imageAvailable && asset.contentUrl ? (
                   <img src={asset.contentUrl} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
                 ) : (
-                  <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/5 bg-slate-950/40 text-base text-slate-500">
+                  <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-slate-950/40 text-sm text-slate-500">
                     {asset.isFolder ? "📁" : "🖼"}
                   </span>
                 )}
@@ -930,7 +927,10 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
       )}
       {selected && (
         <section aria-label="에셋 상세" className="space-y-4 rounded-2xl border border-violet-400/30 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
-          <h3 className="text-xl font-semibold text-slate-100">{selected.asset.displayName}</h3>
+          <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
+            <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+            {selected.asset.displayName}
+          </h3>
           {selected.asset.imageAvailable && selected.asset.contentUrl && (
             <img src={selected.asset.contentUrl} alt={`${selected.asset.displayName} 미리보기`} className="max-h-64 rounded-xl object-contain" />
           )}

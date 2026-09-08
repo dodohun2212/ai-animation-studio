@@ -152,7 +152,10 @@ export function AudioLibraryScreen({ onBack }: Props) {
       </p>
 
       <div className={cardSection}>
-        <h2 className="text-sm font-semibold text-slate-200">음원 올리기</h2>
+        <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
+          <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+          음원 올리기
+        </h2>
         <label className="block text-sm text-slate-300" htmlFor="audio-file">
           파일 (MP3, WAV, M4A, OGG · 50MB 이하)
           <input

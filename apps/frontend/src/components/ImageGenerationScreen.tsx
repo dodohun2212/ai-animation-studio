@@ -408,7 +408,10 @@ export function ImageGenerationScreen({ projectId, onBack, onResume }: Props) {
               gets asked. They are still on disk; a stage is not a reason to hide what that stage produced. */}
           {!reviewable && !videoConfirmationReached && sceneNumbers.some((number) => sceneStatus(number) === "completed") && (
             <section aria-label="만든 장면 이미지" data-testid="scene-image-gallery" className="space-y-2 rounded-xl border border-white/10 bg-slate-950/30 p-4">
-              <h3 className="text-sm font-semibold text-slate-200">만든 장면 이미지</h3>
+              <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
+                <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+                만든 장면 이미지
+              </h3>
               <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {sceneNumbers.filter((number) => sceneStatus(number) === "completed").map((number) => (
                   <li key={number} className="space-y-1">
@@ -484,11 +487,8 @@ export function ImageGenerationScreen({ projectId, onBack, onResume }: Props) {
 
           {(reviewable || videoConfirmationReached) && (
             <div className={cardSection} data-testid="image-review-section">
-              <h3 className="flex items-center gap-2.5 text-base font-semibold">
-                <span
-                  aria-hidden="true"
-                  className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-                />
+              <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
+                <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
                 이미지 검토
               </h3>
               <p className="text-sm text-slate-300">각 장면의 이미지를 확인하고 개별적으로 승인해 주세요.</p>

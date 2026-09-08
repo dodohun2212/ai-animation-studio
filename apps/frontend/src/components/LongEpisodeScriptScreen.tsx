@@ -155,7 +155,10 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
     <section className="mt-8 max-w-4xl space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button type="button" className={outlineButton} onClick={onBack}>프로젝트로 돌아가기</button>
-        <h2 className="flex items-center gap-2.5 text-lg font-semibold"><SectionDot />{`에피소드 ${episodeNumber} 상세 대본`}</h2>
+        <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
+          <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+          <SectionDot />{`에피소드 ${episodeNumber} 상세 대본`}
+        </h2>
       </div>
       {loading && <Spinner label="불러오는 중..." />}
       {/* "이전 기록" counted this Episode's own earlier script drafts, but it renders two lines above a notice
@@ -243,7 +246,10 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
           {SCENE_GROUPS.map((group) => (
             <section key={group.title} aria-label={group.title} data-testid={`episode-script-group-${group.title}`} className={cardSection}>
               <header className="space-y-1">
-                <h3 className="text-base font-semibold text-slate-100">{group.title}</h3>
+                <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
+                  <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+                  {group.title}
+                </h3>
                 <p className={`text-xs ${group.free ? "text-slate-400" : "text-amber-300"}`}>{group.impact}</p>
               </header>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -282,7 +288,10 @@ export function LongEpisodeScriptScreen({ projectId, episodeNumber, onBack, onOp
 
           <section aria-label="에피소드 정보" className={cardSection}>
             <header className="space-y-1">
-              <h3 className="text-base font-semibold text-slate-100">에피소드 정보</h3>
+              <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
+                <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+                에피소드 정보
+              </h3>
               <p className="text-xs text-slate-400">장면 프롬프트에는 들어가지 않습니다 — 이 에피소드를 알아보기 위한 정보입니다.</p>
             </header>
             <div className="space-y-3">

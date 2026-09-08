@@ -146,7 +146,10 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard }: Props) {
       )}
       {cards !== null && cards.length > 0 && (
         <section aria-label="만들어 둔 카드" className={cardSection} data-testid="photo-card-existing">
-          <h2 className="text-base font-semibold text-slate-100">만들어 둔 카드</h2>
+          <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
+            <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+            만들어 둔 카드
+          </h2>
           <ul className="space-y-3">
             {cards.map((card) => (
               <li key={card.id}>
@@ -172,7 +175,10 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard }: Props) {
 
       <form className="space-y-5" onSubmit={(event) => void submit(event)}>
         <section aria-label="그림 고르기" className={cardSection}>
-          <h2 className="text-base font-semibold text-slate-100">그림 고르기</h2>
+          <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
+            <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+            그림 고르기
+          </h2>
           {!assets && !listError && <Spinner label="보관함을 불러오는 중..." />}
           {listError && (
             <p role="alert" data-testid="photo-card-list-error" data-error-code={listError.code} className="text-sm text-rose-400">

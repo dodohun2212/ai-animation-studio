@@ -213,11 +213,8 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
       <button type="button" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5" onClick={onBack}>
         에피소드 영상으로 돌아가기
       </button>
-      <h2 className="flex items-center gap-2.5 text-lg font-semibold">
-        <span
-          aria-hidden="true"
-          className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-        />
+      <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
+        <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
         에피소드 최종 영상
       </h2>
       <p className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300" data-testid="episode-merge-scope-notice">

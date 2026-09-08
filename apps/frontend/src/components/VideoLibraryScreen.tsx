@@ -479,7 +479,10 @@ export function VideoLibraryScreen({ onBack }: Props) {
               projects never sees a heading for a thing they do not have. */}
           {Boolean(filteredEpisodes.length) && (
             <div className="space-y-3" data-testid="library-episodes">
-              <h2 className="text-base font-semibold text-slate-100">장기 프로젝트 회차</h2>
+              <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
+                <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+                장기 프로젝트 회차
+              </h2>
               {episodeGroups.map((group) => (
                 <div key={group.project.projectId} className="space-y-3">
                   <div data-testid={`library-long-project-${group.project.projectId}`} className="flex flex-wrap items-baseline justify-between gap-2 border-b border-white/10 pb-1.5 pt-2">

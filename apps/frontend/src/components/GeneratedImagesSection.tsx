@@ -50,7 +50,7 @@ export function GeneratedImagesSection() {
           is what appears first — so someone looking for an Episode's pictures scanned that grid, did not find
           them, and concluded the library had never collected them. They were four rows further down. A count
           that hides which kinds it is counting answers a question nobody asked. */}
-      <summary className="cursor-pointer px-5 py-4 text-base font-semibold text-slate-100">
+      <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-slate-100">
         만든 이미지 {total}장
         {Boolean(projects.length) && Boolean(episodes.length) && (
           <span data-testid="generated-images-split" className="ml-2 text-sm font-normal text-slate-400 tabular-nums">
@@ -71,7 +71,10 @@ export function GeneratedImagesSection() {
           <div className="space-y-2">
             {/* Headed only when the other group exists: with one kind on screen a heading is noise, and with
                 both an unlabelled first grid reads as "all of them". */}
-            {Boolean(episodes.length) && <h3 className="text-sm font-semibold text-slate-200">단편 프로젝트</h3>}
+            {Boolean(episodes.length) && <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
+  <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+  단편 프로젝트
+</h3>}
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="generated-images-projects">
             {projects.map((image) => (
               <li key={`${image.projectId}-${image.sceneNumber}`} data-testid={`generated-image-${image.projectId}-${image.sceneNumber}`} className="space-y-1">
@@ -89,7 +92,10 @@ export function GeneratedImagesSection() {
         )}
         {Boolean(episodes.length) && (
           <div className="space-y-2" data-testid="generated-images-episodes">
-            <h3 className="text-sm font-semibold text-slate-200">장기 프로젝트 회차</h3>
+            <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
+              <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+              장기 프로젝트 회차
+            </h3>
             <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {episodes.map((image) => (
                 <li key={`${image.projectId}-${image.episodeNumber}-${image.sceneNumber}`} data-testid={`generated-episode-image-${image.projectId}-${image.episodeNumber}-${image.sceneNumber}`} className="space-y-1">

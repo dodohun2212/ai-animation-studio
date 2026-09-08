@@ -57,7 +57,10 @@ export function MonthlyBudgetCard({ budgets, onBudgetChange }: Props) {
   return (
     <section aria-label="이번 달 예산" data-testid="monthly-budget-card" className="space-y-3 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
       <div>
-        <h3 className="text-base font-semibold text-slate-100">이번 달 쓸 수 있는 돈</h3>
+        <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
+          <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+          이번 달 쓸 수 있는 돈
+        </h3>
         <p className="mt-1 text-xs text-slate-500">
           한 달에 이만큼까지만 쓰고, 넘으면 유료 요청을 아예 보내지 않습니다. 두 곳은 각각 따로 셉니다.
         </p>

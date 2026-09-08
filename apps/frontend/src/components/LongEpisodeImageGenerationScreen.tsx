@@ -348,7 +348,10 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
     <section className="mt-8 space-y-5">
       <button type="button" className={outlineButton} onClick={onBack}>참고 이미지 연결 검토로</button>
       <header className="space-y-1">
-        <h2 className="flex items-center gap-2.5 text-lg font-semibold"><span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />{`에피소드 ${episodeNumber} 이미지 생성`}</h2>
+        <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
+          <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+          {`에피소드 ${episodeNumber} 이미지 생성`}
+        </h2>
         <p data-testid="episode-image-cost-notice" className="text-sm text-amber-300">OpenAI 키가 연결되어 있으면 장면마다 실제 유료 요청이 전송됩니다. 연결되어 있지 않으면 비용 없이 임시 이미지로 생성됩니다.</p>
       </header>
       {loading && <Spinner label="에피소드 이미지 상태를 불러오는 중..." />}
@@ -487,7 +490,10 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
           what that stage produced. */}
       {episode && !isBefore(episode.status, "images_ready") && !reviewable && sceneNumbers.length > 0 && (
         <section aria-label="만든 장면 이미지" data-testid="episode-image-gallery" className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
-          <h3 className="text-base font-semibold text-slate-100">만든 장면 이미지</h3>
+          <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
+            <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+            만든 장면 이미지
+          </h3>
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {sceneNumbers.map((sceneNumber) => (
               <li key={sceneNumber} className="space-y-1">
@@ -543,7 +549,10 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
       {reviewState.status === "loading" && <Spinner label="이미지 검토 내용을 불러오는 중..." />}
       {reviewState.status === "ready" && (
         <section data-testid="episode-image-review-section" className={cardSection}>
-          <h3 className="flex items-center gap-2.5 text-base font-semibold"><span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />이미지 검토</h3>
+          <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
+            <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+            이미지 검토
+          </h3>
           {/* Design system §4.3: overall confirmation progress before the per-scene cards. */}
           <p className="text-sm text-slate-300 tabular-nums" data-testid="episode-image-review-summary">
             {sceneNumbers.length}장면 중 {sceneNumbers.filter((sceneNumber) => reviewFor(sceneNumber)?.status === "approved").length}장면 확정

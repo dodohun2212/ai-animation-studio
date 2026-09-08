@@ -162,7 +162,10 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
     <section className="mt-8 space-y-5" data-testid="episode-continuity-screen">
       <button type="button" className={outlineButton} onClick={onBack}>최종 에피소드 영상으로</button>
       <header className="space-y-1">
-        <h2 className="flex items-center gap-2.5 text-lg font-semibold"><span aria-hidden="true" className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]" />{`에피소드 ${episodeNumber} 이어쓰기 메모`}</h2>
+        <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
+          <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+          {`에피소드 ${episodeNumber} 이어쓰기 메모`}
+        </h2>
         <p className="text-sm text-slate-400">다음 에피소드를 준비하기 전에 이 내용을 검토하고 직접 저장하세요. 이 화면을 여는 것만으로는 아무것도 저장되지 않습니다.</p>
       </header>
       {!loading && !canSave && (

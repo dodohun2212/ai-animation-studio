@@ -731,11 +731,8 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
 
           {reviewable && (
             <div className={cardSection} data-testid="video-review-section">
-              <h3 className="flex items-center gap-2.5 text-base font-semibold">
-                <span
-                  aria-hidden="true"
-                  className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-                />
+              <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
+                <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
                 영상 검토
               </h3>
               <p className="text-sm text-slate-300">각 장면의 영상을 확인하고 개별적으로 승인해 주세요.</p>

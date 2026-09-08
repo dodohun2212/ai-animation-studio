@@ -281,7 +281,10 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
     <section className="mt-8 space-y-5">
       <button type="button" className={outlineButton} onClick={onBack}>에피소드 이미지로</button>
       <header className="space-y-1">
-        <h2 className="flex items-center gap-2.5 text-lg font-semibold">{dot}{`에피소드 ${episodeNumber} 영상 작업`}</h2>
+        <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
+          <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+          {dot}{`에피소드 ${episodeNumber} 영상 작업`}
+        </h2>
         {/*
           * Before a run exists this is genuinely conditional and says both branches. Once one exists it is not:
           * the server answered with `paidProvider`, this screen has been storing that answer since the start
@@ -557,7 +560,10 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
       )}
       {job?.status === "succeeded" && reviews && (
         <section data-testid="episode-video-review" className={cardSection}>
-          <h3 className="flex items-center gap-2.5 text-base font-semibold">{dot}영상 검토</h3>
+          <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
+            <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+            {dot}영상 검토
+          </h3>
           {/* Recovery, not regeneration — the difference is $1.50 an Episode, so the button says which one it
               is before it is pressed. */}
           <div className="space-y-2 rounded-xl border border-violet-400/25 bg-violet-500/[0.06] p-3.5">

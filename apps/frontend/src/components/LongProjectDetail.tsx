@@ -254,11 +254,8 @@ export function LongProjectDetail({
             ))}
           </dl>
           <div data-testid="episode-list" className="space-y-3 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6">
-            <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-200">
-              <span
-                aria-hidden="true"
-                className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-              />
+            <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
+              <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
               에피소드 타임라인
             </h3>
             <div className="flex flex-wrap gap-2">
@@ -435,7 +432,7 @@ export function LongProjectDetail({
           {/* The shelf the archive confirmation has been promising. Until this existed that sentence pointed at
               nothing — the data and the routes were both there, and only the way back was missing. */}
           <details data-testid="episode-archives" className="rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55" onToggle={(event) => { if ((event.currentTarget as HTMLDetailsElement).open) loadArchives(); }}>
-            <summary data-testid="episode-archives-summary" className="cursor-pointer px-5 py-4 text-base font-semibold text-slate-100">보관한 회차</summary>
+            <summary data-testid="episode-archives-summary" className="cursor-pointer px-5 py-4 text-sm font-semibold text-slate-100">보관한 회차</summary>
             <div className="space-y-3 px-5 pb-5">
 
             {restoredAs && (

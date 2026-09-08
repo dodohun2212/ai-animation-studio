@@ -47,7 +47,10 @@ export interface StatItem {
 export function SummaryPanel({ title, stats, className = "" }: { title: string; stats: StatItem[]; className?: string }) {
   return (
     <section className={`rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5 ${className}`.trim()} aria-label={title}>
-      <h2 className="text-sm font-semibold text-slate-100">{title}</h2>
+      <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
+        <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+        {title}
+      </h2>
       <dl className="mt-3 space-y-2.5">
         {stats.map((stat) => (
           <div key={stat.label} className="flex items-baseline justify-between gap-4">

@@ -76,8 +76,11 @@ function StageCard({
       className={`space-y-3 rounded-2xl border ${style.border} bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5`}
     >
       <header className="flex flex-wrap items-center gap-2.5">
-        <span className={`rounded-full border px-2.5 py-0.5 text-xs font-bold ${style.chip}`}>{step}단계</span>
-        <h3 className="text-base font-semibold text-slate-100">{title}</h3>
+        <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${style.chip}`}>{step}단계</span>
+        <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
+          <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+          {title}
+        </h3>
         <span className="text-xs text-slate-500">{provider}</span>
       </header>
 
@@ -257,7 +260,8 @@ export function WorkflowGuideScreen({ onBack }: Props) {
       </div>
 
       <section aria-label="전체 흐름 그림" className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
-        <h2 className="text-sm font-semibold text-slate-200">
+        <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
+          <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
           {projectKind === "short" ? "단기 프로젝트 — 영상 하나" : "장기 프로젝트 — 여러 회차"}
         </h2>
         <PipelineDiagram
@@ -273,7 +277,10 @@ export function WorkflowGuideScreen({ onBack }: Props) {
 
       {projectKind === "long" && (
         <section aria-label="장기 프로젝트 계산" data-testid="workflow-guide-long" className="space-y-3 rounded-2xl border border-violet-400/25 bg-violet-500/[0.07] p-5">
-          <h2 className="text-sm font-semibold text-slate-200">회차 수를 곱하면 이렇게 됩니다</h2>
+          <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
+            <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+            회차 수를 곱하면 이렇게 됩니다
+          </h2>
           <label className="text-sm text-slate-300" htmlFor="workflow-guide-episode-count">
             회차 수
             <select
@@ -318,7 +325,10 @@ export function WorkflowGuideScreen({ onBack }: Props) {
       )}
 
       <section aria-label="계산 조건" className="space-y-3 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
-        <h2 className="text-sm font-semibold text-slate-200">계산 조건{projectKind === "long" ? " (회차 하나 기준)" : ""}</h2>
+        <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
+          <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+          계산 조건{projectKind === "long" ? " (회차 하나 기준)" : ""}
+        </h2>
         <div className="flex flex-wrap gap-4">
           <label className="text-sm text-slate-300" htmlFor="workflow-guide-scene-count">
             장면 수
@@ -503,7 +513,10 @@ export function WorkflowGuideScreen({ onBack }: Props) {
       )}
 
       <section aria-label="알아두면 좋은 것" className="space-y-2.5 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
-        <h2 className="text-sm font-semibold text-slate-200">알아두면 좋은 것</h2>
+        <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
+          <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+          알아두면 좋은 것
+        </h2>
         <ul className="space-y-2 text-sm leading-relaxed text-slate-400">
           <li>
             · <span className="text-slate-300">API 키를 연결하지 않으면 비용이 들지 않습니다.</span> 키가 없으면 실제

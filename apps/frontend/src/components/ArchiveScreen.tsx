@@ -35,11 +35,8 @@ const smallDangerButton =
   "rounded-full border border-rose-400/40 bg-rose-500/10 px-3 py-1 text-xs font-medium text-rose-300 hover:border-rose-400/60 hover:bg-rose-500/15 disabled:opacity-50";
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className="flex items-center gap-2.5 text-base font-semibold">
-      <span
-        aria-hidden="true"
-        className="h-2 w-2 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-      />
+    <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
+      <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
       {children}
     </h3>
   );

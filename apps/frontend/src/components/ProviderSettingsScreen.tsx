@@ -91,7 +91,10 @@ export function ProviderSettingsScreen({ onBack }: Props) {
             // Deliberately not role="alert": the Instagram store being unreachable does not stop the rest of
             // this screen working, and announcing it as an alert would rank it with the failures that do.
             <div className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5" data-testid="instagram-unavailable">
-              <h3 className="text-base font-semibold text-slate-100">Instagram — 게시</h3>
+              <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
+                <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+                Instagram — 게시
+              </h3>
               <p className="text-sm text-amber-300">인스타그램 연결 정보를 불러오지 못했습니다.</p>
               {/* Named because it is the cause that leaves no other trace: the packaged shell runs a
                   pre-built backend bundle, so a shell built before this feature existed answers as though the
@@ -106,7 +109,10 @@ export function ProviderSettingsScreen({ onBack }: Props) {
           {/* The screen listed two provider names and nothing about what either one is for, so there was no way
               to tell which key a stuck step needs — or what stops working if you disconnect one. */}
           <section aria-label="어떤 AI가 어디에 쓰이나" className="space-y-3 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
-            <h3 className="text-sm font-semibold text-slate-200">어떤 AI가 어디에 쓰이나</h3>
+            <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
+              <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+              어떤 AI가 어디에 쓰이나
+            </h3>
             <div className="space-y-2">
               <div className="rounded-xl border border-violet-400/25 bg-violet-500/5 p-3">
                 <p className="text-sm font-semibold text-violet-200">OpenAI — 글과 그림, 목소리</p>

@@ -47,7 +47,10 @@ export function ProviderCredentialCard({ label, status, onStatusChange, acquireM
   const inputId = `${status.provider}-credential`;
   return (
     <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
-      <h3 className="text-base font-semibold text-slate-100">{label}</h3>
+      <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
+        <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+        {label}
+      </h3>
       <p className={`mt-1 text-sm ${statusTone(status)}`}>{statusText(status)}</p>
       {status.configured && status.maskedValue && <p className="mt-1 font-mono text-sm text-slate-400">{status.maskedValue}</p>}
       <form className="mt-4 space-y-2" onSubmit={save}>

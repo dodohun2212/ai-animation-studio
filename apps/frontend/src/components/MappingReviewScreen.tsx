@@ -471,7 +471,10 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
       </details>
 
       <section aria-label="참고 이미지 연결 추가" className="space-y-3 rounded-2xl border border-violet-400/25 bg-violet-500/[0.06] p-5">
-        <h2 className="text-base font-semibold text-slate-100">참고 이미지 연결하기</h2>
+        <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
+          <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+          참고 이미지 연결하기
+        </h2>
         <p className="text-xs text-slate-400">
           이미지 보관함에서 골라 이 프로젝트의 장면에 붙입니다. 캐릭터는 <strong className="text-slate-300">폴더</strong>로
           연결하면 그 폴더의 대표 이미지가 전달됩니다.
