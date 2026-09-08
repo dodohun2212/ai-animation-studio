@@ -119,6 +119,42 @@ videos/
 등장인물·배경·소품은 글로 적지 않는다. 생김새는 이미지 보관함의 폴더로 정하고, 주인공은 위
 "캐릭터와 스타일"의 규칙을 따른다.
 
+## 단기 화면과 장편 화면의 대응
+
+두 파이프라인은 **같은 일을 두 번 그린다.** 그래서 한쪽을 고치면 다른 쪽이 조용히 뒤에
+남는다 — 실제로 세 번 그랬고(제목 띠 · 파이프라인 제목 · 헤더 부품), 한 번은 **12일** 걸려서
+발견됐다. 고친 사람이 게을러서가 아니라, **대응이 어디에도 적혀 있지 않아서** 두 파이프라인을
+다 아는 사람의 머릿속에만 있었기 때문이다.
+
+셋째 칸이 이 표의 요점이다. **「마지막 대조」가 오래된 줄은 그 자체로 「여기 비대칭이 있을 수
+있다」**는 뜻이다. 단기 화면을 고칠 때 그 자리에서 장편 짝을 확인하고 이 칸을 갱신한다 —
+나중에 확인하는 순서는 그 자체가 잊히는 종류의 것이다.
+
+| 단기 화면 | 장편 대응 | 마지막 대조 |
+|---|---|---|
+| `ProjectList` | `LongProjectList` | 2026-09-09 |
+| `CreateProjectForm` | `CreateLongProjectForm` | 2026-09-09 |
+| `ProjectDetail` | `LongProjectDetail` | 2026-09-09 |
+| `ShortProjectSettingsScreen` | `LongProjectSettingsScreen` + `LongEpisodeSettingsScreen` | 2026-09-09 |
+| `StoryPromptScreen` | `LongEpisodeScriptScreen` | 2026-09-09 |
+| `MappingReviewScreen` | **같은 부품** (`longEpisodeMappingReview` 가 그대로 쓴다) | — |
+| `ImageGenerationScreen` | `LongEpisodeImageGenerationScreen` | 2026-09-09 |
+| `NarrationReviewScreen` | `LongEpisodeNarrationReviewScreen` | 2026-09-09 |
+| `VideoWorkflowScreen` | `LongEpisodeVideoWorkflowScreen` | 2026-09-09 |
+| `VideoMergeScreen` | `LongEpisodeVideoMergeScreen` | 2026-09-09 |
+| `VideoPromptPreviewScreen` | **없음** — 장편은 회차 단위 승인이 대신한다 | — |
+| `SceneEditScreen` | **없음** — 장편은 회차 내용 화면(`LongEpisodeOutlineScreen`)이 대신한다 | — |
+| `InstagramPostScreen` | **없음** — 발행은 단기에서만 한다 | — |
+| **없음** | `LongProjectOutlineScreen` (회차 나누기) · `LongEpisodeContinuityScreen` (이어쓰기 메모) | — |
+
+- 🟢 **`MappingReviewScreen` 줄이 제일 나은 모양이다** — 한 부품을 두 흐름이 쓰면 비대칭이
+  **생길 수가 없다.** 나머지 줄에서 「왜 부품 하나로 못 하는가」를 물을 값어치가 있다.
+- 🔴 **「없음」도 사실이고, 적혀 있어야 한다.** 안 적혀 있으면 다음 사람이 「빠뜨린 것」과
+  「원래 없는 것」을 구별하지 못한다. `SceneEditScreen` 의 장편 짝을 찾다가 없다는 것을
+  알아내는 데 드는 시간이 매번 다시 든다.
+- 🟠 화면이 계속 움직이는 중이라 이 표는 낡을 수 있다. 낡은 표는 셋째 칸이 말해 준다 —
+  **없는 표는 아무 말도 안 한다.**
+
 ## 현재 제외 범위
 
 - 회원가입과 다중 사용자
