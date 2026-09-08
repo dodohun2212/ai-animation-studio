@@ -8,12 +8,14 @@ describe("sceneSubtitleAss", () => {
     expect(ass).toContain("PlayResX: 1080");
     expect(ass).toContain("PlayResY: 1920");
     expect(ass).toContain("Style: Default,Noto Sans KR,");
-    expect(ass).toContain("Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\an5\\pos(540,1498)}첫 번째 문장입니다.");
+    // The centre is derived rather than typed: this pair is about the file's shape, and a literal here turns
+    // every change of the published default into a red test that says nothing about that shape.
+    expect(ass).toContain(`Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\an5\\pos(540,${Math.round(1920 * SCENE_SUBTITLE_CENTER.default)})}첫 번째 문장입니다.`);
   });
 
   it("formats hour/minute-scale durations with correct zero-padded fields", () => {
     const ass = sceneSubtitleAss("문장", 65.5, 1920, 1080);
-    expect(ass).toContain("Dialogue: 0,0:00:00.00,0:01:05.50,Default,,0,0,0,,{\\an5\\pos(960,842)}문장");
+    expect(ass).toContain(`Dialogue: 0,0:00:00.00,0:01:05.50,Default,,0,0,0,,{\\an5\\pos(960,${Math.round(1080 * SCENE_SUBTITLE_CENTER.default)})}문장`);
   });
 
   it("escapes literal braces (ASS override-tag syntax) and converts newlines to the format's own line break", () => {

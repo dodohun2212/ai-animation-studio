@@ -794,16 +794,36 @@ export interface SceneSubtitleLayout {
 }
 
 /**
- * Text size: 0.033 of frame height is 63px at 1920 — the size scenes already render at.
+ * Text size: 0.050 of frame height is 96px at 1920.
  *
- * 🟠 The default deliberately does not move in the change that introduced this handle. Position and outline
- * are what 캡틴D asked for; moving the size at the same time would leave nobody able to say which of the three
- * made the next reel look different. The range exists so the handle is useful, not because a number in it was
- * chosen.
+ * 🟢 It was 0.033 (63px), and the reason it stayed there is gone. The handle's own change deliberately left the
+ * size alone so that one reel could not change for three reasons at once; this move is not another experiment
+ * but a look 캡틴D chose from a reference image, measured off it — ink 15px tall on a 457px-tall thumbnail,
+ * converted through the ink-to-Fontsize ratio our own renders show, is 0.052 of the height (Cowork Round 672 ①).
+ *
+ * 🔴 The ceiling is 0.060 rather than the 0.050 that conversion lands on, and the reason is the conversion's own
+ * stated precision: about ±0.003, from a thumbnail. A ceiling equal to the default makes that error
+ * one-directional — every reading that came out too small is correctable by the person and every reading that
+ * came out too large is not, on the one control that exists so a person can fix what they see.
+ *
+ * 🟢 The headroom is measured, not assumed. Every distinct narration this repository has produced (27 of them,
+ * read out of apps/backend/learning_data) rendered through the real FFmpeg at 1080x1920 with the shipped font:
+ * at 0.050 the worst case is five rows clearing the bottom of the frame by 426px, and at 0.060 five rows
+ * clearing it by 381px. A synthetic sentence 1.8x longer than anything on disk still clears by 94px at 0.060.
+ *
+ * 🟠 What that measurement does NOT say is that 0.060 is safe everywhere: at the top of the centre range
+ * (0.85) the same longest sentence has 16px left, and the synthetic one has none. That hole belongs to
+ * {@link SCENE_SUBTITLE_CENTER} and is not new — 0.050 at 0.85 already clipped six lines. It is the preview's
+ * overflow warning that closes it, at either ceiling.
  */
-export const SCENE_SUBTITLE_SCALE = { default: 0.033, min: 0.024, max: 0.050 } as const;
+export const SCENE_SUBTITLE_SCALE = { default: 0.050, min: 0.024, max: 0.060 } as const;
 /**
- * Block centre: 0.78 of frame height.
+ * Block centre: 0.66 of frame height.
+ *
+ * 🟢 0.78 was picked from four rendered drafts at the old size; 0.66 is measured off the reference image
+ * 캡틴D chose — block centre 299.5 of 457 (Cowork Round 672 ①). It moves with the size above it, because
+ * the two together are one look rather than two settings, and a block that is half again as tall at the old
+ * centre sits lower on the picture than the one that was chosen.
  *
  * 🔴 The upper end is measured, and what the measurement says is narrower than it first looks. Rendered
  * through the real FFmpeg at 1080x1920 with the shipped font, at the largest size (0.050): a four-line block
@@ -821,9 +841,9 @@ export const SCENE_SUBTITLE_SCALE = { default: 0.033, min: 0.024, max: 0.050 } a
  * 0.30 is not an optimum either, simply "high enough to be a real choice": a scene subtitle up there covers
  * the subject, which is why this is a slider a person looks at rather than a value the app picks.
  */
-export const SCENE_SUBTITLE_CENTER = { default: 0.78, min: 0.30, max: 0.85 } as const;
+export const SCENE_SUBTITLE_CENTER = { default: 0.66, min: 0.30, max: 0.85 } as const;
 
-/** The layout a scene gets when nobody has chosen one — today's size, at the position 캡틴D picked. */
+/** The layout a scene gets when nobody has chosen one — the size and position 캡틴D picked off the reference. */
 export const DEFAULT_SCENE_SUBTITLE_LAYOUT: SceneSubtitleLayout = {
   scale: SCENE_SUBTITLE_SCALE.default,
   center: SCENE_SUBTITLE_CENTER.default,
