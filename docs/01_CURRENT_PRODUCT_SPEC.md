@@ -130,18 +130,25 @@ videos/
 있다」**는 뜻이다. 단기 화면을 고칠 때 그 자리에서 장편 짝을 확인하고 이 칸을 갱신한다 —
 나중에 확인하는 순서는 그 자체가 잊히는 종류의 것이다.
 
+🔴 **「대조」와 「일괄」을 구별해서 적는다. 이 구별이 없으면 셋째 칸은 거짓말을 한다.** 전
+화면을 한 번에 훑는 작업은 짝을 **우연히** 같이 고친다 — 실제로 카드 제목 규격화(일괄)는
+내레이션 확인 짝을 우연히 맞췄고, 바로 그 다음 작업(설정 화면, 한 화면씩)은 장편 짝을
+놓쳐서 두 라운드 뒤에 따로 고쳐야 했다. **일괄에 같이 들린 것은 「이 둘이 맞는지 봤다」가
+아니다.**
+
 | 단기 화면 | 장편 대응 | 마지막 대조 |
 |---|---|---|
-| `ProjectList` | `LongProjectList` | 2026-09-09 |
-| `CreateProjectForm` | `CreateLongProjectForm` | 2026-09-09 |
-| `ProjectDetail` | `LongProjectDetail` | 2026-09-09 |
-| `ShortProjectSettingsScreen` | `LongProjectSettingsScreen` + `LongEpisodeSettingsScreen` | 2026-09-09 |
-| `StoryPromptScreen` | `LongEpisodeScriptScreen` | 2026-09-09 |
+| `ProjectList` | `LongProjectList` | 일괄 2026-09-09 |
+| `CreateProjectForm` | `CreateLongProjectForm` | 일괄 2026-09-09 |
+| `ProjectDetail` | `LongProjectDetail` | **대조** 2026-09-09 |
+| `ShortProjectSettingsScreen` | `LongProjectSettingsScreen` | **대조** 2026-09-09 |
+| `ShortProjectSettingsScreen` | `LongEpisodeSettingsScreen` (회차 단위) | 일괄 2026-09-09 |
+| `StoryPromptScreen` | `LongEpisodeScriptScreen` | **대조** 2026-09-09 |
 | `MappingReviewScreen` | **같은 부품** (`longEpisodeMappingReview` 가 그대로 쓴다) | — |
-| `ImageGenerationScreen` | `LongEpisodeImageGenerationScreen` | 2026-09-09 |
-| `NarrationReviewScreen` | `LongEpisodeNarrationReviewScreen` | 2026-09-09 |
-| `VideoWorkflowScreen` | `LongEpisodeVideoWorkflowScreen` | 2026-09-09 |
-| `VideoMergeScreen` | `LongEpisodeVideoMergeScreen` | 2026-09-09 |
+| `ImageGenerationScreen` | `LongEpisodeImageGenerationScreen` | **대조** 2026-09-09 |
+| `NarrationReviewScreen` | `LongEpisodeNarrationReviewScreen` | 일괄 2026-09-09 |
+| `VideoWorkflowScreen` | `LongEpisodeVideoWorkflowScreen` | **대조** 2026-09-09 |
+| `VideoMergeScreen` | `LongEpisodeVideoMergeScreen` | **대조** 2026-09-09 |
 | `VideoPromptPreviewScreen` | **없음** — 장편은 회차 단위 승인이 대신한다 | — |
 | `SceneEditScreen` | **없음** — 장편은 회차 내용 화면(`LongEpisodeOutlineScreen`)이 대신한다 | — |
 | `InstagramPostScreen` | **없음** — 발행은 단기에서만 한다 | — |
@@ -154,6 +161,13 @@ videos/
   알아내는 데 드는 시간이 매번 다시 든다.
 - 🟠 화면이 계속 움직이는 중이라 이 표는 낡을 수 있다. 낡은 표는 셋째 칸이 말해 준다 —
   **없는 표는 아무 말도 안 한다.**
+- 🟠 **「합칠 수 있는가」는 이 표가 답해야 할 다음 질문이다.** `MappingReviewScreen` 이 하나로
+  되는 이유는 「무엇에 대한 화면인가」가 **인자 하나 차이**(프로젝트냐 회차냐)라서다. 같은
+  성질로 보이는 후보가 셋 있다 — 이미지 생성 · 영상 작업 · 영상 병합은 셋 다 「장면 묶음에
+  대해 같은 일을 한다」이고 다른 것은 어느 묶음이냐뿐이다. 🔴 **반대로 대본 두 화면은 합치면
+  안 된다**: 단기는 「없는 대본을 만든다」이고 장편은 「있는 개요에서 회차 대본을 쓴다」 —
+  한 화면의 두 모드가 아니라 다른 단계다. 🟠 **이 문단은 코드를 읽은 짐작이고 재보지 않았다**
+  (Cowork Round 694 ④). 합치기 전에 세 화면의 실제 차이를 재는 것이 먼저다.
 
 ## 현재 제외 범위
 
