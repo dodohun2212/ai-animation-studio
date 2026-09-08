@@ -1,8 +1,6 @@
 import { useRef, useState, type FormEvent } from "react";
 import {
   IMAGE_ESTIMATED_COST_USD,
-  MIN_SCENE_COUNT,
-  RUNWAY_CLIP_DURATIONS,
   STORY_ESTIMATED_COST_USD,
   VIDEO_SECOND_ESTIMATED_COST_USD,
   type AspectRatio,
@@ -23,9 +21,27 @@ const field =
   "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 const cardSection = "space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-5";
 
-/** Scene counts this form offers. The contract allows up to MAX_SCENE_COUNT; these are the ones the growth arc divides into cleanly. */
-const SCENE_COUNTS = [2, 3, 4] as const;
-type SceneCount = (typeof SCENE_COUNTS)[number];
+/**
+ * The shape of a flower reel, decided here rather than asked here.
+ *
+ * These three used to be selects on this form, and the screen that opens the instant this one succeeds —
+ * ShortProjectSettingsScreen, reached by handleCreated — asks for the same three again. They are still
+ * editable there: the server returns sceneCountChangeable from `stored.scenes.length === 0` and
+ * aspectRatioChangeable from `stored.generated_images.length === 0`, and a project this form just made has
+ * neither. So the second screen is not a later moment that the first one was needed for; it is the next
+ * screen, with the same controls, unlocked. 캡틴D asked whether one of the two could go, and this is the one:
+ * the other is the only place these live for every short project, flower or not.
+ *
+ * Four five-second scenes rather than two ten-second ones: 씨앗 → 싹 → 봉오리 → 개화. Two scenes jumps from a
+ * sprout to a fully open flower in one cut, and that jump remains however steady the pot is. The video cost is
+ * identical — the same total length at the same per-second rate — and the images cost $0.20 more, which is
+ * what buys the two missing beats. Held back until 장면 이어 그리기 existed, on purpose: with more scenes and
+ * no chain, the pot simply changes more times (Cowork Round 617 ④, agreed in CLI Round 618 ④).
+ */
+const FLOWER_SCENE_COUNT = 4;
+const FLOWER_CLIP_DURATION_SECONDS: RunwayClipDurationSeconds = 5;
+const FLOWER_ASPECT_RATIO: AspectRatio = "9:16";
+const FLOWER_TOTAL_SECONDS = FLOWER_SCENE_COUNT * FLOWER_CLIP_DURATION_SECONDS;
 
 /**
  * 🔴 Every scene needs seventeen fields — visual_action, shot_size, camera_angle and the rest — and those are
@@ -40,9 +56,6 @@ function presetSettings(
   flower: string,
   meaning: string,
   originHint: string,
-  sceneCount: SceneCount,
-  clipDurationSeconds: RunwayClipDurationSeconds,
-  aspectRatio: AspectRatio,
 ): ShortProjectSettingsInput {
   const name = flower.trim();
   const known = originHint.trim();
@@ -59,8 +72,8 @@ function presetSettings(
       + `화면은 ${name} 씨앗이 흙에 심기는 데서 시작해, 싹이 트고 줄기가 자라 꽃이 활짝 피기까지 한 방향으로 진행한다.\n`
       + `장면이 넘어가도 같은 ${name}, 같은 화분, 같은 각도, 같은 빛을 유지한다.`
       + (known ? `\n\n유래에 대해 알고 있는 것: ${known}` : ""),
-    sceneCount,
-    clipDurationSeconds,
+    sceneCount: FLOWER_SCENE_COUNT,
+    clipDurationSeconds: FLOWER_CLIP_DURATION_SECONDS,
     additionalNotes:
       `내레이션은 꽃말과 그 유래를 설명하는 해설이다. 등장인물의 대사가 아니다.\n`
       // 🔴 The one prompt-level defence against an invented origin. It does not replace the script review —
@@ -80,7 +93,7 @@ function presetSettings(
       // things that must never appear out of every frame. `avoid` is one of the four style fields that
       // actually reach the image prompt.
       avoid: "사람, 손, 글자, 로고, 화분이나 배경이 장면마다 바뀌는 것",
-      aspect: aspectRatio,
+      aspect: FLOWER_ASPECT_RATIO,
     },
     narrationEnabled: true,
     subtitlesEnabled: true,
@@ -106,19 +119,6 @@ export function CreateFlowerReelForm({ onCreated, onCancel }: Props) {
   const [originHint, setOriginHint] = useState("");
   const [projectId, setProjectId] = useState("");
   const [idTouched, setIdTouched] = useState(false);
-  /*
-   * Four five-second scenes rather than two ten-second ones: 씨앗 → 싹 → 봉오리 → 개화.
-   *
-   * Two scenes jumps from a sprout to a fully open flower in one cut, and that jump remains however steady the
-   * pot is. The video cost is identical — the same total length at the same per-second rate — and the images
-   * cost $0.20 more, which is what buys the two missing beats.
-   *
-   * Held back until the chain existed, on purpose: with more scenes and no chain, the pot simply changes more
-   * times (Cowork Round 617 ④, agreed in CLI Round 618 ④). Both halves are in now.
-   */
-  const [sceneCount, setSceneCount] = useState<SceneCount>(4);
-  const [clipDurationSeconds, setClipDurationSeconds] = useState<RunwayClipDurationSeconds>(5);
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("9:16");
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   /**
    * The project exists but its preset did not save.
@@ -152,7 +152,7 @@ export function CreateFlowerReelForm({ onCreated, onCancel }: Props) {
         setCreated(project);
       }
       await updateProjectSettings(project.id, {
-        settings: presetSettings(flowerName, meaning, originHint, sceneCount, clipDurationSeconds, aspectRatio),
+        settings: presetSettings(flowerName, meaning, originHint),
       });
       onCreated(project);
     } catch (caught) {
@@ -230,54 +230,24 @@ export function CreateFlowerReelForm({ onCreated, onCancel }: Props) {
         )}
       </section>
 
-      <section aria-label="길이와 화면" className={cardSection}>
-        <div className="flex flex-wrap gap-4">
-          <label className="block text-sm text-slate-300">
-            장면 수
-            <select
-              data-testid="flower-scene-count"
-              className={field}
-              value={sceneCount}
-              disabled={submitting}
-              onChange={(event) => setSceneCount(Number(event.target.value) as SceneCount)}
-            >
-              {SCENE_COUNTS.filter((value) => value >= MIN_SCENE_COUNT).map((value) => <option key={value} value={value}>{value}개</option>)}
-            </select>
-          </label>
-          <label className="block text-sm text-slate-300">
-            장면당 길이
-            <select
-              data-testid="flower-clip-duration"
-              className={field}
-              value={clipDurationSeconds}
-              disabled={submitting}
-              onChange={(event) => setClipDurationSeconds(Number(event.target.value) as RunwayClipDurationSeconds)}
-            >
-              {RUNWAY_CLIP_DURATIONS.map((value) => <option key={value} value={value}>{value}초</option>)}
-            </select>
-          </label>
-          <label className="block text-sm text-slate-300">
-            화면 비율
-            <select
-              data-testid="flower-aspect"
-              className={field}
-              value={aspectRatio}
-              disabled={submitting}
-              onChange={(event) => setAspectRatio(event.target.value as AspectRatio)}
-            >
-              <option value="9:16">세로 (9:16)</option>
-              <option value="16:9">가로 (16:9)</option>
-            </select>
-          </label>
-        </div>
-        <p className="text-sm text-slate-400" data-testid="flower-length-note">
-          전체 <span className="font-semibold text-slate-200 tabular-nums">{sceneCount * clipDurationSeconds}초</span>.
-        </p>
-        <p className="text-sm text-slate-400" data-testid="flower-seam-note">
-          장면마다 영상을 따로 만들기 때문에 <span className="font-semibold text-slate-200">이음매마다 꽃 모양이 조금 달라질 수 있습니다.</span>
-          {" "}장면을 적게, 길게 잡을수록 그 자리가 줄어듭니다.
-        </p>
-      </section>
+      {/*
+        * What the form no longer asks, said once so the shape is not a surprise on the next screen.
+        *
+        * The three selects that used to sit here (장면 수 · 장면당 길이 · 화면 비율) are the same three the
+        * settings screen shows the instant this form succeeds, still unlocked. Asking twice in a row made this
+        * form long and taught nothing; this line states the preset and points at where it is changed.
+        */}
+      <p className="text-sm text-slate-400" data-testid="flower-shape-note">
+        <span className="font-semibold text-slate-200 tabular-nums">
+          {FLOWER_SCENE_COUNT}장면 × {FLOWER_CLIP_DURATION_SECONDS}초 = {FLOWER_TOTAL_SECONDS}초
+        </span>
+        , 세로 화면({FLOWER_ASPECT_RATIO})으로 맞춰 둡니다 — 씨앗 · 싹 · 봉오리 · 개화.{" "}
+        <span className="text-slate-300">바꾸시려면 다음 설정 화면에서 바꾸시면 됩니다.</span>
+      </p>
+      <p className="text-sm text-slate-400" data-testid="flower-seam-note">
+        장면마다 영상을 따로 만들기 때문에 <span className="font-semibold text-slate-200">이음매마다 꽃 모양이 조금 달라질 수 있습니다.</span>
+        {" "}장면을 적게, 길게 잡을수록 그 자리가 줄어듭니다 — 그것도 다음 설정 화면에서 바꾸실 수 있습니다.
+      </p>
 
       {/* 🔴 This sentence used to say the opposite — "여기까지는 비용이 들지 않습니다" — and it was true only
           while this form wrote the script itself. The script now comes from a paid call, so the old line would
@@ -292,8 +262,12 @@ export function CreateFlowerReelForm({ onCreated, onCancel }: Props) {
        *
        * Every step already states its own price at the moment it charges — and that is exactly why nobody ever
        * saw the total: it arrived in four pieces, each after the previous one was already spent. 캡틴D finished
-       * a reel and only then knew what a reel costs. The number that changes a decision here is the one that
-       * moves when 장면 수 and 장면당 길이 move, and those two controls are directly above this line.
+       * a reel and only then knew what a reel costs.
+       *
+       * Fixed now rather than reactive: the two controls this number used to follow moved to the settings
+       * screen, which opens the moment this form succeeds and has them unlocked. So this is the price of the
+       * preset as offered, and the last line says where it changes — a total that quietly stops being the
+       * total is exactly the failure this paragraph was added to prevent.
        *
        * Deliberately says 약: these are the app's own per-step estimates, the same ones each confirmation panel
        * shows, and the provider bills what it bills. Voice is left out because it is off unless someone turns it
@@ -302,13 +276,14 @@ export function CreateFlowerReelForm({ onCreated, onCancel }: Props) {
       <p className="text-sm text-slate-400" data-testid="flower-total-cost">
         다 만들면{" "}
         <span className="font-semibold text-slate-200 tabular-nums">
-          약 ${(STORY_ESTIMATED_COST_USD + sceneCount * IMAGE_ESTIMATED_COST_USD + sceneCount * clipDurationSeconds * VIDEO_SECOND_ESTIMATED_COST_USD).toFixed(2)}
+          약 ${(STORY_ESTIMATED_COST_USD + FLOWER_SCENE_COUNT * IMAGE_ESTIMATED_COST_USD + FLOWER_TOTAL_SECONDS * VIDEO_SECOND_ESTIMATED_COST_USD).toFixed(2)}
         </span>{" "}
         <span className="text-slate-500 tabular-nums">
-          (대본 ${STORY_ESTIMATED_COST_USD.toFixed(2)} + 이미지 {sceneCount}장 ${(sceneCount * IMAGE_ESTIMATED_COST_USD).toFixed(2)}
-          {" "}+ 영상 {sceneCount * clipDurationSeconds}초 ${(sceneCount * clipDurationSeconds * VIDEO_SECOND_ESTIMATED_COST_USD).toFixed(2)})
+          (대본 ${STORY_ESTIMATED_COST_USD.toFixed(2)} + 이미지 {FLOWER_SCENE_COUNT}장 ${(FLOWER_SCENE_COUNT * IMAGE_ESTIMATED_COST_USD).toFixed(2)}
+          {" "}+ 영상 {FLOWER_TOTAL_SECONDS}초 ${(FLOWER_TOTAL_SECONDS * VIDEO_SECOND_ESTIMATED_COST_USD).toFixed(2)})
         </span>
         {" "}— 단계마다 다시 여쭙고, 중간에 그만두셔도 됩니다.
+        {" "}설정 화면에서 장면 수나 길이를 바꾸시면 이 금액도 그만큼 달라집니다.
       </p>
 
       {created !== null && error !== null && (

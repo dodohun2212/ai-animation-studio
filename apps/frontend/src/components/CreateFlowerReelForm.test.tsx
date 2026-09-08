@@ -60,6 +60,8 @@ describe("CreateFlowerReelForm", () => {
     // survived however steady the pot was kept; the video cost is unchanged and the images cost $0.20 more.
     expect(settings.sceneCount).toBe(4);
     expect(settings.clipDurationSeconds).toBe(5);
+    // Hardcoded now rather than read off a select, so this is the only thing holding the preset's shape.
+    expect(settings.styleNotes.aspect).toBe("9:16");
     expect(settings.narrationEnabled).toBe(true);
     // The preset turns the chain on, which is the setting's whole distinction: one flower, one pot, one
     // forward movement. The brief above asks for 「같은 화분」 and this is what lets the pictures obey it.
@@ -96,25 +98,32 @@ describe("CreateFlowerReelForm", () => {
   });
 
   /**
-   * The whole price, before the first cent.
+   * The whole price, before the first cent — and the shape that price is for.
    *
-   * Every step already names its own charge — which is why nobody ever saw the total: it arrived in four pieces,
-   * each after the previous one was spent. 캡틴D finished a reel and only then knew what a reel costs. The number
-   * that changes a decision belongs beside the two controls that move it.
+   * Every step already names its own charge, which is why nobody ever saw the total: it arrived in four pieces,
+   * each after the previous one was spent. 캡틴D finished a reel and only then knew what a reel costs.
+   *
+   * 🔴 This test used to move the number by driving 장면 수 and 장면당 길이 selects on this form. Those are gone.
+   * ShortProjectSettingsScreen — which opens the instant this form succeeds, via handleCreated — asks for the
+   * same three values, and asks for them *unlocked*: the server derives sceneCountChangeable from
+   * `stored.scenes.length === 0` and aspectRatioChangeable from `stored.generated_images.length === 0`, and a
+   * project this form just made has neither. So the second screen was never a later moment the first one was
+   * needed for; it was the next screen with the same controls. Asking twice in a row is what made this form
+   * long. What has to stay true is that the preset itself did not change and that the total says where it moves.
    */
-  it("states the whole estimated cost, and moves it when the scene count and length move", () => {
+  it("states the preset's whole estimated cost and does not ask for the shape twice", () => {
     render(<CreateFlowerReelForm onCreated={() => {}} onCancel={() => {}} />);
-    const total = () => screen.getByTestId("flower-total-cost").textContent ?? "";
 
-    fireEvent.change(screen.getByTestId("flower-scene-count"), { target: { value: "2" } });
-    fireEvent.change(screen.getByTestId("flower-clip-duration"), { target: { value: "10" } });
-    // 0.05 script + 2 x 0.10 images + 20s x 0.05 video
-    expect(total()).toContain("$1.25");
+    // 0.05 script + 4 x 0.10 images + 20s x 0.05 video
+    const total = screen.getByTestId("flower-total-cost").textContent ?? "";
+    expect(total).toContain("$1.45");
+    // A fixed total that silently stops being the total is the failure this line was added to prevent.
+    expect(total).toContain("설정 화면");
 
-    fireEvent.change(screen.getByTestId("flower-scene-count"), { target: { value: "4" } });
-    fireEvent.change(screen.getByTestId("flower-clip-duration"), { target: { value: "5" } });
-    // Same 20 seconds of video, two more pictures: the difference the choice actually makes.
-    expect(total()).toContain("$1.45");
+    expect(screen.getByTestId("flower-shape-note").textContent).toContain("4장면 × 5초 = 20초");
+    expect(screen.queryByTestId("flower-scene-count")).toBeNull();
+    expect(screen.queryByTestId("flower-clip-duration")).toBeNull();
+    expect(screen.queryByTestId("flower-aspect")).toBeNull();
   });
 
   it("suggests a folder name from the flower and keeps a typed one", () => {
