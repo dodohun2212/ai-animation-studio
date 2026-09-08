@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { AudioLibraryTrack, MergeAudioSettings, MergeVideosResponse, PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
-import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, FINAL_VIDEO_RELATIVE_PATH, WorkflowState } from "@ai-animation-studio/shared";
+import type { AudioLibraryTrack, MergeAudioSettings, MergeVideosResponse, PhotoCardSubtitleLayout, SceneSubtitleLayout } from "@ai-animation-studio/shared";
+import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, FINAL_VIDEO_RELATIVE_PATH, WorkflowState } from "@ai-animation-studio/shared";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
 import { getAudioLibrary } from "../api/audioLibraryApi.js";
@@ -10,6 +10,7 @@ import { finalVideoContentUrl, mergeVideos, toVideoMergeDisplayError } from "../
 import { getVideoReview } from "../api/videoWorkflowApi.js";
 import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBridge.js";
 import { PhotoCardSubtitleFieldset } from "./PhotoCardSubtitleFieldset.js";
+import { SceneSubtitleFieldset, type SubtitledScene } from "./SceneSubtitleFieldset.js";
 
 interface Props {
   projectId: string;
@@ -84,6 +85,23 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
    */
   const [layout, setLayout] = useState<PhotoCardSubtitleLayout>(DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT);
   const [quote, setQuote] = useState("");
+  /**
+   * The same two numbers for an ordinary reel, and a separate field on purpose.
+   *
+   * A card layout centres at 0.40; a scene layout at 0.78. They are the same SHAPE, so one field carrying both
+   * would type-check while putting a scene's subtitle in the middle of moving footage — a value nobody asked
+   * for. The server keeps them apart the same way and answers with `undefined` rather than the other one's
+   * numbers if this screen ever read the wrong side (CLI Round 665 ⑥).
+   */
+  const [sceneLayout, setSceneLayout] = useState<SceneSubtitleLayout>(DEFAULT_SCENE_SUBTITLE_LAYOUT);
+  /**
+   * Every scene that will actually carry a subtitle, with the line it carries.
+   *
+   * Not just the first: the layout is one setting applied to all of them, and the longest sentence is the one
+   * that runs off the frame. A scene with no narration gets no subtitle, so it is left out rather than
+   * previewed as an empty block.
+   */
+  const [subtitledScenes, setSubtitledScenes] = useState<SubtitledScene[]>([]);
   /** The frame's shape, read from the project's one `aspectRatio` field rather than assumed — the preview box has to match the video it previews. */
   const [aspectVertical, setAspectVertical] = useState(true);
   /**
@@ -142,7 +160,13 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
         }
         setPhotoCard(response.project.photoCard === true);
         if (response.project.subtitleLayout) setLayout(response.project.subtitleLayout);
+        if (response.project.sceneSubtitleLayout) setSceneLayout(response.project.sceneSubtitleLayout);
         setQuote(response.project.scenes[0]?.narration ?? "");
+        setSubtitledScenes(
+          response.project.scenes
+            .map((scene) => ({ number: scene.number, text: (scene.narration ?? "").trim() }))
+            .filter((scene) => scene.text.length > 0),
+        );
         setAspectVertical(response.project.aspectRatio !== "16:9");
         setPublished(Boolean(response.project.instagramPost));
         // Derived, not assumed: a project that never generated narration cannot merge "narration only", and
@@ -208,7 +232,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
     setPending(true);
     setError(null);
     try {
-      const response = await mergeVideos(projectId, audioSettings ?? undefined, photoCard ? layout : undefined);
+      const response = await mergeVideos(projectId, audioSettings ?? undefined, photoCard ? layout : undefined, sceneSubtitleAdjustable ? sceneLayout : undefined);
       setResult(response);
       // Back to showing the finished video: the request the button existed for has been made.
       setRemaking(false);
@@ -222,6 +246,16 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
     }
   }
 
+  /**
+   * Whether this merge has scene subtitles to place at all — the one condition for both offering the control
+   * and sending its numbers.
+   *
+   * 🔴 Both, deliberately. Sending a layout for a merge that burns no text in would store a chosen position for
+   * something never drawn, and the value is stored precisely because it is what a real video was made with. A
+   * project with subtitles turned off still carries narration text it will not burn in, so "has narration" is
+   * not the question; "will any of it appear" is.
+   */
+  const sceneSubtitleAdjustable = !photoCard && subtitledScenes.length > 0 && mediaMode?.subtitlesEnabled === true;
   const contentSentence = mergeContentSentence(mediaMode);
   /* Only blocks on a count we actually read. Unknown stays unblocked — the server refuses either way, and a
      button disabled on a guess is worse than one that fails honestly. Same rule as the Episode's merge. */
@@ -285,6 +319,20 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
           vertical={aspectVertical}
           layout={layout}
           onChange={setLayout}
+          disabled={pending || confirmOpen}
+        />
+      )}
+
+      {/* The scene half of the same control. Gated on there being a subtitle at all: a project merged with
+          subtitles off carries narration text it will not burn in, and offering to place text that will not
+          appear is the same failure as hiding text that will. */}
+      {(!result || remaking) && sceneSubtitleAdjustable && (
+        <SceneSubtitleFieldset
+          projectId={projectId}
+          scenes={subtitledScenes}
+          vertical={aspectVertical}
+          layout={sceneLayout}
+          onChange={setSceneLayout}
           disabled={pending || confirmOpen}
         />
       )}

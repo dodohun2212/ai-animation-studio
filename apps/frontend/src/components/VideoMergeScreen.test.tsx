@@ -395,6 +395,74 @@ describe("VideoMergeScreen", () => {
     expect(JSON.parse(String(init.body))).toEqual({ audio: { mode: "silent" }, subtitleLayout: { scale: 0.027, center: 0.55 } });
   });
 
+  /**
+   * The same control for an ordinary reel, which is where 캡틴D found the problem.
+   *
+   * The scene subtitle sat in the bottom 13% of the frame with a 3px stroke — the two things the photo card had
+   * already been moved off, for reasons written into PHOTO_CARD_SUBTITLE_CENTER and _OUTLINE, and which the
+   * scene branch never received. A fixed better position was not enough: a scene is moving footage, so the
+   * place that clears Reels' own interface on one shot covers the subject on the next.
+   */
+  it("offers the scene subtitle control and sends its numbers with the merge", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const narrated: Scene[] = [
+      { number: 1, script: "", motionPrompt: "", narration: "빨간 장미의 꽃말은 열렬한 사랑입니다." },
+      { number: 2, script: "", motionPrompt: "", narration: "붉은 색과 장미가 사랑의 여신과 이어졌다는 이야기가 전해집니다." },
+    ];
+    renderScreen(mergeFetch, { scenes: narrated }, { narrationEnabled: false, subtitlesEnabled: true });
+
+    const center = await screen.findByTestId("scene-subtitle-center");
+    // Every scene that carries a line gets a chip, because the layout is one setting for all of them and the
+    // longest sentence is the one that runs off the frame.
+    expect(screen.getByTestId("scene-subtitle-scene-1")).toBeTruthy();
+    expect(screen.getByTestId("scene-subtitle-scene-2")).toBeTruthy();
+
+    fireEvent.change(center, { target: { value: "0.62" } });
+    expect(screen.getByTestId("scene-subtitle-center-value").textContent).toContain("62%");
+    fireEvent.change(screen.getByTestId("scene-subtitle-scale"), { target: { value: "0.04" } });
+
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+
+    await waitFor(() => expect(mergeFetch).toHaveBeenCalled());
+    const [, init] = mergeFetch.mock.calls[0] as [string, RequestInit];
+    // 🔴 Its own field, never the card's. The two layouts are the same SHAPE and different numbers — a card
+    // centres at 0.40, a scene at 0.78 — so one field carrying both would type-check while putting a scene's
+    // subtitle in the middle of moving footage.
+    expect(JSON.parse(String(init.body))).toEqual({ audio: { mode: "silent" }, sceneSubtitleLayout: { scale: 0.04, center: 0.62 } });
+  });
+
+  /**
+   * 🔴 No text burned in, no numbers sent.
+   *
+   * A project with subtitles turned off still carries the narration text it will not draw, so "has narration"
+   * is the wrong question. Storing a chosen position for something that never appeared would put a value on
+   * the project that no video was ever made with, which is the one promise the stored layout makes.
+   */
+  it("neither offers nor sends a scene layout when the merge burns in no subtitles", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const narrated: Scene[] = [{ number: 1, script: "", motionPrompt: "", narration: "문장은 있지만 자막은 꺼져 있습니다." }];
+    renderScreen(mergeFetch, { scenes: narrated }, { narrationEnabled: true, subtitlesEnabled: false });
+
+    await screen.findByTestId("open-merge-confirm-button");
+    expect(screen.queryByTestId("scene-subtitle-center")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+    await waitFor(() => expect(mergeFetch).toHaveBeenCalled());
+    const [, init] = mergeFetch.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).not.toHaveProperty("sceneSubtitleLayout");
+  });
+
+  /** Starts from what this reel was last merged with, for the reason the card's own test gives. */
+  it("starts a reel from the scene layout the server sent back", async () => {
+    const narrated: Scene[] = [{ number: 1, script: "", motionPrompt: "", narration: "문장" }];
+    renderScreen(vi.fn(), { scenes: narrated, sceneSubtitleLayout: { scale: 0.045, center: 0.5 } }, { narrationEnabled: false, subtitlesEnabled: true });
+
+    expect((await screen.findByTestId("scene-subtitle-center")).getAttribute("value")).toBe("0.5");
+    expect(screen.getByTestId("scene-subtitle-scale-value").textContent).toContain("86px");
+  });
+
   // Starts from what this card was last merged with, not from the published default — otherwise every revisit
   // silently proposes undoing the adjustment the person already made.
   it("starts a photo card from the layout the server sent back", async () => {
