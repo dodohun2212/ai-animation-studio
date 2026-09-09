@@ -24,10 +24,11 @@ import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject } from "../projects/project-storage.schema.js";
 import { OpenAiBudget } from "../providers/openai-budget.js";
 import { RunwayBudget } from "../providers/runway-budget.js";
-import { withProjectLock } from "./project-lock.js";
+import { FINAL_VIDEO_LOCK_KEY, ProjectLockTimeoutError, withProjectLock } from "./project-lock.js";
 import {
   videoLibraryContentUnavailable,
   videoLibraryInvalidRequest,
+  videoLibraryRestoreInProgress,
   videoLibraryRestoreNotAllowed,
   videoLibraryStorageError,
   videoLibraryVersionNotFound,
@@ -107,7 +108,33 @@ export class VideoLibraryService {
     private readonly budget?: RunwayBudget,
     /** The other half of the bill — see the comment where this is summed. Optional for the same reason `budget` is: a caller that cannot read a ledger still gets a library. */
     private readonly openAiBudget?: OpenAiBudget,
+    /** Same purpose as VideoMergeService's: a test can exercise the refusal in milliseconds rather than waiting out the default. */
+    private readonly lockTimeoutMs?: number,
   ) {}
+
+  /**
+   * The lock a restore takes, and the sentence it owes when it cannot get it.
+   *
+   * 🔴 This used to be `withProjectLock(dir, "videos:restore", …)` — a key of its own, under a lock whose own
+   * doc comment names "the merge, the version restore and the Instagram publish" as the three callers that are
+   * all about the same file. Locks here are per-key, so a key of one's own excludes nobody: a restore could
+   * replace `final_video.mp4` while a merge was writing it or a publish was reading it, which is the race the
+   * key exists to prevent. The same defect in the same shape was found and fixed once already on the
+   * publish's record-clear path, also under a comment saying the two were the same lock.
+   *
+   * 🔴 And the timeout was unmapped, which is the half that only appears once the key is shared. Under the old
+   * key a restore waited for nothing but another restore, so it effectively never timed out; sharing the key
+   * makes waiting real, and an unmapped ProjectLockTimeoutError leaves as an unexplained 500. Every other
+   * project-locked operation in this app turns it into a sentence.
+   */
+  private async withFinalVideoLock<T>(directory: string, run: () => Promise<T>): Promise<T> {
+    try {
+      return await withProjectLock(directory, FINAL_VIDEO_LOCK_KEY, run, this.lockTimeoutMs === undefined ? undefined : { timeoutMs: this.lockTimeoutMs });
+    } catch (error) {
+      if (error instanceof ProjectLockTimeoutError) throw videoLibraryRestoreInProgress();
+      throw error;
+    }
+  }
 
   private projectDirectory(projectId: string): string {
     return path.join(this.projectsRoot, projectId);
@@ -351,7 +378,7 @@ export class VideoLibraryService {
     const sourceFile = this.resolveVersionFile(id, target, versionId);
     if (!await validFile(sourceFile)) throw videoLibraryVersionNotFound();
 
-    return withProjectLock(this.projectDirectory(id), "videos:restore", async () => {
+    return this.withFinalVideoLock(this.projectDirectory(id), async () => {
       const project = await this.projects.findById(id);
       const bytes = await fs.readFile(sourceFile).catch(() => undefined);
       if (!bytes) throw videoLibraryVersionNotFound();

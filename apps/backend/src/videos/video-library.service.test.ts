@@ -9,6 +9,7 @@ import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { OpenAiBudget } from "../providers/openai-budget.js";
 import { RunwayBudget } from "../providers/runway-budget.js";
+import { FINAL_VIDEO_LOCK_KEY, withProjectLock } from "./project-lock.js";
 import { VideoLibraryService } from "./video-library.service.js";
 import { PLACEHOLDER_MP4 } from "./placeholder-clip.js";
 
@@ -378,6 +379,34 @@ describe("VideoLibraryService.restore", () => {
     expect(await fs.readFile(path.join(projectsRoot, "p1", "videos", "final", "instagram_reel.mp4"), "utf8")).toBe("older-final");
     const versions = await service.versions("p1", "final");
     expect(versions.versions.map((item) => item.versionId)).toEqual(["current", "v002", "v001"]);
+  });
+
+  /**
+   * A restore waits for the merge and the publish, because all three write or read the same file.
+   *
+   * 🔴 Held under FINAL_VIDEO_LOCK_KEY specifically, not under whatever key restore happens to use. That is
+   * the defect: restore took `videos:restore`, so it excluded nothing but another restore and could replace
+   * `instagram_reel.mp4` underneath a running merge or a publish that had already read the bytes it was about
+   * to send. Asserting on the shared key is what makes this pair fail again if someone gives restore a private
+   * key back — an assertion written against restore's own key would pass either way.
+   *
+   * The timeout is milliseconds here for the reason withProjectLock takes one at all; a real caller waits the
+   * default out.
+   */
+  it("refuses while something else holds the final-video lock, instead of writing underneath it", async () => {
+    const { projectsRoot, projects, budget, openAiBudget } = await setup();
+    const service = new VideoLibraryService(projects, projectsRoot, budget, openAiBudget, 20);
+    await createProjectWithVideos(projectsRoot, projects, "p1", { scenes: [], finalVideo: true });
+    const history = path.join(projectsRoot, "p1", "videos", "final", "history");
+    await fs.mkdir(history, { recursive: true });
+    await fs.writeFile(path.join(history, "instagram_reel_v001.mp4"), Buffer.from("older-final"));
+
+    const refusal = await withProjectLock(path.join(projectsRoot, "p1"), FINAL_VIDEO_LOCK_KEY, async () =>
+      service.restore("p1", "final", "v001", { approved: true }).catch((error: unknown) => error));
+
+    expect(refusal).toMatchObject({ response: { code: "VIDEO_LIBRARY_RESTORE_IN_PROGRESS" } });
+    // And it really did not write: the current file is still the one the merge/publish is working with.
+    expect(await fs.readFile(path.join(projectsRoot, "p1", "videos", "final", "instagram_reel.mp4"), "utf8")).not.toBe("older-final");
   });
 
   it("clears usedAudio on a scene restore, since it invalidates the final video entirely", async () => {

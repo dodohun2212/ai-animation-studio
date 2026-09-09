@@ -97,6 +97,17 @@ const UNNAMED_BY_A_SCREEN = new Map<string, string>([
   // own message repeated the same overstatement and has been corrected too (it also claimed a fixed six
   // scenes, untrue since scene count became a setting).
   ["STORY_GENERATION_FAILED", "the fallback arm for an unexpected error; every known failure of the paid path is mapped before it"],
+  // 🟠 A gap, not a decision, and it is written as one. This code was added on 2026-09-09 with the fix that
+  // made it reachable — restore now takes FINAL_VIDEO_LOCK_KEY, so it can genuinely lose a race to a merge or
+  // a publish. The screen's sentence belongs to apps/frontend and is queued with Cowork (CLI Round 700).
+  //
+  // It sits here rather than blocking the fix because the catch-all's 「요청을 처리하지 못했습니다. 잠시 후
+  // 다시 시도해 주세요」 happens to be sound advice for exactly this refusal: the conflict clears on its own
+  // when the other operation finishes, and pressing again is the correct next move. That is luck, not design —
+  // the sentence does not say what is running or that nothing was lost, which is what a person needs to not
+  // go looking for damage. 🔴 Delete this entry the moment the screen names the code; the guard fails on an
+  // entry that has stopped applying, so it will say when.
+  ["VIDEO_LIBRARY_RESTORE_IN_PROGRESS", "gap: added with the lock fix that makes it reachable; the screen's sentence is queued with Cowork"],
 ]);
 
 /**
