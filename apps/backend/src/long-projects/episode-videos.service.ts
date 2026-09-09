@@ -15,9 +15,9 @@ import { ProviderSettingsService } from "../settings/provider-settings.service.j
 import { RunwayBudget, RunwayBudgetExceededError } from "../providers/runway-budget.js";
 import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceResult, type RunwaySceneState } from "../videos/runway-workflow-support.js";
 import { downloadRunwayOutput, getRunwayTask, RunwayAdapterError } from "../videos/runway-video-adapter.js";
-import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
+import { FINAL_VIDEO_LOCK_KEY, ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { SCENE_FIELDS, describesSameScene, promptFor, utf16Length, type StoredScene } from "../videos/video-preview.service.js";
-import { longEpisodeRetryNeedsChangedInput, longBudgetLedgerUnreadable, longEpisodeVideoRestoreNotAllowed, longEpisodeVideoVersionNotFound, longLocked, longEpisodeNotFound, longEpisodeVideoJobNotFound, longEpisodeVideosInvalid, longEpisodeVideosNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { longEpisodeRetryNeedsChangedInput, longBudgetLedgerUnreadable, longEpisodeVideoRestoreInProgress, longEpisodeVideoRestoreNotAllowed, longEpisodeVideoVersionNotFound, longLocked, longEpisodeNotFound, longEpisodeVideoJobNotFound, longEpisodeVideosInvalid, longEpisodeVideosNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { toEpisodeDetail } from "./episode-detail.js";
@@ -62,7 +62,19 @@ export class EpisodeVideosService implements OnModuleDestroy {
     private readonly projectsRoot: string,
     private readonly providerSettings?: ProviderSettingsService,
     private readonly budget?: RunwayBudget,
+    /** Same purpose as EpisodeVideoMergeService's: a test can exercise the refusal in milliseconds. */
+    private readonly lockTimeoutMs?: number,
   ) {}
+
+  /** The Episode's final-video lock, with the sentence it owes when something else already holds it. */
+  private async withFinalVideoLock<T>(directory: string, run: () => Promise<T>): Promise<T> {
+    try {
+      return await withProjectLock(directory, FINAL_VIDEO_LOCK_KEY, run, this.lockTimeoutMs === undefined ? undefined : { timeoutMs: this.lockTimeoutMs });
+    } catch (error) {
+      if (error instanceof ProjectLockTimeoutError) throw longEpisodeVideoRestoreInProgress();
+      throw error;
+    }
+  }
   /** The model this computer is set to use — asked per question, so a choice applies to the next quote. */
   private async videoModel(): Promise<VideoModel> { return resolveVideoModel(this.providerSettings?.settingsStore()); }
   onModuleDestroy(): void { for (const timer of this.activeTimers.values()) clearInterval(timer); this.activeTimers.clear(); }
@@ -553,7 +565,16 @@ export class EpisodeVideosService implements OnModuleDestroy {
     const bytes = await fs.readFile(source).catch(() => undefined);
     if (!bytes || bytes.length === 0) throw longEpisodeVideoVersionNotFound();
 
-    return withProjectLock(path.dirname(this.files(id, number).records), `videos_restore_${number}`, async () => {
+    /*
+     * 🔴 FINAL_VIDEO_LOCK_KEY, and it used to be `videos_restore_${number}` — a key of its own, which excludes
+     * nobody. The Episode's merge and its Instagram publish both take this key on this same directory, and
+     * the merge's own comment says why: "the post must never be built from a cut this render is replacing".
+     * A restore replaces exactly that cut, so it belonged in the same sentence and was not in it.
+     *
+     * Found by counting the callers a comment names rather than trusting the sentence — the short project's
+     * restore had the identical defect, and the comment above this method says this one mirrors it. It did.
+     */
+    return this.withFinalVideoLock(path.dirname(this.files(id, number).records), async () => {
       const episode = await this.loadEpisode(id, number);
       try {
         await this.archive(id, number, value);

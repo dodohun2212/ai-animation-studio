@@ -97,6 +97,11 @@ const UNNAMED_BY_A_SCREEN = new Map<string, string>([
   // own message repeated the same overstatement and has been corrected too (it also claimed a fixed six
   // scenes, untrue since scene count became a setting).
   ["STORY_GENERATION_FAILED", "the fallback arm for an unexpected error; every known failure of the paid path is mapped before it"],
+  // 🟠 A gap, not a decision — same shape and same day as its short-project twin, which was here for one
+  // round and is now named by a screen. Added 2026-09-09 with the fix that makes it reachable: an Episode's
+  // restore now takes FINAL_VIDEO_LOCK_KEY, so it can lose a race to that Episode's merge or publish.
+  // 🔴 Delete when the screen names it; the guard fails on an entry that has stopped applying.
+  ["LONG_EPISODE_VIDEO_RESTORE_IN_PROGRESS", "gap: added with the lock fix that makes it reachable; the screen's sentence is queued with Cowork"],
 ]);
 
 /**
