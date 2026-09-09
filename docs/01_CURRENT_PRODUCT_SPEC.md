@@ -184,6 +184,14 @@ videos/
 - 🔴 **주석이 「exactly the same」이라고 말하는 것을 근거로 삼지 않는다.** 병합 짝의 어긋남이
   그렇게 숨어 있었다: 손잡이가 생긴 날 그 문장이 거짓이 됐고, **확인된 것처럼 들려서** 아무도
   다시 안 봤다.
+- 🟠 **주소 이름 규칙: `packages/shared` 는 지켜지고 `apps/frontend/src/api` 는 안 지켜진다.**
+  공유 주소는 예외 없이 한 규칙이다(`imageContent` → `longEpisodeImageContent`). 그런데 그것을
+  감싸는 프론트 헬퍼는 **흐름마다 다르게 쪼개져 있다** — 같은 한 주소를 네 이름이 감싼다:
+  `sceneImageContentUrl`(단기, 캐시무효화 없음) · `imageReviewContentUrl`(단기, 있음) ·
+  `longEpisodeImageContentUrl`(장편, 위 둘을 겸함) · `generatedEpisodeImageContentUrl`(장편,
+  보관함용, 요약 객체를 받음). 🔴 **그래서 「단기 이름 + long 접두사」로는 장편 짝을 못 찾는다**
+  — 2026-09-09 에 실제로 그렇게 못 찾고 「없다」고 판단한 일이 있었다(Cowork Round 696 ② → 698 ①).
+  급한 결함은 아니다. **비용은 찾는 사람의 시간으로 나오고, 그 비용이 한 번 관측됐다.**
 
 - 🟠 **「합칠 수 있는가」는 이 표가 답해야 할 다음 질문이다.** `MappingReviewScreen` 이 하나로
   되는 이유는 「무엇에 대한 화면인가」가 **인자 하나 차이**(프로젝트냐 회차냐)라서다. 같은
