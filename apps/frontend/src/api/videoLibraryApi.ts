@@ -33,6 +33,12 @@ const SAFE_ERRORS: Record<string, string> = {
      a substring match is what had reported these two as fine. */
   VIDEO_LIBRARY_VERSION_NOT_FOUND: "이 버전을 찾을 수 없습니다. 목록을 새로 불러온 뒤 다시 시도해 주세요.",
   VIDEO_LIBRARY_RESTORE_NOT_ALLOWED: "현재 프로젝트 상태에서는 되돌릴 수 없습니다.",
+  /* 🔴 A different refusal from the line above, and the difference is what the reader should do next.
+     RESTORE_NOT_ALLOWED means the project's state forbids it, and waiting does not change a state. This one
+     means the final video file is busy — the merge or the Instagram publish is holding it — and that DOES
+     change on its own. Telling someone their state forbids it when the truth is "another job is running"
+     sends them to fix the wrong thing. So the sentence names the holder and says to press again after. */
+  VIDEO_LIBRARY_RESTORE_IN_PROGRESS: "지금 이 프로젝트의 최종 영상을 다른 작업이 쓰고 있습니다. 그 작업이 끝난 뒤 다시 눌러 주세요.",
   /* The version row exists and its file does not — a different fact from "no such version", and the reader's
      next move is different too: reload cannot conjure a file back. */
   VIDEO_LIBRARY_CONTENT_UNAVAILABLE: "이 버전의 영상 파일이 없습니다. 파일이 지워졌거나 옮겨졌을 수 있습니다.",
