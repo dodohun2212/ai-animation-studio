@@ -5,7 +5,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import { AUDIO_MODES, clipDurationSecondsPerScene, type RunwayClipDurationSeconds, DEFAULT_BGM_FADE_SECONDS, DEFAULT_BGM_VOLUME, DEFAULT_SCENE_SUBTITLE_LAYOUT, defaultBgmVolume, FINAL_VIDEO_RELATIVE_PATH, isAudioMode, isSceneSubtitleLayout, usesBgm, type AudioMode, LONG_EPISODE_STATUSES, isSceneNumber, SCENE_SUBTITLE_CENTER, SCENE_SUBTITLE_SCALE, sceneNumbersFor, type LongEpisodeDetail, type LongEpisodeStatus, type MergeLongEpisodeVideosResponse, type SceneNumber, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
+import { AUDIO_MODES, clipDurationSecondsPerScene, type RunwayClipDurationSeconds, DEFAULT_BGM_FADE_SECONDS, DEFAULT_BGM_VOLUME, DEFAULT_SCENE_SUBTITLE_LAYOUT, defaultBgmVolume, FINAL_VIDEO_RELATIVE_PATH, isAudioMode, isSceneSubtitleLayout, usesBgm, type AudioMode, type GenerationSource, LONG_EPISODE_STATUSES, isSceneNumber, SCENE_SUBTITLE_CENTER, SCENE_SUBTITLE_SCALE, sceneNumbersFor, type LongEpisodeDetail, type LongEpisodeStatus, type MergeLongEpisodeVideosResponse, type SceneNumber, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
 
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "../videos/ffmpeg-merge.service.js";
@@ -160,6 +160,14 @@ export class EpisodeVideoMergeService {
     try { await Promise.all(clips.map(async (file) => { if (!isUsableClip(await fs.stat(file), paid)) throw new Error("clip"); })); }
     catch { throw longEpisodeMergeClipsInvalid(); }
     return clips;
+  }
+
+  private async finalGenerationSource(id: string, number: number): Promise<GenerationSource> {
+    const records = await readLongProjectJson(this.files(id, number).records).catch(() => undefined);
+    if (!Array.isArray(records) || !records.length) return "unknown_legacy";
+    const modes = records.map((record) => object(record) ? record.execution_mode : undefined);
+    if (modes.some((mode) => mode === "local_fake_no_provider")) return "local_fake_no_provider";
+    return modes.every((mode) => mode === "runway") ? "paid_provider" : "unknown_legacy";
   }
 
   /**
@@ -396,7 +404,7 @@ export class EpisodeVideoMergeService {
         ...(bgmTrack?.attributionRequired !== undefined ? { attribution_required: bgmTrack.attributionRequired } : {}),
         ...(bgmTrack?.attributionText !== undefined ? { attribution_text: bgmTrack.attributionText } : {}),
       };
-      const completed = { ...rendering, state: "completed" as const, updated_at: new Date().toISOString(), final_video_path: FINAL_VIDEO_RELATIVE_PATH, used_audio: usedAudio, scene_subtitle_scale: sceneSubtitleLayout.scale, scene_subtitle_center: sceneSubtitleLayout.center };
+      const completed = { ...rendering, state: "completed" as const, updated_at: new Date().toISOString(), final_video_path: FINAL_VIDEO_RELATIVE_PATH, final_video_generation_source: await this.finalGenerationSource(id, number), used_audio: usedAudio, scene_subtitle_scale: sceneSubtitleLayout.scale, scene_subtitle_center: sceneSubtitleLayout.center };
       await this.saveEpisode(id, number, completed);
       return { episode: this.detail(completed), finalVideoPath: FINAL_VIDEO_RELATIVE_PATH, openablePath: episodeProjectRelativePath(number, FINAL_VIDEO_RELATIVE_PATH) };
     } catch (error) {

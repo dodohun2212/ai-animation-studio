@@ -58,6 +58,16 @@ describe("toApiSummary / toApiProject", () => {
 
     const project = toApiProject(stored);
     expect(project.finalVideoPath).toBe("videos/final/instagram_reel.mp4");
+    expect(project.finalVideoGenerationSource).toBe("unknown_legacy");
+  });
+
+  it("exposes paid and local-fake final-video origins only when video records provide evidence", () => {
+    const stored = createStoredProject("sample_project", "topic", "2026-08-21T00:00:00.000Z");
+    stored.final_video_path = "videos/final/instagram_reel.mp4";
+    stored.video_generation_records = [{ execution_mode: "runway" }];
+    expect(toApiProject(stored).finalVideoGenerationSource).toBe("paid_provider");
+    stored.video_generation_records = [{ execution_mode: "local_fake_no_provider" }];
+    expect(toApiProject(stored).finalVideoGenerationSource).toBe("local_fake_no_provider");
   });
 
   it("passes each stored scene's narration through to the API scene untouched, and omits it when absent", () => {

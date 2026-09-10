@@ -97,6 +97,7 @@ const UNNAMED_BY_A_SCREEN = new Map<string, string>([
   // own message repeated the same overstatement and has been corrected too (it also claimed a fixed six
   // scenes, untrue since scene count became a setting).
   ["STORY_GENERATION_FAILED", "the fallback arm for an unexpected error; every known failure of the paid path is mapped before it"],
+  ["INSTAGRAM_LOCAL_FAKE_VIDEO_NOT_PUBLISHABLE", "backend gate added before the frontend source badge/blocking explanation is implemented; it must not fall through to an unsafe retry sentence"],
 ]);
 
 /**

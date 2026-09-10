@@ -11,6 +11,7 @@ export type InstagramErrorCode =
   | "INSTAGRAM_POST_NOT_RECORDED"
   | "INSTAGRAM_VIDEO_UNAVAILABLE"
   | "INSTAGRAM_VIDEO_RENDERING"
+  | "INSTAGRAM_LOCAL_FAKE_VIDEO_NOT_PUBLISHABLE"
   | "INSTAGRAM_PUBLISH_IN_PROGRESS"
   | "INSTAGRAM_PUBLISH_OUTCOME_UNKNOWN"
   | "INSTAGRAM_PUBLISH_FAILED";
@@ -85,6 +86,10 @@ export const instagramVideoUnavailable = () =>
  */
 export const instagramVideoRendering = () =>
   new InstagramApiException("INSTAGRAM_VIDEO_RENDERING", "This project's final video is being rendered right now.", HttpStatus.CONFLICT);
+
+/** A locally generated placeholder may be reviewed and merged, but must never be sent to Instagram as real media. */
+export const instagramLocalFakeVideoNotPublishable = () =>
+  new InstagramApiException("INSTAGRAM_LOCAL_FAKE_VIDEO_NOT_PUBLISHABLE", "This final video includes local placeholder clips and cannot be published to Instagram.", HttpStatus.CONFLICT);
 
 /**
  * A publish for this project is already running and this call could not get in.

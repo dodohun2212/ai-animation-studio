@@ -302,6 +302,15 @@ Music: Kevin
       .rejects.toMatchObject({ response: { code: "INSTAGRAM_VIDEO_UNAVAILABLE" } });
   });
 
+  it("blocks a short final video containing local fake clips before any Instagram request", async () => {
+    const fetchImpl = graphFetch();
+    const { service, projects } = await setup({ fetchImpl });
+    const project = await projects.findById("post_project");
+    await projects.save({ ...project, video_generation_records: [{ execution_mode: "local_fake_no_provider" }] });
+    await expect(service.publish("post_project", approved)).rejects.toMatchObject({ response: { code: "INSTAGRAM_LOCAL_FAKE_VIDEO_NOT_PUBLISHABLE" } });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("gives up on a container Instagram reports as ERROR, leaving no post recorded", async () => {
     const { service, projects } = await setup({ fetchImpl: graphFetch({ statuses: ["ERROR"] }) });
     await expect(service.publish("post_project", approved))
@@ -515,6 +524,14 @@ describe("InstagramPublishService.publishEpisode", () => {
     const { service, fetchImpl } = await withEpisode({ withVideo: false });
 
     await expect(service.publishEpisode("long", 1, approved)).rejects.toMatchObject({ response: { code: "INSTAGRAM_VIDEO_UNAVAILABLE" } });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("blocks an Episode final video marked as local fake before any Instagram request", async () => {
+    const { service, fetchImpl, episodeFile } = await withEpisode({ fetchImpl: graphFetch() });
+    const episode = JSON.parse(await fs.readFile(episodeFile, "utf8")) as Record<string, unknown>;
+    await fs.writeFile(episodeFile, JSON.stringify({ ...episode, final_video_generation_source: "local_fake_no_provider" }));
+    await expect(service.publishEpisode("long", 1, approved)).rejects.toMatchObject({ response: { code: "INSTAGRAM_LOCAL_FAKE_VIDEO_NOT_PUBLISHABLE" } });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 

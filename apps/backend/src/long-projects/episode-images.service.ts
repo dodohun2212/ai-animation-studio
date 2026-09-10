@@ -9,7 +9,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import { SCENE_REVIEW_STATUSES, LONG_EPISODE_STATUSES, IMAGE_ESTIMATED_COST_USD, longEpisodeHasImages, isSceneNumber, sceneNumbersFor, type ApproveLongEpisodeImageReviewRequest, type ApproveLongEpisodeImageReviewResponse, type GetLongEpisodeImagePreviewResponse, type GetLongEpisodeImageProgressResponse, type GetLongEpisodeImageReviewResponse, type LongEpisodeDetail, type LongEpisodeImageReview, type LongEpisodeImageStaleness, type LongEpisodeStatus, type LongEpisodeStoryBibleLinkDrift, type RegenerateLongEpisodeImageReviewRequest, type RegenerateLongEpisodeImageReviewResponse, type SceneNumber, type StartLongEpisodeImageGenerationRequest, type StartLongEpisodeImageGenerationResponse, type UnapproveLongEpisodeImageReviewRequest, type UnapproveLongEpisodeImageReviewResponse } from "@ai-animation-studio/shared";
+import { SCENE_REVIEW_STATUSES, LONG_EPISODE_STATUSES, IMAGE_ESTIMATED_COST_USD, longEpisodeHasImages, isSceneNumber, sceneNumbersFor, type ApproveLongEpisodeImageReviewRequest, type ApproveLongEpisodeImageReviewResponse, type GenerationSource, type GetLongEpisodeImagePreviewResponse, type GetLongEpisodeImageProgressResponse, type GetLongEpisodeImageReviewResponse, type LongEpisodeDetail, type LongEpisodeImageReview, type LongEpisodeImageStaleness, type LongEpisodeStatus, type LongEpisodeStoryBibleLinkDrift, type RegenerateLongEpisodeImageReviewRequest, type RegenerateLongEpisodeImageReviewResponse, type SceneNumber, type StartLongEpisodeImageGenerationRequest, type StartLongEpisodeImageGenerationResponse, type UnapproveLongEpisodeImageReviewRequest, type UnapproveLongEpisodeImageReviewResponse } from "@ai-animation-studio/shared";
 import { validateImage } from "../assets/image-validation.js";
 import { LocalAssetsRepository, type GeneratedImageSource } from "../assets/assets.repository.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
@@ -38,7 +38,7 @@ type StoredEpisode = Record<string, unknown> & { number: number; state: LongEpis
 /** `prompt` is what this scene's image was actually generated from — written only when a provider made it, so a placeholder records nothing and is never reported as behind. */
 
 
-type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved"; updated_at: string; regeneration_count: number; history: Record<string, unknown>[]; references_used_count?: number; references_omitted_count?: number; prompt?: string; reference_sources?: string[] };
+type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved"; updated_at: string; regeneration_count: number; history: Record<string, unknown>[]; references_used_count?: number; references_omitted_count?: number; prompt?: string; reference_sources?: string[]; generation_source?: GenerationSource };
 const object = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(stable) : object(value) ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])])) : value;
 // Must compute byte-for-byte the same fingerprint as episode-asset-mappings.service.ts's fingerprint() (see its
@@ -190,7 +190,7 @@ export class EpisodeImagesService {
   }
   private parseReviews(value: unknown): StoredReview[] {
     if (!Array.isArray(value)) throw longInvalidData(); const reviews = value.map((item) => {
-      if (!object(item) || Object.keys(item).some((key) => !["scene_number", "status", "updated_at", "regeneration_count", "history", "references_used_count", "references_omitted_count", "prompt", "reference_sources"].includes(key)) || !sceneNumber(item.scene_number) || !(SCENE_REVIEW_STATUSES as readonly string[]).includes(item.status as string) || typeof item.updated_at !== "string" || !Number.isInteger(item.regeneration_count) || Number(item.regeneration_count) < 0 || !Array.isArray(item.history) || !item.history.every(object) || (item.references_used_count !== undefined && !Number.isInteger(item.references_used_count)) || (item.references_omitted_count !== undefined && !Number.isInteger(item.references_omitted_count)) || (item.prompt !== undefined && typeof item.prompt !== "string") || (item.reference_sources !== undefined && !(Array.isArray(item.reference_sources) && item.reference_sources.every((entry) => typeof entry === "string")))) throw longInvalidData();
+      if (!object(item) || Object.keys(item).some((key) => !["scene_number", "status", "updated_at", "regeneration_count", "history", "references_used_count", "references_omitted_count", "prompt", "reference_sources", "generation_source"].includes(key)) || !sceneNumber(item.scene_number) || !(SCENE_REVIEW_STATUSES as readonly string[]).includes(item.status as string) || typeof item.updated_at !== "string" || !Number.isInteger(item.regeneration_count) || Number(item.regeneration_count) < 0 || !Array.isArray(item.history) || !item.history.every(object) || (item.references_used_count !== undefined && !Number.isInteger(item.references_used_count)) || (item.references_omitted_count !== undefined && !Number.isInteger(item.references_omitted_count)) || (item.prompt !== undefined && typeof item.prompt !== "string") || (item.reference_sources !== undefined && !(Array.isArray(item.reference_sources) && item.reference_sources.every((entry) => typeof entry === "string"))) || (item.generation_source !== undefined && item.generation_source !== "paid_provider" && item.generation_source !== "local_fake_no_provider" && item.generation_source !== "unknown_legacy")) throw longInvalidData();
       return item as StoredReview;
     });
     if (new Set(reviews.map((review) => review.scene_number)).size !== reviews.length) throw longInvalidData(); return reviews;
@@ -203,7 +203,7 @@ export class EpisodeImagesService {
     const value = [{ scene_number: 1, continuity_reference: reference.reference ? { previous_episode_number: reference.reference.previousEpisodeNumber, source_scene_number: reference.reference.sourceSceneNumber, available: reference.reference.available } : null }];
     try { await atomicWriteUtf8File(this.files(projectId, number).continuityMetadata, JSON.stringify(value, null, 2)); } catch { throw longStorageError(); }
   }
-  private apiReviews(reviews: StoredReview[], timestamp: string, sceneCount: number): LongEpisodeImageReview[] { const index = new Map(reviews.map((review) => [review.scene_number, review])); return sceneNumbersFor(sceneCount).map((sceneNumber) => { const review = index.get(sceneNumber); const omission = review?.references_used_count !== undefined && review.references_omitted_count !== undefined ? { referencesUsedCount: review.references_used_count, referencesOmittedCount: review.references_omitted_count } : {}; return { sceneNumber, status: review?.status === "approved" ? "approved" : "pending", updatedAt: review?.updated_at || timestamp, ...omission }; }); }
+  private apiReviews(reviews: StoredReview[], timestamp: string, sceneCount: number): LongEpisodeImageReview[] { const index = new Map(reviews.map((review) => [review.scene_number, review])); return sceneNumbersFor(sceneCount).map((sceneNumber) => { const review = index.get(sceneNumber); const omission = review?.references_used_count !== undefined && review.references_omitted_count !== undefined ? { referencesUsedCount: review.references_used_count, referencesOmittedCount: review.references_omitted_count } : {}; const generationSource = review?.generation_source ?? (review?.prompt !== undefined ? "paid_provider" : "unknown_legacy"); return { sceneNumber, status: review?.status === "approved" ? "approved" : "pending", updatedAt: review?.updated_at || timestamp, generationSource, ...omission }; }); }
   private async assertReviewable(projectId: string, number: number, episode: StoredEpisode, allowWaiting = false) {
     if (episode.state !== "images_review" && (!allowWaiting || episode.state !== "waiting_for_video_confirmation")) throw longEpisodeImagesNotAllowed();
     await this.assertImagesOnDisk(projectId, number, episode);
@@ -400,6 +400,7 @@ export class EpisodeImagesService {
     const referenceSources = new Map<SceneNumber, string[]>();
     // What each scene's image was actually generated from, so a later script edit can be seen rather than guessed at.
     const generatedPrompts = new Map<SceneNumber, string>();
+    const generationSources = new Map<SceneNumber, GenerationSource>();
     /** Scenes whose paid call landed but whose cost could not be written down — providers/budget-ledger.ts. */
     const unrecordedScenes: SceneNumber[] = [];
     const noteUnrecorded = async () => { if (unrecordedScenes.length > 0) await persistEpisodeWarning(this.files(id, number), number, episode, spendUnrecordedWarning(`${unrecordedScenes.join(", ")}번 장면 이미지 생성`, OPENAI_LEDGER_FILE)); };
@@ -452,17 +453,17 @@ export class EpisodeImagesService {
             if (await recordSpend(() => this.budget!.record(id, "image", succeeded, IMAGE_ESTIMATED_COST_USD))) unrecordedScenes.push(scene);
           }
         }
-        await this.writeImage(file, bytes); if (!await this.validImage(file)) throw new Error("invalid image"); generated.push(scene);
+        await this.writeImage(file, bytes); if (!await this.validImage(file)) throw new Error("invalid image"); generationSources.set(scene, providerEnabled ? "paid_provider" : "local_fake_no_provider"); generated.push(scene);
       }
-      if (referenceOmissions.size > 0 || generatedPrompts.size > 0 || referenceSources.size > 0) {
+      if (referenceOmissions.size > 0 || generatedPrompts.size > 0 || referenceSources.size > 0 || generationSources.size > 0) {
         const reviews = await this.loadReviews(id, number);
-        for (const scene of new Set([...referenceOmissions.keys(), ...generatedPrompts.keys(), ...referenceSources.keys()])) {
+        for (const scene of new Set([...referenceOmissions.keys(), ...generatedPrompts.keys(), ...referenceSources.keys(), ...generationSources.keys()])) {
           const index = reviews.findIndex((item) => item.scene_number === scene);
           const now = new Date().toISOString();
           const base: StoredReview = index < 0 ? { scene_number: scene, status: "pending", updated_at: now, regeneration_count: 0, history: [] } : reviews[index]!;
           const prompt = generatedPrompts.get(scene);
           const sources = referenceSources.get(scene);
-          const updatedReview: StoredReview = { ...base, ...(referenceOmissions.get(scene) ?? {}), ...(prompt !== undefined ? { prompt } : {}), ...(sources !== undefined ? { reference_sources: sources } : {}) };
+          const updatedReview: StoredReview = { ...base, ...(referenceOmissions.get(scene) ?? {}), ...(prompt !== undefined ? { prompt } : {}), ...(sources !== undefined ? { reference_sources: sources } : {}), ...(generationSources.has(scene) ? { generation_source: generationSources.get(scene)! } : {}) };
           if (index < 0) reviews.push(updatedReview); else reviews[index] = updatedReview;
         }
         await this.saveReviews(id, number, reviews);
@@ -721,7 +722,7 @@ ${additionalInstruction}` : basePrompt;
     try { await fs.mkdir(originals, { recursive: true }); const entries = await fs.readdir(originals); const versions = entries.map((name) => new RegExp(`^scene${scene}_v(\\d{3})\\.png$`).exec(name)).filter((match): match is RegExpExecArray => Boolean(match)).map((match) => Number(match[1])); archive = path.join(originals, `scene${scene}_v${String((versions.length ? Math.max(...versions) : 0) + 1).padStart(3, "0")}.png`); await this.writeImage(archive, bytes); await this.writeImage(current, regenerated); if (!await this.validImage(current)) throw new Error("invalid image"); } catch { if (archive) await fs.unlink(archive).catch(() => undefined); throw longStorageError(); }
     const now = new Date().toISOString();
     // Merged into the file as it stands now, not into the copy read before the paid call above — see putReview.
-    const reviews = await this.putReview(id, number, scene, (old) => ({ scene_number: scene, status: "pending", updated_at: now, regeneration_count: (old?.regeneration_count ?? 0) + 1, history: [...(old?.history ?? []), { event: "regenerated", timestamp: now, archive: path.basename(archive) }], ...(referenceOmission ?? {}), ...(generatedPrompt !== undefined ? { prompt: generatedPrompt } : old?.prompt !== undefined ? { prompt: old.prompt } : {}), ...(generatedSources !== undefined ? { reference_sources: generatedSources } : old?.reference_sources !== undefined ? { reference_sources: old.reference_sources } : {}) }));
+    const reviews = await this.putReview(id, number, scene, (old) => ({ scene_number: scene, status: "pending", updated_at: now, regeneration_count: (old?.regeneration_count ?? 0) + 1, history: [...(old?.history ?? []), { event: "regenerated", timestamp: now, archive: path.basename(archive) }], generation_source: apiKey && this.budget ? "paid_provider" : "local_fake_no_provider", ...(referenceOmission ?? {}), ...(generatedPrompt !== undefined ? { prompt: generatedPrompt } : old?.prompt !== undefined ? { prompt: old.prompt } : {}), ...(generatedSources !== undefined ? { reference_sources: generatedSources } : old?.reference_sources !== undefined ? { reference_sources: old.reference_sources } : {}) }));
     episode.state = "images_review"; episode.updated_at = now;
     await this.indexAssetsIfMissing(id, number, episode);
     try { await this.assets.replaceGeneratedProjectSceneImage(this.assetSource(id, number).sourceProjectId, scene, current, archive); }

@@ -14,6 +14,7 @@ import {
   type ApproveImageReviewResponse,
   type GetImageReviewResponse,
   type ImageReview,
+  type GenerationSource,
   type RegenerateImageReviewResponse,
   type SceneNumber,
 } from "@ai-animation-studio/shared";
@@ -108,7 +109,11 @@ function toApiReviews(reviews: StoredImageReview[], timestamp: string, sceneNumb
     const omission = isObject(record) && typeof record.references_used_count === "number" && typeof record.references_omitted_count === "number"
       ? { referencesUsedCount: record.references_used_count, referencesOmittedCount: record.references_omitted_count }
       : {};
-    return { sceneNumber: number, status: review?.status === "approved" ? "approved" : "pending", updatedAt: review?.updated_at || timestamp, ...omission };
+    const generationSource: GenerationSource = isObject(record) && record.adapter === "local-fake-image-adapter"
+      ? "local_fake_no_provider"
+      : isObject(record) && typeof record.adapter === "string" && record.adapter.startsWith("gpt-image-")
+        ? "paid_provider" : "unknown_legacy";
+    return { sceneNumber: number, status: review?.status === "approved" ? "approved" : "pending", updatedAt: review?.updated_at || timestamp, generationSource, ...omission };
   });
 }
 

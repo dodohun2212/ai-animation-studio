@@ -1,4 +1,4 @@
-import type { AspectRatio, AudioMode, LongEpisodeOutlineStatus, Project, VideoModelOption, ProjectSummary, RunwayClipDurationSeconds, SceneNumber, SceneSubtitleLayout, UsedAudio, VideoJobStatus, VideoModel } from "./domain.js";
+import type { AspectRatio, AudioMode, GenerationSource, LongEpisodeOutlineStatus, Project, VideoModelOption, ProjectSummary, RunwayClipDurationSeconds, SceneNumber, SceneSubtitleLayout, UsedAudio, VideoJobStatus, VideoModel } from "./domain.js";
 import { FINAL_VIDEO_RELATIVE_PATH, MAX_SCENE_COUNT, MIN_SCENE_COUNT } from "./domain.js";
 import type { Asset, AssetOwnership, AssetType } from "./asset.js";
 import type {
@@ -287,6 +287,7 @@ export interface LongEpisodeDetail extends LongEpisodeOutline {
   errors?: string[];
   /** Where the merged file sits inside this Episode — for display. To open it, use `openablePath`; see MergeLongEpisodeVideosResponse.finalVideoPath for why the two differ. */
   finalVideoPath?: string;
+  finalVideoGenerationSource?: GenerationSource;
   /** The same file addressed from the project root, safe to hand to the desktop bridge. Absent whenever `finalVideoPath` is. */
   openablePath?: string;
   /** Present once this Episode has been published to Instagram, so a reload still knows. */
@@ -382,6 +383,7 @@ export interface LongEpisodeImageReview {
   sceneNumber: SceneNumber;
   status: SceneReviewStatus;
   updatedAt: string;
+  generationSource?: GenerationSource;
   /**
    * Present only when this scene's confirmed Reference images (plus, for scene 1, a linked previous project's
    * continuity image) exceeded MAX_REFERENCE_IMAGES (16) and some had to be left out of the actual generation
@@ -1584,6 +1586,7 @@ export interface ImageReview {
   sceneNumber: SceneNumber;
   status: SceneReviewStatus;
   updatedAt: string;
+  generationSource?: GenerationSource;
   /** Same meaning, scope, and "quiet unless it happened" principle as LongEpisodeImageReview.referencesUsedCount/referencesOmittedCount (see that field's doc comment). */
   referencesUsedCount?: number;
   referencesOmittedCount?: number;

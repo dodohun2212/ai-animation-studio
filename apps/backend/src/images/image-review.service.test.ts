@@ -88,7 +88,7 @@ describe("provider-free generated image review", () => {
     const { projectsRoot, service } = await setup();
     const result = await service.getStatus("review");
     expect(result.project.workflowState).toBe(WorkflowState.ImagesReview);
-    expect(result.reviews).toEqual(expect.arrayContaining([{ sceneNumber: 1, status: "pending", updatedAt: expect.any(String) }]));
+    expect(result.reviews[0]).toMatchObject({ sceneNumber: 1, status: "pending", updatedAt: expect.any(String), generationSource: "unknown_legacy" });
     await expect(fs.stat(path.join(projectsRoot, "review", "generated_image_reviews.json"))).rejects.toMatchObject({ code: "ENOENT" });
     expect(result.budget).toBeUndefined(); // no OpenAI credential/budget wired in — local fake mode
     expect(result.staleness).toEqual({ imageStale: [], styleStale: [], videoStale: [], videoFormatStale: [], narrationStale: [], referenceStale: [] }); // freshly generated, nothing edited since

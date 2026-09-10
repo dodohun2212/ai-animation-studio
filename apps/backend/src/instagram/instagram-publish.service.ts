@@ -19,12 +19,14 @@ import { resolveInstagramPublishTargets } from "./instagram-publish-targets.js";
 import { InstagramAdapterError, type RetryOptions } from "./instagram-request.js";
 import {
   instagramAlreadyPublished, instagramNotConnected, instagramPostNotRecorded, instagramProviderError, instagramPublishFailed, instagramPublishInProgress,
-  instagramPublishOutcomeUnknown, instagramTargetNotFound, instagramVideoRendering, instagramVideoUnavailable, invalidInstagramRequest,
+  instagramLocalFakeVideoNotPublishable, instagramPublishOutcomeUnknown, instagramTargetNotFound, instagramVideoRendering, instagramVideoUnavailable, invalidInstagramRequest,
 } from "./instagram-api.error.js";
 import { clearPublishAttempt, readPublishAttempt, recordPublishAttempt } from "./publish-attempt.js";
 
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+const hasLocalFakeVideoRecord = (records: unknown): boolean => Array.isArray(records)
+  && records.some((record) => isObject(record) && record.execution_mode === "local_fake_no_provider");
 
 export interface PublishPollOptions {
   /** How long to wait for Meta to finish processing the upload before giving up on this attempt. */
@@ -222,6 +224,7 @@ export class InstagramPublishService {
     const project = await this.projects.findById(id);
     // Checked before anything reaches Meta: re-publishing is the one mistake that cannot be walked back.
     if (project.instagram_post) throw instagramAlreadyPublished();
+    if (hasLocalFakeVideoRecord(project.video_generation_records)) throw instagramLocalFakeVideoNotPublishable();
 
     const token = await this.connection.token();
     if (!token) throw instagramNotConnected();
@@ -231,6 +234,7 @@ export class InstagramPublishService {
       // Re-read inside the lock: another window may have published while this call queued for it.
       const current = await this.projects.findById(id);
       if (current.instagram_post) throw instagramAlreadyPublished();
+      if (hasLocalFakeVideoRecord(current.video_generation_records)) throw instagramLocalFakeVideoNotPublishable();
       await this.assertNoUnknownAttempt(directory, acknowledgedUnknownAttempt);
       // A merge holds this same lock while it writes, so reaching here means no render is in flight. The state
       // check is for the other shape of the same problem: a render that died leaves the project saying
@@ -417,6 +421,7 @@ export class InstagramPublishService {
     const stored = await readEpisode(episodeFile);
     if (!stored) throw instagramVideoUnavailable();
     if (stored.instagram_post) throw instagramAlreadyPublished();
+    if (stored.final_video_generation_source === "local_fake_no_provider") throw instagramLocalFakeVideoNotPublishable();
 
     const token = await this.connection.token();
     if (!token) throw instagramNotConnected();
@@ -426,6 +431,7 @@ export class InstagramPublishService {
       const current = await readEpisode(episodeFile);
       if (!current) throw instagramVideoUnavailable();
       if (current.instagram_post) throw instagramAlreadyPublished();
+      if (current.final_video_generation_source === "local_fake_no_provider") throw instagramLocalFakeVideoNotPublishable();
       await this.assertNoUnknownAttempt(directory, acknowledgedUnknownAttempt);
       if (current.state === "rendering") throw instagramVideoRendering();
 

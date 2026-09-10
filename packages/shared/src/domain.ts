@@ -6,6 +6,9 @@ import type { WorkflowState } from "./workflow.js";
  */
 export type SceneNumber = number;
 
+/** The evidence-backed origin of generated media. Absent evidence is deliberately not treated as paid. */
+export type GenerationSource = "paid_provider" | "local_fake_no_provider" | "unknown_legacy";
+
 /**
  * A short project's scene count is being generalized away from a fixed 6 (see docs/02_MIGRATION_PLAN.md) so it can
  * match whichever video AI provider is connected — different providers support different per-clip durations, so
@@ -586,6 +589,7 @@ export interface UsedAudio {
 export interface Project extends ProjectSummary {
   scenes: Scene[];
   finalVideoPath?: string;
+  finalVideoGenerationSource?: GenerationSource;
   /** The most recently submitted local fake video job's ID, when one exists — lets a dashboard resume directly into its progress screen. */
   currentVideoJobId?: string;
   warnings: string[];
