@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBridge.js";
-import type { AudioLibraryTrack, MergeLongEpisodeVideosResponse, UsedAudio } from "@ai-animation-studio/shared";
+import { DEFAULT_SCENE_SUBTITLE_LAYOUT, type AudioLibraryTrack, type MergeLongEpisodeVideosResponse, type SceneSubtitleLayout, type UsedAudio } from "@ai-animation-studio/shared";
 
-import { getLongEpisode, getLongEpisodeCurrentVideoJob, getLongEpisodeVideoReview, getLongProjectSettings, longEpisodeFinalVideoContentUrl, mergeLongEpisodeVideos, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { getLongEpisode, getLongEpisodeCurrentVideoJob, getLongEpisodeVideoReview, getLongProjectSettings, longEpisodeFinalVideoContentUrl, longEpisodeImageContentUrl, mergeLongEpisodeVideos, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { getAudioLibrary } from "../api/audioLibraryApi.js";
 import type { AudioMode } from "./mergeAudio.js";
 import { AttributionNotice, AUDIO_MODE_LABELS, MergeAudioFieldset, needsTrack, toAudioSettings } from "./mergeAudio.js";
+import { SceneSubtitleFieldset, type SubtitledScene } from "./SceneSubtitleFieldset.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 
 interface Props {
@@ -86,6 +87,9 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
   const [sceneCount, setSceneCount] = useState<number | null>(null);
   /** null until the project settings load, and stays null if they fail — the copy then claims nothing. */
   const [mediaMode, setMediaMode] = useState<MediaMode | null>(null);
+  const [sceneLayout, setSceneLayout] = useState<SceneSubtitleLayout>(DEFAULT_SCENE_SUBTITLE_LAYOUT);
+  const [subtitledScenes, setSubtitledScenes] = useState<SubtitledScene[]>([]);
+  const [aspectVertical, setAspectVertical] = useState(true);
   /**
    * How many of this Episode's scene videos are actually 확정됨.
    *
@@ -105,6 +109,8 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
   const [alreadyMerged, setAlreadyMerged] = useState(false);
   /** Bumped after a merge so the browser fetches the new file instead of replaying a cached older one. */
   const [videoVersion, setVideoVersion] = useState(0);
+  /** The Episode's own revision gives its scene-image URL a stable cache buster without tying image freshness to a render. */
+  const [imageVersion, setImageVersion] = useState("");
   /* The content route refuses a file at or below placeholder size, so a merge of stubs fails to load rather
      than showing a black box that claims to be the finished Episode. */
   const [unplayable, setUnplayable] = useState(false);
@@ -141,6 +147,13 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
       .then((response) => {
         if (cancelled) return;
         setSceneCount(response.episode.script?.scenes.length ?? null);
+        setImageVersion(response.episode.updatedAt);
+        if (response.episode.sceneSubtitleLayout) setSceneLayout(response.episode.sceneSubtitleLayout);
+        setSubtitledScenes(
+          (response.episode.script?.scenes ?? [])
+            .map((scene) => ({ number: scene.number, text: (scene.narration ?? "").trim() }))
+            .filter((scene) => scene.text.length > 0),
+        );
         setAlreadyMerged(response.episode.status === "completed");
         setUsedAudio(response.episode.usedAudio);
         // Derived, not assumed: an Episode with no narration audio cannot merge "나레이션만", and defaulting to
@@ -160,7 +173,10 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
     // guessing at what will be laid over the clips.
     getLongProjectSettings(projectId)
       .then(({ settings }) => {
-        if (!cancelled) setMediaMode({ narrationEnabled: settings.narrationEnabled, subtitlesEnabled: settings.subtitlesEnabled });
+        if (!cancelled) {
+          setMediaMode({ narrationEnabled: settings.narrationEnabled, subtitlesEnabled: settings.subtitlesEnabled });
+          setAspectVertical(settings.aspectRatio !== "16:9");
+        }
       })
       .catch(() => {});
     // The confirmed count comes from the video review, which is addressed by job id — hence the lookup first.
@@ -182,6 +198,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
   /** Null until the Episode has loaded — merging before then would send a mode derived from nothing. */
   const audioSettings = toAudioSettings(audioMode, trackId, audioStartSeconds, bgmVolumePercent, bgmFadeSeconds);
   const modeUnready = audioMode !== null && needsTrack(audioMode) && !trackId;
+  const sceneSubtitleAdjustable = subtitledScenes.length > 0 && mediaMode?.subtitlesEnabled === true;
 
   function openConfirmation(): void {
     if (busy.current || result || blocked) return;
@@ -195,7 +212,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
     setPending(true);
     setError(null);
     try {
-      const merged = await mergeLongEpisodeVideos(projectId, episodeNumber, audioSettings ?? undefined);
+      const merged = await mergeLongEpisodeVideos(projectId, episodeNumber, audioSettings ?? undefined, sceneSubtitleAdjustable ? sceneLayout : undefined);
       setResult(merged);
       setUsedAudio(merged.episode.usedAudio);
       setConfirmationOpen(false);
@@ -228,6 +245,16 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
         <p role="status" data-testid="episode-merge-blocked" className="rounded-xl border border-amber-400/30 bg-amber-500/[0.06] px-4 py-3 text-sm text-amber-200">
           아직 확정하지 않은 장면이 {sceneCount - approvedCount}개 있습니다. 장면 영상 화면에서 모두 확정한 뒤에 최종 영상을 만들 수 있습니다.
         </p>
+      )}
+      {!result && !alreadyMerged && sceneSubtitleAdjustable && (
+        <SceneSubtitleFieldset
+          previewImageUrl={(sceneNumber) => longEpisodeImageContentUrl(projectId, episodeNumber, sceneNumber, imageVersion)}
+          scenes={subtitledScenes}
+          vertical={aspectVertical}
+          layout={sceneLayout}
+          onChange={setSceneLayout}
+          disabled={pending || confirmationOpen}
+        />
       )}
       {!result && !alreadyMerged && audioMode !== null && (
         <MergeAudioFieldset

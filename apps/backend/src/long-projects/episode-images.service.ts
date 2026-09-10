@@ -279,7 +279,7 @@ export class EpisodeImagesService {
    * for the next Episode — has nothing to act on. The Episode was already reading the Library through
    * `collectReferenceImages`; only the writing back was missing.
    */
-  private async indexAssets(projectId: string, number: number, episode: StoredEpisode): Promise<void> {
+  private async indexAssets(projectId: string, number: number, episode: StoredEpisode, sceneNumbers = sceneNumbersFor(this.sceneCount(episode))): Promise<void> {
     const descriptions = this.scenes(episode).map((scene) => String((scene as { description: string }).description));
     let title = "";
     try {
@@ -287,7 +287,16 @@ export class EpisodeImagesService {
       const outline = Array.isArray(outlines) ? outlines[number - 1] : undefined;
       if (object(outline) && typeof outline.title === "string") title = outline.title;
     } catch { /* The Folder's description is a nicety; a damaged outline file must not fail image generation. */ }
-    await this.assets.indexGeneratedProjectImages(this.assetSource(projectId, number), title, descriptions);
+    await this.assets.indexGeneratedProjectImages(this.assetSource(projectId, number), title, descriptions, sceneNumbers);
+  }
+
+  /** A failed sequential run can still have valid completed scenes; make them visible without inventing the missing ones. */
+  private async indexAvailableAssets(projectId: string, number: number, episode: StoredEpisode): Promise<void> {
+    const available: SceneNumber[] = [];
+    for (const scene of sceneNumbersFor(this.sceneCount(episode))) {
+      if (await this.validImage(this.image(projectId, number, scene))) available.push(scene);
+    }
+    if (available.length > 0) await this.indexAssets(projectId, number, episode, available);
   }
 
   /**
@@ -307,6 +316,9 @@ export class EpisodeImagesService {
     const id = projectId.trim();
     const episode = await this.episode(id, number);
     if (episode.state !== "asset_mapping_approved" || !episode.approved) throw longEpisodeImagesNotAllowed();
+    // A prior failed run may have completed some sequential scenes before it returned to this state. Preview is
+    // still provider-free; it merely repairs the Library index from files that already exist.
+    await this.indexAvailableAssets(id, number, episode).catch(() => undefined);
     const sceneNumbers = sceneNumbersFor(this.sceneCount(episode));
     const generatable: SceneNumber[] = [];
     const reusable: SceneNumber[] = [];
@@ -378,7 +390,8 @@ export class EpisodeImagesService {
     episode.state = "generating_images"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode);
     const generated: SceneNumber[] = []; const reused: SceneNumber[] = [];
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
-    const owner = apiKey && this.budget ? await this.mappingOwners.get({ projectId: id, episodeNumber: number }) : null;
+    let providerEnabled = Boolean(apiKey && this.budget);
+    const owner = providerEnabled ? await this.mappingOwners.get({ projectId: id, episodeNumber: number }) : null;
     const mappings = owner ? await this.mappingStore.load(owner) : [];
     // Resolved once per run, not per scene: keeping this line identical across every scene is what gives an
     // Episode scene-to-scene visual consistency, the same reason the short project resolves it before its loop.
@@ -393,12 +406,12 @@ export class EpisodeImagesService {
     try {
       await fs.mkdir(this.files(id, number).images, { recursive: true });
       await this.saveContinuityMetadata(id, number);
-      const continuityPath = apiKey && this.budget ? await this.continuityImagePath(id, number) : null;
+      const continuityPath = providerEnabled ? await this.continuityImagePath(id, number) : null;
       for (const scene of sceneNumbersFor(this.sceneCount(episode))) {
         const file = this.image(id, number, scene);
-        if (await this.validImage(file, Boolean(apiKey && this.budget))) { reused.push(scene); continue; }
+        if (await this.validImage(file, providerEnabled)) { reused.push(scene); continue; }
         let bytes: Buffer = PNG;
-        if (apiKey && this.budget) {
+        if (providerEnabled) {
           // The same block the short project has folded in since references were added (image-prompt.ts's
           // referenceNotes doc): the photos below go up as bytes, and without this the model is never told whose
           // photo it is, what role the person mapped them as, or anything a picture cannot carry. Measured: an
@@ -414,11 +427,24 @@ export class EpisodeImagesService {
           referenceSources.set(scene, references.sources);
           if (references.omittedCount > 0) referenceOmissions.set(scene, { references_used_count: references.images.length, references_omitted_count: references.omittedCount });
           const size = await this.imageSize(id, number);
-          await this.budget.preflight(IMAGE_ESTIMATED_COST_USD);
+          await this.budget!.preflight(IMAGE_ESTIMATED_COST_USD);
           let succeeded = false;
           try {
-            const result = references.images.length > 0 ? await callOpenAiImageEditApi(apiKey, prompt, references.images, { size }) : await callOpenAiImageApi(apiKey, prompt, { size });
+            const result = references.images.length > 0 ? await callOpenAiImageEditApi(apiKey!, prompt, references.images, { size }) : await callOpenAiImageApi(apiKey!, prompt, { size });
             bytes = result.bytes; succeeded = true;
+          } catch (error) {
+            // An authentication rejection proves this saved credential cannot make a paid image.  Do not make
+            // the person press the same confirmation again (and do not send the remaining five requests): mark
+            // this process disconnected and finish the already approved batch through the documented free path.
+            // Other provider failures stay errors because a placeholder must never disguise a quota, input, or
+            // network problem as a successful paid result.
+            if (error instanceof OpenAiAdapterError && error.category === "authentication") {
+              await this.providerSettings!.disconnect("openai", undefined);
+              providerEnabled = false;
+              generatedPrompts.delete(scene);
+              referenceSources.delete(scene);
+              referenceOmissions.delete(scene);
+            } else throw error;
           } finally {
           // `recordSpend`, not a bare await: this is a `finally` around a paid call, so a throw here discards
           // what OpenAI was already paid for and, on the failure path, replaces the provider's real error
@@ -450,6 +476,9 @@ export class EpisodeImagesService {
       episode.state = "images_review"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode);
     } catch (error) {
       await noteUnrecorded();
+      // Keep every completed scene usable in the Asset Library even when a later paid scene failed. This is
+      // deliberately best effort: an indexing problem must not replace the provider's actual error.
+      await this.indexAvailableAssets(id, number, episode).catch(() => undefined);
       episode.state = "asset_mapping_approved"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode).catch(() => undefined);
       if (isBudgetLedgerUnreadable(error)) throw longBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw longEpisodeImagesBudgetExceeded(error.message);
       if (error instanceof OpenAiAdapterError) throw longEpisodeImagesProviderError(error.category, error.message);
@@ -457,7 +486,7 @@ export class EpisodeImagesService {
       throw longStorageError();
     }
     // Read-only, same as a preview's budget field — never reserves anything, just reports the ledger's current state.
-    const budget = apiKey && this.budget && unrecordedScenes.length === 0 ? await budgetPreviewFor(this.budget, generated.length * IMAGE_ESTIMATED_COST_USD) : undefined;
+    const budget = providerEnabled && this.budget && unrecordedScenes.length === 0 ? await budgetPreviewFor(this.budget, generated.length * IMAGE_ESTIMATED_COST_USD) : undefined;
     return { episode: this.detail(episode), generatedSceneNumbers: generated, reusedSceneNumbers: reused, ...(budget ? { budget } : {}) };
   }
   /**

@@ -75,6 +75,7 @@ function renderScreen(
   tracks: ReturnType<typeof makeTrack>[] = [],
   /** Which scenes the video review reports as confirmed. Defaults to all of them. */
   approved?: number[],
+  onOpenInstagramPost?: (projectId: string) => void,
 ) {
   // The confirmation count comes from the video review route, never from a field on the scene — no response has
   // ever carried one (see the note above the COMPLETED-project test). A test says which scenes are confirmed by
@@ -96,7 +97,7 @@ function renderScreen(
     return call(input, init);
   });
   vi.stubGlobal("fetch", fetchMock);
-  return { fetchMock, render: render(<VideoMergeScreen projectId="sample_project" onBack={() => {}} />) };
+  return { fetchMock, render: render(<VideoMergeScreen projectId="sample_project" onBack={() => {}} onOpenInstagramPost={onOpenInstagramPost} />) };
 }
 
 /** A completed project whose merge used a track that requires credit — the state the notice exists for. */
@@ -671,6 +672,15 @@ describe("VideoMergeScreen", () => {
     expect(mergeFetch).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("final-video-path").textContent).toBe("저장 위치: videos/final/instagram_reel.mp4");
     expect(screen.queryByTestId("open-merge-confirm-button")).toBeNull();
+  });
+
+  it("keeps this project selected when moving from its finished video to post preparation", async () => {
+    const openPostPreparation = vi.fn();
+    renderScreen(vi.fn(), { workflowState: WorkflowState.Completed, finalVideoPath: "videos/final/instagram_reel.mp4" }, undefined, [], undefined, openPostPreparation);
+
+    fireEvent.click(await screen.findByTestId("open-instagram-post"));
+
+    expect(openPostPreparation).toHaveBeenCalledWith("sample_project");
   });
 
   // The whole point of collecting a licence at upload was to stop a credit line going missing at publish time.

@@ -60,6 +60,22 @@
   text-rendering: optimizeLegibility;
 }
 
+/*
+ * A native select's opened list is drawn by the browser/OS, not by the input's Tailwind classes.
+ * Without these defaults Chrome on Windows opens a white list while its inherited slate text stays
+ * nearly white, so every choice appears to disappear. Keep the list on the same dark input surface
+ * the design system specifies for every screen, rather than repairing one select at a time.
+ */
+select {
+  color-scheme: dark;
+}
+
+select option,
+select optgroup {
+  background-color: #0f172a;
+  color: #f1f5f9;
+}
+
 body {
   margin: 0;
   min-width: 320px;

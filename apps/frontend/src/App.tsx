@@ -63,7 +63,7 @@ type Screen =
   | { name: "videoLibrary" }
   | { name: "audioLibrary" }
   | { name: "photoCard" }
-  | { name: "instagramPost" }
+  | { name: "instagramPost"; initialProjectId?: string }
   | { name: "archive" }
   | { name: "workflowGuide" }
   | { name: "longList" }
@@ -94,10 +94,10 @@ type Screen =
  * `justCreated` is deliberately absent. It marks the one moment just after creation and changes the finish
  * button's wording; restoring it from a URL would show a first-run affordance on a project made last week.
  */
-type ScreenParam = "projectId" | "episodeNumber" | "jobId" | "initialQuery";
-const OPTIONAL_PARAMS: ReadonlySet<ScreenParam> = new Set<ScreenParam>(["initialQuery"]);
+type ScreenParam = "projectId" | "episodeNumber" | "jobId" | "initialQuery" | "initialProjectId";
+const OPTIONAL_PARAMS: ReadonlySet<ScreenParam> = new Set<ScreenParam>(["initialQuery", "initialProjectId"]);
 const SCREEN_PARAMS: Record<Screen["name"], readonly ScreenParam[]> = {
-  list: [], create: [], providerSettings: [], videoLibrary: [], audioLibrary: [], instagramPost: [], photoCard: [],
+  list: [], create: [], providerSettings: [], videoLibrary: [], audioLibrary: [], instagramPost: ["initialProjectId"], photoCard: [],
   archive: [], workflowGuide: [], longList: [], longCreate: [],
   assets: ["initialQuery"],
   detail: ["projectId"], mappingReview: ["projectId"], settings: ["projectId"], storyPrompt: ["projectId"],
@@ -861,6 +861,7 @@ export function App() {
               <VideoMergeScreen
                 projectId={screen.projectId}
                 onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
+                onOpenInstagramPost={(projectId) => setScreen({ name: "instagramPost", initialProjectId: projectId })}
               />
             )}
             {/* One notice for all seven: the screens stay as they are, and the router decides they do not
@@ -887,7 +888,7 @@ export function App() {
                 onOpenCard={(projectId) => setScreen({ name: "detail", projectId })}
               />
             )}
-            {screen.name === "instagramPost" && <InstagramPostScreen onBack={() => setScreen({ name: "list" })} />}
+            {screen.name === "instagramPost" && <InstagramPostScreen initialProjectId={screen.initialProjectId} onBack={() => setScreen({ name: "list" })} />}
             {screen.name === "sceneEdit" && !photoCardSkippedScreen && (
               <SceneEditScreen
                 projectId={screen.projectId}

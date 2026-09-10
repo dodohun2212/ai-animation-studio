@@ -10,7 +10,6 @@ import {
   sceneSubtitleGeometry,
 } from "@ai-animation-studio/shared";
 
-import { sceneImageContentUrl } from "../api/videoWorkflowApi.js";
 import { blockOutsideFrame } from "../utils/subtitleOverflow.js";
 
 /** One scene's burned-in line, with the picture it will sit on. */
@@ -21,7 +20,8 @@ export interface SubtitledScene {
 }
 
 interface Props {
-  projectId: string;
+  /** The owner supplies this because short-project and Episode image routes are different. */
+  previewImageUrl: (sceneNumber: SceneNumber) => string;
   scenes: SubtitledScene[];
   vertical: boolean;
   layout: SceneSubtitleLayout;
@@ -50,7 +50,7 @@ const label = "flex items-baseline justify-between text-sm text-slate-300";
  * The bounds come from the shared ranges rather than being repeated, so a slider cannot reach a value the merge
  * would refuse.
  */
-export function SceneSubtitleFieldset({ projectId, scenes, vertical, layout, onChange, disabled }: Props) {
+export function SceneSubtitleFieldset({ previewImageUrl, scenes, vertical, layout, onChange, disabled }: Props) {
   /*
    * Drawn at the video's real size and scaled down, not laid out small.
    *
@@ -184,7 +184,7 @@ export function SceneSubtitleFieldset({ projectId, scenes, vertical, layout, onC
             >
               {shown && (
                 <img
-                  src={sceneImageContentUrl(projectId, shown.number)}
+                  src={previewImageUrl(shown.number)}
                   alt=""
                   className="absolute inset-0 h-full w-full object-cover"
                 />

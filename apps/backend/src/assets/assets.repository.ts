@@ -708,14 +708,13 @@ export class LocalAssetsRepository {
    * hook; public Asset mutations intentionally remain unchanged. Reopening or resuming a project updates the
    * same records.
    */
-  async indexGeneratedProjectImages(source: GeneratedImageSource, topic: string, descriptions: string[]): Promise<void> {
+  async indexGeneratedProjectImages(source: GeneratedImageSource, topic: string, descriptions: string[], sceneNumbers = descriptions.map((_, index) => index + 1)): Promise<void> {
     const { sourceProjectId: projectId, imagesDirectory, kind } = source;
     await this.serialized(async () => {
       const assets = await this.load();
       const now = new Date().toISOString();
       const childIds: string[] = [];
-      const scenes = Array.from({ length: descriptions.length }, (_, index) => index + 1);
-      for (const scene of scenes) {
+      for (const scene of sceneNumbers) {
         const storedPath = path.join(imagesDirectory, `scene${scene}.png`);
         const bytes = await fsPromises.readFile(storedPath).catch(() => { throw assetStorageError(); });
         let validated: ReturnType<typeof validateImage>;

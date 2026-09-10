@@ -1,4 +1,4 @@
-import { AUDIO_MODES, isAudioMode, type AudioMode, LongEpisodeDetail, LongEpisodeInstagramPost, LongEpisodeStatus, UsedAudio } from "@ai-animation-studio/shared";
+import { AUDIO_MODES, DEFAULT_SCENE_SUBTITLE_LAYOUT, isAudioMode, isSceneSubtitleLayout, type AudioMode, LongEpisodeDetail, LongEpisodeInstagramPost, LongEpisodeStatus, UsedAudio } from "@ai-animation-studio/shared";
 
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { episodeProjectRelativePath } from "./long-project-paths.js";
@@ -30,6 +30,9 @@ export function toEpisodeDetail(episode: StoredEpisodeForDetail): LongEpisodeDet
     Array.isArray(episode.warnings) ? episode.warnings.filter((item): item is string => typeof item === "string") : [],
     episode.state,
   );
+  const sceneSubtitleLayout = isSceneSubtitleLayout({ scale: episode.scene_subtitle_scale, center: episode.scene_subtitle_center })
+    ? { scale: episode.scene_subtitle_scale as number, center: episode.scene_subtitle_center as number }
+    : DEFAULT_SCENE_SUBTITLE_LAYOUT;
   return {
     episodeNumber: episode.number,
     title: String(episode.title),
@@ -43,6 +46,7 @@ export function toEpisodeDetail(episode: StoredEpisodeForDetail): LongEpisodeDet
     scriptRevision: episode.script_revision,
     ...(script ? { script } : {}),
     scriptHistoryCount: Array.isArray(episode.script_history) ? episode.script_history.length : 0,
+    sceneSubtitleLayout,
     updatedAt: typeof episode.updated_at === "string" ? episode.updated_at : new Date(0).toISOString(),
     ...(warnings.length > 0 ? { warnings } : {}),
     ...(errorsOf(episode).length > 0 ? { errors: errorsOf(episode) } : {}),

@@ -1,4 +1,4 @@
-import type { AspectRatio, AudioMode, LongEpisodeOutlineStatus, Project, VideoModelOption, ProjectSummary, RunwayClipDurationSeconds, SceneNumber, UsedAudio, VideoJobStatus, VideoModel } from "./domain.js";
+import type { AspectRatio, AudioMode, LongEpisodeOutlineStatus, Project, VideoModelOption, ProjectSummary, RunwayClipDurationSeconds, SceneNumber, SceneSubtitleLayout, UsedAudio, VideoJobStatus, VideoModel } from "./domain.js";
 import { FINAL_VIDEO_RELATIVE_PATH, MAX_SCENE_COUNT, MIN_SCENE_COUNT } from "./domain.js";
 import type { Asset, AssetOwnership, AssetType } from "./asset.js";
 import type {
@@ -253,6 +253,8 @@ export interface LongEpisodeDetail extends LongEpisodeOutline {
    * from those would be a claim nobody checked. Absent means "not determined here", never "no narration".
    */
   narrationAvailable?: boolean;
+  /** The scene subtitle layout last used for this Episode's final render. */
+  sceneSubtitleLayout?: SceneSubtitleLayout;
   /**
    * What the last merge actually used, copied at merge time rather than looked up later.
    *
@@ -858,6 +860,7 @@ export interface RecoverLongEpisodeVideosResponse extends LongEpisodeVideoProgre
  */
 export interface MergeLongEpisodeVideosRequest {
   audio?: MergeAudioSettings;
+  sceneSubtitleLayout?: { scale?: number; center?: number };
 }
 
 export interface MergeLongEpisodeVideosResponse {

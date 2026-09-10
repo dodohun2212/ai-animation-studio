@@ -56,6 +56,25 @@ describe("LongEpisodeImageGenerationScreen", () => {
     await screen.findByTestId("episode-image-review-1");
   });
 
+  it("closes the generation confirmation after a provider refusal so it cannot be submitted again", async () => {
+    const ready = withScript(episode("asset_mapping_approved"));
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { episode: ready }))
+      .mockResolvedValueOnce(jsonResponse(200, { reference: null }))
+      .mockResolvedValueOnce(jsonResponse(200, { settings: makeLongProjectSettings({ aspectRatio: "9:16" }), aspectRatioChangeable: true }))
+      .mockResolvedValueOnce(jsonResponse(200, { preview: { sceneNumbers: [1, 2, 3, 4, 5, 6], generatableSceneNumbers: [1, 2, 3, 4, 5, 6], reusableSceneNumbers: [], estimatedCostUsd: 6 * IMAGE_ESTIMATED_COST_USD } }))
+      .mockResolvedValueOnce(jsonResponse(502, { code: "LONG_EPISODE_IMAGES_PROVIDER_ERROR", message: "raw detail", details: { category: "invalid_request" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<LongEpisodeImageGenerationScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "이미지 생성 시작" }));
+    fireEvent.click(await screen.findByRole("button", { name: "이미지 생성" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("OpenAI가 이미지 요청 형식을 지원하지 않습니다.");
+    expect(screen.queryByTestId("episode-image-generate-confirm")).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
+
   it("loads persisted review, explicitly approves one scene, then confirms only that scene regeneration", async () => {
     const reviewEpisode = episode("images_review");
     const fetchMock = vi.fn()

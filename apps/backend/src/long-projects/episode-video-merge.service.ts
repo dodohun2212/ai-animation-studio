@@ -5,7 +5,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import { AUDIO_MODES, clipDurationSecondsPerScene, type RunwayClipDurationSeconds, DEFAULT_BGM_FADE_SECONDS, DEFAULT_BGM_VOLUME, defaultBgmVolume, FINAL_VIDEO_RELATIVE_PATH, isAudioMode, usesBgm, type AudioMode, LONG_EPISODE_STATUSES, isSceneNumber, sceneNumbersFor, type LongEpisodeDetail, type LongEpisodeStatus, type MergeLongEpisodeVideosResponse, type SceneNumber } from "@ai-animation-studio/shared";
+import { AUDIO_MODES, clipDurationSecondsPerScene, type RunwayClipDurationSeconds, DEFAULT_BGM_FADE_SECONDS, DEFAULT_BGM_VOLUME, DEFAULT_SCENE_SUBTITLE_LAYOUT, defaultBgmVolume, FINAL_VIDEO_RELATIVE_PATH, isAudioMode, isSceneSubtitleLayout, usesBgm, type AudioMode, LONG_EPISODE_STATUSES, isSceneNumber, SCENE_SUBTITLE_CENTER, SCENE_SUBTITLE_SCALE, sceneNumbersFor, type LongEpisodeDetail, type LongEpisodeStatus, type MergeLongEpisodeVideosResponse, type SceneNumber, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
 
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "../videos/ffmpeg-merge.service.js";
@@ -201,7 +201,7 @@ export class EpisodeVideoMergeService {
     return placeholders;
   }
 
-  private async mergeScenes(id: string, number: number, episode: Episode, clips: readonly string[], sceneNumbers: readonly SceneNumber[]): Promise<MergeSceneInput[]> {
+  private async mergeScenes(id: string, number: number, episode: Episode, clips: readonly string[], sceneNumbers: readonly SceneNumber[], sceneSubtitleLayout: SceneSubtitleLayout): Promise<MergeSceneInput[]> {
     const projectSettings = (await this.projects.get(id)).project.settings;
     const scenes = episode.script.scenes;
     const scriptScenes = Array.isArray(scenes) ? scenes : [];
@@ -217,7 +217,7 @@ export class EpisodeVideoMergeService {
         && (await fs.stat(file).then((stat) => stat.size > 0).catch(() => false));
       const narrationAudioPath = projectSettings.narrationEnabled && hasRealAudio ? file : null;
       const subtitleText = projectSettings.subtitlesEnabled ? (narrationText || null) : null;
-      return { clip: clips[index]!, narrationAudioPath, subtitleText };
+      return { clip: clips[index]!, narrationAudioPath, subtitleText, ...(subtitleText ? { sceneSubtitleLayout } : {}) };
     }));
   }
 
@@ -264,7 +264,7 @@ export class EpisodeVideoMergeService {
     const fallbackMode = narrationAvailable && await this.narrationEnabled(id) ? "narration" as const : "silent" as const;
     const fallback = { mode: fallbackMode, volume: DEFAULT_BGM_VOLUME, fadeSeconds: DEFAULT_BGM_FADE_SECONDS, startSeconds: 0 };
     if (request === undefined) return fallback;
-    if (!object(request) || Object.keys(request).some((key) => key !== "audio")) throw longInvalidRequest();
+    if (!object(request) || Object.keys(request).some((key) => key !== "audio" && key !== "sceneSubtitleLayout")) throw longInvalidRequest();
     if (request.audio === undefined) return fallback;
     const audio = request.audio;
     if (!object(audio) || Object.keys(audio).some((key) => !["mode", "trackId", "volume", "fadeSeconds", "startSeconds"].includes(key))) throw longInvalidRequest();
@@ -284,6 +284,23 @@ export class EpisodeVideoMergeService {
       fadeSeconds: typeof audio.fadeSeconds === "number" ? audio.fadeSeconds : DEFAULT_BGM_FADE_SECONDS,
       startSeconds: typeof audio.startSeconds === "number" ? audio.startSeconds : 0,
     };
+  }
+
+  private resolveSceneSubtitleLayout(episode: Episode, request: unknown): SceneSubtitleLayout {
+    const stored = isSceneSubtitleLayout({ scale: episode.scene_subtitle_scale, center: episode.scene_subtitle_center })
+      ? { scale: episode.scene_subtitle_scale as number, center: episode.scene_subtitle_center as number }
+      : DEFAULT_SCENE_SUBTITLE_LAYOUT;
+    if (!object(request) || request.sceneSubtitleLayout === undefined) return stored;
+    const asked = request.sceneSubtitleLayout;
+    if (!object(asked) || Object.keys(asked).some((key) => key !== "scale" && key !== "center")) throw longInvalidRequest();
+    const merged = {
+      scale: asked.scale === undefined ? stored.scale : asked.scale,
+      center: asked.center === undefined ? stored.center : asked.center,
+    };
+    if (!isSceneSubtitleLayout(merged)) {
+      throw longInvalidRequest(`sceneSubtitleLayout.scale must be ${SCENE_SUBTITLE_SCALE.min}-${SCENE_SUBTITLE_SCALE.max} and sceneSubtitleLayout.center ${SCENE_SUBTITLE_CENTER.min}-${SCENE_SUBTITLE_CENTER.max}.`);
+    }
+    return merged;
   }
 
   /**
@@ -320,6 +337,7 @@ export class EpisodeVideoMergeService {
   async merge(projectId: string, number: number, request?: unknown): Promise<MergeLongEpisodeVideosResponse> {
     const id = projectId.trim(); const episode = await this.loadEpisode(id, number); const clips = await this.approvedClips(id, number, episode);
     const audio = await this.resolveAudio(id, number, episode, request);
+    const sceneSubtitleLayout = this.resolveSceneSubtitleLayout(episode, request);
     // Resolved before any rendering starts, like the short project's merge: an unknown track should fail here
     // rather than after a render nobody can undo.
     let bgmPath: string | undefined;
@@ -341,7 +359,7 @@ export class EpisodeVideoMergeService {
     // from a cut this render is replacing. Refused rather than queued if something else holds it — nothing has
     // been rendered at that point, and a button that waits behind a minutes-long upload reads as a hang.
     return withProjectLock(path.join(longStoryRoot(this.projectsRoot, id), episodeDirectoryName(number)), FINAL_VIDEO_LOCK_KEY,
-      () => this.render(id, number, episode, rendering, clips, audio, bgmPath, bgmTrack), this.lockTimeoutMs === undefined ? undefined : { timeoutMs: this.lockTimeoutMs })
+      () => this.render(id, number, episode, rendering, clips, audio, sceneSubtitleLayout, bgmPath, bgmTrack), this.lockTimeoutMs === undefined ? undefined : { timeoutMs: this.lockTimeoutMs })
       .catch(async (error: unknown) => {
         if (!(error instanceof ProjectLockTimeoutError)) throw error;
         await this.saveEpisode(id, number, episode).catch(() => undefined);
@@ -356,6 +374,7 @@ export class EpisodeVideoMergeService {
     rendering: Episode,
     clips: readonly string[],
     audio: { mode: string; trackId?: string; volume: number; fadeSeconds: number; startSeconds: number },
+    sceneSubtitleLayout: SceneSubtitleLayout,
     bgmPath: string | undefined,
     bgmTrack: { attributionRequired: boolean; attributionText?: string } | undefined,
   ): Promise<MergeLongEpisodeVideosResponse> {
@@ -366,7 +385,7 @@ export class EpisodeVideoMergeService {
       // have watched, approved, or been about to publish — was simply gone. Archiving costs a local file copy.
       await this.archiveFinal(id, number);
 
-      const mergeScenes = await this.mergeScenes(id, number, episode, clips, sceneNumbersFor(this.sceneCount(episode)));
+      const mergeScenes = await this.mergeScenes(id, number, episode, clips, sceneNumbersFor(this.sceneCount(episode)), sceneSubtitleLayout);
       await this.engine.merge(mergeScenes, this.clipDurationSeconds(episode), output, await this.ratio(id, number));
       if (bgmPath) await this.engine.mixBackgroundMusic(output, bgmPath, audio.volume, audio.fadeSeconds, output, audio.startSeconds);
       // Copied as a value at merge time, never looked up later: the credit line has to survive the track being
@@ -377,7 +396,7 @@ export class EpisodeVideoMergeService {
         ...(bgmTrack?.attributionRequired !== undefined ? { attribution_required: bgmTrack.attributionRequired } : {}),
         ...(bgmTrack?.attributionText !== undefined ? { attribution_text: bgmTrack.attributionText } : {}),
       };
-      const completed = { ...rendering, state: "completed" as const, updated_at: new Date().toISOString(), final_video_path: FINAL_VIDEO_RELATIVE_PATH, used_audio: usedAudio };
+      const completed = { ...rendering, state: "completed" as const, updated_at: new Date().toISOString(), final_video_path: FINAL_VIDEO_RELATIVE_PATH, used_audio: usedAudio, scene_subtitle_scale: sceneSubtitleLayout.scale, scene_subtitle_center: sceneSubtitleLayout.center };
       await this.saveEpisode(id, number, completed);
       return { episode: this.detail(completed), finalVideoPath: FINAL_VIDEO_RELATIVE_PATH, openablePath: episodeProjectRelativePath(number, FINAL_VIDEO_RELATIVE_PATH) };
     } catch (error) {

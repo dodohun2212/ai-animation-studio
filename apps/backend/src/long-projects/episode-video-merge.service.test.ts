@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
+import { DEFAULT_SCENE_SUBTITLE_LAYOUT } from "@ai-animation-studio/shared";
 
 import { MediaToolError, type MediaCommandRunner } from "../videos/ffmpeg-merge.service.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
@@ -241,6 +242,59 @@ describe("EpisodeVideoMergeService", () => {
     expect(normalizeCalls[0]!.find((arg) => arg.includes("subtitles="))).toBeDefined();
     expect(normalizeCalls[0]).toContain("anullsrc=channel_layout=stereo:sample_rate=48000"); // no audio was ever generated
     expect(assFiles.get("scene1.ass")).toContain("장면 1 내레이션");
+  });
+
+  it("does not pass a subtitle layout to FFmpeg when Episode subtitles are disabled", async () => {
+    const { projectsRoot } = await setup();
+    const assFiles = new Map<string, string>();
+    const calls: string[][] = [];
+
+    await new EpisodeVideoMergeService(projectsRoot, runner({}, calls, assFiles))
+      .merge("long", 1, { sceneSubtitleLayout: { scale: 0.04, center: 0.5 } });
+
+    expect(calls.filter((args) => args[0] === "ffmpeg" && args.includes("-vf")).every((args) => args.every((value) => !value.includes("subtitles=")))).toBe(true);
+    expect(assFiles).toEqual(new Map());
+  });
+
+  it("uses and persists a requested scene subtitle layout, defaults when omitted, and rejects invalid values", async () => {
+    const { projectsRoot } = await setup();
+    const episodeProjectFile = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
+    const stored = JSON.parse(await fs.readFile(episodeProjectFile, "utf8")) as { script: { scenes: Array<Record<string, unknown>> } };
+    stored.script.scenes[0]!.narration = "subtitle layout";
+    await fs.writeFile(episodeProjectFile, JSON.stringify(stored, null, 2), "utf8");
+    const projects = new LongProjectsService(projectsRoot);
+    await projects.updateSettings("long", { settings: { ...settings, subtitlesEnabled: true } });
+
+    const assFiles = new Map<string, string>();
+    const result = await new EpisodeVideoMergeService(projectsRoot, runner({}, [], assFiles))
+      .merge("long", 1, { sceneSubtitleLayout: { scale: 0.04, center: 0.5 } });
+    expect(assFiles.get("scene1.ass")).toContain(`,${Math.round(1920 * 0.04)},`);
+    expect(assFiles.get("scene1.ass")).toContain(`\\pos(540,${Math.round(1920 * 0.5)})`);
+    expect(result.episode.sceneSubtitleLayout).toEqual({ scale: 0.04, center: 0.5 });
+    const persisted = JSON.parse(await fs.readFile(episodeProjectFile, "utf8")) as Record<string, unknown>;
+    expect(persisted.scene_subtitle_scale).toBe(0.04);
+    expect(persisted.scene_subtitle_center).toBe(0.5);
+
+    const { projectsRoot: defaultProjectsRoot } = await setup();
+    const defaultResult = await new EpisodeVideoMergeService(defaultProjectsRoot, runner({})).merge("long", 1);
+    expect(defaultResult.episode.sceneSubtitleLayout).toEqual(DEFAULT_SCENE_SUBTITLE_LAYOUT);
+
+    const { projectsRoot: invalidProjectsRoot } = await setup();
+    await expect(new EpisodeVideoMergeService(invalidProjectsRoot, runner({}))
+      .merge("long", 1, { sceneSubtitleLayout: { center: 0.9 } }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
+  it("accepts a subtitle layout when retrying a failed Episode merge", async () => {
+    const { projectsRoot } = await setup();
+    await expect(new EpisodeVideoMergeService(projectsRoot, runner({ noOutput: true }))
+      .merge("long", 1, { sceneSubtitleLayout: { scale: 0.04, center: 0.5 } }))
+      .rejects.toMatchObject({ response: { code: "LONG_EPISODE_MERGE_FAILED" } });
+
+    const result = await new EpisodeVideoMergeService(projectsRoot, runner())
+      .merge("long", 1, { sceneSubtitleLayout: { scale: 0.04, center: 0.5 } });
+
+    expect(result.episode.sceneSubtitleLayout).toEqual({ scale: 0.04, center: 0.5 });
   });
 
   it("contains no provider or network client", async () => {

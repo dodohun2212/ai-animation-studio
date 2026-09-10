@@ -244,6 +244,10 @@ focus:ring-violet-500/30 disabled:opacity-50
 - 레이블: `block text-sm text-slate-300` + `htmlFor`.
 - 필드 오류: 필드 바로 아래 `mt-1.5 text-sm text-rose-400` + `role="alert"`.
 - textarea도 동일 규격 (+`resize-y`).
+- `select`도 같은 입력 표면을 사용한다. 네이티브로 열리는 선택 목록은 전역에서
+  다크 색 체계(`color-scheme: dark`)를 강제하고, 항목은 `bg-slate-900`과
+  `text-slate-100` 대비를 유지한다. OS 기본의 흰 목록을 그대로 두어 다크 화면의
+  선택 항목이 읽히지 않게 만들지 않는다.
 
 ### 3.3 카드·패널
 

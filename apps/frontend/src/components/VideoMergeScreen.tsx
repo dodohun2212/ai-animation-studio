@@ -7,7 +7,7 @@ import { getAudioLibrary } from "../api/audioLibraryApi.js";
 import type { AudioMode } from "./mergeAudio.js";
 import { AttributionNotice, AUDIO_MODE_LABELS, MergeAudioFieldset, needsTrack, toAudioSettings } from "./mergeAudio.js";
 import { finalVideoContentUrl, mergeVideos, toVideoMergeDisplayError } from "../api/videoMergeApi.js";
-import { getVideoReview } from "../api/videoWorkflowApi.js";
+import { getVideoReview, sceneImageContentUrl } from "../api/videoWorkflowApi.js";
 import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBridge.js";
 import { PhotoCardSubtitleFieldset } from "./PhotoCardSubtitleFieldset.js";
 import { SceneSubtitleFieldset, type SubtitledScene } from "./SceneSubtitleFieldset.js";
@@ -16,6 +16,7 @@ import { ScreenHeader } from "./ui/ScreenHeader.js";
 interface Props {
   projectId: string;
   onBack: () => void;
+  onOpenInstagramPost?: (projectId: string) => void;
 }
 
 type DisplayError = { code: string; message: string };
@@ -52,7 +53,7 @@ function mergeContentSentence(mode: MediaMode | null): string | null {
   return "음성도 자막도 꺼져 있어 장면 영상만 이어 붙입니다.";
 }
 
-export function VideoMergeScreen({ projectId, onBack }: Props) {
+export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Props) {
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, setPending] = useState(false);
@@ -316,7 +317,7 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
           appear is the same failure as hiding text that will. */}
       {(!result || remaking) && sceneSubtitleAdjustable && (
         <SceneSubtitleFieldset
-          projectId={projectId}
+          previewImageUrl={(sceneNumber) => sceneImageContentUrl(projectId, sceneNumber)}
           scenes={subtitledScenes}
           vertical={aspectVertical}
           layout={sceneLayout}
@@ -456,6 +457,16 @@ export function VideoMergeScreen({ projectId, onBack }: Props) {
           <p className="text-sm text-slate-300" data-testid="final-video-path">
             저장 위치: {result.finalVideoPath}
           </p>
+          {onOpenInstagramPost && (
+            <button
+              type="button"
+              data-testid="open-instagram-post"
+              className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
+              onClick={() => onOpenInstagramPost(projectId)}
+            >
+              게시물 준비로
+            </button>
+          )}
           {hasElectronBridge() && (
             <div className="flex items-center gap-3">
               <button

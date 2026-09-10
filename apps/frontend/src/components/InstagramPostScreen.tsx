@@ -17,6 +17,8 @@ import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { cardSection, outlineButton } from "./ui/surfaces.js";
 
 interface Props {
+  /** The completed short project that brought the person here, if this screen was opened from its final video. */
+  initialProjectId?: string;
   onBack: () => void;
 }
 
@@ -220,10 +222,10 @@ function suggestEpisodeCaptionBody(episode: LongEpisodeDetail): string {
 /** The backend's name for "the last publish stopped before it could record what happened". */
 const UNKNOWN_ATTEMPT_CODE = "INSTAGRAM_PUBLISH_OUTCOME_UNKNOWN";
 
-export function InstagramPostScreen({ onBack }: Props) {
+export function InstagramPostScreen({ initialProjectId, onBack }: Props) {
   const [list, setList] = useState<ListState>({ status: "loading" });
   /** The picker's raw value: a short project's id, or `episode:<projectId>|<n>`. */
-  const [selection, setSelection] = useState("");
+  const [selection, setSelection] = useState(initialProjectId ?? "");
   const [picked, setPicked] = useState<PickedState>({ status: "idle" });
   const [body, setBody] = useState("");
   /** True only while the box still holds text this screen put there and the person has not touched it yet. */
@@ -315,6 +317,12 @@ export function InstagramPostScreen({ onBack }: Props) {
     loadList();
     loadTargets();
   }, []);
+
+  // Navigation can change between two ready videos without remounting this screen, so the opening choice is
+  // also observed after mount. A blank normal navigation deliberately leaves a manual picker choice alone.
+  useEffect(() => {
+    if (initialProjectId) setSelection(initialProjectId);
+  }, [initialProjectId]);
 
   async function chooseTarget(igUserId: string): Promise<void> {
     if (targetPending || !igUserId) return;

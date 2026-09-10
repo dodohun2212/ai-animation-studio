@@ -115,7 +115,7 @@ describe("real OpenAI Episode image generation", () => {
    * changing the direction later marks these pictures as behind rather than leaving them silently wrong.
    */
   it("sends the project's art direction with every Episode image, and records it", async () => {
-    const { images, projectsRoot } = await setupWithConnectedOpenAi();
+    const { images, projectsRoot, assets } = await setupWithConnectedOpenAi();
     const projectFile = path.join(projectsRoot, "long", "long_story", "project.json");
     const stored = JSON.parse(await fs.readFile(projectFile, "utf8")) as Record<string, unknown>;
     await fs.writeFile(projectFile, JSON.stringify({ ...stored, visual_style: "손그림 수채화", color: "탁한 청록", lighting: "역광", avoid: "사진 같은 질감" }, null, 2), "utf8");
@@ -152,7 +152,7 @@ describe("real OpenAI Episode image generation", () => {
    * which would send someone to re-read six scenes that are exactly as they left them.
    */
   it("reports pictures as behind the art direction, and not as behind a script nobody touched", async () => {
-    const { images, projectsRoot } = await setupWithConnectedOpenAi();
+    const { images, projectsRoot, assets } = await setupWithConnectedOpenAi();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] })));
     await images.generate("long", 1, { approved: true });
     expect((await images.get("long", 1)).staleness.imageStale).toEqual([]);
@@ -731,12 +731,14 @@ describe("real OpenAI Episode image generation", () => {
     expect((await images.get("long", 1).catch((error: unknown) => error)) as { response?: { code: string } }).toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_NOT_ALLOWED" } });
   });
 
-  it("classifies a real provider failure and records failed budget usage", async () => {
-    const { images, root: usedRoot } = await setupWithConnectedOpenAi();
+  it("switches to local fake images after an authentication rejection and stops further paid requests", async () => {
+    const { images, providerSettings, root: usedRoot } = await setupWithConnectedOpenAi();
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { error: { code: "invalid_api_key" } }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(images.generate("long", 1, { approved: true })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_PROVIDER_ERROR", details: { category: "authentication" } } });
+    await expect(images.generate("long", 1, { approved: true })).resolves.toMatchObject({ episode: { status: "images_review" }, generatedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect((await providerSettings.getSettings()).providers.find((provider) => provider.provider === "openai")).toMatchObject({ configured: true, connected: false });
 
     const usage = JSON.parse(await fs.readFile(path.join(usedRoot!, "api_budget_usage.json"), "utf8")) as Array<{ succeeded: boolean }>;
     expect(usage).toEqual([expect.objectContaining({ succeeded: false })]);
@@ -747,11 +749,11 @@ describe("real OpenAI Episode image generation", () => {
     // one, so there is never any partial work to keep. Fail partway instead and the retry either reuses what was
     // already bought or buys it again — six scenes at ten cents each, so getting this wrong is most of the cost
     // of the step, silently, on exactly the retry someone reaches for after an error.
-    const { images, projectsRoot } = await setupWithConnectedOpenAi();
+    const { images, projectsRoot, assets } = await setupWithConnectedOpenAi();
     let calls = 0;
     const failingAtFourth = vi.fn().mockImplementation(async () => {
       calls += 1;
-      return calls === 4 ? jsonResponse(401, { error: { code: "invalid_api_key" } }) : jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] });
+      return calls === 4 ? jsonResponse(400, { error: { code: "invalid_request_error" } }) : jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] });
     });
     vi.stubGlobal("fetch", failingAtFourth);
 
@@ -761,6 +763,9 @@ describe("real OpenAI Episode image generation", () => {
     const imageDirectory = path.join(projectsRoot, "long", "long_story", "Episode01", "images");
     const kept = (await fs.readdir(imageDirectory)).filter((name) => name.endsWith(".png"));
     expect(kept).toHaveLength(3);
+    const indexed = await assets.list();
+    expect(indexed.filter((asset) => !asset.is_folder && asset.source_project_id === "long/Episode01")).toHaveLength(3);
+    expect(indexed.find((asset) => asset.is_folder && asset.source_project_id === "long/Episode01")?.child_asset_ids).toHaveLength(3);
 
     // The retry: three already on disk, three still to buy.
     const succeeding = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));

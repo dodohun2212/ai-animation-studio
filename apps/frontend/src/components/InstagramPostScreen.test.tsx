@@ -76,6 +76,7 @@ function renderScreen(options: {
   forget?: "ok" | "not-recorded";
   episodes?: ReturnType<typeof libraryEpisode>[];
   episode?: Record<string, unknown>;
+  initialProjectId?: string;
 } = {}) {
   const projects = options.projects ?? [libraryProject()];
   let draftReads = 0;
@@ -138,7 +139,7 @@ function renderScreen(options: {
     throw new Error(`unexpected fetch: ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
-  return { fetchMock, ...render(<InstagramPostScreen onBack={() => {}} />) };
+  return { fetchMock, ...render(<InstagramPostScreen initialProjectId={options.initialProjectId} onBack={() => {}} />) };
 }
 
 async function pickProject() {
@@ -167,6 +168,13 @@ describe("InstagramPostScreen", () => {
     renderScreen();
     const notice = await screen.findByTestId("post-scope-notice");
     expect(notice.textContent).toContain("어느 계정으로 나가는지");
+  });
+
+  it("keeps the completed project selected when its final-video screen opens post preparation", async () => {
+    renderScreen({ initialProjectId: "p1" });
+
+    await screen.findByTestId("post-checks");
+    expect(screen.getByTestId("post-project")).toHaveValue("p1");
   });
 
   // A project with no merged result has nothing to post, so offering it would be a dead choice.

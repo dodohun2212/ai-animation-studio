@@ -15,6 +15,12 @@ Python → TypeScript 이전 자체는 끝났다 — 상위 15개 체크리스�
 
 **지금부터의 작업은 "Python 기능 이전"이 아니라 "이미 이전된 프로그램의 개선·다듬기"다.** AGENTS.md의 "Feature discipline"(예전 "Migration discipline")은 이 단계에도 그대로 적용된다 — 작업 하나씩, 완료 조건 먼저 정의, 검증 후에만 문서 갱신.
 
+### 2026-09-10 — 장편 Episode 이미지 인증 실패 안전 복구
+
+- OpenAI 자격증명이 없거나 설정 화면에서 연결을 끈 경우에는 기존처럼 비용 없는 임시 이미지 경로를 쓴다. 저장된 자격증명이 있어 유료 경로를 골랐지만 OpenAI가 `authentication`으로 거부하면, 첫 실패를 실패 사용량으로 남긴 뒤 이 프로세스의 연결을 해제하고 이미 승인된 같은 배치의 남은 장면을 임시 이미지로 끝낸다. 이미 성공한 장면은 덮어쓰지 않으며, quota·입력·안전 정책·네트워크·서버 오류는 임시 결과로 위장하지 않고 기존 오류로 남긴다.
+- 장편 이미지 생성 확인 패널은 Provider 오류에도 닫혀 중복 제출을 막고, `LONG_EPISODE_IMAGES_PROVIDER_ERROR`의 안전한 category를 실제 조치 문구로 표시한다.
+- 검증: `episode-images.openai.test.ts` 32개, `LongEpisodeImageGenerationScreen.test.tsx` 42개, backend/frontend typecheck·build, `git diff --check` 통과. 모든 Provider 호출은 테스트 mock이었고 실제 OpenAI·Runway 요청은 0회다.
+
 ## 현재 상태 (2026-08-29)
 
 ```

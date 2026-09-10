@@ -257,7 +257,11 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
       const response = await startLongEpisodeImageGeneration(projectId, episodeNumber);
       generationSettled.current = true;
       setGeneration(response); setEpisode(response.episode); setConfirmingGeneration(false);
-    } catch (caught) { setError(toLongProjectDisplayError(caught)); }
+    } catch (caught) {
+      generationSettled.current = true;
+      setConfirmingGeneration(false);
+      setError(toLongProjectDisplayError(caught));
+    }
     finally { generationBusy.current = false; setGenerationPending(false); }
   }
 

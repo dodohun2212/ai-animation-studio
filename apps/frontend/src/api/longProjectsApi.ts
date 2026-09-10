@@ -78,6 +78,7 @@ import {
   type SaveLongEpisodeContinuityRequest,
   type SaveLongEpisodeContinuityResponse,
   type SceneNumber,
+  type SceneSubtitleLayout,
   type StartLongEpisodeImageGenerationRequest,
   type StartLongEpisodeImageGenerationResponse,
   type StartLongEpisodeNarrationGenerationRequest,
@@ -156,6 +157,7 @@ const SAFE_ERRORS: Record<string, string> = {
      and charge for it. Found by CLI's error-code-reach sweep. */
   LONG_EPISODE_VIDEO_VERSION_NOT_FOUND: "이 버전을 찾을 수 없습니다. 목록을 새로 불러온 뒤 다시 시도해 주세요.",
   LONG_EPISODE_VIDEO_RESTORE_NOT_ALLOWED: "현재 회차 상태에서는 되돌릴 수 없습니다.",
+  LONG_EPISODE_VIDEO_RESTORE_IN_PROGRESS: "지금 이 회차의 최종 영상은 다른 작업이 만들고 있습니다. 그 작업이 끝난 뒤 다시 눌러 주세요.",
   LONG_EPISODE_RETRY_NEEDS_CHANGED_INPUT: "이 장면은 입력이 원인이라 그대로 다시 만들면 똑같이 실패합니다. 무엇을 바꿀지 적은 뒤에 다시 눌러 주세요.",
   STORY_BIBLE_ITEM_NOT_FOUND: "Story Bible 항목을 찾을 수 없습니다.",
   STORY_BIBLE_ITEM_ALREADY_EXISTS: "같은 ID의 Story Bible 항목이 이미 있습니다.",
@@ -278,6 +280,18 @@ const LONG_EPISODE_NARRATION_PROVIDER_MESSAGES: Record<string, string> = {
 };
 const LONG_EPISODE_NARRATION_PROVIDER_FALLBACK = "OpenAI 음성 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.";
 
+const LONG_EPISODE_IMAGE_PROVIDER_MESSAGES: Record<string, string> = {
+  authentication: "OpenAI API 키 인증에 실패했습니다. 이 실행에서는 임시 이미지로 전환되었습니다. API 설정에서 키를 확인해 주세요.",
+  quota_or_permission: "OpenAI 사용 한도 또는 프로젝트 권한을 확인해 주세요.",
+  rate_limit: "OpenAI 요청이 일시적으로 제한되었습니다. 잠시 후 다시 시도해 주세요.",
+  server: "OpenAI 서버 오류로 이미지를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.",
+  network: "OpenAI에 연결하지 못했습니다. 네트워크 상태를 확인해 주세요.",
+  invalid_request: "OpenAI가 이미지 요청 형식을 지원하지 않습니다.",
+  safety_policy: "안전 정책에 따라 이미지 요청이 거부되었습니다. 자동으로 재시도되지 않습니다.",
+  context_length_exceeded: "이미지 설명이 모델이 처리할 수 있는 길이를 초과했습니다. 설정 내용을 줄여서 다시 시도해 주세요.",
+};
+const LONG_EPISODE_IMAGE_PROVIDER_FALLBACK = "OpenAI 이미지 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+
 const LONG_EPISODE_CONTINUITY_ERRORS: Record<string, string> = {
   LONG_EPISODE_CONTINUITY_NOT_ALLOWED: "이 에피소드는 아직 연결 기억을 저장할 수 있는 단계가 아닙니다. 이미지 승인 이후부터 저장할 수 있습니다.",
   LONG_EPISODE_CONTINUITY_INVALID: "연결 기억을 저장하려면 검토한 값이 올바르게 채워져 있어야 합니다.",
@@ -328,6 +342,10 @@ function audioStartOutOfRange(details: Record<string, unknown> | undefined): str
 export function toLongProjectDisplayError(error: unknown): { code: string; message: string; details?: Record<string, unknown> } {
   if (!(error instanceof LongProjectsApiError)) return UNKNOWN;
   if (error.code === "AUDIO_START_OUT_OF_RANGE") return { code: error.code, message: audioStartOutOfRange(error.details) };
+  if (error.code === "LONG_EPISODE_IMAGES_PROVIDER_ERROR") {
+    const category = typeof error.details?.category === "string" ? error.details.category : "";
+    return { code: error.code, message: LONG_EPISODE_IMAGE_PROVIDER_MESSAGES[category] ?? LONG_EPISODE_IMAGE_PROVIDER_FALLBACK };
+  }
   if (Object.prototype.hasOwnProperty.call(EPISODE_LOCKED_MESSAGES, error.code)) {
     const message = EPISODE_LOCKED_MESSAGES[error.code]!(episodeNumberFrom(error.details));
     return error.details ? { code: error.code, message, details: error.details } : { code: error.code, message };
@@ -1128,9 +1146,10 @@ export function recoverLongEpisodeVideos(projectId: string, episodeNumber: numbe
  * narration/subtitle toggles, which is right for a caller that has no opinion. Only a caller that actually
  * asked the user sends `audio`. Same rule as the short project's mergeVideos, deliberately.
  */
-export function mergeLongEpisodeVideos(projectId: string, episodeNumber: number, audio?: MergeAudioSettings): Promise<MergeLongEpisodeVideosResponse> {
-  const init: RequestInit = audio
-    ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ audio }) }
+export function mergeLongEpisodeVideos(projectId: string, episodeNumber: number, audio?: MergeAudioSettings, sceneSubtitleLayout?: SceneSubtitleLayout): Promise<MergeLongEpisodeVideosResponse> {
+  const body = { ...(audio ? { audio } : {}), ...(sceneSubtitleLayout ? { sceneSubtitleLayout } : {}) };
+  const init: RequestInit = Object.keys(body).length > 0
+    ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }
     : { method: "POST" };
   return request(API_ROUTES.longEpisodeVideoMerge(projectId, episodeNumber), init, isMergeLongEpisodeVideosResponse);
 }

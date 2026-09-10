@@ -7,6 +7,7 @@ import { EpisodeImagesService } from "./episode-images.service.js";
 import { EpisodeScriptsService } from "./episode-scripts.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
+import { PLACEHOLDER_PNG } from "../images/placeholder-image.js";
 
 let root: string | undefined;
 const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false };
@@ -73,6 +74,20 @@ describe("EpisodeImagesService", () => {
     expect(generated).toMatchObject({ episode: { status: "images_review" }, generatedSceneNumbers: [1, 2, 3, 4, 5, 6], reusedSceneNumbers: [] });
     await expect(fs.access(path.join(projectsRoot, "long", "long_story", "Episode01", "images", "scene6.png"))).resolves.toBeUndefined();
     await expect(images.generate("long", 1, { approved: true })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_NOT_ALLOWED" } });
+  });
+
+  it("repairs the Asset Library from completed scenes left by an earlier failed run when previewing a retry", async () => {
+    const { images, projectsRoot } = await setup();
+    const imageDirectory = path.join(projectsRoot, "long", "long_story", "Episode01", "images");
+    await fs.mkdir(imageDirectory, { recursive: true });
+    for (const scene of [1, 2, 3] as const) await fs.writeFile(path.join(imageDirectory, `scene${scene}.png`), PLACEHOLDER_PNG);
+    const assets = new LocalAssetsRepository(root!);
+
+    await images.preview("long", 1);
+
+    const indexed = await assets.list();
+    expect(indexed.filter((asset) => !asset.is_folder && asset.source_project_id === "long/Episode01")).toHaveLength(3);
+    expect(indexed.find((asset) => asset.is_folder && asset.source_project_id === "long/Episode01")?.child_asset_ids).toHaveLength(3);
   });
 
   it("still recognizes an approved mapping as current after narration text changes, agreeing with episode-asset-mappings.service.ts's own fingerprint", async () => {

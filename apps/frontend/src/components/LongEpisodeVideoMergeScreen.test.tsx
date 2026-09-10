@@ -35,6 +35,18 @@ const episodeWithScenes = (count: number, status: LongEpisodeStatus = "videos_ap
   },
 });
 
+/** Narration is the exact line the renderer burns in, so this fixture is the one eligible for the scene-layout control. */
+const episodeWithSubtitles = (count: number) => {
+  const base = episodeWithScenes(count);
+  return {
+    ...base,
+    script: {
+      ...base.script,
+      scenes: base.script.scenes.map((scene) => ({ ...scene, narration: `${scene.number}번 장면 자막` })),
+    },
+  };
+};
+
 const EPISODE_URL = "/long-projects/long/episodes/1";
 const SETTINGS_URL = "/long-projects/long/settings";
 const mediaSettings = (narrationEnabled: boolean, subtitlesEnabled: boolean) => ({
@@ -175,6 +187,31 @@ describe("LongEpisodeVideoMergeScreen", () => {
     const notice = await screen.findByTestId("episode-merge-scope-notice");
     await waitFor(() => expect(notice.textContent).toContain("음성은 꺼져 있어 넣지 않습니다"));
     expect(notice.textContent).toContain("자막만 입힙니다");
+  });
+
+  it("places Episode scene subtitles before audio and sends the chosen layout only when they will be burned in", async () => {
+    const mergeFetch = stubFetchByRoute({
+      [`GET ${EPISODE_URL}`]: { episode: episodeWithSubtitles(4) },
+      [`GET ${SETTINGS_URL}`]: mediaSettings(false, true),
+      ...confirmedRoutes(4, 4),
+      [`POST ${MERGE_URL}`]: response(),
+    });
+    vi.stubGlobal("fetch", mergeFetch);
+    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    const scale = await screen.findByTestId("scene-subtitle-scale");
+    expect(screen.getByRole("region", { name: "장면 자막 위치와 크기" })).toBeTruthy();
+    expect((await screen.findByTestId("scene-subtitle-preview")).querySelector("img")?.getAttribute("src")).toContain("/long-projects/long/episodes/1/images/1/content");
+    fireEvent.change(scale, { target: { value: "0.04" } });
+    fireEvent.change(screen.getByTestId("scene-subtitle-center"), { target: { value: "0.62" } });
+
+    fireEvent.click(screen.getByTestId("episode-open-merge-confirm"));
+    fireEvent.click(await screen.findByTestId("episode-confirm-merge"));
+    await screen.findByTestId("episode-merge-success");
+
+    const post = mergeFetch.mock.calls.find((call) => (call[1] as RequestInit | undefined)?.method === "POST");
+    const [, init] = post as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({ audio: { mode: "silent" }, sceneSubtitleLayout: { scale: 0.04, center: 0.62 } });
   });
 
   it("says nothing about audio or subtitles when the settings could not be read", async () => {
