@@ -35,12 +35,19 @@ import { videoPreviewDataInvalid } from "./video-preview-api.error.js";
 export type VideoPromptDialect = "runway_gen4";
 const DIALECT: Record<VideoModel, VideoPromptDialect> = {
   gen4_turbo: "runway_gen4",
-  // 🟠 H3 Max reads the same text, and that is a decision with a reason, not a fallback. The gen4 grammar's two
-  // provider-specific choices — no restated subject (the first frame carries it) and no negative phrasing — are
-  // what any image-to-video model given an exact first frame wants, and nothing published by MiniMax or Runway
-  // says H3 reads differently. `promptExpansionMode: "disabled"` (the adapter) makes it follow this text as
-  // written. One grammar also keeps the staleness recompute true (see `promptFor`). The day H3 is shown to want
-  // its own, it gets its own dialect here — and `promptFor` has to learn the recorded model first.
+  // 🟠 H3 Max reads the same text for now — a decision on what was found, and not yet a confirmed fit.
+  // What MiniMax publishes (read 2026-09-12): a `[command]` camera syntax ([Pan left], [Push in], [Static shot]
+  // … 15 in all) that its image-to-video API reference lists for the Hailuo-2.3 / Hailuo-02 / I2V-01-Director
+  // models, NOT for H3 or H3 Max; its guide shows bracket camera cues only under H3 *text*-to-video; and it
+  // says natural-language camera description works too. Runway's developer docs have no per-model prompting
+  // guide at all. So nothing published says H3 Max image-to-video wants brackets, and mapping our free-text
+  // `camera_motion` onto fifteen fixed commands would be a guess sent to a paid model. The gen4 grammar's two
+  // provider choices — no restated subject (the first frame carries it), no negative phrasing — suit any model
+  // given an exact first frame. `promptExpansionMode: "disabled"` (the adapter) makes H3 follow this text as
+  // written, and one grammar keeps the staleness recompute true (see `promptFor`).
+  // The first H3 reel is the check. If its camera does not follow the "Motivated camera" line, H3 gets its own
+  // dialect here — and `promptFor` has to recompute against the recorded model first (both pipelines' records
+  // now carry it).
   h3_max_480p: "runway_gen4",
   h3_max_768p: "runway_gen4",
 };
