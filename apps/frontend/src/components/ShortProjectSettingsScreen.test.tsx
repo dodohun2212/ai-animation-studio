@@ -432,6 +432,82 @@ describe("ShortProjectSettingsScreen", () => {
     expect(JSON.parse(String((putCall[1] as RequestInit).body))).toEqual({ atmosphereAssetIds: ["ASSET-STYLE-1"], sceneReferenceAssets: [] });
   });
 
+  /*
+   * 🔴 The folder browser shipped with nothing covering it, and the suite stayed 91-green — because the two
+   * tests above search up a single loose asset, which walks the "no folders" branch and never touches a tile,
+   * an open folder, or the back link. That is the exact shape that let LongProjectDetail sit on the wrong
+   * label table for weeks: measuring the running screen proves it works today, a test proves the next person
+   * did not break it. `search()` dropping folders again is one word, and it would come back 84 rows deep with
+   * every test still green.
+   */
+  it("browses reference images by folder, and never offers the folder itself as a choice", async () => {
+    const folder = makeAssetFolder({
+      assetId: "FOLDER-BG", assetType: "background", displayName: "숲 배경",
+      childAssetIds: ["BG-1", "BG-2"], thumbnailAssetId: "BG-1",
+    });
+    const dawn = makeAsset({ assetId: "BG-1", assetType: "background", displayName: "새벽 숲", parentFolderId: "FOLDER-BG" });
+    const noon = makeAsset({ assetId: "BG-2", assetType: "background", displayName: "한낮 숲", parentFolderId: "FOLDER-BG" });
+    const loose = makeAsset({ assetId: "ASSET-STYLE-9", assetType: "style", displayName: "폴더 밖 팔레트" });
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+      "GET /assets?query=%EC%88%B2": { assets: [folder, dawn, noon, loose] },
+    }));
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    const refsSection = await screen.findByRole("region", { name: "분위기·장면 참고 이미지" });
+    const searchForm = within(refsSection).getByRole("form", { name: "분위기 이미지 검색" });
+    fireEvent.change(within(searchForm).getByLabelText("분위기 이미지 검색"), { target: { value: "숲" } });
+    fireEvent.click(within(searchForm).getByRole("button", { name: "검색" }));
+
+    // The folder is a tile, and what it holds stays inside it until it is opened.
+    const tiles = await within(refsSection).findByRole("list", { name: "이미지 폴더" });
+    expect(within(tiles).getByText("숲 배경")).toBeTruthy();
+    expect(within(tiles).getByText("이미지 2장")).toBeTruthy();
+    expect(within(refsSection).queryByText("새벽 숲")).toBeNull();
+    // An image that belongs to no folder is still reachable without opening anything.
+    expect(within(refsSection).getByText("폴더 밖 팔레트")).toBeTruthy();
+
+    /* 🔴 The load-bearing one. A folder is navigation, not a choice: `atmosphereAssetIds` holds one image's id
+       and nothing downstream expands a folder into its children, so an 추가 on a tile would quietly mean
+       something other than what it says. The reason lives in a comment; this is what keeps it true. */
+    expect(within(tiles).queryByRole("button", { name: "추가" })).toBeNull();
+
+    fireEvent.click(within(tiles).getByRole("button", { name: /숲 배경/ }));
+
+    expect(await within(refsSection).findByText("새벽 숲")).toBeTruthy();
+    expect(within(refsSection).getByText("한낮 숲")).toBeTruthy();
+    // Opening a folder narrows to it — the loose image and the tile grid are both gone.
+    expect(within(refsSection).queryByText("폴더 밖 팔레트")).toBeNull();
+    expect(within(refsSection).queryByRole("list", { name: "이미지 폴더" })).toBeNull();
+    expect(within(refsSection).getByRole("button", { name: /폴더 목록/ })).toBeTruthy();
+  });
+
+  // An empty folder has to say so. Rendering nothing there reads as "still loading" and the person waits.
+  it("says an opened folder is empty rather than showing a blank area", async () => {
+    const folder = makeAssetFolder({ assetId: "FOLDER-EMPTY", assetType: "background", displayName: "빈 폴더", childAssetIds: [] });
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+      "GET /assets?query=%EB%B9%88": { assets: [folder] },
+    }));
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    const refsSection = await screen.findByRole("region", { name: "분위기·장면 참고 이미지" });
+    const searchForm = within(refsSection).getByRole("form", { name: "분위기 이미지 검색" });
+    fireEvent.change(within(searchForm).getByLabelText("분위기 이미지 검색"), { target: { value: "빈" } });
+    fireEvent.click(within(searchForm).getByRole("button", { name: "검색" }));
+
+    const tiles = await within(refsSection).findByRole("list", { name: "이미지 폴더" });
+    fireEvent.click(within(tiles).getByRole("button", { name: /빈 폴더/ }));
+
+    expect(await within(refsSection).findByText("이 폴더에 이미지가 없습니다.")).toBeTruthy();
+  });
+
   it("adds a scene reference Asset with a required purpose and removes it through the same PUT endpoint", async () => {
     const key = makeAsset({ assetId: "ASSET-OBJECT-1", displayName: "청동 열쇠", assetType: "object" });
     const fetchMock = stubFetchByRoute({
