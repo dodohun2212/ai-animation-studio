@@ -1,4 +1,4 @@
-import type { AspectRatio, AudioMode, GenerationSource, LongEpisodeOutlineStatus, Project, VideoModelOption, ProjectSummary, RunwayClipDurationSeconds, SceneNumber, SceneSubtitleLayout, UsedAudio, VideoJobStatus, VideoModel } from "./domain.js";
+import type { RunwayVideoRatio, AspectRatio, AudioMode, GenerationSource, LongEpisodeOutlineStatus, Project, VideoModelOption, ProjectSummary, RunwayClipDurationSeconds, SceneNumber, SceneSubtitleLayout, UsedAudio, VideoJobStatus, VideoModel } from "./domain.js";
 import { FINAL_VIDEO_RELATIVE_PATH, MAX_SCENE_COUNT, MIN_SCENE_COUNT } from "./domain.js";
 import type { Asset, AssetOwnership, AssetType } from "./asset.js";
 import type {
@@ -465,8 +465,12 @@ export interface LongEpisodeImageStaleness {
  * A statement of difference, not of error. An Episode drawn before the change is allowed to keep the character
  * it was drawn with; whether to spend money redrawing it is the person's decision, not the screen's.
  */
+/** The Story Bible links an Episode can drift from. A list, so a response guard can read it instead of copying it. */
+export const STORY_BIBLE_LINK_KINDS = ["protagonist", "style"] as const;
+export type StoryBibleLinkKind = (typeof STORY_BIBLE_LINK_KINDS)[number];
+
 export interface LongEpisodeStoryBibleLinkDrift {
-  link: "protagonist" | "style";
+  link: StoryBibleLinkKind;
   storyBibleAssetId: string;
   storyBibleAssetName: string;
   episodeAssetId: string | null;
@@ -665,7 +669,7 @@ export interface LongEpisodeVideoPreview {
 export interface GetLongEpisodeVideoPreviewResponse {
   confirmationId: string;
   model: VideoModel;
-  ratio: "720:1280" | "1280:720";
+  ratio: RunwayVideoRatio;
   /** Derived from the Episode's own LongProjectSettings.episodeDurationSeconds ÷ 6 (30 -> 5, 60 -> 10). */
   durationSecondsPerScene: 5 | 10;
   executionMode: "sequential";
@@ -1702,7 +1706,7 @@ export interface VideoPromptPreview {
   sceneNumber: SceneNumber;
   prompt: string;
   model: VideoModel;
-  ratio: "720:1280" | "1280:720";
+  ratio: RunwayVideoRatio;
   durationSeconds: number;
   estimatedCostUsd: number;
   /**
@@ -1823,11 +1827,15 @@ export interface RelinkAssetResponse { asset: Asset; }
 
 export const ASSET_FILE_AUDIT_CLASSIFICATIONS = ["healthy", "missing", "damaged"] as const;
 export type AssetFileAuditClassification = (typeof ASSET_FILE_AUDIT_CLASSIFICATIONS)[number];
+/** Where an audited Asset file came from. A list, so a response guard can read it instead of copying it. */
+export const ASSET_FILE_SOURCE_KINDS = ["manual", "project"] as const;
+export type AssetFileSourceKind = (typeof ASSET_FILE_SOURCE_KINDS)[number];
+
 export interface AssetFileAuditEntry {
   assetId: string;
   displayName: string;
   classification: AssetFileAuditClassification;
-  sourceKind: "manual" | "project";
+  sourceKind: AssetFileSourceKind;
   message: string;
 }
 export interface ListAssetFileAuditResponse { entries: AssetFileAuditEntry[]; }

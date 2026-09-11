@@ -1,3 +1,4 @@
+import type { RunwayVideoRatio } from "@ai-animation-studio/shared";
 import type { StoredProject } from "./project-storage.schema.js";
 
 /**
@@ -41,6 +42,6 @@ export function imageSizeForAspect(project: StoredProject): "1024x1536" | "1536x
 }
 
 /** The same orientation in the video provider's ratio vocabulary. */
-export function runwayRatioForAspect(project: StoredProject): "720:1280" | "1280:720" {
+export function runwayRatioForAspect(project: StoredProject): RunwayVideoRatio {
   return shortProjectAspectRatio(project) === "16:9" ? "1280:720" : "720:1280";
 }

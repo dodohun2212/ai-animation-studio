@@ -1,4 +1,4 @@
-import { RUNWAY_PROMPT_AUTHORING_LIMIT, VIDEO_MODELS, type VideoModel } from "@ai-animation-studio/shared";
+import { RUNWAY_PROMPT_AUTHORING_LIMIT, VIDEO_MODELS, type VideoModel, type RunwayVideoRatio } from "@ai-animation-studio/shared";
 
 import { videoPreviewDataInvalid } from "./video-preview-api.error.js";
 
@@ -78,7 +78,7 @@ export interface VideoPromptInput {
   scene: StoredScene;
   /** Scene N-1, for the continuity cue. Absent for scene 1 by definition, not by omission. */
   previous: StoredScene | undefined;
-  ratio: "720:1280" | "1280:720";
+  ratio: RunwayVideoRatio;
   clipDurationSeconds: number;
 }
 
@@ -253,5 +253,5 @@ export function compileVideoPrompt(model: VideoModel, input: VideoPromptInput): 
  * day this stops being true and every existing clip would read as 「장면 내용이 바뀌었다」 for a reason no person
  * caused.
  */
-export const promptFor = (scene: StoredScene, previous: StoredScene | undefined, ratio: "720:1280" | "1280:720", clipDurationSeconds: number): VideoPromptResult =>
+export const promptFor = (scene: StoredScene, previous: StoredScene | undefined, ratio: RunwayVideoRatio, clipDurationSeconds: number): VideoPromptResult =>
   compileVideoPrompt(VIDEO_MODELS[0], { scene, previous, ratio, clipDurationSeconds });

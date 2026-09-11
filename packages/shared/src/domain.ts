@@ -203,6 +203,18 @@ export function videoModelOption(id: string): VideoModelOption {
   return VIDEO_MODEL_OPTIONS.find((option) => option.id === id) ?? VIDEO_MODEL_OPTIONS[0]!;
 }
 
+/**
+ * The two frame shapes this app asks Runway's gen4 models for, in Runway's own vocabulary.
+ *
+ * Exported as a list, not written as a union at each use, because response guards in the frontend need a list to
+ * check against and were copying the union by hand — a copy that silently rejects a response the day this grows.
+ * Named for Runway on purpose: `VideoModelOption.ratios` already warns that another provider will not use these
+ * strings, and Runway's own SDK types show it (hailuo3 speaks '9:16'; h3_max takes no ratio at all, only a
+ * resolution). When a second model arrives, its shapes come from its option, not from here.
+ */
+export const RUNWAY_VIDEO_RATIOS = ["720:1280", "1280:720"] as const;
+export type RunwayVideoRatio = (typeof RUNWAY_VIDEO_RATIOS)[number];
+
 export const RUNWAY_CLIP_DURATIONS = [5, 10] as const;
 export type RunwayClipDurationSeconds = (typeof RUNWAY_CLIP_DURATIONS)[number];
 

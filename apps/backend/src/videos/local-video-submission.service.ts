@@ -12,6 +12,7 @@ import {
   type StartVideoGenerationRequest,
   type StartVideoGenerationResponse,
   type VideoModel,
+  type RunwayVideoRatio,
 } from "@ai-animation-studio/shared";
 
 import { LocalProjectRepository } from "../projects/projects.repository.js";
@@ -57,7 +58,7 @@ type VideoRecord = {
   input_hash: string;
   prompt: string;
   model: VideoModel;
-  ratio: "720:1280" | "1280:720";
+  ratio: RunwayVideoRatio;
   duration_seconds: number;
   estimated_cost_usd: number;
   status: "created";

@@ -7,7 +7,7 @@ import { PLACEHOLDER_MP4 } from "../videos/placeholder-clip.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable, type OnModuleDestroy } from "@nestjs/common";
-import { clipDurationSecondsPerScene, type RunwayClipDurationSeconds, FINAL_VIDEO_RELATIVE_PATH, SCENE_REVIEW_STATUSES, LONG_EPISODE_STATUSES, VIDEO_JOB_STATUSES, isSceneNumber, type VideoModel, RUNWAY_PROMPT_AUTHORING_LIMIT, sceneNumbersFor, videoSceneEstimatedCostUsd, type ApproveLongEpisodeVideoReviewRequest, type ApproveLongEpisodeVideoReviewResponse, type GetLongEpisodeCurrentVideoJobResponse, type GetLongEpisodeVideoPreviewResponse, type GetLongEpisodeVideoReviewResponse, type LongEpisodeDetail, type LongEpisodeStatus, type LongEpisodeVideoProgress, type LongEpisodeVideoReview, type LongEpisodeVideoStaleness, type GetVideoVersionsResponse, type RecoverLongEpisodeVideosResponse, type RegenerateLongEpisodeVideoResponse, type RestoreLongEpisodeVideoVersionResponse, type SceneNumber, type StartLongEpisodeVideoGenerationRequest, type StartLongEpisodeVideoGenerationResponse } from "@ai-animation-studio/shared";
+import { clipDurationSecondsPerScene, type RunwayClipDurationSeconds, FINAL_VIDEO_RELATIVE_PATH, SCENE_REVIEW_STATUSES, LONG_EPISODE_STATUSES, VIDEO_JOB_STATUSES, isSceneNumber, type VideoModel, RUNWAY_PROMPT_AUTHORING_LIMIT, sceneNumbersFor, videoSceneEstimatedCostUsd, type ApproveLongEpisodeVideoReviewRequest, type ApproveLongEpisodeVideoReviewResponse, type GetLongEpisodeCurrentVideoJobResponse, type GetLongEpisodeVideoPreviewResponse, type GetLongEpisodeVideoReviewResponse, type LongEpisodeDetail, type LongEpisodeStatus, type LongEpisodeVideoProgress, type LongEpisodeVideoReview, type LongEpisodeVideoStaleness, type GetVideoVersionsResponse, type RecoverLongEpisodeVideosResponse, type RegenerateLongEpisodeVideoResponse, type RestoreLongEpisodeVideoVersionResponse, type SceneNumber, type StartLongEpisodeVideoGenerationRequest, type StartLongEpisodeVideoGenerationResponse, type RunwayVideoRatio } from "@ai-animation-studio/shared";
 import { validateImage } from "../assets/image-validation.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { resolveSafeProjectDirectory } from "../projects/project-id.js";
@@ -80,7 +80,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
   onModuleDestroy(): void { for (const timer of this.activeTimers.values()) clearInterval(timer); this.activeTimers.clear(); }
   private files(id: string, number: number) { const root = longStoryRoot(this.projectsRoot, id); const episode = path.join(root, episodeDirectoryName(number)); const videos = path.join(episode, "videos"); return { root, outlines: path.join(root, "episode_outlines.json"), longProject: path.join(root, "project.json"), project: path.join(episode, "project.json"), images: path.join(episode, "images"), videos, records: path.join(episode, "video_generation_records.json"), reviews: path.join(episode, "generated_video_reviews.json") }; }
   /** Same "9:16"/"16:9" -> Runway ratio mapping as episode-video-merge.service.ts's ratio(), and as video-preview.service.ts's ratioFor() for the short-project side. */
-  private async ratio(id: string, number: number): Promise<"720:1280" | "1280:720"> {
+  private async ratio(id: string, number: number): Promise<RunwayVideoRatio> {
     const raw = await readLongProjectJson(this.files(id, number).longProject);
     if (!object(raw) || (raw.aspect_ratio !== "9:16" && raw.aspect_ratio !== "16:9")) throw longInvalidData();
     return raw.aspect_ratio === "16:9" ? "1280:720" : "720:1280";
@@ -146,7 +146,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
    * project's own aspectRatio setting via ratio() above — it used to be hardcoded to "720:1280" regardless of
    * that setting, so a 16:9 Long Project's Episodes were always rendered as vertical video.
    */
-  private prompt(current: ObjectMap, previous: ObjectMap | undefined, durationSeconds: 5 | 10, ratio: "720:1280" | "1280:720"): string {
+  private prompt(current: ObjectMap, previous: ObjectMap | undefined, durationSeconds: 5 | 10, ratio: RunwayVideoRatio): string {
     // Deliberately the single-dialect recompute, not the selected model — this is only reached from
     // videoStaleness(), and the short project's scene-staleness.ts answers the same question the same way.
     // A recorded clip was compiled for whichever model was selected then, which the record does not say; with
@@ -166,7 +166,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
    * could lose its pacing or performance direction and the only way to find out was that the finished clip
    * was wrong — after paying for it.
    */
-  private promptWithOmissions(current: ObjectMap, previous: ObjectMap | undefined, durationSeconds: 5 | 10, ratio: "720:1280" | "1280:720", model: VideoModel): { prompt: string; omittedSections: string[] } {
+  private promptWithOmissions(current: ObjectMap, previous: ObjectMap | undefined, durationSeconds: 5 | 10, ratio: RunwayVideoRatio, model: VideoModel): { prompt: string; omittedSections: string[] } {
     try { return compileVideoPrompt(model, { scene: current as unknown as StoredScene, previous: previous as unknown as StoredScene | undefined, ratio, clipDurationSeconds: durationSeconds }); }
     catch { throw longInvalidData(); }
   }
