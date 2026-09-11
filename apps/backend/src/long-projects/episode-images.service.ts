@@ -125,7 +125,7 @@ export class EpisodeImagesService {
   }
   /** Falls back to 6, matching every Episode stored before scene_count existed (see episode-scripts.service.ts's parseStored). */
   private sceneCount(episode: StoredEpisode): number { return storedSceneCount(episode); }
-  private scenes(episode: StoredEpisode): unknown[] { const scenes = episode.script.scenes; const count = this.sceneCount(episode); if (!Array.isArray(scenes) || scenes.length !== count || scenes.some((scene, index) => !object(scene) || scene.number !== index + 1 || typeof scene.description !== "string" || !scene.description.trim() || typeof scene.visual_action !== "string" || !scene.visual_action.trim())) throw longInvalidData(); return scenes; }
+  private scenes(episode: StoredEpisode): unknown[] { const scenes = episode.script.scenes; const count = this.sceneCount(episode); if (!Array.isArray(scenes) || scenes.length !== count || scenes.some((scene, index) => !object(scene) || scene.number !== index + 1 || typeof scene.description !== "string" || !scene.description.trim() || typeof scene.start_motion !== "string" || !scene.start_motion.trim())) throw longInvalidData(); return scenes; }
   private detail(episode: StoredEpisode): LongEpisodeDetail { return toEpisodeDetail(episode); }
   private async saveEpisode(projectId: string, number: number, episode: StoredEpisode): Promise<void> {
     const files = this.files(projectId, number); const outlines = await readLongProjectJson(files.outlines);

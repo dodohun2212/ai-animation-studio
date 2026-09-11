@@ -44,3 +44,31 @@ export const ONE_PACE_RULE = "motion_speed와 motion_intensity에는 장면 전�
  * refused twice for $0.50, and two more came back with caption boards holding the shot for its whole length.
  */
 export const NO_TEXT_AS_EVENT_RULE = "화면에 글자가 나타나는 것을 장면의 주된 사건으로 삼지 마십시오. 기록·라벨·자막·간판·파형처럼 읽히는 글자는 영상 모델이 그리지 못합니다. 그 내용이 뜻하는 바를 인물의 행동·표정·빛·구도로 보여 주십시오.";
+
+/**
+ * What `start_motion` becomes, said to the model that writes it.
+ *
+ * It is not only a motion field: `image-prompt.ts` draws the scene's still from it, and that still is handed to
+ * Runway as the exact first frame. Until 2026-09-11 the still was drawn from `visual_action` — the scene's whole
+ * action — so the clip opened on its own ending and had nothing to do for five seconds. Cowork opened 캡틴D's
+ * 꽃말_해바라기 reel frame by frame (Round 714) and measured it: scene 2's still already had both cotyledons up,
+ * and scene 2's clip ended where it began. The growth happened between the cuts rather than inside them.
+ *
+ * 🔴 Fixing the builder is only half. Neither prompt ever told the model that this field gets drawn, so a
+ * `start_motion` written as a pose fragment ("문 앞에 선 자세") was not breaking any rule — and a fragment is not
+ * a frame. The model has to know what it is writing before it can write it well.
+ */
+export const FIRST_FRAME_IS_START_MOTION_RULE = "start_motion은 그대로 장면의 첫 프레임 이미지로 그려집니다. 그 순간 화면에 보이는 것을 한 장의 그림으로 완결되게 쓰고, 장면이 끝난 뒤의 결과 상태는 쓰지 마십시오.";
+
+/**
+ * One pace across one process — the cross-scene half of ONE_PACE_RULE.
+ *
+ * That rule holds a single shot steady and says nothing about the next one. 캡틴D's 해바라기 reel is one plant
+ * growing in one pot across four scenes, and came back 느림·느림·보통·느림: the same process visibly speeds up in
+ * the third cut and slows again in the fourth, for no reason anything in the story gives.
+ *
+ * 🟠 Deliberately conditional. "Every scene at one speed" would be wrong — project 1 runs 느림 five times and
+ * 보통 at its climax, which is exactly right. The rule is about scenes that split one continuous thing, not
+ * about scenes that each hold their own event.
+ */
+export const ONE_PACE_ACROSS_A_PROCESS_RULE = "이어지는 장면들이 하나의 연속된 과정(성장·이동·변화의 타임랩스처럼 같은 대상이 같은 일을 계속하는 것)을 나눠 담고 있다면 그 장면들의 motion_speed를 서로 같게 쓰십시오. 속도가 장면마다 달라지면 같은 과정이 도중에 빨라졌다 느려진 것처럼 보입니다. 장면이 저마다 다른 사건을 담는 이야기라면 사건에 맞춰 다르게 써도 됩니다.";

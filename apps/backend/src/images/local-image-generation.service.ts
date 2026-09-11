@@ -71,10 +71,18 @@ async function validPng(file: string, paid = false): Promise<boolean> {
   } catch { return false; }
 }
 
+/**
+ * 🔴 The gate is `start_motion`, and it was `visual_action` until 2026-09-11 — it follows the field the picture
+ * is actually drawn from (see image-prompt.ts). Left on the old field, a scene with a blank `start_motion` would
+ * have passed this check and gone to the paid image model with no scene description at all, only composition
+ * lines. Refusing costs nothing; a picture drawn from nothing costs money and then costs it again in the clip
+ * built on top of it. Checked against every scene on this machine: the only ones missing `start_motion` are the
+ * 명언 cards, which have no `visual_action` either and have never taken this path.
+ */
 function assertValidScenes(project: StoredProject): void {
   const expected = scenesFor(project);
   if (project.scenes.length !== expected.length || project.scenes.some((scene, index) =>
-    !isObject(scene) || scene.number !== index + 1 || !sceneValue(scene, "description") || !sceneValue(scene, "visual_action"))) {
+    !isObject(scene) || scene.number !== index + 1 || !sceneValue(scene, "description") || !sceneValue(scene, "start_motion"))) {
     throw imageGenerationFailed();
   }
 }

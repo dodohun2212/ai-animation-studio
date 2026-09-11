@@ -89,7 +89,7 @@ describe("real OpenAI Episode image generation", () => {
     const { prompt, size } = JSON.parse(init.body as string) as { prompt: string; size: string };
     expect(prompt).toContain("Scene:");
     expect(size).toBe("1024x1536"); // default 9:16 project — portrait, matching every other vertical default.
-    // All five composition fields (not just visual_action/description) — confirms the shared imagePromptFor()
+    // All five composition fields (not just start_motion/description) — confirms the shared imagePromptFor()
     // is genuinely reading them for a Long Episode scene, not just for a short-project one.
     expect(prompt).toContain("Shot: medium shot, eye level");
     expect(prompt).toContain("Composition: centered subject with readable background");
@@ -312,7 +312,7 @@ describe("real OpenAI Episode image generation", () => {
 
     const file = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
     const episode = JSON.parse(await fs.readFile(file, "utf8")) as { script: { scenes: Record<string, unknown>[] } };
-    episode.script.scenes[1]!.visual_action = "the hero kneels beside the broken machine";
+    episode.script.scenes[1]!.start_motion = "the hero kneels beside the broken machine";
     await fs.writeFile(file, JSON.stringify(episode, null, 2));
 
     expect((await images.get("long", 1)).staleness.imageStale).toEqual([2]);
@@ -448,7 +448,7 @@ describe("real OpenAI Episode image generation", () => {
 
     const file = path.join(projectsRoot, "long", "long_story", "Episode01", "project.json");
     const episode = JSON.parse(await fs.readFile(file, "utf8")) as { script: { scenes: Record<string, unknown>[] } };
-    episode.script.scenes[0]!.visual_action = "the hero looks up at a sky full of drones";
+    episode.script.scenes[0]!.start_motion = "the hero looks up at a sky full of drones";
     await fs.writeFile(file, JSON.stringify(episode, null, 2));
 
     const approved = await images.approve("long", 1, "1", { approved: true });

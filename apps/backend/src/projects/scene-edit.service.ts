@@ -13,10 +13,17 @@ import { invalidRequest } from "./project-api.error.js";
 /**
  * Every field the short-project scene schema has, classified by what a change actually makes stale downstream
  * (see the from-cli.md Round 49 report for the full reasoning): image-composition fields (imagePromptFor reads
- * these), video-motion fields (video-preview.service.ts's promptFor reads these — including from the *previous*
- * scene, which is why staleness is computed by full recomputation rather than a per-field diff, see
+ * these), video-motion fields (the video prompt compiler reads these — including from the *previous* scene,
+ * which is why staleness is computed by full recomputation rather than a per-field diff, see
  * scene-staleness.ts), narration (only narration/TTS reads it), and description (display-only, read by nothing
  * downstream — still editable, just never makes anything stale).
+ *
+ * 🟠 Two of those groupings stopped being true on 2026-09-11 and the list below still reads by the old ones.
+ * `start_motion` is now in *both* groups — the image builder draws the scene's still from it and the video
+ * prompt opens on it — and `visual_action` is in neither: no prompt reads it any more (it stays editable
+ * because it is the scene's own record of what happens, and because `local-image-generation.service.ts` still
+ * requires it to be non-empty). The order of the names below is unchanged on purpose; the grouping was never
+ * what the code did, only how it was read, and recomputation has always been per-scene rather than per-field.
  */
 const EDITABLE_SCENE_FIELDS = [
   "description",

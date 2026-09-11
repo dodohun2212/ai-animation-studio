@@ -1,5 +1,5 @@
 import * as fs from "node:fs/promises";
-import { NO_TEXT_AS_EVENT_RULE, ONE_PACE_RULE, SUBJECT_SURVIVES_RULE, shotBudgetRule } from "../story/motion-field-rules.js";
+import { FIRST_FRAME_IS_START_MOTION_RULE, NO_TEXT_AS_EVENT_RULE, ONE_PACE_ACROSS_A_PROCESS_RULE, ONE_PACE_RULE, SUBJECT_SURVIVES_RULE, shotBudgetRule } from "../story/motion-field-rules.js";
 import { storedSceneCount } from "../projects/stored-scene-count.js";
 import { readLongProjectJson } from "./long-project-json.js";
 import { OPENAI_LEDGER_FILE, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
@@ -276,6 +276,11 @@ export class EpisodeScriptsService {
       // Cowork read it off the frames as 멈춤 → 급발진 in Episode 4, and Episode 5 scene 6 (느림에서
       // 빠름으로 전환) blows out to white at 3.7s. One five-second shot holds one pace.
       ONE_PACE_RULE,
+      // The cross-scene half, and the half that makes start_motion drawable. Both landed on 2026-09-11 with the
+      // image builder that now draws the still from start_motion — an Episode reads none of the short project's
+      // template, and this prompt falling behind it is the defect motion-field-rules.ts was created for.
+      ONE_PACE_ACROSS_A_PROCESS_RULE,
+      FIRST_FRAME_IS_START_MOTION_RULE,
       // The video model cannot draw readable writing, and asking for it is one of the two documented causes
       // of a refused clip — the other being text already on the first frame. Both were met on 2026-09-05:
       // one scene was refused twice for $0.50, and two more came back with caption boards holding the shot.

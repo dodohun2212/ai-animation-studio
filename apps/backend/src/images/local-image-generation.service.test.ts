@@ -29,7 +29,7 @@ async function setup() {
   project.script_revision = 1;
   project.mapping_revision = 3;
   project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({
-    number, description: `scene ${number}`, main_motion: `motion ${number}`, visual_action: `action ${number}`,
+    number, description: `scene ${number}`, main_motion: `motion ${number}`, visual_action: `action ${number}`, start_motion: `opening pose ${number}`,
     shot_size: "medium shot", camera_angle: "eye level", composition: `composition ${number}`, lens_feel: "natural", focus_subject: "subject",
   }));
   await projects.create(project);
@@ -100,7 +100,7 @@ describe("provider-free local image generation", () => {
     expect(reloaded).toMatchObject({ workflow_state: WorkflowState.ImagesReview });
     expect(reloaded.generated_images).toHaveLength(6);
     expect(reloaded.image_prompts).toEqual([1, 2, 3, 4, 5, 6].map((number) =>
-      `Scene: action ${number}\nShot: medium shot, eye level\nComposition: composition ${number}\nLens: natural\nFocus: subject`));
+      `Scene: opening pose ${number}\nShot: medium shot, eye level\nComposition: composition ${number}\nLens: natural\nFocus: subject`));
     expect(reloaded.motion_prompts).toEqual(["motion 1", "motion 2", "motion 3", "motion 4", "motion 5", "motion 6"]);
     expect(reloaded.image_generation_records).toEqual(expect.arrayContaining([expect.objectContaining({ scene_number: 1, checkpoint: "completed", image_api_calls: 0 })]));
     await Promise.all(reloaded.generated_images.map(async (file, index) => {
@@ -114,19 +114,21 @@ describe("provider-free local image generation", () => {
     expect(assets.filter((asset) => !asset.is_folder && asset.source_project_id === "images")).toHaveLength(6);
   });
 
-  it("assembles the image prompt from visual_action and composition fields, never the narrated description, and omits empty composition lines", async () => {
+  it("assembles the image prompt from start_motion and composition fields, never the narrated description, and omits empty composition lines", async () => {
     const { projectsRoot, projects, mappings } = await setup();
     const project = await projects.findById("images");
     project.scenes = [1, 2, 3, 4, 5, 6].map((number) => ({
       number, description: `A character says "line ${number}" while walking.`, main_motion: `motion ${number}`,
-      visual_action: `walks toward the ${number} gate`, shot_size: "", camera_angle: "", composition: "", lens_feel: "", focus_subject: "",
+      visual_action: `walks toward the ${number} gate`, start_motion: `stands at the ${number} gate, facing it`, shot_size: "", camera_angle: "", composition: "", lens_feel: "", focus_subject: "",
     }));
     await projects.save(project);
     await mappings.saveReview(mappings.projectLocation("images"), { ...(await mappings.loadReview(mappings.projectLocation("images"))), script_fingerprint: scriptFingerprint(project.scenes) });
     await new LocalImageGenerationService(projects, mappings, projectsRoot).generate("images", { approved: true });
     const reloaded = await new LocalProjectRepository(projectsRoot).findById("images");
     for (const [index, prompt] of reloaded.image_prompts.entries()) {
-      expect(prompt).toBe(`Scene: walks toward the ${index + 1} gate`);
+      // The scene's start, not its finished action: this picture is the first frame the clip grows out of.
+      expect(prompt).toBe(`Scene: stands at the ${index + 1} gate, facing it`);
+      expect(prompt).not.toContain("walks toward");
       expect(prompt).not.toContain("says");
       expect(prompt).not.toContain("Shot:");
     }
@@ -192,10 +194,10 @@ describe("provider-free local image generation", () => {
     for (const prompt of reloaded.image_prompts) expect(prompt).not.toContain("Style:");
   });
 
-  it("rejects generation when a scene is missing visual_action, the field the image prompt now depends on", async () => {
+  it("rejects generation when a scene is missing start_motion, the field the image prompt is drawn from", async () => {
     const { projectsRoot, projects, mappings } = await setup();
     const project = await projects.findById("images");
-    project.scenes[0] = { number: 1, description: "scene 1", main_motion: "motion 1" };
+    project.scenes[0] = { number: 1, description: "scene 1", main_motion: "motion 1", visual_action: "action 1" };
     await projects.save(project);
     await expect(new LocalImageGenerationService(projects, mappings, projectsRoot).generate("images", { approved: true }))
       .rejects.toMatchObject({ response: { code: "IMAGE_GENERATION_FAILED" } });

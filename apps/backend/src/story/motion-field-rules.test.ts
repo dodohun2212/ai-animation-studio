@@ -3,9 +3,10 @@ import * as path from "node:path";
 import * as url from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { imagePromptFor } from "../images/image-prompt.js";
 import { SCENE_FIELDS } from "../videos/video-preview.service.js";
 import { STORY_SCENE_FIELDS } from "./openai-story-adapter.js";
-import { CLIP_DURATION_PLACEHOLDER, NO_TEXT_AS_EVENT_RULE, ONE_PACE_RULE, SUBJECT_SURVIVES_RULE, shotBudgetRule } from "./motion-field-rules.js";
+import { CLIP_DURATION_PLACEHOLDER, FIRST_FRAME_IS_START_MOTION_RULE, NO_TEXT_AS_EVENT_RULE, ONE_PACE_ACROSS_A_PROCESS_RULE, ONE_PACE_RULE, SUBJECT_SURVIVES_RULE, shotBudgetRule } from "./motion-field-rules.js";
 
 /**
  * Two prompts ask for the same eighteen scene fields, and only one of them is a file.
@@ -49,6 +50,32 @@ describe("the motion-field rules both script prompts carry", () => {
 
     expect(rendered).toContain(ONE_PACE_RULE);
     expect(rendered).toContain(NO_TEXT_AS_EVENT_RULE);
+  });
+
+  /**
+   * The two added on 2026-09-11 with the image builder that draws a scene's still from start_motion.
+   *
+   * They are here for the same reason as the four above: an Episode reads none of this template, and a rule put
+   * in only one of the two prompts is a rule half the app does not have.
+   */
+  it("states the first-frame rule and the one-pace-across-a-process rule in both prompts", async () => {
+    const rendered = await template();
+
+    expect(rendered).toContain(FIRST_FRAME_IS_START_MOTION_RULE);
+    expect(rendered).toContain(ONE_PACE_ACROSS_A_PROCESS_RULE);
+  });
+
+  /**
+   * 🔴 The first-frame rule is a claim about another file, so it is checked against that file rather than
+   * trusted. It says start_motion is what gets drawn; image-prompt.ts is what draws it. If that builder ever
+   * goes back to another field, this sentence becomes a lie told to the model that writes the scene, and a lie
+   * in a prompt costs a paid image and then a paid clip built on it.
+   */
+  it("is telling the truth about which field the image builder draws", () => {
+    const scene = { visual_action: "the whole action, finished", start_motion: "the first moment, still" };
+
+    expect(imagePromptFor(scene, "")).toContain("Scene: the first moment, still");
+    expect(FIRST_FRAME_IS_START_MOTION_RULE).toContain("start_motion");
   });
 
   /** Both rules are about the motion fields, so both must name them — a rule that names nothing is advice. */
