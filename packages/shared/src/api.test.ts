@@ -68,9 +68,11 @@ describe("the two long-episode status vocabularies", () => {
 
     expect(missing, [
       "An outline status is not in LONG_EPISODE_STATUSES, so longEpisodeStatusLabel() has no Korean for it and",
-      "will render the raw enum name on the long-project list (apps/frontend/src/components/LongProjectList.tsx).",
-      "Give the outline statuses their own label table rather than adding the name to the eighteen — they are",
-      "different vocabularies that overlap, and widening the bigger one to cover the smaller hides that again.",
+      "returns the raw enum name. The screen that still calls it with an outlineStatus is:",
+      "  apps/frontend/src/components/LongProjectDetail.tsx  (the 「스토리 개요 상태」 row)",
+      "Point it at longEpisodeOutlineStatusLabel, the way LongProjectList already does, and then delete this",
+      "test. Do NOT add the name to the eighteen instead — widening the bigger vocabulary to cover the smaller",
+      "one restores the same coincidence, and the next third value is silent again.",
     ].join("\n")).toEqual([]);
   });
 });
