@@ -731,17 +731,38 @@ describe("real OpenAI Episode image generation", () => {
     expect((await images.get("long", 1).catch((error: unknown) => error)) as { response?: { code: string } }).toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_NOT_ALLOWED" } });
   });
 
-  it("switches to local fake images after an authentication rejection and stops further paid requests", async () => {
-    const { images, providerSettings, root: usedRoot } = await setupWithConnectedOpenAi();
+  it("disconnects after an authentication rejection without creating local fake images", async () => {
+    const { images, providerSettings, projectsRoot, assets, root: usedRoot } = await setupWithConnectedOpenAi();
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { error: { code: "invalid_api_key" } }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(images.generate("long", 1, { approved: true })).resolves.toMatchObject({ episode: { status: "images_review" }, generatedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+    await expect(images.generate("long", 1, { approved: true })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_PROVIDER_ERROR", details: { category: "authentication" } } });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect((await providerSettings.getSettings()).providers.find((provider) => provider.provider === "openai")).toMatchObject({ configured: true, connected: false });
+    const episodeDirectory = path.join(projectsRoot, "long", "long_story", "Episode01");
+    await expect(fs.readdir(path.join(episodeDirectory, "images"))).resolves.toEqual([]);
+    expect((await assets.list()).filter((asset) => asset.source_project_id === "long/Episode01")).toHaveLength(0);
 
     const usage = JSON.parse(await fs.readFile(path.join(usedRoot!, "api_budget_usage.json"), "utf8")) as Array<{ succeeded: boolean }>;
     expect(usage).toEqual([expect.objectContaining({ succeeded: false })]);
+  });
+
+  it("keeps paid scenes and indexes them when a later authentication rejection stops the batch", async () => {
+    const { images, providerSettings, projectsRoot, assets } = await setupWithConnectedOpenAi();
+    let calls = 0;
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => {
+      calls += 1;
+      return Promise.resolve(calls === 3
+        ? jsonResponse(401, { error: { code: "invalid_api_key" } })
+        : jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
+    }));
+
+    await expect(images.generate("long", 1, { approved: true })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_PROVIDER_ERROR", details: { category: "authentication" } } });
+    expect(calls).toBe(3);
+    const imageDirectory = path.join(projectsRoot, "long", "long_story", "Episode01", "images");
+    expect((await fs.readdir(imageDirectory)).filter((name) => name.endsWith(".png"))).toEqual(["scene1.png", "scene2.png"]);
+    expect((await assets.list()).filter((asset) => !asset.is_folder && asset.source_project_id === "long/Episode01")).toHaveLength(2);
+    expect((await providerSettings.getSettings()).providers.find((provider) => provider.provider === "openai")).toMatchObject({ connected: false });
   });
 
   it("keeps the scenes it already paid for when a later one fails, and buys only the rest on retry", async () => {

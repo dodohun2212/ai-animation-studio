@@ -15,11 +15,11 @@ Python → TypeScript 이전 자체는 끝났다 — 상위 15개 체크리스�
 
 **지금부터의 작업은 "Python 기능 이전"이 아니라 "이미 이전된 프로그램의 개선·다듬기"다.** AGENTS.md의 "Feature discipline"(예전 "Migration discipline")은 이 단계에도 그대로 적용된다 — 작업 하나씩, 완료 조건 먼저 정의, 검증 후에만 문서 갱신.
 
-### 2026-09-10 — 장편 Episode 이미지 인증 실패 안전 복구
+### 2026-09-11 — 장편 Episode 이미지 인증 실패는 임시 결과로 전환하지 않음
 
-- OpenAI 자격증명이 없거나 설정 화면에서 연결을 끈 경우에는 기존처럼 비용 없는 임시 이미지 경로를 쓴다. 저장된 자격증명이 있어 유료 경로를 골랐지만 OpenAI가 `authentication`으로 거부하면, 첫 실패를 실패 사용량으로 남긴 뒤 이 프로세스의 연결을 해제하고 이미 승인된 같은 배치의 남은 장면을 임시 이미지로 끝낸다. 이미 성공한 장면은 덮어쓰지 않으며, quota·입력·안전 정책·네트워크·서버 오류는 임시 결과로 위장하지 않고 기존 오류로 남긴다.
-- 장편 이미지 생성 확인 패널은 Provider 오류에도 닫혀 중복 제출을 막고, `LONG_EPISODE_IMAGES_PROVIDER_ERROR`의 안전한 category를 실제 조치 문구로 표시한다.
-- 검증: `episode-images.openai.test.ts` 32개, `LongEpisodeImageGenerationScreen.test.tsx` 42개, backend/frontend typecheck·build, `git diff --check` 통과. 모든 Provider 호출은 테스트 mock이었고 실제 OpenAI·Runway 요청은 0회다.
+- OpenAI 자격증명이 없거나 설정 화면에서 연결을 끈 경우에만 기존의 비용 없는 임시 이미지 경로를 쓴다. 저장된 자격증명이 있어 유료 경로를 골랐지만 OpenAI가 `authentication`으로 거부하면, 첫 실패를 실패 사용량으로 남기고 연결을 해제한 뒤 `LONG_EPISODE_IMAGES_PROVIDER_ERROR`로 배치를 중단한다. 남은 장면은 임시 이미지로 만들지 않으며 이미 성공·저장된 장면과 Asset Library 색인은 보존한다.
+- quota·입력·안전 정책·네트워크·서버 오류, 단기 이미지 생성과 개별 재생성의 기존 실패 의미는 바꾸지 않는다. 재연결한 뒤 재시도하면 저장된 성공 장면은 재사용하고 실패한 장면만 다시 생성한다.
+- 검증: `episode-images.openai.test.ts`, `episode-images.service.test.ts`, `local-image-generation.service.test.ts`, `image-review.service.test.ts` focused 92개 및 backend/shared typecheck, backend build, `git diff --check` 통과. 모든 Provider 호출은 테스트 mock이었고 실제 OpenAI·Runway·Instagram 요청은 0회다.
 
 ## 현재 상태 (2026-08-29)
 

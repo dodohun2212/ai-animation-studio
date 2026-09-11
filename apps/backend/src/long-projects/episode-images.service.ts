@@ -434,18 +434,13 @@ export class EpisodeImagesService {
             const result = references.images.length > 0 ? await callOpenAiImageEditApi(apiKey!, prompt, references.images, { size }) : await callOpenAiImageApi(apiKey!, prompt, { size });
             bytes = result.bytes; succeeded = true;
           } catch (error) {
-            // An authentication rejection proves this saved credential cannot make a paid image.  Do not make
-            // the person press the same confirmation again (and do not send the remaining five requests): mark
-            // this process disconnected and finish the already approved batch through the documented free path.
-            // Other provider failures stay errors because a placeholder must never disguise a quota, input, or
-            // network problem as a successful paid result.
+            // An authentication rejection proves this saved credential cannot make a paid image. Disconnect it
+            // so a later explicit retry can use a newly connected credential, but do not turn the remainder of
+            // a paid batch into placeholders: a failed provider request must stay a visible failure.
             if (error instanceof OpenAiAdapterError && error.category === "authentication") {
               await this.providerSettings!.disconnect("openai", undefined);
-              providerEnabled = false;
-              generatedPrompts.delete(scene);
-              referenceSources.delete(scene);
-              referenceOmissions.delete(scene);
-            } else throw error;
+            }
+            throw error;
           } finally {
           // `recordSpend`, not a bare await: this is a `finally` around a paid call, so a throw here discards
           // what OpenAI was already paid for and, on the failure path, replaces the provider's real error
