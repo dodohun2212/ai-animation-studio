@@ -1,5 +1,6 @@
-import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, isPhotoCardSubtitleLayout, isSceneSubtitleLayout, WorkflowState, type GenerationSource, type PhotoCardSubtitleLayout, type SceneSubtitleLayout, type Project, type ProjectSummary, type ProjectType, type Scene } from "@ai-animation-studio/shared";
+import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, isPhotoCardSubtitleLayout, isSceneSubtitleLayout, WorkflowState, type PhotoCardSubtitleLayout, type SceneSubtitleLayout, type Project, type ProjectSummary, type ProjectType, type Scene } from "@ai-animation-studio/shared";
 
+import { generationSourceOfVideoRecords } from "../videos/generation-source.js";
 import { LEGACY_VIDEO_JOB_ID } from "../videos/legacy-job.js";
 
 import { shortProjectAspectRatio } from "./project-aspect.js";
@@ -182,14 +183,6 @@ function latestVideoJobId(records: unknown[]): string | undefined {
   return records.some(looksLikeVideoRecord) ? LEGACY_VIDEO_JOB_ID : undefined;
 }
 
-function finalVideoGenerationSource(records: unknown[]): GenerationSource {
-  if (!records.length) return "unknown_legacy";
-  const modes = records.map((record) => record && typeof record === "object" && !Array.isArray(record)
-    ? (record as Record<string, unknown>).execution_mode : undefined);
-  if (modes.some((mode) => mode === "local_fake_no_provider")) return "local_fake_no_provider";
-  return modes.every((mode) => mode === "runway") ? "paid_provider" : "unknown_legacy";
-}
-
 /**
  * `Scene.script`/`motionPrompt`/`generatedImagePath`/`generatedVideoPath` are documented in domain.ts as
  * "computed, mapped fields", but this mapper used to hand the raw stored scene straight through and never
@@ -219,7 +212,7 @@ export function toApiProject(stored: StoredProject): Project {
   return {
     ...toApiSummary(stored),
     scenes: stored.scenes.map((scene, index) => toApiScene(scene, index, stored)),
-    ...(stored.final_video_path !== null ? { finalVideoPath: stored.final_video_path, finalVideoGenerationSource: finalVideoGenerationSource(stored.video_generation_records) } : {}),
+    ...(stored.final_video_path !== null ? { finalVideoPath: stored.final_video_path, finalVideoGenerationSource: generationSourceOfVideoRecords(stored.video_generation_records) } : {}),
     ...(jobId !== undefined ? { currentVideoJobId: jobId } : {}),
     warnings: withoutStaleRecoveryWarnings(stored.warnings, stored.workflow_state),
     errors: [...stored.errors],

@@ -21,6 +21,19 @@ Python → TypeScript 이전 자체는 끝났다 — 상위 15개 체크리스�
 - quota·입력·안전 정책·네트워크·서버 오류, 단기 이미지 생성과 개별 재생성의 기존 실패 의미는 바꾸지 않는다. 재연결한 뒤 재시도하면 저장된 성공 장면은 재사용하고 실패한 장면만 다시 생성한다.
 - 검증: `episode-images.openai.test.ts`, `episode-images.service.test.ts`, `local-image-generation.service.test.ts`, `image-review.service.test.ts` focused 92개 및 backend/shared typecheck, backend build, `git diff --check` 통과. 모든 Provider 호출은 테스트 mock이었고 실제 OpenAI·Runway·Instagram 요청은 0회다.
 
+### 2026-09-11 — 생성 출처(GenerationSource)를 기록하고, 임시 클립은 게시를 막는다
+
+- 공유 계약에 `GenerationSource`(`paid_provider` | `local_fake_no_provider` | `unknown_legacy`)를 두고 단기 `Project.finalVideoGenerationSource`·`ImageReview.generationSource`, 장편 `LongEpisodeDetail.finalVideoGenerationSource`·`LongEpisodeImageReview.generationSource`에 실었다. **근거가 없으면 유료로 치지 않는다** — 기록이 비었거나, 옛 빌드가 쓴 것이거나, 이 빌드가 모르는 모드면 전부 `unknown_legacy`다.
+- Instagram 게시는 최종 영상에 로컬 임시 클립이 하나라도 섞여 있으면 `INSTAGRAM_LOCAL_FAKE_VIDEO_NOT_PUBLISHABLE`로 거절한다. 단기(`video_generation_records`)와 장편(`final_video_generation_source`) 양쪽에서, **락 밖과 락 안 두 번** 확인한다 — 되돌릴 수 없는 유일한 동작이라서다. 화면은 `GenerationSourceNotice`로 이미지 생성·영상 병합 네 화면에 임시 결과 경고를 띄우고, `instagramPublishApi`가 그 코드를 사람이 읽는 문장으로 옮긴다.
+- 🔴 **같은 판정을 네 곳이 각자 적고 있었고, 그중 하나가 가드를 깼다.** `project.mapper.ts`가 `execution_mode === "runway"`를 직접 비교하면서 `projects.no-provider-calls.test.ts`(단기 생성·목록·조회 코드에 Provider 이름 금지)가 빨개졌고, `episode-scripts.service.ts`의 회차 사본은 공유 매퍼가 새로 내놓는 `finalVideoGenerationSource`를 몰라 필드 집합 대조 짝이 빨개졌다. **둘 다 커밋된 채로 빨간불이었다** — 파이프라인에 `| tail`을 붙이면 종료 코드가 `tail`의 것이 된다.
+- 🟢 판정의 주인을 `apps/backend/src/videos/generation-source.ts` 하나로 옮겼다(`generationSourceOfVideoRecords` · `hasLocalFakeVideoRecord` · `storedGenerationSource`). 네 곳이 모두 이것을 부르고, `src/projects/`에서는 Provider 이름 자체가 사라진다. 비대칭이 요점이라 짝으로 고정했다: **임시 하나면 전체가 임시**(병합 파일이 그 클립을 담고 있으니), **유료는 전부가 유료라고 말할 때만**, 나머지는 전부 「근거 없음」.
+- 검증: backend 1604 통과(+1 의도적 skip, 신규 `generation-source.test.ts` 5개 포함) · frontend 1421 · shared 57 · desktop 38, backend typecheck 통과. 🟠 고치는 중의 한 번은 `videos/project-lock.test.ts`의 *"keeps a live holder's lock from being reclaimed as stale"* 가 전체 실행에서 `EPERM: unlink`로 빨개졌다 — **단독 7/7 초록**이고 마지막 전체 실행에서도 안 나왔다. 2026-09-07·09-09에 적어 둔 그 Windows 파일 잠금 profile이며 이번 변경과 무관하다. 실제 OpenAI·Runway·Instagram 요청은 0회다.
+
+### 2026-09-11 — 장편 회차에서 게시 화면으로 가는 길
+
+- 장편 회차 병합이 끝나면 그 자리에서 Instagram 게시 화면을 연다. `instagramPost` 화면이 `initialEpisodeNumber`를 받아 `episode:<projectId>|<n>` 선택으로 열리므로, 사람이 목록에서 방금 만든 회차를 다시 찾아야 했던 단계가 사라진다.
+- 회차 번호는 주소에도 실려 새로고침 뒤에도 같은 회차가 선택된 채 복구되고, 0·음수·숫자가 아닌 값은 기존 `episodeNumber` 검증과 같은 규칙으로 홈으로 떨어진다 — 회차를 못 읽는 화면에 도착해 자기 저장 오류를 그리는 것보다 낫다.
+
 ## 현재 상태 (2026-08-29)
 
 ```

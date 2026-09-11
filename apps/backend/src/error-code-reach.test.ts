@@ -97,7 +97,9 @@ const UNNAMED_BY_A_SCREEN = new Map<string, string>([
   // own message repeated the same overstatement and has been corrected too (it also claimed a fixed six
   // scenes, untrue since scene count became a setting).
   ["STORY_GENERATION_FAILED", "the fallback arm for an unexpected error; every known failure of the paid path is mapped before it"],
-  ["INSTAGRAM_LOCAL_FAKE_VIDEO_NOT_PUBLISHABLE", "backend gate added before the frontend source badge/blocking explanation is implemented; it must not fall through to an unsafe retry sentence"],
+  // 🟢 `INSTAGRAM_LOCAL_FAKE_VIDEO_NOT_PUBLISHABLE` was here as a gap, not a decision: the backend gate landed
+  // before the screen had a sentence for it. `instagramPublishApi.ts` names it now, so the entry is gone — which
+  // is the whole point of the assertion below. The exception did not have to be remembered; the guard said when.
 ]);
 
 /**

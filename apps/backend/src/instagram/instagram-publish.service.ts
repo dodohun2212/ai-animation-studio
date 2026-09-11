@@ -21,12 +21,11 @@ import {
   instagramAlreadyPublished, instagramNotConnected, instagramPostNotRecorded, instagramProviderError, instagramPublishFailed, instagramPublishInProgress,
   instagramLocalFakeVideoNotPublishable, instagramPublishOutcomeUnknown, instagramTargetNotFound, instagramVideoRendering, instagramVideoUnavailable, invalidInstagramRequest,
 } from "./instagram-api.error.js";
+import { hasLocalFakeVideoRecord, storedGenerationSource } from "../videos/generation-source.js";
 import { clearPublishAttempt, readPublishAttempt, recordPublishAttempt } from "./publish-attempt.js";
 
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
-const hasLocalFakeVideoRecord = (records: unknown): boolean => Array.isArray(records)
-  && records.some((record) => isObject(record) && record.execution_mode === "local_fake_no_provider");
 
 export interface PublishPollOptions {
   /** How long to wait for Meta to finish processing the upload before giving up on this attempt. */
@@ -421,7 +420,7 @@ export class InstagramPublishService {
     const stored = await readEpisode(episodeFile);
     if (!stored) throw instagramVideoUnavailable();
     if (stored.instagram_post) throw instagramAlreadyPublished();
-    if (stored.final_video_generation_source === "local_fake_no_provider") throw instagramLocalFakeVideoNotPublishable();
+    if (storedGenerationSource(stored.final_video_generation_source) === "local_fake_no_provider") throw instagramLocalFakeVideoNotPublishable();
 
     const token = await this.connection.token();
     if (!token) throw instagramNotConnected();
@@ -431,7 +430,7 @@ export class InstagramPublishService {
       const current = await readEpisode(episodeFile);
       if (!current) throw instagramVideoUnavailable();
       if (current.instagram_post) throw instagramAlreadyPublished();
-      if (current.final_video_generation_source === "local_fake_no_provider") throw instagramLocalFakeVideoNotPublishable();
+      if (storedGenerationSource(current.final_video_generation_source) === "local_fake_no_provider") throw instagramLocalFakeVideoNotPublishable();
       await this.assertNoUnknownAttempt(directory, acknowledgedUnknownAttempt);
       if (current.state === "rendering") throw instagramVideoRendering();
 

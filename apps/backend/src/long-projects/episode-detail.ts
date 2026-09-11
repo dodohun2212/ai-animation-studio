@@ -1,5 +1,6 @@
-import { AUDIO_MODES, DEFAULT_SCENE_SUBTITLE_LAYOUT, isAudioMode, isSceneSubtitleLayout, type AudioMode, type GenerationSource, LongEpisodeDetail, LongEpisodeInstagramPost, LongEpisodeStatus, UsedAudio } from "@ai-animation-studio/shared";
+import { AUDIO_MODES, DEFAULT_SCENE_SUBTITLE_LAYOUT, isAudioMode, isSceneSubtitleLayout, type AudioMode, LongEpisodeDetail, LongEpisodeInstagramPost, LongEpisodeStatus, UsedAudio } from "@ai-animation-studio/shared";
 
+import { storedGenerationSource } from "../videos/generation-source.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { episodeProjectRelativePath } from "./long-project-paths.js";
 import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generation-recovery.service.js";
@@ -55,17 +56,13 @@ export function toEpisodeDetail(episode: StoredEpisodeForDetail): LongEpisodeDet
     // only form the desktop bridge can resolve. The strings differ by an origin, not by a file — handing the
     // first one to "open in explorer" names a path in some short project instead.
     ...(typeof episode.final_video_path === "string" && episode.final_video_path
-      ? { finalVideoPath: episode.final_video_path, openablePath: episodeProjectRelativePath(episode.number, episode.final_video_path), finalVideoGenerationSource: generationSourceOf(episode.final_video_generation_source) }
+      ? { finalVideoPath: episode.final_video_path, openablePath: episodeProjectRelativePath(episode.number, episode.final_video_path), finalVideoGenerationSource: storedGenerationSource(episode.final_video_generation_source) }
       : {}),
     ...(toEpisodeInstagramPost(episode.instagram_post) ? { instagramPost: toEpisodeInstagramPost(episode.instagram_post)! } : {}),
     ...(toEpisodePreviousInstagramPosts(episode.previous_instagram_posts).length > 0
       ? { previousInstagramPosts: toEpisodePreviousInstagramPosts(episode.previous_instagram_posts) } : {}),
     ...(toEpisodeUsedAudio(episode.used_audio) ? { usedAudio: toEpisodeUsedAudio(episode.used_audio)! } : {}),
   };
-}
-
-function generationSourceOf(value: unknown): GenerationSource {
-  return value === "paid_provider" || value === "local_fake_no_provider" || value === "unknown_legacy" ? value : "unknown_legacy";
 }
 
 /**

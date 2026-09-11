@@ -10,6 +10,7 @@ import { AUDIO_MODES, clipDurationSecondsPerScene, type RunwayClipDurationSecond
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "../videos/ffmpeg-merge.service.js";
 import { AudioLibraryService } from "../audio/audio-library.service.js";
+import { generationSourceOfVideoRecords } from "../videos/generation-source.js";
 import { isUsableClip, wasPaidRun } from "../videos/placeholder-clip.js";
 import { FINAL_VIDEO_LOCK_KEY, ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { longAudioStartOutOfRange, longEpisodeFfmpegUnavailable, longEpisodeMergeBusy, longEpisodeMergeClipsInvalid, longEpisodeMergeFailed, longEpisodeMergeAlreadyCompleted, longEpisodeMergeNotAllowed, longEpisodeNotFound, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
@@ -164,10 +165,7 @@ export class EpisodeVideoMergeService {
 
   private async finalGenerationSource(id: string, number: number): Promise<GenerationSource> {
     const records = await readLongProjectJson(this.files(id, number).records).catch(() => undefined);
-    if (!Array.isArray(records) || !records.length) return "unknown_legacy";
-    const modes = records.map((record) => object(record) ? record.execution_mode : undefined);
-    if (modes.some((mode) => mode === "local_fake_no_provider")) return "local_fake_no_provider";
-    return modes.every((mode) => mode === "runway") ? "paid_provider" : "unknown_legacy";
+    return generationSourceOfVideoRecords(records);
   }
 
   /**
