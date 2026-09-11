@@ -458,7 +458,9 @@ describe("ShortProjectSettingsScreen", () => {
     render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
 
     const refsSection = await screen.findByRole("region", { name: "분위기·장면 참고 이미지" });
-    const searchForm = within(refsSection).getByRole("form", { name: "분위기 이미지 검색" });
+    // The search form is drawn only after the reference list has loaded, so the region appearing is not enough.
+    // Waiting on the form itself is the same wait as the 장면 참고 case below and locks no unrelated wording.
+    const searchForm = await within(refsSection).findByRole("form", { name: "분위기 이미지 검색" });
     fireEvent.change(within(searchForm).getByLabelText("분위기 이미지 검색"), { target: { value: "숲" } });
     fireEvent.click(within(searchForm).getByRole("button", { name: "검색" }));
 
@@ -498,7 +500,9 @@ describe("ShortProjectSettingsScreen", () => {
     render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
 
     const refsSection = await screen.findByRole("region", { name: "분위기·장면 참고 이미지" });
-    const searchForm = within(refsSection).getByRole("form", { name: "분위기 이미지 검색" });
+    // The search form is drawn only after the reference list has loaded, so the region appearing is not enough.
+    // Waiting on the form itself is the same wait as the 장면 참고 case below and locks no unrelated wording.
+    const searchForm = await within(refsSection).findByRole("form", { name: "분위기 이미지 검색" });
     fireEvent.change(within(searchForm).getByLabelText("분위기 이미지 검색"), { target: { value: "빈" } });
     fireEvent.click(within(searchForm).getByRole("button", { name: "검색" }));
 
