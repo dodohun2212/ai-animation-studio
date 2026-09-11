@@ -20,6 +20,7 @@ import { StaleBadge } from "./ui/StaleBadge.js";
 import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
 import { resumeTarget, type ResumeTarget } from "../utils/resumeTarget.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
+import { GenerationSourceBadge } from "./GenerationSourceNotice.js";
 import { cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
 
 interface Props {
@@ -597,6 +598,7 @@ export function ImageGenerationScreen({ projectId, onBack, onResume }: Props) {
                             <StatusChip tone={review.status === "approved" ? "success" : "neutral"}>
                               {review.status === "approved" ? "확정됨" : "검토 대기"}
                             </StatusChip>
+                            <GenerationSourceBadge source={review.generationSource} testId={`review-generation-source-${review.sceneNumber}`} />
                           </span>
                         </div>
                         {/* The box takes the project's own shape rather than assuming portrait: a 16:9 project

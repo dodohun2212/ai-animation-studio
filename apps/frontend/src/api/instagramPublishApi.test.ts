@@ -59,12 +59,19 @@ describe("instagramPublishApi", () => {
     expect(already.message).not.toContain("다시 시도");
   });
 
+  it("does not offer a retry when the server rejects a temporary video", () => {
+    const display = toInstagramPublishDisplayError(errorFrom("INSTAGRAM_LOCAL_FAKE_VIDEO_NOT_PUBLISHABLE"));
+    expect(display.message).toContain("임시 생성 장면");
+    expect(display.message).not.toContain("다시 시도");
+  });
+
   it("gives every backend code its own message instead of the generic fallback", async () => {
     const generic = toInstagramPublishDisplayError(new Error("unmapped"));
     const codes = [
       "INVALID_REQUEST",
       "INSTAGRAM_ALREADY_PUBLISHED",
       "INSTAGRAM_VIDEO_UNAVAILABLE",
+      "INSTAGRAM_LOCAL_FAKE_VIDEO_NOT_PUBLISHABLE",
       "INSTAGRAM_NOT_CONNECTED",
       "INSTAGRAM_TARGET_NOT_FOUND",
       "INSTAGRAM_PUBLISH_FAILED",

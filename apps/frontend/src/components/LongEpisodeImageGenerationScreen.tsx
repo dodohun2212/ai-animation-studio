@@ -25,6 +25,7 @@ import { BudgetLine } from "./ui/BudgetLine.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
+import { GenerationSourceBadge } from "./GenerationSourceNotice.js";
 
 interface Props { projectId: string; episodeNumber: number; onBack: () => void; onOpenVideoWorkflow?: (projectId: string, episodeNumber: number) => void; }
 type DisplayError = { code: string; message: string };
@@ -599,6 +600,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
                       data-testid={`episode-reference-stale-${sceneNumber}`}
                     />
                     <StatusChip tone={review.status === "approved" ? "success" : "neutral"}>{sceneSlotLabel(review.status)}</StatusChip>
+                    <GenerationSourceBadge source={review.generationSource} testId={`episode-image-generation-source-${sceneNumber}`} />
                   </span>
                 </div>
                 {/* Quiet unless the Backend's reference cap actually dropped something. The total is derived from

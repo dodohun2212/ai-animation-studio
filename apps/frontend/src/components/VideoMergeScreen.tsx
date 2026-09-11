@@ -12,6 +12,7 @@ import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBri
 import { PhotoCardSubtitleFieldset } from "./PhotoCardSubtitleFieldset.js";
 import { SceneSubtitleFieldset, type SubtitledScene } from "./SceneSubtitleFieldset.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
+import { FinalVideoGenerationSourceNotice } from "./GenerationSourceNotice.js";
 
 interface Props {
   projectId: string;
@@ -438,6 +439,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
             최종 영상 병합이 완료되었습니다. 이 단계에서는 유료 요청이 전송되지 않았습니다.
           </p>
           <AttributionNotice usedAudio={result.project.usedAudio} />
+          <FinalVideoGenerationSourceNotice source={result.project.finalVideoGenerationSource} testId="final-video-generation-source-notice" />
           {unplayable ? (
             <p data-testid="final-video-missing" className="rounded-xl border border-amber-400/30 bg-amber-500/[0.06] px-3 py-2 text-sm text-amber-200">
               최종 영상 파일을 재생할 수 없습니다. 장면 영상 중에 내용이 비어 있는 것이 섞여 있을 수 있습니다 — 장면 영상 화면에서 하나씩 재생해 확인해 주세요.

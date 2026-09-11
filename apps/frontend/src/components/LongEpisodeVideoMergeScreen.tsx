@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBridge.js";
-import { DEFAULT_SCENE_SUBTITLE_LAYOUT, type AudioLibraryTrack, type MergeLongEpisodeVideosResponse, type SceneSubtitleLayout, type UsedAudio } from "@ai-animation-studio/shared";
+import { DEFAULT_SCENE_SUBTITLE_LAYOUT, type AudioLibraryTrack, type GenerationSource, type MergeLongEpisodeVideosResponse, type SceneSubtitleLayout, type UsedAudio } from "@ai-animation-studio/shared";
 
 import { getLongEpisode, getLongEpisodeCurrentVideoJob, getLongEpisodeVideoReview, getLongProjectSettings, longEpisodeFinalVideoContentUrl, longEpisodeImageContentUrl, mergeLongEpisodeVideos, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { getAudioLibrary } from "../api/audioLibraryApi.js";
@@ -8,6 +8,7 @@ import type { AudioMode } from "./mergeAudio.js";
 import { AttributionNotice, AUDIO_MODE_LABELS, MergeAudioFieldset, needsTrack, toAudioSettings } from "./mergeAudio.js";
 import { SceneSubtitleFieldset, type SubtitledScene } from "./SceneSubtitleFieldset.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
+import { FinalVideoGenerationSourceNotice } from "./GenerationSourceNotice.js";
 
 interface Props {
   projectId: string;
@@ -138,6 +139,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
    * just merged and hide it from the person who came back to publish (D-003).
    */
   const [usedAudio, setUsedAudio] = useState<UsedAudio | undefined>(undefined);
+  const [finalVideoGenerationSource, setFinalVideoGenerationSource] = useState<GenerationSource | undefined>(undefined);
   const busy = useRef(false);
 
   // Only ever changes this screen's wording, so a failure here is not fatal and is deliberately swallowed.
@@ -156,6 +158,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
         );
         setAlreadyMerged(response.episode.status === "completed");
         setUsedAudio(response.episode.usedAudio);
+        setFinalVideoGenerationSource(response.episode.finalVideoGenerationSource);
         // Derived, not assumed: an Episode with no narration audio cannot merge "나레이션만", and defaulting to
         // it would label a silent video as a narrated one (docs/06_DECISIONS.md D-011). Absent stays null.
         const available = response.episode.narrationAvailable ?? null;
@@ -215,6 +218,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
       const merged = await mergeLongEpisodeVideos(projectId, episodeNumber, audioSettings ?? undefined, sceneSubtitleAdjustable ? sceneLayout : undefined);
       setResult(merged);
       setUsedAudio(merged.episode.usedAudio);
+      setFinalVideoGenerationSource(merged.episode.finalVideoGenerationSource);
       setConfirmationOpen(false);
       setUnplayable(false);
       setVideoVersion((current) => current + 1);
@@ -378,6 +382,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
               the screen the caption gets written from. Reading it from state that survives a reload is the
               point: the person who comes back to publish is the one who needs it (D-003). */}
           <AttributionNotice usedAudio={usedAudio} />
+          <FinalVideoGenerationSourceNotice source={finalVideoGenerationSource} testId="episode-final-video-generation-source-notice" />
           {onOpenContinuity && (
             <button
               type="button"
