@@ -174,8 +174,12 @@ export interface VideoModelOption {
    * cannot close a cut.
    *
    * 🔴 Unconfirmed is `false`, never `true`. A capability claimed wrongly builds paid requests for something the
-   * provider does not do. `gen4_turbo` is `false`: Runway's own documentation shows `promptImage` as a single URL
-   * or data URI and does not confirm a last-frame form.
+   * provider does not do.
+   *
+   * `gen4_turbo` is `false`, and that is now confirmed rather than merely unconfirmed: Runway's official SDK types
+   * (`@runwayml/sdk`, `resources/image-to-video.d.ts`, read 2026-09-12) give gen4_turbo's `promptImage` as
+   * `string | Array<{ position: 'first'; uri: string }>` — `'first'` only. The models on the same endpoint that do
+   * take `'first' | 'last'` there are `h3_max`, `veo3.1`, `veo3.1_fast` and `gemini_omni_flash_1.1`.
    */
   acceptsLastFrame: boolean;
 }

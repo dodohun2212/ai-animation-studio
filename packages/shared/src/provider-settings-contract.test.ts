@@ -79,7 +79,7 @@ describe("video model capability", () => {
     }
   });
 
-  it("does not claim gen4_turbo takes a last frame, because Runway's own docs do not confirm it", () => {
+  it("does not claim gen4_turbo takes a last frame — Runway's official SDK types allow it position 'first' only", () => {
     expect(VIDEO_MODEL_OPTIONS.find((option) => option.id === "gen4_turbo")!.acceptsLastFrame).toBe(false);
   });
 });
