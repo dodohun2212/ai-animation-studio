@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { DEFAULT_VIDEO_MODEL, NO_LEGIBLE_TEXT_VIDEO_RULE, RUNWAY_PROMPT_AUTHORING_LIMIT, RUNWAY_PROMPT_MAX_LENGTH, type VideoModel } from "@ai-animation-studio/shared";
+import { DEFAULT_VIDEO_MODEL, NO_LEGIBLE_TEXT_VIDEO_RULE, RUNWAY_PROMPT_AUTHORING_LIMIT, RUNWAY_PROMPT_MAX_LENGTH, VIDEO_MODELS, type VideoModel } from "@ai-animation-studio/shared";
 import {
-  RunwayAdapterError, createRunwayImageToVideoTask, recordedVideoModel, downloadRunwayOutput, getRunwayTask,
+  RunwayAdapterError, SEEDANCE_TEXT_CONSTRAINT, createRunwayImageToVideoTask, recordedVideoModel, textRuleFor, downloadRunwayOutput, getRunwayTask,
 } from "./runway-video-adapter.js";
 
 const IMAGE_BYTES = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
@@ -129,6 +129,62 @@ ${NO_LEGIBLE_TEXT_VIDEO_RULE}`,
       expect(Object.keys(body).sort(), model).toEqual(["duration", "model", "promptImage", "promptText", "resolution"]);
       expect(body, model).toMatchObject({ model: "happyhorse_1_0", resolution, duration: 10, promptImage: [{ position: "first", uri: `data:image/png;base64,${IMAGE_BYTES.toString("base64")}` }] });
     }
+  });
+
+  /*
+   * Seedance puts the resolution inside its ratio string, so each entry maps the project's frame to its own. Like
+   * WAN, a bare image string is a reference image there, so the picture is the first keyframe; its audio defaults
+   * ON and the merge keeps only the picture, so it is off.
+   */
+  it("sends each Seedance entry its own model and its resolution's frame string, the picture as a keyframe, and no audio", async () => {
+    const cases = [
+      ["seedance2_720p", "seedance2", "720:1280", "1280:720"],
+      ["seedance2_1080p", "seedance2", "1080:1920", "1920:1080"],
+      ["seedance2_fast", "seedance2_fast", "720:1280", "1280:720"],
+      ["seedance2_mini", "seedance2_mini", "720:1280", "1280:720"],
+      ["seedance2_5_480p", "seedance2_5", "480:854", "854:480"],
+      ["seedance2_5_720p", "seedance2_5", "720:1280", "1280:720"],
+      ["seedance2_5_1080p", "seedance2_5", "1080:1920", "1920:1080"],
+    ] as const;
+    for (const [model, wire, vertical, horizontal] of cases) {
+      for (const [frame, expected] of [["720:1280", vertical], ["1280:720", horizontal]] as const) {
+        const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
+        await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "a hero walks forward", { model, ratio: frame, durationSeconds: 5, fetchImpl: fetchMock, sleep: noSleep });
+        const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body));
+        expect(body, `${model} ${frame}`).toEqual({
+          model: wire, ratio: expected, audio: false, duration: 5,
+          promptText: `a hero walks forward
+${SEEDANCE_TEXT_CONSTRAINT}`,
+          promptImage: [{ position: "first", uri: `data:image/png;base64,${IMAGE_BYTES.toString("base64")}` }],
+        });
+      }
+    }
+  });
+
+  it("gives Seedance the no-text line in its maker's words, and every other model the shared rule, never both", () => {
+    for (const model of VIDEO_MODELS) {
+      const rule = textRuleFor(model);
+      expect(rule, model).toBe(model.startsWith("seedance") ? SEEDANCE_TEXT_CONSTRAINT : NO_LEGIBLE_TEXT_VIDEO_RULE);
+    }
+    // The authoring limit reserves room for the shared rule's length, so no model's line may be longer.
+    expect(SEEDANCE_TEXT_CONSTRAINT.length).toBeLessThanOrEqual(NO_LEGIBLE_TEXT_VIDEO_RULE.length);
+  });
+
+  /*
+   * 🔴 Seconds × rate is the only price the contract states, and under a per-generation minimum it quotes low. 5 s
+   * clears both minimums (Mini 16×5 = 80 ≥ 64, 2.5 480p 20×5 = 100 ≥ 80); 3 s would not, and is refused unsent.
+   */
+  it("refuses a clip short enough to be billed at a model's minimum instead of its rate, without calling fetch", async () => {
+    const fetchMock = vi.fn();
+    await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "seedance2_5_480p", durationSeconds: 3, fetchImpl: fetchMock, sleep: noSleep }))
+      .rejects.toMatchObject({ category: "invalid_request" });
+    await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "seedance2_mini", durationSeconds: 3, fetchImpl: fetchMock, sleep: noSleep }))
+      .rejects.toMatchObject({ category: "invalid_request" });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const accepted = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
+    await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "seedance2_mini", durationSeconds: 5, fetchImpl: accepted, sleep: noSleep });
+    expect(accepted).toHaveBeenCalledTimes(1);
   });
 
   it("sends gen4_turbo nothing H3 Max's body carries", async () => {

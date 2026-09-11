@@ -146,7 +146,9 @@ export const defaultBgmVolume = (mode: string): number => (mode === "bgm" ? 1 : 
  * moves is two choices, and `pricePerSecondUsd` stays one true number per entry. The adapter
  * (videos/runway-video-adapter.ts) turns each name into its request body.
  */
-export const VIDEO_MODELS = ["gen4_turbo", "gen4_5", "h3_max_480p", "h3_max_768p", "wan3_480p", "wan3_720p", "wan3_1080p", "happyhorse_720p", "happyhorse_1080p"] as const;
+export const VIDEO_MODELS = ["gen4_turbo", "gen4_5", "h3_max_480p", "h3_max_768p", "wan3_480p", "wan3_720p", "wan3_1080p", "happyhorse_720p", "happyhorse_1080p",
+  "seedance2_720p", "seedance2_1080p", "seedance2_fast", "seedance2_mini", "seedance2_5_480p", "seedance2_5_720p", "seedance2_5_1080p",
+] as const;
 export type VideoModel = (typeof VIDEO_MODELS)[number];
 
 /**
@@ -208,6 +210,12 @@ export interface VideoModelOption {
  *   `auto_720p` or `auto_1080p` — the frame shape follows the first frame, so the resolution is the whole choice.
  *   happyhorse_1_0 takes 3–15 s, a first frame only, and a `resolution` of 720p or 1080p, no ratio — Alibaba's own
  *   API reference: "output aspect ratio matches the first frame".
+ *   The Seedance models take 4–15 s (2.5: 4–30 s), first and last frame as keyframes, and a `ratio` whose string
+ *   carries the resolution (720:1280, 1080:1920, 480:854). Their `ratios` below are this app's two frames in
+ *   Runway's names; the adapter picks the string for the entry's resolution. Mini and 2.5 have a minimum charge
+ *   per generation (64 and 80 credits) that 5 s already clears — the adapter refuses a clip short enough to hit it.
+ *   Seedance 2.0 at 4K (150 credits/s) is left out: the merge renders 1080×1920, so it would buy pixels that are
+ *   scaled away.
  *
  * `ratios: []` is the honest answer for H3 Max, WAN 3.0 and HappyHorse, not missing data: none is told a frame
  * shape. WAN's and HappyHorse's follow the first frame by their own documentation; H3's is NOT confirmed. Our pictures are 2:3 (or 3:2),
@@ -224,6 +232,13 @@ export const VIDEO_MODEL_OPTIONS: readonly VideoModelOption[] = [
   { id: "wan3_1080p", label: "WAN 3.0 (1080p)", pricePerSecondUsd: 0.2, ratios: [], maxDurationSeconds: 30, acceptsLastFrame: true },
   { id: "happyhorse_720p", label: "HappyHorse 1.0 (720p)", pricePerSecondUsd: 0.15, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: false },
   { id: "happyhorse_1080p", label: "HappyHorse 1.0 (1080p)", pricePerSecondUsd: 0.3, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: false },
+  { id: "seedance2_720p", label: "Seedance 2.0 (720p)", pricePerSecondUsd: 0.36, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 15, acceptsLastFrame: true },
+  { id: "seedance2_1080p", label: "Seedance 2.0 (1080p)", pricePerSecondUsd: 0.4, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 15, acceptsLastFrame: true },
+  { id: "seedance2_fast", label: "Seedance 2.0 Fast (720p)", pricePerSecondUsd: 0.29, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 15, acceptsLastFrame: true },
+  { id: "seedance2_mini", label: "Seedance 2.0 Mini (720p)", pricePerSecondUsd: 0.16, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 15, acceptsLastFrame: true },
+  { id: "seedance2_5_480p", label: "Seedance 2.5 (480p)", pricePerSecondUsd: 0.2, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 30, acceptsLastFrame: true },
+  { id: "seedance2_5_720p", label: "Seedance 2.5 (720p)", pricePerSecondUsd: 0.3, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 30, acceptsLastFrame: true },
+  { id: "seedance2_5_1080p", label: "Seedance 2.5 (1080p)", pricePerSecondUsd: 0.68, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 30, acceptsLastFrame: true },
 ];
 
 /** The one used when nobody has chosen — today's behaviour, unchanged. */

@@ -90,7 +90,48 @@ const REQUEST_BODY: Record<VideoModel, (parts: RequestParts) => ImageToVideoCrea
     ({ model: "happyhorse_1_0", promptImage: [{ position: "first", uri: promptImage }], promptText, duration, resolution: "720p" }) satisfies ImageToVideoCreateParams.Happyhorse1_0,
   happyhorse_1080p: ({ promptImage, promptText, duration }) =>
     ({ model: "happyhorse_1_0", promptImage: [{ position: "first", uri: promptImage }], promptText, duration, resolution: "1080p" }) satisfies ImageToVideoCreateParams.Happyhorse1_0,
+  seedance2_720p: (parts) => ({ model: "seedance2", ...seedanceParts(parts, SEEDANCE_720P) }) satisfies ImageToVideoCreateParams.Seedance2,
+  seedance2_1080p: (parts) => ({ model: "seedance2", ...seedanceParts(parts, { "720:1280": "1080:1920", "1280:720": "1920:1080" }) }) satisfies ImageToVideoCreateParams.Seedance2,
+  seedance2_fast: (parts) => ({ model: "seedance2_fast", ...seedanceParts(parts, SEEDANCE_720P) }) satisfies ImageToVideoCreateParams.Seedance2Fast,
+  seedance2_mini: (parts) => ({ model: "seedance2_mini", ...seedanceParts(parts, SEEDANCE_720P) }) satisfies ImageToVideoCreateParams.Seedance2Mini,
+  seedance2_5_480p: (parts) => ({ model: "seedance2_5", ...seedanceParts(parts, { "720:1280": "480:854", "1280:720": "854:480" }) }) satisfies ImageToVideoCreateParams.Seedance2_5,
+  seedance2_5_720p: (parts) => ({ model: "seedance2_5", ...seedanceParts(parts, SEEDANCE_720P) }) satisfies ImageToVideoCreateParams.Seedance2_5,
+  seedance2_5_1080p: (parts) => ({ model: "seedance2_5", ...seedanceParts(parts, { "720:1280": "1080:1920", "1280:720": "1920:1080" }) }) satisfies ImageToVideoCreateParams.Seedance2_5,
 };
+
+const SEEDANCE_720P = { "720:1280": "720:1280", "1280:720": "1280:720" } as const;
+
+/**
+ * Seedance's resolution is inside its ratio string, so each entry maps this app's two frames to its own strings.
+ * Like WAN, a bare image string is a reference image there, so the picture goes as the first keyframe; and its
+ * audio defaults to ON, which the merge would throw away, so it is switched off.
+ */
+function seedanceParts<const R extends string>({ promptImage, promptText, duration, ratio }: RequestParts, frames: Record<RunwayVideoRatio, R>) {
+  return { promptImage: [{ position: "first" as const, uri: promptImage }], promptText, duration, ratio: frames[ratio], audio: false };
+}
+
+/**
+ * Credits a generation is billed at least, whatever its length (Runway's pricing page). Seconds × rate — the only
+ * price the contract can state — is right only above it, so a clip short enough to fall under it is refused rather
+ * than quoted low. This app's 5 s already clears both; the check is for the length that would not.
+ */
+const MINIMUM_CREDITS: Partial<Record<VideoModel, number>> = {
+  seedance2_mini: 64, seedance2_5_480p: 80, seedance2_5_720p: 80, seedance2_5_1080p: 80,
+};
+
+/**
+ * The no-text line each model is sent after the prompt — request-time only, see NO_LEGIBLE_TEXT_VIDEO_RULE.
+ *
+ * Seedance gets it in its maker's own words. ByteDance's Seedance 2.0 prompt guide (BytePlus ModelArk, read
+ * 2026-09-12) calls these "constraint words", "very important", and gives the templates "Avoid generating
+ * subtitles", "Avoid generating a Logo", "Avoid generating a watermark", "Avoid generating any text or subtitles"
+ * — and it notes the model readily renders text (ad slogans, subtitles, speech bubbles), so the line matters more
+ * there. No longer than the shared rule: RUNWAY_PROMPT_AUTHORING_LIMIT reserves room for that length.
+ */
+export const SEEDANCE_TEXT_CONSTRAINT = "Avoid generating subtitles, logos, watermarks or any readable text.";
+export function textRuleFor(model: VideoModel): string {
+  return model.startsWith("seedance") ? SEEDANCE_TEXT_CONSTRAINT : NO_LEGIBLE_TEXT_VIDEO_RULE;
+}
 
 /**
  * 🔴 WAN reads a bare image string as a *reference* image, not as the first frame — its field is "an image or
@@ -114,6 +155,10 @@ export function requestBodyFor(model: VideoModel, parts: { promptImage: string; 
     throw new RunwayAdapterError("invalid_request", `${option.label}은(는) 한 장면을 최대 ${option.maxDurationSeconds}초까지만 만듭니다.`);
   }
   if (!(RUNWAY_VIDEO_RATIOS as readonly string[]).includes(parts.ratio)) throw new RunwayAdapterError("invalid_request", "영상 비율이 올바르지 않습니다.");
+  const minimum = MINIMUM_CREDITS[model];
+  if (minimum !== undefined && Math.round(option.pricePerSecondUsd * 100 * parts.duration) < minimum) {
+    throw new RunwayAdapterError("invalid_request", `${option.label}은(는) 한 번에 최소 ${minimum}크레딧이 청구돼, ${parts.duration}초 클립은 견적보다 비싸게 나갑니다.`);
+  }
   return REQUEST_BODY[model]({ ...parts, ratio: parts.ratio as RunwayVideoRatio });
 }
 const MAX_DATA_URI_BYTES = 5 * 1024 * 1024;
@@ -284,10 +329,11 @@ export async function createRunwayImageToVideoTask(
   // why recording it instead would mark all 43 recorded prompts stale.
   const authored = prompt.trim();
   if (!authored) throw new RunwayAdapterError("invalid_request", "Runway 프롬프트가 비어 있습니다.");
+  const model = options.model ?? RUNWAY_MODEL;
   const text = `${authored}
-${NO_LEGIBLE_TEXT_VIDEO_RULE}`;
+${textRuleFor(model)}`;
   if (utf16Length(text) > RUNWAY_PROMPT_MAX_LENGTH) throw new RunwayAdapterError("invalid_request", `Runway 프롬프트가 ${RUNWAY_PROMPT_MAX_LENGTH} UTF-16 코드 유닛을 초과했습니다.`);
-  const requestBody = requestBodyFor(options.model ?? RUNWAY_MODEL, {
+  const requestBody = requestBodyFor(model, {
     promptImage: imageDataUri(imageBytes, imageMimeType), promptText: text, ratio: options.ratio ?? "720:1280", duration: options.durationSeconds ?? 5,
   });
   const response = await requestWithRetry(`${RUNWAY_BASE_URL}/v1/image_to_video`, {

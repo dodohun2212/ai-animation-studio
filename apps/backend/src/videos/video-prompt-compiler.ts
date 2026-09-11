@@ -67,6 +67,20 @@ const DIALECT: Record<VideoModel, VideoPromptDialect> = {
   // does say — the output keeps the first frame's shape — is the first-frame case this grammar is written for.
   happyhorse_720p: "runway_gen4",
   happyhorse_1080p: "runway_gen4",
+  // Seedance (ByteDance): its Seedance 2.0 prompt guide (BytePlus ModelArk, read 2026-09-12) asks for shots
+  // described as "who + where + doing what + how the camera moves", says to "specify only 1 type of camera
+  // movement in a single shot", and that the model understands standard camera terms ("slow push-in, fixed
+  // shot") — this grammar's held poses, one action and one camera line. Its subject-naming rules
+  // (`<Subject>@Image 1`) are for reference mode, which this app does not use: the picture is the first frame.
+  // Where Seedance does differ — it wants explicit "constraint words" ("Avoid generating subtitles …") — is the
+  // request-time line, not this recorded grammar: see the adapter's textRuleFor.
+  seedance2_720p: "runway_gen4",
+  seedance2_1080p: "runway_gen4",
+  seedance2_fast: "runway_gen4",
+  seedance2_mini: "runway_gen4",
+  seedance2_5_480p: "runway_gen4",
+  seedance2_5_720p: "runway_gen4",
+  seedance2_5_1080p: "runway_gen4",
 };
 
 /** Which grammar a model reads — exported for the test that holds the staleness recompute's assumption. */
