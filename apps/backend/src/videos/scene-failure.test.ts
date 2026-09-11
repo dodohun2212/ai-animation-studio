@@ -63,10 +63,22 @@ describe("what a screen is told about a failed scene", () => {
     expect(sceneFailureFor("no_output").billedOnFailure, "the task was submitted").toBe(true);
     expect(sceneFailureFor("submit_interrupted").billedOnFailure, "and this one may have been").toBe(true);
 
-    expect(sceneFailureFor("budget_exceeded")).toEqual({ category: "budget_exceeded", remedy: "retry", billedOnFailure: false });
+    expect(sceneFailureFor("budget_exceeded")).toEqual({ category: "budget_exceeded", billedOnFailure: false });
     expect(sceneFailureFor("budget_ledger_unreadable").billedOnFailure, "refused before anything was sent").toBe(false);
 
     expect(sceneFailureFor("timeout").providerCode, "we were not told a code, so we do not invent one").toBeUndefined();
+  });
+
+  /*
+   * 🔴 An interrupted submission may already be a paid task, so "send it again unchanged" is the sentence that buys
+   * it twice — and it was printed under "it may already have been accepted". None of the three remedies is true
+   * there, nor for the two pre-send refusals (raise the limit, fix the ledger), so those carry none.
+   */
+  it("carries no remedy where none of the three sentences is true, and still says whether it was billed", () => {
+    expect(sceneFailureFor("submit_interrupted")).toEqual({ category: "submit_interrupted", billedOnFailure: true });
+    expect(sceneFailureFor("budget_exceeded")).not.toHaveProperty("remedy");
+    expect(sceneFailureFor("budget_ledger_unreadable")).not.toHaveProperty("remedy");
+    expect(sceneFailureFor("timeout").remedy, "an ordinary failure still says it can be retried").toBe("retry");
   });
 });
 

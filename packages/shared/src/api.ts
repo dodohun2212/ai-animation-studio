@@ -773,7 +773,14 @@ export interface SceneFailure {
   category: string;
   /** The provider's code, alone. Its free-text message is deliberately not carried: a code can be reasoned about, a sentence cannot. */
   providerCode?: string;
-  remedy: SceneFailureRemedy;
+  /**
+   * Present only when one of the three remedy sentences is true — the rule image and narration failures already
+   * follow. Absent for an interrupted submission (the task may already exist, so "send it again" could buy the
+   * scene twice — its category's sentence says to check the Runway account first) and for the two refusals made
+   * before anything was sent (the budget is spent, or its ledger cannot be read: raising the limit or fixing the
+   * file is the fix, not the button). Screens draw no advice line when it is absent (Cowork Round 773).
+   */
+  remedy?: SceneFailureRemedy;
   billedOnFailure: boolean;
 }
 

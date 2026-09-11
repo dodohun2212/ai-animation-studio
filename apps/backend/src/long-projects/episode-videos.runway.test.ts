@@ -199,7 +199,9 @@ describe("real Runway episode video generation", () => {
     const progress = await videos.run("long", 1, started.jobId);
 
     expect(fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/v1/image_to_video"))).toHaveLength(0);
-    expect(progress).toMatchObject({ failedSceneNumbers: [1], sceneErrors: { 1: "submit_interrupted" } });
+    expect(progress).toMatchObject({ failedSceneNumbers: [1], sceneErrors: { 1: "submit_interrupted" }, sceneFailures: { 1: { category: "submit_interrupted", billedOnFailure: true } } });
+    // And no advice to send it again: the task may already exist.
+    expect(progress.sceneFailures?.[1]).not.toHaveProperty("remedy");
   });
 
   // The other half of the same rule: a claim young enough that its POST may still be in flight is waited on, not

@@ -25,9 +25,19 @@ import { runwayFailureOutcome } from "./runway-video-adapter.js";
  */
 const NEVER_SENT = new Set(["budget_exceeded", "budget_ledger_unreadable"]);
 
+/**
+ * Categories whose honest advice is none of the three remedy sentences, so the failure carries no `remedy`.
+ *
+ * 🔴 `submit_interrupted` above all: the claim was made and the POST may have been accepted, so "send it again
+ * unchanged" is the sentence that buys one scene twice — and both screens printed it right under "it may already
+ * have been accepted" (2026-09-12). The two refusals made before sending need the limit raised or the ledger
+ * fixed; pressing the same button changes nothing.
+ */
+const NO_REMEDY = new Set(["submit_interrupted", ...NEVER_SENT]);
+
 export function sceneFailureFor(category: string, failureCode?: string): SceneFailure {
   if (failureCode) return { category, providerCode: failureCode, ...runwayFailureOutcome(failureCode) };
-  return { category, remedy: "retry", billedOnFailure: !NEVER_SENT.has(category) };
+  return { category, ...(NO_REMEDY.has(category) ? {} : { remedy: "retry" as const }), billedOnFailure: !NEVER_SENT.has(category) };
 }
 
 /**
