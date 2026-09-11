@@ -20,7 +20,7 @@ import { createStoryPromptDraftPreview, toStoryDisplayError } from "../api/story
 import { Spinner } from "./Spinner.js";
 import { ContinueToNextStep } from "./ui/ContinueToNextStep.js";
 import type { ResumeTarget } from "../utils/resumeTarget.js";
-import { cardSectionWide as cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
+import { cardSectionWide as cardSection, outlineButton, primaryButton, scrollList } from "./ui/surfaces.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 
 interface Props {
@@ -428,7 +428,7 @@ function CastEditor({ projectId, onLeadChange }: { projectId: string; onLeadChan
         </p>
       )}
       {results && (
-        <ul aria-label="캐릭터 검색 결과" className="space-y-1">
+        <ul aria-label="캐릭터 검색 결과" className={scrollList}>
           {results.map((asset) => (
             <li key={asset.assetId} className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/40 p-2.5">
               <span className="text-sm text-slate-300">{asset.displayName}</span>
@@ -530,7 +530,7 @@ function ContinuityEditor({ projectId }: { projectId: string }) {
         <p className="text-sm text-slate-400">연결 가능한 이미지 승인 완료 단기 프로젝트가 없습니다.</p>
       )}
       {options && options.length > 0 && (
-        <ul aria-label="이전 프로젝트 선택 목록" className="space-y-1">
+        <ul aria-label="이전 프로젝트 선택 목록" className={scrollList}>
           {options.map((option) => (
             <li key={option.projectId} className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/40 p-2.5">
               <span className="text-sm text-slate-300">{option.label}</span>
@@ -542,6 +542,90 @@ function ContinuityEditor({ projectId }: { projectId: string }) {
         </ul>
       )}
     </section>
+  );
+}
+
+/**
+ * The image library, browsed one folder at a time instead of poured out flat.
+ *
+ * 🔴 캡틴D: 「파일을 선택하고 안에 이미지도 개별적으로 선택 가능하게」. The search used to drop folders and
+ * return their contents loose, so picking one 분위기 reference meant scrolling 84 rows whose names were
+ * "1 Scene 1", "1 Scene 2" … — the folder each came from was the only thing that made those names mean
+ * anything, and it was the one thing not shown.
+ *
+ * Folders are navigation here, not a selection: opening one shows its images and you add **one image**. The
+ * folder itself is never added, because `atmosphereAssetIds`/`sceneReferenceAssets` hold single asset ids and
+ * nothing downstream expands a folder into its children — offering it would be a button that quietly means
+ * something else. (The cast picker above is the opposite case on purpose: a character folder is added whole,
+ * because the prompt genuinely uses every angle in it.)
+ *
+ * Thumbnails are the point. You cannot choose a reference image from a list of names.
+ */
+function AssetBrowser({ label, results, renderRow }: { label: string; results: Asset[] | null; renderRow: (asset: Asset) => ReactNode }) {
+  const [openFolderId, setOpenFolderId] = useState<string | null>(null);
+  if (!results) return null;
+
+  const folders = results.filter((asset) => asset.isFolder);
+  const openFolder = folders.find((folder) => folder.assetId === openFolderId) ?? null;
+  const images = openFolder
+    ? results.filter((asset) => !asset.isFolder && asset.parentFolderId === openFolder.assetId)
+    : results.filter((asset) => !asset.isFolder && !asset.parentFolderId);
+
+  function thumbnailOf(folder: Asset): Asset | undefined {
+    const children = results!.filter((asset) => asset.parentFolderId === folder.assetId);
+    return children.find((child) => child.assetId === folder.thumbnailAssetId && child.imageAvailable)
+      ?? children.find((child) => child.imageAvailable);
+  }
+
+  return (
+    <div className="space-y-2">
+      {openFolder ? (
+        <button type="button" className="text-xs text-slate-400 hover:text-slate-300" onClick={() => setOpenFolderId(null)}>
+          <span aria-hidden="true">←</span> 폴더 목록 · 지금 {openFolder.displayName}
+        </button>
+      ) : folders.length > 0 && (
+        <ul aria-label="이미지 폴더" className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+          {folders.map((folder) => {
+            const thumbnail = thumbnailOf(folder);
+            return (
+              <li key={folder.assetId}>
+                <button
+                  type="button"
+                  className="w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-1.5 text-left hover:border-violet-400/40"
+                  onClick={() => setOpenFolderId(folder.assetId)}
+                >
+                  {thumbnail?.contentUrl ? (
+                    <img src={thumbnail.contentUrl} alt="" className="h-16 w-full rounded object-cover" />
+                  ) : (
+                    <span className="flex h-16 w-full items-center justify-center rounded bg-slate-950/40 text-xs text-slate-500">이미지 없음</span>
+                  )}
+                  <span className="mt-1 block truncate text-xs text-slate-300">{folder.displayName}</span>
+                  <span className="block text-[11px] text-slate-500">이미지 {folder.childAssetIds.length}장</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {images.length > 0 && (
+        <ul aria-label={label} className={scrollList}>
+          {images.map((asset) => (
+            <li key={asset.assetId} className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-slate-900/60 p-2.5">
+              {asset.contentUrl
+                ? <img src={asset.contentUrl} alt="" className="h-10 w-10 flex-shrink-0 rounded object-cover" />
+                : <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded bg-slate-950/40 text-[10px] text-slate-500">없음</span>}
+              {renderRow(asset)}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Silent only when there is genuinely nothing: an empty folder says so rather than looking unloaded. */}
+      {images.length === 0 && (openFolder || folders.length === 0) && (
+        <p className="text-sm text-slate-400">{openFolder ? "이 폴더에 이미지가 없습니다." : "검색 결과가 없습니다."}</p>
+      )}
+    </div>
   );
 }
 
@@ -583,7 +667,12 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
     setSearchError(null);
     try {
       const response = await listAssets({ query: query || undefined });
-      setResults(response.assets.filter((asset) => !asset.isFolder && types.includes(asset.assetType)));
+      /* Folders are kept now. They used to be filtered out here, which meant the list showed every loose image
+         AND every image that lives inside a folder, flattened and ungrouped — 84 rows named "1 Scene 1",
+         "1 Scene 2" … with nothing saying which folder they came from. AssetBrowser puts the folders back as
+         one level above their contents; what actually gets added is still a single image's assetId, so the
+         contract is untouched. */
+      setResults(response.assets.filter((asset) => types.includes(asset.assetType)));
     } catch (caught) { setSearchError(toAssetDisplayError(caught)); }
   }
 
@@ -674,19 +763,18 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
               {atmosphereSearchError.message}
             </p>
           )}
-          {atmosphereResults && (
-            <ul aria-label="분위기 이미지 검색 결과" className="space-y-1">
-              {atmosphereResults.map((asset) => (
-                <li key={asset.assetId} className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-900/60 p-2.5">
-                  <span className="text-sm text-slate-300">{asset.displayName}</span>
-                  <button type="button" className={smallAddButton} disabled={saving || selectedIds.has(asset.assetId)} onClick={() => addAtmosphere(asset)}>
-                    추가
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {atmosphereResults && atmosphereResults.length === 0 && <p className="text-sm text-slate-400">검색 결과가 없습니다.</p>}
+          <AssetBrowser
+            label="분위기 이미지 검색 결과"
+            results={atmosphereResults}
+            renderRow={(asset) => (
+              <>
+                <span className="text-sm text-slate-300">{asset.displayName}</span>
+                <button type="button" className={smallAddButton} disabled={saving || selectedIds.has(asset.assetId)} onClick={() => addAtmosphere(asset)}>
+                  추가
+                </button>
+              </>
+            )}
+          />
         </div>
       )}
 
@@ -734,32 +822,31 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
               {sceneSearchError.message}
             </p>
           )}
-          {sceneResults && (
-            <ul aria-label="장면 참고 이미지 검색 결과" className="space-y-1">
-              {sceneResults.map((asset) => (
-                <li key={asset.assetId} className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-slate-900/60 p-3">
-                  <span className="text-sm text-slate-300">{asset.displayName}</span>
-                  <label className="flex items-center gap-1.5 text-xs text-slate-400">
-                    사용 목적
-                    <input
-                      className={inlineInput}
-                      value={scenePurposeDraft[asset.assetId] ?? ""}
-                      onChange={(event) => setScenePurposeDraft({ ...scenePurposeDraft, [asset.assetId]: event.target.value })}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className={smallAddButton}
-                    disabled={saving || selectedIds.has(asset.assetId) || !(scenePurposeDraft[asset.assetId] ?? "").trim()}
-                    onClick={() => addSceneReference(asset)}
-                  >
-                    추가
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {sceneResults && sceneResults.length === 0 && <p className="text-sm text-slate-400">검색 결과가 없습니다.</p>}
+          <AssetBrowser
+            label="장면 참고 이미지 검색 결과"
+            results={sceneResults}
+            renderRow={(asset) => (
+              <>
+                <span className="text-sm text-slate-300">{asset.displayName}</span>
+                <label className="flex items-center gap-1.5 text-xs text-slate-400">
+                  사용 목적
+                  <input
+                    className={inlineInput}
+                    value={scenePurposeDraft[asset.assetId] ?? ""}
+                    onChange={(event) => setScenePurposeDraft({ ...scenePurposeDraft, [asset.assetId]: event.target.value })}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className={smallAddButton}
+                  disabled={saving || selectedIds.has(asset.assetId) || !(scenePurposeDraft[asset.assetId] ?? "").trim()}
+                  onClick={() => addSceneReference(asset)}
+                >
+                  추가
+                </button>
+              </>
+            )}
+          />
         </div>
       )}
     </section>

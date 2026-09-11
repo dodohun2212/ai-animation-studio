@@ -35,3 +35,19 @@ export const primaryButton =
 /** A second, weaker call to action — an alternative to the primary, not an ordinary control. */
 export const secondaryButton =
   "rounded-full border border-violet-400/30 px-4 py-2 text-sm text-violet-300 transition-colors hover:bg-violet-500/10";
+
+/**
+ * A list whose length the user does not control — search results over the whole image library, or every
+ * project ever made.
+ *
+ * 🔴 캡틴D hit this while picking a 분위기 image: the search returns every stored asset, each as a full-width
+ * row, so twenty-odd images pushed the search box and every section below it off the screen. The list was not
+ * wrong about its contents; it just had no ceiling.
+ *
+ * `AssetLibraryScreen`'s 에셋 목록 already did this by hand and is deliberately left taller — that list is the
+ * whole screen's subject, not one field inside a form.
+ *
+ * Lists the user built themselves — the images they actually picked — are NOT capped. Their length is the
+ * user's own doing, and folding their own choices out of sight is a different and worse problem.
+ */
+export const scrollList = "max-h-64 space-y-1 overflow-y-auto pr-1";

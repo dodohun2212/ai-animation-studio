@@ -5,7 +5,7 @@ import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
 import { GeneratedImagesSection } from "./GeneratedImagesSection.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
-import { cardSection, primaryButton } from "./ui/surfaces.js";
+import { cardSection, primaryButton, scrollList } from "./ui/surfaces.js";
 
 interface Props { onBack: () => void; initialQuery?: string }
 /**
@@ -1167,7 +1167,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                   </p>
                 )}
                 {folderLinkResults && (
-                  <ul aria-label="추가 가능한 이미지 검색 결과" className="space-y-1">
+                  <ul aria-label="추가 가능한 이미지 검색 결과" className={scrollList}>
                     {folderLinkResults
                       .filter((asset) => !asset.isFolder && asset.assetId !== selected.asset.assetId && !selected.asset.childAssetIds.includes(asset.assetId))
                       .map((asset) => (
