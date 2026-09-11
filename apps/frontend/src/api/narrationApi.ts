@@ -8,10 +8,12 @@ import {
   type RegenerateNarrationRequest,
   type RegenerateNarrationResponse,
   type SceneNumber,
+  type OpenAiErrorCategory,
   type StartNarrationGenerationRequest,
   type StartNarrationGenerationResponse,
 } from "@ai-animation-studio/shared";
 import { BUDGET_LEDGER_UNREADABLE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "./budgetLedgerError.js";
+import { narrationFailureMessage } from "../utils/sceneFailureAdvice.js";
 import { isBudgetPreview, isSceneStaleness } from "./contractGuards.js";
 import { SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
 
@@ -59,8 +61,13 @@ const SAFE_ERRORS: Record<string, string> = {
  * fallback 은 「잠시 후 다시 시도」를 권합니다 — 음성은 호출마다 돈이 나가므로 그 권유는 틀린 방향입니다.
  * `unknown` · `empty_response` · `invalid_response` 는 일부러 fallback 에 남깁니다(그 세 개는 「잠시 후
  * 다시」가 실제로 맞는 유일한 조언입니다).
+ *
+ * 🔴 `Partial<Record<OpenAiErrorCategory, string>>`, not `Record<string, string>`. That is what makes
+ * `server_error` — the key that sat here never matching anything — a compile error rather than a silent miss.
+ * `Partial` because `unknown` · `empty_response` · `invalid_response` are deliberately left to the fallback,
+ * which is the only honest advice for them; a full `Record` would demand a sentence this module cannot write.
  */
-const PROVIDER_ERROR_CATEGORY_MESSAGES: Record<string, string> = {
+const PROVIDER_ERROR_CATEGORY_MESSAGES: Partial<Record<OpenAiErrorCategory, string>> = {
   authentication: "OpenAI 인증에 실패했습니다. API 설정에서 키를 다시 확인해 주세요.",
   quota_or_permission:
     "OpenAI 사용 한도 또는 프로젝트 권한 문제로 요청이 거부되었습니다. OpenAI 계정 상태를 확인해 주세요 — 계정을 고치기 전에는 다시 눌러도 같은 결과입니다.",
@@ -83,10 +90,11 @@ export function toNarrationDisplayError(error: unknown): { code: string; message
   if (!(error instanceof NarrationApiError)) return UNKNOWN;
   if (error.code === "NARRATION_PROVIDER_ERROR") {
     const category = typeof error.details?.category === "string" ? error.details.category : "";
-    return {
-      code: error.code,
-      message: PROVIDER_ERROR_CATEGORY_MESSAGES[category] ?? PROVIDER_ERROR_FALLBACK,
-    };
+    const categoryMessage = PROVIDER_ERROR_CATEGORY_MESSAGES[category as OpenAiErrorCategory] ?? PROVIDER_ERROR_FALLBACK;
+    /* The category names what OpenAI said; the details name where the run stopped, what already exists, and what
+       pressing the button again would do. Composed by the same function the image screens use, so the two
+       pipelines cannot drift into saying it differently (docs/00_NOW.md ②-3). */
+    return { code: error.code, message: narrationFailureMessage(categoryMessage, error.details) };
   }
   if (Object.prototype.hasOwnProperty.call(SAFE_ERRORS, error.code)) {
     return { code: error.code, message: SAFE_ERRORS[error.code]! };

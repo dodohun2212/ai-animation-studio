@@ -649,9 +649,9 @@ describe("longProjectsApi", () => {
       "context_length_exceeded",
     ];
 
-    const displayed = (category: string) =>
+    const displayed = (category: string, rest: Record<string, unknown> = {}) =>
       toLongProjectDisplayError(
-        new LongProjectsApiError("LONG_EPISODE_NARRATION_PROVIDER_ERROR", "raw backend detail", { category }),
+        new LongProjectsApiError("LONG_EPISODE_NARRATION_PROVIDER_ERROR", "raw backend detail", { category, ...rest }),
       ).message;
 
     it("has its own sentence for every category the backend can actually send", () => {
@@ -660,6 +660,39 @@ describe("longProjectsApi", () => {
         expect(displayed(category), category).not.toBe(fallback);
         expect(displayed(category), category).not.toContain("raw");
       }
+    });
+
+    /**
+     * 🔴 759 — 같은 함수를 쓰는 두 파이프라인은 **연결 짝이 각각** 필요합니다. 단기 쪽 짝이 초록이어도
+     * 이 모듈에서 호출을 빼면 에피소드 화면만 조용히 옛 문장으로 돌아갑니다. 그래서 같은 사실을 여기서
+     * 다시 묻습니다 — 중복이 아니라, 묻는 대상이 다릅니다.
+     */
+    it("says where the Episode's narration run stopped, through the shared composer", () => {
+      const message = displayed("server", { sceneNumber: 7, scope: "run", billedOnFailure: true });
+
+      expect(message).toContain("7번 장면에서 멈췄습니다");
+      expect(message).toContain("음성은 저장돼 있어");
+      expect(message).toContain("7번부터 이어서");
+      expect(message).toContain("OpenAI 서버 오류");
+      expect(message).toContain("예산에는 쓴 것으로");
+      expect(message).not.toContain("raw backend detail");
+    });
+
+    /** 763→765 가 이미지에서 고친 거짓말 — 에피소드는 일괄과 한 장면 재생성이 같은 코드라 여기서 제일 위험합니다. */
+    it("never promises a resume when one Episode scene's narration redo failed", () => {
+      const message = displayed("server", { sceneNumber: 5, scope: "scene", billedOnFailure: true });
+
+      expect(message).toContain("5번 장면 음성을 다시 만들지 못했습니다");
+      expect(message).not.toContain("이어서");
+    });
+
+    /** 칸이 없던 시절의 응답은 정확히 예전처럼 읽혀야 합니다 — 없는 장면 번호를 지어내지 않습니다. */
+    it("reads exactly as before when the response carries no scene detail", () => {
+      const message = displayed("server", {});
+
+      expect(message).toContain("OpenAI 서버 오류");
+      expect(message).not.toContain("장면");
+      expect(message).not.toContain("예산");
     });
 
     it("never tells someone to retry a narration failure that retrying cannot fix", () => {

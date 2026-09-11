@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { imageFailureMessage, sceneRemedyAdvice } from "./sceneFailureAdvice.js";
+import { narrationFailureMessage, imageFailureMessage, sceneRemedyAdvice } from "./sceneFailureAdvice.js";
 
 const CATEGORY = "OpenAI API 키 인증에 실패했습니다. API 설정 화면에서 키가 올바른지 확인해 주세요.";
 
@@ -96,5 +96,37 @@ describe("imageFailureMessage", () => {
   // 「계상되지 않았다」 is not the same as saying nothing, and only the true half may be stated.
   it("says nothing about the budget when the failure was not counted", () => {
     expect(imageFailureMessage(CATEGORY, { sceneNumber: 2, scope: "run", billedOnFailure: false })).not.toContain("예산");
+  });
+});
+
+/**
+ * 🔴 같은 조건, 다른 명사. `imageFailureMessage` 와 한 몸통을 쓰는지를 보는 짝입니다 — 두 벌로 갈라지면
+ * 762·763·766 에서 한 번씩 틀렸던 조건들을 **두 번씩** 맞춰야 합니다.
+ */
+describe("narrationFailureMessage", () => {
+  it("says it in the narration's own words, with the same conditions", () => {
+    const message = narrationFailureMessage("OpenAI 서버 오류입니다.", {
+      category: "server", sceneNumber: 4, scope: "run", billedOnFailure: true,
+    });
+
+    expect(message).toContain("4번 장면에서 멈췄습니다");
+    // 「그림」이 아니라 「음성」 — 명사만 다릅니다.
+    expect(message).toContain("음성은 저장돼 있어");
+    expect(message).not.toContain("그림");
+    expect(message).toContain("OpenAI 서버 오류입니다.");
+    expect(message).toContain("예산에는 쓴 것으로");
+  });
+
+  it("drops the scene sentence for a scope it does not recognise, exactly as the image side does", () => {
+    const message = narrationFailureMessage("분류 문장.", { sceneNumber: 4, scope: "somewhere_new", billedOnFailure: false });
+
+    expect(message).toBe("분류 문장.");
+  });
+
+  it("never promises a resume for one scene's redo", () => {
+    const message = narrationFailureMessage("분류 문장.", { sceneNumber: 5, scope: "scene" });
+
+    expect(message).toContain("5번 장면 음성을 다시 만들지 못했습니다");
+    expect(message).not.toContain("이어서");
   });
 });

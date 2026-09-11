@@ -102,8 +102,9 @@ import {
   type UpdateLongProjectSettingsResponse,
   type VideoModel,
   type VideoVersionSummary,
+  type OpenAiErrorCategory,
 } from "@ai-animation-studio/shared";
-import { imageFailureMessage } from "../utils/sceneFailureAdvice.js";
+import { imageFailureMessage, narrationFailureMessage } from "../utils/sceneFailureAdvice.js";
 import { BUDGET_LEDGER_UNREADABLE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "./budgetLedgerError.js";
 import { isSceneFailureMap } from "./contractGuards.js";
 import { SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
@@ -291,8 +292,12 @@ const LONG_EPISODE_NARRATION_ERRORS: Record<string, string> = {
  * 이름이고(`classifyOpenAiHttpError` 가 내는 것은 `server`), 그래서 OpenAI 5xx 는 양쪽 파이프라인 모두에서
  * fallback 으로 떨어졌습니다. `quota_or_permission` · `safety_policy` 도 빠져 있었고, 둘 다 다시 눌러도
  * 안 되는 실패인데 fallback 은 다시 누르라고 합니다 — 음성은 호출마다 과금됩니다. (Round 769/770)
+ *
+ * 🔴 `Partial<Record<OpenAiErrorCategory, string>>` for the reason narrationApi's twin carries: keyed on
+ * `string`, `server_error` compiled fine here too and matched nothing. `Partial` keeps `unknown` ·
+ * `empty_response` · `invalid_response` on the fallback, which is the one honest answer for them.
  */
-const LONG_EPISODE_NARRATION_PROVIDER_MESSAGES: Record<string, string> = {
+const LONG_EPISODE_NARRATION_PROVIDER_MESSAGES: Partial<Record<OpenAiErrorCategory, string>> = {
   authentication: "OpenAI 인증에 실패했습니다. API 설정에서 키를 다시 확인해 주세요.",
   quota_or_permission:
     "OpenAI 사용 한도 또는 프로젝트 권한 문제로 요청이 거부되었습니다. OpenAI 계정 상태를 확인해 주세요 — 계정을 고치기 전에는 다시 눌러도 같은 결과입니다.",
@@ -390,7 +395,10 @@ export function toLongProjectDisplayError(error: unknown): { code: string; messa
   if (Object.prototype.hasOwnProperty.call(LONG_EPISODE_NARRATION_ERRORS, error.code)) return { code: error.code, message: LONG_EPISODE_NARRATION_ERRORS[error.code]! };
   if (error.code === "LONG_EPISODE_NARRATION_PROVIDER_ERROR") {
     const category = typeof error.details?.category === "string" ? error.details.category : "";
-    return { code: error.code, message: LONG_EPISODE_NARRATION_PROVIDER_MESSAGES[category] ?? LONG_EPISODE_NARRATION_PROVIDER_FALLBACK };
+    const categoryMessage = LONG_EPISODE_NARRATION_PROVIDER_MESSAGES[category as OpenAiErrorCategory] ?? LONG_EPISODE_NARRATION_PROVIDER_FALLBACK;
+    /* Its own call, not a shared one lifted out: 759 — one function wired into one pipeline leaves the other
+       saying the old sentence with every test still green. This module needs the call, and its own pair. */
+    return { code: error.code, message: narrationFailureMessage(categoryMessage, error.details) };
   }
   if (error.code === NETWORK.code) return NETWORK;
   if (error.code === MALFORMED.code) return MALFORMED;

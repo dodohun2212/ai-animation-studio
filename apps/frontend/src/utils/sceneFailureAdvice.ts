@@ -48,7 +48,45 @@ export function sceneRemedyAdvice(remedy: SceneFailureRemedy | undefined): strin
  * image call at its estimate whether it succeeded or not; what OpenAI did with a refused call is not visible to
  * this app, and saying otherwise would be a claim we cannot support.
  */
-export function imageFailureMessage(categoryMessage: string, details: Record<string, unknown> | undefined): string {
+interface SceneFailureSentences {
+  /** A multi-scene run that stopped here — what survived, and what pressing the button again does. */
+  run: (scene: number) => string;
+  /** One scene redone on its own — nothing continues, nothing else moved. */
+  scene: (scene: number) => string;
+}
+
+const IMAGE_SENTENCES: SceneFailureSentences = {
+  run: (scene) => `${scene}번 장면에서 멈췄습니다. 그 앞 장면 그림은 저장돼 있어, 다시 만들면 ${scene}번부터 이어서 만듭니다.`,
+  scene: (scene) => `${scene}번 장면을 다시 그리지 못했습니다. 다른 장면은 그대로입니다.`,
+};
+
+/**
+ * The same two sentences for narration, and only the noun differs — which is the whole argument for sharing
+ * everything above them rather than writing a second composer.
+ *
+ * 🔴 「음성은 저장돼 있다」 is the half that pays for this. A narration run is one paid TTS call per scene, so a
+ * person who cannot see that scenes 1–6 already exist presses 「처음부터」 and buys those six again. That is the
+ * same shape ②-2 closed for images, on a pipeline that bills per scene rather than per run.
+ */
+const NARRATION_SENTENCES: SceneFailureSentences = {
+  run: (scene) => `${scene}번 장면에서 멈췄습니다. 그 앞 장면 음성은 저장돼 있어, 다시 만들면 ${scene}번부터 이어서 만듭니다.`,
+  scene: (scene) => `${scene}번 장면 음성을 다시 만들지 못했습니다. 다른 장면은 그대로입니다.`,
+};
+
+/**
+ * One composer, two vocabularies.
+ *
+ * 🔴 Everything that can go wrong here is in the conditions, not in the wording: which sentence `scope` picks,
+ * whether `remedy` is a value the contract actually publishes, whether a missing field turns into a claim. Those
+ * were each got wrong once already (762 cast instead of checked · 763 promised a resume for a redraw · 766 left
+ * five fixtures behind), and every one of them would have had to be got right twice if narration had its own
+ * copy. The nouns are the only part that differs, so the nouns are the only part that is passed in.
+ */
+function sceneFailureMessage(
+  categoryMessage: string,
+  details: Record<string, unknown> | undefined,
+  sentences: SceneFailureSentences,
+): string {
   const scene = typeof details?.sceneNumber === "number" ? details.sceneNumber : undefined;
   /* 🔴 Checked against the contract's list, not cast from any string. A value we do not recognise is not a
      remedy — and passing it through to `sceneRemedyAdvice` would land on its `default`, which is the hedged
@@ -72,9 +110,7 @@ export function imageFailureMessage(categoryMessage: string, details: Record<str
     ? (details!.scope as ImageFailureScope)
     : undefined;
   if (scene !== undefined && isSceneNumber(scene) && scope) {
-    parts.push(scope === "run"
-      ? `${scene}번 장면에서 멈췄습니다. 그 앞 장면 그림은 저장돼 있어, 다시 만들면 ${scene}번부터 이어서 만듭니다.`
-      : `${scene}번 장면을 다시 그리지 못했습니다. 다른 장면은 그대로입니다.`);
+    parts.push(scope === "run" ? sentences.run(scene) : sentences.scene(scene));
   }
   parts.push(categoryMessage);
   if (remedy) parts.push(sceneRemedyAdvice(remedy));
@@ -82,4 +118,14 @@ export function imageFailureMessage(categoryMessage: string, details: Record<str
     parts.push("실패한 이 장면도 이번 달 예산에는 쓴 것으로 계상됐습니다.");
   }
   return parts.join(" ");
+}
+
+/** The image pipelines' sentence — short project and Long Episode alike. */
+export function imageFailureMessage(categoryMessage: string, details: Record<string, unknown> | undefined): string {
+  return sceneFailureMessage(categoryMessage, details, IMAGE_SENTENCES);
+}
+
+/** The narration pipelines' sentence. Same conditions, same guarantees; 「그림」 becomes 「음성」. */
+export function narrationFailureMessage(categoryMessage: string, details: Record<string, unknown> | undefined): string {
+  return sceneFailureMessage(categoryMessage, details, NARRATION_SENTENCES);
 }
