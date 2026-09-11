@@ -148,6 +148,7 @@ export const defaultBgmVolume = (mode: string): number => (mode === "bgm" ? 1 : 
  */
 export const VIDEO_MODELS = ["gen4_turbo", "gen4_5", "h3_max_480p", "h3_max_768p", "wan3_480p", "wan3_720p", "wan3_1080p", "happyhorse_720p", "happyhorse_1080p",
   "seedance2_720p", "seedance2_1080p", "seedance2_fast", "seedance2_mini", "seedance2_5_480p", "seedance2_5_720p", "seedance2_5_1080p",
+  "gemini_omni_flash", "grok_imagine_480p", "grok_imagine_720p", "grok_imagine_1080p",
 ] as const;
 export type VideoModel = (typeof VIDEO_MODELS)[number];
 
@@ -239,6 +240,11 @@ export type VideoFrameShape = (typeof VIDEO_FRAME_SHAPES)[number];
  *   per generation (64 and 80 credits, `minimumChargeUsd`) that 5 s already clears; the quote carries it below that.
  *   Seedance 2.0 at 4K (150 credits/s) is left out: the merge renders 1080×1920, so it would buy pixels that are
  *   scaled away.
+ *   gemini_omni_flash takes 3–10 s, a first frame only and a `ratio` of 720:1280 or 1280:720; grok_imagine_1_5
+ *   takes 1–15 s, a first frame and a `resolution` of 480p/720p/1080p, and "output aspect ratio follows the input
+ *   image" (Runway's OpenAPI; xAI's own docs say the same). Both bill 1 credit for the first-frame image on top
+ *   of the seconds ("plus 1 credit for the first-frame image" / "plus 1 credit per image ... including an
+ *   image-to-video start frame") — `perGenerationUsd: 0.01`, since this app sends exactly one image.
  *
  * `ratios: []` is the honest answer for H3 Max, WAN 3.0 and HappyHorse, not missing data: none is told a frame
  * shape. WAN's and HappyHorse's follow the first frame by their own documentation; H3's is NOT confirmed. Our pictures are 2:3 (or 3:2),
@@ -261,6 +267,10 @@ export const VIDEO_MODEL_OPTIONS: readonly VideoModelOption[] = [
   { id: "seedance2_mini", label: "Seedance 2.0 Mini (720p)", pricePerSecondUsd: 0.16, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.64 },
   { id: "seedance2_5_480p", label: "Seedance 2.5 (480p)", pricePerSecondUsd: 0.2, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.8 },
   { id: "seedance2_5_720p", label: "Seedance 2.5 (720p)", pricePerSecondUsd: 0.3, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.8 },
+  { id: "gemini_omni_flash", label: "Gemini Omni Flash", pricePerSecondUsd: 0.1, perGenerationUsd: 0.01, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 10, acceptsLastFrame: false, frameShape: "requested" },
+  { id: "grok_imagine_480p", label: "Grok Imagine 1.5 (480p)", pricePerSecondUsd: 0.1, perGenerationUsd: 0.01, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "follows_first_frame" },
+  { id: "grok_imagine_720p", label: "Grok Imagine 1.5 (720p)", pricePerSecondUsd: 0.16, perGenerationUsd: 0.01, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "follows_first_frame" },
+  { id: "grok_imagine_1080p", label: "Grok Imagine 1.5 (1080p)", pricePerSecondUsd: 0.29, perGenerationUsd: 0.01, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "follows_first_frame" },
   { id: "seedance2_5_1080p", label: "Seedance 2.5 (1080p)", pricePerSecondUsd: 0.68, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.8 },
 ];
 

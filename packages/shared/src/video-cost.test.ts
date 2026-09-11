@@ -83,6 +83,12 @@ describe("pricing a model the contract has not heard of", () => {
     expect(videoSceneEstimatedCostUsd(3, "seedance2_5_480p")).toBe(0.8);
   });
 
+  it("quotes the catalogue's per-scene charges once: Gemini Omni Flash and Grok bill the first-frame image", () => {
+    expect(videoSceneEstimatedCostUsd(5, "gemini_omni_flash"), "10 credits/s x 5 + 1 credit").toBe(0.51);
+    expect(videoSceneEstimatedCostUsd(10, "gemini_omni_flash")).toBe(1.01);
+    expect(videoSceneEstimatedCostUsd(5, "grok_imagine_1080p"), "29 credits/s x 5 + 1 credit").toBe(1.46);
+  });
+
   it("refuses a model name it does not list, instead of quoting the cheapest model", () => {
     expect(() => videoSceneEstimatedCostUsd(5, "gen4.5")).toThrow();
     expect(() => videoModelOption("seedance")).toThrow();

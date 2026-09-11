@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_VIDEO_MODEL, VIDEO_MODEL_OPTIONS, type VideoModel, type VideoModelSetting } from "@ai-animation-studio/shared";
+import { DEFAULT_VIDEO_MODEL, VIDEO_MODEL_OPTIONS, videoSceneEstimatedCostUsd, type VideoModel, type VideoModelSetting } from "@ai-animation-studio/shared";
 
 import { jsonResponse } from "../api/testUtils.js";
 import { scrollList } from "./ui/surfaces.js";
@@ -182,13 +182,16 @@ describe("VideoModelCard", () => {
 
       const priceLines = VIDEO_MODEL_OPTIONS.map((option) => {
         const row = screen.getByTestId(`video-model-option-${option.id}`).textContent ?? "";
-        const line = `1초당 $${option.pricePerSecondUsd.toFixed(2)} · 5초 장면 $${(option.pricePerSecondUsd * 5).toFixed(2)} · 10초 장면 $${(option.pricePerSecondUsd * 10).toFixed(2)}`;
+        // The scene prices from the contract's own quote, not rate × seconds: since Gemini and Grok the two differ
+        // by a per-scene charge, and a test doing its own arithmetic would hold the card to the wrong number.
+        const line = `1초당 $${option.pricePerSecondUsd.toFixed(2)} · 5초 장면 $${videoSceneEstimatedCostUsd(5, option).toFixed(2)} · 10초 장면 $${videoSceneEstimatedCostUsd(10, option).toFixed(2)}`;
         expect(row, option.id).toContain(line);
         return line;
       });
 
-      const distinctRates = new Set(VIDEO_MODEL_OPTIONS.map((option) => option.pricePerSecondUsd));
-      expect(new Set(priceLines).size).toBe(distinctRates.size);
+      // Models that price alike may read alike; models that price differently must not.
+      const distinctPrices = new Set(VIDEO_MODEL_OPTIONS.map((option) => `${option.pricePerSecondUsd}|${videoSceneEstimatedCostUsd(5, option)}|${videoSceneEstimatedCostUsd(10, option)}`));
+      expect(new Set(priceLines).size).toBe(distinctPrices.size);
     });
 
     /**

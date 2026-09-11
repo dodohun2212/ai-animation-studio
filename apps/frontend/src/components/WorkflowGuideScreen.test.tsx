@@ -158,10 +158,10 @@ describe("WorkflowGuideScreen", () => {
       expect(videoTotal()).toContain((6 * videoSceneEstimatedCostUsd(5, option)).toFixed(2));
       return videoTotal();
     });
-    // Models priced differently must not read the same on screen. Equal rates may legitimately coincide, so this
-    // compares the distinct rates rather than demanding every row differ.
-    const distinctRates = new Set(VIDEO_MODEL_OPTIONS.map((option) => option.pricePerSecondUsd));
-    expect(new Set(totals).size).toBe(distinctRates.size);
+    // Models priced differently must not read the same on screen. Equal prices may legitimately coincide, so this
+    // compares the distinct quotes (the contract's, per-scene charges included) rather than demanding every row differ.
+    const distinctQuotes = new Set(VIDEO_MODEL_OPTIONS.map((option) => videoSceneEstimatedCostUsd(5, option)));
+    expect(new Set(totals).size).toBe(distinctQuotes.size);
   });
 
   it("says the picked model is for the calculation only, and points at where the real choice lives", () => {

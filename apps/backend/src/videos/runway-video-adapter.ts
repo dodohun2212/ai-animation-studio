@@ -97,7 +97,18 @@ const REQUEST_BODY: Record<VideoModel, (parts: RequestParts) => ImageToVideoCrea
   seedance2_5_480p: (parts) => ({ model: "seedance2_5", ...seedanceParts(parts, { "720:1280": "480:854", "1280:720": "854:480" }) }) satisfies ImageToVideoCreateParams.Seedance2_5,
   seedance2_5_720p: (parts) => ({ model: "seedance2_5", ...seedanceParts(parts, SEEDANCE_720P) }) satisfies ImageToVideoCreateParams.Seedance2_5,
   seedance2_5_1080p: (parts) => ({ model: "seedance2_5", ...seedanceParts(parts, { "720:1280": "1080:1920", "1280:720": "1920:1080" }) }) satisfies ImageToVideoCreateParams.Seedance2_5,
+  // "An image to use as the first frame ... Gemini Omni Flash only supports a first frame" — a bare string is it.
+  gemini_omni_flash: ({ promptImage, promptText, ratio, duration }) =>
+    ({ model: "gemini_omni_flash", promptImage, promptText, ratio, duration }) satisfies ImageToVideoCreateParams.GeminiOmniFlash,
+  grok_imagine_480p: (parts) => grokBody(parts, "480p"),
+  grok_imagine_720p: (parts) => grokBody(parts, "720p"),
+  grok_imagine_1080p: (parts) => grokBody(parts, "1080p"),
 };
+
+/** The picture as an explicit first frame, as for HappyHorse: Grok takes the same shape, and naming it leaves nothing to infer. */
+function grokBody({ promptImage, promptText, duration }: RequestParts, resolution: "480p" | "720p" | "1080p"): ImageToVideoCreateParams {
+  return { model: "grok_imagine_1_5", promptImage: [{ position: "first", uri: promptImage }], promptText, duration, resolution } satisfies ImageToVideoCreateParams.GrokImagine1_5;
+}
 
 const SEEDANCE_720P = { "720:1280": "720:1280", "1280:720": "1280:720" } as const;
 

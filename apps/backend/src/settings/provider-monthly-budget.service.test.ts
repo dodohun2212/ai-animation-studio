@@ -157,7 +157,9 @@ describe("which video model this computer uses", () => {
    */
   it("prices what it offers, so a picker can show what changes", async () => {
     for (const option of (await service.videoModelSetting()).options) {
-      expect(videoSceneEstimatedCostUsd(5, option.id), `${option.id} at five seconds`).toBeCloseTo(option.pricePerSecondUsd * 5, 10);
+      // Seconds × rate, bounded below by the minimum, plus the per-scene charge once — from the option's own fields.
+      const expected = Math.max(option.pricePerSecondUsd * 5, option.minimumChargeUsd ?? 0) + (option.perGenerationUsd ?? 0);
+      expect(videoSceneEstimatedCostUsd(5, option.id), `${option.id} at five seconds`).toBeCloseTo(expected, 10);
     }
   });
 });

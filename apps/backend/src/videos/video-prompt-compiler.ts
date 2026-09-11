@@ -81,6 +81,16 @@ const DIALECT: Record<VideoModel, VideoPromptDialect> = {
   seedance2_5_480p: "runway_gen4",
   seedance2_5_720p: "runway_gen4",
   seedance2_5_1080p: "runway_gen4",
+  // Gemini Omni Flash (Google): its Gemini API guide (ai.google.dev, read 2026-09-12) says to avoid re-describing
+  // the input image and to give "specific motion descriptions ... of the camera movement, subject motion, and
+  // environmental effects" — this grammar's lines. It also reads plain exclusions ("No dialogue"), so the shared
+  // no-text rule is already in its terms.
+  gemini_omni_flash: "runway_gen4",
+  // Grok Imagine 1.5 (xAI): its video docs (docs.x.ai, read 2026-09-12) give the output's shape (the input
+  // image's) and the audio default, and no prompt-writing guidance — nothing to follow and nothing this contradicts.
+  grok_imagine_480p: "runway_gen4",
+  grok_imagine_720p: "runway_gen4",
+  grok_imagine_1080p: "runway_gen4",
 };
 
 /** Which grammar a model reads — exported for the test that holds the staleness recompute's assumption. */
