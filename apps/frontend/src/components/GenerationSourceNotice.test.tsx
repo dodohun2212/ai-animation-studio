@@ -18,6 +18,24 @@ describe("GenerationSourceNotice", () => {
     expect(screen.queryByTestId("source")).toBeNull();
   });
 
+  // The badge shares a line with the scene's own status chip on both image review screens. Whatever tone it
+  // takes, it must not take the one that already means 완료 there — two green pills a finger-width apart,
+  // saying different things, is how a reviewer learns to stop reading either of them.
+  it("never wears the done-color, because where it is drawn that color already means 확정됨", () => {
+    const tones: string[] = [];
+    const { rerender } = render(<GenerationSourceBadge source="paid_provider" testId="source" />);
+    tones.push(screen.getByTestId("source").getAttribute("data-tone") ?? "");
+
+    rerender(<GenerationSourceBadge source="local_fake_no_provider" testId="source" />);
+    tones.push(screen.getByTestId("source").getAttribute("data-tone") ?? "");
+
+    rerender(<GenerationSourceBadge source="unknown_legacy" testId="source" />);
+    tones.push(screen.getByTestId("source").getAttribute("data-tone") ?? "");
+
+    expect(tones).toEqual(["neutral", "progress", "info"]);
+    expect(tones).not.toContain("success");
+  });
+
   it("warns only when a final video cannot safely be treated as paid-provider output", () => {
     const { rerender } = render(<FinalVideoGenerationSourceNotice source="local_fake_no_provider" testId="notice" />);
     expect(screen.getByTestId("notice")).toHaveTextContent("Instagram 게시에는 사용할 수 없습니다");
