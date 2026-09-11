@@ -316,6 +316,31 @@ describe("App", () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/settings/providers"))).toBe(false);
   });
 
+  it("reaches the remaining independent nav screens without opening a provider route", async () => {
+    const fetchMock = vi.fn<FakeFetch>(async (input) => {
+      const requestUrl = String(input);
+      if (requestUrl === "/projects") return jsonResponse(200, { projects: [] });
+      if (requestUrl === "/assets") return jsonResponse(200, { assets: [] });
+      if (requestUrl === "/projects/archived") return jsonResponse(200, { projects: [] });
+      if (requestUrl === "/long-projects/archived") return jsonResponse(200, { projects: [] });
+      throw new Error(`Unexpected fetch call in test: ${requestUrl}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    await screen.findByText("아직 생성된 프로젝트가 없습니다.");
+    fetchMock.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "명언 카드" }));
+    await screen.findByTestId("photo-card-empty");
+    fireEvent.click(screen.getByRole("button", { name: "보관한 프로젝트" }));
+    await screen.findByRole("heading", { name: "보관한 프로젝트" });
+    fireEvent.click(screen.getByRole("button", { name: "작업 워크플로우" }));
+    await screen.findByTestId("workflow-guide-summary");
+
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/settings/providers"))).toBe(false);
+  });
+
   it("lights the pipeline from the project's own progress, and navigating does not change it", async () => {
     // The filled dots used to come from the screen being viewed, so clicking a step visually "un-finished"
     // everything after it — the list looked like progress but answered a different question.
