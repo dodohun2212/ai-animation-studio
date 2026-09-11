@@ -350,7 +350,7 @@ describe("real OpenAI image regeneration", () => {
     // Sends the composition-assembled prompt (Round 28), never the narrated description with its dialogue —
     // plus a text description of the same confirmed mapping whose image bytes are attached above.
     const prompt = (init.body as FormData).get("prompt");
-    expect(prompt).toBe("Scene: stands at the 3 gate, facing it\nReferences:\n- review Scene 1 (character)\n  설명: scene 1");
+    expect(prompt).toBe("Scene: stands at the 3 gate, facing it\nReferences:\n- review Scene 1 (character)\n  역할: 등장인물 — 이 인물의 얼굴·체형·머리·의상을 그대로 유지해 그린다.\n  설명: scene 1");
     expect(prompt).not.toContain("says");
     const raw = JSON.parse(await fs.readFile(path.join(projectsRoot, "review", "generated_image_reviews.json"), "utf8")) as Array<{ scene_number: number }>;
     expect(raw.find((item) => item.scene_number === 3)).toBeTruthy();
@@ -402,7 +402,7 @@ describe("real OpenAI image regeneration", () => {
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const prompt = (init.body as FormData).get("prompt");
-    expect(prompt).toBe("Scene: stands at the 3 gate, facing it\nReferences:\n- review Scene 1 (character)\n  설명: scene 1\n더 어둡게");
+    expect(prompt).toBe("Scene: stands at the 3 gate, facing it\nReferences:\n- review Scene 1 (character)\n  역할: 등장인물 — 이 인물의 얼굴·체형·머리·의상을 그대로 유지해 그린다.\n  설명: scene 1\n더 어둡게");
     // The persisted record keeps the plain scene prompt (not the one-off instruction), so a later
     // staleness check still compares like-for-like against a freshly recomputed plain prompt.
     const project = JSON.parse(await fs.readFile(path.join(projectsRoot, "review", "project.json"), "utf8")) as { image_generation_records: Array<{ prompt: string }> };
@@ -417,7 +417,7 @@ describe("real OpenAI image regeneration", () => {
     await service.regenerate("review", "3", { approved: true, additionalInstruction: "   " });
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect((init.body as FormData).get("prompt")).toBe("Scene: stands at the 3 gate, facing it\nReferences:\n- review Scene 1 (character)\n  설명: scene 1");
+    expect((init.body as FormData).get("prompt")).toBe("Scene: stands at the 3 gate, facing it\nReferences:\n- review Scene 1 (character)\n  역할: 등장인물 — 이 인물의 얼굴·체형·머리·의상을 그대로 유지해 그린다.\n  설명: scene 1");
   });
 
   it("rejects a non-string additionalInstruction", async () => {

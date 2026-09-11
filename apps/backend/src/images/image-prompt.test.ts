@@ -114,3 +114,47 @@ describe("a picture made by the older builder is not blamed on its scene", () =>
     expect(imagePromptDrift(imagePromptFor(scene, "Style: ink"), scene, "Style: wash")).toBe("style");
   });
 });
+
+/**
+ * The records staleness actually reads, not the ones a test finds convenient to build.
+ *
+ * 🔴 This morning's compatibility rule was tested against a record built with `imagePromptFor` — no trailing
+ * rule. The first generation writes the *request* into `image_generation_records[].prompt`, and the request
+ * ends with NO_LEGIBLE_TEXT_RULE. So the test passed while the rule it protected never matched a single real
+ * record: measured on 꽃말_구기자 (generated after that fix, nothing edited), all five pictures reported
+ * 「장면 내용이 바뀐 뒤로」 and the only differing line was the rule. Every record below is built the way the
+ * code that writes it builds it.
+ */
+describe("a recorded prompt is compared as the scene it describes, not as the request it was sent in", () => {
+  const withReference = { ...scene, focus_subject: "the gate" };
+  const references = "References:\n- 주인공 (character)\n  설명: 은발 단발";
+
+  it("reads a first-generation record — which is the request, rule and all — as current", () => {
+    const asWritten = imagePromptForRequest(withReference, "Style: ink", references);
+
+    expect(asWritten.endsWith(NO_LEGIBLE_TEXT_RULE), "the record really does carry the rule").toBe(true);
+    expect(imagePromptDrift(asWritten, withReference, "Style: ink", references)).toBe("current");
+  });
+
+  it("reads a record from before the role lines as current against today's builder, which adds them", () => {
+    const withRole = "References:\n- 주인공 (character)\n  역할: 등장인물 — 이 인물의 얼굴·체형·머리·의상을 그대로 유지해 그린다.\n  설명: 은발 단발";
+    const recordedBeforeRoles = imagePromptForRequest(withReference, "", references);
+
+    expect(imagePromptDrift(recordedBeforeRoles, withReference, "", withRole)).toBe("current");
+  });
+
+  it("still reads the pre-start_motion record as current when it ends with the rule, which is how it was written", () => {
+    const legacy = imagePromptForRequest(withReference, "", references).replace(
+      "Scene: stands still at the door, facing it", "Scene: walks toward the gate");
+
+    expect(imagePromptDrift(legacy, withReference, "", references)).toBe("current");
+  });
+
+  it("does not let the rule or the role lines hide a real edit to the scene or to a reference", () => {
+    const asWritten = imagePromptForRequest(withReference, "", references);
+
+    expect(imagePromptDrift(asWritten, { ...withReference, start_motion: "already through the gate" }, "", references)).toBe("scene");
+    // An Asset's description is part of what the picture was drawn from on this side; the role line is not.
+    expect(imagePromptDrift(asWritten, withReference, "", references.replace("은발 단발", "흑발 장발"))).toBe("scene");
+  });
+});

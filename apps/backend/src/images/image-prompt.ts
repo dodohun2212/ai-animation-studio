@@ -133,7 +133,7 @@ export function withoutStyleLine(prompt: string): string {
 function recordedByPreStartMotionBuilder(recorded: string, scene: unknown, referenceNotes: string): boolean {
   const legacy = sceneValue(scene, "visual_action");
   if (!legacy) return false;
-  const asItWouldHaveBeen = imagePromptFor(scene, "", referenceNotes).split("\n");
+  const asItWouldHaveBeen = withoutRequestOnlyLines(imagePromptFor(scene, "", referenceNotes)).split("\n");
   const [first, ...rest] = asItWouldHaveBeen;
   // Only reached when today's builder writes a Scene: line at all — a scene with no start_motion has none, and
   // then there is nothing for a legacy record to have differed from.
@@ -141,11 +141,44 @@ function recordedByPreStartMotionBuilder(recorded: string, scene: unknown, refer
   return withoutStyleLine(recorded) === [`Scene: ${legacy}`, ...rest].join("\n");
 }
 
+/**
+ * A prompt with the lines that tell the model *how to draw* taken out — what is left is what staleness compares.
+ *
+ * 🔴 Two kinds of line are about drawing rather than about this scene, and staleness was comparing one of them.
+ * The first generation writes the *request* into `image_generation_records[].prompt`, NO_LEGIBLE_TEXT_RULE
+ * included, and the staleness check recomputed without it — so the two never matched and every scene read as
+ * 「장면 내용이 바뀐 뒤로」. Measured on 꽃말_구기자, generated after the Scene: line moved to start_motion with
+ * nothing edited since: all five reported stale, and the only line that differed was that rule. The comment at
+ * the call site already said the record should hold the scene and the style line; the field it wrote did not.
+ *
+ * The role lines are the second kind (image-reference-selection.ts). They are derived from the mapping's role
+ * and the Asset's type, and saying them better must not tell a picture that its scene changed — every existing
+ * record predates them.
+ *
+ * 🟠 Deliberately *not* removed: the rest of the References block. This project's staleness has always treated
+ * an Asset's name and description as part of what a picture was drawn from — editing a character's description
+ * reports those scenes as behind, and a test pins that on purpose. The Episode side decided the opposite and
+ * records the scene prompt without the block at all. That disagreement is real and is not settled here; this
+ * only stops the two drawing-instruction lines from being read as content, which neither side ever intended.
+ *
+ * Both are recognised by shape, not by today's wording, so a later edit to either sentence does not turn every
+ * existing record stale.
+ */
+const RULE_OPENING = "Do not render readable writing";
+const ROLE_LINE_PREFIX = "  역할: ";
+export function withoutRequestOnlyLines(prompt: string): string {
+  const kept = prompt.split("\n").filter((line) => !line.startsWith(ROLE_LINE_PREFIX));
+  while (kept.length > 0 && kept[kept.length - 1]!.startsWith(RULE_OPENING)) kept.pop();
+  return kept.join("\n");
+}
+
 export function imagePromptDrift(recorded: string, scene: unknown, styleLine: string, referenceNotes = ""): ImagePromptDrift {
-  if (imagePromptFor(scene, styleLine, referenceNotes) === recorded) return "current";
-  if (recordedByPreStartMotionBuilder(recorded, scene, referenceNotes)) return "current";
+  const record = withoutRequestOnlyLines(recorded);
+  const now = (style: string) => withoutRequestOnlyLines(imagePromptFor(scene, style, referenceNotes));
+  if (now(styleLine) === record) return "current";
+  if (recordedByPreStartMotionBuilder(record, scene, referenceNotes)) return "current";
   // Compared without either side's style line, so an old line, a new one, and a removed one all land here alike.
-  return withoutStyleLine(recorded) === imagePromptFor(scene, "", referenceNotes) ? "style" : "scene";
+  return withoutStyleLine(record) === now("") ? "style" : "scene";
 }
 
 /**

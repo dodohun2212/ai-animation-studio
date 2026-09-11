@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { SceneNumber } from "@ai-animation-studio/shared";
 import type { StoredAssetMapping } from "../mappings/mapping-storage.js";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
-import { collectReferenceImages, continuityForScene, describeReferenceMappingsForScene, referenceSourcesForScene, sceneImagePath } from "./image-reference-selection.js";
+import { collectReferenceImages, continuityForScene, describeReferenceMappingsForScene, referenceSourcesForScene, sceneImagePath, referenceRoleSentence } from "./image-reference-selection.js";
 
 const pngA = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 const pngB = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
@@ -80,7 +80,7 @@ describe("describeReferenceMappingsForScene", () => {
 
     const result = await describeReferenceMappingsForScene(assets, [mapping], 1);
 
-    expect(result).toBe("References:\n- 이배드 (character)\n  설명: 은발 단발, 왼쪽 눈 흉터");
+    expect(result).toBe("References:\n- 이배드 (character)\n  역할: 등장인물 — 이 인물의 얼굴·체형·머리·의상을 그대로 유지해 그린다.\n  설명: 은발 단발, 왼쪽 눈 흉터");
   });
 
   it("adds a Folder's own description plus each described child's individual one", async () => {
@@ -93,7 +93,7 @@ describe("describeReferenceMappingsForScene", () => {
 
     const result = await describeReferenceMappingsForScene(assets, [mapping], 1);
 
-    expect(result).toBe("References:\n- 이배드 (character)\n  설명: 근미래 방랑자\n  하위 이미지별 개별 특징: 정면: 정면 샷, 흉터 보임");
+    expect(result).toBe("References:\n- 이배드 (character)\n  역할: 등장인물 — 이 인물의 얼굴·체형·머리·의상을 그대로 유지해 그린다.\n  설명: 근미래 방랑자\n  하위 이미지별 개별 특징: 정면: 정면 샷, 흉터 보임");
   });
 
   it("falls back to the Asset's own type when usage_role is blank, and to a placeholder when description is blank", async () => {
@@ -104,7 +104,7 @@ describe("describeReferenceMappingsForScene", () => {
 
     const result = await describeReferenceMappingsForScene(assets, [mapping], 1);
 
-    expect(result).toBe("References:\n- 폐허 기록관 (background)\n  설명: 별도 설명 없음");
+    expect(result).toBe("References:\n- 폐허 기록관 (background)\n  역할: 배경 — 이 사진 속 장소를 이 장면의 배경으로 삼는다. 구도와 초점은 위 Composition·Lens·Focus 를 따른다.\n  설명: 별도 설명 없음");
   });
 
   it("returns an empty string when no confirmed mapping is in scope for the scene, without an empty References heading", async () => {
@@ -222,5 +222,40 @@ describe("drawing each scene from the one before it", () => {
 
     expect(sources[0]).toMatch(/^prev-scene:1@/);
     expect(sources).toHaveLength(2);
+  });
+});
+
+/**
+ * What the model is told to do with each reference. 캡틴D's background photo went to all five pictures of
+ * 꽃말_구기자 with nothing but a name and 「별도 설명 없음」 — this is the line that was missing.
+ */
+describe("referenceRoleSentence", () => {
+  it("reads an atmosphere reference by what the picture is, because that one heading holds three kinds", () => {
+    // 캡틴D's case: a background photo picked under 분위기 is a place to set the scene in.
+    expect(referenceRoleSentence("atmosphere", "background")).toContain("배경으로 삼는다");
+    expect(referenceRoleSentence("atmosphere", "style")).toContain("그림체·색감·빛");
+    expect(referenceRoleSentence("atmosphere", "general_reference")).toContain("옮겨 그리지 않는다");
+  });
+
+  it("gives each of the mapping review's own four roles its instruction", () => {
+    expect(referenceRoleSentence("character", "character")).toContain("그대로 유지해 그린다");
+    expect(referenceRoleSentence("background", "background")).toContain("배경으로 삼는다");
+    expect(referenceRoleSentence("object", "object")).toContain("모양·색·재질");
+    expect(referenceRoleSentence("style", "style")).toContain("그림체·색감·빛");
+  });
+
+  it("passes a person's own sentence through, since a scene reference's purpose already is the instruction", () => {
+    expect(referenceRoleSentence("주인공이 항상 들고 다니는 열쇠", "object")).toBe("주인공이 항상 들고 다니는 열쇠");
+  });
+
+  it("says where a background photo stands against the shot's own lens and focus, so they read as one instruction", () => {
+    // The prompt that failed asked for a macro lens and a blurred background while handing over a background
+    // photo. Naming which one wins is what keeps the model from treating them as a contradiction.
+    expect(referenceRoleSentence("background", "background")).toContain("Composition·Lens·Focus 를 따른다");
+  });
+
+  it("falls back to the Asset's own type when no role was given", () => {
+    expect(referenceRoleSentence("", "object")).toContain("모양·색·재질");
+    expect(referenceRoleSentence("  ", "unknown_type")).toContain("분위기");
   });
 });

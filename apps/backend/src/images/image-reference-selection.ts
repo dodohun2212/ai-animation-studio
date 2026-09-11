@@ -14,6 +14,51 @@ function relevantMappingsForScene(mappings: readonly StoredAssetMapping[], scene
 }
 
 /**
+ * What the image model is told to *do* with one reference — the line this block did not have.
+ *
+ * 🔴 캡틴D picked a background photo for 꽃말_구기자 and none of its five pictures looked like it. The photo was
+ * sent every time (`reference_sources` records it on all five), so the wiring was never the problem. What went
+ * with it was a name and the literal words 「별도 설명 없음」: `(atmosphere)` sat in parentheses and nothing said
+ * what an atmosphere reference is for. The same prompt asked for a macro lens with the background blurred, and
+ * the model did exactly that. A reference with no stated role is a photo the model has to guess about.
+ *
+ * `usage_role` is free text, not an enum, and that shapes this. Four values come from the mapping review's own
+ * picker and one from the settings screen; anything else is a person's own sentence — a scene reference stores
+ * the `purpose` they typed there — and that sentence already *is* the instruction, so it is passed through as
+ * written rather than forced into a category it was not chosen from.
+ *
+ * `atmosphere` is the one role whose meaning depends on the picture. The settings list accepts style, general
+ * and background Assets under that one heading, and they ask for different things: a background photo is a
+ * place to set the scene in, which is what 캡틴D meant by 「배경 참고 이미지」, while a style sheet is a look to
+ * borrow. Reading the Asset's own type is what lets one heading carry both honestly.
+ *
+ * The background sentence defers to Composition/Lens/Focus on purpose. A macro shot of a sprout in front of a
+ * recognisable but out-of-focus garden is not a contradiction — it is the picture 캡틴D wanted — and saying which
+ * instruction wins is what stops the model treating them as a conflict.
+ *
+ * 🟠 「별도 설명 없음」 and the `(atmosphere)` parenthesis still go out, next to the role line that now explains
+ * them. Removing them would change a line that every recorded picture carries, and staleness compares it — the
+ * cost of tidying the prompt would be telling every existing picture that its scene changed.
+ */
+const REFERENCE_ROLE_SENTENCE: Record<string, string> = {
+  character: "등장인물 — 이 인물의 얼굴·체형·머리·의상을 그대로 유지해 그린다.",
+  background: "배경 — 이 사진 속 장소를 이 장면의 배경으로 삼는다. 구도와 초점은 위 Composition·Lens·Focus 를 따른다.",
+  object: "소품 — 이 물건의 모양·색·재질을 그대로 이 장면 안에 그린다.",
+  style: "그림체·분위기 — 그림체·색감·빛의 느낌만 따른다. 사진 속 대상이나 장소를 옮겨 그리지 않는다.",
+};
+const GENERAL_ATMOSPHERE_SENTENCE = "분위기 — 색감·빛·분위기를 따른다. 사진 속 대상이나 장소를 그대로 옮겨 그리지 않는다.";
+
+export function referenceRoleSentence(usageRole: string, assetType: string): string {
+  const role = usageRole.trim();
+  if (role === "atmosphere") return REFERENCE_ROLE_SENTENCE[assetType] ?? GENERAL_ATMOSPHERE_SENTENCE;
+  const known = REFERENCE_ROLE_SENTENCE[role];
+  if (known) return known;
+  // A person's own words — the scene reference's `purpose`, or a role typed into mapping review.
+  if (role) return role;
+  return REFERENCE_ROLE_SENTENCE[assetType] ?? GENERAL_ATMOSPHERE_SENTENCE;
+}
+
+/**
  * The image model receives the mapped Assets' bytes via `collectReferenceImages` but, until this was added,
  * never any text about them — so a reference photo reached the model with no name attached to it, and the parts
  * of an Asset's description that a photo cannot show on its own (a character's stated personality, a prop's
@@ -37,6 +82,11 @@ export async function describeReferenceMappingsForScene(
     const childLines = await folderChildDescriptions(assets, asset);
     blocks.push([
       `- ${asset.display_name} (${mapping.usage_role.trim() || asset.asset_type})`,
+      // Inserted between two lines that are left exactly as they were, and it has to be that way round: every
+      // picture already on disk was recorded with the header and the 설명 line in this form, and staleness still
+      // compares them (an edited description is meant to report the picture as behind). The role line is the
+      // one thing new here, so it is the one thing staleness is told to skip — see withoutRequestOnlyLines.
+      `  역할: ${referenceRoleSentence(mapping.usage_role, asset.asset_type)}`,
       `  설명: ${asset.description.trim() || "별도 설명 없음"}`,
       ...(childLines.length > 0 ? [`  하위 이미지별 개별 특징: ${childLines.join(" / ")}`] : []),
     ].join("\n"));
