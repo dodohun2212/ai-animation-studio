@@ -4,9 +4,14 @@
 
 Before changing code, read:
 
+0. `docs/00_NOW.md` — **read this one first, always.** What is done, what is next, and
+   what is waiting on the user, on one screen. It is the only answer to "what should I
+   work on"; do not choose your own next item while it exists. Finish an item, update
+   that file, and stop. `docs/02_MIGRATION_PLAN.md` below is the history archive it was
+   extracted from — 1.2 MB, not readable as a plan, and not to be used as one.
 1. `AI_GUIDELINES.md`
 2. `docs/01_CURRENT_PRODUCT_SPEC.md`
-3. `docs/02_MIGRATION_PLAN.md`
+3. `docs/02_MIGRATION_PLAN.md` — history only; see 0 above
 4. `docs/03_TEAM_WORKFLOW.md`
 5. `docs/06_DECISIONS.md` — why the code is shaped this way, especially which paths were tried and abandoned
 6. `docs/04_INTERNAL_API_CONTRACT.md` when changing shared or API code

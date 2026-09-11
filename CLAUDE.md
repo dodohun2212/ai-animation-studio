@@ -4,6 +4,9 @@ This file intentionally fixes no model, tool, role, or worktree. The user assign
 
 Before working, read and follow these files in order:
 
+0. `docs/00_NOW.md` — current state, the ordered next items, and the decisions waiting on
+   the user. Read it first and take the top unfinished item; do not pick your own. When an
+   item is done, update that file and stop.
 1. `AGENTS.md`
 2. `AI_GUIDELINES.md`
 3. `docs/01_CURRENT_PRODUCT_SPEC.md`
@@ -17,7 +20,7 @@ If instructions conflict, `AGENTS.md` takes precedence.
 
 Respect the role and worktree assigned for the current session. A single agent may be assigned Main, Frontend, and Backend together; in that case it may work in `main` without creating or switching worktrees.
 
-The Python-to-TypeScript migration itself is complete (see `docs/02_MIGRATION_PLAN.md`'s handoff status). Current work is post-migration feature improvement and polish, tracked in the same file's dated sections. For each item: implement both required layers, run relevant checks and the integrated verification, update the migration plan only after verification, then proceed to the next item. Do not end the working loop merely because one item has completed.
+The Python-to-TypeScript migration itself is complete (see `docs/02_MIGRATION_PLAN.md`'s handoff status). Current work is post-migration feature improvement and polish. The ordered list of what to do next lives in `docs/00_NOW.md`; `docs/02_MIGRATION_PLAN.md` keeps the dated history. For each item: implement both required layers, run relevant checks and the integrated verification, update the history only after verification, then update `docs/00_NOW.md` and stop for the user rather than choosing the next item yourself.
 
 Do not make paid provider requests in tests. Preserve the Python baseline and existing uncommitted user changes.
 
