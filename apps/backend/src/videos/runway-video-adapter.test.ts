@@ -113,6 +113,14 @@ ${NO_LEGIBLE_TEXT_VIDEO_RULE}`,
     }
   });
 
+  it("sends Gen-4.5 as gen4.5 with the project's frame and the picture as its first frame", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
+    await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "gen4_5", ratio: "1280:720", durationSeconds: 10, fetchImpl: fetchMock, sleep: noSleep });
+    const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body));
+    expect(Object.keys(body).sort()).toEqual(["duration", "model", "promptImage", "promptText", "ratio"]);
+    expect(body).toMatchObject({ model: "gen4.5", ratio: "1280:720", duration: 10, promptImage: `data:image/png;base64,${IMAGE_BYTES.toString("base64")}` });
+  });
+
   it("sends gen4_turbo nothing H3 Max's body carries", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
     await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "gen4_turbo", fetchImpl: fetchMock, sleep: noSleep });

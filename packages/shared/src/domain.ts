@@ -146,7 +146,7 @@ export const defaultBgmVolume = (mode: string): number => (mode === "bgm" ? 1 : 
  * moves is two choices, and `pricePerSecondUsd` stays one true number per entry. The adapter
  * (videos/runway-video-adapter.ts) turns each name into its request body.
  */
-export const VIDEO_MODELS = ["gen4_turbo", "h3_max_480p", "h3_max_768p", "wan3_480p", "wan3_720p", "wan3_1080p"] as const;
+export const VIDEO_MODELS = ["gen4_turbo", "gen4_5", "h3_max_480p", "h3_max_768p", "wan3_480p", "wan3_720p", "wan3_1080p"] as const;
 export type VideoModel = (typeof VIDEO_MODELS)[number];
 
 /**
@@ -202,7 +202,7 @@ export interface VideoModelOption {
  *   2026-09-12 (Cowork Round 752). gen4_turbo's 5 credits/s there is the same $0.05/s this machine's Runway ledger
  *   had already been charging — the table agrees with the one row we could check against real spend.
  * - Lengths, ratios and the last frame: Runway's published OpenAPI document (docs.dev.runwayml.com/openapi.json,
- *   read 2026-09-12). gen4_turbo takes 2–10 s and a `ratio`; h3_max takes 5–15 s, no `ratio` at all (a
+ *   read 2026-09-12). gen4_turbo and gen4.5 take 2–10 s and a `ratio`, first frame only; h3_max takes 5–15 s, no `ratio` at all (a
  *   `resolution` of 480p or 768p instead), and a first frame with an optional last frame. wan3 takes 2–30 s and a
  *   first (and optional last) frame as keyframes, and in keyframe mode its `ratio` must be `auto_480p`,
  *   `auto_720p` or `auto_1080p` — the frame shape follows the first frame, so the resolution is the whole choice.
@@ -214,6 +214,7 @@ export interface VideoModelOption {
  */
 export const VIDEO_MODEL_OPTIONS: readonly VideoModelOption[] = [
   { id: "gen4_turbo", label: "Runway Gen-4 Turbo", pricePerSecondUsd: 0.05, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 10, acceptsLastFrame: false },
+  { id: "gen4_5", label: "Runway Gen-4.5", pricePerSecondUsd: 0.12, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 10, acceptsLastFrame: false },
   { id: "h3_max_480p", label: "MiniMax H3 Max (480p)", pricePerSecondUsd: 0.05, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: true },
   { id: "h3_max_768p", label: "MiniMax H3 Max (768p)", pricePerSecondUsd: 0.08, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: true },
   { id: "wan3_480p", label: "WAN 3.0 (480p)", pricePerSecondUsd: 0.05, ratios: [], maxDurationSeconds: 30, acceptsLastFrame: true },

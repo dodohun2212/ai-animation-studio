@@ -74,6 +74,9 @@ interface RequestParts { promptImage: string; promptText: string; ratio: RunwayV
 const REQUEST_BODY: Record<VideoModel, (parts: RequestParts) => ImageToVideoCreateParams> = {
   gen4_turbo: ({ promptImage, promptText, ratio, duration }) =>
     ({ model: "gen4_turbo", promptImage, promptText, ratio, duration }) satisfies ImageToVideoCreateParams.Gen4Turbo,
+  // Runway's own model, so a bare image string is its first frame (as for gen4_turbo), unlike WAN's.
+  gen4_5: ({ promptImage, promptText, ratio, duration }) =>
+    ({ model: "gen4.5", promptImage, promptText, ratio, duration }) satisfies ImageToVideoCreateParams.Gen4_5,
   h3_max_480p: ({ promptImage, promptText, duration }) =>
     ({ model: "h3_max", promptImage, promptText, duration, resolution: "480p", promptExpansionMode: "disabled" }) satisfies ImageToVideoCreateParams.H3Max,
   h3_max_768p: ({ promptImage, promptText, duration }) =>

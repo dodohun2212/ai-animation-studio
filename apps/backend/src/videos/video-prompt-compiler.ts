@@ -35,6 +35,9 @@ import { videoPreviewDataInvalid } from "./video-preview-api.error.js";
 export type VideoPromptDialect = "runway_gen4";
 const DIALECT: Record<VideoModel, VideoPromptDialect> = {
   gen4_turbo: "runway_gen4",
+  // Runway's Image to Video Prompting Guide (help.runwayml.com, which covers Gen-4.5) says the same two things
+  // this grammar is built on: describe the motion, and do not restate what the image shows.
+  gen4_5: "runway_gen4",
   // 🟠 H3 Max reads the same text for now — a decision on what was found, and not yet a confirmed fit.
   // What MiniMax publishes (read 2026-09-12): a `[command]` camera syntax ([Pan left], [Push in], [Static shot]
   // … 15 in all) that its image-to-video API reference lists for the Hailuo-2.3 / Hailuo-02 / I2V-01-Director
