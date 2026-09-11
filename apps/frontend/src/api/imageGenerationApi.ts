@@ -8,6 +8,7 @@ import {
   type StartImageGenerationRequest,
   type StartImageGenerationResponse,
 } from "@ai-animation-studio/shared";
+import { imageFailureMessage } from "../utils/sceneFailureAdvice.js";
 import { BUDGET_LEDGER_UNREADABLE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "./budgetLedgerError.js";
 import { SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
 
@@ -66,7 +67,9 @@ export function toImageGenerationDisplayError(error: unknown): { code: string; m
   if (error.code === "IMAGE_PROVIDER_ERROR") {
     const category = error.details && typeof error.details.category === "string" ? error.details.category : undefined;
     const message = (category && PROVIDER_ERROR_CATEGORY_MESSAGES[category]) ?? SAFE_ERRORS.IMAGE_PROVIDER_ERROR!;
-    return { code: error.code, message };
+    // The category names what the provider said; the details name where it stopped, what survived, and what the
+    // button would do. Composed in one place so the Episode path says it the same way (docs/00_NOW.md ②-2).
+    return { code: error.code, message: imageFailureMessage(message, error.details) };
   }
   if (Object.prototype.hasOwnProperty.call(SAFE_ERRORS, error.code)) {
     return { code: error.code, message: SAFE_ERRORS[error.code]! };
