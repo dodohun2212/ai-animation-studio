@@ -1,10 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_VIDEO_MODEL, VIDEO_MODEL_OPTIONS, videoSceneEstimatedCostUsd, type VideoModel, type VideoModelSetting } from "@ai-animation-studio/shared";
+import { DEFAULT_VIDEO_MODEL, VIDEO_FRAME_SHAPES, VIDEO_MODEL_OPTIONS, videoSceneEstimatedCostUsd, type VideoModel, type VideoModelSetting } from "@ai-animation-studio/shared";
 
 import { jsonResponse } from "../api/testUtils.js";
 import { scrollList } from "./ui/surfaces.js";
-import { VideoModelCard } from "./VideoModelCard.js";
+import { VideoModelCard, videoModelPriceLine } from "./VideoModelCard.js";
 
 /**
  * The picker, exercised on a second model that does not exist yet.
@@ -182,16 +182,102 @@ describe("VideoModelCard", () => {
 
       const priceLines = VIDEO_MODEL_OPTIONS.map((option) => {
         const row = screen.getByTestId(`video-model-option-${option.id}`).textContent ?? "";
-        // The scene prices from the contract's own quote, not rate × seconds: since Gemini and Grok the two differ
-        // by a per-scene charge, and a test doing its own arithmetic would hold the card to the wrong number.
-        const line = `1초당 $${option.pricePerSecondUsd.toFixed(2)} · 5초 장면 $${videoSceneEstimatedCostUsd(5, option).toFixed(2)} · 10초 장면 $${videoSceneEstimatedCostUsd(10, option).toFixed(2)}`;
+        // Composed by the card's own helper, not rebuilt here — a test that re-types the format agrees with a
+        // card that has stopped saying half of it. The pairs below check the CONTENT of that format; this one
+        // checks the row actually carries it.
+        const line = videoModelPriceLine(option);
         expect(row, option.id).toContain(line);
         return line;
       });
 
-      // Models that price alike may read alike; models that price differently must not.
-      const distinctPrices = new Set(VIDEO_MODEL_OPTIONS.map((option) => `${option.pricePerSecondUsd}|${videoSceneEstimatedCostUsd(5, option)}|${videoSceneEstimatedCostUsd(10, option)}`));
+      /* Models that price alike may read alike; models that price differently must not.
+         🔴 The basis has to name everything the line shows, or it drifts from the line it is judging. It once held
+         only rate · 5s · 10s, and that was right until the line started naming the floor and the per-scene charge:
+         `wan3_1080p` and `seedance2_5_480p` price identically at both lengths and differ only by a minimum, so
+         the basis said 15 where the screen showed 17. Composed from the contract's fields rather than from
+         `videoModelPriceLine` — using the line itself would make this a tautology that passes however the card
+         renders. */
+      const distinctPrices = new Set(VIDEO_MODEL_OPTIONS.map((option) => [
+        option.pricePerSecondUsd,
+        option.perGenerationUsd ?? "",
+        videoSceneEstimatedCostUsd(5, option),
+        videoSceneEstimatedCostUsd(10, option),
+        option.minimumChargeUsd ?? "",
+      ].join("|")));
       expect(new Set(priceLines).size).toBe(distinctPrices.size);
+    });
+
+    /**
+     * 🔴 돈 — 숫자가 아니라 **설명**이 빠져 있던 곳입니다. 견적은 계약이 칸을 가진 순간부터 맞았지만
+     * (`videoSceneEstimatedCostUsd` 이 둘 다 접음), 카드는 그 이유를 안 말했습니다. 「1초당 $0.10」 옆에
+     * 「5초 장면 $0.51」이 있으면 사람은 계산기를 두드리고, 틀렸다고 생각하고, 그 뒤로 이 카드의 숫자를
+     * 안 믿습니다. 모델 이름은 적지 않고 목록에서 찾아 검사합니다.
+     */
+    it("names the per-scene charge on the models that have one, and nowhere else", () => {
+      vi.stubGlobal("fetch", vi.fn());
+      render(<VideoModelCard setting={everyModel} onChange={() => {}} />);
+
+      const withCharge = VIDEO_MODEL_OPTIONS.filter((option) => option.perGenerationUsd !== undefined);
+      expect(withCharge.length, "catalogue has no model with a per-scene charge").toBeGreaterThan(0);
+
+      for (const option of withCharge) {
+        const row = screen.getByTestId(`video-model-option-${option.id}`).textContent ?? "";
+        expect(row, option.id).toContain(`장면당 $${option.perGenerationUsd!.toFixed(2)}`);
+      }
+      for (const option of VIDEO_MODEL_OPTIONS.filter((o) => o.perGenerationUsd === undefined)) {
+        expect(screen.getByTestId(`video-model-option-${option.id}`).textContent, option.id).not.toContain("장면당");
+      }
+    });
+
+    /**
+     * 🔴 이 숫자는 옆의 두 합계 어디에도 안 나타납니다 — 지금 앱이 주는 길이 5·10초가 모든 바닥을 이미
+     * 넘기 때문입니다. 그래서 더더욱 써 있어야 합니다: 누가 길이 목록에 3·4초를 넣는 날 바닥은 조용히
+     * 물리고, 화면에 한 번도 나온 적 없는 수가 청구서에 먼저 나타납니다.
+     */
+    it("names the floor on the models that have one, and nowhere else", () => {
+      vi.stubGlobal("fetch", vi.fn());
+      render(<VideoModelCard setting={everyModel} onChange={() => {}} />);
+
+      const withFloor = VIDEO_MODEL_OPTIONS.filter((option) => option.minimumChargeUsd !== undefined);
+      expect(withFloor.length, "catalogue has no model with a minimum charge").toBeGreaterThan(0);
+
+      for (const option of withFloor) {
+        const row = screen.getByTestId(`video-model-option-${option.id}`).textContent ?? "";
+        expect(row, option.id).toContain(`최소 $${option.minimumChargeUsd!.toFixed(2)}`);
+      }
+      for (const option of VIDEO_MODEL_OPTIONS.filter((o) => o.minimumChargeUsd === undefined)) {
+        expect(screen.getByTestId(`video-model-option-${option.id}`).textContent, option.id).not.toContain("최소 $");
+      }
+    });
+
+    /**
+     * 🔴 「확인 안 됨」이 자기 문장을 갖는지가 핵심입니다. 침묵하면 행을 비교하는 사람에게 「괜찮다」로
+     * 읽히고, 그건 안심시키는 방향으로 틀리는 겁니다 — 하필 그 값을 가진 모델(H3 Max)이 첫 릴을
+     * 돌리려는 모델입니다. 세 값 전부를 계약에서 찾아 각각 확인합니다.
+     */
+    it("warns where the clip keeps the picture's shape, admits where it is unconfirmed, and is silent otherwise", () => {
+      vi.stubGlobal("fetch", vi.fn());
+      render(<VideoModelCard setting={everyModel} onChange={() => {}} />);
+
+      const sample = (shape: string) => VIDEO_MODEL_OPTIONS.find((option) => option.frameShape === shape);
+      for (const shape of VIDEO_FRAME_SHAPES) {
+        expect(sample(shape), `catalogue has no model with frameShape ${shape}`).toBeTruthy();
+      }
+
+      const follows = screen.getByTestId(`video-model-frame-${sample("follows_first_frame")!.id}`).textContent ?? "";
+      expect(follows).toContain("그림의 비율을 그대로");
+      expect(follows).toContain("띠");
+
+      const unconfirmed = screen.getByTestId(`video-model-frame-${sample("unconfirmed")!.id}`).textContent ?? "";
+      expect(unconfirmed).toContain("확인되지 않았습니다");
+      /* 두 문장이 같은 단어로 끝나는데 이 짝은 한 쪽만 보고 있었고, 그래서 둘 다 「띠」 였는데 한 개만
+         잡혔습니다. 같은 것을 말하는 두 문장이면 둘 다 물어야 합니다 — 한 쪽만 물으면 나머지는 짝이
+         없는 문장이고, 오타는 짝이 없는 쪽에 남습니다. */
+      expect(unconfirmed).toContain("띠");
+      // 모르는 것을 안다고 말하지 않습니다.
+      expect(unconfirmed).not.toContain("그림의 비율을 그대로");
+
+      expect(screen.queryByTestId(`video-model-frame-${sample("requested")!.id}`)).toBeNull();
     });
 
     /**

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { VideoModel, VideoModelSetting } from "@ai-animation-studio/shared";
+import type { VideoFrameShape, VideoModel, VideoModelOption, VideoModelSetting } from "@ai-animation-studio/shared";
 import { videoSceneEstimatedCostUsd } from "@ai-animation-studio/shared";
 
 import { saveVideoModel, toDisplayError } from "../api/providerSettingsApi.js";
@@ -29,6 +29,52 @@ import { scrollList } from "./ui/surfaces.js";
  * option at the first one's $0.05 and looked, on screen, like a price that had moved. This card is where that
  * would first be seen and last be noticed, so it prices from the option it is drawing.
  */
+
+/**
+ * The whole price of one scene, in one line, with nothing left for the reader to work out.
+ *
+ * 🔴 Exported so the pair can assert the row contains exactly this. The format lives in one place; a test
+ * that rebuilt the sentence itself would agree with a card that had stopped saying it.
+ *
+ * 🔴 The two optional halves are the reason this is no longer a template literal inline. `pricePerSecondUsd`
+ * alone stopped being the price: Gemini and Grok add a flat charge per scene, and Mini and 2.5 never bill below
+ * a floor. Both were already in every quote the moment the contract carried them — `videoSceneEstimatedCostUsd`
+ * folds them in — so the numbers on this card were right and the *explanation* was missing. That gap is its own
+ * failure: 「1초당 $0.10」 beside 「5초 장면 $0.51」 is a card a person checks with a calculator, disagrees with,
+ * and stops trusting. `contract-optional-fields.test.ts` was holding both fields as a named gap for exactly this
+ * line; reading them here is what closes it.
+ */
+export function videoModelPriceLine(option: VideoModelOption): string {
+  const perSecond = `1초당 $${option.pricePerSecondUsd.toFixed(2)}`;
+  // Immediately after the rate, because it is what makes the rate alone wrong.
+  const perScene = option.perGenerationUsd === undefined ? "" : ` + 장면당 $${option.perGenerationUsd.toFixed(2)}`;
+  const scenes = ` · 5초 장면 $${videoSceneEstimatedCostUsd(5, option).toFixed(2)} · 10초 장면 $${videoSceneEstimatedCostUsd(10, option).toFixed(2)}`;
+  /* Worded as what it does, not as its name. Both clip lengths this app offers already clear every floor in the
+     catalogue, so this number never appears in the two totals beside it — which is precisely why it has to be
+     said out loud rather than inferred from them. */
+  const minimum = option.minimumChargeUsd === undefined ? "" : ` · 짧아도 최소 $${option.minimumChargeUsd.toFixed(2)}`;
+  return `${perSecond}${perScene}${scenes}${minimum}`;
+}
+
+/**
+ * Whose shape the finished clip keeps — and, for two of the three answers, what that does to the reel.
+ *
+ * 🔴 A `Record` over the contract's own union, so a fourth shape is a compile error here rather than a row that
+ * quietly says nothing. `null` is a real answer and not a hole: for `requested` there is nothing to warn about,
+ * and twelve of twenty rows carrying a reassuring sentence would bury the four that matter.
+ *
+ * 🔴 `unconfirmed` gets its own sentence rather than silence, and that is the whole point of asking for a
+ * three-valued field. Silence there reads as 「괜찮다」 to anyone comparing rows, which is the reassuring
+ * direction — the wrong one to be wrong in. It also happens to be the model 캐프틴D's first reel is planned on
+ * (H3 Max 480p), so the one row where 「확인 안 됨」 must be said is the one row somebody is about to press.
+ */
+const FRAME_SHAPE_NOTES: Record<VideoFrameShape, string | null> = {
+  requested: null,
+  follows_first_frame:
+    "이 모델은 장면 그림의 비율을 그대로 따릅니다 — 그림이 릴 비율과 다르면 완성본 위아래에 띠가 생길 수 있습니다.",
+  unconfirmed:
+    "이 모델이 어떤 비율로 내보내는지는 확인되지 않았습니다 — 완성본 위아래에 띠가 생길 수 있습니다.",
+};
 
 export function VideoModelCard({ setting, onChange }: { setting: VideoModelSetting; onChange: (next: VideoModelSetting) => void }) {
   const [busy, setBusy] = useState(false);
@@ -87,7 +133,7 @@ export function VideoModelCard({ setting, onChange }: { setting: VideoModelSetti
                 <span className="flex-1 space-y-1">
                   <span className="block text-sm font-semibold text-slate-100">{option.label}</span>
                   <span className="block text-xs tabular-nums text-slate-300">
-                    1초당 ${option.pricePerSecondUsd.toFixed(2)} · 5초 장면 ${videoSceneEstimatedCostUsd(5, option).toFixed(2)} · 10초 장면 ${videoSceneEstimatedCostUsd(10, option).toFixed(2)}
+                    {videoModelPriceLine(option)}
                   </span>
                   {/* The one line here that is not a number, and the reason the picker exists at all. A person
                       choosing between two models is choosing between two reels; price tells them what it costs
@@ -108,6 +154,11 @@ export function VideoModelCard({ setting, onChange }: { setting: VideoModelSetti
                   <span className="block text-xs text-slate-500">
                     {option.ratios.length > 0 && <>비율 {option.ratios.join(" · ")} · </>}한 장면 최대 {option.maxDurationSeconds}초
                   </span>
+                  {FRAME_SHAPE_NOTES[option.frameShape] !== null && (
+                    <span data-testid={`video-model-frame-${option.id}`} className="block text-xs text-amber-300/90">
+                      {FRAME_SHAPE_NOTES[option.frameShape]}
+                    </span>
+                  )}
                 </span>
               </label>
             </li>

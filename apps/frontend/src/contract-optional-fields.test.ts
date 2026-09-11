@@ -37,11 +37,10 @@ const ALLOWED = new Map<string, string>([
   // The mapper's own comment names a consumer for script, motionPrompt and generatedImagePath. It names none
   // for this one, and there is none: screens play a clip through its content URL, never through a path.
   ["generatedVideoPath", "screens play clips by content URL; no screen wants a path"],
-  // A gap, not a decision: the quote already carries both (videoSceneEstimatedCostUsd), so every price on screen
-  // is right; what no screen does yet is *say* them — 「+ 장면당 $0.01」, 「최소 $0.64」 (Cowork Round 772 takes it).
-  // The test below turns red the day the card reads them, which is when these two lines go.
-  ["minimumChargeUsd", "gap: the card's price line does not name the minimum yet (Cowork Round 772)"],
-  ["perGenerationUsd", "gap: the card's price line does not name the per-scene charge yet (Cowork Round 772)"],
+  // (`minimumChargeUsd` · `perGenerationUsd` stood here as a named gap for exactly one round. `videoModelPriceLine`
+  //  reads both now — 「+ 장면당 $0.01」 and 「짧아도 최소 $0.64」 — so the third test below demanded these two
+  //  lines back. That is the device working as built: an exception that outlives its reason fails instead of
+  //  sitting there, and this is the first time one has been retired by it rather than by someone remembering.)
 ]);
 
 async function collectSourceFiles(directory: string): Promise<string[]> {
