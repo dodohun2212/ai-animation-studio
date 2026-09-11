@@ -887,6 +887,45 @@ describe("App", () => {
     expect(fetchMock.mock.calls.filter(([callUrl]) => String(callUrl) === "/long-projects/long_test").length).toBe(callsBeforeJump + 1);
   });
 
+  it("keeps the long-project and episode identity when the workspace switches from continuity notes to the script", async () => {
+    // Start on a real Episode screen rather than testing the sidebar in isolation: this catches a route that
+    // looks right in the navigation but drops the episode number before the destination can load it.
+    window.location.hash = "#/longEpisodeContinuity?projectId=long_nav&episodeNumber=2";
+    const fetchMock = vi.fn<FakeFetch>(async (input, init) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      if (url === "/long-projects/long_nav/episodes/2/continuity" && method === "GET") {
+        return jsonResponse(200, {
+          canSave: true,
+          memory: {
+            episodeNumber: 2,
+            episodeSummary: "두 번째 회차의 정리입니다.",
+            events: [], appearedCharacterIds: [], characterChanges: [], appearedLocationIds: [], itemChanges: [],
+            resolvedConflicts: [], newConflicts: [], revealedSecretIds: [], remainingSecretIds: [],
+            newForeshadowingIds: [], resolvedForeshadowingIds: [], nextActions: [], timeElapsed: "",
+            worldChanges: [], userEdits: "", updatedAt: "2026-09-11T00:00:00.000Z",
+          },
+        });
+      }
+      // The assertion is about the App's navigation hand-off. The target screen fetches after the address
+      // changes, and this ordinary not-found reply deliberately avoids any provider or write endpoint.
+      if (url === "/long-projects/long_nav/episodes/2" && method === "GET") {
+        return jsonResponse(404, { code: "LONG_EPISODE_NOT_FOUND", message: "테스트 대상 회차가 없습니다." });
+      }
+      throw new Error(`Unexpected fetch call in test: ${method} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    await screen.findByTestId("continuity-summary");
+    fireEvent.click(screen.getByRole("button", { name: "장면 대본" }));
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#/longEpisodeScript?projectId=long_nav&episodeNumber=2");
+    });
+    expect(fetchMock.mock.calls.some(([url, init]) => String(url).includes("/settings/providers") || init?.method === "POST")).toBe(false);
+  });
+
   // The whole point, end to end: land on a working screen, and a reload comes back to it. Rendering a second
   // <App/> from the address the first one wrote is what a refresh is — the state is gone, the address is not.
   it("comes back to the same screen after a reload", async () => {
