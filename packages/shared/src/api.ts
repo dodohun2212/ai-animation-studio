@@ -787,11 +787,23 @@ export interface SceneFailure {
  *
  * The names are `SceneFailure`'s on purpose, so a screen that draws both pipelines reads one vocabulary.
  */
+/**
+ * What the failed request was doing, which decides what pressing the button again does.
+ *
+ * `run` — a multi-scene generation stopped at `sceneNumber`; the scenes before it are saved and a re-run continues
+ * from there. `scene` — one scene was being redrawn; the others were never touched and nothing "continues".
+ * The Long Episode sends both under one error code, so the code cannot tell a screen which sentence is true.
+ */
+export const IMAGE_FAILURE_SCOPES = ["run", "scene"] as const;
+export type ImageFailureScope = (typeof IMAGE_FAILURE_SCOPES)[number];
+
 export interface ImageGenerationFailureDetails {
   /** This app's own provider category, unchanged — screens still pick their sentence from it. */
   category: string;
-  /** The scene that was in flight when the provider refused. The ones before it are saved, and a re-run reuses them. */
+  /** The scene that was in flight when the provider refused. For a `run`, the ones before it are saved and a re-run reuses them. */
   sceneNumber: SceneNumber;
+  /** A stopped multi-scene run, or one scene's redraw — see IMAGE_FAILURE_SCOPES. */
+  scope: ImageFailureScope;
   /**
    * Whether this failed attempt was counted against the month's budget — the meaning it has on the video side too,
    * where a billed failure is exactly the one the ledger records.

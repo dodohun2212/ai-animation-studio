@@ -1,4 +1,4 @@
-import type { ImageGenerationFailureDetails, SceneFailureRemedy, SceneNumber } from "@ai-animation-studio/shared";
+import type { ImageFailureScope, ImageGenerationFailureDetails, SceneFailureRemedy, SceneNumber } from "@ai-animation-studio/shared";
 
 import type { OpenAiErrorCategory } from "../providers/openai-common.js";
 
@@ -25,9 +25,9 @@ const REMEDY: Record<OpenAiErrorCategory, SceneFailureRemedy | undefined> = {
 };
 
 /** The details every image provider failure carries — see ImageGenerationFailureDetails in the contract. */
-export function imageFailureDetails(category: string, sceneNumber: SceneNumber): ImageGenerationFailureDetails {
+export function imageFailureDetails(category: string, sceneNumber: SceneNumber, scope: ImageFailureScope): ImageGenerationFailureDetails {
   const remedy = (REMEDY as Record<string, SceneFailureRemedy | undefined>)[category];
   // Every paid image call is recorded at its estimate in a `finally`, failure included, so a provider failure is
   // always one the budget counted.
-  return { category, sceneNumber, billedOnFailure: true, ...(remedy ? { remedy } : {}) };
+  return { category, sceneNumber, scope, billedOnFailure: true, ...(remedy ? { remedy } : {}) };
 }

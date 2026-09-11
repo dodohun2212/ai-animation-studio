@@ -409,7 +409,7 @@ describe("real OpenAI image generation", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const error = await service.generate("images", { approved: true }).catch((caught: unknown) => caught) as { response: { code: string; details: Record<string, unknown> } };
-    expect(error.response).toMatchObject({ code: "IMAGE_PROVIDER_ERROR", details: { category: "authentication", sceneNumber: 1, billedOnFailure: true } });
+    expect(error.response).toMatchObject({ code: "IMAGE_PROVIDER_ERROR", details: { category: "authentication", sceneNumber: 1, scope: "run", billedOnFailure: true } });
     // Signing in again is the fix, and none of the three remedy sentences says that — the category's own does.
     expect(error.response.details).not.toHaveProperty("remedy");
 
@@ -431,7 +431,7 @@ describe("real OpenAI image generation", () => {
     }));
 
     await expect(service.generate("images", { approved: true })).rejects.toMatchObject({
-      response: { code: "IMAGE_PROVIDER_ERROR", details: { category: "invalid_request", sceneNumber: 4, billedOnFailure: true, remedy: "change_input" } },
+      response: { code: "IMAGE_PROVIDER_ERROR", details: { category: "invalid_request", sceneNumber: 4, scope: "run", billedOnFailure: true, remedy: "change_input" } },
     });
     expect(calls).toBe(4);
   });

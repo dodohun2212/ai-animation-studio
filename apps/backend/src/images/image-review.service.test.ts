@@ -460,7 +460,7 @@ describe("real OpenAI image regeneration", () => {
     const current = path.join(projectsRoot, "review", "images", "scene3.png");
     const before = await fs.readFile(current);
 
-    await expect(service.regenerate("review", "3", { approved: true })).rejects.toMatchObject({ response: { code: "IMAGE_REVIEW_PROVIDER_ERROR", details: { category: "authentication", sceneNumber: 3, billedOnFailure: true } } });
+    await expect(service.regenerate("review", "3", { approved: true })).rejects.toMatchObject({ response: { code: "IMAGE_REVIEW_PROVIDER_ERROR", details: { category: "authentication", sceneNumber: 3, scope: "scene", billedOnFailure: true } } });
 
     await expect(fs.readFile(current)).resolves.toEqual(before);
     const usage = JSON.parse(await fs.readFile(path.join(root, "api_budget_usage.json"), "utf8")) as Array<Record<string, unknown>>;

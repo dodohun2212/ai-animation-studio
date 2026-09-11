@@ -1,4 +1,4 @@
-import type { SceneNumber } from "@ai-animation-studio/shared";
+import type { ImageFailureScope, SceneNumber } from "@ai-animation-studio/shared";
 import { imageFailureDetails } from "../images/image-failure.js";
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { ApiError } from "@ai-animation-studio/shared";
@@ -53,7 +53,8 @@ export const longEpisodeImagesNotAllowed = () => new LongProjectApiException("LO
 export const longEpisodeImagesInvalid = () => new LongProjectApiException("LONG_EPISODE_IMAGES_INVALID", "Episode images or their review data are invalid.", HttpStatus.CONFLICT);
 export const longEpisodeImagesBudgetExceeded = (message: string) => new LongProjectApiException("LONG_EPISODE_IMAGES_BUDGET_EXCEEDED", message, HttpStatus.CONFLICT);
 /** Same details as the short project's image failure — ImageGenerationFailureDetails, one vocabulary for both. */
-export const longEpisodeImagesProviderError = (category: string, message: string, sceneNumber: SceneNumber) => new LongProjectApiException("LONG_EPISODE_IMAGES_PROVIDER_ERROR", message, HttpStatus.BAD_GATEWAY, { ...imageFailureDetails(category, sceneNumber) });
+// One code for the Episode's batch and its one-scene redraw, so `scope` is what tells a screen which one stopped.
+export const longEpisodeImagesProviderError = (category: string, message: string, sceneNumber: SceneNumber, scope: ImageFailureScope) => new LongProjectApiException("LONG_EPISODE_IMAGES_PROVIDER_ERROR", message, HttpStatus.BAD_GATEWAY, { ...imageFailureDetails(category, sceneNumber, scope) });
 export const longEpisodeVideosNotAllowed = () => new LongProjectApiException("LONG_EPISODE_VIDEOS_NOT_ALLOWED", "Episode video work is not allowed in the current state.", HttpStatus.CONFLICT);
 export const longEpisodeVideosInvalid = () => new LongProjectApiException("LONG_EPISODE_VIDEOS_INVALID", "Episode videos or their review data are invalid.", HttpStatus.CONFLICT);
 /**

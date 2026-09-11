@@ -28,7 +28,7 @@ export const imageBudgetExceeded = (message: string) =>
   new ImageApiException("IMAGE_BUDGET_EXCEEDED", message, HttpStatus.CONFLICT);
 /** Carries which scene was in flight and what a person can do about it — ImageGenerationFailureDetails. */
 export const imageProviderError = (category: string, message: string, sceneNumber: SceneNumber) =>
-  new ImageApiException("IMAGE_PROVIDER_ERROR", message, HttpStatus.BAD_GATEWAY, { ...imageFailureDetails(category, sceneNumber) });
+  new ImageApiException("IMAGE_PROVIDER_ERROR", message, HttpStatus.BAD_GATEWAY, { ...imageFailureDetails(category, sceneNumber, "run") });
 export const imageContentUnavailable = () =>
   new ImageApiException("IMAGE_CONTENT_UNAVAILABLE", "The requested scene image is unavailable.", HttpStatus.NOT_FOUND);
 

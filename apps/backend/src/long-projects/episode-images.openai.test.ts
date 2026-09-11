@@ -757,7 +757,7 @@ describe("real OpenAI Episode image generation", () => {
         : jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
     }));
 
-    await expect(images.generate("long", 1, { approved: true })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_PROVIDER_ERROR", details: { category: "authentication", sceneNumber: 3, billedOnFailure: true } } });
+    await expect(images.generate("long", 1, { approved: true })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_PROVIDER_ERROR", details: { category: "authentication", sceneNumber: 3, scope: "run", billedOnFailure: true } } });
     expect(calls).toBe(3);
     const imageDirectory = path.join(projectsRoot, "long", "long_story", "Episode01", "images");
     expect((await fs.readdir(imageDirectory)).filter((name) => name.endsWith(".png"))).toEqual(["scene1.png", "scene2.png"]);
@@ -779,7 +779,7 @@ describe("real OpenAI Episode image generation", () => {
     vi.stubGlobal("fetch", failingAtFourth);
 
     await expect(images.generate("long", 1, { approved: true })).rejects.toMatchObject({
-      response: { code: "LONG_EPISODE_IMAGES_PROVIDER_ERROR", details: { category: "invalid_request", sceneNumber: 4, billedOnFailure: true, remedy: "change_input" } },
+      response: { code: "LONG_EPISODE_IMAGES_PROVIDER_ERROR", details: { category: "invalid_request", sceneNumber: 4, scope: "run", billedOnFailure: true, remedy: "change_input" } },
     });
     expect(calls).toBe(4);
 
@@ -826,7 +826,7 @@ describe("real OpenAI Episode image generation", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(429, { error: { code: "rate_limit_exceeded" } })));
 
     await expect(images.regenerate("long", 1, "5", { approved: true })).rejects.toMatchObject({
-      response: { code: "LONG_EPISODE_IMAGES_PROVIDER_ERROR", details: { category: "rate_limit", sceneNumber: 5, billedOnFailure: true, remedy: "retry" } },
+      response: { code: "LONG_EPISODE_IMAGES_PROVIDER_ERROR", details: { category: "rate_limit", sceneNumber: 5, scope: "scene", billedOnFailure: true, remedy: "retry" } },
     });
   });
 

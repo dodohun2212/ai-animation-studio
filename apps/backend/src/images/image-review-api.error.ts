@@ -37,7 +37,7 @@ export const imageReviewBudgetExceeded = (message: string) =>
   new ImageReviewApiException("IMAGE_REVIEW_BUDGET_EXCEEDED", message, HttpStatus.CONFLICT);
 /** Same details as the first generation's failure — ImageGenerationFailureDetails. */
 export const imageReviewProviderError = (category: string, message: string, sceneNumber: SceneNumber) =>
-  new ImageReviewApiException("IMAGE_REVIEW_PROVIDER_ERROR", message, HttpStatus.BAD_GATEWAY, { ...imageFailureDetails(category, sceneNumber) });
+  new ImageReviewApiException("IMAGE_REVIEW_PROVIDER_ERROR", message, HttpStatus.BAD_GATEWAY, { ...imageFailureDetails(category, sceneNumber, "scene") });
 
 /**
  * project-lock.ts's ProjectLockTimeoutError as an API error. Shares its literal `code` with the Long Project and

@@ -481,7 +481,7 @@ export class EpisodeImagesService {
       await this.indexAvailableAssets(id, number, episode).catch(() => undefined);
       episode.state = "asset_mapping_approved"; episode.updated_at = new Date().toISOString(); await this.saveEpisode(id, number, episode).catch(() => undefined);
       if (isBudgetLedgerUnreadable(error)) throw longBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw longEpisodeImagesBudgetExceeded(error.message);
-      if (error instanceof OpenAiAdapterError) throw longEpisodeImagesProviderError(error.category, error.message, failingScene);
+      if (error instanceof OpenAiAdapterError) throw longEpisodeImagesProviderError(error.category, error.message, failingScene, "run");
       if (error instanceof Error && error.message === "invalid image") throw longEpisodeImagesInvalid();
       throw longStorageError();
     }
@@ -708,8 +708,8 @@ ${additionalInstruction}` : basePrompt;
       } catch (error) {
         if (isBudgetLedgerUnreadable(error)) throw longBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw longEpisodeImagesBudgetExceeded(error.message);
         // `scene`, not `number` — in this method `number` is the Episode.
-        if (error instanceof OpenAiAdapterError) throw longEpisodeImagesProviderError(error.category, error.message, scene);
-        throw longEpisodeImagesProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown, scene);
+        if (error instanceof OpenAiAdapterError) throw longEpisodeImagesProviderError(error.category, error.message, scene, "scene");
+        throw longEpisodeImagesProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown, scene, "scene");
       }
       // Read-only, computed after the fact. Skipped when the record could not be written: it reads the same
       // file that just refused a write, and letting it throw would take the response — and the image just paid
