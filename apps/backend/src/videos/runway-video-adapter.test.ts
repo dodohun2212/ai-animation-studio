@@ -170,23 +170,6 @@ ${SEEDANCE_TEXT_CONSTRAINT}`,
     expect(SEEDANCE_TEXT_CONSTRAINT.length).toBeLessThanOrEqual(NO_LEGIBLE_TEXT_VIDEO_RULE.length);
   });
 
-  /*
-   * 🔴 Seconds × rate is the only price the contract states, and under a per-generation minimum it quotes low. 5 s
-   * clears both minimums (Mini 16×5 = 80 ≥ 64, 2.5 480p 20×5 = 100 ≥ 80); 3 s would not, and is refused unsent.
-   */
-  it("refuses a clip short enough to be billed at a model's minimum instead of its rate, without calling fetch", async () => {
-    const fetchMock = vi.fn();
-    await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "seedance2_5_480p", durationSeconds: 3, fetchImpl: fetchMock, sleep: noSleep }))
-      .rejects.toMatchObject({ category: "invalid_request" });
-    await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "seedance2_mini", durationSeconds: 3, fetchImpl: fetchMock, sleep: noSleep }))
-      .rejects.toMatchObject({ category: "invalid_request" });
-    expect(fetchMock).not.toHaveBeenCalled();
-
-    const accepted = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
-    await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "seedance2_mini", durationSeconds: 5, fetchImpl: accepted, sleep: noSleep });
-    expect(accepted).toHaveBeenCalledTimes(1);
-  });
-
   it("sends gen4_turbo nothing H3 Max's body carries", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
     await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "gen4_turbo", fetchImpl: fetchMock, sleep: noSleep });

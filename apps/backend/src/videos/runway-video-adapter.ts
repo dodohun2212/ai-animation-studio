@@ -1,4 +1,4 @@
-import { DEFAULT_VIDEO_MODEL, NO_LEGIBLE_TEXT_VIDEO_RULE, providerTaskFailure, RUNWAY_PROMPT_MAX_LENGTH, RUNWAY_VIDEO_RATIOS, VIDEO_MODELS, videoModelOption, type RunwayVideoRatio, type SceneFailureRemedy, type VideoModel } from "@ai-animation-studio/shared";
+import { DEFAULT_VIDEO_MODEL, NO_LEGIBLE_TEXT_VIDEO_RULE, providerTaskFailure, RUNWAY_PROMPT_MAX_LENGTH, RUNWAY_VIDEO_RATIOS, VIDEO_MODEL_OPTIONS, VIDEO_MODELS, type RunwayVideoRatio, type SceneFailureRemedy, type VideoModel } from "@ai-animation-studio/shared";
 // Types only — erased at build, so no SDK code ever runs here (see `requestBodyFor` below for why that matters).
 import type { ImageToVideoCreateParams } from "@runwayml/sdk/resources/image-to-video";
 import { assertRealNetworkCallAllowed } from "../providers/no-test-network.guard.js";
@@ -111,15 +111,6 @@ function seedanceParts<const R extends string>({ promptImage, promptText, durati
 }
 
 /**
- * Credits a generation is billed at least, whatever its length (Runway's pricing page). Seconds × rate — the only
- * price the contract can state — is right only above it, so a clip short enough to fall under it is refused rather
- * than quoted low. This app's 5 s already clears both; the check is for the length that would not.
- */
-const MINIMUM_CREDITS: Partial<Record<VideoModel, number>> = {
-  seedance2_mini: 64, seedance2_5_480p: 80, seedance2_5_720p: 80, seedance2_5_1080p: 80,
-};
-
-/**
  * The no-text line each model is sent after the prompt — request-time only, see NO_LEGIBLE_TEXT_VIDEO_RULE.
  *
  * Seedance gets it in its maker's own words. ByteDance's Seedance 2.0 prompt guide (BytePlus ModelArk, read
@@ -149,16 +140,12 @@ function wan3Body({ promptImage, promptText, duration }: RequestParts, ratio: "a
  * nothing is billed.
  */
 export function requestBodyFor(model: VideoModel, parts: { promptImage: string; promptText: string; ratio: string; duration: number }): ImageToVideoCreateParams {
-  const option = videoModelOption(model);
-  if (option.id !== model) throw new RunwayAdapterError("invalid_request", `알 수 없는 영상 모델입니다: ${model}`);
+  const option = VIDEO_MODEL_OPTIONS.find((candidate) => candidate.id === model);
+  if (!option) throw new RunwayAdapterError("invalid_request", `알 수 없는 영상 모델입니다: ${model}`);
   if (!Number.isInteger(parts.duration) || parts.duration < 1 || parts.duration > option.maxDurationSeconds) {
     throw new RunwayAdapterError("invalid_request", `${option.label}은(는) 한 장면을 최대 ${option.maxDurationSeconds}초까지만 만듭니다.`);
   }
   if (!(RUNWAY_VIDEO_RATIOS as readonly string[]).includes(parts.ratio)) throw new RunwayAdapterError("invalid_request", "영상 비율이 올바르지 않습니다.");
-  const minimum = MINIMUM_CREDITS[model];
-  if (minimum !== undefined && Math.round(option.pricePerSecondUsd * 100 * parts.duration) < minimum) {
-    throw new RunwayAdapterError("invalid_request", `${option.label}은(는) 한 번에 최소 ${minimum}크레딧이 청구돼, ${parts.duration}초 클립은 견적보다 비싸게 나갑니다.`);
-  }
   return REQUEST_BODY[model]({ ...parts, ratio: parts.ratio as RunwayVideoRatio });
 }
 const MAX_DATA_URI_BYTES = 5 * 1024 * 1024;

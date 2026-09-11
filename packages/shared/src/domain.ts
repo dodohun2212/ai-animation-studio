@@ -193,7 +193,30 @@ export interface VideoModelOption {
    * the seam work (docs/00_NOW.md ③, block 2), and it waits for this model to be checked on a real reel.
    */
   acceptsLastFrame: boolean;
+  /**
+   * Charged once per generation on top of the seconds — Runway's pricing page's "plus 1 credit for the first-frame
+   * image" kind of line. Absent is zero. It is added once, never multiplied by the length (videoSceneEstimatedCostUsd).
+   */
+  perGenerationUsd?: number;
+  /**
+   * The least one generation is billed, whatever its length — Runway's "(64 credit minimum per generation)".
+   * Absent is none. It bounds the seconds × rate part only, before any per-generation charge is added, because that
+   * is where the pricing page hangs it; applied after, a per-generation charge would be swallowed by it and the
+   * quote would come out low.
+   */
+  minimumChargeUsd?: number;
+  /**
+   * Whose shape the clip comes out in, which decides whether a vertical reel gets bars (our pictures are 2:3):
+   * - `requested` — the request names the frame (a `ratio`), confirmed from Runway's OpenAPI document.
+   * - `follows_first_frame` — the maker's own documentation says the output keeps the first frame's shape.
+   * - `unconfirmed` — nothing published says. Its own value on purpose: writing either of the other two for it
+   *   would claim a source we do not have, and `requested` would be wrong in the reassuring direction.
+   */
+  frameShape: VideoFrameShape;
 }
+
+export const VIDEO_FRAME_SHAPES = ["requested", "follows_first_frame", "unconfirmed"] as const;
+export type VideoFrameShape = (typeof VIDEO_FRAME_SHAPES)[number];
 
 /**
  * The models this app can be told to use.
@@ -213,7 +236,7 @@ export interface VideoModelOption {
  *   The Seedance models take 4–15 s (2.5: 4–30 s), first and last frame as keyframes, and a `ratio` whose string
  *   carries the resolution (720:1280, 1080:1920, 480:854). Their `ratios` below are this app's two frames in
  *   Runway's names; the adapter picks the string for the entry's resolution. Mini and 2.5 have a minimum charge
- *   per generation (64 and 80 credits) that 5 s already clears — the adapter refuses a clip short enough to hit it.
+ *   per generation (64 and 80 credits, `minimumChargeUsd`) that 5 s already clears; the quote carries it below that.
  *   Seedance 2.0 at 4K (150 credits/s) is left out: the merge renders 1080×1920, so it would buy pixels that are
  *   scaled away.
  *
@@ -223,29 +246,40 @@ export interface VideoModelOption {
  * (videos/ffmpeg-merge.service.ts), so a clip that keeps the picture's shape arrives with bars, not broken.
  */
 export const VIDEO_MODEL_OPTIONS: readonly VideoModelOption[] = [
-  { id: "gen4_turbo", label: "Runway Gen-4 Turbo", pricePerSecondUsd: 0.05, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 10, acceptsLastFrame: false },
-  { id: "gen4_5", label: "Runway Gen-4.5", pricePerSecondUsd: 0.12, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 10, acceptsLastFrame: false },
-  { id: "h3_max_480p", label: "MiniMax H3 Max (480p)", pricePerSecondUsd: 0.05, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: true },
-  { id: "h3_max_768p", label: "MiniMax H3 Max (768p)", pricePerSecondUsd: 0.08, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: true },
-  { id: "wan3_480p", label: "WAN 3.0 (480p)", pricePerSecondUsd: 0.05, ratios: [], maxDurationSeconds: 30, acceptsLastFrame: true },
-  { id: "wan3_720p", label: "WAN 3.0 (720p)", pricePerSecondUsd: 0.1, ratios: [], maxDurationSeconds: 30, acceptsLastFrame: true },
-  { id: "wan3_1080p", label: "WAN 3.0 (1080p)", pricePerSecondUsd: 0.2, ratios: [], maxDurationSeconds: 30, acceptsLastFrame: true },
-  { id: "happyhorse_720p", label: "HappyHorse 1.0 (720p)", pricePerSecondUsd: 0.15, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: false },
-  { id: "happyhorse_1080p", label: "HappyHorse 1.0 (1080p)", pricePerSecondUsd: 0.3, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: false },
-  { id: "seedance2_720p", label: "Seedance 2.0 (720p)", pricePerSecondUsd: 0.36, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 15, acceptsLastFrame: true },
-  { id: "seedance2_1080p", label: "Seedance 2.0 (1080p)", pricePerSecondUsd: 0.4, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 15, acceptsLastFrame: true },
-  { id: "seedance2_fast", label: "Seedance 2.0 Fast (720p)", pricePerSecondUsd: 0.29, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 15, acceptsLastFrame: true },
-  { id: "seedance2_mini", label: "Seedance 2.0 Mini (720p)", pricePerSecondUsd: 0.16, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 15, acceptsLastFrame: true },
-  { id: "seedance2_5_480p", label: "Seedance 2.5 (480p)", pricePerSecondUsd: 0.2, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 30, acceptsLastFrame: true },
-  { id: "seedance2_5_720p", label: "Seedance 2.5 (720p)", pricePerSecondUsd: 0.3, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 30, acceptsLastFrame: true },
-  { id: "seedance2_5_1080p", label: "Seedance 2.5 (1080p)", pricePerSecondUsd: 0.68, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 30, acceptsLastFrame: true },
+  { id: "gen4_turbo", label: "Runway Gen-4 Turbo", pricePerSecondUsd: 0.05, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 10, acceptsLastFrame: false, frameShape: "requested" },
+  { id: "gen4_5", label: "Runway Gen-4.5", pricePerSecondUsd: 0.12, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 10, acceptsLastFrame: false, frameShape: "requested" },
+  { id: "h3_max_480p", label: "MiniMax H3 Max (480p)", pricePerSecondUsd: 0.05, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "unconfirmed" },
+  { id: "h3_max_768p", label: "MiniMax H3 Max (768p)", pricePerSecondUsd: 0.08, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "unconfirmed" },
+  { id: "wan3_480p", label: "WAN 3.0 (480p)", pricePerSecondUsd: 0.05, ratios: [], maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "follows_first_frame" },
+  { id: "wan3_720p", label: "WAN 3.0 (720p)", pricePerSecondUsd: 0.1, ratios: [], maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "follows_first_frame" },
+  { id: "wan3_1080p", label: "WAN 3.0 (1080p)", pricePerSecondUsd: 0.2, ratios: [], maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "follows_first_frame" },
+  { id: "happyhorse_720p", label: "HappyHorse 1.0 (720p)", pricePerSecondUsd: 0.15, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "follows_first_frame" },
+  { id: "happyhorse_1080p", label: "HappyHorse 1.0 (1080p)", pricePerSecondUsd: 0.3, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "follows_first_frame" },
+  { id: "seedance2_720p", label: "Seedance 2.0 (720p)", pricePerSecondUsd: 0.36, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "requested" },
+  { id: "seedance2_1080p", label: "Seedance 2.0 (1080p)", pricePerSecondUsd: 0.4, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "requested" },
+  { id: "seedance2_fast", label: "Seedance 2.0 Fast (720p)", pricePerSecondUsd: 0.29, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "requested" },
+  { id: "seedance2_mini", label: "Seedance 2.0 Mini (720p)", pricePerSecondUsd: 0.16, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.64 },
+  { id: "seedance2_5_480p", label: "Seedance 2.5 (480p)", pricePerSecondUsd: 0.2, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.8 },
+  { id: "seedance2_5_720p", label: "Seedance 2.5 (720p)", pricePerSecondUsd: 0.3, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.8 },
+  { id: "seedance2_5_1080p", label: "Seedance 2.5 (1080p)", pricePerSecondUsd: 0.68, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.8 },
 ];
 
 /** The one used when nobody has chosen — today's behaviour, unchanged. */
 export const DEFAULT_VIDEO_MODEL: VideoModel = "gen4_turbo";
 
+/**
+ * The option for one of our model names.
+ *
+ * 🔴 Throws on a name it does not list. It used to answer with the first option — the cheapest, $0.05/s against the
+ * catalogue's $0.68 — so any caller that passed a wrong name got a quote up to 13.6 times low with nothing to say
+ * so (Cowork Round 771). Guessing, with money, should lean expensive; not guessing is better still. The callers
+ * that turn an unknown stored name into a model do that on purpose, with the reason written down
+ * (`resolveVideoModel`, `recordedVideoModel`), and hand this a name it knows.
+ */
 export function videoModelOption(id: string): VideoModelOption {
-  return VIDEO_MODEL_OPTIONS.find((option) => option.id === id) ?? VIDEO_MODEL_OPTIONS[0]!;
+  const option = VIDEO_MODEL_OPTIONS.find((candidate) => candidate.id === id);
+  if (!option) throw new Error(`Unknown video model: ${id}`);
+  return option;
 }
 
 /**
@@ -451,8 +485,13 @@ export const VIDEO_SECOND_ESTIMATED_COST_USD = 0.05;
  * resolves to the default, which is that function's documented job.
  */
 export function videoSceneEstimatedCostUsd(clipDurationSeconds: number, model: string | VideoModelOption = DEFAULT_VIDEO_MODEL): number {
-  const rate = typeof model === "string" ? videoModelOption(model).pricePerSecondUsd : model.pricePerSecondUsd;
-  return Math.round(clipDurationSeconds * rate * 100) / 100;
+  const option = typeof model === "string" ? videoModelOption(model) : model;
+  // 🔴 In this order and no other: the minimum bounds the per-second part, then the per-generation charge is added
+  // once. max() taken after the addition would let a minimum swallow the per-generation charge and quote low, and
+  // multiplying the charge by the length would quote a ten-second clip two charges. Nothing in today's catalogue
+  // has both, which is exactly why the order is fixed here rather than discovered by the first model that does.
+  const seconds = Math.max(clipDurationSeconds * option.pricePerSecondUsd, option.minimumChargeUsd ?? 0);
+  return Math.round((seconds + (option.perGenerationUsd ?? 0)) * 100) / 100;
 }
 /**
  * A Long Project outline call returns the whole-project overview plus every Episode's lightweight outline in

@@ -30,7 +30,7 @@ import { VideoModelCard } from "./VideoModelCard.js";
  * worth having: the card will have to say that a model CANNOT take a last frame, and a picker whose only
  * sample says "yes" would never render that sentence.
  */
-const second = { id: "gen4_alt" as VideoModel, label: "다른 모델", pricePerSecondUsd: 0.12, ratios: ["720:1280"], maxDurationSeconds: 10, acceptsLastFrame: false };
+const second = { id: "gen4_alt" as VideoModel, label: "다른 모델", pricePerSecondUsd: 0.12, ratios: ["720:1280"], maxDurationSeconds: 10, acceptsLastFrame: false, frameShape: "requested" as const };
 const twoOptions: VideoModelSetting = { selected: DEFAULT_VIDEO_MODEL, isDefault: false, options: [VIDEO_MODEL_OPTIONS[0]!, second] };
 // One option by construction, not by the contract happening to list one — it lists sixteen.
 const oneOption: VideoModelSetting = { selected: DEFAULT_VIDEO_MODEL, isDefault: false, options: VIDEO_MODEL_OPTIONS.slice(0, 1) };

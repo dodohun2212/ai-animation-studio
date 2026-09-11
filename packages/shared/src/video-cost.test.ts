@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RUNWAY_CLIP_DURATIONS, VIDEO_SECOND_ESTIMATED_COST_USD, videoSceneEstimatedCostUsd } from "./domain.js";
+import { RUNWAY_CLIP_DURATIONS, VIDEO_SECOND_ESTIMATED_COST_USD, videoModelOption, videoSceneEstimatedCostUsd } from "./domain.js";
 
 describe("what one generated scene is quoted at", () => {
   /**
@@ -45,10 +45,46 @@ describe("pricing a model the contract has not heard of", () => {
    * is worse than the flat constant this replaced, because it looks like it moved.
    */
   it("prices an option from the option, not from whatever the contract happens to list first", () => {
-    const hypothetical = { id: "gen4_turbo" as const, label: "Later", pricePerSecondUsd: 0.12, ratios: ["720:1280"], maxDurationSeconds: 10, acceptsLastFrame: false };
+    const hypothetical = { id: "gen4_turbo" as const, label: "Later", pricePerSecondUsd: 0.12, ratios: ["720:1280"], maxDurationSeconds: 10, acceptsLastFrame: false, frameShape: "requested" as const };
 
     expect(videoSceneEstimatedCostUsd(5, hypothetical), "its own rate").toBe(0.6);
     expect(videoSceneEstimatedCostUsd(10, hypothetical)).toBe(1.2);
     expect(videoSceneEstimatedCostUsd(5, "gen4_turbo"), "and a listed name still prices from the list").toBe(0.25);
+  });
+
+  /*
+   * 🔴 Two charges that "seconds × rate" cannot state, and the order they combine in (Cowork Round 771/772). Nothing
+   * in today's catalogue has a per-generation charge, and none has both, so these use hypothetical options — the
+   * order has to be fixed before the first model that needs it, not discovered by it.
+   */
+  const base = { id: "gen4_turbo" as const, label: "Hypothetical", ratios: ["720:1280"], maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "requested" as const };
+
+  it("adds a per-generation charge once, never multiplied by the length", () => {
+    const perGeneration = { ...base, pricePerSecondUsd: 0.1, perGenerationUsd: 0.01 };
+    expect(videoSceneEstimatedCostUsd(5, perGeneration)).toBe(0.51);
+    expect(videoSceneEstimatedCostUsd(10, perGeneration) - videoSceneEstimatedCostUsd(5, perGeneration), "five more seconds cost five seconds").toBeCloseTo(0.5, 8);
+    expect(videoSceneEstimatedCostUsd(10, perGeneration)).not.toBe(2 * videoSceneEstimatedCostUsd(5, perGeneration));
+  });
+
+  it("quotes the minimum for a clip short enough to fall under it, and the seconds above it", () => {
+    const minimum = { ...base, pricePerSecondUsd: 0.16, minimumChargeUsd: 0.64 };
+    expect(videoSceneEstimatedCostUsd(3, minimum), "3 s × $0.16 is $0.48, billed at $0.64").toBe(0.64);
+    expect(videoSceneEstimatedCostUsd(5, minimum)).toBe(0.8);
+  });
+
+  it("bounds only the seconds by the minimum, then adds the per-generation charge, so neither swallows the other", () => {
+    const both = { ...base, pricePerSecondUsd: 0.16, minimumChargeUsd: 0.64, perGenerationUsd: 0.01 };
+    expect(videoSceneEstimatedCostUsd(3, both), "max(0.48, 0.64) + 0.01 — not max(0.49, 0.64)").toBe(0.65);
+  });
+
+  it("prices the catalogue's own minimums: Seedance 2.0 Mini and 2.5 clear them at five seconds", () => {
+    expect(videoSceneEstimatedCostUsd(5, "seedance2_mini")).toBe(0.8);
+    expect(videoSceneEstimatedCostUsd(3, "seedance2_mini"), "and would be billed the $0.64 minimum below it").toBe(0.64);
+    expect(videoSceneEstimatedCostUsd(3, "seedance2_5_480p")).toBe(0.8);
+  });
+
+  it("refuses a model name it does not list, instead of quoting the cheapest model", () => {
+    expect(() => videoSceneEstimatedCostUsd(5, "gen4.5")).toThrow();
+    expect(() => videoModelOption("seedance")).toThrow();
   });
 });
