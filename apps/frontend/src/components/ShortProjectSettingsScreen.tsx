@@ -732,6 +732,14 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
       {atmosphereAssetIds && (
         <div aria-label="전체 분위기" className="space-y-2 rounded-xl border border-white/5 bg-slate-950/30 p-3.5">
           <h4 className="text-sm font-medium text-slate-300">전체 분위기</h4>
+          {/* This heading takes three Asset types (ATMOSPHERE_ASSET_TYPES) and the image prompt now says a
+              different thing for each — referenceRoleSentence() reads the Asset's own type when the role is
+              "atmosphere". 캡틴D put a background photo here expecting the place, and had no way to know from
+              this screen that a style sheet in the same box would mean something else entirely. */}
+          <p className="text-xs text-slate-400">
+            고른 이미지의 종류에 따라 이미지 AI가 다르게 씁니다 — 배경 이미지는 그 장소를 장면의 배경으로 삼고,
+            스타일 이미지는 색감·빛의 느낌만 빌리며, 일반 참고 이미지는 분위기만 따릅니다.
+          </p>
           {atmosphereAssetIds.length === 0 && <p className="text-sm text-slate-400">고른 분위기 이미지가 없습니다.</p>}
           {atmosphereAssetIds.length > 0 && (
             <ul aria-label="선택된 분위기 이미지 목록" className="space-y-1">
@@ -781,6 +789,12 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
       {sceneReferenceAssets && (
         <div aria-label="장면 참고 이미지" className="space-y-2 rounded-xl border border-white/5 bg-slate-950/30 p-3.5">
           <h4 className="text-sm font-medium text-slate-300">장면 참고 이미지</h4>
+          {/* The purpose typed below is stored as the mapping's usage_role (projects.service.ts:237) and
+              referenceRoleSentence() passes a person's own sentence through as written. It is an instruction,
+              not a label, and nothing on this screen said so. */}
+          <p className="text-xs text-slate-400">
+            아래 「사용 목적」에 적으신 문장이 이미지 AI에게 그대로 지시로 전달됩니다.
+          </p>
           {sceneReferenceAssets.length === 0 && <p className="text-sm text-slate-400">고른 장면 참고 이미지가 없습니다.</p>}
           {sceneReferenceAssets.length > 0 && (
             <ul aria-label="고른 장면 참고 이미지 목록" className="space-y-2">
