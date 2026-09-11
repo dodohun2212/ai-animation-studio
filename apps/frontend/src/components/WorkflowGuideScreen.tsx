@@ -7,7 +7,11 @@ import {
   RUNWAY_CLIP_DURATIONS,
   STORY_ESTIMATED_COST_USD,
   TTS_ESTIMATED_COST_USD,
+  DEFAULT_VIDEO_MODEL,
+  VIDEO_MODEL_OPTIONS,
+  videoModelOption,
   videoSceneEstimatedCostUsd,
+  type VideoModel,
   type RunwayClipDurationSeconds,
 } from "@ai-animation-studio/shared";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
@@ -54,6 +58,7 @@ function StageCard({
   callRule,
   calls,
   unitCostUsd,
+  unitCostNote,
   totalCostUsd,
   sends,
   receives,
@@ -66,6 +71,8 @@ function StageCard({
   callRule: string;
   calls: number;
   unitCostUsd: number;
+  /** What that rate is the rate OF, when the answer is not obvious. Defaults to the flat 「예상 기준값」. */
+  unitCostNote?: string;
   totalCostUsd: number;
   sends: string[];
   receives: string;
@@ -98,7 +105,7 @@ function StageCard({
         <div className="rounded-xl border border-white/10 bg-slate-950/50 p-3">
           <dt className="text-xs text-slate-400">1회당 비용</dt>
           <dd className="mt-0.5 text-lg font-semibold tabular-nums text-slate-100">{usd(unitCostUsd)}</dd>
-          <p className="mt-1 text-xs text-slate-500">예상 기준값</p>
+          <p data-testid={`${testId}-unit-note`} className="mt-1 text-xs text-slate-500">{unitCostNote ?? "예상 기준값"}</p>
         </div>
         <div className="rounded-xl border border-white/10 bg-slate-950/50 p-3">
           <dt className="text-xs text-slate-400">이 단계 합계</dt>
@@ -201,6 +208,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
   const [episodeCount, setEpisodeCount] = useState(5);
   const [narrationEnabled, setNarrationEnabled] = useState(false);
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(false);
+  const [videoModelId, setVideoModelId] = useState<VideoModel>(DEFAULT_VIDEO_MODEL);
 
   const storyCalls = 1;
   const imageCalls = sceneCount;
@@ -212,8 +220,29 @@ export function WorkflowGuideScreen({ onBack }: Props) {
   // Priced off this project's own clip length. It used to be a flat per-scene number while the length is a
   // setting with two values, so a 10-second project was quoted the 5-second total on the one screen whose
   // whole job is to say what a run will cost.
-  const videoUnitCostUsd = videoSceneEstimatedCostUsd(clipDurationSeconds);
+  /*
+   * 🔴 Priced from a model the person picked here, and the rates differ enough that this is the difference
+   * between a right answer and a wrong one: Runway's own price list puts H3 Max at 768p 60% above gen4_turbo.
+   * This call used to pass no model at all and silently take the default, which would have kept quoting $0.05/s
+   * to someone running a pricier model — quoting money LOW, the one direction domain.ts says must never be
+   * wrong, on the one screen whose entire job is to say what a run will cost.
+   *
+   * The picker is deliberately NOT this project's saved setting, and the screen says so. Reading the saved one
+   * would need this screen's first network request, and it would also make the screen worse at the thing it is
+   * for: comparing models before choosing. The real choice lives in 설정, which the note below points at.
+   */
+  const videoModel = videoModelOption(videoModelId);
+  const videoUnitCostUsd = videoSceneEstimatedCostUsd(clipDurationSeconds, videoModel);
   const videoTotal = videoCalls * videoUnitCostUsd;
+  /*
+   * 🔴 A combination this screen can now be put into, so it must not be priced as if it works.
+   *
+   * Both halves are chosen right here, and models differ in how long one clip may be — Veo 3.1 was ruled out as
+   * a candidate for exactly this (4·6·8 seconds only, so a 5-second scene does not fit). Quoting a total for a
+   * run the provider would refuse is the same failure as quoting it low: a number in front of a button that
+   * does not describe what would happen.
+   */
+  const clipTooLongForModel = clipDurationSeconds > videoModel.maxDurationSeconds;
   const narrationTotal = narrationCalls * TTS_ESTIMATED_COST_USD;
   const totalCalls = storyCalls + imageCalls + videoCalls + narrationCalls;
   const totalCost = storyTotal + imageTotal + videoTotal + narrationTotal;
@@ -363,7 +392,37 @@ export function WorkflowGuideScreen({ onBack }: Props) {
               ))}
             </select>
           </label>
+          <label className="text-sm text-slate-300" htmlFor="workflow-guide-video-model">
+            영상 AI
+            <select
+              id="workflow-guide-video-model"
+              data-testid="workflow-guide-video-model"
+              className="ml-2 rounded-xl border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none"
+              value={videoModelId}
+              onChange={(event) => setVideoModelId(event.target.value as VideoModel)}
+            >
+              {VIDEO_MODEL_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
+        {/* Said once, plainly. A picker on a calculator is a question ("what would this cost"), not a setting —
+            and a person who changed it here and went looking for a different reel would have no way to know
+            that, because the two screens look equally real. */}
+        <p data-testid="workflow-guide-video-model-note" className="text-xs text-slate-400">
+          여기서 고른 영상 AI는 <span className="text-slate-300">계산에만</span> 쓰입니다. 실제로 쓸 모델은 설정 화면의 「영상 모델」에서 고릅니다.
+          {videoModel.acceptsLastFrame
+            ? " 이 모델은 앞 클립이 끝난 장면에서 다음 클립을 시작할 수 있습니다."
+            : " 이 모델은 앞 클립이 끝난 장면을 이어받지 못합니다 — 이어지는 릴에서 컷이 뒤로 돌아갈 수 있습니다."}
+        </p>
+        {clipTooLongForModel && (
+          <p role="alert" data-testid="workflow-guide-clip-too-long" className="text-xs font-semibold text-rose-300">
+            {videoModel.label}은(는) 한 장면을 최대 {videoModel.maxDurationSeconds}초까지만 만듭니다. 아래 영상 비용은 이 조합으로는 실제로 나갈 수 없는 값입니다.
+          </p>
+        )}
         <label className="flex items-start gap-2.5 text-sm text-slate-300">
           <input
             type="checkbox"
@@ -474,6 +533,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
         callRule="장면 1개당 1회"
         calls={videoCalls}
         unitCostUsd={videoUnitCostUsd}
+        unitCostNote={`${videoModel.label} 기준`}
         totalCostUsd={videoTotal}
         testId="workflow-guide-stage-video"
         sends={[

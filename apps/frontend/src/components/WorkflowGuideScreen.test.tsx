@@ -1,3 +1,4 @@
+import { DEFAULT_VIDEO_MODEL, RUNWAY_CLIP_DURATIONS, VIDEO_MODEL_OPTIONS, videoModelOption, videoSceneEstimatedCostUsd } from "@ai-animation-studio/shared";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -108,5 +109,89 @@ describe("WorkflowGuideScreen", () => {
     expect(screen.getByTestId("workflow-guide-stage-narration-calls").textContent).toBe("6회");
     expect(screen.getByTestId("workflow-guide-total-calls").textContent).toBe("19회");
     expect(screen.getByTestId("workflow-guide-total-cost").textContent).toBe("$2.21");
+  });
+
+  // The model picker (캡틴D 승인, Cowork Round 756): the rate names its model, moves with the clip length and the
+  // picked model, says it is for the calculation only, and warns on a clip the model cannot make.
+  const defaultOption = videoModelOption(DEFAULT_VIDEO_MODEL);
+  const longest = RUNWAY_CLIP_DURATIONS[RUNWAY_CLIP_DURATIONS.length - 1]!;
+  const setLength = (seconds: number) => fireEvent.change(screen.getByLabelText("장면당 길이"), { target: { value: String(seconds) } });
+  const videoTotal = () => screen.getByTestId("workflow-guide-stage-video-cost").textContent;
+
+  it("says which model the video rate belongs to, instead of quoting a number from nowhere", () => {
+    render(<WorkflowGuideScreen onBack={() => {}} />);
+
+    // 🔴 A rate with no model attached is the failure this guards — not the label's wording, but that the screen
+    // names its source at all, and names the model it actually priced with.
+    expect(screen.getByTestId("workflow-guide-stage-video-unit-note").textContent).toContain(defaultOption.label);
+  });
+
+  it("prices the video stage from this projection's own clip length, not a flat per-scene number", () => {
+    render(<WorkflowGuideScreen onBack={() => {}} />);
+
+    setLength(RUNWAY_CLIP_DURATIONS[0]!);
+    const atShortest = videoTotal();
+    setLength(longest);
+    // The two lengths this app offers must not quote the same total — the defect the clip-length argument was
+    // added to fix, with nothing holding it there afterwards.
+    expect(videoTotal()).not.toBe(atShortest);
+    expect(videoTotal()).toContain((6 * videoSceneEstimatedCostUsd(longest, defaultOption)).toFixed(2));
+  });
+
+  /*
+   * 🔴 The reason the picker exists. Two models at different rates must not produce the same projection — that
+   * is the whole failure this screen would otherwise hide, and it is invisible until a second model exists.
+   *
+   * Written so it says something true today and more later: with one model in the contract it asserts the picker
+   * offers exactly what the contract offers and the total matches that model; with two or more it also asserts
+   * the total actually moves between them.
+   */
+  it("offers every model the contract has, and prices the projection from the one picked", () => {
+    render(<WorkflowGuideScreen onBack={() => {}} />);
+    const picker = screen.getByTestId("workflow-guide-video-model");
+
+    expect(picker.querySelectorAll("option")).toHaveLength(VIDEO_MODEL_OPTIONS.length);
+
+    const totals = VIDEO_MODEL_OPTIONS.map((option) => {
+      fireEvent.change(picker, { target: { value: option.id } });
+      expect(screen.getByTestId("workflow-guide-stage-video-unit-note").textContent).toContain(option.label);
+      expect(videoTotal()).toContain((6 * videoSceneEstimatedCostUsd(5, option)).toFixed(2));
+      return videoTotal();
+    });
+    // Models priced differently must not read the same on screen. Equal rates may legitimately coincide, so this
+    // compares the distinct rates rather than demanding every row differ.
+    const distinctRates = new Set(VIDEO_MODEL_OPTIONS.map((option) => option.pricePerSecondUsd));
+    expect(new Set(totals).size).toBe(distinctRates.size);
+  });
+
+  it("says the picked model is for the calculation only, and points at where the real choice lives", () => {
+    render(<WorkflowGuideScreen onBack={() => {}} />);
+
+    // A picker that looks like a setting but is not one would send someone away believing they had chosen.
+    const note = screen.getByTestId("workflow-guide-video-model-note").textContent ?? "";
+    expect(note).toContain("계산에만");
+    expect(note).toContain("설정");
+  });
+
+  /*
+   * 🔴 A combination the person can now build here, priced as if it works.
+   *
+   * Unreachable while every model outlasts the longest clip this app offers — so this asserts the rule rather
+   * than a fixture: whether the warning is shown must follow whether the chosen length exceeds the chosen
+   * model's own maximum, in both directions. Veo 3.1 (4·6·8s only) was ruled out as a candidate for exactly
+   * this, and the next candidate that cannot do 10 seconds makes it real without anyone touching this screen.
+   */
+  it("warns, instead of pricing, when the clip is longer than the chosen model can make", () => {
+    render(<WorkflowGuideScreen onBack={() => {}} />);
+    const picker = screen.getByTestId("workflow-guide-video-model");
+
+    for (const option of VIDEO_MODEL_OPTIONS) {
+      fireEvent.change(picker, { target: { value: option.id } });
+      for (const seconds of RUNWAY_CLIP_DURATIONS) {
+        setLength(seconds);
+        const warned = screen.queryByTestId("workflow-guide-clip-too-long") !== null;
+        expect(warned, `${option.label} at ${seconds}s`).toBe(seconds > option.maxDurationSeconds);
+      }
+    }
   });
 });
