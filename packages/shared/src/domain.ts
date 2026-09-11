@@ -146,7 +146,7 @@ export const defaultBgmVolume = (mode: string): number => (mode === "bgm" ? 1 : 
  * moves is two choices, and `pricePerSecondUsd` stays one true number per entry. The adapter
  * (videos/runway-video-adapter.ts) turns each name into its request body.
  */
-export const VIDEO_MODELS = ["gen4_turbo", "h3_max_480p", "h3_max_768p"] as const;
+export const VIDEO_MODELS = ["gen4_turbo", "h3_max_480p", "h3_max_768p", "wan3_480p", "wan3_720p", "wan3_1080p"] as const;
 export type VideoModel = (typeof VIDEO_MODELS)[number];
 
 /**
@@ -203,16 +203,22 @@ export interface VideoModelOption {
  *   had already been charging — the table agrees with the one row we could check against real spend.
  * - Lengths, ratios and the last frame: Runway's published OpenAPI document (docs.dev.runwayml.com/openapi.json,
  *   read 2026-09-12). gen4_turbo takes 2–10 s and a `ratio`; h3_max takes 5–15 s, no `ratio` at all (a
- *   `resolution` of 480p or 768p instead), and a first frame with an optional last frame.
+ *   `resolution` of 480p or 768p instead), and a first frame with an optional last frame. wan3 takes 2–30 s and a
+ *   first (and optional last) frame as keyframes, and in keyframe mode its `ratio` must be `auto_480p`,
+ *   `auto_720p` or `auto_1080p` — the frame shape follows the first frame, so the resolution is the whole choice.
  *
- * `ratios: []` is the honest answer for H3 Max, not missing data: the request has no ratio field. What frame
- * shape it returns for a vertical first frame is NOT confirmed — the merge fits every clip into the project's
- * frame either way (videos/ffmpeg-merge.service.ts), so a wrong guess costs bars, not a broken reel.
+ * `ratios: []` is the honest answer for H3 Max and WAN 3.0, not missing data: neither is told a frame shape.
+ * WAN's follows the first frame by its own documentation; H3's is NOT confirmed. Our pictures are 2:3 (or 3:2),
+ * and the merge fits every clip into the project's 9:16 (or 16:9) frame by padding
+ * (videos/ffmpeg-merge.service.ts), so a clip that keeps the picture's shape arrives with bars, not broken.
  */
 export const VIDEO_MODEL_OPTIONS: readonly VideoModelOption[] = [
   { id: "gen4_turbo", label: "Runway Gen-4 Turbo", pricePerSecondUsd: 0.05, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 10, acceptsLastFrame: false },
   { id: "h3_max_480p", label: "MiniMax H3 Max (480p)", pricePerSecondUsd: 0.05, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: true },
   { id: "h3_max_768p", label: "MiniMax H3 Max (768p)", pricePerSecondUsd: 0.08, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: true },
+  { id: "wan3_480p", label: "WAN 3.0 (480p)", pricePerSecondUsd: 0.05, ratios: [], maxDurationSeconds: 30, acceptsLastFrame: true },
+  { id: "wan3_720p", label: "WAN 3.0 (720p)", pricePerSecondUsd: 0.1, ratios: [], maxDurationSeconds: 30, acceptsLastFrame: true },
+  { id: "wan3_1080p", label: "WAN 3.0 (1080p)", pricePerSecondUsd: 0.2, ratios: [], maxDurationSeconds: 30, acceptsLastFrame: true },
 ];
 
 /** The one used when nobody has chosen — today's behaviour, unchanged. */

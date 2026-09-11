@@ -78,7 +78,20 @@ const REQUEST_BODY: Record<VideoModel, (parts: RequestParts) => ImageToVideoCrea
     ({ model: "h3_max", promptImage, promptText, duration, resolution: "480p", promptExpansionMode: "disabled" }) satisfies ImageToVideoCreateParams.H3Max,
   h3_max_768p: ({ promptImage, promptText, duration }) =>
     ({ model: "h3_max", promptImage, promptText, duration, resolution: "768p", promptExpansionMode: "disabled" }) satisfies ImageToVideoCreateParams.H3Max,
+  wan3_480p: (parts) => wan3Body(parts, "auto_480p"),
+  wan3_720p: (parts) => wan3Body(parts, "auto_720p"),
+  wan3_1080p: (parts) => wan3Body(parts, "auto_1080p"),
 };
+
+/**
+ * 🔴 WAN reads a bare image string as a *reference* image, not as the first frame — its field is "an image or
+ * array of images; use position first/last for keyframe mode, or omit position for reference images". So the
+ * first frame goes as a keyframe, and keyframe requests must use an `auto_*` ratio (the shape follows the frame).
+ * `audio: false`: the merge keeps only the picture (`-map 0:v:0`), so a soundtrack would be generated for nothing.
+ */
+function wan3Body({ promptImage, promptText, duration }: RequestParts, ratio: "auto_480p" | "auto_720p" | "auto_1080p"): ImageToVideoCreateParams {
+  return { model: "wan3", promptImage: [{ position: "first", uri: promptImage }], promptText, duration, ratio, audio: false } satisfies ImageToVideoCreateParams.Wan3;
+}
 
 /**
  * The body for one scene, or a refusal before anything is sent. A clip longer than the model makes (Runway would

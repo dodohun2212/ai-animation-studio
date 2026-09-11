@@ -50,6 +50,14 @@ const DIALECT: Record<VideoModel, VideoPromptDialect> = {
   // now carry it).
   h3_max_480p: "runway_gen4",
   h3_max_768p: "runway_gen4",
+  // WAN 3.0 reads the same text on its maker's own guidance: Alibaba's image-to-video guide (Model Studio,
+  // read 2026-09-12) gives the formula as "Prompt = Motion + Camera movement", because "the image already defines
+  // entity, scene, and style" — which is this grammar exactly: held poses, one action, a motivated camera, the
+  // environment's motion, no restated subject. Its camera examples ("camera pushes in", "fixed camera") are the
+  // plain cinematography this grammar's camera line already carries. It says nothing about negatives either way.
+  wan3_480p: "runway_gen4",
+  wan3_720p: "runway_gen4",
+  wan3_1080p: "runway_gen4",
 };
 
 /** Which grammar a model reads — exported for the test that holds the staleness recompute's assumption. */

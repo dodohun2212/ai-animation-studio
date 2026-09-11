@@ -93,6 +93,26 @@ ${NO_LEGIBLE_TEXT_VIDEO_RULE}`,
     }
   });
 
+  /*
+   * 🔴 WAN takes a bare image string as a REFERENCE image, not the first frame (Runway's OpenAPI: "use position
+   * first/last for keyframe mode, or omit position for reference images"). Sent as a string, the scene's picture
+   * would only inspire the clip instead of starting it. So: a keyframe, the `auto_*` ratio keyframe mode requires,
+   * and no audio the merge would throw away.
+   */
+  it("sends WAN 3.0 the picture as its first keyframe at the chosen resolution, with no audio", async () => {
+    for (const [model, ratio] of [["wan3_480p", "auto_480p"], ["wan3_720p", "auto_720p"], ["wan3_1080p", "auto_1080p"]] as const) {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
+      await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "a hero walks forward", { model, ratio: "720:1280", durationSeconds: 5, fetchImpl: fetchMock, sleep: noSleep });
+      const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body));
+      expect(body, model).toEqual({
+        model: "wan3", ratio, audio: false, duration: 5,
+        promptText: `a hero walks forward
+${NO_LEGIBLE_TEXT_VIDEO_RULE}`,
+        promptImage: [{ position: "first", uri: `data:image/png;base64,${IMAGE_BYTES.toString("base64")}` }],
+      });
+    }
+  });
+
   it("sends gen4_turbo nothing H3 Max's body carries", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
     await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "gen4_turbo", fetchImpl: fetchMock, sleep: noSleep });
