@@ -1,6 +1,6 @@
 import type { SceneNumber } from "@ai-animation-studio/shared";
 
-import { imageFailureDetails } from "./image-failure.js";
+import { openAiSceneFailureDetails } from "../providers/openai-scene-failure.js";
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { ApiError } from "@ai-animation-studio/shared";
 import { BUDGET_LEDGER_UNREADABLE_CODE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "../providers/budget-ledger.js";
@@ -37,7 +37,7 @@ export const imageReviewBudgetExceeded = (message: string) =>
   new ImageReviewApiException("IMAGE_REVIEW_BUDGET_EXCEEDED", message, HttpStatus.CONFLICT);
 /** Same details as the first generation's failure — ImageGenerationFailureDetails. */
 export const imageReviewProviderError = (category: string, message: string, sceneNumber: SceneNumber) =>
-  new ImageReviewApiException("IMAGE_REVIEW_PROVIDER_ERROR", message, HttpStatus.BAD_GATEWAY, { ...imageFailureDetails(category, sceneNumber, "scene") });
+  new ImageReviewApiException("IMAGE_REVIEW_PROVIDER_ERROR", message, HttpStatus.BAD_GATEWAY, { ...openAiSceneFailureDetails(category, sceneNumber, "scene") });
 
 /**
  * project-lock.ts's ProjectLockTimeoutError as an API error. Shares its literal `code` with the Long Project and

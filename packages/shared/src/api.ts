@@ -796,6 +796,35 @@ export interface SceneFailure {
  */
 export const IMAGE_FAILURE_SCOPES = ["run", "scene"] as const;
 export type ImageFailureScope = (typeof IMAGE_FAILURE_SCOPES)[number];
+/** The same two scopes, named for what they are now: narration failures carry them too (docs/00_NOW.md ②-3). */
+export const SCENE_FAILURE_SCOPES = IMAGE_FAILURE_SCOPES;
+export type SceneFailureScope = ImageFailureScope;
+
+/**
+ * Every category an OpenAI failure is classified into — the closed list the backend's `classifyOpenAiHttpError`
+ * answers with and puts into `details.category` for image, narration and story failures.
+ *
+ * Published so a screen's sentence table can be keyed on it (`Record<OpenAiErrorCategory, string>`) instead of on
+ * `string`: two narration tables keyed `server_error`, a name the backend never sends, and every OpenAI 5xx fell to
+ * the fallback sentence with nothing to say so (Cowork Round 769/770).
+ */
+export const OPENAI_ERROR_CATEGORIES = [
+  "authentication", "quota_or_permission", "rate_limit", "server", "network",
+  "invalid_request", "safety_policy", "context_length_exceeded", "unknown",
+] as const;
+export type OpenAiErrorCategory = (typeof OPENAI_ERROR_CATEGORIES)[number];
+/**
+ * The two the adapters add on top when OpenAI answered 200 with nothing usable — a body with no bytes, or one that
+ * would not parse. They reach `details.category` too, so a table that means to cover every sent value covers these.
+ */
+export const OPENAI_FAILURE_CATEGORIES = [...OPENAI_ERROR_CATEGORIES, "empty_response", "invalid_response"] as const;
+export type OpenAiFailureCategory = (typeof OPENAI_FAILURE_CATEGORIES)[number];
+
+/**
+ * The `details` of a per-scene paid-provider failure that arrives as an error — images and narration, both
+ * pipelines. `ImageGenerationFailureDetails` is the same shape under the name it was first given.
+ */
+export type SceneProviderFailureDetails = ImageGenerationFailureDetails;
 
 export interface ImageGenerationFailureDetails {
   /** This app's own provider category, unchanged — screens still pick their sentence from it. */

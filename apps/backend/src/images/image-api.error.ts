@@ -1,6 +1,6 @@
 import type { SceneNumber } from "@ai-animation-studio/shared";
 
-import { imageFailureDetails } from "./image-failure.js";
+import { openAiSceneFailureDetails } from "../providers/openai-scene-failure.js";
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { ApiError } from "@ai-animation-studio/shared";
 import { BUDGET_LEDGER_UNREADABLE_CODE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "../providers/budget-ledger.js";
@@ -28,7 +28,7 @@ export const imageBudgetExceeded = (message: string) =>
   new ImageApiException("IMAGE_BUDGET_EXCEEDED", message, HttpStatus.CONFLICT);
 /** Carries which scene was in flight and what a person can do about it — ImageGenerationFailureDetails. */
 export const imageProviderError = (category: string, message: string, sceneNumber: SceneNumber) =>
-  new ImageApiException("IMAGE_PROVIDER_ERROR", message, HttpStatus.BAD_GATEWAY, { ...imageFailureDetails(category, sceneNumber, "run") });
+  new ImageApiException("IMAGE_PROVIDER_ERROR", message, HttpStatus.BAD_GATEWAY, { ...openAiSceneFailureDetails(category, sceneNumber, "run") });
 export const imageContentUnavailable = () =>
   new ImageApiException("IMAGE_CONTENT_UNAVAILABLE", "The requested scene image is unavailable.", HttpStatus.NOT_FOUND);
 

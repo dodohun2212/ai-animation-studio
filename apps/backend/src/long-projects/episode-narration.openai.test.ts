@@ -62,7 +62,34 @@ afterEach(async () => {
   root = undefined;
 });
 
+function errorResponse(status: number, body: unknown): Response {
+  return { ok: false, status, json: async () => body, arrayBuffer: async () => new ArrayBuffer(0), headers: { get: () => null } } as unknown as Response;
+}
+
 describe("Episode narration with a connected OpenAI credential", () => {
+  it("names the scene an Episode's narration run stopped at, not the first, and that a re-run continues there", async () => {
+    let calls = 0;
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => {
+      calls += 1;
+      return Promise.resolve(calls === 3 ? errorResponse(400, { error: { code: "invalid_request_error" } }) : audioResponse(AUDIO_BYTES));
+    }));
+    const { narration } = await setup();
+    await expect(narration.generate("long", 1, { approved: true })).rejects.toMatchObject({
+      response: { code: "LONG_EPISODE_NARRATION_PROVIDER_ERROR", details: { category: "invalid_request", sceneNumber: 3, scope: "run", billedOnFailure: true, remedy: "change_input" } },
+    });
+  });
+
+  // In the regenerate method `number` is the Episode and `sceneNumber` the line — scene 4 of Episode 1 keeps them apart.
+  it("names the scene, not the Episode, when one Episode line's regenerated narration is refused", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(audioResponse(AUDIO_BYTES)));
+    const { narration } = await setup();
+    await narration.generate("long", 1, { approved: true });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(errorResponse(429, { error: { code: "rate_limit_exceeded" } })));
+    await expect(narration.regenerate("long", 1, "4", { approved: true })).rejects.toMatchObject({
+      response: { code: "LONG_EPISODE_NARRATION_PROVIDER_ERROR", details: { category: "rate_limit", sceneNumber: 4, scope: "scene", billedOnFailure: true, remedy: "retry" } },
+    });
+  });
+
   it("speaks every scene through the real endpoint and reports the audio as generated, not as a placeholder", async () => {
     const fetchMock = vi.fn().mockResolvedValue(audioResponse(AUDIO_BYTES));
     vi.stubGlobal("fetch", fetchMock);

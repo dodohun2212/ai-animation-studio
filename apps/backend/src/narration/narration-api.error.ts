@@ -1,5 +1,6 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
-import type { ApiError } from "@ai-animation-studio/shared";
+import type { ApiError, SceneFailureScope, SceneNumber } from "@ai-animation-studio/shared";
+import { openAiSceneFailureDetails } from "../providers/openai-scene-failure.js";
 import { BUDGET_LEDGER_UNREADABLE_CODE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "../providers/budget-ledger.js";
 
 type NarrationErrorCode =
@@ -33,8 +34,11 @@ export const narrationStorageError = () =>
   new NarrationApiException("NARRATION_STORAGE_ERROR", "Narration generation storage operation failed.", HttpStatus.INTERNAL_SERVER_ERROR);
 export const narrationBudgetExceeded = (message: string) =>
   new NarrationApiException("NARRATION_BUDGET_EXCEEDED", message, HttpStatus.CONFLICT);
-export const narrationProviderError = (category: string, message: string) =>
-  new NarrationApiException("NARRATION_PROVIDER_ERROR", message, HttpStatus.BAD_GATEWAY, { category });
+// Where it stopped, whether a re-run continues, whether the budget counted it — the same details images carry
+// (SceneProviderFailureDetails): a narration batch that stops at scene 7 has already bought 1–6, and a screen that
+// cannot say so sends someone to press again from the start and buy them twice.
+export const narrationProviderError = (category: string, message: string, sceneNumber: SceneNumber, scope: SceneFailureScope) =>
+  new NarrationApiException("NARRATION_PROVIDER_ERROR", message, HttpStatus.BAD_GATEWAY, { ...openAiSceneFailureDetails(category, sceneNumber, scope) });
 export const narrationContentUnavailable = () =>
   new NarrationApiException("NARRATION_CONTENT_UNAVAILABLE", "The requested scene narration audio is unavailable.", HttpStatus.NOT_FOUND);
 

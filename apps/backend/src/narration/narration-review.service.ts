@@ -148,8 +148,8 @@ export class NarrationReviewService {
         }
       } catch (error) {
         if (isBudgetLedgerUnreadable(error)) throw narrationBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw narrationBudgetExceeded(error.message);
-        if (error instanceof OpenAiAdapterError) throw narrationProviderError(error.category, error.message);
-        throw narrationProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown);
+        if (error instanceof OpenAiAdapterError) throw narrationProviderError(error.category, error.message, sceneNumber, "scene");
+        throw narrationProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown, sceneNumber, "scene");
       }
       adapter = OPENAI_TTS_MODEL;
       apiCalls = 1;

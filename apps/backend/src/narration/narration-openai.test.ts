@@ -122,8 +122,35 @@ describe("narration generation with a connected OpenAI credential", () => {
     const fetchMock = vi.fn().mockResolvedValue(errorResponse(401, { error: { code: "invalid_api_key" } }));
     vi.stubGlobal("fetch", fetchMock);
     const { generation, budget } = await setup();
-    await expect(generation.generate("narr", { approved: true })).rejects.toMatchObject({ response: { code: "NARRATION_PROVIDER_ERROR", details: { category: "authentication" } } });
+    await expect(generation.generate("narr", { approved: true })).rejects.toMatchObject({ response: { code: "NARRATION_PROVIDER_ERROR", details: { category: "authentication", sceneNumber: 1, scope: "run", billedOnFailure: true } } });
     expect(await budget.spentThisMonth()).toBeCloseTo(0.01, 8);
+  });
+
+  /*
+   * 🔴 The failure the screen could not describe (Cowork Round 769): a batch that stops partway has already bought
+   * the scenes before it, and an error saying only "OpenAI server error" sends someone to press again from the top.
+   * The error now names the scene it stopped at — not the first — and that a re-run continues from there.
+   */
+  it("names the scene a narration run stopped at, and that the refused line counted against the budget", async () => {
+    let calls = 0;
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => {
+      calls += 1;
+      return Promise.resolve(calls === 2 ? errorResponse(400, { error: { code: "invalid_request_error" } }) : audioResponse(200, AUDIO_BYTES));
+    }));
+    const { generation } = await setup();
+    await expect(generation.generate("narr", { approved: true })).rejects.toMatchObject({
+      response: { code: "NARRATION_PROVIDER_ERROR", details: { category: "invalid_request", sceneNumber: 2, scope: "run", billedOnFailure: true, remedy: "change_input" } },
+    });
+  });
+
+  it("names the one scene whose regenerated narration was refused, as a redraw rather than a run", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(audioResponse(200, AUDIO_BYTES)));
+    const { generation, reviews } = await setup();
+    await generation.generate("narr", { approved: true });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(errorResponse(429, { error: { code: "rate_limit_exceeded" } })));
+    await expect(reviews.regenerate("narr", "2", { approved: true })).rejects.toMatchObject({
+      response: { code: "NARRATION_PROVIDER_ERROR", details: { category: "rate_limit", sceneNumber: 2, scope: "scene", billedOnFailure: true, remedy: "retry" } },
+    });
   });
 
   it("regenerates one scene with a real call and reports a retryEstimate", async () => {

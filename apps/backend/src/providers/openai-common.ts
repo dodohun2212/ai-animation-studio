@@ -3,9 +3,10 @@
  * (Story, Image, ...) — mirrors Python's `app/adapters/openai_common.py`, which the same two adapters share.
  */
 
-export type OpenAiErrorCategory =
-  | "authentication" | "quota_or_permission" | "rate_limit" | "server" | "network"
-  | "invalid_request" | "safety_policy" | "context_length_exceeded" | "unknown";
+import type { OpenAiErrorCategory } from "@ai-animation-studio/shared";
+
+// The list lives in the contract now, so the screens' sentence tables can be keyed on it (OPENAI_ERROR_CATEGORIES).
+export type { OpenAiErrorCategory };
 
 export const OPENAI_KOREAN_MESSAGES: Record<OpenAiErrorCategory, string> = {
   authentication: "OpenAI API 키 인증에 실패했습니다.",

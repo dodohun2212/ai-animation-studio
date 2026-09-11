@@ -146,8 +146,11 @@ export class LocalNarrationGenerationService {
     const reused: SceneNumber[] = [];
     const skipped: SceneNumber[] = [];
 
+    // The scene being bought when the provider refused — named in the error, not guessed as "the first unfinished".
+    let failingScene: SceneNumber = scenes[0]!;
     try {
       for (const number of scenes) {
+        failingScene = number;
         const text = sceneValue(current.scenes[number - 1], "narration");
         const destination = this.narrationPath(current.project_id, number);
         if (!text) { skipped.push(number); continue; }
@@ -204,7 +207,7 @@ export class LocalNarrationGenerationService {
         await this.projects.save({ ...current, warnings: withWarning(current.warnings, spendUnrecordedWarning(`${unrecordedScenes.join(", ")}번 장면 내레이션 생성`, OPENAI_LEDGER_FILE)), updated_at: new Date().toISOString() }).catch(() => undefined);
       }
       if (isBudgetLedgerUnreadable(error)) throw narrationBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw narrationBudgetExceeded(error.message);
-      if (error instanceof OpenAiAdapterError) throw narrationProviderError(error.category, error.message);
+      if (error instanceof OpenAiAdapterError) throw narrationProviderError(error.category, error.message, failingScene, "run");
       if (error instanceof Error && error.message === "invalid audio") throw narrationGenerationFailed();
       throw narrationStorageError();
     }

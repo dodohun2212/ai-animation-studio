@@ -209,12 +209,15 @@ export class EpisodeNarrationService {
     const generated: SceneNumber[] = []; const reused: SceneNumber[] = []; const skipped: SceneNumber[] = [];
     /** Scenes whose paid call landed but whose cost could not be written down — providers/budget-ledger.ts. */
     const unrecordedScenes: SceneNumber[] = [];
+    // The scene being bought when the provider refused — named in the error, not guessed as "the first unfinished".
+    let failingScene = 1 as SceneNumber;
     const noteUnrecorded = async () => { if (unrecordedScenes.length > 0) await persistEpisodeWarning(this.files(id, number), number, episode, spendUnrecordedWarning(`${unrecordedScenes.join(", ")}번 장면 내레이션 생성`, OPENAI_LEDGER_FILE)); };
     try {
       await fs.mkdir(this.files(id, number).narration, { recursive: true });
       const existingRecords = await this.loadRecords(id, number);
       for (let index = 0; index < scenes.length; index += 1) {
         const sceneNumber = (index + 1) as SceneNumber;
+        failingScene = sceneNumber;
         const text = this.sceneNarrationText(scenes[index]!);
         const destination = this.narrationPath(id, number, sceneNumber);
         if (!text) { skipped.push(sceneNumber); continue; }
@@ -245,7 +248,7 @@ export class EpisodeNarrationService {
     } catch (error) {
       await noteUnrecorded();
       if (isBudgetLedgerUnreadable(error)) throw longBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw longEpisodeNarrationBudgetExceeded(error.message);
-      if (error instanceof OpenAiAdapterError) throw longEpisodeNarrationProviderError(error.category, error.message);
+      if (error instanceof OpenAiAdapterError) throw longEpisodeNarrationProviderError(error.category, error.message, failingScene, "run");
       if (error instanceof Error && error.message === "invalid audio") throw longEpisodeNarrationGenerationFailed();
       throw longEpisodeNarrationStorageError();
     }
@@ -289,8 +292,9 @@ export class EpisodeNarrationService {
         }
       } catch (error) {
         if (isBudgetLedgerUnreadable(error)) throw longBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw longEpisodeNarrationBudgetExceeded(error.message);
-        if (error instanceof OpenAiAdapterError) throw longEpisodeNarrationProviderError(error.category, error.message);
-        throw longEpisodeNarrationProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown);
+        // `sceneNumber`, not `number` — in this method `number` is the Episode.
+        if (error instanceof OpenAiAdapterError) throw longEpisodeNarrationProviderError(error.category, error.message, sceneNumber, "scene");
+        throw longEpisodeNarrationProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown, sceneNumber, "scene");
       }
       adapter = OPENAI_TTS_MODEL; apiCalls = 1;
       // Read-only, computed after the fact. Skipped when the record could not be written — same file, so it
