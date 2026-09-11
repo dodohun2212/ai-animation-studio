@@ -28,7 +28,15 @@ const SAFE_ERRORS: Record<string, string> = {
   VIDEO_CONFIRMATION_STALE: "미리보기 내용이 그 사이에 변경되었습니다. 새로고침 후 다시 확인해 주세요.",
   VIDEO_REQUEST_ID_CONFLICT: "이전 요청과 내용이 달라 처리할 수 없습니다. 새로고침 후 다시 시도해 주세요.",
   [BUDGET_LEDGER_UNREADABLE]: BUDGET_LEDGER_UNREADABLE_MESSAGE,
-  VIDEO_BUDGET_EXCEEDED: `설정된 예산을 초과하여 전송할 수 없습니다. ${BUDGET_LIMIT_ROUTE_HINT}`,
+  /*
+   * 🔴 Names Runway, because the budgets are per provider and this sentence used to name none of them.
+   *
+   * Eight sibling refusals across this app say 「이번 달 OpenAI 예산을 초과하여」 — this one, the only Runway
+   * refusal, said 「설정된 예산」. It is also the only one 캡틴D has actually hit: the month went over on Runway
+   * ($10.75 against a $10 default) while generating a reel, and the screen's answer did not say which of the two
+   * limits to raise. They raised the right one, but not because this sentence told them.
+   */
+  VIDEO_BUDGET_EXCEEDED: `이번 달 Runway 예산을 초과하여 요청을 보내지 않았습니다. ${BUDGET_LIMIT_ROUTE_HINT}`,
   VIDEO_CALL_LIMIT_EXCEEDED: "허용된 Provider 호출 횟수를 초과했습니다.",
 };
 const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };

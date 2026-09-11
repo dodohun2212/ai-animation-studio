@@ -101,6 +101,20 @@ describe("videoSubmissionApi", () => {
     await expect(startVideoSubmission("sample_project", makeRequest())).rejects.toMatchObject({ code: "CLIENT_NETWORK_ERROR" });
   });
 
+  /* The budgets are per provider, so a refusal that does not name one leaves the person guessing which of the
+     two limits to raise. Pinned because this is the only Runway refusal among nine and it was the odd one out. */
+  it("names Runway in the budget refusal, the way the OpenAI refusals name OpenAI", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(409, { code: "VIDEO_BUDGET_EXCEEDED", message: "raw backend detail" })));
+
+    let caught: unknown;
+    try {
+      await startVideoSubmission("sample_project", makeRequest());
+    } catch (error) {
+      caught = error;
+    }
+    expect(toVideoSubmissionDisplayError(caught).message).toContain("Runway");
+  });
+
   it.each([
     ["VIDEO_CONFIRMATION_STALE"],
     ["VIDEO_REQUEST_ID_CONFLICT"],
