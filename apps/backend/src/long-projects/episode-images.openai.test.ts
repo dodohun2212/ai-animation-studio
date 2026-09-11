@@ -757,7 +757,7 @@ describe("real OpenAI Episode image generation", () => {
         : jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
     }));
 
-    await expect(images.generate("long", 1, { approved: true })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_PROVIDER_ERROR", details: { category: "authentication" } } });
+    await expect(images.generate("long", 1, { approved: true })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_PROVIDER_ERROR", details: { category: "authentication", sceneNumber: 3, billedOnFailure: true } } });
     expect(calls).toBe(3);
     const imageDirectory = path.join(projectsRoot, "long", "long_story", "Episode01", "images");
     expect((await fs.readdir(imageDirectory)).filter((name) => name.endsWith(".png"))).toEqual(["scene1.png", "scene2.png"]);
@@ -778,7 +778,9 @@ describe("real OpenAI Episode image generation", () => {
     });
     vi.stubGlobal("fetch", failingAtFourth);
 
-    await expect(images.generate("long", 1, { approved: true })).rejects.toMatchObject({ response: { code: "LONG_EPISODE_IMAGES_PROVIDER_ERROR" } });
+    await expect(images.generate("long", 1, { approved: true })).rejects.toMatchObject({
+      response: { code: "LONG_EPISODE_IMAGES_PROVIDER_ERROR", details: { category: "invalid_request", sceneNumber: 4, billedOnFailure: true, remedy: "change_input" } },
+    });
     expect(calls).toBe(4);
 
     const imageDirectory = path.join(projectsRoot, "long", "long_story", "Episode01", "images");
@@ -812,6 +814,19 @@ describe("real OpenAI Episode image generation", () => {
     expect(regenerated.retryEstimate).toEqual({
       perSceneCostUsd: 0.10,
       budget: { monthlyLimitUsd: 10, spentUsd: expect.closeTo(0.7, 8), remainingUsd: expect.closeTo(9.3, 8), estimatedRequestCostUsd: 0.10, canSpend: true },
+    });
+  });
+
+  it("names the scene, not the Episode, when regenerating one Episode picture is refused", async () => {
+    // In this method `number` is the Episode and `scene` the picture, and both are small integers — scene 5 of
+    // Episode 1 keeps the two apart, where scene 1 would let a swap pass unnoticed.
+    const { images } = await setupWithConnectedOpenAi();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] })));
+    await images.generate("long", 1, { approved: true });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(429, { error: { code: "rate_limit_exceeded" } })));
+
+    await expect(images.regenerate("long", 1, "5", { approved: true })).rejects.toMatchObject({
+      response: { code: "LONG_EPISODE_IMAGES_PROVIDER_ERROR", details: { category: "rate_limit", sceneNumber: 5, billedOnFailure: true, remedy: "retry" } },
     });
   });
 

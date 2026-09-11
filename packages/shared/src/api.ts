@@ -777,6 +777,42 @@ export interface SceneFailure {
   billedOnFailure: boolean;
 }
 
+/**
+ * The `details` of every image failure the provider answered — IMAGE_PROVIDER_ERROR, IMAGE_REVIEW_PROVIDER_ERROR and
+ * LONG_EPISODE_IMAGES_PROVIDER_ERROR, first generation and regeneration, short and long (docs/00_NOW.md ②-2).
+ *
+ * On the error, not on `ImageGenerationProgress`, because image generation is one synchronous request: when a scene
+ * fails the request answers with this error, and nothing reads the progress afterwards. A failure field there would
+ * be seen by no one.
+ *
+ * The names are `SceneFailure`'s on purpose, so a screen that draws both pipelines reads one vocabulary.
+ */
+export interface ImageGenerationFailureDetails {
+  /** This app's own provider category, unchanged — screens still pick their sentence from it. */
+  category: string;
+  /** The scene that was in flight when the provider refused. The ones before it are saved, and a re-run reuses them. */
+  sceneNumber: SceneNumber;
+  /**
+   * Whether this failed attempt was counted against the month's budget — the meaning it has on the video side too,
+   * where a billed failure is exactly the one the ledger records.
+   *
+   * 🟠 Not a statement about what OpenAI charged. Every paid image call is recorded at its estimate in a `finally`,
+   * success or failure (local-image-generation.service.ts), so for these codes this is `true`; whether OpenAI itself
+   * billed a refused call is not something the app can see. A screen should say the budget was used, not that the
+   * provider charged.
+   */
+  billedOnFailure: boolean;
+  /**
+   * Present only when one of `SceneFailureRemedy`'s three sentences is true for this category.
+   *
+   * 🔴 Absent for `authentication` and `quota_or_permission`, deliberately. Every remedy sentence is about the scene's
+   * input — "send it again", "the input is the cause", "change the script or references" — and for a bad key or an
+   * exhausted quota all three are false: resending fails the same way, and changing the scene fixes nothing. The
+   * category's own sentence ("check the key in API settings") is the right advice there, so the screen keeps it.
+   */
+  remedy?: SceneFailureRemedy;
+}
+
 export interface LongEpisodeVideoProgress {
   /** Same meaning and rule as GenerationProgressResponse.paidProvider — always present, never inferred from a missing cost line. */
   paidProvider: boolean;

@@ -408,11 +408,32 @@ describe("real OpenAI image generation", () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { error: { code: "invalid_api_key" } }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(service.generate("images", { approved: true })).rejects.toMatchObject({ response: { code: "IMAGE_PROVIDER_ERROR", details: { category: "authentication" } } });
+    const error = await service.generate("images", { approved: true }).catch((caught: unknown) => caught) as { response: { code: string; details: Record<string, unknown> } };
+    expect(error.response).toMatchObject({ code: "IMAGE_PROVIDER_ERROR", details: { category: "authentication", sceneNumber: 1, billedOnFailure: true } });
+    // Signing in again is the fix, and none of the three remedy sentences says that — the category's own does.
+    expect(error.response.details).not.toHaveProperty("remedy");
 
     expect((await projects.findById("images")).workflow_state).toBe(WorkflowState.AssetMappingApproved);
     const usage = JSON.parse(await fs.readFile(path.join(root, "api_budget_usage.json"), "utf8")) as Array<Record<string, unknown>>;
     expect(usage).toEqual([expect.objectContaining({ project_id: "images", api_type: "image", succeeded: false })]);
+  });
+
+  it("names the scene a batch stopped at, not the first one, and says the refused picture counted against the budget", async () => {
+    // Pictures are bought one at a time, so when the fourth is refused the three before it are already paid for.
+    // "Something failed" leaves the person guessing which scene to fix; the error has to name it.
+    const { service } = await setupWithConnectedOpenAi();
+    let calls = 0;
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => {
+      calls += 1;
+      return Promise.resolve(calls === 4
+        ? jsonResponse(400, { error: { code: "invalid_request_error" } })
+        : jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] }));
+    }));
+
+    await expect(service.generate("images", { approved: true })).rejects.toMatchObject({
+      response: { code: "IMAGE_PROVIDER_ERROR", details: { category: "invalid_request", sceneNumber: 4, billedOnFailure: true, remedy: "change_input" } },
+    });
+    expect(calls).toBe(4);
   });
 
   it("sends the confirmed Asset Mapping's approved Reference image via images/edits for every scene, recording the :edit adapter", async () => {

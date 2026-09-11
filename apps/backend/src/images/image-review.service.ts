@@ -342,8 +342,8 @@ export class ImageReviewService {
         }
       } catch (error) {
         if (isBudgetLedgerUnreadable(error)) throw imageReviewBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw imageReviewBudgetExceeded(error.message);
-        if (error instanceof OpenAiAdapterError) throw imageReviewProviderError(error.category, error.message);
-        throw imageReviewProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown);
+        if (error instanceof OpenAiAdapterError) throw imageReviewProviderError(error.category, error.message, number);
+        throw imageReviewProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown, number);
       }
       adapter = references.images.length > 0 ? `${OPENAI_IMAGE_MODEL}:edit` : OPENAI_IMAGE_MODEL;
       apiCalls = 1;

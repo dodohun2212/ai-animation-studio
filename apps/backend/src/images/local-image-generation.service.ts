@@ -192,8 +192,12 @@ export class LocalImageGenerationService {
     /** Scenes whose paid call landed but whose cost could not be written down — see providers/budget-ledger.ts. */
     const unrecordedScenes: SceneNumber[] = [];
     const reused: SceneNumber[] = [];
+    // The scene in flight when a provider refused. Such an error only comes from the paid call inside the loop, so
+    // this names a real scene by the time the catch reads it — and the scenes before it are already saved.
+    let failingScene: SceneNumber = scenes[0]!;
     try {
       for (const number of scenes) {
+        failingScene = number;
         const destination = this.imagePath(current.project_id, number);
         const existing = current.generated_images[number - 1];
         if (existing === destination && await validPng(destination, Boolean(apiKey && this.budget))) {
@@ -273,7 +277,7 @@ export class LocalImageGenerationService {
       };
       await this.projects.save(recoverable).catch(() => undefined);
       if (isBudgetLedgerUnreadable(error)) throw imageBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw imageBudgetExceeded(error.message);
-      if (error instanceof OpenAiAdapterError) throw imageProviderError(error.category, error.message);
+      if (error instanceof OpenAiAdapterError) throw imageProviderError(error.category, error.message, failingScene);
       if (error instanceof Error && error.message === "invalid png") throw imageGenerationFailed();
       if (error instanceof Error && error.message === "incomplete") throw imageGenerationFailed();
       throw imageStorageError();
