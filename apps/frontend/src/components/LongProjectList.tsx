@@ -3,7 +3,7 @@ import type { LongEpisodeOutlineStatus, LongProjectSummary } from "@ai-animation
 
 import { listLongProjects, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
-import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
+import { longEpisodeOutlineStatusLabel } from "../utils/longEpisodeLabels.js";
 import { Spinner } from "./Spinner.js";
 import { StatusChip, type StatusTone } from "./ui/StatusChip.js";
 
@@ -141,7 +141,7 @@ export function LongProjectList({ refreshToken, onOpenProject, onCreateNew }: Lo
                   <span className="block truncate text-sm text-slate-300">{project.logline}</span>
                   <span className="mt-1.5 flex flex-wrap items-center gap-2">
                     <StatusChip tone={OUTLINE_TONE[project.outlineStatus]}>
-                      {longEpisodeStatusLabel(project.outlineStatus)}
+                      {longEpisodeOutlineStatusLabel(project.outlineStatus)}
                     </StatusChip>
                     <span className="text-xs text-slate-400 tabular-nums">{project.episodeCount}화</span>
                     <span className="text-xs text-slate-400 tabular-nums" title={project.updatedAt}>{formatDateTime(project.updatedAt)}</span>

@@ -1,4 +1,4 @@
-import { LONG_EPISODE_STATUSES, type LongEpisodeStatus } from "@ai-animation-studio/shared";
+import { LONG_EPISODE_STATUSES, type LongEpisodeOutlineStatus, type LongEpisodeStatus } from "@ai-animation-studio/shared";
 
 /** Korean display labels for LongEpisodeStatus (packages/shared/src/api.ts), used across the Long Project screens. */
 export const LONG_EPISODE_STATUS_LABEL: Record<LongEpisodeStatus, string> = {
@@ -22,8 +22,39 @@ export const LONG_EPISODE_STATUS_LABEL: Record<LongEpisodeStatus, string> = {
   failed: "실패",
 };
 
+/**
+ * 🔴 For a `LongEpisodeStatus` only. A Long **Project**'s `outlineStatus` is a different vocabulary —
+ * use `longEpisodeOutlineStatusLabel` below. The `| string` and the `?? status` fallback here are why
+ * passing the wrong one compiles and then fails silently.
+ */
 export function longEpisodeStatusLabel(status: LongEpisodeStatus | string): string {
   return (LONG_EPISODE_STATUS_LABEL as Record<string, string>)[status] ?? status;
+}
+
+/**
+ * The Long Project outline's own two labels.
+ *
+ * `LongProjectSummary.outlineStatus` is a `LongEpisodeOutlineStatus` (two values), but for weeks the long
+ * project list translated it with `longEpisodeStatusLabel` — the eighteen-value table above. It compiled,
+ * because that signature takes `| string`, and it produced the right Korean, because `planned` and
+ * `outline_ready` happen to appear in both lists. **That was a coincidence, not a design.**
+ *
+ * 🔴 The failure it was waiting for is a silent one. The table above falls back to `?? status`, so a third
+ * outline status whose name is not among the eighteen would put the raw enum on screen — `in_progress` where
+ * a person expects Korean — with nothing thrown and nothing red.
+ *
+ * So this table is keyed by the small vocabulary and has no fallback: a third outline status stops the build
+ * here until someone writes its Korean. The answer is never to add that name to the eighteen instead —
+ * widening the bigger list to cover the smaller one hides the same coincidence again, which is exactly what
+ * the contract-side tripwire (`packages/shared/src/api.test.ts`) says when it reddens.
+ */
+export const LONG_EPISODE_OUTLINE_STATUS_LABEL: Record<LongEpisodeOutlineStatus, string> = {
+  planned: "계획됨",
+  outline_ready: "스토리 개요 완료",
+};
+
+export function longEpisodeOutlineStatusLabel(status: LongEpisodeOutlineStatus): string {
+  return LONG_EPISODE_OUTLINE_STATUS_LABEL[status];
 }
 
 /*

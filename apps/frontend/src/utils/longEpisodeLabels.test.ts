@@ -1,7 +1,13 @@
-import { LONG_EPISODE_STATUSES } from "@ai-animation-studio/shared";
+import { LONG_EPISODE_OUTLINE_STATUSES, LONG_EPISODE_STATUSES } from "@ai-animation-studio/shared";
 import { describe, expect, it } from "vitest";
 
-import { LONG_EPISODE_STATUS_ORDER, isLongEpisodeStatusBefore, longEpisodeStatusLabel } from "./longEpisodeLabels.js";
+import {
+  LONG_EPISODE_OUTLINE_STATUS_LABEL,
+  LONG_EPISODE_STATUS_ORDER,
+  isLongEpisodeStatusBefore,
+  longEpisodeOutlineStatusLabel,
+  longEpisodeStatusLabel,
+} from "./longEpisodeLabels.js";
 
 /**
  * The order used to be sixteen of the eighteen statuses written out by hand.
@@ -49,5 +55,30 @@ describe("Long Episode status order", () => {
     for (const status of LONG_EPISODE_STATUSES) {
       expect(longEpisodeStatusLabel(status), status).not.toBe(status);
     }
+  });
+});
+
+/**
+ * The long project list used to translate `outlineStatus` with the eighteen-value table, and it worked only
+ * because both outline names happen to be in that list. The compile error is the real guard — a third outline
+ * status cannot be added without writing its Korean here — but a type error is invisible to a suite, so these
+ * pin what a reader can check: the two vocabularies are kept apart, and neither table answers for the other.
+ */
+describe("Long Project outline status labels", () => {
+  it("has a Korean label for every outline status, and no entry for anything else", () => {
+    expect(Object.keys(LONG_EPISODE_OUTLINE_STATUS_LABEL).sort()).toEqual([...LONG_EPISODE_OUTLINE_STATUSES].sort());
+    for (const status of LONG_EPISODE_OUTLINE_STATUSES) {
+      expect(longEpisodeOutlineStatusLabel(status), status).not.toBe(status);
+    }
+  });
+
+  // Not a style preference: the eighteen-value table is the one that falls back to `?? status`, so if the list
+  // ever goes back to it, an outline status it does not know reaches the screen as a raw enum name.
+  it("does not borrow the episode table, whose fallback would print the raw enum", () => {
+    expect(longEpisodeOutlineStatusLabel("planned")).toBe("계획됨");
+    expect(longEpisodeOutlineStatusLabel("outline_ready")).toBe("스토리 개요 완료");
+    // The episode table answers for a name it does not have by echoing it back. That is the behaviour the
+    // outline table must never inherit.
+    expect(longEpisodeStatusLabel("in_progress")).toBe("in_progress");
   });
 });
