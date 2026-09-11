@@ -18,7 +18,17 @@ import { VideoModelCard } from "./VideoModelCard.js";
  * answer comes back as a real one-option setting — which is exactly the case this must get right: the card
  * renders what the server said, not what was clicked.
  */
-const second = { id: "gen4_alt" as VideoModel, label: "다른 모델", pricePerSecondUsd: 0.12, ratios: ["720:1280"], maxDurationSeconds: 10 };
+/*
+ * `acceptsLastFrame` is here before the contract carries it, on purpose and by CLI's request: the field lands
+ * in `VideoModelOption` next, and this fixture is a plain `const`, so writing it now costs nothing and means
+ * the contract change does not pass through a moment where `main` is red. Same bet `ratios` made — see that
+ * field's comment in domain.ts.
+ *
+ * `false` is the honest value for a second Runway model today. It is also the value that makes this fixture
+ * worth having: the card will have to say that a model CANNOT take a last frame, and a picker whose only
+ * sample says "yes" would never render that sentence.
+ */
+const second = { id: "gen4_alt" as VideoModel, label: "다른 모델", pricePerSecondUsd: 0.12, ratios: ["720:1280"], maxDurationSeconds: 10, acceptsLastFrame: false };
 const twoOptions: VideoModelSetting = { selected: DEFAULT_VIDEO_MODEL, isDefault: false, options: [VIDEO_MODEL_OPTIONS[0]!, second] };
 const oneOption: VideoModelSetting = { selected: DEFAULT_VIDEO_MODEL, isDefault: false, options: VIDEO_MODEL_OPTIONS };
 

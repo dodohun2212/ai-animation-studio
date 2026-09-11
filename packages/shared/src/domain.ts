@@ -162,6 +162,22 @@ export interface VideoModelOption {
   pricePerSecondUsd: number;
   ratios: readonly string[];
   maxDurationSeconds: number;
+  /**
+   * Whether the model can be told where a clip must *end*, by being handed its last frame — what decides how a
+   * flower reel's cuts are joined (docs/00_NOW.md ③).
+   *
+   * Here and not in a backend table, for the reason `pricePerSecondUsd` is here: a model is chosen on a screen,
+   * and what the person needs to know to choose it lives with the rest of what is known about it. It was first
+   * built as a separate backend table (49533bf) and moved within the day — facts about one model in two places
+   * is the split this repository kept paying for, and 캡틴D plans to keep several models and switch between them
+   * (「나는 여러 모델을 준비해놔서 필요할 때마다 모델 변경하는 기능도 추가할 건데」), so the picker must say which ones
+   * cannot close a cut.
+   *
+   * 🔴 Unconfirmed is `false`, never `true`. A capability claimed wrongly builds paid requests for something the
+   * provider does not do. `gen4_turbo` is `false`: Runway's own documentation shows `promptImage` as a single URL
+   * or data URI and does not confirm a last-frame form.
+   */
+  acceptsLastFrame: boolean;
 }
 
 /**
@@ -173,7 +189,7 @@ export interface VideoModelOption {
  * exists to prevent — so a new model waits for its real rate rather than a plausible one.
  */
 export const VIDEO_MODEL_OPTIONS: readonly VideoModelOption[] = [
-  { id: "gen4_turbo", label: "Runway Gen-4 Turbo", pricePerSecondUsd: 0.05, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 10 },
+  { id: "gen4_turbo", label: "Runway Gen-4 Turbo", pricePerSecondUsd: 0.05, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 10, acceptsLastFrame: false },
 ];
 
 /** The one used when nobody has chosen — today's behaviour, unchanged. */

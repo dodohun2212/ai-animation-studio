@@ -45,7 +45,7 @@ describe("pricing a model the contract has not heard of", () => {
    * is worse than the flat constant this replaced, because it looks like it moved.
    */
   it("prices an option from the option, not from whatever the contract happens to list first", () => {
-    const hypothetical = { id: "gen4_turbo" as const, label: "Later", pricePerSecondUsd: 0.12, ratios: ["720:1280"], maxDurationSeconds: 10 };
+    const hypothetical = { id: "gen4_turbo" as const, label: "Later", pricePerSecondUsd: 0.12, ratios: ["720:1280"], maxDurationSeconds: 10, acceptsLastFrame: false };
 
     expect(videoSceneEstimatedCostUsd(5, hypothetical), "its own rate").toBe(0.6);
     expect(videoSceneEstimatedCostUsd(10, hypothetical)).toBe(1.2);

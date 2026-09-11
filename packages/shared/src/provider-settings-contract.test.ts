@@ -7,7 +7,7 @@ import {
   type SaveProviderCredentialRequest,
   type SaveProviderMonthlyBudgetRequest,
 } from "./api.js";
-import { DEFAULT_VIDEO_MODEL, VIDEO_MODEL_OPTIONS } from "./domain.js";
+import { DEFAULT_VIDEO_MODEL, VIDEO_MODELS, VIDEO_MODEL_OPTIONS } from "./domain.js";
 
 describe("provider credential settings contract", () => {
   it("limits providers and centralizes every settings route", () => {
@@ -60,5 +60,26 @@ describe("provider credential settings contract", () => {
       expect(option.ratios.length, `${option.id} claims no output shape`).toBeGreaterThan(0);
     }
     expect(VIDEO_MODEL_OPTIONS.map((option) => option.id)).toContain(DEFAULT_VIDEO_MODEL);
+  });
+});
+
+/**
+ * What each video model can be handed — the fact the seam strategy will read and the model picker must show.
+ *
+ * It lives on the option beside the price, not in a table of its own (it was one for a few hours: 49533bf). The
+ * one direction this must never be wrong in is the permissive one: `true` on a model nobody has confirmed builds
+ * paid requests for something the provider does not do.
+ */
+describe("video model capability", () => {
+  it("is declared on the option of every registered model", () => {
+    for (const model of VIDEO_MODELS) {
+      const option = VIDEO_MODEL_OPTIONS.find((candidate) => candidate.id === model);
+      expect(option, `${model} has no option`).toBeDefined();
+      expect(typeof option!.acceptsLastFrame, `${model} does not say whether it takes a last frame`).toBe("boolean");
+    }
+  });
+
+  it("does not claim gen4_turbo takes a last frame, because Runway's own docs do not confirm it", () => {
+    expect(VIDEO_MODEL_OPTIONS.find((option) => option.id === "gen4_turbo")!.acceptsLastFrame).toBe(false);
   });
 });
