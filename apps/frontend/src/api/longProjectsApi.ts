@@ -281,7 +281,7 @@ const LONG_EPISODE_NARRATION_PROVIDER_MESSAGES: Record<string, string> = {
 const LONG_EPISODE_NARRATION_PROVIDER_FALLBACK = "OpenAI 음성 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.";
 
 const LONG_EPISODE_IMAGE_PROVIDER_MESSAGES: Record<string, string> = {
-  authentication: "OpenAI API 키 인증에 실패했습니다. 이 실행에서는 임시 이미지로 전환되었습니다. API 설정에서 키를 확인해 주세요.",
+  authentication: "OpenAI API 키 인증에 실패했습니다. 이 실행은 중단되었고 남은 장면은 임시 이미지로 생성되지 않았습니다. API 설정에서 키를 확인한 뒤 다시 시도해 주세요.",
   quota_or_permission: "OpenAI 사용 한도 또는 프로젝트 권한을 확인해 주세요.",
   rate_limit: "OpenAI 요청이 일시적으로 제한되었습니다. 잠시 후 다시 시도해 주세요.",
   server: "OpenAI 서버 오류로 이미지를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.",
