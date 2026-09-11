@@ -71,6 +71,15 @@ export function VideoModelCard({ setting, onChange }: { setting: VideoModelSetti
                   <span className="block text-xs tabular-nums text-slate-300">
                     1초당 ${option.pricePerSecondUsd.toFixed(2)} · 5초 장면 ${videoSceneEstimatedCostUsd(5, option).toFixed(2)} · 10초 장면 ${videoSceneEstimatedCostUsd(10, option).toFixed(2)}
                   </span>
+                  {/* The one line here that is not a number, and the reason the picker exists at all. A person
+                      choosing between two models is choosing between two reels; price tells them what it costs
+                      and this tells them what they get. Worded as what happens in the reel, never as the field
+                      name — 「끝 프레임」 means nothing to someone who has not read the adapter. */}
+                  <span className={`block text-xs ${option.acceptsLastFrame ? "text-slate-400" : "text-amber-300/90"}`}>
+                    {option.acceptsLastFrame
+                      ? "앞 클립이 끝난 그 장면에서 다음 클립을 시작할 수 있습니다 — 이어지는 릴에 좋습니다."
+                      : "앞 클립이 끝난 장면을 이어받지 못합니다 — 성장·이동처럼 계속 이어지는 릴에서는 컷이 뒤로 돌아갈 수 있습니다."}
+                  </span>
                   <span className="block text-xs text-slate-500">
                     비율 {option.ratios.join(" · ")} · 한 장면 최대 {option.maxDurationSeconds}초
                   </span>

@@ -31,6 +31,10 @@ import { VideoModelCard } from "./VideoModelCard.js";
 const second = { id: "gen4_alt" as VideoModel, label: "다른 모델", pricePerSecondUsd: 0.12, ratios: ["720:1280"], maxDurationSeconds: 10, acceptsLastFrame: false };
 const twoOptions: VideoModelSetting = { selected: DEFAULT_VIDEO_MODEL, isDefault: false, options: [VIDEO_MODEL_OPTIONS[0]!, second] };
 const oneOption: VideoModelSetting = { selected: DEFAULT_VIDEO_MODEL, isDefault: false, options: VIDEO_MODEL_OPTIONS };
+/* No model on the contract takes a last frame yet, so the "can" sentence has no real sample to be drawn from —
+   and a branch that never renders is a branch nobody knows works. This is the sample. */
+const seamless = { ...second, id: "gen4_seam" as VideoModel, label: "이음새 되는 모델", acceptsLastFrame: true };
+const mixedOptions: VideoModelSetting = { selected: DEFAULT_VIDEO_MODEL, isDefault: false, options: [VIDEO_MODEL_OPTIONS[0]!, seamless] };
 
 describe("VideoModelCard", () => {
   afterEach(() => { vi.unstubAllGlobals(); });
@@ -73,6 +77,27 @@ describe("VideoModelCard", () => {
     expect(screen.getByText(/모델은 바뀌지 않았습니다/)).toBeTruthy();
     expect(onChange).not.toHaveBeenCalled();
     expect((screen.getByRole("radio", { name: new RegExp(VIDEO_MODEL_OPTIONS[0]!.label) }) as HTMLInputElement).checked).toBe(true);
+  });
+
+  /*
+   * 🔴 What a person is actually choosing between. Price is the easy half; this is the half that decides
+   * whether a 꽃말 릴 cuts backwards — 캡틴D watched exactly that happen and the measurement matched a whole
+   * clip's growth (00_NOW.md ③). A picker that prices two models identically well and says nothing about this
+   * sends them to the cheaper one every time.
+   *
+   * Both branches are asserted because only one of them has a real model behind it today.
+   */
+  it("says, per model, whether it can continue from where the last clip ended", () => {
+    vi.stubGlobal("fetch", vi.fn());
+    render(<VideoModelCard setting={mixedOptions} onChange={() => {}} />);
+
+    const cannot = screen.getByTestId(`video-model-option-${VIDEO_MODEL_OPTIONS[0]!.id}`);
+    expect(cannot.textContent).toContain("이어받지 못합니다");
+    expect(cannot.textContent).toContain("뒤로 돌아갈 수 있습니다");
+
+    const can = screen.getByTestId("video-model-option-gen4_seam");
+    expect(can.textContent).toContain("다음 클립을 시작할 수 있습니다");
+    expect(can.textContent).not.toContain("이어받지 못합니다");
   });
 
   it("does not send anything when the model already in use is pressed", () => {

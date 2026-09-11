@@ -142,7 +142,12 @@ function isVideoModelOption(value: unknown): value is VideoModelOption {
     && typeof value.label === "string" && value.label.length > 0
     && isMoney(value.pricePerSecondUsd) && value.pricePerSecondUsd > 0
     && Array.isArray(value.ratios) && value.ratios.every((ratio) => typeof ratio === "string" && ratio.length > 0)
-    && typeof value.maxDurationSeconds === "number" && Number.isFinite(value.maxDurationSeconds) && value.maxDurationSeconds > 0;
+    && typeof value.maxDurationSeconds === "number" && Number.isFinite(value.maxDurationSeconds) && value.maxDurationSeconds > 0
+    /* Checked from the round the card started drawing it. An unchecked boolean reads as `undefined` → falsy →
+       the card would quietly tell everyone that every model refuses a last frame, which is the answer that
+       stops a person picking the model that would actually close their cuts. The contract's own rule for this
+       field is the same shape: unconfirmed is `false`, never `true` (domain.ts). */
+    && typeof value.acceptsLastFrame === "boolean";
 }
 
 /**
