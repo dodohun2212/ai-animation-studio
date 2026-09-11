@@ -101,7 +101,17 @@ function presetSettings(
       + `각 장면은 식물이 자라는 과정을 압축해 보여주는 타임랩스다. 한 장면 안에서 식물이 눈에 띄게 자라야 하고, `
       + `첫 프레임과 마지막 프레임의 크기·형태가 분명히 달라야 한다. 빛이나 배경만 흔들리고 식물이 그대로인 장면은 안 된다.\n`
       + `한 장면에서는 한 단계만 자란다. 그 장면이 끝난 모습이 다음 장면이 시작하는 모습이 된다.\n`
-      + `장면이 넘어가도 같은 ${name}, 같은 화분, 같은 각도, 같은 빛을 유지한다.`
+      + `장면이 넘어가도 같은 ${name}, 같은 자리의 땅, 같은 각도, 같은 빛을 유지한다.\n`
+      /*
+       * 🔴 캡틴D: 「화분이 아니라 땅에서 자라는 걸 보고싶어」.
+       *
+       * 화분은 모델이 지어낸 것이 아니라 이 파일이 시킨 것이었습니다 — 이 줄이 「같은 화분」이라고 적고
+       * `avoid` 가 「화분이나 배경이 장면마다 바뀌는 것」이라고 적어서, 둘 다 **화분이 있다**를 전제로
+       * 읽혔습니다. 실측: 방금 만든 꽃말_구기자 대본에 「화분」이 26번, 「땅」이 0번 나옵니다.
+       *
+       * 시작점만 바꾸면 부족하다는 것은 바로 위에서 배운 그대로라, 금지를 같이 적습니다.
+       */
+      + `식물은 화분이 아니라 땅에 뿌리내린 채 자란다. 화분·포트·플랜터는 화면에 넣지 않는다.`
       + (known ? `\n\n유래에 대해 알고 있는 것: ${known}` : ""),
     sceneCount: FLOWER_SCENE_COUNT,
     clipDurationSeconds: FLOWER_CLIP_DURATION_SECONDS,
@@ -129,19 +139,19 @@ function presetSettings(
       dialogue: "",
       // 🔴 This one is not decoration, and its reason changed today. It used to read 「nothing carries the
       // previous clip's last frame forward」, which was true until 장면 이어 그리기 existed — 캡틴D reported
-      // exactly that as a pot changing between scenes. The chain (below) now hands scene N the picture scene
+      // exactly that as the planting spot changing between scenes. The chain (below) now hands scene N the picture scene
       // N-1 became, so this line is no longer the only thing holding the flower steady; it is what keeps the
       // things that must never appear out of every frame. `avoid` is one of the four style fields that
       // actually reach the image prompt.
-      avoid: "사람, 손, 글자, 로고, 화분이나 배경이 장면마다 바뀌는 것",
+      avoid: "사람, 손, 글자, 로고, 화분·포트·플랜터 같은 심는 용기. 그리고 배경이 장면마다 바뀌는 것",
       aspect: FLOWER_ASPECT_RATIO,
     },
     narrationEnabled: true,
     subtitlesEnabled: true,
     // On for this preset and off by default everywhere else, which is the whole distinction the setting was
     // built around: a story that changes place between scenes is held back by the previous picture, and a
-    // flower reel is the opposite — one flower, one pot, one light, a single forward movement. The brief above
-    // already asks for 「장면이 넘어가도 같은 화분」; this is what lets the pictures obey it.
+    // flower reel is the opposite — one flower, one patch of ground, one light, a single forward movement. The
+    // brief above already asks for 「장면이 넘어가도 같은 자리의 땅」; this is what lets the pictures obey it.
     sceneImageContinuityEnabled: true,
   };
 }

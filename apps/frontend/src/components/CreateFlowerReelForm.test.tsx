@@ -69,25 +69,34 @@ describe("CreateFlowerReelForm", () => {
     expect(settings.fullStory).toContain("첫 프레임과 마지막 프레임");
     // One step per scene, and the next scene starts where this one stopped: the chain the images already follow.
     expect(settings.fullStory).toContain("한 단계만");
-    /*
-     * 🔴 The brief used to open with 「씨앗이 흙에 심기는 데서 시작해」, and the story model did exactly that:
-     * scene 1 of the sunflower reel spent its five seconds burying a seed, and its last frame was a grey mound
-     * of soil — no plant at all — before cutting to a sprout. Four scenes with one spent on planting leaves
-     * three to carry the whole growth, which is what made every cut jump.
-     *
-     * Both halves are pinned, because moving the start without forbidding the old one is how a brief drifts
-     * back: this preset has already had to re-learn that twice (the camera's 「아주 느린 접근」, and pacing).
-     */
-    expect(settings.fullStory).toContain("이미 심긴");
-    expect(settings.fullStory).toContain("씨앗을 심거나 흙으로 덮는 장면은 넣지 않는다");
-    expect(settings.fullStory).not.toContain("심기는 데서 시작");
     // 🔴 The camera line asked for 「아주 느린 접근」 and the model applied that slowness to the subject too.
     // A locked-off camera also removes Runway's cheapest way to look like it moved without growing anything.
     expect(settings.styleNotes.camera).toContain("움직이지 않는다");
     expect(settings.styleNotes.camera).not.toContain("느린");
     expect(settings.styleNotes.avoid).toContain("장면마다 바뀌는 것");
+    /*
+     * 🔴 캡틴D: 「화분이 아니라 땅에서 자라는 걸 보고싶어」. The pot was never the model's invention — the brief
+     * asked for 「같은 화분」 and `avoid` named a pot as a thing to keep steady, so both read as "there is a pot".
+     * Measured on the 꽃말_구기자 script written before this change: 「화분」 26 times, 「땅」 0.
+     *
+     * 🔴 The first version of this pinned `avoid` with toContain("화분") — and CLI measured that it guarded
+     * NOTHING: the old sentence 「화분이나 배경이 장면마다 바뀌는 것」 contains 화분 too. It watched for the word
+     * and not for whether the word was a ban or a guarantee, which is the exact half that let the pot back in.
+     * Pinned as the ban phrase, plus the old guarantee as an absence.
+     */
+    expect(settings.fullStory).toContain("화분이 아니라 땅");
+    expect(settings.styleNotes.avoid).toContain("심는 용기");
+    expect(settings.styleNotes.avoid).not.toContain("화분이나 배경이");
+    /*
+     * 🔴 Restored from `69e1981`. A previous edit of this file replaced these three instead of adding beside
+     * them, so the 씨앗 심기 ban stayed in the brief with nothing holding it there. The ban and its guard are
+     * two separate things and this preset has lost the pair twice now — once in the brief, once here.
+     */
+    expect(settings.fullStory).toContain("이미 심긴");
+    expect(settings.fullStory).toContain("씨앗을 심거나 흙으로 덮는 장면은 넣지 않는다");
+    expect(settings.fullStory).not.toContain("심기는 데서 시작");
     // 씨앗 → 싹 → 봉오리 → 개화. Two scenes jumped from a sprout to an open flower in one cut, and that jump
-    // survived however steady the pot was kept; the video cost is unchanged and the images cost $0.20 more.
+    // survived however steady the frame was kept; the video cost is unchanged and the images cost $0.20 more.
     expect(settings.sceneCount).toBe(4);
     expect(settings.clipDurationSeconds).toBe(5);
     // Hardcoded now rather than read off a select, so this is the only thing holding the preset's shape.
@@ -105,8 +114,8 @@ describe("CreateFlowerReelForm", () => {
     expect(settings.sceneCount).toBeLessThanOrEqual(MAX_SCENE_COUNT);
     expect(RUNWAY_CLIP_DURATIONS).toContain(settings.clipDurationSeconds);
     expect(settings.narrationEnabled).toBe(true);
-    // The preset turns the chain on, which is the setting's whole distinction: one flower, one pot, one
-    // forward movement. The brief above asks for 「같은 화분」 and this is what lets the pictures obey it.
+    // The preset turns the chain on, which is the setting's whole distinction: one flower, one patch of
+    // ground, one forward movement. The brief asks for 「같은 자리의 땅」 and this lets the pictures obey it.
     expect(settings.sceneImageContinuityEnabled).toBe(true);
     // durationSeconds is derived server-side and rejected as an unsupported field if sent.
     expect(settings).not.toHaveProperty("durationSeconds");
