@@ -146,6 +146,14 @@ describe("EpisodeVideoMergeService", () => {
     await expect(new EpisodeVideoMergeService(projectsRoot, runner()).merge("long", 1)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_MERGE_CLIPS_INVALID", details: { sceneNumbers: [5] } } });
   });
 
+  it("says which Episode scene FFmpeg stopped fitting", async () => {
+    const { projectsRoot } = await setup();
+    const base = runner();
+    const failing: MediaCommandRunner = async (args) => { if (args[0] === "ffmpeg" && String(args.at(-1)).endsWith("scene4.mp4")) throw new Error("ffmpeg exited 1"); return base(args); };
+    await expect(new EpisodeVideoMergeService(projectsRoot, failing).merge("long", 1))
+      .rejects.toMatchObject({ response: { code: "LONG_EPISODE_MERGE_FAILED", details: { stage: "scene", sceneNumber: 4 } } });
+  });
+
   it("keeps approved clips and records a recoverable failed state when the mock media runner fails", async () => {
     const { projectsRoot } = await setup();
     await expect(new EpisodeVideoMergeService(projectsRoot, runner({ noOutput: true })).merge("long", 1)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_MERGE_FAILED" } });

@@ -13,7 +13,7 @@ import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject, StoredUsedAudio } from "../projects/project-storage.schema.js";
 import { sceneValue } from "../images/image-prompt.js";
 import { AudioLibraryService } from "../audio/audio-library.service.js";
-import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
+import { FfmpegMergeEngine, MediaToolError, mergeFailedDetails, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
 import { audioStartOutOfRange, ffmpegUnavailable, videoMergeAlreadyPublished, videoMergeBusy, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeAlreadyCompleted, videoMergeInvalidRequest, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
 import { shortProjectAspectRatio } from "../projects/project-aspect.js";
 
@@ -347,14 +347,15 @@ export class LocalVideoMergeService {
       }
     }
     const cardScenes: SceneNumber[] = [1 as SceneNumber];
-    const mergeScenes = await this.mergeScenes(project, material.paths, material.stillDurationSeconds === undefined ? scenesFor(project) : cardScenes, audio.mode !== "silent", material.stillDurationSeconds, subtitleLayout, sceneSubtitleLayout);
+    const renderedScenes = material.stillDurationSeconds === undefined ? scenesFor(project) : cardScenes;
+    const mergeScenes = await this.mergeScenes(project, material.paths, renderedScenes, audio.mode !== "silent", material.stillDurationSeconds, subtitleLayout, sceneSubtitleLayout);
     const clipDurationSeconds = toShortProjectSettings(project).clipDurationSeconds;
     const rendering = { ...project, workflow_state: WorkflowState.Rendering, updated_at: new Date().toISOString() };
     try { await this.projects.save(rendering); } catch { throw videoMergeStorageError(); }
     // Held across the render and the save that follows it. The Instagram publish takes this same key while it
     // reads the file, so a post can never be built from a cut this merge is in the middle of replacing — the
     // one action in this app that cannot be undone must not race the one that rewrites what it sends.
-    return withProjectLock(this.projectDirectory(project.project_id), FINAL_VIDEO_LOCK_KEY, () => this.render(rendering, audio, subtitleLayout, sceneSubtitleLayout, bgmPath, bgmAttribution, mergeScenes, clipDurationSeconds), this.lockTimeoutMs === undefined ? undefined : { timeoutMs: this.lockTimeoutMs })
+    return withProjectLock(this.projectDirectory(project.project_id), FINAL_VIDEO_LOCK_KEY, () => this.render(rendering, audio, subtitleLayout, sceneSubtitleLayout, bgmPath, bgmAttribution, mergeScenes, clipDurationSeconds, renderedScenes), this.lockTimeoutMs === undefined ? undefined : { timeoutMs: this.lockTimeoutMs })
       .catch(async (error: unknown) => {
         if (!(error instanceof ProjectLockTimeoutError)) throw error;
         // Nothing was rendered, so the project must not be left saying it is rendering.
@@ -373,6 +374,8 @@ export class LocalVideoMergeService {
     bgmAttribution: { attributionRequired: boolean; attributionText?: string } | undefined,
     mergeScenes: MergeSceneInput[],
     clipDurationSeconds: number,
+    /** The scene each merge input stands for, so a failure inside FFmpeg can be named by scene number. */
+    renderedScenes: readonly SceneNumber[],
   ): Promise<MergeVideosResponse> {
     const project = rendering;
     try {
@@ -403,7 +406,7 @@ export class LocalVideoMergeService {
     } catch (error) {
       await this.saveFailure(rendering);
       if (error instanceof MediaToolError && error.kind === "unavailable") throw ffmpegUnavailable();
-      throw videoMergeFailed();
+      throw videoMergeFailed(mergeFailedDetails(error instanceof MediaToolError ? error.where : undefined, renderedScenes));
     }
   }
 }

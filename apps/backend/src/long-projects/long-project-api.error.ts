@@ -1,4 +1,4 @@
-import type { ImageFailureScope, SceneNumber } from "@ai-animation-studio/shared";
+import type { ImageFailureScope, MergeFailedDetails, SceneNumber } from "@ai-animation-studio/shared";
 import { openAiSceneFailureDetails } from "../providers/openai-scene-failure.js";
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { ApiError } from "@ai-animation-studio/shared";
@@ -88,7 +88,8 @@ export const longEpisodeVideoRestoreInProgress = () => new LongProjectApiExcepti
 // Names the scenes when it knows them (MergeClipsInvalidDetails), and says nothing rather than guess when it does not.
 export const longEpisodeMergeClipsInvalid = (sceneNumbers?: readonly SceneNumber[]) => new LongProjectApiException("LONG_EPISODE_MERGE_CLIPS_INVALID", "The approved Episode scene videos are missing or invalid.", HttpStatus.CONFLICT, sceneNumbers && sceneNumbers.length > 0 ? { sceneNumbers: [...sceneNumbers].sort((a, b) => a - b) } : undefined);
 export const longEpisodeFfmpegUnavailable = () => new LongProjectApiException("LONG_EPISODE_FFMPEG_UNAVAILABLE", "FFmpeg or ffprobe is not available on this computer.", HttpStatus.SERVICE_UNAVAILABLE);
-export const longEpisodeMergeFailed = () => new LongProjectApiException("LONG_EPISODE_MERGE_FAILED", "Episode rendering failed. Approved scene videos were kept.", HttpStatus.INTERNAL_SERVER_ERROR);
+// Says where FFmpeg stopped when it did (MergeFailedDetails); nothing when the failure was not inside FFmpeg.
+export const longEpisodeMergeFailed = (details?: MergeFailedDetails) => new LongProjectApiException("LONG_EPISODE_MERGE_FAILED", "Episode rendering failed. Approved scene videos were kept.", HttpStatus.INTERNAL_SERVER_ERROR, details);
 export const longEpisodeContinuityNotAllowed = () => new LongProjectApiException("LONG_EPISODE_CONTINUITY_NOT_ALLOWED", "Episode Continuity Memory can be saved only after image approval.", HttpStatus.CONFLICT);
 
 /**

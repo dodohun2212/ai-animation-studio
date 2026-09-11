@@ -778,6 +778,16 @@ export interface MergeClipsInvalidDetails {
   sceneNumbers: SceneNumber[];
 }
 
+/**
+ * The `details` of VIDEO_MERGE_FAILED and LONG_EPISODE_MERGE_FAILED when the render stopped inside FFmpeg: fitting
+ * one scene's clip to the frame (and which scene), joining the fitted clips, or laying the music under the result.
+ * Absent when it stopped anywhere else (writing a file, an empty output) — the step is then not FFmpeg's to name.
+ */
+export type MergeFailedDetails =
+  | { stage: "scene"; sceneNumber: SceneNumber }
+  | { stage: "join" }
+  | { stage: "music" };
+
 export interface SceneFailure {
   /** This app's own category, unchanged — still what a screen picks its sentence from. */
   category: string;

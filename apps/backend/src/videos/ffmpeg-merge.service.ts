@@ -4,7 +4,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
-import type { PhotoCardSubtitleLayout, SceneSubtitleLayout } from "@ai-animation-studio/shared";
+import type { MergeFailedDetails, PhotoCardSubtitleLayout, SceneNumber, SceneSubtitleLayout } from "@ai-animation-studio/shared";
 import { escapeForFfmpegFilterPath, sceneSubtitleAss } from "./subtitle-file.js";
 
 function currentModuleDirectory(): string {
@@ -30,8 +30,26 @@ export function fontsRoot(): string {
   return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0]!;
 }
 
+/** Where inside a render FFmpeg stopped — `sceneIndex` is the position in the scenes the merge was handed. */
+export type MergeStage = { stage: "scene"; sceneIndex: number } | { stage: "join" } | { stage: "music" };
+
 export class MediaToolError extends Error {
-  constructor(readonly kind: "unavailable" | "invalid" | "failed", message: string) { super(message); }
+  constructor(readonly kind: "unavailable" | "invalid" | "failed", message: string, readonly where?: MergeStage) { super(message); }
+}
+
+/** The contract's name for where a render stopped, with the scene named by number rather than position. */
+export function mergeFailedDetails(where: MergeStage | undefined, scenes: readonly SceneNumber[]): MergeFailedDetails | undefined {
+  if (!where) return undefined;
+  if (where.stage !== "scene") return { stage: where.stage };
+  const sceneNumber = scenes[where.sceneIndex];
+  return sceneNumber === undefined ? undefined : { stage: "scene", sceneNumber };
+}
+
+/** Re-throws a failure with the step it happened in, leaving "the tool is not installed" exactly as it was. */
+function inStage(error: unknown, where: MergeStage): never {
+  if (error instanceof MediaToolError && error.kind === "unavailable") throw error;
+  if (error instanceof MediaToolError) throw new MediaToolError(error.kind, error.message, where);
+  throw new MediaToolError("failed", "Media command failed.", where);
 }
 
 export interface MediaCommandResult { stdout: string; stderr: string; }
@@ -210,18 +228,21 @@ export class FfmpegMergeEngine {
       // image demuxer loops at its own 25, and every later step is counting in a rate nothing else uses.
       const input = stillSeconds === undefined ? ["-i", scene.clip] : ["-loop", "1", "-framerate", "30", "-t", String(stillSeconds), "-i", scene.clip];
       const sceneFilter = stillSeconds === undefined ? filter : `${kenBurns(width, height, stillSeconds)},${filter}`;
-      if (scene.narrationAudioPath) {
-        await this.command(["ffmpeg", "-y", ...input, "-i", scene.narrationAudioPath, "-filter_complex", "[1:a]apad[aout]", "-map", "0:v:0", "-map", "[aout]", "-vf", sceneFilter, "-c:v", "libx264", ...X264_QUALITY, "-c:a", "aac", "-shortest", target]);
-      } else {
-        await this.command(["ffmpeg", "-y", ...input, "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000", "-map", "0:v:0", "-map", "1:a:0", "-vf", sceneFilter, "-c:v", "libx264", ...X264_QUALITY, "-c:a", "aac", "-shortest", target]);
-      }
+      try {
+        if (scene.narrationAudioPath) {
+          await this.command(["ffmpeg", "-y", ...input, "-i", scene.narrationAudioPath, "-filter_complex", "[1:a]apad[aout]", "-map", "0:v:0", "-map", "[aout]", "-vf", sceneFilter, "-c:v", "libx264", ...X264_QUALITY, "-c:a", "aac", "-shortest", target]);
+        } else {
+          await this.command(["ffmpeg", "-y", ...input, "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000", "-map", "0:v:0", "-map", "1:a:0", "-vf", sceneFilter, "-c:v", "libx264", ...X264_QUALITY, "-c:a", "aac", "-shortest", target]);
+        }
+      } catch (error) { inStage(error, { stage: "scene", sceneIndex: index }); }
       normalized.push(target);
     }
     const concatFile = path.join(normalizedDirectory, "concat.txt");
     await fs.writeFile(concatFile, normalized.map((item) => `file '${path.resolve(item).replaceAll("'", "''")}'`).join("\n"), "utf8");
     const temporaryFinal = path.join(directory, `.instagram_reel.${crypto.randomUUID()}.tmp.mp4`);
     try {
-      await this.command(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concatFile, "-c", "copy", "-movflags", "+faststart", temporaryFinal]);
+      try { await this.command(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concatFile, "-c", "copy", "-movflags", "+faststart", temporaryFinal]); }
+      catch (error) { inStage(error, { stage: "join" }); }
       const stat = await fs.stat(temporaryFinal);
       if (stat.size <= 0) throw new MediaToolError("failed", "Final output is empty.");
       await fs.rename(temporaryFinal, finalPath);
@@ -279,7 +300,8 @@ export class FfmpegMergeEngine {
     const temporary = path.join(path.dirname(outputPath), `.${path.basename(outputPath)}.${crypto.randomUUID()}.tmp.mp4`);
     try {
       const music = startSeconds > 0 ? ["-ss", startSeconds.toFixed(3), "-stream_loop", "-1", "-i", bgmPath] : ["-stream_loop", "-1", "-i", bgmPath];
-      await this.command(["ffmpeg", "-y", "-i", inputPath, ...music, "-filter_complex", filter, "-map", "0:v:0", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", "-movflags", "+faststart", temporary]);
+      try { await this.command(["ffmpeg", "-y", "-i", inputPath, ...music, "-filter_complex", filter, "-map", "0:v:0", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", "-movflags", "+faststart", temporary]); }
+      catch (error) { inStage(error, { stage: "music" }); }
       const stat = await fs.stat(temporary);
       if (stat.size <= 0) throw new MediaToolError("failed", "BGM mix output is empty.");
       await fs.rename(temporary, outputPath);

@@ -192,6 +192,38 @@ describe("local FFmpeg video merge", () => {
     expect(error.response.details).toBeUndefined();
   });
 
+  /*
+   * Where FFmpeg stopped, not only that it did (Cowork Round 769 (c)): fitting one scene — and which — joining the
+   * fitted clips, or neither. A failure outside FFmpeg's steps names none rather than a wrong one.
+   */
+  it("says which scene FFmpeg stopped fitting, or that it stopped joining, and nothing when it was neither", async () => {
+    const failOn = (match: (args: readonly string[]) => boolean): MediaCommandRunner => {
+      const base = runner({});
+      return async (args) => { if (match(args)) throw new Error("ffmpeg exited 1"); return base(args); };
+    };
+    const atScene3 = await setup();
+    await expect(new LocalVideoMergeService(atScene3.projects, atScene3.projectsRoot, failOn((args) => args[0] === "ffmpeg" && String(args.at(-1)).endsWith("scene3.mp4"))).merge("video_merge"))
+      .rejects.toMatchObject({ response: { code: "VIDEO_MERGE_FAILED", details: { stage: "scene", sceneNumber: 3 } } });
+
+    const atJoin = await setup();
+    await expect(new LocalVideoMergeService(atJoin.projects, atJoin.projectsRoot, failOn((args) => args.includes("concat"))).merge("video_merge"))
+      .rejects.toMatchObject({ response: { code: "VIDEO_MERGE_FAILED", details: { stage: "join" } } });
+
+    const empty = await setup();
+    const error = await new LocalVideoMergeService(empty.projects, empty.projectsRoot, runner({ noOutput: true })).merge("video_merge").catch((caught: unknown) => caught) as { response: { code: string; details?: unknown } };
+    expect(error.response.code).toBe("VIDEO_MERGE_FAILED");
+    expect(error.response.details, "an empty output is not one of FFmpeg's steps").toBeUndefined();
+  });
+
+  // ffprobe and ffmpeg are separate programs: the probe can pass and the render still find ffmpeg missing. That
+  // stays "not installed" — a scene named as where it broke would send someone to fix a clip that is fine.
+  it("still reports a missing ffmpeg as not installed when it is found missing mid-render, not as a scene that failed", async () => {
+    const { projects, projectsRoot } = await setup();
+    const base = runner({});
+    const noFfmpeg: MediaCommandRunner = async (args) => { if (args[0] === "ffmpeg") throw new MediaToolError("unavailable", "not installed"); return base(args); };
+    await expect(new LocalVideoMergeService(projects, projectsRoot, noFfmpeg).merge("video_merge")).rejects.toMatchObject({ response: { code: "FFMPEG_UNAVAILABLE" } });
+  });
+
   it("rejects invalid clips without changing the approved state, and reports a missing binary safely", async () => {
     const { projectsRoot, projects } = await setup();
     await expect(new LocalVideoMergeService(projects, projectsRoot, runner({ invalidProbe: true })).merge("video_merge")).rejects.toMatchObject({ response: { code: "VIDEO_MERGE_CLIPS_INVALID", details: { sceneNumbers: [1] } } });

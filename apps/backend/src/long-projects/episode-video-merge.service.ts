@@ -8,7 +8,7 @@ import { Injectable } from "@nestjs/common";
 import { AUDIO_MODES, clipDurationSecondsPerScene, type RunwayClipDurationSeconds, DEFAULT_BGM_FADE_SECONDS, DEFAULT_BGM_VOLUME, DEFAULT_SCENE_SUBTITLE_LAYOUT, defaultBgmVolume, FINAL_VIDEO_RELATIVE_PATH, isAudioMode, isSceneSubtitleLayout, usesBgm, type AudioMode, type GenerationSource, LONG_EPISODE_STATUSES, isSceneNumber, SCENE_SUBTITLE_CENTER, SCENE_SUBTITLE_SCALE, sceneNumbersFor, type LongEpisodeDetail, type LongEpisodeStatus, type MergeLongEpisodeVideosResponse, type SceneNumber, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
 
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
-import { FfmpegMergeEngine, MediaToolError, type MediaCommandRunner, type MergeSceneInput } from "../videos/ffmpeg-merge.service.js";
+import { FfmpegMergeEngine, MediaToolError, mergeFailedDetails, type MediaCommandRunner, type MergeSceneInput } from "../videos/ffmpeg-merge.service.js";
 import { AudioLibraryService } from "../audio/audio-library.service.js";
 import { generationSourceOfVideoRecords } from "../videos/generation-source.js";
 import { isUsableClip, wasPaidRun } from "../videos/placeholder-clip.js";
@@ -426,7 +426,7 @@ export class EpisodeVideoMergeService {
     } catch (error) {
       await this.fail(id, number, rendering);
       if (error instanceof MediaToolError && error.kind === "unavailable") throw longEpisodeFfmpegUnavailable();
-      throw longEpisodeMergeFailed();
+      throw longEpisodeMergeFailed(mergeFailedDetails(error instanceof MediaToolError ? error.where : undefined, sceneNumbersFor(this.sceneCount(episode))));
     }
   }
 }

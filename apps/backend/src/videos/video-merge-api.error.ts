@@ -1,5 +1,5 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
-import type { ApiError, SceneNumber } from "@ai-animation-studio/shared";
+import type { ApiError, MergeFailedDetails, SceneNumber } from "@ai-animation-studio/shared";
 
 type VideoMergeErrorCode =
   | "INVALID_REQUEST"
@@ -71,8 +71,9 @@ export const videoMergeClipsInvalid = (sceneNumbers?: readonly SceneNumber[]) =>
     sceneNumbers && sceneNumbers.length > 0 ? { sceneNumbers: [...sceneNumbers].sort((a, b) => a - b) } : undefined);
 export const ffmpegUnavailable = () =>
   new VideoMergeApiException("FFMPEG_UNAVAILABLE", "FFmpeg or ffprobe is not available on this computer.", HttpStatus.SERVICE_UNAVAILABLE);
-export const videoMergeFailed = () =>
-  new VideoMergeApiException("VIDEO_MERGE_FAILED", "Local video rendering failed. Approved scene videos were kept.", HttpStatus.INTERNAL_SERVER_ERROR);
+// Says where FFmpeg stopped when it did (MergeFailedDetails); nothing when the failure was not inside FFmpeg.
+export const videoMergeFailed = (details?: MergeFailedDetails) =>
+  new VideoMergeApiException("VIDEO_MERGE_FAILED", "Local video rendering failed. Approved scene videos were kept.", HttpStatus.INTERNAL_SERVER_ERROR, details);
 export const videoMergeStorageError = () =>
   new VideoMergeApiException("VIDEO_STORAGE_ERROR", "Local video render state could not be saved.", HttpStatus.INTERNAL_SERVER_ERROR);
 export const videoMergeContentUnavailable = () =>
