@@ -103,6 +103,7 @@ import {
   type VideoModel,
   type VideoVersionSummary,
 } from "@ai-animation-studio/shared";
+import { imageFailureMessage } from "../utils/sceneFailureAdvice.js";
 import { BUDGET_LEDGER_UNREADABLE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "./budgetLedgerError.js";
 import { isSceneFailureMap } from "./contractGuards.js";
 import { SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
@@ -349,7 +350,11 @@ export function toLongProjectDisplayError(error: unknown): { code: string; messa
   if (error.code === "AUDIO_START_OUT_OF_RANGE") return { code: error.code, message: audioStartOutOfRange(error.details) };
   if (error.code === "LONG_EPISODE_IMAGES_PROVIDER_ERROR") {
     const category = typeof error.details?.category === "string" ? error.details.category : "";
-    return { code: error.code, message: LONG_EPISODE_IMAGE_PROVIDER_MESSAGES[category] ?? LONG_EPISODE_IMAGE_PROVIDER_FALLBACK };
+    const categoryMessage = LONG_EPISODE_IMAGE_PROVIDER_MESSAGES[category] ?? LONG_EPISODE_IMAGE_PROVIDER_FALLBACK;
+    // The Episode's twin of the short project's line. The category names what this server said; the details name
+    // where it stopped, what survived, and what the button would do — composed by the one function both call so
+    // the two pipelines cannot drift into saying it differently (docs/00_NOW.md ②-2).
+    return { code: error.code, message: imageFailureMessage(categoryMessage, error.details) };
   }
   if (Object.prototype.hasOwnProperty.call(EPISODE_LOCKED_MESSAGES, error.code)) {
     const message = EPISODE_LOCKED_MESSAGES[error.code]!(episodeNumberFrom(error.details));

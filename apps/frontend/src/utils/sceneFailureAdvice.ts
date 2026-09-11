@@ -1,4 +1,4 @@
-import { SCENE_FAILURE_REMEDIES, isSceneNumber, type SceneFailureRemedy } from "@ai-animation-studio/shared";
+import { IMAGE_FAILURE_SCOPES, SCENE_FAILURE_REMEDIES, isSceneNumber, type ImageFailureScope, type SceneFailureRemedy } from "@ai-animation-studio/shared";
 
 /**
  * What the provider's answer means for pressing 다시 시도, in the person's words.
@@ -59,8 +59,22 @@ export function imageFailureMessage(categoryMessage: string, details: Record<str
     ? (details!.remedy as SceneFailureRemedy)
     : undefined;
   const parts: string[] = [];
-  if (scene !== undefined && isSceneNumber(scene)) {
-    parts.push(`${scene}번 장면에서 멈췄습니다. 그 앞 장면 그림은 저장돼 있어, 다시 만들면 ${scene}번부터 이어서 만듭니다.`);
+  /* 🔴 `scope` decides which of the two sentences is true, and the Long Episode is why it has to.
+     There, a whole run and one scene's redraw come back under the SAME error code, so the code cannot tell
+     them apart — and 「${scene}번부터 이어서 만듭니다」 is simply false for a redraw: nothing continues, the
+     other scenes were never touched, and the button says 「N번 다시 만들기」. Telling someone their run will
+     resume when it will not is worse than saying nothing about it.
+
+     Unknown or missing scope drops the scene sentence entirely rather than guessing which one applies —
+     the same rule `remedy` follows two lines down, and for the same reason: a confident wrong sentence is
+     worse than a quiet one. */
+  const scope = (IMAGE_FAILURE_SCOPES as readonly string[]).includes(details?.scope as string)
+    ? (details!.scope as ImageFailureScope)
+    : undefined;
+  if (scene !== undefined && isSceneNumber(scene) && scope) {
+    parts.push(scope === "run"
+      ? `${scene}번 장면에서 멈췄습니다. 그 앞 장면 그림은 저장돼 있어, 다시 만들면 ${scene}번부터 이어서 만듭니다.`
+      : `${scene}번 장면을 다시 그리지 못했습니다. 다른 장면은 그대로입니다.`);
   }
   parts.push(categoryMessage);
   if (remedy) parts.push(sceneRemedyAdvice(remedy));

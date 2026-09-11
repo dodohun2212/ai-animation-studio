@@ -374,6 +374,64 @@ describe("longProjectsApi", () => {
   });
 
   describe("toLongProjectDisplayError", () => {
+    /*
+     * 🔴 The Episode half of ②-2, and the reason it has its own case rather than trusting the short project's.
+     *
+     * `imageFailureMessage` is shared and has its own tests, but a shared function is only as good as the line
+     * that calls it: removing the call from the short project's mapper left all 487 of its tests green
+     * (imageGenerationApi.test.ts says so). The same hole exists once per pipeline, so it is closed once per
+     * pipeline.
+     */
+    it("says which scene an Episode's image run stopped at, alongside what the provider said", () => {
+      const displayed = toLongProjectDisplayError(
+        new LongProjectsApiError("LONG_EPISODE_IMAGES_PROVIDER_ERROR", "raw backend detail", {
+          category: "safety_policy",
+          sceneNumber: 4,
+          scope: "run",
+          billedOnFailure: true,
+          remedy: "change_input",
+        }),
+      );
+
+      expect(displayed.code).toBe("LONG_EPISODE_IMAGES_PROVIDER_ERROR");
+      expect(displayed.message).toContain("4번 장면에서 멈췄습니다");
+      expect(displayed.message).toContain("예산에는 쓴 것으로 계상");
+      expect(displayed.message).not.toContain("raw backend detail");
+      // 🔴 The scene number is the scene, never the Episode number — the two are both small integers on this
+      // screen and a mapper that reached for the wrong one would look right in every screenshot.
+      expect(displayed.message).not.toContain("1번 장면에서");
+    });
+
+    /*
+     * 🔴 The Episode's redraw, under the same error code as its batch run — the case CLI caught on the screen.
+     * `LongEpisodeImageGenerationScreen`'s 다시 만들기 goes through this very mapper, and promising a resume
+     * there would be a sentence about scenes 6+ that were never touched.
+     */
+    it("does not promise a resume when one Episode scene's redraw failed", () => {
+      const displayed = toLongProjectDisplayError(
+        new LongProjectsApiError("LONG_EPISODE_IMAGES_PROVIDER_ERROR", "raw", {
+          category: "safety_policy",
+          sceneNumber: 5,
+          scope: "scene",
+          billedOnFailure: true,
+        }),
+      );
+
+      expect(displayed.message).toContain("5번 장면을 다시 그리지 못했습니다");
+      expect(displayed.message).not.toContain("이어서");
+    });
+
+    // A response from a build that predates the details must read exactly as it did before: no scene, no budget.
+    it("keeps the old Episode image sentence when the failure carries no details", () => {
+      const displayed = toLongProjectDisplayError(
+        new LongProjectsApiError("LONG_EPISODE_IMAGES_PROVIDER_ERROR", "raw", { category: "safety_policy" }),
+      );
+
+      expect(displayed.message).not.toContain("장면에서 멈췄습니다");
+      expect(displayed.message).not.toContain("예산");
+      expect(displayed.message).not.toContain("raw");
+    });
+
     // Both refusals are a project-wide setting blocked by one Episode's existing work. Without the number, a
     // person with twenty Episodes is told they cannot proceed and given nothing to act on. The number lives
     // only in the backend's English message, which never reaches a screen, so it travels in details.

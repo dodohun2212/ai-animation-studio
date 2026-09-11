@@ -16,6 +16,7 @@ describe("toImageGenerationDisplayError", () => {
     const error = new ImageGenerationApiError("IMAGE_PROVIDER_ERROR", "raw backend detail", {
       category: "safety_policy",
       sceneNumber: 3,
+      scope: "run",
       billedOnFailure: true,
       remedy: "change_input",
     });
