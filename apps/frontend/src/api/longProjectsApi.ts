@@ -7,7 +7,10 @@ import {
   LONG_EPISODE_STATUSES,
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
+  NARRATION_AUDIO_STATES,
   RUNWAY_CLIP_DURATIONS,
+  SCENE_REVIEW_STATUSES,
+  VIDEO_JOB_STATUSES,
   VIDEO_MODELS,
   isSceneNumber as isValidSceneNumber,
   isSha256Hex,
@@ -581,7 +584,7 @@ function isSceneNumber(value: unknown): value is SceneNumber {
 
 function isEpisodeImageReview(value: unknown): value is LongEpisodeImageReview {
   return isRecord(value) && isSceneNumber(value.sceneNumber)
-    && (value.status === "pending" || value.status === "approved") && isNonEmptyString(value.updatedAt);
+    && (SCENE_REVIEW_STATUSES as readonly string[]).includes(value.status as string) && isNonEmptyString(value.updatedAt);
 }
 
 const isEpisodeImageReviews = (value: unknown): value is LongEpisodeImageReview[] => Array.isArray(value) && value.every(isEpisodeImageReview);
@@ -659,7 +662,7 @@ function isSceneErrorMap(value: unknown): value is Partial<Record<SceneNumber, s
 function isEpisodeVideoProgress(value: unknown): value is LongEpisodeVideoProgress {
   return isRecord(value) && typeof value.paidProvider === "boolean"
     && Array.isArray(value.sceneNumbers) && value.sceneNumbers.every(isSceneNumber)
-    && isNonEmptyString(value.jobId) && (value.status === "created" || value.status === "running" || value.status === "succeeded" || value.status === "failed" || value.status === "interrupted")
+    && isNonEmptyString(value.jobId) && (VIDEO_JOB_STATUSES as readonly string[]).includes(value.status as string)
     && (value.currentSceneNumber === undefined || isSceneNumber(value.currentSceneNumber)) && Array.isArray(value.completedSceneNumbers) && value.completedSceneNumbers.every(isSceneNumber)
     && Array.isArray(value.failedSceneNumbers) && value.failedSceneNumbers.every(isSceneNumber) && isLongEpisodeDetail(value.episode) && isSceneErrorMap(value.sceneErrors) && isSceneFailureMap(value.sceneFailures);
 }
@@ -670,7 +673,7 @@ function isEpisodeVideoProgress(value: unknown): value is LongEpisodeVideoProgre
  * notice reads undefined as free.
  */
 const isStartEpisodeVideoResponse = (value: unknown): value is StartLongEpisodeVideoGenerationResponse => isRecord(value) && typeof value.paidProvider === "boolean" && isNonEmptyString(value.jobId) && Array.isArray(value.acceptedSceneNumbers) && value.acceptedSceneNumbers.length >= MIN_SCENE_COUNT && value.acceptedSceneNumbers.length <= MAX_SCENE_COUNT && value.acceptedSceneNumbers.every(isSceneNumber) && isLongEpisodeDetail(value.episode);
-function isEpisodeVideoReview(value: unknown): value is LongEpisodeVideoReview { return isRecord(value) && isSceneNumber(value.sceneNumber) && (value.status === "pending" || value.status === "approved") && isNonEmptyString(value.updatedAt) && (value.costUsd === undefined || isFiniteNonNegative(value.costUsd)); }
+function isEpisodeVideoReview(value: unknown): value is LongEpisodeVideoReview { return isRecord(value) && isSceneNumber(value.sceneNumber) && (SCENE_REVIEW_STATUSES as readonly string[]).includes(value.status as string) && isNonEmptyString(value.updatedAt) && (value.costUsd === undefined || isFiniteNonNegative(value.costUsd)); }
 /** `staleness` is required by the contract, so a response without it is malformed — not a screen that quietly shows no badges. */
 const isLongEpisodeVideoStaleness = (value: unknown): value is LongEpisodeVideoStaleness =>
   isRecord(value) && Array.isArray(value.videoStale) && value.videoStale.every(isSceneNumber);
@@ -1160,7 +1163,7 @@ function isLongEpisodeNarrationReview(value: unknown): value is LongEpisodeNarra
   return isRecord(value)
     && isSceneNumber(value.sceneNumber)
     && typeof value.narration === "string"
-    && (value.audio === "none" || value.audio === "placeholder" || value.audio === "generated")
+    && (NARRATION_AUDIO_STATES as readonly string[]).includes(value.audio as string)
     && (value.audioDurationSeconds === undefined || isFiniteNonNegative(value.audioDurationSeconds));
 }
 const isLongEpisodeNarrationReviewList = (value: unknown): value is LongEpisodeNarrationReview[] =>

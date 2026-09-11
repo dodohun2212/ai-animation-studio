@@ -1,4 +1,5 @@
 import { VIDEO_JOB_STATUSES,
+  SCENE_REVIEW_STATUSES,
   providerTaskFailure,
   BUDGET_LIMIT_ROUTE_HINT,
   API_ROUTES,
@@ -221,7 +222,11 @@ function isVideoReview(value: unknown): value is VideoReview {
   return (
     isRecord(value) &&
     isSceneNumber(value.sceneNumber) &&
-    (value.status === "pending" || value.status === "approved") &&
+    /* The contract already publishes this list; a guard that retypes it is a second copy that nothing
+       keeps in step. Add a value to the contract and this guard silently REJECTS it — the response
+       parses as malformed and the screen shows nothing, with no compile error anywhere. Same defect
+       family as the outlineStatus label table (00_NOW.md ④), and the same fix: read the list. */
+    (SCENE_REVIEW_STATUSES as readonly string[]).includes(value.status as string) &&
     isNonEmptyString(value.updatedAt) &&
     // Optional: omitted entirely when nothing was actually charged for this scene (e.g. local fake mode).
     // A malformed value is rejected rather than displayed — a wrong cost is worse than no cost.

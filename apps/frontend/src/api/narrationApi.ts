@@ -1,6 +1,7 @@
 import {
   BUDGET_LIMIT_ROUTE_HINT,
   API_ROUTES,
+  NARRATION_AUDIO_STATES,
   type GetNarrationReviewResponse,
   type NarrationReview,
   type Project,
@@ -112,7 +113,11 @@ function isNarrationReview(value: unknown): value is NarrationReview {
     isRecord(value) &&
     isSceneNumber(value.sceneNumber) &&
     typeof value.narration === "string" &&
-    (value.audio === "none" || value.audio === "placeholder" || value.audio === "generated") &&
+    /* The contract already publishes this list; a guard that retypes it is a second copy that nothing
+       keeps in step. Add a value to the contract and this guard silently REJECTS it — the response
+       parses as malformed and the screen shows nothing, with no compile error anywhere. Same defect
+       family as the outlineStatus label table (00_NOW.md ④), and the same fix: read the list. */
+    (NARRATION_AUDIO_STATES as readonly string[]).includes(value.audio as string) &&
     // Optional, but never a non-number: the screen does arithmetic with it.
     (value.audioDurationSeconds === undefined || typeof value.audioDurationSeconds === "number")
   );

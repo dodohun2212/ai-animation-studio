@@ -1,5 +1,6 @@
 import {
   API_ROUTES,
+  LONG_EPISODE_OUTLINE_STATUSES,
   type ArchivedLongProjectSummary,
   type ArchivedProjectSummary,
   type DeleteArchivedProjectRequest,
@@ -75,7 +76,11 @@ function isArchivedLongProjectSummary(value: unknown): value is ArchivedLongProj
     typeof value.title === "string" &&
     typeof value.logline === "string" &&
     typeof value.episodeCount === "number" &&
-    (value.outlineStatus === "planned" || value.outlineStatus === "outline_ready") &&
+    /* The contract already publishes this list; a guard that retypes it is a second copy that nothing
+       keeps in step. Add a value to the contract and this guard silently REJECTS it — the response
+       parses as malformed and the screen shows nothing, with no compile error anywhere. Same defect
+       family as the outlineStatus label table (00_NOW.md ④), and the same fix: read the list. */
+    (LONG_EPISODE_OUTLINE_STATUSES as readonly string[]).includes(value.outlineStatus as string) &&
     isNonEmptyString(value.createdAt) &&
     isNonEmptyString(value.updatedAt) &&
     isNonEmptyString(value.archivedAt)
