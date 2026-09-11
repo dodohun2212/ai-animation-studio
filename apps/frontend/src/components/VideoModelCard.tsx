@@ -80,8 +80,15 @@ export function VideoModelCard({ setting, onChange }: { setting: VideoModelSetti
                       ? "앞 클립이 끝난 그 장면에서 다음 클립을 시작할 수 있습니다 — 이어지는 릴에 좋습니다."
                       : "앞 클립이 끝난 장면을 이어받지 못합니다 — 성장·이동처럼 계속 이어지는 릴에서는 컷이 뒤로 돌아갈 수 있습니다."}
                   </span>
+                  {/* 🔴 An empty `ratios` is a real answer, not missing data — and it renders before any model
+                      needs it, on purpose. Runway's own SDK types give some models on this endpoint no ratio
+                      field at all (h3_max takes a `resolution` instead), and the contract's list would then be
+                      empty. Joined blindly that printed 「비율  · 한 장면 최대 10초」, which reads as a bug in the
+                      product rather than a property of the model. What such a model actually does with the
+                      frame is NOT confirmed, so this says nothing about it: the line simply drops the half it
+                      cannot state, and keeps the half it can. */}
                   <span className="block text-xs text-slate-500">
-                    비율 {option.ratios.join(" · ")} · 한 장면 최대 {option.maxDurationSeconds}초
+                    {option.ratios.length > 0 && <>비율 {option.ratios.join(" · ")} · </>}한 장면 최대 {option.maxDurationSeconds}초
                   </span>
                 </span>
               </label>

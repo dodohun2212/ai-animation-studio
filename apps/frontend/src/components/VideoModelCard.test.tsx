@@ -100,6 +100,28 @@ describe("VideoModelCard", () => {
     expect(can.textContent).not.toContain("이어받지 못합니다");
   });
 
+  /*
+   * 🔴 A model that states no aspect ratio. Runway's SDK types show models on the same endpoint with no ratio
+   * field (h3_max uses `resolution`), so the contract's `ratios` can honestly be empty — and the previous line
+   * joined it blindly into 「비율  · …」, a sentence with a hole in it.
+   *
+   * Asserted as an absence AND a presence: dropping the ratio half must not drop the length half with it.
+   */
+  it("says nothing about aspect ratio for a model that states none, and still gives its length", () => {
+    vi.stubGlobal("fetch", vi.fn());
+    /* 🔴 The label must not contain 「비율」. The assertion below is that the row does not mention aspect ratio,
+       and a fixture whose own name carries the word makes that assertion fail for a reason that has nothing
+       to do with the code — which is exactly what happened on the first attempt. */
+    const noRatio = { ...second, id: "gen4_noratio" as VideoModel, label: "해상도로 정하는 모델", ratios: [] };
+    render(<VideoModelCard setting={{ selected: DEFAULT_VIDEO_MODEL, isDefault: false, options: [VIDEO_MODEL_OPTIONS[0]!, noRatio] }} onChange={() => {}} />);
+
+    const row = screen.getByTestId("video-model-option-gen4_noratio");
+    expect(row.textContent).not.toContain("비율");
+    expect(row.textContent).toContain(`한 장면 최대 ${noRatio.maxDurationSeconds}초`);
+    // The model that does state ratios still states them — the fix is per option, not a blanket removal.
+    expect(screen.getByTestId(`video-model-option-${VIDEO_MODEL_OPTIONS[0]!.id}`).textContent).toContain("비율");
+  });
+
   it("does not send anything when the model already in use is pressed", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
