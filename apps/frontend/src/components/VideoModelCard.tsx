@@ -8,9 +8,15 @@ import { scrollList } from "./ui/surfaces.js";
 /**
  * Which model draws the video, and what that costs — asked for as "기능만 만들어놔".
  *
- * So this is the mechanism, not a placeholder for one. It renders the server's own option list; today that
- * list has one entry, and the day it has two this card is already a choice with no further work. What it must
+ * So this is the mechanism, not a placeholder for one. It renders the server's own option list — which the
+ * settings service hands over as `VIDEO_MODEL_OPTIONS` entire, so every model the adapter can reach is on this
+ * screen by construction, not by anyone remembering to add it here. That list was one entry when this card was
+ * written, three by the afternoon, and sixteen now; nothing in this file changed for any of it. What it must
  * never be is a dropdown that looks like a choice and changes nothing.
+ *
+ * 🔴 The spread is now the point. Sixteen models carry twelve distinct rates, $0.05/s to $0.68/s — a 5-second
+ * scene costs $0.25 on the cheapest and $3.40 on the priciest, 13.6×. Every price on this card is computed from
+ * the option being drawn for exactly that reason.
  *
  * 🔴 The price is shown per model, from the server's `pricePerSecondUsd`. A picker whose price does not move
  * with the model is worse than no picker: every estimate downstream — the confirmation panel, the retry
@@ -53,8 +59,14 @@ export function VideoModelCard({ setting, onChange }: { setting: VideoModelSetti
           person reading it. 캡틴D asked for every usable model on the adapter — Runway's own list has a dozen
           candidates — and an unbounded column of radio cards is exactly the shape that pushed the search box and
           everything under it off the screen in ①-1. `scrollList` is that fix's one home (docs/05_DESIGN_SYSTEM
-          §3.8); with three options it changes nothing visible, and it keeps changing nothing as the list grows. */}
-      <ul className={`${scrollList} space-y-2`}>
+          §3.8); with three options it changed nothing visible, and it keeps changing nothing as the list grows.
+
+          🔴 And the token alone — no `space-y-2` beside it. `scrollList` already carries `space-y-1`, so adding a
+          second spacing utility here put two of them on one element and left the winner to the order Tailwind
+          happened to emit. That is a rule living in the cascade instead of in code, which is the thing this
+          token exists to stop. If these rows ever need more air than the shared list gives, that belongs in
+          `surfaces.ts` as a variant every such list gets, not as one call site quietly disagreeing. */}
+      <ul className={scrollList}>
         {setting.options.map((option) => {
           const chosen = option.id === setting.selected;
           return (
