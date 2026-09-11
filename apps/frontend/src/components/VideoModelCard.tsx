@@ -3,6 +3,7 @@ import type { VideoModel, VideoModelSetting } from "@ai-animation-studio/shared"
 import { videoSceneEstimatedCostUsd } from "@ai-animation-studio/shared";
 
 import { saveVideoModel, toDisplayError } from "../api/providerSettingsApi.js";
+import { scrollList } from "./ui/surfaces.js";
 
 /**
  * Which model draws the video, and what that costs — asked for as "기능만 만들어놔".
@@ -48,7 +49,12 @@ export function VideoModelCard({ setting, onChange }: { setting: VideoModelSetti
       </div>
       <p className="text-sm text-slate-400">장면 이미지를 움직이는 영상으로 만드는 AI입니다. 바꾸면 <span className="text-slate-300">앞으로 만드는 영상</span>부터 적용되고, 이미 만들어 둔 클립은 그대로 남습니다.</p>
 
-      <ul className="space-y-2">
+      {/* 🔴 Bounded before it needs to be, because the thing that decides its length is the catalogue, not the
+          person reading it. 캡틴D asked for every usable model on the adapter — Runway's own list has a dozen
+          candidates — and an unbounded column of radio cards is exactly the shape that pushed the search box and
+          everything under it off the screen in ①-1. `scrollList` is that fix's one home (docs/05_DESIGN_SYSTEM
+          §3.8); with three options it changes nothing visible, and it keeps changing nothing as the list grows. */}
+      <ul className={`${scrollList} space-y-2`}>
         {setting.options.map((option) => {
           const chosen = option.id === setting.selected;
           return (
