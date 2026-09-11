@@ -8,6 +8,8 @@ import {
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
   NARRATION_AUDIO_STATES,
+  RUNWAY_VIDEO_RATIOS,
+  STORY_BIBLE_LINK_KINDS,
   RUNWAY_CLIP_DURATIONS,
   SCENE_REVIEW_STATUSES,
   VIDEO_JOB_STATUSES,
@@ -609,7 +611,7 @@ const isLongEpisodeImageStaleness = (value: unknown): value is LongEpisodeImageS
  * nothing on its side — so null is accepted and a wrong type is not.
  */
 const isStoryBibleLinkDrift = (value: unknown): value is LongEpisodeStoryBibleLinkDrift =>
-  isRecord(value) && (value.link === "protagonist" || value.link === "style")
+  isRecord(value) && (STORY_BIBLE_LINK_KINDS as readonly string[]).includes(value.link as string)
   && typeof value.storyBibleAssetId === "string" && typeof value.storyBibleAssetName === "string"
   && (value.episodeAssetId === null || typeof value.episodeAssetId === "string")
   && (value.episodeAssetName === null || typeof value.episodeAssetName === "string");
@@ -640,7 +642,7 @@ function isBudgetPreview(value: unknown): value is BudgetPreview {
     && isFiniteNonNegative(value.remainingUsd) && isFiniteNonNegative(value.estimatedRequestCostUsd) && typeof value.canSpend === "boolean";
 }
 const isGetEpisodeVideoPreviewResponse = (value: unknown): value is GetLongEpisodeVideoPreviewResponse => isRecord(value)
-  && isNonEmptyString(value.confirmationId) && VIDEO_MODELS.includes(value.model as VideoModel) && (value.ratio === "720:1280" || value.ratio === "1280:720")
+  && isNonEmptyString(value.confirmationId) && VIDEO_MODELS.includes(value.model as VideoModel) && (RUNWAY_VIDEO_RATIOS as readonly string[]).includes(value.ratio as string)
   // Was `=== 5 || === 10`, spelled out beside a model check that had already been widened for this exact
   // reason. The values happened to be right, which is the whole danger: a third clip length added to
   // RUNWAY_CLIP_DURATIONS would make this guard call a correct server response malformed, and the screen say

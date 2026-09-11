@@ -3,6 +3,7 @@ import {
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
   RUNWAY_CLIP_DURATIONS,
+  RUNWAY_VIDEO_RATIOS,
   VIDEO_MODELS,
   type BudgetPreview,
   type GetVideoPromptPreviewResponse,
@@ -69,7 +70,10 @@ function isVideoPromptPreview(value: unknown): value is VideoPromptPreview {
     // Was `=== "gen4_turbo"`. A model swap on the server would have made this call a perfectly good response
     // malformed, and the screen say 서버 응답을 확인할 수 없습니다 about a server that is working.
     VIDEO_MODELS.includes(value.model as VideoModel) &&
-    (value.ratio === "720:1280" || value.ratio === "1280:720") &&
+    /* The contract publishes this list now; retyping it here is the second copy nothing keeps in step —
+       add a value and this guard silently REJECTS it, the response parses as malformed and the screen
+       shows nothing, with no compile error. Same family as the eight fixed in cc432e0. */
+    (RUNWAY_VIDEO_RATIOS as readonly string[]).includes(value.ratio as string) &&
     // Was `=== 5`, and it cost 캡틴D the whole video step on the first 10-second project: the server answered
     // correctly with durationSeconds 10, this guard called it malformed, and the screen said 서버 응답을 확인할
     // 수 없습니다 about a server that was working. Exactly the failure the `model` comment above describes, left

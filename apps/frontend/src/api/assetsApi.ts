@@ -1,5 +1,6 @@
 import {
   ASSET_FILE_AUDIT_CLASSIFICATIONS,
+  ASSET_FILE_SOURCE_KINDS,
   ASSET_OWNERSHIPS, ASSET_STATUSES, ASSET_TYPES,
   API_ROUTES,
   ASSET_UPLOAD_FILE_FIELD,
@@ -165,7 +166,7 @@ const isDeleteFolderResponse = (value: unknown): value is DeleteAssetFolderRespo
 const AUDIT_CLASSIFICATIONS: readonly AssetFileAuditClassification[] = ASSET_FILE_AUDIT_CLASSIFICATIONS;
 const isAuditEntry = (value: unknown): value is AssetFileAuditEntry => isRecord(value)
   && isString(value.assetId) && isString(value.displayName) && AUDIT_CLASSIFICATIONS.includes(value.classification as AssetFileAuditClassification)
-  && (value.sourceKind === "manual" || value.sourceKind === "project") && isString(value.message);
+  && (ASSET_FILE_SOURCE_KINDS as readonly string[]).includes(value.sourceKind as string) && isString(value.message);
 const isAuditResponse = (value: unknown): value is ListAssetFileAuditResponse => isRecord(value) && Array.isArray(value.entries) && value.entries.every(isAuditEntry);
 const isNonNegativeInteger = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= 0;
 const isLegacyMigrationResponse = (value: unknown): value is RunLegacyReferenceMigrationResponse => isRecord(value)
