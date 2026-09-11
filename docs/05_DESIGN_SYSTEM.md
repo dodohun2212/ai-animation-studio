@@ -293,7 +293,6 @@ rounded-xl border border-white/10 bg-slate-950/40 p-3
 | `success` | 완료·확정 | emerald |
 | `progress` | 진행 중·주의 | amber |
 | `danger` | 실패·오류 | rose |
-| `active` | 현재 위치·선택 | violet |
 | `neutral` | 대기·미시작, 또는 알릴 것이 없음 | 무채색 |
 | `info` | 정보·알아 두실 것 | sky |
 
@@ -321,9 +320,13 @@ text-xs font-semibold
 「실제 생성」은 완료도 주의도 정보도 아니고 그냥 **알릴 것이 없는 상태**다. 색은 그대로
 무채색이다.
 
-🟠 **`active` 는 이 표에 있지만 `StatusChip.tsx` 에는 구현돼 있지 않다** (2026-09-11
-확인, 코드에서 쓰는 곳도 0). 문서와 부품이 어긋난 채로 남아 있는 칸이니, 쓰기 전에
-구현할지 표에서 뺄지를 먼저 정한다.
+**`active` 는 2026-09-11 에 이 표에서 뺐다 — 구현하지 않기로 정한 것이다**
+(근거: `docs/06_DECISIONS.md` D-050). §2.1 의 violet 「현재 위치·선택」 칸은
+**그대로 있다.** 빠진 것은 색이 아니라 **칩이 그것을 그린다는 주장**이다.
+그 뜻은 이 앱에서 언제나 **누를 수 있는 것**이 갖는다 — 사이드바 항목(`App.tsx`),
+`StepRibbon` 의 현재 단계, 고르는 칸들(`SceneEditScreen`·`SceneSubtitleFieldset`·
+`WorkflowGuideScreen`) — 여섯 곳 전부 §3.2 「활성 네비·선택 배경」 쪽이고 칩이 아니다.
+`StatusChip` 은 **항목이 어떤 상태인지**를 읽는 것이라 눌리지 않는다.
 
 ### 3.5 오류·안내 배너
 
