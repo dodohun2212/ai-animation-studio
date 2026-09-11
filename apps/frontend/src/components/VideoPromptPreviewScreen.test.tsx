@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { jsonResponse } from "../api/testUtils.js";
+import { VideoSubmissionApiError, toVideoSubmissionDisplayError } from "../api/videoSubmissionApi.js";
 import { VideoPromptPreviewScreen } from "./VideoPromptPreviewScreen.js";
 
 function makePreviews(count = 6): VideoPromptPreview[] {
@@ -358,18 +359,32 @@ describe("VideoPromptPreviewScreen", () => {
       expect(screen.queryByTestId("submit-confirm-panel")).toBeNull();
     });
 
+    /*
+     * 🔴 The expected sentence is asked of the same mapper the screen uses, not retyped here.
+     *
+     * These rows used to carry the message as a literal, and that copy cost us twice in one day: the budget
+     * refusal was reworded to name Runway, `main` would have gone red on a row that has nothing to do with
+     * which provider is named, and the comment sitting on that row claimed it only named the unchanging half —
+     * which was not true of the line under it. A guard that has to be edited in step with the thing it guards
+     * is a second copy, and this repository keeps paying for those (the guards in cc432e0, the flower preset's
+     * 씨앗 ban, this).
+     *
+     * It does not weaken the case. What is being checked is that the backend's own `message` never reaches the
+     * screen — "raw backend detail" is a different string from every mapped sentence, and a screen that printed
+     * the code, the raw detail, or nothing still fails. Reword a sentence in SAFE_ERRORS now and this stays
+     * green, which is correct: the wording is not what this case is about.
+     */
     it.each([
-      ["VIDEO_CONFIRMATION_STALE", "미리보기 내용이 그 사이에 변경되었습니다. 새로고침 후 다시 확인해 주세요."],
-      /* 🔴 This row restates SAFE_ERRORS.VIDEO_BUDGET_EXCEEDED word for word, route sentence included — the older
-         comment here claimed it named only the unchanging half, and that was not true of the line below it.
-         Reword that message and this goes red for a reason that has nothing to do with what the case checks
-         (that the backend's raw detail never reaches the screen). Change the two together, or lift the table
-         out of videoSubmissionApi.ts and let this row read from it. */
-      ["VIDEO_BUDGET_EXCEEDED", "이번 달 Runway 예산을 초과하여 요청을 보내지 않았습니다. 설정 화면의 「이번 달 쓸 수 있는 돈」에서 한도를 올릴 수 있습니다."],
-      ["VIDEO_CALL_LIMIT_EXCEEDED", "허용된 Provider 호출 횟수를 초과했습니다."],
-      ["VIDEO_REQUEST_ID_CONFLICT", "이전 요청과 내용이 달라 처리할 수 없습니다. 새로고침 후 다시 시도해 주세요."],
-      ["VIDEO_SUBMISSION_NOT_ALLOWED", "영상 생성 요청은 모든 장면 이미지 승인과 영상 확인 대기 상태에서만 보낼 수 있습니다."],
-    ])("shows a safe fixed error message for %s instead of the raw backend detail", async (code, expectedMessage) => {
+      "VIDEO_CONFIRMATION_STALE",
+      "VIDEO_BUDGET_EXCEEDED",
+      "VIDEO_CALL_LIMIT_EXCEEDED",
+      "VIDEO_REQUEST_ID_CONFLICT",
+      "VIDEO_SUBMISSION_NOT_ALLOWED",
+    ])("shows a safe fixed error message for %s instead of the raw backend detail", async (code) => {
+      const expectedMessage = toVideoSubmissionDisplayError(new VideoSubmissionApiError(code, "raw backend detail")).message;
+      // The mapper has to actually know this code — an unmapped one falls back to a generic sentence, and then
+      // every assertion below would pass while proving nothing about the code named in the row.
+      expect(expectedMessage).not.toBe(toVideoSubmissionDisplayError(new VideoSubmissionApiError("NOT_A_REAL_CODE", "x")).message);
       const fetchMock = vi
         .fn()
         .mockResolvedValueOnce(jsonResponse(200, makePreviewResponse()))
