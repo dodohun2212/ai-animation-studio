@@ -37,7 +37,7 @@
 | ① 꽃 릴 1편 | 캡틴D | ✅ 뽑음(`꽃말_구기자`, 영상 $1). 결과 **「전혀 안 이어지잖아」** → ③ 이 열렸다 |
 | **③ 이음매 — 블록으로 짓기** | CLI | 캡틴D 승인됨. 블록 1 ✅(`39f4aa0`). **두 번째 모델 ✅ `ba83e5e`** — H3 Max 480p·768p 를 골라 실제로 보낼 수 있다. **블록 2 는 세움** — 다음은 캡틴D가 H3 로 릴 1편(아래 「두 번째 모델」) |
 | **③ 두 번째 모델 — 실제 릴 1편** | 캡틴D | ⬜ 설정에서 H3 Max 를 고르고 짧은 릴 하나. 볼 것: 세로 그림에서 **세로로 나오나**, 컷이 gen4 보다 나은가, 카메라가 「Motivated camera」 줄을 따르나, 청구액이 견적과 맞나 |
-| **③ 모델 전부 — 범위 정정 (캡틴D)** | CLI | 🟡 「전부」·「끊기지 말고 계속」. **들어올 수 있는 것 전부 붙음 — 16줄**(gen4 Turbo · Gen-4.5 · H3 Max ×2 · WAN 3.0 ×3 · HappyHorse ×2 · Seedance ×7). 남은 것: 보류 줄(아래 표) |
+| **③ 모델 전부 — 범위 정정 (캡틴D)** | CLI | 🟡 「전부」·「끊기지 말고 계속」. **20줄**(gen4 Turbo · Gen-4.5 · H3 Max ×2 · WAN 3.0 ×3 · HappyHorse ×2 · Seedance ×7 · Gemini Omni Flash · Grok ×3). 계약이 장면당 요금 · 최소 청구 · 틀 성질을 말한다(`429dbc0`). 남은 것: hailuo3(추가요금 모호) · 값 없는 둘 |
 
 **오늘 끝난 것 (전부 `origin/main` push 됨):** 생성 출처 표시(`068a144`) ·
 배지를 공용 칩으로(`d990748`) · `active` tone 정리(`8bbfb10`) ·
@@ -460,7 +460,7 @@ execution_mode 어휘              "local_fake_no_provider" | "runway"  ← 제�
   ✅ wan3                480p 5 / 720p 10 / 1080p 20          ✓          keyframe + auto_*p  a81b550 · 방언: Alibaba 「Motion + Camera」 · 문자열 그림 = 참고 이미지라 키프레임으로
   ✅ happyhorse_1_0      720p 15 / 1080p 30                  ✗          resolution          ec66d5b · 제작사 문서에 프롬프트 지침 없음(확인함)
   ✅ seedance 2.0/Fast/Mini/2.5   (7줄)                      ✓          ratio 문자열이 해상도  767f5bc · 방언: ByteDance 가이드 + 요청 때 제약 문구는 Seedance 문구 · 최소 청구 밑은 거절 · 4K 제외(합치기가 1080p)
-  보류 — 계약에 칸이 필요   gemini_omni_flash(+1크레딧/첫 프레임) · grok_imagine_1_5(+1크레딧/이미지, 시작 프레임 포함)
+  ✅ gemini_omni_flash · grok_imagine_1_5 ×3   +1크레딧/첫 프레임 → perGenerationUsd   9ae441c · 방언: Google 가이드 / xAI 는 지침 없음
   보류 — 모호              hailuo3(+2크레딧/참고 이미지 — 첫·끝 프레임이 「참고」에 드는지 문서가 말하지 않음)
   보류 — 값이 없음          gemini_omni_flash_1.1 · wan3_prime (가격표에 줄이 없다)
   못 들어옴               veo3.1 · veo3.1_fast(4·6·8초) · aleph2(영상→영상) · act_two(모션 캡처)
