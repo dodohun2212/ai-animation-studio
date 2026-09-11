@@ -30,7 +30,8 @@ const monthlyBudgets = [makeMonthlyBudget({ provider: "openai" }), makeMonthlyBu
  * response without it is not one this app produces, and the client refuses it rather than rendering a model
  * picker with no price in it.
  */
-const videoModel = { selected: DEFAULT_VIDEO_MODEL, isDefault: true, options: VIDEO_MODEL_OPTIONS };
+// One option by construction (the single-model case this file checks); the contract lists three since H3 Max.
+const videoModel = { selected: DEFAULT_VIDEO_MODEL, isDefault: true, options: VIDEO_MODEL_OPTIONS.slice(0, 1) };
 
 describe("ProviderSettingsScreen", () => {
   afterEach(() => {

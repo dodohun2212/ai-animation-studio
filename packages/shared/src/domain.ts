@@ -140,7 +140,13 @@ export const usesBgm = (mode: string): boolean => mode === "narration+bgm" || mo
  */
 export const defaultBgmVolume = (mode: string): number => (mode === "bgm" ? 1 : DEFAULT_BGM_VOLUME);
 
-export const VIDEO_MODELS = ["gen4_turbo"] as const;
+/**
+ * This app's own names for the video models it can use — not always the provider's. MiniMax H3 Max is one model
+ * on Runway's side (`h3_max`) billed at two rates by resolution, so it is two entries here: a choice whose price
+ * moves is two choices, and `pricePerSecondUsd` stays one true number per entry. The adapter
+ * (videos/runway-video-adapter.ts) turns each name into its request body.
+ */
+export const VIDEO_MODELS = ["gen4_turbo", "h3_max_480p", "h3_max_768p"] as const;
 export type VideoModel = (typeof VIDEO_MODELS)[number];
 
 /**
@@ -180,20 +186,33 @@ export interface VideoModelOption {
    * (`@runwayml/sdk`, `resources/image-to-video.d.ts`, read 2026-09-12) give gen4_turbo's `promptImage` as
    * `string | Array<{ position: 'first'; uri: string }>` — `'first'` only. The models on the same endpoint that do
    * take `'first' | 'last'` there are `h3_max`, `veo3.1`, `veo3.1_fast` and `gemini_omni_flash_1.1`.
+   *
+   * 🟠 `true` says what the model can do, not what this app sends. No request carries a last frame yet — that is
+   * the seam work (docs/00_NOW.md ③, block 2), and it waits for this model to be checked on a real reel.
    */
   acceptsLastFrame: boolean;
 }
 
 /**
- * The models this app can be told to use — one today, and the mechanism for choosing is what was asked for.
+ * The models this app can be told to use.
  *
- * 🔴 A second entry needs a price somebody has confirmed. $0.05/second is not a guess: it reproduces the $0.25
- * per five-second scene that this machine's Runway ledger has been charging all along. Adding a model with an
- * unverified rate would put a fabricated number under the budget check, which is the failure this whole shape
- * exists to prevent — so a new model waits for its real rate rather than a plausible one.
+ * 🔴 Every entry needs a price somebody has confirmed. Adding a model with an unverified rate would put a
+ * fabricated number under the budget check, which is the failure this whole shape exists to prevent.
+ * - Prices: Runway's own pricing page (docs.dev.runwayml.com/guides/pricing, 1 credit = $0.01), approved by 캡틴D
+ *   2026-09-12 (Cowork Round 752). gen4_turbo's 5 credits/s there is the same $0.05/s this machine's Runway ledger
+ *   had already been charging — the table agrees with the one row we could check against real spend.
+ * - Lengths, ratios and the last frame: Runway's published OpenAPI document (docs.dev.runwayml.com/openapi.json,
+ *   read 2026-09-12). gen4_turbo takes 2–10 s and a `ratio`; h3_max takes 5–15 s, no `ratio` at all (a
+ *   `resolution` of 480p or 768p instead), and a first frame with an optional last frame.
+ *
+ * `ratios: []` is the honest answer for H3 Max, not missing data: the request has no ratio field. What frame
+ * shape it returns for a vertical first frame is NOT confirmed — the merge fits every clip into the project's
+ * frame either way (videos/ffmpeg-merge.service.ts), so a wrong guess costs bars, not a broken reel.
  */
 export const VIDEO_MODEL_OPTIONS: readonly VideoModelOption[] = [
   { id: "gen4_turbo", label: "Runway Gen-4 Turbo", pricePerSecondUsd: 0.05, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 10, acceptsLastFrame: false },
+  { id: "h3_max_480p", label: "MiniMax H3 Max (480p)", pricePerSecondUsd: 0.05, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: true },
+  { id: "h3_max_768p", label: "MiniMax H3 Max (768p)", pricePerSecondUsd: 0.08, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: true },
 ];
 
 /** The one used when nobody has chosen — today's behaviour, unchanged. */

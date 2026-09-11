@@ -30,7 +30,8 @@ import { VideoModelCard } from "./VideoModelCard.js";
  */
 const second = { id: "gen4_alt" as VideoModel, label: "다른 모델", pricePerSecondUsd: 0.12, ratios: ["720:1280"], maxDurationSeconds: 10, acceptsLastFrame: false };
 const twoOptions: VideoModelSetting = { selected: DEFAULT_VIDEO_MODEL, isDefault: false, options: [VIDEO_MODEL_OPTIONS[0]!, second] };
-const oneOption: VideoModelSetting = { selected: DEFAULT_VIDEO_MODEL, isDefault: false, options: VIDEO_MODEL_OPTIONS };
+// One option by construction, not by the contract happening to list one — it lists three since H3 Max arrived.
+const oneOption: VideoModelSetting = { selected: DEFAULT_VIDEO_MODEL, isDefault: false, options: VIDEO_MODEL_OPTIONS.slice(0, 1) };
 /* No model on the contract takes a last frame yet, so the "can" sentence has no real sample to be drawn from —
    and a branch that never renders is a branch nobody knows works. This is the sample. */
 const seamless = { ...second, id: "gen4_seam" as VideoModel, label: "이음새 되는 모델", acceptsLastFrame: true };

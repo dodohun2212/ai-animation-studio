@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NO_LEGIBLE_TEXT_VIDEO_RULE, WorkflowState } from "@ai-animation-studio/shared";
+import { NO_LEGIBLE_TEXT_VIDEO_RULE, WorkflowState, type VideoModel } from "@ai-animation-studio/shared";
 
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
@@ -26,7 +26,7 @@ afterEach(async () => {
 
 function scenes() { return [1, 2, 3, 4, 5, 6].map((number) => ({ number, description: `d${number}`, visual_action: "a", start_motion: "s", main_motion: "m", end_motion: "e", shot_size: "medium", camera_angle: "eye", composition: "center", lens_feel: "natural", focus_subject: "subject", camera_motion: "dolly", environment_motion: "wind", motion_speed: "normal", motion_intensity: "moderate", expression_change: "calm", continuity_hint: "continue" })); }
 
-async function setupWithConnectedRunway() {
+async function setupWithConnectedRunway(options: { model?: VideoModel } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "video-workflow-runway-")); roots.push(root);
   const projectsRoot = path.join(root, "projects");
   const projects = new LocalProjectRepository(projectsRoot);
@@ -39,9 +39,10 @@ async function setupWithConnectedRunway() {
   const settingsRepository = new ProviderSettingsRepository(root);
   const providerSettings = new ProviderSettingsService(settingsRepository);
   await providerSettings.save("runway", { value: "key_test_runway_1234567890" });
+  if (options.model) await providerSettings.saveVideoModel({ model: options.model });
   const budget = new RunwayBudget(root, 10);
 
-  const previews = new LocalVideoPreviewService(projects, projectsRoot, budget);
+  const previews = new LocalVideoPreviewService(projects, projectsRoot, budget, providerSettings);
   const submit = new LocalVideoSubmissionService(projects, previews, undefined, providerSettings, budget);
   const preview = await previews.preview(project.project_id, undefined);
   const accepted = await submit.start(project.project_id, { confirmationId: preview.confirmationId!, userRequestId: "request_1", approved: true, prompts: preview.previews.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
@@ -113,6 +114,35 @@ describe("real Runway video workflow", () => {
    * the same way and records the same task ids, had no route back to them at all. The only way to a lost clip
    * here was to buy it a second time.
    */
+  /*
+   * 🔴 The short job always sent its recorded model, but booked the ledger — and quoted a retry — at today's
+   * setting. Switch from H3 Max 768p to gen4_turbo while a job runs and every remaining H3 clip is booked at
+   * $0.05/s against $0.08/s spent: the budget undercounting, the one direction it must never be wrong in.
+   */
+  it("books each scene at the rate of the model the job was confirmed under, not the setting it was changed to", async () => {
+    const deps = await setupWithConnectedRunway({ model: "h3_max_768p" });
+    const workflow = newWorkflow(deps);
+    const fetchMock = runwayFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z");
+    vi.setSystemTime(now);
+
+    await workflow.run("video_workflow", deps.accepted.jobId);
+    await deps.providerSettings.saveVideoModel({ model: "gen4_turbo" });
+    let progress = await workflow.getProgress("video_workflow", deps.accepted.jobId);
+    for (let check = 0; check < 2; check++) {
+      now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+      progress = await workflow.getProgress("video_workflow", deps.accepted.jobId);
+    }
+
+    const submitted = fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/v1/image_to_video")).map((call) => JSON.parse(String((call[1] as RequestInit).body)) as Record<string, unknown>);
+    expect(submitted.length).toBe(2);
+    for (const body of submitted) expect(body).toMatchObject({ model: "h3_max", resolution: "768p" });
+    expect(await deps.budget.spentThisMonth(), "scene 1 at $0.08/s × 5 s").toBeCloseTo(0.4, 8);
+    expect(progress.retryEstimate?.perSceneCostUsd, "and a retry of this job is quoted at its own rate").toBeCloseTo(0.4, 8);
+  });
+
   it("fetches the paid outputs again for scenes left holding a placeholder, without submitting anything", async () => {
     const deps = await setupWithConnectedRunway();
     const workflow = newWorkflow(deps);

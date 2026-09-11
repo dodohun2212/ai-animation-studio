@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { NO_LEGIBLE_TEXT_VIDEO_RULE, RUNWAY_PROMPT_AUTHORING_LIMIT, RUNWAY_PROMPT_MAX_LENGTH } from "@ai-animation-studio/shared";
+import { DEFAULT_VIDEO_MODEL, NO_LEGIBLE_TEXT_VIDEO_RULE, RUNWAY_PROMPT_AUTHORING_LIMIT, RUNWAY_PROMPT_MAX_LENGTH, type VideoModel } from "@ai-animation-studio/shared";
 import {
-  RunwayAdapterError, createRunwayImageToVideoTask, downloadRunwayOutput, getRunwayTask,
+  RunwayAdapterError, createRunwayImageToVideoTask, recordedVideoModel, downloadRunwayOutput, getRunwayTask,
 } from "./runway-video-adapter.js";
 
 const IMAGE_BYTES = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
@@ -66,11 +66,68 @@ ${NO_LEGIBLE_TEXT_VIDEO_RULE}`, ratio: "720:1280", duration: 5 });
     expect(body.promptImage).toBe(`data:image/png;base64,${IMAGE_BYTES.toString("base64")}`);
   });
 
-  it("uses caller-supplied model/ratio/duration instead of the defaults", async () => {
+  it("uses caller-supplied ratio/duration instead of the defaults", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
-    await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "gen4.5", ratio: "1280:720", durationSeconds: 10, fetchImpl: fetchMock, sleep: noSleep });
+    await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "gen4_turbo", ratio: "1280:720", durationSeconds: 10, fetchImpl: fetchMock, sleep: noSleep });
     const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body));
-    expect(body).toMatchObject({ model: "gen4.5", ratio: "1280:720", duration: 10 });
+    expect(body).toMatchObject({ model: "gen4_turbo", ratio: "1280:720", duration: 10 });
+  });
+
+  /*
+   * 🔴 Two of this app's models are one Runway model at two resolutions, and that model's request has no `ratio`
+   * at all — Runway's published OpenAPI document (read 2026-09-12) lists h3_max's fields as promptImage,
+   * promptText, duration (5–15), resolution (480p | 768p), promptExpansionMode and seed. The body is asserted
+   * whole, not matched: an extra `ratio` riding along is exactly the mistake a partial match would let through.
+   */
+  it("sends H3 Max as h3_max at the chosen resolution, with no ratio, and tells it not to rewrite the prompt", async () => {
+    for (const [model, resolution] of [["h3_max_480p", "480p"], ["h3_max_768p", "768p"]] as const) {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
+      await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "a hero walks forward", { model, ratio: "720:1280", durationSeconds: 10, fetchImpl: fetchMock, sleep: noSleep });
+      const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body));
+      expect(body, model).toEqual({
+        model: "h3_max", resolution, promptExpansionMode: "disabled", duration: 10,
+        promptText: `a hero walks forward
+${NO_LEGIBLE_TEXT_VIDEO_RULE}`,
+        promptImage: `data:image/png;base64,${IMAGE_BYTES.toString("base64")}`,
+      });
+    }
+  });
+
+  it("sends gen4_turbo nothing H3 Max's body carries", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
+    await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "gen4_turbo", fetchImpl: fetchMock, sleep: noSleep });
+    const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body));
+    expect(Object.keys(body).sort()).toEqual(["duration", "model", "promptImage", "promptText", "ratio"]);
+  });
+
+  /*
+   * Each model's own maximum, not one shared number: 15 seconds is refused for gen4_turbo (2–10 s) and accepted
+   * for H3 Max (5–15 s). Refused before fetch, so no task exists and nothing is billed.
+   */
+  it("refuses a clip longer than the model makes without calling fetch, by that model's own maximum", async () => {
+    const refused = vi.fn();
+    await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "gen4_turbo", durationSeconds: 15, fetchImpl: refused, sleep: noSleep }))
+      .rejects.toMatchObject({ category: "invalid_request" });
+    expect(refused).not.toHaveBeenCalled();
+
+    const accepted = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
+    await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "h3_max_768p", durationSeconds: 15, fetchImpl: accepted, sleep: noSleep });
+    expect(JSON.parse(String((accepted.mock.calls[0] as [string, RequestInit])[1].body))).toMatchObject({ duration: 15 });
+  });
+
+  it("refuses a frame shape outside this app's vocabulary, or a model it cannot name, without calling fetch", async () => {
+    const fetchMock = vi.fn();
+    await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "gen4_turbo", ratio: "9:16", fetchImpl: fetchMock, sleep: noSleep }))
+      .rejects.toMatchObject({ category: "invalid_request" });
+    await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "gen4.5" as VideoModel, fetchImpl: fetchMock, sleep: noSleep }))
+      .rejects.toMatchObject({ category: "invalid_request" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("reads a record's model as the one it names, and a record that names none as the default it was sent to", () => {
+    expect(recordedVideoModel("h3_max_768p")).toBe("h3_max_768p");
+    expect(recordedVideoModel(undefined)).toBe(DEFAULT_VIDEO_MODEL);
+    expect(recordedVideoModel("gen4.5")).toBe(DEFAULT_VIDEO_MODEL);
   });
 
   it("rejects an empty prompt without calling fetch", async () => {

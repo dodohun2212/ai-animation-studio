@@ -7,7 +7,7 @@ import {
   type SaveProviderCredentialRequest,
   type SaveProviderMonthlyBudgetRequest,
 } from "./api.js";
-import { DEFAULT_VIDEO_MODEL, VIDEO_MODELS, VIDEO_MODEL_OPTIONS } from "./domain.js";
+import { DEFAULT_VIDEO_MODEL, RUNWAY_VIDEO_RATIOS, VIDEO_MODELS, VIDEO_MODEL_OPTIONS } from "./domain.js";
 
 describe("provider credential settings contract", () => {
   it("limits providers and centralizes every settings route", () => {
@@ -57,7 +57,10 @@ describe("provider credential settings contract", () => {
     for (const option of VIDEO_MODEL_OPTIONS) {
       expect(option.pricePerSecondUsd, `${option.id} has no usable rate`).toBeGreaterThan(0);
       expect(option.label.trim(), `${option.id} has no name to show`).not.toBe("");
-      expect(option.ratios.length, `${option.id} claims no output shape`).toBeGreaterThan(0);
+      // An empty list is a true answer (H3 Max's request has no ratio field at all); a shape outside Runway's
+      // vocabulary is not — it would be sent, and refused, or quoted as a frame nobody can make.
+      expect(option.ratios.every((ratio) => (RUNWAY_VIDEO_RATIOS as readonly string[]).includes(ratio)), `${option.id} claims a shape Runway does not take`).toBe(true);
+      expect(option.maxDurationSeconds, `${option.id} has no length it can make`).toBeGreaterThan(0);
     }
     expect(VIDEO_MODEL_OPTIONS.map((option) => option.id)).toContain(DEFAULT_VIDEO_MODEL);
   });

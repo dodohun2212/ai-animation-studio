@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { SceneNumber } from "@ai-animation-studio/shared";
+import { DEFAULT_VIDEO_MODEL, type SceneNumber } from "@ai-animation-studio/shared";
 import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, RUNWAY_TASK_TIMEOUT_SECONDS, SUBMIT_CLAIM_TIMEOUT_SECONDS, type RunwaySceneState } from "./runway-workflow-support.js";
 
 const IMAGE_BYTES = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
@@ -21,7 +21,7 @@ function fakeBudget() {
 }
 
 async function input() {
-  return { imageBytes: IMAGE_BYTES, imageMimeType: "image/png", prompt: "a hero walks forward" };
+  return { imageBytes: IMAGE_BYTES, imageMimeType: "image/png", prompt: "a hero walks forward", model: DEFAULT_VIDEO_MODEL };
 }
 
 describe("advanceRunwayScene", () => {

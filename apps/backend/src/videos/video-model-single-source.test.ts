@@ -38,3 +38,24 @@ describe("the video model is written down once", () => {
     expect(VIDEO_MODELS).toContain(RUNWAY_MODEL);
   });
 });
+
+describe("Runway's SDK is used for its types only", () => {
+  /**
+   * 🔴 At runtime the SDK retries a POST up to twice on 408/409/429/5xx with no idempotency key, so one scene could
+   * become three paid tasks; this app's adapter never resends a submission (D-005). `import type` is erased at
+   * build, so the types give the compile-time check on each model's body without any of that code running. A
+   * plain `import` — or the package moving to `dependencies`, where it would ship — is the regression this holds.
+   */
+  it("is only ever imported as a type, and is not a runtime dependency", () => {
+    const runtimeImports = sourceFiles(backendSource).flatMap((file) =>
+      fs.readFileSync(file, "utf8").split(/\r?\n/)
+        .filter((line) => /from\s+["']@runwayml\/sdk/.test(line) && !/^\s*import\s+type\s/.test(line))
+        .map((line) => `${path.relative(backendSource, file)}: ${line.trim()}`));
+    expect(runtimeImports).toEqual([]);
+
+    const manifest = JSON.parse(fs.readFileSync(path.join(backendSource, "..", "package.json"), "utf8")) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+    expect(manifest.dependencies?.["@runwayml/sdk"]).toBeUndefined();
+    // Pinned exactly: the types are the check, so they move only when someone moves them on purpose.
+    expect(manifest.devDependencies?.["@runwayml/sdk"]).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+});

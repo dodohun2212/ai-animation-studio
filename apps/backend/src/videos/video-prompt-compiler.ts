@@ -35,7 +35,18 @@ import { videoPreviewDataInvalid } from "./video-preview-api.error.js";
 export type VideoPromptDialect = "runway_gen4";
 const DIALECT: Record<VideoModel, VideoPromptDialect> = {
   gen4_turbo: "runway_gen4",
+  // 🟠 H3 Max reads the same text, and that is a decision with a reason, not a fallback. The gen4 grammar's two
+  // provider-specific choices — no restated subject (the first frame carries it) and no negative phrasing — are
+  // what any image-to-video model given an exact first frame wants, and nothing published by MiniMax or Runway
+  // says H3 reads differently. `promptExpansionMode: "disabled"` (the adapter) makes it follow this text as
+  // written. One grammar also keeps the staleness recompute true (see `promptFor`). The day H3 is shown to want
+  // its own, it gets its own dialect here — and `promptFor` has to learn the recorded model first.
+  h3_max_480p: "runway_gen4",
+  h3_max_768p: "runway_gen4",
 };
+
+/** Which grammar a model reads — exported for the test that holds the staleness recompute's assumption. */
+export const videoPromptDialect = (model: VideoModel): VideoPromptDialect => DIALECT[model];
 
 export const SCENE_FIELDS = [
   "number", "description", "visual_action", "start_motion", "main_motion", "end_motion",
@@ -248,10 +259,10 @@ export function compileVideoPrompt(model: VideoModel, input: VideoPromptInput): 
  * Today's single dialect, kept as a name so the callers that genuinely have no model in hand say so.
  *
  * 🟠 There is exactly one such caller shape and it is the staleness recompute: a recorded clip was made with
- * whichever model was selected then, and the record does not say which. With one registered model the two are
- * the same answer. `video-prompt-compiler.test.ts` fails the day a second is registered, because that is the
- * day this stops being true and every existing clip would read as 「장면 내용이 바뀌었다」 for a reason no person
- * caused.
+ * whichever model was selected then. While every registered model reads one grammar, "today's model" and "the
+ * model that made it" compile the same text. `video-prompt-compiler.test.ts` fails the day a model with a second
+ * grammar is registered, because that is the day this stops being true and every clip made by the other model
+ * would read as 「장면 내용이 바뀌었다」 for a reason no person caused.
  */
 export const promptFor = (scene: StoredScene, previous: StoredScene | undefined, ratio: RunwayVideoRatio, clipDurationSeconds: number): VideoPromptResult =>
   compileVideoPrompt(VIDEO_MODELS[0], { scene, previous, ratio, clipDurationSeconds });

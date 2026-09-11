@@ -1,7 +1,7 @@
 import { VIDEO_MODELS } from "@ai-animation-studio/shared";
 import { describe, expect, it } from "vitest";
 
-import { compileVideoPrompt, promptFor, STABILITY_RULE, type StoredScene } from "./video-prompt-compiler.js";
+import { compileVideoPrompt, promptFor, STABILITY_RULE, videoPromptDialect, type StoredScene } from "./video-prompt-compiler.js";
 
 /**
  * The pair for the one compile path.
@@ -71,13 +71,14 @@ describe("compiling one scene for one model", () => {
   });
 
   /**
-   * 🔴 This is a tripwire, not a preference. It is expected to fail, once, on the day a second model is added —
-   * and what it is protecting is two lines of code elsewhere that will still typecheck, still pass their own
-   * tests, and still be wrong.
+   * 🔴 This is a tripwire, not a preference. It is expected to fail, once, on the day a model with a second
+   * grammar is added — and what it is protecting is two lines of code elsewhere that will still typecheck, still
+   * pass their own tests, and still be wrong. (It used to count models; H3 Max is a second model with the same
+   * grammar, and the count was never the thing that mattered.)
    */
   it("holds the staleness recompute's assumption: one dialect, so 'today's model' and 'the recorded model' are the same answer", () => {
-    expect(VIDEO_MODELS.length, [
-      "A second video model is registered. Before shipping it, fix both staleness recomputes:",
+    expect(new Set(VIDEO_MODELS.map(videoPromptDialect)).size, [
+      "A video model with a second prompt grammar is registered. Before shipping it, fix both staleness recomputes:",
       "  apps/backend/src/projects/scene-staleness.ts        (short project)",
       "  apps/backend/src/long-projects/episode-videos.service.ts#prompt (Long Episode)",
       "Both rebuild a recorded clip's prompt with the single dialect because the record does not say which",

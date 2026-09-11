@@ -1,4 +1,4 @@
-import type { SceneNumber } from "@ai-animation-studio/shared";
+import type { SceneNumber, VideoModel } from "@ai-animation-studio/shared";
 import { createRunwayImageToVideoTask, downloadRunwayOutput, getRunwayTask, RunwayAdapterError } from "./runway-video-adapter.js";
 
 /** Matches Python's runway_poll_interval_seconds default. Real Runway status is never re-checked more often than this, no matter how often a caller (e.g. a Frontend poll every 400ms) invokes advanceRunwayScene. */
@@ -28,7 +28,8 @@ export interface RunwaySceneInput {
   imageBytes: Buffer;
   imageMimeType: string;
   prompt: string;
-  model?: string;
+  /** The model the job was confirmed under — its record's, not today's setting (see recordedVideoModel). */
+  model: VideoModel;
   ratio?: string;
   durationSeconds?: number;
 }

@@ -1,10 +1,12 @@
-import { DEFAULT_VIDEO_MODEL, NO_LEGIBLE_TEXT_VIDEO_RULE, providerTaskFailure, RUNWAY_PROMPT_MAX_LENGTH, VIDEO_MODELS, type SceneFailureRemedy, type VideoModel } from "@ai-animation-studio/shared";
+import { DEFAULT_VIDEO_MODEL, NO_LEGIBLE_TEXT_VIDEO_RULE, providerTaskFailure, RUNWAY_PROMPT_MAX_LENGTH, RUNWAY_VIDEO_RATIOS, VIDEO_MODELS, videoModelOption, type RunwayVideoRatio, type SceneFailureRemedy, type VideoModel } from "@ai-animation-studio/shared";
+// Types only — erased at build, so no SDK code ever runs here (see `requestBodyFor` below for why that matters).
+import type { ImageToVideoCreateParams } from "@runwayml/sdk/resources/image-to-video";
 import { assertRealNetworkCallAllowed } from "../providers/no-test-network.guard.js";
 import { utf16Length } from "./video-preview.service.js";
 
 /**
- * Real RunwayML API calls using a plain fetch request (no SDK dependency), verified against the official
- * `runwayml` Node SDK's request/response shapes and endpoint constants. Mirrors Python's `RunwayVideoAdapter`:
+ * Real RunwayML API calls using a plain fetch request (no SDK at runtime), with each model's request body checked
+ * at compile time against the official `@runwayml/sdk` types. Mirrors Python's `RunwayVideoAdapter`:
  * this module owns no workflow, budget, or polling-cadence decisions — a caller submits one task, checks its
  * status whenever it chooses to, and downloads the output once when it is ready.
  */
@@ -40,6 +42,57 @@ export async function resolveVideoModel(store?: VideoModelStore, environment: No
   const stored = store ? await store.readNamed(VIDEO_MODEL_VARIABLE).catch(() => null) : null;
   const named = (stored ?? environment[VIDEO_MODEL_VARIABLE] ?? "").trim();
   return VIDEO_MODELS.includes(named as VideoModel) ? named as VideoModel : DEFAULT_VIDEO_MODEL;
+}
+
+/**
+ * The model a stored generation record says it was made with.
+ *
+ * A job keeps the model it was confirmed under — the setting can change while it runs, and a retry resumes that
+ * job, not a new one. Records written before a record carried its model (every Long Episode record until the
+ * second model arrived) were all sent to the default model, so the default is what they truthfully were.
+ */
+export function recordedVideoModel(value: unknown): VideoModel {
+  return VIDEO_MODELS.includes(value as VideoModel) ? value as VideoModel : DEFAULT_VIDEO_MODEL;
+}
+
+interface RequestParts { promptImage: string; promptText: string; ratio: RunwayVideoRatio; duration: number }
+
+/**
+ * What goes on the wire for each model. Exhaustive over `VideoModel`, so a model added to the contract does not
+ * compile until its body is written here — and each body is `satisfies` Runway's own type for that model, so a
+ * field the provider does not take (a `ratio` for h3_max, a last frame for gen4_turbo) is a build error rather
+ * than a paid request that fails.
+ *
+ * 🔴 The SDK is used for its types only. At runtime it retries a POST up to twice on 408/409/429/5xx and sends
+ * no idempotency key (its client leaves `idempotencyHeader` unset), so a paid task could be created three times
+ * for one scene. This adapter never resends a submission (D-005); the SDK's types give the compile-time check
+ * without its retries.
+ *
+ * 🔴 `promptExpansionMode: "disabled"` for H3 Max. Its default, `balanced`, rewrites the prompt before generating —
+ * the prompt a person reviewed and confirmed would not be the one the model follows.
+ */
+const REQUEST_BODY: Record<VideoModel, (parts: RequestParts) => ImageToVideoCreateParams> = {
+  gen4_turbo: ({ promptImage, promptText, ratio, duration }) =>
+    ({ model: "gen4_turbo", promptImage, promptText, ratio, duration }) satisfies ImageToVideoCreateParams.Gen4Turbo,
+  h3_max_480p: ({ promptImage, promptText, duration }) =>
+    ({ model: "h3_max", promptImage, promptText, duration, resolution: "480p", promptExpansionMode: "disabled" }) satisfies ImageToVideoCreateParams.H3Max,
+  h3_max_768p: ({ promptImage, promptText, duration }) =>
+    ({ model: "h3_max", promptImage, promptText, duration, resolution: "768p", promptExpansionMode: "disabled" }) satisfies ImageToVideoCreateParams.H3Max,
+};
+
+/**
+ * The body for one scene, or a refusal before anything is sent. A clip longer than the model makes (Runway would
+ * reject it) or a frame shape outside this app's vocabulary is an `invalid_request` here — no task is created, so
+ * nothing is billed.
+ */
+export function requestBodyFor(model: VideoModel, parts: { promptImage: string; promptText: string; ratio: string; duration: number }): ImageToVideoCreateParams {
+  const option = videoModelOption(model);
+  if (option.id !== model) throw new RunwayAdapterError("invalid_request", `알 수 없는 영상 모델입니다: ${model}`);
+  if (!Number.isInteger(parts.duration) || parts.duration < 1 || parts.duration > option.maxDurationSeconds) {
+    throw new RunwayAdapterError("invalid_request", `${option.label}은(는) 한 장면을 최대 ${option.maxDurationSeconds}초까지만 만듭니다.`);
+  }
+  if (!(RUNWAY_VIDEO_RATIOS as readonly string[]).includes(parts.ratio)) throw new RunwayAdapterError("invalid_request", "영상 비율이 올바르지 않습니다.");
+  return REQUEST_BODY[model]({ ...parts, ratio: parts.ratio as RunwayVideoRatio });
 }
 const MAX_DATA_URI_BYTES = 5 * 1024 * 1024;
 const DEFAULT_MAX_RETRIES = 2;
@@ -201,7 +254,7 @@ export async function createRunwayImageToVideoTask(
   imageBytes: Buffer,
   imageMimeType: string,
   prompt: string,
-  options: RetryOptions & { model?: string; ratio?: string; durationSeconds?: number } = {},
+  options: RetryOptions & { model?: VideoModel; ratio?: string; durationSeconds?: number } = {},
 ): Promise<{ taskId: string }> {
   // Appended here rather than at either caller: this is the one door to Runway, both pipelines come through it,
   // and a third caller cannot forget it. The prompt a person confirmed is what gets recorded; this line is only
@@ -212,19 +265,16 @@ export async function createRunwayImageToVideoTask(
   const text = `${authored}
 ${NO_LEGIBLE_TEXT_VIDEO_RULE}`;
   if (utf16Length(text) > RUNWAY_PROMPT_MAX_LENGTH) throw new RunwayAdapterError("invalid_request", `Runway 프롬프트가 ${RUNWAY_PROMPT_MAX_LENGTH} UTF-16 코드 유닛을 초과했습니다.`);
+  const requestBody = requestBodyFor(options.model ?? RUNWAY_MODEL, {
+    promptImage: imageDataUri(imageBytes, imageMimeType), promptText: text, ratio: options.ratio ?? "720:1280", duration: options.durationSeconds ?? 5,
+  });
   const response = await requestWithRetry(`${RUNWAY_BASE_URL}/v1/image_to_video`, {
     method: "POST",
     headers: {
       "content-type": "application/json", authorization: `Bearer ${apiSecret}`,
       "x-runway-version": RUNWAY_VERSION,
     },
-    body: JSON.stringify({
-      model: options.model ?? RUNWAY_MODEL,
-      promptImage: imageDataUri(imageBytes, imageMimeType),
-      promptText: text,
-      ratio: options.ratio ?? "720:1280",
-      duration: options.durationSeconds ?? 5,
-    }),
+    body: JSON.stringify(requestBody),
     // Unlike a status check or a download, this call creates a paid, non-idempotent resource. A `fetch` throw
     // (timeout, connection reset) is ambiguous — it does not tell us whether Runway ever received the request,
     // only that we did not see its response — so retrying it can create a second real task for one scene, which

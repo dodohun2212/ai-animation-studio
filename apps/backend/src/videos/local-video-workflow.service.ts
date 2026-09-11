@@ -34,7 +34,7 @@ import { downloadRunwayOutput, getRunwayTask, RunwayAdapterError } from "./runwa
 import { ProjectLockTimeoutError, withProjectLock } from "./project-lock.js";
 import { LEGACY_VIDEO_JOB_ID } from "./legacy-job.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
-import { resolveVideoModel } from "./runway-video-adapter.js";
+import { recordedVideoModel } from "./runway-video-adapter.js";
 import { sceneFailureFor } from "./scene-failure.js";
 import { videoRetryNeedsChangedInput,
   invalidVideoWorkflowRequest,
@@ -174,7 +174,8 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
   /** The clip length is the project's, so a 10-second project quotes a retry at what a 10-second clip costs. */
   private async retryEstimate(project: StoredProject, records: readonly VideoRecord[]): Promise<GenerationProgressResponse["retryEstimate"]> {
     if (!this.budget) return undefined;
-    const perSceneCostUsd = videoSceneEstimatedCostUsd(toShortProjectSettings(project).clipDurationSeconds, await resolveVideoModel(this.providerSettings?.settingsStore()));
+    // The job's model, not today's setting: a retry resumes this job, and the job was confirmed under its own.
+    const perSceneCostUsd = videoSceneEstimatedCostUsd(toShortProjectSettings(project).clipDurationSeconds, recordedVideoModel(records[0]?.model));
     const [monthlyLimitUsd, spentUsd, remainingUsd] = await Promise.all([this.budget.monthlyLimit(), this.budget.spentThisMonth(), this.budget.remaining()]);
     return {
       pendingSceneCount: records.filter((record) => record.status !== "succeeded").length,
@@ -260,7 +261,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     return {
       imageBytes, imageMimeType: "image/png",
       prompt: additionalInstruction ? `${basePrompt}\n${additionalInstruction}` : basePrompt,
-      model: String(record.model), ratio: String(record.ratio),
+      model: recordedVideoModel(record.model), ratio: String(record.ratio),
       durationSeconds: Number(record.duration_seconds),
     };
   }
@@ -320,7 +321,10 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     try {
       result = await advanceRunwayScene(states, (scene) => this.runwayInputForScene(project, jobId, scene), {
         apiSecret: apiKey, projectId: project.project_id, apiType: "video",
-        estimatedCostPerSceneUsd: videoSceneEstimatedCostUsd(toShortProjectSettings(project).clipDurationSeconds, await resolveVideoModel(this.providerSettings?.settingsStore())), budget: this.budget,
+        // 🔴 What the ledger records for each scene, so it must be the rate of the model the scene is sent to —
+        // the job's. Today's setting was here: switch 768p → gen4 mid-job and every remaining H3 clip would be
+        // booked at $0.05 against $0.08 spent, the budget quietly undercounting.
+        estimatedCostPerSceneUsd: videoSceneEstimatedCostUsd(toShortProjectSettings(project).clipDurationSeconds, recordedVideoModel(this.records(project, jobId)[0]?.model)), budget: this.budget,
         beforeSubmit: (scene, claimedAt) => this.claimSceneForSubmission(project.project_id, jobId, scene, claimedAt),
       });
     } catch (error) {

@@ -107,6 +107,54 @@ describe("real Runway episode video generation", () => {
     expect(progress.episode.status).toBe("videos_review");
   });
 
+  /*
+   * 🔴 The Episode path sent no model at all: the preview quoted the selected model and the adapter sent its
+   * default. One model hid it; with two, 캡틴D would pick H3 Max, be quoted H3 Max, and be sent gen4_turbo. And the
+   * job has to keep the model it was confirmed under — the setting can change while it runs — both for what is
+   * sent and for what the ledger books (the booking was today's setting too, which would undercount 768p by 3¢/s).
+   */
+  it("sends an Episode job to the model it was confirmed under and books that model's rate, even after the setting changes mid-job", async () => {
+    const deps = await setupWithConnectedRunway();
+    await deps.providerSettings.saveVideoModel({ model: "h3_max_768p" });
+    const videos = newVideos(deps);
+    const fetchMock = runwayFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+
+    const preview = await videos.preview("long", 1);
+    expect(preview.model).toBe("h3_max_768p");
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+    await deps.providerSettings.saveVideoModel({ model: "gen4_turbo" });
+    for (let check = 0; check < 2; check++) {
+      now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+      await videos.progress("long", 1, started.jobId);
+    }
+
+    const submitted = fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/v1/image_to_video")).map((call) => JSON.parse(String((call[1] as RequestInit).body)) as Record<string, unknown>);
+    expect(submitted.length, "scene 1, then scene 2 after the switch").toBe(2);
+    for (const body of submitted) {
+      expect(body).toMatchObject({ model: "h3_max", resolution: "768p", promptExpansionMode: "disabled" });
+      expect(body).not.toHaveProperty("ratio");
+    }
+    // Scene 1 finished: booked at 768p's $0.08/s for a 5-second clip, not gen4's $0.05.
+    expect(await deps.budget.spentThisMonth()).toBeCloseTo(0.4, 8);
+  });
+
+  it("refuses to start from a confirmation taken under another model, since it quoted another price", async () => {
+    const deps = await setupWithConnectedRunway();
+    const videos = newVideos(deps);
+    const fetchMock = runwayFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const preview = await videos.preview("long", 1);
+    await deps.providerSettings.saveVideoModel({ model: "h3_max_768p" });
+    await expect(videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST", message: "Episode video confirmation is stale." } });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("submits every scene with duration: 10 for a 60-second Episode, not the 5-second default", async () => {
     const deps = await setupWithConnectedRunway(60);
     const videos = newVideos(deps);
