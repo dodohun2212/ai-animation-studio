@@ -165,9 +165,36 @@ describe("local FFmpeg video merge", () => {
     expect(calls.find((args) => args.includes("-vf"))!).toContain("scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p");
   });
 
+  /*
+   * Which scenes, not just "the approved scene videos are missing or invalid" — twelve scenes checked by hand was
+   * what that sentence cost (Cowork Round 769). Every bad clip is named at once, and a scene that is fine is not.
+   */
+  it("names the scenes whose clip is unusable or whose review is not an approval, and only those", async () => {
+    const { projectsRoot, projects } = await setup();
+    const directory = path.join(projectsRoot, "video_merge", "videos", "runway");
+    await fs.rm(path.join(directory, "scene4.mp4"));
+    await fs.writeFile(path.join(directory, "scene2.mp4"), "");
+    await expect(new LocalVideoMergeService(projects, projectsRoot, runner({})).merge("video_merge")).rejects.toMatchObject({ response: { code: "VIDEO_MERGE_CLIPS_INVALID", details: { sceneNumbers: [2, 4] } } });
+
+    const fresh = await setup();
+    const reviewsFile = path.join(fresh.projectsRoot, "video_merge", "generated_video_reviews.json");
+    const reviews = JSON.parse(await fs.readFile(reviewsFile, "utf8")) as Array<Record<string, unknown>>;
+    await fs.writeFile(reviewsFile, JSON.stringify(reviews.map((review) => review.scene_number === 3 ? { ...review, status: "pending" } : review)), "utf8");
+    await expect(new LocalVideoMergeService(fresh.projects, fresh.projectsRoot, runner({})).merge("video_merge")).rejects.toMatchObject({ response: { code: "VIDEO_MERGE_CLIPS_INVALID", details: { sceneNumbers: [3] } } });
+  });
+
+  // A file that is not a review list at all names no scene: a guess would send the person to fix the wrong one.
+  it("names no scene when the review file cannot be read as a list", async () => {
+    const { projectsRoot, projects } = await setup();
+    await fs.writeFile(path.join(projectsRoot, "video_merge", "generated_video_reviews.json"), JSON.stringify({ not: "a list" }), "utf8");
+    const error = await new LocalVideoMergeService(projects, projectsRoot, runner({})).merge("video_merge").catch((caught: unknown) => caught) as { response: { code: string; details?: unknown } };
+    expect(error.response.code).toBe("VIDEO_MERGE_CLIPS_INVALID");
+    expect(error.response.details).toBeUndefined();
+  });
+
   it("rejects invalid clips without changing the approved state, and reports a missing binary safely", async () => {
     const { projectsRoot, projects } = await setup();
-    await expect(new LocalVideoMergeService(projects, projectsRoot, runner({ invalidProbe: true })).merge("video_merge")).rejects.toMatchObject({ response: { code: "VIDEO_MERGE_CLIPS_INVALID" } });
+    await expect(new LocalVideoMergeService(projects, projectsRoot, runner({ invalidProbe: true })).merge("video_merge")).rejects.toMatchObject({ response: { code: "VIDEO_MERGE_CLIPS_INVALID", details: { sceneNumbers: [1] } } });
     expect((await projects.findById("video_merge")).workflow_state).toBe(WorkflowState.VideosApproved);
     await expect(new LocalVideoMergeService(projects, projectsRoot, runner({ unavailable: true })).merge("video_merge")).rejects.toMatchObject({ response: { code: "FFMPEG_UNAVAILABLE" } });
     expect((await projects.findById("video_merge")).workflow_state).toBe(WorkflowState.VideosApproved);

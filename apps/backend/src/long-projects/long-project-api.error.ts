@@ -85,7 +85,8 @@ export const longEpisodeVideoRestoreNotAllowed = () => new LongProjectApiExcepti
  * The short project's twin is VIDEO_LIBRARY_RESTORE_IN_PROGRESS, added the same day for the same defect.
  */
 export const longEpisodeVideoRestoreInProgress = () => new LongProjectApiException("LONG_EPISODE_VIDEO_RESTORE_IN_PROGRESS", "Another operation is writing this Episode's final video. Wait for it to finish and try again.", HttpStatus.CONFLICT);
-export const longEpisodeMergeClipsInvalid = () => new LongProjectApiException("LONG_EPISODE_MERGE_CLIPS_INVALID", "The approved Episode scene videos are missing or invalid.", HttpStatus.CONFLICT);
+// Names the scenes when it knows them (MergeClipsInvalidDetails), and says nothing rather than guess when it does not.
+export const longEpisodeMergeClipsInvalid = (sceneNumbers?: readonly SceneNumber[]) => new LongProjectApiException("LONG_EPISODE_MERGE_CLIPS_INVALID", "The approved Episode scene videos are missing or invalid.", HttpStatus.CONFLICT, sceneNumbers && sceneNumbers.length > 0 ? { sceneNumbers: [...sceneNumbers].sort((a, b) => a - b) } : undefined);
 export const longEpisodeFfmpegUnavailable = () => new LongProjectApiException("LONG_EPISODE_FFMPEG_UNAVAILABLE", "FFmpeg or ffprobe is not available on this computer.", HttpStatus.SERVICE_UNAVAILABLE);
 export const longEpisodeMergeFailed = () => new LongProjectApiException("LONG_EPISODE_MERGE_FAILED", "Episode rendering failed. Approved scene videos were kept.", HttpStatus.INTERNAL_SERVER_ERROR);
 export const longEpisodeContinuityNotAllowed = () => new LongProjectApiException("LONG_EPISODE_CONTINUITY_NOT_ALLOWED", "Episode Continuity Memory can be saved only after image approval.", HttpStatus.CONFLICT);

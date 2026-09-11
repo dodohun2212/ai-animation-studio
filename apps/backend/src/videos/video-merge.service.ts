@@ -35,6 +35,18 @@ function isApprovedReviews(value: unknown, scenes: readonly SceneNumber[]): valu
     && new Set(value.map((item) => item.scene_number)).size === scenes.length;
 }
 
+/**
+ * The scenes whose review is not an approval — for naming them in the refusal. `undefined` when the file is not a
+ * list at all, or when every scene reads approved and the refusal came from its shape (a duplicate, a stray
+ * entry): then no scene is to blame, and naming one would send the person to the wrong place.
+ */
+function unapprovedScenes(value: unknown, scenes: readonly SceneNumber[]): SceneNumber[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const approved = new Set(value.filter((item) => typeof item === "object" && item !== null && (item as { status?: unknown }).status === "approved").map((item) => (item as { scene_number?: unknown }).scene_number));
+  const missing = scenes.filter((scene) => !approved.has(scene));
+  return missing.length > 0 ? missing : undefined;
+}
+
 /** Same "real files exist" meaning as project.mapper.ts's narrationAvailableFor() — kept as its own copy per this codebase's convention (see that function's own doc comment for why a projects/ -> videos/ layering inversion is avoided by not importing it). */
 function narrationAvailableFor(project: StoredProject): boolean {
   return project.generated_narrations.some((file, index) => typeof file === "string" && file.length > 0 && !isPlaceholderNarration(project, index + 1));
@@ -259,15 +271,20 @@ export class LocalVideoMergeService {
     try { reviews = JSON.parse(await fs.readFile(path.join(this.projectDirectory(project.project_id), "generated_video_reviews.json"), "utf8")); }
     catch { throw videoMergeClipsInvalid(); }
     const scenes = scenesFor(project);
-    if (!isApprovedReviews(reviews, scenes)) throw videoMergeClipsInvalid();
+    if (!isApprovedReviews(reviews, scenes)) throw videoMergeClipsInvalid(unapprovedScenes(reviews, scenes));
     const clips = scenes.map((scene) => this.clip(project.project_id, scene));
     // The Episode side had the same hole and the same reason for the same shape: "larger than zero" is right
     // for the local fake path, whose clips are placeholders by design, and wrong for a run that went to Runway,
     // where a placeholder means the download was lost. Only the paid case demands a real clip, so the
     // no-provider flow keeps working exactly as before.
     const paid = wasPaidRun(project.video_generation_records);
-    try { await Promise.all(clips.map(async (clip) => { if (!isUsableClip(await fs.stat(clip), paid)) throw new Error("clip"); })); }
-    catch { throw videoMergeClipsInvalid(); }
+    // Every clip is checked, not just the first bad one: the refusal names all the scenes to fix in one go.
+    const unusable: SceneNumber[] = [];
+    await Promise.all(clips.map(async (clip, index) => {
+      const usable = await fs.stat(clip).then((stat) => isUsableClip(stat, paid)).catch(() => false);
+      if (!usable) unusable.push(scenes[index]!);
+    }));
+    if (unusable.length > 0) throw videoMergeClipsInvalid(unusable);
     return clips;
   }
 
@@ -320,10 +337,13 @@ export class LocalVideoMergeService {
     // Probing asks "is this a real video", which a still is not and never claims to be. Skipped for a card
     // rather than the probe being loosened for every clip in the app.
     if (material.stillDurationSeconds === undefined) {
-      try { for (const clip of material.paths) await this.engine.probe(clip); }
-      catch (error) {
-        if (error instanceof MediaToolError && error.kind === "unavailable") throw ffmpegUnavailable();
-        throw videoMergeClipsInvalid();
+      const scenes = scenesFor(project);
+      for (const [index, clip] of material.paths.entries()) {
+        try { await this.engine.probe(clip); }
+        catch (error) {
+          if (error instanceof MediaToolError && error.kind === "unavailable") throw ffmpegUnavailable();
+          throw videoMergeClipsInvalid([scenes[index]!]);
+        }
       }
     }
     const cardScenes: SceneNumber[] = [1 as SceneNumber];

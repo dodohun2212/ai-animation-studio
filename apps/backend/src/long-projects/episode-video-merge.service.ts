@@ -34,6 +34,17 @@ const object = (value: unknown): value is ObjectMap => Boolean(value) && typeof 
 const scene = (value: unknown): value is SceneNumber => Number.isInteger(value) && isSceneNumber(value as number);
 
 /** Episode-scoped final rendering; its injectable runner keeps tests provider-free. */
+/**
+ * The scenes a review or record file does not vouch for — for naming them in the refusal. `undefined` when the file is
+ * not a list, or when every scene reads fine and the refusal came from the file's shape: then no scene is to blame.
+ */
+function scenesWithout(value: unknown, sceneNumbers: readonly SceneNumber[], vouches: (item: ObjectMap) => boolean): SceneNumber[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const good = new Set(value.filter((item) => object(item) && vouches(item)).map((item) => (item as ObjectMap).scene_number));
+  const missing = sceneNumbers.filter((sceneNumber) => !good.has(sceneNumber));
+  return missing.length > 0 ? missing : undefined;
+}
+
 @Injectable()
 export class EpisodeVideoMergeService {
   private readonly engine: FfmpegMergeEngine;
@@ -148,8 +159,8 @@ export class EpisodeVideoMergeService {
     if (episode.state !== "videos_approved" && episode.state !== "failed") throw longEpisodeMergeNotAllowed();
     const sceneNumbers = sceneNumbersFor(this.sceneCount(episode));
     const [rawReviews, rawRecords] = await Promise.all([readLongProjectJson(this.files(id, number).reviews).catch(() => { throw longEpisodeMergeClipsInvalid(); }), readLongProjectJson(this.files(id, number).records).catch(() => { throw longEpisodeMergeClipsInvalid(); })]);
-    if (!Array.isArray(rawReviews) || rawReviews.length !== sceneNumbers.length || !rawReviews.every((item) => object(item) && scene(item.scene_number) && item.status === "approved" && typeof item.updated_at === "string") || new Set(rawReviews.map((item) => (item as Review).scene_number)).size !== sceneNumbers.length) throw longEpisodeMergeClipsInvalid();
-    if (!Array.isArray(rawRecords) || rawRecords.length !== sceneNumbers.length || !rawRecords.every((item) => object(item) && scene(item.scene_number) && typeof item.job_id === "string" && item.job_id.length > 0 && item.status === "succeeded" && (item.execution_mode === "local_fake_no_provider" || item.execution_mode === "runway")) || new Set(rawRecords.map((item) => (item as VideoRecord).scene_number)).size !== sceneNumbers.length || new Set(rawRecords.map((item) => (item as VideoRecord).job_id)).size !== 1) throw longEpisodeMergeClipsInvalid();
+    if (!Array.isArray(rawReviews) || rawReviews.length !== sceneNumbers.length || !rawReviews.every((item) => object(item) && scene(item.scene_number) && item.status === "approved" && typeof item.updated_at === "string") || new Set(rawReviews.map((item) => (item as Review).scene_number)).size !== sceneNumbers.length) throw longEpisodeMergeClipsInvalid(scenesWithout(rawReviews, sceneNumbers, (item) => item.status === "approved"));
+    if (!Array.isArray(rawRecords) || rawRecords.length !== sceneNumbers.length || !rawRecords.every((item) => object(item) && scene(item.scene_number) && typeof item.job_id === "string" && item.job_id.length > 0 && item.status === "succeeded" && (item.execution_mode === "local_fake_no_provider" || item.execution_mode === "runway")) || new Set(rawRecords.map((item) => (item as VideoRecord).scene_number)).size !== sceneNumbers.length || new Set(rawRecords.map((item) => (item as VideoRecord).job_id)).size !== 1) throw longEpisodeMergeClipsInvalid(scenesWithout(rawRecords, sceneNumbers, (item) => item.status === "succeeded"));
     const clips = sceneNumbers.map((number_) => this.clip(id, number, number_));
     // "Larger than zero" is the right test for the local fake path, whose clips *are* placeholders by design.
     // It is the wrong test for a run that went to Runway: there a placeholder means the download was thrown
@@ -158,8 +169,13 @@ export class EpisodeVideoMergeService {
     // The short project's wording of this, which guards the record's shape. This side wrote it as a bare cast,
     // so one malformed entry threw a TypeError out of a merge instead of reading as "not a paid run".
     const paid = wasPaidRun(rawRecords);
-    try { await Promise.all(clips.map(async (file) => { if (!isUsableClip(await fs.stat(file), paid)) throw new Error("clip"); })); }
-    catch { throw longEpisodeMergeClipsInvalid(); }
+    // Every clip is checked, not just the first bad one: the refusal names all the scenes to fix in one go.
+    const unusable: SceneNumber[] = [];
+    await Promise.all(clips.map(async (file, index) => {
+      const usable = await fs.stat(file).then((stat) => isUsableClip(stat, paid)).catch(() => false);
+      if (!usable) unusable.push(sceneNumbers[index]!);
+    }));
+    if (unusable.length > 0) throw longEpisodeMergeClipsInvalid(unusable);
     return clips;
   }
 
@@ -357,8 +373,10 @@ export class EpisodeVideoMergeService {
       if (audio.startSeconds >= track.durationSeconds) throw longAudioStartOutOfRange(track.durationSeconds);
       bgmTrack = { attributionRequired: track.attributionRequired, ...(track.attributionText ? { attributionText: track.attributionText } : {}) };
     }
-    try { for (const clip of clips) await this.engine.probe(clip); }
-    catch (error) { if (error instanceof MediaToolError && error.kind === "unavailable") throw longEpisodeFfmpegUnavailable(); throw longEpisodeMergeClipsInvalid(); }
+    for (const [index, clip] of clips.entries()) {
+      try { await this.engine.probe(clip); }
+      catch (error) { if (error instanceof MediaToolError && error.kind === "unavailable") throw longEpisodeFfmpegUnavailable(); throw longEpisodeMergeClipsInvalid([(index + 1) as SceneNumber]); }
+    }
     const rendering = { ...episode, state: "rendering" as const, updated_at: new Date().toISOString() };
     await this.saveEpisode(id, number, rendering);
     // Same key the Episode's Instagram publish takes while it reads the file: the post must never be built

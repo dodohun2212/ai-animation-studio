@@ -768,6 +768,16 @@ export function providerTaskFailure(providerCode: string | undefined): (typeof P
   return PROVIDER_TASK_FAILURES.find((entry) => code.startsWith(entry.prefix));
 }
 
+/**
+ * The `details` of VIDEO_MERGE_CLIPS_INVALID and LONG_EPISODE_MERGE_CLIPS_INVALID, when the server can tell which
+ * scenes stopped the merge: not approved, no usable clip on disk, or a clip ffprobe cannot read. Absent when it
+ * cannot (a review or record file that will not parse at all) — a guess at a scene would send someone to fix the
+ * wrong one. Twelve scenes checked by hand is what the error cost before (Cowork Round 769).
+ */
+export interface MergeClipsInvalidDetails {
+  sceneNumbers: SceneNumber[];
+}
+
 export interface SceneFailure {
   /** This app's own category, unchanged — still what a screen picks its sentence from. */
   category: string;

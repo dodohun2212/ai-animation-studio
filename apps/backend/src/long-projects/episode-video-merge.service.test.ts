@@ -134,9 +134,16 @@ describe("EpisodeVideoMergeService", () => {
   it("requires one persisted current job and all six explicit approvals before changing the Episode state", async () => {
     const { projectsRoot } = await setup(); const reviews = path.join(projectsRoot, "long", "long_story", "Episode01", "generated_video_reviews.json");
     const values = JSON.parse(await fs.readFile(reviews, "utf8")) as Array<Record<string, unknown>>; values[5]!.status = "pending"; await fs.writeFile(reviews, JSON.stringify(values), "utf8");
-    await expect(new EpisodeVideoMergeService(projectsRoot, runner()).merge("long", 1)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_MERGE_CLIPS_INVALID" } });
+    // Names the scene that is not approved, so twelve scenes are not checked by hand (Cowork Round 769).
+    await expect(new EpisodeVideoMergeService(projectsRoot, runner()).merge("long", 1)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_MERGE_CLIPS_INVALID", details: { sceneNumbers: [6] } } });
     const project = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "project.json"), "utf8")) as { state: string }; expect(project.state).toBe("videos_approved");
     await expect(new EpisodeVideoMergeService(projectsRoot, runner()).merge("../long", 1)).rejects.toMatchObject({ response: { code: "UNSAFE_PROJECT_ID" } });
+  });
+
+  it("names the Episode scene whose clip is missing, not just that one is", async () => {
+    const { projectsRoot } = await setup();
+    await fs.rm(path.join(projectsRoot, "long", "long_story", "Episode01", "videos", "scene5.mp4"));
+    await expect(new EpisodeVideoMergeService(projectsRoot, runner()).merge("long", 1)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_MERGE_CLIPS_INVALID", details: { sceneNumbers: [5] } } });
   });
 
   it("keeps approved clips and records a recoverable failed state when the mock media runner fails", async () => {
@@ -156,7 +163,7 @@ describe("EpisodeVideoMergeService", () => {
   it("reports unavailable and invalid probe errors without moving an approved Episode to rendering", async () => {
     const { projectsRoot } = await setup();
     await expect(new EpisodeVideoMergeService(projectsRoot, runner({ unavailable: true })).merge("long", 1)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_FFMPEG_UNAVAILABLE" } });
-    await expect(new EpisodeVideoMergeService(projectsRoot, runner({ invalidProbe: true })).merge("long", 1)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_MERGE_CLIPS_INVALID" } });
+    await expect(new EpisodeVideoMergeService(projectsRoot, runner({ invalidProbe: true })).merge("long", 1)).rejects.toMatchObject({ response: { code: "LONG_EPISODE_MERGE_CLIPS_INVALID", details: { sceneNumbers: [1] } } });
     const project = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "project.json"), "utf8")) as { state: string }; expect(project.state).toBe("videos_approved");
   });
 

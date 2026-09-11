@@ -1,5 +1,5 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
-import type { ApiError } from "@ai-animation-studio/shared";
+import type { ApiError, SceneNumber } from "@ai-animation-studio/shared";
 
 type VideoMergeErrorCode =
   | "INVALID_REQUEST"
@@ -65,8 +65,10 @@ export const videoMergeBusy = () =>
  */
 export const audioStartOutOfRange = (durationSeconds: number) =>
   new VideoMergeApiException("AUDIO_START_OUT_OF_RANGE", "The chosen music start is past the end of the track.", HttpStatus.BAD_REQUEST, { durationSeconds });
-export const videoMergeClipsInvalid = () =>
-  new VideoMergeApiException("VIDEO_MERGE_CLIPS_INVALID", "The six approved scene videos are missing or invalid.", HttpStatus.CONFLICT);
+// Names the scenes when it knows them (MergeClipsInvalidDetails), and says nothing rather than guess when it does not.
+export const videoMergeClipsInvalid = (sceneNumbers?: readonly SceneNumber[]) =>
+  new VideoMergeApiException("VIDEO_MERGE_CLIPS_INVALID", "The approved scene videos are missing or invalid.", HttpStatus.CONFLICT,
+    sceneNumbers && sceneNumbers.length > 0 ? { sceneNumbers: [...sceneNumbers].sort((a, b) => a - b) } : undefined);
 export const ffmpegUnavailable = () =>
   new VideoMergeApiException("FFMPEG_UNAVAILABLE", "FFmpeg or ffprobe is not available on this computer.", HttpStatus.SERVICE_UNAVAILABLE);
 export const videoMergeFailed = () =>
