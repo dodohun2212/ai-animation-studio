@@ -105,6 +105,15 @@ describe("LongEpisodeVideoMergeScreen", () => {
     expect(screen.queryByTestId("episode-open-merge-confirm")).toBeNull();
   });
 
+  it("keeps the merged Episode selected when moving to post preparation", async () => {
+    const openPostPreparation = vi.fn();
+    vi.stubGlobal("fetch", stubFetchByRoute({ [`GET ${EPISODE_URL}`]: { episode: episode("completed") }, [`GET ${SETTINGS_URL}`]: mediaSettings(false, false) }));
+    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenInstagramPost={openPostPreparation} />);
+
+    fireEvent.click(await screen.findByTestId("open-episode-instagram-post"));
+    expect(openPostPreparation).toHaveBeenCalledWith("long", 1);
+  });
+
   it("still offers the merge on an Episode that has not been merged", async () => {
     vi.stubGlobal("fetch", stubFetchByRoute({ [`GET ${EPISODE_URL}`]: { episode: episode("videos_approved") }, [`GET ${SETTINGS_URL}`]: mediaSettings(false, false) }));
     render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);

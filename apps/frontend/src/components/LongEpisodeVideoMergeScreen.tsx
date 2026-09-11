@@ -15,6 +15,7 @@ interface Props {
   episodeNumber: number;
   onBack: () => void;
   onOpenContinuity?: (projectId: string, episodeNumber: number) => void;
+  onOpenInstagramPost?: (projectId: string, episodeNumber: number) => void;
 }
 
 type DisplayError = { code: string; message: string };
@@ -51,7 +52,7 @@ function mergeContentSentence(mode: MediaMode | null): string | null {
 }
 
 /** The explicit, final client gate for one Episode's already-approved videos. */
-export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, onOpenContinuity }: Props) {
+export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, onOpenContinuity, onOpenInstagramPost }: Props) {
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<MergeLongEpisodeVideosResponse | null>(null);
@@ -383,6 +384,16 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
               point: the person who comes back to publish is the one who needs it (D-003). */}
           <AttributionNotice usedAudio={usedAudio} />
           <FinalVideoGenerationSourceNotice source={finalVideoGenerationSource} testId="episode-final-video-generation-source-notice" />
+          {onOpenInstagramPost && (
+            <button
+              type="button"
+              className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
+              data-testid="open-episode-instagram-post"
+              onClick={() => onOpenInstagramPost(projectId, episodeNumber)}
+            >
+              게시물 준비로
+            </button>
+          )}
           {onOpenContinuity && (
             <button
               type="button"

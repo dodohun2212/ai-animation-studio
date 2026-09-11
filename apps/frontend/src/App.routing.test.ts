@@ -15,6 +15,7 @@ describe("screen addresses", () => {
       { name: "assets", initialQuery: "이배드" },
       { name: "detail", projectId: "12" },
       { name: "videoWorkflow", projectId: "12", jobId: "JOB-1" },
+      { name: "instagramPost", initialProjectId: "12", initialEpisodeNumber: 2 },
       { name: "longEpisodeMappingReview", projectId: "12", episodeNumber: 1 },
       { name: "longEpisodeSettings", projectId: "design-preview-long-1", episodeNumber: 7 },
     ] as const;

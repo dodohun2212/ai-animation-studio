@@ -63,7 +63,7 @@ type Screen =
   | { name: "videoLibrary" }
   | { name: "audioLibrary" }
   | { name: "photoCard" }
-  | { name: "instagramPost"; initialProjectId?: string }
+  | { name: "instagramPost"; initialProjectId?: string; initialEpisodeNumber?: number }
   | { name: "archive" }
   | { name: "workflowGuide" }
   | { name: "longList" }
@@ -94,10 +94,10 @@ type Screen =
  * `justCreated` is deliberately absent. It marks the one moment just after creation and changes the finish
  * button's wording; restoring it from a URL would show a first-run affordance on a project made last week.
  */
-type ScreenParam = "projectId" | "episodeNumber" | "jobId" | "initialQuery" | "initialProjectId";
-const OPTIONAL_PARAMS: ReadonlySet<ScreenParam> = new Set<ScreenParam>(["initialQuery", "initialProjectId"]);
+type ScreenParam = "projectId" | "episodeNumber" | "jobId" | "initialQuery" | "initialProjectId" | "initialEpisodeNumber";
+const OPTIONAL_PARAMS: ReadonlySet<ScreenParam> = new Set<ScreenParam>(["initialQuery", "initialProjectId", "initialEpisodeNumber"]);
 const SCREEN_PARAMS: Record<Screen["name"], readonly ScreenParam[]> = {
-  list: [], create: [], providerSettings: [], videoLibrary: [], audioLibrary: [], instagramPost: ["initialProjectId"], photoCard: [],
+  list: [], create: [], providerSettings: [], videoLibrary: [], audioLibrary: [], instagramPost: ["initialProjectId", "initialEpisodeNumber"], photoCard: [],
   archive: [], workflowGuide: [], longList: [], longCreate: [],
   assets: ["initialQuery"],
   detail: ["projectId"], mappingReview: ["projectId"], settings: ["projectId"], storyPrompt: ["projectId"],
@@ -148,7 +148,7 @@ export function screenFromHash(hash: string): Screen {
       if (OPTIONAL_PARAMS.has(key)) continue;
       return HOME;
     }
-    if (key === "episodeNumber") {
+    if (key === "episodeNumber" || key === "initialEpisodeNumber") {
       const episodeNumber = Number(value);
       // Episodes are counted from 1. A zero, a negative or "abc" would reach a screen that fetches by number
       // and render its own storage error — a worse answer than simply not going there.
@@ -782,7 +782,7 @@ export function App() {
             )}
             {screen.name === "longEpisodeImageGeneration" && <LongEpisodeImageGenerationScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longEpisodeMappingReview", projectId: screen.projectId, episodeNumber: screen.episodeNumber })} onOpenVideoWorkflow={(projectId, episodeNumber) => setScreen({ name: "longEpisodeVideoWorkflow", projectId, episodeNumber })} />}
             {screen.name === "longEpisodeVideoWorkflow" && <LongEpisodeVideoWorkflowScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longEpisodeImageGeneration", projectId: screen.projectId, episodeNumber: screen.episodeNumber })} onOpenMerge={(projectId, episodeNumber) => setScreen({ name: "longEpisodeVideoMerge", projectId, episodeNumber })} />}
-            {screen.name === "longEpisodeVideoMerge" && <LongEpisodeVideoMergeScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longEpisodeVideoWorkflow", projectId: screen.projectId, episodeNumber: screen.episodeNumber })} onOpenContinuity={(projectId, episodeNumber) => setScreen({ name: "longEpisodeContinuity", projectId, episodeNumber })} />}
+            {screen.name === "longEpisodeVideoMerge" && <LongEpisodeVideoMergeScreen projectId={screen.projectId} episodeNumber={screen.episodeNumber} onBack={() => setScreen({ name: "longEpisodeVideoWorkflow", projectId: screen.projectId, episodeNumber: screen.episodeNumber })} onOpenContinuity={(projectId, episodeNumber) => setScreen({ name: "longEpisodeContinuity", projectId, episodeNumber })} onOpenInstagramPost={(projectId, episodeNumber) => setScreen({ name: "instagramPost", initialProjectId: projectId, initialEpisodeNumber: episodeNumber })} />}
             {screen.name === "longEpisodeNarrationReview" && (
               <LongEpisodeNarrationReviewScreen
                 projectId={screen.projectId}
@@ -888,7 +888,7 @@ export function App() {
                 onOpenCard={(projectId) => setScreen({ name: "detail", projectId })}
               />
             )}
-            {screen.name === "instagramPost" && <InstagramPostScreen initialProjectId={screen.initialProjectId} onBack={() => setScreen({ name: "list" })} />}
+            {screen.name === "instagramPost" && <InstagramPostScreen initialProjectId={screen.initialProjectId} initialEpisodeNumber={screen.initialEpisodeNumber} onBack={() => setScreen({ name: "list" })} />}
             {screen.name === "sceneEdit" && !photoCardSkippedScreen && (
               <SceneEditScreen
                 projectId={screen.projectId}
