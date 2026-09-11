@@ -61,6 +61,12 @@ const DIALECT: Record<VideoModel, VideoPromptDialect> = {
   wan3_480p: "runway_gen4",
   wan3_720p: "runway_gen4",
   wan3_1080p: "runway_gen4",
+  // HappyHorse (Alibaba): its own API reference (Model Studio, read 2026-09-12) gives no prompt-writing guidance
+  // and has no prompt-rewriting switch — the prompt "describes the video content to generate", up to 5,000
+  // characters. So there is no maker's grammar to follow and nothing in it that this one contradicts; what it
+  // does say — the output keeps the first frame's shape — is the first-frame case this grammar is written for.
+  happyhorse_720p: "runway_gen4",
+  happyhorse_1080p: "runway_gen4",
 };
 
 /** Which grammar a model reads — exported for the test that holds the staleness recompute's assumption. */

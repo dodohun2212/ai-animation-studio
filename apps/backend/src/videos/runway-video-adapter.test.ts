@@ -121,6 +121,16 @@ ${NO_LEGIBLE_TEXT_VIDEO_RULE}`,
     expect(body).toMatchObject({ model: "gen4.5", ratio: "1280:720", duration: 10, promptImage: `data:image/png;base64,${IMAGE_BYTES.toString("base64")}` });
   });
 
+  it("sends HappyHorse the picture as an explicit first frame at the chosen resolution, with no ratio", async () => {
+    for (const [model, resolution] of [["happyhorse_720p", "720p"], ["happyhorse_1080p", "1080p"]] as const) {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
+      await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model, ratio: "720:1280", durationSeconds: 10, fetchImpl: fetchMock, sleep: noSleep });
+      const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body));
+      expect(Object.keys(body).sort(), model).toEqual(["duration", "model", "promptImage", "promptText", "resolution"]);
+      expect(body, model).toMatchObject({ model: "happyhorse_1_0", resolution, duration: 10, promptImage: [{ position: "first", uri: `data:image/png;base64,${IMAGE_BYTES.toString("base64")}` }] });
+    }
+  });
+
   it("sends gen4_turbo nothing H3 Max's body carries", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
     await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "gen4_turbo", fetchImpl: fetchMock, sleep: noSleep });

@@ -146,7 +146,7 @@ export const defaultBgmVolume = (mode: string): number => (mode === "bgm" ? 1 : 
  * moves is two choices, and `pricePerSecondUsd` stays one true number per entry. The adapter
  * (videos/runway-video-adapter.ts) turns each name into its request body.
  */
-export const VIDEO_MODELS = ["gen4_turbo", "gen4_5", "h3_max_480p", "h3_max_768p", "wan3_480p", "wan3_720p", "wan3_1080p"] as const;
+export const VIDEO_MODELS = ["gen4_turbo", "gen4_5", "h3_max_480p", "h3_max_768p", "wan3_480p", "wan3_720p", "wan3_1080p", "happyhorse_720p", "happyhorse_1080p"] as const;
 export type VideoModel = (typeof VIDEO_MODELS)[number];
 
 /**
@@ -206,9 +206,11 @@ export interface VideoModelOption {
  *   `resolution` of 480p or 768p instead), and a first frame with an optional last frame. wan3 takes 2–30 s and a
  *   first (and optional last) frame as keyframes, and in keyframe mode its `ratio` must be `auto_480p`,
  *   `auto_720p` or `auto_1080p` — the frame shape follows the first frame, so the resolution is the whole choice.
+ *   happyhorse_1_0 takes 3–15 s, a first frame only, and a `resolution` of 720p or 1080p, no ratio — Alibaba's own
+ *   API reference: "output aspect ratio matches the first frame".
  *
- * `ratios: []` is the honest answer for H3 Max and WAN 3.0, not missing data: neither is told a frame shape.
- * WAN's follows the first frame by its own documentation; H3's is NOT confirmed. Our pictures are 2:3 (or 3:2),
+ * `ratios: []` is the honest answer for H3 Max, WAN 3.0 and HappyHorse, not missing data: none is told a frame
+ * shape. WAN's and HappyHorse's follow the first frame by their own documentation; H3's is NOT confirmed. Our pictures are 2:3 (or 3:2),
  * and the merge fits every clip into the project's 9:16 (or 16:9) frame by padding
  * (videos/ffmpeg-merge.service.ts), so a clip that keeps the picture's shape arrives with bars, not broken.
  */
@@ -220,6 +222,8 @@ export const VIDEO_MODEL_OPTIONS: readonly VideoModelOption[] = [
   { id: "wan3_480p", label: "WAN 3.0 (480p)", pricePerSecondUsd: 0.05, ratios: [], maxDurationSeconds: 30, acceptsLastFrame: true },
   { id: "wan3_720p", label: "WAN 3.0 (720p)", pricePerSecondUsd: 0.1, ratios: [], maxDurationSeconds: 30, acceptsLastFrame: true },
   { id: "wan3_1080p", label: "WAN 3.0 (1080p)", pricePerSecondUsd: 0.2, ratios: [], maxDurationSeconds: 30, acceptsLastFrame: true },
+  { id: "happyhorse_720p", label: "HappyHorse 1.0 (720p)", pricePerSecondUsd: 0.15, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: false },
+  { id: "happyhorse_1080p", label: "HappyHorse 1.0 (1080p)", pricePerSecondUsd: 0.3, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: false },
 ];
 
 /** The one used when nobody has chosen — today's behaviour, unchanged. */

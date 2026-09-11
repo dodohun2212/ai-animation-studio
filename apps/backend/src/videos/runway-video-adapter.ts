@@ -84,6 +84,12 @@ const REQUEST_BODY: Record<VideoModel, (parts: RequestParts) => ImageToVideoCrea
   wan3_480p: (parts) => wan3Body(parts, "auto_480p"),
   wan3_720p: (parts) => wan3Body(parts, "auto_720p"),
   wan3_1080p: (parts) => wan3Body(parts, "auto_1080p"),
+  // The picture as an explicit first frame: HappyHorse takes the same shape as gen4_turbo, and naming the position
+  // leaves nothing for a reader (or the provider) to infer.
+  happyhorse_720p: ({ promptImage, promptText, duration }) =>
+    ({ model: "happyhorse_1_0", promptImage: [{ position: "first", uri: promptImage }], promptText, duration, resolution: "720p" }) satisfies ImageToVideoCreateParams.Happyhorse1_0,
+  happyhorse_1080p: ({ promptImage, promptText, duration }) =>
+    ({ model: "happyhorse_1_0", promptImage: [{ position: "first", uri: promptImage }], promptText, duration, resolution: "1080p" }) satisfies ImageToVideoCreateParams.Happyhorse1_0,
 };
 
 /**
