@@ -24,6 +24,17 @@ describe("LongProjectDetail", () => {
   // Regression: an episode whose generation was interrupted gets put back a step so it can be retried. Without
   // the sentence explaining that, the person finds the episode somewhere they did not leave it and assumes they
   // broke something — short projects already learned this once.
+  // Nothing pinned this row at all, which is how it stayed on the wrong label table after the long project
+  // list was moved off it. The compile error is the real guard — the outline table has no fallback — but a
+  // type error is invisible to a suite, so this at least keeps the row itself from disappearing unnoticed.
+  it("labels the project's outline status in Korean, from the outline vocabulary", async () => {
+    const project = makeLongProject({ id: "long_test", outlineStatus: "outline_ready" });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    render(<LongProjectDetail projectId="long_test" onBack={() => {}} onOpenSettings={() => {}} onOpenOutline={() => {}} />);
+
+    expect((await screen.findByTestId("outline-status")).textContent).toBe("스토리 개요 완료");
+  });
+
   it("shows an interrupted episode's explanation on its own row, and leaves untouched episodes unmarked", async () => {
     const project = makeLongProject({
       id: "long_test",

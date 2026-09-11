@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ArchivedLongEpisodeSummary, LongEpisodeStatus, LongProject } from "@ai-animation-studio/shared";
 
 import { addLongEpisode, archiveLongEpisode, archiveLongProject, duplicateLongEpisode, getLongProject, listLongEpisodeArchives, restoreLongEpisode, toLongProjectDisplayError } from "../api/longProjectsApi.js";
-import { LONG_EPISODE_STATUS_ORDER, longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
+import { LONG_EPISODE_STATUS_ORDER, longEpisodeOutlineStatusLabel, longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { ArchiveProjectDialog } from "./ArchiveProjectDialog.js";
 import { Spinner } from "./Spinner.js";
 import { MetaGrid } from "./ui/MetaGrid.js";
@@ -230,7 +230,17 @@ export function LongProjectDetail({
               <MetaGrid
                 columns={2}
                 items={[
-                  { label: "스토리 개요 상태", value: <span data-testid="outline-status">{longEpisodeStatusLabel(state.project.outlineStatus)}</span> },
+                  {
+                    label: "스토리 개요 상태",
+                    // The project's `outlineStatus` is a `LongEpisodeOutlineStatus` (two values), not one of the
+                    // eighteen `LongEpisodeStatus` the line below uses for episodes. This row called the
+                    // eighteen-value table for weeks and produced the right Korean only because both outline
+                    // names happen to be in that list — and that table answers a name it does not know by
+                    // echoing it back, so a third outline status would have put a raw enum here with nothing
+                    // thrown and nothing red. Same defect the long project list had; this screen was the half
+                    // that got missed when that one was fixed.
+                    value: <span data-testid="outline-status">{longEpisodeOutlineStatusLabel(state.project.outlineStatus)}</span>,
+                  },
                   { label: "화면 비율", value: state.project.settings.aspectRatio },
                 ]}
               />
