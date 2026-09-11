@@ -29,6 +29,15 @@ Python → TypeScript 이전 자체는 끝났다 — 상위 15개 체크리스�
 - 🟢 판정의 주인을 `apps/backend/src/videos/generation-source.ts` 하나로 옮겼다(`generationSourceOfVideoRecords` · `hasLocalFakeVideoRecord` · `storedGenerationSource`). 네 곳이 모두 이것을 부르고, `src/projects/`에서는 Provider 이름 자체가 사라진다. 비대칭이 요점이라 짝으로 고정했다: **임시 하나면 전체가 임시**(병합 파일이 그 클립을 담고 있으니), **유료는 전부가 유료라고 말할 때만**, 나머지는 전부 「근거 없음」.
 - 검증: backend 1604 통과(+1 의도적 skip, 신규 `generation-source.test.ts` 5개 포함) · frontend 1421 · shared 57 · desktop 38, backend typecheck 통과. 🟠 고치는 중의 한 번은 `videos/project-lock.test.ts`의 *"keeps a live holder's lock from being reclaimed as stale"* 가 전체 실행에서 `EPERM: unlink`로 빨개졌다 — **단독 7/7 초록**이고 마지막 전체 실행에서도 안 나왔다. 2026-09-07·09-09에 적어 둔 그 Windows 파일 잠금 profile이며 이번 변경과 무관하다. 실제 OpenAI·Runway·Instagram 요청은 0회다.
 
+### 2026-09-11 — 영상 프롬프트를 모델별 컴파일러 하나로 모았다 (Cowork Round 708/709)
+
+- `apps/backend/src/videos/video-prompt-compiler.ts` 하나가 「이 모델에게 어떤 텍스트를 보내는가」에 답한다. 기존 `promptFor` 의 본문을 **한 글자도 안 바꾸고** 옮겨 `runway_gen4` dialect 구현으로 만들고, `compileVideoPrompt(model, input)` 이 `DIALECT: Record<VideoModel, VideoPromptDialect>` 로 모델 → 문법을 고른다. 그 Record 가 **exhaustive** 라 새 모델은 「어떤 문법을 쓰는지」 적기 전까지 컴파일이 안 된다 — 테스트보다 강한 보장이라 일부러 손으로 적었다.
+- 🔴 **미등록 모델은 조용히 기존 프롬프트로 대체하지 않고 던진다.** Runway 문법을 그것을 못 읽는 제공자에게 보내면 **남의 요청에 실제 돈이 나가고**, 실패가 오류가 아니라 나쁜 영상으로 도착한다. 설정 화면으로는 도달할 수 없다(`resolveVideoModel` 은 `VIDEO_MODELS` 멤버만 답한다) — 이 throw 는 사용자용이 아니라 그 두 사실 사이의 틈을 위한 것이다.
+- 🟢 **컴파일 경로는 넷이 아니라 하나다.** 단기 preview(`LocalVideoPreviewService.preview`)와 장편 preview(`EpisodeVideosService.preview`)는 **선택된 모델로** 컴파일한다 — 사람이 승인하고 그대로 전송되는 텍스트라 돈이 나가는 문법이어야 한다. 전송·저장은 별도 빌더가 없다: 양쪽 다 preview 가 낸 프롬프트를 `confirmationId` 로 묶어 받고 그대로 기록한다(단기 `local-video-submission.service.ts`, 장편 `startCore`). staleness 재계산은 단기(`scene-staleness.ts`)와 장편(`episode-videos.service.ts#prompt`) **둘 다 단일 dialect** 로 재계산한다.
+- 🟠 **staleness 가 단일 dialect 인 것은 생략이 아니라 기록된 선택이다.** 기록(`video_generation_records`)에는 **어떤 모델이 만들었는지가 없다.** 모델이 하나뿐인 오늘은 「오늘의 모델」과 「기록된 모델」이 같은 답이라 차이가 없다. 둘째 모델이 등록되는 날 `video-prompt-compiler.test.ts` 의 tripwire 가 **바로 그 두 파일 경로를 적어 놓고 빨개진다** — 그때 기록에 모델을 남기고 그것으로 비교하거나, dialect 가 다르면 비교를 거절해야 한다. 안 그러면 다른 모델로 만든 클립 전부가 「장면 내용이 바뀐 뒤로 다시 만들지 않았습니다」로 뜨고, **그 문장은 전부 거짓**이다.
+- 🔴 **`packages/shared` 에는 아무것도 안 넣었다 — 넣으려다 되돌렸고, 그게 Round 709 의 요구다.** 처음엔 `VideoModelOption.promptDialect` 를 계약에 넣었는데, 화면이 그 값으로 만들 수 있는 참인 문장이 없다. 화면이 정직하게 보여 줄 수 있는 「지원 범위」는 `ratios` · `maxDurationSeconds` · `pricePerSecondUsd` 이고 **셋 다 이미 계약에 있다.** 소비자 없는 계약 필드는 프론트가 「있으니까」 그리게 되는 약속이라, dialect 는 백엔드가 갖는다. (되돌리기 전 `VideoModelCard.test.tsx` 가 빨개진 것이 그 신호였다.)
+- 검증: backend 1609 통과(+1 의도적 skip, 신규 `video-prompt-compiler.test.ts` 5개) · shared 57 · frontend 1422 · desktop 38, shared/backend/frontend typecheck 및 전체 build 통과. **기존 프롬프트 단언이 전부 그대로 통과한 것이 호환성 증거다** — 옮긴 본문이 한 바이트라도 달랐으면 디스크의 기록 43개가 전부 「장면이 바뀌었다」로 뜬다. 실제 OpenAI·Runway·Instagram 요청은 0회다.
+
 ### 2026-09-11 — 장편 회차에서 게시 화면으로 가는 길
 
 - 장편 회차 병합이 끝나면 그 자리에서 Instagram 게시 화면을 연다. `instagramPost` 화면이 `initialEpisodeNumber`를 받아 `episode:<projectId>|<n>` 선택으로 열리므로, 사람이 목록에서 방금 만든 회차를 다시 찾아야 했던 단계가 사라진다.

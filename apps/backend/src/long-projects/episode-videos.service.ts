@@ -16,7 +16,7 @@ import { RunwayBudget, RunwayBudgetExceededError } from "../providers/runway-bud
 import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceResult, type RunwaySceneState } from "../videos/runway-workflow-support.js";
 import { downloadRunwayOutput, getRunwayTask, RunwayAdapterError } from "../videos/runway-video-adapter.js";
 import { FINAL_VIDEO_LOCK_KEY, ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
-import { SCENE_FIELDS, describesSameScene, promptFor, utf16Length, type StoredScene } from "../videos/video-preview.service.js";
+import { SCENE_FIELDS, compileVideoPrompt, describesSameScene, promptFor, utf16Length, type StoredScene } from "../videos/video-preview.service.js";
 import { longEpisodeRetryNeedsChangedInput, longBudgetLedgerUnreadable, longEpisodeVideoRestoreInProgress, longEpisodeVideoRestoreNotAllowed, longEpisodeVideoVersionNotFound, longLocked, longEpisodeNotFound, longEpisodeVideoJobNotFound, longEpisodeVideosInvalid, longEpisodeVideosNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
@@ -139,26 +139,35 @@ export class EpisodeVideosService implements OnModuleDestroy {
    */
   private durationSecondsPerScene(episode: Episode): RunwayClipDurationSeconds { return clipDurationSecondsPerScene(Number(episode.duration_seconds), this.sceneCount(episode)); }
   /**
-   * Delegates to video-preview.service.ts's promptFor() — the short-project and Long Episode script schemas use
-   * the same 16 field names (see MOTION_SCENE_FIELDS/scenes() above), so the same function correctly reads all
+   * Delegates to videos/video-prompt-compiler.ts — the short-project and Long Episode script schemas use
+   * the same 16 field names (see MOTION_SCENE_FIELDS/scenes() above), so the same compiler correctly reads all
    * of them (motion_speed, motion_intensity, and expression_change previously had no reader anywhere on the
    * Long Episode side; this was the actual fix, not a new prompt format). ratio is now derived from the
    * project's own aspectRatio setting via ratio() above — it used to be hardcoded to "720:1280" regardless of
    * that setting, so a 16:9 Long Project's Episodes were always rendered as vertical video.
    */
   private prompt(current: ObjectMap, previous: ObjectMap | undefined, durationSeconds: 5 | 10, ratio: "720:1280" | "1280:720"): string {
-    return this.promptWithOmissions(current, previous, durationSeconds, ratio).prompt;
+    // Deliberately the single-dialect recompute, not the selected model — this is only reached from
+    // videoStaleness(), and the short project's scene-staleness.ts answers the same question the same way.
+    // A recorded clip was compiled for whichever model was selected then, which the record does not say; with
+    // one registered dialect the two answers are identical, and video-prompt-compiler.test.ts fails on the day
+    // a second is registered rather than letting this quietly compare a clip against a grammar it never saw.
+    try { return promptFor(current as unknown as StoredScene, previous as unknown as StoredScene | undefined, ratio, durationSeconds).prompt; }
+    catch { throw longInvalidData(); }
   }
   /**
    * The same call, keeping what it already returned and this side used to throw away.
    *
-   * promptFor drops sections in a fixed order to fit Runway's limit and names the ones it cut. The short
+   * 🟠 Unlike prompt() above, this one compiles for the *selected* model: it is the preview, and the preview is
+   * what the person approves and what is then submitted, so it must speak the grammar the money is spent on.
+   *
+   * The compiler drops sections in a fixed order to fit Runway's limit and names the ones it cut. The short
    * project has shown that list on its preview since it shipped; the Episode discarded it, so a scene here
    * could lose its pacing or performance direction and the only way to find out was that the finished clip
    * was wrong — after paying for it.
    */
-  private promptWithOmissions(current: ObjectMap, previous: ObjectMap | undefined, durationSeconds: 5 | 10, ratio: "720:1280" | "1280:720"): { prompt: string; omittedSections: string[] } {
-    try { return promptFor(current as unknown as StoredScene, previous as unknown as StoredScene | undefined, ratio, durationSeconds); }
+  private promptWithOmissions(current: ObjectMap, previous: ObjectMap | undefined, durationSeconds: 5 | 10, ratio: "720:1280" | "1280:720", model: VideoModel): { prompt: string; omittedSections: string[] } {
+    try { return compileVideoPrompt(model, { scene: current as unknown as StoredScene, previous: previous as unknown as StoredScene | undefined, ratio, clipDurationSeconds: durationSeconds }); }
     catch { throw longInvalidData(); }
   }
   private async assertReady(id: string, number: number, episode: Episode) { const scenes = sceneNumbersFor(this.sceneCount(episode)); if (episode.state !== "waiting_for_video_confirmation") throw longEpisodeVideosNotAllowed(); if (!(await Promise.all(scenes.map((item) => this.validImage(this.image(id, number, item))))).every(Boolean)) throw longEpisodeVideosInvalid(); const raw = await readLongProjectJson(path.join(this.files(id, number).videos, "..", "generated_image_reviews.json")); if (!Array.isArray(raw) || !scenes.every((item) => raw.some((review) => object(review) && review.scene_number === item && review.status === "approved"))) throw longEpisodeVideosInvalid(); }
@@ -355,7 +364,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
     catch (error) { if (isBudgetLedgerUnreadable(error)) return undefined; throw error; }
     return { monthlyLimitUsd: await this.budget.monthlyLimit(), spentUsd, remainingUsd, estimatedRequestCostUsd: estimatedCostUsd, canSpend: estimatedCostUsd <= remainingUsd };
   }
-  async preview(projectId: string, number: number): Promise<GetLongEpisodeVideoPreviewResponse> { const id = projectId.trim(); const episode = await this.loadEpisode(id, number); await this.assertReady(id, number, episode); const sceneNumbers = sceneNumbersFor(this.sceneCount(episode)); const durationSecondsPerScene = this.durationSecondsPerScene(episode); const model = await this.videoModel(); const ratio = await this.ratio(id, number); const scenes = this.scenes(episode); const items = scenes.map((item, index) => { const built = this.promptWithOmissions(item, scenes[index - 1], durationSecondsPerScene, ratio); return { sceneNumber: sceneNumbers[index]!, prompt: built.prompt, estimatedCostUsd: videoSceneEstimatedCostUsd(durationSecondsPerScene, model), ...(built.omittedSections.length > 0 ? { omittedSections: built.omittedSections } : {}) }; }); const hash = crypto.createHash("sha256").update(id).update(String(number)); for (const item of items) { hash.update(await fs.readFile(this.image(id, number, item.sceneNumber))); hash.update(item.prompt); } const estimatedCostUsd = items.reduce((sum, item) => sum + item.estimatedCostUsd, 0);
+  async preview(projectId: string, number: number): Promise<GetLongEpisodeVideoPreviewResponse> { const id = projectId.trim(); const episode = await this.loadEpisode(id, number); await this.assertReady(id, number, episode); const sceneNumbers = sceneNumbersFor(this.sceneCount(episode)); const durationSecondsPerScene = this.durationSecondsPerScene(episode); const model = await this.videoModel(); const ratio = await this.ratio(id, number); const scenes = this.scenes(episode); const items = scenes.map((item, index) => { const built = this.promptWithOmissions(item, scenes[index - 1], durationSecondsPerScene, ratio, model); return { sceneNumber: sceneNumbers[index]!, prompt: built.prompt, estimatedCostUsd: videoSceneEstimatedCostUsd(durationSecondsPerScene, model), ...(built.omittedSections.length > 0 ? { omittedSections: built.omittedSections } : {}) }; }); const hash = crypto.createHash("sha256").update(id).update(String(number)); for (const item of items) { hash.update(await fs.readFile(this.image(id, number, item.sceneNumber))); hash.update(item.prompt); } const estimatedCostUsd = items.reduce((sum, item) => sum + item.estimatedCostUsd, 0);
     // Read-only: previewing never reserves or records budget, it only reports the ledger's current state.
     const budget = await this.budgetPreview(estimatedCostUsd);
     return { confirmationId: hash.digest("hex"), model, ratio, durationSecondsPerScene, executionMode: "sequential", scenes: items, estimatedCostUsd, maximumProviderCalls: sceneNumbers.length, ...(budget ? { budget } : {}) }; }
