@@ -44,10 +44,14 @@ const statuses: readonly LongEpisodeStatus[] = LONG_EPISODE_STATUSES;
 type ObjectMap = { [key: string]: unknown };
 type Episode = ObjectMap & { number: number; state: LongEpisodeStatus; approved: boolean; script: { scenes?: unknown }; script_revision: number; updated_at: string; duration_seconds: number; scene_count?: number };
 /** `prompt` is what was actually sent to the provider — a submission has to be reproducible from it. `base_prompt` is the plain scene prompt, present only when a one-off regeneration instruction made the two differ, and it is what staleness compares against. */
-type VideoRecord = { scene_number: SceneNumber; job_id: string; user_request_id: string; confirmation_id: string; input_hash: string; prompt: string; base_prompt?: string; status: "created" | "running" | "succeeded" | "interrupted" | "failed"; execution_mode: "local_fake_no_provider" | "runway"; completed_at?: string; runway_task_id?: string; runway_submitted_at?: string; runway_last_checked_at?: string; error?: string; failure_code?: string;
+type VideoRecord = { scene_number: SceneNumber; job_id: string; user_request_id: string; confirmation_id: string; input_hash: string; prompt: string; base_prompt?: string; status: "created" | "submitting" | "running" | "succeeded" | "interrupted" | "failed"; execution_mode: "local_fake_no_provider" | "runway"; completed_at?: string; runway_task_id?: string;
+  /** Set only while status is "submitting" — see claimSceneForSubmission. */
+  runway_claimed_at?: string; runway_submitted_at?: string; runway_last_checked_at?: string; error?: string; failure_code?: string;
   /** The model the job was confirmed under. Absent on records written before a second model existed — those were all sent to the default (recordedVideoModel). */
   model?: VideoModel };
 type Record = VideoRecord;
+/** What a record's status may be on disk: the job statuses, plus the pre-POST claim the screens never see as such. */
+const RECORD_STATUSES = [...VIDEO_JOB_STATUSES, "submitting"] as const;
 type Review = { scene_number: SceneNumber; status: "pending" | "approved"; updated_at: string };
 const object = (value: unknown): value is ObjectMap => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 // Format-only check (1..MAX_SCENE_COUNT) — bounded to a specific episode's own scene_count separately once the
@@ -173,7 +177,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
     catch { throw longInvalidData(); }
   }
   private async assertReady(id: string, number: number, episode: Episode) { const scenes = sceneNumbersFor(this.sceneCount(episode)); if (episode.state !== "waiting_for_video_confirmation") throw longEpisodeVideosNotAllowed(); if (!(await Promise.all(scenes.map((item) => this.validImage(this.image(id, number, item))))).every(Boolean)) throw longEpisodeVideosInvalid(); const raw = await readLongProjectJson(path.join(this.files(id, number).videos, "..", "generated_image_reviews.json")); if (!Array.isArray(raw) || !scenes.every((item) => raw.some((review) => object(review) && review.scene_number === item && review.status === "approved"))) throw longEpisodeVideosInvalid(); }
-  private parseRecords(raw: unknown, sceneCount: number, job?: string): VideoRecord[] { if (!Array.isArray(raw)) throw longInvalidData(); const values = raw.map((item) => { if (!object(item) || !scene(item.scene_number) || !validId(item.job_id) || !validId(item.user_request_id) || typeof item.confirmation_id !== "string" || typeof item.input_hash !== "string" || typeof item.prompt !== "string" || (item.base_prompt !== undefined && typeof item.base_prompt !== "string") || !(VIDEO_JOB_STATUSES as readonly string[]).includes(String(item.status)) || (item.execution_mode !== "local_fake_no_provider" && item.execution_mode !== "runway")) throw longInvalidData(); return item as VideoRecord; }).filter((item) => !job || item.job_id === job).sort((a, b) => a.scene_number - b.scene_number); const scenes = sceneNumbersFor(sceneCount); if (job && (values.length !== scenes.length || values.some((item, index) => item.scene_number !== scenes[index]))) throw longEpisodeVideoJobNotFound(); return values; }
+  private parseRecords(raw: unknown, sceneCount: number, job?: string): VideoRecord[] { if (!Array.isArray(raw)) throw longInvalidData(); const values = raw.map((item) => { if (!object(item) || !scene(item.scene_number) || !validId(item.job_id) || !validId(item.user_request_id) || typeof item.confirmation_id !== "string" || typeof item.input_hash !== "string" || typeof item.prompt !== "string" || (item.base_prompt !== undefined && typeof item.base_prompt !== "string") || !(RECORD_STATUSES as readonly string[]).includes(String(item.status)) || (item.execution_mode !== "local_fake_no_provider" && item.execution_mode !== "runway")) throw longInvalidData(); return item as VideoRecord; }).filter((item) => !job || item.job_id === job).sort((a, b) => a.scene_number - b.scene_number); const scenes = sceneNumbersFor(sceneCount); if (job && (values.length !== scenes.length || values.some((item, index) => item.scene_number !== scenes[index]))) throw longEpisodeVideoJobNotFound(); return values; }
   private async records(id: string, number: number, sceneCount: number, job?: string) { try { return this.parseRecords(await readLongProjectJson(this.files(id, number).records), sceneCount, job); } catch (error) { if (error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404 && job) throw longEpisodeVideoJobNotFound(); throw error; } }
   private async saveRecords(id: string, number: number, values: VideoRecord[]) { try { await atomicWriteUtf8File(this.files(id, number).records, JSON.stringify(values, null, 2)); } catch { throw longStorageError(); } }
   private async loadReviews(id: string, number: number, absent = false): Promise<Review[]> { try { const raw = await readLongProjectJson(this.files(id, number).reviews); if (!Array.isArray(raw)) throw longInvalidData(); return raw.map((item) => { if (!object(item) || !scene(item.scene_number) || !(SCENE_REVIEW_STATUSES as readonly string[]).includes(String(item.status)) || typeof item.updated_at !== "string") throw longInvalidData(); return item as Review; }); } catch (error) { if (absent && error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404) return []; throw error; } }
@@ -184,7 +188,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
   // between them used to answer "succeeded" while a review was still refused. Both screens open their
   // review on exactly this word, so it has to mean the thing they use it for. Still finishing reads as
   // running, which is what it is.
-  private async progressFor(episode: Episode, job: string, records: VideoRecord[]): Promise<LongEpisodeVideoProgress> { const model = recordedVideoModel(records[0]?.model); const done = records.filter((item) => item.status === "succeeded").map((item) => item.scene_number); const failedRecords = records.filter((item) => item.status === "failed"); const failed = failedRecords.map((item) => item.scene_number); const sceneErrors = Object.fromEntries(failedRecords.filter((item) => item.error).map((item) => [item.scene_number, item.error!])); const sceneFailures = Object.fromEntries(failedRecords.filter((item) => item.error).map((item) => [item.scene_number, sceneFailureFor(item.error!, item.failure_code)])); const running = records.find((item) => item.status === "running")?.scene_number; const perSceneCostUsd = videoSceneEstimatedCostUsd(this.durationSecondsPerScene(episode), model); const budget = records[0]?.execution_mode === "runway" ? await this.budgetPreview(perSceneCostUsd) : undefined; return { paidProvider: records[0]?.execution_mode === "runway", jobId: job, status: episode.state === "interrupted" ? "interrupted" : failed.length > 0 ? "failed" : done.length === records.length && episode.state !== "videos_generating" ? "succeeded" : running || done.length === records.length ? "running" : "created", ...(running ? { currentSceneNumber: running } : {}), completedSceneNumbers: done, failedSceneNumbers: failed, sceneNumbers: records.map((item) => item.scene_number), episode: this.detail(episode), ...(Object.keys(sceneErrors).length > 0 ? { sceneErrors } : {}), ...(Object.keys(sceneFailures).length > 0 ? { sceneFailures } : {}), ...(budget ? { retryEstimate: { perSceneCostUsd, budget, pendingSceneCount: records.filter((item) => item.status !== "succeeded").length } } : {}) }; }
+  private async progressFor(episode: Episode, job: string, records: VideoRecord[]): Promise<LongEpisodeVideoProgress> { const model = recordedVideoModel(records[0]?.model); const done = records.filter((item) => item.status === "succeeded").map((item) => item.scene_number); const failedRecords = records.filter((item) => item.status === "failed"); const failed = failedRecords.map((item) => item.scene_number); const sceneErrors = Object.fromEntries(failedRecords.filter((item) => item.error).map((item) => [item.scene_number, item.error!])); const sceneFailures = Object.fromEntries(failedRecords.filter((item) => item.error).map((item) => [item.scene_number, sceneFailureFor(item.error!, item.failure_code)])); const running = records.find((item) => item.status === "running" || item.status === "submitting")?.scene_number; const perSceneCostUsd = videoSceneEstimatedCostUsd(this.durationSecondsPerScene(episode), model); const budget = records[0]?.execution_mode === "runway" ? await this.budgetPreview(perSceneCostUsd) : undefined; return { paidProvider: records[0]?.execution_mode === "runway", jobId: job, status: episode.state === "interrupted" ? "interrupted" : failed.length > 0 ? "failed" : done.length === records.length && episode.state !== "videos_generating" ? "succeeded" : running || done.length === records.length ? "running" : "created", ...(running ? { currentSceneNumber: running } : {}), completedSceneNumbers: done, failedSceneNumbers: failed, sceneNumbers: records.map((item) => item.scene_number), episode: this.detail(episode), ...(Object.keys(sceneErrors).length > 0 ? { sceneErrors } : {}), ...(Object.keys(sceneFailures).length > 0 ? { sceneFailures } : {}), ...(budget ? { retryEstimate: { perSceneCostUsd, budget, pendingSceneCount: records.filter((item) => item.status !== "succeeded").length } } : {}) }; }
   /**
    * Writes one scene's video. `bytes` is what Runway sent; the placeholder is only for the local fake path.
    *
@@ -252,12 +256,14 @@ export class EpisodeVideosService implements OnModuleDestroy {
       taskId: record.runway_task_id,
       submittedAt: record.runway_submitted_at,
       lastCheckedAt: record.runway_last_checked_at,
+      claimedAt: record.runway_claimed_at,
     }));
 
     let result: RunwayAdvanceResult;
     try {
       result = await advanceRunwayScene(states, (sceneNumber) => this.runwayInputForScene(id, number, records, sceneNumber), {
         apiSecret: apiKey, projectId: this.budgetProjectKey(id, number), apiType: "video",
+        beforeSubmit: (sceneNumber, claimedAt) => this.claimSceneForSubmission(id, number, records, sceneNumber, claimedAt),
         // What the ledger books per scene — the rate of the model the scene is actually sent to, the job's.
         estimatedCostPerSceneUsd: videoSceneEstimatedCostUsd(this.durationSecondsPerScene(episode), recordedVideoModel(records[0]?.model)), budget: this.budget,
       });
@@ -286,6 +292,19 @@ export class EpisodeVideosService implements OnModuleDestroy {
     return this.applyRunwayAdvance(id, number, job, records, result);
   }
 
+  /**
+   * 🔴 Marks a scene as being submitted, on disk, before the paid POST — the short pipeline's claim, which this one
+   * never had. Without it a process that died between Runway accepting the task and this file recording its id
+   * left the scene "created", and the next tick submitted it again: a second task, billed separately, that no
+   * record would ever show (D-005). With it, a claim older than any real POST reads as `submit_interrupted`
+   * (runway-workflow-support.ts) and is surfaced instead of resent.
+   */
+  private async claimSceneForSubmission(id: string, number: number, records: VideoRecord[], sceneNumber: SceneNumber, claimedAt: string): Promise<void> {
+    const record = records.find((item) => item.scene_number === sceneNumber)!;
+    record.status = "submitting"; record.runway_claimed_at = claimedAt;
+    await this.saveRecords(id, number, records);
+  }
+
   private async applyRunwayAdvance(id: string, number: number, job: string, records: VideoRecord[], result: RunwayAdvanceResult): Promise<VideoRecord[]> {
     const jobKey = `${id}:${number}:${job}`;
     if (result.kind === "unchanged" || result.kind === "check-error") return records;
@@ -297,7 +316,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
       return records;
     }
     if (result.kind === "submitted") {
-      record.status = "running"; record.runway_task_id = result.taskId;
+      record.status = "running"; record.runway_task_id = result.taskId; delete record.runway_claimed_at;
       record.runway_submitted_at = result.submittedAt; record.runway_last_checked_at = result.submittedAt;
       await this.saveRecords(id, number, records);
       this.scheduleTimer(jobKey, () => { void this.advanceReal(id, number, job).catch(() => undefined); });

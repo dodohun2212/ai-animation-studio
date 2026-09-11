@@ -7,7 +7,7 @@ import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { RunwayBudget } from "../providers/runway-budget.js";
-import { RUNWAY_POLL_INTERVAL_SECONDS, RUNWAY_TASK_TIMEOUT_SECONDS } from "../videos/runway-workflow-support.js";
+import { RUNWAY_POLL_INTERVAL_SECONDS, RUNWAY_TASK_TIMEOUT_SECONDS, SUBMIT_CLAIM_TIMEOUT_SECONDS } from "../videos/runway-workflow-support.js";
 import { approveEpisodeMappingReview } from "./episode-mapping-test-fixtures.js";
 import { EpisodeImagesService } from "./episode-images.service.js";
 import { EpisodeScriptsService } from "./episode-scripts.service.js";
@@ -153,6 +153,72 @@ describe("real Runway episode video generation", () => {
     await expect(videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) }))
       .rejects.toMatchObject({ response: { code: "INVALID_REQUEST", message: "Episode video confirmation is stale." } });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  /*
+   * 🔴 The short pipeline has always written a "submitting" claim before the paid POST; the Episode never did. A
+   * process that died after Runway accepted the task but before the id was written left the scene "created", and
+   * the next tick bought it again — a second task nobody's record would show (D-005). Found by Cowork Round 770
+   * asking whether the back end also has "short has it, Episode does not".
+   */
+  it("writes the scene's claim to disk before the paid submission leaves", async () => {
+    const deps = await setupWithConnectedRunway();
+    const videos = newVideos(deps);
+    const recordsFile = path.join(deps.projectsRoot, "long", "long_story", "Episode01", "video_generation_records.json");
+    const statusesAtSubmit: string[] = [];
+    const inner = runwayFetchMock();
+    vi.stubGlobal("fetch", vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+      if (String(input).endsWith("/v1/image_to_video")) {
+        const onDisk = JSON.parse(await fs.readFile(recordsFile, "utf8")) as Array<{ scene_number: number; status: string }>;
+        statusesAtSubmit.push(onDisk.find((record) => record.scene_number === 1)!.status);
+      }
+      return inner(input, init);
+    }));
+
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+
+    expect(statusesAtSubmit).toEqual(["submitting"]);
+  });
+
+  it("surfaces a claim abandoned mid-submission as submit_interrupted, and does not submit that scene again", async () => {
+    const deps = await setupWithConnectedRunway();
+    const videos = newVideos(deps);
+    const fetchMock = runwayFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+
+    // What a process killed between the POST and its answer leaves behind: a claim, and no task id.
+    const recordsFile = path.join(deps.projectsRoot, "long", "long_story", "Episode01", "video_generation_records.json");
+    const records = JSON.parse(await fs.readFile(recordsFile, "utf8")) as Array<Record<string, unknown>>;
+    const abandonedAt = new Date(Date.now() - (SUBMIT_CLAIM_TIMEOUT_SECONDS + 60) * 1000).toISOString();
+    await fs.writeFile(recordsFile, JSON.stringify(records.map((record) => record.scene_number === 1 ? { ...record, status: "submitting", runway_claimed_at: abandonedAt } : record)), "utf8");
+
+    const progress = await videos.run("long", 1, started.jobId);
+
+    expect(fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/v1/image_to_video"))).toHaveLength(0);
+    expect(progress).toMatchObject({ failedSceneNumbers: [1], sceneErrors: { 1: "submit_interrupted" } });
+  });
+
+  // The other half of the same rule: a claim young enough that its POST may still be in flight is waited on, not
+  // failed and not resent. Without the claim's time this would read every claim as abandoned.
+  it("waits on a claim still young enough to be in flight, rather than failing or resending it", async () => {
+    const deps = await setupWithConnectedRunway();
+    const videos = newVideos(deps);
+    const fetchMock = runwayFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    const recordsFile = path.join(deps.projectsRoot, "long", "long_story", "Episode01", "video_generation_records.json");
+    const records = JSON.parse(await fs.readFile(recordsFile, "utf8")) as Array<Record<string, unknown>>;
+    await fs.writeFile(recordsFile, JSON.stringify(records.map((record) => record.scene_number === 1 ? { ...record, status: "submitting", runway_claimed_at: new Date().toISOString() } : record)), "utf8");
+
+    const progress = await videos.run("long", 1, started.jobId);
+
+    expect(fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/v1/image_to_video"))).toHaveLength(0);
+    expect(progress).toMatchObject({ failedSceneNumbers: [], currentSceneNumber: 1 });
   });
 
   it("submits every scene with duration: 10 for a 60-second Episode, not the 5-second default", async () => {
