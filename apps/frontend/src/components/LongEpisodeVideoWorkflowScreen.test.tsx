@@ -159,6 +159,55 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     await screen.findAllByRole("button", { name: "이 영상으로 확정" }); fireEvent.click(screen.getAllByRole("button", { name: "이 영상으로 확정" })[0]!); await waitFor(() => expect(countTo(fetchMock, "/review/1/approve")).toBe(1)); expect(callTo(fetchMock, "/review/1/approve")[0]).toBe("/long-projects/long/episodes/1/videos/generations/job/review/1/approve");
     fireEvent.click(screen.getAllByRole("button", { name: "다시 만들기" })[1]!); expect(await screen.findByTestId("episode-video-regenerate-confirm-2")).toBeTruthy();
   });
+  /*
+   * 🔴 중단 → 재개. The screen has drawn this all along and nothing held it there.
+   *
+   * CLI measured it while splitting plan item ②: the case titled "renders persisted sequential progress,
+   * stop/restart, …" asserts neither stop nor restart — those words live only in its title, and all 90 cases in
+   * this file stayed green with the behaviour unguarded. Same shape as ①-2 and ④: a screen doing the right
+   * thing with no test that would notice it stopping.
+   *
+   * This is ②'s answer for a long Episode, asked of the three things ② names — where it stopped, what already
+   * exists, which button is next. The short project has had this since VideoWorkflowScreen.test.tsx:156; this
+   * is the same case for the twin that lacked it.
+   *
+   * The confirmation is asserted deliberately. 재개 is the one paid button on this screen that used to spend on
+   * a single click, and the sentence in front of it is what tells 캡틴D money moves — a regression that removed
+   * the dialog would still resume correctly and would still be wrong.
+   */
+  it("shows a stopped Episode where it stopped, keeps finished scenes, and resumes only after the paid confirmation", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": progress("interrupted", [1, 2]),
+      "POST /videos/generations/job/restart": progress("running", [1, 2]),
+      ...sceneVersionRoutes(),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    // ㄱ) 어디서 멈췄나 — said in words, not left to be inferred from a list that stopped moving.
+    const panel = await screen.findByTestId("episode-video-progress");
+    expect(panel.textContent).toContain("중단됨");
+
+    // ㄴ) 이미 만들어진 것 — finished scenes stay finished, the rest stay waiting.
+    expect(screen.getByTestId("episode-video-progress-1").textContent).toContain("완료");
+    expect(screen.getByTestId("episode-video-progress-2").textContent).toContain("완료");
+    expect(screen.getByTestId("episode-video-progress-3").textContent).toContain("대기 중");
+
+    // ㄷ) 다음 버튼 — resume is offered, and 중단 is gone because there is nothing left to stop.
+    expect(screen.getByTestId("episode-video-restart")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "중단" })).toBeNull();
+
+    // 🔴 One click must not spend. The dialog stands between the button and the request.
+    fireEvent.click(screen.getByTestId("episode-video-restart"));
+    const confirm = await screen.findByTestId("episode-video-restart-confirm");
+    expect(confirm.textContent).toContain("청구");
+    expect(countTo(fetchMock, "/restart"), "opening the dialog is not a request").toBe(0);
+
+    fireEvent.click(within(confirm).getByRole("button", { name: "네, 이어서 만들기" }));
+    await waitFor(() => expect(countTo(fetchMock, "/restart")).toBe(1));
+    expect(callTo(fetchMock, "/restart")[1].method).toBe("POST");
+  });
   it("offers a retry for a scene Runway reported failed, only submitting after explicit confirmation, and shows an actionable reason", async () => {
     const failedJob = {
       paidProvider: false, jobId: "job", status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2, 3], sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
