@@ -196,6 +196,11 @@ const UNKNOWN = { code: "CLIENT_UNKNOWN_ERROR", message: "요청을 처리하지
 const SCENE_ERROR_CATEGORY_MESSAGES: Record<string, string> = {
   authentication: "Runway API 키 인증에 실패했습니다. API 설정 화면에서 키가 올바른지 확인해 주세요.",
   permission: "Runway 사용 권한 문제로 요청이 거부되었습니다. Runway 계정 상태를 확인해 주세요.",
+  // 짧은 쪽 표에만 있고 여기에 없었습니다. 위의 주석은 두 표가 「똑같은 독립 사본」이라고 말하지만 아니었고,
+  // 크레딧이 모자라서 실패한 에피소드 장면은 「영상 생성에 실패했습니다. 잠시 후 다시」를 읽어 —
+  // 충전하러 가는 대신 빈 계정으로 계속 다시 눌렀습니다. 백엔드는 한 분류기(`RunwayErrorCategory`)를
+  // 두 파이프라인이 같이 씁니다 — 문장은 짧은 쪽과 한 글자도 다르지 않게 둡니다.
+  quota_or_permission: "Runway 크레딧이 부족합니다. Runway 계정에서 크레딧을 충전한 뒤 다시 시도해 주세요.",
   rate_limit: "Runway 요청 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.",
   invalid_request: "요청 형식이 지원되지 않습니다. 문제가 계속되면 알려주세요.",
   server: "Runway 서버에 일시적인 오류가 있습니다. 잠시 후 다시 시도해 주세요.",
@@ -209,6 +214,12 @@ const SCENE_ERROR_CATEGORY_MESSAGES: Record<string, string> = {
   // the HTTP-code label because it is the same cause, and one cause reading two ways is how a person ends up
   // fixing the wrong thing.
   budget_ledger_unreadable: BUDGET_LEDGER_UNREADABLE_MESSAGE,
+  /* 짧은 쪽 표에만 있었던 두 번째 칸 — 그리고 빠졌을 때 가장 비싼 칸입니다.
+     `runway-workflow-support.ts:205` 가 내는 값이고, 그 모듈은 에피소드 쪽도 그대로 씁니다
+     (`episode-videos.service.ts:16`). 이 칸의 존재 이유는 「다시 보내지 마라」이고, 없으면
+     폴백이 그 반대를 — 「잠시 후 다시 시도해 주세요」를 — 말합니다. 그게 2026-09-05 에
+     한 장면을 두 번 결제한 문장입니다. 장편에서만 그 문장이 살아있었습니다. */
+  submit_interrupted: "요청을 보낸 뒤 서버가 중단되어 결과를 확인하지 못했습니다. 요청이 이미 접수되었을 수 있어 자동으로 다시 보내지 않았습니다. Runway 계정에서 해당 작업이 생성되었는지 확인한 뒤 다시 시도해 주세요.",
 };
 const SCENE_ERROR_FALLBACK = "영상 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.";
 
@@ -275,13 +286,22 @@ const LONG_EPISODE_NARRATION_ERRORS: Record<string, string> = {
 /**
  * Provider failures arrive as one code with a `details.category`, so the category — not the backend's own
  * message — decides what the user is told. Same categories and wording as narrationApi.ts's map.
+ *
+ * 그 「같다」는 주석이 버그를 같이 복사해 왔습니다. `server_error` 는 백엔드가 한 번도 보낸 적 없는
+ * 이름이고(`classifyOpenAiHttpError` 가 내는 것은 `server`), 그래서 OpenAI 5xx 는 양쪽 파이프라인 모두에서
+ * fallback 으로 떨어졌습니다. `quota_or_permission` · `safety_policy` 도 빠져 있었고, 둘 다 다시 눌러도
+ * 안 되는 실패인데 fallback 은 다시 누르라고 합니다 — 음성은 호출마다 과금됩니다. (Round 769/770)
  */
 const LONG_EPISODE_NARRATION_PROVIDER_MESSAGES: Record<string, string> = {
   authentication: "OpenAI 인증에 실패했습니다. API 설정에서 키를 다시 확인해 주세요.",
+  quota_or_permission:
+    "OpenAI 사용 한도 또는 프로젝트 권한 문제로 요청이 거부되었습니다. OpenAI 계정 상태를 확인해 주세요 — 계정을 고치기 전에는 다시 눌러도 같은 결과입니다.",
   rate_limit: "OpenAI 요청이 일시적으로 제한되었습니다. 잠시 후 다시 시도해 주세요.",
   context_length_exceeded: "읽어줄 문장이 모델이 처리할 수 있는 길이를 초과했습니다. 문장을 줄여서 다시 시도해 주세요.",
   invalid_request: "OpenAI가 요청 형식을 지원하지 않습니다.",
-  server_error: "OpenAI 서버 오류로 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+  safety_policy:
+    "OpenAI 안전 정책에 따라 이 문장이 거부되었습니다. 내레이션 문장을 고친 뒤에 다시 시도해 주세요 — 자동으로 재시도되지 않습니다.",
+  server: "OpenAI 서버 오류로 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
   network: "OpenAI에 연결하지 못했습니다. 네트워크 상태를 확인해 주세요.",
 };
 const LONG_EPISODE_NARRATION_PROVIDER_FALLBACK = "OpenAI 음성 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.";

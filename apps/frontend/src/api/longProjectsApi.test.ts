@@ -28,7 +28,9 @@ import {
   addLongEpisode,
   duplicateLongEpisode,
   archiveLongEpisode,
+  episodeSceneErrorMessage,
 } from "./longProjectsApi.js";
+import { sceneErrorMessage } from "./videoWorkflowApi.js";
 import { episodeImageStaleness, jsonResponse, makeLongEpisodeOutline, makeLongProject, makeLongProjectSettings, makeLongProjectSummary, nonJsonResponse } from "./testUtils.js";
 
 describe("longProjectsApi", () => {
@@ -571,5 +573,99 @@ describe("longProjectsApi", () => {
     const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
     expect(url).toBe("/long-projects/long/episodes/1/continuity");
     expect(init.method).toBe("PUT");
+  });
+
+  /**
+   * 장편의 Runway 장면 오류 표는 짧은 쪽(`videoWorkflowApi.ts`)의 「똑같은 독립 사본」이라고
+   * 주석에 적혀 있었지만, 사본은 달라져 있었습니다 — `quota_or_permission` 과 `submit_interrupted` 가
+   * 여기에만 없었습니다. 「똑같다」는 주석은 달라졌을 때 아무 말도 하지 않으므로, 이 짝이
+   * 대신 말합니다: 한 쪽에만 칸을 넣거나 문장을 한 글자 고쳐도 빨간집니다.
+   *
+   * 목록은 백엔드의 닫힌 분류 + 우리가 만든 코드입니다(`RunwayErrorCategory` ·
+   * `runway-workflow-support.ts` · 예산 거절 둘). CLI 가 이 합집합을 shared 로 내보내주면
+   * 손 타이핑을 버리고 계약을 읽게 바꾸겠습니다.
+   */
+  describe("Runway scene-error sentences", () => {
+    const SCENE_ERROR_CODES = [
+      "authentication",
+      "permission",
+      "quota_or_permission",
+      "rate_limit",
+      "invalid_request",
+      "server",
+      "network",
+      "timeout",
+      "no_output",
+      "invalid_state",
+      "budget_exceeded",
+      "budget_ledger_unreadable",
+      "submit_interrupted",
+    ];
+
+    it("says the same thing on an Episode as on a short project, for every known code", () => {
+      // fallback 은 단어로 적지 않고 모듈에게 직접 물어봅니다 — 문장을 다듬으면 짝이 조용히 느슬해지는 걸 막습니다.
+      const episodeFallback = episodeSceneErrorMessage("not_a_real_code");
+      const shortFallback = sceneErrorMessage("not_a_real_code");
+      expect(episodeFallback).toBe(shortFallback);
+
+      for (const code of SCENE_ERROR_CODES) {
+        expect(episodeSceneErrorMessage(code), code).not.toBe(episodeFallback);
+        expect(episodeSceneErrorMessage(code), code).toBe(sceneErrorMessage(code));
+      }
+    });
+
+    /**
+     * 돈 쪽 이유로 따로 둠니다. `submit_interrupted` 는 「이미 접수됐을 수 있으니 계정에서
+     * 확인하라」만 하라고 있는 칸이고, 빠졌을 때 폴백이 말하는 「잠시 후 다시 시도」는
+     * 한 장면을 두 번 결제하게 만드는 바로 그 문장입니다(2026-09-05).
+     */
+    it("never tells someone to just retry a scene whose submission may already be in flight", () => {
+      for (const message of [episodeSceneErrorMessage("submit_interrupted"), sceneErrorMessage("submit_interrupted")]) {
+        expect(message).not.toBe(episodeSceneErrorMessage("not_a_real_code"));
+        expect(message).toContain("자동으로 다시 보내지 않았습니다");
+      }
+    });
+
+    it("tells an Episode that Runway credits ran out, instead of the generic failure sentence", () => {
+      const message = episodeSceneErrorMessage("quota_or_permission");
+      expect(message).not.toBe(episodeSceneErrorMessage("not_a_real_code"));
+      expect(message).toContain("크레딧");
+    });
+  });
+
+  /**
+   * `LONG_EPISODE_NARRATION_PROVIDER_MESSAGES` 도 narrationApi 와 같은 죽은 키(`server_error`)를 가지고
+   * 있었습니다 — 「같다」는 주석이 버그까지 같게 만들어 둔 경우입니다.
+   */
+  describe("Episode narration provider sentences", () => {
+    const OPENAI_CATEGORIES = [
+      "authentication",
+      "quota_or_permission",
+      "rate_limit",
+      "server",
+      "network",
+      "invalid_request",
+      "safety_policy",
+      "context_length_exceeded",
+    ];
+
+    const displayed = (category: string) =>
+      toLongProjectDisplayError(
+        new LongProjectsApiError("LONG_EPISODE_NARRATION_PROVIDER_ERROR", "raw backend detail", { category }),
+      ).message;
+
+    it("has its own sentence for every category the backend can actually send", () => {
+      const fallback = displayed("not_a_real_category");
+      for (const category of OPENAI_CATEGORIES) {
+        expect(displayed(category), category).not.toBe(fallback);
+        expect(displayed(category), category).not.toContain("raw");
+      }
+    });
+
+    it("never tells someone to retry a narration failure that retrying cannot fix", () => {
+      for (const category of ["quota_or_permission", "safety_policy", "authentication"]) {
+        expect(displayed(category), category).not.toContain("잠시 후 다시 시도");
+      }
+    });
   });
 });
