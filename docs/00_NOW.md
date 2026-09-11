@@ -35,7 +35,7 @@
 | 무엇 | 누구 | 상태 |
 |---|---|---|
 | ① 꽃 릴 1편 | 캡틴D | ✅ 뽑음(`꽃말_구기자`, 영상 $1). 결과 **「전혀 안 이어지잖아」** → ③ 이 열렸다 |
-| **③ 이음매 — 블록으로 짓기** | CLI | 캡틴D 승인됨. **블록 2 는 잠깐 세웠다**(전략을 「고른 모델」이 정하므로 모델 칸이 먼저). 블록 1 을 `VideoModelOption` 으로 옮기는 중 — 프론트 짝 한 줄 대기 |
+| **③ 이음매 — 블록으로 짓기** | CLI | 캡틴D 승인됨. 블록 1 ✅(`39f4aa0`, `VideoModelOption` 의 칸). **블록 2 는 세움** — 두 번째 모델을 먼저 붙여 첫+끝을 검증한 뒤 |
 
 **오늘 끝난 것 (전부 `origin/main` push 됨):** 생성 출처 표시(`068a144`) ·
 배지를 공용 칩으로(`d990748`) · `active` tone 정리(`8bbfb10`) ·
@@ -285,7 +285,7 @@ MAX_REFERENCE_IMAGES = 16   image-reference-selection.ts:9  한 장면에 실제
 
 | 블록 | 무엇 | 상태 |
 |---|---|---|
-| 1 | 영상 모델이 무엇을 받는지 선언. 다른 곳은 「1장」을 가정하지 않는다 | 🟡 `49533bf` 은 **따로 선 표**로 지었다 — **`VideoModelOption` 의 칸으로 옮긴다**(아래) |
+| 1 | 영상 모델이 무엇을 받는지 선언. 다른 곳은 「1장」을 가정하지 않는다 | ✅ `39f4aa0` — `VideoModelOption.acceptsLastFrame`. 따로 선 표(`49533bf`)는 지웠다 |
 | 2 | 이음새 전략 **선택을 한 곳에서** 한다 | ⏸ **세움** — 칸이 먼저, 그리고 Kling 의 첫+끝이 먹히는지 0회 검증 |
 | 3 | `frame-to-image` — 한 번 누르면 장면별로 그림 → 영상 → 끝 프레임 → 다음 그림, 끝나면 검토 | 대기 — 계약을 먼저 올린다 |
 | 4 | 대본 프롬프트에 **「이 작품이 어떤 종류인가」** 슬롯 | 대기 — 새 계약 필드가 필요하다 |
@@ -357,6 +357,42 @@ execution_mode 어휘              "local_fake_no_provider" | "runway"  ← 제�
   (내 파일)는 `"runway"` 만 유료로 센다 → Kling 클립이 「생성 출처 확인 필요」로 뜬다. ② `VIDEO_BUDGET_EXCEEDED` 문구
   (`84ebe3d`)가 「Runway 예산」을 박아 넣었다 → Kling 한도에 걸려도 Runway 라고 말한다. 둘 다 **어느 제공자인지를
   기록에서 읽어야** 한다. 오늘은 맞고, 목록에 올려 둔다.
+
+**🟢 정정 (Cowork Round 740/741) — 두 번째 제공자가 아니다. Runway 가 여러 회사 모델을 파는 플랫폼이 됐다.** 같은 키,
+같은 `v1/image_to_video` 에 `model` 만 바꾼다(`dev.runwayml.com/models`, 캡틴D 화면 확인). 그래서 **위 「Kling 을
+붙이는 크기」 표의 대부분이 사라진다** — 분기 157곳 · 기록 필드 · `execution_mode` · 예산 장부 · 자격증명 · `generation-source`
+· 예산 문구는 **안 건드린다**(여전히 Runway 다). 그 표는 Runway **밖** 제공자를 붙이는 날 되살아난다. Kling 은 웹 앱에만
+있고 API 에는 없다.
+
+**Runway 공식 SDK 타입으로 확인했다 (2026-09-12 CLI).** 포털 문서는 JS 앱이라 못 읽었지만, `@runwayml/sdk` 의 타입
+정의(`resources/image-to-video.d.ts`, `resources/tasks.d.ts`)는 기계가 읽는 공식 출처라 가져올 수 있었다.
+
+```
+모델 id (API)       h3_max · veo3.1 · veo3.1_fast · gemini_omni_flash_1.1 · gen4_turbo · gen4.5 · seedance2 · wan3 · hailuo3 …
+끝 프레임           promptImage 를 배열로 [{position:'first',uri},{position:'last',uri}] — 같은 필드다
+  'first'|'last'    h3_max · veo3.1 · veo3.1_fast · gemini_omni_flash_1.1
+  'first' 만        gen4_turbo · gen4.5 · …   ← 우리 gen4 = false 가 이제 「확인됨」이다
+모델마다 본문이 다르다(model 로 갈리는 union)
+  h3_max            🔴 ratio 칸이 없다 → resolution '480p' | '768p'
+                    🔴 promptExpansionMode 기본값이 'balanced' = 우리 프롬프트를 고쳐 쓴다 → 'disabled' 를 줘야 한다
+                    audio 칸 없음(끌 수 없음)
+  veo3.1            duration 4 | 6 | 8 만 — 우리 5·10초가 안 맞는다
+  hailuo3           ratio 가 '9:16' 어휘 — 「720:1280」 가정이 여기서 깨진다
+실패                 failureCode?: string   ← 고정 목록이 아니다
+                    끝난 작업에 cost(최종 크레딧) 칸이 있다 — 우리는 안 읽는다
+```
+
+- **「모델 이름만 바꾸면 된다」는 거짓이다 — 확인됐다.** 어댑터는 지금 `ratio` 를 늘 보내는데 h3_max 에는 그 칸이 없고,
+  h3_max 는 기본으로 **우리가 공들여 짠 영상 프롬프트를 다시 쓴다.** 모델마다 본문을 따로 만들어야 한다.
+- 🟢 **Cowork 질문 5(오디오 강제) — 걱정 없다.** 합치기가 장면 클립을 읽는 **두 곳 다 `-map 0:v:0` — 영상만** 가져가고
+  소리는 내레이션이나 무음으로 채운다(`ffmpeg-merge.service.ts:214/216`). 이어 붙이기(`:224`)와 배경음(`:282`)은 그
+  결과만 쓴다. 단기·장편이 같은 엔진이다. H3 Max 의 소리는 버려진다.
+- 🔴 **Cowork 가 짚은 위험은 반만 맞았고, 출구가 있다.** 모르는 `failureCode` 가 오면 우리 표는 `billedOnFailure: true`
+  (돈은 안전한 쪽)·`remedy: "retry"`(**여기가 위험** — 입력이 원인인 3자 실패에 「다시 시도」를 권해 유료 재시도를 부른다).
+  그런데 **끝난 작업이 `cost` 를 스스로 알려 준다.** 청구 여부를 코드 표로 **추측하지 말고 그 칸을 읽으면** 모든 모델에서
+  맞는다. 남는 건 「다시 눌러도 되나」뿐이다.
+- **후보는 H3 Max 만이 아니다.** `gemini_omni_flash_1.1` 도 첫+끝을 받고, `ratio` 가 우리 어휘(`720:1280`)이며 3~10초라 5초가
+  된다 — 붙이기는 더 쉬울 수 있다. **가격을 모른다.** 캡틴D가 콘솔에서 볼 것 둘: H3 Max · Gemini Omni Flash 1.1.
 - **끝났다는 뜻:** 「원인 2」에 대해 A(앞 클립 마지막 프레임을 다음 이미지의 편집 원본으로)를
   할지 말지가 근거와 함께 정해졌고, 하기로 했으면 릴 1편으로 다시 확인됐다.
 
