@@ -1,10 +1,26 @@
 import { useEffect, useState } from "react";
-import type { LongProjectSummary } from "@ai-animation-studio/shared";
+import type { LongEpisodeOutlineStatus, LongProjectSummary } from "@ai-animation-studio/shared";
 
 import { listLongProjects, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { Spinner } from "./Spinner.js";
+import { StatusChip, type StatusTone } from "./ui/StatusChip.js";
+
+/**
+ * The outline's state, in the chip grammar of §2.1 — exhaustive, so a third outline status cannot be added
+ * without someone deciding what it means here.
+ *
+ * This row used to paint the status violet (`bg-violet-500/15 text-violet-300`), which §2.1 reserves for
+ * 「현재 위치·선택」. A project in a list is not the place you are; it is a thing with a state, and the two
+ * must not share a color or the list stops being readable at a glance. The same pill also carried
+ * `{episodeCount}화` inside it — a count is not a status, and putting it in the status chip made the chip
+ * claim something it cannot mean. The count now sits beside the chip as plain meta text, next to the date.
+ */
+const OUTLINE_TONE: Record<LongEpisodeOutlineStatus, StatusTone> = {
+  planned: "neutral",
+  outline_ready: "success",
+};
 
 interface LongProjectListProps {
   refreshToken: number;
@@ -124,9 +140,10 @@ export function LongProjectList({ refreshToken, onOpenProject, onCreateNew }: Lo
                   <span className="block truncate font-semibold">{project.title}</span>
                   <span className="block truncate text-sm text-slate-300">{project.logline}</span>
                   <span className="mt-1.5 flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-xs font-medium text-violet-300">
-                      {longEpisodeStatusLabel(project.outlineStatus)} · {project.episodeCount}화
-                    </span>
+                    <StatusChip tone={OUTLINE_TONE[project.outlineStatus]}>
+                      {longEpisodeStatusLabel(project.outlineStatus)}
+                    </StatusChip>
+                    <span className="text-xs text-slate-400 tabular-nums">{project.episodeCount}화</span>
                     <span className="text-xs text-slate-400 tabular-nums" title={project.updatedAt}>{formatDateTime(project.updatedAt)}</span>
                   </span>
                 </span>

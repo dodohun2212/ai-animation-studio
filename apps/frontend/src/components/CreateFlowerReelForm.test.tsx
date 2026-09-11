@@ -69,6 +69,18 @@ describe("CreateFlowerReelForm", () => {
     expect(settings.fullStory).toContain("첫 프레임과 마지막 프레임");
     // One step per scene, and the next scene starts where this one stopped: the chain the images already follow.
     expect(settings.fullStory).toContain("한 단계만");
+    /*
+     * 🔴 The brief used to open with 「씨앗이 흙에 심기는 데서 시작해」, and the story model did exactly that:
+     * scene 1 of the sunflower reel spent its five seconds burying a seed, and its last frame was a grey mound
+     * of soil — no plant at all — before cutting to a sprout. Four scenes with one spent on planting leaves
+     * three to carry the whole growth, which is what made every cut jump.
+     *
+     * Both halves are pinned, because moving the start without forbidding the old one is how a brief drifts
+     * back: this preset has already had to re-learn that twice (the camera's 「아주 느린 접근」, and pacing).
+     */
+    expect(settings.fullStory).toContain("이미 심긴");
+    expect(settings.fullStory).toContain("씨앗을 심거나 흙으로 덮는 장면은 넣지 않는다");
+    expect(settings.fullStory).not.toContain("심기는 데서 시작");
     // 🔴 The camera line asked for 「아주 느린 접근」 and the model applied that slowness to the subject too.
     // A locked-off camera also removes Runway's cheapest way to look like it moved without growing anything.
     expect(settings.styleNotes.camera).toContain("움직이지 않는다");

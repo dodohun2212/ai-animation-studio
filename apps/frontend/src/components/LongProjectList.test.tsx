@@ -39,6 +39,28 @@ describe("LongProjectList", () => {
     expect(fetchMock).toHaveBeenCalledWith("/long-projects");
   });
 
+  // The row used to paint the outline status violet — the color §2.1 reserves for 「현재 위치·선택」 — and to
+  // carry the episode count inside the same pill. A project in a list is not the place you are, and a count is
+  // not a status. Both are pinned here because neither is visible from reading the component alone.
+  it("draws the outline status with the shared chip, never in the selection color, and keeps the episode count out of it", async () => {
+    const planned = makeLongProjectSummary({ id: "p1", title: "계획 단계", episodeCount: 5, outlineStatus: "planned" });
+    const ready = makeLongProjectSummary({ id: "p2", title: "개요 완료", episodeCount: 12, outlineStatus: "outline_ready" });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { projects: [planned, ready] })));
+    render(<LongProjectList refreshToken={0} onOpenProject={() => {}} onCreateNew={() => {}} />);
+
+    const plannedCard = await screen.findByRole("button", { name: /계획 단계/ });
+    const plannedChip = plannedCard.querySelector("[data-tone]");
+    expect(plannedChip).not.toBeNull();
+    expect(plannedChip?.getAttribute("data-tone")).toBe("neutral");
+    expect(plannedChip?.textContent?.trim()).toBe("계획됨");
+    expect(plannedChip?.className).not.toContain("violet");
+    // The count is still shown — just not as part of what the chip claims.
+    expect(within(plannedCard).getByText("5화")).toBeTruthy();
+
+    const readyCard = screen.getByRole("button", { name: /개요 완료/ });
+    expect(readyCard.querySelector("[data-tone]")?.getAttribute("data-tone")).toBe("success");
+  });
+
   it("shows a backend error message with its code identifiable via data-error-code", async () => {
     vi.stubGlobal(
       "fetch",
