@@ -47,13 +47,29 @@ const SAFE_ERRORS: Record<string, string> = {
 /**
  * Provider failures arrive as one code with a `details.category`, so the category — not the backend's own
  * message — decides what the user is told. Mirrors the image and video modules' category maps.
+ *
+ * 키는 지어내는 것이 아니라 **백엔드가 실제로 보내는 닫힌 목록**입니다: `classifyOpenAiHttpError`가 돌려주는
+ * `OpenAiErrorCategory` 그대로 `narrationProviderError(error.category, …)` 를 거쳐 `details.category` 에 담깁니다
+ * (`narration-review.service.ts:151` · `local-narration-generation.service.ts:139`). 이 표에는 그 목록에 없는
+ * 키가 있었고 — `server_error` — 백엔드가 보내는 이름은 `server` 입니다. 한 번도 맞은 적이 없는
+ * 키였고, 그래서 OpenAI 5xx 는 전부 아래 fallback 으로 떨어졌습니다. `Record<string, string>` 이라
+ * 컴파일이 아무 말도 안 하고, 짝도 `rate_limit` 하나만 박아둔터라 보지 못했습니다.
+ *
+ * 또 `quota_or_permission` · `safety_policy` 두 개가 빠져 있었고, 둘 다 **다시 눌러도 같은 결과**인데
+ * fallback 은 「잠시 후 다시 시도」를 권합니다 — 음성은 호출마다 돈이 나가므로 그 권유는 틀린 방향입니다.
+ * `unknown` · `empty_response` · `invalid_response` 는 일부러 fallback 에 남깁니다(그 세 개는 「잠시 후
+ * 다시」가 실제로 맞는 유일한 조언입니다).
  */
 const PROVIDER_ERROR_CATEGORY_MESSAGES: Record<string, string> = {
   authentication: "OpenAI 인증에 실패했습니다. API 설정에서 키를 다시 확인해 주세요.",
+  quota_or_permission:
+    "OpenAI 사용 한도 또는 프로젝트 권한 문제로 요청이 거부되었습니다. OpenAI 계정 상태를 확인해 주세요 — 계정을 고치기 전에는 다시 눌러도 같은 결과입니다.",
   rate_limit: "OpenAI 요청이 일시적으로 제한되었습니다. 잠시 후 다시 시도해 주세요.",
   context_length_exceeded: "내레이션 문장이 모델이 처리할 수 있는 길이를 초과했습니다. 문장을 줄여서 다시 시도해 주세요.",
   invalid_request: "OpenAI가 요청 형식을 지원하지 않습니다.",
-  server_error: "OpenAI 서버 오류로 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+  safety_policy:
+    "OpenAI 안전 정책에 따라 이 문장이 거부되었습니다. 내레이션 문장을 고친 뒤에 다시 시도해 주세요 — 자동으로 재시도되지 않습니다.",
+  server: "OpenAI 서버 오류로 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
   network: "OpenAI에 연결하지 못했습니다. 네트워크 상태를 확인해 주세요.",
 };
 const PROVIDER_ERROR_FALLBACK = "OpenAI 음성 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.";

@@ -103,6 +103,54 @@ describe("narrationApi", () => {
     expect(unfamiliar.message).not.toContain("raw backend detail");
   });
 
+  /**
+   * 위 짝은 `rate_limit` 하나만 봅니다. 그게 맞는 키였기 때문에, 같은 표 안의 `server_error` — 백엔드가
+   * 한 번도 보낸 적 없는 이름 — 이 아무 진단도 없이 계속 있었습니다. `Record<string, string>` 은 틀린
+   * 키를 컴파일에서 잡아주지 않으므로, 목록 전체를 도는 짝이 유일한 감시입니다.
+   *
+   * 아래 목록은 백엔드의 닫힌 분류 그대로입니다(`providers/openai-common.ts` 의 `OpenAiErrorCategory`,
+   * `classifyOpenAiHttpError` 가 돌려주는 값). 이 목록을 여기서 다시 타이핑하는 것 자체가 두 번째 사본이라,
+   * shared 가 이 유니온을 내보내면 표를 `Record<OpenAiErrorCategory, string>` 으로 바꿀 수 있고, 그러면
+   * 이 짝 없이도 컴파일이 먼저 말합니다.
+   */
+  it("has its own sentence for every category the backend can actually send", () => {
+    const backendCategories = [
+      "authentication",
+      "quota_or_permission",
+      "rate_limit",
+      "server",
+      "network",
+      "invalid_request",
+      "safety_policy",
+      "context_length_exceeded",
+    ];
+    // 그 단어를 적는 대신 fallback 을 모듈에게 직접 물어봅니다 — 문장을 다듬으면 짝이 조용히 느슬해지는 걸 막습니다.
+    const fallback = toNarrationDisplayError(
+      new NarrationApiError("NARRATION_PROVIDER_ERROR", "raw", { category: "not_a_real_category" }),
+    ).message;
+
+    for (const category of backendCategories) {
+      const displayed = toNarrationDisplayError(
+        new NarrationApiError("NARRATION_PROVIDER_ERROR", "raw backend detail", { category }),
+      );
+      expect(displayed.message, category).not.toBe(fallback);
+      expect(displayed.message).not.toContain("raw");
+    }
+  });
+
+  /**
+   * 돈 쪽 이유로 따로 둠니다. 음성은 호출할 때마다 과금되므로, 계정/정책 문제처럼 또 눌러도 띄지 않는
+   * 실패에 「잠시 후 다시 시도」를 권하는 것은 돈을 나가게 하는 조언입니다.
+   */
+  it("never tells someone to retry a narration failure that retrying cannot fix", () => {
+    for (const category of ["quota_or_permission", "safety_policy", "authentication"]) {
+      const displayed = toNarrationDisplayError(
+        new NarrationApiError("NARRATION_PROVIDER_ERROR", "raw", { category }),
+      );
+      expect(displayed.message, category).not.toContain("잠시 후 다시 시도");
+    }
+  });
+
   it("keeps a scene's audio URL from being answered out of cache after a regeneration", () => {
     const first = narrationContentUrl("narr", 1, "v1");
     const second = narrationContentUrl("narr", 1, "v2");
