@@ -431,6 +431,35 @@ describe("VideoWorkflowScreen", () => {
     expect(within(panel).getByRole("button", { name: "예, 다시 시도합니다" })).not.toBeDisabled();
   });
 
+  /**
+   * 🔴 돈. 한 카드 안에 반대되는 두 문장이 같이 뜨는 경우가 하나 남아 있었습니다.
+   *
+   * `submit_interrupted` 는 「요청이 이미 접수되었을 수 있어 자동으로 다시 보내지 않았습니다」 라고 말하는데,
+   * 바로 아래 조치 문장은 `remedy: "retry"` 를 받아 「그대로 다시 보내도 됩니다」 였습니다. 사람은 둘 중
+   * 하나를 따를 테고, 뒤에 것을 따르면 **같은 장면을 두 번 결제**합니다 — 2026-09-05 에 실제로 일어난 일입니다.
+   *
+   * 계약이 그 코드에서 `remedy` 를 빼는 것으로 고칩니다. 이 짝은 화면 쪽 절반 — 칸이 없는 실패에
+   * 조치 줄을 아예 안 그리는지 — 을 봅니다. 마지막 단언이 핵심입니다: 두 문장은 한 화면에 공존할 수 없습니다.
+   */
+  it("draws no advice line for a failure whose remedy the contract left out", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, makeProgress({
+      paidProvider: true, status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2],
+      sceneErrors: { 2: "submit_interrupted" } as never,
+      sceneFailures: { 2: { category: "submit_interrupted", billedOnFailure: true } } as never,
+    }))));
+
+    await screen.findByTestId("failed-scenes-section");
+    // 원인 문장은 그대로 있습니다 — 사라지는 건 조치 줄뿐입니다.
+    expect((await screen.findByTestId("failed-scene-reason-2")).textContent).toContain("자동으로 다시 보내지 않았습니다");
+
+    fireEvent.click(screen.getByTestId("failed-scene-retry-2"));
+    await screen.findByTestId("failed-scene-retry-confirm-2");
+    expect(screen.queryByTestId("failed-scene-retry-remedy-2")).toBeNull();
+    expect(document.body.textContent).not.toContain("그대로 다시 보내도 됩니다");
+    // 기본 문장으로 새는 것도 아닙니다.
+    expect(document.body.textContent).not.toContain("무엇을 바꿀지 적어 주세요");
+  });
+
   /** A response from a build with no `sceneFailures` must behave exactly as it did — absence is not an answer. */
   it("keeps the pre-contract wording when the response carries no failure detail", async () => {
     const failed = makeProgress({ paidProvider: true, status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2] });

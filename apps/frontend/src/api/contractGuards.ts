@@ -56,12 +56,24 @@ export function isSceneStaleness(value: unknown): value is SceneStaleness | unde
  *
  * `remedy` is compared against the contract's own `SCENE_FAILURE_REMEDIES`, never a list retyped here: a
  * fourth remedy added to the contract must not be silently rejected by a copy that never heard of it.
+ *
+ * 🔴 And it is OPTIONAL, which is a decision about money rather than about JSON shapes. All three remedies
+ * say something about the scene's own input — resend it, change it, or it will never pass — so for a failure
+ * whose answer is none of those the contract leaves the field out entirely. `submit_interrupted` is the case
+ * that forced it: its category sentence says the request may ALREADY be in flight and must not be resent, while
+ * `remedy: "retry"` beside it said 「그대로 다시 보내도 됩니다」 — one card, two opposite instructions, and the
+ * one a person acts on buys the same scene twice (2026-09-05). The image failures already took this shape for
+ * `authentication` and `quota_or_permission`.
+ *
+ * Requiring it here is what made that unfixable from the backend: drop the field and this guard rejects the
+ * whole progress response, so the screen stops saying anything at all. An absent remedy is an ordinary answer,
+ * not a malformed one — the screens below simply draw no advice line for it.
  */
 function isSceneFailure(value: unknown): value is SceneFailure {
   return isRecord(value)
     && typeof value.category === "string" && value.category.length > 0
     && (value.providerCode === undefined || (typeof value.providerCode === "string" && value.providerCode.length > 0))
-    && (SCENE_FAILURE_REMEDIES as readonly string[]).includes(value.remedy as string)
+    && (value.remedy === undefined || (SCENE_FAILURE_REMEDIES as readonly string[]).includes(value.remedy as string))
     && typeof value.billedOnFailure === "boolean";
 }
 

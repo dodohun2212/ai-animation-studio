@@ -40,12 +40,14 @@ const sceneVersionRoutes = () => Object.fromEntries([1, 2, 3, 4, 5, 6].map((scen
 
 describe("LongEpisodeVideoWorkflowScreen", () => {
   afterEach(() => vi.unstubAllGlobals());
-
+
+
   /**
    * The screen had been storing the server's answer since the start response and never reading it, showing a
    * sentence that names both cases instead. Before a run exists that is honest — nothing has been started. Once
    * one exists it makes the person work out which case applies to money they have already spent.
-   */
+   */
+
   /**
    * The short project's preview has named the sections it had to cut since it shipped; the Episode threw the
    * server's list away. A scene could lose its pacing or performance direction and the only way to find out was
@@ -732,6 +734,34 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     // Nothing is held back: this failure has no input to change.
     const panel = screen.getByTestId("episode-video-failed-retry-confirm-2");
     expect(within(panel).getByRole("button", { name: "다시 시도" }).hasAttribute("disabled")).toBe(false);
+  });
+
+  /**
+   * 🔴 돈 — 그리고 이쪽이 더 급합니다. 에피소드 파이프라인은 **이미 결제한 장면을 다시 살 수 있던** 쪽입니다.
+   *
+   * `submit_interrupted` 의 원인 문장은 「이미 접수되었을 수 있습니다 — 다시 보내지 않았습니다」 이고,
+   * 바로 아래 조치 문장은 「그대로 다시 보내도 됩니다」 였습니다. 두 문장은 한 화면에 공존할 수 없습니다.
+   */
+  it("draws no advice line for a failure whose remedy the contract left out", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": {
+        paidProvider: true, jobId: "job", status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2],
+        sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
+        sceneErrors: { 2: "submit_interrupted" },
+        sceneFailures: { 2: { category: "submit_interrupted", billedOnFailure: true } },
+      },
+    }));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    await screen.findByTestId("episode-video-failed-scenes");
+    expect((await screen.findByTestId("episode-video-failed-reason-2")).textContent).toContain("자동으로 다시 보내지 않았습니다");
+
+    fireEvent.click(screen.getByTestId("episode-video-failed-retry-2"));
+    await screen.findByTestId("episode-video-failed-retry-confirm-2");
+    expect(screen.queryByTestId("episode-video-failed-retry-remedy-2")).toBeNull();
+    expect(document.body.textContent).not.toContain("그대로 다시 보내도 됩니다");
+    expect(document.body.textContent).not.toContain("무엇을 바꿀지 적어 주세요");
   });
 
   /** A response from a build with no `sceneFailures` must behave exactly as it did — absence is not an answer. */

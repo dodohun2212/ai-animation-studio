@@ -503,12 +503,17 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
                         <strong className="font-semibold">실패해도 이 시도분은 청구됩니다.</strong>
                       </p>
                     )}
-                    {/* Three answers to a question that used to get one. See episodeSceneRemedyAdvice — under
-                        change_input the sentence is a certainty, not a caution, because that is what the code
-                        means. */}
-                    <p data-testid={`episode-video-failed-retry-remedy-${scene}`} className={mustChangeInput ? "text-sm font-semibold text-rose-200" : "text-sm text-slate-300"}>
-                      {sceneRemedyAdvice(failure?.remedy)}
-                    </p>
+                    {/* Three answers to a question that used to get one — and a fourth: nothing, for a failure
+                        that arrived carrying no `remedy`. Same rule and same reason as the short project's card
+                        (see its comment), and it matters more here: the Episode pipeline is the one that could
+                        resubmit a scene it had already paid for, so 「그대로 다시 보내도 됩니다」 printed under
+                        「이미 접수되었을 수 있습니다」 is the exact pair that buys one scene twice. A response with no
+                        `sceneFailures` at all keeps its old sentence — that absence is missing data, not an answer. */}
+                    {(failure === undefined || failure.remedy !== undefined) && (
+                      <p data-testid={`episode-video-failed-retry-remedy-${scene}`} className={mustChangeInput ? "text-sm font-semibold text-rose-200" : "text-sm text-slate-300"}>
+                        {sceneRemedyAdvice(failure?.remedy)}
+                      </p>
+                    )}
                     {/*
                      * The one place a retry could change anything, and it was the one place that could not.
                      *

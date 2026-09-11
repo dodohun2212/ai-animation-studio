@@ -647,10 +647,26 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                             </p>
                           )}
                           {/* Three answers to a question that used to get one. Under change_input the sentence
-                              is a certainty, not a caution, because that is what the code means. */}
-                          <p data-testid={`failed-scene-retry-remedy-${sceneNumber}`} className={mustChangeInput ? "text-sm font-semibold text-rose-200" : "text-sm text-slate-300"}>
-                            {sceneRemedyAdvice(failure?.remedy)}
-                          </p>
+                              is a certainty, not a caution, because that is what the code means.
+
+                              🔴 And a fourth answer: nothing — for ONE of the two ways this can be absent.
+
+                              A failure that arrived and deliberately carries no `remedy` gets no line. All three
+                              sentences are about this scene's input, so the contract omits the field where none
+                              of them is true; `submit_interrupted` is why. Its category sentence says the request
+                              may ALREADY be in flight and must not be resent, and `remedy: "retry"` printed
+                              「그대로 다시 보내도 됩니다」 directly beneath it — one card, two opposite instructions,
+                              a paid button, and the one a person acts on buys the scene twice.
+
+                              No `sceneFailures` at all is a different absence and keeps its old sentence. There
+                              the hedge is not a claim about the provider, just caution before a paid press, and
+                              the instruction field it points at is right below. Absence of data is not an
+                              answer; an omitted field IS one. */}
+                          {(failure === undefined || failure.remedy !== undefined) && (
+                            <p data-testid={`failed-scene-retry-remedy-${sceneNumber}`} className={mustChangeInput ? "text-sm font-semibold text-rose-200" : "text-sm text-slate-300"}>
+                              {sceneRemedyAdvice(failure?.remedy)}
+                            </p>
+                          )}
                           {/* Same endpoint as a review regeneration, so the same one-off direction applies —
                               useful when the scene failed on its content rather than on a transient error. */}
                           <RegenerateInstructionField
