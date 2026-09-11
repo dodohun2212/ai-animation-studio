@@ -553,7 +553,7 @@ enum 이 그대로 뜬다(`?? status` 로 조용히 떨어진다).
 
 ### 받아 둔 것 (순서 미정)
 
-- 🔴 **`submit_interrupted` 에 「그대로 다시 보내도 됩니다」가 같이 뜬다** (돈 · 2026-09-12 CLI 가 Cowork Round 770 의 (c) 를 보다가
+- ✅ **(끝 — 프론트 `c530ceb` → 백엔드 `79cf1ad`)** **`submit_interrupted` 에 「그대로 다시 보내도 됩니다」가 같이 뜬다** (돈 · 2026-09-12 CLI 가 Cowork Round 770 의 (c) 를 보다가
   발견). `sceneFailureFor("submit_interrupted")` 가 `remedy: "retry"` 를 주고, 두 영상 화면이 분류 문장(「이미 접수됐을 수 있어
   자동으로 다시 보내지 않았습니다 — Runway 계정에서 확인하세요」) **옆에** `sceneRemedyAdvice("retry")` 를 그린다. 고칠 모양:
   그 코드엔 `remedy` 를 **안 싣는다**. 🟠 **순서가 중요하다** — 프론트 가드(`contractGuards.ts` `isSceneFailure`)가 `remedy` 를
