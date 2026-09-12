@@ -774,6 +774,17 @@ export function providerTaskFailure(providerCode: string | undefined): (typeof P
  * cannot (a review or record file that will not parse at all) — a guess at a scene would send someone to fix the
  * wrong one. Twelve scenes checked by hand is what the error cost before (Cowork Round 769).
  */
+/**
+ * The `details` of STORY_PROMPT_STORAGE_ERROR: whether the paid Story request had already gone out when the write
+ * failed. Four places raise the code and only one of them is after the call (saving the finished script); the other
+ * three — reading the template, marking the project as generating, resetting it for a regeneration — are before it.
+ * So "a script may already exist, check before pressing again" is true for one and false for three, and the code
+ * alone cannot say which (Cowork Round 786, CLI Round 787).
+ */
+export interface StoryStorageErrorDetails {
+  requestSent: boolean;
+}
+
 export interface MergeClipsInvalidDetails {
   sceneNumbers: SceneNumber[];
 }

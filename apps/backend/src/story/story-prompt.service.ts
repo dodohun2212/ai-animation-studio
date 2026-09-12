@@ -217,7 +217,7 @@ export class StoryPromptService {
     try {
       template = await fsPromises.readFile(path.join(this.templateRoot, "story", "story_generation.txt"), "utf8");
     } catch {
-      throw storyStorageError();
+      throw storyStorageError(false);
     }
     return renderTemplate(template, await promptVariables(stored, this.assets));
   }
@@ -297,7 +297,7 @@ export class StoryPromptService {
         },
       },
     };
-    try { await this.projects.save(generating); } catch { throw storyStorageError(); }
+    try { await this.projects.save(generating); } catch { throw storyStorageError(false); }
 
     let story: StoredStory;
     let spendUnrecorded: boolean;
@@ -328,7 +328,7 @@ export class StoryPromptService {
         updated.updated_at = new Date().toISOString();
         await this.projects.save(updated);
       }
-    } catch { throw storyStorageError(); }
+    } catch { throw storyStorageError(/* after the paid call: the script was generated, only saving it failed */ true); }
     return { project: toApiProject(updated), originalPrompt, prompt, promptSha256: sha256(prompt), modified: prompt !== originalPrompt, approvedAt };
   }
 
@@ -358,7 +358,7 @@ export class StoryPromptService {
       motion_prompts: [],
       updated_at: new Date().toISOString(),
     };
-    try { await this.projects.save(reset); } catch { throw storyStorageError(); }
+    try { await this.projects.save(reset); } catch { throw storyStorageError(false); }
     return { project: toApiProject(reset) };
   }
 }

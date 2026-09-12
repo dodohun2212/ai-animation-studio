@@ -15,8 +15,10 @@ export const invalidStoryRequest = (message: string, details?: Record<string, un
   new StoryApiException("INVALID_REQUEST", message, HttpStatus.BAD_REQUEST, details);
 export const storyPromptStale = () =>
   new StoryApiException("STORY_PROMPT_STALE", "The Story prompt changed; create a new preview before approval.", HttpStatus.CONFLICT);
-export const storyStorageError = () =>
-  new StoryApiException("STORY_PROMPT_STORAGE_ERROR", "Story prompt storage operation failed.", HttpStatus.INTERNAL_SERVER_ERROR);
+// Says whether the paid request had already gone out (StoryStorageErrorDetails) — the difference between "nothing was
+// sent" and "a script may already exist", which is the difference between pressing again and checking first.
+export const storyStorageError = (requestSent: boolean) =>
+  new StoryApiException("STORY_PROMPT_STORAGE_ERROR", "Story prompt storage operation failed.", HttpStatus.INTERNAL_SERVER_ERROR, { requestSent });
 export const storyGenerationNotAllowed = () =>
   new StoryApiException("STORY_GENERATION_NOT_ALLOWED", "Story generation requires a project in READY state.", HttpStatus.CONFLICT);
 /**

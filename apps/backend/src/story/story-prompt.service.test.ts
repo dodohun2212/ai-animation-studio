@@ -275,6 +275,37 @@ describe("StoryPromptService", () => {
 });
 
 describe("StoryPromptService real OpenAI generation", () => {
+  /*
+   * 🔴 One code, raised before the paid call in three places and after it in one. "A script may already exist, check
+   * before pressing again" is the truth for the last and a false alarm for the others — and 캡틴D saw this code's
+   * fallback sentence on screen (Cowork Round 786). The error now says which: `details.requestSent`.
+   */
+  it("says the paid request had not gone out when saving the generating state fails, and makes no call", async () => {
+    const { repository, service } = await setupWithConnectedOpenAi();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responsesBody(VALID_STORY)));
+    vi.stubGlobal("fetch", fetchMock);
+    const preview = await service.preview("sample");
+    vi.spyOn(repository, "save").mockRejectedValueOnce(new Error("EBUSY"));
+
+    await expect(service.approve("sample", { originalPromptSha256: preview.preview.originalPromptSha256, prompt: preview.preview.originalPrompt, approved: true }))
+      .rejects.toMatchObject({ response: { code: "STORY_PROMPT_STORAGE_ERROR", details: { requestSent: false } } });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("says the paid request had gone out when only saving the finished script fails", async () => {
+    const { repository, service } = await setupWithConnectedOpenAi();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responsesBody(VALID_STORY)));
+    vi.stubGlobal("fetch", fetchMock);
+    const preview = await service.preview("sample");
+    const realSave = repository.save.bind(repository);
+    let saves = 0;
+    vi.spyOn(repository, "save").mockImplementation(async (project) => { saves += 1; if (saves === 2) throw new Error("EBUSY"); return realSave(project); });
+
+    await expect(service.approve("sample", { originalPromptSha256: preview.preview.originalPromptSha256, prompt: preview.preview.originalPrompt, approved: true }))
+      .rejects.toMatchObject({ response: { code: "STORY_PROMPT_STORAGE_ERROR", details: { requestSent: true } } });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("calls the real adapter and persists its real model name and Story when a connected credential is configured", async () => {
     const { repository, service } = await setupWithConnectedOpenAi();
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responsesBody(VALID_STORY)));
