@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { RUNWAY_PROMPT_AUTHORING_LIMIT } from "@ai-animation-studio/shared";
-import type { BudgetPreview, SceneNumber, StartVideoGenerationResponse, VideoPromptPreview } from "@ai-animation-studio/shared";
+import { RUNWAY_PROMPT_AUTHORING_LIMIT, VIDEO_MODEL_OPTIONS } from "@ai-animation-studio/shared";
+import type { BudgetPreview, SceneNumber, StartVideoGenerationResponse, VideoModelOption, VideoPromptPreview } from "@ai-animation-studio/shared";
 
 import { getVideoPromptPreview, toVideoPreviewDisplayError } from "../api/videoPreviewApi.js";
+import { imageReviewContentUrl } from "../api/imageReviewApi.js";
 import { startVideoSubmission, toVideoSubmissionDisplayError } from "../api/videoSubmissionApi.js";
 import { Spinner } from "./Spinner.js";
+import { VIDEO_CLIP_AUDIO_NOTE, videoModelFacts, videoModelPriceLine } from "../utils/videoModelFacts.js";
 import { videoRatioLabel } from "../utils/sceneFields.js";
 import { omittedSectionLabel } from "../utils/omittedSectionLabels.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
@@ -34,6 +36,18 @@ const PROMPT_UTF16_LIMIT = RUNWAY_PROMPT_AUTHORING_LIMIT;
 /** JavaScript string length already counts UTF-16 code units, matching the Backend's limit. */
 function utf16Length(value: string): number {
   return value.length;
+}
+
+/**
+ * The catalogue entry for the model this preview was built with, or nothing.
+ *
+ * 🔴 Deliberately not `videoModelOption`, which throws on a name it does not list (and throws on purpose — a
+ * wrong name there used to be quoted at the cheapest rate, 13.6× low). This screen is read, not billed from:
+ * the money on it comes from the server's own `estimatedCostUsd`, so a model the frontend catalogue has not
+ * heard of must still render the prompts and the totals. It loses the description, not the screen.
+ */
+function catalogueOption(model: string): VideoModelOption | undefined {
+  return VIDEO_MODEL_OPTIONS.find((option) => option.id === model);
 }
 
 export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () => {} }: Props) {
@@ -158,9 +172,57 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
 
       {state.status === "ready" && previews.length > 0 && (
         <>
-          <p className="text-sm text-slate-400" data-testid="preview-summary">
-            모델: {previews[0]!.model} · 비율: {videoRatioLabel(previews[0]!.ratio)} · 장면당 길이: {previews[0]!.durationSeconds}초
-          </p>
+          {/* 🔴 「지금 무엇을 사는지」의 첫 줄. 여기 있던 것은 `모델: h3_max_768p` 한 마디였습니다 — 슬러그는
+              사람이 고른 이름이 아니고, 그 모델이 무엇을 하는지는 한 글자도 없었습니다. 고르는 화면(VideoModelCard)
+              은 이름·값·능력을 다 말해 주는데, 정작 **돈이 나가기 직전 화면**이 제일 적게 말하고 있었습니다.
+              문장은 전부 `utils/videoModelFacts.ts` 한 곳에서 옵니다(두 화면이 갈라지지 않게).
+
+              비율·길이·장면 수는 카탈로그가 아니라 **이 미리보기가 실제로 들고 있는 값**에서 옵니다: 그게 지금
+              나갈 요청의 내용이고, 카탈로그는 그 모델이 할 수 있는 것일 뿐입니다. */}
+          {(() => {
+            const first = previews[0]!;
+            const option = catalogueOption(first.model);
+            return (
+              <section
+                aria-label="이 요청이 쓸 영상 모델"
+                data-testid="preview-summary"
+                className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
+              >
+                <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+                  <span className="text-xs text-slate-500">이 요청이 쓸 영상 AI</span>
+                  <span data-testid="preview-model-label" className="text-base font-semibold text-slate-100">
+                    {option?.label ?? first.model}
+                  </span>
+                  {/* 슬러그도 남깁니다 — 우편함·로그·Runway 계정에서 같은 이름으로 찾게 됩니다. */}
+                  <span data-testid="preview-model-id" className="rounded-md border border-white/10 px-1.5 py-0.5 font-mono text-[11px] text-slate-400">
+                    {first.model}
+                  </span>
+                </div>
+                {option && (
+                  <p data-testid="preview-model-price" className="text-xs tabular-nums text-slate-300">
+                    {videoModelPriceLine(option)}
+                  </p>
+                )}
+                {option && (
+                  <ul data-testid="preview-model-facts" className="space-y-1">
+                    {videoModelFacts(option).map((fact) => (
+                      <li key={fact.text} className={fact.tone === "caution" ? "text-xs text-amber-300/90" : "text-xs text-slate-400"}>
+                        {fact.text}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-xs text-slate-400">
+                  이번 요청: 비율 <span className="text-slate-300">{videoRatioLabel(first.ratio)}</span> · 장면당{" "}
+                  <span className="text-slate-300">{first.durationSeconds}초</span> · 장면 {previews.length}개
+                </p>
+                {/* 모델을 몰라도 참인 줄이라 `option` 밖에 둡니다 — 이건 모델의 성질이 아니라 이 앱이 합치는 방식입니다. */}
+                <p data-testid="preview-model-audio" className="text-xs text-slate-500">
+                  {VIDEO_CLIP_AUDIO_NOTE}
+                </p>
+              </section>
+            );
+          })()}
           <ul className="space-y-3" data-testid="preview-list">
             {previews.map((preview) => {
               const promptText = promptFor(preview);
@@ -183,6 +245,43 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
                       값입니다(CLI Round 789). 없으면 아무 말도 안 합니다: 끝 프레임을 안 보내는 경우(체인이
                       꺼졌거나, 못 받는 모델이거나, 마지막 장면이거나)가 전부 「없음」이고, 그 셋을 구분해 주는
                       것은 이 화면의 일이 아닙니다. */}
+                  {/* 🔴 같이 나가는 **그림**. 프롬프트는 이미 통째로 보이는데 그림은 글로도 안 보였습니다 —
+                      이 요청에 들어가는 것은 글과 그림 둘이고, 클립이 어디서 시작해 어디서 끝나는지는 전적으로
+                      그림이 정합니다. 3번과 4번 그림이 사실상 같아서 클립이 멈춘 일(꽃말_버즘나무)을 **누르기
+                      전에** 볼 수 있는 자리가 여기입니다.
+
+                      시작 그림은 그 장면의 승인된 그림입니다 — 어댑터가 `promptImage` 로 보내는 바로 그 파일
+                      (runway-video-adapter.ts `REQUEST_BODY`). 끝 그림은 계약이 말해 줄 때만 그립니다. */}
+                  <div className="flex items-center gap-2.5" data-testid={`frames-${preview.sceneNumber}`}>
+                    <span className="text-xs text-slate-500">같이 보낼 그림</span>
+                    <figure className="flex items-center gap-1.5">
+                      <img
+                        src={imageReviewContentUrl(projectId, preview.sceneNumber, confirmationId ?? "")}
+                        alt={`${preview.sceneNumber}번 장면 그림`}
+                        className="h-16 w-auto rounded-md border border-white/10 object-cover"
+                      />
+                      <figcaption className="text-[11px] text-slate-400">시작<br />{preview.sceneNumber}번</figcaption>
+                    </figure>
+                    {preview.lastFrameSceneNumber !== undefined && (
+                      <>
+                        <span aria-hidden="true" className="text-slate-600">→</span>
+                        <figure className="flex items-center gap-1.5">
+                          <img
+                            src={imageReviewContentUrl(projectId, preview.lastFrameSceneNumber, confirmationId ?? "")}
+                            alt={`${preview.lastFrameSceneNumber}번 장면 그림`}
+                            className="h-16 w-auto rounded-md border border-white/10 object-cover"
+                          />
+                          <figcaption className="text-[11px] text-slate-400">끝<br />{preview.lastFrameSceneNumber}번</figcaption>
+                        </figure>
+                      </>
+                    )}
+                    {/* 없을 때도 말합니다 — 빈 자리는 「아직 안 불러왔나」로 읽힙니다. */}
+                    {preview.lastFrameSceneNumber === undefined && (
+                      <span data-testid={`frames-single-${preview.sceneNumber}`} className="text-xs text-slate-500">
+                        이 한 장만 보냅니다
+                      </span>
+                    )}
+                  </div>
                   {preview.lastFrameSceneNumber !== undefined && (
                     <p className="text-xs text-slate-400" data-testid={`last-frame-${preview.sceneNumber}`}>
                       이 클립은 <span className="text-slate-300">{preview.lastFrameSceneNumber}번 장면 그림</span>으로 끝납니다 — 다음 클립이 그 그림에서 시작합니다.

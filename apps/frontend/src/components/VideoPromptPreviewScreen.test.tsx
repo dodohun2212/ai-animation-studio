@@ -67,6 +67,101 @@ describe("VideoPromptPreviewScreen", () => {
     expect(document.body.textContent).not.toContain("으로 끝납니다");
   });
 
+  /**
+   * 🔴 돈이 나가기 직전 화면이 모델에 대해 제일 적게 말하고 있었습니다: `모델: h3_max_768p` 한 마디. 슬러그는
+   * 사람이 고른 이름이 아니고, 그 모델이 릴에 무엇을 하는지는 한 글자도 없었습니다 — 고르는 화면은 다 말해
+   * 주는데 누르는 화면이 침묵한 것입니다. 이름과 능력이 여기 없으면, 사람은 「내가 고른 그 모델이 맞나」를
+   * 확인할 방법 없이 유료 버튼을 누릅니다.
+   *
+   * 슬러그도 같이 남깁니다 — 우편함·로그·Runway 계정은 그 이름으로 부릅니다.
+   */
+  it("names the model instead of showing its slug alone, and says what it does to the reel", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, makePreviewResponse())));
+
+    await screen.findByTestId("preview-list");
+    expect(screen.getByTestId("preview-model-label").textContent).toBe("Runway Gen-4 Turbo");
+    expect(screen.getByTestId("preview-model-id").textContent).toBe("gen4_turbo");
+    const facts = screen.getByTestId("preview-model-facts").textContent ?? "";
+    // gen4_turbo 는 끝 그림을 못 받습니다 — 이어지는 릴에서 컷이 뒤로 돌아가는 바로 그 조건입니다.
+    expect(facts).toContain("앞 클립이 끝난 장면을 이어받지 못합니다");
+    expect(facts).toContain("한 장면 최대 10초");
+  });
+
+  /**
+   * 🔴 유료 모델 중에는 소리까지 만드는 것이 있는데, 이 앱은 그 소리를 **한 번도 쓰지 않습니다**:
+   * `ffmpeg-merge.service.ts` 는 클립에서 `0:v:0` 만 가져오고, 소리는 내레이션 파일 아니면 `anullsrc`(무음)로
+   * 새로 붙입니다. 화면이 그걸 안 말하면, 소리 되는 모델을 일부러 골라 돈을 더 내고 그 소리를 버리게 됩니다.
+   *
+   * 모델을 몰라도 뜨는지 같이 봅니다 — 이건 모델의 성질이 아니라 이 앱이 합치는 방식이라, 카탈로그에 없는
+   * 이름이 와도 참입니다.
+   */
+  it("says the clip's own sound is never used, even for a model the catalogue does not know", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, makePreviewResponse())));
+    expect((await screen.findByTestId("preview-model-audio")).textContent).toContain("소리는 내레이션과 배경 음악으로만");
+
+    const unknown = makePreviews(1).map((preview) => ({ ...preview, model: "some_model_from_next_week" as VideoPromptPreview["model"] }));
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { previews: unknown, confirmationId: "c1" })));
+    const notes = await screen.findAllByTestId("preview-model-audio");
+    expect(notes.length, "모델을 몰라도 이 줄은 남습니다").toBe(2);
+  });
+
+  /**
+   * 🔴 카탈로그의 요율은 $0.05/s 부터 $0.68/s 까지 13.6 배로 벌어져 있습니다. 이 줄이 모델을 따라 움직이지
+   * 않으면(= 어딘가에 박힌 숫자면), 제일 비싼 모델을 고른 사람이 제일 싼 값을 읽고 누릅니다. 두 모델로 한
+   * 번씩 그려 보는 것이 그 확인의 유일한 방법입니다.
+   */
+  it("prices from the model this preview was actually built with", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, makePreviewResponse())));
+    expect((await screen.findByTestId("preview-model-price")).textContent).toContain("1초당 $0.05");
+
+    const dear = makePreviews(2).map((preview) => ({ ...preview, model: "seedance2_5_1080p" as VideoPromptPreview["model"] }));
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { previews: dear, confirmationId: "c1" })));
+    const lines = await screen.findAllByTestId("preview-model-price");
+    expect(lines.at(-1)!.textContent).toContain("1초당 $0.68");
+    expect(lines.at(-1)!.textContent).toContain("짧아도 최소 $0.80");
+  });
+
+  /**
+   * 🔴 설명이 없는 것과 화면이 없는 것은 다릅니다. 이 화면의 금액은 서버의 `estimatedCostUsd` 에서 오고,
+   * 프론트 카탈로그는 설명에만 쓰입니다 — 그러니 프론트가 모르는 이름이 와도 프롬프트와 총액은 그대로
+   * 보여야 합니다. (`videoModelOption` 은 모르는 이름에 던집니다. 그걸 여기서 쓰면 화면이 통째로 사라집니다.)
+   */
+  it("still shows the prompts when the frontend catalogue has never heard of the model", async () => {
+    const previews = makePreviews(2).map((preview) => ({ ...preview, model: "some_model_from_next_week" as VideoPromptPreview["model"] }));
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { previews, confirmationId: "c1" })));
+
+    await screen.findByTestId("preview-list");
+    expect(screen.getByTestId("preview-model-label").textContent).toBe("some_model_from_next_week");
+    expect(screen.queryByTestId("preview-model-price")).toBeNull();
+    expect(screen.queryByTestId("preview-model-facts")).toBeNull();
+    expect(screen.getByTestId("total-cost").textContent).toContain("$0.50");
+  });
+
+  /**
+   * 🔴 이 요청에 들어가는 것은 글과 그림 둘인데, 화면에는 글만 있었습니다. 클립이 어디서 시작해 어디서 끝나는지는
+   * 전적으로 그림이 정하고, 그림 둘이 사실상 같으면 5초짜리 정지 화면을 사게 됩니다(꽃말_버즘나무 3·4번).
+   * 누르기 **전에** 그걸 볼 수 있는 화면은 여기뿐입니다.
+   */
+  it("shows the pictures that go with each request — the first frame always, the last when there is one", async () => {
+    const previews = makePreviews(2).map((preview, index) => (
+      index === 0 ? { ...preview, lastFrameSceneNumber: 2 as VideoPromptPreview["sceneNumber"] } : preview
+    ));
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { previews, confirmationId: "c1" })));
+
+    const first = await screen.findByTestId("frames-1");
+    const pictures = first.querySelectorAll("img");
+    expect(pictures.length, "시작 그림과 끝 그림 둘").toBe(2);
+    expect(pictures[0]!.getAttribute("src")).toContain("/projects/sample_project/images/1/content");
+    expect(pictures[1]!.getAttribute("src")).toContain("/projects/sample_project/images/2/content");
+    expect(first.textContent).toContain("시작");
+    expect(first.textContent).toContain("끝");
+
+    // 끝 그림이 없는 클립은 빈 자리를 남기지 않고 그렇다고 말합니다 — 빈 자리는 「아직 안 불러왔나」로 읽힙니다.
+    const last = screen.getByTestId("frames-2");
+    expect(last.querySelectorAll("img").length).toBe(1);
+    expect(screen.getByTestId("frames-single-2").textContent).toContain("이 한 장만 보냅니다");
+  });
+
   it("names the sections the server had to drop, and leaves untouched scenes unmarked", async () => {
     const previews = makePreviews(2);
     previews[0] = { ...previews[0]!, omittedSections: ["Continuity cue", "Pacing"] };
@@ -175,7 +270,11 @@ describe("VideoPromptPreviewScreen", () => {
     }
     // The provider's value stays visible, but the shape the user chose in settings leads — "720:1280" alone
     // gives them no way to notice an orientation that does not match the project.
-    expect(screen.getByTestId("preview-summary").textContent).toBe("모델: gen4_turbo · 비율: 세로형 9:16 (720:1280) · 장면당 길이: 5초");
+    const summary = screen.getByTestId("preview-summary");
+    expect(screen.getByTestId("preview-model-label").textContent).toBe("Runway Gen-4 Turbo");
+    expect(screen.getByTestId("preview-model-id").textContent).toBe("gen4_turbo");
+    expect(summary.textContent).toContain("비율 세로형 9:16 (720:1280)");
+    expect(summary.textContent).toContain("장면당 5초");
     expect(screen.getByTestId("total-cost").textContent).toBe("총 예상 비용: $1.50");
   });
 

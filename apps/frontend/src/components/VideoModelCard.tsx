@@ -1,9 +1,14 @@
 import { useState } from "react";
-import type { VideoFrameShape, VideoModel, VideoModelOption, VideoModelSetting } from "@ai-animation-studio/shared";
-import { videoSceneEstimatedCostUsd } from "@ai-animation-studio/shared";
+import type { VideoModel, VideoModelSetting } from "@ai-animation-studio/shared";
 
 import { saveVideoModel, toDisplayError } from "../api/providerSettingsApi.js";
+import { FRAME_SHAPE_NOTES, VIDEO_CLIP_AUDIO_NOTE, videoModelLastFrameLine, videoModelPriceLine } from "../utils/videoModelFacts.js";
 import { scrollList } from "./ui/surfaces.js";
+
+/* 🔴 Re-exported, not re-declared. The price line moved to `utils/videoModelFacts.ts` when the confirmation
+   screen started saying the same thing, and this card is still where every existing pair imports it from —
+   a second declaration here is exactly the duplicate-sentence bug that move was made to end. */
+export { videoModelPriceLine };
 
 /**
  * Which model draws the video, and what that costs — asked for as "기능만 만들어놔".
@@ -29,52 +34,6 @@ import { scrollList } from "./ui/surfaces.js";
  * option at the first one's $0.05 and looked, on screen, like a price that had moved. This card is where that
  * would first be seen and last be noticed, so it prices from the option it is drawing.
  */
-
-/**
- * The whole price of one scene, in one line, with nothing left for the reader to work out.
- *
- * 🔴 Exported so the pair can assert the row contains exactly this. The format lives in one place; a test
- * that rebuilt the sentence itself would agree with a card that had stopped saying it.
- *
- * 🔴 The two optional halves are the reason this is no longer a template literal inline. `pricePerSecondUsd`
- * alone stopped being the price: Gemini and Grok add a flat charge per scene, and Mini and 2.5 never bill below
- * a floor. Both were already in every quote the moment the contract carried them — `videoSceneEstimatedCostUsd`
- * folds them in — so the numbers on this card were right and the *explanation* was missing. That gap is its own
- * failure: 「1초당 $0.10」 beside 「5초 장면 $0.51」 is a card a person checks with a calculator, disagrees with,
- * and stops trusting. `contract-optional-fields.test.ts` was holding both fields as a named gap for exactly this
- * line; reading them here is what closes it.
- */
-export function videoModelPriceLine(option: VideoModelOption): string {
-  const perSecond = `1초당 $${option.pricePerSecondUsd.toFixed(2)}`;
-  // Immediately after the rate, because it is what makes the rate alone wrong.
-  const perScene = option.perGenerationUsd === undefined ? "" : ` + 장면당 $${option.perGenerationUsd.toFixed(2)}`;
-  const scenes = ` · 5초 장면 $${videoSceneEstimatedCostUsd(5, option).toFixed(2)} · 10초 장면 $${videoSceneEstimatedCostUsd(10, option).toFixed(2)}`;
-  /* Worded as what it does, not as its name. Both clip lengths this app offers already clear every floor in the
-     catalogue, so this number never appears in the two totals beside it — which is precisely why it has to be
-     said out loud rather than inferred from them. */
-  const minimum = option.minimumChargeUsd === undefined ? "" : ` · 짧아도 최소 $${option.minimumChargeUsd.toFixed(2)}`;
-  return `${perSecond}${perScene}${scenes}${minimum}`;
-}
-
-/**
- * Whose shape the finished clip keeps — and, for two of the three answers, what that does to the reel.
- *
- * 🔴 A `Record` over the contract's own union, so a fourth shape is a compile error here rather than a row that
- * quietly says nothing. `null` is a real answer and not a hole: for `requested` there is nothing to warn about,
- * and twelve of twenty rows carrying a reassuring sentence would bury the four that matter.
- *
- * 🔴 `unconfirmed` gets its own sentence rather than silence, and that is the whole point of asking for a
- * three-valued field. Silence there reads as 「괜찮다」 to anyone comparing rows, which is the reassuring
- * direction — the wrong one to be wrong in. It also happens to be the model 캐프틴D's first reel is planned on
- * (H3 Max 480p), so the one row where 「확인 안 됨」 must be said is the one row somebody is about to press.
- */
-const FRAME_SHAPE_NOTES: Record<VideoFrameShape, string | null> = {
-  requested: null,
-  follows_first_frame:
-    "이 모델은 장면 그림의 비율을 그대로 따릅니다 — 그림이 릴 비율과 다르면 완성본 위아래에 띠가 생길 수 있습니다.",
-  unconfirmed:
-    "이 모델이 어떤 비율로 내보내는지는 확인되지 않았습니다 — 완성본 위아래에 띠가 생길 수 있습니다.",
-};
 
 export function VideoModelCard({ setting, onChange }: { setting: VideoModelSetting; onChange: (next: VideoModelSetting) => void }) {
   const [busy, setBusy] = useState(false);
@@ -147,9 +106,7 @@ export function VideoModelCard({ setting, onChange }: { setting: VideoModelSetti
                       and this tells them what they get. Worded as what happens in the reel, never as the field
                       name — 「끝 프레임」 means nothing to someone who has not read the adapter. */}
                   <span className={`block text-xs ${option.acceptsLastFrame ? "text-slate-400" : "text-amber-300/90"}`}>
-                    {option.acceptsLastFrame
-                      ? "「장면 이어 그리기」를 켠 프로젝트에서는, 앞 클립이 끝난 그 그림에서 다음 클립이 시작합니다 — 이어지는 릴에 좋습니다."
-                      : "앞 클립이 끝난 장면을 이어받지 못합니다 — 성장·이동처럼 계속 이어지는 릴에서는 컷이 뒤로 돌아갈 수 있습니다."}
+                    {videoModelLastFrameLine(option)}
                   </span>
                   {/* 🔴 An empty `ratios` is a real answer, not missing data — and it renders before any model
                       needs it, on purpose. Runway's own SDK types give some models on this endpoint no ratio
@@ -190,6 +147,8 @@ export function VideoModelCard({ setting, onChange }: { setting: VideoModelSetti
         </div>
       )}
       {busy && <p className="text-xs text-slate-500">바꾸는 중...</p>}
+      {/* 모델마다가 아니라 한 번. 어느 모델을 고르든 같은 답이고, 스무 줄에 같은 문장을 붙이면 위의 경고들이 묻힙니다. */}
+      <p data-testid="video-model-audio" className="text-xs text-slate-500">{VIDEO_CLIP_AUDIO_NOTE}</p>
       <p className="text-xs text-slate-500">
         여기 금액은 이 앱이 예산을 계산할 때 쓰는 <span className="text-slate-300">예상치</span>입니다. 실제 청구액은 Runway 계정에서 확인해 주세요.
       </p>
