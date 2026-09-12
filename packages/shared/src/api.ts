@@ -1455,6 +1455,16 @@ export interface ShortProjectStyleNotes {
   aspect?: string;
 }
 
+/** The built-in forms that write a project's settings for it. One today: the flower-meaning reel. */
+export const SETTINGS_PRESET_IDS = ["flower_meaning"] as const;
+export type SettingsPresetId = (typeof SETTINGS_PRESET_IDS)[number];
+/** A preset and the revision of its text that produced these settings — see ShortProjectSettings.preset. */
+export interface SettingsPreset {
+  id: SettingsPresetId;
+  /** A positive integer the preset raises whenever the text it writes changes. */
+  revision: number;
+}
+
 export interface ShortProjectSettings {
   projectName: string;
   topic: string;
@@ -1494,6 +1504,18 @@ export interface ShortProjectSettings {
    * resolves exactly the references it always did.
    */
   sceneImageContinuityEnabled: boolean;
+  /**
+   * Which built-in form wrote these settings, and which revision of it — present only for a project a preset made.
+   *
+   * 🔴 A preset is computed once, when the project is made, and stored; changing the preset afterwards reaches no
+   * existing project. 캡틴D changed the flower preset three times and approved a Story three times against the old
+   * text, paying each time, with nothing on screen to say the project predated the change (Cowork Round 787).
+   * With this, the approval screen can compare the stored revision with the current one and say so.
+   *
+   * Optional on the way in, like sceneImageContinuityEnabled and for the same reason. And absent in a save means
+   * "not saying", not "clear it": a settings screen that never knew about presets must not erase the mark.
+   */
+  preset?: SettingsPreset;
 }
 
 /**

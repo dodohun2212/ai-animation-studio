@@ -115,6 +115,32 @@ describe("short project settings", () => {
     expect(() => parseShortProjectSettings({ ...settingsRequest, sceneImageContinuityEnabled: "true" })).toThrow();
   });
 
+  /*
+   * The preset mark (Cowork Round 787): which built-in form wrote these settings, at which revision — so an approval
+   * screen can say "this project was made from an older preset" before 캡틴D pays for a Story built on old text.
+   */
+  it("stores a preset mark a save carries, reads it back, and keeps it through a save that does not carry one", () => {
+    const stored = createStoredProject("flower", "topic", "2026-08-22T00:00:00.000Z");
+    const marked = applyShortProjectSettings(stored, parseShortProjectSettings({ ...settingsRequest, preset: { id: "flower_meaning", revision: 3 } }), "2026-09-12T00:00:00.000Z");
+    expect(toShortProjectSettings(marked).preset).toEqual({ id: "flower_meaning", revision: 3 });
+
+    // A settings screen that never heard of presets saves without the field; that must not erase the mark.
+    const resaved = applyShortProjectSettings(marked, parseShortProjectSettings(settingsRequest), "2026-09-12T01:00:00.000Z");
+    expect(toShortProjectSettings(resaved).preset).toEqual({ id: "flower_meaning", revision: 3 });
+
+    // And a project no preset made carries no mark at all.
+    expect(toShortProjectSettings(stored)).not.toHaveProperty("preset");
+  });
+
+  it("refuses a preset mark it does not know, and reads a malformed stored one as none", () => {
+    for (const preset of [{ id: "other", revision: 1 }, { id: "flower_meaning", revision: 0 }, { id: "flower_meaning", revision: 1.5 }, { id: "flower_meaning" }, { id: "flower_meaning", revision: 1, extra: true }, "flower_meaning"]) {
+      expect(() => parseShortProjectSettings({ ...settingsRequest, preset }), JSON.stringify(preset)).toThrow();
+    }
+    const stored = createStoredProject("bent", "topic", "2026-08-22T00:00:00.000Z");
+    stored.lore_context = { settings_preset: { id: "flower_meaning", revision: "3" } };
+    expect(toShortProjectSettings(stored)).not.toHaveProperty("preset");
+  });
+
   /** A project stored before the field existed is off, and nothing older is read as meaning the same thing. */
   it("reads a project that predates the field as having the chain off", () => {
     const stored = createStoredProject("old", "topic", "2026-08-22T00:00:00.000Z");

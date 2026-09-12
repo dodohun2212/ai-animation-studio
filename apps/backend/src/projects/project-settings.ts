@@ -1,4 +1,4 @@
-import { DEFAULT_SCENE_COUNT, MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, type ShortProjectSettings, type ShortProjectStyleNotes } from "@ai-animation-studio/shared";
+import { DEFAULT_SCENE_COUNT, MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, SETTINGS_PRESET_IDS, type SettingsPreset, type SettingsPresetId, type ShortProjectSettings, type ShortProjectStyleNotes } from "@ai-animation-studio/shared";
 
 import { invalidRequest } from "./project-api.error.js";
 import { photoCardFor } from "./project.mapper.js";
@@ -33,14 +33,14 @@ function isValidClipDuration(value: unknown): value is number {
 }
 
 const STYLE_KEYS = ["visualStyle", "color", "lighting", "camera", "dialogue", "avoid", "aspect"] as const;
-const SETTINGS_KEYS = ["projectName", "topic", "genre", "mood", "character", "lore", "fullStory", "sceneCount", "clipDurationSeconds", "additionalNotes", "styleNotes", "narrationEnabled", "subtitlesEnabled", "sceneImageContinuityEnabled"] as const;
+const SETTINGS_KEYS = ["projectName", "topic", "genre", "mood", "character", "lore", "fullStory", "sceneCount", "clipDurationSeconds", "additionalNotes", "styleNotes", "narrationEnabled", "subtitlesEnabled", "sceneImageContinuityEnabled", "preset"] as const;
 
 /**
  * Accepted but not demanded. SETTINGS_KEYS does double duty — it is both what a request may contain and what it
  * must contain — and a field added after clients were already running cannot be in the second list without
  * making every existing page's save fail on a name it has never heard of.
  */
-const OPTIONAL_SETTINGS_KEYS: ReadonlySet<string> = new Set(["sceneImageContinuityEnabled"]);
+const OPTIONAL_SETTINGS_KEYS: ReadonlySet<string> = new Set(["sceneImageContinuityEnabled", "preset"]);
 
 function asObject(value: unknown, field: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -114,6 +114,7 @@ export function toShortProjectSettings(stored: StoredProject): ShortProjectSetti
     // and a project stored before this existed was drawn without the chain. Reading it as on would say its
     // pictures came from references they never saw.
     sceneImageContinuityEnabled: stored.lore_context.scene_image_continuity_enabled === true,
+    ...(storedPreset(stored.lore_context.settings_preset) ? { preset: storedPreset(stored.lore_context.settings_preset)! } : {}),
   };
 }
 
@@ -176,7 +177,30 @@ export function parseShortProjectSettings(value: unknown, minimumSceneCount: num
     narrationEnabled: settings.narrationEnabled,
     subtitlesEnabled: settings.subtitlesEnabled,
     sceneImageContinuityEnabled: settings.sceneImageContinuityEnabled === true,
+    ...(settings.preset !== undefined ? { preset: parsePreset(settings.preset, "settings.preset") } : {}),
   };
+}
+
+/** A preset mark as a client sent it: a known id and a positive integer revision, nothing else. */
+function parsePreset(value: unknown, field: string): SettingsPreset {
+  const preset = asObject(value, field);
+  rejectUnknownFields(preset, ["id", "revision"], field);
+  if (!(SETTINGS_PRESET_IDS as readonly unknown[]).includes(preset.id)) {
+    throw invalidRequest(`${field}.id must be one of: ${SETTINGS_PRESET_IDS.join(", ")}.`, { field: `${field}.id` });
+  }
+  if (!Number.isInteger(preset.revision) || (preset.revision as number) < 1) {
+    throw invalidRequest(`${field}.revision must be a positive integer.`, { field: `${field}.revision` });
+  }
+  return { id: preset.id as SettingsPresetId, revision: preset.revision as number };
+}
+
+/** The stored mark, or nothing — a malformed one reads as absent, the same as a project no preset made. */
+function storedPreset(value: unknown): SettingsPreset | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const { id, revision } = value as Record<string, unknown>;
+  return (SETTINGS_PRESET_IDS as readonly unknown[]).includes(id) && Number.isInteger(revision) && (revision as number) >= 1
+    ? { id: id as SettingsPresetId, revision: revision as number }
+    : undefined;
 }
 
 export function applyShortProjectSettings(stored: StoredProject, settings: ShortProjectSettings, updatedAt: string): StoredProject {
@@ -206,6 +230,8 @@ export function applyShortProjectSettings(stored: StoredProject, settings: Short
       narration_enabled: settings.narrationEnabled,
       subtitles_enabled: settings.subtitlesEnabled,
       scene_image_continuity_enabled: settings.sceneImageContinuityEnabled,
+      // Written when a save carries one; a save without one keeps whatever mark was stored (the spread above).
+      ...(settings.preset ? { settings_preset: { id: settings.preset.id, revision: settings.preset.revision } } : {}),
     },
   };
 }
