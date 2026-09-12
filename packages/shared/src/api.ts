@@ -1786,9 +1786,21 @@ export interface RegenerateImageReviewRequest {
   additionalInstruction?: string;
 }
 
-export interface RegenerateImageReviewResponse {
-  project: Project;
-  reviews: ImageReview[];
+/**
+ * The review as it stands after the redraw — everything GET returns, from the same server computation.
+ *
+ * 🔴 It carried no `staleness`, so the screen guessed: it took the list it had and removed the redrawn scene.
+ * That guess can only switch a badge off. A redraw can also put a *different* scene behind — in a chained
+ * project scene N+1 was drawn from scene N's picture, and its recorded reference no longer matches once scene N
+ * is redrawn — and the screen could never say so (Cowork Round 797). The Episode side has had this shape
+ * (RegenerateLongEpisodeImageReviewResponse extends its GET) all along.
+ *
+ * `staleness` is absent only when it could not be computed after the picture was saved: the picture was paid
+ * for and is kept, and the response must not fail over a read done on the side. Read GET again in that case.
+ * `budget` follows GET's rule (connected credential only) and is also left out when the ledger could not be
+ * read after the call — see `retryEstimate`.
+ */
+export interface RegenerateImageReviewResponse extends GetImageReviewResponse {
   sceneNumber: SceneNumber;
   /** Same meaning as GenerationProgressResponse.retryEstimate (see that field's doc comment) — the cost of this one regeneration, and the budget headroom at the time of the response. Absent in the local fake execution mode. */
   retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview };

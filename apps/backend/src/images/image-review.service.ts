@@ -433,6 +433,16 @@ export class ImageReviewService {
       await atomicWriteUtf8File(this.reviewFile(project.project_id), JSON.stringify(reviews, null, 2));
       await this.projects.save(updated);
     } catch { throw imageReviewStorageError(); }
-    return { project: toApiProject(updated), reviews: toApiReviews(reviews, timestamp, scenesFor(updated), updated.image_generation_records), sceneNumber: number, ...(retryEstimate ? { retryEstimate } : {}) };
+    // Computed from the saved project, the same way GET computes it, so a scene this redraw put behind (the next
+    // one in a chain) is reported rather than guessed away. Swallowed on failure: the picture is already paid
+    // for and on disk, and a read done on the side must not turn that into an error response.
+    const staleness = await computeSceneStaleness(updated, { assets: this.assets, mappings, directory: this.mappings.projectLocation(updated.project_id).directory }).catch(() => undefined);
+    return {
+      project: toApiProject(updated),
+      reviews: toApiReviews(reviews, timestamp, scenesFor(updated), updated.image_generation_records),
+      sceneNumber: number,
+      ...(staleness ? { staleness } : {}),
+      ...(retryEstimate ? { budget: retryEstimate.budget, retryEstimate } : {}),
+    };
   }
 }

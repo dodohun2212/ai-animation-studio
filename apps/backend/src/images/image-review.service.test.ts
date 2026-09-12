@@ -451,6 +451,35 @@ describe("real OpenAI image regeneration", () => {
     expect((await service.getStatus("review")).staleness?.imageStale).not.toContain(3);
   });
 
+  /*
+   * 🔴 The screen used to guess the badges after a redraw — take its list, remove the redrawn scene — because the
+   * response carried none. The guess only switches badges off. In a chain, redrawing scene 2 puts scene 3 behind
+   * (it was drawn from scene 2's old picture), and only the server can say so (Cowork Round 797).
+   */
+  it("answers with the server's own staleness, including the next scene a chained redraw put behind", async () => {
+    const { projects, service } = await setupWithConnectedOpenAiAndConfirmedReference();
+    const project = await projects.findById("review");
+    project.lore_context = { ...project.lore_context, scene_image_continuity_enabled: true };
+    project.image_generation_records = [1, 2, 3, 4, 5, 6].map((number) => ({ scene_number: number, prompt: `Scene: an older script for ${number}` }));
+    await projects.save(project);
+    // A second, different picture for the second redraw, so scene 2's file really changes (size, not only mtime).
+    const OTHER_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }))
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: OTHER_PNG_BASE64 }] })));
+
+    const first = await service.regenerate("review", "3", { approved: true });
+    expect(first.staleness?.imageStale).not.toContain(3);
+    expect(first.staleness?.referenceStale).not.toContain(3);
+
+    const second = await service.regenerate("review", "2", { approved: true });
+
+    expect(second.staleness?.referenceStale, "scene 3 was drawn from scene 2's old picture").toContain(3);
+    const status = await service.getStatus("review");
+    expect(second.staleness).toEqual(status.staleness);
+    expect(second.budget).toEqual(status.budget);
+  });
+
   it("records the prompt it sent, less the one-off instruction", async () => {
     const { projectsRoot, service } = await setupWithConnectedOpenAiAndConfirmedReference();
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
@@ -483,6 +512,9 @@ describe("real OpenAI image regeneration", () => {
     const { service } = await setup();
     const result = await service.regenerate("review", "2", { approved: true });
     expect(result.retryEstimate).toBeUndefined();
+    // GET's rules: no budget without a connected credential, and staleness regardless.
+    expect(result.budget).toBeUndefined();
+    expect(result.staleness).toEqual((await service.getStatus("review")).staleness);
   });
 
   it("never calls fetch and keeps the local fake adapter when no OpenAI credential is configured", async () => {
