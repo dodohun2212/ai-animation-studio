@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS } from "@ai-animation-studio/shared";
 
 import { jsonResponse, makeProject, withStatus } from "../api/testUtils.js";
-import { CreateFlowerReelForm } from "./CreateFlowerReelForm.js";
+import { CreateFlowerReelForm, FLOWER_PRESET_REVISION, presetSettings } from "./CreateFlowerReelForm.js";
 
 const project = makeProject({ id: "꽃말_장미" });
 
@@ -223,5 +223,42 @@ describe("CreateFlowerReelForm", () => {
     expect((screen.getByTestId("flower-submit") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByTestId("flower-submit"));
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 🔴 판 번호 방식이 실패하는 길은 하나뿐입니다 — 글을 고치고 번호 올리기를 잊는 것. 그러면 모든 화면이
+ * 캡틴D 에게 「최신 서식입니다」라고 **자신 있게 틀린 말**을 합니다. 번호가 아예 없는 것보다 나쁩니다.
+ *
+ * 그래서 번호를 기억에 맡기지 않습니다. 스냅숏 이름에 판 번호를 넣어 두면:
+ *   글을 고치고 번호는 그대로  → `revision-N` 스냅숏과 어긋나 **빨강**
+ *   번호를 올림                → `revision-N+1` 이라는 새 이름이라 새로 기록되고 초록
+ *   옛 판의 스냅숏             → 그대로 남습니다. 판 1 로 저장된 프로젝트가 아직 디스크에 있고,
+ *                                그게 어떤 글이었는지는 이 파일이 유일한 기록입니다.
+ *
+ * 즉 **번호를 올리는 것이 초록으로 가는 유일한 길**입니다. 그게 이 짝의 전부입니다.
+ */
+describe("flower preset revision", () => {
+  /* 고정 입력. 꽃 이름과 꽃말이 문장 안에 섞여 들어가므로, 입력이 흔들리면 글이 안 바뀌어도 빨개집니다. */
+  const SAMPLE = () => presetSettings("장미", "사랑", "");
+
+  it("still writes the text this revision was recorded with", () => {
+    expect(FLOWER_PRESET_REVISION).toBeGreaterThan(0);
+    expect(Number.isInteger(FLOWER_PRESET_REVISION)).toBe(true);
+
+    /* 🔴 빨개졌다면 글을 고치고 번호를 안 올린 것입니다.
+       FLOWER_PRESET_REVISION 을 올리면 새 이름으로 기록되고 초록이 됩니다.
+       `-u` 로 이 스냅숏을 덮어쓰지 마십시오 — 그러면 판 1 로 저장된 프로젝트가 화면에서 「최신」이 됩니다. */
+    expect(SAMPLE()).toMatchSnapshot(`flower-preset-revision-${FLOWER_PRESET_REVISION}`);
+  });
+
+  it("stamps the settings it saves with that same preset and revision", () => {
+    expect(SAMPLE().preset).toEqual({ id: "flower_meaning", revision: FLOWER_PRESET_REVISION });
+  });
+
+  /* 프리셋이 쓰는 글이 실제로 이 판의 것인지 — 두보 말투(787)가 판 2 의 내용입니다. 스냅숏이 무엇을 지키고
+     있는지 사람이 읽을 수 있게, 한 가지만 이름으로 확인합니다. 스냅숏을 대신하지는 않습니다. */
+  it("carries the revision's headline change", () => {
+    expect(SAMPLE().additionalNotes).toContain("두보");
   });
 });

@@ -56,13 +56,40 @@ describe("storyPromptApi", () => {
     expect(displayed("STORY_GENERATION_NOT_ALLOWED").message).toContain("보내지 않았습니다");
     expect(displayed("STORY_BUDGET_EXCEEDED").message).toContain("보내지 않았습니다");
 
-    // 보낸 뒤 — 이미 만들어진 것이 있을 수 있으니 확인부터 시킵니다.
+    // 보낸 뒤 — 이미 만들어진 것이 있을 수 있으니 확인부터 시킵니다. 칸이 없는 옛 응답의 기본값이기도 합니다.
     expect(displayed("STORY_PROMPT_STORAGE_ERROR").message).toContain("확인해 주세요");
     expect(displayed("STORY_PROMPT_STORAGE_ERROR").message).not.toContain("보내지 않았습니다");
 
     // 보낸 뒤, 원인 모름 — 청구 가능성을 숨기지 않습니다.
     expect(displayed("STORY_GENERATION_FAILED").message).toContain("청구");
     expect(displayed("STORY_GENERATION_FAILED").message).not.toContain("보내지 않았습니다");
+  });
+
+  /**
+   * 🔴 저장 실패는 **네 곳**에서 납니다 — 템플릿 읽기 · 시작 상태 저장 · 재생성 초기화 · 완성 대본 저장.
+   * 앞의 셋은 유료 호출 전입니다(CLI Round 788). 한 문장으로 묶으면 **넷 중 셋에서 거짓**이 됩니다.
+   *
+   * 방향이 중요합니다: 안 나간 것을 「나갔을 수 있다」고 하는 쪽은 잠깐의 의심이고, 나간 것을 「안 나갔다」고
+   * 하는 쪽은 사람이 아무 확인 없이 다시 눌러 두 번 결제하게 만듭니다. 그래서 모르면 조심 쪽입니다.
+   */
+  it("tells someone they can simply press again when the request never went out", () => {
+    const notSent = displayed("STORY_PROMPT_STORAGE_ERROR", { requestSent: false }).message;
+    expect(notSent).toContain("보내지 않았으니");
+    expect(notSent).toContain("다시 누르셔도 됩니다");
+    // 안 나간 요청에 대해 「만들어져 있을 수 있다」고 하지 않습니다 — 확인할 것이 없습니다.
+    expect(notSent).not.toContain("확인해 주세요");
+  });
+
+  it("keeps the cautious sentence when the request did go out, or when the server did not say", () => {
+    const sent = displayed("STORY_PROMPT_STORAGE_ERROR", { requestSent: true }).message;
+    expect(sent).toContain("확인해 주세요");
+    expect(sent).not.toContain("다시 누르셔도 됩니다");
+
+    // 🔴 모르는 값은 전부 조심 쪽으로. 옛 서버(칸 없음) · 문자열 "false" · null 이 전부 여기입니다.
+    for (const details of [undefined, {}, { requestSent: "false" }, { requestSent: null }, { requestSent: 0 }]) {
+      const guessed = displayed("STORY_PROMPT_STORAGE_ERROR", details as Record<string, unknown>).message;
+      expect(guessed, JSON.stringify(details)).toBe(sent);
+    }
   });
 
   it("picks the provider sentence by category and falls back rather than echoing the server", () => {

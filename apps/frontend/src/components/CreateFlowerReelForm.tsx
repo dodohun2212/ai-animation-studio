@@ -6,6 +6,7 @@ import {
   type AspectRatio,
   type Project,
   type RunwayClipDurationSeconds,
+  type SettingsPreset,
   type ShortProjectSettingsInput,
 } from "@ai-animation-studio/shared";
 
@@ -43,6 +44,24 @@ const FLOWER_ASPECT_RATIO: AspectRatio = "9:16";
 const FLOWER_TOTAL_SECONDS = FLOWER_SCENE_COUNT * FLOWER_CLIP_DURATION_SECONDS;
 
 /**
+ * The revision of the text this preset writes. **Raise it whenever any string in `presetSettings` changes.**
+ *
+ * 🔴 It exists because a preset change does not reach a project that already exists. Settings are computed once,
+ * at creation, and stored; the script screen then sends that stored copy. 캡틴D 고쳤는데 왜 안 바뀌지 를 세 번
+ * 겪었고, 그 중 두 번은 $0.05 가 헛되이 나갔습니다 — 화면이 「지금 보내려는 건 예전 서식입니다」를 말하지
+ * 않았기 때문입니다. 저장본에 판이 찍히면 화면이 그걸 말할 수 있습니다.
+ *
+ * 🔴 The one way a revision scheme fails is that somebody edits the text and forgets to raise the number, and
+ * then every screen confidently says "up to date" about a stale project. `CreateFlowerReelForm.test.tsx` holds a
+ * snapshot of this preset's output against this number: change the text without changing the number and it goes
+ * red, naming this constant. That pair is the whole reason the number can be trusted.
+ *
+ * 2 — 두보 말투(787). 1 은 그 이전 전부.
+ */
+export const FLOWER_PRESET_REVISION = 2;
+const FLOWER_PRESET: SettingsPreset = { id: "flower_meaning", revision: FLOWER_PRESET_REVISION };
+
+/**
  * 🔴 Every scene needs seventeen fields — visual_action, shot_size, camera_angle and the rest — and those are
  * what the image and video prompts actually read. Nobody types seventeen fields per scene, and an earlier
  * version of this screen tried to skip them: it wrote two fields by hand and the image prompt came out empty,
@@ -51,7 +70,7 @@ const FLOWER_TOTAL_SECONDS = FLOWER_SCENE_COUNT * FLOWER_CLIP_DURATION_SECONDS;
  * Story generation is the one thing that fills all seventeen correctly. So this form does not write a script —
  * it writes the *brief* the script is generated from, and hands the project to the ordinary pipeline.
  */
-function presetSettings(
+export function presetSettings(
   flower: string,
   meaning: string,
   originHint: string,
@@ -215,6 +234,9 @@ function presetSettings(
     // flower reel is the opposite — one flower, one patch of ground, one light, a single forward movement. The
     // brief above already asks for 「장면이 넘어가도 같은 자리의 땅」; this is what lets the pictures obey it.
     sceneImageContinuityEnabled: true,
+    /* Which preset wrote these strings, and which revision of it. Read by the script screen so it can say that a
+       project was made with an older text — the thing nobody said while the same script came back three times. */
+    preset: FLOWER_PRESET,
   };
 }
 

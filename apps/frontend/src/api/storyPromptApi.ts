@@ -59,6 +59,10 @@ const SAFE_ERRORS: Record<string, string> = {
    */
   STORY_GENERATION_NOT_ALLOWED:
     "지금은 이 프로젝트에서 대본을 만들 수 있는 단계가 아닙니다. OpenAI로 요청을 보내지 않았습니다. 이미 대본이 있다면 장면 편집에서 고치시면 됩니다.",
+  /* 🔴 넷 중 셋에서 틀렸던 문장입니다. `STORY_PROMPT_STORAGE_ERROR` 는 템플릿 읽기 · 생성 시작 상태 저장 ·
+     재생성 초기화 · 완성 대본 저장 네 곳에서 나는데, 앞의 셋은 **유료 호출 전**입니다(CLI Round 788). 그래서
+     이 고정 문장은 「조심하라」 쪽으로 틀리는 기본값일 뿐이고, 진짜 답은 아래 `storageErrorMessage` 가
+     `details.requestSent` 를 읽어서 고릅니다. 칸이 없는 옛 서버 응답이 여기로 떨어집니다. */
   STORY_PROMPT_STORAGE_ERROR:
     "대본을 저장하지 못했습니다. 요청은 이미 보낸 뒤라 대본이 만들어져 있을 수 있으니, 다시 만들기 전에 대본 화면을 한 번 확인해 주세요.",
   STORY_GENERATION_FAILED:
@@ -85,8 +89,25 @@ const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답�
 const UNKNOWN = { code: "CLIENT_UNKNOWN_ERROR", message: "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요." };
 
 /** Never surfaces the backend's raw message text — only a fixed, safe message per code (or per known category). */
+/**
+ * 저장 실패가 **요청을 보내기 전**이었는지 뒤였는지로 갈립니다 — 다시 누르는 값이 다르기 때문입니다.
+ *
+ * 🔴 `false` 일 때 「다시 누르셔도 됩니다」라고 말할 수 있는 것이 이 칸의 값어치입니다. 그 말이 없으면 사람은
+ * 돈이 나갔는지 모른 채 확인하러 가고, 확인할 곳이 없습니다. 🟠 없거나 boolean 이 아니면 **조심 쪽**(오늘의
+ * 고정 문장)으로 갑니다 — 안 나간 것을 나갔다고 하는 쪽이, 나간 것을 안 나갔다고 하는 쪽보다 쌉니다.
+ */
+function storageErrorMessage(details: Record<string, unknown> | undefined): string {
+  if (details?.requestSent === false) {
+    return "대본을 저장하지 못했습니다. OpenAI로 요청을 보내지 않았으니 비용은 들지 않았고, 다시 누르셔도 됩니다.";
+  }
+  return SAFE_ERRORS.STORY_PROMPT_STORAGE_ERROR!;
+}
+
 export function toStoryDisplayError(error: unknown): { code: string; message: string; details?: Record<string, unknown> } {
   if (!(error instanceof StoryPromptApiError)) return UNKNOWN;
+  if (error.code === "STORY_PROMPT_STORAGE_ERROR") {
+    return { code: error.code, message: storageErrorMessage(error.details) };
+  }
   if (error.code === "STORY_PROVIDER_ERROR") {
     const category = error.details && typeof error.details.category === "string" ? error.details.category : undefined;
     const message = (category && PROVIDER_ERROR_CATEGORY_MESSAGES[category]) ?? SAFE_ERRORS.STORY_PROVIDER_ERROR!;
