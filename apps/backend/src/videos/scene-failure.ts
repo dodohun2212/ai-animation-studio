@@ -35,9 +35,13 @@ const NEVER_SENT = new Set(["budget_exceeded", "budget_ledger_unreadable"]);
  */
 const NO_REMEDY = new Set(["submit_interrupted", ...NEVER_SENT]);
 
-export function sceneFailureFor(category: string, failureCode?: string): SceneFailure {
-  if (failureCode) return { category, providerCode: failureCode, ...runwayFailureOutcome(failureCode) };
-  return { category, ...(NO_REMEDY.has(category) ? {} : { remedy: "retry" as const }), billedOnFailure: !NEVER_SENT.has(category) };
+export function sceneFailureFor(category: string, failureCode?: string, billedCredits?: number): SceneFailure {
+  const guessed: SceneFailure = failureCode
+    ? { category, providerCode: failureCode, ...runwayFailureOutcome(failureCode) }
+    : { category, ...(NO_REMEDY.has(category) ? {} : { remedy: "retry" as const }), billedOnFailure: !NEVER_SENT.has(category) };
+  // The provider's own number, when it gave one, replaces the rule's guess — both ways: a refunded failure reads as
+  // not billed, and a failure the table calls free but the provider charged for reads as billed.
+  return billedCredits === undefined ? guessed : { ...guessed, billedOnFailure: billedCredits > 0, billedCredits };
 }
 
 /**

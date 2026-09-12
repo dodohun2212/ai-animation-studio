@@ -193,7 +193,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     const failedRecords = records.filter((record) => record.status === "failed");
     const failedSceneNumbers = failedRecords.map((record) => record.scene_number);
     const sceneErrors = Object.fromEntries(failedRecords.filter((record) => record.error).map((record) => [record.scene_number, record.error!]));
-    const sceneFailures = Object.fromEntries(failedRecords.filter((record) => record.error).map((record) => [record.scene_number, sceneFailureFor(record.error!, typeof record.failure_code === "string" ? record.failure_code : undefined)]));
+    const sceneFailures = Object.fromEntries(failedRecords.filter((record) => record.error).map((record) => [record.scene_number, sceneFailureFor(record.error!, typeof record.failure_code === "string" ? record.failure_code : undefined, typeof record.billed_credits === "number" ? record.billed_credits : undefined)]));
     // "submitting" (claimed, POST not yet resolved) reads to the user exactly like "running" — there is nothing
     // for them to act on differently while either is in flight.
     const current = records.find((record) => record.status === "running" || record.status === "submitting")?.scene_number;
@@ -397,7 +397,9 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       return updated;
     }
     if (result.kind === "failed") {
-      const updated = this.replaceRecords(project, [{ ...record, status: "failed", error: result.error, ...(result.failureCode ? { failure_code: result.failureCode } : {}) }]);
+      // This failure's code and charge, not an earlier attempt's: a retry that failed differently must not keep the
+      // first failure's code (it decides the remedy) or its charge.
+      const updated = this.replaceRecords(project, [{ ...record, status: "failed", error: result.error, failure_code: result.failureCode, billed_credits: result.costCredits }]);
       if (result.spendUnrecorded) updated.warnings = withWarning(updated.warnings, runwaySpendUnrecordedWarning(result.sceneNumber));
       updated.updated_at = nowIso;
       await this.projects.save(updated);
@@ -628,7 +630,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     try { for (const scene of selected) await this.archive(project.project_id, scene); } catch { throw videoStorageError(); }
     const reset = records.filter((record) => selected.includes(record.scene_number)).map((record) => ({
       ...record, status: "created" as const,
-      runway_task_id: undefined, runway_submitted_at: undefined, runway_last_checked_at: undefined, runway_claimed_at: undefined, error: undefined,
+      runway_task_id: undefined, runway_submitted_at: undefined, runway_last_checked_at: undefined, runway_claimed_at: undefined, error: undefined, failure_code: undefined, billed_credits: undefined,
       additional_instruction: trimmedInstruction,
     }));
     const updated = this.replaceRecords(project, reset); updated.workflow_state = WorkflowState.GeneratingVideos; updated.updated_at = new Date().toISOString();

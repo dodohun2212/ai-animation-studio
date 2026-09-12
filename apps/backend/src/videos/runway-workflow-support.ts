@@ -83,7 +83,10 @@ export type RunwayAdvanceResult =
        * judgement and has no code to give. Absent means "we decided this failed", which is a different fact
        * from "they told us why".
        */
-      failureCode?: string; spendUnrecorded?: true };
+      failureCode?: string;
+      /** The provider's final charge for this failed task, when it said (`cost.credits`). */
+      costCredits?: number;
+      spendUnrecorded?: true };
 
 /**
  * This scene was paid for and the ledger does not know it — the outcome above still stands.
@@ -186,7 +189,7 @@ export async function advanceRunwayScene(
     }
     if (task.status === "FAILED" || task.status === "CANCELLED") {
       const missed = await spendUnrecorded(deps, running.sceneNumber, false);
-      return { kind: "failed", sceneNumber: running.sceneNumber, error: task.failure || task.status, ...(task.failureCode ? { failureCode: task.failureCode } : {}), ...unrecorded(missed) };
+      return { kind: "failed", sceneNumber: running.sceneNumber, error: task.failure || task.status, ...(task.failureCode ? { failureCode: task.failureCode } : {}), ...(task.costCredits !== undefined ? { costCredits: task.costCredits } : {}), ...unrecorded(missed) };
     }
     return { kind: "still-running", sceneNumber: running.sceneNumber };
   }

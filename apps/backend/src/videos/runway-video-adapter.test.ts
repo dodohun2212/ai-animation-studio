@@ -188,6 +188,15 @@ ${SEEDANCE_TEXT_CONSTRAINT}`,
     }
   });
 
+  it("reads a finished task's final charge from cost.credits, and ignores one that is not a real count", async () => {
+    const task = (cost: unknown) => vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1", status: "FAILED", failure: "x", cost }));
+    expect((await getRunwayTask("secret", "task-1", { fetchImpl: task({ credits: 25 }), sleep: noSleep })).costCredits).toBe(25);
+    expect((await getRunwayTask("secret", "task-1", { fetchImpl: task({ credits: 0 }), sleep: noSleep })).costCredits, "refunded").toBe(0);
+    for (const bad of [{ credits: -1 }, { credits: "25" }, { credits: Number.NaN }, null, 7]) {
+      expect((await getRunwayTask("secret", "task-1", { fetchImpl: task(bad), sleep: noSleep })).costCredits, JSON.stringify(bad)).toBeUndefined();
+    }
+  });
+
   it("sends gen4_turbo nothing H3 Max's body carries", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
     await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "gen4_turbo", fetchImpl: fetchMock, sleep: noSleep });

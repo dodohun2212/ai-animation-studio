@@ -37,6 +37,9 @@ const ALLOWED = new Map<string, string>([
   // The mapper's own comment names a consumer for script, motionPrompt and generatedImagePath. It names none
   // for this one, and there is none: screens play a clip through its content URL, never through a path.
   ["generatedVideoPath", "screens play clips by content URL; no screen wants a path"],
+  // A gap, not a decision: the server now sends what Runway charged for a failed attempt (`cost.credits`); the video
+  // screens still say only 「청구됨」 from billedOnFailure. The test below turns red the day a screen reads it.
+  ["billedCredits", "gap: the video failure cards do not name the provider's own charge yet (CLI Round 781)"],
   // (`minimumChargeUsd` · `perGenerationUsd` stood here as a named gap for exactly one round. `videoModelPriceLine`
   //  reads both now — 「+ 장면당 $0.01」 and 「짧아도 최소 $0.64」 — so the third test below demanded these two
   //  lines back. That is the device working as built: an exception that outlives its reason fails instead of

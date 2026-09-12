@@ -53,7 +53,7 @@ afterEach(async () => {
 /** What the mock "downloads". Distinct from the local placeholder so a test can tell which one was written. */
 const RUNWAY_BODY = Buffer.concat([Buffer.from("000000186674797069736F6D", "hex"), Buffer.from("real runway output bytes for this scene")]);
 
-function runwayFetchMock(options: { failTaskId?: string } = {}) {
+function runwayFetchMock(options: { failTaskId?: string; failBodies?: Record<string, Record<string, unknown>> } = {}) {
   const checkCounts = new Map<string, number>();
   let nextTaskId = 1;
   return vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
@@ -66,6 +66,8 @@ function runwayFetchMock(options: { failTaskId?: string } = {}) {
     if (url.includes("/v1/tasks/")) {
       const taskId = url.split("/v1/tasks/")[1]!;
       if (taskId === options.failTaskId) return { ok: true, status: 200, json: async () => ({ id: taskId, status: "FAILED", failure: "content policy violation" }), headers: { get: () => null } } as unknown as Response;
+      const failBody = options.failBodies?.[taskId];
+      if (failBody) return { ok: true, status: 200, json: async () => ({ id: taskId, status: "FAILED", ...failBody }), headers: { get: () => null } } as unknown as Response;
       const count = (checkCounts.get(taskId) ?? 0) + 1; checkCounts.set(taskId, count);
       if (count === 1) return { ok: true, status: 200, json: async () => ({ id: taskId, status: "RUNNING" }), headers: { get: () => null } } as unknown as Response;
       return { ok: true, status: 200, json: async () => ({ id: taskId, status: "SUCCEEDED", output: [`https://cdn.runway/${taskId}.mp4`] }), headers: { get: () => null } } as unknown as Response;
@@ -221,6 +223,20 @@ describe("real Runway episode video generation", () => {
 
     expect(fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/v1/image_to_video"))).toHaveLength(0);
     expect(progress).toMatchObject({ failedSceneNumbers: [], currentSceneNumber: 1 });
+  });
+
+  it("says whether a failed Episode attempt was billed from Runway's own charge", async () => {
+    const deps = await setupWithConnectedRunway();
+    const videos = newVideos(deps);
+    vi.stubGlobal("fetch", runwayFetchMock({ failBodies: { "task-1": { failure: "Refused.", failureCode: "SAFETY.INPUT.IMAGE", cost: { credits: 0 } } } }));
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    const progress = await videos.progress("long", 1, started.jobId);
+    expect(progress.sceneFailures?.[1]).toMatchObject({ providerCode: "SAFETY.INPUT.IMAGE", billedOnFailure: false, billedCredits: 0 });
   });
 
   it("submits every scene with duration: 10 for a 60-second Episode, not the 5-second default", async () => {

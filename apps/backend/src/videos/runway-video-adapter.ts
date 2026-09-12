@@ -207,6 +207,8 @@ export interface RunwayTask {
    * reasoned about; a sentence with a code inside it cannot.
    */
   failureCode: string;
+  /** The provider's own final charge for a finished task, in credits (`cost.credits`) — 0 when fully refunded. */
+  costCredits?: number;
   progress: number | null;
   terminal: boolean;
 }
@@ -372,7 +374,11 @@ export async function getRunwayTask(apiSecret: string, taskId: string, options: 
     ? (failureMessage ? `${failureMessage} (Runway code: ${failureCode})` : `Runway code: ${failureCode}`)
     : failureMessage;
   const progress = typeof body.progress === "number" ? body.progress : null;
-  return { taskId, status, outputUrls, failure, failureCode, progress, terminal: TERMINAL_STATUSES.has(status) };
+  // Runway's terminal tasks (SUCCEEDED, FAILED, CANCELLED) carry `cost.credits`, the final charge. Taken only when
+  // it is a real non-negative number: a wrong "you were not charged" is money (scene-failure.ts).
+  const cost = isObject(body.cost) ? body.cost.credits : undefined;
+  const costCredits = typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? cost : undefined;
+  return { taskId, status, outputUrls, failure, failureCode, ...(costCredits !== undefined ? { costCredits } : {}), progress, terminal: TERMINAL_STATUSES.has(status) };
 }
 
 /** Download an ephemeral Runway output URL. This is a signed URL — it needs no Runway auth header. */

@@ -55,7 +55,7 @@ function newWorkflow(deps: Awaited<ReturnType<typeof setupWithConnectedRunway>>)
 }
 
 /** Routes fetch calls by URL: POST submit -> a fresh task id; GET task -> RUNNING on the 1st check, SUCCEEDED after; GET output URL -> fixed bytes. */
-function runwayFetchMock(options: { failTaskId?: string; neverSucceedTaskId?: string } = {}) {
+function runwayFetchMock(options: { failTaskId?: string; neverSucceedTaskId?: string; failBodies?: Record<string, Record<string, unknown>> } = {}) {
   const checkCounts = new Map<string, number>();
   let nextTaskId = 1;
   return vi.fn(async (url: string, init?: RequestInit) => {
@@ -68,6 +68,8 @@ function runwayFetchMock(options: { failTaskId?: string; neverSucceedTaskId?: st
       if (taskId === options.failTaskId) {
         return { ok: true, status: 200, json: async () => ({ id: taskId, status: "FAILED", failure: "content policy violation" }), headers: { get: () => null } } as unknown as Response;
       }
+      const failBody = options.failBodies?.[taskId];
+      if (failBody) return { ok: true, status: 200, json: async () => ({ id: taskId, status: "FAILED", ...failBody }), headers: { get: () => null } } as unknown as Response;
       const count = (checkCounts.get(taskId) ?? 0) + 1; checkCounts.set(taskId, count);
       if (taskId === options.neverSucceedTaskId || count === 1) {
         return { ok: true, status: 200, json: async () => ({ id: taskId, status: "RUNNING" }), headers: { get: () => null } } as unknown as Response;
@@ -315,6 +317,33 @@ describe("real Runway video workflow", () => {
     expect(regenerated.status).toBe("running");
     const project = await deps.projects.findById("video_workflow");
     expect(project.workflow_state).toBe(WorkflowState.GeneratingVideos);
+  });
+
+  /*
+   * The card's 「청구됨」 from Runway's own number, not the code table's guess — and from this attempt's, not an
+   * earlier one's. A retry that fails differently must drop the first failure's code (it decides the remedy) and
+   * its charge; both were kept before, because the failed record was written over the old one field by field.
+   */
+  it("says whether a failed attempt was billed from Runway's own charge, and forgets the previous attempt's code and charge", async () => {
+    const deps = await setupWithConnectedRunway();
+    const workflow = newWorkflow(deps);
+    vi.stubGlobal("fetch", runwayFetchMock({ failBodies: {
+      "task-1": { failure: "An unexpected error occurred.", failureCode: "INTERNAL.BAD_OUTPUT.CODE01", cost: { credits: 0 } },
+      "task-2": { failure: "Something else went wrong.", cost: { credits: 25 } },
+    } }));
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+
+    await workflow.run("video_workflow", deps.accepted.jobId);
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    let progress = await workflow.getProgress("video_workflow", deps.accepted.jobId);
+    expect(progress.sceneFailures?.[1]).toMatchObject({ providerCode: "INTERNAL.BAD_OUTPUT.CODE01", billedOnFailure: false, billedCredits: 0 });
+
+    await workflow.regenerate("video_workflow", deps.accepted.jobId, [1], "no lettering in the final beat");
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    progress = await workflow.getProgress("video_workflow", deps.accepted.jobId);
+    expect(progress.sceneFailures?.[1]).toMatchObject({ billedOnFailure: true, billedCredits: 25 });
+    expect(progress.sceneFailures?.[1], "the first failure's code is not this one's").not.toHaveProperty("providerCode");
   });
 
   it("buys only the failed scene when a retry follows three that already succeeded", async () => {

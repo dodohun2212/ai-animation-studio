@@ -47,6 +47,8 @@ type Episode = ObjectMap & { number: number; state: LongEpisodeStatus; approved:
 type VideoRecord = { scene_number: SceneNumber; job_id: string; user_request_id: string; confirmation_id: string; input_hash: string; prompt: string; base_prompt?: string; status: "created" | "submitting" | "running" | "succeeded" | "interrupted" | "failed"; execution_mode: "local_fake_no_provider" | "runway"; completed_at?: string; runway_task_id?: string;
   /** Set only while status is "submitting" — see claimSceneForSubmission. */
   runway_claimed_at?: string; runway_submitted_at?: string; runway_last_checked_at?: string; error?: string; failure_code?: string;
+  /** The provider's final charge for this failed attempt, in credits, when it said (`cost.credits`). */
+  billed_credits?: number;
   /** The model the job was confirmed under. Absent on records written before a second model existed — those were all sent to the default (recordedVideoModel). */
   model?: VideoModel };
 type Record = VideoRecord;
@@ -188,7 +190,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
   // between them used to answer "succeeded" while a review was still refused. Both screens open their
   // review on exactly this word, so it has to mean the thing they use it for. Still finishing reads as
   // running, which is what it is.
-  private async progressFor(episode: Episode, job: string, records: VideoRecord[]): Promise<LongEpisodeVideoProgress> { const model = recordedVideoModel(records[0]?.model); const done = records.filter((item) => item.status === "succeeded").map((item) => item.scene_number); const failedRecords = records.filter((item) => item.status === "failed"); const failed = failedRecords.map((item) => item.scene_number); const sceneErrors = Object.fromEntries(failedRecords.filter((item) => item.error).map((item) => [item.scene_number, item.error!])); const sceneFailures = Object.fromEntries(failedRecords.filter((item) => item.error).map((item) => [item.scene_number, sceneFailureFor(item.error!, item.failure_code)])); const running = records.find((item) => item.status === "running" || item.status === "submitting")?.scene_number; const perSceneCostUsd = videoSceneEstimatedCostUsd(this.durationSecondsPerScene(episode), model); const budget = records[0]?.execution_mode === "runway" ? await this.budgetPreview(perSceneCostUsd) : undefined; return { paidProvider: records[0]?.execution_mode === "runway", jobId: job, status: episode.state === "interrupted" ? "interrupted" : failed.length > 0 ? "failed" : done.length === records.length && episode.state !== "videos_generating" ? "succeeded" : running || done.length === records.length ? "running" : "created", ...(running ? { currentSceneNumber: running } : {}), completedSceneNumbers: done, failedSceneNumbers: failed, sceneNumbers: records.map((item) => item.scene_number), episode: this.detail(episode), ...(Object.keys(sceneErrors).length > 0 ? { sceneErrors } : {}), ...(Object.keys(sceneFailures).length > 0 ? { sceneFailures } : {}), ...(budget ? { retryEstimate: { perSceneCostUsd, budget, pendingSceneCount: records.filter((item) => item.status !== "succeeded").length } } : {}) }; }
+  private async progressFor(episode: Episode, job: string, records: VideoRecord[]): Promise<LongEpisodeVideoProgress> { const model = recordedVideoModel(records[0]?.model); const done = records.filter((item) => item.status === "succeeded").map((item) => item.scene_number); const failedRecords = records.filter((item) => item.status === "failed"); const failed = failedRecords.map((item) => item.scene_number); const sceneErrors = Object.fromEntries(failedRecords.filter((item) => item.error).map((item) => [item.scene_number, item.error!])); const sceneFailures = Object.fromEntries(failedRecords.filter((item) => item.error).map((item) => [item.scene_number, sceneFailureFor(item.error!, item.failure_code, item.billed_credits)])); const running = records.find((item) => item.status === "running" || item.status === "submitting")?.scene_number; const perSceneCostUsd = videoSceneEstimatedCostUsd(this.durationSecondsPerScene(episode), model); const budget = records[0]?.execution_mode === "runway" ? await this.budgetPreview(perSceneCostUsd) : undefined; return { paidProvider: records[0]?.execution_mode === "runway", jobId: job, status: episode.state === "interrupted" ? "interrupted" : failed.length > 0 ? "failed" : done.length === records.length && episode.state !== "videos_generating" ? "succeeded" : running || done.length === records.length ? "running" : "created", ...(running ? { currentSceneNumber: running } : {}), completedSceneNumbers: done, failedSceneNumbers: failed, sceneNumbers: records.map((item) => item.scene_number), episode: this.detail(episode), ...(Object.keys(sceneErrors).length > 0 ? { sceneErrors } : {}), ...(Object.keys(sceneFailures).length > 0 ? { sceneFailures } : {}), ...(budget ? { retryEstimate: { perSceneCostUsd, budget, pendingSceneCount: records.filter((item) => item.status !== "succeeded").length } } : {}) }; }
   /**
    * Writes one scene's video. `bytes` is what Runway sent; the placeholder is only for the local fake path.
    *
@@ -323,7 +325,10 @@ export class EpisodeVideosService implements OnModuleDestroy {
       return records;
     }
     if (result.kind === "failed") {
-      record.status = "failed"; record.error = result.error; if (result.failureCode) record.failure_code = result.failureCode;
+      // This failure's code and charge, not an earlier attempt's (see the short pipeline's twin).
+      record.status = "failed"; record.error = result.error;
+      if (result.failureCode) record.failure_code = result.failureCode; else delete record.failure_code;
+      if (result.costCredits !== undefined) record.billed_credits = result.costCredits; else delete record.billed_credits;
       await this.saveRecords(id, number, records);
       await this.noteUnrecordedSpend(id, number, result);
       this.clearTimer(jobKey);
@@ -726,7 +731,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
       if (additionalInstruction) { const base = record.base_prompt ?? record.prompt; record.base_prompt = base; record.prompt = `${base}
 ${additionalInstruction}`; }
       record.status = "created";
-      delete record.completed_at; delete record.runway_task_id; delete record.runway_submitted_at; delete record.runway_last_checked_at; delete record.error;
+      delete record.completed_at; delete record.runway_task_id; delete record.runway_submitted_at; delete record.runway_last_checked_at; delete record.error; delete record.failure_code; delete record.billed_credits;
     }
     await this.saveRecords(id, number, records);
     const reviews = (await this.loadReviews(id, number, true)).filter((item) => !selection.includes(item.scene_number));

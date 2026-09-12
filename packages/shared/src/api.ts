@@ -802,6 +802,13 @@ export interface SceneFailure {
    */
   remedy?: SceneFailureRemedy;
   billedOnFailure: boolean;
+  /**
+   * What the provider says this attempt cost, in its own credits (Runway: 1 credit = $0.01) — read from the
+   * finished task's `cost.credits`, which a failed or cancelled task carries too ("Fully refunded tasks report 0").
+   * When present, `billedOnFailure` is this number's answer rather than the rule's guess. Absent for a failure the
+   * provider never priced (a timeout, a refusal before sending) and for records from before it was read.
+   */
+  billedCredits?: number;
 }
 
 /**

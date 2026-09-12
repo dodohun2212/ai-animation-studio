@@ -74,6 +74,17 @@ describe("what a screen is told about a failed scene", () => {
    * it twice — and it was printed under "it may already have been accepted". None of the three remedies is true
    * there, nor for the two pre-send refusals (raise the limit, fix the ledger), so those carry none.
    */
+  /*
+   * The provider's own number beats the rule's guess, both ways. Runway reports a finished task's final charge in
+   * `cost.credits` — failed and cancelled tasks too, "fully refunded tasks report 0".
+   */
+  it("takes whether a failure was billed from the provider's own charge when it gave one", () => {
+    expect(sceneFailureFor("content policy violation", "SAFETY.INPUT.IMAGE", 0)).toMatchObject({ billedOnFailure: false, billedCredits: 0 });
+    expect(sceneFailureFor("timeout", undefined, 25)).toMatchObject({ billedOnFailure: true, billedCredits: 25 });
+    expect(sceneFailureFor("budget_exceeded", undefined, 3), "a charge the rule would have called free still reads as billed").toMatchObject({ billedOnFailure: true, billedCredits: 3 });
+    expect(sceneFailureFor("timeout"), "without a number, the rule stands").not.toHaveProperty("billedCredits");
+  });
+
   it("carries no remedy where none of the three sentences is true, and still says whether it was billed", () => {
     expect(sceneFailureFor("submit_interrupted")).toEqual({ category: "submit_interrupted", billedOnFailure: true });
     expect(sceneFailureFor("budget_exceeded")).not.toHaveProperty("remedy");
