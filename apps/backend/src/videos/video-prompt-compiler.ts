@@ -31,13 +31,19 @@ import { videoPreviewDataInvalid } from "./video-preview-api.error.js";
 
 /** The grammar each model reads. Exhaustive over `VideoModel` by type, so a new model does not compile until
  * someone has said which grammar it speaks — a stronger guarantee than a test, and the reason this map is
- * written out rather than derived. */
-export type VideoPromptDialect = "runway_gen4";
+ * written out rather than derived.
+ *
+ * Named for what the grammar is, not whose guide it came from: `first_frame_motion` is motion only, for a model
+ * handed the exact first frame (no restated subject, no negatives). It was `runway_gen4` — the source of the
+ * rules — and with twenty models on it that read as 「MiniMax is being sent Runway's grammar」 (캡틴D, Cowork
+ * Round 801). The sources stay where they belong, in the comments on `compileFirstFrameMotion` and the map
+ * below; a second grammar gets a name for what it does too. */
+export type VideoPromptDialect = "first_frame_motion";
 const DIALECT: Record<VideoModel, VideoPromptDialect> = {
-  gen4_turbo: "runway_gen4",
+  gen4_turbo: "first_frame_motion",
   // Runway's Image to Video Prompting Guide (help.runwayml.com, which covers Gen-4.5) says the same two things
   // this grammar is built on: describe the motion, and do not restate what the image shows.
-  gen4_5: "runway_gen4",
+  gen4_5: "first_frame_motion",
   // 🟠 H3 Max reads the same text for now — a decision on what was found, and not yet a confirmed fit.
   // What MiniMax publishes (read 2026-09-12): a `[command]` camera syntax ([Pan left], [Push in], [Static shot]
   // … 15 in all) that its image-to-video API reference lists for the Hailuo-2.3 / Hailuo-02 / I2V-01-Director
@@ -51,22 +57,22 @@ const DIALECT: Record<VideoModel, VideoPromptDialect> = {
   // The first H3 reel is the check. If its camera does not follow the "Motivated camera" line, H3 gets its own
   // dialect here — and `promptFor` has to recompute against the recorded model first (both pipelines' records
   // now carry it).
-  h3_max_480p: "runway_gen4",
-  h3_max_768p: "runway_gen4",
+  h3_max_480p: "first_frame_motion",
+  h3_max_768p: "first_frame_motion",
   // WAN 3.0 reads the same text on its maker's own guidance: Alibaba's image-to-video guide (Model Studio,
   // read 2026-09-12) gives the formula as "Prompt = Motion + Camera movement", because "the image already defines
   // entity, scene, and style" — which is this grammar exactly: held poses, one action, a motivated camera, the
   // environment's motion, no restated subject. Its camera examples ("camera pushes in", "fixed camera") are the
   // plain cinematography this grammar's camera line already carries. It says nothing about negatives either way.
-  wan3_480p: "runway_gen4",
-  wan3_720p: "runway_gen4",
-  wan3_1080p: "runway_gen4",
+  wan3_480p: "first_frame_motion",
+  wan3_720p: "first_frame_motion",
+  wan3_1080p: "first_frame_motion",
   // HappyHorse (Alibaba): its own API reference (Model Studio, read 2026-09-12) gives no prompt-writing guidance
   // and has no prompt-rewriting switch — the prompt "describes the video content to generate", up to 5,000
   // characters. So there is no maker's grammar to follow and nothing in it that this one contradicts; what it
   // does say — the output keeps the first frame's shape — is the first-frame case this grammar is written for.
-  happyhorse_720p: "runway_gen4",
-  happyhorse_1080p: "runway_gen4",
+  happyhorse_720p: "first_frame_motion",
+  happyhorse_1080p: "first_frame_motion",
   // Seedance (ByteDance): its Seedance 2.0 prompt guide (BytePlus ModelArk, read 2026-09-12) asks for shots
   // described as "who + where + doing what + how the camera moves", says to "specify only 1 type of camera
   // movement in a single shot", and that the model understands standard camera terms ("slow push-in, fixed
@@ -74,23 +80,23 @@ const DIALECT: Record<VideoModel, VideoPromptDialect> = {
   // (`<Subject>@Image 1`) are for reference mode, which this app does not use: the picture is the first frame.
   // Where Seedance does differ — it wants explicit "constraint words" ("Avoid generating subtitles …") — is the
   // request-time line, not this recorded grammar: see the adapter's textRuleFor.
-  seedance2_720p: "runway_gen4",
-  seedance2_1080p: "runway_gen4",
-  seedance2_fast: "runway_gen4",
-  seedance2_mini: "runway_gen4",
-  seedance2_5_480p: "runway_gen4",
-  seedance2_5_720p: "runway_gen4",
-  seedance2_5_1080p: "runway_gen4",
+  seedance2_720p: "first_frame_motion",
+  seedance2_1080p: "first_frame_motion",
+  seedance2_fast: "first_frame_motion",
+  seedance2_mini: "first_frame_motion",
+  seedance2_5_480p: "first_frame_motion",
+  seedance2_5_720p: "first_frame_motion",
+  seedance2_5_1080p: "first_frame_motion",
   // Gemini Omni Flash (Google): its Gemini API guide (ai.google.dev, read 2026-09-12) says to avoid re-describing
   // the input image and to give "specific motion descriptions ... of the camera movement, subject motion, and
   // environmental effects" — this grammar's lines. It also reads plain exclusions ("No dialogue"), so the shared
   // no-text rule is already in its terms.
-  gemini_omni_flash: "runway_gen4",
+  gemini_omni_flash: "first_frame_motion",
   // Grok Imagine 1.5 (xAI): its video docs (docs.x.ai, read 2026-09-12) give the output's shape (the input
   // image's) and the audio default, and no prompt-writing guidance — nothing to follow and nothing this contradicts.
-  grok_imagine_480p: "runway_gen4",
-  grok_imagine_720p: "runway_gen4",
-  grok_imagine_1080p: "runway_gen4",
+  grok_imagine_480p: "first_frame_motion",
+  grok_imagine_720p: "first_frame_motion",
+  grok_imagine_1080p: "first_frame_motion",
 };
 
 /** Which grammar a model reads — exported for the test that holds the staleness recompute's assumption. */
@@ -230,7 +236,7 @@ export function videoPromptDrift(recorded: string, recomputed: string): VideoPro
  * phrasing is not supported and may produce unpredictable or even opposite results." The image side's Avoid
  * pattern does not transfer here; Runway is a different model with the opposite behavior for negatives.
  */
-function compileRunwayGen4({ scene, previous, ratio, clipDurationSeconds }: VideoPromptInput): VideoPromptResult {
+function compileFirstFrameMotion({ scene, previous, ratio, clipDurationSeconds }: VideoPromptInput): VideoPromptResult {
   const orientation = ratio === "1280:720" ? "horizontal" : "vertical";
   const continuity = previous
     ? [previous.end_motion, previous.continuity_hint].filter((value, index, values) => values.indexOf(value) === index).join(" ")
@@ -283,7 +289,7 @@ function compileRunwayGen4({ scene, previous, ratio, clipDurationSeconds }: Vide
  * nothing else in this file moves.
  */
 const COMPILERS: Record<VideoPromptDialect, (input: VideoPromptInput) => VideoPromptResult> = {
-  runway_gen4: compileRunwayGen4,
+  first_frame_motion: compileFirstFrameMotion,
 };
 
 /**
