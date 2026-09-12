@@ -41,7 +41,8 @@ const ALLOWED = new Map<string, string>([
   // screens still say only 「청구됨」 from billedOnFailure. The test below turns red the day a screen reads it.
   // A gap, not a decision: the video preview says which scene's picture each chained clip is asked to end on; the
   // confirmation screen does not show it yet (CLI Round 789).
-  ["lastFrameSceneNumber", "gap: the video confirmation does not show which picture a clip ends on yet (CLI Round 789)"],
+  // (`lastFrameSceneNumber` stood here for one round. `VideoPromptPreviewScreen` names the picture each clip
+  //  ends on now, so the third test below asked for this line back — the device working as built, twice.)
   ["billedCredits", "gap: the video failure cards do not name the provider's own charge yet (CLI Round 781)"],
   // (`minimumChargeUsd` · `perGenerationUsd` stood here as a named gap for exactly one round. `videoModelPriceLine`
   //  reads both now — 「+ 장면당 $0.01」 and 「짧아도 최소 $0.64」 — so the third test below demanded these two

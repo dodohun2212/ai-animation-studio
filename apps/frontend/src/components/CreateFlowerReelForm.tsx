@@ -56,9 +56,9 @@ const FLOWER_TOTAL_SECONDS = FLOWER_SCENE_COUNT * FLOWER_CLIP_DURATION_SECONDS;
  * snapshot of this preset's output against this number: change the text without changing the number and it goes
  * red, naming this constant. That pair is the whole reason the number can be trusted.
  *
- * 2 — 두보 말투(787). 1 은 그 이전 전부.
+ * 3 — 네 장면의 샷 크기를 같게(791). 2 — 두보 말투(787). 1 — 그 이전 전부.
  */
-export const FLOWER_PRESET_REVISION = 2;
+export const FLOWER_PRESET_REVISION = 3;
 const FLOWER_PRESET: SettingsPreset = { id: "flower_meaning", revision: FLOWER_PRESET_REVISION };
 
 /**
@@ -130,7 +130,20 @@ export function presetSettings(
        *
        * 시작점만 바꾸면 부족하다는 것은 바로 위에서 배운 그대로라, 금지를 같이 적습니다.
        */
-      + `식물은 화분이 아니라 땅에 뿌리내린 채 자란다. 화분·포트·플랜터는 화면에 넣지 않는다.`
+      + `식물은 화분이 아니라 땅에 뿌리내린 채 자란다. 화분·포트·플랜터는 화면에 넣지 않는다.\n`
+      /*
+       * 🔴 캡틴D: 4번 이미지만 배경이 달랐습니다. 모델 변덕이 아니라 **대본이 그렇게 적었습니다** — 1~3번은
+       * 「세로 미디엄 와이드」, 4번만 「세로 클로즈업」. 식물이 커지니 마지막 장면을 당겨 찍는 쪽으로 쓴 것이고,
+       * 그러면 먼 산과 하늘이 사라져 컷이 튑니다.
+       *
+       * 「삼각대에 고정된 카메라」는 `styleNotes.camera` 에 있었지만 그건 **한 장면 안에서** 카메라가 안
+       * 움직인다는 말이고, 장면들 사이의 **거리**는 아무도 묶지 않았습니다. 그래서 여기에 적습니다.
+       *
+       * 🔴 끝 프레임이 들어간 뒤로 이 줄은 더 중요해졌습니다(CLI Round 789): 클립 N 이 그림 N 에서 그림 N+1
+       * 로 가는데 둘의 샷 크기가 다르면, 모델이 그 차이를 **줌으로** 메웁니다 — 고정 카메라를 시켜 놓고
+       * 줌을 사게 되는 셈입니다.
+       */
+      + `네 장면의 샷 크기·카메라 거리·화각은 모두 같다. 식물이 커져도 당겨 찍지 않는다. 먼 배경(산·하늘·들판)이 네 장면 모두 같은 자리에 보인다.`
       + (known ? `\n\n유래에 대해 알고 있는 것: ${known}` : ""),
     sceneCount: FLOWER_SCENE_COUNT,
     clipDurationSeconds: FLOWER_CLIP_DURATION_SECONDS,

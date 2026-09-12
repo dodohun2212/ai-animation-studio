@@ -178,6 +178,16 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
                       예상 비용: ${preview.estimatedCostUsd.toFixed(2)}
                     </span>
                   </div>
+                  {/* 🔴 이 클립이 **어느 그림으로 끝나는지**. 유료 요청의 내용이 달라지는 값이라, 확인 화면이
+                      말하지 않으면 사람은 자기가 무엇을 사는지 모르고 누릅니다 — 확인 해시에도 들어가 있는
+                      값입니다(CLI Round 789). 없으면 아무 말도 안 합니다: 끝 프레임을 안 보내는 경우(체인이
+                      꺼졌거나, 못 받는 모델이거나, 마지막 장면이거나)가 전부 「없음」이고, 그 셋을 구분해 주는
+                      것은 이 화면의 일이 아닙니다. */}
+                  {preview.lastFrameSceneNumber !== undefined && (
+                    <p className="text-xs text-slate-400" data-testid={`last-frame-${preview.sceneNumber}`}>
+                      이 클립은 <span className="text-slate-300">{preview.lastFrameSceneNumber}번 장면 그림</span>으로 끝납니다 — 다음 클립이 그 그림에서 시작합니다.
+                    </p>
+                  )}
                   <label className="block text-sm text-slate-300" htmlFor={`prompt-${preview.sceneNumber}`}>
                     Runway 프롬프트
                     <textarea

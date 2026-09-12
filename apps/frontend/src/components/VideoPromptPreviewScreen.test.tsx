@@ -37,6 +37,36 @@ describe("VideoPromptPreviewScreen", () => {
 
   // Regression: the Backend trims sections to fit Runway's prompt limit. It used to do that silently, so a scene
   // could lose its continuity or performance direction with the wrong finished video as the only symptom.
+  /**
+   * 🔴 돈이 걸린 확인 화면의 일은 「지금 무엇을 사는지」를 남김없이 보여주는 것입니다. 끝 프레임이 들어가면서
+   * 유료 요청의 **내용**이 달라졌는데(클립 N 이 그림 N 에서 그림 N+1 로 갑니다), 화면이 그걸 말하지 않으면
+   * 사람은 확인 해시에는 들어 있는 값을 모른 채 누릅니다.
+   *
+   * 없을 때 아무 말도 안 하는 것도 같이 봅니다 — 「없음」은 세 가지(체인 꺼짐 · 못 받는 모델 · 마지막 장면)이고,
+   * 그 셋을 구분하는 건 이 화면의 일이 아닙니다. 있지도 않은 걸 설명하려 들면 그 자체가 틀린 말이 됩니다.
+   */
+  it("names the picture each clip ends on, and says nothing where there is none", async () => {
+    const previews = makePreviews(3).map((preview, index) => (
+      index < 2 ? { ...preview, lastFrameSceneNumber: (preview.sceneNumber + 1) as VideoPromptPreview["sceneNumber"] } : preview
+    ));
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { previews, confirmationId: "c1" })));
+
+    expect((await screen.findByTestId("last-frame-1")).textContent).toContain("2번 장면 그림");
+    expect(screen.getByTestId("last-frame-2").textContent).toContain("3번 장면 그림");
+    // 마지막 장면은 다음 그림이 없습니다.
+    expect(screen.queryByTestId("last-frame-3")).toBeNull();
+  });
+
+  it("says nothing about end frames when none of the clips carry one", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { previews: makePreviews(3), confirmationId: "c1" })));
+
+    await screen.findByTestId("preview-list");
+    for (const sceneNumber of [1, 2, 3]) {
+      expect(screen.queryByTestId(`last-frame-${sceneNumber}`), String(sceneNumber)).toBeNull();
+    }
+    expect(document.body.textContent).not.toContain("으로 끝납니다");
+  });
+
   it("names the sections the server had to drop, and leaves untouched scenes unmarked", async () => {
     const previews = makePreviews(2);
     previews[0] = { ...previews[0]!, omittedSections: ["Continuity cue", "Pacing"] };
