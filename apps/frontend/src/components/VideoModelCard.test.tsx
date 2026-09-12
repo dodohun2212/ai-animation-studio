@@ -103,7 +103,9 @@ describe("VideoModelCard", () => {
     expect(cannot.textContent).toContain("뒤로 돌아갈 수 있습니다");
 
     const can = screen.getByTestId("video-model-option-gen4_seam");
-    expect(can.textContent).toContain("다음 클립을 시작할 수 있습니다");
+    // With its condition: it is true only for a project that draws its scenes as a chain (Cowork Round 791).
+    expect(can.textContent).toContain("다음 클립이 시작합니다");
+    expect(can.textContent).toContain("장면 이어 그리기");
     expect(can.textContent).not.toContain("이어받지 못합니다");
   });
 
@@ -294,7 +296,11 @@ describe("VideoModelCard", () => {
       expect(canModel, "catalogue has no model that accepts a last frame").toBeTruthy();
       expect(cannotModel, "catalogue has no model that refuses a last frame").toBeTruthy();
 
-      expect(screen.getByTestId(`video-model-option-${canModel!.id}`).textContent).toContain("다음 클립을 시작할 수 있습니다");
+      /* 🔴 조건이 붙어 있어야 합니다. 이 문장이 조건 없이 「할 수 있습니다」였을 때, 앱은 끝 프레임을 한 장도
+         안 보내고 있었고 저는 그 줄을 근거로 캡틴D 께 H3 Max 를 권했습니다. 지금은 「장면 이어 그리기」를 켠
+         프로젝트에서만 참이라, 조건이 빠지면 다시 거짓이 됩니다. */
+      expect(screen.getByTestId(`video-model-option-${canModel!.id}`).textContent).toContain("다음 클립이 시작합니다");
+      expect(screen.getByTestId(`video-model-option-${canModel!.id}`).textContent).toContain("장면 이어 그리기");
       expect(screen.getByTestId(`video-model-option-${cannotModel!.id}`).textContent).toContain("이어받지 못합니다");
     });
   });

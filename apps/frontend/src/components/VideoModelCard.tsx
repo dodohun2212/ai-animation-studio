@@ -135,13 +135,20 @@ export function VideoModelCard({ setting, onChange }: { setting: VideoModelSetti
                   <span className="block text-xs tabular-nums text-slate-300">
                     {videoModelPriceLine(option)}
                   </span>
-                  {/* The one line here that is not a number, and the reason the picker exists at all. A person
+                  {/* 🔴 조건을 붙인 문장입니다. 이 칸이 생겼을 때 앱은 끝 프레임을 **한 장도 안 보내고**
+                      있었습니다 — 모델의 능력만 적어 두고 앱이 그걸 쓰는지는 아무도 안 적어서, 읽는 사람이
+                      「이 모델을 고르면 이어진다」로 받아들였습니다. 캡틴D 께 H3 Max 를 권한 근거도 이 줄이었고,
+                      그때 그 말은 참이 아니었습니다(Cowork 788 → CLI 789 에서 실제로 보내게 됨).
+                      지금은 **「장면 이어 그리기」가 켜진 프로젝트에서만** 참이라, 그 조건을 문장에 넣습니다 —
+                      보통 이야기의 장면은 일부러 끊는 컷이라 끝 프레임을 안 보냅니다.
+
+                      The one line here that is not a number, and the reason the picker exists at all. A person
                       choosing between two models is choosing between two reels; price tells them what it costs
                       and this tells them what they get. Worded as what happens in the reel, never as the field
                       name — 「끝 프레임」 means nothing to someone who has not read the adapter. */}
                   <span className={`block text-xs ${option.acceptsLastFrame ? "text-slate-400" : "text-amber-300/90"}`}>
                     {option.acceptsLastFrame
-                      ? "앞 클립이 끝난 그 장면에서 다음 클립을 시작할 수 있습니다 — 이어지는 릴에 좋습니다."
+                      ? "「장면 이어 그리기」를 켠 프로젝트에서는, 앞 클립이 끝난 그 그림에서 다음 클립이 시작합니다 — 이어지는 릴에 좋습니다."
                       : "앞 클립이 끝난 장면을 이어받지 못합니다 — 성장·이동처럼 계속 이어지는 릴에서는 컷이 뒤로 돌아갈 수 있습니다."}
                   </span>
                   {/* 🔴 An empty `ratios` is a real answer, not missing data — and it renders before any model
