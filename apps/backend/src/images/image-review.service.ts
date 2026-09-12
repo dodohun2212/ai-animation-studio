@@ -33,7 +33,7 @@ import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../pr
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "./openai-image-adapter.js";
 import { collectReferenceImages, continuityForScene, describeReferenceMappingsForScene } from "./image-reference-selection.js";
-import { imagePromptFor, imageSizeFor, sceneValue, styleLineFor } from "./image-prompt.js";
+import { imagePromptFor, imagePromptForRequest, imageSizeFor, sceneValue, styleLineFor } from "./image-prompt.js";
 import { previousSceneContinuityImagePath } from "../projects/project-continuity.js";
 import { computeSceneStaleness } from "../projects/scene-staleness.js";
 import { imageReviewBudgetLedgerUnreadable,
@@ -312,11 +312,27 @@ export class ImageReviewService {
     let referenceOmission: { references_used_count: number; references_omitted_count: number } | undefined;
     /** See the same field in local-image-generation.service.ts: the prompt names the Asset, not its bytes. */
     let referenceSources: string[] | undefined;
+    /*
+     * 🔴 The prompt this drawing is made from, computed once and both sent and recorded — the same split the batch
+     * run makes (local-image-generation.service.ts): the record holds the request, and staleness strips the lines
+     * that are about drawing rather than about the scene.
+     *
+     * The record used to take `image_prompts[n]` instead: the batch run's prompt, written before the scene was
+     * edited and without the References block. So a regenerated picture was compared against a prompt nobody sent,
+     * and in a project with a confirmed Asset Mapping it could never match — the scene stayed 「장면 내용이 바뀐
+     * 뒤로 다시 만들지 않았습니다」 however many times it was redrawn, and every press was paid for. 꽃말_버즘나무
+     * scene 4 was redrawn twice and still reported behind (Cowork Round 793). The request also lacked
+     * NO_LEGIBLE_TEXT_RULE, which only the batch run added.
+     *
+     * The one-off additionalInstruction is sent and not recorded: it asks for a different drawing of the same
+     * scene, and the scene has not changed.
+     */
+    const mappings = await this.mappings.load(this.mappings.projectLocation(project.project_id));
+    const referenceNotes = await describeReferenceMappingsForScene(this.assets, mappings, number);
+    const styleLine = styleLineFor(project);
+    const recordedPrompt = imagePromptForRequest(project.scenes[number - 1], styleLine, referenceNotes);
     if (apiKey && this.budget) {
-      const mappings = await this.mappings.load(this.mappings.projectLocation(project.project_id));
-      const referenceNotes = await describeReferenceMappingsForScene(this.assets, mappings, number);
-      const basePrompt = imagePromptFor(project.scenes[number - 1], styleLineFor(project), referenceNotes);
-      const prompt = additionalInstruction ? `${basePrompt}\n${additionalInstruction}` : basePrompt;
+      const prompt = additionalInstruction ? `${recordedPrompt}\n${additionalInstruction}` : recordedPrompt;
       const previousProjectImagePath = previousSceneContinuityImagePath(project);
       const chainEnabled = toShortProjectSettings(project).sceneImageContinuityEnabled;
       const directory = this.mappings.projectLocation(project.project_id).directory;
@@ -387,7 +403,7 @@ export class ImageReviewService {
     if (index < 0) reviews.push(replacement); else reviews[index] = replacement;
     const record = {
       scene_number: number,
-      prompt: project.image_prompts[number - 1] ?? "",
+      prompt: recordedPrompt,
       checkpoint: "completed",
       adapter,
       image_api_calls: apiCalls,
@@ -398,8 +414,12 @@ export class ImageReviewService {
     };
     const records = [...project.image_generation_records];
     records[number - 1] = record;
+    // Padded, never holed: a hole serialises as null and the schema reads image_prompts as strings only.
+    const imagePrompts = Array.from({ length: Math.max(project.image_prompts.length, number) }, (_, index) => project.image_prompts[index] ?? "");
+    imagePrompts[number - 1] = imagePromptFor(project.scenes[number - 1], styleLine);
     const updated: StoredProject = {
       ...project,
+      image_prompts: imagePrompts,
       image_generation_records: records,
       workflow_state: WorkflowState.ImagesReview,
       updated_at: timestamp,

@@ -13,6 +13,7 @@ import { ProviderSettingsRepository } from "../settings/provider-settings.reposi
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { OpenAiBudget } from "../providers/openai-budget.js";
 import { ImageReviewService } from "./image-review.service.js";
+import { NO_LEGIBLE_TEXT_RULE } from "./image-prompt.js";
 import { withProjectLock } from "../videos/project-lock.js";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
@@ -350,7 +351,7 @@ describe("real OpenAI image regeneration", () => {
     // Sends the composition-assembled prompt (Round 28), never the narrated description with its dialogue —
     // plus a text description of the same confirmed mapping whose image bytes are attached above.
     const prompt = (init.body as FormData).get("prompt");
-    expect(prompt).toBe("Scene: stands at the 3 gate, facing it\nReferences:\n- review Scene 1 (character)\n  역할: 등장인물 — 이 인물의 얼굴·체형·머리·의상을 그대로 유지해 그린다.\n  설명: scene 1");
+    expect(prompt).toBe(`Scene: stands at the 3 gate, facing it\nReferences:\n- review Scene 1 (character)\n  역할: 등장인물 — 이 인물의 얼굴·체형·머리·의상을 그대로 유지해 그린다.\n  설명: scene 1\n${NO_LEGIBLE_TEXT_RULE}`);
     expect(prompt).not.toContain("says");
     const raw = JSON.parse(await fs.readFile(path.join(projectsRoot, "review", "generated_image_reviews.json"), "utf8")) as Array<{ scene_number: number }>;
     expect(raw.find((item) => item.scene_number === 3)).toBeTruthy();
@@ -402,11 +403,46 @@ describe("real OpenAI image regeneration", () => {
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const prompt = (init.body as FormData).get("prompt");
-    expect(prompt).toBe("Scene: stands at the 3 gate, facing it\nReferences:\n- review Scene 1 (character)\n  역할: 등장인물 — 이 인물의 얼굴·체형·머리·의상을 그대로 유지해 그린다.\n  설명: scene 1\n더 어둡게");
+    expect(prompt).toBe(`Scene: stands at the 3 gate, facing it\nReferences:\n- review Scene 1 (character)\n  역할: 등장인물 — 이 인물의 얼굴·체형·머리·의상을 그대로 유지해 그린다.\n  설명: scene 1\n${NO_LEGIBLE_TEXT_RULE}\n더 어둡게`);
     // The persisted record keeps the plain scene prompt (not the one-off instruction), so a later
     // staleness check still compares like-for-like against a freshly recomputed plain prompt.
     const project = JSON.parse(await fs.readFile(path.join(projectsRoot, "review", "project.json"), "utf8")) as { image_generation_records: Array<{ prompt: string }> };
     expect(project.image_generation_records[2]!.prompt).not.toContain("더 어둡게");
+  });
+
+  /*
+   * 🔴 The record is the prompt that was sent. It used to be `image_prompts[n]` — the batch run's prompt, from
+   * before any edit and without the References block — so a redrawn scene was compared against a request nobody
+   * made, and with a confirmed Asset Mapping it could never match: 「장면 내용이 바뀐 뒤로 다시 만들지
+   * 않았습니다」 on every scene redrawn, however many times it was paid for (꽃말_버즘나무 scene 4, Cowork 793).
+   */
+  it("clears a scene's stale mark once it is redrawn, in a project with a confirmed reference", async () => {
+    const { projects, service } = await setupWithConnectedOpenAiAndConfirmedReference();
+    const project = await projects.findById("review");
+    project.image_prompts = [1, 2, 3, 4, 5, 6].map((number) => `Scene: an older script for ${number}`);
+    project.image_generation_records = [1, 2, 3, 4, 5, 6].map((number) => ({ scene_number: number, prompt: `Scene: an older script for ${number}` }));
+    await projects.save(project);
+    expect((await service.getStatus("review")).staleness?.imageStale).toContain(3);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] })));
+
+    await service.regenerate("review", "3", { approved: true });
+
+    const staleness = (await service.getStatus("review")).staleness;
+    expect(staleness?.imageStale).not.toContain(3);
+    // The other scenes were not redrawn and are still behind their script.
+    expect(staleness?.imageStale).toEqual([1, 2, 4, 5, 6]);
+  });
+
+  it("records the prompt it sent, less the one-off instruction", async () => {
+    const { projectsRoot, service } = await setupWithConnectedOpenAiAndConfirmedReference();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await service.regenerate("review", "3", { approved: true, additionalInstruction: "더 어둡게" });
+
+    const sent = String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body instanceof FormData ? ((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as FormData).get("prompt") : "");
+    const project = JSON.parse(await fs.readFile(path.join(projectsRoot, "review", "project.json"), "utf8")) as { image_generation_records: Array<{ prompt: string }> };
+    expect(`${project.image_generation_records[2]!.prompt}\n더 어둡게`).toBe(sent);
   });
 
   it("ignores a blank additionalInstruction the same as omitting it", async () => {
@@ -417,7 +453,7 @@ describe("real OpenAI image regeneration", () => {
     await service.regenerate("review", "3", { approved: true, additionalInstruction: "   " });
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect((init.body as FormData).get("prompt")).toBe("Scene: stands at the 3 gate, facing it\nReferences:\n- review Scene 1 (character)\n  역할: 등장인물 — 이 인물의 얼굴·체형·머리·의상을 그대로 유지해 그린다.\n  설명: scene 1");
+    expect((init.body as FormData).get("prompt")).toBe(`Scene: stands at the 3 gate, facing it\nReferences:\n- review Scene 1 (character)\n  역할: 등장인물 — 이 인물의 얼굴·체형·머리·의상을 그대로 유지해 그린다.\n  설명: scene 1\n${NO_LEGIBLE_TEXT_RULE}`);
   });
 
   it("rejects a non-string additionalInstruction", async () => {
