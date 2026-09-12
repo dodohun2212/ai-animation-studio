@@ -1680,6 +1680,15 @@ export interface StoryPromptPreview {
    */
   characterCount: number;
   sceneCount: number;
+  /**
+   * The preset mark of the very settings this prompt was rendered from — read in the same pass, so the prompt and
+   * the revision it came from cannot disagree. Absent for a project no preset made.
+   *
+   * On the preview rather than fetched beside it: this screen exists to show what is about to be sent, and a
+   * revision read at another moment could describe other settings (Cowork Round 790). The screen compares it with
+   * the preset's current revision and says so above the paid button.
+   */
+  preset?: SettingsPreset;
 }
 
 export interface CreateStoryPromptPreviewResponse {

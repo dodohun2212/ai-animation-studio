@@ -225,8 +225,10 @@ export class StoryPromptService {
   async preview(projectId: string): Promise<CreateStoryPromptPreviewResponse> {
     const stored = await this.projects.findById(projectId.trim());
     const originalPrompt = await this.original(stored);
-    const sceneCount = toShortProjectSettings(stored).sceneCount;
-    const preview: StoryPromptPreview = { projectId: stored.project_id, originalPrompt, originalPromptSha256: sha256(originalPrompt), castCount: castCount(stored), characterCount: castCount(stored), sceneCount };
+    const settings = toShortProjectSettings(stored);
+    const sceneCount = settings.sceneCount;
+    // The same `stored` the prompt was rendered from, so the mark and the text are one reading (StoryPromptPreview.preset).
+    const preview: StoryPromptPreview = { projectId: stored.project_id, originalPrompt, originalPromptSha256: sha256(originalPrompt), castCount: castCount(stored), characterCount: castCount(stored), sceneCount, ...(settings.preset ? { preset: settings.preset } : {}) };
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
     // Read-only, same as a preview's budget field elsewhere — never reserves anything, just reports the ledger's current state.
     const budget = apiKey && this.budget ? await budgetPreviewFor(this.budget, STORY_ESTIMATED_COST_USD) : undefined;

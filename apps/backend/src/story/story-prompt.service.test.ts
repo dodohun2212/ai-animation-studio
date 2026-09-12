@@ -280,6 +280,16 @@ describe("StoryPromptService real OpenAI generation", () => {
    * before pressing again" is the truth for the last and a false alarm for the others — and 캡틴D saw this code's
    * fallback sentence on screen (Cowork Round 786). The error now says which: `details.requestSent`.
    */
+  // The approval screen's 「예전 서식으로 만들어졌습니다」 compares this with the preset's current revision (Cowork Round 790).
+  it("carries the preset mark of the settings the prompt was rendered from, and none for a project no preset made", async () => {
+    const { repository, service } = await setup();
+    expect((await service.preview("sample")).preview).not.toHaveProperty("preset");
+
+    const stored = await repository.findById("sample");
+    await repository.save({ ...stored, lore_context: { ...stored.lore_context, settings_preset: { id: "flower_meaning", revision: 1 } } });
+    expect((await service.preview("sample")).preview.preset).toEqual({ id: "flower_meaning", revision: 1 });
+  });
+
   it("says the paid request had not gone out when saving the generating state fails, and makes no call", async () => {
     const { repository, service } = await setupWithConnectedOpenAi();
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responsesBody(VALID_STORY)));
