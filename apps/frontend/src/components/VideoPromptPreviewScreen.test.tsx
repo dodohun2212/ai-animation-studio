@@ -92,17 +92,18 @@ describe("VideoPromptPreviewScreen", () => {
    * `ffmpeg-merge.service.ts` 는 클립에서 `0:v:0` 만 가져오고, 소리는 내레이션 파일 아니면 `anullsrc`(무음)로
    * 새로 붙입니다. 화면이 그걸 안 말하면, 소리 되는 모델을 일부러 골라 돈을 더 내고 그 소리를 버리게 됩니다.
    *
-   * 모델을 몰라도 뜨는지 같이 봅니다 — 이건 모델의 성질이 아니라 이 앱이 합치는 방식이라, 카탈로그에 없는
-   * 이름이 와도 참입니다.
+   * 모델마다 같은지 같이 봅니다 — 이건 모델의 성질이 아니라 이 앱이 합치는 방식입니다. (카탈로그에 없는 이름은
+   * 화면까지 오지 못합니다: 응답 가드가 먼저 거절합니다 — videoPreviewApi.test.ts.)
    */
-  it("says the clip's own sound is never used, even for a model the catalogue does not know", async () => {
-    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, makePreviewResponse())));
+  it("says the clip's own sound is never used, whichever model the request uses", async () => {
+    const first = renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, makePreviewResponse())));
     expect((await screen.findByTestId("preview-model-audio")).textContent).toContain("소리는 내레이션과 배경 음악으로만");
+    // Taken down first: with both mounted, the search can return the first screen's line before the second loads.
+    first.unmount();
 
-    const unknown = makePreviews(1).map((preview) => ({ ...preview, model: "some_model_from_next_week" as VideoPromptPreview["model"] }));
-    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { previews: unknown, confirmationId: "c1" })));
-    const notes = await screen.findAllByTestId("preview-model-audio");
-    expect(notes.length, "모델을 몰라도 이 줄은 남습니다").toBe(2);
+    const other = makePreviews(2).map((preview) => ({ ...preview, model: "h3_max_480p" as VideoPromptPreview["model"] }));
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { previews: other, confirmationId: "c1" })));
+    expect((await screen.findByTestId("preview-model-audio")).textContent).toContain("소리는 내레이션과 배경 음악으로만");
   });
 
   /**
@@ -111,30 +112,16 @@ describe("VideoPromptPreviewScreen", () => {
    * 번씩 그려 보는 것이 그 확인의 유일한 방법입니다.
    */
   it("prices from the model this preview was actually built with", async () => {
-    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, makePreviewResponse())));
+    const cheap = renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, makePreviewResponse())));
     expect((await screen.findByTestId("preview-model-price")).textContent).toContain("1초당 $0.05");
+    // Taken down first: with both mounted, the search can return the first screen's line before the second loads.
+    cheap.unmount();
 
     const dear = makePreviews(2).map((preview) => ({ ...preview, model: "seedance2_5_1080p" as VideoPromptPreview["model"] }));
     renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { previews: dear, confirmationId: "c1" })));
-    const lines = await screen.findAllByTestId("preview-model-price");
-    expect(lines.at(-1)!.textContent).toContain("1초당 $0.68");
-    expect(lines.at(-1)!.textContent).toContain("짧아도 최소 $0.80");
-  });
-
-  /**
-   * 🔴 설명이 없는 것과 화면이 없는 것은 다릅니다. 이 화면의 금액은 서버의 `estimatedCostUsd` 에서 오고,
-   * 프론트 카탈로그는 설명에만 쓰입니다 — 그러니 프론트가 모르는 이름이 와도 프롬프트와 총액은 그대로
-   * 보여야 합니다. (`videoModelOption` 은 모르는 이름에 던집니다. 그걸 여기서 쓰면 화면이 통째로 사라집니다.)
-   */
-  it("still shows the prompts when the frontend catalogue has never heard of the model", async () => {
-    const previews = makePreviews(2).map((preview) => ({ ...preview, model: "some_model_from_next_week" as VideoPromptPreview["model"] }));
-    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { previews, confirmationId: "c1" })));
-
-    await screen.findByTestId("preview-list");
-    expect(screen.getByTestId("preview-model-label").textContent).toBe("some_model_from_next_week");
-    expect(screen.queryByTestId("preview-model-price")).toBeNull();
-    expect(screen.queryByTestId("preview-model-facts")).toBeNull();
-    expect(screen.getByTestId("total-cost").textContent).toContain("$0.50");
+    const line = (await screen.findByTestId("preview-model-price")).textContent ?? "";
+    expect(line).toContain("1초당 $0.68");
+    expect(line).toContain("짧아도 최소 $0.80");
   });
 
   /**
