@@ -104,7 +104,7 @@ import {
   type VideoVersionSummary,
   type OpenAiErrorCategory,
 } from "@ai-animation-studio/shared";
-import { imageFailureMessage, narrationFailureMessage } from "../utils/sceneFailureAdvice.js";
+import { imageFailureMessage, mergeClipsInvalidMessage, mergeFailureMessage, narrationFailureMessage } from "../utils/sceneFailureAdvice.js";
 import { BUDGET_LEDGER_UNREADABLE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "./budgetLedgerError.js";
 import { isSceneFailureMap } from "./contractGuards.js";
 import { SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
@@ -388,6 +388,18 @@ export function toLongProjectDisplayError(error: unknown): { code: string; messa
   if (Object.prototype.hasOwnProperty.call(SAFE_ERRORS, error.code)) {
     const details = error.details;
     return details ? { code: error.code, message: SAFE_ERRORS[error.code]!, details } : { code: error.code, message: SAFE_ERRORS[error.code]! };
+  }
+  /* ②-3 — its own calls and its own pairs, not a lift of the short project's (759). `LONG_EPISODE_FFMPEG_UNAVAILABLE`
+     deliberately stays in the plain table below: the render never started, so naming a step would send someone to
+     re-make a clip that is fine (CLI Round 778). */
+  if (error.code === "LONG_EPISODE_MERGE_FAILED") {
+    return { code: error.code, message: mergeFailureMessage(LONG_EPISODE_MERGE_ERRORS.LONG_EPISODE_MERGE_FAILED!, error.details) };
+  }
+  if (error.code === "LONG_EPISODE_MERGE_CLIPS_INVALID") {
+    return {
+      code: error.code,
+      message: mergeClipsInvalidMessage(LONG_EPISODE_MERGE_ERRORS.LONG_EPISODE_MERGE_CLIPS_INVALID!, error.details, "에피소드 영상 검토 화면에서 그 장면을 다시 확인해 주세요."),
+    };
   }
   if (Object.prototype.hasOwnProperty.call(LONG_EPISODE_MERGE_ERRORS, error.code)) return { code: error.code, message: LONG_EPISODE_MERGE_ERRORS[error.code]! };
   if (Object.prototype.hasOwnProperty.call(LONG_EPISODE_CONTINUITY_ERRORS, error.code)) return { code: error.code, message: LONG_EPISODE_CONTINUITY_ERRORS[error.code]! };

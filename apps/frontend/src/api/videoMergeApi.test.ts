@@ -115,6 +115,45 @@ describe("videoMergeApi", () => {
     expect(published.message).not.toContain("raw");
   });
 
+  /**
+   * 🔴 759 — 연결 짝. 조립기가 맞는 것과 **이 화면이 그걸 부르는 것**은 다른 사실입니다. 호출을 빼면
+   * 이 짝만 빨개지고 에피소드 쪽은 초록입니다(그쪽도 자기 짝이 따로 있습니다).
+   */
+  it("names the step and the scene the render stopped at, through the shared composer", () => {
+    const displayed = toVideoMergeDisplayError(
+      new VideoMergeApiError("VIDEO_MERGE_FAILED", "C:\\raw\\ffmpeg\\path", { stage: "scene", sceneNumber: 4 }),
+    );
+
+    expect(displayed.code).toBe("VIDEO_MERGE_FAILED");
+    expect(displayed.message).toContain("4번 장면 클립");
+    expect(displayed.message).toContain("승인된 장면 영상은 그대로 보존됩니다");
+    // 서버의 원문 — 여기서는 파일 경로 — 은 여전히 화면에 못 옵니다.
+    expect(displayed.message).not.toContain("raw");
+  });
+
+  it("names which clips stopped the merge instead of sending someone through every scene", () => {
+    const displayed = toVideoMergeDisplayError(
+      new VideoMergeApiError("VIDEO_MERGE_CLIPS_INVALID", "raw", { sceneNumbers: [7, 4] }),
+    );
+
+    expect(displayed.message).toContain("4·7번 장면 영상을 확인할 수 없습니다");
+    expect(displayed.message).not.toContain("raw");
+  });
+
+  /**
+   * 🔴 CLI Round 778 — ffprobe 는 있는데 ffmpeg 만 없을 수 있습니다. 그건 렌더가 시작도 못 한 것이라
+   * **어느 단계도 답이 아닙니다.** 여기에 단계 문장이 붙으면 멀쩡한 클립을 고치러 갑니다.
+   */
+  it("never names a step for a merge program that is not installed", () => {
+    const displayed = toVideoMergeDisplayError(
+      new VideoMergeApiError("FFMPEG_UNAVAILABLE", "raw", { stage: "scene", sceneNumber: 4 }),
+    );
+
+    expect(displayed.message).toContain("설치 상태를 확인해 주세요");
+    expect(displayed.message).not.toContain("단계");
+    expect(displayed.message).not.toContain("4번");
+  });
+
   it("falls back to a generic unknown error for an unrecognized code", () => {
     const displayError = toVideoMergeDisplayError(new VideoMergeApiError("SOMETHING_NEW", "raw"));
     expect(displayError.code).toBe("CLIENT_UNKNOWN_ERROR");

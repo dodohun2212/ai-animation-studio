@@ -1,5 +1,6 @@
 import { API_ROUTES, FINAL_VIDEO_RELATIVE_PATH, type MergeAudioSettings, type MergeVideosResponse, type PhotoCardSubtitleLayout, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
 import { INTERNAL_ERROR, SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
+import { mergeClipsInvalidMessage, mergeFailureMessage } from "../utils/sceneFailureAdvice.js";
 
 export class VideoMergeApiError extends Error {
   readonly code: string;
@@ -63,6 +64,19 @@ function audioStartOutOfRange(details: Record<string, unknown> | undefined): str
 export function toVideoMergeDisplayError(error: unknown): { code: string; message: string } {
   if (!(error instanceof VideoMergeApiError)) return UNKNOWN;
   if (error.code === "AUDIO_START_OUT_OF_RANGE") return { code: error.code, message: audioStartOutOfRange(error.details) };
+  /* ②-3 — the two codes that knew more than they said. Both compose onto the fixed sentence rather than
+     replacing it: 「승인된 장면 영상은 그대로 보존됩니다」 is still the half that stops someone re-making
+     everything. Each pipeline wires this itself and has its own pair — 759: one shared function called from one
+     place leaves the other screen saying the old sentence with every test green. */
+  if (error.code === "VIDEO_MERGE_FAILED") {
+    return { code: error.code, message: mergeFailureMessage(SAFE_ERRORS.VIDEO_MERGE_FAILED!, error.details) };
+  }
+  if (error.code === "VIDEO_MERGE_CLIPS_INVALID") {
+    return {
+      code: error.code,
+      message: mergeClipsInvalidMessage(SAFE_ERRORS.VIDEO_MERGE_CLIPS_INVALID!, error.details, "영상 검토 화면에서 그 장면을 다시 확인해 주세요."),
+    };
+  }
   if (Object.prototype.hasOwnProperty.call(SAFE_ERRORS, error.code)) {
     return { code: error.code, message: SAFE_ERRORS[error.code]! };
   }

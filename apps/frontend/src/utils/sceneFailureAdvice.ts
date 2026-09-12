@@ -1,4 +1,4 @@
-import { IMAGE_FAILURE_SCOPES, SCENE_FAILURE_REMEDIES, isSceneNumber, type ImageFailureScope, type SceneFailureRemedy } from "@ai-animation-studio/shared";
+import { IMAGE_FAILURE_SCOPES, SCENE_FAILURE_REMEDIES, isSceneNumber, type ImageFailureScope, type MergeFailedDetails, type SceneFailureRemedy } from "@ai-animation-studio/shared";
 
 /**
  * What the provider's answer means for pressing 다시 시도, in the person's words.
@@ -128,4 +128,70 @@ export function imageFailureMessage(categoryMessage: string, details: Record<str
 /** The narration pipelines' sentence. Same conditions, same guarantees; 「그림」 becomes 「음성」. */
 export function narrationFailureMessage(categoryMessage: string, details: Record<string, unknown> | undefined): string {
   return sceneFailureMessage(categoryMessage, details, NARRATION_SENTENCES);
+}
+
+/* ------------------------------------------------------------------------------------------------------------
+ * 합치기 — the last step, and the one that used to say the least.
+ * ---------------------------------------------------------------------------------------------------------- */
+
+type MergeFailureStage = MergeFailedDetails["stage"];
+
+/**
+ * Where inside FFmpeg the render stopped, said as what to look at next.
+ *
+ * 🔴 A `Record` over the union's own discriminant — `MergeFailedDetails["stage"]`, not three strings typed out
+ * here. A fourth stage is then a compile error in this table rather than a value that silently gets no sentence,
+ * and the runtime check below reads THIS table's keys, so there is no second list to drift. Same defect family as
+ * `server_error` (769) and the two Runway tables that claimed to be identical copies (770); the difference is
+ * that here it cannot be written down twice in the first place.
+ *
+ * Each sentence names the thing to look at, because that is what separates the stages for the person: a scene
+ * stage points at one clip, a music stage points at the audio they chose and leaves the clips alone.
+ */
+const MERGE_STAGE_SENTENCES: Record<MergeFailureStage, (scene: number | undefined) => string> = {
+  scene: (scene) => scene === undefined
+    ? "한 장면 클립을 화면 틀에 맞추는 단계에서 멈췄습니다."
+    : `${scene}번 장면 클립을 화면 틀에 맞추는 단계에서 멈췄습니다 — 먼저 그 장면 영상을 확인해 주세요.`,
+  join: () => "틀에 맞춘 클립들을 이어 붙이는 단계에서 멈췄습니다.",
+  // The one stage whose cause is something the person chose on this very screen, so it says so.
+  music: () => "배경음을 입히는 단계에서 멈췄습니다 — 음악 파일이나 시작 지점을 바꿔 다시 시도해 보세요.",
+};
+
+/**
+ * The merge-failed sentence: which step, then the fixed text about what survived.
+ *
+ * 🔴 Conditional all the way down, for the reason `imageFailureMessage` is. A build that sends no `details`
+ * reads exactly as it did, and an unknown `stage` drops the step sentence rather than guessing — the 766 rule.
+ * Naming the wrong step is not cosmetic here: 「N번 장면」 sends someone to re-make a clip that is fine, which
+ * on a paid model is money. It is also why FFMPEG_UNAVAILABLE keeps its own code and never reaches this
+ * function — the render never started, so no step is the answer (CLI Round 778).
+ */
+export function mergeFailureMessage(baseMessage: string, details: Record<string, unknown> | undefined): string {
+  const stage = details?.stage;
+  const known = typeof stage === "string" && Object.prototype.hasOwnProperty.call(MERGE_STAGE_SENTENCES, stage)
+    ? (stage as MergeFailureStage)
+    : undefined;
+  if (!known) return baseMessage;
+  const scene = typeof details?.sceneNumber === "number" && isSceneNumber(details.sceneNumber) ? details.sceneNumber : undefined;
+  return `${MERGE_STAGE_SENTENCES[known](scene)} ${baseMessage}`;
+}
+
+/**
+ * Which scenes stopped the merge before FFmpeg was ever asked.
+ *
+ * 🔴 Twelve scenes opened by hand is what this error cost before (769). The list is used only when there is at
+ * least one entry and every entry is a real scene number — an empty array is the server saying it could not
+ * tell, and 「번 장면」 with nothing in front of it is worse than the general sentence it replaced.
+ */
+export function mergeClipsInvalidMessage(
+  baseMessage: string,
+  details: Record<string, unknown> | undefined,
+  /** Where to go next, in the words that pipeline's own screen uses. The list replaces only the naming half. */
+  sceneTail: string,
+): string {
+  const raw = details?.sceneNumbers;
+  if (!Array.isArray(raw) || raw.length === 0) return baseMessage;
+  if (!raw.every((value) => typeof value === "number" && isSceneNumber(value))) return baseMessage;
+  const scenes = [...new Set(raw as number[])].sort((a, b) => a - b);
+  return `${scenes.join("·")}번 장면 영상을 확인할 수 없습니다. ${sceneTail}`;
 }

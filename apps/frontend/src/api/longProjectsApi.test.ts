@@ -637,6 +637,50 @@ describe("longProjectsApi", () => {
    * `LONG_EPISODE_NARRATION_PROVIDER_MESSAGES` 도 narrationApi 와 같은 죽은 키(`server_error`)를 가지고
    * 있었습니다 — 「같다」는 주석이 버그까지 같게 만들어 둔 경우입니다.
    */
+  /**
+   * 🔴 759 — 에피소드 쪽 연결 짝. 단기 쪽이 초록이어도 이 모듈에서 호출을 빼면 에피소드 화면만
+   * 조용히 「실패했습니다」 한 줄로 돌아갑니다.
+   */
+  describe("Episode merge failures", () => {
+    const displayed = (code: string, details: Record<string, unknown>) =>
+      toLongProjectDisplayError(new LongProjectsApiError(code, "C:\\raw\\ffmpeg\\path", details)).message;
+
+    it("names the step and the scene the Episode render stopped at", () => {
+      const message = displayed("LONG_EPISODE_MERGE_FAILED", { stage: "scene", sceneNumber: 4 });
+
+      expect(message).toContain("4번 장면 클립");
+      expect(message).toContain("승인된 장면들은 그대로 남아 있습니다");
+      expect(message).not.toContain("raw");
+    });
+
+    it("points a music-stage failure at the music, not at the clips", () => {
+      const message = displayed("LONG_EPISODE_MERGE_FAILED", { stage: "music" });
+
+      expect(message).toContain("배경음");
+      expect(message).not.toContain("장면 클립");
+    });
+
+    it("names which Episode clips stopped the merge", () => {
+      const message = displayed("LONG_EPISODE_MERGE_CLIPS_INVALID", { sceneNumbers: [7, 4] });
+
+      expect(message).toContain("4·7번 장면 영상을 확인할 수 없습니다");
+      expect(message).toContain("에피소드 영상 검토 화면");
+    });
+
+    /** CLI Round 778 — 설치 안 됨은 단계가 답이 아닙니다. */
+    it("never names a step for a merge program that is not installed", () => {
+      const message = displayed("LONG_EPISODE_FFMPEG_UNAVAILABLE", { stage: "scene", sceneNumber: 4 });
+
+      expect(message).not.toContain("단계");
+      expect(message).not.toContain("4번");
+    });
+
+    /** 칸이 없던 시절의 응답은 정확히 예전처럼 읽혀야 합니다. */
+    it("reads exactly as before when the response carries no merge detail", () => {
+      expect(displayed("LONG_EPISODE_MERGE_FAILED", {})).toBe("최종 영상 만들기를 끝내지 못했습니다. 승인된 장면들은 그대로 남아 있습니다.");
+    });
+  });
+
   describe("Episode narration provider sentences", () => {
     const OPENAI_CATEGORIES = [
       "authentication",

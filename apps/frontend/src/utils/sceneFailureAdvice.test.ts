@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { narrationFailureMessage, imageFailureMessage, sceneRemedyAdvice } from "./sceneFailureAdvice.js";
+import { imageFailureMessage, mergeClipsInvalidMessage, mergeFailureMessage, narrationFailureMessage, sceneRemedyAdvice } from "./sceneFailureAdvice.js";
 
 const CATEGORY = "OpenAI API 키 인증에 실패했습니다. API 설정 화면에서 키가 올바른지 확인해 주세요.";
 
@@ -128,5 +128,72 @@ describe("narrationFailureMessage", () => {
 
     expect(message).toContain("5번 장면 음성을 다시 만들지 못했습니다");
     expect(message).not.toContain("이어서");
+  });
+});
+
+/**
+ * 🔴 합치기는 ②-3 에서 마지막까지 「실패했습니다」 한 줄이던 곳입니다. 세 단계는 할 일이 서로 다릅니다 —
+ * 장면 단계면 그 클립 하나, 배경음 단계면 영상이 아니라 고른 음악. 단계를 **틀리게** 말하면 멀쩡한 클립을
+ * 다시 만들러 보내고, 유료 모델에서 그건 돈입니다.
+ */
+describe("mergeFailureMessage", () => {
+  const BASE = "최종 영상 만들기를 끝내지 못했습니다. 승인된 장면들은 그대로 남아 있습니다.";
+
+  it("names the scene whose clip stopped the render, and keeps what survived", () => {
+    const message = mergeFailureMessage(BASE, { stage: "scene", sceneNumber: 4 });
+
+    expect(message).toContain("4번 장면 클립");
+    expect(message).toContain("그 장면 영상을 확인해 주세요");
+    // 보존 문장은 절대 밀려나지 않습니다 — 그게 전부 다시 만들기를 막는 절반입니다.
+    expect(message).toContain(BASE);
+  });
+
+  it("points at the music for a music-stage failure, not at the clips", () => {
+    const message = mergeFailureMessage(BASE, { stage: "music" });
+
+    expect(message).toContain("배경음");
+    expect(message).toContain("음악 파일이나 시작 지점");
+    expect(message).not.toContain("장면 클립");
+  });
+
+  it("says only the step it can name for a join failure", () => {
+    expect(mergeFailureMessage(BASE, { stage: "join" })).toContain("이어 붙이는 단계");
+    expect(mergeFailureMessage(BASE, { stage: "join" })).not.toContain("번 장면");
+  });
+
+  /** 766 규칙 — 모르는 값이면 단계 문장을 통째로 뺍니다. 틀린 단계는 없는 단계보다 나쁩니다. */
+  it("reads exactly as before for an unknown stage, an absent stage, or no details at all", () => {
+    expect(mergeFailureMessage(BASE, { stage: "colour_grade" })).toBe(BASE);
+    expect(mergeFailureMessage(BASE, { sceneNumber: 4 })).toBe(BASE);
+    expect(mergeFailureMessage(BASE, undefined)).toBe(BASE);
+  });
+
+  /** stage 는 맞는데 장면 번호가 못 쓸 값이면, 단계만 말하고 번호는 지어내지 않습니다. */
+  it("does not invent a scene number from a value that is not one", () => {
+    const message = mergeFailureMessage(BASE, { stage: "scene", sceneNumber: 0 });
+
+    expect(message).toContain("한 장면 클립");
+    expect(message).not.toContain("0번");
+  });
+});
+
+describe("mergeClipsInvalidMessage", () => {
+  const BASE = "승인된 장면 영상 파일을 확인할 수 없습니다. 영상 검토 화면에서 장면을 다시 확인해 주세요.";
+  const TAIL = "영상 검토 화면에서 그 장면을 다시 확인해 주세요.";
+
+  it("names the scenes instead of sending someone through all of them", () => {
+    const message = mergeClipsInvalidMessage(BASE, { sceneNumbers: [7, 4, 4] }, TAIL);
+
+    // 정렬되고 중복이 없습니다 — 서버가 준 순서가 사람이 읽을 순서일 이유는 없습니다.
+    expect(message).toContain("4·7번 장면 영상을 확인할 수 없습니다");
+    expect(message).toContain(TAIL);
+  });
+
+  /** 빈 배열은 「못 고르겠다」는 서버의 답입니다. 「번 장면」 앞에 아무것도 없는 문장보다 원래 문장이 낫습니다. */
+  it("falls back to the general sentence when the server could not tell which", () => {
+    expect(mergeClipsInvalidMessage(BASE, { sceneNumbers: [] }, TAIL)).toBe(BASE);
+    expect(mergeClipsInvalidMessage(BASE, undefined, TAIL)).toBe(BASE);
+    expect(mergeClipsInvalidMessage(BASE, { sceneNumbers: [1, 0] }, TAIL)).toBe(BASE);
+    expect(mergeClipsInvalidMessage(BASE, { sceneNumbers: ["1"] }, TAIL)).toBe(BASE);
   });
 });
