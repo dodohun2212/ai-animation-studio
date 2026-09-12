@@ -120,6 +120,16 @@ async function spendUnrecorded(deps: RunwayAdvanceDeps, sceneNumber: SceneNumber
   }
 }
 
+/**
+ * What Runway says a finished task cost, in dollars (1 credit = $0.01) — or `undefined` when it did not say, and
+ * the ledger keeps writing the estimate as before.
+ *
+ * 🟠 This is what makes the month's total the real one. `spentThisMonth` sums `actual_cost_usd`, and until this was
+ * read every row held the estimate — so a model billed above its quote (a last frame with an extra charge, a
+ * price change) would pass the budget check on money the account had already spent, and nobody could see it.
+ */
+const creditsToUsd = (credits: number | undefined): number | undefined => (credits === undefined ? undefined : Math.round(credits) / 100);
+
 /** Spreads into a result literal, so a scene that cost money the ledger missed carries that out to the caller. */
 const unrecorded = (flag: boolean) => (flag ? { spendUnrecorded: true } as const : {});
 
@@ -184,11 +194,11 @@ export async function advanceRunwayScene(
         // The task itself succeeded on Runway's side; only our download attempt failed. Try again next check.
         return { kind: "check-error", sceneNumber: running.sceneNumber };
       }
-      const missed = await spendUnrecorded(deps, running.sceneNumber, true);
+      const missed = await spendUnrecorded(deps, running.sceneNumber, true, creditsToUsd(task.costCredits));
       return { kind: "succeeded", sceneNumber: running.sceneNumber, bytes, ...unrecorded(missed) };
     }
     if (task.status === "FAILED" || task.status === "CANCELLED") {
-      const missed = await spendUnrecorded(deps, running.sceneNumber, false);
+      const missed = await spendUnrecorded(deps, running.sceneNumber, false, creditsToUsd(task.costCredits));
       return { kind: "failed", sceneNumber: running.sceneNumber, error: task.failure || task.status, ...(task.failureCode ? { failureCode: task.failureCode } : {}), ...(task.costCredits !== undefined ? { costCredits: task.costCredits } : {}), ...unrecorded(missed) };
     }
     return { kind: "still-running", sceneNumber: running.sceneNumber };

@@ -129,6 +129,33 @@ describe("advanceRunwayScene", () => {
     expect(budget.record).toHaveBeenCalledWith("p1", 1, "video", false, 0.25);
   });
 
+  /*
+   * The ledger writes what Runway charged, not what we quoted, whenever Runway says — `spentThisMonth` sums this
+   * column, so it is what the next budget check is made against.
+   */
+  it("records Runway's own charge as the actual cost of a finished task, and the estimate only when Runway gave none", async () => {
+    const finished = (body: Record<string, unknown>) => {
+      const fetchImpl = vi.fn(async (url: string) => String(url).includes("/v1/tasks/")
+        ? jsonResponse(200, { id: "task-1", ...body })
+        : binaryResponse(Buffer.concat([Buffer.from("000000186674797069736F6D", "hex"), Buffer.from("real output bytes")])));
+      return fetchImpl;
+    };
+    const running = sixScenes({ 1: { status: "running", taskId: "task-1", submittedAt: new Date(Date.now() - 60_000).toISOString(), lastCheckedAt: new Date(Date.now() - 60_000).toISOString() } });
+    const deps = (budget: ReturnType<typeof fakeBudget>, fetchImpl: ReturnType<typeof vi.fn>) => ({ apiSecret: "secret", projectId: "p", apiType: "video", estimatedCostPerSceneUsd: 0.25, budget, adapterOptions: { fetchImpl: fetchImpl as unknown as typeof fetch, sleep: noSleep } });
+
+    const paid = fakeBudget();
+    await advanceRunwayScene(running, input, deps(paid, finished({ status: "SUCCEEDED", output: ["https://cdn.runway/a.mp4"], cost: { credits: 32 } })));
+    expect(paid.record).toHaveBeenCalledWith("p", 1, "video", true, 0.25, expect.any(Date), 0.32);
+
+    const refunded = fakeBudget();
+    await advanceRunwayScene(running, input, deps(refunded, finished({ status: "FAILED", failure: "x", cost: { credits: 0 } })));
+    expect(refunded.record).toHaveBeenCalledWith("p", 1, "video", false, 0.25, expect.any(Date), 0);
+
+    const unsaid = fakeBudget();
+    await advanceRunwayScene(running, input, deps(unsaid, finished({ status: "SUCCEEDED", output: ["https://cdn.runway/a.mp4"] })));
+    expect(unsaid.record).toHaveBeenCalledWith("p", 1, "video", true, 0.25);
+  });
+
   it("treats a transient status-check failure as check-error, not a real failure, and never touches budget", async () => {
     const fetchImpl = vi.fn().mockRejectedValue(new TypeError("network down"));
     const budget = fakeBudget();
