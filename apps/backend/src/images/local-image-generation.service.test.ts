@@ -13,6 +13,7 @@ import { ProviderSettingsRepository } from "../settings/provider-settings.reposi
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { OpenAiBudget } from "../providers/openai-budget.js";
 import { LocalImageGenerationService } from "./local-image-generation.service.js";
+import { CONTINUITY_REFERENCE_NOTE } from "./image-prompt.js";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -512,6 +513,12 @@ describe("real OpenAI image generation", () => {
     // the scene it came from, so redrawing scene 1 later marks scene 2 behind on its own.
     expect(sceneTwo.reference_sources?.[0]).toMatch(/^prev-scene:1@/);
     expect(sceneTwo.reference_sources?.[1]).toBe(`asset:${character.asset_id}@1`);
+
+    // And the prompt says what that leading picture is for — keep its camera and place, not its subject — on
+    // every scene that sends one, and not on scene 1, which sends none (Cowork Round 793).
+    const prompts = editCalls.map((call) => String(((call[1] as RequestInit).body as FormData).get("prompt")));
+    expect(prompts[0]).not.toContain(CONTINUITY_REFERENCE_NOTE);
+    for (const prompt of prompts.slice(1)) expect(prompt).toContain(CONTINUITY_REFERENCE_NOTE);
   });
 
   /** The same project with the switch off buys exactly what it always bought — the guarantee that let this ship. */
@@ -524,6 +531,7 @@ describe("real OpenAI image generation", () => {
 
     const editCalls = fetchMock.mock.calls.filter((call) => call[0] === "https://api.openai.com/v1/images/edits");
     for (const call of editCalls) expect(((call[1] as RequestInit).body as FormData).getAll("image[]")).toHaveLength(1);
+    for (const call of editCalls) expect(String(((call[1] as RequestInit).body as FormData).get("prompt"))).not.toContain(CONTINUITY_REFERENCE_NOTE);
     const reloaded = await new LocalProjectRepository(projectsRoot).findById("images");
     const sceneTwo = reloaded.image_generation_records.find((record) => (record as { scene_number?: number }).scene_number === 2) as { reference_sources?: string[] };
     expect(sceneTwo.reference_sources).toEqual([`asset:${character.asset_id}@1`]);

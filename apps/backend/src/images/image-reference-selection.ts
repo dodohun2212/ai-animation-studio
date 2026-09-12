@@ -180,6 +180,14 @@ function continuitySourceName(reference: ContinuityReference, stat: { readonly m
  * usually changes place between scenes, and forcing the last picture in would stop the pictures following
  * where the story goes. Episodes pass `chainEnabled: false` and so keep the scene-1-only behaviour they had.
  */
+/**
+ * Whether the previous scene's picture went first — the only case CONTINUITY_REFERENCE_NOTE may be said in. Read
+ * off what was collected, not off the switch: a chained scene whose previous picture is missing sends none.
+ */
+export function leadsWithPreviousScene(sources: readonly string[]): boolean {
+  return sources[0]?.startsWith("prev-scene:") === true;
+}
+
 export function continuityForScene(options: {
   readonly directory: string;
   readonly sceneNumber: SceneNumber;

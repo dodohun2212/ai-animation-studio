@@ -70,10 +70,27 @@ export function sceneValue(scene: unknown, key: string): string {
  */
 export const NO_LEGIBLE_TEXT_RULE = "Do not render readable writing: no captions, labels, signs, screens of text, subtitles, waveforms or logos. Show what such a thing would say through the image itself.";
 
+/**
+ * What the previous scene's picture is for, said to the model when a chained scene sends it (first, see
+ * image-reference-selection.ts's resolveReferences).
+ *
+ * 🔴 It went as bytes only. Every mapped Asset carries a 역할 line saying what to take from it; the picture that
+ * leads the list carried nothing, and a model handed an unexplained picture draws something close to it.
+ * 꽃말_버즘나무 scenes 3 and 4 came back nearly identical (Cowork Round 793) — the script asked for little change
+ * there, and nothing said which half of the picture to keep and which to leave behind.
+ *
+ * Keep and change in one sentence, per picture rather than per story: the camera, the place and the light come
+ * from the picture; what is there and in what state comes from this scene's own words. A story preset could say
+ * the same only for projects made after it changed, and only in general.
+ *
+ * Request-only, like the rule below: how to use a reference is not part of any scene, and a record carrying it
+ * must not read as behind one without it (withoutRequestOnlyLines).
+ */
+export const CONTINUITY_REFERENCE_NOTE = "Continuity: 첫 번째 참고 그림은 바로 앞 장면의 그림이다. 카메라 위치·화각·배경·빛은 그 그림을 따른다. 무엇이 보이고 어떤 상태인지는 위 Scene 을 따르며, 그 그림을 그대로 옮겨 그리지 않는다.";
+
 /** The prompt as it goes to the provider — the recorded one plus the rules that are about drawing, not about the scene. */
-export function imagePromptForRequest(scene: unknown, styleLine: string, referenceNotes = ""): string {
-  return `${imagePromptFor(scene, styleLine, referenceNotes)}
-${NO_LEGIBLE_TEXT_RULE}`;
+export function imagePromptForRequest(scene: unknown, styleLine: string, referenceNotes = "", options: { leadsWithPreviousScene?: boolean } = {}): string {
+  return [imagePromptFor(scene, styleLine, referenceNotes), ...(options.leadsWithPreviousScene ? [CONTINUITY_REFERENCE_NOTE] : []), NO_LEGIBLE_TEXT_RULE].join("\n");
 }
 
 export function imagePromptFor(scene: unknown, styleLine: string, referenceNotes = ""): string {
@@ -144,6 +161,8 @@ function recordedByPreStartMotionBuilder(recorded: string, scene: unknown, refer
 /**
  * A prompt with the lines that tell the model *how to draw* taken out — what is left is what staleness compares.
  *
+ * (A third kind since: CONTINUITY_REFERENCE_NOTE, the line saying what a chained scene's leading picture is for.)
+ *
  * 🔴 Two kinds of line are about drawing rather than about this scene, and staleness was comparing one of them.
  * The first generation writes the *request* into `image_generation_records[].prompt`, NO_LEGIBLE_TEXT_RULE
  * included, and the staleness check recomputed without it — so the two never matched and every scene read as
@@ -166,8 +185,9 @@ function recordedByPreStartMotionBuilder(recorded: string, scene: unknown, refer
  */
 const RULE_OPENING = "Do not render readable writing";
 const ROLE_LINE_PREFIX = "  역할: ";
+const CONTINUITY_LINE_PREFIX = "Continuity: ";
 export function withoutRequestOnlyLines(prompt: string): string {
-  const kept = prompt.split("\n").filter((line) => !line.startsWith(ROLE_LINE_PREFIX));
+  const kept = prompt.split("\n").filter((line) => !line.startsWith(ROLE_LINE_PREFIX) && !line.startsWith(CONTINUITY_LINE_PREFIX));
   while (kept.length > 0 && kept[kept.length - 1]!.startsWith(RULE_OPENING)) kept.pop();
   return kept.join("\n");
 }

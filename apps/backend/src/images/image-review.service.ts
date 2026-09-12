@@ -32,7 +32,7 @@ import { ProviderSettingsService } from "../settings/provider-settings.service.j
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError } from "../providers/openai-common.js";
 import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "./openai-image-adapter.js";
-import { collectReferenceImages, continuityForScene, describeReferenceMappingsForScene } from "./image-reference-selection.js";
+import { collectReferenceImages, continuityForScene, describeReferenceMappingsForScene, leadsWithPreviousScene } from "./image-reference-selection.js";
 import { imagePromptFor, imagePromptForRequest, imageSizeFor, sceneValue, styleLineFor } from "./image-prompt.js";
 import { previousSceneContinuityImagePath } from "../projects/project-continuity.js";
 import { computeSceneStaleness } from "../projects/scene-staleness.js";
@@ -330,14 +330,16 @@ export class ImageReviewService {
     const mappings = await this.mappings.load(this.mappings.projectLocation(project.project_id));
     const referenceNotes = await describeReferenceMappingsForScene(this.assets, mappings, number);
     const styleLine = styleLineFor(project);
-    const recordedPrompt = imagePromptForRequest(project.scenes[number - 1], styleLine, referenceNotes);
+    let recordedPrompt = imagePromptForRequest(project.scenes[number - 1], styleLine, referenceNotes);
     if (apiKey && this.budget) {
-      const prompt = additionalInstruction ? `${recordedPrompt}\n${additionalInstruction}` : recordedPrompt;
       const previousProjectImagePath = previousSceneContinuityImagePath(project);
       const chainEnabled = toShortProjectSettings(project).sceneImageContinuityEnabled;
       const directory = this.mappings.projectLocation(project.project_id).directory;
       const continuity = (scene: SceneNumber) => continuityForScene({ directory, sceneNumber: scene, previousProjectImagePath, chainEnabled });
       const references = await collectReferenceImages(this.assets, mappings, directory, number, continuity(number));
+      // Written once the references are known: the prompt says what the first of them is for.
+      recordedPrompt = imagePromptForRequest(project.scenes[number - 1], styleLine, referenceNotes, { leadsWithPreviousScene: leadsWithPreviousScene(references.sources) });
+      const prompt = additionalInstruction ? `${recordedPrompt}\n${additionalInstruction}` : recordedPrompt;
       referenceSources = references.sources;
       if (references.omittedCount > 0) referenceOmission = { references_used_count: references.images.length, references_omitted_count: references.omittedCount };
       try {

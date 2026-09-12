@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NO_LEGIBLE_TEXT_RULE, imagePromptDrift, imagePromptFor, imagePromptForRequest } from "./image-prompt.js";
+import { CONTINUITY_REFERENCE_NOTE, NO_LEGIBLE_TEXT_RULE, imagePromptDrift, imagePromptFor, imagePromptForRequest } from "./image-prompt.js";
 
 const scene = { visual_action: "walks toward the gate", start_motion: "stands still at the door, facing it", shot_size: "", camera_angle: "", composition: "", lens_feel: "", focus_subject: "" };
 
@@ -25,6 +25,20 @@ describe("what goes to the provider, and what goes on the record", () => {
     const recorded = imagePromptFor(scene, "");
     expect(recorded).not.toContain(NO_LEGIBLE_TEXT_RULE);
     expect(imagePromptForRequest(scene, "").startsWith(recorded), "the record is a prefix of what was sent").toBe(true);
+  });
+
+  /*
+   * What the leading previous-scene picture is for (Cowork Round 793) — said only when that picture leads, and
+   * a record carrying it reads as current, the same as a record without it: it is about how to use a reference,
+   * not about the scene.
+   */
+  it("says what the previous scene's picture is for only when asked, and staleness does not see it", () => {
+    expect(imagePromptForRequest(scene, "Style: ink", "References: 주인공")).not.toContain(CONTINUITY_REFERENCE_NOTE);
+    const chained = imagePromptForRequest(scene, "Style: ink", "References: 주인공", { leadsWithPreviousScene: true });
+    expect(chained).toContain(CONTINUITY_REFERENCE_NOTE);
+    expect(chained.endsWith(NO_LEGIBLE_TEXT_RULE)).toBe(true);
+    expect(imagePromptDrift(chained, scene, "Style: ink", "References: 주인공")).toBe("current");
+    expect(imagePromptDrift(chained, { ...scene, start_motion: "kneels at the door" }, "Style: ink", "References: 주인공")).toBe("scene");
   });
 
   /** Reference notes were already handled this way; the new rule joins them rather than inventing a second habit. */

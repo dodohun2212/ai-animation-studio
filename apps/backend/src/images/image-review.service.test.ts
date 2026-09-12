@@ -13,7 +13,7 @@ import { ProviderSettingsRepository } from "../settings/provider-settings.reposi
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { OpenAiBudget } from "../providers/openai-budget.js";
 import { ImageReviewService } from "./image-review.service.js";
-import { NO_LEGIBLE_TEXT_RULE } from "./image-prompt.js";
+import { CONTINUITY_REFERENCE_NOTE, NO_LEGIBLE_TEXT_RULE } from "./image-prompt.js";
 import { withProjectLock } from "../videos/project-lock.js";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
@@ -431,6 +431,24 @@ describe("real OpenAI image regeneration", () => {
     expect(staleness?.imageStale).not.toContain(3);
     // The other scenes were not redrawn and are still behind their script.
     expect(staleness?.imageStale).toEqual([1, 2, 4, 5, 6]);
+  });
+
+  it("says what the previous scene's picture is for when a chained scene is redrawn, and the scene reads current after", async () => {
+    const { projects, service } = await setupWithConnectedOpenAiAndConfirmedReference();
+    const project = await projects.findById("review");
+    project.lore_context = { ...project.lore_context, scene_image_continuity_enabled: true };
+    // As after a batch run, which writes a record for every scene.
+    project.image_generation_records = [1, 2, 3, 4, 5, 6].map((number) => ({ scene_number: number, prompt: `Scene: an older script for ${number}` }));
+    await projects.save(project);
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: PNG_BASE64 }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await service.regenerate("review", "3", { approved: true });
+
+    // Scene 1, which has no scene before it, is asked of the batch run (local-image-generation.service.test.ts).
+    const prompt = String(((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as FormData).get("prompt"));
+    expect(prompt, "scene 3 sends scene 2's picture first").toContain(CONTINUITY_REFERENCE_NOTE);
+    expect((await service.getStatus("review")).staleness?.imageStale).not.toContain(3);
   });
 
   it("records the prompt it sent, less the one-off instruction", async () => {
