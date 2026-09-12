@@ -45,6 +45,24 @@ const SAFE_ERRORS: Record<string, string> = {
   // when another tab generated images in the meantime. Says what to do, not just what failed.
   STORY_REGENERATION_NOT_ALLOWED:
     "장면 이미지를 이미 만든 뒤에는 대본을 다시 만들 수 없습니다. 장면 편집에서 고치거나 새 프로젝트를 만들어 주세요.",
+  /*
+   * 🔴 이 세 줄은 캡틴D 가 화면에서 「요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.」를 보고 나서
+   * 들어왔습니다. 백엔드의 `StoryErrorCode` 열한 개 중 셋이 이 표에 없었고, 없는 코드는 전부 그 한 문장으로
+   * 떨어집니다 — 어디서 멈췄는지도, 돈이 나갔는지도 말하지 않는 문장입니다. 769 의 `server_error` 와 같은
+   * 족보고, 그때와 달리 이번엔 실제로 사람이 그 앞에 서 있었습니다.
+   *
+   * 🔴 세 문장이 서로 다른 이유는 **돈이 서로 다르기 때문**입니다:
+   *   NOT_ALLOWED     409, 보내기 전 거절 — 요청이 나가지 않았습니다. 그 사실을 말해 주는 것이 이 문장의 일입니다.
+   *   STORAGE_ERROR   500, 보낸 뒤 저장 실패 — 대본이 이미 만들어졌을 수 있습니다. 다시 누르기 전에 확인하라고 합니다.
+   *   FAILED          500, 보낸 뒤 앱이 모르는 실패 — 이번 시도분이 청구됐을 수 있습니다.
+   * 셋을 한 문장으로 묶으면 그중 둘은 거짓말이 됩니다.
+   */
+  STORY_GENERATION_NOT_ALLOWED:
+    "지금은 이 프로젝트에서 대본을 만들 수 있는 단계가 아닙니다. OpenAI로 요청을 보내지 않았습니다. 이미 대본이 있다면 장면 편집에서 고치시면 됩니다.",
+  STORY_PROMPT_STORAGE_ERROR:
+    "대본을 저장하지 못했습니다. 요청은 이미 보낸 뒤라 대본이 만들어져 있을 수 있으니, 다시 만들기 전에 대본 화면을 한 번 확인해 주세요.",
+  STORY_GENERATION_FAILED:
+    "대본을 만들지 못했습니다. 이 앱이 원인을 알 수 없는 실패이고, 요청은 이미 보낸 뒤라 이번 시도분이 청구됐을 수 있습니다. 다시 눌러도 같은 결과라면 알려주세요.",
 };
 // The backend classifies every OpenAI provider failure into one of these closed categories (see
 // openai-common.ts's OpenAiErrorCategory) and sends it back as details.category alongside

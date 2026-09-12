@@ -85,18 +85,15 @@ const UNNAMED_BY_A_SCREEN = new Map<string, string>([
   // 다시 시도해 주세요」 — that is a recommendation, not just a report, which is the part the first version of
   // these reasons left out.
   //
-  // A retry is a fair recommendation for these two: a failed write here is most often a transient lock, and
+  // A retry is a fair recommendation for this one: a failed write here is most often a transient lock, and
   // atomic-file.ts already retries EPERM/EBUSY/EACCES for exactly the antivirus and OneDrive cases before
   // giving up. So the sentence is right by luck of the domain, not because the failure is unspeakable.
   ["VIDEO_LIBRARY_STORAGE_ERROR", "write failure; the catch-all's 「잠시 후 다시 시도」 is apt because these are usually transient locks"],
-  ["STORY_PROMPT_STORAGE_ERROR", "write failure — same, and the same reason"],
-  // 🔴 The one that was wrong. This is not "local fake-mode only": it is the fallback arm of a catch, so an
-  // unexpected error on the *paid* path lands here too. It stays an exception on the corrected reasoning that
-  // every known failure of the real path is mapped before it — budget ledger, budget exceeded, and the
-  // provider's own error — leaving this as a genuine unknown, which is what a catch-all is for. The backend's
-  // own message repeated the same overstatement and has been corrected too (it also claimed a fixed six
-  // scenes, untrue since scene count became a setting).
-  ["STORY_GENERATION_FAILED", "the fallback arm for an unexpected error; every known failure of the paid path is mapped before it"],
+  // 🔴 STORY_PROMPT_STORAGE_ERROR and STORY_GENERATION_FAILED were here as decisions — a write failure the
+  // catch-all's 「잠시 후 다시」 fits, and a genuine unknown. 캡틴D met the catch-all on a Story approval
+  // (Cowork Round 786), and the reasons did not hold: three of the four places raising the storage code are
+  // before the paid call and one after (CLI Round 787, `requestSent`), and "try again" says nothing about
+  // money either way. `storyPromptApi.ts` names both now, with sentences that say whether a request went out.
   // 🟢 `INSTAGRAM_LOCAL_FAKE_VIDEO_NOT_PUBLISHABLE` was here as a gap, not a decision: the backend gate landed
   // before the screen had a sentence for it. `instagramPublishApi.ts` names it now, so the entry is gone — which
   // is the whole point of the assertion below. The exception did not have to be remembered; the guard said when.
@@ -173,12 +170,25 @@ function names(source: string, code: string): boolean {
   return new RegExp(`(?<![A-Z0-9_])${code}(?![A-Z0-9_])`).test(source);
 }
 
+/**
+ * The code in a source file, with its comments taken out.
+ *
+ * 🔴 A code named only in a comment is not a code a screen can say. STORY_GENERATION_NOT_ALLOWED passed this guard
+ * on one mention in `StoryPromptScreen.tsx`'s comments while `storyPromptApi.ts` had no sentence for it — and
+ * 캡틴D met its catch-all 「요청을 처리하지 못했습니다」 on screen (Cowork Round 786). Block comments (JSX's
+ * included) and line comments go; a `//` right after a `:` is a URL and stays. A comment that slips through only
+ * makes this weaker again, never wrong.
+ */
+function withoutComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, "$1");
+}
+
 async function frontendText(): Promise<string> {
   const files = await collectSourceFiles(FRONTEND_SOURCE);
   // Well under the real count, so deleting a few files is not a red suite, and far enough above zero that a
   // collector which stopped finding anything cannot pass by finding every code unreachable.
   expect(files.length).toBeGreaterThan(70);
-  return (await Promise.all(files.map((file) => fs.readFile(file, "utf8")))).join("\n");
+  return (await Promise.all(files.map(async (file) => withoutComments(await fs.readFile(file, "utf8"))))).join("\n");
 }
 
 describe("an error code and the sentence a person reads for it can find each other", () => {
